@@ -86,6 +86,7 @@ contains() {
 
 # ---------------------------------------------------------------------------
 # Helper: extract @eN ref from a snapshot line containing [ref=eN]
+# (Only used for device code textbox extraction in Phase 3)
 # ---------------------------------------------------------------------------
 extract_ref() {
   local match
@@ -106,12 +107,7 @@ full_snapshot() {
 # Helper: dismiss cookie consent banner if present
 # ---------------------------------------------------------------------------
 dismiss_cookie_banner() {
-  local snap_i
-  snap_i=$(agent-browser snapshot -i 2>/dev/null || true)
-  local accept_ref
-  accept_ref=$(extract_ref "$(echo "$snap_i" | grep -i '"Accept"' | grep -iv 'sign\|google\|continue\|verify' | head -1 || true)")
-  if [[ -n "$accept_ref" ]]; then
-    agent-browser click "$accept_ref" 2>/dev/null || true
+  if agent-browser find role button click --name "Accept" 2>/dev/null; then
     agent-browser wait 500
     echo "🍪 Dismissed cookie consent banner"
   fi
@@ -157,16 +153,12 @@ enter_otp() {
   local code="$1"
   echo "🔢 Entering OTP verification code"
 
-  SNAP_I=$(agent-browser snapshot -i 2>/dev/null || true)
-  local otp_line otp_ref
-  otp_line=$(echo "$SNAP_I" | grep -i "verification code" || true)
-  otp_ref=$(extract_ref "$otp_line")
-
-  if [[ -n "$otp_ref" ]]; then
-    agent-browser click "$otp_ref"
-    agent-browser wait 300
-    agent-browser type "$otp_ref" "$code"
+  if agent-browser find label "Enter verification code" fill "$code" 2>/dev/null; then
+    : # filled via label
+  elif agent-browser find placeholder "Enter verification code" fill "$code" 2>/dev/null; then
+    : # filled via placeholder
   else
+    # Fallback: find first input and press digits one by one
     agent-browser find first "input" click
     agent-browser wait 300
     for digit in $(echo "$code" | grep -o .); do
@@ -176,12 +168,10 @@ enter_otp() {
   agent-browser wait 2000
 
   # Click Continue/Verify button if present (needed when OTP is a single text input)
-  SNAP_I=$(agent-browser snapshot -i 2>/dev/null || true)
-  local submit_ref
-  submit_ref=$(extract_ref "$(echo "$SNAP_I" | grep -iE '"Continue"|"Verify"' | head -1 || true)")
-  if [[ -n "$submit_ref" ]]; then
-    echo "➡️ Clicking submit button"
-    agent-browser click "$submit_ref"
+  if agent-browser find role button click --name "Continue" --exact 2>/dev/null; then
+    echo "➡️ Clicking Continue"
+  elif agent-browser find role button click --name "Verify" --exact 2>/dev/null; then
+    echo "➡️ Clicking Verify"
   fi
   agent-browser wait 5000
 }
@@ -281,16 +271,10 @@ else
   # -----------------------------------------------------------------------
   # Enter email on sign-in form and click Continue
   # -----------------------------------------------------------------------
-  SNAP_I=$(agent-browser snapshot -i 2>/dev/null || true)
-  EMAIL_REF=$(extract_ref "$(echo "$SNAP_I" | grep -i 'Email address' || true)")
-  CONTINUE_REF=$(extract_ref "$(echo "$SNAP_I" | grep -i '"Continue"' || true)")
-
   echo "📧 Entering email: $EMAIL"
-  agent-browser click "$EMAIL_REF"
-  agent-browser wait 300
-  agent-browser type "$EMAIL_REF" "$EMAIL"
+  agent-browser find label "Email address" fill "$EMAIL"
   agent-browser wait 500
-  agent-browser click "$CONTINUE_REF"
+  agent-browser find role button click --name "Continue" --exact
   agent-browser wait 5000
   step_screenshot "after-email-continue"
 
@@ -325,20 +309,11 @@ else
 
     step_screenshot "sign-up-form"
     echo "📧 Filling sign-up form"
-    SNAP_I=$(agent-browser snapshot -i 2>/dev/null || true)
-    EMAIL_REF=$(extract_ref "$(echo "$SNAP_I" | grep -i 'Email address' || true)")
-    PASS_REF=$(extract_ref "$(echo "$SNAP_I" | grep -i 'textbox "Password"' || true)")
-    CONTINUE_REF=$(extract_ref "$(echo "$SNAP_I" | grep -i '"Continue"' || true)")
-
-    agent-browser click "$EMAIL_REF"
-    agent-browser wait 300
-    agent-browser type "$EMAIL_REF" "$EMAIL"
+    agent-browser find label "Email address" fill "$EMAIL"
     agent-browser wait 500
-    agent-browser click "$PASS_REF"
-    agent-browser wait 300
-    agent-browser type "$PASS_REF" "$SIGNUP_PASSWORD"
+    agent-browser find label "Password" fill "$SIGNUP_PASSWORD"
     agent-browser wait 500
-    agent-browser click "$CONTINUE_REF"
+    agent-browser find role button click --name "Continue" --exact
     agent-browser wait 5000
     step_screenshot "after-sign-up-continue"
 
@@ -377,24 +352,20 @@ else
     # If password field is showing, try to switch to email code method
     if contains "$SNAP" "password"; then
       echo "🔄 Password screen detected — looking for email code option"
-      SNAP_I=$(agent-browser snapshot -i 2>/dev/null || true)
-
-      UAM_REF=$(extract_ref "$(echo "$SNAP_I" | grep -i 'use another method' || true)")
-      if [[ -z "$UAM_REF" ]]; then
-        UAM_REF=$(extract_ref "$(echo "$SNAP_I" | grep -i 'email code\|forgot password' || true)")
-      fi
-      if [[ -n "$UAM_REF" ]]; then
-        echo "🔄 Clicking alternative auth method"
-        agent-browser click "$UAM_REF"
+      if agent-browser find text "Use another method" click 2>/dev/null \
+          || agent-browser find text "use another method" click 2>/dev/null; then
+        echo "🔄 Clicked 'Use another method'"
         agent-browser wait 3000
         step_screenshot "after-alt-method-click"
-        SNAP_I=$(agent-browser snapshot -i 2>/dev/null || true)
-        EC_REF=$(extract_ref "$(echo "$SNAP_I" | grep -i 'email code' || true)")
-        if [[ -n "$EC_REF" ]]; then
-          echo "📧 Selecting 'Email code'"
-          agent-browser click "$EC_REF"
+        if agent-browser find text "Email code" click 2>/dev/null \
+            || agent-browser find text "email code" click 2>/dev/null; then
+          echo "📧 Selected 'Email code'"
           agent-browser wait 3000
         fi
+      elif agent-browser find text "Forgot password" click 2>/dev/null \
+          || agent-browser find text "forgot password" click 2>/dev/null; then
+        echo "🔄 Clicked 'Forgot password'"
+        agent-browser wait 3000
       fi
     fi
 
@@ -491,23 +462,15 @@ echo "✅ Device code entered"
 agent-browser wait 1000
 
 # Click Verify button
-SNAP_I=$(agent-browser snapshot -i 2>/dev/null || true)
-VERIFY_REF=$(extract_ref "$(echo "$SNAP_I" | grep -i '"Verify"' || true)")
-
-if [[ -n "$VERIFY_REF" ]]; then
-  agent-browser click "$VERIFY_REF"
+if agent-browser find role button click --name "Verify" 2>/dev/null; then
   echo "➡️ Clicked Verify"
+elif agent-browser find role button click --name "Authorize Device" 2>/dev/null; then
+  echo "➡️ Clicked Authorize Device"
 else
-  AUTH_REF=$(extract_ref "$(echo "$SNAP_I" | grep -i '"Authorize Device"' || true)")
-  if [[ -n "$AUTH_REF" ]]; then
-    agent-browser click "$AUTH_REF"
-    echo "➡️ Clicked Authorize Device"
-  else
-    step_screenshot "verify-button-not-found"
-    echo "❌ Verify button not found" >&2
-    echo "$SNAP_I" >&2
-    exit 1
-  fi
+  step_screenshot "verify-button-not-found"
+  echo "❌ Verify button not found" >&2
+  agent-browser snapshot -i >&2 || true
+  exit 1
 fi
 
 agent-browser wait 3000

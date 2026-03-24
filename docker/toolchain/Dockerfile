@@ -94,7 +94,7 @@ RUN curl -fsSL https://downloads.1password.com/linux/keys/1password.asc | gpg --
     && rm -rf /var/lib/apt/lists/*
 
 # Install agent-browser for browser automation
-RUN npm install -g agent-browser@0.21.2
+RUN npm install -g agent-browser@0.22.0
 
 # Install Chromium via Playwright (supports both amd64 and arm64)
 # Use chrome-for-testing to ensure full browser (not just headless shell)

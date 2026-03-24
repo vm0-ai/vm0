@@ -1051,7 +1051,7 @@ jobs:
       - name: Link CLI globally
         run: cd /tmp/cli-deploy && sudo npm link
       - name: Install E2E dependencies
-        run: npm install -g agent-browser
+        run: npm install -g agent-browser@0.22.0
       - name: Verify device flow authentication
         run: |
           echo "Verifying device flow with ${{ needs.deploy-web.outputs.preview-url }}"
