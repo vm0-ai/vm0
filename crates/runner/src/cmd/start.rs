@@ -613,10 +613,10 @@ async fn shutdown_factories(
     // Each factory.shutdown() releases its own reference, but if a factory
     // was still referenced (Arc::try_unwrap failed), its base handle leaks.
     // This is the safety net.
-    match shared_base_pool.lock() {
-        Ok(mut pool) => pool.cleanup(),
-        Err(e) => warn!(error = %e, "base pool lock poisoned during shutdown"),
-    }
+    shared_base_pool
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .cleanup();
 }
 
 /// Spawn a job executor task.

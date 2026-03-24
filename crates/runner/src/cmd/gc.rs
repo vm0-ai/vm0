@@ -601,6 +601,9 @@ fn parse_losetup<'a>(output: &'a Option<String>, prefix: &'a str) -> Vec<(String
             let (dev, rest) = line.split_once(':')?;
             let start = rest.find('(')?;
             let end = rest.rfind(')')?;
+            if end <= start {
+                return None;
+            }
             let backing = &rest[start + 1..end];
             // Strip " (deleted)" suffix for matching.
             let path = backing.strip_suffix(" (deleted)").unwrap_or(backing);

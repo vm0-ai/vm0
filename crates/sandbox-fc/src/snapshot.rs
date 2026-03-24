@@ -135,9 +135,7 @@ pub async fn create_snapshot(
     let cow_dir = paths.workspace().join("cow");
     let pool_for_acquire = base_pool.clone();
     let base_handle = tokio::task::spawn_blocking(move || {
-        let mut pool = pool_for_acquire
-            .lock()
-            .map_err(|e| SnapshotError::Setup(format!("base pool lock poisoned: {e}")))?;
+        let mut pool = pool_for_acquire.lock().unwrap_or_else(|e| e.into_inner());
         pool.acquire(&rootfs_path)
             .map_err(|e| SnapshotError::Setup(format!("acquire base image: {e}")))
     })
@@ -180,13 +178,11 @@ pub async fn create_snapshot(
 
     // Release base image — detaches the loop device (pool of 1, so refcount → 0).
     let base_key = base_handle.base_key().to_owned();
-    let _ = tokio::task::spawn_blocking(move || match base_pool.lock() {
-        Ok(mut pool) => {
-            if let Err(e) = pool.release(&base_key) {
-                tracing::warn!(error = %e, "failed to release base image");
-            }
+    let _ = tokio::task::spawn_blocking(move || {
+        let mut pool = base_pool.lock().unwrap_or_else(|e| e.into_inner());
+        if let Err(e) = pool.release(&base_key) {
+            tracing::warn!(error = %e, "failed to release base image");
         }
-        Err(e) => tracing::warn!(error = %e, "base pool lock poisoned"),
     })
     .await;
 

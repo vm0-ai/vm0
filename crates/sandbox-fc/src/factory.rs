@@ -223,9 +223,7 @@ impl SandboxFactory for FirecrackerFactory {
         let rootfs = self.config.rootfs_path.clone();
         let pool = self.base_pool.clone();
         let base_handle = tokio::task::spawn_blocking(move || {
-            let mut pool = pool.lock().map_err(|e| {
-                SandboxError::CreationFailed(format!("base pool lock poisoned: {e}"))
-            })?;
+            let mut pool = pool.lock().unwrap_or_else(|e| e.into_inner());
             pool.acquire(&rootfs)
                 .map_err(|e| SandboxError::CreationFailed(format!("base image pool: {e}")))
         })
@@ -429,13 +427,7 @@ impl SandboxFactory for FirecrackerFactory {
             let base_key = handle.base_key().to_owned();
             // spawn_blocking because losetup -d is synchronous.
             let _ = tokio::task::spawn_blocking(move || {
-                let mut pool = match pool.lock() {
-                    Ok(p) => p,
-                    Err(e) => {
-                        warn!(error = %e, "base pool lock poisoned during shutdown");
-                        return;
-                    }
-                };
+                let mut pool = pool.lock().unwrap_or_else(|e| e.into_inner());
                 if let Err(e) = pool.release(&base_key) {
                     warn!(error = %e, "failed to release base image");
                 }
