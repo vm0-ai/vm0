@@ -48,7 +48,8 @@ export async function POST(
   }
 
   try {
-    const resolvedAgentId = (parsed.data.zeroAgentId ?? parsed.data.composeId)!;
+    const resolvedAgentId = parsed.data.zeroAgentId ?? parsed.data.composeId;
+    if (!resolvedAgentId) throw new Error("Missing agent ID after validation");
     const schedule = await enableSchedule(userId, orgId, resolvedAgentId, name);
 
     return Response.json(schedule, { status: 200 });
