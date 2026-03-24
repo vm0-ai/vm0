@@ -33,6 +33,7 @@ import { googleDocsFirewall } from "./google-docs.generated";
 import { googleDriveFirewall } from "./google-drive.generated";
 import { googleSheetsFirewall } from "./google-sheets.generated";
 import { hubspotFirewall } from "./hubspot.generated";
+import { huggingFaceFirewall } from "./hugging-face.generated";
 import { intercomFirewall } from "./intercom.generated";
 import { jiraFirewall } from "./jira.generated";
 import { linearFirewall } from "./linear.generated";
@@ -84,6 +85,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   "google-drive": googleDriveFirewall,
   "google-sheets": googleSheetsFirewall,
   hubspot: hubspotFirewall,
+  "hugging-face": huggingFaceFirewall,
   intercom: intercomFirewall,
   jira: jiraFirewall,
   linear: linearFirewall,

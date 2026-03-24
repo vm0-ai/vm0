@@ -116,6 +116,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   elevenlabs: ["elevenlabs"],
   fal: ["fal"],
   hubspot: ["hubspot"],
+  "hugging-face": ["hugging-face"],
   intercom: ["intercom"],
   atlassian: ["jira", "confluence"],
   linear: ["linear"],
