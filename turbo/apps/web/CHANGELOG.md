@@ -1,5 +1,31 @@
 # Changelog
 
+## [12.151.0](https://github.com/vm0-ai/vm0/compare/web-v12.150.0...web-v12.151.0) (2026-03-24)
+
+
+### Features
+
+* **platform:** firewall permissions drawer with persistent policies ([#5467](https://github.com/vm0-ai/vm0/issues/5467)) ([829485f](https://github.com/vm0-ai/vm0/commit/829485f8222f732217e68daae10fe0d56567cc81))
+
+
+### Bug Fixes
+
+* accept compose id as alternative to zero agent id in schedule api ([#6265](https://github.com/vm0-ai/vm0/issues/6265)) ([e3061eb](https://github.com/vm0-ai/vm0/commit/e3061eb1a2b274040e337d5b5eb95b2d2de81c85))
+* use fake model names in vm0-provider test to avoid polluting dev database ([#6250](https://github.com/vm0-ai/vm0/issues/6250)) ([3b84007](https://github.com/vm0-ai/vm0/commit/3b8400764b4f3b4669fe9fdce8ba007364b9b3c3)), closes [#6243](https://github.com/vm0-ai/vm0/issues/6243)
+
+
+### Refactoring
+
+* **api:** use zero agent id instead of compose id for run creation ([#6239](https://github.com/vm0-ai/vm0/issues/6239)) ([51a1e64](https://github.com/vm0-ai/vm0/commit/51a1e6474c74d054dd8b2bf1fc75413188dfc4ee))
+* clean up old agent schedule routes, cli commands, and compose-id column ([#6240](https://github.com/vm0-ai/vm0/issues/6240)) ([a77c622](https://github.com/vm0-ai/vm0/commit/a77c622ae11dde9f32d7a1ff0dea54f202f8f735))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.100.0
+
 ## [12.150.0](https://github.com/vm0-ai/vm0/compare/web-v12.149.0...web-v12.150.0) (2026-03-23)
 
 

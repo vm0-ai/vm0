@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.77.1](https://github.com/vm0-ai/vm0/compare/cli-v9.77.0...cli-v9.77.1) (2026-03-24)
+
+
+### Refactoring
+
+* clean up old agent schedule routes, cli commands, and compose-id column ([#6240](https://github.com/vm0-ai/vm0/issues/6240)) ([a77c622](https://github.com/vm0-ai/vm0/commit/a77c622ae11dde9f32d7a1ff0dea54f202f8f735))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.100.0
+
 ## [9.77.0](https://github.com/vm0-ai/vm0/compare/cli-v9.76.0...cli-v9.77.0) (2026-03-23)
 
 

@@ -1,5 +1,23 @@
 # Changelog
 
+## [8.100.0](https://github.com/vm0-ai/vm0/compare/core-v8.99.0...core-v8.100.0) (2026-03-24)
+
+
+### Features
+
+* **platform:** firewall permissions drawer with persistent policies ([#5467](https://github.com/vm0-ai/vm0/issues/5467)) ([829485f](https://github.com/vm0-ai/vm0/commit/829485f8222f732217e68daae10fe0d56567cc81))
+* remove feature switches from all google connectors for general availability ([#6253](https://github.com/vm0-ai/vm0/issues/6253)) ([666766c](https://github.com/vm0-ai/vm0/commit/666766cd2360f0a6ff84e6c39fb179ac2194496d))
+
+
+### Bug Fixes
+
+* accept compose id as alternative to zero agent id in schedule api ([#6265](https://github.com/vm0-ai/vm0/issues/6265)) ([e3061eb](https://github.com/vm0-ai/vm0/commit/e3061eb1a2b274040e337d5b5eb95b2d2de81c85))
+
+
+### Refactoring
+
+* clean up old agent schedule routes, cli commands, and compose-id column ([#6240](https://github.com/vm0-ai/vm0/issues/6240)) ([a77c622](https://github.com/vm0-ai/vm0/commit/a77c622ae11dde9f32d7a1ff0dea54f202f8f735))
+
 ## [8.99.0](https://github.com/vm0-ai/vm0/compare/core-v8.98.1...core-v8.99.0) (2026-03-23)
 
 

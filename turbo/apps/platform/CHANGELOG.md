@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.143.0](https://github.com/vm0-ai/vm0/compare/app-v0.142.1...app-v0.143.0) (2026-03-24)
+
+
+### Features
+
+* **platform:** firewall permissions drawer with persistent policies ([#5467](https://github.com/vm0-ai/vm0/issues/5467)) ([829485f](https://github.com/vm0-ai/vm0/commit/829485f8222f732217e68daae10fe0d56567cc81))
+* remove feature switches from all google connectors for general availability ([#6253](https://github.com/vm0-ai/vm0/issues/6253)) ([666766c](https://github.com/vm0-ai/vm0/commit/666766cd2360f0a6ff84e6c39fb179ac2194496d))
+
+
+### Bug Fixes
+
+* migrate platform schedule frontend from composeId to zeroAgentId ([#6262](https://github.com/vm0-ai/vm0/issues/6262)) ([73bc132](https://github.com/vm0-ai/vm0/commit/73bc13232badb4dc347f3167bcf461c61953451b))
+* new chat button should create session and navigate to thread page ([#6263](https://github.com/vm0-ai/vm0/issues/6263)) ([06a3332](https://github.com/vm0-ai/vm0/commit/06a3332e112f5c2c2672007661c30c3441407d53))
+* pass schedule description through agent detail data flow ([#6258](https://github.com/vm0-ai/vm0/issues/6258)) ([7cb4ceb](https://github.com/vm0-ai/vm0/commit/7cb4cebcab3ec6a9b28968277c4e90638093ad65))
+* **platform:** simplify job detail skeleton condition to avoid stale loading state ([#6193](https://github.com/vm0-ai/vm0/issues/6193)) ([5d3f2ac](https://github.com/vm0-ai/vm0/commit/5d3f2ac73e6d05fdcf7caafe299252e176fd0348))
+* use cell-scoped popover ids to prevent duplicate schedule entry conflicts ([#6194](https://github.com/vm0-ai/vm0/issues/6194)) ([365aaa5](https://github.com/vm0-ai/vm0/commit/365aaa5742e4a181b27b33588ac178214571d2c2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.100.0
+
 ## [0.142.1](https://github.com/vm0-ai/vm0/compare/app-v0.142.0...app-v0.142.1) (2026-03-24)
 
 
