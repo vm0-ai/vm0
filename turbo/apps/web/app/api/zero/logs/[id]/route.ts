@@ -177,7 +177,7 @@ const router = tsr.router(logsByIdContract, {
       body: {
         id: run.id,
         sessionId: runResult?.agentSessionId ?? null,
-        agentId: compose?.id ?? "unknown",
+        agentId: compose?.id ?? null,
         displayName: agentDisplayName ?? null,
         framework: extractFramework(composeContent),
         modelProvider: run.modelProvider ?? null,

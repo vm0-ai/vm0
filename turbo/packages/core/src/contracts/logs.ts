@@ -57,7 +57,7 @@ export type TriggerSource = z.infer<typeof triggerSourceSchema>;
 const logEntrySchema = z.object({
   id: z.uuid(),
   sessionId: z.string().nullable(),
-  agentId: z.string(),
+  agentId: z.string().nullable(),
   displayName: z.string().nullable(),
   orgSlug: z.string().nullable(),
   framework: z.string().nullable(),
@@ -102,7 +102,7 @@ const artifactSchema = z.object({
 const logDetailSchema = z.object({
   id: z.uuid(),
   sessionId: z.string().nullable(),
-  agentId: z.string(),
+  agentId: z.string().nullable(),
   displayName: z.string().nullable(),
   framework: z.string().nullable(),
   modelProvider: z.string().nullable(),

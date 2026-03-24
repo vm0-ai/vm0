@@ -339,7 +339,7 @@ const router = tsr.router(logsListContract, {
         data: data.map((run) => ({
           id: run.id,
           sessionId: run.sessionId ?? null,
-          agentId: run.composeId ?? "unknown",
+          agentId: run.composeId ?? null,
           displayName: run.displayName ?? null,
           orgSlug: run.orgId ? (slugMap.get(run.orgId) ?? null) : null,
           framework: extractFramework(run.composeContent),

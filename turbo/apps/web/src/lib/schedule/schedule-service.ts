@@ -289,7 +289,7 @@ async function verifyScheduleOwnership(
     throw notFound(`Schedule '${name}' not found`);
   }
 
-  // Resolve compose ID from agent name
+  // Resolve compose ID from agent ID
   const compose = await resolveComposeByAgentId(resolvedId);
   if (!compose) {
     throw notFound(`Agent compose not found for agent '${resolvedId}'`);

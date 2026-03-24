@@ -218,7 +218,7 @@ describe("GET /api/zero/logs/[id]", () => {
     expect(response.status).toBe(200);
     expect(data.id).toBe(runId);
     expect(data.prompt).toBe("Orphan run prompt");
-    expect(data.agentId).toBe("unknown");
+    expect(data.agentId).toBeNull();
     expect(data.framework).toBeNull();
   });
 });

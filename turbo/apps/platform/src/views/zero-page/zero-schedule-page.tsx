@@ -798,6 +798,7 @@ export function ZeroSchedulePage() {
               variant="outline"
               size="sm"
               className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
+              disabled={agents.length === 0}
               onClick={() => setCreateOpen(true)}
             >
               <IconPlus size={14} stroke={2} />
