@@ -221,22 +221,22 @@ impl CowDevice {
         // If snapshot removal fails (device busy), the origin and loop
         // devices are still in use — attempting to remove them would also
         // fail. So we bail early and let the caller retry later.
+        //
+        // Once the snapshot is removed, everything else is independent
+        // and proceeds best-effort.
 
-        // Step 1: remove the snapshot target (depends on origin + cow_loop).
+        // Step 1: remove the snapshot target. This is the only step that
+        // can legitimately fail due to "device busy" (Firecracker still
+        // has the device open). If it fails, bail — nothing else can be
+        // cleaned up yet.
         if let Err(e) = dmsetup::remove(&cow_name) {
             warn!(name = cow_name, error = %e, "failed to remove snapshot target — device may be in use");
             return Err(e);
         }
 
-        // Step 2: remove the origin target (depends on base_loop).
-        if let Err(e) = dmsetup::remove(&origin_name) {
-            warn!(name = origin_name, error = %e, "failed to remove origin target");
-            return Err(e);
-        }
-
-        // dm targets are gone — mark inactive so Drop doesn't retry dm
-        // operations. Loop/file cleanup below is independent and safe to
-        // best-effort.
+        // Snapshot is gone — past the point of no return. Mark inactive
+        // so Drop won't retry the (already succeeded) snapshot removal.
+        // Everything below is best-effort.
         self.active = false;
 
         let mut first_error: Option<BlockCowError> = None;
@@ -249,6 +249,7 @@ impl CowDevice {
             }
         };
 
+        record(dmsetup::remove(&origin_name), "remove origin target");
         record(losetup::detach(&self.cow_loop), "detach COW loop");
         record(losetup::detach(&self.base_loop), "detach base loop");
 
