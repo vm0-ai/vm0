@@ -105,6 +105,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   browserless: ["browserless"],
   "cal-com": ["cal-com"],
   calendly: ["calendly"],
+  canva: ["canva"],
   clickup: ["clickup"],
   close: ["close"],
   cloudflare: ["cloudflare"],

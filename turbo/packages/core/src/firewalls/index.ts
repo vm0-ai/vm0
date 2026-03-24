@@ -20,6 +20,7 @@ import { browserbaseFirewall } from "./browserbase.generated";
 import { browserlessFirewall } from "./browserless.generated";
 import { calComFirewall } from "./cal-com.generated";
 import { calendlyFirewall } from "./calendly.generated";
+import { canvaFirewall } from "./canva.generated";
 import { clickupFirewall } from "./clickup.generated";
 import { closeFirewall } from "./close.generated";
 import { cloudflareFirewall } from "./cloudflare.generated";
@@ -92,6 +93,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   browserless: browserlessFirewall,
   "cal-com": calComFirewall,
   calendly: calendlyFirewall,
+  canva: canvaFirewall,
   clickup: clickupFirewall,
   close: closeFirewall,
   cloudflare: cloudflareFirewall,
