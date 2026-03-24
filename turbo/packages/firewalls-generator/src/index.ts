@@ -12,6 +12,7 @@ import { generate as generateConfluence } from "./confluence";
 import { generate as generateFigma } from "./figma";
 import { generate as generateGitHub } from "./github";
 import { generate as generateJira } from "./jira";
+import { generate as generateLinear } from "./linear";
 import { generate as generateNotion } from "./notion";
 import { generate as generateSlack } from "./slack";
 import { generate as generateVercel } from "./vercel";
@@ -25,6 +26,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   figma: generateFigma,
   github: generateGitHub,
   jira: generateJira,
+  linear: generateLinear,
   notion: generateNotion,
   slack: generateSlack,
   vercel: generateVercel,

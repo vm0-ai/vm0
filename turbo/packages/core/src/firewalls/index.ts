@@ -18,6 +18,7 @@ import { googleDocsFirewall } from "./google-docs.generated";
 import { googleDriveFirewall } from "./google-drive.generated";
 import { googleSheetsFirewall } from "./google-sheets.generated";
 import { jiraFirewall } from "./jira.generated";
+import { linearFirewall } from "./linear.generated";
 import { notionFirewall } from "./notion.generated";
 import { slackFirewall } from "./slack.generated";
 import { vercelFirewall } from "./vercel.generated";
@@ -35,6 +36,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   "google-drive": googleDriveFirewall,
   "google-sheets": googleSheetsFirewall,
   jira: jiraFirewall,
+  linear: linearFirewall,
   notion: notionFirewall,
   slack: slackFirewall,
   vercel: vercelFirewall,
