@@ -1,5 +1,30 @@
 # Changelog
 
+## [12.152.0](https://github.com/vm0-ai/vm0/compare/web-v12.151.0...web-v12.152.0) (2026-03-24)
+
+
+### Features
+
+* add zero connector contracts for sessions, computer, and get-by-type ([#6286](https://github.com/vm0-ai/vm0/issues/6286)) ([ce04430](https://github.com/vm0-ai/vm0/commit/ce044303cb2c3ba9bc1d6b8b03d10d0815a750de))
+
+
+### Bug Fixes
+
+* clean up schedules before agent runs in org deletion ([#6266](https://github.com/vm0-ai/vm0/issues/6266)) ([9213163](https://github.com/vm0-ai/vm0/commit/921316378162e8a4df61e4d9bff6b9cd363ef461))
+
+
+### Refactoring
+
+* extract onboard helper for zero api tests ([#6280](https://github.com/vm0-ai/vm0/issues/6280)) ([aa54ff7](https://github.com/vm0-ai/vm0/commit/aa54ff7caddafcf7c565d6208e02bc239bcacd8d)), closes [#6270](https://github.com/vm0-ai/vm0/issues/6270)
+* migrate /api/agent/integrations/slack/message to /api/zero/integrations/slack/message ([#6279](https://github.com/vm0-ai/vm0/issues/6279)) ([e2c50dd](https://github.com/vm0-ai/vm0/commit/e2c50dde55ddb649a0cfbe661829955a40740955)), closes [#6276](https://github.com/vm0-ai/vm0/issues/6276)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.101.0
+
 ## [12.151.0](https://github.com/vm0-ai/vm0/compare/web-v12.150.0...web-v12.151.0) (2026-03-24)
 
 

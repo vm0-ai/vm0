@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.101.0](https://github.com/vm0-ai/vm0/compare/core-v8.100.0...core-v8.101.0) (2026-03-24)
+
+
+### Features
+
+* add zero connector contracts for sessions, computer, and get-by-type ([#6286](https://github.com/vm0-ai/vm0/issues/6286)) ([ce04430](https://github.com/vm0-ai/vm0/commit/ce044303cb2c3ba9bc1d6b8b03d10d0815a750de))
+
+
+### Refactoring
+
+* migrate /api/agent/integrations/slack/message to /api/zero/integrations/slack/message ([#6279](https://github.com/vm0-ai/vm0/issues/6279)) ([e2c50dd](https://github.com/vm0-ai/vm0/commit/e2c50dde55ddb649a0cfbe661829955a40740955)), closes [#6276](https://github.com/vm0-ai/vm0/issues/6276)
+
 ## [8.100.0](https://github.com/vm0-ai/vm0/compare/core-v8.99.0...core-v8.100.0) (2026-03-24)
 
 
