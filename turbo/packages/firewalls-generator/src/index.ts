@@ -16,6 +16,7 @@ import { generate as generateBraveSearch } from "./brave-search";
 import { generate as generateBrevo } from "./brevo";
 import { generate as generateBrightData } from "./bright-data";
 import { generate as generateBrowserbase } from "./browserbase";
+import { generate as generateCalendly } from "./calendly";
 import { generate as generateClickup } from "./clickup";
 import { generate as generateClose } from "./close";
 import { generate as generateCloudflare } from "./cloudflare";
@@ -73,6 +74,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   brevo: generateBrevo,
   "bright-data": generateBrightData,
   browserbase: generateBrowserbase,
+  calendly: generateCalendly,
   clickup: generateClickup,
   close: generateClose,
   cloudflare: generateCloudflare,
