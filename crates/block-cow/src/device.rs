@@ -5,7 +5,7 @@ use tracing::{info, warn};
 
 use crate::error::{BlockCowError, Result};
 use crate::pool::BaseHandle;
-use crate::{command, dmsetup, losetup};
+use crate::{dmsetup, losetup};
 
 /// Default dm-snapshot chunk size in 512-byte sectors.
 /// 8 sectors = 4KB, matching the common filesystem block size.
@@ -174,17 +174,26 @@ impl CowDevice {
         };
         info!(cow_loop = %cow_loop.display(), "attached COW file");
 
-        // 2. Create dm-snapshot target directly on the shared base loop device.
+        // 2. Create dm-snapshot target directly on the shared base loop device
+        //    with ownership set to the current user (--uid/--gid).
+        //
         //    No dm-linear origin needed — the base loop is read-only and shared
         //    across all COW devices via BaseImagePool.
+        //
+        //    dm devices default to root:disk 0660; passing --uid/--gid sets
+        //    ownership atomically at creation time, avoiding a separate chown.
         let base_loop_str = base.loop_path.to_string_lossy();
         let cow_loop_str = cow_loop.to_string_lossy();
+        let uid = nix::unistd::getuid().as_raw();
+        let gid = nix::unistd::getgid().as_raw();
         let device_path = match dmsetup::create_snapshot(
             &cow_name,
             &base_loop_str,
             &cow_loop_str,
             sectors,
             chunk_size,
+            uid,
+            gid,
         ) {
             Ok(p) => p,
             Err(e) => {
@@ -195,23 +204,6 @@ impl CowDevice {
                 return Err(e);
             }
         };
-
-        // 3. Make the device accessible to the runner user.
-        //
-        // dm devices default to root:disk 0660; the runner process and
-        // Firecracker run as a regular user.  `dmsetup create` synchronises
-        // with udev (via DM_UDEV_COOKIE), so by the time we get here udev
-        // has finished processing and the chown will persist.
-        let device_str = device_path.to_string_lossy();
-        let owner = format!("{}:{}", nix::unistd::getuid(), nix::unistd::getgid());
-        if let Err(e) = command::run("chown", &[&owner, &device_str]) {
-            let _ = dmsetup::remove(&cow_name);
-            let _ = losetup::detach(&cow_loop);
-            if created_cow {
-                let _ = fs::remove_file(&cow_file);
-            }
-            return Err(e);
-        }
 
         info!(
             device = %device_path.display(),
