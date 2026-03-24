@@ -360,7 +360,10 @@ function ScheduleTimingFields({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {COMMON_TIMEZONES.map((tz) => (
+              {((COMMON_TIMEZONES as readonly string[]).includes(timezone)
+                ? COMMON_TIMEZONES
+                : [timezone, ...COMMON_TIMEZONES]
+              ).map((tz) => (
                 <SelectItem key={tz} value={tz}>
                   {tz.replace(/_/g, " ")}
                 </SelectItem>
