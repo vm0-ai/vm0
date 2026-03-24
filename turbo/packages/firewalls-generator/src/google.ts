@@ -39,6 +39,7 @@ interface DiscoveryMethod {
   httpMethod?: string;
   path?: string;
   scopes?: string[];
+  supportsMediaUpload?: boolean;
 }
 
 interface DiscoveryResource {
@@ -79,6 +80,7 @@ function extractMethods(
 function buildGroups(
   discovery: DiscoveryDocument,
   stripPrefix: string,
+  uploadOnly?: boolean,
 ): PermissionGroup[] {
   const groups = new Map<string, Set<string>>();
   const strip = stripPrefix ? `${stripPrefix}/` : "";
@@ -95,6 +97,9 @@ function buildGroups(
   }
 
   for (const method of extractMethods(discovery.resources ?? {})) {
+    // Filter: only upload methods, or only non-upload methods
+    if (uploadOnly && !method.supportsMediaUpload) continue;
+
     const httpMethod = method.httpMethod;
     const methodPath = method.path;
     const scopes = method.scopes;
@@ -150,10 +155,17 @@ function buildGroups(
     }));
 }
 
+// ── API entry ────────────────────────────────────────────────────────────
+
+interface ApiEntry {
+  base: string;
+  permissions: PermissionGroup[];
+}
+
 // ── TypeScript generation ────────────────────────────────────────────────
 
 function generateTypeScript(
-  permissions: PermissionGroup[],
+  apis: ApiEntry[],
   config: GoogleFirewallConfig,
 ): string {
   const exportName = config.serviceName
@@ -177,20 +189,24 @@ function generateTypeScript(
     `    ${config.placeholderKey}: "${config.placeholderValue}",`,
     "  },",
     "  apis: [",
-    "    {",
-    `      base: "${config.baseUrl}",`,
-    "      auth: {",
-    "        headers: {",
-    `          Authorization: "Bearer \${{ secrets.${config.placeholderKey} }}",`,
-    "        },",
-    "      },",
-    "      permissions: [",
   ];
 
-  lines.push(...renderPermissions(permissions));
+  for (const api of apis) {
+    lines.push("    {");
+    lines.push(`      base: "${api.base}",`);
+    lines.push("      auth: {");
+    lines.push("        headers: {");
+    lines.push(
+      `          Authorization: "Bearer \${{ secrets.${config.placeholderKey} }}",`,
+    );
+    lines.push("        },");
+    lines.push("      },");
+    lines.push("      permissions: [");
+    lines.push(...renderPermissions(api.permissions));
+    lines.push("      ],");
+    lines.push("    },");
+  }
 
-  lines.push("      ],");
-  lines.push("    },");
   lines.push("  ],");
   lines.push("};");
   lines.push("");
@@ -206,6 +222,11 @@ interface GoogleFirewallConfig {
   /** Base URL: domain + service path, no version (e.g. "https://www.googleapis.com/drive"). */
   baseUrl: string;
   /**
+   * Upload base URLs for APIs with media upload support (simple + resumable).
+   * Required if Discovery API reports supportsMediaUpload on any method.
+   */
+  uploadBaseUrls?: string[];
+  /**
    * Prefix to strip from Discovery paths (for APIs where paths include the service name).
    * e.g. "gmail" strips "gmail/" from "gmail/v1/users/{id}" → "v1/users/{id}".
    * Leave empty for APIs with relative paths (Drive, Calendar) — version is derived from servicePath.
@@ -217,10 +238,31 @@ interface GoogleFirewallConfig {
   placeholderValue: string;
 }
 
+function mergePermissions(
+  target: PermissionGroup[],
+  source: PermissionGroup[],
+): void {
+  for (const perm of source) {
+    const existing = target.find((p) => p.name === perm.name);
+    if (existing) {
+      const ruleSet = new Set(existing.rules);
+      for (const rule of perm.rules) ruleSet.add(rule);
+      existing.rules = sortRules([...ruleSet]);
+      if (!existing.description && perm.description) {
+        existing.description = perm.description;
+      }
+    } else {
+      target.push({ ...perm });
+    }
+  }
+}
+
 async function generateGoogleFirewall(
   config: GoogleFirewallConfig,
 ): Promise<void> {
   const allPermissions: PermissionGroup[] = [];
+  const uploadPermissions: PermissionGroup[] = [];
+  let hasUpload = false;
 
   for (const discoveryUrl of config.discoveryUrls) {
     const res = await fetchSpec(
@@ -230,28 +272,46 @@ async function generateGoogleFirewall(
     const discovery = (await res.json()) as DiscoveryDocument;
     console.error(`  API version: ${discovery.version ?? "unknown"}`);
 
-    const permissions = buildGroups(discovery, config.stripPrefix);
-    // Merge into allPermissions
-    for (const perm of permissions) {
-      const existing = allPermissions.find((p) => p.name === perm.name);
-      if (existing) {
-        // Merge rules, dedup
-        const ruleSet = new Set(existing.rules);
-        for (const rule of perm.rules) ruleSet.add(rule);
-        existing.rules = sortRules([...ruleSet]);
-        if (!existing.description && perm.description) {
-          existing.description = perm.description;
-        }
-      } else {
-        allPermissions.push({ ...perm });
-      }
+    mergePermissions(
+      allPermissions,
+      buildGroups(discovery, config.stripPrefix),
+    );
+
+    // Build upload-specific permissions (only methods with supportsMediaUpload)
+    const uploadGroups = buildGroups(discovery, config.stripPrefix, true);
+    if (uploadGroups.length > 0) {
+      hasUpload = true;
+      mergePermissions(uploadPermissions, uploadGroups);
     }
+  }
+
+  // Validate: Discovery upload support must match config
+  const hasUploadConfig =
+    config.uploadBaseUrls && config.uploadBaseUrls.length > 0;
+  if (hasUpload && !hasUploadConfig) {
+    throw new Error(
+      `${config.serviceName}: Discovery API reports upload methods but config is missing uploadBaseUrls`,
+    );
+  }
+  if (!hasUpload && hasUploadConfig) {
+    throw new Error(
+      `${config.serviceName}: config has uploadBaseUrls but Discovery API reports no upload methods`,
+    );
   }
 
   // Sort by name
   allPermissions.sort((a, b) => a.name.localeCompare(b.name));
+  uploadPermissions.sort((a, b) => a.name.localeCompare(b.name));
 
-  const ts = generateTypeScript(allPermissions, config);
+  // Build API entries
+  const apis: ApiEntry[] = [
+    { base: config.baseUrl, permissions: allPermissions },
+  ];
+  for (const uploadBase of config.uploadBaseUrls ?? []) {
+    apis.push({ base: uploadBase, permissions: uploadPermissions });
+  }
+
+  const ts = generateTypeScript(apis, config);
 
   logStats(allPermissions);
   writeOutput(config.serviceName, ts, import.meta.dirname);
@@ -266,6 +326,10 @@ const CONFIGS: Record<string, GoogleFirewallConfig> = {
   gmail: {
     discoveryUrls: ["https://gmail.googleapis.com/$discovery/rest?version=v1"],
     baseUrl: "https://gmail.googleapis.com/gmail",
+    uploadBaseUrls: [
+      "https://gmail.googleapis.com/upload/gmail",
+      "https://gmail.googleapis.com/resumable/upload/gmail",
+    ],
     stripPrefix: "gmail",
     serviceName: "gmail",
     serviceDescription: "Gmail API",
@@ -298,6 +362,10 @@ const CONFIGS: Record<string, GoogleFirewallConfig> = {
       "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest",
     ],
     baseUrl: "https://www.googleapis.com/drive",
+    uploadBaseUrls: [
+      "https://www.googleapis.com/upload/drive",
+      "https://www.googleapis.com/resumable/upload/drive",
+    ],
     stripPrefix: "",
     serviceName: "google-drive",
     serviceDescription: "Google Drive API",

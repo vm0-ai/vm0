@@ -356,5 +356,153 @@ export const gmailFirewall: FirewallConfig = {
         },
       ],
     },
+    {
+      base: "https://gmail.googleapis.com/upload/gmail",
+      auth: {
+        headers: {
+          Authorization: "Bearer ${{ secrets.GMAIL_TOKEN }}",
+        },
+      },
+      permissions: [
+        {
+          name: "unrestricted",
+          description: "Allow all endpoints",
+          rules: ["ANY /{path*}"],
+        },
+        {
+          name: "gmail",
+          description:
+            "Read, compose, send, and permanently delete all your email from Gmail",
+          rules: [
+            "POST /v1/users/{userId}/drafts",
+            "POST /v1/users/{userId}/drafts/send",
+            "PUT /v1/users/{userId}/drafts/{id}",
+            "POST /v1/users/{userId}/messages",
+            "POST /v1/users/{userId}/messages/import",
+            "POST /v1/users/{userId}/messages/send",
+          ],
+        },
+        {
+          name: "gmail.addons.current.action.compose",
+          description:
+            "Manage drafts and send emails when you interact with the add-on",
+          rules: [
+            "POST /v1/users/{userId}/drafts",
+            "POST /v1/users/{userId}/drafts/send",
+            "PUT /v1/users/{userId}/drafts/{id}",
+            "POST /v1/users/{userId}/messages/send",
+          ],
+        },
+        {
+          name: "gmail.compose",
+          description: "Manage drafts and send emails",
+          rules: [
+            "POST /v1/users/{userId}/drafts",
+            "POST /v1/users/{userId}/drafts/send",
+            "PUT /v1/users/{userId}/drafts/{id}",
+            "POST /v1/users/{userId}/messages/send",
+          ],
+        },
+        {
+          name: "gmail.insert",
+          description: "Add emails into your Gmail mailbox",
+          rules: [
+            "POST /v1/users/{userId}/messages",
+            "POST /v1/users/{userId}/messages/import",
+          ],
+        },
+        {
+          name: "gmail.modify",
+          description: "Read, compose, and send emails from your Gmail account",
+          rules: [
+            "POST /v1/users/{userId}/drafts",
+            "POST /v1/users/{userId}/drafts/send",
+            "PUT /v1/users/{userId}/drafts/{id}",
+            "POST /v1/users/{userId}/messages",
+            "POST /v1/users/{userId}/messages/import",
+            "POST /v1/users/{userId}/messages/send",
+          ],
+        },
+        {
+          name: "gmail.send",
+          description: "Send email on your behalf",
+          rules: ["POST /v1/users/{userId}/messages/send"],
+        },
+      ],
+    },
+    {
+      base: "https://gmail.googleapis.com/resumable/upload/gmail",
+      auth: {
+        headers: {
+          Authorization: "Bearer ${{ secrets.GMAIL_TOKEN }}",
+        },
+      },
+      permissions: [
+        {
+          name: "unrestricted",
+          description: "Allow all endpoints",
+          rules: ["ANY /{path*}"],
+        },
+        {
+          name: "gmail",
+          description:
+            "Read, compose, send, and permanently delete all your email from Gmail",
+          rules: [
+            "POST /v1/users/{userId}/drafts",
+            "POST /v1/users/{userId}/drafts/send",
+            "PUT /v1/users/{userId}/drafts/{id}",
+            "POST /v1/users/{userId}/messages",
+            "POST /v1/users/{userId}/messages/import",
+            "POST /v1/users/{userId}/messages/send",
+          ],
+        },
+        {
+          name: "gmail.addons.current.action.compose",
+          description:
+            "Manage drafts and send emails when you interact with the add-on",
+          rules: [
+            "POST /v1/users/{userId}/drafts",
+            "POST /v1/users/{userId}/drafts/send",
+            "PUT /v1/users/{userId}/drafts/{id}",
+            "POST /v1/users/{userId}/messages/send",
+          ],
+        },
+        {
+          name: "gmail.compose",
+          description: "Manage drafts and send emails",
+          rules: [
+            "POST /v1/users/{userId}/drafts",
+            "POST /v1/users/{userId}/drafts/send",
+            "PUT /v1/users/{userId}/drafts/{id}",
+            "POST /v1/users/{userId}/messages/send",
+          ],
+        },
+        {
+          name: "gmail.insert",
+          description: "Add emails into your Gmail mailbox",
+          rules: [
+            "POST /v1/users/{userId}/messages",
+            "POST /v1/users/{userId}/messages/import",
+          ],
+        },
+        {
+          name: "gmail.modify",
+          description: "Read, compose, and send emails from your Gmail account",
+          rules: [
+            "POST /v1/users/{userId}/drafts",
+            "POST /v1/users/{userId}/drafts/send",
+            "PUT /v1/users/{userId}/drafts/{id}",
+            "POST /v1/users/{userId}/messages",
+            "POST /v1/users/{userId}/messages/import",
+            "POST /v1/users/{userId}/messages/send",
+          ],
+        },
+        {
+          name: "gmail.send",
+          description: "Send email on your behalf",
+          rules: ["POST /v1/users/{userId}/messages/send"],
+        },
+      ],
+    },
   ],
 };

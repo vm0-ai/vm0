@@ -631,5 +631,131 @@ export const googleDriveFirewall: FirewallConfig = {
         },
       ],
     },
+    {
+      base: "https://www.googleapis.com/upload/drive",
+      auth: {
+        headers: {
+          Authorization: "Bearer ${{ secrets.GOOGLE_DRIVE_TOKEN }}",
+        },
+      },
+      permissions: [
+        {
+          name: "unrestricted",
+          description: "Allow all endpoints",
+          rules: ["ANY /{path*}"],
+        },
+        {
+          name: "drive",
+          description:
+            "See, edit, create, and delete all of your Google Drive files",
+          rules: [
+            "POST /v2/files",
+            "PUT /v2/files/{fileId}",
+            "POST /v3/files",
+            "PATCH /v3/files/{fileId}",
+          ],
+        },
+        {
+          name: "drive.appdata",
+          description:
+            "See, create, and delete its own configuration data in your Google Drive",
+          rules: [
+            "POST /v2/files",
+            "PUT /v2/files/{fileId}",
+            "POST /v3/files",
+            "PATCH /v3/files/{fileId}",
+          ],
+        },
+        {
+          name: "drive.apps.readonly",
+          description: "View your Google Drive apps",
+          rules: ["POST /v2/files", "PUT /v2/files/{fileId}"],
+        },
+        {
+          name: "drive.file",
+          description:
+            "See, edit, create, and delete only the specific Google Drive files you use with this app",
+          rules: [
+            "POST /v2/files",
+            "PUT /v2/files/{fileId}",
+            "POST /v3/files",
+            "PATCH /v3/files/{fileId}",
+          ],
+        },
+        {
+          name: "drive.metadata",
+          description: "View and manage metadata of files in your Google Drive",
+          rules: ["PUT /v2/files/{fileId}", "PATCH /v3/files/{fileId}"],
+        },
+        {
+          name: "drive.scripts",
+          description: "Modify your Google Apps Script scripts' behavior",
+          rules: ["PUT /v2/files/{fileId}", "PATCH /v3/files/{fileId}"],
+        },
+      ],
+    },
+    {
+      base: "https://www.googleapis.com/resumable/upload/drive",
+      auth: {
+        headers: {
+          Authorization: "Bearer ${{ secrets.GOOGLE_DRIVE_TOKEN }}",
+        },
+      },
+      permissions: [
+        {
+          name: "unrestricted",
+          description: "Allow all endpoints",
+          rules: ["ANY /{path*}"],
+        },
+        {
+          name: "drive",
+          description:
+            "See, edit, create, and delete all of your Google Drive files",
+          rules: [
+            "POST /v2/files",
+            "PUT /v2/files/{fileId}",
+            "POST /v3/files",
+            "PATCH /v3/files/{fileId}",
+          ],
+        },
+        {
+          name: "drive.appdata",
+          description:
+            "See, create, and delete its own configuration data in your Google Drive",
+          rules: [
+            "POST /v2/files",
+            "PUT /v2/files/{fileId}",
+            "POST /v3/files",
+            "PATCH /v3/files/{fileId}",
+          ],
+        },
+        {
+          name: "drive.apps.readonly",
+          description: "View your Google Drive apps",
+          rules: ["POST /v2/files", "PUT /v2/files/{fileId}"],
+        },
+        {
+          name: "drive.file",
+          description:
+            "See, edit, create, and delete only the specific Google Drive files you use with this app",
+          rules: [
+            "POST /v2/files",
+            "PUT /v2/files/{fileId}",
+            "POST /v3/files",
+            "PATCH /v3/files/{fileId}",
+          ],
+        },
+        {
+          name: "drive.metadata",
+          description: "View and manage metadata of files in your Google Drive",
+          rules: ["PUT /v2/files/{fileId}", "PATCH /v3/files/{fileId}"],
+        },
+        {
+          name: "drive.scripts",
+          description: "Modify your Google Apps Script scripts' behavior",
+          rules: ["PUT /v2/files/{fileId}", "PATCH /v3/files/{fileId}"],
+        },
+      ],
+    },
   ],
 };
