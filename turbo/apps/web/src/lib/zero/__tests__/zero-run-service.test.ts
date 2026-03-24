@@ -286,5 +286,25 @@ describe("createZeroRun()", () => {
       );
       expect(slackFw).toBeUndefined();
     });
+
+    it("should add multiple firewall entries for multi-ref connector", async () => {
+      const agentName = uniqueId("fw-multi");
+      await createTestCompose(agentName);
+      // GitHub + Slack connectors → separate firewall entries
+      await createTestConnector({ type: "github" });
+      await createTestConnector({ type: "slack" });
+      const agentId = await getTestZeroAgentId(user.orgId, agentName);
+
+      const result = await createZeroRun(baseParams({ zeroAgentId: agentId }));
+
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job).toBeDefined();
+      const firewalls = job!.executionContext.experimentalFirewalls;
+      expect(firewalls).toBeDefined();
+      const ghFw = firewalls!.find((fw) => fw.ref === "github");
+      const slackFw = firewalls!.find((fw) => fw.ref === "slack");
+      expect(ghFw).toBeDefined();
+      expect(slackFw).toBeDefined();
+    });
   });
 });
