@@ -19,6 +19,8 @@ interface ZeroScheduleSaveParams {
   dayOfWeek?: string;
   dayOfMonth?: string;
   editName?: string;
+  notifyEmail?: boolean;
+  notifySlack?: boolean;
 }
 
 interface ZeroScheduleTabProps {

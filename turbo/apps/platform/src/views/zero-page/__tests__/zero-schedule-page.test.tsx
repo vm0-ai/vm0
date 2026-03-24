@@ -186,7 +186,9 @@ describe("zero schedule page - create dialog", () => {
     fireEvent.click(screen.getByRole("button", { name: /Add schedule/i }));
 
     await waitFor(() => {
-      expect(screen.getByText("New schedule")).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Add schedule" }),
+      ).toBeInTheDocument();
     });
     expect(screen.getByLabelText("Prompt")).toBeInTheDocument();
   });
@@ -219,7 +221,9 @@ describe("zero schedule page - create dialog", () => {
     fireEvent.click(screen.getByRole("button", { name: /Add schedule/i }));
 
     await waitFor(() => {
-      expect(screen.getByText("New schedule")).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Add schedule" }),
+      ).toBeInTheDocument();
     });
 
     // Fill in prompt
@@ -370,6 +374,213 @@ describe("zero schedule page - delete confirmation", () => {
     await waitFor(() => {
       expect(deletedName).toBe("morning-briefing");
     });
+  });
+});
+
+describe("zero schedule page - edit dialog confirm close", () => {
+  it("should show confirm overlay when Cancel is clicked with unsaved changes", async () => {
+    mockScheduleAPI();
+    await renderSchedulePage();
+
+    // Wait for schedule list
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Edit Every weekday at 9:00 AM"),
+      ).toBeInTheDocument();
+    });
+
+    // Open edit dialog
+    fireEvent.click(screen.getByLabelText("Edit Every weekday at 9:00 AM"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Edit schedule")).toBeInTheDocument();
+    });
+
+    // Modify the prompt
+    const promptInput = screen.getByLabelText("Prompt");
+    fireEvent.change(promptInput, {
+      target: { value: "Changed prompt text" },
+    });
+
+    // Click Cancel
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    // Confirm overlay should appear
+    await waitFor(() => {
+      expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByRole("button", { name: "Continue Editing" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Discard Changes" }),
+    ).toBeInTheDocument();
+  });
+
+  it("should close dialog directly when Cancel is clicked without changes", async () => {
+    mockScheduleAPI();
+    await renderSchedulePage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Edit Every weekday at 9:00 AM"),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText("Edit Every weekday at 9:00 AM"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Edit schedule")).toBeInTheDocument();
+    });
+
+    // Click Cancel without making changes
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    // Dialog should close immediately
+    await waitFor(() => {
+      expect(screen.queryByText("Edit schedule")).not.toBeInTheDocument();
+    });
+    // No confirm overlay
+    expect(
+      screen.queryByText("You have unsaved changes"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("should return to editing when Continue Editing is clicked", async () => {
+    mockScheduleAPI();
+    await renderSchedulePage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Edit Every weekday at 9:00 AM"),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText("Edit Every weekday at 9:00 AM"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Edit schedule")).toBeInTheDocument();
+    });
+
+    const promptInput = screen.getByLabelText("Prompt");
+    fireEvent.change(promptInput, {
+      target: { value: "Changed prompt text" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
+    });
+
+    // Click Continue Editing
+    fireEvent.click(screen.getByRole("button", { name: "Continue Editing" }));
+
+    // Confirm overlay dismissed, dialog still open with edits preserved
+    await waitFor(() => {
+      expect(
+        screen.queryByText("You have unsaved changes"),
+      ).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("Edit schedule")).toBeInTheDocument();
+  });
+
+  it("should close dialog when Discard Changes is clicked", async () => {
+    mockScheduleAPI();
+    await renderSchedulePage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Edit Every weekday at 9:00 AM"),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText("Edit Every weekday at 9:00 AM"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Edit schedule")).toBeInTheDocument();
+    });
+
+    const promptInput = screen.getByLabelText("Prompt");
+    fireEvent.change(promptInput, {
+      target: { value: "Changed prompt text" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
+    });
+
+    // Click Discard Changes
+    fireEvent.click(screen.getByRole("button", { name: "Discard Changes" }));
+
+    // Dialog should close
+    await waitFor(() => {
+      expect(screen.queryByText("Edit schedule")).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe("zero schedule page - create dialog confirm close", () => {
+  it("should show confirm overlay when Cancel is clicked with prompt text", async () => {
+    mockScheduleAPI();
+    await renderSchedulePage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Add schedule/i }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Add schedule/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Add schedule" }),
+      ).toBeInTheDocument();
+    });
+
+    const promptInput = screen.getByLabelText("Prompt");
+    fireEvent.change(promptInput, {
+      target: { value: "Some new task" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
+    });
+  });
+
+  it("should close create dialog directly when Cancel is clicked without changes", async () => {
+    mockScheduleAPI();
+    await renderSchedulePage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Add schedule/i }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Add schedule/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Add schedule" }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("heading", { name: "Add schedule" }),
+      ).not.toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText("You have unsaved changes"),
+    ).not.toBeInTheDocument();
   });
 });
 

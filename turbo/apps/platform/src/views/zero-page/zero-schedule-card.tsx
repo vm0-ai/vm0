@@ -11,26 +11,6 @@ import {
   setAddScheduleOpen$,
   editingScheduleId$,
   setEditingScheduleId$,
-  newSchedulePrompt$,
-  setNewSchedulePrompt$,
-  scheduleFreq$,
-  setScheduleFreq$,
-  scheduleDate$,
-  setScheduleDate$,
-  scheduleHour$,
-  setScheduleHour$,
-  scheduleMinute$,
-  setScheduleMinute$,
-  scheduleTimezone$,
-  setScheduleTimezone$,
-  scheduleIntervalStr$,
-  setScheduleIntervalStr$,
-  scheduleDayOfWeek$,
-  setScheduleDayOfWeek$,
-  scheduleDayOfMonth$,
-  setScheduleDayOfMonth$,
-  newScheduleDescription$,
-  setNewScheduleDescription$,
   saveError$,
   setSaveError$,
   togglingIds$,
@@ -53,12 +33,6 @@ import {
   Tabs,
   TabsList,
   TabsTrigger,
-  Input,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
   cn,
 } from "@vm0/ui";
 import {
@@ -66,6 +40,12 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@vm0/ui/components/ui/popover";
+import { throwIfAbort, detach, Reason } from "../../signals/utils.ts";
+import {
+  ScheduleFormDialog,
+  type ScheduleFormValues,
+} from "./schedule-dialog.tsx";
+import emptyScheduleImg from "./assets/empty-schedule.webp";
 import {
   Dialog,
   DialogContent,
@@ -73,45 +53,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@vm0/ui/components/ui/dialog";
-import { throwIfAbort, detach, Reason } from "../../signals/utils.ts";
-import emptyScheduleImg from "./assets/empty-schedule.webp";
-import {
-  COMMON_TIMEZONES,
-  getTodayDateLocal,
-  getBrowserTimezone,
-} from "../../signals/zero-page/cron.ts";
-
-export const SCHEDULE_FREQUENCY_OPTIONS = [
-  { value: "now", label: "Now" },
-  { value: "once", label: "Once" },
-  { value: "every_weekday", label: "Every weekday" },
-  { value: "every_day", label: "Every day" },
-  { value: "every_week", label: "Every week" },
-  { value: "every_month", label: "Every month" },
-  { value: "every_n_minutes", label: "Loop" },
-] as const;
-
-export const SCHEDULE_LOOP_MINUTES = [5, 15, 30, 60] as const;
-export const HOUR_OPTIONS: readonly number[] = Array.from(
-  { length: 24 },
-  (_, i) => i,
-);
-const MINUTE_OPTIONS: readonly number[] = Array.from(
-  { length: 12 },
-  (_, i) => i * 5,
-);
-
-/**
- * Build the minute dropdown options, inserting a non-standard value (e.g. an
- * existing schedule whose minute is not a multiple of 5) so the schedule
- * remains editable.
- */
-export function getMinuteOptions(currentMinute?: number): readonly number[] {
-  if (currentMinute === undefined || MINUTE_OPTIONS.includes(currentMinute)) {
-    return MINUTE_OPTIONS;
-  }
-  return [...MINUTE_OPTIONS, currentMinute].sort((a, b) => a - b);
-}
+import { getBrowserTimezone } from "../../signals/zero-page/cron.ts";
 
 export const WEEKDAY_LABELS = [
   "Mon",
@@ -529,6 +471,8 @@ interface ZeroScheduleCardProps {
     dayOfWeek?: string;
     dayOfMonth?: string;
     editName?: string;
+    notifyEmail?: boolean;
+    notifySlack?: boolean;
   }) => Promise<void>;
   /** When provided, called to delete a schedule by name. */
   onDelete?: (name: string) => Promise<void>;
@@ -563,123 +507,105 @@ export function ZeroScheduleCard({
   const setAddScheduleOpen = useSet(setAddScheduleOpen$);
   const editingScheduleId = useGet(editingScheduleId$);
   const setEditingScheduleId = useSet(setEditingScheduleId$);
-  const newSchedulePrompt = useGet(newSchedulePrompt$);
-  const setNewSchedulePrompt = useSet(setNewSchedulePrompt$);
-  const scheduleFreq = useGet(scheduleFreq$);
-  const setScheduleFreq = useSet(setScheduleFreq$);
-  const scheduleDate = useGet(scheduleDate$);
-  const setScheduleDate = useSet(setScheduleDate$);
-  const scheduleHour = useGet(scheduleHour$);
-  const setScheduleHour = useSet(setScheduleHour$);
-  const scheduleMinute = useGet(scheduleMinute$);
-  const setScheduleMinute = useSet(setScheduleMinute$);
   const resolvedTimezone = defaultTimezone || getBrowserTimezone();
-  const scheduleTimezone = useGet(scheduleTimezone$);
-  const setScheduleTimezone = useSet(setScheduleTimezone$);
-  const scheduleIntervalStr = useGet(scheduleIntervalStr$);
-  const setScheduleIntervalStr = useSet(setScheduleIntervalStr$);
-  const scheduleDayOfWeek = useGet(scheduleDayOfWeek$);
-  const setScheduleDayOfWeek = useSet(setScheduleDayOfWeek$);
-  const scheduleDayOfMonth = useGet(scheduleDayOfMonth$);
-  const setScheduleDayOfMonth = useSet(setScheduleDayOfMonth$);
-  const newScheduleDescription = useGet(newScheduleDescription$);
-  const setNewScheduleDescription = useSet(setNewScheduleDescription$);
   const saveError = useGet(saveError$);
   const setSaveError = useSet(setSaveError$);
   const togglingIds = useGet(togglingIds$);
   const setTogglingIds = useSet(setTogglingIds$);
 
+  const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
+  const [dialogInitialValues, setDialogInitialValues] = useState<
+    Partial<ScheduleFormValues>
+  >({});
+
   const openAddSchedule = () => {
     setEditingScheduleId(null);
-    setNewSchedulePrompt("");
-    setNewScheduleDescription("");
-    setScheduleFreq("every_day");
-    setScheduleDate(new Date().toISOString().slice(0, 10));
-    setScheduleHour(9);
-    setScheduleMinute(0);
-    setScheduleTimezone(resolvedTimezone);
-    setScheduleIntervalStr("300");
-    setScheduleDayOfWeek("1");
-    setScheduleDayOfMonth("1");
+    setDialogMode("create");
+    setDialogInitialValues({ timezone: resolvedTimezone });
     setSaveError(null);
     setAddScheduleOpen(true);
   };
 
   const openEditSchedule = (entry: ScheduleEntry) => {
     setEditingScheduleId(entry.id);
-    setNewSchedulePrompt(entry.prompt);
-    setNewScheduleDescription(entry.description ?? "");
+    setDialogMode("edit");
     const parsed = parseScheduleTimeString(entry.time);
-    setScheduleFreq(parsed.freq);
-    setScheduleDate(parsed.date);
-    setScheduleHour(parsed.hour);
-    setScheduleMinute(parsed.minute);
-    setScheduleTimezone(parsed.timezone);
-    setScheduleIntervalStr(
-      String(entry.intervalSeconds ?? (parsed.loopMinutes ?? 5) * 60),
-    );
-    setScheduleDayOfWeek(parsed.dayOfWeek ?? "1");
-    setScheduleDayOfMonth(parsed.dayOfMonth ?? "1");
+    setDialogInitialValues({
+      prompt: entry.prompt,
+      description: entry.description ?? "",
+      freq: parsed.freq,
+      date: parsed.date,
+      hour: parsed.hour,
+      minute: parsed.minute,
+      timezone: parsed.timezone,
+      loopMinutes:
+        entry.intervalSeconds !== null && entry.intervalSeconds !== undefined
+          ? Math.round(entry.intervalSeconds / 60)
+          : parsed.loopMinutes,
+      dayOfWeek: parsed.dayOfWeek ?? "1",
+      dayOfMonth: parsed.dayOfMonth ?? "1",
+      notifyEmail: entry.notifyEmail ?? false,
+      notifySlack: entry.notifySlack ?? false,
+    });
     setSaveError(null);
     setAddScheduleOpen(true);
   };
 
-  const addScheduleEntry = async () => {
-    if (!newSchedulePrompt.trim()) {
-      return;
-    }
-
+  const handleDialogSave = (values: ScheduleFormValues) => {
     if (onSave) {
-      // Find the editing entry's name for API update
       const editingEntry = editingScheduleId
         ? scheduleList.find((e) => e.id === editingScheduleId)
         : null;
-      try {
-        setSaveError(null);
-        await onSave({
-          prompt: newSchedulePrompt.trim(),
-          description: newScheduleDescription.trim() || undefined,
-          freq: scheduleFreq,
-          date: scheduleDate,
-          hour: scheduleHour,
-          minute: scheduleMinute,
-          timezone: scheduleTimezone,
-          intervalSeconds: Number(scheduleIntervalStr) || 0,
+      setSaveError(null);
+      detach(
+        onSave({
+          prompt: values.prompt.trim(),
+          description: values.description.trim() || undefined,
+          freq: values.freq,
+          date: values.date,
+          hour: values.hour,
+          minute: values.minute,
+          timezone: values.timezone,
+          intervalSeconds: values.loopMinutes * 60,
           dayOfWeek:
-            scheduleFreq === "every_week" ? scheduleDayOfWeek : undefined,
+            values.freq === "every_week" ? values.dayOfWeek : undefined,
           dayOfMonth:
-            scheduleFreq === "every_month" ? scheduleDayOfMonth : undefined,
+            values.freq === "every_month" ? values.dayOfMonth : undefined,
           editName: editingEntry?.name,
-        });
-      } catch (error) {
-        throwIfAbort(error);
-        setSaveError(
-          error instanceof Error ? error.message : "Failed to save schedule",
-        );
-        return;
-      }
-      setNewSchedulePrompt("");
-      setEditingScheduleId(null);
-      setAddScheduleOpen(false);
+          notifyEmail: values.notifyEmail,
+          notifySlack: values.notifySlack,
+        })
+          .then(() => {
+            setEditingScheduleId(null);
+            setAddScheduleOpen(false);
+          })
+          .catch((error: unknown) => {
+            throwIfAbort(error);
+            setSaveError(
+              error instanceof Error
+                ? error.message
+                : "Failed to save schedule",
+            );
+          }),
+        Reason.DomCallback,
+      );
       return;
     }
 
     const timeStr = buildScheduleTimeString({
-      freq: scheduleFreq,
-      date: scheduleFreq === "once" ? scheduleDate : undefined,
-      hour: scheduleHour,
-      minute: scheduleMinute,
-      timezone: scheduleTimezone,
+      freq: values.freq,
+      date: values.freq === "once" ? values.date : undefined,
+      hour: values.hour,
+      minute: values.minute,
+      timezone: values.timezone,
       loopMinutes:
-        scheduleFreq === "every_n_minutes"
-          ? Math.round((Number(scheduleIntervalStr) || 0) / 60)
-          : undefined,
+        values.freq === "every_n_minutes" ? values.loopMinutes : undefined,
     });
     if (editingScheduleId) {
       setScheduleList((prev) =>
         prev.map((e) =>
           e.id === editingScheduleId
-            ? { ...e, time: timeStr, prompt: newSchedulePrompt.trim() }
+            ? { ...e, time: timeStr, prompt: values.prompt.trim() }
             : e,
         ),
       );
@@ -690,11 +616,10 @@ export function ZeroScheduleCard({
         {
           id: String(Date.now()),
           time: timeStr,
-          prompt: newSchedulePrompt.trim(),
+          prompt: values.prompt.trim(),
         },
       ]);
     }
-    setNewSchedulePrompt("");
     setAddScheduleOpen(false);
   };
 
@@ -982,276 +907,19 @@ export function ZeroScheduleCard({
           })()}
       </CardContent>
 
-      <Dialog
+      <ScheduleFormDialog
+        key={editingScheduleId ?? "new"}
         open={addScheduleOpen}
-        onOpenChange={(open) => {
-          setAddScheduleOpen(open);
-          if (!open) {
-            setEditingScheduleId(null);
-          }
+        mode={dialogMode}
+        onClose={() => {
+          setAddScheduleOpen(false);
+          setEditingScheduleId(null);
         }}
-      >
-        <DialogContent className="sm:max-w-lg gap-6">
-          <DialogHeader>
-            <DialogTitle>
-              {editingScheduleId ? "Edit schedule" : "Add schedule"}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-2">
-              <label
-                htmlFor="schedule-dialog-prompt"
-                className="text-sm font-medium text-foreground"
-              >
-                Prompt
-              </label>
-              <textarea
-                id="schedule-dialog-prompt"
-                value={newSchedulePrompt}
-                onChange={(e) => setNewSchedulePrompt(e.target.value)}
-                placeholder="Describe your task and instruction"
-                rows={5}
-                className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 resize-y min-h-[120px]"
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <label
-                htmlFor="schedule-dialog-description"
-                className="text-sm font-medium text-foreground"
-              >
-                Description
-                <span className="text-muted-foreground font-normal ml-1">
-                  (optional)
-                </span>
-              </label>
-              <Input
-                id="schedule-dialog-description"
-                value={newScheduleDescription}
-                onChange={(e) => setNewScheduleDescription(e.target.value)}
-                placeholder="Leave blank to auto-generate"
-                className="h-9"
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <label
-                htmlFor="schedule-dialog-freq"
-                className="text-sm font-medium text-foreground"
-              >
-                Time
-              </label>
-              <Select value={scheduleFreq} onValueChange={setScheduleFreq}>
-                <SelectTrigger id="schedule-dialog-freq" className="h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {SCHEDULE_FREQUENCY_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {scheduleFreq === "every_n_minutes" && (
-              <div className="flex flex-col gap-2">
-                <label
-                  htmlFor="schedule-dialog-loop"
-                  className="text-sm font-medium text-foreground"
-                >
-                  Interval (seconds)
-                </label>
-                <Input
-                  id="schedule-dialog-loop"
-                  type="number"
-                  min={0}
-                  value={scheduleIntervalStr}
-                  onChange={(e) => setScheduleIntervalStr(e.target.value)}
-                  placeholder="300"
-                  className="h-9"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Time between the end of one run and the start of the next. Use
-                  0 for immediate restart.
-                </p>
-              </div>
-            )}
-            {scheduleFreq === "once" && (
-              <div className="flex flex-col gap-2">
-                <label
-                  htmlFor="schedule-dialog-date"
-                  className="text-sm font-medium text-foreground"
-                >
-                  Date
-                </label>
-                <Input
-                  id="schedule-dialog-date"
-                  type="date"
-                  value={scheduleDate}
-                  min={getTodayDateLocal()}
-                  onChange={(e) => setScheduleDate(e.target.value)}
-                  className="h-9"
-                />
-              </div>
-            )}
-            {scheduleFreq === "every_week" && (
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-foreground">
-                  Day of week
-                </label>
-                <div className="flex gap-1">
-                  {(
-                    [
-                      ["1", "Mon"],
-                      ["2", "Tue"],
-                      ["3", "Wed"],
-                      ["4", "Thu"],
-                      ["5", "Fri"],
-                      ["6", "Sat"],
-                      ["0", "Sun"],
-                    ] as const
-                  ).map(([value, label]) => {
-                    const selected = scheduleDayOfWeek
-                      .split(",")
-                      .includes(value);
-                    return (
-                      <button
-                        key={value}
-                        type="button"
-                        className={`h-8 min-w-[40px] rounded-lg border text-xs font-medium transition-colors ${
-                          selected
-                            ? "border-primary bg-primary text-primary-foreground"
-                            : "border-input bg-background text-muted-foreground hover:bg-muted"
-                        }`}
-                        onClick={() => {
-                          const current = scheduleDayOfWeek
-                            .split(",")
-                            .filter(Boolean);
-                          if (selected) {
-                            if (current.length > 1) {
-                              setScheduleDayOfWeek(
-                                current.filter((d) => d !== value).join(","),
-                              );
-                            }
-                          } else {
-                            setScheduleDayOfWeek([...current, value].join(","));
-                          }
-                        }}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-            {scheduleFreq === "every_month" && (
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-foreground">
-                  Day of month
-                </label>
-                <Select
-                  value={scheduleDayOfMonth}
-                  onValueChange={setScheduleDayOfMonth}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Array.from({ length: 31 }, (_, i) => (
-                      <SelectItem key={i + 1} value={String(i + 1)}>
-                        {i + 1}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            {scheduleFreq !== "now" && scheduleFreq !== "every_n_minutes" && (
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-foreground">
-                  Time
-                </label>
-                <div className="flex items-center gap-2">
-                  <Select
-                    value={String(scheduleHour)}
-                    onValueChange={(v) => setScheduleHour(Number(v))}
-                  >
-                    <SelectTrigger className="h-9 w-20">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {HOUR_OPTIONS.map((h) => (
-                        <SelectItem key={h} value={String(h)}>
-                          {h.toString().padStart(2, "0")}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <span className="text-muted-foreground">:</span>
-                  <Select
-                    value={String(scheduleMinute)}
-                    onValueChange={(v) => setScheduleMinute(Number(v))}
-                  >
-                    <SelectTrigger className="h-9 w-20">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {getMinuteOptions(scheduleMinute).map((m) => (
-                        <SelectItem key={m} value={String(m)}>
-                          {m.toString().padStart(2, "0")}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            )}
-            {scheduleFreq !== "now" && scheduleFreq !== "every_n_minutes" && (
-              <div className="flex flex-col gap-2">
-                <label
-                  htmlFor="schedule-dialog-tz"
-                  className="text-sm font-medium text-foreground"
-                >
-                  Timezone
-                </label>
-                <Select
-                  value={scheduleTimezone}
-                  onValueChange={setScheduleTimezone}
-                >
-                  <SelectTrigger id="schedule-dialog-tz" className="h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {COMMON_TIMEZONES.map((tz) => (
-                      <SelectItem key={tz} value={tz}>
-                        {tz.replace(/_/g, " ")}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
-          {saveError && <p className="text-sm text-destructive">{saveError}</p>}
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              className="zero-btn-morandi"
-              onClick={() => setAddScheduleOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              onClick={() => void addScheduleEntry()}
-              disabled={!newSchedulePrompt.trim() || saving}
-            >
-              {saving ? "Saving…" : editingScheduleId ? "Save" : "Add"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        onSave={handleDialogSave}
+        saving={saving === true}
+        initialValues={dialogInitialValues}
+        saveError={saveError}
+      />
     </Card>
   );
 }
