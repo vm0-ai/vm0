@@ -142,6 +142,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   sentry: ["sentry"],
   serpapi: ["serpapi"],
   shortio: ["shortio"],
+  strava: ["strava"],
   stripe: ["stripe"],
   supabase: ["supabase"],
   tavily: ["tavily"],
