@@ -9,6 +9,7 @@
 import type { FirewallConfig } from "../contracts/firewalls";
 import { agentmailFirewall } from "./agentmail.generated";
 import { ahrefsFirewall } from "./ahrefs.generated";
+import { airtableFirewall } from "./airtable.generated";
 import { confluenceFirewall } from "./confluence.generated";
 import { figmaFirewall } from "./figma.generated";
 import { githubFirewall } from "./github.generated";
@@ -26,6 +27,7 @@ import { zeptomailFirewall } from "./zeptomail.generated";
 export const builtinFirewalls: Record<string, FirewallConfig> = {
   agentmail: agentmailFirewall,
   ahrefs: ahrefsFirewall,
+  airtable: airtableFirewall,
   confluence: confluenceFirewall,
   figma: figmaFirewall,
   github: githubFirewall,

@@ -94,6 +94,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
 > = {
   agentmail: ["agentmail"],
   ahrefs: ["ahrefs"],
+  airtable: ["airtable"],
   github: ["github"],
   slack: ["slack"],
   gmail: ["gmail"],

@@ -8,6 +8,7 @@
 
 import { generate as generateAgentmail } from "./agentmail";
 import { generate as generateAhrefs } from "./ahrefs";
+import { generate as generateAirtable } from "./airtable";
 import { generate as generateConfluence } from "./confluence";
 import { generate as generateFigma } from "./figma";
 import { generate as generateGitHub } from "./github";
@@ -21,6 +22,7 @@ import { createGoogleGenerator, googleServiceNames } from "./google";
 const GENERATORS: Record<string, () => Promise<void>> = {
   agentmail: generateAgentmail,
   ahrefs: generateAhrefs,
+  airtable: generateAirtable,
   confluence: generateConfluence,
   figma: generateFigma,
   github: generateGitHub,

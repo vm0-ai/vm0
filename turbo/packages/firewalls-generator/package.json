@@ -8,6 +8,7 @@
     "generate": "tsx src/index.ts",
     "generate:agentmail": "tsx src/index.ts agentmail",
     "generate:ahrefs": "tsx src/index.ts ahrefs",
+    "generate:airtable": "tsx src/index.ts airtable",
     "generate:confluence": "tsx src/index.ts confluence",
     "generate:figma": "tsx src/index.ts figma",
     "generate:github": "tsx src/index.ts github",
