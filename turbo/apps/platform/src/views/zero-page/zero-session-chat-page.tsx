@@ -702,7 +702,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
                     className="inline-flex items-center gap-1 text-amber-500 underline underline-offset-2 hover:text-amber-400"
                     onClick={() => {
                       setTab("providers");
-                      setOrgManageOpen(true);
+                      setOrgManageOpen(true).catch(() => undefined);
                     }}
                   >
                     Set one up in Organization Settings
