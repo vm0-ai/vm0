@@ -5,7 +5,6 @@ import { testContext } from "../../__tests__/test-helpers.ts";
 import { createPushStateMock } from "../../../__tests__/page-helper.ts";
 import {
   zeroActiveId$,
-  zeroInChat$,
   setZeroActiveId$,
   zeroChatAgentName$,
   zeroChatAgentId$,
@@ -129,39 +128,6 @@ describe("zero-nav", () => {
         context.signal,
       );
       expect(context.store.get(zeroActiveId$)).toBe("chat");
-    });
-  });
-
-  describe("zeroInChat$", () => {
-    it("should return true for /chat", () => {
-      mockLocation({ pathname: "/chat", search: "" }, context.signal);
-      expect(context.store.get(zeroInChat$)).toBe(true);
-    });
-
-    it("should return true for /chat/:sessionId", () => {
-      mockLocation(
-        { pathname: "/chat/session-123", search: "" },
-        context.signal,
-      );
-      expect(context.store.get(zeroInChat$)).toBe(true);
-    });
-
-    it("should return true for /talk/:name", () => {
-      mockLocation(
-        { pathname: "/talk/agent-name", search: "" },
-        context.signal,
-      );
-      expect(context.store.get(zeroInChat$)).toBe(true);
-    });
-
-    it("should return false for /team", () => {
-      mockLocation({ pathname: "/team", search: "" }, context.signal);
-      expect(context.store.get(zeroInChat$)).toBe(false);
-    });
-
-    it("should return false for /activity", () => {
-      mockLocation({ pathname: "/activity", search: "" }, context.signal);
-      expect(context.store.get(zeroInChat$)).toBe(false);
     });
   });
 

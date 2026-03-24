@@ -74,7 +74,7 @@ describe("talk navigation", () => {
 
     // Press Enter to send
     const preventDefault = vi.fn();
-    await act(async () => {
+    await act(() => {
       textarea.dispatchEvent(
         Object.assign(
           new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
