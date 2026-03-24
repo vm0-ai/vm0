@@ -102,6 +102,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   close: ["close"],
   cloudflare: ["cloudflare"],
   deepseek: ["deepseek"],
+  devto: ["devto"],
   discord: ["discord"],
   github: ["github"],
   gitlab: ["gitlab"],

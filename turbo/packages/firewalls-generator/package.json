@@ -17,6 +17,7 @@
     "generate:cloudflare": "tsx src/index.ts cloudflare",
     "generate:confluence": "tsx src/index.ts confluence",
     "generate:deepseek": "tsx src/index.ts deepseek",
+    "generate:devto": "tsx src/index.ts devto",
     "generate:discord": "tsx src/index.ts discord",
     "generate:elevenlabs": "tsx src/index.ts elevenlabs",
     "generate:fal": "tsx src/index.ts fal",

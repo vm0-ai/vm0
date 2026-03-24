@@ -17,6 +17,7 @@ import { generate as generateClose } from "./close";
 import { generate as generateCloudflare } from "./cloudflare";
 import { generate as generateConfluence } from "./confluence";
 import { generate as generateDeepseek } from "./deepseek";
+import { generate as generateDevto } from "./devto";
 import { generate as generateDiscord } from "./discord";
 import { generate as generateElevenlabs } from "./elevenlabs";
 import { generate as generateFal } from "./fal";
@@ -61,6 +62,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   cloudflare: generateCloudflare,
   confluence: generateConfluence,
   deepseek: generateDeepseek,
+  devto: generateDevto,
   discord: generateDiscord,
   elevenlabs: generateElevenlabs,
   fal: generateFal,
