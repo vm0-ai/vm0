@@ -36,7 +36,6 @@ export {
   listStorages,
 } from "./domains/storages";
 
-
 // Domain modules - Connectors
 export {
   listConnectors,

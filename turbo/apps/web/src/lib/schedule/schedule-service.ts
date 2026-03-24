@@ -482,6 +482,8 @@ export async function deploySchedule(
   );
 
   const agent = await loadZeroAgent(request.zeroAgentId);
+  // Normalize request to use the resolved zeroAgentId (handles composeId fallback from CLI)
+  request = { ...request, zeroAgentId: agent.id };
   const orgSlug = await getOrgSlug(orgId);
 
   // Validate timezone
