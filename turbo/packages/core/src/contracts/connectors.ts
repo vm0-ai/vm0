@@ -240,7 +240,6 @@ const CONNECTOR_TYPES_DEF = {
   },
   gmail: {
     label: "Gmail",
-    featureFlag: FeatureSwitchKey.GmailConnector,
     helpText: "Connect your Gmail account to send and read emails",
     authMethods: {
       oauth: {
@@ -270,7 +269,6 @@ const CONNECTOR_TYPES_DEF = {
   },
   "google-sheets": {
     label: "Google Sheets",
-    featureFlag: FeatureSwitchKey.GoogleSheetsConnector,
     helpText: "Connect your Google account to access and manage spreadsheets",
     authMethods: {
       oauth: {
@@ -303,7 +301,6 @@ const CONNECTOR_TYPES_DEF = {
   },
   "google-docs": {
     label: "Google Docs",
-    featureFlag: FeatureSwitchKey.GoogleDocsConnector,
     helpText: "Connect your Google account to access and manage documents",
     authMethods: {
       oauth: {
@@ -336,7 +333,6 @@ const CONNECTOR_TYPES_DEF = {
   },
   "google-drive": {
     label: "Google Drive",
-    featureFlag: FeatureSwitchKey.GoogleDriveConnector,
     helpText: "Connect your Google account to access and manage files in Drive",
     authMethods: {
       oauth: {
@@ -369,7 +365,6 @@ const CONNECTOR_TYPES_DEF = {
   },
   "google-calendar": {
     label: "Google Calendar",
-    featureFlag: FeatureSwitchKey.GoogleCalendarConnector,
     helpText:
       "Connect your Google account to access and manage calendar events",
     authMethods: {

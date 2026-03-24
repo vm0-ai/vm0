@@ -45,22 +45,6 @@ describe("isFeatureEnabled", () => {
     ).resolves.toBe(false);
   });
 
-  it("should return false for email-gated switch with non-matching email", async () => {
-    await expect(
-      isFeatureEnabled(
-        FeatureSwitchKey.GmailConnector,
-        undefined,
-        "random@example.com",
-      ),
-    ).resolves.toBe(false);
-  });
-
-  it("should return false for email-gated switch without email", async () => {
-    await expect(
-      isFeatureEnabled(FeatureSwitchKey.GmailConnector),
-    ).resolves.toBe(false);
-  });
-
   it("should return false for switch with enabledUserHashes but no enabledEmailHashes when only email provided", async () => {
     // AhrefsConnector has enabledUserHashes but no enabledEmailHashes
     await expect(
@@ -80,20 +64,5 @@ describe("getAllFeatureStates", () => {
     expect(states[FeatureSwitchKey.Dummy]).toBe(true);
     // Disabled switches without matching user/email should be false
     expect(states[FeatureSwitchKey.Pricing]).toBe(false);
-    expect(states[FeatureSwitchKey.GmailConnector]).toBe(false);
-  });
-
-  it("should return false for email-gated switches with non-matching email", async () => {
-    const statesWithoutEmail = await getAllFeatureStates();
-    const statesWithNonMatching = await getAllFeatureStates(
-      undefined,
-      "nonmatching@example.com",
-    );
-
-    expect(statesWithoutEmail[FeatureSwitchKey.GmailConnector]).toBe(false);
-    expect(statesWithNonMatching[FeatureSwitchKey.GmailConnector]).toBe(false);
-
-    // Globally enabled switches unaffected by email
-    expect(statesWithNonMatching[FeatureSwitchKey.Dummy]).toBe(true);
   });
 });

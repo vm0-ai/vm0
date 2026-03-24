@@ -45,10 +45,6 @@ const STAFF_USER_HASHES: readonly string[] = [
   "55651a8b2c85b35ff0629fa3d4718b9476069d0f",
 ];
 
-const GOOGLE_OAUTH_REVIEWER_EMAIL_HASHES: readonly string[] = [
-  "da04f6515e16a883d6e8c4b03932f51ccc362c10", // Google OAuth reviewer
-];
-
 /**
  * Registry of all feature switches
  */
@@ -112,36 +108,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
-  },
-  [FeatureSwitchKey.GmailConnector]: {
-    maintainer: "ethan@vm0.ai",
-    enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-    enabledEmailHashes: GOOGLE_OAUTH_REVIEWER_EMAIL_HASHES,
-  },
-  [FeatureSwitchKey.GoogleSheetsConnector]: {
-    maintainer: "ethan@vm0.ai",
-    enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-    enabledEmailHashes: GOOGLE_OAUTH_REVIEWER_EMAIL_HASHES,
-  },
-  [FeatureSwitchKey.GoogleDocsConnector]: {
-    maintainer: "ethan@vm0.ai",
-    enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-    enabledEmailHashes: GOOGLE_OAUTH_REVIEWER_EMAIL_HASHES,
-  },
-  [FeatureSwitchKey.GoogleDriveConnector]: {
-    maintainer: "ethan@vm0.ai",
-    enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-    enabledEmailHashes: GOOGLE_OAUTH_REVIEWER_EMAIL_HASHES,
-  },
-  [FeatureSwitchKey.GoogleCalendarConnector]: {
-    maintainer: "ethan@vm0.ai",
-    enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-    enabledEmailHashes: GOOGLE_OAUTH_REVIEWER_EMAIL_HASHES,
   },
   [FeatureSwitchKey.MercuryConnector]: {
     maintainer: "ethan@vm0.ai",
