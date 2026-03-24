@@ -1,6 +1,8 @@
 import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { fetch$ } from "../fetch.ts";
+import { createElement } from "react";
+import { Link } from "../../views/router/link.tsx";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
@@ -608,18 +610,17 @@ export const deleteOrgSchedule$ = command(
 );
 
 /**
- * Trigger an immediate run using the schedule's prompt and agent (same as chat run).
+ * Execute a schedule immediately (same pipeline as the cron trigger).
+ * Returns the created run ID.
  */
 export const runScheduleNow$ = command(
-  async ({ get }, params: { composeId: string; prompt: string }) => {
+  async ({ get }, scheduleId: string): Promise<string> => {
+    const toastId = toast.loading("Starting run…");
     const fetchFn = get(fetch$);
-    const response = await fetchFn("/api/zero/runs", {
+    const response = await fetchFn("/api/zero/schedules/run", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        prompt: params.prompt,
-        agentComposeId: params.composeId,
-      }),
+      body: JSON.stringify({ scheduleId }),
     });
 
     if (!response.ok) {
@@ -628,10 +629,30 @@ export const runScheduleNow$ = command(
       } | null;
       const message =
         errorData?.error?.message ?? `Run failed: ${response.status}`;
-      toast.error(message);
+      toast.error(message, { id: toastId });
       throw new Error(message);
     }
 
-    toast.success("Run started");
+    const data = (await response.json()) as { runId: string };
+
+    toast.success(
+      createElement(
+        "span",
+        null,
+        "Run started. ",
+        createElement(
+          Link,
+          {
+            pathname: "/activity/:logId" as const,
+            options: { pathParams: { logId: data.runId } },
+            className: "underline",
+          },
+          "View activity",
+        ),
+      ),
+      { id: toastId },
+    );
+
+    return data.runId;
   },
 );

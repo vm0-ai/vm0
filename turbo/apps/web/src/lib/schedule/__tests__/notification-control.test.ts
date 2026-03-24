@@ -74,7 +74,7 @@ async function createDueSchedule(
   return scheduleId;
 }
 
-describe("Schedule notification control - AND logic", () => {
+describe("Schedule notification control — schedule-level override", () => {
   let user: UserContext;
   let agentId: string;
   let slug: string;
@@ -94,19 +94,10 @@ describe("Schedule notification control - AND logic", () => {
     agentId = await getTestZeroAgentId(user.orgId, agentName);
 
     // Disable any schedules from other tests to avoid interference
-    await disableAllSchedules();
+    await disableAllSchedules(user.orgId);
   });
 
-  it("should register both email and slack callbacks when all notifications enabled", async () => {
-    // User global: both on
-    await insertOrgMembersEntry({
-      orgId: user.orgId,
-      userId: user.userId,
-      notifyEmail: true,
-      notifySlack: true,
-    });
-
-    // Schedule: both on
+  it("should register both callbacks when schedule has both notifications on", async () => {
     const scheduleId = await createDueSchedule(agentId, slug, "both-on", {
       notifyEmail: true,
       notifySlack: true,
@@ -124,20 +115,11 @@ describe("Schedule notification control - AND logic", () => {
       expect.stringContaining("/email/callbacks/schedule"),
     );
     expect(callbackUrls).toContainEqual(
-      expect.stringContaining("/callbacks/slack/schedule"),
+      expect.stringContaining("/callbacks/slack/org/schedule"),
     );
   });
 
   it("should NOT register email callback when schedule notifyEmail is false", async () => {
-    // User global: both on
-    await insertOrgMembersEntry({
-      orgId: user.orgId,
-      userId: user.userId,
-      notifyEmail: true,
-      notifySlack: true,
-    });
-
-    // Schedule: email off
     const scheduleId = await createDueSchedule(agentId, slug, "email-off", {
       notifyEmail: false,
       notifySlack: true,
@@ -155,20 +137,11 @@ describe("Schedule notification control - AND logic", () => {
       expect.stringContaining("/email/callbacks/schedule"),
     );
     expect(callbackUrls).toContainEqual(
-      expect.stringContaining("/callbacks/slack/schedule"),
+      expect.stringContaining("/callbacks/slack/org/schedule"),
     );
   });
 
   it("should NOT register slack callback when schedule notifySlack is false", async () => {
-    // User global: both on
-    await insertOrgMembersEntry({
-      orgId: user.orgId,
-      userId: user.userId,
-      notifyEmail: true,
-      notifySlack: true,
-    });
-
-    // Schedule: slack off
     const scheduleId = await createDueSchedule(agentId, slug, "slack-off", {
       notifyEmail: true,
       notifySlack: false,
@@ -186,24 +159,24 @@ describe("Schedule notification control - AND logic", () => {
       expect.stringContaining("/email/callbacks/schedule"),
     );
     expect(callbackUrls).not.toContainEqual(
-      expect.stringContaining("/callbacks/slack/schedule"),
+      expect.stringContaining("/callbacks/slack/org/schedule"),
     );
   });
 
-  it("should NOT register email callback when user global notifyEmail is false", async () => {
-    // User global: email off
+  it("should still register callbacks even when user global prefs are off", async () => {
+    // User global: both off
     await insertOrgMembersEntry({
       orgId: user.orgId,
       userId: user.userId,
       notifyEmail: false,
-      notifySlack: true,
+      notifySlack: false,
     });
 
-    // Schedule: both on
+    // Schedule: both on — should override global prefs
     const scheduleId = await createDueSchedule(
       agentId,
       slug,
-      "user-email-off",
+      "global-off-schedule-on",
       {
         notifyEmail: true,
         notifySlack: true,
@@ -218,24 +191,15 @@ describe("Schedule notification control - AND logic", () => {
     const callbacks = await findTestRunCallbacks(schedule!.lastRunId!);
     const callbackUrls = callbacks.map((c) => c.url);
 
-    expect(callbackUrls).not.toContainEqual(
+    expect(callbackUrls).toContainEqual(
       expect.stringContaining("/email/callbacks/schedule"),
     );
     expect(callbackUrls).toContainEqual(
-      expect.stringContaining("/callbacks/slack/schedule"),
+      expect.stringContaining("/callbacks/slack/org/schedule"),
     );
   });
 
-  it("should NOT register any notification callbacks when both schedule notifications are off", async () => {
-    // User global: both on
-    await insertOrgMembersEntry({
-      orgId: user.orgId,
-      userId: user.userId,
-      notifyEmail: true,
-      notifySlack: true,
-    });
-
-    // Schedule: both off
+  it("should NOT register any callbacks when both schedule notifications are off", async () => {
     const scheduleId = await createDueSchedule(agentId, slug, "silent", {
       notifyEmail: false,
       notifySlack: false,
@@ -253,7 +217,7 @@ describe("Schedule notification control - AND logic", () => {
       expect.stringContaining("/email/callbacks/schedule"),
     );
     expect(callbackUrls).not.toContainEqual(
-      expect.stringContaining("/callbacks/slack/schedule"),
+      expect.stringContaining("/callbacks/slack/org/schedule"),
     );
   });
 });

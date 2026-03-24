@@ -3210,15 +3210,22 @@ export async function findTestRunnerJobEntry(runId: string) {
 }
 
 /**
- * Disable all enabled schedules in the database.
+ * Disable enabled schedules for a specific org.
  * Prevents stale schedules from other test files consuming the limit(10)
  * batch in executeDueSchedules, which can cause test flakiness.
+ *
+ * Scoped to orgId so dev-server schedules are not affected.
  */
-export async function disableAllSchedules(): Promise<void> {
+export async function disableAllSchedules(orgId: string): Promise<void> {
   await globalThis.services.db
     .update(zeroAgentSchedules)
     .set({ enabled: false })
-    .where(eq(zeroAgentSchedules.enabled, true));
+    .where(
+      and(
+        eq(zeroAgentSchedules.enabled, true),
+        eq(zeroAgentSchedules.orgId, orgId),
+      ),
+    );
 }
 
 /**

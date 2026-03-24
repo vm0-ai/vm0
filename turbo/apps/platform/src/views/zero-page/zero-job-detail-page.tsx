@@ -247,21 +247,15 @@ function JobScheduleTab({ agentName }: { agentName: string }) {
   const saveSchedule = useSet(saveZeroJobSchedule$);
   const deleteSchedule = useSet(deleteZeroJobSchedule$);
   const toggleEnabled = useSet(toggleZeroJobScheduleEnabled$);
-  const detail = useGet(zeroJobDetail$);
   const runScheduleNow = useSet(runScheduleNow$);
   const nav = useSet(navigateTo$);
 
   const entries: ScheduleEntry[] =
     entriesLoadable.state === "hasData" ? entriesLoadable.data : [];
 
-  const handleRunNow = detail?.agentComposeId
-    ? async (entry: ScheduleEntry) => {
-        await runScheduleNow({
-          composeId: detail.agentComposeId,
-          prompt: entry.prompt,
-        });
-      }
-    : undefined;
+  const handleRunNow = async (entry: ScheduleEntry) => {
+    await runScheduleNow(entry.id);
+  };
 
   const handleOpenDetails = (entry: ScheduleEntry) => {
     nav("/schedule/:scheduleId", { pathParams: { scheduleId: entry.id } });

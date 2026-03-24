@@ -22,10 +22,12 @@ const context = testContext();
 
 describe("GET /api/cron/execute-schedules", () => {
   let testComposeId: string;
+  let testOrgId: string;
 
   beforeEach(async () => {
     context.setupMocks();
     const user = await context.setupUser();
+    testOrgId = user.orgId;
 
     const agentName = uniqueId("cron-agent");
     const { composeId } = await createTestCompose(agentName);
@@ -161,7 +163,7 @@ describe("GET /api/cron/execute-schedules", () => {
     beforeEach(async () => {
       vi.stubEnv("CRON_SECRET", "test-secret");
       reloadEnv();
-      await disableAllSchedules();
+      await disableAllSchedules(testOrgId);
     });
 
     it("should execute due cron schedule", async () => {
@@ -290,13 +292,36 @@ describe("GET /api/cron/execute-schedules", () => {
       expect(afterSchedule.nextRunAt).toBeNull();
       expect(afterSchedule.lastRunAt).not.toBeNull();
     });
+
+    it("should keep cron schedule enabled after execution", async () => {
+      context.mocks.date.setSystemTime(new Date("2025-01-15T08:00:00Z"));
+
+      await createTestSchedule(testComposeId, "cron-stays-enabled", {
+        cronExpression: "0 9 * * *",
+        prompt: "Daily task",
+        timezone: "UTC",
+      });
+      await enableTestSchedule(testComposeId, "cron-stays-enabled");
+
+      const before = await getTestSchedule(testComposeId, "cron-stays-enabled");
+      expect(before.enabled).toBe(true);
+
+      context.mocks.date.setSystemTime(new Date("2025-01-15T09:01:00Z"));
+
+      await GET(authenticatedCronRequest());
+
+      const after = await getTestSchedule(testComposeId, "cron-stays-enabled");
+      expect(after.enabled).toBe(true);
+      expect(after.lastRunAt).not.toBeNull();
+      expect(after.nextRunAt).not.toBeNull();
+    });
   });
 
   describe("Loop Schedule Triggering", () => {
     beforeEach(async () => {
       vi.stubEnv("CRON_SECRET", "test-secret");
       reloadEnv();
-      await disableAllSchedules();
+      await disableAllSchedules(testOrgId);
     });
 
     it("should execute due loop schedule and set nextRunAt to null", async () => {
@@ -355,7 +380,7 @@ describe("GET /api/cron/execute-schedules", () => {
     beforeEach(async () => {
       vi.stubEnv("CRON_SECRET", "test-secret");
       reloadEnv();
-      await disableAllSchedules();
+      await disableAllSchedules(testOrgId);
     });
 
     it("should enqueue scheduled run when blocked by concurrency limit", async () => {

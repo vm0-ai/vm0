@@ -516,10 +516,7 @@ export function ZeroSchedulePage() {
     const id = entry.id;
     setRunningIds((prev) => new Set([...prev, id]));
     try {
-      await runScheduleNow({
-        composeId: entry.agentId,
-        prompt: entry.prompt,
-      });
+      await runScheduleNow(entry.id);
     } finally {
       setRunningIds((prev) => {
         const next = new Set(prev);

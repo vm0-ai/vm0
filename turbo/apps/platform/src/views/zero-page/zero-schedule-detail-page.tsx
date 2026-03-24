@@ -44,8 +44,14 @@ import {
   type OrgScheduleEntry,
   type ZeroScheduleSaveParams,
 } from "../../signals/zero-page/zero-schedule.ts";
-import { slackOrgData$ } from "../../signals/zero-page/zero-slack.ts";
-import { slackChannels$ } from "../../signals/zero-page/slack-channels.ts";
+import {
+  slackOrgData$,
+  slackOrgInitialized$,
+} from "../../signals/zero-page/zero-slack.ts";
+import {
+  slackChannels$,
+  slackChannelsInitialized$,
+} from "../../signals/zero-page/slack-channels.ts";
 import { ZeroNoPermissionIllustration } from "./components/zero-no-permission-illustration.tsx";
 import { InlineSettingsRow } from "./components/zero-inline-settings-row.tsx";
 import {
@@ -654,7 +660,7 @@ function ScheduleDetailView({
   const summaryTitle = (() => {
     const desc = entry.description?.trim();
     if (desc && desc.length > 0) {
-      return excerptText(desc, SCHEDULE_DETAIL_TITLE_MAX);
+      return desc;
     }
     if (promptTrim.length === 0) {
       return "No instruction";
@@ -663,7 +669,7 @@ function ScheduleDetailView({
     if (first.length === 0) {
       return "No instruction";
     }
-    return excerptText(first, SCHEDULE_DETAIL_TITLE_MAX);
+    return first;
   })();
   const breadcrumbLabel = scheduleDetailBreadcrumbLabel(entry);
   const nextRunLabel = formatRunAt(entry.nextRunAt);
@@ -856,6 +862,8 @@ export function ZeroScheduleDetailPage() {
   );
 
   const loaded = useGet(allOrgSchedulesLoaded$);
+  const slackReady = useGet(slackOrgInitialized$);
+  const channelsReady = useGet(slackChannelsInitialized$);
   const saveSchedule = useSet(saveOrgSchedule$);
   const toggleEnabled = useSet(toggleOrgScheduleEnabled$);
   const deleteSchedule = useSet(deleteOrgSchedule$);
@@ -876,7 +884,12 @@ export function ZeroScheduleDetailPage() {
     return <ScheduleNotFound />;
   }
 
-  if (!loaded || entriesLoadable.state !== "hasData") {
+  if (
+    !loaded ||
+    entriesLoadable.state !== "hasData" ||
+    !slackReady ||
+    !channelsReady
+  ) {
     return <ScheduleDetailSkeleton />;
   }
 
@@ -946,10 +959,7 @@ export function ZeroScheduleDetailPage() {
   const handleRunNow = async () => {
     setRunning(true);
     try {
-      await runScheduleNow({
-        composeId: entry.agentId,
-        prompt: entry.prompt,
-      });
+      await runScheduleNow(entry.id);
     } finally {
       setRunning(false);
     }

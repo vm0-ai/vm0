@@ -10,8 +10,14 @@ interface SlackChannel {
 }
 
 const slackChannelsState$ = state<SlackChannel[]>([]);
+const slackChannelsLoaded$ = state(false);
 
 export const slackChannels$ = computed((get) => get(slackChannelsState$));
+
+/** True after the initial Slack channels fetch has completed. */
+export const slackChannelsInitialized$ = computed((get) =>
+  get(slackChannelsLoaded$),
+);
 
 export const fetchSlackChannels$ = command(async ({ get, set }) => {
   const fetchFn = get(fetch$);
@@ -19,9 +25,9 @@ export const fetchSlackChannels$ = command(async ({ get, set }) => {
   if (!response.ok) {
     log.warn("Failed to fetch Slack channels", { status: response.status });
     set(slackChannelsState$, []);
-    return;
+  } else {
+    const data = (await response.json()) as { channels: SlackChannel[] };
+    set(slackChannelsState$, data.channels);
   }
-
-  const data = (await response.json()) as { channels: SlackChannel[] };
-  set(slackChannelsState$, data.channels);
+  set(slackChannelsLoaded$, true);
 });
