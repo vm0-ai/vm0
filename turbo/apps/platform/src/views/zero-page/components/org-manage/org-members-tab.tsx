@@ -112,16 +112,17 @@ export function OrgMembersTab() {
     if (result.status === 200) {
       toast.success(`Invitation sent to ${email}`);
       refreshMembers();
-    } else {
-      const msg =
-        result.status === 400 ||
-        result.status === 401 ||
-        result.status === 403 ||
-        result.status === 500
-          ? result.body.error.message
-          : undefined;
-      toast.error(msg ?? `Failed to invite (${result.status})`);
+      return;
     }
+    const msg =
+      result.status === 400 ||
+      result.status === 401 ||
+      result.status === 403 ||
+      result.status === 500
+        ? result.body.error.message
+        : undefined;
+    toast.error(msg ?? `Failed to invite (${result.status})`);
+    throw new Error(msg ?? `Failed to invite (${result.status})`);
   };
 
   const handleRoleChange = async (email: string, role: OrgRole) => {
@@ -135,16 +136,17 @@ export function OrgMembersTab() {
       }
       refreshMembers();
       refreshOrg();
-    } else {
-      const msg =
-        result.status === 400 ||
-        result.status === 401 ||
-        result.status === 403 ||
-        result.status === 500
-          ? result.body.error.message
-          : undefined;
-      toast.error(msg ?? `Failed to update role (${result.status})`);
+      return;
     }
+    const msg =
+      result.status === 400 ||
+      result.status === 401 ||
+      result.status === 403 ||
+      result.status === 500
+        ? result.body.error.message
+        : undefined;
+    toast.error(msg ?? `Failed to update role (${result.status})`);
+    throw new Error(msg ?? `Failed to update role (${result.status})`);
   };
 
   const handleRemove = async (email: string) => {
@@ -153,16 +155,17 @@ export function OrgMembersTab() {
     if (result.status === 200) {
       toast.success(`Removed ${email}`);
       refreshMembers();
-    } else {
-      const msg =
-        result.status === 400 ||
-        result.status === 401 ||
-        result.status === 403 ||
-        result.status === 500
-          ? result.body.error.message
-          : undefined;
-      toast.error(msg ?? `Failed to remove member (${result.status})`);
+      return;
     }
+    const msg =
+      result.status === 400 ||
+      result.status === 401 ||
+      result.status === 403 ||
+      result.status === 500
+        ? result.body.error.message
+        : undefined;
+    toast.error(msg ?? `Failed to remove member (${result.status})`);
+    throw new Error(msg ?? `Failed to remove member (${result.status})`);
   };
 
   return (
