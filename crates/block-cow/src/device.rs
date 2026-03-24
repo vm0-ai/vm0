@@ -73,6 +73,9 @@ impl CowDevice {
     ///
     /// Used for snapshot restore: reuses an existing COW file instead of
     /// creating a new one. The COW file retains all prior writes.
+    ///
+    /// On failure the caller retains ownership of `cow_file` and is
+    /// responsible for cleanup.
     pub fn restore(config: &CowDeviceConfig, cow_file: PathBuf) -> Result<Self> {
         let id = uuid::Uuid::new_v4().to_string();
         Self::setup(config, &id, Some(cow_file))
