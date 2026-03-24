@@ -48,6 +48,7 @@ import { intercomFirewall } from "./intercom.generated";
 import { jiraFirewall } from "./jira.generated";
 import { linearFirewall } from "./linear.generated";
 import { loopsFirewall } from "./loops.generated";
+import { minimaxFirewall } from "./minimax.generated";
 import { mondayFirewall } from "./monday.generated";
 import { neonFirewall } from "./neon.generated";
 import { notionFirewall } from "./notion.generated";
@@ -117,6 +118,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   jira: jiraFirewall,
   linear: linearFirewall,
   loops: loopsFirewall,
+  minimax: minimaxFirewall,
   monday: mondayFirewall,
   neon: neonFirewall,
   notion: notionFirewall,

@@ -42,6 +42,7 @@ import { generate as generateIntercom } from "./intercom";
 import { generate as generateJira } from "./jira";
 import { generate as generateLinear } from "./linear";
 import { generate as generateLoops } from "./loops";
+import { generate as generateMinimax } from "./minimax";
 import { generate as generateMonday } from "./monday";
 import { generate as generateNeon } from "./neon";
 import { generate as generateNotion } from "./notion";
@@ -107,6 +108,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   jira: generateJira,
   linear: generateLinear,
   loops: generateLoops,
+  minimax: generateMinimax,
   monday: generateMonday,
   neon: generateNeon,
   notion: generateNotion,

@@ -131,6 +131,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   atlassian: ["jira", "confluence"],
   linear: ["linear"],
   loops: ["loops"],
+  minimax: ["minimax"],
   monday: ["monday"],
   neon: ["neon"],
   figma: ["figma"],
