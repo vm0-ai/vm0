@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.79.2](https://github.com/vm0-ai/vm0/compare/cli-v9.79.1...cli-v9.79.2) (2026-03-24)
+
+
+### Refactoring
+
+* unify agent identity fields across all zero api endpoints ([#6302](https://github.com/vm0-ai/vm0/issues/6302)) ([83a0e5d](https://github.com/vm0-ai/vm0/commit/83a0e5d5b5981b709b1dd8e8e318946b6330d2c7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.107.0
+
 ## [9.79.1](https://github.com/vm0-ai/vm0/compare/cli-v9.79.0...cli-v9.79.1) (2026-03-24)
 
 

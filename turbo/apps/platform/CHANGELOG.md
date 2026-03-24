@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.146.2](https://github.com/vm0-ai/vm0/compare/app-v0.146.1...app-v0.146.2) (2026-03-24)
+
+
+### Refactoring
+
+* delete stale msw mock handlers for /api/secrets and /api/variables ([#6518](https://github.com/vm0-ai/vm0/issues/6518)) ([386566f](https://github.com/vm0-ai/vm0/commit/386566f4f91064409f68d3817fa905d636cd30e9)), closes [#6515](https://github.com/vm0-ai/vm0/issues/6515)
+* unify agent identity fields across all zero api endpoints ([#6302](https://github.com/vm0-ai/vm0/issues/6302)) ([83a0e5d](https://github.com/vm0-ai/vm0/commit/83a0e5d5b5981b709b1dd8e8e318946b6330d2c7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.107.0
+
 ## [0.146.1](https://github.com/vm0-ai/vm0/compare/app-v0.146.0...app-v0.146.1) (2026-03-24)
 
 

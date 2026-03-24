@@ -1,5 +1,22 @@
 # Changelog
 
+## [8.107.0](https://github.com/vm0-ai/vm0/compare/core-v8.106.0...core-v8.107.0) (2026-03-24)
+
+
+### Features
+
+* add supabase firewall config ([#6517](https://github.com/vm0-ai/vm0/issues/6517)) ([ed2dc84](https://github.com/vm0-ai/vm0/commit/ed2dc8449b0c3547051ce153c7fce684dbbf6306))
+
+
+### Bug Fixes
+
+* correct firewall placeholder formats for monday, axiom, posthog ([#6522](https://github.com/vm0-ai/vm0/issues/6522)) ([9dca1e6](https://github.com/vm0-ai/vm0/commit/9dca1e66c72c8fc0f434e14b12ae83ece294216d))
+
+
+### Refactoring
+
+* unify agent identity fields across all zero api endpoints ([#6302](https://github.com/vm0-ai/vm0/issues/6302)) ([83a0e5d](https://github.com/vm0-ai/vm0/commit/83a0e5d5b5981b709b1dd8e8e318946b6330d2c7))
+
 ## [8.106.0](https://github.com/vm0-ai/vm0/compare/core-v8.105.0...core-v8.106.0) (2026-03-24)
 
 

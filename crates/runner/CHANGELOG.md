@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.45.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.45.5...runner-rs-v0.45.6) (2026-03-24)
+
+
+### Refactoring
+
+* unify agent identity fields across all zero api endpoints ([#6302](https://github.com/vm0-ai/vm0/issues/6302)) ([83a0e5d](https://github.com/vm0-ai/vm0/commit/83a0e5d5b5981b709b1dd8e8e318946b6330d2c7))
+
 ## [0.45.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.45.4...runner-rs-v0.45.5) (2026-03-23)
 
 
