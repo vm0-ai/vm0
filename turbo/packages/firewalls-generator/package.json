@@ -20,6 +20,7 @@
     "generate:close": "tsx src/index.ts close",
     "generate:cloudflare": "tsx src/index.ts cloudflare",
     "generate:confluence": "tsx src/index.ts confluence",
+    "generate:customer-io": "tsx src/index.ts customer-io",
     "generate:deepseek": "tsx src/index.ts deepseek",
     "generate:devto": "tsx src/index.ts devto",
     "generate:discord": "tsx src/index.ts discord",

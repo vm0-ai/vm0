@@ -21,6 +21,7 @@ import { clickupFirewall } from "./clickup.generated";
 import { closeFirewall } from "./close.generated";
 import { cloudflareFirewall } from "./cloudflare.generated";
 import { confluenceFirewall } from "./confluence.generated";
+import { customerIoFirewall } from "./customer-io.generated";
 import { deepseekFirewall } from "./deepseek.generated";
 import { devtoFirewall } from "./devto.generated";
 import { discordFirewall } from "./discord.generated";
@@ -82,6 +83,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   close: closeFirewall,
   cloudflare: cloudflareFirewall,
   confluence: confluenceFirewall,
+  "customer-io": customerIoFirewall,
   deepseek: deepseekFirewall,
   devto: devtoFirewall,
   discord: discordFirewall,
