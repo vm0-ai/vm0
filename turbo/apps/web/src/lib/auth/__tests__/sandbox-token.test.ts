@@ -341,6 +341,18 @@ describe("sandbox-token", () => {
       expect(verifyZeroToken("header.payload.signature")).toBeNull();
     });
 
+    it("should return null for token with empty orgId", async () => {
+      const token = await generateZeroToken("user-123", "run-456", "");
+      const auth = verifyZeroToken(token);
+      expect(auth).toBeNull();
+    });
+
+    it("should return null for token with empty runId", async () => {
+      const token = await generateZeroToken("user-123", "", "org-789");
+      const auth = verifyZeroToken(token);
+      expect(auth).toBeNull();
+    });
+
     it("should identify zero tokens with isSandboxToken", async () => {
       const token = await generateZeroToken("user-123", "run-456", "org-789");
       expect(isSandboxToken(token)).toBe(true);

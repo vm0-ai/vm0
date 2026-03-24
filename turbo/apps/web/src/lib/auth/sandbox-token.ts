@@ -331,7 +331,7 @@ export function verifyZeroToken(token: string): ZeroAuth | null {
   if (payload.scope !== "zero") {
     return null;
   }
-  if (!("runId" in payload) || !("orgId" in payload)) {
+  if (!payload.userId || !payload.runId || !payload.orgId) {
     return null;
   }
 

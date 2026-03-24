@@ -9,7 +9,7 @@ const c = initContract();
  * POST /api/zero/integrations/slack/message
  *
  * Sends a Slack message via the org's installed bot token.
- * Requires `integration-slack:write` capability.
+ * Requires `slack:write` capability (via ZERO_TOKEN).
  */
 export const integrationsSlackMessageContract = c.router({
   sendMessage: {
