@@ -950,7 +950,7 @@ async function executeSchedule(
       userId: schedule.userId,
     };
     callbacks.push({
-      url: `${getApiUrl()}/api/internal/callbacks/email/schedule`,
+      url: `${getApiUrl()}/api/zero/email/callbacks/schedule`,
       secret: generateCallbackSecret(),
       payload: emailPayload,
     });

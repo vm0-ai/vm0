@@ -152,7 +152,7 @@ describe("POST /api/internal/callbacks/schedule/loop", () => {
       });
       await createTestCallback({
         runId,
-        url: "http://localhost/api/internal/callbacks/email/reply",
+        url: "http://localhost/api/zero/email/callbacks/reply",
         payload: { emailId: "E1" },
       });
 
