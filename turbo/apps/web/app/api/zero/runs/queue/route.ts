@@ -16,7 +16,9 @@ const router = tsr.router(zeroRunsQueueContract, {
   getQueue: async ({ headers }, { request }) => {
     initServices();
 
-    const authCtx = await requireAuth(headers.authorization);
+    const authCtx = await requireAuth(headers.authorization, {
+      requiredCapability: "agent-run:read",
+    });
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 

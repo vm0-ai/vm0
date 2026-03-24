@@ -1,9 +1,13 @@
-import type { VALID_CAPABILITIES } from "@vm0/core";
+import type { ValidCapability, ZeroCapability } from "@vm0/core";
 import { getAuthContext, type AuthContext } from "./get-auth-context";
-import { isSandboxToken, verifySandboxToken } from "./sandbox-token";
+import {
+  isSandboxToken,
+  verifySandboxToken,
+  verifyZeroToken,
+} from "./sandbox-token";
 import { missingCapabilityError } from "./capability-check";
 
-type Capability = (typeof VALID_CAPABILITIES)[number];
+type AnyCapability = ValidCapability | ZeroCapability;
 
 type AuthErrorResponse = {
   status: 401 | 403;
@@ -19,7 +23,7 @@ type AuthErrorResponse = {
 export async function requireAuth(
   authHeader: string | undefined,
   options?: {
-    requiredCapability?: Capability;
+    requiredCapability?: AnyCapability;
     acceptAnySandboxCapability?: boolean;
   },
 ): Promise<AuthContext | AuthErrorResponse> {
@@ -36,7 +40,8 @@ export async function requireAuth(
     const token = authHeader.substring(7);
     if (isSandboxToken(token)) {
       const sandboxAuth = verifySandboxToken(token);
-      if (sandboxAuth) {
+      const zeroAuth = !sandboxAuth ? verifyZeroToken(token) : null;
+      if (sandboxAuth || zeroAuth) {
         // Token is valid → this is a capability/access issue, not auth
         if (options?.requiredCapability) {
           return {

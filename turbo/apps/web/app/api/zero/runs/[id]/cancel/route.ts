@@ -21,7 +21,9 @@ const router = tsr.router(zeroRunsCancelContract, {
   cancel: async ({ params, headers }, { request }) => {
     initServices();
 
-    const authCtx = await requireAuth(headers.authorization);
+    const authCtx = await requireAuth(headers.authorization, {
+      requiredCapability: "agent-run:write",
+    });
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 

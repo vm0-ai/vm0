@@ -12,6 +12,7 @@ import {
   uniqueId,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
+import { generateSandboxToken } from "../../../../../../src/lib/auth/sandbox-token";
 
 const context = testContext();
 
@@ -65,5 +66,23 @@ describe("GET /api/zero/runs/:id", () => {
       createTestRequest("http://localhost:3000/api/zero/runs/some-id?org=test"),
     );
     expect(response.status).toBe(401);
+  });
+
+  it("should return 403 for sandbox token without agent-run:read capability", async () => {
+    mockClerk({ userId: null });
+    const token = await generateSandboxToken("user-1", "run-1", ["agent:read"]);
+
+    const response = await GET(
+      createTestRequest(
+        "http://localhost:3000/api/zero/runs/some-id?org=test",
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      ),
+    );
+    expect(response.status).toBe(403);
+
+    const data = await response.json();
+    expect(data.error.message).toContain("agent-run:read");
   });
 });

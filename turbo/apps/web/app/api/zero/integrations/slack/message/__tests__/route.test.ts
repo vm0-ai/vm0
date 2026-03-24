@@ -13,7 +13,10 @@ import {
   type UserContext,
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
-import { generateSandboxToken } from "../../../../../../../src/lib/auth/sandbox-token";
+import {
+  generateSandboxToken,
+  generateZeroToken,
+} from "../../../../../../../src/lib/auth/sandbox-token";
 
 const URL = "http://localhost:3000/api/zero/integrations/slack/message";
 
@@ -52,7 +55,7 @@ describe("POST /api/zero/integrations/slack/message", () => {
     expect(response.status).toBe(401);
   });
 
-  it("returns 403 when sandbox token lacks integration-slack:write", async () => {
+  it("returns 403 when sandbox token lacks slack:write", async () => {
     const { token } = await sandboxTokenWithRun(["agent:read"]);
 
     const request = createTestRequest(URL, {
@@ -68,11 +71,12 @@ describe("POST /api/zero/integrations/slack/message", () => {
     expect(response.status).toBe(403);
 
     const data = await response.json();
-    expect(data.error.message).toContain("integration-slack:write");
+    expect(data.error.message).toContain("slack:write");
   });
 
   it("returns 404 when no Slack installation exists for org", async () => {
-    const { token } = await sandboxTokenWithRun(["integration-slack:write"]);
+    mockClerk({ userId: null });
+    const token = await generateZeroToken(user.userId, "run-1", user.orgId);
 
     const request = createTestRequest(URL, {
       method: "POST",
@@ -91,7 +95,8 @@ describe("POST /api/zero/integrations/slack/message", () => {
   });
 
   it("sends message successfully and returns Slack response", async () => {
-    const { token } = await sandboxTokenWithRun(["integration-slack:write"]);
+    mockClerk({ userId: null });
+    const token = await generateZeroToken(user.userId, "run-1", user.orgId);
 
     // Create Slack installation for the user's org
     await createTestSlackOrgInstallation({ orgId: user.orgId });
@@ -128,7 +133,8 @@ describe("POST /api/zero/integrations/slack/message", () => {
   });
 
   it("forwards Slack API error with 400 status", async () => {
-    const { token } = await sandboxTokenWithRun(["integration-slack:write"]);
+    mockClerk({ userId: null });
+    const token = await generateZeroToken(user.userId, "run-1", user.orgId);
 
     await createTestSlackOrgInstallation({ orgId: user.orgId });
 

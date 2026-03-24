@@ -36,14 +36,16 @@ const router = tsr.router(integrationsSlackMessageContract, {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
-      requiredCapability: "integration-slack:write",
+      requiredCapability: "slack:write",
     });
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
-    // Resolve orgId — sandbox tokens derive from runId, CLI/session use resolveOrg
+    // Resolve orgId — zero tokens carry orgId directly, sandbox tokens derive from runId
     let orgId: string;
-    if (isSandboxAuth(authCtx)) {
+    if (authCtx.orgId) {
+      orgId = authCtx.orgId;
+    } else if (isSandboxAuth(authCtx)) {
       const [sandboxRun] = await globalThis.services.db
         .select({ orgId: agentRuns.orgId })
         .from(agentRuns)

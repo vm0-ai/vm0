@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { auth } from "@clerk/nextjs/server";
 import { requireAuth, isAuthError } from "../require-auth";
-import { generateSandboxToken } from "../sandbox-token";
+import { generateSandboxToken, generateZeroToken } from "../sandbox-token";
 
 describe("requireAuth", () => {
   const mockAuth = vi.mocked(auth);
@@ -134,6 +134,53 @@ describe("requireAuth", () => {
     if (isAuthError(result)) {
       expect(result.status).toBe(401);
       expect(result.body.error.code).toBe("UNAUTHORIZED");
+    }
+  });
+
+  it("should return AuthContext for zero token with matching capability", async () => {
+    const token = await generateZeroToken("user-1", "run-1", "org-1");
+
+    const result = await requireAuth(`Bearer ${token}`, {
+      requiredCapability: "agent-run:read",
+    });
+
+    expect(isAuthError(result)).toBe(false);
+    if (!isAuthError(result)) {
+      expect(result.userId).toBe("user-1");
+      expect(result.orgId).toBe("org-1");
+      expect(result.runId).toBe("run-1");
+      expect(result.capabilities).toContain("agent-run:read");
+    }
+  });
+
+  it("should return 403 for zero token missing required capability", async () => {
+    const token = await generateZeroToken("user-1", "run-1", "org-1");
+
+    // "integration-slack:write" is NOT in ZERO_CAPABILITIES
+    const result = await requireAuth(`Bearer ${token}`, {
+      requiredCapability: "integration-slack:write",
+    });
+
+    expect(isAuthError(result)).toBe(true);
+    if (isAuthError(result)) {
+      expect(result.status).toBe(403);
+      expect(result.body.error.code).toBe("FORBIDDEN");
+      expect(result.body.error.message).toBe(
+        "Missing required capability: integration-slack:write",
+      );
+    }
+  });
+
+  it("should return 403 for zero token on uncovered endpoint", async () => {
+    const token = await generateZeroToken("user-1", "run-1", "org-1");
+
+    // No requiredCapability = uncovered endpoint
+    const result = await requireAuth(`Bearer ${token}`);
+
+    expect(isAuthError(result)).toBe(true);
+    if (isAuthError(result)) {
+      expect(result.status).toBe(403);
+      expect(result.body.error.code).toBe("FORBIDDEN");
     }
   });
 });
