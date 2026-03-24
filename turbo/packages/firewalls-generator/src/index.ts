@@ -35,6 +35,7 @@ import { generate as generateNeon } from "./neon";
 import { generate as generateNotion } from "./notion";
 import { generate as generateOpenai } from "./openai";
 import { generate as generatePerplexity } from "./perplexity";
+import { generate as generatePlausible } from "./plausible";
 import { generate as generatePosthog } from "./posthog";
 import { generate as generateResend } from "./resend";
 import { generate as generateSentry } from "./sentry";
@@ -82,6 +83,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   notion: generateNotion,
   openai: generateOpenai,
   perplexity: generatePerplexity,
+  plausible: generatePlausible,
   posthog: generatePosthog,
   resend: generateResend,
   sentry: generateSentry,
