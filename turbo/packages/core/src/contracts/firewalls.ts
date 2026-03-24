@@ -110,6 +110,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   figma: ["figma"],
   notion: ["notion"],
   vercel: ["vercel"],
+  x: ["x"],
   youtube: ["youtube"],
   zapier: ["zapier"],
   zapsign: ["zapsign"],
