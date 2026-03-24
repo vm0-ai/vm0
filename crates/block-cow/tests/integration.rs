@@ -16,11 +16,15 @@ use std::process::Command;
 
 use block_cow::{CowDevice, CowDeviceConfig};
 
-/// Skip the test if not running as root.
-fn require_root() {
-    if !nix::unistd::getuid().is_root() {
-        eprintln!("skipping: requires root");
-    }
+/// Skip the test early if not running as root.
+/// Must be a macro so `return` exits the calling test function.
+macro_rules! require_root {
+    () => {
+        if !nix::unistd::getuid().is_root() {
+            eprintln!("skipping: requires root");
+            return;
+        }
+    };
 }
 
 /// Create a small ext4 image for testing (64 MiB).
@@ -47,7 +51,7 @@ fn test_config(tmp: &Path) -> CowDeviceConfig {
 #[test]
 #[ignore]
 fn create_and_destroy() {
-    require_root();
+    require_root!();
 
     let tmp = tempfile::tempdir().expect("tempdir");
     let config = test_config(tmp.path());
@@ -70,7 +74,7 @@ fn create_and_destroy() {
 #[test]
 #[ignore]
 fn destroy_keep_cow_preserves_file() {
-    require_root();
+    require_root!();
 
     let tmp = tempfile::tempdir().expect("tempdir");
     let config = test_config(tmp.path());
@@ -90,7 +94,7 @@ fn destroy_keep_cow_preserves_file() {
 #[test]
 #[ignore]
 fn cow_file_is_sparse() {
-    require_root();
+    require_root!();
 
     let tmp = tempfile::tempdir().expect("tempdir");
     let config = test_config(tmp.path());
@@ -120,7 +124,7 @@ fn cow_file_is_sparse() {
 #[test]
 #[ignore]
 fn multiple_devices_from_same_base() {
-    require_root();
+    require_root!();
 
     let tmp = tempfile::tempdir().expect("tempdir");
     let config = test_config(tmp.path());
@@ -142,7 +146,7 @@ fn multiple_devices_from_same_base() {
 #[test]
 #[ignore]
 fn restore_from_existing_cow() {
-    require_root();
+    require_root!();
 
     let tmp = tempfile::tempdir().expect("tempdir");
     let config = test_config(tmp.path());
@@ -178,7 +182,7 @@ fn restore_from_existing_cow() {
 #[test]
 #[ignore]
 fn device_path_format() {
-    require_root();
+    require_root!();
 
     let tmp = tempfile::tempdir().expect("tempdir");
     let config = test_config(tmp.path());

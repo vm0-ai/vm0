@@ -129,13 +129,22 @@ impl CowDevice {
         let cow_file = match existing_cow {
             Some(path) => path,
             None => {
-                fs::create_dir_all(&config.cow_dir)?;
-                let path = config.cow_dir.join(format!("cow-{id}.img"));
-                let f = fs::File::create(&path)?;
-                // Sparse file: same size as base so dm-snapshot has room for
-                // a full overwrite. Actual disk usage starts at 0.
-                f.set_len(sectors * 512)?;
-                path
+                let create_cow = || -> Result<PathBuf> {
+                    fs::create_dir_all(&config.cow_dir)?;
+                    let path = config.cow_dir.join(format!("cow-{id}.img"));
+                    let f = fs::File::create(&path)?;
+                    // Sparse file: same size as base so dm-snapshot has room
+                    // for a full overwrite. Actual disk usage starts at 0.
+                    f.set_len(sectors * 512)?;
+                    Ok(path)
+                };
+                match create_cow() {
+                    Ok(p) => p,
+                    Err(e) => {
+                        let _ = losetup::detach(&base_loop);
+                        return Err(e);
+                    }
+                }
             }
         };
 
@@ -202,42 +211,28 @@ impl CowDevice {
         let cow_name = format!("cow-{}", self.id);
         let origin_name = format!("origin-{}", self.id);
 
-        // Reverse order: snapshot → origin → cow loop → base loop.
+        // Best-effort teardown in reverse order. Record the first error
+        // but continue cleaning up remaining resources.
         let mut first_error: Option<BlockCowError> = None;
-
-        if let Err(e) = dmsetup::remove(&cow_name) {
-            warn!(name = cow_name, error = %e, "failed to remove snapshot target");
-            if first_error.is_none() {
-                first_error = Some(e);
+        let mut record = |result: Result<()>, context: &str| {
+            if let Err(e) = result {
+                warn!(id = %self.id, context, error = %e, "teardown step failed");
+                if first_error.is_none() {
+                    first_error = Some(e);
+                }
             }
-        }
+        };
 
-        if let Err(e) = dmsetup::remove(&origin_name) {
-            warn!(name = origin_name, error = %e, "failed to remove origin target");
-            if first_error.is_none() {
-                first_error = Some(e);
-            }
-        }
+        record(dmsetup::remove(&cow_name), "remove snapshot target");
+        record(dmsetup::remove(&origin_name), "remove origin target");
+        record(losetup::detach(&self.cow_loop), "detach COW loop");
+        record(losetup::detach(&self.base_loop), "detach base loop");
 
-        if let Err(e) = losetup::detach(&self.cow_loop) {
-            warn!(device = %self.cow_loop.display(), error = %e, "failed to detach COW loop");
-            if first_error.is_none() {
-                first_error = Some(e);
-            }
-        }
-
-        if let Err(e) = losetup::detach(&self.base_loop) {
-            warn!(device = %self.base_loop.display(), error = %e, "failed to detach base loop");
-            if first_error.is_none() {
-                first_error = Some(e);
-            }
-        }
-
-        if delete_cow_file && let Err(e) = fs::remove_file(&self.cow_file) {
-            warn!(path = %self.cow_file.display(), error = %e, "failed to delete COW file");
-            if first_error.is_none() {
-                first_error = Some(e.into());
-            }
+        if delete_cow_file {
+            record(
+                fs::remove_file(&self.cow_file).map_err(Into::into),
+                "delete COW file",
+            );
         }
 
         info!(
