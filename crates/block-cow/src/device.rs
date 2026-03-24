@@ -117,6 +117,15 @@ impl CowDevice {
         self.teardown(false)
     }
 
+    /// Mark the device as inactive without performing cleanup.
+    ///
+    /// Use this after exhausting retries on [`destroy`] — the caller has
+    /// given up and will rely on GC to clean up the orphaned dm targets.
+    /// Prevents [`Drop`] from logging a redundant warning.
+    pub fn abandon(&mut self) {
+        self.active = false;
+    }
+
     // -----------------------------------------------------------------------
     // Internal helpers
     // -----------------------------------------------------------------------

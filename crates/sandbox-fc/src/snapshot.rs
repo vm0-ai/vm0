@@ -131,7 +131,9 @@ pub async fn create_snapshot(
         cow_dir: paths.workspace().join("cow"),
         chunk_size: None,
     };
-    let cow_device = CowDevice::create(&cow_config)
+    let cow_device = tokio::task::spawn_blocking(move || CowDevice::create(&cow_config))
+        .await
+        .map_err(|e| SnapshotError::Setup(format!("join: {e}")))?
         .map_err(|e| SnapshotError::Setup(format!("create COW device: {e}")))?;
 
     info!(device = %cow_device.device_path().display(), "COW device created");

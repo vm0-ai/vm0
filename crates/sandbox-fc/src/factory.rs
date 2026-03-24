@@ -344,6 +344,8 @@ impl SandboxFactory for FirecrackerFactory {
                         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
                     } else {
                         warn!(id = %sandbox_id, error = %e, "failed to destroy COW device after retries — skipping workspace cleanup");
+                        // Suppress the redundant Drop warning — GC will handle cleanup.
+                        sandbox.cow_device.abandon();
                     }
                 }
             }
