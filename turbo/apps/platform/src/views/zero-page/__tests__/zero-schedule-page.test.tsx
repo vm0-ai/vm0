@@ -11,8 +11,8 @@ function createMockSchedules() {
   return [
     {
       id: "sched-1",
-      composeId: "mock-compose-id",
-      composeName: "zero",
+      zeroAgentId: "mock-compose-id",
+      agentName: "zero",
       orgSlug: "test",
       name: "morning-briefing",
       triggerType: "cron",
@@ -32,8 +32,8 @@ function createMockSchedules() {
     },
     {
       id: "sched-2",
-      composeId: "mock-compose-id",
-      composeName: "zero",
+      zeroAgentId: "mock-compose-id",
+      agentName: "zero",
       orgSlug: "test",
       name: "check-inbox",
       triggerType: "loop",
@@ -53,8 +53,8 @@ function createMockSchedules() {
     },
     {
       id: "sched-disabled",
-      composeId: "mock-compose-id",
-      composeName: "zero",
+      zeroAgentId: "mock-compose-id",
+      agentName: "zero",
       orgSlug: "test",
       name: "disabled-schedule",
       triggerType: "cron",

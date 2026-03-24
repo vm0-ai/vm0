@@ -20,8 +20,8 @@ const L = logger("ZeroSchedule");
 
 interface ScheduleResponse {
   id: string;
-  composeId: string;
-  composeName: string;
+  zeroAgentId: string;
+  agentName: string;
   orgSlug: string;
   name: string;
   triggerType: "cron" | "once" | "loop";
@@ -190,7 +190,7 @@ export const fetchZeroSchedules$ = command(async ({ get, set }) => {
 
     // Filter schedules for this agent's composeId
     const agentSchedules = data.schedules.filter(
-      (s) => s.composeId === composeId,
+      (s) => s.zeroAgentId === composeId,
     );
     set(internalSchedules$, agentSchedules);
   } catch (error) {
@@ -233,7 +233,7 @@ export const saveZeroSchedule$ = command(
     const scheduleName = params.editName ?? `zero-${Date.now().toString(36)}`;
 
     const base = {
-      composeId,
+      zeroAgentId: composeId,
       name: scheduleName,
       timezone: params.timezone,
       prompt: params.prompt.trim(),
@@ -327,7 +327,7 @@ export const toggleZeroScheduleEnabled$ = command(
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ composeId }),
+        body: JSON.stringify({ zeroAgentId: composeId }),
       },
     );
 
@@ -360,7 +360,7 @@ export const deleteZeroSchedule$ = command(
 
     const fetchFn = get(fetch$);
     const response = await fetchFn(
-      `/api/zero/schedules/${encodeURIComponent(scheduleName)}?composeId=${encodeURIComponent(composeId)}`,
+      `/api/zero/schedules/${encodeURIComponent(scheduleName)}?zeroAgentId=${encodeURIComponent(composeId)}`,
       { method: "DELETE" },
     );
 
@@ -379,7 +379,7 @@ export const deleteZeroSchedule$ = command(
 );
 
 // ---------------------------------------------------------------------------
-// All-org schedule entries (for schedule page — no composeId filter)
+// All-org schedule entries (for schedule page — no agent filter)
 // ---------------------------------------------------------------------------
 
 export interface OrgScheduleEntry {
@@ -392,8 +392,8 @@ export interface OrgScheduleEntry {
   notifySlack: boolean;
   name: string;
   intervalSeconds: number | null;
-  composeId: string;
-  composeName: string;
+  zeroAgentId: string;
+  agentName: string;
 }
 
 const internalAllSchedules$ = state<ScheduleResponse[]>([]);
@@ -419,8 +419,8 @@ export const allOrgScheduleEntries$ = computed((get) => {
         notifySlack: s.notifySlack,
         name: s.name,
         intervalSeconds: s.intervalSeconds,
-        composeId: s.composeId,
-        composeName: s.composeName,
+        zeroAgentId: s.zeroAgentId,
+        agentName: s.agentName,
       }),
     );
 });
@@ -449,13 +449,13 @@ export const fetchAllOrgSchedules$ = command(async ({ get, set }) => {
 export const saveOrgSchedule$ = command(
   async (
     { get, set },
-    params: ZeroScheduleSaveParams & { composeId: string },
+    params: ZeroScheduleSaveParams & { zeroAgentId: string },
   ) => {
     const fetchFn = get(fetch$);
     const scheduleName = params.editName ?? `zero-${Date.now().toString(36)}`;
 
     const base = {
-      composeId: params.composeId,
+      zeroAgentId: params.zeroAgentId,
       name: scheduleName,
       timezone: params.timezone,
       prompt: params.prompt.trim(),
@@ -531,7 +531,7 @@ export const saveOrgSchedule$ = command(
 export const toggleOrgScheduleEnabled$ = command(
   async (
     { get, set },
-    params: { name: string; enabled: boolean; composeId: string },
+    params: { name: string; enabled: boolean; zeroAgentId: string },
   ) => {
     const fetchFn = get(fetch$);
     const action = params.enabled ? "enable" : "disable";
@@ -540,7 +540,7 @@ export const toggleOrgScheduleEnabled$ = command(
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ composeId: params.composeId }),
+        body: JSON.stringify({ zeroAgentId: params.zeroAgentId }),
       },
     );
 
@@ -560,10 +560,10 @@ export const toggleOrgScheduleEnabled$ = command(
 );
 
 export const deleteOrgSchedule$ = command(
-  async ({ get, set }, params: { name: string; composeId: string }) => {
+  async ({ get, set }, params: { name: string; zeroAgentId: string }) => {
     const fetchFn = get(fetch$);
     const response = await fetchFn(
-      `/api/zero/schedules/${encodeURIComponent(params.name)}?composeId=${encodeURIComponent(params.composeId)}`,
+      `/api/zero/schedules/${encodeURIComponent(params.name)}?zeroAgentId=${encodeURIComponent(params.zeroAgentId)}`,
       { method: "DELETE" },
     );
 

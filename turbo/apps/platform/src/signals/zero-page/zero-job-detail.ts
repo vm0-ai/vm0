@@ -413,8 +413,8 @@ export const saveZeroJobConnectors$ = command(async ({ get, set }) => {
 
 interface ScheduleItem {
   id: string;
-  composeId: string;
-  composeName: string;
+  zeroAgentId: string;
+  agentName: string;
   name: string;
   enabled: boolean;
   triggerType: "cron" | "once" | "loop";
@@ -423,6 +423,7 @@ interface ScheduleItem {
   intervalSeconds: number | null;
   timezone: string;
   prompt: string;
+  description: string | null;
   createdAt: string;
 }
 
@@ -514,6 +515,7 @@ export const zeroJobScheduleEntries$ = computed((get) => {
         id: s.id,
         time: scheduleToTimeString(s),
         prompt: s.prompt,
+        description: s.description,
         enabled: s.enabled,
         name: s.name,
         intervalSeconds: s.intervalSeconds,
@@ -541,7 +543,7 @@ const fetchZeroJobSchedule$ = command(async ({ get, set }) => {
     }
 
     const data = (await response.json()) as { schedules: ScheduleItem[] };
-    const agentSchedules = data.schedules.filter((s) => s.composeName === name);
+    const agentSchedules = data.schedules.filter((s) => s.agentName === name);
     set(scheduleState$, { schedules: agentSchedules, error: null });
   } catch (error) {
     throwIfAbort(error);
@@ -582,7 +584,7 @@ export const saveZeroJobSchedule$ = command(
     const scheduleName = params.editName ?? `zero-${Date.now().toString(36)}`;
 
     const base = {
-      composeId: detail.agentComposeId,
+      zeroAgentId: detail.agentComposeId,
       name: scheduleName,
       timezone: params.timezone,
       prompt: params.prompt.trim(),
@@ -662,7 +664,7 @@ export const toggleZeroJobScheduleEnabled$ = command(
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ composeId: detail.agentComposeId }),
+        body: JSON.stringify({ zeroAgentId: detail.agentComposeId }),
       },
     );
 
@@ -690,7 +692,7 @@ export const deleteZeroJobSchedule$ = command(
 
     const fetchFn = get(fetch$);
     const response = await fetchFn(
-      `/api/zero/schedules/${encodeURIComponent(scheduleName)}?composeId=${encodeURIComponent(detail.agentComposeId)}`,
+      `/api/zero/schedules/${encodeURIComponent(scheduleName)}?zeroAgentId=${encodeURIComponent(detail.agentComposeId)}`,
       { method: "DELETE" },
     );
 

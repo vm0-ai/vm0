@@ -68,7 +68,7 @@ import emptyScheduleImg from "./assets/empty-schedule.webp";
 
 type CombinedEntry = ScheduleEntry & {
   agentLabel: string;
-  composeId: string;
+  zeroAgentId: string;
 };
 
 function buildCombinedSchedule(
@@ -88,10 +88,10 @@ function buildCombinedSchedule(
     name: e.name,
     intervalSeconds: e.intervalSeconds,
     agentLabel:
-      e.composeId === defaultComposeId
+      e.zeroAgentId === defaultComposeId
         ? agentName
-        : (nameToDisplay.get(e.composeName) ?? e.composeName),
-    composeId: e.composeId,
+        : (nameToDisplay.get(e.agentName) ?? e.agentName),
+    zeroAgentId: e.zeroAgentId,
   }));
 }
 
@@ -580,7 +580,7 @@ function ScheduleEditFields({
 interface ScheduleEditDialogProps {
   entry: CombinedEntry | null;
   onClose: () => void;
-  onSave: (params: ZeroScheduleSaveParams & { composeId: string }) => void;
+  onSave: (params: ZeroScheduleSaveParams & { zeroAgentId: string }) => void;
   saving: boolean;
 }
 
@@ -616,7 +616,7 @@ function ScheduleEditDialogInner({
       timezone,
       intervalSeconds: loopMinutes * 60,
       editName: entry.name,
-      composeId: entry.composeId,
+      zeroAgentId: entry.zeroAgentId,
       notifyEmail,
       notifySlack,
     });
@@ -736,7 +736,7 @@ function ScheduleEditDialog(props: ScheduleEditDialogProps) {
 interface ScheduleCreateDialogProps {
   open: boolean;
   onClose: () => void;
-  onSave: (params: ZeroScheduleSaveParams & { composeId: string }) => void;
+  onSave: (params: ZeroScheduleSaveParams & { zeroAgentId: string }) => void;
   saving: boolean;
   agents: { id: string; name: string; displayName?: string | null }[];
   defaultComposeId: string | null;
@@ -751,7 +751,7 @@ function ScheduleCreateDialogInner({
 }: Omit<ScheduleCreateDialogProps, "open">) {
   const [prompt, setPrompt] = useState("");
   const [description, setDescription] = useState("");
-  const [composeId, setComposeId] = useState(
+  const [zeroAgentId, setZeroAgentId] = useState(
     defaultComposeId ?? agents[0]?.id ?? "",
   );
   const [freq, setFreq] = useState("every_day");
@@ -764,7 +764,7 @@ function ScheduleCreateDialogInner({
   const [loopMinutes, setLoopMinutes] = useState(15);
 
   const handleSave = () => {
-    if (!prompt.trim() || !composeId) {
+    if (!prompt.trim() || !zeroAgentId) {
       return;
     }
     onSave({
@@ -776,7 +776,7 @@ function ScheduleCreateDialogInner({
       minute,
       timezone,
       intervalSeconds: loopMinutes * 60,
-      composeId,
+      zeroAgentId,
     });
   };
 
@@ -793,7 +793,7 @@ function ScheduleCreateDialogInner({
           >
             Agent
           </label>
-          <Select value={composeId} onValueChange={setComposeId}>
+          <Select value={zeroAgentId} onValueChange={setZeroAgentId}>
             <SelectTrigger id="schedule-create-agent" className="h-9">
               <SelectValue />
             </SelectTrigger>
@@ -867,7 +867,7 @@ function ScheduleCreateDialogInner({
         <Button
           type="button"
           onClick={handleSave}
-          disabled={!prompt.trim() || !composeId || saving}
+          disabled={!prompt.trim() || !zeroAgentId || saving}
         >
           {saving ? "Creating\u2026" : "Create"}
         </Button>
@@ -1133,7 +1133,7 @@ export function ZeroSchedulePage() {
   };
 
   const handleCreateSave = (
-    params: ZeroScheduleSaveParams & { composeId: string },
+    params: ZeroScheduleSaveParams & { zeroAgentId: string },
   ) => {
     setSaving(true);
     detach(
@@ -1149,7 +1149,7 @@ export function ZeroSchedulePage() {
   };
 
   const handleDialogSave = (
-    params: ZeroScheduleSaveParams & { composeId: string },
+    params: ZeroScheduleSaveParams & { zeroAgentId: string },
   ) => {
     setSaving(true);
     detach(
@@ -1171,7 +1171,7 @@ export function ZeroSchedulePage() {
     await toggleEnabled({
       name: entry.name,
       enabled,
-      composeId: entry.composeId,
+      zeroAgentId: entry.zeroAgentId,
     });
   };
 
@@ -1189,7 +1189,7 @@ export function ZeroSchedulePage() {
     detach(
       deleteSchedule({
         name: pendingDelete.name,
-        composeId: pendingDelete.composeId,
+        zeroAgentId: pendingDelete.zeroAgentId,
       }),
       Reason.DomCallback,
     );
