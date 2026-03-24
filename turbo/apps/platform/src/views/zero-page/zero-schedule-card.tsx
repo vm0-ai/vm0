@@ -54,7 +54,6 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@vm0/ui/components/ui/dialog";
-import { getBrowserTimezone } from "../../signals/zero-page/cron.ts";
 
 export const WEEKDAY_LABELS = [
   "Mon",
@@ -500,7 +499,6 @@ export function ZeroScheduleCard({
   onDelete,
   onToggleEnabled,
   saving,
-  defaultTimezone,
 }: ZeroScheduleCardProps) {
   const scheduleViewMode = useGet(scheduleViewMode$);
   const setScheduleViewMode = useSet(setScheduleViewMode$);
@@ -512,7 +510,6 @@ export function ZeroScheduleCard({
   const setAddScheduleOpen = useSet(setAddScheduleOpen$);
   const editingScheduleId = useGet(editingScheduleId$);
   const setEditingScheduleId = useSet(setEditingScheduleId$);
-  const resolvedTimezone = defaultTimezone || getBrowserTimezone();
   const saveError = useGet(saveError$);
   const setSaveError = useSet(setSaveError$);
   const togglingIds = useGet(togglingIds$);
@@ -932,281 +929,42 @@ export function ZeroScheduleCard({
           })()}
       </CardContent>
 
-      <Dialog
+      <ScheduleFormDialog
         open={addScheduleOpen}
-        onOpenChange={(open) => {
-          setAddScheduleOpen(open);
-          if (!open) {
-            setEditingScheduleId(null);
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-lg gap-6">
-          <DialogHeader>
-            <DialogTitle>
-              {editingScheduleId ? "Edit schedule" : "Add schedule"}
-            </DialogTitle>
-            <DialogDescription>
-              {editingScheduleId
-                ? "Update the prompt, optional description, and when this task runs."
-                : "Describe the task and set when it should run for this agent."}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-2">
-              <label
-                htmlFor="schedule-dialog-prompt"
-                className="text-sm font-medium text-foreground"
-              >
-                Prompt
-              </label>
-              <textarea
-                id="schedule-dialog-prompt"
-                value={newSchedulePrompt}
-                onChange={(e) => setNewSchedulePrompt(e.target.value)}
-                placeholder="Describe your task and instruction"
-                rows={5}
-                className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 resize-y min-h-[120px]"
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <label
-                htmlFor="schedule-dialog-description"
-                className="text-sm font-medium text-foreground"
-              >
-                Description
-                <span className="text-muted-foreground font-normal ml-1">
-                  (optional)
-                </span>
-              </label>
-              <Input
-                id="schedule-dialog-description"
-                value={newScheduleDescription}
-                onChange={(e) => setNewScheduleDescription(e.target.value)}
-                placeholder="Leave blank to auto-generate"
-                className="h-9"
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <label
-                htmlFor="schedule-dialog-freq"
-                className="text-sm font-medium text-foreground"
-              >
-                Time
-              </label>
-              <Select value={scheduleFreq} onValueChange={setScheduleFreq}>
-                <SelectTrigger id="schedule-dialog-freq" className="h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {SCHEDULE_FREQUENCY_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {scheduleFreq === "every_n_minutes" && (
-              <div className="flex flex-col gap-2">
-                <label
-                  htmlFor="schedule-dialog-loop"
-                  className="text-sm font-medium text-foreground"
-                >
-                  Interval (seconds)
-                </label>
-                <Input
-                  id="schedule-dialog-loop"
-                  type="number"
-                  min={0}
-                  value={scheduleIntervalStr}
-                  onChange={(e) => setScheduleIntervalStr(e.target.value)}
-                  placeholder="300"
-                  className="h-9"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Time between the end of one run and the start of the next. Use
-                  0 for immediate restart.
-                </p>
-              </div>
-            )}
-            {scheduleFreq === "once" && (
-              <div className="flex flex-col gap-2">
-                <label
-                  htmlFor="schedule-dialog-date"
-                  className="text-sm font-medium text-foreground"
-                >
-                  Date
-                </label>
-                <Input
-                  id="schedule-dialog-date"
-                  type="date"
-                  value={scheduleDate}
-                  min={getTodayDateLocal()}
-                  onChange={(e) => setScheduleDate(e.target.value)}
-                  className="h-9"
-                />
-              </div>
-            )}
-            {scheduleFreq === "every_week" && (
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-foreground">
-                  Day of week
-                </label>
-                <div className="flex gap-1">
-                  {(
-                    [
-                      ["1", "Mon"],
-                      ["2", "Tue"],
-                      ["3", "Wed"],
-                      ["4", "Thu"],
-                      ["5", "Fri"],
-                      ["6", "Sat"],
-                      ["0", "Sun"],
-                    ] as const
-                  ).map(([value, label]) => {
-                    const selected = scheduleDayOfWeek
-                      .split(",")
-                      .includes(value);
-                    return (
-                      <button
-                        key={value}
-                        type="button"
-                        className={`h-8 min-w-[40px] rounded-lg border text-xs font-medium transition-colors ${
-                          selected
-                            ? "border-primary bg-primary text-primary-foreground"
-                            : "border-input bg-background text-muted-foreground hover:bg-muted"
-                        }`}
-                        onClick={() => {
-                          const current = scheduleDayOfWeek
-                            .split(",")
-                            .filter(Boolean);
-                          if (selected) {
-                            if (current.length > 1) {
-                              setScheduleDayOfWeek(
-                                current.filter((d) => d !== value).join(","),
-                              );
-                            }
-                          } else {
-                            setScheduleDayOfWeek([...current, value].join(","));
-                          }
-                        }}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-            {scheduleFreq === "every_month" && (
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-foreground">
-                  Day of month
-                </label>
-                <Select
-                  value={scheduleDayOfMonth}
-                  onValueChange={setScheduleDayOfMonth}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Array.from({ length: 31 }, (_, i) => (
-                      <SelectItem key={i + 1} value={String(i + 1)}>
-                        {i + 1}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            {scheduleFreq !== "now" && scheduleFreq !== "every_n_minutes" && (
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-foreground">
-                  Time
-                </label>
-                <div className="flex items-center gap-2">
-                  <Select
-                    value={String(scheduleHour)}
-                    onValueChange={(v) => setScheduleHour(Number(v))}
-                  >
-                    <SelectTrigger className="h-9 w-20">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {HOUR_OPTIONS.map((h) => (
-                        <SelectItem key={h} value={String(h)}>
-                          {h.toString().padStart(2, "0")}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <span className="text-muted-foreground">:</span>
-                  <Select
-                    value={String(scheduleMinute)}
-                    onValueChange={(v) => setScheduleMinute(Number(v))}
-                  >
-                    <SelectTrigger className="h-9 w-20">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {getMinuteOptions(scheduleMinute).map((m) => (
-                        <SelectItem key={m} value={String(m)}>
-                          {m.toString().padStart(2, "0")}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            )}
-            {scheduleFreq !== "now" && scheduleFreq !== "every_n_minutes" && (
-              <div className="flex flex-col gap-2">
-                <label
-                  htmlFor="schedule-dialog-tz"
-                  className="text-sm font-medium text-foreground"
-                >
-                  Timezone
-                </label>
-                <Select
-                  value={scheduleTimezone}
-                  onValueChange={setScheduleTimezone}
-                >
-                  <SelectTrigger id="schedule-dialog-tz" className="h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {COMMON_TIMEZONES.map((tz) => (
-                      <SelectItem key={tz} value={tz}>
-                        {tz.replace(/_/g, " ")}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
-          {saveError && <p className="text-sm text-destructive">{saveError}</p>}
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              className="zero-btn-morandi"
-              onClick={() => setAddScheduleOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              onClick={() => void addScheduleEntry()}
-              disabled={!newSchedulePrompt.trim() || saving}
-            >
-              {saving ? "Saving…" : editingScheduleId ? "Save" : "Add"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        onClose={() => setAddScheduleOpen(false)}
+        onSave={handleCreateSave}
+        saving={!!saving}
+        mode="create"
+        saveError={saveError}
+      />
+      <ScheduleFormDialog
+        open={editingScheduleId !== null}
+        onClose={() => setEditingScheduleId(null)}
+        onSave={handleEditSave}
+        saving={!!saving}
+        mode="edit"
+        initialValues={
+          editingEntry
+            ? {
+                prompt: editingEntry.prompt,
+                description: editingEntry.description ?? "",
+                freq: parseScheduleTimeString(editingEntry.time).freq,
+                date: parseScheduleTimeString(editingEntry.time).date,
+                hour: parseScheduleTimeString(editingEntry.time).hour,
+                minute: parseScheduleTimeString(editingEntry.time).minute,
+                timezone:
+                  editingEntry.timezone ??
+                  parseScheduleTimeString(editingEntry.time).timezone,
+                loopMinutes: parseScheduleTimeString(editingEntry.time)
+                  .loopMinutes,
+                notifyEmail: editingEntry.notifyEmail ?? false,
+                notifySlack: editingEntry.notifySlack ?? false,
+                slackChannelId: editingEntry.slackChannelId ?? null,
+              }
+            : undefined
+        }
+        saveError={saveError}
+      />
     </Card>
   );
 }

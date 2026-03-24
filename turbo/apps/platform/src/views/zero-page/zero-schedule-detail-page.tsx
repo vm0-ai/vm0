@@ -28,7 +28,7 @@ import {
 import { Switch } from "@vm0/ui/components/ui/switch";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
 import { Link } from "../router/link.tsx";
-import { navigateInReact$, pathParams$ } from "../../signals/route.ts";
+import { navigateTo$, pathParams$ } from "../../signals/route.ts";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import { agentsList$ } from "../../signals/zero-page/agents-list.ts";
 import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
@@ -210,7 +210,7 @@ function ScheduleSettingsForm({
   agents: ScheduleAgentOption[];
   saving: boolean;
   toggling: boolean;
-  onSave: (params: ZeroScheduleSaveParams & { composeId: string }) => void;
+  onSave: (params: ZeroScheduleSaveParams & { agentId: string }) => void;
   onToggle: (enabled: boolean) => Promise<void>;
   onDelete: () => void;
 }) {
@@ -221,7 +221,7 @@ function ScheduleSettingsForm({
   const [minute, setMinute] = useState(parsed.minute);
   const [timezone, setTimezone] = useState(parsed.timezone);
   const [loopMinutes, setLoopMinutes] = useState(parsed.loopMinutes);
-  const [composeId, setComposeId] = useState(entry.composeId);
+  const [agentId, setAgentId] = useState(entry.agentId);
   const [notifyEmail, setNotifyEmail] = useState(entry.notifyEmail);
   const [notifySlack, setNotifySlack] = useState(entry.notifySlack);
   const [dayOfWeek] = useState(parsed.dayOfWeek ?? "1");
@@ -234,7 +234,7 @@ function ScheduleSettingsForm({
     minute?: number;
     timezone?: string;
     loopMinutes?: number;
-    composeId?: string;
+    agentId?: string;
     notifyEmail?: boolean;
     notifySlack?: boolean;
   }) => {
@@ -251,7 +251,7 @@ function ScheduleSettingsForm({
       timezone: patch.timezone ?? timezone,
       intervalSeconds: (patch.loopMinutes ?? loopMinutes) * 60,
       editName: entry.name,
-      composeId: patch.composeId ?? composeId,
+      agentId: patch.agentId ?? agentId,
       notifyEmail: patch.notifyEmail ?? notifyEmail,
       notifySlack: patch.notifySlack ?? notifySlack,
       ...(nextFreq === "every_week" ? { dayOfWeek } : {}),
@@ -260,7 +260,7 @@ function ScheduleSettingsForm({
   };
 
   const canDelete = entry.name !== undefined;
-  const composeInList = agents.some((a) => a.id === composeId);
+  const composeInList = agents.some((a) => a.id === agentId);
 
   return (
     <>
@@ -272,10 +272,10 @@ function ScheduleSettingsForm({
           >
             <div className={SCHEDULE_DETAIL_CONTROL_WIDTH}>
               <Select
-                value={composeId}
+                value={agentId}
                 onValueChange={(v) => {
-                  setComposeId(v);
-                  saveWith({ composeId: v });
+                  setAgentId(v);
+                  saveWith({ agentId: v });
                 }}
                 disabled={saving || agents.length === 0}
               >
@@ -284,8 +284,8 @@ function ScheduleSettingsForm({
                 </SelectTrigger>
                 <SelectContent>
                   {!composeInList && (
-                    <SelectItem value={composeId}>
-                      {entry.composeName || entry.agentLabel || composeId}
+                    <SelectItem value={agentId}>
+                      {entry.agentName || entry.agentLabel || agentId}
                     </SelectItem>
                   )}
                   {agents.map((a) => (
@@ -487,7 +487,7 @@ function ScheduleDetailView({
   saving: boolean;
   agents: ScheduleAgentOption[];
   onSettingsSave: (
-    params: ZeroScheduleSaveParams & { composeId: string },
+    params: ZeroScheduleSaveParams & { agentId: string },
   ) => void;
   onToggle: (enabled: boolean) => Promise<void>;
   onRunNow: () => Promise<void>;
@@ -640,7 +640,7 @@ function ScheduleDetailView({
           <div className="mx-auto max-w-[900px] flex flex-col gap-4">
             {activeTab === "settings" && (
               <ScheduleSettingsForm
-                key={`${entry.id}\u0000${entry.time}\u0000${entry.composeId}\u0000${String(entry.notifyEmail)}\u0000${String(entry.notifySlack)}`}
+                key={`${entry.id}\u0000${entry.time}\u0000${entry.agentId}\u0000${String(entry.notifyEmail)}\u0000${String(entry.notifySlack)}`}
                 entry={entry}
                 agents={agents}
                 saving={saving}
@@ -700,7 +700,7 @@ export function ZeroScheduleDetailPage() {
   const toggleEnabled = useSet(toggleOrgScheduleEnabled$);
   const deleteSchedule = useSet(deleteOrgSchedule$);
   const runScheduleNow = useSet(runScheduleNow$);
-  const navigate = useSet(navigateInReact$);
+  const navigate = useSet(navigateTo$);
 
   const [saving, setSaving] = useState(false);
   const [toggling, setToggling] = useState(false);
@@ -729,7 +729,7 @@ export function ZeroScheduleDetailPage() {
   const dimmed = entry.enabled === false;
 
   const handleSettingsSave = (
-    params: ZeroScheduleSaveParams & { composeId: string },
+    params: ZeroScheduleSaveParams & { agentId: string },
   ) => {
     setSaving(true);
     detach(
@@ -756,7 +756,7 @@ export function ZeroScheduleDetailPage() {
         timezone: parsed.timezone,
         intervalSeconds: parsed.loopMinutes * 60,
         editName: entry.name,
-        composeId: entry.composeId,
+        agentId: entry.agentId,
         notifyEmail: entry.notifyEmail,
         notifySlack: entry.notifySlack,
       }).finally(() => {
@@ -775,7 +775,7 @@ export function ZeroScheduleDetailPage() {
       await toggleEnabled({
         name: entry.name,
         enabled,
-        composeId: entry.composeId,
+        agentId: entry.agentId,
       });
     } finally {
       setToggling(false);
@@ -786,7 +786,7 @@ export function ZeroScheduleDetailPage() {
     setRunning(true);
     try {
       await runScheduleNow({
-        composeId: entry.composeId,
+        composeId: entry.agentId,
         prompt: entry.prompt,
       });
     } finally {
@@ -799,11 +799,9 @@ export function ZeroScheduleDetailPage() {
       return;
     }
     detach(
-      deleteSchedule({ name: entry.name, composeId: entry.composeId }).then(
-        () => {
-          navigate("/schedule");
-        },
-      ),
+      deleteSchedule({ name: entry.name, agentId: entry.agentId }).then(() => {
+        navigate("/schedule");
+      }),
       Reason.DomCallback,
     );
   };

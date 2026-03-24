@@ -1,12 +1,6 @@
 import { useState } from "react";
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
 import {
-  addScheduleOpen$,
-  setAddScheduleOpen$,
-  editingScheduleId$,
-  setEditingScheduleId$,
-} from "../../signals/zero-page/schedule-card.ts";
-import {
   IconPencil,
   IconList,
   IconLayoutGrid,
@@ -38,7 +32,6 @@ import {
   DropdownMenuItem,
 } from "@vm0/ui";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
-import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   Popover,
   PopoverContent,
@@ -56,21 +49,12 @@ import {
   getEntriesInCell,
   buildCalendarTimeSlots,
   WEEKDAY_LABELS,
-  parseScheduleTimeString,
-  SCHEDULE_FREQUENCY_OPTIONS,
-  SCHEDULE_LOOP_MINUTES,
-  HOUR_OPTIONS,
-  getMinuteOptions,
   type ScheduleEntry,
 } from "./zero-schedule-card";
-import {
-  ScheduleFormDialog,
-  type ScheduleFormValues,
-} from "./schedule-dialog.tsx";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import { agentsList$ } from "../../signals/zero-page/agents-list.ts";
 import { COMMON_TIMEZONES } from "../../signals/zero-page/cron.ts";
-import { detach, throwIfAbort, Reason } from "../../signals/utils.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import {
   allOrgScheduleEntries$,
   allOrgSchedulesLoaded$,
@@ -87,7 +71,7 @@ import {
   agentsLoading$,
 } from "../../signals/zero-page/zero-agents.ts";
 import emptyScheduleImg from "./assets/empty-schedule.webp";
-import { navigateInReact$ } from "../../signals/route.ts";
+import { navigateTo$ } from "../../signals/route.ts";
 
 export type CombinedEntry = ScheduleEntry & {
   agentLabel: string;
@@ -435,6 +419,32 @@ function ScheduleCalendarView({
 // Edit fields
 // ---------------------------------------------------------------------------
 
+const SCHEDULE_FREQUENCY_OPTIONS = [
+  { value: "now", label: "Now" },
+  { value: "once", label: "Once" },
+  { value: "every_weekday", label: "Every weekday" },
+  { value: "every_day", label: "Every day" },
+  { value: "every_week", label: "Every week" },
+  { value: "every_month", label: "Every month" },
+  { value: "every_n_minutes", label: "Loop" },
+] as const;
+
+const SCHEDULE_LOOP_MINUTES = [5, 15, 30, 60] as const;
+
+const HOUR_OPTIONS: readonly number[] = Array.from({ length: 24 }, (_, i) => i);
+
+const MINUTE_OPTIONS: readonly number[] = Array.from(
+  { length: 12 },
+  (_, i) => i * 5,
+);
+
+function getMinuteOptions(currentMinute?: number): readonly number[] {
+  if (currentMinute === undefined || MINUTE_OPTIONS.includes(currentMinute)) {
+    return MINUTE_OPTIONS;
+  }
+  return [...MINUTE_OPTIONS, currentMinute].sort((a, b) => a - b);
+}
+
 function isCronFreq(f: string): boolean {
   return (
     f === "once" ||
@@ -658,8 +668,7 @@ function ScheduleCreateDialogInner({
   };
 
   const canPickAgent = !agentsLoading && agents.length > 0 && !agentsError;
-  const createDisabled =
-    !prompt.trim() || !agentId || !canPickAgent || saving;
+  const createDisabled = !prompt.trim() || !agentId || !canPickAgent || saving;
 
   return (
     <DialogContent className="sm:max-w-lg gap-6">
@@ -1131,7 +1140,7 @@ export function ZeroSchedulePage() {
   const toggleEnabled = useSet(toggleOrgScheduleEnabled$);
   const deleteSchedule = useSet(deleteOrgSchedule$);
   const runScheduleNow = useSet(runScheduleNow$);
-  const navigate = useSet(navigateInReact$);
+  const navigate = useSet(navigateTo$);
 
   const [scheduleViewMode, setScheduleViewMode] = useState<"list" | "calendar">(
     "list",
@@ -1140,6 +1149,9 @@ export function ZeroSchedulePage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
   const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
+  const [pendingDelete, setPendingDelete] = useState<CombinedEntry | null>(
+    null,
+  );
 
   const combinedSchedule = buildCombinedSchedule(
     entries,
@@ -1203,7 +1215,7 @@ export function ZeroSchedulePage() {
     setRunningIds((prev) => new Set([...prev, id]));
     try {
       await runScheduleNow({
-        agentId: entry.agentId,
+        composeId: entry.agentId,
         prompt: entry.prompt,
       });
     } finally {
@@ -1216,9 +1228,15 @@ export function ZeroSchedulePage() {
   };
 
   const handleDelete = (entry: CombinedEntry) => {
-    if (entry.name === undefined) {
+    setPendingDelete(entry);
+  };
+
+  const confirmDelete = () => {
+    const entry = pendingDelete;
+    if (entry?.name === undefined) {
       return;
     }
+    setPendingDelete(null);
     detach(
       deleteSchedule({ name: entry.name, agentId: entry.agentId }),
       Reason.DomCallback,
