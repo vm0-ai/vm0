@@ -23,6 +23,7 @@ import { googleCalendarFirewall } from "./google-calendar.generated";
 import { googleDocsFirewall } from "./google-docs.generated";
 import { googleDriveFirewall } from "./google-drive.generated";
 import { googleSheetsFirewall } from "./google-sheets.generated";
+import { hubspotFirewall } from "./hubspot.generated";
 import { jiraFirewall } from "./jira.generated";
 import { linearFirewall } from "./linear.generated";
 import { notionFirewall } from "./notion.generated";
@@ -53,6 +54,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   "google-docs": googleDocsFirewall,
   "google-drive": googleDriveFirewall,
   "google-sheets": googleSheetsFirewall,
+  hubspot: hubspotFirewall,
   jira: jiraFirewall,
   linear: linearFirewall,
   notion: notionFirewall,

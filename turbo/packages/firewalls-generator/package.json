@@ -22,6 +22,7 @@
     "generate:google-docs": "tsx src/index.ts google-docs",
     "generate:google-drive": "tsx src/index.ts google-drive",
     "generate:google-sheets": "tsx src/index.ts google-sheets",
+    "generate:hubspot": "tsx src/index.ts hubspot",
     "generate:jira": "tsx src/index.ts jira",
     "generate:linear": "tsx src/index.ts linear",
     "generate:notion": "tsx src/index.ts notion",
