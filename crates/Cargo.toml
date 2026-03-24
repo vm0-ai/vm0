@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "ably-subscriber",
+    "block-cow",
     "guest-agent",
     "guest-common",
     "guest-download",
@@ -23,6 +24,7 @@ edition = "2024"
 [workspace.dependencies]
 # Internal crates
 ably-subscriber = { path = "ably-subscriber" }
+block-cow = { path = "block-cow" }
 guest-agent = { path = "guest-agent" }
 guest-common = { path = "guest-common" }
 guest-download = { path = "guest-download" }
