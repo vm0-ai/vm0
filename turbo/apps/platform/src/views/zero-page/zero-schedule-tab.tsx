@@ -9,6 +9,7 @@ import {
 
 interface ZeroScheduleSaveParams {
   prompt: string;
+  description?: string;
   freq: string;
   date: string;
   hour: number;

@@ -423,6 +423,7 @@ interface ScheduleItem {
   intervalSeconds: number | null;
   timezone: string;
   prompt: string;
+  description: string | null;
   createdAt: string;
 }
 
@@ -514,6 +515,7 @@ export const zeroJobScheduleEntries$ = computed((get) => {
         id: s.id,
         time: scheduleToTimeString(s),
         prompt: s.prompt,
+        description: s.description,
         enabled: s.enabled,
         name: s.name,
         intervalSeconds: s.intervalSeconds,
@@ -560,6 +562,7 @@ const fetchZeroJobSchedule$ = command(async ({ get, set }) => {
 
 export interface ZeroJobScheduleSaveParams {
   prompt: string;
+  description?: string;
   freq: string;
   date: string;
   hour: number;
@@ -586,6 +589,7 @@ export const saveZeroJobSchedule$ = command(
       name: scheduleName,
       timezone: params.timezone,
       prompt: params.prompt.trim(),
+      ...(params.description && { description: params.description.trim() }),
       enabled: true,
     };
 
