@@ -57,9 +57,8 @@ const fetchOrgAgents$ = command(async ({ get, set }) => {
   }
   const data = (await resp.json()) as { composes: ComposeListItem[] };
   const agents: AgentOption[] = data.composes.map((c) => ({
-    name: c.name,
-    displayName:
-      c.displayName ?? c.name.charAt(0).toUpperCase() + c.name.slice(1),
+    name: c.id,
+    displayName: c.displayName ?? c.id,
   }));
   set(internalOrgAgents$, agents);
 });
@@ -160,8 +159,7 @@ export const zeroActivityAvailableAgents$ = computed(async (get) => {
     const agent = orgAgents.find((a) => a.name === name);
     return {
       name,
-      displayName:
-        agent?.displayName ?? name.charAt(0).toUpperCase() + name.slice(1),
+      displayName: agent?.displayName ?? name,
     };
   });
 });

@@ -56,7 +56,6 @@ export async function GET() {
   const composes = await globalThis.services.db
     .select({
       id: agentComposes.id,
-      name: agentComposes.name,
       headVersionId: agentComposes.headVersionId,
       updatedAt: agentComposes.updatedAt,
       displayName: zeroAgents.displayName,
@@ -77,7 +76,6 @@ export async function GET() {
   return NextResponse.json({
     composes: composes.map((c) => ({
       id: c.id,
-      name: c.name,
       displayName: c.displayName ?? null,
       description: c.description ?? null,
       sound: c.sound ?? null,

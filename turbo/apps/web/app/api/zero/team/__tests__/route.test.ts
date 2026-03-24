@@ -57,7 +57,6 @@ describe("GET /api/zero/team", () => {
 
     expect(response.status).toBe(200);
     expect(data.composes).toHaveLength(1);
-    expect(data.composes[0].name).toBe(composeName);
     expect(data.composes[0].id).toBeDefined();
     expect(data.composes[0].updatedAt).toBeDefined();
   });
@@ -80,8 +79,8 @@ describe("GET /api/zero/team", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    const names = data.composes.map((c: { name: string }) => c.name);
-    expect(names).toContain(myComposeName);
-    expect(names).not.toContain(otherComposeName);
+    const ids = data.composes.map((c: { id: string }) => c.id);
+    expect(ids).toHaveLength(1);
+    expect(ids[0]).toBeDefined();
   });
 });

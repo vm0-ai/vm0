@@ -62,18 +62,18 @@ function SortablePinnedAgent({
       className="flex items-center gap-2 px-1 py-2 rounded-lg hover:bg-accent transition-colors group"
     >
       <AgentAvatarImg
-        name={agent.name}
-        alt={agent.displayName ?? agent.name}
+        name={agent.id}
+        alt={agent.displayName ?? agent.id}
         className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
       />
       <span className="text-sm text-foreground min-w-0 flex-1 truncate">
-        {agent.displayName ?? agent.name}
+        {agent.displayName ?? agent.id}
       </span>
       <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
         <button
           type="button"
           className="shrink-0 flex h-8 w-8 items-center justify-center rounded-lg cursor-grab active:cursor-grabbing touch-none text-muted-foreground transition-colors hover:bg-muted-foreground/12 hover:text-foreground dark:hover:bg-muted-foreground/18"
-          aria-label={`Reorder ${agent.displayName ?? agent.name}`}
+          aria-label={`Reorder ${agent.displayName ?? agent.id}`}
           {...attributes}
           {...listeners}
         >
@@ -83,7 +83,7 @@ function SortablePinnedAgent({
           type="button"
           className="shrink-0 flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted-foreground/12 hover:text-foreground dark:hover:bg-muted-foreground/18"
           onClick={onUnpin}
-          aria-label={`Unpin ${agent.displayName ?? agent.name}`}
+          aria-label={`Unpin ${agent.displayName ?? agent.id}`}
         >
           <IconX size={16} stroke={2} />
         </button>
@@ -235,12 +235,12 @@ export function ManagePinnedAgentsDialog({
                   className="group flex items-center gap-2 px-1 py-2 rounded-lg hover:bg-accent transition-colors"
                 >
                   <AgentAvatarImg
-                    name={agent.name}
-                    alt={agent.displayName ?? agent.name}
+                    name={agent.id}
+                    alt={agent.displayName ?? agent.id}
                     className="h-8 w-8 shrink-0 rounded-lg object-cover object-top opacity-60"
                   />
                   <span className="text-sm text-muted-foreground flex-1 truncate">
-                    {agent.displayName ?? agent.name}
+                    {agent.displayName ?? agent.id}
                   </span>
                   <TooltipProvider delayDuration={200}>
                     <Tooltip>
@@ -308,7 +308,7 @@ export function ChatListDialog({
   subagents: SubagentInfo[];
   pinnedIds: string[];
   onPinnedIdsChange: (ids: string[]) => void;
-  onNewChat?: (agent: { id: string; name: string } | null) => void;
+  onNewChat?: (agentId: string | null) => void;
 }) {
   const [query, setQuery] = useState("");
 
@@ -329,14 +329,14 @@ export function ChatListDialog({
   const filteredPinned = trimmedQuery
     ? pinned.filter(
         (a) =>
-          a.name.toLowerCase().includes(trimmedQuery) ||
+          a.id.toLowerCase().includes(trimmedQuery) ||
           (a.displayName ?? "").toLowerCase().includes(trimmedQuery),
       )
     : pinned;
   const filteredUnpinned = trimmedQuery
     ? unpinned.filter(
         (a) =>
-          a.name.toLowerCase().includes(trimmedQuery) ||
+          a.id.toLowerCase().includes(trimmedQuery) ||
           (a.displayName ?? "").toLowerCase().includes(trimmedQuery),
       )
     : unpinned;
@@ -367,10 +367,10 @@ export function ChatListDialog({
     onPinnedIdsChange(next);
   };
 
-  const handleChat = (agent: { id: string; name: string } | null) => {
+  const handleChat = (agentId: string | null) => {
     onOpenChange(false);
     setQuery("");
-    onNewChat?.(agent);
+    onNewChat?.(agentId);
   };
 
   return (
@@ -485,18 +485,16 @@ export function ChatListDialog({
                   >
                     <button
                       type="button"
-                      onClick={() =>
-                        handleChat({ id: agent.id, name: agent.name })
-                      }
+                      onClick={() => handleChat(agent.id)}
                       className="flex items-center gap-2 flex-1 min-w-0"
                     >
                       <AgentAvatarImg
-                        name={agent.name}
-                        alt={agent.displayName ?? agent.name}
+                        name={agent.id}
+                        alt={agent.displayName ?? agent.id}
                         className="h-8 w-8 shrink-0 rounded-lg object-cover object-top opacity-60"
                       />
                       <span className="text-sm text-muted-foreground truncate">
-                        {agent.displayName ?? agent.name}
+                        {agent.displayName ?? agent.id}
                       </span>
                     </button>
                     <TooltipProvider delayDuration={200}>

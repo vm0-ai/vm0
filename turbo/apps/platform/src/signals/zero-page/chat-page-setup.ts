@@ -25,8 +25,8 @@ export const setupChatPage$ = command(
     signal.throwIfAborted();
     if (rawName) {
       L.info("redirecting to /talk/", rawName);
-      set(navigateTo$, "/talk/:name", {
-        pathParams: { name: rawName },
+      set(navigateTo$, "/talk/:id", {
+        pathParams: { id: rawName },
         replace: true,
       });
     }

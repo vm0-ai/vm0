@@ -57,8 +57,19 @@ const router = tsr.router(zeroRunsMainContract, {
     if (isAuthError(authCtx)) return authCtx;
 
     try {
-      // Resolve agentId from agentComposeId
-      const composeId = body.agentComposeId ?? "";
+      const composeId = body.agentId;
+      if (!composeId) {
+        return {
+          status: 400 as const,
+          body: {
+            error: {
+              message: "agentId is required",
+              code: "BAD_REQUEST" as const,
+            },
+          },
+        };
+      }
+
       const [agent] = await globalThis.services.db
         .select({ id: zeroAgents.id })
         .from(agentComposes)

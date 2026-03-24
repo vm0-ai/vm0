@@ -43,7 +43,7 @@ describe("GET /api/zero/sessions/:id", () => {
 
     const data = await response.json();
     expect(data.id).toBe(session.id);
-    expect(data.agentComposeId).toBe(compose.composeId);
+    expect(data.agentId).toBe(compose.composeId);
     expect(data.createdAt).toBeDefined();
     expect(data.updatedAt).toBeDefined();
   });

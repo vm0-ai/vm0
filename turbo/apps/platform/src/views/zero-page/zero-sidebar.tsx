@@ -465,7 +465,7 @@ function RecentChatSection({
   recentSessionsError: string | null;
   selectedRecentId: string | null;
   onRecentSelect?: (id: string) => void;
-  onNewChat?: (agent: { id: string; name: string } | null) => void;
+  onNewChat?: (agentId: string | null) => void;
   newChatDisabled?: boolean;
 }) {
   const searchOpen = useGet(sidebarSearchOpen$);
@@ -481,7 +481,7 @@ function RecentChatSection({
 
   const agentLabel = currentChatAgentId
     ? (subagents.find((a) => a.id === currentChatAgentId)?.displayName ??
-      subagents.find((a) => a.id === currentChatAgentId)?.name ??
+      subagents.find((a) => a.id === currentChatAgentId)?.id ??
       displayName)
     : displayName;
 
@@ -494,10 +494,7 @@ function RecentChatSection({
 
   const handleNewChat = onNewChat
     ? () => {
-        const agent = currentChatAgentId
-          ? subagents.find((a) => a.id === currentChatAgentId)
-          : null;
-        onNewChat(agent ?? null);
+        onNewChat(currentChatAgentId ?? null);
       }
     : undefined;
 
@@ -642,7 +639,7 @@ function TalkToSection({
   pinnedIds: string[];
   subagents: SubagentInfo[];
   onPinnedIdsChange: (ids: string[]) => void;
-  onNewChat?: (agent: { id: string; name: string } | null) => void;
+  onNewChat?: (agentId: string | null) => void;
 }) {
   const [chatListOpen, setChatListOpen] = useState(false);
 
@@ -682,10 +679,10 @@ function TalkToSection({
             selectedAgentIdFromChat === null;
           return (
             <Link
-              pathname={defaultAgentRawName ? "/talk/:name" : "/"}
+              pathname={defaultAgentRawName ? "/talk/:id" : "/"}
               options={
                 defaultAgentRawName
-                  ? { pathParams: { name: defaultAgentRawName } }
+                  ? { pathParams: { id: defaultAgentRawName } }
                   : undefined
               }
               className={`flex w-full h-8 shrink-0 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
@@ -715,8 +712,8 @@ function TalkToSection({
           return (
             <div key={agent.id} className="group relative">
               <Link
-                pathname="/talk/:name"
-                options={{ pathParams: { name: agent.name } }}
+                pathname="/talk/:id"
+                options={{ pathParams: { id: agent.id } }}
                 className={`flex w-full h-8 shrink-0 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
                   isPrimarySelected
                     ? "bg-sidebar-active text-sidebar-primary font-medium"
@@ -726,12 +723,12 @@ function TalkToSection({
                 }`}
               >
                 <AgentAvatarImg
-                  name={agent.name}
-                  alt={agent.displayName ?? agent.name}
+                  name={agent.id}
+                  alt={agent.displayName ?? agent.id}
                   className="h-5 w-5 shrink-0 rounded-md object-cover object-top"
                 />
                 <span className="truncate">
-                  {agent.displayName ?? agent.name}
+                  {agent.displayName ?? agent.id}
                 </span>
               </Link>
               <div className="absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
@@ -825,7 +822,6 @@ export function ZeroSidebar() {
     subagentsLoadable.state === "hasData"
       ? subagentsLoadable.data.map((a) => ({
           id: a.id,
-          name: a.name,
           displayName: a.displayName,
         }))
       : [];
@@ -843,8 +839,8 @@ export function ZeroSidebar() {
   const recentSessionsError = useGet(zeroSessionListError$);
   const createNewChat = useSet(createNewChatSession$);
   const creatingNewSession = useGet(zeroCreatingNewSession$);
-  const onNewChat = (agent: { id: string; name: string } | null) => {
-    detach(createNewChat(agent?.id ?? null), Reason.DomCallback);
+  const onNewChat = (agentId: string | null) => {
+    detach(createNewChat(agentId), Reason.DomCallback);
   };
   const displayName = agentName || "Zero";
   const pinnedIdsLoadable = useLastLoadable(pinnedAgentIds$);

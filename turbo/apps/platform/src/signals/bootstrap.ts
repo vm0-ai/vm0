@@ -41,11 +41,11 @@ const ROUTE_CONFIG = [
     setup: setupAuthPageWrapper(setupChatSessionPage$),
   },
   {
-    path: "/talk/:name",
+    path: "/talk/:id",
     setup: setupAuthPageWrapper(setupTalkPage$),
   },
   {
-    path: "/team/:name",
+    path: "/team/:id",
     setup: setupAuthPageWrapper(setupTeamDetailPage$),
   },
   {

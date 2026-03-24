@@ -25,8 +25,15 @@ const router = tsr.router(zeroSessionsByIdContract, {
     const { org } = await resolveOrg(authCtx, orgSlug);
 
     try {
-      const session = await getSessionResponse(params.id, userId, org.orgId);
-      return { status: 200 as const, body: session };
+      const { agentComposeId, ...rest } = await getSessionResponse(
+        params.id,
+        userId,
+        org.orgId,
+      );
+      return {
+        status: 200 as const,
+        body: { ...rest, agentId: agentComposeId },
+      };
     } catch (error) {
       if (isNotFound(error)) {
         return {

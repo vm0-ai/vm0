@@ -53,7 +53,7 @@ describe("zeroAddedConnectors$", () => {
 
     // Sub-agent has github only
     server.use(
-      http.get("*/api/zero/agents/cycling-coach", () => {
+      http.get("*/api/zero/agents/sub-agent-compose-id", () => {
         return HttpResponse.json({
           name: "cycling-coach",
           agentId: "sub-agent-compose-id",
@@ -69,7 +69,6 @@ describe("zeroAddedConnectors$", () => {
           composes: [
             {
               id: "mock-compose-id",
-              name: "zero",
               displayName: null,
               headVersionId: "version_1",
               updatedAt: "2024-01-01T00:00:00Z",
@@ -77,7 +76,6 @@ describe("zeroAddedConnectors$", () => {
             },
             {
               id: "sub-agent-compose-id",
-              name: "cycling-coach",
               displayName: "Cycling Coach",
               headVersionId: "version_2",
               updatedAt: "2024-01-01T00:00:00Z",
@@ -90,13 +88,10 @@ describe("zeroAddedConnectors$", () => {
 
     await setupPage({
       context,
-      path: "/talk/cycling-coach",
+      path: "/talk/sub-agent-compose-id",
       withoutRender: true,
     });
-    await context.store.set(setZeroChatAgent$, {
-      id: "sub-agent-compose-id",
-      name: "cycling-coach",
-    });
+    await context.store.set(setZeroChatAgent$, "sub-agent-compose-id");
 
     const connectors = await context.store.get(zeroAddedConnectors$);
     // Only sub-agent connectors (server already filters seed skills)

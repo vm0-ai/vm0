@@ -30,7 +30,7 @@ export function ZeroTalkPage() {
   const selectedSubagent = currentChatAgentId
     ? subagents.find((a) => a.id === currentChatAgentId)
     : null;
-  const subagentAvatarSrc = useAgentAvatar(selectedSubagent?.name ?? "");
+  const subagentAvatarSrc = useAgentAvatar(selectedSubagent?.id ?? "");
   const chatAvatarSrc = selectedSubagent ? subagentAvatarSrc : zeroAvatarSrc;
 
   const agentDisplayNameLoadable = useLastLoadable(agentDisplayName$);
@@ -39,7 +39,7 @@ export function ZeroTalkPage() {
       ? agentDisplayNameLoadable.data
       : "Zero";
   const chatAgentName = selectedSubagent
-    ? (selectedSubagent.displayName ?? selectedSubagent.name)
+    ? (selectedSubagent.displayName ?? selectedSubagent.id)
     : agentDisplayName;
 
   const defaultAgentIdLoadable = useLastLoadable(defaultAgentId$);
@@ -47,26 +47,26 @@ export function ZeroTalkPage() {
     defaultAgentIdLoadable.state === "hasData"
       ? defaultAgentIdLoadable.data
       : null;
-  const resolvedAgentName = selectedSubagent?.name ?? defaultRawName;
+  const resolvedAgentId = selectedSubagent?.id ?? defaultRawName;
 
   const navigateTo = useSet(navigateTo$);
   const sendMessage = useSet(sendZeroChatMessage$);
   const startNewSession = useSet(startNewZeroSession$);
 
   const handleNavigateToMeet = (tab?: string) => {
-    if (resolvedAgentName) {
+    if (resolvedAgentId) {
       const searchParams = tab ? new URLSearchParams({ tab }) : undefined;
-      navigateTo("/team/:name", {
-        pathParams: { name: resolvedAgentName },
+      navigateTo("/team/:id", {
+        pathParams: { id: resolvedAgentId },
         searchParams,
       });
     }
   };
 
   const handleChatAvatarClick = () => {
-    if (resolvedAgentName) {
-      navigateTo("/team/:name", {
-        pathParams: { name: resolvedAgentName },
+    if (resolvedAgentId) {
+      navigateTo("/team/:id", {
+        pathParams: { id: resolvedAgentId },
       });
     }
   };

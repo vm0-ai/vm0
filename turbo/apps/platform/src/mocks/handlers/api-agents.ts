@@ -14,7 +14,6 @@ export const apiAgentsHandlers = [
       composes: [
         {
           id: "mock-compose-id",
-          name: "zero",
           displayName: null,
           headVersionId: "version_1",
           updatedAt: "2024-01-01T00:00:00Z",
@@ -30,7 +29,6 @@ export const apiAgentsHandlers = [
       composes: [
         {
           id: "mock-compose-id",
-          name: "zero",
           displayName: null,
           headVersionId: "version_1",
           updatedAt: "2024-01-01T00:00:00Z",

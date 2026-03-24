@@ -25,7 +25,7 @@ export function ZeroChatSessionPageWrapper() {
   const selectedSubagent = currentChatAgentId
     ? subagents.find((a) => a.id === currentChatAgentId)
     : null;
-  const subagentAvatarSrc = useAgentAvatar(selectedSubagent?.name ?? "");
+  const subagentAvatarSrc = useAgentAvatar(selectedSubagent?.id ?? "");
   const chatAvatarSrc = selectedSubagent ? subagentAvatarSrc : zeroAvatarSrc;
 
   const agentDisplayNameLoadable = useLastLoadable(agentDisplayName$);
@@ -34,7 +34,7 @@ export function ZeroChatSessionPageWrapper() {
       ? agentDisplayNameLoadable.data
       : "Zero";
   const chatAgentName = selectedSubagent
-    ? (selectedSubagent.displayName ?? selectedSubagent.name)
+    ? (selectedSubagent.displayName ?? selectedSubagent.id)
     : agentDisplayName;
 
   const defaultAgentIdLoadable = useLastLoadable(defaultAgentId$);
@@ -42,23 +42,23 @@ export function ZeroChatSessionPageWrapper() {
     defaultAgentIdLoadable.state === "hasData"
       ? defaultAgentIdLoadable.data
       : null;
-  const resolvedAgentName = selectedSubagent?.name ?? defaultRawName;
+  const resolvedAgentId = selectedSubagent?.id ?? defaultRawName;
 
   const navigateTo = useSet(navigateTo$);
 
   const handleNavigateToSchedule = () => {
-    if (resolvedAgentName) {
-      navigateTo("/team/:name", {
-        pathParams: { name: resolvedAgentName },
+    if (resolvedAgentId) {
+      navigateTo("/team/:id", {
+        pathParams: { id: resolvedAgentId },
         searchParams: new URLSearchParams({ tab: "schedule" }),
       });
     }
   };
 
   const handleChatAvatarClick = () => {
-    if (resolvedAgentName) {
-      navigateTo("/team/:name", {
-        pathParams: { name: resolvedAgentName },
+    if (resolvedAgentId) {
+      navigateTo("/team/:id", {
+        pathParams: { id: resolvedAgentId },
       });
     }
   };

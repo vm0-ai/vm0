@@ -12,10 +12,10 @@ export const AGENT_AVATARS = [
   avatar4Img,
 ] as const;
 
-function getAgentAvatar(name: string): string {
+function getAgentAvatar(id: string): string {
   let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = (hash * 31 + name.charCodeAt(i)) | 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash * 31 + id.charCodeAt(i)) | 0;
   }
   return AGENT_AVATARS[Math.abs(hash) % AGENT_AVATARS.length];
 }
@@ -23,9 +23,9 @@ function getAgentAvatar(name: string): string {
 /**
  * Reactive hook that returns the agent avatar, respecting any user override.
  */
-export function useAgentAvatar(name: string): string {
+export function useAgentAvatar(id: string): string {
   const overrides = useGet(agentAvatarOverrides$);
-  return overrides[name] ?? getAgentAvatar(name);
+  return overrides[id] ?? getAgentAvatar(id);
 }
 
 /** Reactive avatar image that respects user overrides. */
@@ -44,6 +44,5 @@ export function AgentAvatarImg({
 
 export interface SubagentInfo {
   id: string;
-  name: string;
   displayName?: string | null;
 }

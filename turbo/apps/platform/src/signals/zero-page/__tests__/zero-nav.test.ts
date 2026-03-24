@@ -158,18 +158,12 @@ describe("zero-nav", () => {
 
   describe("setZeroChatAgent$ and zeroChatAgentId$", () => {
     it("should set and read agent ID", () => {
-      context.store.set(setZeroChatAgent$, {
-        id: "agent-123",
-        name: "test-agent",
-      });
+      context.store.set(setZeroChatAgent$, "agent-123");
       expect(context.store.get(zeroChatAgentId$)).toBe("agent-123");
     });
 
     it("should clear agent ID when set to null", () => {
-      context.store.set(setZeroChatAgent$, {
-        id: "agent-123",
-        name: "test-agent",
-      });
+      context.store.set(setZeroChatAgent$, "agent-123");
       context.store.set(setZeroChatAgent$, null);
       expect(context.store.get(zeroChatAgentId$)).toBeNull();
     });

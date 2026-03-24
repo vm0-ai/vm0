@@ -32,39 +32,39 @@ export const loadInitialData$ = command(
 );
 
 /**
- * Resolve an agent by name and switch to it, auto-pinning if needed.
+ * Resolve an agent by ID and switch to it, auto-pinning if needed.
  *
- * - If agentName matches the default agent, switches to null (default).
- * - If agentName is found among subagents, switches to it.
- * - If agentName is unknown, switches to null and redirects to default.
- * - If agentName is null, switches to null (no agent).
+ * - If agentId matches the default agent, switches to null (default).
+ * - If agentId is found among subagents, switches to it.
+ * - If agentId is unknown, switches to null and redirects to default.
+ * - If agentId is null, switches to null (no agent).
  *
  * Used by setupTalkPage$ to avoid duplicating
  * the lookup / pin / redirect logic.
  */
-export async function resolveAgentByName(
+export async function resolveAgentById(
   get: Getter,
   set: Setter,
   signal: AbortSignal,
-  agentName: string | null,
+  agentId: string | null,
 ): Promise<void> {
-  if (agentName) {
+  if (agentId) {
     const subagents = await get(zeroSubagents$);
     const rawDefaultName = await get(defaultAgentId$);
     signal.throwIfAborted();
 
-    if (agentName === rawDefaultName) {
+    if (agentId === rawDefaultName) {
       set(switchActiveAgent$, null);
     } else {
-      const agent = subagents.find((a) => a.name === agentName);
+      const agent = subagents.find((a) => a.id === agentId);
       if (agent) {
-        set(switchActiveAgent$, { id: agent.id, name: agent.name });
+        set(switchActiveAgent$, agent.id);
       } else {
         // Unknown agent → redirect to default
         set(switchActiveAgent$, null);
         if (rawDefaultName) {
-          set(navigateTo$, "/talk/:name", {
-            pathParams: { name: rawDefaultName },
+          set(navigateTo$, "/talk/:id", {
+            pathParams: { id: rawDefaultName },
             replace: true,
           });
         }

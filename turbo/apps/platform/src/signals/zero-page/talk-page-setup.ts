@@ -9,7 +9,7 @@ import { logger } from "../log.ts";
 import { agentDisplayName$, defaultAgentId$ } from "./zero-agent-name.ts";
 import { zeroSubagents$ } from "./zero-agents.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
-import { loadInitialData$, resolveAgentByName } from "./zero-page.ts";
+import { loadInitialData$, resolveAgentById } from "./zero-page.ts";
 
 const L = logger("TalkPage");
 
@@ -24,28 +24,26 @@ export const setupTalkPage$ = command(
       return;
     }
 
-    // Resolve agent from /talk/:name
-    const params = get(pathParams$) as { name?: string } | undefined;
-    const agentName = params?.name ?? null;
-    L.info("resolveAgent talk:", agentName);
+    // Resolve agent from /talk/:id
+    const params = get(pathParams$) as { id?: string } | undefined;
+    const agentId = params?.id ?? null;
+    L.info("resolveAgent talk:", agentId);
 
-    await resolveAgentByName(get, set, signal, agentName);
+    await resolveAgentById(get, set, signal, agentId);
 
     // Update title with resolved agent display name
-    if (agentName) {
+    if (agentId) {
       const rawDefaultName = await get(defaultAgentId$);
       signal.throwIfAborted();
-      if (agentName === rawDefaultName) {
+      if (agentId === rawDefaultName) {
         const displayName = await get(agentDisplayName$);
         signal.throwIfAborted();
         set(updateDocumentTitle$, displayName);
       } else {
         const subagents = await get(zeroSubagents$);
         signal.throwIfAborted();
-        const agent = subagents.find((a) => a.name === agentName);
-        const displayName =
-          agent?.displayName ??
-          agentName.charAt(0).toUpperCase() + agentName.slice(1);
+        const agent = subagents.find((a) => a.id === agentId);
+        const displayName = agent?.displayName ?? "Agent";
         set(updateDocumentTitle$, displayName);
       }
     }

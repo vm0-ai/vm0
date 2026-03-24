@@ -20,7 +20,6 @@ import {
   setZeroChatAgent$,
   zeroSessionId$,
 } from "./zero-nav.ts";
-import { agentsList$ } from "./agents-list.ts";
 import { RUN_ERROR_GUIDANCE, type ChatThreadListItem } from "@vm0/core";
 
 const L = logger("ZeroChat");
@@ -657,12 +656,10 @@ export const fetchZeroSessionList$ = command(async ({ get, set }) => {
  * Sets the agent identity AND refreshes the session list atomically.
  * All callers that need to change the active agent should use this.
  */
-export const switchActiveAgent$ = command(
-  ({ set }, agent: { id: string; name: string } | null) => {
-    set(setZeroChatAgent$, agent);
-    detach(set(fetchZeroSessionList$), Reason.DomCallback);
-  },
-);
+export const switchActiveAgent$ = command(({ set }, agentId: string | null) => {
+  set(setZeroChatAgent$, agentId);
+  detach(set(fetchZeroSessionList$), Reason.DomCallback);
+});
 
 /** Resolve which agent to activate based on the thread's agentId. */
 async function syncAgentForThread(
@@ -676,12 +673,7 @@ async function syncAgentForThread(
     const isDefault = agentId === status.defaultAgentId;
     const newAgentId = isDefault ? null : agentId;
     if (newAgentId !== currentAgentId) {
-      const agentName =
-        newAgentId && get(agentsList$).find((a) => a.id === newAgentId)?.name;
-      set(
-        switchActiveAgent$,
-        newAgentId ? { id: newAgentId, name: agentName ?? "" } : null,
-      );
+      set(switchActiveAgent$, newAgentId ?? null);
     } else if (get(internalSessionList$).length === 0) {
       detach(set(fetchZeroSessionList$), Reason.DomCallback);
     }

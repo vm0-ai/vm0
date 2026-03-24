@@ -20,7 +20,7 @@ function isValidTab(tab: string): tab is ZeroNavId {
 
 /**
  * Active zero nav id, derived from the URL path `/:tab`.
- * `/`, `/chat`, `/chat/:sessionId`, and `/talk/:name`
+ * `/`, `/chat`, `/chat/:sessionId`, and `/talk/:id`
  * all resolve to "chat".
  * Unknown paths resolve to "not-found".
  */
@@ -38,7 +38,7 @@ export const zeroActiveId$ = computed((get): ZeroNavId => {
 
 /**
  * Session ID extracted from `/chat/:sessionId`.
- * Returns null when on `/`, `/chat`, or `/talk/:name`.
+ * Returns null when on `/`, `/chat`, or `/talk/:id`.
  */
 export const zeroSessionId$ = computed((get): string | null => {
   const path = get(pathname$);
@@ -47,7 +47,7 @@ export const zeroSessionId$ = computed((get): string | null => {
 });
 
 /**
- * Agent name extracted from `/talk/:name`.
+ * Agent name extracted from `/talk/:id`.
  * Returns null when chatting with the default agent.
  */
 export const zeroChatAgentName$ = computed((get): string | null => {
@@ -88,15 +88,13 @@ export const setZeroActiveId$ = command(({ set }, id: ZeroNavId) => {
 const internalTalkAgentResolved$ = state(false);
 
 /**
- * Set the chat agent ID and name (in-memory).
+ * Set the chat agent ID (in-memory).
  * Pass null to clear (chat with default agent).
  */
-export const setZeroChatAgent$ = command(
-  ({ set }, agent: { id: string; name: string } | null) => {
-    set(internalChatAgentId$, agent?.id ?? null);
-    set(internalTalkAgentResolved$, true);
-  },
-);
+export const setZeroChatAgent$ = command(({ set }, agentId: string | null) => {
+  set(internalChatAgentId$, agentId);
+  set(internalTalkAgentResolved$, true);
+});
 
 /**
  * Navigate to a specific chat session — `/chat/:sessionId`.

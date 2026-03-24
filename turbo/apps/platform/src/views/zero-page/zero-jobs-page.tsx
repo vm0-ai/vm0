@@ -109,8 +109,8 @@ export function ZeroJobsPage() {
           {/* Zero — full width */}
           {rawAgentName ? (
             <Link
-              pathname="/team/:name"
-              options={{ pathParams: { name: rawAgentName } }}
+              pathname="/team/:id"
+              options={{ pathParams: { id: rawAgentName } }}
               className="block no-underline text-inherit"
             >
               <Card className="zero-card cursor-pointer hover:bg-muted/30 transition-colors">
@@ -257,9 +257,9 @@ export function ZeroJobsPage() {
 
               {agents.map((agent) => (
                 <Link
-                  key={agent.name}
-                  pathname="/team/:name"
-                  options={{ pathParams: { name: agent.name } }}
+                  key={agent.id}
+                  pathname="/team/:id"
+                  options={{ pathParams: { id: agent.id } }}
                   className="block no-underline text-inherit"
                 >
                   <AgentCard agent={agent} />
@@ -365,13 +365,14 @@ function AgentCard({
   agent,
 }: {
   agent: {
+    id: string;
     name: string;
     displayName?: string | null;
     description?: string | null;
   };
 }) {
-  const avatarSrc = useAgentAvatar(agent.name);
-  const displayName = agent.displayName ?? agent.name;
+  const avatarSrc = useAgentAvatar(agent.id);
+  const displayName = agent.displayName ?? agent.id;
   return (
     <Card className="zero-card cursor-pointer flex flex-col hover:bg-muted/30 transition-colors h-full">
       <CardContent className="p-5 flex flex-col flex-1 gap-3">

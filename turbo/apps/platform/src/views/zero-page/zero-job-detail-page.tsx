@@ -72,7 +72,7 @@ import { ZeroNoPermissionIllustration } from "./components/zero-no-permission-il
 // ---------------------------------------------------------------------------
 
 interface ZeroJobDetailPageProps {
-  agentName: string;
+  agentId: string;
   /** When set, this is the default agent — use this avatar instead of agent avatar. */
   zeroAvatarSrc?: string;
   /** Cycle the default agent's avatar. */
@@ -118,13 +118,7 @@ function isNotFoundError(error: string): boolean {
   return /not found|404|no(t| )exist/i.test(error);
 }
 
-function DetailError({
-  error,
-  agentName,
-}: {
-  error: string;
-  agentName: string;
-}) {
+function DetailError({ error, agentId }: { error: string; agentId: string }) {
   if (isNotFoundError(error)) {
     return (
       <div className="flex flex-1 flex-col min-h-0">
@@ -137,7 +131,7 @@ function DetailError({
                 Agent not found
               </h2>
               <p className="text-sm text-muted-foreground">
-                The agent &quot;{agentName}&quot; doesn&apos;t exist or you
+                The agent &quot;{agentId}&quot; doesn&apos;t exist or you
                 don&apos;t have access to it.
               </p>
             </div>
@@ -163,8 +157,8 @@ function DetailError({
             <CardContent className="px-6 py-6 text-center space-y-3">
               <p className="text-sm text-destructive">{error}</p>
               <Link
-                pathname="/team/:name"
-                options={{ pathParams: { name: agentName } }}
+                pathname="/team/:id"
+                options={{ pathParams: { id: agentId } }}
                 className="zero-btn-morandi inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-accent"
               >
                 Retry
@@ -206,10 +200,10 @@ function extractAgentFields(
 // ---------------------------------------------------------------------------
 
 function JobConnectorsTab({
-  agentName,
+  agentId,
   agentDisplayName,
 }: {
-  agentName: string;
+  agentId: string;
   agentDisplayName: string;
 }) {
   const addedConnectors = useGet(zeroJobAddedConnectors$);
@@ -228,7 +222,7 @@ function JobConnectorsTab({
       addedConnectorsLoading={false}
       connectorsDirty={connectorsDirty}
       connectorsSaving={connectorsSaving}
-      agentName={agentName}
+      agentName={agentId}
       agentDisplayName={agentDisplayName}
       firewallPolicies={firewallPolicies}
       onFirewallPoliciesChange={setFirewallPolicies}
@@ -240,7 +234,7 @@ function JobConnectorsTab({
   );
 }
 
-function JobScheduleTab({ agentName }: { agentName: string }) {
+function JobScheduleTab({ agentId }: { agentId: string }) {
   const entriesLoadable = useLoadable(zeroJobScheduleEntries$);
   const scheduleError = useGet(zeroJobScheduleError$);
   const saveSchedule = useSet(saveZeroJobSchedule$);
@@ -252,7 +246,7 @@ function JobScheduleTab({ agentName }: { agentName: string }) {
 
   return (
     <ZeroScheduleTab
-      agentName={agentName}
+      agentName={agentId}
       entries={entries}
       scheduleError={scheduleError}
       onSave={saveSchedule}
@@ -313,18 +307,18 @@ function JobInstructionsTab() {
 // ---------------------------------------------------------------------------
 
 export function ZeroJobDetailPage({
-  agentName,
+  agentId,
   zeroAvatarSrc,
   onCycleAvatar,
 }: ZeroJobDetailPageProps) {
   const detail = useGet(zeroJobDetail$);
   const error = useGet(zeroJobDetailError$);
   const agents = useGet(agentsList$);
-  const listItem = agents.find((a) => a.name === agentName);
+  const listItem = agents.find((a) => a.id === agentId);
 
   const { description, displayName, sound } = extractAgentFields(
     detail,
-    agentName,
+    agentId,
     listItem,
   );
   const resolvedSound: Tone = (TONE_OPTIONS as readonly string[]).includes(
@@ -340,7 +334,7 @@ export function ZeroJobDetailPage({
   const statusLoadable = useLastLoadable(zeroOnboardingStatus$);
   const isDefaultAgent =
     statusLoadable.state === "hasData" &&
-    (statusLoadable.data.defaultAgentId === agentName ||
+    (statusLoadable.data.defaultAgentId === agentId ||
       statusLoadable.data.defaultAgentId === detail?.agentId);
 
   const handleDelete = async () => {
@@ -351,7 +345,7 @@ export function ZeroJobDetailPage({
   const activeTab = useGet(zeroJobActiveTab$);
   const setActiveTab = useSet(setZeroJobActiveTab$);
 
-  const agentAvatar = useAgentAvatar(agentName);
+  const agentAvatar = useAgentAvatar(agentId);
   const setAgentAvatarCmd = useSet(setAgentAvatar$);
   // Default agent uses the shared zero avatar; sub-agents use their own override.
   const currentAvatar = zeroAvatarSrc ?? agentAvatar;
@@ -362,7 +356,7 @@ export function ZeroJobDetailPage({
         agentAvatar as (typeof AGENT_AVATARS)[number],
       );
       const next = AGENT_AVATARS[(idx + 1) % AGENT_AVATARS.length];
-      setAgentAvatarCmd(agentName, next);
+      setAgentAvatarCmd(agentId, next);
     });
 
   if (!detail && !error) {
@@ -370,7 +364,7 @@ export function ZeroJobDetailPage({
   }
 
   if (error) {
-    return <DetailError error={error} agentName={agentName} />;
+    return <DetailError error={error} agentId={agentId} />;
   }
 
   return (
@@ -430,8 +424,8 @@ export function ZeroJobDetailPage({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Link
-                    pathname="/talk/:name"
-                    options={{ pathParams: { name: agentName } }}
+                    pathname="/talk/:id"
+                    options={{ pathParams: { id: agentId } }}
                     className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg px-4 transition-colors inline-flex items-center justify-center border text-sm font-medium hover:bg-accent"
                   >
                     <IconMessageCircle size={14} stroke={1.5} />
@@ -452,13 +446,10 @@ export function ZeroJobDetailPage({
 
       <main className="shrink-0 px-4 sm:px-6 pt-4 pb-16">
         {activeTab === "connectors" && (
-          <JobConnectorsTab
-            agentName={agentName}
-            agentDisplayName={displayName}
-          />
+          <JobConnectorsTab agentId={agentId} agentDisplayName={displayName} />
         )}
 
-        {activeTab === "schedule" && <JobScheduleTab agentName={displayName} />}
+        {activeTab === "schedule" && <JobScheduleTab agentId={displayName} />}
 
         {activeTab === "profile" && (
           <ZeroSettingsTab

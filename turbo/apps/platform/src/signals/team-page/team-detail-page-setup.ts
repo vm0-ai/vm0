@@ -14,15 +14,15 @@ import { initSlackOrg$ } from "../zero-page/zero-slack.ts";
 
 export const setupTeamDetailPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const params = get(pathParams$) as { name?: string } | undefined;
-    const agentName = params?.name ?? null;
-    set(updatePage$, createElement(ZeroTeamDetailPage, { agentName }));
+    const params = get(pathParams$) as { id?: string } | undefined;
+    const agentId = params?.id ?? null;
+    set(updatePage$, createElement(ZeroTeamDetailPage, { agentId }));
     set(updateDocumentTitle$, "Team");
     await Promise.all([
       set(fetchAgentsList$),
       set(initZeroOnboarding$, signal),
       set(initSlackOrg$),
-      agentName ? set(fetchZeroJobData$, agentName) : Promise.resolve(),
+      agentId ? set(fetchZeroJobData$, agentId) : Promise.resolve(),
     ]);
     signal.throwIfAborted();
 
@@ -31,12 +31,10 @@ export const setupTeamDetailPage$ = command(
     }
 
     // Update title with agent display name
-    if (agentName) {
+    if (agentId) {
       const agents = get(agentsList$);
-      const agent = agents.find((a) => a.name === agentName);
-      const displayName =
-        agent?.displayName ??
-        agentName.charAt(0).toUpperCase() + agentName.slice(1);
+      const agent = agents.find((a) => a.id === agentId);
+      const displayName = agent?.displayName ?? "Agent";
       set(updateDocumentTitle$, displayName);
     }
 

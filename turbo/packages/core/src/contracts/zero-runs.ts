@@ -17,16 +17,21 @@ import {
  * Fields not used by zero triggers are omitted:
  * triggerSource, artifactVersion, vars, secrets, volumeVersions.
  */
-const zeroRunRequestSchema = unifiedRunRequestSchema.omit({
-  triggerSource: true,
-  memoryName: true,
-  artifactName: true,
-  artifactVersion: true,
-  disallowedTools: true,
-  volumeVersions: true,
-  vars: true,
-  secrets: true,
-});
+const zeroRunRequestSchema = unifiedRunRequestSchema
+  .omit({
+    triggerSource: true,
+    memoryName: true,
+    artifactName: true,
+    artifactVersion: true,
+    disallowedTools: true,
+    volumeVersions: true,
+    vars: true,
+    secrets: true,
+    agentComposeId: true,
+  })
+  .extend({
+    agentId: z.string().optional(),
+  });
 
 const c = initContract();
 

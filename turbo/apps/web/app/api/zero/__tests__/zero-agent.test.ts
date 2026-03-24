@@ -44,7 +44,7 @@ describe("Zero Agent E2E: create → run → sandbox token access", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          agentComposeId: agent.agentId,
+          agentId: agent.agentId,
           prompt: "Hello agent",
         }),
       }),
