@@ -1,108 +1,52 @@
 ---
 title: Capabilities
-description: Control sandbox API access permissions for agents
+description: API capabilities for zero agents
 ---
 
-Capabilities control what API endpoints an agent can access from within its sandbox. By default, sandboxed agents cannot call the VM0 API. Adding capabilities grants specific permissions following the principle of least privilege.
+Capabilities control what API endpoints a zero agent can access from within its sandbox. Every zero agent automatically receives a `ZERO_TOKEN` with full capabilities — no configuration needed.
 
-<Callout type="warn">
-Capabilities are currently an experimental feature. The field name and available capabilities may change in future versions.
+## Available Capabilities
+
+| Capability | Description | Protected Routes |
+|-----------|-------------|-----------------|
+| `agent:read` | Read agent definitions | GET `/api/zero/agents/*` |
+| `agent:write` | Create, update, delete agents | POST/PUT/PATCH/DELETE `/api/zero/agents/*` |
+| `agent-run:read` | View runs and telemetry | GET `/api/zero/runs/*` |
+| `agent-run:write` | Cancel runs | POST `/api/zero/runs/*/cancel` |
+| `schedule:read` | View schedules | GET `/api/zero/schedules/*` |
+| `schedule:write` | Create and delete schedules | POST/DELETE `/api/zero/schedules/*` |
+| `slack:write` | Send Slack messages | POST `/api/zero/integrations/slack/message` |
+
+All capabilities follow the `{resource}:{action}` format where action is either `read` or `write`.
+
+## How It Works
+
+1. **Token generation** — When a zero agent run starts, a `ZERO_TOKEN` JWT is generated with all capabilities and the org context embedded
+2. **Environment injection** — The token is available as `$ZERO_TOKEN` environment variable inside the sandbox
+3. **Automatic usage** — The `zero` CLI uses this token automatically for all API calls
+4. **Per-request enforcement** — Each API request is checked against the token's capabilities
+
+<Callout type="info">
+No configuration needed. All zero agents receive all capabilities by default.
 </Callout>
 
-## How Capabilities Work
-
-1. **Define in `vm0.yaml`** - List the capabilities your agent needs under `experimental_capabilities`
-2. **Embedded in JWT** - When a run starts, capabilities are embedded in the sandbox token
-3. **Enforced per request** - Each API call from the sandbox is checked against the token's capabilities
+## Error Responses
 
 If a request lacks the required capability, the API returns a `403 Forbidden` response:
 
 ```json
 {
   "error": {
-    "message": "Missing required capability: artifact:read",
+    "message": "Missing required capability: agent:read",
     "code": "FORBIDDEN"
   }
 }
 ```
 
-## Available Capabilities
+## Token Priority
 
-| Capability | Category | Description |
-|------------|----------|-------------|
-| `agent:read` | Agent resources | Read agent composes and volumes |
-| `agent:write` | Agent resources | Create and update agent composes and volumes |
-| `artifact:read` | Runtime resources | Read artifacts and memories |
-| `artifact:write` | Runtime resources | Write artifacts and memories |
-| `agent-run:read` | Operational | List and view agent runs |
-| `agent-run:write` | Operational | Create and cancel agent runs |
-| `schedule:read` | Operational | List and view schedules |
-| `schedule:write` | Operational | Create, update, enable, and disable schedules |
+The `zero` CLI resolves authentication tokens in this order:
 
-All capabilities follow the `{resource}:{action}` format where action is either `read` or `write`.
-
-[Artifacts](/docs/core-concept/artifact) and [memories](/docs/core-concept/memory) are both runtime dynamic resources, so they share the `artifact:*` capability. Similarly, agent composes and [volumes](/docs/core-concept/volume) are agent static resources sharing the `agent:*` capability.
-
-<Callout type="info">
-Agent deletion is not available from sandbox. Deleting agents requires the CLI or web UI.
-</Callout>
-
-## Configuration
-
-Add capabilities to your agent in [`vm0.yaml`](/docs/reference/configuration/vm0-yaml):
-
-```yaml
-version: "1.0"
-
-agents:
-  my-agent:
-    framework: claude-code
-    instructions: AGENTS.md
-    experimental_capabilities:
-      - artifact:read
-      - artifact:write
-    environment:
-      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-```
-
-<Callout type="warn">
-Only the first agent's capabilities are used. This follows the current single-agent limitation of `vm0.yaml`.
-</Callout>
-
-## Example Configurations
-
-### Read-only access to artifacts
-
-An agent that reads artifacts but cannot modify them:
-
-```yaml
-experimental_capabilities:
-  - artifact:read
-```
-
-### Orchestrating sub-agents
-
-An agent that triggers and monitors other agent runs:
-
-```yaml
-experimental_capabilities:
-  - agent:read
-  - agent-run:read
-  - agent-run:write
-```
-
-### Full access
-
-An agent that needs complete API access:
-
-```yaml
-experimental_capabilities:
-  - agent:read
-  - agent:write
-  - artifact:read
-  - artifact:write
-  - agent-run:read
-  - agent-run:write
-  - schedule:read
-  - schedule:write
-```
+1. `$ZERO_TOKEN` (highest) — zero agent token with org context
+2. `$VM0_TOKEN` (fallback) — sandbox token for infra routes
+3. Config file (lowest) — manual authentication via `vm0 auth login`
