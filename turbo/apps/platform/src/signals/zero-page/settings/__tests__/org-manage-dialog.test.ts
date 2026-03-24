@@ -12,12 +12,12 @@ import { searchParams$ } from "../../../route.ts";
 const context = testContext();
 
 describe("checkSettingsParam$", () => {
-  it("should open dialog on providers tab when ?settings=providers is present", () => {
+  it("should open dialog on providers tab when ?settings=providers is present", async () => {
     const { store, signal } = context;
     createPushStateMock(signal);
     mockLocation({ pathname: "/", search: "?settings=providers" }, signal);
 
-    store.set(checkSettingsParam$);
+    await store.set(checkSettingsParam$);
 
     expect(store.get(orgManageDialogOpen$)).toBeTruthy();
     expect(store.get(activeTab$)).toBe("providers");
@@ -25,40 +25,40 @@ describe("checkSettingsParam$", () => {
     expect(store.get(searchParams$).has("settings")).toBeFalsy();
   });
 
-  it("should open dialog on billing tab when ?settings=billing is present", () => {
+  it("should open dialog on billing tab when ?settings=billing is present", async () => {
     const { store, signal } = context;
     createPushStateMock(signal);
     mockLocation({ pathname: "/", search: "?settings=billing" }, signal);
 
-    store.set(checkSettingsParam$);
+    await store.set(checkSettingsParam$);
 
     expect(store.get(orgManageDialogOpen$)).toBeTruthy();
     expect(store.get(activeTab$)).toBe("billing");
   });
 
-  it("should not open dialog when no settings param is present", () => {
+  it("should not open dialog when no settings param is present", async () => {
     const { store, signal } = context;
     createPushStateMock(signal);
     mockLocation({ pathname: "/", search: "" }, signal);
 
-    store.set(checkSettingsParam$);
+    await store.set(checkSettingsParam$);
 
     expect(store.get(orgManageDialogOpen$)).toBeFalsy();
   });
 
-  it("should not open dialog for unknown settings value", () => {
+  it("should not open dialog for unknown settings value", async () => {
     const { store, signal } = context;
     createPushStateMock(signal);
     mockLocation({ pathname: "/", search: "?settings=unknown" }, signal);
 
-    store.set(checkSettingsParam$);
+    await store.set(checkSettingsParam$);
 
     expect(store.get(orgManageDialogOpen$)).toBeFalsy();
     // The param should still be stripped
     expect(store.get(searchParams$).has("settings")).toBeFalsy();
   });
 
-  it("should preserve other search params when stripping settings", () => {
+  it("should preserve other search params when stripping settings", async () => {
     const { store, signal } = context;
     createPushStateMock(signal);
     mockLocation(
@@ -66,7 +66,7 @@ describe("checkSettingsParam$", () => {
       signal,
     );
 
-    store.set(checkSettingsParam$);
+    await store.set(checkSettingsParam$);
 
     expect(store.get(orgManageDialogOpen$)).toBeTruthy();
     const params = store.get(searchParams$);

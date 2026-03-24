@@ -2,7 +2,6 @@ import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { delay } from "signal-timers";
 import { fetch$ } from "../fetch.ts";
-import { detach, onRef, Reason } from "../utils.ts";
 
 interface SlackOrgData {
   isConnected: boolean;
@@ -120,7 +119,7 @@ const POLL_INTERVAL_MS = 3000;
  * Used on the works page so that after the user completes OAuth in another tab
  * the UI updates automatically without a manual refresh.
  */
-const pollSlackConnection$ = command(
+export const pollSlackConnection$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     // Already connected — nothing to poll.
     const current = get(slackOrgState$).data;
@@ -147,20 +146,6 @@ const pollSlackConnection$ = command(
     }
   },
 );
-
-// ---------------------------------------------------------------------------
-// Polling trigger — extracted from the view's useCommand + onRef pattern.
-// The command uses the AbortSignal from onRef so polling stops on unmount.
-// ---------------------------------------------------------------------------
-
-const startSlackPolling$ = command(
-  ({ set }, _el: HTMLElement, signal: AbortSignal) => {
-    detach(set(pollSlackConnection$, signal), Reason.DomCallback);
-  },
-);
-
-/** Ref callback that starts Slack connection polling when the element mounts. */
-export const slackPollingRef$ = onRef(startSlackPolling$);
 
 export const initSlackOrg$ = command(async ({ set }) => {
   await set(fetchSlackOrg$);

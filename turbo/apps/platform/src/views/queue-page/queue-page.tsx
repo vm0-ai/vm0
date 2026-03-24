@@ -1,8 +1,5 @@
-import { useGet, useSet } from "ccstate-react";
-import {
-  queueData$,
-  queuePollingRef$,
-} from "../../signals/queue-page/queue-signals.ts";
+import { useGet } from "ccstate-react";
+import { queueData$ } from "../../signals/queue-page/queue-signals.ts";
 import { QueueOverview } from "./queue-overview.tsx";
 import { QueueRunningTable } from "./queue-running-table.tsx";
 import { QueueWaitingTable } from "./queue-waiting-table.tsx";
@@ -23,10 +20,9 @@ function QueueSkeleton() {
 
 export function QueuePage() {
   const data = useGet(queueData$);
-  const pollingRef = useSet(queuePollingRef$);
 
   return (
-    <div className="flex flex-1 flex-col min-h-0" ref={pollingRef}>
+    <div className="flex flex-1 flex-col min-h-0">
       <header className="shrink-0 px-4 sm:px-6 pt-10 pb-3">
         <div className="mx-auto max-w-[900px]">
           <h1 className="text-xl font-semibold tracking-tight text-foreground">
