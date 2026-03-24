@@ -282,7 +282,14 @@ function InviteDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={sending ? undefined : setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!sending) {
+          setOpen(v);
+        }
+      }}
+    >
       <DialogTrigger asChild>
         <Button size="sm" className="gap-1.5 rounded-lg">
           <IconPlus size={14} stroke={2} />
@@ -434,7 +441,14 @@ function SelfDemoteAction({
   };
 
   return (
-    <Dialog open={open} onOpenChange={loading ? undefined : setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!loading) {
+          setOpen(v);
+        }
+      }}
+    >
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 transition-colors">
@@ -509,7 +523,14 @@ function MemberActions({
   };
 
   return (
-    <Dialog open={open} onOpenChange={removing ? undefined : setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!removing) {
+          setOpen(v);
+        }
+      }}
+    >
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 transition-colors">

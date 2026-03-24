@@ -20,6 +20,7 @@ import {
   cn,
 } from "@vm0/ui";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   Popover,
   PopoverContent,
@@ -754,8 +755,13 @@ export function ZeroSchedulePage() {
           setPendingDelete(null);
           setDeleting(false);
         },
-        () => {
+        (error: unknown) => {
           setDeleting(false);
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Failed to delete schedule";
+          toast.error(message);
         },
       ),
       Reason.DomCallback,
@@ -885,15 +891,11 @@ export function ZeroSchedulePage() {
       />
       <Dialog
         open={pendingDelete !== null}
-        onOpenChange={
-          deleting
-            ? undefined
-            : (open) => {
-                if (!open) {
-                  setPendingDelete(null);
-                }
-              }
-        }
+        onOpenChange={(open) => {
+          if (!deleting && !open) {
+            setPendingDelete(null);
+          }
+        }}
       >
         <DialogContent>
           <DialogHeader>
