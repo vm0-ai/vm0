@@ -43,6 +43,7 @@ import { googleSheetsFirewall } from "./google-sheets.generated";
 import { heygenFirewall } from "./heygen.generated";
 import { hubspotFirewall } from "./hubspot.generated";
 import { huggingFaceFirewall } from "./hugging-face.generated";
+import { humeFirewall } from "./hume.generated";
 import { imgurFirewall } from "./imgur.generated";
 import { intercomFirewall } from "./intercom.generated";
 import { jiraFirewall } from "./jira.generated";
@@ -114,6 +115,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   heygen: heygenFirewall,
   hubspot: hubspotFirewall,
   "hugging-face": huggingFaceFirewall,
+  hume: humeFirewall,
   imgur: imgurFirewall,
   intercom: intercomFirewall,
   jira: jiraFirewall,
