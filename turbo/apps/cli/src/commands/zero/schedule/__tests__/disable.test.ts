@@ -13,9 +13,18 @@ import { server } from "../../../../mocks/server";
 import { disableCommand } from "../disable";
 import chalk from "chalk";
 
+const mockCompose = {
+  id: "compose-uuid-001",
+  name: "my-agent",
+  headVersionId: "ver-001",
+  content: null,
+  createdAt: "2026-03-23T00:00:00Z",
+  updatedAt: "2026-03-23T00:00:00Z",
+};
+
 const mockSchedule = {
   id: "sched-001",
-  agentId: "my-agent",
+  agentId: "compose-uuid-001",
   orgSlug: "my-org",
   userId: "user-001",
   name: "default",
@@ -67,6 +76,9 @@ describe("zero schedule disable command", () => {
   describe("successful disable", () => {
     it("should disable a schedule", async () => {
       server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(mockCompose);
+        }),
         http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json({
             schedules: [{ ...mockSchedule, enabled: true }],
@@ -91,13 +103,16 @@ describe("zero schedule disable command", () => {
   describe("error handling", () => {
     it("should handle no schedule found", async () => {
       server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(mockCompose);
+        }),
         http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json({ schedules: [] });
         }),
       );
 
       await expect(async () => {
-        await disableCommand.parseAsync(["node", "cli", "missing-agent"]);
+        await disableCommand.parseAsync(["node", "cli", "my-agent"]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(

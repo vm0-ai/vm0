@@ -13,9 +13,18 @@ import { server } from "../../../../mocks/server";
 import { statusCommand } from "../status";
 import chalk from "chalk";
 
+const mockCompose = {
+  id: "compose-uuid-001",
+  name: "my-agent",
+  headVersionId: "ver-001",
+  content: null,
+  createdAt: "2026-03-23T00:00:00Z",
+  updatedAt: "2026-03-23T00:00:00Z",
+};
+
 const mockSchedule = {
   id: "sched-001",
-  agentId: "my-agent",
+  agentId: "compose-uuid-001",
   orgSlug: "my-org",
   userId: "user-001",
   name: "default",
@@ -67,6 +76,9 @@ describe("zero schedule status command", () => {
   describe("successful status", () => {
     it("should display schedule details", async () => {
       server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(mockCompose);
+        }),
         http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json({ schedules: [mockSchedule] });
         }),
@@ -88,6 +100,9 @@ describe("zero schedule status command", () => {
         cronExpression: "0 9 * * 1",
       };
       server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(mockCompose);
+        }),
         http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json({
             schedules: [mockSchedule, secondSchedule],
@@ -111,13 +126,16 @@ describe("zero schedule status command", () => {
   describe("error handling", () => {
     it("should handle no schedule found for agent", async () => {
       server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(mockCompose);
+        }),
         http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json({ schedules: [] });
         }),
       );
 
       await expect(async () => {
-        await statusCommand.parseAsync(["node", "cli", "missing-agent"]);
+        await statusCommand.parseAsync(["node", "cli", "my-agent"]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
@@ -129,6 +147,9 @@ describe("zero schedule status command", () => {
     it("should require --name when agent has multiple schedules", async () => {
       const secondSchedule = { ...mockSchedule, name: "weekly" };
       server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(mockCompose);
+        }),
         http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json({
             schedules: [mockSchedule, secondSchedule],

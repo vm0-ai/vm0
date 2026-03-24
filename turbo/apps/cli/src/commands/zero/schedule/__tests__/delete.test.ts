@@ -13,9 +13,18 @@ import { server } from "../../../../mocks/server";
 import { deleteCommand } from "../delete";
 import chalk from "chalk";
 
+const mockCompose = {
+  id: "compose-uuid-001",
+  name: "my-agent",
+  headVersionId: "ver-001",
+  content: null,
+  createdAt: "2026-03-23T00:00:00Z",
+  updatedAt: "2026-03-23T00:00:00Z",
+};
+
 const mockSchedule = {
   id: "sched-001",
-  agentId: "my-agent",
+  agentId: "compose-uuid-001",
   orgSlug: "my-org",
   userId: "user-001",
   name: "default",
@@ -67,6 +76,9 @@ describe("zero schedule delete command", () => {
   describe("successful delete", () => {
     it("should delete with --yes flag without prompting", async () => {
       server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(mockCompose);
+        }),
         http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json({ schedules: [mockSchedule] });
         }),
@@ -86,18 +98,16 @@ describe("zero schedule delete command", () => {
   describe("error handling", () => {
     it("should handle no schedule found", async () => {
       server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(mockCompose);
+        }),
         http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json({ schedules: [] });
         }),
       );
 
       await expect(async () => {
-        await deleteCommand.parseAsync([
-          "node",
-          "cli",
-          "missing-agent",
-          "--yes",
-        ]);
+        await deleteCommand.parseAsync(["node", "cli", "my-agent", "--yes"]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
@@ -108,6 +118,9 @@ describe("zero schedule delete command", () => {
 
     it("should require --yes in non-interactive mode", async () => {
       server.use(
+        http.get("http://localhost:3000/api/agent/composes", () => {
+          return HttpResponse.json(mockCompose);
+        }),
         http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json({ schedules: [mockSchedule] });
         }),
