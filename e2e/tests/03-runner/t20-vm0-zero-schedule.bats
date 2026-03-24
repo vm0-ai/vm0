@@ -36,7 +36,9 @@ agents:
 EOF
 
     cd "$TEST_DIR"
-    $CLI_COMMAND compose vm0.yaml
+    local COMPOSE_OUTPUT=$($CLI_COMMAND compose vm0.yaml --json)
+    local COMPOSE_ID=$(echo "$COMPOSE_OUTPUT" | jq -r '.composeId')
+    echo "$COMPOSE_ID" > "$BATS_FILE_TMPDIR/compose_id"
 }
 
 teardown_file() {
@@ -55,6 +57,7 @@ teardown_file() {
 setup() {
     UNIQUE_ID=$(cat "$BATS_FILE_TMPDIR/unique_id")
     AGENT_NAME=$(cat "$BATS_FILE_TMPDIR/agent_name")
+    COMPOSE_ID=$(cat "$BATS_FILE_TMPDIR/compose_id")
     TEST_DIR=$(cat "$BATS_FILE_TMPDIR/test_dir")
     cd "$TEST_DIR"
 }
@@ -77,14 +80,14 @@ setup() {
     # --- List ---
     run $CLI_COMMAND zero schedule list
     assert_success
-    assert_output --partial "$AGENT_NAME"
+    assert_output --partial "$COMPOSE_ID"
     assert_output --partial "disabled"
 
     # --- Status ---
     run $CLI_COMMAND zero schedule status "$AGENT_NAME"
     assert_success
     assert_output --partial "Agent:"
-    assert_output --partial "$AGENT_NAME"
+    assert_output --partial "$COMPOSE_ID"
     assert_output --partial "Status:"
     assert_output --partial "Trigger:"
     assert_output --partial "0 9 * * *"
@@ -140,8 +143,8 @@ agents:
 EOF
 
     cd "$LOOP_TEST_DIR"
-    run $CLI_COMMAND compose vm0.yaml
-    assert_success
+    local LOOP_COMPOSE_OUTPUT=$($CLI_COMMAND compose vm0.yaml --json)
+    local LOOP_COMPOSE_ID=$(echo "$LOOP_COMPOSE_OUTPUT" | jq -r '.composeId')
 
     # --- Setup loop schedule ---
     run $CLI_COMMAND zero schedule setup "$LOOP_AGENT_NAME" \
@@ -161,7 +164,7 @@ EOF
     # --- List ---
     run $CLI_COMMAND zero schedule list
     assert_success
-    assert_output --partial "$LOOP_AGENT_NAME"
+    assert_output --partial "$LOOP_COMPOSE_ID"
 
     # --- Enable ---
     run $CLI_COMMAND zero schedule enable "$LOOP_AGENT_NAME"
