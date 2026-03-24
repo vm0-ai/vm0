@@ -425,15 +425,13 @@ export {
 } from "./firewall-expander";
 
 export {
-  userPreferencesContract,
   userPreferencesResponseSchema,
   updateUserPreferencesRequestSchema,
-  type UserPreferencesContract,
   type UserPreferencesResponse,
   type UpdateUserPreferencesRequest,
   sendModeSchema,
   type SendMode,
-} from "./user-preferences";
+} from "./zero-user-preferences";
 export {
   orgListItemSchema,
   orgListResponseSchema,

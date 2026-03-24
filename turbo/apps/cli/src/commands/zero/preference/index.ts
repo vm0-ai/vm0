@@ -1,12 +1,15 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { getUserPreferences, updateUserPreferences } from "../../lib/api";
-import { withErrorHandler } from "../../lib/command";
+import {
+  getZeroUserPreferences,
+  updateZeroUserPreferences,
+} from "../../../lib/api";
+import { withErrorHandler } from "../../../lib/command";
 import {
   isInteractive,
   promptText,
   promptConfirm,
-} from "../../lib/utils/prompt-utils";
+} from "../../../lib/utils/prompt-utils";
 
 /**
  * Detect system timezone using Intl API
@@ -159,7 +162,7 @@ async function interactiveSetup(prefs: {
       if (!isValidTimezone(tz.trim())) {
         throw new Error(`Invalid timezone: ${tz.trim()}`);
       }
-      await updateUserPreferences({ timezone: tz.trim() });
+      await updateZeroUserPreferences({ timezone: tz.trim() });
       console.log(chalk.green(`Timezone set to ${chalk.cyan(tz.trim())}`));
     }
   }
@@ -170,18 +173,18 @@ async function interactiveSetup(prefs: {
       false,
     );
     if (enable) {
-      await updateUserPreferences({ notifyEmail: true });
+      await updateZeroUserPreferences({ notifyEmail: true });
       console.log(chalk.green("Email notifications enabled"));
     }
   }
 }
 
 /**
- * vm0 preference
+ * vm0 zero preference
  *
  * View or update user preferences (timezone, notifications).
  */
-export const preferenceCommand = new Command()
+export const zeroPreferenceCommand = new Command()
   .name("preference")
   .description("View or update your preferences")
   .option("--timezone <timezone>", "IANA timezone (e.g., America/New_York)")
@@ -192,13 +195,13 @@ export const preferenceCommand = new Command()
       const updates = buildUpdates(opts);
 
       if (updates) {
-        const result = await updateUserPreferences(updates);
+        const result = await updateZeroUserPreferences(updates);
         printUpdateResult(updates, result);
         return;
       }
 
       // No flags: display current preferences
-      const prefs = await getUserPreferences();
+      const prefs = await getZeroUserPreferences();
       displayPreferences(prefs);
 
       if (isInteractive()) {
@@ -206,10 +209,10 @@ export const preferenceCommand = new Command()
       } else if (!prefs.timezone) {
         console.log();
         console.log(
-          `To set timezone: ${chalk.cyan("vm0 preference --timezone <timezone>")}`,
+          `To set timezone: ${chalk.cyan("vm0 zero preference --timezone <timezone>")}`,
         );
         console.log(
-          chalk.dim("Example: vm0 preference --timezone America/New_York"),
+          chalk.dim("Example: vm0 zero preference --timezone America/New_York"),
         );
       }
     }),

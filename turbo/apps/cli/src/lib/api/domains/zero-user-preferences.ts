@@ -1,6 +1,6 @@
 import { initClient } from "@ts-rest/core";
 import {
-  userPreferencesContract,
+  zeroUserPreferencesContract,
   type UserPreferencesResponse,
 } from "@vm0/core";
 import { getClientConfig, handleError } from "../core/client-factory";
@@ -8,9 +8,9 @@ import { getClientConfig, handleError } from "../core/client-factory";
 /**
  * Get current user's preferences
  */
-export async function getUserPreferences(): Promise<UserPreferencesResponse> {
+export async function getZeroUserPreferences(): Promise<UserPreferencesResponse> {
   const config = await getClientConfig();
-  const client = initClient(userPreferencesContract, config);
+  const client = initClient(zeroUserPreferencesContract, config);
 
   const result = await client.get({ headers: {} });
 
@@ -24,13 +24,13 @@ export async function getUserPreferences(): Promise<UserPreferencesResponse> {
 /**
  * Update user preferences
  */
-export async function updateUserPreferences(body: {
+export async function updateZeroUserPreferences(body: {
   timezone?: string;
   notifyEmail?: boolean;
   notifySlack?: boolean;
 }): Promise<UserPreferencesResponse> {
   const config = await getClientConfig();
-  const client = initClient(userPreferencesContract, config);
+  const client = initClient(zeroUserPreferencesContract, config);
 
   const result = await client.update({ body });
 
