@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.146.0](https://github.com/vm0-ai/vm0/compare/app-v0.145.1...app-v0.146.0) (2026-03-24)
+
+
+### Features
+
+* add slack channel selection for schedule notifications ([#6156](https://github.com/vm0-ai/vm0/issues/6156)) ([059f723](https://github.com/vm0-ai/vm0/commit/059f72309f67fe99bb1259ded54c56c2da33df2d))
+
+
+### Bug Fixes
+
+* confirm dialogs close only after async operation completes ([#6305](https://github.com/vm0-ai/vm0/issues/6305)) ([dd7cbf9](https://github.com/vm0-ai/vm0/commit/dd7cbf9bdceaab1dc7489e88f8c05bbc0d5af0ac))
+
+
+### Refactoring
+
+* move unused ref callbacks into signal layer ([#6450](https://github.com/vm0-ai/vm0/issues/6450)) ([50661d9](https://github.com/vm0-ai/vm0/commit/50661d9022b3a4e18fca376afb7967f010a05a84))
+* redesign chat send/poll flow with promise-signal architecture ([#6466](https://github.com/vm0-ai/vm0/issues/6466)) ([30ff5c3](https://github.com/vm0-ai/vm0/commit/30ff5c3d5cf815c9d57a06a6f566d8c2eca36a6d)), closes [#6432](https://github.com/vm0-ai/vm0/issues/6432)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.105.0
+
 ## [0.145.1](https://github.com/vm0-ai/vm0/compare/app-v0.145.0...app-v0.145.1) (2026-03-24)
 
 

@@ -1,5 +1,21 @@
 # Changelog
 
+## [8.105.0](https://github.com/vm0-ai/vm0/compare/core-v8.104.0...core-v8.105.0) (2026-03-24)
+
+
+### Features
+
+* add elevenlabs firewall config ([#6467](https://github.com/vm0-ai/vm0/issues/6467)) ([0ef2086](https://github.com/vm0-ai/vm0/commit/0ef20866fbd67d30985b2a5ea213fd1004cbc1c0))
+* add firewall config for asana connector ([#6453](https://github.com/vm0-ai/vm0/issues/6453)) ([ab8a1bc](https://github.com/vm0-ai/vm0/commit/ab8a1bcb0c2d72b999f7f6066ae2ebc48024f083)), closes [#6319](https://github.com/vm0-ai/vm0/issues/6319)
+* add firewall config for axiom connector ([#6460](https://github.com/vm0-ai/vm0/issues/6460)) ([802c9ef](https://github.com/vm0-ai/vm0/commit/802c9ef8b56773f6c40a1fb31dfed8f6f919f6a9)), closes [#6320](https://github.com/vm0-ai/vm0/issues/6320)
+* add firewall config for discord connector ([#6458](https://github.com/vm0-ai/vm0/issues/6458)) ([00ba3a1](https://github.com/vm0-ai/vm0/commit/00ba3a17a3e91171fd2e9eeba44f7e28d0f6e506)), closes [#6341](https://github.com/vm0-ai/vm0/issues/6341)
+* add firewall config for linear connector ([#6448](https://github.com/vm0-ai/vm0/issues/6448)) ([823f8a0](https://github.com/vm0-ai/vm0/commit/823f8a0c9daa8af14bb0ff0049ffb1a12b902968))
+* add firewall config for youtube connector ([#6464](https://github.com/vm0-ai/vm0/issues/6464)) ([fa266ff](https://github.com/vm0-ai/vm0/commit/fa266ff73ceb35b1ac7f537cbe4fd8bb3c91e267)), closes [#6420](https://github.com/vm0-ai/vm0/issues/6420)
+* add firewall config for zapier connector ([#6451](https://github.com/vm0-ai/vm0/issues/6451)) ([c02ea77](https://github.com/vm0-ai/vm0/commit/c02ea777aff14b0da9c8472077c5b960b63821cf)), closes [#6421](https://github.com/vm0-ai/vm0/issues/6421)
+* add openai firewall config ([#6479](https://github.com/vm0-ai/vm0/issues/6479)) ([8c60546](https://github.com/vm0-ai/vm0/commit/8c605466323f5bf3d4b404dad1c88c745a60581c)), closes [#6379](https://github.com/vm0-ai/vm0/issues/6379)
+* add slack channel selection for schedule notifications ([#6156](https://github.com/vm0-ai/vm0/issues/6156)) ([059f723](https://github.com/vm0-ai/vm0/commit/059f72309f67fe99bb1259ded54c56c2da33df2d))
+* add x (twitter) firewall config ([#6474](https://github.com/vm0-ai/vm0/issues/6474)) ([d6cf277](https://github.com/vm0-ai/vm0/commit/d6cf2770a3f5418326c0fd6081b08fbb15de1dc3))
+
 ## [8.104.0](https://github.com/vm0-ai/vm0/compare/core-v8.103.0...core-v8.104.0) (2026-03-24)
 
 

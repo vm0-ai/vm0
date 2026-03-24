@@ -1,5 +1,40 @@
 # Changelog
 
+## [12.154.0](https://github.com/vm0-ai/vm0/compare/web-v12.153.2...web-v12.154.0) (2026-03-24)
+
+
+### Features
+
+* add firewall config for linear connector ([#6448](https://github.com/vm0-ai/vm0/issues/6448)) ([823f8a0](https://github.com/vm0-ai/vm0/commit/823f8a0c9daa8af14bb0ff0049ffb1a12b902968))
+* add slack channel selection for schedule notifications ([#6156](https://github.com/vm0-ai/vm0/issues/6156)) ([059f723](https://github.com/vm0-ai/vm0/commit/059f72309f67fe99bb1259ded54c56c2da33df2d))
+
+
+### Bug Fixes
+
+* update outbox-service test fixture to use new from address format ([#6454](https://github.com/vm0-ai/vm0/issues/6454)) ([e54539c](https://github.com/vm0-ai/vm0/commit/e54539c4dc5c68250a0c1f6ea8d9280abb3169ac)), closes [#6441](https://github.com/vm0-ai/vm0/issues/6441)
+* update schedule guidance to use zero cli and new auth token ([#6477](https://github.com/vm0-ai/vm0/issues/6477)) ([1d51688](https://github.com/vm0-ai/vm0/commit/1d51688546873808ea30fefc727a9454acc553bf))
+* **web:** return 502 when firewall auth token refresh fails ([#6462](https://github.com/vm0-ai/vm0/issues/6462)) ([6dc6d68](https://github.com/vm0-ai/vm0/commit/6dc6d68be3280d720abe8dfc88224ffc5723aed0))
+
+
+### Documentation
+
+* **web:** update stale comments in firewall auth endpoint ([#6473](https://github.com/vm0-ai/vm0/issues/6473)) ([bca9a68](https://github.com/vm0-ai/vm0/commit/bca9a680a1a1d23eecdb001b6806a4e8d6fc22ee))
+
+
+### Refactoring
+
+* **email:** migrate email thread sessions from compose-id to agent-id ([#6443](https://github.com/vm0-ai/vm0/issues/6443)) ([09bfb82](https://github.com/vm0-ai/vm0/commit/09bfb82c3cf22f60109ada3d0a09525b65f087db)), closes [#6431](https://github.com/vm0-ai/vm0/issues/6431)
+* **email:** move email routes to /api/zero/email/ namespace ([#6470](https://github.com/vm0-ai/vm0/issues/6470)) ([9def766](https://github.com/vm0-ai/vm0/commit/9def766a08022989a84557ddd41c736766a9468e))
+* remove unused `triggerLocalPart` from email trigger payload ([#6456](https://github.com/vm0-ai/vm0/issues/6456)) ([b21169b](https://github.com/vm0-ai/vm0/commit/b21169b015e48fe2921ddbf8589a52f492fbda3c))
+* update email template signatures to use zero branding ([#6439](https://github.com/vm0-ai/vm0/issues/6439)) ([#6452](https://github.com/vm0-ai/vm0/issues/6452)) ([c2a7f32](https://github.com/vm0-ai/vm0/commit/c2a7f324adfcb89882ced83cd31d108f60820096))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.105.0
+
 ## [12.153.2](https://github.com/vm0-ai/vm0/compare/web-v12.153.1...web-v12.153.2) (2026-03-24)
 
 
