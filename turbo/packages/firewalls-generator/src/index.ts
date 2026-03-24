@@ -21,6 +21,7 @@ import { generate as generateLinear } from "./linear";
 import { generate as generateNotion } from "./notion";
 import { generate as generateOpenai } from "./openai";
 import { generate as generateSlack } from "./slack";
+import { generate as generateStripe } from "./stripe";
 import { generate as generateVercel } from "./vercel";
 import { generate as generateX } from "./x";
 import { generate as generateYoutube } from "./youtube";
@@ -45,6 +46,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   notion: generateNotion,
   openai: generateOpenai,
   slack: generateSlack,
+  stripe: generateStripe,
   vercel: generateVercel,
   x: generateX,
   youtube: generateYoutube,

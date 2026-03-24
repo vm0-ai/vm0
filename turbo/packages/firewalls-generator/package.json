@@ -26,6 +26,7 @@
     "generate:notion": "tsx src/index.ts notion",
     "generate:openai": "tsx src/index.ts openai",
     "generate:slack": "tsx src/index.ts slack",
+    "generate:stripe": "tsx src/index.ts stripe",
     "generate:vercel": "tsx src/index.ts vercel",
     "generate:x": "tsx src/index.ts x",
     "generate:youtube": "tsx src/index.ts youtube",
