@@ -1093,11 +1093,12 @@ jobs:
         run: cd turbo && pnpm --filter @vm0/cli build
       - name: Verify CLI package contents
         run: |
+          set -euo pipefail
           cd turbo/apps/cli/dist
           # Ensure all imported chunks are present in the package
           for f in index.js zero.js; do
-            grep -oP './chunk-[A-Z0-9]+\.js' "$f" 2>/dev/null || continue
-            grep -oP './chunk-[A-Z0-9]+\.js' "$f" | while read chunk; do
+            chunks=$(grep -oP './chunk-[A-Z0-9]+\.js' "$f" 2>/dev/null || true)
+            for chunk in $chunks; do
               chunk_file="${chunk#./}"
               if [ ! -f "$chunk_file" ]; then
                 echo "ERROR: $f imports $chunk but file is missing from dist/"
