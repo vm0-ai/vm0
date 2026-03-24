@@ -69,7 +69,7 @@ pub struct ExecutionContext {
     pub api_start_time: Option<f64>,
     #[serde(default)]
     pub user_timezone: Option<String>,
-    // Org slug for agent — used for VM0_ACTIVE_ORG when capabilities are present
+    // Org slug for agent — used for VM0_ACTIVE_ORG
     #[serde(default)]
     pub agent_org_slug: Option<String>,
     // Memory storage name for first-run init — not yet consumed by runner
@@ -78,8 +78,6 @@ pub struct ExecutionContext {
     pub memory_name: Option<String>,
     #[serde(default)]
     pub experimental_firewalls: Option<Vec<Firewall>>,
-    #[serde(default)]
-    pub experimental_capabilities: Option<Vec<String>>,
     #[serde(default)]
     pub disallowed_tools: Option<Vec<String>>,
     #[serde(default)]

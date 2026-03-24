@@ -2,7 +2,7 @@
  * Agent compose types matching agent.yaml format
  */
 
-import type { ExpandedFirewallConfig, VALID_CAPABILITIES } from "@vm0/core";
+import type { ExpandedFirewallConfig } from "@vm0/core";
 
 /**
  * Volume configuration for static dependencies
@@ -54,11 +54,6 @@ interface AgentDefinition {
    * Input format (CLI): string[] — expanded server-side before storage.
    */
   experimental_firewalls?: ExpandedFirewallConfig[];
-  /**
-   * Capabilities that the agent is allowed to use.
-   * Validated at compose time against VALID_CAPABILITIES.
-   */
-  experimental_capabilities?: (typeof VALID_CAPABILITIES)[number][];
 }
 
 export interface AgentComposeYaml {

@@ -139,12 +139,8 @@ const router = tsr.router(runnersJobClaimContract, {
       );
     }
 
-    // Generate sandbox token with capabilities from stored context
-    const sandboxToken = await generateSandboxToken(
-      run.userId,
-      run.id,
-      storedContext.experimentalCapabilities,
-    );
+    // Generate sandbox token for the run
+    const sandboxToken = await generateSandboxToken(run.userId, run.id);
 
     // Record api_to_claim metric
     if (storedContext.apiStartTime) {
@@ -203,7 +199,6 @@ const router = tsr.router(runnersJobClaimContract, {
         encryptedSecrets: storedContext.encryptedSecrets, // Encrypted blob for auth resolution
         cliAgentType: storedContext.cliAgentType,
         experimentalFirewalls: storedContext.experimentalFirewalls,
-        experimentalCapabilities: storedContext.experimentalCapabilities,
         disallowedTools: storedContext.disallowedTools,
         tools: storedContext.tools,
         settings: storedContext.settings,

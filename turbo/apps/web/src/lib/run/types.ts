@@ -1,5 +1,5 @@
 import type { ArtifactSnapshot } from "../checkpoint/types";
-import type { ExperimentalFirewalls, VALID_CAPABILITIES } from "@vm0/core";
+import type { ExperimentalFirewalls } from "@vm0/core";
 
 /**
  * Run status values
@@ -80,9 +80,6 @@ export interface ExecutionContext {
 
   // Experimental firewall for proxy-side token replacement
   experimentalFirewalls?: ExperimentalFirewalls;
-
-  // Experimental capabilities for agent permission enforcement
-  experimentalCapabilities?: (typeof VALID_CAPABILITIES)[number][];
 
   // Tools to disable in Claude CLI (passed as --disallowed-tools)
   disallowedTools?: string[];

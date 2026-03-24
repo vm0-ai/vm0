@@ -1,8 +1,4 @@
-import {
-  resolveSkillRef,
-  getInstructionsFilename,
-  VALID_CAPABILITIES,
-} from "@vm0/core";
+import { resolveSkillRef, getInstructionsFilename } from "@vm0/core";
 import { SEED_SKILLS } from "./seed-skills";
 
 /**
@@ -22,7 +18,6 @@ export function buildComposeContent(
   const agentDef: Record<string, unknown> = {
     framework: "claude-code",
     instructions: getInstructionsFilename("claude-code"),
-    experimental_capabilities: [...VALID_CAPABILITIES],
     environment: {
       ZERO_AGENT_ID: "${{ vars.ZERO_AGENT_ID }}",
       ZERO_TOKEN: "${{ secrets.ZERO_TOKEN }}",

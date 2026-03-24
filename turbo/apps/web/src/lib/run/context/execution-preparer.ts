@@ -256,9 +256,6 @@ function buildPreparedContext(
     // Experimental firewall for proxy-side token replacement
     experimentalFirewalls: toNullable(context.experimentalFirewalls),
 
-    // Experimental capabilities
-    experimentalCapabilities: toNullable(context.experimentalCapabilities),
-
     // Disallowed tools
     disallowedTools: toNullable(context.disallowedTools),
 

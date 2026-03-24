@@ -337,44 +337,8 @@ describe("POST /api/runners/jobs/:id/claim", () => {
     });
   });
 
-  describe("Claim flow - capabilities in sandbox token", () => {
-    it("should include capabilities in returned sandbox token", async () => {
-      const { composeId, versionId } = await createTestCompose("test-caps");
-      const composeInfo = await findTestComposeWithOrg(composeId);
-      const orgSlug = composeInfo!.orgSlug;
-
-      const { runId } = await createTestRunnerJob(
-        user.userId,
-        versionId,
-        `${orgSlug}/default`,
-        {
-          experimentalCapabilities: ["agent:read", "agent:write"],
-        },
-      );
-
-      const token = await createTestCliToken(user.userId);
-      const request = createTestRequest(
-        `http://localhost:3000/api/runners/jobs/${runId}/claim`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({}),
-        },
-      );
-
-      const response = await POST(request);
-      expect(response.status).toBe(200);
-
-      const data = await response.json();
-      const sandboxAuth = verifySandboxToken(data.sandboxToken);
-      expect(sandboxAuth).not.toBeNull();
-      expect(sandboxAuth!.capabilities).toEqual(["agent:read", "agent:write"]);
-    });
-
-    it("should generate token without capabilities when not in stored context", async () => {
+  describe("Claim flow - sandbox token generation", () => {
+    it("should generate sandbox token without capabilities", async () => {
       const { composeId, versionId } = await createTestCompose("test-no-caps");
       const composeInfo = await findTestComposeWithOrg(composeId);
       const orgSlug = composeInfo!.orgSlug;

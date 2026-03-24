@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { GET as getAgentRoute } from "../agents/[id]/route";
 import { POST as createRunRoute } from "../runs/route";
 import { POST as claimJobRoute } from "../../runners/jobs/[id]/claim/route";
+import { generateZeroToken } from "../../../../src/lib/auth/sandbox-token";
 import {
   seedSeedSkills,
   seedSeedSkillStorages,
@@ -15,13 +16,15 @@ const context = testContext();
 
 /**
  * End-to-end zero agent flow:
- *   onboarding (model provider) → create agent → run agent → claim job → use sandbox token
+ *   onboarding (model provider) → create agent → run agent → claim job → use zero token
  *
  * Every step goes through real API route handlers.
  * The only test helpers used are infrastructure (auth mock, skill seeding).
  */
-describe("Zero Agent E2E: create → run → sandbox token access", () => {
+describe("Zero Agent E2E: create → run → zero token access", () => {
   let orgSlug: string;
+  let orgId: string;
+  let userId: string;
   let agent: { agentId: string };
 
   beforeAll(async () => {
@@ -34,10 +37,12 @@ describe("Zero Agent E2E: create → run → sandbox token access", () => {
     context.setupMocks();
     const result = await onboardNewOrgAndUser(context);
     orgSlug = result.orgSlug;
+    orgId = result.user.orgId;
+    userId = result.user.userId;
     agent = result.agent;
   });
 
-  it("should allow sandbox token from claimed run to read agent details", async () => {
+  it("should allow zero token from claimed run to read agent details", async () => {
     // ── 4. Run agent via API ──
     const runRes = await createRunRoute(
       new NextRequest("http://localhost:3000/api/zero/runs", {
@@ -73,46 +78,25 @@ describe("Zero Agent E2E: create → run → sandbox token access", () => {
     expect(claimRes.status).toBe(200);
     const executionContext = (await claimRes.json()) as {
       sandboxToken: string;
-      experimentalCapabilities: string[];
     };
 
-    // Verify the execution context contains a sandbox token and capabilities
+    // Verify the execution context contains a sandbox token (now without capabilities)
     expect(executionContext.sandboxToken).toBeTruthy();
     expect(executionContext.sandboxToken).toMatch(/^vm0_sandbox_/);
-    expect(executionContext.experimentalCapabilities).toEqual(
-      expect.arrayContaining(["agent:read"]),
-    );
 
-    // ── 6. Use sandbox token to read agent details ──
-    // This is what happens inside the sandbox: the runner injects
-    // sandboxToken as VM0_TOKEN and VM0_ACTIVE_ORG, and the agent CLI
-    // uses them to call the API with ?org=<slug>.
-    // Sandbox tokens are processed before the Clerk session fallback in
-    // getAuthContext, so the Clerk session state does not affect sandbox auth.
+    // ── 6. Use ZERO_TOKEN to read agent details ──
+    // In production, zero agents use ZERO_TOKEN (injected via secrets) for
+    // zero-layer route auth, not the sandbox token (VM0_TOKEN).
+    const zeroToken = await generateZeroToken(userId, run.runId, orgId);
 
-    // 6a. Without ?org= → sandbox token has no orgId, request fails
-    // (in production, runner also injects VM0_ACTIVE_ORG for this reason)
-    const noOrgRes = await getAgentRoute(
-      new NextRequest(
-        `http://localhost:3000/api/zero/agents/${agent.agentId}`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${executionContext.sandboxToken}`,
-          },
-        },
-      ),
-    );
-    expect(noOrgRes.ok).toBe(false);
-
-    // 6b. With ?org= (simulating VM0_ACTIVE_ORG) → should succeed
+    // 6a. With ?org= → should succeed
     const getRes = await getAgentRoute(
       new NextRequest(
         `http://localhost:3000/api/zero/agents/${agent.agentId}?org=${orgSlug}`,
         {
           method: "GET",
           headers: {
-            Authorization: `Bearer ${executionContext.sandboxToken}`,
+            Authorization: `Bearer ${zeroToken}`,
           },
         },
       ),

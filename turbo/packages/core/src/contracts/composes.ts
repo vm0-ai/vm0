@@ -24,8 +24,11 @@ const composeVersionQuerySchema = z
 export const AGENT_NAME_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,62}[a-zA-Z0-9]$/;
 
 /**
- * Valid capability strings for experimental_capabilities.
+ * Valid capability strings for sandbox token verification.
  * Format: {resource}:{action}
+ *
+ * Kept for backward compatibility with in-flight sandbox tokens.
+ * New tokens are generated without capabilities.
  *
  * - agent:*       → Agent static resources (compose + volumes + storages)
  * - agent-run:*   → Run lifecycle operations
@@ -202,16 +205,6 @@ const agentDefinitionSchema = z.object({
         permissions: z.union([z.literal("all"), z.array(z.string()).min(1)]),
       }),
     )
-    .optional(),
-  /**
-   * Capabilities that the agent is allowed to use.
-   * Validated against VALID_CAPABILITIES at compose time.
-   */
-  experimental_capabilities: z
-    .array(z.enum(VALID_CAPABILITIES))
-    .refine((arr) => new Set(arr).size === arr.length, {
-      message: "Duplicate capabilities are not allowed",
-    })
     .optional(),
 });
 

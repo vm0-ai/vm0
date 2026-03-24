@@ -61,7 +61,6 @@ export async function executeRunnerJob(
     secretConnectorMap: context.secretConnectorMap,
     cliAgentType: context.cliAgentType,
     experimentalFirewalls: context.experimentalFirewalls ?? undefined,
-    experimentalCapabilities: context.experimentalCapabilities ?? undefined,
     disallowedTools: context.disallowedTools ?? undefined,
     tools: context.tools ?? undefined,
     settings: context.settings ?? undefined,

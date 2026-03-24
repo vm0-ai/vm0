@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
-import { VALID_CAPABILITIES } from "./composes";
 import { experimentalFirewallsSchema } from "./firewalls";
 import { apiErrorSchema } from "./errors";
 
@@ -118,14 +117,12 @@ export const storedExecutionContextSchema = z.object({
   apiStartTime: z.number().optional(),
   // User's timezone preference (IANA format, e.g., "Asia/Shanghai")
   userTimezone: z.string().optional(),
-  // Org slug for agent — used for VM0_ACTIVE_ORG when capabilities are present
+  // Org slug for agent — used for VM0_ACTIVE_ORG
   agentOrgSlug: z.string().optional(),
   // Memory storage name (for first-run when manifest.memory is null)
   memoryName: z.string().optional(),
   // Experimental firewall for proxy-side token replacement
   experimentalFirewalls: experimentalFirewallsSchema.optional(),
-  // Experimental capabilities for agent permission enforcement
-  experimentalCapabilities: z.array(z.enum(VALID_CAPABILITIES)).optional(),
   // Tools to disable in Claude CLI (passed as --disallowed-tools)
   disallowedTools: z.array(z.string()).optional(),
   // Tools to make available in Claude CLI (passed as --tools)
@@ -166,14 +163,12 @@ export const executionContextSchema = z.object({
   apiStartTime: z.number().optional(),
   // User's timezone preference (IANA format, e.g., "Asia/Shanghai")
   userTimezone: z.string().optional(),
-  // Org slug for agent — used for VM0_ACTIVE_ORG when capabilities are present
+  // Org slug for agent — used for VM0_ACTIVE_ORG
   agentOrgSlug: z.string().optional(),
   // Memory storage name (for first-run when manifest.memory is null)
   memoryName: z.string().optional(),
   // Experimental firewall for proxy-side token replacement
   experimentalFirewalls: experimentalFirewallsSchema.optional(),
-  // Experimental capabilities for agent permission enforcement
-  experimentalCapabilities: z.array(z.enum(VALID_CAPABILITIES)).optional(),
   // Tools to disable in Claude CLI (passed as --disallowed-tools)
   disallowedTools: z.array(z.string()).optional(),
   // Tools to make available in Claude CLI (passed as --tools)
