@@ -40,6 +40,7 @@
     "generate:heygen": "tsx src/index.ts heygen",
     "generate:hubspot": "tsx src/index.ts hubspot",
     "generate:hugging-face": "tsx src/index.ts hugging-face",
+    "generate:imgur": "tsx src/index.ts imgur",
     "generate:intercom": "tsx src/index.ts intercom",
     "generate:jira": "tsx src/index.ts jira",
     "generate:linear": "tsx src/index.ts linear",
