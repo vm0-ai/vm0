@@ -60,15 +60,7 @@ export async function getToken(): Promise<string | undefined> {
  * Priority: ZERO_TOKEN env var > VM0_TOKEN env var > user token from config
  */
 export async function getActiveToken(): Promise<string | undefined> {
-  if (process.env.ZERO_TOKEN) {
-    return process.env.ZERO_TOKEN;
-  }
-  if (process.env.VM0_TOKEN) {
-    return process.env.VM0_TOKEN;
-  }
-
-  const config = await loadConfig();
-  return config.token;
+  return getToken();
 }
 
 export async function getApiUrl(): Promise<string> {
