@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.104.0](https://github.com/vm0-ai/vm0/compare/core-v8.103.0...core-v8.104.0) (2026-03-24)
+
+
+### Features
+
+* add firewall config for airtable connector ([#6447](https://github.com/vm0-ai/vm0/issues/6447)) ([623ce21](https://github.com/vm0-ai/vm0/commit/623ce216937ac92fd0bc588e2ef2e8962f9efed4)), closes [#6318](https://github.com/vm0-ai/vm0/issues/6318)
+* add firewall config for zapsign connector ([#6444](https://github.com/vm0-ai/vm0/issues/6444)) ([5779f7c](https://github.com/vm0-ai/vm0/commit/5779f7cd6c8d5518f918bc0de9c42f164f5a2e1e)), closes [#6422](https://github.com/vm0-ai/vm0/issues/6422)
+
 ## [8.103.0](https://github.com/vm0-ai/vm0/compare/core-v8.102.0...core-v8.103.0) (2026-03-24)
 
 
