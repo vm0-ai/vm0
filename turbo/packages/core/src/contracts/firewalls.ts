@@ -147,6 +147,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   tavily: ["tavily"],
   todoist: ["todoist"],
   vercel: ["vercel"],
+  webflow: ["webflow"],
   x: ["x"],
   youtube: ["youtube"],
   zapier: ["zapier"],

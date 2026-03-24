@@ -62,6 +62,7 @@
     "generate:tavily": "tsx src/index.ts tavily",
     "generate:todoist": "tsx src/index.ts todoist",
     "generate:vercel": "tsx src/index.ts vercel",
+    "generate:webflow": "tsx src/index.ts webflow",
     "generate:x": "tsx src/index.ts x",
     "generate:youtube": "tsx src/index.ts youtube",
     "generate:zapier": "tsx src/index.ts zapier",
