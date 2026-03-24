@@ -93,6 +93,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   Partial<Record<ConnectorType, readonly string[]>>
 > = {
   agentmail: ["agentmail"],
+  ahrefs: ["ahrefs"],
   github: ["github"],
   slack: ["slack"],
   gmail: ["gmail"],
