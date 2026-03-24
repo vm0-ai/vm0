@@ -22,6 +22,15 @@ const API_READY_TIMEOUT: Duration = Duration::from_secs(5);
 /// Timeout for waiting for the guest to connect via vsock after start.
 const VSOCK_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// Maximum attempts to destroy a COW device after killing Firecracker.
+/// The inner FC process (via `sudo -u` in netns) may still be exiting.
+const DESTROY_RETRIES: usize = 5;
+
+/// Delay between COW device destroy retries during snapshot teardown.
+/// Longer than factory destroy (500ms vs 200ms) because snapshot teardown
+/// also umounts the bind mount, adding another dependency.
+const DESTROY_RETRY_DELAY: Duration = Duration::from_millis(500);
+
 /// Configuration for creating a snapshot.
 #[derive(Debug, Clone)]
 pub struct SnapshotCreateConfig {
@@ -259,7 +268,7 @@ async fn run_snapshot_workflow(
     if result.is_ok() {
         let cow_file = cow_device.cow_file().to_owned();
         let mut last_err = None;
-        for attempt in 0..5 {
+        for attempt in 0..DESTROY_RETRIES {
             // Umount the bind mount first (may fail if FC still holds a ref).
             command::exec_ignore_errors(
                 "umount",
@@ -280,8 +289,8 @@ async fn run_snapshot_workflow(
                         "destroy_keep_cow failed, retrying"
                     );
                     last_err = Some(e);
-                    if attempt < 4 {
-                        tokio::time::sleep(Duration::from_millis(500)).await;
+                    if attempt + 1 < DESTROY_RETRIES {
+                        tokio::time::sleep(DESTROY_RETRY_DELAY).await;
                     }
                 }
             }

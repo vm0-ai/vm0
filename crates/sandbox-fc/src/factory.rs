@@ -6,6 +6,13 @@ use tracing::{info, warn};
 use block_cow::{CowDevice, CowDeviceConfig};
 
 use crate::config::FirecrackerConfig;
+
+/// Maximum attempts to destroy a COW device after killing Firecracker.
+/// The inner process may still be releasing file descriptors.
+const DESTROY_RETRIES: u32 = 5;
+
+/// Delay between COW device destroy retries.
+const DESTROY_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(200);
 use crate::network::{GUEST_NETWORK, NetnsPool, NetnsPoolConfig, generate_boot_args};
 use crate::paths::{FactoryPaths, RuntimePaths, SandboxPaths, SockPaths};
 use crate::prerequisites;
@@ -333,15 +340,15 @@ impl SandboxFactory for FirecrackerFactory {
         // exits first while the inner process releases file descriptors.
         // Retry a few times to let it finish.
         let mut cow_destroyed = false;
-        for attempt in 0..5u32 {
+        for attempt in 0..DESTROY_RETRIES {
             match sandbox.cow_device.destroy() {
                 Ok(()) => {
                     cow_destroyed = true;
                     break;
                 }
                 Err(e) => {
-                    if attempt < 4 {
-                        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                    if attempt + 1 < DESTROY_RETRIES {
+                        tokio::time::sleep(DESTROY_RETRY_DELAY).await;
                     } else {
                         warn!(id = %sandbox_id, error = %e, "failed to destroy COW device after retries — skipping workspace cleanup");
                         // Suppress the redundant Drop warning — GC will handle cleanup.
@@ -392,7 +399,7 @@ impl SandboxFactory for FirecrackerFactory {
     }
 }
 
-/// Sparse-copy a file using `cp --sparse=always`.
+/// Sparse-copy a file using `cp --sparse=always` (GNU coreutils).
 async fn sparse_copy(src: &std::path::Path, dst: &std::path::Path) -> Result<(), SandboxError> {
     let output = tokio::process::Command::new("cp")
         .arg("--sparse=always")
