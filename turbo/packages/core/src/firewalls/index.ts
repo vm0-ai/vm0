@@ -24,6 +24,7 @@ import { googleSheetsFirewall } from "./google-sheets.generated";
 import { jiraFirewall } from "./jira.generated";
 import { linearFirewall } from "./linear.generated";
 import { notionFirewall } from "./notion.generated";
+import { openaiFirewall } from "./openai.generated";
 import { slackFirewall } from "./slack.generated";
 import { vercelFirewall } from "./vercel.generated";
 import { youtubeFirewall } from "./youtube.generated";
@@ -49,6 +50,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   jira: jiraFirewall,
   linear: linearFirewall,
   notion: notionFirewall,
+  openai: openaiFirewall,
   slack: slackFirewall,
   vercel: vercelFirewall,
   youtube: youtubeFirewall,

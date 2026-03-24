@@ -110,6 +110,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   linear: ["linear"],
   figma: ["figma"],
   notion: ["notion"],
+  openai: ["openai"],
   vercel: ["vercel"],
   youtube: ["youtube"],
   zapier: ["zapier"],

@@ -18,6 +18,7 @@ import { generate as generateGitHub } from "./github";
 import { generate as generateJira } from "./jira";
 import { generate as generateLinear } from "./linear";
 import { generate as generateNotion } from "./notion";
+import { generate as generateOpenai } from "./openai";
 import { generate as generateSlack } from "./slack";
 import { generate as generateVercel } from "./vercel";
 import { generate as generateYoutube } from "./youtube";
@@ -39,6 +40,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   jira: generateJira,
   linear: generateLinear,
   notion: generateNotion,
+  openai: generateOpenai,
   slack: generateSlack,
   vercel: generateVercel,
   youtube: generateYoutube,
