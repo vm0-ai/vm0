@@ -3048,8 +3048,6 @@ export async function insertOrgMembersEntry(entry: {
   orgId: string;
   userId: string;
   timezone?: string | null;
-  notifyEmail?: boolean;
-  notifySlack?: boolean;
   pinnedAgentIds?: string[];
   sendMode?: string;
   onboardingDone?: boolean;
@@ -3064,8 +3062,6 @@ export async function insertOrgMembersEntry(entry: {
       orgId: entry.orgId,
       userId: entry.userId,
       timezone: entry.timezone ?? null,
-      notifyEmail: entry.notifyEmail ?? false,
-      notifySlack: entry.notifySlack ?? true,
       pinnedAgentIds: entry.pinnedAgentIds ?? [],
       sendMode: entry.sendMode ?? "enter",
       onboardingDone: entry.onboardingDone ?? false,
@@ -3078,12 +3074,6 @@ export async function insertOrgMembersEntry(entry: {
       target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
       set: {
         ...(entry.timezone !== undefined && { timezone: entry.timezone }),
-        ...(entry.notifyEmail !== undefined && {
-          notifyEmail: entry.notifyEmail,
-        }),
-        ...(entry.notifySlack !== undefined && {
-          notifySlack: entry.notifySlack,
-        }),
         ...(entry.pinnedAgentIds !== undefined && {
           pinnedAgentIds: entry.pinnedAgentIds,
         }),

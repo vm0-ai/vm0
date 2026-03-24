@@ -18,8 +18,6 @@ export const orgMembersMetadata = pgTable(
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
     timezone: text("timezone"),
-    notifyEmail: boolean("notify_email").notNull().default(false),
-    notifySlack: boolean("notify_slack").notNull().default(true),
     pinnedAgentIds: jsonb("pinned_agent_ids").$type<string[]>().default([]),
     sendMode: text("send_mode").notNull().default("enter"),
     onboardingDone: boolean("onboarding_done").notNull().default(false),

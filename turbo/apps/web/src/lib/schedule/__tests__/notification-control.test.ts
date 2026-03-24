@@ -13,7 +13,6 @@ import {
   findTestRunCallbacks,
   findTestScheduleById,
   updateTestScheduleState,
-  insertOrgMembersEntry,
   disableAllSchedules,
 } from "../../../__tests__/api-test-helpers";
 import { mockClerk } from "../../../__tests__/clerk-mock";
@@ -74,7 +73,7 @@ async function createDueSchedule(
   return scheduleId;
 }
 
-describe("Schedule notification control — schedule-level override", () => {
+describe("Schedule notification control - per-schedule settings", () => {
   let user: UserContext;
   let agentId: string;
   let slug: string;
@@ -99,7 +98,7 @@ describe("Schedule notification control — schedule-level override", () => {
     await disableAllSchedules(user.orgId);
   });
 
-  it("should register both callbacks when schedule has both notifications on", async () => {
+  it("should register both email and slack callbacks when schedule has both enabled", async () => {
     const scheduleId = await createDueSchedule(agentId, slug, "both-on", {
       notifyEmail: true,
       notifySlack: true,
@@ -165,43 +164,7 @@ describe("Schedule notification control — schedule-level override", () => {
     );
   });
 
-  it("should still register callbacks even when user global prefs are off", async () => {
-    // User global: both off
-    await insertOrgMembersEntry({
-      orgId: user.orgId,
-      userId: user.userId,
-      notifyEmail: false,
-      notifySlack: false,
-    });
-
-    // Schedule: both on — should override global prefs
-    const scheduleId = await createDueSchedule(
-      agentId,
-      slug,
-      "global-off-schedule-on",
-      {
-        notifyEmail: true,
-        notifySlack: true,
-      },
-    );
-
-    await executeDueSchedules();
-
-    const schedule = await findTestScheduleById(scheduleId);
-    expect(schedule?.lastRunId).toBeDefined();
-
-    const callbacks = await findTestRunCallbacks(schedule!.lastRunId!);
-    const callbackUrls = callbacks.map((c) => c.url);
-
-    expect(callbackUrls).toContainEqual(
-      expect.stringContaining("/email/callbacks/schedule"),
-    );
-    expect(callbackUrls).toContainEqual(
-      expect.stringContaining("/callbacks/slack/org/schedule"),
-    );
-  });
-
-  it("should NOT register any callbacks when both schedule notifications are off", async () => {
+  it("should NOT register any notification callbacks when both are off", async () => {
     const scheduleId = await createDueSchedule(agentId, slug, "silent", {
       notifyEmail: false,
       notifySlack: false,

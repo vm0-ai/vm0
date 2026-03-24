@@ -9,7 +9,6 @@ import {
 } from "@tabler/icons-react";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import { cn } from "@vm0/ui";
-import { NotificationSettings } from "./components/settings/notification-settings.tsx";
 import { TimezoneSettings } from "./components/settings/timezone-settings.tsx";
 import {
   themePreference$,
@@ -172,7 +171,7 @@ export function ZeroPreferencesPage() {
             Preferences
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Manage your appearance, notification and agent runtime preferences
+            Manage your appearance and agent runtime preferences
           </p>
         </div>
       </header>
@@ -186,12 +185,6 @@ export function ZeroPreferencesPage() {
                 className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
               >
                 Appearance
-              </TabsTrigger>
-              <TabsTrigger
-                value="notifications"
-                className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-              >
-                Notifications
               </TabsTrigger>
               <TabsTrigger
                 value="timezone"
@@ -208,7 +201,6 @@ export function ZeroPreferencesPage() {
                   <SendModeSettings />
                 </div>
               )}
-              {tab === "notifications" && <NotificationSettings />}
               {tab === "timezone" && <TimezoneSettings />}
             </div>
           </Tabs>

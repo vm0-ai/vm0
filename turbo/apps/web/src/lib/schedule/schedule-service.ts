@@ -957,8 +957,7 @@ export async function executeSchedule(
       | ScheduleLoopCallbackPayload;
   }> = [];
 
-  // Email schedule notification callback
-  // Schedule-level setting overrides global user preference
+  // Email schedule notification callback (only if Resend is configured AND schedule opted in)
   if (globalThis.services.env.RESEND_API_KEY && schedule.notifyEmail) {
     const emailPayload: EmailScheduleCallbackPayload = {
       scheduleId: schedule.id,
@@ -973,8 +972,7 @@ export async function executeSchedule(
     });
   }
 
-  // Slack schedule notification callback
-  // Schedule-level setting overrides global user preference
+  // Slack schedule DM notification callback (only if schedule opted in)
   if (schedule.notifySlack) {
     const slackPayload: SlackScheduleCallbackPayload = {
       scheduleId: schedule.id,

@@ -20,8 +20,6 @@ type SendMode = "enter" | "cmd-enter";
 
 interface UserPreferences {
   timezone: string | null;
-  notifyEmail: boolean;
-  notifySlack: boolean;
   pinnedAgentIds: string[];
   sendMode: SendMode;
 }
@@ -41,8 +39,6 @@ function isValidTimezone(timezone: string): boolean {
 
 const DEFAULTS: UserPreferences = {
   timezone: null,
-  notifyEmail: false,
-  notifySlack: true,
   pinnedAgentIds: [],
   sendMode: "enter",
 };
@@ -71,8 +67,6 @@ export async function getUserPreferences(
   if (row) {
     return {
       timezone: row.timezone,
-      notifyEmail: row.notifyEmail,
-      notifySlack: row.notifySlack,
       pinnedAgentIds: toStringArray(row.pinnedAgentIds),
       sendMode: parseSendMode(row.sendMode),
     };
@@ -89,8 +83,6 @@ export async function updateUserPreferences(
   userId: string,
   prefs: {
     timezone?: string;
-    notifyEmail?: boolean;
-    notifySlack?: boolean;
     pinnedAgentIds?: string[];
     sendMode?: SendMode;
   },
@@ -106,14 +98,6 @@ export async function updateUserPreferences(
 
   const merged: UserPreferences = {
     timezone: prefs.timezone !== undefined ? prefs.timezone : existing.timezone,
-    notifyEmail:
-      prefs.notifyEmail !== undefined
-        ? prefs.notifyEmail
-        : existing.notifyEmail,
-    notifySlack:
-      prefs.notifySlack !== undefined
-        ? prefs.notifySlack
-        : existing.notifySlack,
     pinnedAgentIds:
       prefs.pinnedAgentIds !== undefined
         ? prefs.pinnedAgentIds
@@ -128,8 +112,6 @@ export async function updateUserPreferences(
       orgId,
       userId,
       timezone: merged.timezone,
-      notifyEmail: merged.notifyEmail,
-      notifySlack: merged.notifySlack,
       pinnedAgentIds: merged.pinnedAgentIds,
       sendMode: merged.sendMode,
       createdAt: now,
@@ -139,12 +121,6 @@ export async function updateUserPreferences(
       target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
       set: {
         ...(prefs.timezone !== undefined && { timezone: prefs.timezone }),
-        ...(prefs.notifyEmail !== undefined && {
-          notifyEmail: prefs.notifyEmail,
-        }),
-        ...(prefs.notifySlack !== undefined && {
-          notifySlack: prefs.notifySlack,
-        }),
         ...(prefs.pinnedAgentIds !== undefined && {
           pinnedAgentIds: prefs.pinnedAgentIds,
         }),

@@ -48,16 +48,12 @@ describe("zero preference command", () => {
   });
 
   function defaultPreferences(
-    overrides: Partial<{
-      timezone: string | null;
-      notifyEmail: boolean;
-      notifySlack: boolean;
-    }> = {},
+    overrides: Partial<{ timezone: string | null }> = {},
   ) {
     return {
       timezone: null,
-      notifyEmail: false,
-      notifySlack: false,
+      pinnedAgentIds: [],
+      sendMode: "enter",
       ...overrides,
     };
   }
@@ -67,11 +63,7 @@ describe("zero preference command", () => {
       server.use(
         http.get("http://localhost:3000/api/zero/user-preferences", () => {
           return HttpResponse.json(
-            defaultPreferences({
-              timezone: "America/New_York",
-              notifyEmail: true,
-              notifySlack: false,
-            }),
+            defaultPreferences({ timezone: "America/New_York" }),
           );
         }),
       );
@@ -81,8 +73,6 @@ describe("zero preference command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Current preferences:");
       expect(logCalls).toContain("America/New_York");
-      expect(logCalls).toContain("on");
-      expect(logCalls).toContain("off");
     });
 
     it("should show 'not set' when timezone is null", async () => {
@@ -171,245 +161,6 @@ describe("zero preference command", () => {
     });
   });
 
-  describe("--notify-email flag", () => {
-    it("should enable email notifications with 'on'", async () => {
-      server.use(
-        http.post(
-          "http://localhost:3000/api/zero/user-preferences",
-          async ({ request }) => {
-            const body = (await request.json()) as { notifyEmail?: boolean };
-            expect(body.notifyEmail).toBe(true);
-            return HttpResponse.json(defaultPreferences({ notifyEmail: true }));
-          },
-        ),
-      );
-
-      await zeroPreferenceCommand.parseAsync([
-        "node",
-        "cli",
-        "--notify-email",
-        "on",
-      ]);
-
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("Email notifications enabled");
-    });
-
-    it("should disable email notifications with 'off'", async () => {
-      server.use(
-        http.post(
-          "http://localhost:3000/api/zero/user-preferences",
-          async ({ request }) => {
-            const body = (await request.json()) as { notifyEmail?: boolean };
-            expect(body.notifyEmail).toBe(false);
-            return HttpResponse.json(
-              defaultPreferences({ notifyEmail: false }),
-            );
-          },
-        ),
-      );
-
-      await zeroPreferenceCommand.parseAsync([
-        "node",
-        "cli",
-        "--notify-email",
-        "off",
-      ]);
-
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("Email notifications disabled");
-    });
-
-    it("should exit with error for invalid notify-email value", async () => {
-      await expect(async () => {
-        await zeroPreferenceCommand.parseAsync([
-          "node",
-          "cli",
-          "--notify-email",
-          "invalid",
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
-      expect(errorCalls).toContain("Invalid value for --notify-email");
-      expect(mockExit).toHaveBeenCalledWith(1);
-    });
-  });
-
-  describe("--notify-slack flag", () => {
-    it("should enable slack notifications with 'on'", async () => {
-      server.use(
-        http.post(
-          "http://localhost:3000/api/zero/user-preferences",
-          async ({ request }) => {
-            const body = (await request.json()) as { notifySlack?: boolean };
-            expect(body.notifySlack).toBe(true);
-            return HttpResponse.json(defaultPreferences({ notifySlack: true }));
-          },
-        ),
-      );
-
-      await zeroPreferenceCommand.parseAsync([
-        "node",
-        "cli",
-        "--notify-slack",
-        "on",
-      ]);
-
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("Slack notifications enabled");
-    });
-
-    it("should disable slack notifications with 'off'", async () => {
-      server.use(
-        http.post(
-          "http://localhost:3000/api/zero/user-preferences",
-          async ({ request }) => {
-            const body = (await request.json()) as { notifySlack?: boolean };
-            expect(body.notifySlack).toBe(false);
-            return HttpResponse.json(
-              defaultPreferences({ notifySlack: false }),
-            );
-          },
-        ),
-      );
-
-      await zeroPreferenceCommand.parseAsync([
-        "node",
-        "cli",
-        "--notify-slack",
-        "off",
-      ]);
-
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("Slack notifications disabled");
-    });
-  });
-
-  describe("multiple flags", () => {
-    it("should update timezone and email notifications together", async () => {
-      server.use(
-        http.post(
-          "http://localhost:3000/api/zero/user-preferences",
-          async ({ request }) => {
-            const body = (await request.json()) as {
-              timezone?: string;
-              notifyEmail?: boolean;
-            };
-            expect(body.timezone).toBe("Asia/Shanghai");
-            expect(body.notifyEmail).toBe(true);
-            return HttpResponse.json(
-              defaultPreferences({
-                timezone: "Asia/Shanghai",
-                notifyEmail: true,
-              }),
-            );
-          },
-        ),
-      );
-
-      await zeroPreferenceCommand.parseAsync([
-        "node",
-        "cli",
-        "--timezone",
-        "Asia/Shanghai",
-        "--notify-email",
-        "on",
-      ]);
-
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("Timezone set to");
-      expect(logCalls).toContain("Asia/Shanghai");
-      expect(logCalls).toContain("Email notifications enabled");
-    });
-  });
-
-  describe("on/off value parsing", () => {
-    it("should accept 'true' as on", async () => {
-      server.use(
-        http.post(
-          "http://localhost:3000/api/zero/user-preferences",
-          async ({ request }) => {
-            const body = (await request.json()) as { notifyEmail?: boolean };
-            expect(body.notifyEmail).toBe(true);
-            return HttpResponse.json(defaultPreferences({ notifyEmail: true }));
-          },
-        ),
-      );
-
-      await zeroPreferenceCommand.parseAsync([
-        "node",
-        "cli",
-        "--notify-email",
-        "true",
-      ]);
-
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("Email notifications enabled");
-    });
-
-    it("should accept 'false' as off", async () => {
-      server.use(
-        http.post(
-          "http://localhost:3000/api/zero/user-preferences",
-          async ({ request }) => {
-            const body = (await request.json()) as { notifyEmail?: boolean };
-            expect(body.notifyEmail).toBe(false);
-            return HttpResponse.json(
-              defaultPreferences({ notifyEmail: false }),
-            );
-          },
-        ),
-      );
-
-      await zeroPreferenceCommand.parseAsync([
-        "node",
-        "cli",
-        "--notify-email",
-        "false",
-      ]);
-
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("Email notifications disabled");
-    });
-
-    it("should accept '1' as on", async () => {
-      server.use(
-        http.post("http://localhost:3000/api/zero/user-preferences", () => {
-          return HttpResponse.json(defaultPreferences({ notifySlack: true }));
-        }),
-      );
-
-      await zeroPreferenceCommand.parseAsync([
-        "node",
-        "cli",
-        "--notify-slack",
-        "1",
-      ]);
-
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("Slack notifications enabled");
-    });
-
-    it("should accept '0' as off", async () => {
-      server.use(
-        http.post("http://localhost:3000/api/zero/user-preferences", () => {
-          return HttpResponse.json(defaultPreferences({ notifySlack: false }));
-        }),
-      );
-
-      await zeroPreferenceCommand.parseAsync([
-        "node",
-        "cli",
-        "--notify-slack",
-        "0",
-      ]);
-
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("Slack notifications disabled");
-    });
-  });
-
   describe("interactive mode", () => {
     it("should prompt for timezone when not set", async () => {
       Object.defineProperty(process.stdout, "isTTY", {
@@ -434,45 +185,13 @@ describe("zero preference command", () => {
         ),
       );
 
-      // Inject responses in order:
-      // 1. "Europe/London" for timezone prompt
-      // 2. false for email notification prompt
-      prompts.inject(["Europe/London", false]);
+      prompts.inject(["Europe/London"]);
 
       await zeroPreferenceCommand.parseAsync(["node", "cli"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Timezone set to");
       expect(logCalls).toContain("Europe/London");
-    });
-
-    it("should prompt for email notification when disabled", async () => {
-      Object.defineProperty(process.stdout, "isTTY", {
-        value: true,
-        writable: true,
-        configurable: true,
-      });
-
-      server.use(
-        http.get("http://localhost:3000/api/zero/user-preferences", () => {
-          return HttpResponse.json(
-            defaultPreferences({ timezone: "Asia/Tokyo" }),
-          );
-        }),
-        http.post("http://localhost:3000/api/zero/user-preferences", () => {
-          return HttpResponse.json(
-            defaultPreferences({ timezone: "Asia/Tokyo", notifyEmail: true }),
-          );
-        }),
-      );
-
-      // Timezone already set, so only email notification prompt
-      prompts.inject([true]);
-
-      await zeroPreferenceCommand.parseAsync(["node", "cli"]);
-
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("Email notifications enabled");
     });
 
     it("should skip interactive prompts when all preferences are configured", async () => {
@@ -485,10 +204,7 @@ describe("zero preference command", () => {
       server.use(
         http.get("http://localhost:3000/api/zero/user-preferences", () => {
           return HttpResponse.json(
-            defaultPreferences({
-              timezone: "America/Chicago",
-              notifyEmail: true,
-            }),
+            defaultPreferences({ timezone: "America/Chicago" }),
           );
         }),
       );
@@ -513,8 +229,7 @@ describe("zero preference command", () => {
         }),
       );
 
-      // Empty string for timezone (skip), false for email
-      prompts.inject(["", false]);
+      prompts.inject([""]);
 
       await zeroPreferenceCommand.parseAsync(["node", "cli"]);
 
@@ -590,8 +305,7 @@ describe("zero preference command", () => {
         }),
       );
 
-      // Inject invalid timezone, then false for email
-      prompts.inject(["Not/A/Timezone", false]);
+      prompts.inject(["Not/A/Timezone"]);
 
       await expect(async () => {
         await zeroPreferenceCommand.parseAsync(["node", "cli"]);

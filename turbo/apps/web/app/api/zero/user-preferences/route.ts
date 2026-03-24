@@ -32,8 +32,6 @@ const router = tsr.router(zeroUserPreferencesContract, {
       status: 200 as const,
       body: {
         timezone: prefs.timezone,
-        notifyEmail: prefs.notifyEmail,
-        notifySlack: prefs.notifySlack,
         pinnedAgentIds: prefs.pinnedAgentIds,
         sendMode: prefs.sendMode,
       },
@@ -52,8 +50,6 @@ const router = tsr.router(zeroUserPreferencesContract, {
     try {
       const prefs = await updateUserPreferences(org.orgId, authCtx.userId, {
         timezone: body.timezone,
-        notifyEmail: body.notifyEmail,
-        notifySlack: body.notifySlack,
         pinnedAgentIds: body.pinnedAgentIds,
         sendMode: body.sendMode,
       });
@@ -62,8 +58,6 @@ const router = tsr.router(zeroUserPreferencesContract, {
         status: 200 as const,
         body: {
           timezone: prefs.timezone,
-          notifyEmail: prefs.notifyEmail,
-          notifySlack: prefs.notifySlack,
           pinnedAgentIds: prefs.pinnedAgentIds,
           sendMode: prefs.sendMode,
         },
