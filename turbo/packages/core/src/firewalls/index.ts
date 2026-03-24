@@ -24,6 +24,7 @@ import { elevenlabsFirewall } from "./elevenlabs.generated";
 import { falFirewall } from "./fal.generated";
 import { figmaFirewall } from "./figma.generated";
 import { firecrawlFirewall } from "./firecrawl.generated";
+import { firefliesFirewall } from "./fireflies.generated";
 import { githubFirewall } from "./github.generated";
 import { gitlabFirewall } from "./gitlab.generated";
 import { gmailFirewall } from "./gmail.generated";
@@ -74,6 +75,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   fal: falFirewall,
   figma: figmaFirewall,
   firecrawl: firecrawlFirewall,
+  fireflies: firefliesFirewall,
   github: githubFirewall,
   gitlab: gitlabFirewall,
   gmail: gmailFirewall,

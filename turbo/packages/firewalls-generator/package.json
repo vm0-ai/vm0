@@ -23,6 +23,7 @@
     "generate:fal": "tsx src/index.ts fal",
     "generate:figma": "tsx src/index.ts figma",
     "generate:firecrawl": "tsx src/index.ts firecrawl",
+    "generate:fireflies": "tsx src/index.ts fireflies",
     "generate:github": "tsx src/index.ts github",
     "generate:gitlab": "tsx src/index.ts gitlab",
     "generate:gmail": "tsx src/index.ts gmail",

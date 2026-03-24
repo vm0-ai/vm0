@@ -114,6 +114,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   "google-calendar": ["google-calendar"],
   elevenlabs: ["elevenlabs"],
   fal: ["fal"],
+  fireflies: ["fireflies"],
   hubspot: ["hubspot"],
   intercom: ["intercom"],
   atlassian: ["jira", "confluence"],
