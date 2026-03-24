@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use tracing::{info, warn};
 
 use crate::error::{BlockCowError, Result};
-use crate::{blockdev, dmsetup, losetup};
+use crate::{blockdev, command, dmsetup, losetup};
 
 /// Default dm-snapshot chunk size in 512-byte sectors.
 /// 8 sectors = 4KB, matching the common filesystem block size.
@@ -220,6 +220,21 @@ impl CowDevice {
                 return Err(e);
             }
         };
+
+        // 6. Make the device accessible to non-root users.
+        // dm devices default to root:disk 0660; the runner process and
+        // Firecracker run as a regular user.
+        let device_str = device_path.to_string_lossy();
+        if let Err(e) = command::run("chmod", &["666", &device_str]) {
+            let _ = dmsetup::remove(&cow_name);
+            let _ = dmsetup::remove(&origin_name);
+            let _ = losetup::detach(&cow_loop);
+            let _ = losetup::detach(&base_loop);
+            if created_cow {
+                let _ = fs::remove_file(&cow_file);
+            }
+            return Err(e);
+        }
 
         info!(
             device = %device_path.display(),
