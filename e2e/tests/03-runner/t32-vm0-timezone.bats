@@ -1,9 +1,9 @@
 #!/usr/bin/env bats
 
-# E2E tests for vm0 preference --timezone and TZ injection into sandbox
+# E2E tests for vm0 zero preference --timezone and TZ injection into sandbox
 #
 # These tests verify:
-# 1. The vm0 preference command can set user timezone preference
+# 1. The vm0 zero preference command can set user timezone preference
 # 2. The TZ environment variable is correctly injected into sandbox
 #
 # Test Structure:
@@ -77,26 +77,26 @@ setup() {
 # user-level timezone preference.  Two vm0 run calls (~15s each) + CLI
 # commands (~5s) ≈ 35s, well within the 60s timeout.
 
-@test "vm0 preference --timezone and TZ injection" {
+@test "vm0 zero preference --timezone and TZ injection" {
     # --- preference set and read ---
-    run $CLI_COMMAND preference --timezone "Asia/Shanghai"
+    run $CLI_COMMAND zero preference --timezone "Asia/Shanghai"
     assert_success
     assert_output --partial "Timezone set to"
     assert_output --partial "Asia/Shanghai"
 
-    $CLI_COMMAND preference --timezone "America/New_York" >/dev/null
+    $CLI_COMMAND zero preference --timezone "America/New_York" >/dev/null
 
-    run $CLI_COMMAND preference
+    run $CLI_COMMAND zero preference
     assert_success
     assert_output --partial "America/New_York"
 
     # --- reject invalid timezone ---
-    run $CLI_COMMAND preference --timezone "Invalid/Timezone"
+    run $CLI_COMMAND zero preference --timezone "Invalid/Timezone"
     assert_failure
     assert_output --partial "Invalid timezone"
 
     # --- TZ injection into sandbox ---
-    $CLI_COMMAND preference --timezone "Asia/Tokyo" >/dev/null
+    $CLI_COMMAND zero preference --timezone "Asia/Tokyo" >/dev/null
 
     run $CLI_COMMAND run "$AGENT_NAME" \
         --verbose \
@@ -105,7 +105,7 @@ setup() {
     assert_output --partial "TZ=Asia/Tokyo"
 
     # --- explicit TZ overrides user preference ---
-    $CLI_COMMAND preference --timezone "Asia/Shanghai" >/dev/null
+    $CLI_COMMAND zero preference --timezone "Asia/Shanghai" >/dev/null
 
     local OVERRIDE_AGENT_NAME="tz-override-${UNIQUE_ID}"
     cat > "$TEST_DIR/vm0-tz-override.yaml" <<EOF
