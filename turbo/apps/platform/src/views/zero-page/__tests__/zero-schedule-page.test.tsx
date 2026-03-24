@@ -584,6 +584,260 @@ describe("zero schedule page - create dialog confirm close", () => {
   });
 });
 
+describe("zero schedule page - schedule dialog fields", () => {
+  it("should show agent selector in create dialog", async () => {
+    mockScheduleAPI();
+    await renderSchedulePage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Add schedule/i }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Add schedule/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Add schedule" }),
+      ).toBeInTheDocument();
+    });
+
+    expect(screen.getByLabelText("Agent")).toBeInTheDocument();
+  });
+
+  it("should show notification toggles in create dialog", async () => {
+    mockScheduleAPI();
+    await renderSchedulePage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Add schedule/i }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Add schedule/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Add schedule" }),
+      ).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Notifications")).toBeInTheDocument();
+    expect(screen.getByText("Email")).toBeInTheDocument();
+    expect(screen.getByText("Slack")).toBeInTheDocument();
+  });
+
+  it("should show notification toggles in edit dialog", async () => {
+    mockScheduleAPI();
+    await renderSchedulePage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Edit Every weekday at 9:00 AM"),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText("Edit Every weekday at 9:00 AM"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Edit schedule")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Notifications")).toBeInTheDocument();
+    expect(screen.getByText("Email")).toBeInTheDocument();
+    expect(screen.getByText("Slack")).toBeInTheDocument();
+  });
+
+  it("should disable Create button when prompt is empty", async () => {
+    mockScheduleAPI();
+    await renderSchedulePage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Add schedule/i }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Add schedule/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Add schedule" }),
+      ).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole("button", { name: "Create" })).toBeDisabled();
+  });
+
+  it("should enable Create button when prompt is filled", async () => {
+    mockScheduleAPI();
+    await renderSchedulePage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Add schedule/i }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Add schedule/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Add schedule" }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText("Prompt"), {
+      target: { value: "Do something" },
+    });
+
+    expect(screen.getByRole("button", { name: "Create" })).toBeEnabled();
+  });
+
+  it("should include notification values in save request", async () => {
+    let capturedBody: Record<string, unknown> | null = null;
+
+    server.use(
+      http.get("*/api/zero/schedules", () => {
+        return HttpResponse.json({ schedules: createMockSchedules() });
+      }),
+      http.post("*/api/zero/schedules", async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ success: true });
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+
+    await renderSchedulePage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Add schedule/i }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Add schedule/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Add schedule" }),
+      ).toBeInTheDocument();
+    });
+
+    // Fill prompt
+    fireEvent.change(screen.getByLabelText("Prompt"), {
+      target: { value: "Test with notifications" },
+    });
+
+    // Toggle email notification on
+    const emailSwitch = screen
+      .getByText("Email")
+      .closest("div")
+      ?.querySelector("[role=switch]");
+    if (emailSwitch) {
+      fireEvent.click(emailSwitch);
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    await waitFor(() => {
+      expect(capturedBody).toBeTruthy();
+    });
+    expect(capturedBody).toHaveProperty("notifyEmail", true);
+    expect(capturedBody).toHaveProperty("notifySlack", false);
+  });
+
+  it("should show save error in dialog", async () => {
+    server.use(
+      http.get("*/api/zero/schedules", () => {
+        return HttpResponse.json({ schedules: createMockSchedules() });
+      }),
+      http.post("*/api/zero/schedules", () => {
+        return HttpResponse.json(
+          { error: { message: "Schedule limit reached" } },
+          { status: 400 },
+        );
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+
+    await renderSchedulePage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Add schedule/i }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Add schedule/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Add schedule" }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText("Prompt"), {
+      target: { value: "Some task" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    // Dialog should stay open with error message
+    await waitFor(() => {
+      expect(screen.getByText(/Schedule limit reached/)).toBeInTheDocument();
+    });
+    expect(
+      screen.getByRole("heading", { name: "Add schedule" }),
+    ).toBeInTheDocument();
+  });
+
+  it("should pre-fill prompt when editing an existing schedule", async () => {
+    mockScheduleAPI();
+    await renderSchedulePage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Edit Every weekday at 9:00 AM"),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText("Edit Every weekday at 9:00 AM"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Edit schedule")).toBeInTheDocument();
+    });
+
+    const promptInput = screen.getByLabelText("Prompt") as HTMLTextAreaElement;
+    expect(promptInput.value).toBe("Summarize yesterday's threads");
+  });
+
+  it("should not show agent selector in edit dialog", async () => {
+    mockScheduleAPI();
+    await renderSchedulePage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Edit Every weekday at 9:00 AM"),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText("Edit Every weekday at 9:00 AM"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Edit schedule")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByLabelText("Agent")).not.toBeInTheDocument();
+  });
+});
+
 describe("zero schedule page - view modes", () => {
   it("should render list and calendar view tabs", async () => {
     mockScheduleAPI();
