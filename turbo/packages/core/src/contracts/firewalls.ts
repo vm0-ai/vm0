@@ -114,6 +114,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   figma: ["figma"],
   notion: ["notion"],
   openai: ["openai"],
+  resend: ["resend"],
   stripe: ["stripe"],
   vercel: ["vercel"],
   x: ["x"],
