@@ -29,17 +29,18 @@ export const DISALLOWED_CRON_TOOLS = [
 
 /**
  * Build schedule guidance prompt that redirects agents from ephemeral cron
- * tools to vm0's persistent schedule system.
+ * tools to the zero schedule CLI.
  */
 export function buildScheduleGuidance(): string {
   return [
     "# Scheduling Tasks",
     "Do NOT use /loop or cron tools (CronCreate, CronList, CronDelete) — they are not available.",
-    "For recurring or scheduled tasks, use the vm0 schedule CLI:",
-    "- Create: vm0 schedule setup $VM0_AGENT_NAME",
-    "- List: vm0 schedule list",
-    "- Delete: vm0 schedule delete $VM0_AGENT_NAME --name <schedule-name>",
-    "- Enable/Disable: vm0 schedule enable/disable $VM0_AGENT_NAME --name <schedule-name>",
+    "For recurring or scheduled tasks, use the zero schedule CLI:",
+    "- Create: npx -p @vm0/cli zero schedule setup $VM0_AGENT_NAME",
+    "- List: npx -p @vm0/cli zero schedule list",
+    "- Delete: npx -p @vm0/cli zero schedule delete $VM0_AGENT_NAME --name <schedule-name>",
+    "- Enable/Disable: npx -p @vm0/cli zero schedule enable/disable $VM0_AGENT_NAME --name <schedule-name>",
+    'Alternative: use "npx @vm0/cli zero schedule" instead of "npx -p @vm0/cli zero schedule".',
     'Choose a short, descriptive schedule name based on the task (e.g., "deploy-check", "daily-report").',
   ].join("\n");
 }
@@ -52,9 +53,10 @@ export function buildSlackMessagingGuidance(): string {
   return `# Sending Slack Messages
 You can send Slack messages directly using the vm0 integration API:
 curl -X POST "$VM0_API_URL/api/zero/integrations/slack/message" \\
-  -H "Authorization: Bearer $VM0_TOKEN" \\
+  -H "Authorization: Bearer $ZERO_TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '{"channel": "<channel-id>", "text": "your message"}'
+Note: $VM0_TOKEN also works during the transition period.
 Optional fields: threadTs (reply in thread), blocks (Block Kit JSON).
 Messages are sent as the bot user, not as an individual user.`;
 }
