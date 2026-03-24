@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.144.0](https://github.com/vm0-ai/vm0/compare/app-v0.143.1...app-v0.144.0) (2026-03-24)
+
+
+### Features
+
+* confirm before closing schedule dialog with unsaved edits ([#6154](https://github.com/vm0-ai/vm0/issues/6154)) ([4fdd25b](https://github.com/vm0-ai/vm0/commit/4fdd25bd1f8759db89dc137e01016475958e6318))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.102.0
+
 ## [0.143.1](https://github.com/vm0-ai/vm0/compare/app-v0.143.0...app-v0.143.1) (2026-03-24)
 
 

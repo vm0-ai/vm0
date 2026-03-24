@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.102.0](https://github.com/vm0-ai/vm0/compare/core-v8.101.0...core-v8.102.0) (2026-03-24)
+
+
+### Features
+
+* apply firewall policies when running zero agents ([#6288](https://github.com/vm0-ai/vm0/issues/6288)) ([f7a3f59](https://github.com/vm0-ai/vm0/commit/f7a3f594a5cf5a0eb8ace683da643d0e7276c4ab))
+
 ## [8.101.0](https://github.com/vm0-ai/vm0/compare/core-v8.100.0...core-v8.101.0) (2026-03-24)
 
 

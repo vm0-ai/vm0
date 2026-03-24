@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.78.0](https://github.com/vm0-ai/vm0/compare/cli-v9.77.2...cli-v9.78.0) (2026-03-24)
+
+
+### Features
+
+* **cli:** add vm0 zero connector commands ([#6304](https://github.com/vm0-ai/vm0/issues/6304)) ([036d4c8](https://github.com/vm0-ai/vm0/commit/036d4c8f1d971a6345588661dc0781bccb9ac3f9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.102.0
+
 ## [9.77.2](https://github.com/vm0-ai/vm0/compare/cli-v9.77.1...cli-v9.77.2) (2026-03-24)
 
 
