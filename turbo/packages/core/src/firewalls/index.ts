@@ -37,6 +37,7 @@ import { resendFirewall } from "./resend.generated";
 import { sentryFirewall } from "./sentry.generated";
 import { slackFirewall } from "./slack.generated";
 import { stripeFirewall } from "./stripe.generated";
+import { supabaseFirewall } from "./supabase.generated";
 import { todoistFirewall } from "./todoist.generated";
 import { vercelFirewall } from "./vercel.generated";
 import { xFirewall } from "./x.generated";
@@ -76,6 +77,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   sentry: sentryFirewall,
   slack: slackFirewall,
   stripe: stripeFirewall,
+  supabase: supabaseFirewall,
   todoist: todoistFirewall,
   vercel: vercelFirewall,
   x: xFirewall,

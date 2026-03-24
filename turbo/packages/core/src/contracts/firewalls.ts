@@ -122,6 +122,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   resend: ["resend"],
   sentry: ["sentry"],
   stripe: ["stripe"],
+  supabase: ["supabase"],
   todoist: ["todoist"],
   vercel: ["vercel"],
   x: ["x"],

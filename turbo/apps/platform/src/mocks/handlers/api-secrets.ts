@@ -1,11 +1,11 @@
 /**
  * Secrets API Handlers
  *
- * Mock handlers for /api/secrets and /api/zero/secrets endpoints.
+ * Mock handlers for /api/zero/secrets endpoints.
  */
 
 import { http, HttpResponse } from "msw";
-import type { SecretResponse, SecretListResponse } from "@vm0/core";
+import type { SecretResponse } from "@vm0/core";
 
 let mockSecrets: SecretResponse[] = [];
 
@@ -41,24 +41,6 @@ function handleSetSecret(body: {
 }
 
 export const apiSecretsHandlers = [
-  // GET /api/secrets - List all secrets
-  http.get("/api/secrets", () => {
-    const response: SecretListResponse = {
-      secrets: mockSecrets,
-    };
-    return HttpResponse.json(response);
-  }),
-
-  // PUT /api/secrets - Create or update a secret
-  http.put("/api/secrets", async ({ request }) => {
-    const body = (await request.json()) as {
-      name: string;
-      value: string;
-      description?: string;
-    };
-    return handleSetSecret(body);
-  }),
-
   // POST /api/zero/secrets - Create or update a secret (zero proxy)
   http.post("/api/zero/secrets", async ({ request }) => {
     const body = (await request.json()) as {
@@ -67,21 +49,5 @@ export const apiSecretsHandlers = [
       description?: string;
     };
     return handleSetSecret(body);
-  }),
-
-  // DELETE /api/secrets/:name - Delete a secret
-  http.delete("/api/secrets/:name", ({ params }) => {
-    const name = params.name as string;
-    const existing = mockSecrets.find((s) => s.name === name);
-
-    if (!existing) {
-      return HttpResponse.json(
-        { error: { message: "Secret not found", code: "NOT_FOUND" } },
-        { status: 404 },
-      );
-    }
-
-    mockSecrets = mockSecrets.filter((s) => s.name !== name);
-    return new HttpResponse(null, { status: 204 });
   }),
 ];

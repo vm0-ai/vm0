@@ -31,6 +31,7 @@ import { generate as generateResend } from "./resend";
 import { generate as generateSentry } from "./sentry";
 import { generate as generateSlack } from "./slack";
 import { generate as generateStripe } from "./stripe";
+import { generate as generateSupabase } from "./supabase";
 import { generate as generateTodoist } from "./todoist";
 import { generate as generateVercel } from "./vercel";
 import { generate as generateX } from "./x";
@@ -66,6 +67,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   sentry: generateSentry,
   slack: generateSlack,
   stripe: generateStripe,
+  supabase: generateSupabase,
   todoist: generateTodoist,
   vercel: generateVercel,
   x: generateX,

@@ -1,11 +1,11 @@
 /**
  * Variables API Handlers
  *
- * Mock handlers for /api/variables and /api/zero/variables endpoints.
+ * Mock handlers for /api/zero/variables endpoints.
  */
 
 import { http, HttpResponse } from "msw";
-import type { VariableResponse, VariableListResponse } from "@vm0/core";
+import type { VariableResponse } from "@vm0/core";
 
 let mockVariables: VariableResponse[] = [];
 
@@ -43,24 +43,6 @@ function handleSetVariable(body: {
 }
 
 export const apiVariablesHandlers = [
-  // GET /api/variables - List all variables
-  http.get("/api/variables", () => {
-    const response: VariableListResponse = {
-      variables: mockVariables,
-    };
-    return HttpResponse.json(response);
-  }),
-
-  // PUT /api/variables - Create or update a variable
-  http.put("/api/variables", async ({ request }) => {
-    const body = (await request.json()) as {
-      name: string;
-      value: string;
-      description?: string;
-    };
-    return handleSetVariable(body);
-  }),
-
   // POST /api/zero/variables - Create or update a variable (zero proxy)
   http.post("/api/zero/variables", async ({ request }) => {
     const body = (await request.json()) as {
@@ -69,21 +51,5 @@ export const apiVariablesHandlers = [
       description?: string;
     };
     return handleSetVariable(body);
-  }),
-
-  // DELETE /api/variables/:name - Delete a variable
-  http.delete("/api/variables/:name", ({ params }) => {
-    const name = params.name as string;
-    const existing = mockVariables.find((v) => v.name === name);
-
-    if (!existing) {
-      return HttpResponse.json(
-        { error: { message: "Variable not found", code: "NOT_FOUND" } },
-        { status: 404 },
-      );
-    }
-
-    mockVariables = mockVariables.filter((v) => v.name !== name);
-    return new HttpResponse(null, { status: 204 });
   }),
 ];
