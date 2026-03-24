@@ -116,6 +116,42 @@ build_output() {
       | sort_by(.number)
     ' "$dir/issues_assignee.json" "$dir/issues_author.json")
 
+    # Collect PRs linked from issues but not already in prs.json
+    local linked_pr_numbers
+    linked_pr_numbers=$(echo "$issues" | jq -r '[.[].linked_prs[]] | unique | .[]')
+    local labeled_pr_numbers
+    labeled_pr_numbers=$(jq -r '[.[].number] | .[]' "$dir/prs.json")
+
+    # Fetch missing linked PRs in parallel
+    local linked_prs_file="$dir/linked_prs.json"
+    echo '[]' > "$linked_prs_file"
+    local fetch_pids=()
+    for pr_num in $linked_pr_numbers; do
+      if ! echo "$labeled_pr_numbers" | grep -qx "$pr_num"; then
+        (
+          gh pr view "$pr_num" --repo "$REPO" \
+            --json number,title,labels,mergeable,headRefOid,headRefName \
+            2>/dev/null > "$dir/linked_pr_${pr_num}.json" || true
+        ) &
+        fetch_pids+=($!)
+      fi
+    done
+    for pid in "${fetch_pids[@]+"${fetch_pids[@]}"}"; do
+      wait "$pid" 2>/dev/null || true
+    done
+
+    # Merge labeled PRs + linked PRs
+    local all_prs_file="$dir/all_prs.json"
+    cp "$dir/prs.json" "$all_prs_file"
+    for pr_num in $linked_pr_numbers; do
+      local linked_file="$dir/linked_pr_${pr_num}.json"
+      if [ -s "$linked_file" ] && ! echo "$labeled_pr_numbers" | grep -qx "$pr_num"; then
+        all_prs_file_tmp="$dir/all_prs_tmp.json"
+        jq -s '.[0] + [.[1]]' "$all_prs_file" "$linked_file" > "$all_prs_file_tmp"
+        mv "$all_prs_file_tmp" "$all_prs_file"
+      fi
+    done
+
     # Transform PRs
     local prs
     prs=$(jq '
@@ -128,7 +164,7 @@ build_output() {
         branch: .headRefName
       })
       | sort_by(.number)
-    ' "$dir/prs.json")
+    ' "$all_prs_file")
 
     local issue_count pr_count
     issue_count=$(echo "$issues" | jq 'length')
