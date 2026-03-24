@@ -11,8 +11,8 @@
 import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://posthog.com/docs/api";
-// Format: phx_ + alphanumeric chars (length not documented)
-const PLACEHOLDER_VALUE = "phx_Vm0PlaceHolder00000000000000000000000a";
+// Format: phx_ + ~47 base62 chars = ~51 total (variable length, 35 bytes entropy)
+const PLACEHOLDER_VALUE = "phx_Vm0PlaceHolder00000000000000000000000000000000a";
 
 function generateTypeScript(): string {
   const lines: string[] = [

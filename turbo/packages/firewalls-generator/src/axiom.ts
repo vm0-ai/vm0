@@ -10,8 +10,8 @@
 import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://axiom.co/docs/reference/tokens";
-// Format: xaat- prefix + alphanumeric (exact length unknown)
-const PLACEHOLDER_VALUE = "xaat-Vm0PlaceHolder0000000000000000000000000000";
+// Format: xaat- prefix + UUID (8-4-4-4-12 hex) = 41 total
+const PLACEHOLDER_VALUE = "xaat-00000000-0000-0000-0000-000000000000";
 
 function generateTypeScript(): string {
   const lines: string[] = [

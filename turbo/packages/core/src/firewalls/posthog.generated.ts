@@ -10,7 +10,7 @@ export const posthogFirewall: FirewallConfig = {
   name: "posthog",
   description: "PostHog API",
   placeholders: {
-    POSTHOG_TOKEN: "phx_Vm0PlaceHolder00000000000000000000000a",
+    POSTHOG_TOKEN: "phx_Vm0PlaceHolder00000000000000000000000000000000a",
   },
   apis: [
     {

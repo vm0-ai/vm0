@@ -10,7 +10,8 @@ export const mondayFirewall: FirewallConfig = {
   name: "monday",
   description: "Monday.com API",
   placeholders: {
-    MONDAY_TOKEN: "Vm0PlaceHolder00000000000000000a",
+    MONDAY_TOKEN:
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlZtMFBsYWNlSG9sZGVyIiwiaWF0IjoxNTE2MjM5MDIyfQ.Vm0PlaceHolder00000000000000000000000000000a",
   },
   apis: [
     {

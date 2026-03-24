@@ -10,7 +10,7 @@ export const axiomFirewall: FirewallConfig = {
   name: "axiom",
   description: "Axiom API",
   placeholders: {
-    AXIOM_TOKEN: "xaat-Vm0PlaceHolder0000000000000000000000000000",
+    AXIOM_TOKEN: "xaat-00000000-0000-0000-0000-000000000000",
   },
   apis: [
     {
