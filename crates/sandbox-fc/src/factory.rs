@@ -12,7 +12,7 @@ use crate::config::FirecrackerConfig;
 const DESTROY_RETRIES: u32 = 5;
 
 /// Delay between COW device destroy retries.
-const DESTROY_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(200);
+const DESTROY_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(500);
 use crate::network::{GUEST_NETWORK, NetnsPool, NetnsPoolConfig, generate_boot_args};
 use crate::paths::{FactoryPaths, RuntimePaths, SandboxPaths, SockPaths};
 use crate::prerequisites;
