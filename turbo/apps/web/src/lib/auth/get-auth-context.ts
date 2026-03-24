@@ -1,6 +1,6 @@
 import { eq, and, gt } from "drizzle-orm";
 import { auth } from "@clerk/nextjs/server";
-import type { OrgRole } from "@vm0/core";
+import type { OrgRole, ValidCapability, ZeroCapability } from "@vm0/core";
 import { cliTokens } from "../../db/schema/cli-tokens";
 import {
   isSandboxToken,
@@ -8,6 +8,8 @@ import {
   verifyZeroToken,
 } from "./sandbox-token";
 import { logger } from "../logger";
+
+type AnyCapability = ValidCapability | ZeroCapability;
 
 const log = logger("auth:user");
 
@@ -19,7 +21,7 @@ export type AuthContext = {
   orgId?: string;
   orgRole?: OrgRole;
   sessionClaims?: Record<string, unknown>;
-  capabilities?: readonly string[];
+  capabilities?: readonly AnyCapability[];
   runId?: string;
 };
 
@@ -34,7 +36,7 @@ export type AuthContext = {
 export async function getAuthContext(
   authHeader?: string,
   options?: {
-    requiredCapability?: string;
+    requiredCapability?: AnyCapability;
     acceptAnySandboxCapability?: boolean;
   },
 ): Promise<AuthContext | null> {
@@ -81,7 +83,7 @@ export async function getAuthContext(
 function authenticateSandboxToken(
   token: string,
   options?: {
-    requiredCapability?: string;
+    requiredCapability?: AnyCapability;
     acceptAnySandboxCapability?: boolean;
   },
 ): AuthContext | null {
@@ -111,10 +113,10 @@ function resolveSandboxAuth(
   sandboxAuth: {
     userId: string;
     runId: string;
-    capabilities?: readonly string[];
+    capabilities?: readonly AnyCapability[];
   },
   options: {
-    requiredCapability?: string;
+    requiredCapability?: AnyCapability;
     acceptAnySandboxCapability?: boolean;
   },
 ): AuthContext | null {
@@ -154,10 +156,10 @@ function resolveZeroAuth(
     userId: string;
     runId: string;
     orgId: string;
-    capabilities: readonly string[];
+    capabilities: readonly AnyCapability[];
   },
   options: {
-    requiredCapability?: string;
+    requiredCapability?: AnyCapability;
     acceptAnySandboxCapability?: boolean;
   },
 ): AuthContext | null {
@@ -214,7 +216,7 @@ async function getClerkSessionAuth(): Promise<AuthContext | null> {
 export async function getUserId(
   authHeader?: string,
   options?: {
-    requiredCapability?: string;
+    requiredCapability?: AnyCapability;
     acceptAnySandboxCapability?: boolean;
   },
 ): Promise<string | null> {
