@@ -15,10 +15,7 @@ function isInsideSandbox(): boolean {
  * Display agent identity and run information when inside a sandbox.
  */
 async function showSandboxInfo(): Promise<void> {
-  const agentName = process.env.VM0_AGENT_NAME;
-  const agentVersion = process.env.VM0_AGENT_VERSION;
-  const agentComposeId = process.env.VM0_AGENT_COMPOSE_ID;
-  const agentOrgSlug = process.env.VM0_AGENT_ORG_SLUG;
+  const agentId = process.env.ZERO_AGENT_ID;
   const cliAgentType = process.env.CLI_AGENT_TYPE;
 
   const runId = process.env.VM0_RUN_ID;
@@ -26,14 +23,10 @@ async function showSandboxInfo(): Promise<void> {
   const apiUrl = process.env.VM0_API_URL;
 
   // Agent section
-  const hasAgentInfo =
-    agentName || agentVersion || agentComposeId || agentOrgSlug || cliAgentType;
+  const hasAgentInfo = agentId || cliAgentType;
   if (hasAgentInfo) {
     console.log(chalk.bold("Agent:"));
-    if (agentName) console.log(`  Name:       ${agentName}`);
-    if (agentVersion) console.log(`  Version:    ${agentVersion}`);
-    if (agentComposeId) console.log(`  Compose ID: ${agentComposeId}`);
-    if (agentOrgSlug) console.log(`  Org:        ${agentOrgSlug}`);
+    if (agentId) console.log(`  ID:         ${agentId}`);
     if (cliAgentType) console.log(`  Framework:  ${cliAgentType}`);
     console.log();
   }
