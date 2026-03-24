@@ -102,8 +102,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // Resolve compose and org slug for from address
   const compose = await resolveComposeByZeroAgentId(payload.zeroAgentId);
-  const org = compose ? await getOrgData(compose.orgId) : null;
-  const fromLocalPart = org?.slug ?? "vm0";
+  if (!compose) {
+    return errorResponse("Compose not found for zero agent", 404);
+  }
+  const org = await getOrgData(compose.orgId);
 
   if (status === "completed") {
     // Get agent output
@@ -129,7 +131,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const replyToAddress = buildReplyToAddress(replyToken);
 
     await enqueueEmail({
-      from: buildFromAddress(fromLocalPart),
+      from: buildFromAddress(org.slug),
       to: userEmail,
       subject: `VM0 - Scheduled run for "${agentName}" completed`,
       template: {
@@ -143,21 +145,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       },
       replyTo: replyToAddress,
       headers: unsubscribeHeaders,
-      threadAction:
-        agentSessionId && compose
-          ? {
-              action: "save_thread_session" as const,
-              userId,
-              composeId: compose.id,
-              agentSessionId,
-              replyToToken: replyToken,
-            }
-          : undefined,
+      threadAction: agentSessionId
+        ? {
+            action: "save_thread_session" as const,
+            userId,
+            composeId: compose.id,
+            agentSessionId,
+            replyToToken: replyToken,
+          }
+        : undefined,
     });
   } else {
     // Failed run
     await enqueueEmail({
-      from: buildFromAddress(fromLocalPart),
+      from: buildFromAddress(org.slug),
       to: userEmail,
       subject: `VM0 - Scheduled run for "${agentName}" failed`,
       template: {
