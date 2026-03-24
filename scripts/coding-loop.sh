@@ -32,6 +32,8 @@ _LOG_FIFO="/tmp/coding-loop-fifo-${LABEL}.$$"
 mkfifo "$_LOG_FIFO"
 tee "$_LOG_OUTPUT" < "$_LOG_FIFO" &
 _TEE_PID=$!
+# Save original stderr so trap warnings are visible after exec >/dev/null.
+exec 3>&2
 # Redirect both stdout and stderr through the FIFO → tee.
 exec > "$_LOG_FIFO" 2>&1
 
@@ -49,13 +51,14 @@ _update_gist() {
     if ! gh api --method PATCH "gists/$gist_id" \
       --input <(jq -Rs --arg f "$gist_name" '{"files": {($f): {"content": .}}}' "$_LOG_OUTPUT") \
       >/dev/null; then
-      echo "warning: failed to update gist $gist_id" >&2
+      echo "warning: failed to update gist $gist_id" >&3
     fi
   else
     if ! gh gist create --filename "$gist_name" --desc "$gist_name" - < "$_LOG_OUTPUT" >/dev/null; then
-      echo "warning: failed to create gist for $gist_name" >&2
+      echo "warning: failed to create gist for $gist_name" >&3
     fi
   fi
+  exec 3>&-
   rm -f "$_LOG_OUTPUT"
 }
 
