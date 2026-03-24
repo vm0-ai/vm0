@@ -12,6 +12,7 @@ import { generate as generateAirtable } from "./airtable";
 import { generate as generateAsana } from "./asana";
 import { generate as generateAxiom } from "./axiom";
 import { generate as generateBraveSearch } from "./brave-search";
+import { generate as generateClickup } from "./clickup";
 import { generate as generateCloudflare } from "./cloudflare";
 import { generate as generateConfluence } from "./confluence";
 import { generate as generateDeepseek } from "./deepseek";
@@ -53,6 +54,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   asana: generateAsana,
   axiom: generateAxiom,
   "brave-search": generateBraveSearch,
+  clickup: generateClickup,
   cloudflare: generateCloudflare,
   confluence: generateConfluence,
   deepseek: generateDeepseek,
