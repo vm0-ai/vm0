@@ -283,14 +283,15 @@ async fn run_snapshot_workflow(
                     break;
                 }
                 Err(e) => {
-                    tracing::warn!(
-                        attempt,
-                        error = %e,
-                        "destroy_keep_cow failed, retrying"
-                    );
-                    last_err = Some(e);
                     if attempt + 1 < DESTROY_RETRIES {
+                        last_err = Some(e);
                         tokio::time::sleep(DESTROY_RETRY_DELAY).await;
+                    } else {
+                        tracing::warn!(
+                            error = %e,
+                            "destroy_keep_cow failed after {DESTROY_RETRIES} attempts"
+                        );
+                        last_err = Some(e);
                     }
                 }
             }

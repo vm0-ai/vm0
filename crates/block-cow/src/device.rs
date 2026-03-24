@@ -289,10 +289,10 @@ impl CowDevice {
         // can legitimately fail due to "device busy" (Firecracker still
         // has the device open). If it fails, bail — nothing else can be
         // cleaned up yet.
-        if let Err(e) = dmsetup::remove(&cow_name) {
-            warn!(name = cow_name, error = %e, "failed to remove snapshot target — device may be in use");
-            return Err(e);
-        }
+        //
+        // No warn here — callers (factory destroy, snapshot teardown) retry
+        // this step and log only when retries are exhausted.
+        dmsetup::remove(&cow_name)?;
 
         // Snapshot is gone — past the point of no return. Mark inactive
         // so Drop won't retry the (already succeeded) snapshot removal.
