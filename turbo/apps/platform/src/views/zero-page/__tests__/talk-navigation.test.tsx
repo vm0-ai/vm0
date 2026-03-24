@@ -61,7 +61,7 @@ describe("talk navigation", () => {
   it("should navigate from /talk/:name to /chat/:sessionId after sending a message", async () => {
     mockChatAPIs();
 
-    await setupPage({ context, path: "/talk/zero" });
+    await setupPage({ context, path: "/talk/mock-compose-id" });
 
     // Wait for the chat input to be ready
     const textarea = await waitFor(

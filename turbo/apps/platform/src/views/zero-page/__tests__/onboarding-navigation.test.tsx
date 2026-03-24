@@ -56,7 +56,7 @@ function mockOnboardingNeededMember() {
         hasOrg: true,
         hasDefaultAgent: true,
         defaultAgentId: "mock-compose-id",
-        defaultAgentMetadata: null,
+        defaultAgentMetadata: { displayName: "Zero" },
         defaultAgentSkills: [],
       });
     }),
@@ -218,7 +218,7 @@ describe("onboarding navigation", () => {
           hasOrg: true,
           hasDefaultAgent: true,
           defaultAgentId: "mock-compose-id",
-          defaultAgentMetadata: null,
+          defaultAgentMetadata: { displayName: "Zero" },
           defaultAgentSkills: [],
         });
       }),

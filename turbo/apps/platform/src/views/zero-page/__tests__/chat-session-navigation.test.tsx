@@ -56,9 +56,9 @@ describe("chat session page wrapper navigation", () => {
     const scheduledButton = screen.getByLabelText("Scheduled");
     fireEvent.click(scheduledButton);
 
-    // Verify navigation to /team/zero with tab=schedule
+    // Verify navigation to /team/mock-compose-id with tab=schedule
     await waitFor(() => {
-      expect(pathname()).toBe("/team/zero");
+      expect(pathname()).toBe("/team/mock-compose-id");
       expect(search()).toContain("tab=schedule");
     });
   }, 15_000);
@@ -80,9 +80,9 @@ describe("chat session page wrapper navigation", () => {
     const avatarButton = screen.getByLabelText("View agent profile");
     fireEvent.click(avatarButton);
 
-    // Verify navigation to /team/zero (no tab param)
+    // Verify navigation to /team/mock-compose-id (no tab param)
     await waitFor(() => {
-      expect(pathname()).toBe("/team/zero");
+      expect(pathname()).toBe("/team/mock-compose-id");
     });
   }, 15_000);
 });

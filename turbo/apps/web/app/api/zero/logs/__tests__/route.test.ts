@@ -179,7 +179,6 @@ describe("GET /api/zero/logs", () => {
     let alphaName: string;
     let betaName: string;
     let alphaComposeId: string;
-    let betaComposeId: string;
 
     beforeEach(async () => {
       alphaName = `agent-alpha-${randomUUID().slice(0, 8)}`;
@@ -188,7 +187,6 @@ describe("GET /api/zero/logs", () => {
       const { composeId: compose1 } = await createTestCompose(alphaName);
       const { composeId: compose2 } = await createTestCompose(betaName);
       alphaComposeId = compose1;
-      betaComposeId = compose2;
 
       const { runId: run1 } = await createTestRun(compose1, "Alpha prompt");
       await completeTestRun(user.userId, run1);

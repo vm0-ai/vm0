@@ -397,7 +397,6 @@ export interface OrgScheduleEntry {
   timezone: string;
   intervalSeconds: number | null;
   agentId: string;
-  agentName: string;
 }
 
 const internalAllSchedules$ = state<ScheduleResponse[]>([]);
@@ -425,7 +424,6 @@ export const allOrgScheduleEntries$ = computed((get) => {
         timezone: s.timezone,
         intervalSeconds: s.intervalSeconds,
         agentId: s.agentId,
-        agentName: s.agentName,
       }),
     );
 });
