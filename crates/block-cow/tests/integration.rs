@@ -158,10 +158,15 @@ fn restore_from_existing_cow() {
     let restored_path = restored.device_path().to_owned();
 
     // Read back the marker from the restored device.
-    let mut buf = vec![0u8; marker.len()];
-    let f = fs::File::open(&restored_path).expect("open restored device");
-    use std::os::unix::fs::FileExt;
-    f.read_exact_at(&mut buf, 0).expect("read marker");
+    // Scope the file handle so it's closed before destroy() — an open fd
+    // keeps the dm device busy and `dmsetup remove` would fail.
+    let buf = {
+        let f = fs::File::open(&restored_path).expect("open restored device");
+        use std::os::unix::fs::FileExt;
+        let mut buf = vec![0u8; marker.len()];
+        f.read_exact_at(&mut buf, 0).expect("read marker");
+        buf
+    };
 
     assert_eq!(&buf, marker, "marker should survive restore");
 
