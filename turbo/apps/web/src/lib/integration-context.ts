@@ -51,7 +51,7 @@ export function buildScheduleGuidance(): string {
 export function buildSlackMessagingGuidance(): string {
   return `# Sending Slack Messages
 You can send Slack messages directly using the vm0 integration API:
-curl -X POST "$VM0_API_URL/api/agent/integrations/slack/message" \\
+curl -X POST "$VM0_API_URL/api/zero/integrations/slack/message" \\
   -H "Authorization: Bearer $VM0_TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '{"channel": "<channel-id>", "text": "your message"}'

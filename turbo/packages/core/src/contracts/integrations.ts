@@ -6,7 +6,7 @@ const c = initContract();
 
 /**
  * Integration Slack message contract
- * POST /api/agent/integrations/slack/message
+ * POST /api/zero/integrations/slack/message
  *
  * Sends a Slack message via the org's installed bot token.
  * Requires `integration-slack:write` capability.
@@ -14,7 +14,7 @@ const c = initContract();
 export const integrationsSlackMessageContract = c.router({
   sendMessage: {
     method: "POST",
-    path: "/api/agent/integrations/slack/message",
+    path: "/api/zero/integrations/slack/message",
     headers: authHeadersSchema,
     body: z.object({
       channel: z.string().min(1, "Channel ID is required"),

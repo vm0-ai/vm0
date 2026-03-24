@@ -15,11 +15,11 @@ import {
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 import { generateSandboxToken } from "../../../../../../../src/lib/auth/sandbox-token";
 
-const URL = "http://localhost:3000/api/agent/integrations/slack/message";
+const URL = "http://localhost:3000/api/zero/integrations/slack/message";
 
 const context = testContext();
 
-describe("POST /api/agent/integrations/slack/message", () => {
+describe("POST /api/zero/integrations/slack/message", () => {
   let user: UserContext;
 
   beforeEach(async () => {
