@@ -88,8 +88,7 @@ async function refreshExpiredTokens(
     envVarsByConnector.set(ct, arr);
   }
 
-  const failedConnectors: string[] = [];
-  const results = await Promise.all(
+  const refreshResults = await Promise.all(
     toRefresh.map(async (connectorType) => {
       log.debug(`[${auth.runId}] Refreshing expired ${connectorType} token`);
       const freshToken = await refreshConnectorAccessToken(
@@ -100,8 +99,7 @@ async function refreshExpiredTokens(
       );
       if (!freshToken) {
         log.warn(`[${auth.runId}] Failed to refresh ${connectorType} token`);
-        failedConnectors.push(connectorType);
-        return false;
+        return { connectorType, ok: false as const };
       }
       // refreshConnectorAccessToken updates secrets[rawSecretName] but the
       // template may reference a mapped env var name.  Sync all mapped keys
@@ -109,10 +107,13 @@ async function refreshExpiredTokens(
       for (const envVar of envVarsByConnector.get(connectorType) ?? []) {
         secrets[envVar] = freshToken;
       }
-      return true;
+      return { connectorType, ok: true as const };
     }),
   );
-  const refreshed = results.some(Boolean);
+  const refreshed = refreshResults.some((r) => r.ok);
+  const failedConnectors = refreshResults
+    .filter((r) => !r.ok)
+    .map((r) => r.connectorType);
 
   // Use accurate DB values after refresh; skip extra query if nothing changed
   const finalExpiryMap = refreshed
