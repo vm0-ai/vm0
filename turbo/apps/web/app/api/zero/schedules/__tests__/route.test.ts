@@ -54,7 +54,7 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            zeroAgentId: testZeroAgentId,
+            agentId: testZeroAgentId,
             name: "daily-zero",
             cronExpression: "0 9 * * *",
             timezone: "UTC",
@@ -84,7 +84,7 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            zeroAgentId: testZeroAgentId,
+            agentId: testZeroAgentId,
             name: "update-zero",
             cronExpression: "0 10 * * *",
             timezone: "UTC",
@@ -108,7 +108,7 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            zeroAgentId: "00000000-0000-0000-0000-000000000000",
+            agentId: "00000000-0000-0000-0000-000000000000",
             name: "will-fail",
             cronExpression: "0 9 * * *",
             timezone: "UTC",
@@ -157,7 +157,7 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            zeroAgentId: testZeroAgentId,
+            agentId: testZeroAgentId,
             name: "unauth",
             cronExpression: "0 9 * * *",
             timezone: "UTC",

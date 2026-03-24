@@ -62,7 +62,7 @@ describe("POST /api/zero/schedules/:name/enable", () => {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ zeroAgentId: testZeroAgentId }),
+          body: JSON.stringify({ agentId: testZeroAgentId }),
         },
       ),
       { params: Promise.resolve({ name: "to-enable" }) },
@@ -80,7 +80,7 @@ describe("POST /api/zero/schedules/:name/enable", () => {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ zeroAgentId: testZeroAgentId }),
+          body: JSON.stringify({ agentId: testZeroAgentId }),
         },
       ),
       { params: Promise.resolve({ name: "non-existent" }) },
@@ -141,7 +141,7 @@ describe("POST /api/zero/schedules/:name/enable", () => {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ zeroAgentId: testZeroAgentId }),
+          body: JSON.stringify({ agentId: testZeroAgentId }),
         },
       ),
       { params: Promise.resolve({ name: "any" }) },

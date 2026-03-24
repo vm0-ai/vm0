@@ -178,7 +178,7 @@ export async function handleInboundEmailReply(
     },
   ];
 
-  // 11. Resolve zeroAgentId from session's composeId
+  // 11. Resolve agentId from session's composeId
   const [agent] = await globalThis.services.db
     .select({ id: zeroAgents.id })
     .from(agentComposes)
@@ -208,7 +208,7 @@ export async function handleInboundEmailReply(
     userId: session.userId,
     prompt: replyContent,
     appendSystemPrompt,
-    zeroAgentId: agent.id,
+    agentId: agent.id,
     sessionId: session.agentSessionId,
     triggerSource: "email",
     callbacks,

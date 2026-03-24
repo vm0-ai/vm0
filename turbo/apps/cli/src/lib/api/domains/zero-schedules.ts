@@ -16,7 +16,7 @@ import type {
  */
 export async function deployZeroSchedule(body: {
   name: string;
-  zeroAgentId: string;
+  agentId: string;
   cronExpression?: string;
   atTime?: string;
   intervalSeconds?: number;
@@ -64,14 +64,14 @@ export async function listZeroSchedules(): Promise<ScheduleListResponse> {
  */
 export async function deleteZeroSchedule(params: {
   name: string;
-  zeroAgentId: string;
+  agentId: string;
 }): Promise<void> {
   const config = await getClientConfig();
   const client = initClient(zeroSchedulesByNameContract, config);
 
   const result = await client.delete({
     params: { name: params.name },
-    query: { zeroAgentId: params.zeroAgentId },
+    query: { agentId: params.agentId },
   });
 
   if (result.status === 204) {
@@ -86,14 +86,14 @@ export async function deleteZeroSchedule(params: {
  */
 export async function enableZeroSchedule(params: {
   name: string;
-  zeroAgentId: string;
+  agentId: string;
 }): Promise<ScheduleResponse> {
   const config = await getClientConfig();
   const client = initClient(zeroSchedulesEnableContract, config);
 
   const result = await client.enable({
     params: { name: params.name },
-    body: { zeroAgentId: params.zeroAgentId },
+    body: { agentId: params.agentId },
   });
 
   if (result.status === 200) {
@@ -108,14 +108,14 @@ export async function enableZeroSchedule(params: {
  */
 export async function disableZeroSchedule(params: {
   name: string;
-  zeroAgentId: string;
+  agentId: string;
 }): Promise<ScheduleResponse> {
   const config = await getClientConfig();
   const client = initClient(zeroSchedulesEnableContract, config);
 
   const result = await client.disable({
     params: { name: params.name },
-    body: { zeroAgentId: params.zeroAgentId },
+    body: { agentId: params.agentId },
   });
 
   if (result.status === 200) {

@@ -54,7 +54,7 @@ describe("DELETE /api/zero/schedules/:name", () => {
 
     const response = await DELETE(
       createTestRequest(
-        `http://localhost:3000/api/zero/schedules/to-delete?zeroAgentId=${testZeroAgentId}&org=${slug}`,
+        `http://localhost:3000/api/zero/schedules/to-delete?agentId=${testZeroAgentId}&org=${slug}`,
         { method: "DELETE" },
       ),
     );
@@ -65,7 +65,7 @@ describe("DELETE /api/zero/schedules/:name", () => {
   it("should return 404 for non-existent schedule", async () => {
     const response = await DELETE(
       createTestRequest(
-        `http://localhost:3000/api/zero/schedules/non-existent?zeroAgentId=${testZeroAgentId}&org=${slug}`,
+        `http://localhost:3000/api/zero/schedules/non-existent?agentId=${testZeroAgentId}&org=${slug}`,
         { method: "DELETE" },
       ),
     );
@@ -96,7 +96,7 @@ describe("DELETE /api/zero/schedules/:name", () => {
 
     const response = await DELETE(
       createTestRequest(
-        `http://localhost:3000/api/zero/schedules/any?zeroAgentId=${testZeroAgentId}&org=${slug}`,
+        `http://localhost:3000/api/zero/schedules/any?agentId=${testZeroAgentId}&org=${slug}`,
         { method: "DELETE" },
       ),
     );

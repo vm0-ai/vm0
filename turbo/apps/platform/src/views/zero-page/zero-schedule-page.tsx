@@ -59,7 +59,7 @@ import emptyScheduleImg from "./assets/empty-schedule.webp";
 
 type CombinedEntry = ScheduleEntry & {
   agentLabel: string;
-  zeroAgentId: string;
+  agentId: string;
   timezone: string;
 };
 
@@ -80,10 +80,10 @@ function buildCombinedSchedule(
     name: e.name,
     intervalSeconds: e.intervalSeconds,
     agentLabel:
-      e.zeroAgentId === defaultComposeId
+      e.agentId === defaultComposeId
         ? agentName
         : (nameToDisplay.get(e.agentName) ?? e.agentName),
-    zeroAgentId: e.zeroAgentId,
+    agentId: e.agentId,
     timezone: e.timezone,
   }));
 }
@@ -664,7 +664,7 @@ export function ZeroSchedulePage() {
         minute: values.minute,
         timezone: values.timezone,
         intervalSeconds: values.loopMinutes * 60,
-        zeroAgentId: values.composeId,
+        agentId: values.composeId,
         notifyEmail: values.notifyEmail,
         notifySlack: values.notifySlack,
       })
@@ -701,7 +701,7 @@ export function ZeroSchedulePage() {
         timezone: values.timezone,
         intervalSeconds: values.loopMinutes * 60,
         editName: editingEntry.name,
-        zeroAgentId: editingEntry.zeroAgentId,
+        agentId: editingEntry.agentId,
         notifyEmail: values.notifyEmail,
         notifySlack: values.notifySlack,
       })
@@ -728,7 +728,7 @@ export function ZeroSchedulePage() {
     await toggleEnabled({
       name: entry.name,
       enabled,
-      zeroAgentId: entry.zeroAgentId,
+      agentId: entry.agentId,
     });
   };
 
@@ -746,7 +746,7 @@ export function ZeroSchedulePage() {
     detach(
       deleteSchedule({
         name: pendingDelete.name,
-        zeroAgentId: pendingDelete.zeroAgentId,
+        agentId: pendingDelete.agentId,
       }),
       Reason.DomCallback,
     );

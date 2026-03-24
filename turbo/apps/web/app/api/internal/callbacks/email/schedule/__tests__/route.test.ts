@@ -25,7 +25,7 @@ const mockResend = vi.mocked(new Resend(""), true);
 
 interface ScheduleCallbackPayload {
   scheduleId: string;
-  zeroAgentId: string;
+  agentId: string;
   agentName: string;
   userId: string;
 }
@@ -76,14 +76,14 @@ describe("POST /api/internal/callbacks/email/schedule", () => {
       const agentName = uniqueId("sched-agent");
       const { composeId } = await createTestCompose(agentName);
       await createTestZeroAgent(user.orgId, agentName, {});
-      const zeroAgentId = await getTestZeroAgentId(user.orgId, agentName);
+      const agentId = await getTestZeroAgentId(user.orgId, agentName);
       const schedule = await createTestSchedule(composeId, uniqueId("sched"));
       const { runId } = await createTestRun(composeId, "Test prompt");
       await linkRunToSchedule(runId, schedule.id);
 
       const payload: ScheduleCallbackPayload = {
         scheduleId: schedule.id,
-        zeroAgentId,
+        agentId,
         agentName,
         userId: user.userId,
       };
@@ -110,14 +110,14 @@ describe("POST /api/internal/callbacks/email/schedule", () => {
       const agentName = uniqueId("sched-agent");
       const { composeId } = await createTestCompose(agentName);
       await createTestZeroAgent(user.orgId, agentName, {});
-      const zeroAgentId = await getTestZeroAgentId(user.orgId, agentName);
+      const agentId = await getTestZeroAgentId(user.orgId, agentName);
       const schedule = await createTestSchedule(composeId, uniqueId("sched"));
       const { runId } = await createTestRun(composeId, "Test prompt");
       await linkRunToSchedule(runId, schedule.id);
 
       const payload: ScheduleCallbackPayload = {
         scheduleId: schedule.id,
-        zeroAgentId,
+        agentId,
         agentName,
         userId: user.userId,
       };
@@ -146,14 +146,14 @@ describe("POST /api/internal/callbacks/email/schedule", () => {
       const agentName = uniqueId("sched-agent");
       const { composeId } = await createTestCompose(agentName);
       await createTestZeroAgent(user.orgId, agentName, {});
-      const zeroAgentId = await getTestZeroAgentId(user.orgId, agentName);
+      const agentId = await getTestZeroAgentId(user.orgId, agentName);
       const schedule = await createTestSchedule(composeId, uniqueId("sched"));
       const { runId } = await createTestRun(composeId, "Test prompt");
       await linkRunToSchedule(runId, schedule.id);
 
       const payload: ScheduleCallbackPayload = {
         scheduleId: schedule.id,
-        zeroAgentId,
+        agentId,
         agentName,
         userId: user.userId,
       };
@@ -186,7 +186,7 @@ describe("POST /api/internal/callbacks/email/schedule", () => {
       const agentName = uniqueId("sched-agent");
       const { composeId } = await createTestCompose(agentName);
       await createTestZeroAgent(user.orgId, agentName, {});
-      const zeroAgentId = await getTestZeroAgentId(user.orgId, agentName);
+      const agentId = await getTestZeroAgentId(user.orgId, agentName);
       const schedule = await createTestSchedule(composeId, uniqueId("sched"));
       const { runId } = await createTestRun(composeId, "Test prompt");
       await linkRunToSchedule(runId, schedule.id);
@@ -194,7 +194,7 @@ describe("POST /api/internal/callbacks/email/schedule", () => {
 
       const payload: ScheduleCallbackPayload = {
         scheduleId: schedule.id,
-        zeroAgentId,
+        agentId,
         agentName,
         userId: user.userId,
       };
@@ -233,14 +233,14 @@ describe("POST /api/internal/callbacks/email/schedule", () => {
       const agentName = uniqueId("fail-agent");
       const { composeId } = await createTestCompose(agentName);
       await createTestZeroAgent(user.orgId, agentName, {});
-      const zeroAgentId = await getTestZeroAgentId(user.orgId, agentName);
+      const agentId = await getTestZeroAgentId(user.orgId, agentName);
       const schedule = await createTestSchedule(composeId, uniqueId("sched"));
       const { runId } = await createTestRun(composeId, "Test prompt");
       await linkRunToSchedule(runId, schedule.id);
 
       const payload: ScheduleCallbackPayload = {
         scheduleId: schedule.id,
-        zeroAgentId,
+        agentId,
         agentName,
         userId: user.userId,
       };

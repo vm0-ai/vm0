@@ -458,7 +458,7 @@ const fetchZeroJobFirewallPolicies$ = command(async ({ get, set }) => {
 
 interface ScheduleItem {
   id: string;
-  zeroAgentId: string;
+  agentId: string;
   agentName: string;
   name: string;
   enabled: boolean;
@@ -630,7 +630,7 @@ export const saveZeroJobSchedule$ = command(
     const scheduleName = params.editName ?? `zero-${Date.now().toString(36)}`;
 
     const base = {
-      zeroAgentId: detail.agentComposeId,
+      agentId: detail.agentComposeId,
       name: scheduleName,
       timezone: params.timezone,
       prompt: params.prompt.trim(),
@@ -711,7 +711,7 @@ export const toggleZeroJobScheduleEnabled$ = command(
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ zeroAgentId: detail.agentComposeId }),
+        body: JSON.stringify({ agentId: detail.agentComposeId }),
       },
     );
 
@@ -739,7 +739,7 @@ export const deleteZeroJobSchedule$ = command(
 
     const fetchFn = get(fetch$);
     const response = await fetchFn(
-      `/api/zero/schedules/${encodeURIComponent(scheduleName)}?zeroAgentId=${encodeURIComponent(detail.agentComposeId)}`,
+      `/api/zero/schedules/${encodeURIComponent(scheduleName)}?agentId=${encodeURIComponent(detail.agentComposeId)}`,
       { method: "DELETE" },
     );
 

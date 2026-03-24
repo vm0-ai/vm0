@@ -4,7 +4,7 @@ import { initServices } from "../../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../../src/lib/callback";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { getUserEmail } from "../../../../../../src/lib/auth/get-user-email";
-import { resolveComposeByZeroAgentId } from "../../../../../../src/lib/schedule/schedule-service";
+import { resolveComposeByAgentId } from "../../../../../../src/lib/schedule/schedule-service";
 import { getRunOutputText } from "../../../../../../src/lib/run/extract-run-output";
 import { enqueueEmail } from "../../../../../../src/lib/email/outbox-service";
 import {
@@ -28,7 +28,7 @@ function parsePayload(payload: unknown): EmailScheduleCallbackPayload | null {
   const p = payload as Record<string, unknown>;
   if (
     typeof p.scheduleId !== "string" ||
-    typeof p.zeroAgentId !== "string" ||
+    typeof p.agentId !== "string" ||
     typeof p.agentName !== "string" ||
     typeof p.userId !== "string"
   ) {
@@ -101,7 +101,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const unsubscribeHeaders = buildUnsubscribeHeaders(unsubscribeUrl);
 
   // Resolve compose and org slug for from address
-  const compose = await resolveComposeByZeroAgentId(payload.zeroAgentId);
+  const compose = await resolveComposeByAgentId(payload.agentId);
   if (!compose) {
     return errorResponse("Compose not found for zero agent", 404);
   }

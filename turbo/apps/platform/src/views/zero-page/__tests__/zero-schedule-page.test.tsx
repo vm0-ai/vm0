@@ -11,7 +11,7 @@ function createMockSchedules() {
   return [
     {
       id: "sched-1",
-      zeroAgentId: "mock-compose-id",
+      agentId: "mock-compose-id",
       agentName: "zero",
       orgSlug: "test",
       name: "morning-briefing",
@@ -32,7 +32,7 @@ function createMockSchedules() {
     },
     {
       id: "sched-2",
-      zeroAgentId: "mock-compose-id",
+      agentId: "mock-compose-id",
       agentName: "zero",
       orgSlug: "test",
       name: "check-inbox",
@@ -53,7 +53,7 @@ function createMockSchedules() {
     },
     {
       id: "sched-disabled",
-      zeroAgentId: "mock-compose-id",
+      agentId: "mock-compose-id",
       agentName: "zero",
       orgSlug: "test",
       name: "disabled-schedule",

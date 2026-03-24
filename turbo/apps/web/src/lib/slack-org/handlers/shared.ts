@@ -332,7 +332,7 @@ export async function getWorkspaceAgent(composeId: string): Promise<
       id: string;
       name: string;
       displayName: string | null;
-      zeroAgentId: string;
+      agentId: string;
     }
   | undefined
 > {
@@ -351,7 +351,7 @@ export async function getWorkspaceAgent(composeId: string): Promise<
 
   const [agent] = await db
     .select({
-      zeroAgentId: zeroAgents.id,
+      agentId: zeroAgents.id,
       displayName: zeroAgents.displayName,
     })
     .from(zeroAgents)
@@ -369,7 +369,7 @@ export async function getWorkspaceAgent(composeId: string): Promise<
     id: compose.id,
     name: compose.name,
     displayName: agent.displayName,
-    zeroAgentId: agent.zeroAgentId,
+    agentId: agent.agentId,
   };
 }
 

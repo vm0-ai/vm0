@@ -22,14 +22,14 @@ const context = testContext();
 
 describe("createZeroRun()", () => {
   let user: UserContext;
-  let zeroAgentId: string;
+  let agentId: string;
 
   beforeEach(async () => {
     context.setupMocks();
     user = await context.setupUser();
     const agentName = uniqueId("agent");
     await createTestCompose(agentName);
-    zeroAgentId = await getTestZeroAgentId(user.orgId, agentName);
+    agentId = await getTestZeroAgentId(user.orgId, agentName);
     vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
     reloadEnv();
   });
@@ -40,7 +40,7 @@ describe("createZeroRun()", () => {
     return {
       userId: user.userId,
       prompt: "Hello, world!",
-      zeroAgentId,
+      agentId,
       triggerSource: "web" as TriggerSource,
       ...overrides,
     };
@@ -83,7 +83,7 @@ describe("createZeroRun()", () => {
       });
       const agentId = await getTestZeroAgentId(user.orgId, agentName);
 
-      const result = await createZeroRun(baseParams({ zeroAgentId: agentId }));
+      const result = await createZeroRun(baseParams({ agentId: agentId }));
 
       const run = await findTestRunRecord(result.runId);
       expect(run).toBeDefined();
@@ -101,7 +101,7 @@ describe("createZeroRun()", () => {
 
       const result = await createZeroRun(
         baseParams({
-          zeroAgentId: agentId,
+          agentId: agentId,
           appendSystemPrompt: "Custom instructions",
         }),
       );
@@ -163,7 +163,7 @@ describe("createZeroRun()", () => {
       );
       const result = await createZeroRun(
         baseParams({
-          zeroAgentId: agentId,
+          agentId: agentId,
           scheduleId: schedule.id,
           triggerSource: "schedule",
         }),
@@ -228,7 +228,7 @@ describe("createZeroRun()", () => {
       });
       const agentId = await getTestZeroAgentId(user.orgId, agentName);
 
-      const result = await createZeroRun(baseParams({ zeroAgentId: agentId }));
+      const result = await createZeroRun(baseParams({ agentId: agentId }));
 
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
@@ -248,7 +248,7 @@ describe("createZeroRun()", () => {
       await createTestConnector({ type: "slack" });
       const agentId = await getTestZeroAgentId(user.orgId, agentName);
 
-      const result = await createZeroRun(baseParams({ zeroAgentId: agentId }));
+      const result = await createZeroRun(baseParams({ agentId: agentId }));
 
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
@@ -276,7 +276,7 @@ describe("createZeroRun()", () => {
       });
       const agentId = await getTestZeroAgentId(user.orgId, agentName);
 
-      const result = await createZeroRun(baseParams({ zeroAgentId: agentId }));
+      const result = await createZeroRun(baseParams({ agentId: agentId }));
 
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
@@ -295,7 +295,7 @@ describe("createZeroRun()", () => {
       await createTestConnector({ type: "slack" });
       const agentId = await getTestZeroAgentId(user.orgId, agentName);
 
-      const result = await createZeroRun(baseParams({ zeroAgentId: agentId }));
+      const result = await createZeroRun(baseParams({ agentId: agentId }));
 
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();

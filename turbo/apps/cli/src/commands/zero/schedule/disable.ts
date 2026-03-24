@@ -23,7 +23,7 @@ export const disableCommand = new Command()
 
       await disableZeroSchedule({
         name: resolved.name,
-        zeroAgentId: resolved.zeroAgentId,
+        agentId: resolved.agentId,
       });
 
       console.log(

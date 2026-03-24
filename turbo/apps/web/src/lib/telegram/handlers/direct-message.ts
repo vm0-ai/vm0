@@ -160,7 +160,7 @@ export async function handleTelegramDirectMessage(
 
   const { status, response, runId } = await runAgentForTelegram({
     composeId,
-    zeroAgentId: defaultAgent.zeroAgentId,
+    agentId: defaultAgent.agentId,
     agentName,
     sessionId: existingSessionId,
     prompt: enrichedPrompt,

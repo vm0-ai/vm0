@@ -384,7 +384,7 @@ export async function createTestCompose(
   const result: { composeId: string; versionId: string; name: string } =
     await response.json();
 
-  // Ensure a matching zero_agents row exists so callers can resolve zeroAgentId
+  // Ensure a matching zero_agents row exists so callers can resolve agentId
   initServices();
   const [compose] = await globalThis.services.db
     .select({ orgId: agentComposes.orgId })
@@ -985,12 +985,10 @@ export async function failTestRun(
 // ============================================================================
 
 /**
- * Resolve composeId to zeroAgentId for test helpers.
+ * Resolve composeId to agentId for test helpers.
  * Looks up the compose to get org/name, then finds the corresponding zero agent.
  */
-async function resolveZeroAgentIdFromCompose(
-  composeId: string,
-): Promise<string> {
+async function resolveAgentIdFromCompose(composeId: string): Promise<string> {
   const [compose] = await globalThis.services.db
     .select({ orgId: agentComposes.orgId, name: agentComposes.name })
     .from(agentComposes)
@@ -1031,7 +1029,7 @@ export async function createTestSchedule(
 ): Promise<ScheduleResponse> {
   initServices();
   const { userId, orgId } = await getTestAuthContext();
-  const zeroAgentId = await resolveZeroAgentIdFromCompose(composeId);
+  const agentId = await resolveAgentIdFromCompose(composeId);
 
   // Default to cron if no trigger specified
   const hasTrigger =
@@ -1041,7 +1039,7 @@ export async function createTestSchedule(
 
   const result = await deploySchedule(userId, orgId, {
     name,
-    zeroAgentId,
+    agentId,
     timezone: options?.timezone ?? "UTC",
     prompt: options?.prompt ?? "Test schedule prompt",
     cronExpression: hasTrigger ? options?.cronExpression : "0 0 * * *",
@@ -1065,8 +1063,8 @@ export async function getTestSchedule(
 ): Promise<ScheduleResponse> {
   initServices();
   const { userId, orgId } = await getTestAuthContext();
-  const zeroAgentId = await resolveZeroAgentIdFromCompose(composeId);
-  return getScheduleByName(userId, orgId, zeroAgentId, name);
+  const agentId = await resolveAgentIdFromCompose(composeId);
+  return getScheduleByName(userId, orgId, agentId, name);
 }
 
 /**
@@ -1082,8 +1080,8 @@ export async function enableTestSchedule(
 ): Promise<ScheduleResponse> {
   initServices();
   const { userId, orgId } = await getTestAuthContext();
-  const zeroAgentId = await resolveZeroAgentIdFromCompose(composeId);
-  return enableSchedule(userId, orgId, zeroAgentId, name);
+  const agentId = await resolveAgentIdFromCompose(composeId);
+  return enableSchedule(userId, orgId, agentId, name);
 }
 
 /**
@@ -1099,8 +1097,8 @@ export async function disableTestSchedule(
 ): Promise<ScheduleResponse> {
   initServices();
   const { userId, orgId } = await getTestAuthContext();
-  const zeroAgentId = await resolveZeroAgentIdFromCompose(composeId);
-  return disableSchedule(userId, orgId, zeroAgentId, name);
+  const agentId = await resolveAgentIdFromCompose(composeId);
+  return disableSchedule(userId, orgId, agentId, name);
 }
 
 /**
@@ -1115,8 +1113,8 @@ export async function deleteTestSchedule(
 ): Promise<void> {
   initServices();
   const { userId, orgId } = await getTestAuthContext();
-  const zeroAgentId = await resolveZeroAgentIdFromCompose(composeId);
-  await deleteSchedule(userId, orgId, zeroAgentId, name);
+  const agentId = await resolveAgentIdFromCompose(composeId);
+  await deleteSchedule(userId, orgId, agentId, name);
 }
 
 /**
@@ -1142,11 +1140,11 @@ export async function getTestScheduleRuns(
 }> {
   initServices();
   const { userId, orgId } = await getTestAuthContext();
-  const zeroAgentId = await resolveZeroAgentIdFromCompose(composeId);
+  const agentId = await resolveAgentIdFromCompose(composeId);
   const runs = await getScheduleRecentRuns(
     userId,
     orgId,
-    zeroAgentId,
+    agentId,
     name,
     limit ?? 5,
   );
@@ -3892,7 +3890,7 @@ export async function seedTestCompose(opts: {
     throw new Error("Failed to seed agent compose");
   }
 
-  // Ensure a matching zero_agents row exists so handlers can resolve zeroAgentId
+  // Ensure a matching zero_agents row exists so handlers can resolve agentId
   await globalThis.services.db
     .insert(zeroAgents)
     .values({ orgId: opts.orgId, name: opts.name })

@@ -20,7 +20,7 @@ const L = logger("ZeroSchedule");
 
 interface ScheduleResponse {
   id: string;
-  zeroAgentId: string;
+  agentId: string;
   agentName: string;
   orgSlug: string;
   name: string;
@@ -193,7 +193,7 @@ export const fetchZeroSchedules$ = command(async ({ get, set }) => {
 
     // Filter schedules for this agent's composeId
     const agentSchedules = data.schedules.filter(
-      (s) => s.zeroAgentId === composeId,
+      (s) => s.agentId === composeId,
     );
     set(internalSchedules$, agentSchedules);
   } catch (error) {
@@ -236,7 +236,7 @@ export const saveZeroSchedule$ = command(
     const scheduleName = params.editName ?? `zero-${Date.now().toString(36)}`;
 
     const base = {
-      zeroAgentId: composeId,
+      agentId: composeId,
       name: scheduleName,
       timezone: params.timezone,
       prompt: params.prompt.trim(),
@@ -330,7 +330,7 @@ export const toggleZeroScheduleEnabled$ = command(
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ zeroAgentId: composeId }),
+        body: JSON.stringify({ agentId: composeId }),
       },
     );
 
@@ -363,7 +363,7 @@ export const deleteZeroSchedule$ = command(
 
     const fetchFn = get(fetch$);
     const response = await fetchFn(
-      `/api/zero/schedules/${encodeURIComponent(scheduleName)}?zeroAgentId=${encodeURIComponent(composeId)}`,
+      `/api/zero/schedules/${encodeURIComponent(scheduleName)}?agentId=${encodeURIComponent(composeId)}`,
       { method: "DELETE" },
     );
 
@@ -395,7 +395,7 @@ export interface OrgScheduleEntry {
   notifySlack: boolean;
   name: string;
   intervalSeconds: number | null;
-  zeroAgentId: string;
+  agentId: string;
   agentName: string;
   /** IANA timezone identifier */
   timezone: string;
@@ -424,7 +424,7 @@ export const allOrgScheduleEntries$ = computed((get) => {
         notifySlack: s.notifySlack,
         name: s.name,
         intervalSeconds: s.intervalSeconds,
-        zeroAgentId: s.zeroAgentId,
+        agentId: s.agentId,
         agentName: s.agentName,
         timezone: s.timezone,
       }),
@@ -455,13 +455,13 @@ export const fetchAllOrgSchedules$ = command(async ({ get, set }) => {
 export const saveOrgSchedule$ = command(
   async (
     { get, set },
-    params: ZeroScheduleSaveParams & { zeroAgentId: string },
+    params: ZeroScheduleSaveParams & { agentId: string },
   ) => {
     const fetchFn = get(fetch$);
     const scheduleName = params.editName ?? `zero-${Date.now().toString(36)}`;
 
     const base = {
-      zeroAgentId: params.zeroAgentId,
+      agentId: params.agentId,
       name: scheduleName,
       timezone: params.timezone,
       prompt: params.prompt.trim(),
@@ -537,7 +537,7 @@ export const saveOrgSchedule$ = command(
 export const toggleOrgScheduleEnabled$ = command(
   async (
     { get, set },
-    params: { name: string; enabled: boolean; zeroAgentId: string },
+    params: { name: string; enabled: boolean; agentId: string },
   ) => {
     const fetchFn = get(fetch$);
     const action = params.enabled ? "enable" : "disable";
@@ -546,7 +546,7 @@ export const toggleOrgScheduleEnabled$ = command(
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ zeroAgentId: params.zeroAgentId }),
+        body: JSON.stringify({ agentId: params.agentId }),
       },
     );
 
@@ -566,10 +566,10 @@ export const toggleOrgScheduleEnabled$ = command(
 );
 
 export const deleteOrgSchedule$ = command(
-  async ({ get, set }, params: { name: string; zeroAgentId: string }) => {
+  async ({ get, set }, params: { name: string; agentId: string }) => {
     const fetchFn = get(fetch$);
     const response = await fetchFn(
-      `/api/zero/schedules/${encodeURIComponent(params.name)}?zeroAgentId=${encodeURIComponent(params.zeroAgentId)}`,
+      `/api/zero/schedules/${encodeURIComponent(params.name)}?agentId=${encodeURIComponent(params.agentId)}`,
       { method: "DELETE" },
     );
 

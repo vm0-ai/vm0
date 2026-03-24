@@ -57,7 +57,7 @@ const router = tsr.router(zeroRunsMainContract, {
     if (isAuthError(authCtx)) return authCtx;
 
     try {
-      // Resolve zeroAgentId from agentComposeId
+      // Resolve agentId from agentComposeId
       const composeId = body.agentComposeId ?? "";
       const [agent] = await globalThis.services.db
         .select({ id: zeroAgents.id })
@@ -84,7 +84,7 @@ const router = tsr.router(zeroRunsMainContract, {
       const result = await createZeroRun({
         userId: authCtx.userId,
         prompt: body.prompt,
-        zeroAgentId: agent.id,
+        agentId: agent.id,
         sessionId: body.sessionId,
         appendSystemPrompt: body.appendSystemPrompt,
         modelProvider: body.modelProvider,

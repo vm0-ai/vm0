@@ -41,7 +41,7 @@ export const deleteCommand = new Command()
 
         await deleteZeroSchedule({
           name: resolved.name,
-          zeroAgentId: resolved.zeroAgentId,
+          agentId: resolved.agentId,
         });
 
         console.log(

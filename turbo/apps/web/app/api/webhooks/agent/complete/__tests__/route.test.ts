@@ -1385,7 +1385,7 @@ describe("POST /api/webhooks/agent/complete", () => {
         url: "http://localhost/api/internal/callbacks/email/schedule",
         payload: {
           scheduleId: schedule.id,
-          zeroAgentId: schedule.zeroAgentId,
+          agentId: schedule.agentId,
           agentName,
           userId: schedUser.userId,
         },
@@ -1395,7 +1395,7 @@ describe("POST /api/webhooks/agent/complete", () => {
         url: "http://localhost/api/internal/callbacks/slack/schedule",
         payload: {
           scheduleId: schedule.id,
-          zeroAgentId: schedule.zeroAgentId,
+          agentId: schedule.agentId,
           agentName,
           userId: schedUser.userId,
         },

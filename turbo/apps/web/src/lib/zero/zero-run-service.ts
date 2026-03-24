@@ -9,10 +9,10 @@ import { agentComposes } from "../../db/schema/agent-compose";
 
 /**
  * Resolve agent identity metadata and the corresponding composeId
- * from a zeroAgentId. Uses leftJoin so it works even if no matching
+ * from a agentId. Uses leftJoin so it works even if no matching
  * agentComposes row exists (forward-compatible).
  */
-async function resolveZeroAgent(zeroAgentId: string): Promise<{
+async function resolveZeroAgent(agentId: string): Promise<{
   displayName: string | null;
   description: string | null;
   sound: string | null;
@@ -35,7 +35,7 @@ async function resolveZeroAgent(zeroAgentId: string): Promise<{
         eq(agentComposes.name, zeroAgents.name),
       ),
     )
-    .where(eq(zeroAgents.id, zeroAgentId))
+    .where(eq(zeroAgents.id, agentId))
     .limit(1);
 
   return (
@@ -57,7 +57,7 @@ async function resolveZeroAgent(zeroAgentId: string): Promise<{
 interface ZeroRunParams {
   userId: string;
   prompt: string;
-  zeroAgentId: string;
+  agentId: string;
   triggerSource: TriggerSource;
   sessionId?: string;
   appendSystemPrompt?: string;
@@ -69,7 +69,7 @@ interface ZeroRunParams {
 /**
  * Create an agent run with zero-layer defaults.
  *
- * Resolves the agent's composeId internally from zeroAgentId, then injects
+ * Resolves the agent's composeId internally from agentId, then injects
  * agent identity, memoryName, artifactName, and disallowedTools so that
  * every zero trigger path gets consistent identity, memory persistence,
  * artifact storage, and cron-tool restrictions.
@@ -77,7 +77,7 @@ interface ZeroRunParams {
 export async function createZeroRun(
   params: ZeroRunParams,
 ): Promise<CreateRunResult> {
-  const agent = await resolveZeroAgent(params.zeroAgentId);
+  const agent = await resolveZeroAgent(params.agentId);
 
   // Inject agent identity into appendSystemPrompt
   let { appendSystemPrompt } = params;

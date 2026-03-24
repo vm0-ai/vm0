@@ -439,7 +439,7 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
     );
   }
 
-  // 3b. Resolve zeroAgentId from compose
+  // 3b. Resolve agentId from compose
   const [zeroAgent] = await globalThis.services.db
     .select({ id: zeroAgents.id })
     .from(zeroAgents)
@@ -512,7 +512,7 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
       userId: vm0UserId,
       prompt: resolvedPrompt,
       appendSystemPrompt,
-      zeroAgentId: zeroAgent.id,
+      agentId: zeroAgent.id,
       sessionId: existingSessionId,
       triggerSource: "github",
       callbacks: [

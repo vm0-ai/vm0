@@ -28,7 +28,7 @@ function parsePayload(payload: unknown): SlackScheduleCallbackPayload | null {
   const p = payload as Record<string, unknown>;
   if (
     typeof p.scheduleId !== "string" ||
-    typeof p.zeroAgentId !== "string" ||
+    typeof p.agentId !== "string" ||
     typeof p.agentName !== "string" ||
     typeof p.userId !== "string" ||
     typeof p.orgId !== "string"
@@ -202,7 +202,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const [agentInfo] = await globalThis.services.db
     .select({ displayName: zeroAgents.displayName })
     .from(zeroAgents)
-    .where(eq(zeroAgents.id, payload.zeroAgentId))
+    .where(eq(zeroAgents.id, payload.agentId))
     .limit(1);
   const displayName = agentInfo?.displayName ?? agentName;
 

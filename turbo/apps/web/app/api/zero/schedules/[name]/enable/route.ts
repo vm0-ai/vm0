@@ -10,11 +10,11 @@ import { isNotFound, isSchedulePast } from "../../../../../../src/lib/errors";
 
 const bodySchema = z
   .object({
-    zeroAgentId: z.string().optional(),
+    agentId: z.string().optional(),
     composeId: z.string().optional(),
   })
-  .refine((data) => Boolean(data.zeroAgentId ?? data.composeId), {
-    message: "Either 'zeroAgentId' or 'composeId' must be provided",
+  .refine((data) => Boolean(data.agentId ?? data.composeId), {
+    message: "Either 'agentId' or 'composeId' must be provided",
   });
 
 export async function POST(
@@ -48,7 +48,7 @@ export async function POST(
   }
 
   try {
-    const resolvedAgentId = parsed.data.zeroAgentId ?? parsed.data.composeId;
+    const resolvedAgentId = parsed.data.agentId ?? parsed.data.composeId;
     if (!resolvedAgentId) throw new Error("Missing agent ID after validation");
     const schedule = await enableSchedule(userId, orgId, resolvedAgentId, name);
 

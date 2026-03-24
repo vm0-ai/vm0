@@ -508,7 +508,7 @@ interface DeployResult {
 
 async function buildAndDeploy(params: {
   scheduleName: string;
-  zeroAgentId: string;
+  agentId: string;
   agentName: string;
   frequency: ScheduleFrequency;
   time: string | undefined;
@@ -542,7 +542,7 @@ async function buildAndDeploy(params: {
 
   const deployResult = await deployZeroSchedule({
     name: params.scheduleName,
-    zeroAgentId: params.zeroAgentId,
+    agentId: params.agentId,
     cronExpression,
     atTime: atTimeISO,
     intervalSeconds: params.intervalSeconds,
@@ -605,11 +605,11 @@ function displayDeployResult(
 
 async function tryEnableSchedule(
   scheduleName: string,
-  zeroAgentId: string,
+  agentId: string,
   agentName: string,
 ): Promise<void> {
   try {
-    await enableZeroSchedule({ name: scheduleName, zeroAgentId });
+    await enableZeroSchedule({ name: scheduleName, agentId });
     console.log(
       chalk.green(`✓ Enabled schedule for agent ${chalk.cyan(agentName)}`),
     );
@@ -639,28 +639,23 @@ function showEnableHint(agentName: string): void {
 
 async function handleScheduleEnabling(params: {
   scheduleName: string;
-  zeroAgentId: string;
+  agentId: string;
   agentName: string;
   enableFlag: boolean;
   shouldPromptEnable: boolean;
 }): Promise<void> {
-  const {
-    scheduleName,
-    zeroAgentId,
-    agentName,
-    enableFlag,
-    shouldPromptEnable,
-  } = params;
+  const { scheduleName, agentId, agentName, enableFlag, shouldPromptEnable } =
+    params;
 
   if (enableFlag) {
-    await tryEnableSchedule(scheduleName, zeroAgentId, agentName);
+    await tryEnableSchedule(scheduleName, agentId, agentName);
     return;
   }
 
   if (shouldPromptEnable && isInteractive()) {
     const enableNow = await promptConfirm("Enable this schedule?", true);
     if (enableNow) {
-      await tryEnableSchedule(scheduleName, zeroAgentId, agentName);
+      await tryEnableSchedule(scheduleName, agentId, agentName);
     } else {
       showEnableHint(agentName);
     }
@@ -691,9 +686,9 @@ export const setupCommand = new Command()
   .option("--no-notify-slack", "Disable Slack notifications")
   .action(
     withErrorHandler(async (agentName: string, options: SetupOptions) => {
-      // 1. Resolve agent to zeroAgentId (via agentComposeId — schedule service handles fallback)
+      // 1. Resolve agent to agentId (via agentComposeId — schedule service handles fallback)
       const agent = await getZeroAgent(agentName);
-      const zeroAgentId = agent.agentComposeId;
+      const agentId = agent.agentComposeId;
       const scheduleName = options.name || "default";
 
       // 2. Check for existing schedule
@@ -760,7 +755,7 @@ export const setupCommand = new Command()
       // 8. Build trigger and deploy
       const deployResult = await buildAndDeploy({
         scheduleName,
-        zeroAgentId,
+        agentId,
         agentName,
         frequency,
         time,
@@ -784,7 +779,7 @@ export const setupCommand = new Command()
 
       await handleScheduleEnabling({
         scheduleName,
-        zeroAgentId,
+        agentId,
         agentName,
         enableFlag: options.enable ?? false,
         shouldPromptEnable,

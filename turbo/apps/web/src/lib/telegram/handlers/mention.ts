@@ -147,7 +147,7 @@ export async function handleTelegramMention(
   );
   const { status, response, runId } = await runAgentForTelegram({
     composeId,
-    zeroAgentId: defaultAgent.zeroAgentId,
+    agentId: defaultAgent.agentId,
     agentName,
     sessionId: existingSessionId,
     prompt: enrichedPrompt,

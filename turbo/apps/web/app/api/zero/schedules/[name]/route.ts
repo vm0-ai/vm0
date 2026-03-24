@@ -29,7 +29,7 @@ const router = tsr.router(zeroSchedulesByNameContract, {
         org: { orgId },
       } = await resolveOrg(authCtx, orgSlug);
 
-      const resolvedAgentId = query.zeroAgentId ?? query.composeId;
+      const resolvedAgentId = query.agentId ?? query.composeId;
       if (!resolvedAgentId)
         throw new Error("Missing agent ID after validation");
       await deleteSchedule(userId, orgId, resolvedAgentId, params.name);
