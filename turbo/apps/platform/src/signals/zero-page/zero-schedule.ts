@@ -28,6 +28,7 @@ function scheduleSaveFailure(message: string): never {
 interface ScheduleResponse {
   id: string;
   agentId: string;
+  agentName: string;
   orgSlug: string;
   name: string;
   triggerType: "cron" | "once" | "loop";

@@ -848,7 +848,7 @@ export function ZeroScheduleDetailPage() {
   const statusLoadable = useLoadable(zeroOnboardingStatus$);
   const defaultComposeId =
     statusLoadable.state === "hasData"
-      ? statusLoadable.data.defaultAgentComposeId
+      ? statusLoadable.data.defaultAgentId
       : null;
 
   const entriesLoadable = useLastLoadable(allOrgScheduleEntries$);

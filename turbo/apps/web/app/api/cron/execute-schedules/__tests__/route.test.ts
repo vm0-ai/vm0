@@ -325,7 +325,10 @@ describe("GET /api/cron/execute-schedules", () => {
     });
 
     it("should execute due loop schedule and set nextRunAt to null", async () => {
-      // 1. Create and enable a loop schedule (nextRunAt = now on enable)
+      // 1. Mock time so only this test's schedule is due (avoids dev server schedule interference)
+      context.mocks.date.setSystemTime(new Date("2025-01-15T08:00:00Z"));
+
+      // 2. Create and enable a loop schedule (nextRunAt = mocked now on enable)
       await createTestSchedule(testComposeId, "loop-trigger-test", {
         intervalSeconds: 300,
         prompt: "Loop task",
@@ -337,7 +340,10 @@ describe("GET /api/cron/execute-schedules", () => {
       expect(before.enabled).toBe(true);
       expect(before.nextRunAt).not.toBeNull();
 
-      // 2. Execute cron endpoint (loop schedule should be due immediately)
+      // 3. Advance time slightly so schedule is due
+      context.mocks.date.setSystemTime(new Date("2025-01-15T08:00:01Z"));
+
+      // 4. Execute cron endpoint (loop schedule should be due)
       const response = await GET(authenticatedCronRequest());
       const data = await response.json();
 
@@ -345,7 +351,7 @@ describe("GET /api/cron/execute-schedules", () => {
       expect(data.success).toBe(true);
       expect(data.executed).toBeGreaterThanOrEqual(1);
 
-      // 3. Verify loop schedule state after execution:
+      // 5. Verify loop schedule state after execution:
       //    - lastRunAt should be set
       //    - nextRunAt should be null (loop callback handles scheduling next run)
       const after = await getTestSchedule(testComposeId, "loop-trigger-test");
@@ -355,20 +361,26 @@ describe("GET /api/cron/execute-schedules", () => {
     });
 
     it("should enqueue loop schedule when blocked by concurrency limit", async () => {
-      // 1. Create and enable loop schedule
+      // 1. Mock time so only this test's schedule is due
+      context.mocks.date.setSystemTime(new Date("2025-01-15T08:00:00Z"));
+
+      // 2. Create and enable loop schedule
       await createTestSchedule(testComposeId, "loop-queue-test", {
         intervalSeconds: 300,
         prompt: "Loop queue task",
       });
       await enableTestSchedule(testComposeId, "loop-queue-test");
 
-      // 2. Create a blocking run
+      // 3. Create a blocking run
       await createTestRun(testComposeId, "Blocking run");
 
-      // 3. Execute cron - run should be queued (not failed)
+      // 4. Advance time slightly so schedule is due
+      context.mocks.date.setSystemTime(new Date("2025-01-15T08:00:01Z"));
+
+      // 5. Execute cron - run should be queued (not failed)
       await GET(authenticatedCronRequest());
 
-      // 4. Verify run was queued and schedule state advanced
+      // 6. Verify run was queued and schedule state advanced
       const schedule = await getTestSchedule(testComposeId, "loop-queue-test");
       // Loop schedule: nextRunAt should be null (callback handles next iteration)
       expect(schedule.nextRunAt).toBeNull();

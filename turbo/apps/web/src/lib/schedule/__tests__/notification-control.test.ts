@@ -81,6 +81,8 @@ describe("Schedule notification control — schedule-level override", () => {
 
   beforeEach(async () => {
     context.setupMocks();
+    // Mock time to avoid dev server schedules interfering with the batch limit
+    context.mocks.date.setSystemTime(new Date("2025-01-15T08:00:00Z"));
     user = await context.setupUser();
 
     // Set up org with explicit slug for zero schedule routes

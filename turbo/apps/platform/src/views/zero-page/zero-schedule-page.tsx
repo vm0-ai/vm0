@@ -467,7 +467,7 @@ export function ZeroSchedulePage() {
         minute: values.minute,
         timezone: values.timezone,
         intervalSeconds: values.loopMinutes * 60,
-        agentId: values.composeId,
+        agentId: values.agentId,
         notifyEmail: values.notifyEmail,
         notifySlack: values.notifySlack,
         slackChannelId: values.slackChannelId,
@@ -641,7 +641,7 @@ export function ZeroSchedulePage() {
         mode="create"
         agents={agents}
         initialValues={{
-          composeId: defaultComposeId ?? agents[0]?.id ?? "",
+          agentId: defaultComposeId ?? agents[0]?.id ?? "",
         }}
       />
       <Dialog
