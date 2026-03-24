@@ -187,8 +187,8 @@ describe("Zero Agents API", () => {
 
       expect(response.status).toBe(201);
       const data = await response.json();
-      expect(data.name).toBeTruthy();
-      expect(data.agentComposeId).toBeTruthy();
+      expect(data.agentId).toBeTruthy();
+      expect(data.agentId).toBeTruthy();
       expect(data.connectors).toStrictEqual([]);
       expect(data.description).toBeNull();
       expect(data.displayName).toBeNull();
@@ -276,12 +276,16 @@ describe("Zero Agents API", () => {
       const created = await createResponse.json();
 
       // Get the agent
-      const response = await getAgent(created.name, testCliToken, testOrgSlug);
+      const response = await getAgent(
+        created.agentId,
+        testCliToken,
+        testOrgSlug,
+      );
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.name).toBe(created.name);
-      expect(data.agentComposeId).toBe(created.agentComposeId);
+      expect(data.agentId).toBe(created.agentId);
+      expect(data.agentId).toBe(created.agentId);
       expect(data.displayName).toBe("Test Agent");
       expect(data.description).toBe("Test description");
       expect(data.sound).toBe("friendly");
@@ -289,7 +293,7 @@ describe("Zero Agents API", () => {
 
     it("should return 404 for unknown agent", async () => {
       const response = await getAgent(
-        "nonexistent-agent",
+        "00000000-0000-0000-0000-000000000000",
         testCliToken,
         testOrgSlug,
       );
@@ -312,7 +316,7 @@ describe("Zero Agents API", () => {
 
       // Update the agent
       const response = await putAgent(
-        created.name,
+        created.agentId,
         {
           connectors: [],
           displayName: "Updated Name",
@@ -346,7 +350,7 @@ describe("Zero Agents API", () => {
 
       // Update only connectors — no metadata fields
       const updateResponse = await putAgent(
-        created.name,
+        created.agentId,
         { connectors: [] },
         testCliToken,
         testOrgSlug,
@@ -354,7 +358,7 @@ describe("Zero Agents API", () => {
       expect(updateResponse.status).toBe(200);
 
       // Verify metadata is preserved
-      const getRes = await getAgent(created.name, testCliToken, testOrgSlug);
+      const getRes = await getAgent(created.agentId, testCliToken, testOrgSlug);
       expect(getRes.status).toBe(200);
       const fetched = await getRes.json();
       expect(fetched.displayName).toBe("My Agent");
@@ -364,7 +368,7 @@ describe("Zero Agents API", () => {
 
     it("should return 404 for unknown agent", async () => {
       const response = await putAgent(
-        "nonexistent-agent",
+        "00000000-0000-0000-0000-000000000000",
         { connectors: [] },
         testCliToken,
         testOrgSlug,
@@ -384,7 +388,7 @@ describe("Zero Agents API", () => {
       const created = await createResponse.json();
 
       const response = await getAgentInstructions(
-        created.name,
+        created.agentId,
         testCliToken,
         testOrgSlug,
       );
@@ -396,7 +400,7 @@ describe("Zero Agents API", () => {
 
     it("should return 404 for unknown agent", async () => {
       const response = await getAgentInstructions(
-        "nonexistent-agent",
+        "00000000-0000-0000-0000-000000000000",
         testCliToken,
         testOrgSlug,
       );
@@ -415,7 +419,7 @@ describe("Zero Agents API", () => {
       const created = await createResponse.json();
 
       const response = await putAgentInstructions(
-        created.name,
+        created.agentId,
         { content: "# Updated Instructions\nBe helpful." },
         testCliToken,
         testOrgSlug,
@@ -423,13 +427,13 @@ describe("Zero Agents API", () => {
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.name).toBe(created.name);
-      expect(data.agentComposeId).toBeTruthy();
+      expect(data.agentId).toBe(created.agentId);
+      expect(data.agentId).toBeTruthy();
     });
 
     it("should return 404 for unknown agent", async () => {
       const response = await putAgentInstructions(
-        "nonexistent-agent",
+        "00000000-0000-0000-0000-000000000000",
         { content: "# Instructions" },
         testCliToken,
         testOrgSlug,
@@ -466,7 +470,7 @@ describe("Zero Agents API", () => {
       expect(createRes.status).toBe(201);
       const created = await createRes.json();
 
-      const getRes = await getAgent(created.name, testCliToken, testOrgSlug);
+      const getRes = await getAgent(created.agentId, testCliToken, testOrgSlug);
       expect(getRes.status).toBe(200);
       const fetched = await getRes.json();
 
@@ -483,7 +487,7 @@ describe("Zero Agents API", () => {
       ).json();
 
       await putAgent(
-        created.name,
+        created.agentId,
         {
           connectors: [],
           displayName: "Updated Name",
@@ -494,7 +498,7 @@ describe("Zero Agents API", () => {
         testOrgSlug,
       );
 
-      const getRes = await getAgent(created.name, testCliToken, testOrgSlug);
+      const getRes = await getAgent(created.agentId, testCliToken, testOrgSlug);
       expect(getRes.status).toBe(200);
       const fetched = await getRes.json();
 
@@ -512,12 +516,12 @@ describe("Zero Agents API", () => {
         )
       ).json();
 
-      await deleteAgent(created.name, testCliToken, testOrgSlug);
+      await deleteAgent(created.agentId, testCliToken, testOrgSlug);
 
       const listResponse = await listAgentsReq(testCliToken, testOrgSlug);
       const data = await listResponse.json();
       expect(
-        data.find((a: { name: string }) => a.name === created.name),
+        data.find((a: { agentId: string }) => a.agentId === created.agentId),
       ).toBeUndefined();
     });
 
@@ -528,7 +532,7 @@ describe("Zero Agents API", () => {
 
       const instructionsContent = "# My Instructions\nBe helpful.";
       await putAgentInstructions(
-        created.name,
+        created.agentId,
         { content: instructionsContent },
         testCliToken,
         testOrgSlug,
@@ -559,7 +563,7 @@ describe("Zero Agents API", () => {
       );
 
       const getRes = await getAgentInstructions(
-        created.name,
+        created.agentId,
         testCliToken,
         testOrgSlug,
       );
@@ -589,10 +593,7 @@ describe("Zero Agents API", () => {
       // When — create a run for this agent, then generate a sandbox token
       // (VM0_TOKEN) with agent:read capability (simulating runner injection)
       await createTestOrgModelProvider("anthropic-api-key", "test-key");
-      const { runId } = await createTestRun(
-        created.agentComposeId,
-        "test prompt",
-      );
+      const { runId } = await createTestRun(created.agentId, "test prompt");
 
       // Reset Clerk so sandbox token is the only auth path
       mockClerk({ userId: null });
@@ -602,13 +603,17 @@ describe("Zero Agents API", () => {
       ]);
 
       // Use the sandbox token (VM0_TOKEN) to GET the agent
-      const response = await getAgent(created.name, sandboxToken, testOrgSlug);
+      const response = await getAgent(
+        created.agentId,
+        sandboxToken,
+        testOrgSlug,
+      );
 
       // Then — should return agent details
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.name).toBe(created.name);
-      expect(data.agentComposeId).toBe(created.agentComposeId);
+      expect(data.agentId).toBe(created.agentId);
+      expect(data.agentId).toBe(created.agentId);
       expect(data.displayName).toBe("Sandbox Access Agent");
       expect(data.description).toBe("Agent accessible via sandbox token");
       expect(data.sound).toBe("professional");
@@ -641,8 +646,7 @@ describe("Zero Agents API", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data).toHaveLength(1);
-      expect(data[0].name).toBe(created.name);
-      expect(data[0].agentComposeId).toBe(created.agentComposeId);
+      expect(data[0].agentId).toBe(created.agentId);
       expect(data[0].displayName).toBe("Listed Agent");
       expect(data[0].description).toBe("desc");
       expect(data[0].sound).toBe("friendly");
@@ -667,7 +671,7 @@ describe("Zero Agents API", () => {
       ).json();
 
       const response = await patchAgent(
-        created.name,
+        created.agentId,
         { displayName: "Updated", description: "New desc", sound: "casual" },
         testCliToken,
         testOrgSlug,
@@ -678,8 +682,8 @@ describe("Zero Agents API", () => {
       expect(data.displayName).toBe("Updated");
       expect(data.description).toBe("New desc");
       expect(data.sound).toBe("casual");
-      expect(data.name).toBe(created.name);
-      expect(data.agentComposeId).toBe(created.agentComposeId);
+      expect(data.agentId).toBe(created.agentId);
+      expect(data.agentId).toBe(created.agentId);
       expect(data.connectors).toStrictEqual([]);
     });
 
@@ -699,7 +703,7 @@ describe("Zero Agents API", () => {
 
       // Only update displayName
       const response = await patchAgent(
-        created.name,
+        created.agentId,
         { displayName: "New Name" },
         testCliToken,
         testOrgSlug,
@@ -715,7 +719,7 @@ describe("Zero Agents API", () => {
 
     it("should return 404 for unknown agent", async () => {
       const response = await patchAgent(
-        "nonexistent-agent",
+        "00000000-0000-0000-0000-000000000000",
         { displayName: "X" },
         testCliToken,
         testOrgSlug,
@@ -729,7 +733,7 @@ describe("Zero Agents API", () => {
     it("should return 401 without auth", async () => {
       mockClerk({ userId: null });
       const response = await patchAgent(
-        "some-agent",
+        "00000000-0000-0000-0000-000000000001",
         { displayName: "X" },
         "no-token",
       );
@@ -744,7 +748,7 @@ describe("Zero Agents API", () => {
       ).json();
 
       const response = await deleteAgent(
-        created.name,
+        created.agentId,
         testCliToken,
         testOrgSlug,
       );
@@ -756,10 +760,10 @@ describe("Zero Agents API", () => {
         await postAgent({ connectors: [] }, testCliToken, testOrgSlug)
       ).json();
 
-      await deleteAgent(created.name, testCliToken, testOrgSlug);
+      await deleteAgent(created.agentId, testCliToken, testOrgSlug);
 
       const getResponse = await getAgent(
-        created.name,
+        created.agentId,
         testCliToken,
         testOrgSlug,
       );
@@ -768,7 +772,7 @@ describe("Zero Agents API", () => {
 
     it("should return 404 for nonexistent agent", async () => {
       const response = await deleteAgent(
-        "nonexistent-agent",
+        "00000000-0000-0000-0000-000000000000",
         testCliToken,
         testOrgSlug,
       );
@@ -786,7 +790,7 @@ describe("Zero Agents API", () => {
       // Create an agent session linked to this compose
       const session = await createTestSessionWithConversation(
         user.userId,
-        created.agentComposeId,
+        created.agentId,
       );
 
       // Set up Slack infrastructure
@@ -813,7 +817,7 @@ describe("Zero Agents API", () => {
       // Create a pending question referencing both compose and session
       await insertTestSlackOrgPendingQuestion({
         connectionId: connection.id,
-        composeId: created.agentComposeId,
+        composeId: created.agentId,
         sessionId: session.id,
         runId: `run-${user.userId.slice(-8)}`,
         slackWorkspaceId,
@@ -821,7 +825,7 @@ describe("Zero Agents API", () => {
 
       // Delete the agent — this would fail with FK constraint before the fix
       const response = await deleteAgent(
-        created.name,
+        created.agentId,
         testCliToken,
         testOrgSlug,
       );
@@ -829,7 +833,7 @@ describe("Zero Agents API", () => {
 
       // Verify agent is gone
       const getResponse = await getAgent(
-        created.name,
+        created.agentId,
         testCliToken,
         testOrgSlug,
       );
@@ -838,7 +842,10 @@ describe("Zero Agents API", () => {
 
     it("should return 401 without auth", async () => {
       mockClerk({ userId: null });
-      const response = await deleteAgent("some-agent", "no-token");
+      const response = await deleteAgent(
+        "00000000-0000-0000-0000-000000000001",
+        "no-token",
+      );
       expect(response.status).toBe(401);
     });
   });

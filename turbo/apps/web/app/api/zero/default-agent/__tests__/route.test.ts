@@ -12,10 +12,7 @@ import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 
 const context = testContext();
 
-function putDefaultAgent(
-  orgSlug: string | undefined,
-  agentComposeId: string | null,
-) {
+function putDefaultAgent(orgSlug: string | undefined, agentId: string | null) {
   const url = orgSlug
     ? `http://localhost:3000/api/zero/default-agent?org=${orgSlug}`
     : "http://localhost:3000/api/zero/default-agent";
@@ -23,7 +20,7 @@ function putDefaultAgent(
     createTestRequest(url, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ agentComposeId }),
+      body: JSON.stringify({ agentId }),
     }),
   );
 }
@@ -47,7 +44,7 @@ describe("PUT /api/zero/default-agent", () => {
     expect(response.status).toBe(200);
 
     const data = await response.json();
-    expect(data.agentComposeId).toBe(compose.composeId);
+    expect(data.agentId).toBe(compose.composeId);
   });
 
   it("should return 409 when trying to unset an already-configured default agent", async () => {
@@ -148,7 +145,7 @@ describe("PUT /api/zero/default-agent", () => {
     expect(response2.status).toBe(200);
 
     const data = await response2.json();
-    expect(data.agentComposeId).toBe(compose2.composeId);
+    expect(data.agentId).toBe(compose2.composeId);
   });
 
   it("should allow setting default agent when none is configured", async () => {
@@ -160,7 +157,7 @@ describe("PUT /api/zero/default-agent", () => {
     expect(response.status).toBe(200);
 
     const data = await response.json();
-    expect(data.agentComposeId).toBe(compose.composeId);
+    expect(data.agentId).toBe(compose.composeId);
   });
 
   it("should succeed when org row does not exist in org table", async () => {
@@ -175,7 +172,7 @@ describe("PUT /api/zero/default-agent", () => {
     expect(response.status).toBe(200);
 
     const data = await response.json();
-    expect(data.agentComposeId).toBe(compose.composeId);
+    expect(data.agentId).toBe(compose.composeId);
 
     // Verify the value was persisted to the org table
     const storedId = await getOrgDefaultAgent(orgId);

@@ -581,7 +581,7 @@ describe("POST /api/webhooks/agent/complete", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            agentComposeId: composeId,
+            agentId: composeId,
             title: "Initial title",
           }),
         }),

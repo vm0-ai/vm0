@@ -178,6 +178,8 @@ describe("GET /api/zero/logs", () => {
   describe("agent filter", () => {
     let alphaName: string;
     let betaName: string;
+    let alphaComposeId: string;
+    let betaComposeId: string;
 
     beforeEach(async () => {
       alphaName = `agent-alpha-${randomUUID().slice(0, 8)}`;
@@ -185,6 +187,8 @@ describe("GET /api/zero/logs", () => {
 
       const { composeId: compose1 } = await createTestCompose(alphaName);
       const { composeId: compose2 } = await createTestCompose(betaName);
+      alphaComposeId = compose1;
+      betaComposeId = compose2;
 
       const { runId: run1 } = await createTestRun(compose1, "Alpha prompt");
       await completeTestRun(user.userId, run1);
@@ -202,7 +206,7 @@ describe("GET /api/zero/logs", () => {
 
       expect(response.status).toBe(200);
       expect(data.data).toHaveLength(1);
-      expect(data.data[0].agentName).toBe(alphaName);
+      expect(data.data[0].agentId).toBe(alphaComposeId);
     });
 
     it("should return empty list when agent has no runs", async () => {
@@ -237,7 +241,7 @@ describe("GET /api/zero/logs", () => {
 
       expect(response.status).toBe(200);
       expect(data.data).toHaveLength(1);
-      expect(data.data[0].agentName).toBe(alphaName);
+      expect(data.data[0].agentId).toBe(alphaComposeId);
     });
   });
 
@@ -274,10 +278,12 @@ describe("GET /api/zero/logs", () => {
 
   describe("name and org filter", () => {
     let agentName: string;
+    let nameComposeId: string;
 
     beforeEach(async () => {
       agentName = `org-agent-${randomUUID().slice(0, 8)}`;
       const { composeId } = await createTestCompose(agentName);
+      nameComposeId = composeId;
 
       const { runId } = await createTestRun(composeId, "Scoped prompt");
       await completeTestRun(user.userId, runId);
@@ -292,7 +298,7 @@ describe("GET /api/zero/logs", () => {
 
       expect(response.status).toBe(200);
       expect(data.data).toHaveLength(1);
-      expect(data.data[0].agentName).toBe(agentName);
+      expect(data.data[0].agentId).toBe(nameComposeId);
     });
 
     it("should return empty when name matches but org does not", async () => {
@@ -328,15 +334,15 @@ describe("GET /api/zero/logs", () => {
 
       expect(response.status).toBe(200);
       expect(data.data).toHaveLength(1);
-      expect(data.data[0].agentName).toBe(agentName);
+      expect(data.data[0].agentId).toBe(nameComposeId);
     });
   });
 
   it("should return displayName from agent metadata", async () => {
-    const agentName = `display-name-test-${randomUUID().slice(0, 8)}`;
-    const { composeId } = await createTestCompose(agentName);
+    const agentId = `display-name-test-${randomUUID().slice(0, 8)}`;
+    const { composeId } = await createTestCompose(agentId);
     // Seed zero_agents with displayName (metadata now lives in this table)
-    await createTestZeroAgent(user.orgId, agentName, {
+    await createTestZeroAgent(user.orgId, agentId, {
       displayName: "My Display Name",
     });
     const { runId } = await createTestRun(composeId, "Test prompt");
@@ -353,8 +359,8 @@ describe("GET /api/zero/logs", () => {
   });
 
   it("should return null displayName when agent metadata has none", async () => {
-    const agentName = `no-display-name-${randomUUID().slice(0, 8)}`;
-    const { composeId } = await createTestCompose(agentName);
+    const agentId = `no-display-name-${randomUUID().slice(0, 8)}`;
+    const { composeId } = await createTestCompose(agentId);
     const { runId } = await createTestRun(composeId, "Test prompt");
     await completeTestRun(user.userId, runId);
 
@@ -394,10 +400,10 @@ describe("GET /api/zero/logs", () => {
     let testComposeId: string;
 
     beforeEach(async () => {
-      const agentName = `trigger-src-${randomUUID().slice(0, 8)}`;
-      const { composeId } = await createTestCompose(agentName);
+      const agentId = `trigger-src-${randomUUID().slice(0, 8)}`;
+      const { composeId } = await createTestCompose(agentId);
       testComposeId = composeId;
-      await createTestZeroAgent(user.orgId, agentName, {});
+      await createTestZeroAgent(user.orgId, agentId, {});
     });
 
     it("should return explicit trigger source when set on run", async () => {
@@ -577,7 +583,7 @@ describe("GET /api/zero/logs", () => {
 
       expect(response.status).toBe(200);
       expect(data.data).toHaveLength(1);
-      expect(data.data[0].agentName).toBe(otherName);
+      expect(data.data[0].agentId).toBe(otherComposeId);
       expect(data.data[0].triggerSource).toBe("slack");
     });
 

@@ -111,7 +111,7 @@ describe("addZeroConnector$", () => {
     mockAgentApi(["slack"]);
 
     server.use(
-      http.put("*/api/zero/agents/test-agent", async ({ request }) => {
+      http.put("*/api/zero/agents/mock-compose-id", async ({ request }) => {
         capturedBody = (await request.json()) as { connectors: string[] };
         return HttpResponse.json({
           name: "test-agent",

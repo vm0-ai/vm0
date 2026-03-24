@@ -64,7 +64,7 @@ describe("POST /api/zero/schedules/:name/disable", () => {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ zeroAgentId: testZeroAgentId }),
+          body: JSON.stringify({ agentId: testZeroAgentId }),
         },
       ),
       { params: Promise.resolve({ name: "to-disable" }) },
@@ -82,7 +82,7 @@ describe("POST /api/zero/schedules/:name/disable", () => {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ zeroAgentId: testZeroAgentId }),
+          body: JSON.stringify({ agentId: testZeroAgentId }),
         },
       ),
       { params: Promise.resolve({ name: "non-existent" }) },
@@ -93,26 +93,26 @@ describe("POST /api/zero/schedules/:name/disable", () => {
     expect(data.error.code).toBe("NOT_FOUND");
   });
 
-  it("should disable schedule with composeId fallback", async () => {
-    await createTestSchedule(testComposeId, "dis-compose", {
+  it("should disable schedule with agentId", async () => {
+    await createTestSchedule(testComposeId, "dis-agentid", {
       cronExpression: "0 9 * * *",
-      prompt: "Disable via composeId",
+      prompt: "Disable via agentId",
     });
-    await enableTestSchedule(testComposeId, "dis-compose");
+    await enableTestSchedule(testComposeId, "dis-agentid");
 
-    const before = await getTestSchedule(testComposeId, "dis-compose");
+    const before = await getTestSchedule(testComposeId, "dis-agentid");
     expect(before.enabled).toBe(true);
 
     const response = await POST(
       createTestRequest(
-        `http://localhost:3000/api/zero/schedules/dis-compose/disable?org=${slug}`,
+        `http://localhost:3000/api/zero/schedules/dis-agentid/disable?org=${slug}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ composeId: testComposeId }),
+          body: JSON.stringify({ agentId: testComposeId }),
         },
       ),
-      { params: Promise.resolve({ name: "dis-compose" }) },
+      { params: Promise.resolve({ name: "dis-agentid" }) },
     );
     const data = await response.json();
 
@@ -147,7 +147,7 @@ describe("POST /api/zero/schedules/:name/disable", () => {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ zeroAgentId: testZeroAgentId }),
+          body: JSON.stringify({ agentId: testZeroAgentId }),
         },
       ),
       { params: Promise.resolve({ name: "any" }) },

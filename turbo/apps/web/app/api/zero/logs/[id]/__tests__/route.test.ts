@@ -122,7 +122,7 @@ describe("GET /api/zero/logs/[id]", () => {
 
     expect(response.status).toBe(200);
     expect(data.id).toBe(runId);
-    expect(data.agentName).toContain("logs-detail");
+    expect(data.agentId).toBe(testComposeId);
     expect(data.framework).toBe("claude-code");
     expect(data.status).toBe("completed");
     expect(data.prompt).toBe("Test prompt");
@@ -218,7 +218,7 @@ describe("GET /api/zero/logs/[id]", () => {
     expect(response.status).toBe(200);
     expect(data.id).toBe(runId);
     expect(data.prompt).toBe("Orphan run prompt");
-    expect(data.agentName).toBe("unknown");
+    expect(data.agentId).toBe("unknown");
     expect(data.framework).toBeNull();
   });
 });

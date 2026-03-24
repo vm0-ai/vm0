@@ -61,7 +61,7 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          agentComposeId: testComposeId,
+          agentId: testComposeId,
           title: "Detail thread",
         }),
       },
@@ -79,7 +79,7 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
     expect(response.status).toBe(200);
     expect(data.id).toBe(threadId);
     expect(data.title).toBe("Detail thread");
-    expect(data.agentComposeId).toBe(testComposeId);
+    expect(data.agentId).toBe(testComposeId);
     expect(data.chatMessages).toEqual([]);
     expect(data.latestSessionId).toBeNull();
     expect(data.unsavedRuns).toEqual([]);
@@ -96,7 +96,7 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          agentComposeId: testComposeId,
+          agentId: testComposeId,
           title: "Summaries thread",
         }),
       }),
@@ -167,7 +167,7 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          agentComposeId: testComposeId,
+          agentId: testComposeId,
           title: "Private thread",
         }),
       },
@@ -195,7 +195,7 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          agentComposeId: testComposeId,
+          agentId: testComposeId,
           title: "Original title",
         }),
       },
@@ -226,7 +226,7 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          agentComposeId: testComposeId,
+          agentId: testComposeId,
           title: "Before update",
         }),
       },
@@ -240,7 +240,7 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
     // List threads and verify title is reflected
     const listResponse = await listThreads(
       createTestRequest(
-        `http://localhost:3000/api/zero/chat-threads?agentComposeId=${testComposeId}`,
+        `http://localhost:3000/api/zero/chat-threads?agentId=${testComposeId}`,
       ),
     );
     const listData = await listResponse.json();

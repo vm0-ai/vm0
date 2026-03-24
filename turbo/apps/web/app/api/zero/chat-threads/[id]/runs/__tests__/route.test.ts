@@ -32,7 +32,7 @@ describe("POST /api/zero/chat-threads/:id/runs - Add Run to Thread", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          agentComposeId: testComposeId,
+          agentId: testComposeId,
           title: "Runs thread",
         }),
       },

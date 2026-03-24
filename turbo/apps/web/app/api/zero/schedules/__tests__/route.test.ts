@@ -54,7 +54,7 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            zeroAgentId: testZeroAgentId,
+            agentId: testZeroAgentId,
             name: "daily-zero",
             cronExpression: "0 9 * * *",
             timezone: "UTC",
@@ -84,7 +84,7 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            zeroAgentId: testZeroAgentId,
+            agentId: testZeroAgentId,
             name: "update-zero",
             cronExpression: "0 10 * * *",
             timezone: "UTC",
@@ -108,7 +108,7 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            zeroAgentId: "00000000-0000-0000-0000-000000000000",
+            agentId: "00000000-0000-0000-0000-000000000000",
             name: "will-fail",
             cronExpression: "0 9 * * *",
             timezone: "UTC",
@@ -123,7 +123,7 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
     expect(data.error.code).toBe("NOT_FOUND");
   });
 
-  it("should create schedule with composeId fallback", async () => {
+  it("should create schedule with agentId", async () => {
     const response = await POST(
       createTestRequest(
         `http://localhost:3000/api/zero/schedules?org=${slug}`,
@@ -131,11 +131,11 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            composeId: testComposeId,
-            name: "compose-fallback",
+            agentId: testComposeId,
+            name: "agent-id-test",
             cronExpression: "0 9 * * *",
             timezone: "UTC",
-            prompt: "Run via composeId",
+            prompt: "Run via agentId",
           }),
         },
       ),
@@ -144,7 +144,7 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
 
     expect(response.status).toBe(201);
     expect(data.created).toBe(true);
-    expect(data.schedule.name).toBe("compose-fallback");
+    expect(data.schedule.name).toBe("agent-id-test");
   });
 
   it("should reject unauthenticated request", async () => {
@@ -157,7 +157,7 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            zeroAgentId: testZeroAgentId,
+            agentId: testZeroAgentId,
             name: "unauth",
             cronExpression: "0 9 * * *",
             timezone: "UTC",

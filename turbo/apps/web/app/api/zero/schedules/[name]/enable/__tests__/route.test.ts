@@ -62,7 +62,7 @@ describe("POST /api/zero/schedules/:name/enable", () => {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ zeroAgentId: testZeroAgentId }),
+          body: JSON.stringify({ agentId: testZeroAgentId }),
         },
       ),
       { params: Promise.resolve({ name: "to-enable" }) },
@@ -80,7 +80,7 @@ describe("POST /api/zero/schedules/:name/enable", () => {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ zeroAgentId: testZeroAgentId }),
+          body: JSON.stringify({ agentId: testZeroAgentId }),
         },
       ),
       { params: Promise.resolve({ name: "non-existent" }) },
@@ -91,22 +91,22 @@ describe("POST /api/zero/schedules/:name/enable", () => {
     expect(data.error.code).toBe("NOT_FOUND");
   });
 
-  it("should enable schedule with composeId fallback", async () => {
-    await createTestSchedule(testComposeId, "enable-compose", {
+  it("should enable schedule with agentId", async () => {
+    await createTestSchedule(testComposeId, "enable-agentid", {
       cronExpression: "0 9 * * *",
-      prompt: "Enable via composeId",
+      prompt: "Enable via agentId",
     });
 
     const response = await POST(
       createTestRequest(
-        `http://localhost:3000/api/zero/schedules/enable-compose/enable?org=${slug}`,
+        `http://localhost:3000/api/zero/schedules/enable-agentid/enable?org=${slug}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ composeId: testComposeId }),
+          body: JSON.stringify({ agentId: testComposeId }),
         },
       ),
-      { params: Promise.resolve({ name: "enable-compose" }) },
+      { params: Promise.resolve({ name: "enable-agentid" }) },
     );
     const data = await response.json();
 
@@ -141,7 +141,7 @@ describe("POST /api/zero/schedules/:name/enable", () => {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ zeroAgentId: testZeroAgentId }),
+          body: JSON.stringify({ agentId: testZeroAgentId }),
         },
       ),
       { params: Promise.resolve({ name: "any" }) },

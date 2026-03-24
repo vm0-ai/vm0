@@ -11,7 +11,7 @@ interface TestContext {
 export async function onboardNewOrgAndUser(context: TestContext): Promise<{
   user: UserContext;
   orgSlug: string;
-  agent: { name: string; agentComposeId: string };
+  agent: { agentId: string };
 }> {
   // 1. Setup user (Clerk session auth via mock)
   const user = await context.setupUser();
@@ -53,14 +53,13 @@ export async function onboardNewOrgAndUser(context: TestContext): Promise<{
     throw new Error(`createAgentRoute failed with status ${agentRes.status}`);
   }
   const agent = (await agentRes.json()) as {
-    name: string;
-    agentComposeId: string;
+    agentId: string;
   };
 
   // 4. Upload instructions
   const instructionsRes = await updateInstructionsRoute(
     new NextRequest(
-      `http://localhost:3000/api/zero/agents/${agent.name}/instructions?org=${orgSlug}`,
+      `http://localhost:3000/api/zero/agents/${agent.agentId}/instructions?org=${orgSlug}`,
       {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -79,6 +78,6 @@ export async function onboardNewOrgAndUser(context: TestContext): Promise<{
   return {
     user,
     orgSlug,
-    agent: { name: agent.name, agentComposeId: agent.agentComposeId },
+    agent: { agentId: agent.agentId },
   };
 }

@@ -48,8 +48,7 @@ describe("GET /api/zero/onboarding/status", () => {
       isAdmin: false,
       hasOrg: false,
       hasDefaultAgent: false,
-      defaultAgentName: null,
-      defaultAgentComposeId: null,
+      defaultAgentId: null,
       defaultAgentMetadata: null,
       defaultAgentSkills: [],
     });
@@ -81,7 +80,7 @@ describe("GET /api/zero/onboarding/status", () => {
       {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentComposeId: compose.composeId }),
+        body: JSON.stringify({ agentId: compose.composeId }),
       },
     );
     const setDefaultResponse = await setDefaultAgent(setDefaultRequest);
@@ -101,8 +100,7 @@ describe("GET /api/zero/onboarding/status", () => {
       isAdmin: true,
       hasOrg: true,
       hasDefaultAgent: true,
-      defaultAgentName: "test-agent",
-      defaultAgentComposeId: compose.composeId,
+      defaultAgentId: compose.composeId,
       defaultAgentMetadata: null,
       defaultAgentSkills: [],
     });
@@ -125,7 +123,7 @@ describe("GET /api/zero/onboarding/status", () => {
       {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentComposeId: compose.composeId }),
+        body: JSON.stringify({ agentId: compose.composeId }),
       },
     );
     const setDefaultResponse = await setDefaultAgent(setDefaultRequest);
@@ -145,8 +143,7 @@ describe("GET /api/zero/onboarding/status", () => {
       isAdmin: true,
       hasOrg: true,
       hasDefaultAgent: true,
-      defaultAgentName: "test-agent",
-      defaultAgentComposeId: compose.composeId,
+      defaultAgentId: compose.composeId,
       defaultAgentMetadata: { displayName: "My Agent", sound: "friendly" },
       defaultAgentSkills: [],
     });
@@ -163,7 +160,7 @@ describe("GET /api/zero/onboarding/status", () => {
       {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentComposeId: compose.composeId }),
+        body: JSON.stringify({ agentId: compose.composeId }),
       },
     );
     const setDefaultResponse = await setDefaultAgent(setDefaultRequest);

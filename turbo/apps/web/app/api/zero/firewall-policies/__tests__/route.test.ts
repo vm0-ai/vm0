@@ -51,7 +51,7 @@ function getAgent(name: string, token: string, orgSlug?: string) {
 }
 
 function putPolicies(
-  name: string,
+  agentId: string,
   body: Record<string, unknown>,
   token: string,
   orgSlug?: string,
@@ -66,7 +66,7 @@ function putPolicies(
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ name, ...body }),
+        body: JSON.stringify({ agentId, ...body }),
       },
     ),
   );
@@ -105,7 +105,7 @@ describe("PUT /api/zero/firewall-policies", () => {
     };
 
     const response = await putPolicies(
-      created.name,
+      created.agentId,
       { policies },
       testCliToken,
       testOrgSlug,
@@ -114,7 +114,7 @@ describe("PUT /api/zero/firewall-policies", () => {
     expect(response.status).toBe(200);
     const data = await response.json();
     expect(data.firewallPolicies).toStrictEqual(policies);
-    expect(data.name).toBe(created.name);
+    expect(data.agentId).toBe(created.agentId);
   });
 
   it("should persist policies across reads", async () => {
@@ -126,10 +126,10 @@ describe("PUT /api/zero/firewall-policies", () => {
       slack: { "channels:read": "allow", "chat:write": "ask" },
     };
 
-    await putPolicies(created.name, { policies }, testCliToken, testOrgSlug);
+    await putPolicies(created.agentId, { policies }, testCliToken, testOrgSlug);
 
     // Read back via GET
-    const getRes = await getAgent(created.name, testCliToken, testOrgSlug);
+    const getRes = await getAgent(created.agentId, testCliToken, testOrgSlug);
     expect(getRes.status).toBe(200);
     const fetched = await getRes.json();
     expect(fetched.firewallPolicies).toStrictEqual(policies);
@@ -142,7 +142,7 @@ describe("PUT /api/zero/firewall-policies", () => {
 
     const first = { github: { "issues:read": "allow" } };
     await putPolicies(
-      created.name,
+      created.agentId,
       { policies: first },
       testCliToken,
       testOrgSlug,
@@ -150,7 +150,7 @@ describe("PUT /api/zero/firewall-policies", () => {
 
     const second = { slack: { "channels:read": "deny" } };
     const response = await putPolicies(
-      created.name,
+      created.agentId,
       { policies: second },
       testCliToken,
       testOrgSlug,
@@ -178,7 +178,7 @@ describe("PUT /api/zero/firewall-policies", () => {
     });
 
     const response = await putPolicies(
-      created.name,
+      created.agentId,
       { policies: { github: { "issues:read": "allow" } } },
       memberToken,
       testOrgSlug,
@@ -195,7 +195,7 @@ describe("PUT /api/zero/firewall-policies", () => {
     ).json();
 
     const response = await putPolicies(
-      created.name,
+      created.agentId,
       { policies: { "nonexistent-firewall": { "perm:read": "allow" } } },
       testCliToken,
       testOrgSlug,
@@ -213,7 +213,7 @@ describe("PUT /api/zero/firewall-policies", () => {
     ).json();
 
     const response = await putPolicies(
-      created.name,
+      created.agentId,
       { policies: { github: { "totally-fake-permission": "allow" } } },
       testCliToken,
       testOrgSlug,
@@ -227,7 +227,7 @@ describe("PUT /api/zero/firewall-policies", () => {
 
   it("should return 404 for nonexistent agent", async () => {
     const response = await putPolicies(
-      "nonexistent-agent",
+      "00000000-0000-0000-0000-000000000000",
       { policies: { github: { "issues:read": "allow" } } },
       testCliToken,
       testOrgSlug,
@@ -256,7 +256,7 @@ describe("PUT /api/zero/firewall-policies", () => {
     ).json();
 
     const response = await putPolicies(
-      created.name,
+      created.agentId,
       { policies: {} },
       testCliToken,
       testOrgSlug,
@@ -285,7 +285,7 @@ describe("PUT /api/zero/firewall-policies", () => {
 
     const policies = { github: { "issues:read": "allow" } };
     const response = await putPolicies(
-      created.name,
+      created.agentId,
       { policies },
       testCliToken,
       testOrgSlug,
@@ -294,8 +294,7 @@ describe("PUT /api/zero/firewall-policies", () => {
     expect(response.status).toBe(200);
     const data = await response.json();
     expect(data).toMatchObject({
-      name: created.name,
-      agentComposeId: expect.any(String),
+      agentId: created.agentId,
       description: expect.toBeOneOf([null, expect.any(String)]),
       displayName: expect.toBeOneOf([null, expect.any(String)]),
       sound: expect.toBeOneOf([null, expect.any(String)]),
@@ -316,20 +315,20 @@ describe("PUT /api/zero/firewall-policies", () => {
     const policies2 = { slack: { "channels:read": "deny" } };
 
     await putPolicies(
-      agent1.name,
+      agent1.agentId,
       { policies: policies1 },
       testCliToken,
       testOrgSlug,
     );
     await putPolicies(
-      agent2.name,
+      agent2.agentId,
       { policies: policies2 },
       testCliToken,
       testOrgSlug,
     );
 
-    const get1 = await getAgent(agent1.name, testCliToken, testOrgSlug);
-    const get2 = await getAgent(agent2.name, testCliToken, testOrgSlug);
+    const get1 = await getAgent(agent1.agentId, testCliToken, testOrgSlug);
+    const get2 = await getAgent(agent2.agentId, testCliToken, testOrgSlug);
 
     expect((await get1.json()).firewallPolicies).toStrictEqual(policies1);
     expect((await get2.json()).firewallPolicies).toStrictEqual(policies2);

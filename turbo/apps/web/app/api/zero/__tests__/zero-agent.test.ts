@@ -22,7 +22,7 @@ const context = testContext();
  */
 describe("Zero Agent E2E: create → run → sandbox token access", () => {
   let orgSlug: string;
-  let agent: { name: string; agentComposeId: string };
+  let agent: { agentId: string };
 
   beforeAll(async () => {
     await clearSkillsData();
@@ -44,7 +44,7 @@ describe("Zero Agent E2E: create → run → sandbox token access", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          agentComposeId: agent.agentComposeId,
+          agentComposeId: agent.agentId,
           prompt: "Hello agent",
         }),
       }),
@@ -93,19 +93,22 @@ describe("Zero Agent E2E: create → run → sandbox token access", () => {
     // 6a. Without ?org= → sandbox token has no orgId, request fails
     // (in production, runner also injects VM0_ACTIVE_ORG for this reason)
     const noOrgRes = await getAgentRoute(
-      new NextRequest(`http://localhost:3000/api/zero/agents/${agent.name}`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${executionContext.sandboxToken}`,
+      new NextRequest(
+        `http://localhost:3000/api/zero/agents/${agent.agentId}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${executionContext.sandboxToken}`,
+          },
         },
-      }),
+      ),
     );
     expect(noOrgRes.ok).toBe(false);
 
     // 6b. With ?org= (simulating VM0_ACTIVE_ORG) → should succeed
     const getRes = await getAgentRoute(
       new NextRequest(
-        `http://localhost:3000/api/zero/agents/${agent.name}?org=${orgSlug}`,
+        `http://localhost:3000/api/zero/agents/${agent.agentId}?org=${orgSlug}`,
         {
           method: "GET",
           headers: {
@@ -116,13 +119,11 @@ describe("Zero Agent E2E: create → run → sandbox token access", () => {
     );
     expect(getRes.status).toBe(200);
     const fetched = (await getRes.json()) as {
-      name: string;
-      agentComposeId: string;
+      agentId: string;
       displayName: string;
       description: string;
     };
-    expect(fetched.name).toBe(agent.name);
-    expect(fetched.agentComposeId).toBe(agent.agentComposeId);
+    expect(fetched.agentId).toBe(agent.agentId);
     expect(fetched.displayName).toBe("Test Agent");
     expect(fetched.description).toBe("Created by onboardNewOrgAndUser");
   });

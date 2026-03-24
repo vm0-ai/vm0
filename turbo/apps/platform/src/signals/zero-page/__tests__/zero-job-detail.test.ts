@@ -100,7 +100,7 @@ describe("zero-job-detail signals", () => {
           return HttpResponse.json(agentResponse);
         }),
         http.get(
-          "http://localhost:3000/api/zero/agents/my-agent/instructions",
+          "http://localhost:3000/api/zero/agents/compose-1/instructions",
           () => {
             return HttpResponse.json(mockInstructions());
           },
@@ -169,7 +169,7 @@ describe("zero-job-detail signals", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
-          "http://localhost:3000/api/zero/agents/my-agent/instructions",
+          "http://localhost:3000/api/zero/agents/compose-1/instructions",
           () => {
             return HttpResponse.json(
               { error: "Internal Server Error" },
@@ -203,7 +203,7 @@ describe("zero-job-detail signals", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
-          "http://localhost:3000/api/zero/agents/my-agent/instructions",
+          "http://localhost:3000/api/zero/agents/compose-1/instructions",
           () => {
             return HttpResponse.json(mockInstructions());
           },
@@ -271,7 +271,7 @@ describe("zero-job-detail signals", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
-          "http://localhost:3000/api/zero/agents/my-agent/instructions",
+          "http://localhost:3000/api/zero/agents/compose-1/instructions",
           () => {
             return HttpResponse.json(mockInstructions());
           },
@@ -472,7 +472,7 @@ describe("zero-job-detail signals", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
-          "http://localhost:3000/api/zero/agents/my-agent/instructions",
+          "http://localhost:3000/api/zero/agents/compose-1/instructions",
           () => {
             return HttpResponse.json(mockInstructions());
           },
@@ -513,7 +513,7 @@ describe("zero-job-detail signals", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
-          "http://localhost:3000/api/zero/agents/my-agent/instructions",
+          "http://localhost:3000/api/zero/agents/compose-1/instructions",
           () => {
             return HttpResponse.json(mockInstructions());
           },
@@ -551,7 +551,7 @@ describe("zero-job-detail signals", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
-          "http://localhost:3000/api/zero/agents/my-agent/instructions",
+          "http://localhost:3000/api/zero/agents/compose-1/instructions",
           () => {
             return HttpResponse.json(mockInstructions());
           },
@@ -597,7 +597,7 @@ describe("zero-job-detail signals", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
-          "http://localhost:3000/api/zero/agents/my-agent/instructions",
+          "http://localhost:3000/api/zero/agents/compose-1/instructions",
           () => {
             return HttpResponse.json(mockInstructions());
           },
@@ -637,7 +637,7 @@ describe("zero-job-detail signals", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
-          "http://localhost:3000/api/zero/agents/my-agent/instructions",
+          "http://localhost:3000/api/zero/agents/compose-1/instructions",
           () => {
             return HttpResponse.json(mockInstructions());
           },
@@ -678,7 +678,7 @@ describe("zero-job-detail signals", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
-          "http://localhost:3000/api/zero/agents/my-agent/instructions",
+          "http://localhost:3000/api/zero/agents/compose-1/instructions",
           () => {
             return HttpResponse.json(mockInstructions());
           },
@@ -723,7 +723,7 @@ describe("zero-job-detail signals", () => {
 
       server.use(
         http.put(
-          "http://localhost:3000/api/zero/agents/my-agent/instructions",
+          "http://localhost:3000/api/zero/agents/compose-1/instructions",
           async ({ request }) => {
             capturedBody = (await request.json()) as { content: string };
             return HttpResponse.json({
@@ -766,7 +766,7 @@ describe("zero-job-detail signals", () => {
 
       server.use(
         http.put(
-          "http://localhost:3000/api/zero/agents/my-agent/instructions",
+          "http://localhost:3000/api/zero/agents/compose-1/instructions",
           () => {
             return HttpResponse.json(
               { error: { message: "Build quota exceeded" } },
@@ -797,7 +797,7 @@ describe("zero-job-detail signals", () => {
 
       server.use(
         http.put(
-          "http://localhost:3000/api/zero/agents/my-agent/instructions",
+          "http://localhost:3000/api/zero/agents/compose-1/instructions",
           () => {
             apiCalled = true;
             return HttpResponse.json({
@@ -824,7 +824,7 @@ describe("zero-job-detail signals", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
-          "http://localhost:3000/api/zero/agents/my-agent/instructions",
+          "http://localhost:3000/api/zero/agents/compose-1/instructions",
           () => {
             return HttpResponse.json(mockInstructions());
           },
@@ -845,7 +845,7 @@ describe("zero-job-detail signals", () => {
 
       server.use(
         http.patch(
-          "http://localhost:3000/api/zero/agents/my-agent",
+          "http://localhost:3000/api/zero/agents/compose-1",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json({
@@ -882,7 +882,7 @@ describe("zero-job-detail signals", () => {
       await setupWithAgent();
 
       server.use(
-        http.patch("http://localhost:3000/api/zero/agents/my-agent", () => {
+        http.patch("http://localhost:3000/api/zero/agents/compose-1", () => {
           patchCalled = true;
           return HttpResponse.json({
             name: "my-agent",
@@ -909,7 +909,7 @@ describe("zero-job-detail signals", () => {
       await setupWithAgent();
 
       server.use(
-        http.patch("http://localhost:3000/api/zero/agents/my-agent", () => {
+        http.patch("http://localhost:3000/api/zero/agents/compose-1", () => {
           return new HttpResponse("Internal error", { status: 500 });
         }),
       );
@@ -930,7 +930,7 @@ describe("zero-job-detail signals", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
-          "http://localhost:3000/api/zero/agents/my-agent/instructions",
+          "http://localhost:3000/api/zero/agents/compose-1/instructions",
           () => {
             return HttpResponse.json(mockInstructions());
           },
@@ -993,7 +993,7 @@ describe("zero-job-detail signals", () => {
 
       server.use(
         http.put(
-          "http://localhost:3000/api/zero/agents/my-agent",
+          "http://localhost:3000/api/zero/agents/compose-1",
           async ({ request }) => {
             capturedBody = (await request.json()) as { connectors: string[] };
             return HttpResponse.json({
@@ -1027,7 +1027,7 @@ describe("zero-job-detail signals", () => {
       await setupWithAgent();
 
       server.use(
-        http.put("http://localhost:3000/api/zero/agents/my-agent", () => {
+        http.put("http://localhost:3000/api/zero/agents/compose-1", () => {
           return HttpResponse.json(
             { error: { message: "Build failed" } },
             { status: 500, statusText: "Internal Server Error" },

@@ -28,7 +28,7 @@ const context = testContext();
  * enable it, and make it due for execution.
  */
 async function createDueSchedule(
-  zeroAgentId: string,
+  agentId: string,
   slug: string,
   name: string,
   options: { notifyEmail: boolean; notifySlack: boolean },
@@ -40,7 +40,7 @@ async function createDueSchedule(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        zeroAgentId,
+        agentId,
         name,
         cronExpression: "0 0 * * *",
         timezone: "UTC",
@@ -60,7 +60,7 @@ async function createDueSchedule(
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ zeroAgentId }),
+      body: JSON.stringify({ agentId }),
     },
   );
   await enableScheduleRoute(enableReq, {
@@ -76,7 +76,7 @@ async function createDueSchedule(
 
 describe("Schedule notification control - AND logic", () => {
   let user: UserContext;
-  let zeroAgentId: string;
+  let agentId: string;
   let slug: string;
 
   beforeEach(async () => {
@@ -91,7 +91,7 @@ describe("Schedule notification control - AND logic", () => {
     const agentName = uniqueId("notify-agent");
     await createTestCompose(agentName);
     await createTestZeroAgent(user.orgId, agentName, {});
-    zeroAgentId = await getTestZeroAgentId(user.orgId, agentName);
+    agentId = await getTestZeroAgentId(user.orgId, agentName);
 
     // Disable any schedules from other tests to avoid interference
     await disableAllSchedules();
@@ -107,7 +107,7 @@ describe("Schedule notification control - AND logic", () => {
     });
 
     // Schedule: both on
-    const scheduleId = await createDueSchedule(zeroAgentId, slug, "both-on", {
+    const scheduleId = await createDueSchedule(agentId, slug, "both-on", {
       notifyEmail: true,
       notifySlack: true,
     });
@@ -138,7 +138,7 @@ describe("Schedule notification control - AND logic", () => {
     });
 
     // Schedule: email off
-    const scheduleId = await createDueSchedule(zeroAgentId, slug, "email-off", {
+    const scheduleId = await createDueSchedule(agentId, slug, "email-off", {
       notifyEmail: false,
       notifySlack: true,
     });
@@ -169,7 +169,7 @@ describe("Schedule notification control - AND logic", () => {
     });
 
     // Schedule: slack off
-    const scheduleId = await createDueSchedule(zeroAgentId, slug, "slack-off", {
+    const scheduleId = await createDueSchedule(agentId, slug, "slack-off", {
       notifyEmail: true,
       notifySlack: false,
     });
@@ -201,7 +201,7 @@ describe("Schedule notification control - AND logic", () => {
 
     // Schedule: both on
     const scheduleId = await createDueSchedule(
-      zeroAgentId,
+      agentId,
       slug,
       "user-email-off",
       {
@@ -236,7 +236,7 @@ describe("Schedule notification control - AND logic", () => {
     });
 
     // Schedule: both off
-    const scheduleId = await createDueSchedule(zeroAgentId, slug, "silent", {
+    const scheduleId = await createDueSchedule(agentId, slug, "silent", {
       notifyEmail: false,
       notifySlack: false,
     });

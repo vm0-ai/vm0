@@ -35,7 +35,7 @@ describe("POST /api/zero/chat-threads - Create Thread", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          agentComposeId: testComposeId,
+          agentId: testComposeId,
           title: "Test thread",
         }),
       },
@@ -54,7 +54,7 @@ describe("POST /api/zero/chat-threads - Create Thread", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          agentComposeId: testComposeId,
+          agentId: testComposeId,
           title: "My thread",
         }),
       },
@@ -98,7 +98,7 @@ describe("POST /api/zero/chat-threads - Create Thread", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          agentComposeId: otherComposeId,
+          agentId: otherComposeId,
           title: "Cross-org thread",
         }),
       },
@@ -115,7 +115,7 @@ describe("POST /api/zero/chat-threads - Create Thread", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          agentComposeId: "00000000-0000-0000-0000-000000000000",
+          agentId: "00000000-0000-0000-0000-000000000000",
           title: "Test thread",
         }),
       },
@@ -142,7 +142,7 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
     mockClerk({ userId: null });
 
     const request = createTestRequest(
-      `http://localhost:3000/api/zero/chat-threads?agentComposeId=${testComposeId}`,
+      `http://localhost:3000/api/zero/chat-threads?agentId=${testComposeId}`,
     );
     const response = await GET(request);
     const data = await response.json();
@@ -177,7 +177,7 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
     mockClerk({ userId: user.userId });
 
     const request = createTestRequest(
-      `http://localhost:3000/api/zero/chat-threads?agentComposeId=${otherComposeId}`,
+      `http://localhost:3000/api/zero/chat-threads?agentId=${otherComposeId}`,
     );
     const response = await GET(request);
 
@@ -186,7 +186,7 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
 
   it("should return empty array when no threads exist", async () => {
     const request = createTestRequest(
-      `http://localhost:3000/api/zero/chat-threads?agentComposeId=${testComposeId}`,
+      `http://localhost:3000/api/zero/chat-threads?agentId=${testComposeId}`,
     );
     const response = await GET(request);
     const data = await response.json();
@@ -203,7 +203,7 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          agentComposeId: testComposeId,
+          agentId: testComposeId,
           title: "Listed thread",
         }),
       },
@@ -212,7 +212,7 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
 
     // List threads
     const request = createTestRequest(
-      `http://localhost:3000/api/zero/chat-threads?agentComposeId=${testComposeId}`,
+      `http://localhost:3000/api/zero/chat-threads?agentId=${testComposeId}`,
     );
     const response = await GET(request);
     const data = await response.json();
@@ -245,7 +245,7 @@ describe("POST /api/zero/chat-threads - Title Handling", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          agentComposeId: testComposeId,
+          agentId: testComposeId,
           title: "How do I debug memory leaks in Node.js?",
         }),
       },
@@ -264,7 +264,7 @@ describe("POST /api/zero/chat-threads - Title Handling", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          agentComposeId: testComposeId,
+          agentId: testComposeId,
         }),
       },
     );
