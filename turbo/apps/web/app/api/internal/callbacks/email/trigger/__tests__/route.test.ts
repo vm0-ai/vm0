@@ -187,7 +187,8 @@ describe("POST /api/internal/callbacks/email/trigger", () => {
         headers: Record<string, string>;
       };
       expect(sendArgs.to).toBe(senderEmail);
-      expect(sendArgs.from).toContain(triggerLocalPart);
+      // From address uses org slug (org-{suffix}) instead of agent name
+      expect(sendArgs.from).toMatch(/^org-[a-f0-9]+ from VM0/);
       expect(sendArgs.subject).toBe("Re: Help me with this");
       expect(sendArgs.replyTo).toContain("reply+");
       expect(sendArgs.headers).toMatchObject({
@@ -235,7 +236,8 @@ describe("POST /api/internal/callbacks/email/trigger", () => {
         from: string;
       };
       expect(sendArgs.subject).toBe("Re: Original Topic");
-      expect(sendArgs.from).toContain(agentName);
+      // From address uses org slug instead of agent name
+      expect(sendArgs.from).toMatch(/^org-[a-f0-9]+ from VM0/);
     });
 
     it("should send to multiple recipients when replyRecipientTo is provided", async () => {

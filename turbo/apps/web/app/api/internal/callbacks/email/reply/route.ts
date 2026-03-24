@@ -15,6 +15,7 @@ import {
   buildUnsubscribeUrl,
   buildUnsubscribeHeaders,
 } from "../../../../../../src/lib/email/handlers/shared";
+import { getOrgData } from "../../../../../../src/lib/org/org-cache-service";
 import type { EmailReplyCallbackPayload } from "../../../../../../src/lib/callback/callback-payloads";
 import { logger } from "../../../../../../src/lib/logger";
 
@@ -125,7 +126,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // Get compose name
   const [compose] = await globalThis.services.db
-    .select({ name: agentComposes.name })
+    .select({ name: agentComposes.name, orgId: agentComposes.orgId })
     .from(agentComposes)
     .where(eq(agentComposes.id, session.composeId))
     .limit(1);
@@ -133,6 +134,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!compose) {
     return errorResponse("Compose not found", 404);
   }
+
+  // Resolve org slug for from address
+  const orgId = session.orgId ?? compose.orgId;
+  const org = await getOrgData(orgId);
 
   // Get user email
   const userEmail = await getUserEmail(session.userId);
@@ -173,7 +178,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // Send response email via outbox queue
   await enqueueEmail({
-    from: buildFromAddress(compose.name),
+    from: buildFromAddress(org.slug),
     to: emailTo,
     subject: `Re: VM0 - Scheduled run for "${compose.name}" completed`,
     template: {
