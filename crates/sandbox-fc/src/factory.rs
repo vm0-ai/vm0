@@ -246,18 +246,28 @@ impl SandboxFactory for FirecrackerFactory {
             cow_dir: sandbox_paths.workspace().join("cow"),
             chunk_size: None,
         };
+        // CowDevice::create/restore call synchronous subprocess commands
+        // (losetup, dmsetup, blockdev). Use spawn_blocking to avoid stalling
+        // the tokio runtime when multiple sandboxes are created concurrently.
         let cow_result = match &self.config.snapshot {
             Some(snapshot) => {
                 let vm_cow = sandbox_paths.workspace().join("cow.img");
-                sparse_copy(&snapshot.cow_path, &vm_cow)
-                    .await
-                    .and_then(|()| {
-                        CowDevice::restore(&cow_config, vm_cow).map_err(|e| {
-                            SandboxError::CreationFailed(format!("restore COW device: {e}"))
-                        })
-                    })
+                let r = sparse_copy(&snapshot.cow_path, &vm_cow).await;
+                match r {
+                    Ok(()) => {
+                        tokio::task::spawn_blocking(move || CowDevice::restore(&cow_config, vm_cow))
+                            .await
+                            .map_err(|e| SandboxError::CreationFailed(format!("join: {e}")))?
+                            .map_err(|e| {
+                                SandboxError::CreationFailed(format!("restore COW device: {e}"))
+                            })
+                    }
+                    Err(e) => Err(e),
+                }
             }
-            None => CowDevice::create(&cow_config)
+            None => tokio::task::spawn_blocking(move || CowDevice::create(&cow_config))
+                .await
+                .map_err(|e| SandboxError::CreationFailed(format!("join: {e}")))?
                 .map_err(|e| SandboxError::CreationFailed(format!("create COW device: {e}"))),
         };
 

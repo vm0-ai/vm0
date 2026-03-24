@@ -195,16 +195,16 @@ impl FirecrackerSandbox {
         // Use `exec` to replace the bash process with firecracker, keeping all
         // descendants in the same process group so `kill_process_group` can
         // reach them (same pattern as start_from_snapshot and snapshot.rs).
-        let inner_cmd =
-            r#"exec ip netns exec "$1" sudo -u "$2" "$3" --config-file "$4" --api-sock "$5""#;
+        let inner_cmd = r#"chmod 666 "$1" && exec ip netns exec "$2" sudo -u "$3" "$4" --config-file "$5" --api-sock "$6""#;
 
         let mut child = tokio::process::Command::new("sudo")
             .args(["bash", "-c", inner_cmd, "_"])
-            .arg(&self.network.name) // $1
-            .arg(&username) // $2
-            .arg(&self.factory_config.binary_path) // $3
-            .arg(self.sandbox_paths.config()) // $4
-            .arg(&api_sock) // $5
+            .arg(self.cow_device.device_path()) // $1
+            .arg(&self.network.name) // $2
+            .arg(&username) // $3
+            .arg(&self.factory_config.binary_path) // $4
+            .arg(self.sandbox_paths.config()) // $5
+            .arg(&api_sock) // $6
             .current_dir(self.sandbox_paths.workspace())
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
@@ -296,7 +296,7 @@ impl FirecrackerSandbox {
         // snapshot creation) and recreates bind mount targets atomically
         // inside the unshare --mount namespace, avoiding races between
         // concurrent sandbox starts.
-        let inner_cmd = r#"umount "$4" 2>/dev/null; rm -f "$4"; touch "$4" && mount --bind "$1" "$2" && mount --bind "$3" "$4" && exec ip netns exec "$5" sudo -u "$6" "$7" --api-sock "$8""#;
+        let inner_cmd = r#"umount "$4" 2>/dev/null; rm -f "$4"; touch "$4" && mount --bind "$1" "$2" && mount --bind "$3" "$4" && chmod 666 "$3" && exec ip netns exec "$5" sudo -u "$6" "$7" --api-sock "$8""#;
 
         let mut child = tokio::process::Command::new("sudo")
             .args(["unshare", "--mount", "bash", "-c", inner_cmd, "_"])
