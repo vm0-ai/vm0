@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.79.0](https://github.com/vm0-ai/vm0/compare/cli-v9.78.2...cli-v9.79.0) (2026-03-24)
+
+
+### Features
+
+* add zero cli binary with zero_token support ([#6475](https://github.com/vm0-ai/vm0/issues/6475)) ([3717952](https://github.com/vm0-ai/vm0/commit/3717952a81b5a9e000955b7d0859af94b3502660))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.105.0
+
 ## [9.78.2](https://github.com/vm0-ai/vm0/compare/cli-v9.78.1...cli-v9.78.2) (2026-03-24)
 
 
