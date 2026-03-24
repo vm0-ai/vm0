@@ -20,6 +20,7 @@ import { generate as generateGitlab } from "./gitlab";
 import { generate as generateHubspot } from "./hubspot";
 import { generate as generateJira } from "./jira";
 import { generate as generateLinear } from "./linear";
+import { generate as generateMonday } from "./monday";
 import { generate as generateNotion } from "./notion";
 import { generate as generateOpenai } from "./openai";
 import { generate as generateSlack } from "./slack";
@@ -47,6 +48,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   hubspot: generateHubspot,
   jira: generateJira,
   linear: generateLinear,
+  monday: generateMonday,
   notion: generateNotion,
   openai: generateOpenai,
   slack: generateSlack,
