@@ -930,6 +930,58 @@ export const startNewZeroSession$ = command(({ get, set }) => {
 });
 
 // ---------------------------------------------------------------------------
+// Commands: create new chat session (from sidebar "New chat" button)
+// ---------------------------------------------------------------------------
+
+const creatingNewSession$ = state(false);
+export const zeroCreatingNewSession$ = computed((get) =>
+  get(creatingNewSession$),
+);
+
+export const createNewChatSession$ = command(
+  async ({ get, set }, agentComposeId: string | null) => {
+    set(creatingNewSession$, true);
+    try {
+      set(startNewZeroSession$);
+
+      const resolvedComposeId =
+        agentComposeId ??
+        (await get(zeroOnboardingStatus$)).defaultAgentComposeId;
+      if (!resolvedComposeId) {
+        L.warn("No compose ID available for new chat session");
+        return;
+      }
+
+      const fetchFn = get(fetch$);
+      const thread = await createChatThread(fetchFn, resolvedComposeId);
+      if (!thread) {
+        L.warn("Failed to create chat thread for new session");
+        return;
+      }
+
+      set(internalChatThreadId$, thread.id);
+
+      const now = new Date().toISOString();
+      set(internalSessionList$, (prev) => [
+        {
+          id: thread.id,
+          title: thread.title,
+          preview: null,
+          agentComposeId: resolvedComposeId,
+          createdAt: now,
+          updatedAt: now,
+        },
+        ...prev,
+      ]);
+
+      set(navigateToZeroSession$, thread.id);
+    } finally {
+      set(creatingNewSession$, false);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
 // Commands: send message
 // ---------------------------------------------------------------------------
 

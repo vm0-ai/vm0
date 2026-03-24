@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor, fireEvent } from "@testing-library/react";
-import { http, HttpResponse } from "msw";
+import { http, HttpResponse, delay } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
@@ -68,11 +68,17 @@ function mockSubagentAPIs() {
         updatedAt: "2026-03-10T00:00:01Z",
       });
     }),
+    http.post("*/api/zero/chat-threads", () => {
+      return HttpResponse.json({
+        id: "new-thread-id",
+        title: null,
+      });
+    }),
   );
 }
 
 describe("sidebar new chat navigation", () => {
-  it("should navigate to / when clicking new chat for default agent", async () => {
+  it("should create thread and navigate to /chat/:threadId when clicking new chat for default agent", async () => {
     mockSubagentAPIs();
 
     // Start on /team so the "new chat" button navigates away
@@ -88,13 +94,13 @@ describe("sidebar new chat navigation", () => {
 
     fireEvent.click(newChatButton);
 
-    // Verify navigation to /
+    // Verify navigation to /chat/:threadId
     await waitFor(() => {
-      expect(pathname()).toBe("/");
+      expect(pathname()).toBe("/chat/new-thread-id");
     });
   }, 15_000);
 
-  it("should navigate to /talk/:name when clicking new chat for a subagent", async () => {
+  it("should create thread and navigate to /chat/:threadId when clicking new chat for a subagent", async () => {
     mockSubagentAPIs();
 
     await setupPage({ context, path: "/talk/helper" });
@@ -109,9 +115,78 @@ describe("sidebar new chat navigation", () => {
 
     fireEvent.click(newChatButton);
 
-    // Verify navigation to /talk/helper
+    // Verify navigation to /chat/:threadId
     await waitFor(() => {
-      expect(pathname()).toBe("/talk/helper");
+      expect(pathname()).toBe("/chat/new-thread-id");
     });
+  }, 15_000);
+
+  it("should disable button during thread creation", async () => {
+    mockSubagentAPIs();
+    // Override POST to add a delay
+    server.use(
+      http.post("*/api/zero/chat-threads", async () => {
+        await delay(500);
+        return HttpResponse.json({
+          id: "delayed-thread-id",
+          title: null,
+        });
+      }),
+    );
+
+    await setupPage({ context, path: "/team" });
+
+    const newChatButton = await waitFor(
+      () => {
+        return screen.getByLabelText("New chat with Zero");
+      },
+      { timeout: 5000 },
+    );
+
+    fireEvent.click(newChatButton);
+
+    // Button should be disabled while creating
+    await waitFor(() => {
+      expect(newChatButton).toBeDisabled();
+    });
+
+    // After creation completes, button should be re-enabled
+    await waitFor(
+      () => {
+        expect(pathname()).toBe("/chat/delayed-thread-id");
+      },
+      { timeout: 5000 },
+    );
+  }, 15_000);
+
+  it("should handle API failure gracefully", async () => {
+    mockSubagentAPIs();
+    // Override POST to return error
+    server.use(
+      http.post("*/api/zero/chat-threads", () => {
+        return new HttpResponse(null, { status: 500 });
+      }),
+    );
+
+    await setupPage({ context, path: "/team" });
+
+    const initialPath = pathname();
+
+    const newChatButton = await waitFor(
+      () => {
+        return screen.getByLabelText("New chat with Zero");
+      },
+      { timeout: 5000 },
+    );
+
+    fireEvent.click(newChatButton);
+
+    // Wait for the request to complete (button should become enabled again)
+    await waitFor(() => {
+      expect(newChatButton).not.toBeDisabled();
+    });
+
+    // Should not have navigated
+    expect(pathname()).toBe(initialPath);
   }, 15_000);
 });

@@ -65,9 +65,9 @@ import {
   zeroSessionList$,
   zeroSessionListLoading$,
   zeroSessionListError$,
-  startNewZeroSession$,
+  createNewChatSession$,
+  zeroCreatingNewSession$,
 } from "../../signals/zero-page/zero-chat.ts";
-import { navigateTo$ } from "../../signals/route.ts";
 import {
   pinnedAgentIds$,
   savingPinnedAgents$,
@@ -455,6 +455,7 @@ function RecentChatSection({
   selectedRecentId,
   onRecentSelect,
   onNewChat,
+  newChatDisabled,
 }: {
   currentChatAgentId: string | null;
   displayName: string;
@@ -465,6 +466,7 @@ function RecentChatSection({
   selectedRecentId: string | null;
   onRecentSelect?: (id: string) => void;
   onNewChat?: (agent: { id: string; name: string } | null) => void;
+  newChatDisabled?: boolean;
 }) {
   const searchOpen = useGet(sidebarSearchOpen$);
   const setSearchOpen = useSet(setSidebarSearchOpen$);
@@ -555,7 +557,8 @@ function RecentChatSection({
               <button
                 type="button"
                 onClick={handleNewChat}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+                disabled={newChatDisabled}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors disabled:opacity-50 disabled:pointer-events-none"
                 aria-label={`New chat with ${agentLabel}`}
               >
                 <IconPlus size={15} stroke={2.5} />
@@ -838,15 +841,10 @@ export function ZeroSidebar() {
   const recentSessions = useGet(zeroSessionList$);
   const recentSessionsLoading = useGet(zeroSessionListLoading$);
   const recentSessionsError = useGet(zeroSessionListError$);
-  const startNewSession = useSet(startNewZeroSession$);
-  const navigateTo = useSet(navigateTo$);
+  const createNewChat = useSet(createNewChatSession$);
+  const creatingNewSession = useGet(zeroCreatingNewSession$);
   const onNewChat = (agent: { id: string; name: string } | null) => {
-    startNewSession();
-    if (agent) {
-      navigateTo("/talk/:name", { pathParams: { name: agent.name } });
-    } else {
-      navigateTo("/");
-    }
+    detach(createNewChat(agent?.id ?? null), Reason.DomCallback);
   };
   const displayName = agentName || "Zero";
   const pinnedIdsLoadable = useLastLoadable(pinnedAgentIds$);
@@ -1056,6 +1054,7 @@ export function ZeroSidebar() {
             selectedRecentId={selectedRecentId}
             onRecentSelect={onRecentSelect}
             onNewChat={onNewChat}
+            newChatDisabled={creatingNewSession}
           />
         </nav>
 
