@@ -96,11 +96,8 @@ export const ZERO_CAPABILITIES = [
 /** Inferred union type of all zero capability strings. */
 export type ZeroCapability = (typeof ZERO_CAPABILITIES)[number];
 
-/** Metadata for a single zero capability — group label and human-readable label. */
-export interface ZeroCapabilityMeta {
-  group: string;
-  label: string;
-}
+/** Metadata for a single zero capability — reuses CapabilityMeta structure. */
+export type ZeroCapabilityMeta = CapabilityMeta;
 
 /**
  * Exhaustive mapping from every zero capability to its UI group and label.
