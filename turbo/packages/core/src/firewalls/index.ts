@@ -12,6 +12,7 @@ import { ahrefsFirewall } from "./ahrefs.generated";
 import { airtableFirewall } from "./airtable.generated";
 import { asanaFirewall } from "./asana.generated";
 import { confluenceFirewall } from "./confluence.generated";
+import { elevenlabsFirewall } from "./elevenlabs.generated";
 import { figmaFirewall } from "./figma.generated";
 import { githubFirewall } from "./github.generated";
 import { gmailFirewall } from "./gmail.generated";
@@ -34,6 +35,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   airtable: airtableFirewall,
   asana: asanaFirewall,
   confluence: confluenceFirewall,
+  elevenlabs: elevenlabsFirewall,
   figma: figmaFirewall,
   github: githubFirewall,
   gmail: gmailFirewall,

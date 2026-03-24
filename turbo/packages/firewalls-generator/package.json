@@ -11,6 +11,7 @@
     "generate:airtable": "tsx src/index.ts airtable",
     "generate:asana": "tsx src/index.ts asana",
     "generate:confluence": "tsx src/index.ts confluence",
+    "generate:elevenlabs": "tsx src/index.ts elevenlabs",
     "generate:figma": "tsx src/index.ts figma",
     "generate:github": "tsx src/index.ts github",
     "generate:gmail": "tsx src/index.ts gmail",
