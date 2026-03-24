@@ -14,6 +14,7 @@ import { asanaFirewall } from "./asana.generated";
 import { axiomFirewall } from "./axiom.generated";
 import { cloudflareFirewall } from "./cloudflare.generated";
 import { confluenceFirewall } from "./confluence.generated";
+import { deepseekFirewall } from "./deepseek.generated";
 import { discordFirewall } from "./discord.generated";
 import { elevenlabsFirewall } from "./elevenlabs.generated";
 import { figmaFirewall } from "./figma.generated";
@@ -48,6 +49,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   axiom: axiomFirewall,
   cloudflare: cloudflareFirewall,
   confluence: confluenceFirewall,
+  deepseek: deepseekFirewall,
   discord: discordFirewall,
   elevenlabs: elevenlabsFirewall,
   figma: figmaFirewall,

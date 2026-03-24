@@ -98,6 +98,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   asana: ["asana"],
   axiom: ["axiom"],
   cloudflare: ["cloudflare"],
+  deepseek: ["deepseek"],
   discord: ["discord"],
   github: ["github"],
   gitlab: ["gitlab"],
