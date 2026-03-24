@@ -16,6 +16,7 @@ import { confluenceFirewall } from "./confluence.generated";
 import { elevenlabsFirewall } from "./elevenlabs.generated";
 import { figmaFirewall } from "./figma.generated";
 import { githubFirewall } from "./github.generated";
+import { gitlabFirewall } from "./gitlab.generated";
 import { gmailFirewall } from "./gmail.generated";
 import { googleCalendarFirewall } from "./google-calendar.generated";
 import { googleDocsFirewall } from "./google-docs.generated";
@@ -42,6 +43,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   elevenlabs: elevenlabsFirewall,
   figma: figmaFirewall,
   github: githubFirewall,
+  gitlab: gitlabFirewall,
   gmail: gmailFirewall,
   "google-calendar": googleCalendarFirewall,
   "google-docs": googleDocsFirewall,

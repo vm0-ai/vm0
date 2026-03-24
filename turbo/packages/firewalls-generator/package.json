@@ -15,6 +15,7 @@
     "generate:elevenlabs": "tsx src/index.ts elevenlabs",
     "generate:figma": "tsx src/index.ts figma",
     "generate:github": "tsx src/index.ts github",
+    "generate:gitlab": "tsx src/index.ts gitlab",
     "generate:gmail": "tsx src/index.ts gmail",
     "generate:google-calendar": "tsx src/index.ts google-calendar",
     "generate:google-docs": "tsx src/index.ts google-docs",
