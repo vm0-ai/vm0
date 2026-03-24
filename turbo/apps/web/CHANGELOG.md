@@ -1,5 +1,25 @@
 # Changelog
 
+## [12.153.1](https://github.com/vm0-ai/vm0/compare/web-v12.153.0...web-v12.153.1) (2026-03-24)
+
+
+### Bug Fixes
+
+* **web:** align secret connector map keys with firewall template references ([#6428](https://github.com/vm0-ai/vm0/issues/6428)) ([a33d1a4](https://github.com/vm0-ai/vm0/commit/a33d1a46ee5839e377b8fcf7930980ff762d786c)), closes [#6264](https://github.com/vm0-ai/vm0/issues/6264)
+
+
+### Refactoring
+
+* **db:** rename zeroAgentId to agentId across codebase ([#6272](https://github.com/vm0-ai/vm0/issues/6272)) ([4d3b01d](https://github.com/vm0-ai/vm0/commit/4d3b01de976b2a200117f3b0deed8bb841f24a62))
+* rewrite inbound email parsing and routing to org-level ([#6309](https://github.com/vm0-ai/vm0/issues/6309)) ([f25f6af](https://github.com/vm0-ai/vm0/commit/f25f6afd9fd83696744b51aa4cf4649436014a96))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.103.0
+
 ## [12.153.0](https://github.com/vm0-ai/vm0/compare/web-v12.152.0...web-v12.153.0) (2026-03-24)
 
 

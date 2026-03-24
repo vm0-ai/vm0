@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.78.1](https://github.com/vm0-ai/vm0/compare/cli-v9.78.0...cli-v9.78.1) (2026-03-24)
+
+
+### Refactoring
+
+* **db:** rename zeroAgentId to agentId across codebase ([#6272](https://github.com/vm0-ai/vm0/issues/6272)) ([4d3b01d](https://github.com/vm0-ai/vm0/commit/4d3b01de976b2a200117f3b0deed8bb841f24a62))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.103.0
+
 ## [9.78.0](https://github.com/vm0-ai/vm0/compare/cli-v9.77.2...cli-v9.78.0) (2026-03-24)
 
 
