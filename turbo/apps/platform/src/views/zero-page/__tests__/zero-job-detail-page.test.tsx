@@ -195,8 +195,8 @@ function mockAPIsWithSchedules() {
         schedules: [
           {
             id: "sched-1",
-            composeId: "agent-detail-id",
-            composeName: "my-agent",
+            zeroAgentId: "agent-detail-id",
+            agentName: "my-agent",
             orgSlug: "test",
             name: "morning-briefing",
             triggerType: "cron",
