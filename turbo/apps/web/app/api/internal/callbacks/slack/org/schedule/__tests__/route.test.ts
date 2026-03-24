@@ -25,7 +25,7 @@ const context = testContext();
 
 interface OrgScheduleCallbackPayload {
   scheduleId: string;
-  zeroAgentId: string;
+  agentId: string;
   agentName: string;
   userId: string;
   orgId: string;
@@ -91,7 +91,7 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
       url: "http://localhost/api/internal/callbacks/slack/org/schedule",
       payload: {
         scheduleId: schedule.id,
-        zeroAgentId: composeId,
+        agentId: composeId,
         agentName: "sched-agent",
         userId: user.userId,
         // orgId intentionally missing
@@ -104,7 +104,7 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
         status: "completed",
         payload: {
           scheduleId: schedule.id,
-          zeroAgentId: composeId,
+          agentId: composeId,
           agentName: "sched-agent",
           userId: user.userId,
           orgId: undefined as unknown as string, // missing orgId
@@ -129,7 +129,7 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
 
     const payload: OrgScheduleCallbackPayload = {
       scheduleId: schedule.id,
-      zeroAgentId: composeId,
+      agentId: composeId,
       agentName: "sched-agent",
       userId: user.userId,
       orgId: user.orgId,
@@ -177,7 +177,7 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
 
     const payload: OrgScheduleCallbackPayload = {
       scheduleId: schedule.id,
-      zeroAgentId: composeId,
+      agentId: composeId,
       agentName: "sched-agent",
       userId: user.userId,
       orgId: user.orgId,
@@ -224,7 +224,7 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
 
     const payload: OrgScheduleCallbackPayload = {
       scheduleId: schedule.id,
-      zeroAgentId: composeId,
+      agentId: composeId,
       agentName: "sched-agent",
       userId: user.userId,
       orgId: user.orgId,

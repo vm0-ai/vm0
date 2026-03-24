@@ -23,19 +23,22 @@ import { logger } from "../../../../../../../src/lib/logger";
 
 const log = logger("callback:slack-org:schedule");
 
-function parsePayload(payload: unknown): SlackScheduleCallbackPayload | null {
-  if (!payload || typeof payload !== "object") return null;
+function isSlackSchedulePayload(
+  payload: unknown,
+): payload is SlackScheduleCallbackPayload {
+  if (!payload || typeof payload !== "object") return false;
   const p = payload as Record<string, unknown>;
-  if (
-    typeof p.scheduleId !== "string" ||
-    typeof p.agentId !== "string" ||
-    typeof p.agentName !== "string" ||
-    typeof p.userId !== "string" ||
-    typeof p.orgId !== "string"
-  ) {
-    return null;
-  }
-  return p as unknown as SlackScheduleCallbackPayload;
+  return (
+    typeof p.scheduleId === "string" &&
+    typeof p.agentId === "string" &&
+    typeof p.agentName === "string" &&
+    typeof p.userId === "string" &&
+    typeof p.orgId === "string"
+  );
+}
+
+function parsePayload(payload: unknown): SlackScheduleCallbackPayload | null {
+  return isSlackSchedulePayload(payload) ? payload : null;
 }
 
 function errorResponse(message: string, status: number): NextResponse {

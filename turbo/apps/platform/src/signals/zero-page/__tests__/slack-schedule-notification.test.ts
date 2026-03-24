@@ -23,7 +23,7 @@ function createMockScheduleWithSlack(overrides?: {
 }) {
   return {
     id: "sched-slack-1",
-    zeroAgentId: "agent-1",
+    agentId: "agent-1",
     agentName: "zero",
     orgSlug: "test",
     name: "slack-schedule",
@@ -194,7 +194,7 @@ describe("slack schedule notification signals", () => {
         minute: 0,
         timezone: "UTC",
         intervalSeconds: 0,
-        zeroAgentId: "agent-1",
+        agentId: "agent-1",
         notifySlack: true,
         slackChannelId: "C-ALERTS",
       });
@@ -231,7 +231,7 @@ describe("slack schedule notification signals", () => {
         minute: 0,
         timezone: "UTC",
         intervalSeconds: 0,
-        zeroAgentId: "agent-1",
+        agentId: "agent-1",
         notifySlack: true,
         slackChannelId: null,
       });
@@ -268,7 +268,7 @@ describe("slack schedule notification signals", () => {
         minute: 0,
         timezone: "UTC",
         intervalSeconds: 0,
-        zeroAgentId: "agent-1",
+        agentId: "agent-1",
       });
 
       expect(captured.body).not.toBeNull();
