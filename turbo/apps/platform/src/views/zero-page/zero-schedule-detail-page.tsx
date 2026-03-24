@@ -211,8 +211,7 @@ function ScheduleNotificationSettings({
   setNotifySlack,
   slackChannelId,
   setSlackChannelId,
-  saving,
-  saveWith,
+  disabled,
 }: {
   notifyEmail: boolean;
   setNotifyEmail: (v: boolean) => void;
@@ -220,12 +219,7 @@ function ScheduleNotificationSettings({
   setNotifySlack: (v: boolean) => void;
   slackChannelId: string | null;
   setSlackChannelId: (v: string | null) => void;
-  saving: boolean;
-  saveWith: (patch: {
-    notifyEmail?: boolean;
-    notifySlack?: boolean;
-    slackChannelId?: string | null;
-  }) => void;
+  disabled: boolean;
 }) {
   const slackData = useLoadable(slackOrgData$);
   const slackHasBot =
@@ -244,11 +238,8 @@ function ScheduleNotificationSettings({
         <Switch
           className={compactSwitchClassName}
           checked={notifyEmail}
-          onCheckedChange={(v) => {
-            setNotifyEmail(v);
-            saveWith({ notifyEmail: v });
-          }}
-          disabled={saving}
+          onCheckedChange={setNotifyEmail}
+          disabled={disabled}
         />
       </InlineSettingsRow>
 
@@ -264,11 +255,8 @@ function ScheduleNotificationSettings({
         <Switch
           className={compactSwitchClassName}
           checked={notifySlack}
-          onCheckedChange={(v) => {
-            setNotifySlack(v);
-            saveWith({ notifySlack: v });
-          }}
-          disabled={saving || !slackHasBot}
+          onCheckedChange={setNotifySlack}
+          disabled={disabled || !slackHasBot}
         />
       </InlineSettingsRow>
 
@@ -281,11 +269,9 @@ function ScheduleNotificationSettings({
             <Select
               value={slackChannelId ?? "__dm__"}
               onValueChange={(v) => {
-                const next = v === "__dm__" ? null : v;
-                setSlackChannelId(next);
-                saveWith({ slackChannelId: next });
+                setSlackChannelId(v === "__dm__" ? null : v);
               }}
-              disabled={saving}
+              disabled={disabled}
             >
               <SelectTrigger className="h-9 w-full">
                 <SelectValue />
@@ -306,6 +292,62 @@ function ScheduleNotificationSettings({
   );
 }
 
+type ScheduleSettingsSnapshot = {
+  freq: string;
+  date: string;
+  hour: number;
+  minute: number;
+  timezone: string;
+  loopMinutes: number;
+  agentId: string;
+  description: string;
+  notifyEmail: boolean;
+  notifySlack: boolean;
+  slackChannelId: string | null;
+  dayOfWeek: string;
+  dayOfMonth: string;
+};
+
+function buildSettingsSnapshot(
+  entry: CombinedEntry,
+  parsed: ReturnType<typeof parseScheduleTimeString>,
+): ScheduleSettingsSnapshot {
+  return {
+    freq: parsed.freq,
+    date: parsed.date,
+    hour: parsed.hour,
+    minute: parsed.minute,
+    timezone: entry.timezone ?? parsed.timezone,
+    loopMinutes: parsed.loopMinutes,
+    agentId: entry.agentId,
+    description: entry.description ?? "",
+    notifyEmail: entry.notifyEmail ?? false,
+    notifySlack: entry.notifySlack ?? false,
+    slackChannelId: entry.slackChannelId ?? null,
+    dayOfWeek: parsed.dayOfWeek ?? "1",
+    dayOfMonth: parsed.dayOfMonth ?? "1",
+  };
+}
+
+function isSettingsChanged(
+  a: ScheduleSettingsSnapshot,
+  b: ScheduleSettingsSnapshot,
+): boolean {
+  return (
+    a.freq !== b.freq ||
+    a.date !== b.date ||
+    a.hour !== b.hour ||
+    a.minute !== b.minute ||
+    a.timezone !== b.timezone ||
+    a.loopMinutes !== b.loopMinutes ||
+    a.agentId !== b.agentId ||
+    a.description !== b.description ||
+    a.notifyEmail !== b.notifyEmail ||
+    a.notifySlack !== b.notifySlack ||
+    a.slackChannelId !== b.slackChannelId
+  );
+}
+
 function ScheduleSettingsForm({
   entry,
   agents,
@@ -319,66 +361,87 @@ function ScheduleSettingsForm({
   agents: ScheduleAgentOption[];
   saving: boolean;
   toggling: boolean;
-  onSave: (params: ZeroScheduleSaveParams & { agentId: string }) => void;
+  onSave: (
+    params: ZeroScheduleSaveParams & { agentId: string },
+  ) => Promise<void>;
   onToggle: (enabled: boolean) => Promise<void>;
   onDelete: () => void;
 }) {
   const parsed = parseScheduleTimeString(entry.time);
-  const [freq, setFreq] = useState(parsed.freq);
-  const [date, setDate] = useState(parsed.date);
-  const [hour, setHour] = useState(parsed.hour);
-  const [minute, setMinute] = useState(parsed.minute);
-  const [timezone, setTimezone] = useState(entry.timezone ?? parsed.timezone);
-  const [loopMinutes, setLoopMinutes] = useState(parsed.loopMinutes);
-  const [agentId, setAgentId] = useState(entry.agentId);
-  const [description, setDescription] = useState(entry.description ?? "");
-  const [notifyEmail, setNotifyEmail] = useState(entry.notifyEmail ?? false);
-  const [notifySlack, setNotifySlack] = useState(entry.notifySlack ?? false);
-  const [slackChannelId, setSlackChannelId] = useState(
-    entry.slackChannelId ?? null,
-  );
-  const [dayOfWeek] = useState(parsed.dayOfWeek ?? "1");
-  const [dayOfMonth] = useState(parsed.dayOfMonth ?? "1");
+  const initial = buildSettingsSnapshot(entry, parsed);
 
-  const saveWith = (patch: {
-    freq?: string;
-    date?: string;
-    hour?: number;
-    minute?: number;
-    timezone?: string;
-    loopMinutes?: number;
-    agentId?: string;
-    description?: string;
-    notifyEmail?: boolean;
-    notifySlack?: boolean;
-    slackChannelId?: string | null;
-  }) => {
+  const [freq, setFreq] = useState(initial.freq);
+  const [date, setDate] = useState(initial.date);
+  const [hour, setHour] = useState(initial.hour);
+  const [minute, setMinute] = useState(initial.minute);
+  const [timezone, setTimezone] = useState(initial.timezone);
+  const [loopMinutes, setLoopMinutes] = useState(initial.loopMinutes);
+  const [agentId, setAgentId] = useState(initial.agentId);
+  const [description, setDescription] = useState(initial.description);
+  const [notifyEmail, setNotifyEmail] = useState(initial.notifyEmail);
+  const [notifySlack, setNotifySlack] = useState(initial.notifySlack);
+  const [slackChannelId, setSlackChannelId] = useState(initial.slackChannelId);
+  const [dayOfWeek] = useState(initial.dayOfWeek);
+  const [dayOfMonth] = useState(initial.dayOfMonth);
+
+  const [savedState, setSavedState] = useState(initial);
+
+  const current: ScheduleSettingsSnapshot = {
+    freq,
+    date,
+    hour,
+    minute,
+    timezone,
+    loopMinutes,
+    agentId,
+    description,
+    notifyEmail,
+    notifySlack,
+    slackChannelId,
+    dayOfWeek,
+    dayOfMonth,
+  };
+  const isDirty = isSettingsChanged(current, savedState);
+
+  const handleDiscard = () => {
+    setFreq(savedState.freq);
+    setDate(savedState.date);
+    setHour(savedState.hour);
+    setMinute(savedState.minute);
+    setTimezone(savedState.timezone);
+    setLoopMinutes(savedState.loopMinutes);
+    setAgentId(savedState.agentId);
+    setDescription(savedState.description);
+    setNotifyEmail(savedState.notifyEmail);
+    setNotifySlack(savedState.notifySlack);
+    setSlackChannelId(savedState.slackChannelId);
+  };
+
+  const handleSave = async () => {
     if (!entry.prompt.trim() || entry.name === undefined) {
       return;
     }
-    const nextFreq = patch.freq ?? freq;
-    onSave({
+    await onSave({
       prompt: entry.prompt.trim(),
-      description: patch.description ?? description,
-      freq: nextFreq,
-      date: patch.date ?? date,
-      hour: patch.hour ?? hour,
-      minute: patch.minute ?? minute,
-      timezone: patch.timezone ?? timezone,
-      intervalSeconds: (patch.loopMinutes ?? loopMinutes) * 60,
+      description,
+      freq,
+      date,
+      hour,
+      minute,
+      timezone,
+      intervalSeconds: loopMinutes * 60,
       editName: entry.name,
-      agentId: patch.agentId ?? agentId,
-      notifyEmail: patch.notifyEmail ?? notifyEmail,
-      notifySlack: patch.notifySlack ?? notifySlack,
-      slackChannelId:
-        "slackChannelId" in patch ? patch.slackChannelId : slackChannelId,
-      ...(nextFreq === "every_week" ? { dayOfWeek } : {}),
-      ...(nextFreq === "every_month" ? { dayOfMonth } : {}),
+      agentId,
+      notifyEmail,
+      notifySlack,
+      slackChannelId,
+      ...(freq === "every_week" ? { dayOfWeek } : {}),
+      ...(freq === "every_month" ? { dayOfMonth } : {}),
     });
+    setSavedState(current);
   };
 
   const canDelete = entry.name !== undefined;
-  const composeInList = agents.some((a) => a.id === agentId);
 
   return (
     <>
@@ -391,21 +454,13 @@ function ScheduleSettingsForm({
             <div className={SCHEDULE_DETAIL_CONTROL_WIDTH}>
               <Select
                 value={agentId}
-                onValueChange={(v) => {
-                  setAgentId(v);
-                  saveWith({ agentId: v });
-                }}
+                onValueChange={setAgentId}
                 disabled={saving || agents.length === 0}
               >
                 <SelectTrigger className="h-9 w-full">
                   <SelectValue placeholder="Select agent" />
                 </SelectTrigger>
                 <SelectContent>
-                  {!composeInList && (
-                    <SelectItem value={agentId}>
-                      {entry.agentName || entry.agentLabel || agentId}
-                    </SelectItem>
-                  )}
                   {agents.map((a) => (
                     <SelectItem key={a.id} value={a.id}>
                       {a.displayName ?? a.name}
@@ -424,11 +479,6 @@ function ScheduleSettingsForm({
               <Input
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                onBlur={() => {
-                  if (description !== (entry.description ?? "")) {
-                    saveWith({ description });
-                  }
-                }}
                 placeholder="Leave blank to auto-generate"
                 className="h-9"
                 disabled={saving}
@@ -449,35 +499,17 @@ function ScheduleSettingsForm({
             >
               <ScheduleEditFields
                 freq={freq}
-                setFreq={(v) => {
-                  setFreq(v);
-                  saveWith({ freq: v });
-                }}
+                setFreq={setFreq}
                 loopMinutes={loopMinutes}
-                setLoopMinutes={(v) => {
-                  setLoopMinutes(v);
-                  saveWith({ loopMinutes: v });
-                }}
+                setLoopMinutes={setLoopMinutes}
                 date={date}
-                setDate={(v) => {
-                  setDate(v);
-                  saveWith({ date: v });
-                }}
+                setDate={setDate}
                 hour={hour}
-                setHour={(v) => {
-                  setHour(v);
-                  saveWith({ hour: v });
-                }}
+                setHour={setHour}
                 minute={minute}
-                setMinute={(v) => {
-                  setMinute(v);
-                  saveWith({ minute: v });
-                }}
+                setMinute={setMinute}
                 timezone={timezone}
-                setTimezone={(v) => {
-                  setTimezone(v);
-                  saveWith({ timezone: v });
-                }}
+                setTimezone={setTimezone}
               />
             </fieldset>
           </InlineSettingsRow>
@@ -504,8 +536,7 @@ function ScheduleSettingsForm({
             setNotifySlack={setNotifySlack}
             slackChannelId={slackChannelId}
             setSlackChannelId={setSlackChannelId}
-            saving={saving}
-            saveWith={saveWith}
+            disabled={saving}
           />
         </CardContent>
       </Card>
@@ -537,6 +568,14 @@ function ScheduleSettingsForm({
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {isDirty && (
+        <ZeroUnsavedBar
+          onDiscard={handleDiscard}
+          onSave={() => detach(handleSave(), Reason.DomCallback)}
+          saving={saving}
+        />
       )}
     </>
   );
@@ -605,7 +644,7 @@ function ScheduleDetailView({
   agents: ScheduleAgentOption[];
   onSettingsSave: (
     params: ZeroScheduleSaveParams & { agentId: string },
-  ) => void;
+  ) => Promise<void>;
   onToggle: (enabled: boolean) => Promise<void>;
   onRunNow: () => Promise<void>;
   onDelete: () => void;
@@ -761,7 +800,7 @@ function ScheduleDetailView({
           <div className="mx-auto max-w-[900px] flex flex-col gap-4">
             {activeTab === "settings" && (
               <ScheduleSettingsForm
-                key={`${entry.id}\u0000${entry.time}\u0000${entry.agentId}\u0000${String(entry.notifyEmail)}\u0000${String(entry.notifySlack)}`}
+                key={entry.id}
                 entry={entry}
                 agents={agents}
                 saving={saving}
@@ -849,16 +888,15 @@ export function ZeroScheduleDetailPage() {
 
   const dimmed = entry.enabled === false;
 
-  const handleSettingsSave = (
+  const handleSettingsSave = async (
     params: ZeroScheduleSaveParams & { agentId: string },
   ) => {
     setSaving(true);
-    detach(
-      saveSchedule(params).finally(() => {
-        setSaving(false);
-      }),
-      Reason.DomCallback,
-    );
+    try {
+      await saveSchedule(params);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleInstructionSavePrompt = (prompt: string) => {
