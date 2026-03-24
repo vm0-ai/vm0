@@ -102,6 +102,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   brevo: ["brevo"],
   "bright-data": ["bright-data"],
   browserbase: ["browserbase"],
+  browserless: ["browserless"],
   calendly: ["calendly"],
   clickup: ["clickup"],
   close: ["close"],

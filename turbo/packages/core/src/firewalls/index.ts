@@ -17,6 +17,7 @@ import { braveSearchFirewall } from "./brave-search.generated";
 import { brevoFirewall } from "./brevo.generated";
 import { brightDataFirewall } from "./bright-data.generated";
 import { browserbaseFirewall } from "./browserbase.generated";
+import { browserlessFirewall } from "./browserless.generated";
 import { calendlyFirewall } from "./calendly.generated";
 import { clickupFirewall } from "./clickup.generated";
 import { closeFirewall } from "./close.generated";
@@ -80,6 +81,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   brevo: brevoFirewall,
   "bright-data": brightDataFirewall,
   browserbase: browserbaseFirewall,
+  browserless: browserlessFirewall,
   calendly: calendlyFirewall,
   clickup: clickupFirewall,
   close: closeFirewall,
