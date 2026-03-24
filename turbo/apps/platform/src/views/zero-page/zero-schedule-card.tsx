@@ -55,12 +55,6 @@ import {
 } from "@vm0/ui/components/ui/dialog";
 import { getBrowserTimezone } from "../../signals/zero-page/cron.ts";
 
-/** Include the current value if it is not in the preset list (e.g. browser-detected TZ). */
-function timezonesForSelect(value: string): readonly string[] {
-  const preset = COMMON_TIMEZONES as readonly string[];
-  return preset.includes(value) ? preset : [...preset, value];
-}
-
 export const WEEKDAY_LABELS = [
   "Mon",
   "Tue",
