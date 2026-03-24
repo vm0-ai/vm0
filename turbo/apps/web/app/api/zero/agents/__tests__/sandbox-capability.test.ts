@@ -133,7 +133,7 @@ describe("Sandbox capability enforcement on zero agent routes", () => {
     it("sandbox token without agent:read gets 403", async () => {
       mockClerk({ userId: null });
       const token = await generateSandboxToken(user.userId, "run-123", [
-        "artifact:read",
+        "schedule:read",
       ]);
 
       const request = createTestRequest(
@@ -276,7 +276,7 @@ describe("Sandbox capability enforcement on zero agent routes", () => {
     it("sandbox token without agent:read gets 403", async () => {
       mockClerk({ userId: null });
       const token = await generateSandboxToken(user.userId, "run-123", [
-        "artifact:read",
+        "schedule:read",
       ]);
 
       const request = createTestRequest(

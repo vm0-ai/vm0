@@ -59,24 +59,34 @@ describe("Sandbox capability enforcement on compose routes", () => {
       expect(data.name).toBe(agentName);
     });
 
-    it("sandbox token without agent:read gets 403", async () => {
-      const agentName = `test-sandbox-noread-${Date.now()}`;
+    it("sandbox token with any capability can get compose by name", async () => {
+      const agentName = `test-sandbox-anycap-${Date.now()}`;
       await createTestCompose(agentName);
 
-      mockClerk({ userId: null });
+      await insertOrgMembersCacheEntry({
+        userId: user.userId,
+        orgId: user.orgId,
+        role: "admin",
+      });
+
+      const orgSlug = `org-${user.userId.slice(-8)}`;
+      mockClerk({ userId: null, orgId: user.orgId });
       const token = await generateSandboxToken(user.userId, "run-123", [
-        "artifact:read",
+        "schedule:read",
       ]);
 
       const request = createTestRequest(
-        `http://localhost:3000/api/agent/composes?name=${agentName}`,
+        `http://localhost:3000/api/agent/composes?name=${agentName}&org=${orgSlug}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         },
       );
 
       const response = await GET(request);
-      expect(response.status).toBe(403);
+      expect(response.status).toBe(200);
+
+      const data = await response.json();
+      expect(data.name).toBe(agentName);
     });
   });
 
@@ -123,16 +133,23 @@ describe("Sandbox capability enforcement on compose routes", () => {
       expect(data.name).toBe(agentName);
     });
 
-    it("sandbox token with agent:read but not agent:write gets 403", async () => {
-      const agentName = `test-sandbox-nocreate-${Date.now()}`;
+    it("sandbox token with any capability can create compose", async () => {
+      const agentName = `test-sandbox-create-any-${Date.now()}`;
 
-      mockClerk({ userId: null });
+      await insertOrgMembersCacheEntry({
+        userId: user.userId,
+        orgId: user.orgId,
+        role: "admin",
+      });
+
+      const orgSlug = `org-${user.userId.slice(-8)}`;
+      mockClerk({ userId: null, orgId: user.orgId });
       const token = await generateSandboxToken(user.userId, "run-123", [
         "agent:read",
       ]);
 
       const request = createTestRequest(
-        "http://localhost:3000/api/agent/composes",
+        `http://localhost:3000/api/agent/composes?org=${orgSlug}`,
         {
           method: "POST",
           headers: {
@@ -151,7 +168,7 @@ describe("Sandbox capability enforcement on compose routes", () => {
       );
 
       const response = await POST(request);
-      expect(response.status).toBe(403);
+      expect(response.status).toBe(201);
     });
   });
 
@@ -187,23 +204,6 @@ describe("Sandbox capability enforcement on compose routes", () => {
       expect(data.composes).toBeDefined();
       expect(Array.isArray(data.composes)).toBe(true);
     });
-
-    it("sandbox token without agent:read gets 403", async () => {
-      mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, "run-123", [
-        "artifact:write",
-      ]);
-
-      const request = createTestRequest(
-        "http://localhost:3000/api/agent/composes/list",
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
-
-      const response = await listGET(request);
-      expect(response.status).toBe(403);
-    });
   });
 
   describe("GET /api/agent/composes/:id", () => {
@@ -228,26 +228,6 @@ describe("Sandbox capability enforcement on compose routes", () => {
 
       const data = await response.json();
       expect(data.name).toBe(agentName);
-    });
-
-    it("sandbox token without agent:read gets 403", async () => {
-      const agentName = `test-sandbox-nogetid-${Date.now()}`;
-      const { composeId } = await createTestCompose(agentName);
-
-      mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, "run-123", [
-        "artifact:read",
-      ]);
-
-      const request = createTestRequest(
-        `http://localhost:3000/api/agent/composes/${composeId}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
-
-      const response = await getByIdGET(request);
-      expect(response.status).toBe(403);
     });
   });
 
@@ -284,33 +264,10 @@ describe("Sandbox capability enforcement on compose routes", () => {
       const token = await generateSandboxToken(user.userId, "run-123", [
         "agent:read",
         "agent:write",
-        "artifact:read",
-        "artifact:write",
         "agent-run:read",
         "agent-run:write",
         "schedule:read",
         "schedule:write",
-      ]);
-
-      const request = createTestRequest(
-        `http://localhost:3000/api/agent/composes/${composeId}`,
-        {
-          method: "DELETE",
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
-
-      const response = await deleteDELETE(request);
-      expect(response.status).toBe(403);
-    });
-
-    it("sandbox token without agent:write gets 403", async () => {
-      const agentName = `test-sandbox-nodelete-${Date.now()}`;
-      const { composeId } = await createTestCompose(agentName);
-
-      mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, "run-123", [
-        "agent:read",
       ]);
 
       const request = createTestRequest(
@@ -349,26 +306,6 @@ describe("Sandbox capability enforcement on compose routes", () => {
       const data = await response.json();
       expect(data.versionId).toBe(versionId);
     });
-
-    it("sandbox token without agent:read gets 403", async () => {
-      const agentName = `test-sandbox-noversions-${Date.now()}`;
-      const { composeId } = await createTestCompose(agentName);
-
-      mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, "run-123", [
-        "artifact:read",
-      ]);
-
-      const request = createTestRequest(
-        `http://localhost:3000/api/agent/composes/versions?composeId=${composeId}&version=latest`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
-
-      const response = await versionsGET(request);
-      expect(response.status).toBe(403);
-    });
   });
 
   describe("GET /api/agent/composes/:id/instructions", () => {
@@ -392,26 +329,6 @@ describe("Sandbox capability enforcement on compose routes", () => {
       // Should pass auth and reach compose lookup - returns 200 with null content
       // (no storage volume exists for test compose)
       expect(response.status).toBe(200);
-    });
-
-    it("sandbox token without agent:read gets 403", async () => {
-      const agentName = `test-sandbox-noinstructions-${Date.now()}`;
-      const { composeId } = await createTestCompose(agentName);
-
-      mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, "run-123", [
-        "artifact:read",
-      ]);
-
-      const request = createTestRequest(
-        `http://localhost:3000/api/agent/composes/${composeId}/instructions`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
-
-      const response = await instructionsGET(request);
-      expect(response.status).toBe(403);
     });
   });
 });

@@ -15,23 +15,6 @@ export function isSandboxAuth(
 }
 
 /**
- * Map storage type + action to the correct capability.
- *
- * Aligned with the resource model:
- * - volume → agent:* (Agent Org static resource)
- * - artifact, memory → artifact:* (Runtime Org dynamic resource)
- */
-export function storageCapability(
-  action: "read" | "write",
-  storageType?: "volume" | "artifact" | "memory",
-): Capability {
-  if (storageType === "volume") {
-    return `agent:${action}` as Capability;
-  }
-  return `artifact:${action}` as Capability;
-}
-
-/**
  * Build 403 response body for missing capability.
  * Response body tells which capability is missing (aids debugging).
  */

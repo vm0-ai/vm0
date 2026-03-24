@@ -20,8 +20,8 @@ function wrapInCompose(agentOverrides: Record<string, unknown>) {
 }
 
 describe("VALID_CAPABILITIES", () => {
-  it("contains 8 capabilities", () => {
-    expect(VALID_CAPABILITIES).toHaveLength(9);
+  it("contains 7 capabilities", () => {
+    expect(VALID_CAPABILITIES).toHaveLength(7);
   });
 
   it("all follow resource:action format", () => {
@@ -45,7 +45,7 @@ describe("experimental_capabilities in agentDefinitionSchema", () => {
   it("accepts valid capabilities array", () => {
     const result = agentDefinitionSchema.safeParse({
       ...baseAgent,
-      experimental_capabilities: ["artifact:read", "artifact:write"],
+      experimental_capabilities: ["agent:read", "agent:write"],
     });
     expect(result.success).toBe(true);
   });
@@ -90,7 +90,7 @@ describe("experimental_capabilities in agentDefinitionSchema", () => {
   it("rejects duplicate capabilities", () => {
     const result = agentDefinitionSchema.safeParse({
       ...baseAgent,
-      experimental_capabilities: ["artifact:read", "artifact:read"],
+      experimental_capabilities: ["agent:read", "agent:read"],
     });
     expect(result.success).toBe(false);
     if (!result.success) {
@@ -107,7 +107,7 @@ describe("experimental_capabilities in agentComposeApiContentSchema", () => {
       wrapInCompose({
         experimental_capabilities: [
           "agent:read",
-          "artifact:write",
+          "agent:write",
           "agent-run:read",
         ],
       }),

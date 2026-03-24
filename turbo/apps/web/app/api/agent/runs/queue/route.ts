@@ -10,7 +10,7 @@ const router = tsr.router(runsQueueContract, {
     initServices();
 
     const authCtx = await getAuthContext(headers.authorization, {
-      requiredCapability: "agent-run:read",
+      acceptAnySandboxCapability: true,
     });
     if (!authCtx) {
       return {

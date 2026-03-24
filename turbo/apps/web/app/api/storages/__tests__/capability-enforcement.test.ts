@@ -2,7 +2,6 @@ import { randomUUID } from "crypto";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { GET as listRoute } from "../list/route";
 import { POST as prepareRoute } from "../prepare/route";
-import { POST as commitRoute } from "../commit/route";
 import { GET as downloadRoute } from "../download/route";
 import {
   createTestRequest,
@@ -61,11 +60,9 @@ describe("Storage capability enforcement", () => {
       expect(body[0].name).toBe("test-vol");
     });
 
-    it("should accept sandbox token with artifact:read for artifact list", async () => {
+    it("should accept sandbox token with agent:read for artifact list", async () => {
       await createTestArtifact("test-art");
-      const token = await generateSandboxToken(userId, runId, [
-        "artifact:read",
-      ]);
+      const token = await generateSandboxToken(userId, runId, ["agent:read"]);
       mockClerk({ userId: null });
 
       const response = await listRoute(
@@ -81,11 +78,9 @@ describe("Storage capability enforcement", () => {
       expect(body[0].name).toBe("test-art");
     });
 
-    it("should accept sandbox token with artifact:read for memory list", async () => {
+    it("should accept sandbox token with agent:read for memory list", async () => {
       await createTestMemory("test-mem");
-      const token = await generateSandboxToken(userId, runId, [
-        "artifact:read",
-      ]);
+      const token = await generateSandboxToken(userId, runId, ["agent:read"]);
       mockClerk({ userId: null });
 
       const response = await listRoute(
@@ -101,9 +96,10 @@ describe("Storage capability enforcement", () => {
       expect(body[0].name).toBe("test-mem");
     });
 
-    it("should reject sandbox token with write capability on read route", async () => {
+    it("should accept sandbox token regardless of specific capability", async () => {
+      await createTestVolume("test-vol");
       const token = await generateSandboxToken(userId, runId, [
-        "artifact:write",
+        "agent-run:write",
       ]);
       mockClerk({ userId: null });
 
@@ -114,9 +110,7 @@ describe("Storage capability enforcement", () => {
         ),
       );
 
-      expect(response.status).toBe(403);
-      const body = await response.json();
-      expect(body.error.code).toBe("FORBIDDEN");
+      expect(response.status).toBe(200);
     });
 
     it("should reject sandbox token with no capabilities", async () => {
@@ -133,36 +127,6 @@ describe("Storage capability enforcement", () => {
       expect(response.status).toBe(403);
       const body = await response.json();
       expect(body.error.code).toBe("FORBIDDEN");
-    });
-
-    it("should reject artifact:read token for volume list", async () => {
-      const token = await generateSandboxToken(userId, runId, [
-        "artifact:read",
-      ]);
-      mockClerk({ userId: null });
-
-      const response = await listRoute(
-        createTestRequest(
-          "http://localhost:3000/api/storages/list?type=volume",
-          { headers: { authorization: `Bearer ${token}` } },
-        ),
-      );
-
-      expect(response.status).toBe(403);
-    });
-
-    it("should reject agent:read token for artifact list", async () => {
-      const token = await generateSandboxToken(userId, runId, ["agent:read"]);
-      mockClerk({ userId: null });
-
-      const response = await listRoute(
-        createTestRequest(
-          "http://localhost:3000/api/storages/list?type=artifact",
-          { headers: { authorization: `Bearer ${token}` } },
-        ),
-      );
-
-      expect(response.status).toBe(403);
     });
   });
 
@@ -189,9 +153,9 @@ describe("Storage capability enforcement", () => {
       expect(response.status).toBe(200);
     });
 
-    it("should accept sandbox token with artifact:write for artifact prepare", async () => {
+    it("should accept sandbox token regardless of specific capability for prepare", async () => {
       const token = await generateSandboxToken(userId, runId, [
-        "artifact:write",
+        "agent-run:read",
       ]);
       mockClerk({ userId: null });
 
@@ -203,8 +167,8 @@ describe("Storage capability enforcement", () => {
             authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
-            storageName: "test-art",
-            storageType: "artifact",
+            storageName: "test-vol",
+            storageType: "volume",
             files: [{ path: "a.txt", hash: TEST_HASH, size: 10 }],
           }),
         }),
@@ -213,60 +177,8 @@ describe("Storage capability enforcement", () => {
       expect(response.status).toBe(200);
     });
 
-    it("should reject sandbox token without matching write capability for prepare", async () => {
-      const token = await generateSandboxToken(userId, runId, [
-        "artifact:read",
-      ]);
-      mockClerk({ userId: null });
-
-      const response = await prepareRoute(
-        createTestRequest("http://localhost:3000/api/storages/prepare", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            storageName: "test-vol",
-            storageType: "volume",
-            files: [{ path: "a.txt", hash: TEST_HASH, size: 10 }],
-          }),
-        }),
-      );
-
-      expect(response.status).toBe(403);
-      const body = await response.json();
-      expect(body.error.code).toBe("FORBIDDEN");
-    });
-
-    it("should reject artifact:write token for volume prepare", async () => {
-      const token = await generateSandboxToken(userId, runId, [
-        "artifact:write",
-      ]);
-      mockClerk({ userId: null });
-
-      const response = await prepareRoute(
-        createTestRequest("http://localhost:3000/api/storages/prepare", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            storageName: "test-vol",
-            storageType: "volume",
-            files: [{ path: "a.txt", hash: TEST_HASH, size: 10 }],
-          }),
-        }),
-      );
-
-      expect(response.status).toBe(403);
-    });
-
-    it("should accept artifact:write token for memory prepare", async () => {
-      const token = await generateSandboxToken(userId, runId, [
-        "artifact:write",
-      ]);
+    it("should accept sandbox token for memory prepare", async () => {
+      const token = await generateSandboxToken(userId, runId, ["agent:write"]);
       mockClerk({ userId: null });
 
       const response = await prepareRoute(
@@ -285,78 +197,6 @@ describe("Storage capability enforcement", () => {
       );
 
       expect(response.status).toBe(200);
-    });
-
-    it("should reject agent:write token for artifact prepare", async () => {
-      const token = await generateSandboxToken(userId, runId, ["agent:write"]);
-      mockClerk({ userId: null });
-
-      const response = await prepareRoute(
-        createTestRequest("http://localhost:3000/api/storages/prepare", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            storageName: "test-art",
-            storageType: "artifact",
-            files: [{ path: "a.txt", hash: TEST_HASH, size: 10 }],
-          }),
-        }),
-      );
-
-      expect(response.status).toBe(403);
-    });
-  });
-
-  describe("sandbox token access for commit", () => {
-    it("should reject artifact:write token for volume commit", async () => {
-      const token = await generateSandboxToken(userId, runId, [
-        "artifact:write",
-      ]);
-      mockClerk({ userId: null });
-
-      const response = await commitRoute(
-        createTestRequest("http://localhost:3000/api/storages/commit", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            storageName: "test-vol",
-            storageType: "volume",
-            versionId: TEST_HASH,
-            files: [{ path: "a.txt", hash: TEST_HASH, size: 10 }],
-          }),
-        }),
-      );
-
-      expect(response.status).toBe(403);
-    });
-
-    it("should reject agent:write token for artifact commit", async () => {
-      const token = await generateSandboxToken(userId, runId, ["agent:write"]);
-      mockClerk({ userId: null });
-
-      const response = await commitRoute(
-        createTestRequest("http://localhost:3000/api/storages/commit", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            storageName: "test-art",
-            storageType: "artifact",
-            versionId: TEST_HASH,
-            files: [{ path: "a.txt", hash: TEST_HASH, size: 10 }],
-          }),
-        }),
-      );
-
-      expect(response.status).toBe(403);
     });
   });
 
@@ -377,10 +217,10 @@ describe("Storage capability enforcement", () => {
       expect(response.status).not.toBe(403);
     });
 
-    it("should accept artifact:read token for artifact download", async () => {
+    it("should accept sandbox token for artifact download regardless of capability", async () => {
       await createTestArtifact("test-art");
       const token = await generateSandboxToken(userId, runId, [
-        "artifact:read",
+        "agent-run:read",
       ]);
       mockClerk({ userId: null });
 
@@ -394,42 +234,10 @@ describe("Storage capability enforcement", () => {
       // Auth passed (not 403) — may be 200 or 404 depending on storage state
       expect(response.status).not.toBe(403);
     });
-
-    it("should reject artifact:read token for volume download", async () => {
-      const token = await generateSandboxToken(userId, runId, [
-        "artifact:read",
-      ]);
-      mockClerk({ userId: null });
-
-      const response = await downloadRoute(
-        createTestRequest(
-          "http://localhost:3000/api/storages/download?name=test-vol&type=volume",
-          { headers: { authorization: `Bearer ${token}` } },
-        ),
-      );
-
-      expect(response.status).toBe(403);
-    });
-
-    it("should reject agent:read token for artifact download", async () => {
-      const token = await generateSandboxToken(userId, runId, ["agent:read"]);
-      mockClerk({ userId: null });
-
-      const response = await downloadRoute(
-        createTestRequest(
-          "http://localhost:3000/api/storages/download?name=test-art&type=artifact",
-          { headers: { authorization: `Bearer ${token}` } },
-        ),
-      );
-
-      expect(response.status).toBe(403);
-    });
   });
 
   describe("backward compatibility", () => {
     it("should accept CLI token without capabilities for list", async () => {
-      // CLI token user is authenticated via Clerk session (getAuthContext checks Clerk first).
-      // The key is that adding requiredCapability to getAuthContext doesn't break CLI/session flows.
       const cliToken = await createTestCliToken(userId);
       const orgSlug = `org-${userId.slice(-8)}`;
 

@@ -210,10 +210,10 @@ describe("GET /api/agent/runs/:id - Get Run By ID", () => {
       expect(response.status).toBe(200);
     });
 
-    it("should reject sandbox token without agent-run:read", async () => {
+    it("should accept sandbox token with any capability", async () => {
       mockClerk({ userId: null });
       const token = await generateSandboxToken(user.userId, "run-1", [
-        "artifact:read",
+        "schedule:read",
       ]);
 
       const request = createTestRequest(
@@ -222,8 +222,8 @@ describe("GET /api/agent/runs/:id - Get Run By ID", () => {
       );
       const response = await GET(request);
 
-      // requireAuth returns 403 for valid sandbox tokens missing the required capability
-      expect(response.status).toBe(403);
+      // acceptAnySandboxCapability allows any valid sandbox token
+      expect(response.status).not.toBe(403);
     });
   });
 });

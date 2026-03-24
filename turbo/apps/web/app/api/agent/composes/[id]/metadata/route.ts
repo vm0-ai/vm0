@@ -20,7 +20,7 @@ const router = tsr.router(composesMetadataContract, {
     initServices();
 
     const authResult = await requireAuth(headers.authorization, {
-      requiredCapability: "agent:write",
+      acceptAnySandboxCapability: true,
     });
     if (isAuthError(authResult)) return authResult;
     const { userId } = authResult;
