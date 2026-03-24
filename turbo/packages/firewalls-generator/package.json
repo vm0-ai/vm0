@@ -19,6 +19,7 @@
     "generate:notion": "tsx src/index.ts notion",
     "generate:slack": "tsx src/index.ts slack",
     "generate:vercel": "tsx src/index.ts vercel",
+    "generate:zapsign": "tsx src/index.ts zapsign",
     "generate:zeptomail": "tsx src/index.ts zeptomail"
   },
   "devDependencies": {

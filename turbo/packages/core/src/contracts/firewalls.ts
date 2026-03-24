@@ -105,6 +105,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   figma: ["figma"],
   notion: ["notion"],
   vercel: ["vercel"],
+  zapsign: ["zapsign"],
   zeptomail: ["zeptomail"],
 };
 
