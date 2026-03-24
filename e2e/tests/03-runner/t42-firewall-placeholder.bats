@@ -173,3 +173,40 @@ EOF
     # DENY: search endpoint has no matching permission
     assert_output --partial "GET    DENY https://api.github.com/search/code?q=vm0 [github]"
 }
+
+@test "firewall: connector auto-adds firewall without experimental_firewalls" {
+    # GitHub connector is set up in setup_file().
+    # Compose does NOT declare experimental_firewalls — the system should
+    # auto-add a firewall for the connected GitHub connector with unrestricted access.
+    cat > "$TEST_DIR/vm0.yaml" <<EOF
+version: "1.0"
+
+agents:
+  ${AGENT_NAME}-auto:
+    description: "Auto-firewall connector test"
+    framework: claude-code
+    working_dir: /home/user/workspace
+    environment:
+      GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+EOF
+
+    create_artifact "$ARTIFACT_NAME-auto"
+
+    run $CLI_COMMAND compose "$TEST_DIR/vm0.yaml"
+    assert_success
+
+    # Verify GITHUB_TOKEN is replaced with placeholder (firewall auto-added)
+    # and a GitHub API call succeeds through the proxy (token replacement works).
+    run $CLI_COMMAND run "${AGENT_NAME}-auto" \
+        --artifact-name "$ARTIFACT_NAME-auto" \
+        "TOKEN_VAL=\$GITHUB_TOKEN && STARTS_WITH=\$(echo \$TOKEN_VAL | cut -c1-7) && STATUS=\$(curl -s -o /dev/null -w '%{http_code}' https://api.github.com/repos/vm0-ai/vm0) && echo \"PLACEHOLDER=\$STARTS_WITH\" && echo \"API_STATUS=\$STATUS\""
+
+    echo "$output"
+    assert_success
+    assert_output --partial "Run completed successfully"
+
+    # Token should be the placeholder (proxy will replace it with real token)
+    assert_output --partial "PLACEHOLDER=gho_Vm0"
+    # API call should succeed (proxy replaced placeholder with real token)
+    assert_output --partial "API_STATUS=200"
+}
