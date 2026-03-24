@@ -485,12 +485,12 @@ async function gatherTiming(
 }
 
 async function findExistingSchedule(
-  agentName: string,
+  agentId: string,
   scheduleName: string,
 ): Promise<ScheduleListItem | undefined> {
   const { schedules } = await listZeroSchedules();
   return schedules.find(
-    (s) => s.agentId === agentName && s.name === scheduleName,
+    (s) => s.agentId === agentId && s.name === scheduleName,
   );
 }
 
@@ -696,7 +696,7 @@ export const setupCommand = new Command()
 
       // 2. Check for existing schedule
       const existingSchedule = await findExistingSchedule(
-        agentName,
+        agentId,
         scheduleName,
       );
 
