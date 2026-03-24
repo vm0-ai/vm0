@@ -18,7 +18,7 @@ import { withErrorHandler } from "../../../lib/command";
 import {
   checkComputerDependencies,
   startComputerServices,
-} from "./lib/computer/start-services";
+} from "../../connector/lib/computer/start-services";
 import { promptSelect, promptPassword } from "../../../lib/utils/prompt-utils";
 
 function delay(ms: number): Promise<void> {
@@ -110,7 +110,6 @@ async function connectComputer(): Promise<void> {
   console.log(chalk.cyan("Disconnecting computer connector..."));
   await deleteZeroComputerConnector();
   console.log(chalk.green("✓ Disconnected computer"));
-  process.exit(0);
 }
 
 /**
@@ -221,8 +220,9 @@ export const connectCommand = new Command()
     withErrorHandler(async (type: string, options: { token?: string }) => {
       const parseResult = connectorTypeSchema.safeParse(type);
       if (!parseResult.success) {
+        const available = Object.keys(CONNECTOR_TYPES).join(", ");
         throw new Error(`Unknown connector type: ${type}`, {
-          cause: new Error("Available connectors: github"),
+          cause: new Error(`Available connectors: ${available}`),
         });
       }
 
