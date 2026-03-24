@@ -6,6 +6,7 @@
  *   tsx src/index.ts github    # generate github only
  */
 
+import { generate as generateAgentmail } from "./agentmail";
 import { generate as generateConfluence } from "./confluence";
 import { generate as generateFigma } from "./figma";
 import { generate as generateGitHub } from "./github";
@@ -16,6 +17,7 @@ import { generate as generateVercel } from "./vercel";
 import { createGoogleGenerator, googleServiceNames } from "./google";
 
 const GENERATORS: Record<string, () => Promise<void>> = {
+  agentmail: generateAgentmail,
   confluence: generateConfluence,
   figma: generateFigma,
   github: generateGitHub,

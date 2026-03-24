@@ -92,6 +92,7 @@ export type ExperimentalFirewalls = z.infer<typeof experimentalFirewallsSchema>;
 const CONNECTOR_FIREWALL_REFS: Readonly<
   Partial<Record<ConnectorType, readonly string[]>>
 > = {
+  agentmail: ["agentmail"],
   github: ["github"],
   slack: ["slack"],
   gmail: ["gmail"],

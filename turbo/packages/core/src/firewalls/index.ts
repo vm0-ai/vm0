@@ -7,6 +7,7 @@
  */
 
 import type { FirewallConfig } from "../contracts/firewalls";
+import { agentmailFirewall } from "./agentmail.generated";
 import { confluenceFirewall } from "./confluence.generated";
 import { figmaFirewall } from "./figma.generated";
 import { githubFirewall } from "./github.generated";
@@ -21,6 +22,7 @@ import { slackFirewall } from "./slack.generated";
 import { vercelFirewall } from "./vercel.generated";
 
 export const builtinFirewalls: Record<string, FirewallConfig> = {
+  agentmail: agentmailFirewall,
   confluence: confluenceFirewall,
   figma: figmaFirewall,
   github: githubFirewall,

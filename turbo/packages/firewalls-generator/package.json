@@ -6,6 +6,7 @@
   "scripts": {
     "check-types": "tsc --noEmit",
     "generate": "tsx src/index.ts",
+    "generate:agentmail": "tsx src/index.ts agentmail",
     "generate:confluence": "tsx src/index.ts confluence",
     "generate:figma": "tsx src/index.ts figma",
     "generate:github": "tsx src/index.ts github",
