@@ -157,6 +157,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   vercel: ["vercel"],
   webflow: ["webflow"],
   x: ["x"],
+  xero: ["xero"],
   youtube: ["youtube"],
   zapier: ["zapier"],
   zapsign: ["zapsign"],

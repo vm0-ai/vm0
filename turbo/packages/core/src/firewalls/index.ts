@@ -73,6 +73,7 @@ import { todoistFirewall } from "./todoist.generated";
 import { vercelFirewall } from "./vercel.generated";
 import { webflowFirewall } from "./webflow.generated";
 import { xFirewall } from "./x.generated";
+import { xeroFirewall } from "./xero.generated";
 import { youtubeFirewall } from "./youtube.generated";
 import { zapierFirewall } from "./zapier.generated";
 import { zapsignFirewall } from "./zapsign.generated";
@@ -145,6 +146,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   vercel: vercelFirewall,
   webflow: webflowFirewall,
   x: xFirewall,
+  xero: xeroFirewall,
   youtube: youtubeFirewall,
   zapier: zapierFirewall,
   zapsign: zapsignFirewall,
