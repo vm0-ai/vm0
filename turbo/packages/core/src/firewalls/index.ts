@@ -13,6 +13,7 @@ import { airtableFirewall } from "./airtable.generated";
 import { asanaFirewall } from "./asana.generated";
 import { axiomFirewall } from "./axiom.generated";
 import { braveSearchFirewall } from "./brave-search.generated";
+import { brevoFirewall } from "./brevo.generated";
 import { clickupFirewall } from "./clickup.generated";
 import { closeFirewall } from "./close.generated";
 import { cloudflareFirewall } from "./cloudflare.generated";
@@ -61,6 +62,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   asana: asanaFirewall,
   axiom: axiomFirewall,
   "brave-search": braveSearchFirewall,
+  brevo: brevoFirewall,
   clickup: clickupFirewall,
   close: closeFirewall,
   cloudflare: cloudflareFirewall,

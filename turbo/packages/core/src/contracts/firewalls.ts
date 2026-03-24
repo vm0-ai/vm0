@@ -98,6 +98,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   asana: ["asana"],
   axiom: ["axiom"],
   "brave-search": ["brave-search"],
+  brevo: ["brevo"],
   clickup: ["clickup"],
   close: ["close"],
   cloudflare: ["cloudflare"],
