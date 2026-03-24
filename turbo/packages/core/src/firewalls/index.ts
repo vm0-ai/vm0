@@ -11,6 +11,7 @@ import { agentmailFirewall } from "./agentmail.generated";
 import { ahrefsFirewall } from "./ahrefs.generated";
 import { airtableFirewall } from "./airtable.generated";
 import { asanaFirewall } from "./asana.generated";
+import { axiomFirewall } from "./axiom.generated";
 import { confluenceFirewall } from "./confluence.generated";
 import { figmaFirewall } from "./figma.generated";
 import { githubFirewall } from "./github.generated";
@@ -33,6 +34,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   ahrefs: ahrefsFirewall,
   airtable: airtableFirewall,
   asana: asanaFirewall,
+  axiom: axiomFirewall,
   confluence: confluenceFirewall,
   figma: figmaFirewall,
   github: githubFirewall,

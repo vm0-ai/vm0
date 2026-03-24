@@ -96,6 +96,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   ahrefs: ["ahrefs"],
   airtable: ["airtable"],
   asana: ["asana"],
+  axiom: ["axiom"],
   github: ["github"],
   slack: ["slack"],
   gmail: ["gmail"],
