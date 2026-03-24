@@ -635,6 +635,7 @@ export function ZeroSchedulePage() {
   const [pendingDelete, setPendingDelete] = useState<CombinedEntry | null>(
     null,
   );
+  const [deleting, setDeleting] = useState(false);
 
   const combinedSchedule = buildCombinedSchedule(
     entries,
@@ -743,14 +744,22 @@ export function ZeroSchedulePage() {
     if (pendingDelete?.name === undefined) {
       return;
     }
+    setDeleting(true);
     detach(
       deleteSchedule({
         name: pendingDelete.name,
         agentId: pendingDelete.agentId,
-      }),
+      }).then(
+        () => {
+          setPendingDelete(null);
+          setDeleting(false);
+        },
+        () => {
+          setDeleting(false);
+        },
+      ),
       Reason.DomCallback,
     );
-    setPendingDelete(null);
   };
 
   return (
@@ -876,11 +885,15 @@ export function ZeroSchedulePage() {
       />
       <Dialog
         open={pendingDelete !== null}
-        onOpenChange={(open) => {
-          if (!open) {
-            setPendingDelete(null);
-          }
-        }}
+        onOpenChange={
+          deleting
+            ? undefined
+            : (open) => {
+                if (!open) {
+                  setPendingDelete(null);
+                }
+              }
+        }
       >
         <DialogContent>
           <DialogHeader>
@@ -894,11 +907,19 @@ export function ZeroSchedulePage() {
             </p>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPendingDelete(null)}>
+            <Button
+              variant="outline"
+              onClick={() => setPendingDelete(null)}
+              disabled={deleting}
+            >
               Cancel
             </Button>
-            <Button variant="destructive" onClick={confirmDelete}>
-              Delete
+            <Button
+              variant="destructive"
+              onClick={confirmDelete}
+              disabled={deleting}
+            >
+              {deleting ? "Deleting..." : "Delete"}
             </Button>
           </DialogFooter>
         </DialogContent>
