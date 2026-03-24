@@ -267,21 +267,6 @@ impl FirecrackerSandbox {
                 .map_err(|e| SandboxError::StartFailed(format!("mkdir snapshot drive: {e}")))?;
         }
 
-        // Create empty file as bind mount target for the drive.
-        let exists = tokio::fs::try_exists(&snapshot.drive_bind_path)
-            .await
-            .unwrap_or_else(|e| {
-                warn!(error = %e, "failed to check drive mount target");
-                false
-            });
-        if !exists {
-            tokio::fs::write(&snapshot.drive_bind_path, b"")
-                .await
-                .map_err(|e| {
-                    SandboxError::StartFailed(format!("create drive mount target: {e}"))
-                })?;
-        }
-
         // Verify sock dir exists before spawning — if this fails, we know
         // the directory was never created or was removed before spawn.
         let api_sock = self.sock_paths.api_sock();
@@ -305,7 +290,13 @@ impl FirecrackerSandbox {
         );
 
         // Use positional args ($1..$8) to avoid shell injection from paths.
-        let inner_cmd = r#"mount --bind "$1" "$2" && mount --bind "$3" "$4" && exec ip netns exec "$5" sudo -u "$6" "$7" --api-sock "$8""#;
+        //
+        // Bind mount targets ($2, $4) are snapshot-level paths shared by all
+        // sandboxes. The script cleans up stale mounts (left by crashed
+        // snapshot creation) and recreates bind mount targets atomically
+        // inside the unshare --mount namespace, avoiding races between
+        // concurrent sandbox starts.
+        let inner_cmd = r#"umount "$4" 2>/dev/null; rm -f "$4"; touch "$4" && mount --bind "$1" "$2" && mount --bind "$3" "$4" && exec ip netns exec "$5" sudo -u "$6" "$7" --api-sock "$8""#;
 
         let mut child = tokio::process::Command::new("sudo")
             .args(["unshare", "--mount", "bash", "-c", inner_cmd, "_"])
