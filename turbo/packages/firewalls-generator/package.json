@@ -14,6 +14,7 @@
     "generate:axiom": "tsx src/index.ts axiom",
     "generate:brave-search": "tsx src/index.ts brave-search",
     "generate:brevo": "tsx src/index.ts brevo",
+    "generate:bright-data": "tsx src/index.ts bright-data",
     "generate:clickup": "tsx src/index.ts clickup",
     "generate:close": "tsx src/index.ts close",
     "generate:cloudflare": "tsx src/index.ts cloudflare",

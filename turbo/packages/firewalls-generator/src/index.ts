@@ -14,6 +14,7 @@ import { generate as generateAsana } from "./asana";
 import { generate as generateAxiom } from "./axiom";
 import { generate as generateBraveSearch } from "./brave-search";
 import { generate as generateBrevo } from "./brevo";
+import { generate as generateBrightData } from "./bright-data";
 import { generate as generateClickup } from "./clickup";
 import { generate as generateClose } from "./close";
 import { generate as generateCloudflare } from "./cloudflare";
@@ -68,6 +69,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   axiom: generateAxiom,
   "brave-search": generateBraveSearch,
   brevo: generateBrevo,
+  "bright-data": generateBrightData,
   clickup: generateClickup,
   close: generateClose,
   cloudflare: generateCloudflare,

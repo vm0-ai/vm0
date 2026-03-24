@@ -15,6 +15,7 @@ import { asanaFirewall } from "./asana.generated";
 import { axiomFirewall } from "./axiom.generated";
 import { braveSearchFirewall } from "./brave-search.generated";
 import { brevoFirewall } from "./brevo.generated";
+import { brightDataFirewall } from "./bright-data.generated";
 import { clickupFirewall } from "./clickup.generated";
 import { closeFirewall } from "./close.generated";
 import { cloudflareFirewall } from "./cloudflare.generated";
@@ -73,6 +74,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   axiom: axiomFirewall,
   "brave-search": braveSearchFirewall,
   brevo: brevoFirewall,
+  "bright-data": brightDataFirewall,
   clickup: clickupFirewall,
   close: closeFirewall,
   cloudflare: cloudflareFirewall,
