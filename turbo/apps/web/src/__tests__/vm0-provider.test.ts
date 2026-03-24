@@ -97,22 +97,22 @@ describe("VM0 managed model provider", () => {
     it("should return a random key for a vendor with keys", async () => {
       await insertVm0ApiKeys([
         {
-          vendor: "anthropic",
-          model: "claude-sonnet-4.6",
+          vendor: "test-vendor",
+          model: "test-model",
           apiKey: "sk-test-anthropic-1",
           label: "test key 1",
         },
         {
-          vendor: "anthropic",
-          model: "claude-sonnet-4.6",
+          vendor: "test-vendor",
+          model: "test-model",
           apiKey: "sk-test-anthropic-2",
           label: "test key 2",
         },
       ]);
 
-      const result = await getTestVm0ApiKey("anthropic");
+      const result = await getTestVm0ApiKey("test-vendor");
       expect(result).not.toBeNull();
-      expect(result!.model).toBe("claude-sonnet-4.6");
+      expect(result!.model).toBe("test-model");
       expect(["sk-test-anthropic-1", "sk-test-anthropic-2"]).toContain(
         result!.apiKey,
       );
