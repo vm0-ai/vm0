@@ -13,6 +13,7 @@ import { generate as generateAsana } from "./asana";
 import { generate as generateAxiom } from "./axiom";
 import { generate as generateBraveSearch } from "./brave-search";
 import { generate as generateClickup } from "./clickup";
+import { generate as generateClose } from "./close";
 import { generate as generateCloudflare } from "./cloudflare";
 import { generate as generateConfluence } from "./confluence";
 import { generate as generateDeepseek } from "./deepseek";
@@ -56,6 +57,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   axiom: generateAxiom,
   "brave-search": generateBraveSearch,
   clickup: generateClickup,
+  close: generateClose,
   cloudflare: generateCloudflare,
   confluence: generateConfluence,
   deepseek: generateDeepseek,

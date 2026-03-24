@@ -14,6 +14,7 @@ import { asanaFirewall } from "./asana.generated";
 import { axiomFirewall } from "./axiom.generated";
 import { braveSearchFirewall } from "./brave-search.generated";
 import { clickupFirewall } from "./clickup.generated";
+import { closeFirewall } from "./close.generated";
 import { cloudflareFirewall } from "./cloudflare.generated";
 import { confluenceFirewall } from "./confluence.generated";
 import { deepseekFirewall } from "./deepseek.generated";
@@ -61,6 +62,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   axiom: axiomFirewall,
   "brave-search": braveSearchFirewall,
   clickup: clickupFirewall,
+  close: closeFirewall,
   cloudflare: cloudflareFirewall,
   confluence: confluenceFirewall,
   deepseek: deepseekFirewall,

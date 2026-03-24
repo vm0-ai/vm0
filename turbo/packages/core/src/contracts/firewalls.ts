@@ -99,6 +99,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   axiom: ["axiom"],
   "brave-search": ["brave-search"],
   clickup: ["clickup"],
+  close: ["close"],
   cloudflare: ["cloudflare"],
   deepseek: ["deepseek"],
   discord: ["discord"],
