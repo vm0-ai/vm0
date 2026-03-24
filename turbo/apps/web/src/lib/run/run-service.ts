@@ -47,6 +47,7 @@ import {
   type RunStatus,
   type TriggerSource,
   type GetRunResponse,
+  type FirewallPolicies,
   orgTierSchema,
 } from "@vm0/core";
 import { getOrgData } from "../org/org-cache-service";
@@ -471,6 +472,8 @@ export interface CreateRunParams {
   orgId: string;
   // Caller-resolved org tier for concurrency limit derivation.
   orgTier?: OrgTier;
+  // Per-permission firewall policies from zero agent configuration.
+  firewallPolicies?: FirewallPolicies;
 }
 
 /**
@@ -517,6 +520,7 @@ export interface StartRunParams {
   triggerSource?: TriggerSource;
   debugNoMockClaude?: boolean;
   checkEnv?: boolean;
+  firewallPolicies?: FirewallPolicies;
 }
 
 export interface CreateRunResult {
@@ -801,6 +805,7 @@ async function buildAndDispatchRun(opts: {
       debugNoMockClaude: params.debugNoMockClaude,
       modelProvider: params.modelProvider,
       checkEnv: params.checkEnv,
+      firewallPolicies: params.firewallPolicies,
       apiStartTime,
       orgSlug,
       orgId,
@@ -1083,6 +1088,7 @@ export async function startRun(
     triggerSource: params.triggerSource,
     debugNoMockClaude: params.debugNoMockClaude,
     checkEnv: params.checkEnv,
+    firewallPolicies: params.firewallPolicies,
     orgSlug: orgData.slug,
     orgId: authOrgId,
     orgTier,

@@ -6,6 +6,7 @@ import {
 } from "../../../__tests__/test-helpers";
 import {
   createTestCompose,
+  createTestConnector,
   createTestSchedule,
   createTestZeroAgent,
   getTestZeroAgentId,
@@ -208,6 +209,82 @@ describe("createZeroRun()", () => {
       expect(run).toBeDefined();
       // appendSystemPrompt is prepended with agent identity, so check it contains our text
       expect(run!.appendSystemPrompt).toContain("You are a helpful bot.");
+    });
+  });
+
+  describe("firewall policies", () => {
+    it("should add firewall with only allowed permissions", async () => {
+      const agentName = uniqueId("fw-agent");
+      await createTestCompose(agentName);
+      await createTestConnector({ type: "github" });
+      await createTestZeroAgent(user.orgId, agentName, {
+        firewallPolicies: {
+          github: {
+            "actions:read": "allow",
+            "actions:write": "deny",
+            "issues:read": "allow",
+          },
+        },
+      });
+      const agentId = await getTestZeroAgentId(user.orgId, agentName);
+
+      const result = await createZeroRun(baseParams({ zeroAgentId: agentId }));
+
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job).toBeDefined();
+      const firewalls = job!.executionContext.experimentalFirewalls;
+      expect(firewalls).toBeDefined();
+      const ghFirewall = firewalls!.find((fw) => fw.ref === "github");
+      expect(ghFirewall).toBeDefined();
+      const permNames = ghFirewall!.apis[0]!.permissions!.map((p) => p.name);
+      expect(permNames).toContain("actions:read");
+      expect(permNames).toContain("issues:read");
+      expect(permNames).not.toContain("actions:write");
+    });
+
+    it("should add unrestricted permission when no policies exist", async () => {
+      const agentName = uniqueId("fw-nopol");
+      await createTestCompose(agentName);
+      await createTestConnector({ type: "slack" });
+      const agentId = await getTestZeroAgentId(user.orgId, agentName);
+
+      const result = await createZeroRun(baseParams({ zeroAgentId: agentId }));
+
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job).toBeDefined();
+      const firewalls = job!.executionContext.experimentalFirewalls;
+      expect(firewalls).toBeDefined();
+      const slackFw = firewalls!.find((fw) => fw.ref === "slack");
+      expect(slackFw).toBeDefined();
+      expect(slackFw!.apis[0]!.permissions).toEqual([
+        {
+          name: "unrestricted",
+          description: "Allow all endpoints",
+          rules: ["ANY /{path*}"],
+        },
+      ]);
+    });
+
+    it("should not add firewall entry when all permissions are denied", async () => {
+      const agentName = uniqueId("fw-allden");
+      await createTestCompose(agentName);
+      await createTestConnector({ type: "slack" });
+      await createTestZeroAgent(user.orgId, agentName, {
+        firewallPolicies: {
+          slack: { "bookmarks:read": "deny", "bookmarks:write": "deny" },
+        },
+      });
+      const agentId = await getTestZeroAgentId(user.orgId, agentName);
+
+      const result = await createZeroRun(baseParams({ zeroAgentId: agentId }));
+
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job).toBeDefined();
+      // All denied → no firewall entry
+      const slackFw = job!.executionContext.experimentalFirewalls?.find(
+        (fw) => fw.ref === "slack",
+      );
+      expect(slackFw).toBeUndefined();
     });
   });
 });

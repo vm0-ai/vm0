@@ -58,6 +58,7 @@ import {
   VOLUME_ORG_USER_ID,
   SYSTEM_ORG_ID,
   type StoredExecutionContext,
+  type FirewallPolicies,
 } from "@vm0/core";
 
 // Route handlers - imported here so callers don't need to pass them
@@ -414,6 +415,7 @@ export async function createTestZeroAgent(
     displayName?: string;
     description?: string;
     sound?: string;
+    firewallPolicies?: FirewallPolicies;
   },
 ): Promise<void> {
   initServices();
@@ -425,6 +427,7 @@ export async function createTestZeroAgent(
       displayName: metadata.displayName ?? null,
       description: metadata.description ?? null,
       sound: metadata.sound ?? null,
+      firewallPolicies: metadata.firewallPolicies ?? null,
     })
     .onConflictDoUpdate({
       target: [zeroAgents.orgId, zeroAgents.name],
@@ -432,6 +435,7 @@ export async function createTestZeroAgent(
         displayName: metadata.displayName ?? null,
         description: metadata.description ?? null,
         sound: metadata.sound ?? null,
+        firewallPolicies: metadata.firewallPolicies ?? null,
       },
     });
 }

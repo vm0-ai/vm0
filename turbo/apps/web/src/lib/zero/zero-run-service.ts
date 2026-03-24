@@ -1,5 +1,5 @@
 import { eq, and } from "drizzle-orm";
-import type { TriggerSource } from "@vm0/core";
+import type { TriggerSource, FirewallPolicies } from "@vm0/core";
 import { startRun, type CreateRunResult } from "../run";
 import { DISALLOWED_CRON_TOOLS } from "../integration-context";
 import { formatAgentIdentityPrompt } from "../agent-identity";
@@ -17,6 +17,7 @@ async function resolveZeroAgent(zeroAgentId: string): Promise<{
   description: string | null;
   sound: string | null;
   composeId: string | null;
+  firewallPolicies: FirewallPolicies | null;
 }> {
   const [row] = await globalThis.services.db
     .select({
@@ -24,6 +25,7 @@ async function resolveZeroAgent(zeroAgentId: string): Promise<{
       description: zeroAgents.description,
       sound: zeroAgents.sound,
       composeId: agentComposes.id,
+      firewallPolicies: zeroAgents.firewallPolicies,
     })
     .from(zeroAgents)
     .leftJoin(
@@ -42,6 +44,7 @@ async function resolveZeroAgent(zeroAgentId: string): Promise<{
       description: null,
       sound: null,
       composeId: null,
+      firewallPolicies: null,
     }
   );
 }
@@ -98,5 +101,6 @@ export async function createZeroRun(
     memoryName: "memory",
     artifactName: "artifact",
     disallowedTools: [...DISALLOWED_CRON_TOOLS],
+    firewallPolicies: agent.firewallPolicies ?? undefined,
   });
 }
