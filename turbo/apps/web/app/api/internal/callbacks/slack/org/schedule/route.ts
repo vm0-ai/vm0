@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
-import type { Block, KnownBlock } from "@slack/web-api";
 import { initServices } from "../../../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../../../src/lib/callback";
 import { decryptSecretValue } from "../../../../../../../src/lib/crypto/secrets-encryption";
@@ -16,6 +15,7 @@ import {
   saveThreadSession,
   buildLogsUrl,
 } from "../../../../../../../src/lib/slack-org/handlers/shared";
+import { buildAgentResponseMessage } from "../../../../../../../src/lib/slack/blocks";
 import { zeroAgents } from "../../../../../../../src/db/schema/zero-agent";
 import { env } from "../../../../../../../src/env";
 import type { SlackScheduleCallbackPayload } from "../../../../../../../src/lib/callback/callback-payloads";
@@ -73,42 +73,18 @@ async function postScheduleResults(
   let messageTs: string | undefined;
   let dmChannelId: string | undefined;
 
+  const header = `:white_check_mark: **Scheduled run for \`${displayName}\` completed**\n\n`;
+
   for (let i = 0; i < texts.length; i++) {
     const rawOutput = texts[i]!;
-    const truncatedOutput =
-      rawOutput.length > 2000 ? `${rawOutput.slice(0, 2000)}…` : rawOutput;
-
     const isFirst = i === 0;
     const isLast = i === texts.length - 1;
 
-    const blocks: (Block | KnownBlock)[] = [];
-
-    if (isFirst) {
-      blocks.push({
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: `:white_check_mark: *Scheduled run for \`${displayName}\` completed*`,
-        },
-      });
-    }
-
-    blocks.push({
-      type: "section",
-      text: { type: "mrkdwn", text: truncatedOutput },
-    });
-
-    if (isLast) {
-      blocks.push({
-        type: "context",
-        elements: [
-          {
-            type: "mrkdwn",
-            text: `<${logsUrl}|Audit> · Reply in this thread to continue the conversation`,
-          },
-        ],
-      });
-    }
+    const content = isFirst ? header + rawOutput : rawOutput;
+    const blocks = buildAgentResponseMessage(
+      content,
+      isLast ? logsUrl : undefined,
+    );
 
     const threadTs = messageTs;
     const result = await postMessage(
@@ -116,7 +92,7 @@ async function postScheduleResults(
       dmChannelId ?? channel,
       isFirst
         ? `Scheduled run for "${displayName}" completed`
-        : truncatedOutput,
+        : rawOutput.slice(0, 2000),
       {
         ...(threadTs ? { threadTs } : {}),
         blocks,
@@ -256,29 +232,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   } else {
     // Failed run
     const errMsg = error ?? "Unknown error";
+    const failureContent = `:x: **Scheduled run for \`${displayName}\` failed**\n\n${errMsg}`;
     await postMessage(
       client,
       notifyChannel,
       `Scheduled run for "${displayName}" failed`,
       {
-        blocks: [
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: `:x: *Scheduled run for \`${displayName}\` failed*\n\n${errMsg}`,
-            },
-          },
-          {
-            type: "context",
-            elements: [
-              {
-                type: "mrkdwn",
-                text: `<${logsUrl}|Audit>`,
-              },
-            ],
-          },
-        ],
+        blocks: buildAgentResponseMessage(failureContent, logsUrl),
       },
     );
   }
