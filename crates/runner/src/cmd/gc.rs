@@ -4,7 +4,7 @@ use std::time::{Duration, SystemTime};
 
 use clap::Args;
 use nix::fcntl::{Flock, FlockArg};
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::cmd::service;
 use crate::error::{RunnerError, RunnerResult};
@@ -53,9 +53,15 @@ pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
     let locks_removed = gc_orphaned_locks(&home, args.dry_run).await?;
     let (job_logs_removed, job_logs_freed) = gc_job_logs(&home, args.dry_run).await?;
     let versions_removed = gc_versions(&home, args.dry_run).await?;
+    let dm_removed = gc_block_cow(args.dry_run)?;
 
     let total = rootfs_freed + snapshot_freed + job_logs_freed;
-    if total == 0 && locks_removed == 0 && job_logs_removed == 0 && versions_removed.is_empty() {
+    if total == 0
+        && locks_removed == 0
+        && job_logs_removed == 0
+        && versions_removed.is_empty()
+        && dm_removed == 0
+    {
         info!("nothing to clean up");
     } else {
         let verb = if args.dry_run {
@@ -460,6 +466,111 @@ async fn gc_versions(home: &HomePaths, dry_run: bool) -> RunnerResult<Vec<String
     Ok(removed)
 }
 
+/// Remove orphaned dm-snapshot and dm-linear targets left behind by
+/// crashed runner processes (SIGKILL prevents normal Drop cleanup).
+///
+/// NOTE: This does not clean up orphaned loop devices — they are harmless
+/// and released on reboot. Cleaning them from GC would require parsing
+/// `dmsetup table` output before removal, adding complexity for little gain.
+///
+/// Targets are identified by the `cow-` and `origin-` name prefixes that
+/// `block-cow` uses. For each target, `dmsetup remove` is attempted — if it
+/// returns "device busy", the target is still in use and is skipped.
+fn gc_block_cow(dry_run: bool) -> RunnerResult<u32> {
+    let mut removed: u32 = 0;
+
+    // Pass 1: remove orphaned snapshot targets (cow-<uuid>).
+    // On success, also remove the paired origin target (origin-<uuid>).
+    if let Some(stdout) = dmsetup_ls("snapshot") {
+        for line in stdout.lines() {
+            // dmsetup ls output: "cow-<uuid>\t(<major>, <minor>)"
+            let Some(name) = line.split_whitespace().next() else {
+                continue;
+            };
+            if !name.starts_with("cow-") {
+                continue;
+            }
+
+            let uuid_part = &name["cow-".len()..];
+            let origin_name = format!("origin-{uuid_part}");
+
+            if dry_run {
+                info!(dm_target = name, "would remove orphaned dm-snapshot target");
+                info!(dm_target = %origin_name, "would remove orphaned dm-linear target");
+                removed += 1;
+                continue;
+            }
+
+            // Try to remove the snapshot target. If busy, it's still in use — skip.
+            if !dmsetup_remove(name) {
+                continue;
+            }
+            info!(dm_target = name, "removed orphaned dm-snapshot target");
+
+            // Snapshot removed — now remove the paired origin target (best-effort).
+            if dmsetup_remove(&origin_name) {
+                info!(dm_target = %origin_name, "removed orphaned dm-linear target");
+            } else {
+                warn!(dm_target = %origin_name, "failed to remove orphaned dm-linear target");
+            }
+
+            removed += 1;
+        }
+    }
+
+    // Pass 2: remove orphaned origin targets whose snapshot was already gone
+    // (e.g., pass 1 removed the snapshot in a previous GC run but the origin
+    // removal failed at that time).
+    if let Some(stdout) = dmsetup_ls("linear") {
+        for line in stdout.lines() {
+            let Some(name) = line.split_whitespace().next() else {
+                continue;
+            };
+            if !name.starts_with("origin-") {
+                continue;
+            }
+
+            if dry_run {
+                info!(dm_target = name, "would remove orphaned dm-linear target");
+                removed += 1;
+                continue;
+            }
+
+            if dmsetup_remove(name) {
+                info!(dm_target = name, "removed orphaned dm-linear target");
+                removed += 1;
+            }
+            // If busy, the corresponding snapshot still exists — skip silently.
+        }
+    }
+
+    if removed > 0 {
+        info!(count = removed, "cleaned orphaned dm-snapshot resources");
+    }
+
+    Ok(removed)
+}
+
+/// Run `dmsetup ls --target <target_type>`, return stdout if successful.
+fn dmsetup_ls(target_type: &str) -> Option<String> {
+    let output = std::process::Command::new("dmsetup")
+        .args(["ls", "--target", target_type])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/// Run `dmsetup remove <name>`, return true if successful.
+fn dmsetup_remove(name: &str) -> bool {
+    std::process::Command::new("dmsetup")
+        .args(["remove", name])
+        .output()
+        .is_ok_and(|o| o.status.success())
+}
+
 fn human_bytes(bytes: u64) -> String {
     const KIB: f64 = 1024.0;
     const MIB: f64 = KIB * 1024.0;
@@ -586,7 +697,7 @@ mod tests {
         let artifacts_dir = dir.path().join("rootfs");
         let hash_dir = artifacts_dir.join("abc123");
         std::fs::create_dir_all(&hash_dir).unwrap();
-        std::fs::write(hash_dir.join("rootfs.squashfs"), b"data").unwrap();
+        std::fs::write(hash_dir.join("rootfs.ext4"), b"data").unwrap();
         // Set mtime past GC_MIN_AGE so the artifact is eligible for deletion.
         let old_time = SystemTime::now() - Duration::from_secs(3600);
         std::fs::File::open(&hash_dir)
@@ -617,7 +728,7 @@ mod tests {
         let artifacts_dir = dir.path().join("rootfs");
         let hash_dir = artifacts_dir.join("abc123");
         std::fs::create_dir_all(&hash_dir).unwrap();
-        std::fs::write(hash_dir.join("rootfs.squashfs"), b"data").unwrap();
+        std::fs::write(hash_dir.join("rootfs.ext4"), b"data").unwrap();
 
         // Hold a shared lock (simulating runner start).
         let lock_path = locks_dir.join("rootfs-abc123.lock");
@@ -656,7 +767,7 @@ mod tests {
         let artifacts_dir = dir.path().join("rootfs");
         let hash_dir = artifacts_dir.join("abc123");
         std::fs::create_dir_all(&hash_dir).unwrap();
-        std::fs::write(hash_dir.join("rootfs.squashfs"), b"data").unwrap();
+        std::fs::write(hash_dir.join("rootfs.ext4"), b"data").unwrap();
         // Set mtime past GC_MIN_AGE so the artifact is eligible for deletion.
         let old_time = SystemTime::now() - Duration::from_secs(3600);
         std::fs::File::open(&hash_dir)
@@ -989,7 +1100,7 @@ mod tests {
         let artifacts_dir = dir.path().join("rootfs");
         let recent_dir = artifacts_dir.join("recent_hash");
         std::fs::create_dir_all(&recent_dir).unwrap();
-        std::fs::write(recent_dir.join("rootfs.squashfs"), b"data").unwrap();
+        std::fs::write(recent_dir.join("rootfs.ext4"), b"data").unwrap();
         // mtime defaults to now — well within GC_MIN_AGE (10 min)
 
         let freed = gc_dir(
@@ -1018,7 +1129,7 @@ mod tests {
         let artifacts_dir = dir.path().join("rootfs");
         let old_dir = artifacts_dir.join("old_hash");
         std::fs::create_dir_all(&old_dir).unwrap();
-        std::fs::write(old_dir.join("rootfs.squashfs"), b"data").unwrap();
+        std::fs::write(old_dir.join("rootfs.ext4"), b"data").unwrap();
 
         // Set mtime to 1 hour ago — well past GC_MIN_AGE
         let old_time = SystemTime::now() - Duration::from_secs(3600);

@@ -5,7 +5,6 @@ mod config;
 pub mod control;
 mod factory;
 mod network;
-mod overlay;
 mod paths;
 mod prerequisites;
 mod process;

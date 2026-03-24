@@ -3,11 +3,10 @@ use sandbox::{Sandbox, SandboxConfig, SandboxError, SandboxFactory};
 use sha2::{Digest, Sha256};
 use tracing::{info, warn};
 
+use block_cow::{CowDevice, CowDeviceConfig};
+
 use crate::config::FirecrackerConfig;
 use crate::network::{GUEST_NETWORK, NetnsPool, NetnsPoolConfig, generate_boot_args};
-use crate::overlay::{
-    Ext4Creator, OverlayCreator, OverlayPool, OverlayPoolConfig, SnapshotCopyCreator,
-};
 use crate::paths::{FactoryPaths, RuntimePaths, SandboxPaths, SockPaths};
 use crate::prerequisites;
 use crate::sandbox::FirecrackerSandbox;
@@ -107,7 +106,7 @@ pub struct FirecrackerFactory {
     factory_paths: FactoryPaths,
     runtime_paths: RuntimePaths,
     netns_pool: Option<std::sync::Arc<tokio::sync::Mutex<NetnsPool>>>,
-    overlay_pool: Option<tokio::sync::Mutex<OverlayPool>>,
+    started: bool,
 }
 
 impl FirecrackerFactory {
@@ -141,7 +140,7 @@ impl FirecrackerFactory {
             factory_paths,
             runtime_paths,
             netns_pool,
-            overlay_pool: None,
+            started: false,
         })
     }
 
@@ -156,13 +155,6 @@ impl FirecrackerFactory {
     fn netns_pool(&self) -> &std::sync::Arc<tokio::sync::Mutex<NetnsPool>> {
         self.netns_pool.as_ref().expect("factory not started")
     }
-
-    /// # Panics
-    /// Panics if called before `startup()` — this is a programming error.
-    #[allow(clippy::expect_used)]
-    fn overlay_pool(&self) -> &tokio::sync::Mutex<OverlayPool> {
-        self.overlay_pool.as_ref().expect("factory not started")
-    }
 }
 
 #[async_trait]
@@ -176,9 +168,7 @@ impl SandboxFactory for FirecrackerFactory {
     }
 
     async fn startup(&mut self) -> sandbox::Result<()> {
-        // Overlay pool signals startup completion — check it, not netns
-        // (netns may already be set via new_with_netns).
-        if self.overlay_pool.is_some() {
+        if self.started {
             return Err(SandboxError::CreationFailed(
                 "factory already started".into(),
             ));
@@ -199,37 +189,7 @@ impl SandboxFactory for FirecrackerFactory {
             self.netns_pool = Some(std::sync::Arc::new(tokio::sync::Mutex::new(netns_pool)));
         }
 
-        let overlay_creator: Box<dyn OverlayCreator> = match &self.config.snapshot {
-            Some(snapshot) => Box::new(SnapshotCopyCreator::new(snapshot.overlay_path.clone())),
-            None => Box::new(Ext4Creator),
-        };
-
-        let t = std::time::Instant::now();
-        let overlay_pool = match OverlayPool::create(OverlayPoolConfig {
-            pool_dir: self.factory_paths.overlays(&self.config.profile),
-            creator: overlay_creator,
-        })
-        .await
-        {
-            Ok(pool) => pool,
-            Err(e) => {
-                // Roll back: clean up netns pool if we created it ourselves.
-                // For shared pools (new_with_netns), the caller manages cleanup.
-                if let Some(Ok(mutex)) = self.netns_pool.take().map(std::sync::Arc::try_unwrap) {
-                    let mut pool = mutex.into_inner();
-                    if let Err(cleanup_err) = pool.cleanup().await {
-                        warn!(error = %cleanup_err, "failed to cleanup netns pool during rollback");
-                    }
-                }
-                return Err(SandboxError::CreationFailed(format!("overlay pool: {e}")));
-            }
-        };
-        info!(
-            elapsed_ms = t.elapsed().as_millis() as u64,
-            "overlay pool created"
-        );
-
-        self.overlay_pool = Some(tokio::sync::Mutex::new(overlay_pool));
+        self.started = true;
 
         let mode = if self.config.snapshot.is_some() {
             "snapshot"
@@ -246,7 +206,13 @@ impl SandboxFactory for FirecrackerFactory {
         let sandbox_paths = SandboxPaths::new(self.factory_paths.workspace(&id));
         let sock_paths = SockPaths::new(self.runtime_paths.sock_dir(&id));
 
-        // Clean stale socket directory from a previous crashed sandbox.
+        // Clean stale directories from a previous crashed sandbox whose
+        // destroy() failed (e.g., COW device still busy → workspace kept).
+        if sandbox_paths.workspace().exists()
+            && let Err(e) = tokio::fs::remove_dir_all(sandbox_paths.workspace()).await
+        {
+            warn!(id = %id, error = %e, "failed to clean stale workspace dir");
+        }
         if sock_paths.dir().exists()
             && let Err(e) = tokio::fs::remove_dir_all(sock_paths.dir()).await
         {
@@ -270,22 +236,46 @@ impl SandboxFactory for FirecrackerFactory {
             .await
             .map_err(|e| SandboxError::CreationFailed(format!("acquire netns: {e}")))?;
 
-        // Acquire an overlay file from the pool.
-        let overlay = match self.overlay_pool().lock().await.acquire().await {
-            Ok(overlay) => overlay,
+        // Create a dm-snapshot COW device backed by the rootfs.
+        // For snapshot restore, sparse-copy the golden COW file first.
+        //
+        // Failures must release the network namespace back to the pool
+        // (netns has no Drop-based return), handled by the match below.
+        let cow_config = CowDeviceConfig {
+            base_image: self.config.rootfs_path.clone(),
+            cow_dir: sandbox_paths.workspace().join("cow"),
+            chunk_size: None,
+        };
+        let cow_result = match &self.config.snapshot {
+            Some(snapshot) => {
+                let vm_cow = sandbox_paths.workspace().join("cow.img");
+                sparse_copy(&snapshot.cow_path, &vm_cow)
+                    .await
+                    .and_then(|()| {
+                        CowDevice::restore(&cow_config, vm_cow).map_err(|e| {
+                            SandboxError::CreationFailed(format!("restore COW device: {e}"))
+                        })
+                    })
+            }
+            None => CowDevice::create(&cow_config)
+                .map_err(|e| SandboxError::CreationFailed(format!("create COW device: {e}"))),
+        };
+
+        let cow_device = match cow_result {
+            Ok(d) => d,
             Err(e) => {
-                // Roll back: return netns to pool before propagating error.
+                // Roll back: return netns to pool and clean up directories.
                 let mut netns_pool = self.netns_pool().lock().await;
                 if let Err(rel_err) = netns_pool.release(network).await {
                     warn!(error = %rel_err, "failed to release netns during rollback");
                 }
-                return Err(SandboxError::CreationFailed(format!(
-                    "acquire overlay: {e}"
-                )));
+                let _ = tokio::fs::remove_dir_all(sandbox_paths.workspace()).await;
+                let _ = tokio::fs::remove_dir_all(sock_paths.dir()).await;
+                return Err(e);
             }
         };
 
-        info!(id = %id, "sandbox created");
+        info!(id = %id, device = %cow_device.device_path().display(), "sandbox created");
 
         let sandbox = FirecrackerSandbox::new(
             config,
@@ -293,7 +283,7 @@ impl SandboxFactory for FirecrackerFactory {
             sandbox_paths,
             sock_paths,
             network,
-            overlay,
+            cow_device,
         );
 
         Ok(Box::new(sandbox))
@@ -318,9 +308,14 @@ impl SandboxFactory for FirecrackerFactory {
         // all fields intact, so we cannot move them out.
         let sandbox_id = sandbox.id.clone();
         let network = sandbox.network.clone();
-        let overlay = sandbox.overlay.clone();
         let sock_dir = sandbox.sock_paths.dir().to_owned();
         let workspace = sandbox.sandbox_paths.workspace().to_owned();
+
+        // Destroy the COW device (removes dm targets, detaches loops, deletes COW file).
+        let cow_destroyed = sandbox.cow_device.destroy().is_ok();
+        if !cow_destroyed {
+            warn!(id = %sandbox_id, "failed to destroy COW device — skipping workspace cleanup (dm targets still reference files inside it)");
+        }
         drop(sandbox);
 
         // Return the network namespace to the pool.
@@ -330,18 +325,18 @@ impl SandboxFactory for FirecrackerFactory {
         }
         drop(netns_pool);
 
-        // Delete the overlay file.
-        let mut overlay_pool = self.overlay_pool().lock().await;
-        overlay_pool.release(overlay).await;
-        drop(overlay_pool);
-
         // Delete the socket directory.
         if let Err(e) = tokio::fs::remove_dir_all(&sock_dir).await {
             warn!(id = %sandbox_id, error = %e, "failed to delete sock dir");
         }
 
-        // Delete the workspace directory.
-        if let Err(e) = tokio::fs::remove_dir_all(&workspace).await {
+        // Delete the workspace directory only if the COW device was fully torn
+        // down.  When destroy() failed, the dm-snapshot target still references
+        // the COW file inside the workspace via a loop device — deleting the
+        // workspace would remove the backing file from the directory tree while
+        // the kernel still has it open (safe on Linux, but makes debugging and
+        // GC harder).
+        if cow_destroyed && let Err(e) = tokio::fs::remove_dir_all(&workspace).await {
             warn!(id = %sandbox_id, error = %e, "failed to delete workspace");
         }
 
@@ -358,11 +353,25 @@ impl SandboxFactory for FirecrackerFactory {
             }
         }
 
-        if let Some(overlay_pool) = self.overlay_pool.take() {
-            let mut pool = overlay_pool.into_inner();
-            pool.cleanup().await;
-        }
-
+        self.started = false;
         info!("factory shutdown complete");
     }
+}
+
+/// Sparse-copy a file using `cp --sparse=always`.
+async fn sparse_copy(src: &std::path::Path, dst: &std::path::Path) -> Result<(), SandboxError> {
+    let output = tokio::process::Command::new("cp")
+        .arg("--sparse=always")
+        .arg(src)
+        .arg(dst)
+        .output()
+        .await
+        .map_err(|e| SandboxError::CreationFailed(format!("exec cp: {e}")))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(SandboxError::CreationFailed(format!(
+            "cp --sparse=always failed: {stderr}"
+        )));
+    }
+    Ok(())
 }

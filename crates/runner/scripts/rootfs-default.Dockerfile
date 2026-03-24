@@ -93,15 +93,14 @@ RUN userdel -r node 2>/dev/null || true \
 # NOTE: DNS configuration is handled in build-rootfs.sh after export
 # /etc/resolv.conf is read-only during Docker build
 
-# Create directories for guest-init (squashfs is read-only at boot)
-# These are needed by /sbin/guest-init to set up overlayfs
-RUN mkdir -p /rom /rw /mnt/root
+# Create mount point for guest-init pivot_root
+RUN mkdir -p /mnt/root
 
 ENV LANG=C.UTF-8
 
 # Install Chromium and agent-browser CLI for browser automation.
 # System Chromium is used on all architectures for version consistency.
-# squashfs is demand-paged so Chromium binaries don't consume memory unless launched.
+# Chromium binaries are loaded on demand, so they don't consume memory unless launched.
 ARG AGENT_BROWSER_VERSION=0.21.0
 RUN npm install -g agent-browser@${AGENT_BROWSER_VERSION} \
     && apt-get update \

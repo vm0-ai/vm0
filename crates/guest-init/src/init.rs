@@ -1,11 +1,9 @@
 //! Filesystem initialization for VM boot.
 //!
 //! This module implements the filesystem initialization in Rust:
-//! 1. Mount squashfs base filesystem
-//! 2. Mount ext4 overlay filesystem
-//! 3. Setup overlayfs
-//! 4. Perform pivot_root
-//! 5. Mount virtual filesystems (/proc, /sys)
+//! 1. Mount ext4 rootfs (writable — COW handled by host dm-snapshot)
+//! 2. Perform pivot_root
+//! 3. Mount virtual filesystems (/proc, /sys)
 
 use nix::mount::{MntFlags, MsFlags, mount, umount2};
 use nix::unistd::{chdir, pivot_root};
@@ -21,65 +19,26 @@ const DEFAULT_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/s
 pub fn init_filesystem() -> Result<(), InitError> {
     eprintln!("[guest-init] Starting filesystem initialization");
 
-    // 1. Mount squashfs (read-only base filesystem from /dev/vda)
+    // 1. Mount ext4 rootfs from /dev/vda (writable — COW handled by host dm-snapshot)
     mount(
         Some("/dev/vda"),
-        "/rom",
-        Some("squashfs"),
-        MsFlags::MS_RDONLY,
-        None::<&str>,
-    )
-    .map_err(|e| InitError::Mount {
-        target: "/rom".into(),
-        source: e,
-    })?;
-    eprintln!("[guest-init] Mounted squashfs on /rom");
-
-    // 2. Mount ext4 (read-write overlay from /dev/vdb)
-    mount(
-        Some("/dev/vdb"),
-        "/rw",
+        "/mnt/root",
         Some("ext4"),
         MsFlags::empty(),
         None::<&str>,
     )
     .map_err(|e| InitError::Mount {
-        target: "/rw".into(),
-        source: e,
-    })?;
-    eprintln!("[guest-init] Mounted ext4 on /rw");
-
-    // 3. Create overlay directories
-    fs::create_dir_all("/rw/upper").map_err(|e| InitError::Mkdir {
-        path: "/rw/upper".into(),
-        source: e,
-    })?;
-    fs::create_dir_all("/rw/work").map_err(|e| InitError::Mkdir {
-        path: "/rw/work".into(),
-        source: e,
-    })?;
-
-    // 4. Mount overlayfs
-    mount(
-        Some("overlay"),
-        "/mnt/root",
-        Some("overlay"),
-        MsFlags::empty(),
-        Some("lowerdir=/rom,upperdir=/rw/upper,workdir=/rw/work"),
-    )
-    .map_err(|e| InitError::Mount {
         target: "/mnt/root".into(),
         source: e,
     })?;
-    eprintln!("[guest-init] Mounted overlayfs on /mnt/root");
+    eprintln!("[guest-init] Mounted ext4 rootfs on /mnt/root");
 
-    // 5. Prepare pivot_root
+    // 2. Prepare and perform pivot_root
     fs::create_dir_all("/mnt/root/oldroot").map_err(|e| InitError::Mkdir {
         path: "/mnt/root/oldroot".into(),
         source: e,
     })?;
 
-    // 6. Change directory and perform pivot_root
     chdir(Path::new("/mnt/root")).map_err(|e| InitError::Chdir {
         path: "/mnt/root".into(),
         source: e,
@@ -88,37 +47,7 @@ pub fn init_filesystem() -> Result<(), InitError> {
     pivot_root(".", "oldroot").map_err(InitError::PivotRoot)?;
     eprintln!("[guest-init] pivot_root complete");
 
-    // 7. Move mounts from old root
-    // Create mount points if they don't exist
-    fs::create_dir_all("/rom").ok();
-    fs::create_dir_all("/rw").ok();
-
-    mount(
-        Some("/oldroot/rom"),
-        "/rom",
-        None::<&str>,
-        MsFlags::MS_MOVE,
-        None::<&str>,
-    )
-    .map_err(|e| InitError::MoveMount {
-        from: "/oldroot/rom".into(),
-        to: "/rom".into(),
-        source: e,
-    })?;
-
-    mount(
-        Some("/oldroot/rw"),
-        "/rw",
-        None::<&str>,
-        MsFlags::MS_MOVE,
-        None::<&str>,
-    )
-    .map_err(|e| InitError::MoveMount {
-        from: "/oldroot/rw".into(),
-        to: "/rw".into(),
-        source: e,
-    })?;
-
+    // 3. Move /dev from old root
     mount(
         Some("/oldroot/dev"),
         "/dev",
@@ -132,10 +61,10 @@ pub fn init_filesystem() -> Result<(), InitError> {
         source: e,
     })?;
 
-    // 8. Unmount old root (lazy unmount, ignore errors)
+    // 4. Unmount old root (lazy unmount, ignore errors)
     let _ = umount2("/oldroot", MntFlags::MNT_DETACH);
 
-    // 9. Mount virtual filesystems
+    // 5. Mount virtual filesystems
     mount(
         Some("proc"),
         "/proc",
@@ -175,7 +104,7 @@ pub fn init_filesystem() -> Result<(), InitError> {
     })?;
     eprintln!("[guest-init] Virtual filesystems mounted");
 
-    // 10. Set environment variables for the init process (root).
+    // 6. Set environment variables for the init process (root).
     // User commands run via `su - user` which resets env from /etc/passwd,
     // so these only affect root/sudo commands (e.g. clock fix).
     // SAFETY: We are the init process, no other threads are running yet
@@ -208,7 +137,7 @@ pub fn init_filesystem() -> Result<(), InitError> {
         eprintln!("[guest-init] Warning: failed to write /etc/profile.d/vm0-path.sh: {e}");
     }
 
-    // 11. Change to root home directory (init runs as root;
+    // 7. Change to root home directory (init runs as root;
     // `su - user` will cd to /home/user automatically)
     let _ = std::env::set_current_dir("/root");
 

@@ -4,12 +4,13 @@ use std::time::Duration;
 use tokio::io::AsyncBufReadExt;
 use tracing::info;
 
+use block_cow::{CowDevice, CowDeviceConfig};
+
 use crate::api::{ApiClient, ApiError};
 use crate::command;
 use crate::config::SnapshotConfig;
 use crate::factory::InvariantConfig;
 use crate::network::{NetnsPool, NetnsPoolConfig};
-use crate::overlay::{Ext4Creator, OverlayCreator as _};
 use crate::paths::{RuntimePaths, SandboxPaths, SnapshotOutputPaths, SockPaths};
 use crate::prerequisites;
 use crate::process;
@@ -59,7 +60,7 @@ pub enum SnapshotError {
 ///
 /// This is the Rust equivalent of the TS `commands/snapshot.ts` workflow:
 ///  1. Create work directory
-///  2. Create ext4 overlay
+///  2. Create dm-snapshot COW device
 ///  3. Create network namespace
 ///  4. Spawn Firecracker with `--api-sock`
 ///  5. Wait for API socket ready
@@ -69,7 +70,7 @@ pub enum SnapshotError {
 ///  9. Wait for guest vsock connection
 /// 10. Pause VM
 /// 11. Create snapshot
-/// 12. Move overlay to output dir
+/// 12. Move COW file to output dir
 /// 13. Cleanup (kill Firecracker, destroy netns)
 pub async fn create_snapshot(
     config: SnapshotCreateConfig,
@@ -114,13 +115,16 @@ pub async fn create_snapshot(
 
     info!(work_dir = %paths.workspace().display(), "starting snapshot creation");
 
-    // 2. Create ext4 overlay in work dir.
-    Ext4Creator
-        .create(&paths.overlay())
-        .await
-        .map_err(|e| SnapshotError::Setup(format!("create overlay: {e}")))?;
+    // 2. Create dm-snapshot COW device backed by the rootfs.
+    let cow_config = CowDeviceConfig {
+        base_image: config.rootfs_path.clone(),
+        cow_dir: paths.workspace().join("cow"),
+        chunk_size: None,
+    };
+    let cow_device = CowDevice::create(&cow_config)
+        .map_err(|e| SnapshotError::Setup(format!("create COW device: {e}")))?;
 
-    info!("overlay created");
+    info!(device = %cow_device.device_path().display(), "COW device created");
 
     // 3. Create network namespace (pool of 1, index auto-allocated via flock).
     let mut netns_pool = NetnsPool::create(NetnsPoolConfig { proxy_port: None })
@@ -128,8 +132,15 @@ pub async fn create_snapshot(
         .map_err(|e| SnapshotError::Setup(format!("netns pool: {e}")))?;
 
     // Guard: ensure netns cleanup on any exit path.
-    let result =
-        run_snapshot_workflow(&config, &paths, &sock_paths, &output, &mut netns_pool).await;
+    let result = run_snapshot_workflow(
+        &config,
+        &paths,
+        &sock_paths,
+        &output,
+        &mut netns_pool,
+        cow_device,
+    )
+    .await;
 
     // Always cleanup netns.
     if let Err(e) = netns_pool.cleanup().await {
@@ -151,6 +162,7 @@ async fn run_snapshot_workflow(
     sock_paths: &SockPaths,
     output: &SnapshotOutputPaths,
     netns_pool: &mut NetnsPool,
+    mut cow_device: CowDevice,
 ) -> Result<SnapshotConfig, SnapshotError> {
     let network = netns_pool
         .acquire()
@@ -217,11 +229,35 @@ async fn run_snapshot_workflow(
         });
     }
 
-    // Guard: ensure process cleanup on any exit path.
-    let result = run_with_firecracker(config, paths, sock_paths, output).await;
+    // Guard: ensure process and bind mount cleanup on any exit path.
+    let result = run_with_firecracker(config, paths, sock_paths, output, &mut cow_device).await;
 
+    // Kill Firecracker first — it holds the dm device fd open.
     kill_process_group(&child);
     let _ = child.wait().await;
+
+    // Clean up the drive bind mount (created in run_with_firecracker).
+    // Best-effort: the file may not have been bind-mounted if the workflow
+    // failed before that step.
+    let drive_bind_str = paths.cow_device_bind().display().to_string();
+    command::exec_ignore_errors(
+        "umount",
+        &[drive_bind_str.as_str()],
+        command::Privilege::Sudo,
+    )
+    .await;
+
+    // Tear down dm-snapshot AFTER Firecracker is dead (dmsetup remove fails
+    // with EBUSY if any fd is open to the device). Preserve the COW file
+    // and move it to the output dir.
+    if result.is_ok() {
+        let cow_file = cow_device.cow_file().to_owned();
+        cow_device
+            .destroy_keep_cow()
+            .map_err(|e| SnapshotError::Setup(format!("destroy_keep_cow: {e}")))?;
+        tokio::fs::rename(&cow_file, &output.cow()).await?;
+    }
+    // On error, cow_device is dropped → Drop calls destroy() (best-effort).
 
     result
 }
@@ -232,6 +268,7 @@ async fn run_with_firecracker(
     paths: &SandboxPaths,
     sock_paths: &SockPaths,
     output: &SnapshotOutputPaths,
+    cow_device: &mut CowDevice,
 ) -> Result<SnapshotConfig, SnapshotError> {
     // 5. Wait for API socket ready.
     let api_sock = sock_paths.api_sock();
@@ -240,19 +277,31 @@ async fn run_with_firecracker(
 
     info!("firecracker API ready");
 
-    // 6. Configure VM via API (7 parallel PUT calls).
+    // Bind mount the COW device to a deterministic path so the snapshot
+    // records this path (not the ephemeral /dev/mapper/cow-<uuid>).
+    // On restore, the same path is used as the bind mount target.
+    let drive_bind = paths.cow_device_bind();
+    tokio::fs::write(&drive_bind, b"").await?;
+    let cow_device_str = cow_device.device_path().display().to_string();
+    let drive_bind_str = drive_bind.display().to_string();
+    command::exec(
+        "mount",
+        &["--bind", &cow_device_str, &drive_bind_str],
+        command::Privilege::Sudo,
+    )
+    .await
+    .map_err(|e| SnapshotError::Setup(format!("bind mount COW device: {e}")))?;
+
+    // 6. Configure VM via API (6 parallel PUT calls).
     let inv = InvariantConfig::new();
     let kernel_path = config.kernel_path.display().to_string();
-    let rootfs_path = config.rootfs_path.display().to_string();
-    let overlay_path = paths.overlay().display().to_string();
     tokio::fs::create_dir_all(&sock_paths.vsock_dir()).await?;
     let vsock_uds_str = sock_paths.vsock().display().to_string();
 
     tokio::try_join!(
         client.configure_machine(config.vcpu_count, config.memory_mb),
         client.configure_boot_source(&kernel_path, &inv.boot_args),
-        client.configure_drive("rootfs", &rootfs_path, true, true),
-        client.configure_drive("overlay", &overlay_path, false, false),
+        client.configure_drive("rootfs", &drive_bind_str, true, false),
         client.configure_network_interface(inv.iface_id, inv.guest_mac, inv.tap_name),
         client.configure_vsock(inv.guest_cid, &vsock_uds_str),
         client.configure_balloon(
@@ -290,7 +339,7 @@ async fn run_with_firecracker(
     info!("guest connected");
 
     // 9.5. Pre-warm caches (PAM/nsswitch, CLI modules) so post-restore calls
-    //      are fast. The snapshot captures memory + overlay state, so caches
+    //      are fast. The snapshot captures memory + disk state, so caches
     //      populated here persist across restores.
     let prewarm_result = guest
         .exec(inv.prewarm_script, 30_000, &[], false)
@@ -317,10 +366,6 @@ async fn run_with_firecracker(
     client.create_snapshot(&snapshot_str, &memory_str).await?;
 
     info!("snapshot created");
-
-    // 12. Move overlay to output dir (same filesystem, so rename is instant).
-    //     Keep the work dir structure — it serves as bind-mount targets on restore.
-    tokio::fs::rename(&paths.overlay(), &output.overlay()).await?;
 
     info!(output_dir = %config.output_dir.display(), "snapshot creation complete");
 

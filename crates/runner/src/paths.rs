@@ -154,7 +154,7 @@ impl RootfsPaths {
     }
 
     pub fn rootfs(&self) -> PathBuf {
-        self.dir.join("rootfs.squashfs")
+        self.dir.join("rootfs.ext4")
     }
 
     /// All files that must exist for the build to be considered complete.

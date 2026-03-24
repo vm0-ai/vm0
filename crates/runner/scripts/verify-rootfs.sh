@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# verify-rootfs.sh — Verify contents of a built squashfs rootfs.
+# verify-rootfs.sh — Verify contents of a built ext4 rootfs.
 #
 # This script is called by the Rust runner binary AFTER build-rootfs.sh.
 # It is NOT included in the build-input hash, so changes here do not
 # invalidate the rootfs cache.
 #
 # Usage:
-#   bash verify-rootfs.sh --rootfs /path/to/rootfs.squashfs
+#   bash verify-rootfs.sh --rootfs /path/to/rootfs.ext4
 
 set -euo pipefail
 
@@ -77,9 +77,9 @@ if [[ "$size" -lt 50000000 ]]; then
   echo "warning: rootfs seems small: ${size} bytes" >&2
 fi
 
-# Mount squashfs
+# Mount ext4 rootfs
 MOUNT_DIR="$(mktemp -d)"
-sudo mount -t squashfs -o loop,ro "$ROOTFS" "$MOUNT_DIR"
+sudo mount -o loop,ro "$ROOTFS" "$MOUNT_DIR"
 
 errors=()
 

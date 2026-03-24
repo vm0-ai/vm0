@@ -77,6 +77,12 @@ impl CowDevice {
     /// On failure the caller retains ownership of `cow_file` and is
     /// responsible for cleanup.
     pub fn restore(config: &CowDeviceConfig, cow_file: PathBuf) -> Result<Self> {
+        if !cow_file.is_file() {
+            return Err(BlockCowError::Io(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("COW file not found: {}", cow_file.display()),
+            )));
+        }
         let id = uuid::Uuid::new_v4().to_string();
         Self::setup(config, &id, Some(cow_file))
     }
@@ -116,6 +122,13 @@ impl CowDevice {
     // -----------------------------------------------------------------------
 
     fn setup(config: &CowDeviceConfig, id: &str, existing_cow: Option<PathBuf>) -> Result<Self> {
+        if !config.base_image.is_file() {
+            return Err(BlockCowError::Io(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("base image not found: {}", config.base_image.display()),
+            )));
+        }
+
         let chunk_size = config.chunk_size.unwrap_or(DEFAULT_CHUNK_SIZE);
         let origin_name = format!("origin-{id}");
         let cow_name = format!("cow-{id}");
@@ -144,7 +157,13 @@ impl CowDevice {
                     let f = fs::File::create(&path)?;
                     // Sparse file: same size as base so dm-snapshot has room
                     // for a full overwrite. Actual disk usage starts at 0.
-                    f.set_len(sectors * 512)?;
+                    let size_bytes = sectors.checked_mul(512).ok_or_else(|| {
+                        BlockCowError::Io(std::io::Error::new(
+                            std::io::ErrorKind::InvalidInput,
+                            format!("sector count overflow: {sectors} * 512"),
+                        ))
+                    })?;
+                    f.set_len(size_bytes)?;
                     Ok(path)
                 };
                 match create_cow() {
@@ -293,8 +312,9 @@ impl Drop for CowDevice {
                 id = self.id,
                 "CowDevice dropped without calling destroy() — attempting best-effort cleanup"
             );
-            // Best-effort: try to tear down, ignore errors.
-            let _ = self.teardown(true);
+            if let Err(e) = self.teardown(true) {
+                warn!(id = self.id, error = %e, "best-effort teardown in Drop failed");
+            }
         }
     }
 }

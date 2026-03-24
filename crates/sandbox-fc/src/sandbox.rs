@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::Duration;
@@ -11,6 +10,8 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::Notify;
 use tracing::{info, warn};
 use vsock_host::VsockHost;
+
+use block_cow::CowDevice;
 
 use crate::api::ApiClient;
 use crate::balloon;
@@ -67,14 +68,14 @@ pub struct FirecrackerSandbox {
     factory_config: FirecrackerConfig,
     /// Cached `config.id.to_string()`.
     pub(crate) id: String,
-    /// Workspace paths (config, overlay — persistent data).
+    /// Workspace paths (config, COW — persistent data).
     pub(crate) sandbox_paths: SandboxPaths,
     /// Runtime socket paths (api.sock, vsock).
     pub(crate) sock_paths: SockPaths,
     /// Pooled network namespace (returned to pool on destroy).
     pub(crate) network: PooledNetns,
-    /// Overlay file path (deleted on destroy).
-    pub(crate) overlay: PathBuf,
+    /// dm-snapshot COW device (torn down on destroy).
+    pub(crate) cow_device: CowDevice,
     process: Option<tokio::process::Child>,
     /// Firecracker process PID, captured at spawn time before the process
     /// could exit and be reaped.  Used for host-side OOM detection.
@@ -102,7 +103,7 @@ impl FirecrackerSandbox {
         sandbox_paths: SandboxPaths,
         sock_paths: SockPaths,
         network: PooledNetns,
-        overlay: PathBuf,
+        cow_device: CowDevice,
     ) -> Self {
         let id = config.id.to_string();
         Self {
@@ -112,7 +113,7 @@ impl FirecrackerSandbox {
             sandbox_paths,
             sock_paths,
             network,
-            overlay,
+            cow_device,
             process: None,
             firecracker_pid: None,
             state: Arc::new(AtomicU8::new(SandboxState::Created as u8)),
@@ -139,8 +140,7 @@ impl FirecrackerSandbox {
     fn build_config(&self) -> serde_json::Value {
         let inv = InvariantConfig::new();
         let kernel_path = self.factory_config.kernel_path.display().to_string();
-        let rootfs_path = self.factory_config.rootfs_path.display().to_string();
-        let overlay_path = self.overlay.display().to_string();
+        let cow_device_path = self.cow_device.device_path().display().to_string();
         let vsock_path = self.sock_paths.vsock().display().to_string();
 
         serde_json::json!({
@@ -151,14 +151,8 @@ impl FirecrackerSandbox {
             "drives": [
                 {
                     "drive_id": "rootfs",
-                    "path_on_host": rootfs_path,
+                    "path_on_host": cow_device_path,
                     "is_root_device": true,
-                    "is_read_only": true,
-                },
-                {
-                    "drive_id": "overlay",
-                    "path_on_host": overlay_path,
-                    "is_root_device": false,
                     "is_read_only": false,
                 },
             ],
@@ -267,24 +261,24 @@ impl FirecrackerSandbox {
             .await
             .map_err(|e| SandboxError::StartFailed(format!("mkdir snapshot vsock: {e}")))?;
 
-        if let Some(parent) = snapshot.overlay_bind_path.parent() {
+        if let Some(parent) = snapshot.drive_bind_path.parent() {
             tokio::fs::create_dir_all(parent)
                 .await
-                .map_err(|e| SandboxError::StartFailed(format!("mkdir snapshot overlay: {e}")))?;
+                .map_err(|e| SandboxError::StartFailed(format!("mkdir snapshot drive: {e}")))?;
         }
 
-        // Create empty file as bind mount target for the overlay.
-        let exists = tokio::fs::try_exists(&snapshot.overlay_bind_path)
+        // Create empty file as bind mount target for the drive.
+        let exists = tokio::fs::try_exists(&snapshot.drive_bind_path)
             .await
             .unwrap_or_else(|e| {
-                warn!(error = %e, "failed to check overlay mount target");
+                warn!(error = %e, "failed to check drive mount target");
                 false
             });
         if !exists {
-            tokio::fs::write(&snapshot.overlay_bind_path, b"")
+            tokio::fs::write(&snapshot.drive_bind_path, b"")
                 .await
                 .map_err(|e| {
-                    SandboxError::StartFailed(format!("create overlay mount target: {e}"))
+                    SandboxError::StartFailed(format!("create drive mount target: {e}"))
                 })?;
         }
 
@@ -299,11 +293,12 @@ impl FirecrackerSandbox {
                 sock_dir.display()
             )));
         }
+        let cow_device_path = self.cow_device.device_path();
         info!(
             id = %self.id,
             api_sock = %api_sock.display(),
             sock_dir = %sock_dir.display(),
-            overlay = %self.overlay.display(),
+            cow_device = %cow_device_path.display(),
             netns = %self.network.name,
             binary = %self.factory_config.binary_path.display(),
             "spawning firecracker (snapshot restore)"
@@ -316,8 +311,8 @@ impl FirecrackerSandbox {
             .args(["unshare", "--mount", "bash", "-c", inner_cmd, "_"])
             .arg(self.sock_paths.vsock_dir()) // $1
             .arg(&snapshot.vsock_bind_dir) // $2
-            .arg(&self.overlay) // $3
-            .arg(&snapshot.overlay_bind_path) // $4
+            .arg(cow_device_path) // $3
+            .arg(&snapshot.drive_bind_path) // $4
             .arg(&self.network.name) // $5
             .arg(&username) // $6
             .arg(&self.factory_config.binary_path) // $7

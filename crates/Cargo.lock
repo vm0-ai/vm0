@@ -1793,6 +1793,7 @@ version = "0.16.0"
 dependencies = [
  "async-trait",
  "base64",
+ "block-cow",
  "clap",
  "hex",
  "libc",

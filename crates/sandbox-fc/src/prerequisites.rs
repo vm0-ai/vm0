@@ -34,7 +34,7 @@ pub(crate) async fn check_prerequisites(
     if let Some(snapshot) = config.snapshot {
         check_file_exists(&snapshot.snapshot_path, "snapshot state", &mut errors);
         check_file_exists(&snapshot.memory_path, "snapshot memory", &mut errors);
-        check_file_exists(&snapshot.overlay_path, "snapshot overlay", &mut errors);
+        check_file_exists(&snapshot.cow_path, "snapshot cow", &mut errors);
     }
     check_kvm(&mut errors);
     check_required_commands(config, &mut errors);
@@ -71,11 +71,18 @@ fn check_kvm(errors: &mut Vec<String>) {
     }
 }
 
-fn check_required_commands(config: &PrerequisiteConfig<'_>, errors: &mut Vec<String>) {
-    let mut commands = vec!["ip", "iptables", "iptables-save", "sysctl", "pgrep"];
-    if config.snapshot.is_none() {
-        commands.push("mkfs.ext4");
-    }
+fn check_required_commands(_config: &PrerequisiteConfig<'_>, errors: &mut Vec<String>) {
+    let commands = [
+        "ip",
+        "iptables",
+        "iptables-save",
+        "sysctl",
+        "pgrep",
+        // Required by block-cow (dm-snapshot COW devices).
+        "dmsetup",
+        "losetup",
+        "blockdev",
+    ];
     for cmd in &commands {
         if which::which(cmd).is_err() {
             errors.push(format!("required command not found: {cmd}"));

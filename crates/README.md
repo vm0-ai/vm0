@@ -8,7 +8,8 @@ This workspace contains Rust crates for the vm0 sandbox runtime — VM orchestra
 |-------|-------------|
 | **runner** | Sandbox orchestrator — polls for jobs (API or local queue), manages VM lifecycle, proxy, service install, and bridges to sandbox-fc |
 | **sandbox** | Sandbox trait and shared types — `SandboxFactory`, `Sandbox`, `SandboxConfig`, `ExecRequest`, `ExecResult` |
-| **sandbox-fc** | Firecracker sandbox implementation — VM lifecycle, network namespace pool, overlay FS, snapshot restore |
+| **sandbox-fc** | Firecracker sandbox implementation — VM lifecycle, network namespace pool, dm-snapshot COW, snapshot restore |
+| **block-cow** | Host-side copy-on-write via Linux dm-snapshot — loop devices, device mapper orchestration, sparse COW files |
 | **vsock-proto** | Wire protocol encoding/decoding shared by host and guest — length-prefixed binary messages |
 | **vsock-host** | Host-side async vsock client (tokio) — connects to guest via Unix domain sockets |
 | **vsock-guest** | Guest-side vsock library — IPC over vsock/Unix sockets, embedded in guest-init as PID 2 |
@@ -40,6 +41,7 @@ This workspace contains Rust crates for the vm0 sandbox runtime — VM orchestra
 │  runner ── sandbox-fc ── vsock-host      │
 │    │             │                       │
 │    │        sandbox (trait)              │
+│    │        block-cow (dm-snapshot)      │
 │    │                                     │
 │    ├── ably-subscriber (job polling)     │
 │    └── mitmproxy (HTTPS interception)    │
