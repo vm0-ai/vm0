@@ -24,6 +24,7 @@ import { confluenceFirewall } from "./confluence.generated";
 import { deepseekFirewall } from "./deepseek.generated";
 import { devtoFirewall } from "./devto.generated";
 import { discordFirewall } from "./discord.generated";
+import { dropboxFirewall } from "./dropbox.generated";
 import { elevenlabsFirewall } from "./elevenlabs.generated";
 import { falFirewall } from "./fal.generated";
 import { figmaFirewall } from "./figma.generated";
@@ -85,6 +86,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   deepseek: deepseekFirewall,
   devto: devtoFirewall,
   discord: discordFirewall,
+  dropbox: dropboxFirewall,
   elevenlabs: elevenlabsFirewall,
   fal: falFirewall,
   figma: figmaFirewall,
