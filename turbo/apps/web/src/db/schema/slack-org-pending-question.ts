@@ -30,9 +30,11 @@ export const slackOrgPendingQuestions = pgTable(
       .references(() => slackOrgConnections.id),
     composeId: uuid("compose_id")
       .notNull()
-      .references(() => agentComposes.id),
+      .references(() => agentComposes.id, { onDelete: "cascade" }),
     agentName: varchar("agent_name", { length: 255 }).notNull(),
-    sessionId: uuid("session_id").references(() => agentSessions.id),
+    sessionId: uuid("session_id").references(() => agentSessions.id, {
+      onDelete: "set null",
+    }),
     questions: jsonb("questions").notNull(),
     answeredAt: timestamp("answered_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),

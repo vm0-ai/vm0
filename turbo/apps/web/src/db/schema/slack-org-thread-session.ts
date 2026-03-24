@@ -23,7 +23,10 @@ export const slackOrgThreadSessions = pgTable(
       .references(() => slackOrgConnections.id, { onDelete: "cascade" }),
     slackChannelId: varchar("slack_channel_id", { length: 255 }).notNull(),
     slackThreadTs: varchar("slack_thread_ts", { length: 255 }).notNull(),
-    agentSessionId: uuid("agent_session_id").references(() => agentSessions.id),
+    agentSessionId: uuid("agent_session_id").references(
+      () => agentSessions.id,
+      { onDelete: "set null" },
+    ),
     lastProcessedMessageTs: varchar("last_processed_message_ts", {
       length: 255,
     }),

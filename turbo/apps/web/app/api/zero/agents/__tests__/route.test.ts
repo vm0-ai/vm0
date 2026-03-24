@@ -15,6 +15,11 @@ import {
   seedTestSkill,
   seedSeedSkills,
   clearSkillsData,
+  createTestSessionWithConversation,
+  insertTestSlackOrgInstallation,
+  insertTestSlackOrgConnection,
+  insertTestSlackOrgThreadSession,
+  insertTestSlackOrgPendingQuestion,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -770,6 +775,65 @@ describe("Zero Agents API", () => {
       expect(response.status).toBe(404);
       const data = await response.json();
       expect(data.error.code).toBe("NOT_FOUND");
+    });
+
+    it("should delete agent with linked Slack thread sessions and pending questions", async () => {
+      // Create an agent
+      const created = await (
+        await postAgent({ connectors: [] }, testCliToken, testOrgSlug)
+      ).json();
+
+      // Create an agent session linked to this compose
+      const session = await createTestSessionWithConversation(
+        user.userId,
+        created.agentComposeId,
+      );
+
+      // Set up Slack infrastructure
+      const orgId = `org_${user.userId.slice(-8)}`;
+      const slackWorkspaceId = `T-ws-${user.userId.slice(-8)}`;
+      await insertTestSlackOrgInstallation({
+        slackWorkspaceId,
+        slackWorkspaceName: "Test Workspace",
+        orgId,
+        installedByUserId: user.userId,
+      });
+      const connection = await insertTestSlackOrgConnection({
+        slackUserId: `U-${user.userId.slice(-8)}`,
+        slackWorkspaceId,
+        vm0UserId: user.userId,
+      });
+
+      // Link Slack thread session to the agent session
+      await insertTestSlackOrgThreadSession({
+        connectionId: connection.id,
+        agentSessionId: session.id,
+      });
+
+      // Create a pending question referencing both compose and session
+      await insertTestSlackOrgPendingQuestion({
+        connectionId: connection.id,
+        composeId: created.agentComposeId,
+        sessionId: session.id,
+        runId: `run-${user.userId.slice(-8)}`,
+        slackWorkspaceId,
+      });
+
+      // Delete the agent — this would fail with FK constraint before the fix
+      const response = await deleteAgent(
+        created.name,
+        testCliToken,
+        testOrgSlug,
+      );
+      expect(response.status).toBe(204);
+
+      // Verify agent is gone
+      const getResponse = await getAgent(
+        created.name,
+        testCliToken,
+        testOrgSlug,
+      );
+      expect(getResponse.status).toBe(404);
     });
 
     it("should return 401 without auth", async () => {
