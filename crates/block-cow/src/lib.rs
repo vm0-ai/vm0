@@ -1,3 +1,4 @@
+mod blockdev;
 mod command;
 pub mod device;
 mod dmsetup;

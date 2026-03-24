@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use tracing::{info, warn};
 
 use crate::error::{BlockCowError, Result};
-use crate::{dmsetup, losetup};
+use crate::{blockdev, dmsetup, losetup};
 
 /// Default dm-snapshot chunk size in 512-byte sectors.
 /// 8 sectors = 4KB, matching the common filesystem block size.
@@ -125,7 +125,7 @@ impl CowDevice {
         info!(base_loop = %base_loop.display(), "attached base image");
 
         // 2. Get the base image size in sectors.
-        let sectors = match losetup::get_size_sectors(&base_loop) {
+        let sectors = match blockdev::get_size_sectors(&base_loop) {
             Ok(s) => s,
             Err(e) => {
                 let _ = losetup::detach(&base_loop);
