@@ -568,9 +568,12 @@ fn dmsetup_remove(name: &str) -> bool {
         .is_ok_and(|o| o.status.success())
 }
 
-/// Run `losetup -a`, return stdout if successful.
+/// Run `sudo losetup -a`, return stdout if successful.
 fn losetup_list() -> Option<String> {
-    let output = match std::process::Command::new("losetup").arg("-a").output() {
+    let output = match std::process::Command::new("sudo")
+        .args(["losetup", "-a"])
+        .output()
+    {
         Ok(o) => o,
         Err(e) => {
             warn!(error = %e, "losetup not available — skipping loop device GC");
