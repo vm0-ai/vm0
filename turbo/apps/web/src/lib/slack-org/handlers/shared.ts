@@ -7,6 +7,7 @@ import { zeroAgents } from "../../../db/schema/zero-agent";
 import { orgMetadata as orgTable } from "../../../db/schema/org-metadata";
 import { getAppUrl } from "../../url";
 import { resolveDefaultAgentComposeId } from "../../agent-compose/resolve-default";
+import { resolveComposeIdFromAgentId } from "../../zero/resolve-default-agent";
 import { ensureStorageExists } from "../../storage/storage-service";
 import {
   createSlackClient,
@@ -83,20 +84,8 @@ export async function resolveDefaultComposeId(
     .limit(1);
 
   if (orgRow?.defaultAgentId) {
-    // Reverse-resolve: zero agent UUID → compose UUID
-    const [row] = await globalThis.services.db
-      .select({ composeId: agentComposes.id })
-      .from(zeroAgents)
-      .innerJoin(
-        agentComposes,
-        and(
-          eq(agentComposes.orgId, zeroAgents.orgId),
-          eq(agentComposes.name, zeroAgents.name),
-        ),
-      )
-      .where(eq(zeroAgents.id, orgRow.defaultAgentId))
-      .limit(1);
-    if (row) return row.composeId;
+    const composeId = await resolveComposeIdFromAgentId(orgRow.defaultAgentId);
+    if (composeId) return composeId;
   }
 
   return resolveDefaultAgentComposeId();

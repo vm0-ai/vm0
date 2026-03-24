@@ -50,11 +50,17 @@ const router = tsr.router(orgDefaultAgentContract, {
       .limit(1);
     const existingAgentId = orgRow?.defaultAgentId ?? null;
     if (existingAgentId) {
-      // Verify the existing agent still exists — if it was deleted, allow re-setting.
+      // Verify the existing agent still exists and belongs to this org —
+      // if it was deleted or belongs to another org, allow re-setting.
       const [existing] = await globalThis.services.db
         .select({ id: zeroAgents.id })
         .from(zeroAgents)
-        .where(eq(zeroAgents.id, existingAgentId))
+        .where(
+          and(
+            eq(zeroAgents.id, existingAgentId),
+            eq(zeroAgents.orgId, org.orgId),
+          ),
+        )
         .limit(1);
       if (existing) {
         return {

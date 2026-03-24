@@ -248,8 +248,11 @@ describe("backfill-clerk-metadata", () => {
 
       // Create a real agent so FK is satisfied
       const userId = uniqueId("bf-user-cid");
-      const { agentId: existingAgentId, composeId: existingComposeId } =
-        await seedTestCompose({ userId, name: uniqueId("bf-existing"), orgId });
+      const { agentId: existingAgentId } = await seedTestCompose({
+        userId,
+        name: uniqueId("bf-existing"),
+        orgId,
+      });
       await updateOrgDefaultAgent(orgId, existingAgentId);
 
       // Clerk has a different compose UUID for the same org

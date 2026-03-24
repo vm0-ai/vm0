@@ -1,5 +1,6 @@
 import { eq, and } from "drizzle-orm";
 import { env } from "../../env";
+import { agentComposes } from "../../db/schema/agent-compose";
 import { orgMetadata } from "../../db/schema/org-metadata";
 import { zeroAgents } from "../../db/schema/zero-agent";
 import { getOrgBySlug } from "../org/org-cache-service";
@@ -77,4 +78,28 @@ async function resolveDefaultAgentIdFromEnv(): Promise<string | null> {
   }
 
   return agent.id;
+}
+
+/**
+ * Reverse-resolve a zero agent UUID back to its compose UUID.
+ * JOINs zero_agents → agent_composes via (orgId, name).
+ * Returns the compose UUID or null if no matching compose exists.
+ */
+export async function resolveComposeIdFromAgentId(
+  agentId: string,
+): Promise<string | null> {
+  const [row] = await globalThis.services.db
+    .select({ composeId: agentComposes.id })
+    .from(zeroAgents)
+    .innerJoin(
+      agentComposes,
+      and(
+        eq(agentComposes.orgId, zeroAgents.orgId),
+        eq(agentComposes.name, zeroAgents.name),
+      ),
+    )
+    .where(eq(zeroAgents.id, agentId))
+    .limit(1);
+
+  return row?.composeId ?? null;
 }

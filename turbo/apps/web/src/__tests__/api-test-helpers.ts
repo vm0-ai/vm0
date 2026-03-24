@@ -3892,7 +3892,10 @@ export async function seedTestCompose(opts: {
         and(eq(zeroAgents.orgId, opts.orgId), eq(zeroAgents.name, opts.name)),
       )
       .limit(1);
-    agentId = existing!.id;
+    if (!existing) {
+      throw new Error("Failed to resolve zero agent for test compose");
+    }
+    agentId = existing.id;
   }
 
   return { composeId: row.id, agentId };
