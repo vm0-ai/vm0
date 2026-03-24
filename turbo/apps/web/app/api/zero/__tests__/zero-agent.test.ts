@@ -1,22 +1,15 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { POST as createAgentRoute } from "../agents/route";
+import { describe, it, expect, beforeAll, beforeEach } from "vitest";
+import { NextRequest } from "next/server";
 import { GET as getAgentRoute } from "../agents/[name]/route";
-import { PUT as updateInstructionsRoute } from "../agents/[name]/instructions/route";
-import { POST as upsertModelProviderRoute } from "../model-providers/route";
 import { POST as createRunRoute } from "../runs/route";
 import { POST as claimJobRoute } from "../../runners/jobs/[id]/claim/route";
 import {
-  createTestRequest,
-  createTestCliToken,
   seedSeedSkills,
   seedSeedSkillStorages,
   clearSkillsData,
 } from "../../../../src/__tests__/api-test-helpers";
-import {
-  testContext,
-  type UserContext,
-} from "../../../../src/__tests__/test-helpers";
-import { mockClerk } from "../../../../src/__tests__/clerk-mock";
+import { testContext } from "../../../../src/__tests__/test-helpers";
+import { onboardNewOrgAndUser } from "./zero-api-test-helper";
 
 const context = testContext();
 
@@ -25,92 +18,31 @@ const context = testContext();
  *   onboarding (model provider) → create agent → run agent → claim job → use sandbox token
  *
  * Every step goes through real API route handlers.
- * The only test helpers used are infrastructure (auth mock, request construction, skill seeding).
+ * The only test helpers used are infrastructure (auth mock, skill seeding).
  */
 describe("Zero Agent E2E: create → run → sandbox token access", () => {
-  let user: UserContext;
-  let cliToken: string;
   let orgSlug: string;
+  let agent: { name: string; agentComposeId: string };
 
-  beforeEach(async () => {
-    context.setupMocks();
+  beforeAll(async () => {
     await clearSkillsData();
     await seedSeedSkills();
     await seedSeedSkillStorages();
-    user = await context.setupUser();
-    cliToken = await createTestCliToken(user.userId);
-    orgSlug = `org-${user.userId.slice(-8)}`;
+  });
+
+  beforeEach(async () => {
+    context.setupMocks();
+    const result = await onboardNewOrgAndUser(context);
+    orgSlug = result.orgSlug;
+    agent = result.agent;
   });
 
   it("should allow sandbox token from claimed run to read agent details", async () => {
-    // ── 1. Onboarding: set up model provider via API ──
-    const providerRes = await upsertModelProviderRoute(
-      createTestRequest(
-        `http://localhost:3000/api/zero/model-providers?org=${orgSlug}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${cliToken}`,
-          },
-          body: JSON.stringify({
-            type: "anthropic-api-key",
-            secret: "sk-ant-test-key",
-          }),
-        },
-      ),
-    );
-    expect(providerRes.status).toBe(201);
-
-    // ── 2. Create agent via API ──
-    const agentRes = await createAgentRoute(
-      createTestRequest(
-        `http://localhost:3000/api/zero/agents?org=${orgSlug}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${cliToken}`,
-          },
-          body: JSON.stringify({
-            connectors: [],
-            displayName: "E2E Agent",
-            description: "Created for sandbox token test",
-          }),
-        },
-      ),
-    );
-    expect(agentRes.status).toBe(201);
-    const agent = await agentRes.json();
-    expect(agent.name).toBeTruthy();
-    expect(agent.agentComposeId).toBeTruthy();
-
-    // ── 3. Upload instructions (creates agent-instructions storage) ──
-    const instructionsRes = await updateInstructionsRoute(
-      createTestRequest(
-        `http://localhost:3000/api/zero/agents/${agent.name}/instructions?org=${orgSlug}`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${cliToken}`,
-          },
-          body: JSON.stringify({
-            content: "# Agent Instructions\nBe helpful.",
-          }),
-        },
-      ),
-    );
-    expect(instructionsRes.status).toBe(200);
-
     // ── 4. Run agent via API ──
     const runRes = await createRunRoute(
-      createTestRequest("http://localhost:3000/api/zero/runs", {
+      new NextRequest("http://localhost:3000/api/zero/runs", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${cliToken}`,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           agentComposeId: agent.agentComposeId,
           prompt: "Hello agent",
@@ -118,7 +50,7 @@ describe("Zero Agent E2E: create → run → sandbox token access", () => {
       }),
     );
     expect(runRes.status).toBe(201);
-    const run = await runRes.json();
+    const run = (await runRes.json()) as { runId: string };
     expect(run.runId).toBeTruthy();
 
     // ── 5. Claim job as official runner via API ──
@@ -126,7 +58,7 @@ describe("Zero Agent E2E: create → run → sandbox token access", () => {
     // Official runner token = vm0_official_<OFFICIAL_RUNNER_SECRET>
     const officialRunnerToken = `vm0_official_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef`;
     const claimRes = await claimJobRoute(
-      createTestRequest(
+      new NextRequest(
         `http://localhost:3000/api/runners/jobs/${run.runId}/claim`,
         {
           method: "POST",
@@ -139,7 +71,10 @@ describe("Zero Agent E2E: create → run → sandbox token access", () => {
       ),
     );
     expect(claimRes.status).toBe(200);
-    const executionContext = await claimRes.json();
+    const executionContext = (await claimRes.json()) as {
+      sandboxToken: string;
+      experimentalCapabilities: string[];
+    };
 
     // Verify the execution context contains a sandbox token and capabilities
     expect(executionContext.sandboxToken).toBeTruthy();
@@ -152,12 +87,13 @@ describe("Zero Agent E2E: create → run → sandbox token access", () => {
     // This is what happens inside the sandbox: the runner injects
     // sandboxToken as VM0_TOKEN and VM0_ACTIVE_ORG, and the agent CLI
     // uses them to call the API with ?org=<slug>.
-    mockClerk({ userId: null });
+    // Sandbox tokens are processed before the Clerk session fallback in
+    // getAuthContext, so the Clerk session state does not affect sandbox auth.
 
     // 6a. Without ?org= → sandbox token has no orgId, request fails
     // (in production, runner also injects VM0_ACTIVE_ORG for this reason)
     const noOrgRes = await getAgentRoute(
-      createTestRequest(`http://localhost:3000/api/zero/agents/${agent.name}`, {
+      new NextRequest(`http://localhost:3000/api/zero/agents/${agent.name}`, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${executionContext.sandboxToken}`,
@@ -168,7 +104,7 @@ describe("Zero Agent E2E: create → run → sandbox token access", () => {
 
     // 6b. With ?org= (simulating VM0_ACTIVE_ORG) → should succeed
     const getRes = await getAgentRoute(
-      createTestRequest(
+      new NextRequest(
         `http://localhost:3000/api/zero/agents/${agent.name}?org=${orgSlug}`,
         {
           method: "GET",
@@ -179,10 +115,15 @@ describe("Zero Agent E2E: create → run → sandbox token access", () => {
       ),
     );
     expect(getRes.status).toBe(200);
-    const fetched = await getRes.json();
+    const fetched = (await getRes.json()) as {
+      name: string;
+      agentComposeId: string;
+      displayName: string;
+      description: string;
+    };
     expect(fetched.name).toBe(agent.name);
     expect(fetched.agentComposeId).toBe(agent.agentComposeId);
-    expect(fetched.displayName).toBe("E2E Agent");
-    expect(fetched.description).toBe("Created for sandbox token test");
+    expect(fetched.displayName).toBe("Test Agent");
+    expect(fetched.description).toBe("Created by onboardNewOrgAndUser");
   });
 });
