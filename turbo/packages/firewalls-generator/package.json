@@ -12,6 +12,7 @@
     "generate:asana": "tsx src/index.ts asana",
     "generate:axiom": "tsx src/index.ts axiom",
     "generate:confluence": "tsx src/index.ts confluence",
+    "generate:discord": "tsx src/index.ts discord",
     "generate:elevenlabs": "tsx src/index.ts elevenlabs",
     "generate:figma": "tsx src/index.ts figma",
     "generate:github": "tsx src/index.ts github",

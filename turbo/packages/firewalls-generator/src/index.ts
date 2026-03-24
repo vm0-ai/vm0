@@ -12,6 +12,7 @@ import { generate as generateAirtable } from "./airtable";
 import { generate as generateAsana } from "./asana";
 import { generate as generateAxiom } from "./axiom";
 import { generate as generateConfluence } from "./confluence";
+import { generate as generateDiscord } from "./discord";
 import { generate as generateElevenlabs } from "./elevenlabs";
 import { generate as generateFigma } from "./figma";
 import { generate as generateGitHub } from "./github";
@@ -33,6 +34,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   asana: generateAsana,
   axiom: generateAxiom,
   confluence: generateConfluence,
+  discord: generateDiscord,
   elevenlabs: generateElevenlabs,
   figma: generateFigma,
   github: generateGitHub,
