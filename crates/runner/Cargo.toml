@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 ably-subscriber = { workspace = true }
+block-cow = { workspace = true }
 sandbox = { workspace = true }
 sandbox-fc = { workspace = true }
 

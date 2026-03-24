@@ -14,7 +14,7 @@ use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::process::Command;
 
-use block_cow::{CowDevice, CowDeviceConfig};
+use block_cow::{BaseImagePool, CowDevice, CowDeviceConfig};
 
 /// Skip the test early if not running as root.
 /// Must be a macro so `return` exits the calling test function.
@@ -38,13 +38,32 @@ fn create_test_base_image(path: &Path) {
     assert!(status.success(), "mkfs.ext4 failed");
 }
 
-fn test_config(tmp: &Path) -> CowDeviceConfig {
-    let base = tmp.join("base.ext4");
-    create_test_base_image(&base);
-    CowDeviceConfig {
-        base_image: base,
-        cow_dir: tmp.join("cow"),
-        chunk_size: None,
+struct TestSetup {
+    // Drop order matters: pool must be dropped before _tmp so the base
+    // loop device is detached before the temp directory (and base image
+    // file inside it) is deleted.
+    pool: BaseImagePool,
+    _tmp: tempfile::TempDir,
+    base_image: std::path::PathBuf,
+}
+
+impl TestSetup {
+    fn new() -> Self {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let base = tmp.path().join("base.ext4");
+        create_test_base_image(&base);
+        Self {
+            _tmp: tmp,
+            pool: BaseImagePool::new(),
+            base_image: base,
+        }
+    }
+
+    fn cow_config(&self) -> CowDeviceConfig {
+        CowDeviceConfig {
+            cow_dir: self._tmp.path().join("cow"),
+            chunk_size: None,
+        }
     }
 }
 
@@ -53,10 +72,11 @@ fn test_config(tmp: &Path) -> CowDeviceConfig {
 fn create_and_destroy() {
     require_root!();
 
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let config = test_config(tmp.path());
+    let mut setup = TestSetup::new();
+    let handle = setup.pool.acquire(&setup.base_image).expect("acquire");
+    let config = setup.cow_config();
 
-    let mut device = CowDevice::create(&config).expect("create");
+    let mut device = CowDevice::create(&handle, &config).expect("create");
     let dev_path = device.device_path().to_owned();
     let cow_file = device.cow_file().to_owned();
 
@@ -74,10 +94,11 @@ fn create_and_destroy() {
 fn destroy_keep_cow_preserves_file() {
     require_root!();
 
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let config = test_config(tmp.path());
+    let mut setup = TestSetup::new();
+    let handle = setup.pool.acquire(&setup.base_image).expect("acquire");
+    let config = setup.cow_config();
 
-    let mut device = CowDevice::create(&config).expect("create");
+    let mut device = CowDevice::create(&handle, &config).expect("create");
     let cow_file = device.cow_file().to_owned();
     let dev_path = device.device_path().to_owned();
 
@@ -92,10 +113,11 @@ fn destroy_keep_cow_preserves_file() {
 fn cow_file_is_sparse() {
     require_root!();
 
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let config = test_config(tmp.path());
+    let mut setup = TestSetup::new();
+    let handle = setup.pool.acquire(&setup.base_image).expect("acquire");
+    let config = setup.cow_config();
 
-    let mut device = CowDevice::create(&config).expect("create");
+    let mut device = CowDevice::create(&handle, &config).expect("create");
     let cow_file = device.cow_file().to_owned();
 
     let meta = fs::metadata(&cow_file).expect("metadata");
@@ -120,11 +142,12 @@ fn cow_file_is_sparse() {
 fn multiple_devices_from_same_base() {
     require_root!();
 
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let config = test_config(tmp.path());
+    let mut setup = TestSetup::new();
+    let handle = setup.pool.acquire(&setup.base_image).expect("acquire");
+    let config = setup.cow_config();
 
-    let mut device1 = CowDevice::create(&config).expect("create device 1");
-    let mut device2 = CowDevice::create(&config).expect("create device 2");
+    let mut device1 = CowDevice::create(&handle, &config).expect("create device 1");
+    let mut device2 = CowDevice::create(&handle, &config).expect("create device 2");
 
     assert_ne!(device1.device_path(), device2.device_path());
     assert!(device1.device_path().exists());
@@ -139,10 +162,11 @@ fn multiple_devices_from_same_base() {
 fn restore_from_existing_cow() {
     require_root!();
 
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let config = test_config(tmp.path());
+    let mut setup = TestSetup::new();
+    let handle = setup.pool.acquire(&setup.base_image).expect("acquire");
+    let config = setup.cow_config();
 
-    let mut device = CowDevice::create(&config).expect("create");
+    let mut device = CowDevice::create(&handle, &config).expect("create");
     let cow_file = device.cow_file().to_owned();
     let dev_path = device.device_path().to_owned();
 
@@ -154,7 +178,7 @@ fn restore_from_existing_cow() {
     assert!(cow_file.exists(), "COW file should be preserved");
 
     // Restore from the saved COW file.
-    let mut restored = CowDevice::restore(&config, cow_file.clone()).expect("restore");
+    let mut restored = CowDevice::restore(&handle, &config, cow_file.clone()).expect("restore");
     let restored_path = restored.device_path().to_owned();
 
     // Read back the marker from the restored device.
@@ -178,10 +202,11 @@ fn restore_from_existing_cow() {
 fn device_path_format() {
     require_root!();
 
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let config = test_config(tmp.path());
+    let mut setup = TestSetup::new();
+    let handle = setup.pool.acquire(&setup.base_image).expect("acquire");
+    let config = setup.cow_config();
 
-    let mut device = CowDevice::create(&config).expect("create");
+    let mut device = CowDevice::create(&handle, &config).expect("create");
     let path_str = device.device_path().to_string_lossy();
 
     assert!(
@@ -190,4 +215,23 @@ fn device_path_format() {
     );
 
     device.destroy().expect("destroy");
+}
+
+#[test]
+#[ignore]
+fn pool_shared_loop_device() {
+    require_root!();
+
+    let mut setup = TestSetup::new();
+
+    // Two acquires for the same image should return the same loop device.
+    let handle1 = setup.pool.acquire(&setup.base_image).expect("acquire 1");
+    let handle2 = setup.pool.acquire(&setup.base_image).expect("acquire 2");
+
+    assert_eq!(handle1.loop_path, handle2.loop_path);
+    assert_eq!(handle1.sectors, handle2.sectors);
+
+    // Release both — loop should be detached after second release.
+    setup.pool.release(handle1.base_key()).expect("release 1");
+    setup.pool.release(handle2.base_key()).expect("release 2");
 }

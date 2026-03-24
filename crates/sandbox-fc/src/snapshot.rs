@@ -4,7 +4,7 @@ use std::time::Duration;
 use tokio::io::AsyncBufReadExt;
 use tracing::info;
 
-use block_cow::{CowDevice, CowDeviceConfig};
+use block_cow::{BaseImagePool, CowDevice, CowDeviceConfig};
 
 use crate::api::{ApiClient, ApiError};
 use crate::command;
@@ -69,7 +69,7 @@ pub enum SnapshotError {
 ///
 /// This is the Rust equivalent of the TS `commands/snapshot.ts` workflow:
 ///  1. Create work directory
-///  2. Create dm-snapshot COW device
+///  2. Acquire base image loop from pool, create dm-snapshot COW device
 ///  3. Create network namespace
 ///  4. Spawn Firecracker with `--api-sock`
 ///  5. Wait for API socket ready
@@ -80,7 +80,7 @@ pub enum SnapshotError {
 /// 10. Pause VM
 /// 11. Create snapshot
 /// 12. Move COW file to output dir
-/// 13. Cleanup (kill Firecracker, destroy netns)
+/// 13. Cleanup (kill Firecracker, destroy netns, release base image)
 pub async fn create_snapshot(
     config: SnapshotCreateConfig,
 ) -> Result<SnapshotConfig, SnapshotError> {
@@ -134,16 +134,33 @@ pub async fn create_snapshot(
 
     info!(work_dir = %paths.workspace().display(), "starting snapshot creation");
 
-    // 2. Create dm-snapshot COW device backed by the rootfs.
+    // 2. Acquire base image loop and create dm-snapshot COW device.
+    //    Both acquire and CowDevice::create call synchronous subprocess
+    //    commands (losetup, blockdev, dmsetup) — use spawn_blocking.
+    let base_pool = std::sync::Arc::new(std::sync::Mutex::new(BaseImagePool::new()));
+    let rootfs_path = config.rootfs_path.clone();
+    let cow_dir = paths.workspace().join("cow");
+    let pool_for_acquire = base_pool.clone();
+    let base_handle = tokio::task::spawn_blocking(move || {
+        let mut pool = pool_for_acquire
+            .lock()
+            .map_err(|e| SnapshotError::Setup(format!("base pool lock poisoned: {e}")))?;
+        pool.acquire(&rootfs_path)
+            .map_err(|e| SnapshotError::Setup(format!("acquire base image: {e}")))
+    })
+    .await
+    .map_err(|e| SnapshotError::Setup(format!("join: {e}")))??;
+
     let cow_config = CowDeviceConfig {
-        base_image: config.rootfs_path.clone(),
-        cow_dir: paths.workspace().join("cow"),
+        cow_dir,
         chunk_size: None,
     };
-    let cow_device = tokio::task::spawn_blocking(move || CowDevice::create(&cow_config))
-        .await
-        .map_err(|e| SnapshotError::Setup(format!("join: {e}")))?
-        .map_err(|e| SnapshotError::Setup(format!("create COW device: {e}")))?;
+    let base_for_create = base_handle.clone();
+    let cow_device =
+        tokio::task::spawn_blocking(move || CowDevice::create(&base_for_create, &cow_config))
+            .await
+            .map_err(|e| SnapshotError::Setup(format!("join: {e}")))?
+            .map_err(|e| SnapshotError::Setup(format!("create COW device: {e}")))?;
 
     info!(device = %cow_device.device_path().display(), "COW device created");
 
@@ -167,6 +184,18 @@ pub async fn create_snapshot(
     if let Err(e) = netns_pool.cleanup().await {
         tracing::warn!(error = %e, "failed to cleanup netns pool");
     }
+
+    // Release base image — detaches the loop device (pool of 1, so refcount → 0).
+    let base_key = base_handle.base_key().to_owned();
+    let _ = tokio::task::spawn_blocking(move || match base_pool.lock() {
+        Ok(mut pool) => {
+            if let Err(e) = pool.release(&base_key) {
+                tracing::warn!(error = %e, "failed to release base image");
+            }
+        }
+        Err(e) => tracing::warn!(error = %e, "base pool lock poisoned"),
+    })
+    .await;
 
     // Cleanup runtime socket directory.
     if let Err(e) = tokio::fs::remove_dir_all(&sock_dir).await {

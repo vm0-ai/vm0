@@ -1634,6 +1634,7 @@ dependencies = [
  "ably-subscriber",
  "async-trait",
  "base64",
+ "block-cow",
  "chrono",
  "clap",
  "flate2",

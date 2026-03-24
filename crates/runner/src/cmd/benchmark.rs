@@ -90,7 +90,8 @@ pub async fn run_benchmark(args: BenchmarkArgs) -> RunnerResult<ExitCode> {
         runner_config.firecracker_config(&args.profile, &default_profile, &home, Some(mitm.port()));
 
     let t = Instant::now();
-    let mut factory = FirecrackerFactory::new(fc_config, None).await?;
+    let base_pool = std::sync::Arc::new(std::sync::Mutex::new(block_cow::BaseImagePool::new()));
+    let mut factory = FirecrackerFactory::new(fc_config, None, base_pool).await?;
     factory.startup().await?;
     let factory_ms = t.elapsed().as_millis();
     info!(factory_ms, "factory ready");
