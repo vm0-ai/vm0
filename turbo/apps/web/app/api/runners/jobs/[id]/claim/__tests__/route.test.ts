@@ -234,18 +234,21 @@ describe("POST /api/runners/jobs/:id/claim", () => {
     });
   });
 
-  describe("Claim flow - Agent metadata removed", () => {
-    it("should not include removed agent metadata fields in claim response", async () => {
+  describe("Claim flow - Agent metadata", () => {
+    it("should return agentOrgSlug in claim response when set", async () => {
       // Create compose and look up org slug
       const { composeId, versionId } = await createTestCompose("test-agent");
       const composeInfo = await findTestComposeWithOrg(composeId);
       const orgSlug = composeInfo!.orgSlug;
 
-      // Create runner job (agent metadata no longer stored in context)
+      // Create runner job with agentOrgSlug in stored context
       const { runId } = await createTestRunnerJob(
         user.userId,
         versionId,
         `${orgSlug}/default`,
+        {
+          agentOrgSlug: orgSlug,
+        },
       );
 
       // Claim the job
@@ -266,9 +269,7 @@ describe("POST /api/runners/jobs/:id/claim", () => {
       expect(response.status).toBe(200);
 
       const data = await response.json();
-      expect(data.agentName).toBeUndefined();
-      expect(data.agentOrgSlug).toBeUndefined();
-      expect(data.agentComposeId).toBeUndefined();
+      expect(data.agentOrgSlug).toBe(orgSlug);
     });
 
     it("should return appendSystemPrompt in claim response", async () => {
