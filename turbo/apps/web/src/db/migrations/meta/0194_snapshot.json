@@ -1,5 +1,5 @@
 {
-  "id": "ad24ff48-0c13-44a1-b618-350bc115826b",
+  "id": "ea8a2ab1-2936-460d-95ab-55207ef2356b",
   "prevId": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
   "version": "7",
   "dialect": "postgresql",
@@ -3266,20 +3266,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "notify_email": {
-          "name": "notify_email",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "notify_slack": {
-          "name": "notify_slack",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
         "pinned_agent_ids": {
           "name": "pinned_agent_ids",
           "type": "jsonb",
@@ -3366,8 +3352,8 @@
           "notNull": true,
           "default": "'free'"
         },
-        "default_agent_id": {
-          "name": "default_agent_id",
+        "default_agent_compose_id": {
+          "name": "default_agent_compose_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
@@ -3459,17 +3445,7 @@
           "with": {}
         }
       },
-      "foreignKeys": {
-        "org_metadata_default_agent_id_zero_agents_id_fk": {
-          "name": "org_metadata_default_agent_id_zero_agents_id_fk",
-          "tableFrom": "org_metadata",
-          "tableTo": "zero_agents",
-          "columnsFrom": ["default_agent_id"],
-          "columnsTo": ["id"],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        }
-      },
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
