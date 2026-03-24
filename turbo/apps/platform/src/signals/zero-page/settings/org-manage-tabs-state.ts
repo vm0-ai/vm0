@@ -1,5 +1,4 @@
 import { command, computed, state } from "ccstate";
-import { onRef } from "../../utils.ts";
 import { org$ } from "../../org.ts";
 
 // ---------------------------------------------------------------------------
@@ -110,15 +109,10 @@ export const setLogoLoaded$ = command(({ set }, value: boolean) => {
   set(internalLogoLoaded$, value);
 });
 
-const initProfileSection$ = command(
-  async ({ get, set }, _el: HTMLElement, signal: AbortSignal) => {
-    const org = await get(org$);
-    signal.throwIfAborted();
-    set(internalProfileName$, org?.name ?? "");
-  },
-);
-
-export const profileSectionRef$ = onRef(initProfileSection$);
+export const initProfileName$ = command(async ({ get, set }) => {
+  const org = await get(org$);
+  set(internalProfileName$, org?.name ?? "");
+});
 
 // ---------------------------------------------------------------------------
 // org-general-tab: DangerZoneSection

@@ -140,7 +140,9 @@ describe("POST /api/webhooks/email/inbound", () => {
     // Given a user with a compose and email thread session
     const user = await context.setupUser();
     await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
-    const { composeId } = await createTestCompose(uniqueId("email-agent"));
+    const { composeId, agentId } = await createTestCompose(
+      uniqueId("email-agent"),
+    );
     const agentSession = await createTestSessionWithConversation(
       user.userId,
       composeId,
@@ -152,7 +154,7 @@ describe("POST /api/webhooks/email/inbound", () => {
     // Create email thread session that links the token to the compose/session
     await createTestEmailThreadSession({
       userId: user.userId,
-      composeId,
+      agentId,
       agentSessionId: agentSession.id,
       replyToToken: replyToken,
     });
@@ -246,13 +248,15 @@ describe("POST /api/webhooks/email/inbound", () => {
   it("should send error reply for emails with empty content after quote stripping", async () => {
     // Given a user with a compose and email thread session
     const user = await context.setupUser({ prefix: "empty-reply" });
-    const { composeId } = await createTestCompose(uniqueId("empty-agent"));
+    const { composeId, agentId } = await createTestCompose(
+      uniqueId("empty-agent"),
+    );
     const agentSession = await createTestAgentSession(user.userId, composeId);
     const replyToken = generateReplyToken(agentSession.id);
 
     await createTestEmailThreadSession({
       userId: user.userId,
-      composeId,
+      agentId,
       agentSessionId: agentSession.id,
       replyToToken: replyToken,
     });
@@ -301,7 +305,7 @@ describe("POST /api/webhooks/email/inbound", () => {
   });
 
   // Note: "compose deleted" (inbound-reply.ts line 121-128) is unreachable in practice.
-  // email_thread_sessions.compose_id has onDelete: cascade, so deleting a compose
+  // email_thread_sessions.agent_id has onDelete: cascade, so deleting a compose
   // also deletes all its thread sessions. The handler hits "session not found" first.
 
   it("should send error reply for emails without reply+ address", async () => {
@@ -343,7 +347,7 @@ describe("POST /api/webhooks/email/inbound", () => {
 
     // Given a user with a compose and email thread session
     const user = await context.setupUser({ prefix: "reply-unreg" });
-    const { composeId } = await createTestCompose(
+    const { composeId, agentId } = await createTestCompose(
       uniqueId("reply-unreg-agent"),
     );
     const agentSession = await createTestSessionWithConversation(
@@ -354,7 +358,7 @@ describe("POST /api/webhooks/email/inbound", () => {
     const replyToken = generateReplyToken(agentSession.id);
     await createTestEmailThreadSession({
       userId: user.userId,
-      composeId,
+      agentId,
       agentSessionId: agentSession.id,
       replyToToken: replyToken,
     });
@@ -399,7 +403,9 @@ describe("POST /api/webhooks/email/inbound", () => {
 
     // Given user A owns the session
     const userA = await context.setupUser({ prefix: "reply-owner" });
-    const { composeId } = await createTestCompose(uniqueId("reply-diff-agent"));
+    const { composeId, agentId } = await createTestCompose(
+      uniqueId("reply-diff-agent"),
+    );
     const agentSession = await createTestSessionWithConversation(
       userA.userId,
       composeId,
@@ -408,7 +414,7 @@ describe("POST /api/webhooks/email/inbound", () => {
     const replyToken = generateReplyToken(agentSession.id);
     await createTestEmailThreadSession({
       userId: userA.userId,
-      composeId,
+      agentId,
       agentSessionId: agentSession.id,
       replyToToken: replyToken,
     });
@@ -451,7 +457,7 @@ describe("POST /api/webhooks/email/inbound", () => {
   it("should send error reply when reply email fails DMARC verification", async () => {
     // Given a user with a compose and email thread session
     const user = await context.setupUser({ prefix: "reply-dmarc" });
-    const { composeId } = await createTestCompose(
+    const { composeId, agentId } = await createTestCompose(
       uniqueId("reply-dmarc-agent"),
     );
     const agentSession = await createTestSessionWithConversation(
@@ -462,7 +468,7 @@ describe("POST /api/webhooks/email/inbound", () => {
     const replyToken = generateReplyToken(agentSession.id);
     await createTestEmailThreadSession({
       userId: user.userId,
-      composeId,
+      agentId,
       agentSessionId: agentSession.id,
       replyToToken: replyToken,
     });
@@ -527,7 +533,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       const agentName = uniqueId("trigger-agent");
 
       // Create compose and set it as the org's default agent
-      const { composeId } = await createTestCompose(agentName);
+      const { composeId, agentId } = await createTestCompose(agentName);
       await updateOrgDefaultAgent(user.orgId, composeId);
 
       // Mock Clerk to return the user when looking up by email
@@ -575,13 +581,12 @@ describe("POST /api/webhooks/email/inbound", () => {
       expect(triggerCallback).toBeDefined();
       expect(triggerCallback!.payload).toMatchObject({
         senderEmail,
-        composeId,
+        agentId,
         userId: user.userId,
         inboundEmailId: "trigger-email-123",
         replyToken: expect.any(String),
         inboundMessageId: "<default-msg-id@example.com>",
         subject: "Test Subject",
-        triggerLocalPart: orgSlug,
       });
     });
 
@@ -1043,7 +1048,9 @@ describe("POST /api/webhooks/email/inbound", () => {
   it("should extract content from HTML when text is empty (reply)", async () => {
     const user = await context.setupUser({ prefix: "html-reply" });
     await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
-    const { composeId } = await createTestCompose(uniqueId("html-reply-agent"));
+    const { composeId, agentId } = await createTestCompose(
+      uniqueId("html-reply-agent"),
+    );
     const agentSession = await createTestSessionWithConversation(
       user.userId,
       composeId,
@@ -1052,7 +1059,7 @@ describe("POST /api/webhooks/email/inbound", () => {
 
     await createTestEmailThreadSession({
       userId: user.userId,
-      composeId,
+      agentId,
       agentSessionId: agentSession.id,
       replyToToken: replyToken,
     });
@@ -1601,7 +1608,7 @@ describe("POST /api/webhooks/email/inbound", () => {
     it("should include attachment URLs in prompt when reply has attachments", async () => {
       const user = await context.setupUser({ prefix: "att-reply" });
       await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
-      const { composeId } = await createTestCompose(
+      const { composeId, agentId } = await createTestCompose(
         uniqueId("att-reply-agent"),
       );
       const agentSession = await createTestSessionWithConversation(
@@ -1612,7 +1619,7 @@ describe("POST /api/webhooks/email/inbound", () => {
 
       await createTestEmailThreadSession({
         userId: user.userId,
-        composeId,
+        agentId,
         agentSessionId: agentSession.id,
         replyToToken: replyToken,
       });

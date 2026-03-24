@@ -32,14 +32,13 @@ export interface SlackOrgCallbackPayload {
 
 export interface EmailTriggerCallbackPayload {
   senderEmail: string;
-  composeId: string;
+  agentId: string;
   userId: string;
   inboundEmailId: string;
   replyToken: string;
   inboundMessageId?: string;
   inboundReferences?: string;
   subject?: string;
-  triggerLocalPart?: string;
   runtimeOrgId?: string;
   replyRecipientTo?: string[];
   replyRecipientCc?: string[];

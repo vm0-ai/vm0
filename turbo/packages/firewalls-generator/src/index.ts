@@ -8,26 +8,40 @@
 
 import { generate as generateAgentmail } from "./agentmail";
 import { generate as generateAhrefs } from "./ahrefs";
+import { generate as generateAirtable } from "./airtable";
+import { generate as generateAsana } from "./asana";
+import { generate as generateAxiom } from "./axiom";
 import { generate as generateConfluence } from "./confluence";
 import { generate as generateFigma } from "./figma";
 import { generate as generateGitHub } from "./github";
 import { generate as generateJira } from "./jira";
+import { generate as generateLinear } from "./linear";
 import { generate as generateNotion } from "./notion";
 import { generate as generateSlack } from "./slack";
 import { generate as generateVercel } from "./vercel";
+import { generate as generateYoutube } from "./youtube";
+import { generate as generateZapier } from "./zapier";
+import { generate as generateZapsign } from "./zapsign";
 import { generate as generateZeptomail } from "./zeptomail";
 import { createGoogleGenerator, googleServiceNames } from "./google";
 
 const GENERATORS: Record<string, () => Promise<void>> = {
   agentmail: generateAgentmail,
   ahrefs: generateAhrefs,
+  airtable: generateAirtable,
+  asana: generateAsana,
+  axiom: generateAxiom,
   confluence: generateConfluence,
   figma: generateFigma,
   github: generateGitHub,
   jira: generateJira,
+  linear: generateLinear,
   notion: generateNotion,
   slack: generateSlack,
   vercel: generateVercel,
+  youtube: generateYoutube,
+  zapier: generateZapier,
+  zapsign: generateZapsign,
   zeptomail: generateZeptomail,
   ...Object.fromEntries(
     googleServiceNames.map((name) => [name, createGoogleGenerator(name)]),

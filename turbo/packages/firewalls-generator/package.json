@@ -8,6 +8,9 @@
     "generate": "tsx src/index.ts",
     "generate:agentmail": "tsx src/index.ts agentmail",
     "generate:ahrefs": "tsx src/index.ts ahrefs",
+    "generate:airtable": "tsx src/index.ts airtable",
+    "generate:asana": "tsx src/index.ts asana",
+    "generate:axiom": "tsx src/index.ts axiom",
     "generate:confluence": "tsx src/index.ts confluence",
     "generate:figma": "tsx src/index.ts figma",
     "generate:github": "tsx src/index.ts github",
@@ -17,9 +20,13 @@
     "generate:google-drive": "tsx src/index.ts google-drive",
     "generate:google-sheets": "tsx src/index.ts google-sheets",
     "generate:jira": "tsx src/index.ts jira",
+    "generate:linear": "tsx src/index.ts linear",
     "generate:notion": "tsx src/index.ts notion",
     "generate:slack": "tsx src/index.ts slack",
     "generate:vercel": "tsx src/index.ts vercel",
+    "generate:youtube": "tsx src/index.ts youtube",
+    "generate:zapier": "tsx src/index.ts zapier",
+    "generate:zapsign": "tsx src/index.ts zapsign",
     "generate:zeptomail": "tsx src/index.ts zeptomail"
   },
   "devDependencies": {

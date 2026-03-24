@@ -94,6 +94,9 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
 > = {
   agentmail: ["agentmail"],
   ahrefs: ["ahrefs"],
+  airtable: ["airtable"],
+  asana: ["asana"],
+  axiom: ["axiom"],
   github: ["github"],
   slack: ["slack"],
   gmail: ["gmail"],
@@ -103,9 +106,13 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   "google-calendar": ["google-calendar"],
   atlassian: ["jira", "confluence"],
   jira: ["jira"],
+  linear: ["linear"],
   figma: ["figma"],
   notion: ["notion"],
   vercel: ["vercel"],
+  youtube: ["youtube"],
+  zapier: ["zapier"],
+  zapsign: ["zapsign"],
   zeptomail: ["zeptomail"],
 };
 

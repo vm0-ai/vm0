@@ -324,7 +324,7 @@ async function executePostSendAction(
     case "save_thread_session":
       await saveEmailThreadSession({
         userId: action.userId,
-        composeId: action.composeId,
+        agentId: action.agentId,
         agentSessionId: action.agentSessionId,
         lastEmailMessageId: messageId,
         replyToToken: action.replyToToken,

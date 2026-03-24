@@ -12,8 +12,6 @@ import {
   createTestCallback,
   createTestRequest,
   createTestSchedule,
-  createTestZeroAgent,
-  getTestZeroAgentId,
   linkRunToSchedule,
   completeTestRun,
 } from "../../../../../../../src/__tests__/api-test-helpers";
@@ -74,9 +72,7 @@ describe("POST /api/internal/callbacks/email/schedule", () => {
       const user = await context.setupUser({ prefix: "email-sched-sig" });
       mockClerk({ userId: user.userId });
       const agentName = uniqueId("sched-agent");
-      const { composeId } = await createTestCompose(agentName);
-      await createTestZeroAgent(user.orgId, agentName, {});
-      const agentId = await getTestZeroAgentId(user.orgId, agentName);
+      const { composeId, agentId } = await createTestCompose(agentName);
       const schedule = await createTestSchedule(composeId, uniqueId("sched"));
       const { runId } = await createTestRun(composeId, "Test prompt");
       await linkRunToSchedule(runId, schedule.id);
@@ -108,9 +104,7 @@ describe("POST /api/internal/callbacks/email/schedule", () => {
       const user = await context.setupUser({ prefix: "email-sched-exp" });
       mockClerk({ userId: user.userId });
       const agentName = uniqueId("sched-agent");
-      const { composeId } = await createTestCompose(agentName);
-      await createTestZeroAgent(user.orgId, agentName, {});
-      const agentId = await getTestZeroAgentId(user.orgId, agentName);
+      const { composeId, agentId } = await createTestCompose(agentName);
       const schedule = await createTestSchedule(composeId, uniqueId("sched"));
       const { runId } = await createTestRun(composeId, "Test prompt");
       await linkRunToSchedule(runId, schedule.id);
@@ -144,9 +138,7 @@ describe("POST /api/internal/callbacks/email/schedule", () => {
       const user = await context.setupUser({ prefix: "email-sched-prog" });
       mockClerk({ userId: user.userId });
       const agentName = uniqueId("sched-agent");
-      const { composeId } = await createTestCompose(agentName);
-      await createTestZeroAgent(user.orgId, agentName, {});
-      const agentId = await getTestZeroAgentId(user.orgId, agentName);
+      const { composeId, agentId } = await createTestCompose(agentName);
       const schedule = await createTestSchedule(composeId, uniqueId("sched"));
       const { runId } = await createTestRun(composeId, "Test prompt");
       await linkRunToSchedule(runId, schedule.id);
@@ -184,9 +176,7 @@ describe("POST /api/internal/callbacks/email/schedule", () => {
       const user = await context.setupUser({ prefix: "email-sched-ok" });
       mockClerk({ userId: user.userId });
       const agentName = uniqueId("sched-agent");
-      const { composeId } = await createTestCompose(agentName);
-      await createTestZeroAgent(user.orgId, agentName, {});
-      const agentId = await getTestZeroAgentId(user.orgId, agentName);
+      const { composeId, agentId } = await createTestCompose(agentName);
       const schedule = await createTestSchedule(composeId, uniqueId("sched"));
       const { runId } = await createTestRun(composeId, "Test prompt");
       await linkRunToSchedule(runId, schedule.id);
@@ -230,9 +220,7 @@ describe("POST /api/internal/callbacks/email/schedule", () => {
       const user = await context.setupUser({ prefix: "email-sched-fail" });
       mockClerk({ userId: user.userId });
       const agentName = uniqueId("fail-agent");
-      const { composeId } = await createTestCompose(agentName);
-      await createTestZeroAgent(user.orgId, agentName, {});
-      const agentId = await getTestZeroAgentId(user.orgId, agentName);
+      const { composeId, agentId } = await createTestCompose(agentName);
       const schedule = await createTestSchedule(composeId, uniqueId("sched"));
       const { runId } = await createTestRun(composeId, "Test prompt");
       await linkRunToSchedule(runId, schedule.id);

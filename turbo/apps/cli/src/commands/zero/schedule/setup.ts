@@ -21,7 +21,7 @@ import {
   deployZeroSchedule,
   listZeroSchedules,
   enableZeroSchedule,
-  getUserPreferences,
+  getZeroUserPreferences,
   ApiRequestError,
 } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
@@ -331,7 +331,7 @@ async function gatherTimezone(
 
   let userTimezone: string | null = null;
   try {
-    const prefs = await getUserPreferences();
+    const prefs = await getZeroUserPreferences();
     userTimezone = prefs.timezone;
   } catch {
     console.log(

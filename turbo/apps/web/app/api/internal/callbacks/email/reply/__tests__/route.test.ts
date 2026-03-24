@@ -73,12 +73,14 @@ describe("POST /api/internal/callbacks/email/reply", () => {
     it("should reject request with invalid signature", async () => {
       const user = await context.setupUser({ prefix: "reply-sig" });
       mockClerk({ userId: user.userId });
-      const { composeId } = await createTestCompose(uniqueId("reply-agent"));
+      const { composeId, agentId } = await createTestCompose(
+        uniqueId("reply-agent"),
+      );
       const agentSession = await createTestAgentSession(user.userId, composeId);
       const replyToken = generateReplyToken(agentSession.id);
       const emailSession = await createTestEmailThreadSession({
         userId: user.userId,
-        composeId,
+        agentId,
         agentSessionId: agentSession.id,
         replyToToken: replyToken,
       });
@@ -111,12 +113,14 @@ describe("POST /api/internal/callbacks/email/reply", () => {
     it("should send reply email on completed run", async () => {
       const user = await context.setupUser({ prefix: "reply-ok" });
       mockClerk({ userId: user.userId });
-      const { composeId } = await createTestCompose(uniqueId("reply-agent"));
+      const { composeId, agentId } = await createTestCompose(
+        uniqueId("reply-agent"),
+      );
       const agentSession = await createTestAgentSession(user.userId, composeId);
       const replyToken = generateReplyToken(agentSession.id);
       const emailSession = await createTestEmailThreadSession({
         userId: user.userId,
-        composeId,
+        agentId,
         agentSessionId: agentSession.id,
         replyToToken: replyToken,
         lastEmailMessageId: "<original-msg-id@vm7.bot>",
@@ -184,12 +188,14 @@ describe("POST /api/internal/callbacks/email/reply", () => {
     it("should fall back to session.lastEmailMessageId when inbound headers are missing", async () => {
       const user = await context.setupUser({ prefix: "reply-fallback" });
       mockClerk({ userId: user.userId });
-      const { composeId } = await createTestCompose(uniqueId("reply-agent"));
+      const { composeId, agentId } = await createTestCompose(
+        uniqueId("reply-agent"),
+      );
       const agentSession = await createTestAgentSession(user.userId, composeId);
       const replyToken = generateReplyToken(agentSession.id);
       const emailSession = await createTestEmailThreadSession({
         userId: user.userId,
-        composeId,
+        agentId,
         agentSessionId: agentSession.id,
         replyToToken: replyToken,
         lastEmailMessageId: "<bot-prev@vm7.bot>",
@@ -234,12 +240,14 @@ describe("POST /api/internal/callbacks/email/reply", () => {
     it("should use session.lastEmailMessageId in References when inboundMessageId is present but inboundReferences is missing", async () => {
       const user = await context.setupUser({ prefix: "reply-partial" });
       mockClerk({ userId: user.userId });
-      const { composeId } = await createTestCompose(uniqueId("reply-agent"));
+      const { composeId, agentId } = await createTestCompose(
+        uniqueId("reply-agent"),
+      );
       const agentSession = await createTestAgentSession(user.userId, composeId);
       const replyToken = generateReplyToken(agentSession.id);
       const emailSession = await createTestEmailThreadSession({
         userId: user.userId,
-        composeId,
+        agentId,
         agentSessionId: agentSession.id,
         replyToToken: replyToken,
         lastEmailMessageId: "<bot-prev@vm7.bot>",
@@ -290,12 +298,14 @@ describe("POST /api/internal/callbacks/email/reply", () => {
     it("should omit threading headers when both inbound and session message IDs are absent", async () => {
       const user = await context.setupUser({ prefix: "reply-no-ids" });
       mockClerk({ userId: user.userId });
-      const { composeId } = await createTestCompose(uniqueId("reply-agent"));
+      const { composeId, agentId } = await createTestCompose(
+        uniqueId("reply-agent"),
+      );
       const agentSession = await createTestAgentSession(user.userId, composeId);
       const replyToken = generateReplyToken(agentSession.id);
       const emailSession = await createTestEmailThreadSession({
         userId: user.userId,
-        composeId,
+        agentId,
         agentSessionId: agentSession.id,
         replyToToken: replyToken,
       });
@@ -339,12 +349,14 @@ describe("POST /api/internal/callbacks/email/reply", () => {
     it("should send to multiple recipients when replyRecipientTo is provided", async () => {
       const user = await context.setupUser({ prefix: "reply-replyall" });
       mockClerk({ userId: user.userId });
-      const { composeId } = await createTestCompose(uniqueId("reply-agent"));
+      const { composeId, agentId } = await createTestCompose(
+        uniqueId("reply-agent"),
+      );
       const agentSession = await createTestAgentSession(user.userId, composeId);
       const replyToken = generateReplyToken(agentSession.id);
       const emailSession = await createTestEmailThreadSession({
         userId: user.userId,
-        composeId,
+        agentId,
         agentSessionId: agentSession.id,
         replyToToken: replyToken,
       });
@@ -389,12 +401,14 @@ describe("POST /api/internal/callbacks/email/reply", () => {
     it("should send error reply email on failed run", async () => {
       const user = await context.setupUser({ prefix: "reply-fail" });
       mockClerk({ userId: user.userId });
-      const { composeId } = await createTestCompose(uniqueId("reply-agent"));
+      const { composeId, agentId } = await createTestCompose(
+        uniqueId("reply-agent"),
+      );
       const agentSession = await createTestAgentSession(user.userId, composeId);
       const replyToken = generateReplyToken(agentSession.id);
       const emailSession = await createTestEmailThreadSession({
         userId: user.userId,
-        composeId,
+        agentId,
         agentSessionId: agentSession.id,
         replyToToken: replyToken,
       });

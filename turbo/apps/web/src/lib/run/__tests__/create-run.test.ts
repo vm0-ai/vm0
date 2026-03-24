@@ -1150,13 +1150,11 @@ describe("createRun()", () => {
 
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
+      // With linear firewall config, the real token is replaced by a placeholder
+      // (the proxy resolves the real secret at runtime)
       expect(job!.executionContext.environment).toMatchObject({
-        LINEAR_TOKEN: "lin_oauth_test_789",
+        LINEAR_TOKEN: "lin_api_Vm0PlaceHolder00000000000000000000000000",
       });
-      // Ensure template placeholder was fully resolved
-      expect(job!.executionContext.environment!.LINEAR_TOKEN).not.toContain(
-        "${{",
-      );
     });
 
     it("should leave Linear token template unresolved when connector not connected", async () => {

@@ -35,7 +35,6 @@ interface ResolvedTrigger {
   orgId: string;
   orgSlug: string;
   userId: string;
-  composeId: string;
   agentId: string;
 }
 
@@ -106,7 +105,6 @@ async function resolveTrigger(
     orgId: orgData.orgId,
     orgSlug,
     userId,
-    composeId: agent.composeId,
     agentId: agent.agentId,
   };
 }
@@ -133,7 +131,7 @@ export async function handleInboundEmailTrigger(
   const resolved = await resolveTrigger(to, senderEmail);
   if ("ok" in resolved) return resolved;
 
-  const { orgId, orgSlug, userId, composeId, agentId } = resolved;
+  const { orgId, orgSlug, userId, agentId } = resolved;
 
   log.debug("Processing email trigger", {
     orgSlug,
@@ -211,14 +209,13 @@ export async function handleInboundEmailTrigger(
       secret: generateCallbackSecret(),
       payload: {
         senderEmail,
-        composeId,
+        agentId,
         userId,
         inboundEmailId: emailId,
         replyToken,
         inboundMessageId,
         inboundReferences,
         subject,
-        triggerLocalPart: orgSlug,
         runtimeOrgId: orgId,
         replyRecipientTo: replyRecipients.to,
         replyRecipientCc: replyRecipients.cc,

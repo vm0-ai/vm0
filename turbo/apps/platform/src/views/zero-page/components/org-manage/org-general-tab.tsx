@@ -39,7 +39,6 @@ import {
   setFileInputEl$,
   logoLoaded$,
   setLogoLoaded$,
-  profileSectionRef$,
   leaving$,
   setLeaving$,
   deleting$,
@@ -87,8 +86,6 @@ function ProfileSection({
   org: OrgResponse;
   isAdmin: boolean;
 }) {
-  const sectionRef = useSet(profileSectionRef$);
-
   const name = useGet(profileName$);
   const setName = useSet(setProfileName$);
 
@@ -192,7 +189,7 @@ function ProfileSection({
   };
 
   return (
-    <section ref={sectionRef} className="flex flex-col gap-3">
+    <section className="flex flex-col gap-3">
       <h3 className="text-sm font-medium text-foreground">Profile</h3>
       <div
         className="overflow-hidden rounded-xl bg-card"

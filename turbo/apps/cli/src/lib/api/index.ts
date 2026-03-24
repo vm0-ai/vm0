@@ -34,11 +34,11 @@ export {
   listStorages,
 } from "./domains/storages";
 
-// Domain modules - User Preferences
+// Domain modules - Zero User Preferences
 export {
-  getUserPreferences,
-  updateUserPreferences,
-} from "./domains/user-preferences";
+  getZeroUserPreferences,
+  updateZeroUserPreferences,
+} from "./domains/zero-user-preferences";
 
 // Domain modules - Skills
 export { resolveSkills } from "./domains/skills";

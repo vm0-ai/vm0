@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../../src/lib/callback";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
-import { agentComposes } from "../../../../../../src/db/schema/agent-compose";
+import { zeroAgents } from "../../../../../../src/db/schema/zero-agent";
 import { emailThreadSessions } from "../../../../../../src/db/schema/email-thread-session";
 import { getUserEmail } from "../../../../../../src/lib/auth/get-user-email";
 import { getRunOutputText } from "../../../../../../src/lib/run/extract-run-output";
@@ -124,19 +124,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return errorResponse("Email thread session not found", 404);
   }
 
-  // Get compose name
-  const [compose] = await globalThis.services.db
-    .select({ name: agentComposes.name, orgId: agentComposes.orgId })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, session.composeId))
+  // Get agent name and org
+  const [agent] = await globalThis.services.db
+    .select({ name: zeroAgents.name, orgId: zeroAgents.orgId })
+    .from(zeroAgents)
+    .where(eq(zeroAgents.id, session.agentId))
     .limit(1);
 
-  if (!compose) {
-    return errorResponse("Compose not found", 404);
+  if (!agent) {
+    return errorResponse("Agent not found", 404);
   }
 
   // Resolve org slug for from address
-  const orgId = session.orgId ?? compose.orgId;
+  const orgId = session.orgId ?? agent.orgId;
   const org = await getOrgData(orgId);
 
   // Get user email
@@ -180,10 +180,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   await enqueueEmail({
     from: buildFromAddress(org.slug),
     to: emailTo,
-    subject: `Re: VM0 - Scheduled run for "${compose.name}" completed`,
+    subject: `Re: VM0 - Scheduled run for "${agent.name}" completed`,
     template: {
       template: "agent-reply",
-      props: { agentName: compose.name, output, logsUrl, unsubscribeUrl },
+      props: { agentName: agent.name, output, logsUrl, unsubscribeUrl },
     },
     cc: emailCc,
     replyTo: buildReplyToAddress(session.replyToToken),
@@ -198,7 +198,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   log.info("Sent email reply", {
     runId,
     status,
-    agentName: compose.name,
+    agentName: agent.name,
   });
 
   return NextResponse.json({ success: true });

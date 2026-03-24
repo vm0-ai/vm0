@@ -1,5 +1,26 @@
 # Changelog
 
+## [8.104.0](https://github.com/vm0-ai/vm0/compare/core-v8.103.0...core-v8.104.0) (2026-03-24)
+
+
+### Features
+
+* add firewall config for airtable connector ([#6447](https://github.com/vm0-ai/vm0/issues/6447)) ([623ce21](https://github.com/vm0-ai/vm0/commit/623ce216937ac92fd0bc588e2ef2e8962f9efed4)), closes [#6318](https://github.com/vm0-ai/vm0/issues/6318)
+* add firewall config for zapsign connector ([#6444](https://github.com/vm0-ai/vm0/issues/6444)) ([5779f7c](https://github.com/vm0-ai/vm0/commit/5779f7cd6c8d5518f918bc0de9c42f164f5a2e1e)), closes [#6422](https://github.com/vm0-ai/vm0/issues/6422)
+
+## [8.103.0](https://github.com/vm0-ai/vm0/compare/core-v8.102.0...core-v8.103.0) (2026-03-24)
+
+
+### Features
+
+* add firewall config for agentmail connector ([#6430](https://github.com/vm0-ai/vm0/issues/6430)) ([0909453](https://github.com/vm0-ai/vm0/commit/0909453a790adef33343f534a25a0a341756869e)), closes [#6316](https://github.com/vm0-ai/vm0/issues/6316)
+* add firewall config for zeptomail connector ([#6436](https://github.com/vm0-ai/vm0/issues/6436)) ([a4c8553](https://github.com/vm0-ai/vm0/commit/a4c855325740fd962b883954135add341fd3e79b)), closes [#6424](https://github.com/vm0-ai/vm0/issues/6424)
+
+
+### Refactoring
+
+* **db:** rename zeroAgentId to agentId across codebase ([#6272](https://github.com/vm0-ai/vm0/issues/6272)) ([4d3b01d](https://github.com/vm0-ai/vm0/commit/4d3b01de976b2a200117f3b0deed8bb841f24a62))
+
 ## [8.102.0](https://github.com/vm0-ai/vm0/compare/core-v8.101.0...core-v8.102.0) (2026-03-24)
 
 

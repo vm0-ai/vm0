@@ -271,7 +271,7 @@ describe("deleteUserData", () => {
     const { userId, orgId } = await context.setupUser();
 
     // Composes, sessions, runs
-    const { composeId } = await createTestCompose("full-user-test");
+    const { composeId, agentId } = await createTestCompose("full-user-test");
     const session = await createTestAgentSession(userId, composeId);
     const { runId } = await createTestRunInDb(userId, composeId, {
       status: "running",
@@ -304,7 +304,7 @@ describe("deleteUserData", () => {
     // Email thread session
     await createTestEmailThreadSession({
       userId,
-      composeId,
+      agentId,
       agentSessionId: session.id,
       replyToToken: uniqueId("reply"),
     });

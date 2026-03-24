@@ -215,7 +215,7 @@ describe("deleteOrgData", () => {
     const { userId, orgId } = await context.setupUser();
 
     // Composes, sessions, runs
-    const { composeId } = await createTestCompose("full-org-test");
+    const { composeId, agentId } = await createTestCompose("full-org-test");
     const session = await createTestAgentSession(userId, composeId);
     const { runId } = await createTestRunInDb(userId, composeId, {
       status: "running",
@@ -253,7 +253,7 @@ describe("deleteOrgData", () => {
     // Email thread session
     await createTestEmailThreadSession({
       userId,
-      composeId,
+      agentId,
       agentSessionId: session.id,
       replyToToken: uniqueId("reply"),
     });

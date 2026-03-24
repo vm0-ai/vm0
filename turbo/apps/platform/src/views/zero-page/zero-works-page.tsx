@@ -25,7 +25,6 @@ import {
   uninstallSlackOrg$,
   showUninstallDialog$,
   setShowUninstallDialog$,
-  slackPollingRef$,
 } from "../../signals/zero-page/zero-slack.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import slackIconImg from "./assets/slack-icon.svg";
@@ -135,14 +134,9 @@ function SlackCard({ agentName }: { agentName: string }) {
   const isInstalled = slackData?.isInstalled ?? isConnected;
   const isAdmin = slackData?.isAdmin ?? false;
 
-  const pollingRef = useSet(slackPollingRef$);
-
   return (
     <>
-      <div
-        ref={isConnected ? undefined : pollingRef}
-        className="zero-card flex items-center gap-4 p-4"
-      >
+      <div className="zero-card flex items-center gap-4 p-4">
         <div className="shrink-0">
           <img src={slackIconImg} alt="" className="h-7 w-7" />
         </div>

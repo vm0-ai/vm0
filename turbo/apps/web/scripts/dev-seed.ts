@@ -3,12 +3,12 @@
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { eq, sql } from "drizzle-orm";
-import { VM0_MODEL_TO_PROVIDER, resolveSkillRef } from "@vm0/core";
+import { VM0_MODEL_TO_PROVIDER } from "@vm0/core";
 import { schema } from "../src/db/db";
 import { creditPricing } from "../src/db/schema/credit-pricing";
 import { vm0ApiKeys } from "../src/db/schema/vm0-api-key";
 import { skills } from "../src/db/schema/skill";
-import { SEED_SKILLS } from "../src/lib/zero/seed-skills";
+import { SEED_SKILLS, buildSeedSkillValues } from "../src/lib/zero/seed-skills";
 
 /**
  * Dev seed: populate credit_pricing, vm0_api_keys, and skills tables.
@@ -122,23 +122,7 @@ async function devSeed() {
 
     // --- skills (seed skills + common connectors, batch insert) ---
     console.log("Seeding skills...");
-    const skillNames = [...SEED_SKILLS, "github"];
-    const skillValues = skillNames.map((name) => {
-      const url = resolveSkillRef(name);
-      const fullPath = url.replace("https://github.com/", "");
-      return {
-        url,
-        name,
-        fullPath,
-        versionHash: null,
-        frontmatter: {
-          name,
-          description: `${name} skill`,
-          vm0_secrets: [] as string[],
-          vm0_vars: [] as string[],
-        },
-      };
-    });
+    const skillValues = buildSeedSkillValues([...SEED_SKILLS, "github"]);
     const inserted = await db
       .insert(skills)
       .values(skillValues)
@@ -146,7 +130,7 @@ async function devSeed() {
       .returning({ id: skills.id });
     const seededCount = inserted.length;
     console.log(
-      `✅ Seeded skills: ${seededCount} new, ${skillNames.length - seededCount} already existed`,
+      `✅ Seeded skills: ${seededCount} new, ${skillValues.length - seededCount} already existed`,
     );
   } finally {
     await client.end();

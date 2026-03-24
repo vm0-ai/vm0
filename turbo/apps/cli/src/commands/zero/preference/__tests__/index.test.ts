@@ -1,5 +1,5 @@
 /**
- * Tests for preference command
+ * Tests for zero preference command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -9,12 +9,12 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
-import { server } from "../../../mocks/server";
-import { preferenceCommand } from "../index";
+import { server } from "../../../../mocks/server";
+import { zeroPreferenceCommand } from "../index";
 import prompts from "prompts";
 import chalk from "chalk";
 
-describe("preference command", () => {
+describe("zero preference command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -65,7 +65,7 @@ describe("preference command", () => {
   describe("display preferences (no flags)", () => {
     it("should display current preferences when no flags provided", async () => {
       server.use(
-        http.get("http://localhost:3000/api/user/preferences", () => {
+        http.get("http://localhost:3000/api/zero/user-preferences", () => {
           return HttpResponse.json(
             defaultPreferences({
               timezone: "America/New_York",
@@ -76,7 +76,7 @@ describe("preference command", () => {
         }),
       );
 
-      await preferenceCommand.parseAsync(["node", "cli"]);
+      await zeroPreferenceCommand.parseAsync(["node", "cli"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Current preferences:");
@@ -87,12 +87,12 @@ describe("preference command", () => {
 
     it("should show 'not set' when timezone is null", async () => {
       server.use(
-        http.get("http://localhost:3000/api/user/preferences", () => {
+        http.get("http://localhost:3000/api/zero/user-preferences", () => {
           return HttpResponse.json(defaultPreferences());
         }),
       );
 
-      await preferenceCommand.parseAsync(["node", "cli"]);
+      await zeroPreferenceCommand.parseAsync(["node", "cli"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("not set");
@@ -100,38 +100,38 @@ describe("preference command", () => {
 
     it("should show timezone hint in non-interactive mode when timezone not set", async () => {
       server.use(
-        http.get("http://localhost:3000/api/user/preferences", () => {
+        http.get("http://localhost:3000/api/zero/user-preferences", () => {
           return HttpResponse.json(defaultPreferences());
         }),
       );
 
-      await preferenceCommand.parseAsync(["node", "cli"]);
+      await zeroPreferenceCommand.parseAsync(["node", "cli"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("vm0 preference --timezone");
+      expect(logCalls).toContain("vm0 zero preference --timezone");
     });
 
     it("should not show timezone hint when timezone is already set", async () => {
       server.use(
-        http.get("http://localhost:3000/api/user/preferences", () => {
+        http.get("http://localhost:3000/api/zero/user-preferences", () => {
           return HttpResponse.json(
             defaultPreferences({ timezone: "Asia/Shanghai" }),
           );
         }),
       );
 
-      await preferenceCommand.parseAsync(["node", "cli"]);
+      await zeroPreferenceCommand.parseAsync(["node", "cli"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).not.toContain("vm0 preference --timezone");
+      expect(logCalls).not.toContain("vm0 zero preference --timezone");
     });
   });
 
   describe("--timezone flag", () => {
     it("should update timezone with a valid IANA timezone", async () => {
       server.use(
-        http.put(
-          "http://localhost:3000/api/user/preferences",
+        http.post(
+          "http://localhost:3000/api/zero/user-preferences",
           async ({ request }) => {
             const body = (await request.json()) as { timezone?: string };
             expect(body.timezone).toBe("America/New_York");
@@ -142,7 +142,7 @@ describe("preference command", () => {
         ),
       );
 
-      await preferenceCommand.parseAsync([
+      await zeroPreferenceCommand.parseAsync([
         "node",
         "cli",
         "--timezone",
@@ -156,7 +156,7 @@ describe("preference command", () => {
 
     it("should exit with error for invalid timezone", async () => {
       await expect(async () => {
-        await preferenceCommand.parseAsync([
+        await zeroPreferenceCommand.parseAsync([
           "node",
           "cli",
           "--timezone",
@@ -174,8 +174,8 @@ describe("preference command", () => {
   describe("--notify-email flag", () => {
     it("should enable email notifications with 'on'", async () => {
       server.use(
-        http.put(
-          "http://localhost:3000/api/user/preferences",
+        http.post(
+          "http://localhost:3000/api/zero/user-preferences",
           async ({ request }) => {
             const body = (await request.json()) as { notifyEmail?: boolean };
             expect(body.notifyEmail).toBe(true);
@@ -184,7 +184,7 @@ describe("preference command", () => {
         ),
       );
 
-      await preferenceCommand.parseAsync([
+      await zeroPreferenceCommand.parseAsync([
         "node",
         "cli",
         "--notify-email",
@@ -197,8 +197,8 @@ describe("preference command", () => {
 
     it("should disable email notifications with 'off'", async () => {
       server.use(
-        http.put(
-          "http://localhost:3000/api/user/preferences",
+        http.post(
+          "http://localhost:3000/api/zero/user-preferences",
           async ({ request }) => {
             const body = (await request.json()) as { notifyEmail?: boolean };
             expect(body.notifyEmail).toBe(false);
@@ -209,7 +209,7 @@ describe("preference command", () => {
         ),
       );
 
-      await preferenceCommand.parseAsync([
+      await zeroPreferenceCommand.parseAsync([
         "node",
         "cli",
         "--notify-email",
@@ -222,7 +222,7 @@ describe("preference command", () => {
 
     it("should exit with error for invalid notify-email value", async () => {
       await expect(async () => {
-        await preferenceCommand.parseAsync([
+        await zeroPreferenceCommand.parseAsync([
           "node",
           "cli",
           "--notify-email",
@@ -239,8 +239,8 @@ describe("preference command", () => {
   describe("--notify-slack flag", () => {
     it("should enable slack notifications with 'on'", async () => {
       server.use(
-        http.put(
-          "http://localhost:3000/api/user/preferences",
+        http.post(
+          "http://localhost:3000/api/zero/user-preferences",
           async ({ request }) => {
             const body = (await request.json()) as { notifySlack?: boolean };
             expect(body.notifySlack).toBe(true);
@@ -249,7 +249,7 @@ describe("preference command", () => {
         ),
       );
 
-      await preferenceCommand.parseAsync([
+      await zeroPreferenceCommand.parseAsync([
         "node",
         "cli",
         "--notify-slack",
@@ -262,8 +262,8 @@ describe("preference command", () => {
 
     it("should disable slack notifications with 'off'", async () => {
       server.use(
-        http.put(
-          "http://localhost:3000/api/user/preferences",
+        http.post(
+          "http://localhost:3000/api/zero/user-preferences",
           async ({ request }) => {
             const body = (await request.json()) as { notifySlack?: boolean };
             expect(body.notifySlack).toBe(false);
@@ -274,7 +274,7 @@ describe("preference command", () => {
         ),
       );
 
-      await preferenceCommand.parseAsync([
+      await zeroPreferenceCommand.parseAsync([
         "node",
         "cli",
         "--notify-slack",
@@ -289,8 +289,8 @@ describe("preference command", () => {
   describe("multiple flags", () => {
     it("should update timezone and email notifications together", async () => {
       server.use(
-        http.put(
-          "http://localhost:3000/api/user/preferences",
+        http.post(
+          "http://localhost:3000/api/zero/user-preferences",
           async ({ request }) => {
             const body = (await request.json()) as {
               timezone?: string;
@@ -308,7 +308,7 @@ describe("preference command", () => {
         ),
       );
 
-      await preferenceCommand.parseAsync([
+      await zeroPreferenceCommand.parseAsync([
         "node",
         "cli",
         "--timezone",
@@ -327,8 +327,8 @@ describe("preference command", () => {
   describe("on/off value parsing", () => {
     it("should accept 'true' as on", async () => {
       server.use(
-        http.put(
-          "http://localhost:3000/api/user/preferences",
+        http.post(
+          "http://localhost:3000/api/zero/user-preferences",
           async ({ request }) => {
             const body = (await request.json()) as { notifyEmail?: boolean };
             expect(body.notifyEmail).toBe(true);
@@ -337,7 +337,7 @@ describe("preference command", () => {
         ),
       );
 
-      await preferenceCommand.parseAsync([
+      await zeroPreferenceCommand.parseAsync([
         "node",
         "cli",
         "--notify-email",
@@ -350,8 +350,8 @@ describe("preference command", () => {
 
     it("should accept 'false' as off", async () => {
       server.use(
-        http.put(
-          "http://localhost:3000/api/user/preferences",
+        http.post(
+          "http://localhost:3000/api/zero/user-preferences",
           async ({ request }) => {
             const body = (await request.json()) as { notifyEmail?: boolean };
             expect(body.notifyEmail).toBe(false);
@@ -362,7 +362,7 @@ describe("preference command", () => {
         ),
       );
 
-      await preferenceCommand.parseAsync([
+      await zeroPreferenceCommand.parseAsync([
         "node",
         "cli",
         "--notify-email",
@@ -375,12 +375,12 @@ describe("preference command", () => {
 
     it("should accept '1' as on", async () => {
       server.use(
-        http.put("http://localhost:3000/api/user/preferences", () => {
+        http.post("http://localhost:3000/api/zero/user-preferences", () => {
           return HttpResponse.json(defaultPreferences({ notifySlack: true }));
         }),
       );
 
-      await preferenceCommand.parseAsync([
+      await zeroPreferenceCommand.parseAsync([
         "node",
         "cli",
         "--notify-slack",
@@ -393,12 +393,12 @@ describe("preference command", () => {
 
     it("should accept '0' as off", async () => {
       server.use(
-        http.put("http://localhost:3000/api/user/preferences", () => {
+        http.post("http://localhost:3000/api/zero/user-preferences", () => {
           return HttpResponse.json(defaultPreferences({ notifySlack: false }));
         }),
       );
 
-      await preferenceCommand.parseAsync([
+      await zeroPreferenceCommand.parseAsync([
         "node",
         "cli",
         "--notify-slack",
@@ -419,11 +419,11 @@ describe("preference command", () => {
       });
 
       server.use(
-        http.get("http://localhost:3000/api/user/preferences", () => {
+        http.get("http://localhost:3000/api/zero/user-preferences", () => {
           return HttpResponse.json(defaultPreferences());
         }),
-        http.put(
-          "http://localhost:3000/api/user/preferences",
+        http.post(
+          "http://localhost:3000/api/zero/user-preferences",
           async ({ request }) => {
             const body = (await request.json()) as { timezone?: string };
             expect(body.timezone).toBe("Europe/London");
@@ -439,7 +439,7 @@ describe("preference command", () => {
       // 2. false for email notification prompt
       prompts.inject(["Europe/London", false]);
 
-      await preferenceCommand.parseAsync(["node", "cli"]);
+      await zeroPreferenceCommand.parseAsync(["node", "cli"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Timezone set to");
@@ -454,12 +454,12 @@ describe("preference command", () => {
       });
 
       server.use(
-        http.get("http://localhost:3000/api/user/preferences", () => {
+        http.get("http://localhost:3000/api/zero/user-preferences", () => {
           return HttpResponse.json(
             defaultPreferences({ timezone: "Asia/Tokyo" }),
           );
         }),
-        http.put("http://localhost:3000/api/user/preferences", () => {
+        http.post("http://localhost:3000/api/zero/user-preferences", () => {
           return HttpResponse.json(
             defaultPreferences({ timezone: "Asia/Tokyo", notifyEmail: true }),
           );
@@ -469,7 +469,7 @@ describe("preference command", () => {
       // Timezone already set, so only email notification prompt
       prompts.inject([true]);
 
-      await preferenceCommand.parseAsync(["node", "cli"]);
+      await zeroPreferenceCommand.parseAsync(["node", "cli"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Email notifications enabled");
@@ -483,7 +483,7 @@ describe("preference command", () => {
       });
 
       server.use(
-        http.get("http://localhost:3000/api/user/preferences", () => {
+        http.get("http://localhost:3000/api/zero/user-preferences", () => {
           return HttpResponse.json(
             defaultPreferences({
               timezone: "America/Chicago",
@@ -493,11 +493,11 @@ describe("preference command", () => {
         }),
       );
 
-      await preferenceCommand.parseAsync(["node", "cli"]);
+      await zeroPreferenceCommand.parseAsync(["node", "cli"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Current preferences:");
-      // Should not prompt - no PUT request expected
+      // Should not prompt - no POST request expected
     });
 
     it("should skip timezone prompt when user enters empty value", async () => {
@@ -508,7 +508,7 @@ describe("preference command", () => {
       });
 
       server.use(
-        http.get("http://localhost:3000/api/user/preferences", () => {
+        http.get("http://localhost:3000/api/zero/user-preferences", () => {
           return HttpResponse.json(defaultPreferences());
         }),
       );
@@ -516,7 +516,7 @@ describe("preference command", () => {
       // Empty string for timezone (skip), false for email
       prompts.inject(["", false]);
 
-      await preferenceCommand.parseAsync(["node", "cli"]);
+      await zeroPreferenceCommand.parseAsync(["node", "cli"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).not.toContain("Timezone set to");
@@ -526,7 +526,7 @@ describe("preference command", () => {
   describe("error handling", () => {
     it("should handle authentication error", async () => {
       server.use(
-        http.get("http://localhost:3000/api/user/preferences", () => {
+        http.get("http://localhost:3000/api/zero/user-preferences", () => {
           return HttpResponse.json(
             {
               error: {
@@ -540,7 +540,7 @@ describe("preference command", () => {
       );
 
       await expect(async () => {
-        await preferenceCommand.parseAsync(["node", "cli"]);
+        await zeroPreferenceCommand.parseAsync(["node", "cli"]);
       }).rejects.toThrow("process.exit called");
 
       const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
@@ -550,7 +550,7 @@ describe("preference command", () => {
 
     it("should handle API error when updating preferences", async () => {
       server.use(
-        http.put("http://localhost:3000/api/user/preferences", () => {
+        http.post("http://localhost:3000/api/zero/user-preferences", () => {
           return HttpResponse.json(
             {
               error: {
@@ -564,7 +564,7 @@ describe("preference command", () => {
       );
 
       await expect(async () => {
-        await preferenceCommand.parseAsync([
+        await zeroPreferenceCommand.parseAsync([
           "node",
           "cli",
           "--timezone",
@@ -585,7 +585,7 @@ describe("preference command", () => {
       });
 
       server.use(
-        http.get("http://localhost:3000/api/user/preferences", () => {
+        http.get("http://localhost:3000/api/zero/user-preferences", () => {
           return HttpResponse.json(defaultPreferences());
         }),
       );
@@ -594,7 +594,7 @@ describe("preference command", () => {
       prompts.inject(["Not/A/Timezone", false]);
 
       await expect(async () => {
-        await preferenceCommand.parseAsync(["node", "cli"]);
+        await zeroPreferenceCommand.parseAsync(["node", "cli"]);
       }).rejects.toThrow("process.exit called");
 
       const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
