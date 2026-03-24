@@ -131,6 +131,7 @@ impl CowDevice {
         };
 
         // 3. Create or reuse COW sparse file and attach to loop device.
+        let created_cow = existing_cow.is_none();
         let cow_file = match existing_cow {
             Some(path) => path,
             None => {
@@ -156,6 +157,9 @@ impl CowDevice {
         let cow_loop = match losetup::attach(&cow_file, false) {
             Ok(l) => l,
             Err(e) => {
+                if created_cow {
+                    let _ = fs::remove_file(&cow_file);
+                }
                 let _ = losetup::detach(&base_loop);
                 return Err(e);
             }
@@ -167,6 +171,9 @@ impl CowDevice {
         if let Err(e) = dmsetup::create_linear(&origin_name, &base_loop_str, sectors) {
             let _ = losetup::detach(&cow_loop);
             let _ = losetup::detach(&base_loop);
+            if created_cow {
+                let _ = fs::remove_file(&cow_file);
+            }
             return Err(e);
         }
 
@@ -185,6 +192,9 @@ impl CowDevice {
                 let _ = dmsetup::remove(&origin_name);
                 let _ = losetup::detach(&cow_loop);
                 let _ = losetup::detach(&base_loop);
+                if created_cow {
+                    let _ = fs::remove_file(&cow_file);
+                }
                 return Err(e);
             }
         };
