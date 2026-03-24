@@ -114,6 +114,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   jira: ["jira"],
   linear: ["linear"],
   monday: ["monday"],
+  neon: ["neon"],
   figma: ["figma"],
   firecrawl: ["firecrawl"],
   notion: ["notion"],

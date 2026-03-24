@@ -24,6 +24,7 @@ import { generate as generateHubspot } from "./hubspot";
 import { generate as generateJira } from "./jira";
 import { generate as generateLinear } from "./linear";
 import { generate as generateMonday } from "./monday";
+import { generate as generateNeon } from "./neon";
 import { generate as generateNotion } from "./notion";
 import { generate as generateOpenai } from "./openai";
 import { generate as generatePerplexity } from "./perplexity";
@@ -61,6 +62,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   jira: generateJira,
   linear: generateLinear,
   monday: generateMonday,
+  neon: generateNeon,
   notion: generateNotion,
   openai: generateOpenai,
   perplexity: generatePerplexity,

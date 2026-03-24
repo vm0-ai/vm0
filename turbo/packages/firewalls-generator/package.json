@@ -29,6 +29,7 @@
     "generate:jira": "tsx src/index.ts jira",
     "generate:linear": "tsx src/index.ts linear",
     "generate:monday": "tsx src/index.ts monday",
+    "generate:neon": "tsx src/index.ts neon",
     "generate:notion": "tsx src/index.ts notion",
     "generate:openai": "tsx src/index.ts openai",
     "generate:perplexity": "tsx src/index.ts perplexity",
