@@ -218,7 +218,6 @@ export async function handleInboundEmailTrigger(
         inboundMessageId,
         inboundReferences,
         subject,
-        triggerLocalPart: orgSlug,
         runtimeOrgId: orgId,
         replyRecipientTo: replyRecipients.to,
         replyRecipientCc: replyRecipients.cc,

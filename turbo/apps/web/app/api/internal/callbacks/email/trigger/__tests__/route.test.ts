@@ -31,7 +31,6 @@ interface TriggerCallbackPayload {
   inboundMessageId?: string;
   inboundReferences?: string;
   subject?: string;
-  triggerLocalPart?: string;
   replyRecipientTo?: string[];
   replyRecipientCc?: string[];
 }
@@ -150,7 +149,6 @@ describe("POST /api/internal/callbacks/email/trigger", () => {
 
       const replyToken = generateReplyToken(crypto.randomUUID());
       const senderEmail = "sender@example.com";
-      const triggerLocalPart = `my-org+${agentName}`;
       const payload: TriggerCallbackPayload = {
         senderEmail,
         composeId,
@@ -159,7 +157,6 @@ describe("POST /api/internal/callbacks/email/trigger", () => {
         replyToken,
         inboundMessageId: "<orig-msg-id@example.com>",
         subject: "Help me with this",
-        triggerLocalPart,
       };
 
       const { secret } = await createTestCallback({
@@ -212,7 +209,6 @@ describe("POST /api/internal/callbacks/email/trigger", () => {
         inboundEmailId: "email-456",
         replyToken,
         subject: "Re: Original Topic",
-        triggerLocalPart: agentName,
       };
 
       const { secret } = await createTestCallback({
@@ -254,7 +250,6 @@ describe("POST /api/internal/callbacks/email/trigger", () => {
         inboundEmailId: "email-replyall",
         replyToken,
         subject: "Group discussion",
-        triggerLocalPart: agentName,
         replyRecipientTo: ["user-a@example.com", "user-b@example.com"],
         replyRecipientCc: ["user-c@example.com"],
       };
@@ -298,7 +293,6 @@ describe("POST /api/internal/callbacks/email/trigger", () => {
         userId: user.userId,
         inboundEmailId: "email-fallback",
         replyToken,
-        triggerLocalPart: agentName,
       };
 
       const { secret } = await createTestCallback({

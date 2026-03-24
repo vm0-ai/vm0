@@ -581,7 +581,6 @@ describe("POST /api/webhooks/email/inbound", () => {
         replyToken: expect.any(String),
         inboundMessageId: "<default-msg-id@example.com>",
         subject: "Test Subject",
-        triggerLocalPart: orgSlug,
       });
     });
 

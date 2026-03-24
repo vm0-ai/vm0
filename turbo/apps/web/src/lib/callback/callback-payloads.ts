@@ -39,7 +39,6 @@ export interface EmailTriggerCallbackPayload {
   inboundMessageId?: string;
   inboundReferences?: string;
   subject?: string;
-  triggerLocalPart?: string;
   runtimeOrgId?: string;
   replyRecipientTo?: string[];
   replyRecipientCc?: string[];
