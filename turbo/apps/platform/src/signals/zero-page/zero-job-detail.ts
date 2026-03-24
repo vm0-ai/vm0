@@ -461,6 +461,9 @@ interface ScheduleItem {
   agentId: string;
   name: string;
   enabled: boolean;
+  notifyEmail: boolean;
+  notifySlack: boolean;
+  slackChannelId: string | null;
   triggerType: "cron" | "once" | "loop";
   cronExpression: string | null;
   atTime: string | null;
@@ -561,6 +564,9 @@ export const zeroJobScheduleEntries$ = computed((get) => {
         prompt: s.prompt,
         description: s.description,
         enabled: s.enabled,
+        notifyEmail: s.notifyEmail,
+        notifySlack: s.notifySlack,
+        slackChannelId: s.slackChannelId,
         name: s.name,
         timezone: s.timezone,
         intervalSeconds: s.intervalSeconds,

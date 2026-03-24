@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { env } from "../../../../../../src/env";
-import { getSlackRedirectBaseUrl } from "../../../../../../src/lib/slack";
+import { getApiUrl } from "../../../../../../src/lib/callback";
 import { slackOrgInstallations } from "../../../../../../src/db/schema/slack-org-installation";
 
 /**
@@ -60,8 +60,7 @@ export async function GET(request: Request) {
     );
   }
 
-  const baseUrl = getSlackRedirectBaseUrl(request.url);
-  const redirectUri = `${baseUrl}/api/zero/slack/oauth/callback`;
+  const redirectUri = `${getApiUrl()}/api/zero/slack/oauth/callback`;
 
   const state = JSON.stringify({ orgId, vm0UserId, flow: "connect" });
 

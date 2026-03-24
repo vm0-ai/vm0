@@ -504,11 +504,11 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       expect(data.expiresAt).toBeTypeOf("number");
     });
 
-    it("should use existing token when refresh fails", async () => {
+    it("should return 502 when token refresh fails", async () => {
       const expiredAt = new Date(Date.now() - 60 * 1000);
       await setupNotionConnector({ tokenExpiresAt: expiredAt });
 
-      // Provider returns error
+      // Provider returns error (e.g. refresh token revoked)
       server.use(
         mswHttp.post(NOTION_TOKEN_URL, () =>
           HttpResponse.json({ error: "invalid_grant" }, { status: 400 }),
@@ -533,13 +533,86 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         ),
       );
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(502);
       const data = await response.json();
-      // Falls back to old token
-      expect(data.headers.Authorization).toBe("Bearer old-notion-token");
-      // expiresAt is the original expired value (not cached for long by addon)
-      const expiredEpoch = Math.floor(expiredAt.getTime() / 1000);
-      expect(data.expiresAt).toBe(expiredEpoch);
+      expect(data.error.code).toBe("TOKEN_REFRESH_FAILED");
+      expect(data.error.connectors).toEqual(["notion"]);
+    });
+
+    it("should return 502 when one of multiple connectors fails to refresh", async () => {
+      const CLOSE_TOKEN_URL = "https://api.close.com/oauth2/token/";
+      const expiredAt = new Date(Date.now() - 60 * 1000);
+
+      // Setup Notion (will succeed)
+      await setupNotionConnector({ tokenExpiresAt: expiredAt });
+
+      // Setup Close (will fail)
+      vi.stubEnv("CLOSE_OAUTH_CLIENT_ID", "test-close-client-id");
+      vi.stubEnv("CLOSE_OAUTH_CLIENT_SECRET", "test-close-client-secret");
+      const { reloadEnv } = await import("../../../../../../../src/env");
+      reloadEnv();
+
+      await context.createConnector(user.orgId, {
+        userId: user.userId,
+        type: "close",
+        authMethod: "oauth",
+        tokenExpiresAt: expiredAt,
+      });
+      await insertTestConnectorSecret(
+        user.orgId,
+        user.userId,
+        "CLOSE_ACCESS_TOKEN",
+        "old-close-token",
+      );
+      await insertTestConnectorSecret(
+        user.orgId,
+        user.userId,
+        "CLOSE_REFRESH_TOKEN",
+        "close-refresh-token",
+      );
+
+      // Notion refresh succeeds, Close refresh fails
+      server.use(
+        mswHttp.post(NOTION_TOKEN_URL, () =>
+          HttpResponse.json({
+            access_token: "fresh-notion-token",
+            expires_in: 3600,
+          }),
+        ),
+        mswHttp.post(CLOSE_TOKEN_URL, () =>
+          HttpResponse.json({ error: "invalid_grant" }, { status: 400 }),
+        ),
+      );
+
+      const encrypted = encryptTestSecrets({
+        NOTION_ACCESS_TOKEN: "old-notion-token",
+        NOTION_REFRESH_TOKEN: "notion-refresh-token",
+        CLOSE_ACCESS_TOKEN: "old-close-token",
+        CLOSE_REFRESH_TOKEN: "close-refresh-token",
+      });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: "Bearer ${{ secrets.NOTION_ACCESS_TOKEN }}",
+              "X-Close-Token": "Bearer ${{ secrets.CLOSE_ACCESS_TOKEN }}",
+            },
+            secretConnectorMap: {
+              NOTION_ACCESS_TOKEN: "notion",
+              CLOSE_ACCESS_TOKEN: "close",
+            },
+          },
+          testToken,
+        ),
+      );
+
+      // Should still return 502 because one connector failed
+      expect(response.status).toBe(502);
+      const data = await response.json();
+      expect(data.error.code).toBe("TOKEN_REFRESH_FAILED");
+      expect(data.error.connectors).toEqual(["close"]);
     });
   });
 });

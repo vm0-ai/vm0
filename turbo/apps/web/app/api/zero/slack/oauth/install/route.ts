@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { env } from "../../../../../../src/env";
-import { getSlackRedirectBaseUrl } from "../../../../../../src/lib/slack";
+import { getApiUrl } from "../../../../../../src/lib/callback";
 
 /**
  * Org-aware Slack OAuth Install Endpoint
@@ -22,7 +22,9 @@ const BOT_SCOPES = [
   "app_mentions:read",
   "assistant:write",
   "chat:write",
+  "channels:read",
   "channels:history",
+  "groups:read",
   "groups:history",
   "im:history",
   "im:write",
@@ -45,8 +47,7 @@ export async function GET(request: Request) {
   }
 
   const url = new URL(request.url);
-  const baseUrl = getSlackRedirectBaseUrl(request.url);
-  const redirectUri = `${baseUrl}/api/zero/slack/oauth/callback`;
+  const redirectUri = `${getApiUrl()}/api/zero/slack/oauth/callback`;
 
   const orgId = url.searchParams.get("orgId");
   const vm0UserId = url.searchParams.get("vm0UserId");

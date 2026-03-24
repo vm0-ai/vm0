@@ -13,6 +13,7 @@ import { airtableFirewall } from "./airtable.generated";
 import { asanaFirewall } from "./asana.generated";
 import { axiomFirewall } from "./axiom.generated";
 import { confluenceFirewall } from "./confluence.generated";
+import { elevenlabsFirewall } from "./elevenlabs.generated";
 import { figmaFirewall } from "./figma.generated";
 import { githubFirewall } from "./github.generated";
 import { gmailFirewall } from "./gmail.generated";
@@ -25,6 +26,7 @@ import { linearFirewall } from "./linear.generated";
 import { notionFirewall } from "./notion.generated";
 import { slackFirewall } from "./slack.generated";
 import { vercelFirewall } from "./vercel.generated";
+import { xFirewall } from "./x.generated";
 import { youtubeFirewall } from "./youtube.generated";
 import { zapierFirewall } from "./zapier.generated";
 import { zapsignFirewall } from "./zapsign.generated";
@@ -37,6 +39,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   asana: asanaFirewall,
   axiom: axiomFirewall,
   confluence: confluenceFirewall,
+  elevenlabs: elevenlabsFirewall,
   figma: figmaFirewall,
   github: githubFirewall,
   gmail: gmailFirewall,
@@ -49,6 +52,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   notion: notionFirewall,
   slack: slackFirewall,
   vercel: vercelFirewall,
+  x: xFirewall,
   youtube: youtubeFirewall,
   zapier: zapierFirewall,
   zapsign: zapsignFirewall,

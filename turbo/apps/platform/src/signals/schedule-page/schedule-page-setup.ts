@@ -8,6 +8,7 @@ import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
 import { switchActiveAgent$ } from "../zero-page/zero-chat.ts";
 import { fetchAllOrgSchedules$ } from "../zero-page/zero-schedule.ts";
+import { initSlackOrg$ } from "../zero-page/zero-slack.ts";
 import { Reason, detach } from "../utils.ts";
 
 export const setupSchedulePage$ = command(
@@ -18,6 +19,7 @@ export const setupSchedulePage$ = command(
     await Promise.all([
       set(fetchAgentsList$),
       set(initZeroOnboarding$, signal),
+      set(initSlackOrg$),
     ]);
     signal.throwIfAborted();
 

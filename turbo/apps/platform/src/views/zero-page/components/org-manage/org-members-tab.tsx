@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useGet, useLoadable, useSet } from "ccstate-react";
 import {
   IconSearch,
@@ -10,7 +11,6 @@ import {
   cn,
   Button,
   Dialog,
-  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -112,16 +112,17 @@ export function OrgMembersTab() {
     if (result.status === 200) {
       toast.success(`Invitation sent to ${email}`);
       refreshMembers();
-    } else {
-      const msg =
-        result.status === 400 ||
-        result.status === 401 ||
-        result.status === 403 ||
-        result.status === 500
-          ? result.body.error.message
-          : undefined;
-      toast.error(msg ?? `Failed to invite (${result.status})`);
+      return;
     }
+    const msg =
+      result.status === 400 ||
+      result.status === 401 ||
+      result.status === 403 ||
+      result.status === 500
+        ? result.body.error.message
+        : undefined;
+    toast.error(msg ?? `Failed to invite (${result.status})`);
+    throw new Error(msg ?? `Failed to invite (${result.status})`);
   };
 
   const handleRoleChange = async (email: string, role: OrgRole) => {
@@ -135,16 +136,17 @@ export function OrgMembersTab() {
       }
       refreshMembers();
       refreshOrg();
-    } else {
-      const msg =
-        result.status === 400 ||
-        result.status === 401 ||
-        result.status === 403 ||
-        result.status === 500
-          ? result.body.error.message
-          : undefined;
-      toast.error(msg ?? `Failed to update role (${result.status})`);
+      return;
     }
+    const msg =
+      result.status === 400 ||
+      result.status === 401 ||
+      result.status === 403 ||
+      result.status === 500
+        ? result.body.error.message
+        : undefined;
+    toast.error(msg ?? `Failed to update role (${result.status})`);
+    throw new Error(msg ?? `Failed to update role (${result.status})`);
   };
 
   const handleRemove = async (email: string) => {
@@ -153,16 +155,17 @@ export function OrgMembersTab() {
     if (result.status === 200) {
       toast.success(`Removed ${email}`);
       refreshMembers();
-    } else {
-      const msg =
-        result.status === 400 ||
-        result.status === 401 ||
-        result.status === 403 ||
-        result.status === 500
-          ? result.body.error.message
-          : undefined;
-      toast.error(msg ?? `Failed to remove member (${result.status})`);
+      return;
     }
+    const msg =
+      result.status === 400 ||
+      result.status === 401 ||
+      result.status === 403 ||
+      result.status === 500
+        ? result.body.error.message
+        : undefined;
+    toast.error(msg ?? `Failed to remove member (${result.status})`);
+    throw new Error(msg ?? `Failed to remove member (${result.status})`);
   };
 
   return (
@@ -182,13 +185,7 @@ export function OrgMembersTab() {
             className="h-9 w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input pl-9 pr-3 text-sm text-foreground outline-none placeholder:text-muted-foreground/50 transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10"
           />
         </div>
-        {isAdmin && (
-          <InviteDialog
-            onInvite={(email) =>
-              detach(handleInvite(email), Reason.DomCallback)
-            }
-          />
-        )}
+        {isAdmin && <InviteDialog onInvite={handleInvite} />}
       </div>
 
       <div
@@ -234,12 +231,8 @@ export function OrgMembersTab() {
                 member={m}
                 isCurrentUser={m.userId === currentUserId}
                 isAdmin={isAdmin}
-                onRoleChange={(email, role) =>
-                  detach(handleRoleChange(email, role), Reason.DomCallback)
-                }
-                onRemove={(email) =>
-                  detach(handleRemove(email), Reason.DomCallback)
-                }
+                onRoleChange={handleRoleChange}
+                onRemove={handleRemove}
               />
             </div>
           ))}
@@ -258,9 +251,15 @@ export function OrgMembersTab() {
   );
 }
 
-function InviteDialog({ onInvite }: { onInvite: (email: string) => void }) {
+function InviteDialog({
+  onInvite,
+}: {
+  onInvite: (email: string) => Promise<void>;
+}) {
   const email = useGet(inviteEmail$);
   const setEmail = useSet(setInviteEmail$);
+  const [open, setOpen] = useState(false);
+  const [sending, setSending] = useState(false);
 
   const trimmed = email.trim();
   const isValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
@@ -268,8 +267,37 @@ function InviteDialog({ onInvite }: { onInvite: (email: string) => void }) {
   const touched = useGet(inviteTouched$);
   const setTouched = useSet(setInviteTouched$);
 
+  const handleSend = () => {
+    setSending(true);
+    detach(
+      onInvite(trimmed).then(
+        () => {
+          setOpen(false);
+          setEmail("");
+          setSending(false);
+        },
+        (error: unknown) => {
+          setSending(false);
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Failed to send invitation";
+          toast.error(message);
+        },
+      ),
+      Reason.DomCallback,
+    );
+  };
+
   return (
-    <Dialog>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!sending) {
+          setOpen(v);
+        }
+      }}
+    >
       <DialogTrigger asChild>
         <Button size="sm" className="gap-1.5 rounded-lg">
           <IconPlus size={14} stroke={2} />
@@ -288,6 +316,7 @@ function InviteDialog({ onInvite }: { onInvite: (email: string) => void }) {
             placeholder="email@example.com"
             type="email"
             value={email}
+            disabled={sending}
             onChange={(e) => {
               setEmail(e.target.value);
               setTouched(false);
@@ -301,23 +330,17 @@ function InviteDialog({ onInvite }: { onInvite: (email: string) => void }) {
           )}
         </div>
         <DialogFooter>
-          <DialogClose asChild>
-            <Button variant="outline" size="sm">
-              Cancel
-            </Button>
-          </DialogClose>
-          <DialogClose asChild>
-            <Button
-              size="sm"
-              disabled={!isValid}
-              onClick={() => {
-                onInvite(trimmed);
-                setEmail("");
-              }}
-            >
-              Send invitation
-            </Button>
-          </DialogClose>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setOpen(false)}
+            disabled={sending}
+          >
+            Cancel
+          </Button>
+          <Button size="sm" disabled={!isValid || sending} onClick={handleSend}>
+            {sending ? "Sending..." : "Send invitation"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -334,8 +357,8 @@ function MemberRow({
   member: OrgMember;
   isCurrentUser: boolean;
   isAdmin: boolean;
-  onRoleChange: (email: string, role: OrgRole) => void;
-  onRemove: (email: string) => void;
+  onRoleChange: (email: string, role: OrgRole) => Promise<void>;
+  onRemove: (email: string) => Promise<void>;
 }) {
   const name = displayName(member);
   const initial = (name || member.email).charAt(0).toUpperCase();
@@ -404,10 +427,39 @@ function SelfDemoteAction({
   onRoleChange,
 }: {
   email: string;
-  onRoleChange: (email: string, role: OrgRole) => void;
+  onRoleChange: (email: string, role: OrgRole) => Promise<void>;
 }) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const handleConfirm = () => {
+    setLoading(true);
+    detach(
+      onRoleChange(email, "member").then(
+        () => {
+          setOpen(false);
+          setLoading(false);
+        },
+        (error: unknown) => {
+          setLoading(false);
+          const message =
+            error instanceof Error ? error.message : "Failed to change role";
+          toast.error(message);
+        },
+      ),
+      Reason.DomCallback,
+    );
+  };
+
   return (
-    <Dialog>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!loading) {
+          setOpen(v);
+        }
+      }}
+    >
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 transition-colors">
@@ -430,20 +482,22 @@ function SelfDemoteAction({
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <DialogClose asChild>
-            <Button variant="outline" size="sm">
-              Cancel
-            </Button>
-          </DialogClose>
-          <DialogClose asChild>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => onRoleChange(email, "member")}
-            >
-              Confirm
-            </Button>
-          </DialogClose>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setOpen(false)}
+            disabled={loading}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={loading}
+            onClick={handleConfirm}
+          >
+            {loading ? "Switching..." : "Confirm"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -456,13 +510,41 @@ function MemberActions({
   onRemove,
 }: {
   member: OrgMember;
-  onRoleChange: (email: string, role: OrgRole) => void;
-  onRemove: (email: string) => void;
+  onRoleChange: (email: string, role: OrgRole) => Promise<void>;
+  onRemove: (email: string) => Promise<void>;
 }) {
   const newRole: OrgRole = member.role === "admin" ? "member" : "admin";
+  const [open, setOpen] = useState(false);
+  const [removing, setRemoving] = useState(false);
+
+  const handleRemove = () => {
+    setRemoving(true);
+    detach(
+      onRemove(member.email).then(
+        () => {
+          setOpen(false);
+          setRemoving(false);
+        },
+        (error: unknown) => {
+          setRemoving(false);
+          const message =
+            error instanceof Error ? error.message : "Failed to remove member";
+          toast.error(message);
+        },
+      ),
+      Reason.DomCallback,
+    );
+  };
 
   return (
-    <Dialog>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!removing) {
+          setOpen(v);
+        }
+      }}
+    >
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 transition-colors">
@@ -470,7 +552,11 @@ function MemberActions({
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-48">
-          <DropdownMenuItem onClick={() => onRoleChange(member.email, newRole)}>
+          <DropdownMenuItem
+            onClick={() =>
+              detach(onRoleChange(member.email, newRole), Reason.DomCallback)
+            }
+          >
             {newRole === "admin" ? "Make admin" : "Make member"}
           </DropdownMenuItem>
           <DialogTrigger asChild>
@@ -490,17 +576,21 @@ function MemberActions({
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <DialogClose asChild>
-            <Button variant="outline" size="sm">
-              Cancel
-            </Button>
-          </DialogClose>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setOpen(false)}
+            disabled={removing}
+          >
+            Cancel
+          </Button>
           <Button
             variant="destructive"
             size="sm"
-            onClick={() => onRemove(member.email)}
+            disabled={removing}
+            onClick={handleRemove}
           >
-            Remove
+            {removing ? "Removing..." : "Remove"}
           </Button>
         </DialogFooter>
       </DialogContent>

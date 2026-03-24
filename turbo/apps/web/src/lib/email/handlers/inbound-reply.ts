@@ -162,7 +162,7 @@ export async function handleInboundEmailReply(
   // 10. Build callbacks for email reply notification
   const callbacks = [
     {
-      url: `${getApiUrl()}/api/internal/callbacks/email/reply`,
+      url: `${getApiUrl()}/api/zero/email/callbacks/reply`,
       secret: generateCallbackSecret(),
       payload: {
         emailThreadSessionId: session.id,

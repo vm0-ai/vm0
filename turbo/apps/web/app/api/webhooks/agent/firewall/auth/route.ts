@@ -26,21 +26,25 @@ const SECRET_TEMPLATE_RE = /\$\{\{\s*secrets\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 /**
  * Refresh expired OAuth tokens referenced by auth templates.
  * Mutates `secrets` in place with fresh token values.
- * Returns the earliest expiry timestamp (epoch seconds) or null if all are non-expiring.
  */
+interface RefreshResult {
+  expiresAt: number | null;
+  failedConnectors: string[];
+}
+
 async function refreshExpiredTokens(
   auth: SandboxAuth,
   secrets: Record<string, string>,
   secretConnectorMap: Record<string, string>,
   referencedKeys: Set<string>,
-): Promise<number | null> {
+): Promise<RefreshResult> {
   // Find which referenced secrets are refreshable OAuth tokens
   const refreshable = new Map<string, string>();
   for (const key of referencedKeys) {
     const connectorType = secretConnectorMap[key];
     if (connectorType) refreshable.set(key, connectorType);
   }
-  if (refreshable.size === 0) return null;
+  if (refreshable.size === 0) return { expiresAt: null, failedConnectors: [] };
 
   // Look up orgId from runId
   const [run] = await globalThis.services.db
@@ -51,7 +55,7 @@ async function refreshExpiredTokens(
 
   if (!run) {
     log.warn(`[${auth.runId}] Run not found for token refresh`);
-    return null;
+    return { expiresAt: null, failedConnectors: [] };
   }
 
   const connectorTypes = [...new Set(refreshable.values())];
@@ -83,7 +87,7 @@ async function refreshExpiredTokens(
     envVarsByConnector.set(ct, arr);
   }
 
-  const results = await Promise.all(
+  const refreshResults = await Promise.all(
     toRefresh.map(async (connectorType) => {
       log.debug(`[${auth.runId}] Refreshing expired ${connectorType} token`);
       const freshToken = await refreshConnectorAccessToken(
@@ -93,10 +97,8 @@ async function refreshExpiredTokens(
         secrets,
       );
       if (!freshToken) {
-        log.warn(
-          `[${auth.runId}] Failed to refresh ${connectorType} token, using existing`,
-        );
-        return false;
+        log.warn(`[${auth.runId}] Failed to refresh ${connectorType} token`);
+        return { connectorType, ok: false as const };
       }
       // refreshConnectorAccessToken updates secrets[rawSecretName] but the
       // template may reference a mapped env var name.  Sync all mapped keys
@@ -104,10 +106,13 @@ async function refreshExpiredTokens(
       for (const envVar of envVarsByConnector.get(connectorType) ?? []) {
         secrets[envVar] = freshToken;
       }
-      return true;
+      return { connectorType, ok: true as const };
     }),
   );
-  const refreshed = results.some(Boolean);
+  const refreshed = refreshResults.some((r) => r.ok);
+  const failedConnectors = refreshResults
+    .filter((r) => !r.ok)
+    .map((r) => r.connectorType);
 
   // Use accurate DB values after refresh; skip extra query if nothing changed
   const finalExpiryMap = refreshed
@@ -123,7 +128,7 @@ async function refreshExpiredTokens(
     }
   }
 
-  return earliestExpiry;
+  return { expiresAt: earliestExpiry, failedConnectors };
 }
 
 /**
@@ -161,7 +166,7 @@ function resolveTemplates(
  *
  * Auth: Sandbox JWT
  * Body: { encryptedSecrets, authHeaders, secretConnectorMap? }
- * Response: { headers, expiresAt? }
+ * Response: { headers, expiresAt? } or 502 { error } when token refresh fails
  */
 export async function POST(request: Request) {
   initServices();
@@ -235,12 +240,30 @@ export async function POST(request: Request) {
 
   // Refresh expired OAuth tokens (mutates secrets map with fresh values)
   let expiresAt: number | null = null;
+  let failedConnectors: string[] = [];
   if (secretConnectorMap) {
-    expiresAt = await refreshExpiredTokens(
+    const result = await refreshExpiredTokens(
       auth,
       secrets,
       secretConnectorMap,
       referencedKeys,
+    );
+    expiresAt = result.expiresAt;
+    failedConnectors = result.failedConnectors;
+  }
+
+  // If any connector token refresh failed, return an error so the addon
+  // surfaces a clear message instead of silently using a stale token.
+  if (failedConnectors.length > 0) {
+    return NextResponse.json(
+      {
+        error: {
+          message: `OAuth token expired and refresh failed for: ${failedConnectors.join(", ")}. The connector may need to be reconnected.`,
+          code: "TOKEN_REFRESH_FAILED",
+          connectors: failedConnectors,
+        },
+      },
+      { status: 502 },
     );
   }
 

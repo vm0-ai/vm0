@@ -11,13 +11,16 @@
   },
   "remoteUser": "vscode",
   "forwardPorts": [6080, 8443],
+  "initializeCommand": "touch .devcontainer/.env.run",
   "runArgs": [
     "-p",
     "6080",
     "-p",
     "8443",
     "--hostname",
-    "${localWorkspaceFolderBasename}"
+    "${localWorkspaceFolderBasename}",
+    "--env-file",
+    ".devcontainer/.env.run"
   ],
   "remoteEnv": {
     "CLAUDE_CONFIG_DIR": "/home/vscode/.config/claude",

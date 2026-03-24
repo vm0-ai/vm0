@@ -1278,7 +1278,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       // Register a callback (as the inbound-reply handler now does)
       await createTestCallback({
         runId,
-        url: "http://localhost/api/internal/callbacks/email/reply",
+        url: "http://localhost/api/zero/email/callbacks/reply",
         payload: {
           emailThreadSessionId: emailSession.id,
           inboundEmailId: "inbound-email-456",
@@ -1384,7 +1384,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       // Register callbacks (as executeSchedule now does)
       await createTestCallback({
         runId,
-        url: "http://localhost/api/internal/callbacks/email/schedule",
+        url: "http://localhost/api/zero/email/callbacks/schedule",
         payload: {
           scheduleId: schedule.id,
           agentId: schedule.agentId,

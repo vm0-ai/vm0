@@ -66,7 +66,7 @@ function mockReceivedEmailAttachmentsList(
 
 /** Build a valid Svix-signed webhook request */
 function createWebhookRequest(body: string, headers?: Record<string, string>) {
-  return createTestRequest("http://localhost:3000/api/webhooks/email/inbound", {
+  return createTestRequest("http://localhost:3000/api/zero/email/inbound", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -87,7 +87,7 @@ function getErrorReplyArgs() {
     | undefined;
 }
 
-describe("POST /api/webhooks/email/inbound", () => {
+describe("POST /api/zero/email/inbound", () => {
   beforeEach(() => {
     context.setupMocks();
     mockClerk({ userId: null });
@@ -96,7 +96,7 @@ describe("POST /api/webhooks/email/inbound", () => {
 
   it("should return 401 when Svix headers are missing", async () => {
     const request = createTestRequest(
-      "http://localhost:3000/api/webhooks/email/inbound",
+      "http://localhost:3000/api/zero/email/inbound",
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -199,7 +199,7 @@ describe("POST /api/webhooks/email/inbound", () => {
     expect(callbacks.length).toBeGreaterThanOrEqual(1);
 
     const emailReplyCallback = callbacks.find((c) =>
-      c.url.includes("/callbacks/email/reply"),
+      c.url.includes("/email/callbacks/reply"),
     );
     expect(emailReplyCallback).toBeDefined();
     expect(emailReplyCallback!.payload).toEqual({
@@ -576,7 +576,7 @@ describe("POST /api/webhooks/email/inbound", () => {
       expect(callbacks.length).toBeGreaterThanOrEqual(1);
 
       const triggerCallback = callbacks.find((c) =>
-        c.url.includes("/callbacks/email/trigger"),
+        c.url.includes("/email/callbacks/trigger"),
       );
       expect(triggerCallback).toBeDefined();
       expect(triggerCallback!.payload).toMatchObject({

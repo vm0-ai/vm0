@@ -83,6 +83,7 @@ export interface ScheduleEntry {
   notifySlack?: boolean;
   /** IANA timezone from the server (not derivable from `time` alone). */
   timezone?: string;
+  slackChannelId?: string | null;
   /** Raw interval in seconds for loop schedules */
   intervalSeconds?: number | null;
 }
@@ -475,6 +476,7 @@ interface ZeroScheduleCardProps {
     editName?: string;
     notifyEmail?: boolean;
     notifySlack?: boolean;
+    slackChannelId?: string | null;
   }) => Promise<void>;
   /** When provided, called to delete a schedule by name. */
   onDelete?: (name: string) => Promise<void>;
@@ -515,49 +517,22 @@ export function ZeroScheduleCard({
   const togglingIds = useGet(togglingIds$);
   const setTogglingIds = useSet(setTogglingIds$);
 
-  const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
-  const [dialogInitialValues, setDialogInitialValues] = useState<
-    Partial<ScheduleFormValues>
-  >({});
+  const editingEntry = editingScheduleId
+    ? (scheduleList.find((e) => e.id === editingScheduleId) ?? null)
+    : null;
 
   const openAddSchedule = () => {
-    setEditingScheduleId(null);
-    setDialogMode("create");
-    setDialogInitialValues({ timezone: resolvedTimezone });
     setSaveError(null);
     setAddScheduleOpen(true);
   };
 
   const openEditSchedule = (entry: ScheduleEntry) => {
-    setEditingScheduleId(entry.id);
-    setDialogMode("edit");
-    const parsed = parseScheduleTimeString(entry.time);
-    setDialogInitialValues({
-      prompt: entry.prompt,
-      description: entry.description ?? "",
-      freq: parsed.freq,
-      date: parsed.date,
-      hour: parsed.hour,
-      minute: parsed.minute,
-      timezone: entry.timezone ?? parsed.timezone,
-      loopMinutes:
-        entry.intervalSeconds !== null && entry.intervalSeconds !== undefined
-          ? Math.round(entry.intervalSeconds / 60)
-          : parsed.loopMinutes,
-      dayOfWeek: parsed.dayOfWeek ?? "1",
-      dayOfMonth: parsed.dayOfMonth ?? "1",
-      notifyEmail: entry.notifyEmail ?? false,
-      notifySlack: entry.notifySlack ?? false,
-    });
     setSaveError(null);
-    setAddScheduleOpen(true);
+    setEditingScheduleId(entry.id);
   };
 
-  const handleDialogSave = (values: ScheduleFormValues) => {
+  const handleCreateSave = (values: ScheduleFormValues) => {
     if (onSave) {
-      const editingEntry = editingScheduleId
-        ? scheduleList.find((e) => e.id === editingScheduleId)
-        : null;
       setSaveError(null);
       detach(
         onSave({
@@ -573,12 +548,11 @@ export function ZeroScheduleCard({
             values.freq === "every_week" ? values.dayOfWeek : undefined,
           dayOfMonth:
             values.freq === "every_month" ? values.dayOfMonth : undefined,
-          editName: editingEntry?.name,
           notifyEmail: values.notifyEmail,
           notifySlack: values.notifySlack,
+          slackChannelId: values.slackChannelId,
         })
           .then(() => {
-            setEditingScheduleId(null);
             setAddScheduleOpen(false);
           })
           .catch((error: unknown) => {
@@ -603,7 +577,65 @@ export function ZeroScheduleCard({
       loopMinutes:
         values.freq === "every_n_minutes" ? values.loopMinutes : undefined,
     });
+    setScheduleList((prev) => [
+      ...prev,
+      {
+        id: String(Date.now()),
+        time: timeStr,
+        prompt: values.prompt.trim(),
+      },
+    ]);
+    setAddScheduleOpen(false);
+  };
+
+  const handleEditSave = (values: ScheduleFormValues) => {
+    if (onSave) {
+      setSaveError(null);
+      detach(
+        onSave({
+          prompt: values.prompt.trim(),
+          description: values.description.trim() || undefined,
+          freq: values.freq,
+          date: values.date,
+          hour: values.hour,
+          minute: values.minute,
+          timezone: values.timezone,
+          intervalSeconds: values.loopMinutes * 60,
+          dayOfWeek:
+            values.freq === "every_week" ? values.dayOfWeek : undefined,
+          dayOfMonth:
+            values.freq === "every_month" ? values.dayOfMonth : undefined,
+          editName: editingEntry?.name,
+          notifyEmail: values.notifyEmail,
+          notifySlack: values.notifySlack,
+          slackChannelId: values.slackChannelId,
+        })
+          .then(() => {
+            setEditingScheduleId(null);
+          })
+          .catch((error: unknown) => {
+            throwIfAbort(error);
+            setSaveError(
+              error instanceof Error
+                ? error.message
+                : "Failed to save schedule",
+            );
+          }),
+        Reason.DomCallback,
+      );
+      return;
+    }
+
     if (editingScheduleId) {
+      const timeStr = buildScheduleTimeString({
+        freq: values.freq,
+        date: values.freq === "once" ? values.date : undefined,
+        hour: values.hour,
+        minute: values.minute,
+        timezone: values.timezone,
+        loopMinutes:
+          values.freq === "every_n_minutes" ? values.loopMinutes : undefined,
+      });
       setScheduleList((prev) =>
         prev.map((e) =>
           e.id === editingScheduleId
@@ -612,17 +644,7 @@ export function ZeroScheduleCard({
         ),
       );
       setEditingScheduleId(null);
-    } else {
-      setScheduleList((prev) => [
-        ...prev,
-        {
-          id: String(Date.now()),
-          time: timeStr,
-          prompt: values.prompt.trim(),
-        },
-      ]);
     }
-    setAddScheduleOpen(false);
   };
 
   return (
@@ -909,18 +931,48 @@ export function ZeroScheduleCard({
           })()}
       </CardContent>
 
+      {editingEntry &&
+        (() => {
+          const parsed = parseScheduleTimeString(editingEntry.time);
+          return (
+            <ScheduleFormDialog
+              key={editingEntry.id}
+              open
+              mode="edit"
+              onClose={() => setEditingScheduleId(null)}
+              onSave={handleEditSave}
+              saving={saving === true}
+              saveError={saveError}
+              initialValues={{
+                prompt: editingEntry.prompt,
+                description: editingEntry.description ?? "",
+                freq: parsed.freq,
+                date: parsed.date,
+                hour: parsed.hour,
+                minute: parsed.minute,
+                timezone: editingEntry.timezone ?? parsed.timezone,
+                loopMinutes:
+                  editingEntry.intervalSeconds !== null &&
+                  editingEntry.intervalSeconds !== undefined
+                    ? Math.round(editingEntry.intervalSeconds / 60)
+                    : parsed.loopMinutes,
+                dayOfWeek: parsed.dayOfWeek ?? "1",
+                dayOfMonth: parsed.dayOfMonth ?? "1",
+                notifyEmail: editingEntry.notifyEmail ?? false,
+                notifySlack: editingEntry.notifySlack ?? false,
+                slackChannelId: editingEntry.slackChannelId ?? null,
+              }}
+            />
+          );
+        })()}
       <ScheduleFormDialog
-        key={editingScheduleId ?? "new"}
         open={addScheduleOpen}
-        mode={dialogMode}
-        onClose={() => {
-          setAddScheduleOpen(false);
-          setEditingScheduleId(null);
-        }}
-        onSave={handleDialogSave}
+        mode="create"
+        onClose={() => setAddScheduleOpen(false)}
+        onSave={handleCreateSave}
         saving={saving === true}
-        initialValues={dialogInitialValues}
         saveError={saveError}
+        initialValues={{ timezone: resolvedTimezone }}
       />
     </Card>
   );

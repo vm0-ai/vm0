@@ -121,7 +121,7 @@ describe("Schedule notification control - AND logic", () => {
     const callbackUrls = callbacks.map((c) => c.url);
 
     expect(callbackUrls).toContainEqual(
-      expect.stringContaining("/callbacks/email/schedule"),
+      expect.stringContaining("/email/callbacks/schedule"),
     );
     expect(callbackUrls).toContainEqual(
       expect.stringContaining("/callbacks/slack/schedule"),
@@ -152,7 +152,7 @@ describe("Schedule notification control - AND logic", () => {
     const callbackUrls = callbacks.map((c) => c.url);
 
     expect(callbackUrls).not.toContainEqual(
-      expect.stringContaining("/callbacks/email/schedule"),
+      expect.stringContaining("/email/callbacks/schedule"),
     );
     expect(callbackUrls).toContainEqual(
       expect.stringContaining("/callbacks/slack/schedule"),
@@ -183,7 +183,7 @@ describe("Schedule notification control - AND logic", () => {
     const callbackUrls = callbacks.map((c) => c.url);
 
     expect(callbackUrls).toContainEqual(
-      expect.stringContaining("/callbacks/email/schedule"),
+      expect.stringContaining("/email/callbacks/schedule"),
     );
     expect(callbackUrls).not.toContainEqual(
       expect.stringContaining("/callbacks/slack/schedule"),
@@ -219,7 +219,7 @@ describe("Schedule notification control - AND logic", () => {
     const callbackUrls = callbacks.map((c) => c.url);
 
     expect(callbackUrls).not.toContainEqual(
-      expect.stringContaining("/callbacks/email/schedule"),
+      expect.stringContaining("/email/callbacks/schedule"),
     );
     expect(callbackUrls).toContainEqual(
       expect.stringContaining("/callbacks/slack/schedule"),
@@ -250,7 +250,7 @@ describe("Schedule notification control - AND logic", () => {
     const callbackUrls = callbacks.map((c) => c.url);
 
     expect(callbackUrls).not.toContainEqual(
-      expect.stringContaining("/callbacks/email/schedule"),
+      expect.stringContaining("/email/callbacks/schedule"),
     );
     expect(callbackUrls).not.toContainEqual(
       expect.stringContaining("/callbacks/slack/schedule"),

@@ -55,7 +55,6 @@ function initEnv() {
       SLACK_CLIENT_ID: z.string().min(1).optional(),
       SLACK_CLIENT_SECRET: z.string().min(1).optional(),
       SLACK_SIGNING_SECRET: z.string().min(1).optional(),
-      SLACK_REDIRECT_BASE_URL: z.url().optional(), // Override base URL for OAuth redirects (e.g., tunnel URL)
       VM0_DEFAULT_AGENT: z.string().min(1).optional(), // Default agent for new integrations (format: "org/name")
       VM0_TUNNEL_URL: z.url().optional(), // Tunnel URL for local development webhooks
       // Ahrefs OAuth (for connector)
@@ -245,7 +244,6 @@ function initEnv() {
       SLACK_CLIENT_ID: process.env.SLACK_CLIENT_ID,
       SLACK_CLIENT_SECRET: process.env.SLACK_CLIENT_SECRET,
       SLACK_SIGNING_SECRET: process.env.SLACK_SIGNING_SECRET,
-      SLACK_REDIRECT_BASE_URL: process.env.SLACK_REDIRECT_BASE_URL,
       VM0_DEFAULT_AGENT: process.env.VM0_DEFAULT_AGENT,
       VM0_TUNNEL_URL: process.env.VM0_TUNNEL_URL,
       AHREFS_OAUTH_CLIENT_ID: process.env.AHREFS_OAUTH_CLIENT_ID,
@@ -382,11 +380,6 @@ function initEnv() {
       if (!env.SLACK_SIGNING_SECRET) {
         throw new Error(
           "SLACK_SIGNING_SECRET is required when SLACK_INTEGRATION_ENABLED=true",
-        );
-      }
-      if (!env.SLACK_REDIRECT_BASE_URL) {
-        throw new Error(
-          "SLACK_REDIRECT_BASE_URL is required when SLACK_INTEGRATION_ENABLED=true",
         );
       }
     }

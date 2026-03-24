@@ -375,6 +375,56 @@ describe("zero schedule page - delete confirmation", () => {
       expect(deletedName).toBe("morning-briefing");
     });
   });
+
+  it("should show loading state and close only after delete completes", async () => {
+    let resolveDelete: (() => void) | null = null;
+
+    server.use(
+      http.get("*/api/zero/schedules", () => {
+        return HttpResponse.json({ schedules: createMockSchedules() });
+      }),
+      http.delete("*/api/zero/schedules/:name", () => {
+        return new Promise<Response>((resolve) => {
+          resolveDelete = () =>
+            resolve(new HttpResponse(null, { status: 204 }));
+        });
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+
+    await renderSchedulePage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Delete Every weekday at 9:00 AM"),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText("Delete Every weekday at 9:00 AM"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    // Dialog should stay open with loading state
+    await waitFor(() => {
+      expect(screen.getByText("Deleting...")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+
+    // Resolve the delete
+    resolveDelete!();
+
+    // Dialog should close after completion
+    await waitFor(() => {
+      expect(screen.queryByText("Delete schedule?")).not.toBeInTheDocument();
+    });
+  });
 });
 
 describe("zero schedule page - edit dialog confirm close", () => {

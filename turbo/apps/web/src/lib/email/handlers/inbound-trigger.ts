@@ -205,7 +205,7 @@ export async function handleInboundEmailTrigger(
   // 11. Build callback
   const callbacks = [
     {
-      url: `${getApiUrl()}/api/internal/callbacks/email/trigger`,
+      url: `${getApiUrl()}/api/zero/email/callbacks/trigger`,
       secret: generateCallbackSecret(),
       payload: {
         senderEmail,

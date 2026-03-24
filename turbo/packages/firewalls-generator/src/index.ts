@@ -12,6 +12,7 @@ import { generate as generateAirtable } from "./airtable";
 import { generate as generateAsana } from "./asana";
 import { generate as generateAxiom } from "./axiom";
 import { generate as generateConfluence } from "./confluence";
+import { generate as generateElevenlabs } from "./elevenlabs";
 import { generate as generateFigma } from "./figma";
 import { generate as generateGitHub } from "./github";
 import { generate as generateJira } from "./jira";
@@ -19,6 +20,7 @@ import { generate as generateLinear } from "./linear";
 import { generate as generateNotion } from "./notion";
 import { generate as generateSlack } from "./slack";
 import { generate as generateVercel } from "./vercel";
+import { generate as generateX } from "./x";
 import { generate as generateYoutube } from "./youtube";
 import { generate as generateZapier } from "./zapier";
 import { generate as generateZapsign } from "./zapsign";
@@ -32,6 +34,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   asana: generateAsana,
   axiom: generateAxiom,
   confluence: generateConfluence,
+  elevenlabs: generateElevenlabs,
   figma: generateFigma,
   github: generateGitHub,
   jira: generateJira,
@@ -39,6 +42,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   notion: generateNotion,
   slack: generateSlack,
   vercel: generateVercel,
+  x: generateX,
   youtube: generateYoutube,
   zapier: generateZapier,
   zapsign: generateZapsign,

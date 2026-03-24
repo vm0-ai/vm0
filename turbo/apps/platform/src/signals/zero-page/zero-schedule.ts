@@ -33,6 +33,7 @@ interface ScheduleResponse {
   enabled: boolean;
   notifyEmail: boolean;
   notifySlack: boolean;
+  slackChannelId: string | null;
   nextRunAt: string | null;
   lastRunAt: string | null;
   createdAt: string;
@@ -137,6 +138,7 @@ interface ZeroScheduleEntry {
   enabled: boolean;
   notifyEmail: boolean;
   notifySlack: boolean;
+  slackChannelId: string | null;
   /** Original schedule name for API operations */
   name: string;
   /** IANA timezone stored on the server */
@@ -158,6 +160,7 @@ export const zeroScheduleEntries$ = computed((get) => {
         enabled: s.enabled,
         notifyEmail: s.notifyEmail,
         notifySlack: s.notifySlack,
+        slackChannelId: s.slackChannelId,
         name: s.name,
         timezone: s.timezone,
         intervalSeconds: s.intervalSeconds,
@@ -221,6 +224,7 @@ export interface ZeroScheduleSaveParams {
   editName?: string;
   notifyEmail?: boolean;
   notifySlack?: boolean;
+  slackChannelId?: string | null;
 }
 
 export const saveZeroSchedule$ = command(
@@ -246,6 +250,9 @@ export const saveZeroSchedule$ = command(
       }),
       ...(params.notifySlack !== undefined && {
         notifySlack: params.notifySlack,
+      }),
+      ...(params.slackChannelId !== undefined && {
+        slackChannelId: params.slackChannelId,
       }),
     };
 
@@ -392,6 +399,7 @@ export interface OrgScheduleEntry {
   enabled: boolean;
   notifyEmail: boolean;
   notifySlack: boolean;
+  slackChannelId: string | null;
   name: string;
   /** IANA timezone stored on the server */
   timezone: string;
@@ -420,6 +428,7 @@ export const allOrgScheduleEntries$ = computed((get) => {
         enabled: s.enabled,
         notifyEmail: s.notifyEmail,
         notifySlack: s.notifySlack,
+        slackChannelId: s.slackChannelId,
         name: s.name,
         timezone: s.timezone,
         intervalSeconds: s.intervalSeconds,
@@ -469,6 +478,9 @@ export const saveOrgSchedule$ = command(
       }),
       ...(params.notifySlack !== undefined && {
         notifySlack: params.notifySlack,
+      }),
+      ...(params.slackChannelId !== undefined && {
+        slackChannelId: params.slackChannelId,
       }),
     };
 

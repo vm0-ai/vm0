@@ -49,21 +49,18 @@ function createCallbackRequest(
     ? "invalid-signature"
     : computeHmacSignature(bodyString, secret, timestamp);
 
-  return createTestRequest(
-    "http://localhost/api/internal/callbacks/email/reply",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-VM0-Signature": signature,
-        "X-VM0-Timestamp": timestamp.toString(),
-      },
-      body: bodyString,
+  return createTestRequest("http://localhost/api/zero/email/callbacks/reply", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-VM0-Signature": signature,
+      "X-VM0-Timestamp": timestamp.toString(),
     },
-  );
+    body: bodyString,
+  });
 }
 
-describe("POST /api/internal/callbacks/email/reply", () => {
+describe("POST /api/zero/email/callbacks/reply", () => {
   beforeEach(() => {
     context.setupMocks();
     mockResend.emails.send.mockClear();
@@ -94,7 +91,7 @@ describe("POST /api/internal/callbacks/email/reply", () => {
 
       const { secret } = await createTestCallback({
         runId,
-        url: "http://localhost/api/internal/callbacks/email/reply",
+        url: "http://localhost/api/zero/email/callbacks/reply",
         payload: { ...payload },
       });
 
@@ -144,7 +141,7 @@ describe("POST /api/internal/callbacks/email/reply", () => {
 
       const { secret } = await createTestCallback({
         runId,
-        url: "http://localhost/api/internal/callbacks/email/reply",
+        url: "http://localhost/api/zero/email/callbacks/reply",
         payload: { ...payload },
       });
 
@@ -216,7 +213,7 @@ describe("POST /api/internal/callbacks/email/reply", () => {
 
       const { secret } = await createTestCallback({
         runId,
-        url: "http://localhost/api/internal/callbacks/email/reply",
+        url: "http://localhost/api/zero/email/callbacks/reply",
         payload: { ...payload },
       });
 
@@ -269,7 +266,7 @@ describe("POST /api/internal/callbacks/email/reply", () => {
 
       const { secret } = await createTestCallback({
         runId,
-        url: "http://localhost/api/internal/callbacks/email/reply",
+        url: "http://localhost/api/zero/email/callbacks/reply",
         payload: { ...payload },
       });
 
@@ -325,7 +322,7 @@ describe("POST /api/internal/callbacks/email/reply", () => {
 
       const { secret } = await createTestCallback({
         runId,
-        url: "http://localhost/api/internal/callbacks/email/reply",
+        url: "http://localhost/api/zero/email/callbacks/reply",
         payload: { ...payload },
       });
 
@@ -377,7 +374,7 @@ describe("POST /api/internal/callbacks/email/reply", () => {
 
       const { secret } = await createTestCallback({
         runId,
-        url: "http://localhost/api/internal/callbacks/email/reply",
+        url: "http://localhost/api/zero/email/callbacks/reply",
         payload: { ...payload },
       });
 
@@ -422,7 +419,7 @@ describe("POST /api/internal/callbacks/email/reply", () => {
 
       const { secret } = await createTestCallback({
         runId,
-        url: "http://localhost/api/internal/callbacks/email/reply",
+        url: "http://localhost/api/zero/email/callbacks/reply",
         payload: { ...payload },
       });
 

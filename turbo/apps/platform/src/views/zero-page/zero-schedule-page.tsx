@@ -1,6 +1,12 @@
 import { useState } from "react";
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
 import {
+  addScheduleOpen$,
+  setAddScheduleOpen$,
+  editingScheduleId$,
+  setEditingScheduleId$,
+} from "../../signals/zero-page/schedule-card.ts";
+import {
   IconPencil,
   IconList,
   IconLayoutGrid,
@@ -20,6 +26,7 @@ import {
   cn,
 } from "@vm0/ui";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   Popover,
   PopoverContent,
@@ -77,6 +84,7 @@ function buildCombinedSchedule(
     enabled: e.enabled,
     notifyEmail: e.notifyEmail,
     notifySlack: e.notifySlack,
+    slackChannelId: e.slackChannelId,
     name: e.name,
     intervalSeconds: e.intervalSeconds,
     agentLabel:
@@ -627,13 +635,16 @@ export function ZeroSchedulePage() {
   const [scheduleViewMode, setScheduleViewMode] = useState<"list" | "calendar">(
     "list",
   );
-  const [editingEntry, setEditingEntry] = useState<CombinedEntry | null>(null);
+  const createOpen = useGet(addScheduleOpen$);
+  const setCreateOpen = useSet(setAddScheduleOpen$);
+  const editingScheduleId = useGet(editingScheduleId$);
+  const setEditingId = useSet(setEditingScheduleId$);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [createOpen, setCreateOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<CombinedEntry | null>(
     null,
   );
+  const [deleting, setDeleting] = useState(false);
 
   const combinedSchedule = buildCombinedSchedule(
     entries,
@@ -642,12 +653,15 @@ export function ZeroSchedulePage() {
     nameToDisplay,
   );
 
+  const editingEntry =
+    combinedSchedule.find((e) => e.id === editingScheduleId) ?? null;
+
   const agentOrder = [
     ...new Set(combinedSchedule.map((e) => e.agentLabel)),
   ] as const;
 
   const openEditSchedule = (entry: CombinedEntry) => {
-    setEditingEntry(entry);
+    setEditingId(entry.id);
   };
 
   const handleCreateSave = (values: ScheduleFormValues) => {
@@ -666,6 +680,7 @@ export function ZeroSchedulePage() {
         agentId: values.agentId,
         notifyEmail: values.notifyEmail,
         notifySlack: values.notifySlack,
+        slackChannelId: values.slackChannelId,
       })
         .then(() => {
           setCreateOpen(false);
@@ -703,9 +718,10 @@ export function ZeroSchedulePage() {
         agentId: editingEntry.agentId,
         notifyEmail: values.notifyEmail,
         notifySlack: values.notifySlack,
+        slackChannelId: values.slackChannelId,
       })
         .then(() => {
-          setEditingEntry(null);
+          setEditingId(null);
         })
         .catch((error: unknown) => {
           throwIfAbort(error);
@@ -742,14 +758,27 @@ export function ZeroSchedulePage() {
     if (pendingDelete?.name === undefined) {
       return;
     }
+    setDeleting(true);
     detach(
       deleteSchedule({
         name: pendingDelete.name,
         agentId: pendingDelete.agentId,
-      }),
+      }).then(
+        () => {
+          setPendingDelete(null);
+          setDeleting(false);
+        },
+        (error: unknown) => {
+          setDeleting(false);
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Failed to delete schedule";
+          toast.error(message);
+        },
+      ),
       Reason.DomCallback,
     );
-    setPendingDelete(null);
   };
 
   return (
@@ -840,7 +869,7 @@ export function ZeroSchedulePage() {
               key={editingEntry.id}
               open
               mode="edit"
-              onClose={() => setEditingEntry(null)}
+              onClose={() => setEditingId(null)}
               onSave={handleEditSave}
               saving={saving}
               saveError={saveError}
@@ -857,6 +886,7 @@ export function ZeroSchedulePage() {
                 dayOfMonth: parsed.dayOfMonth ?? "1",
                 notifyEmail: editingEntry.notifyEmail ?? false,
                 notifySlack: editingEntry.notifySlack ?? false,
+                slackChannelId: editingEntry.slackChannelId ?? null,
               }}
             />
           );
@@ -876,7 +906,7 @@ export function ZeroSchedulePage() {
       <Dialog
         open={pendingDelete !== null}
         onOpenChange={(open) => {
-          if (!open) {
+          if (!deleting && !open) {
             setPendingDelete(null);
           }
         }}
@@ -893,11 +923,19 @@ export function ZeroSchedulePage() {
             </p>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPendingDelete(null)}>
+            <Button
+              variant="outline"
+              onClick={() => setPendingDelete(null)}
+              disabled={deleting}
+            >
               Cancel
             </Button>
-            <Button variant="destructive" onClick={confirmDelete}>
-              Delete
+            <Button
+              variant="destructive"
+              onClick={confirmDelete}
+              disabled={deleting}
+            >
+              {deleting ? "Deleting..." : "Delete"}
             </Button>
           </DialogFooter>
         </DialogContent>
