@@ -504,11 +504,11 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       expect(data.expiresAt).toBeTypeOf("number");
     });
 
-    it("should use existing token when refresh fails", async () => {
+    it("should return 502 when token refresh fails", async () => {
       const expiredAt = new Date(Date.now() - 60 * 1000);
       await setupNotionConnector({ tokenExpiresAt: expiredAt });
 
-      // Provider returns error
+      // Provider returns error (e.g. refresh token revoked)
       server.use(
         mswHttp.post(NOTION_TOKEN_URL, () =>
           HttpResponse.json({ error: "invalid_grant" }, { status: 400 }),
@@ -533,13 +533,10 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         ),
       );
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(502);
       const data = await response.json();
-      // Falls back to old token
-      expect(data.headers.Authorization).toBe("Bearer old-notion-token");
-      // expiresAt is the original expired value (not cached for long by addon)
-      const expiredEpoch = Math.floor(expiredAt.getTime() / 1000);
-      expect(data.expiresAt).toBe(expiredEpoch);
+      expect(data.error.code).toBe("TOKEN_REFRESH_FAILED");
+      expect(data.error.connectors).toEqual(["notion"]);
     });
   });
 });
