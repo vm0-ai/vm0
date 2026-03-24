@@ -110,6 +110,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   "google-drive": ["google-drive"],
   "google-calendar": ["google-calendar"],
   elevenlabs: ["elevenlabs"],
+  fal: ["fal"],
   hubspot: ["hubspot"],
   atlassian: ["jira", "confluence"],
   jira: ["jira"],

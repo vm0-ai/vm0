@@ -18,6 +18,7 @@ import { confluenceFirewall } from "./confluence.generated";
 import { deepseekFirewall } from "./deepseek.generated";
 import { discordFirewall } from "./discord.generated";
 import { elevenlabsFirewall } from "./elevenlabs.generated";
+import { falFirewall } from "./fal.generated";
 import { figmaFirewall } from "./figma.generated";
 import { firecrawlFirewall } from "./firecrawl.generated";
 import { githubFirewall } from "./github.generated";
@@ -60,6 +61,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   deepseek: deepseekFirewall,
   discord: discordFirewall,
   elevenlabs: elevenlabsFirewall,
+  fal: falFirewall,
   figma: figmaFirewall,
   firecrawl: firecrawlFirewall,
   github: githubFirewall,

@@ -17,6 +17,7 @@ import { generate as generateConfluence } from "./confluence";
 import { generate as generateDeepseek } from "./deepseek";
 import { generate as generateDiscord } from "./discord";
 import { generate as generateElevenlabs } from "./elevenlabs";
+import { generate as generateFal } from "./fal";
 import { generate as generateFigma } from "./figma";
 import { generate as generateFirecrawl } from "./firecrawl";
 import { generate as generateGitHub } from "./github";
@@ -55,6 +56,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   deepseek: generateDeepseek,
   discord: generateDiscord,
   elevenlabs: generateElevenlabs,
+  fal: generateFal,
   figma: generateFigma,
   firecrawl: generateFirecrawl,
   github: generateGitHub,

@@ -17,6 +17,7 @@
     "generate:deepseek": "tsx src/index.ts deepseek",
     "generate:discord": "tsx src/index.ts discord",
     "generate:elevenlabs": "tsx src/index.ts elevenlabs",
+    "generate:fal": "tsx src/index.ts fal",
     "generate:figma": "tsx src/index.ts figma",
     "generate:firecrawl": "tsx src/index.ts firecrawl",
     "generate:github": "tsx src/index.ts github",
