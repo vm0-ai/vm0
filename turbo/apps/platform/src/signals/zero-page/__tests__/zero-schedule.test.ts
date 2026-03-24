@@ -22,8 +22,7 @@ function createMockSchedules() {
   return [
     {
       id: "sched-1",
-      zeroAgentId: "mock-compose-id",
-      agentName: "zero",
+      agentId: "mock-compose-id",
       orgSlug: "test",
       name: "morning-briefing",
       triggerType: "cron",
@@ -41,8 +40,7 @@ function createMockSchedules() {
     },
     {
       id: "sched-2",
-      zeroAgentId: "mock-compose-id",
-      agentName: "zero",
+      agentId: "mock-compose-id",
       orgSlug: "test",
       name: "check-inbox",
       triggerType: "loop",
@@ -60,8 +58,7 @@ function createMockSchedules() {
     },
     {
       id: "sched-other",
-      zeroAgentId: "other-compose-id",
-      agentName: "other-agent",
+      agentId: "other-compose-id",
       orgSlug: "test",
       name: "other-schedule",
       triggerType: "cron",
@@ -192,7 +189,7 @@ describe("zero-schedule signals", () => {
       });
 
       expect(captured.body).not.toBeNull();
-      expect(captured.body?.zeroAgentId).toBe("mock-compose-id");
+      expect(captured.body?.agentId).toBe("mock-compose-id");
       expect(captured.body?.prompt).toBe("Daily standup summary");
       expect(captured.body?.cronExpression).toBe("0 9 * * *");
       expect(captured.body?.timezone).toBe("UTC");
@@ -291,7 +288,7 @@ describe("zero-schedule signals", () => {
       });
 
       expect(captured.action).toBe("enable");
-      expect(captured.body?.zeroAgentId).toBe("mock-compose-id");
+      expect(captured.body?.agentId).toBe("mock-compose-id");
     });
 
     it("should POST to disable endpoint when enabled is false", async () => {
@@ -353,7 +350,7 @@ describe("zero-schedule signals", () => {
           ({ params, request }) => {
             deletedName = params["name"] as string;
             const url = new URL(request.url);
-            deletedAgentId = url.searchParams.get("zeroAgentId");
+            deletedAgentId = url.searchParams.get("agentId");
             return new HttpResponse(null, { status: 204 });
           },
         ),
@@ -381,7 +378,7 @@ describe("org schedule signals", () => {
   }
 
   describe("fetchAllOrgSchedules$ and allOrgScheduleEntries$", () => {
-    it("should map zeroAgentId and agentName fields from API response", async () => {
+    it("should map agentId field from API response", async () => {
       server.use(
         http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json({ schedules: createMockSchedules() });
@@ -395,17 +392,15 @@ describe("org schedule signals", () => {
       expect(entries).toHaveLength(3);
 
       const zeroEntry = entries.find((e) => e.name === "morning-briefing");
-      expect(zeroEntry?.zeroAgentId).toBe("mock-compose-id");
-      expect(zeroEntry?.agentName).toBe("zero");
+      expect(zeroEntry?.agentId).toBe("mock-compose-id");
 
       const otherEntry = entries.find((e) => e.name === "other-schedule");
-      expect(otherEntry?.zeroAgentId).toBe("other-compose-id");
-      expect(otherEntry?.agentName).toBe("other-agent");
+      expect(otherEntry?.agentId).toBe("other-compose-id");
     });
   });
 
   describe("saveOrgSchedule$", () => {
-    it("should send zeroAgentId in POST body", async () => {
+    it("should send agentId in POST body", async () => {
       const captured: { body: Record<string, unknown> | null } = {
         body: null,
       };
@@ -432,11 +427,11 @@ describe("org schedule signals", () => {
         minute: 0,
         timezone: "UTC",
         intervalSeconds: 0,
-        zeroAgentId: "agent-uuid-123",
+        agentId: "agent-uuid-123",
       });
 
       expect(captured.body).not.toBeNull();
-      expect(captured.body?.zeroAgentId).toBe("agent-uuid-123");
+      expect(captured.body?.agentId).toBe("agent-uuid-123");
       expect(captured.body).not.toHaveProperty("composeId");
       expect(captured.body?.prompt).toBe("Org-wide daily task");
       expect(captured.body?.cronExpression).toBe("0 8 * * *");
@@ -444,7 +439,7 @@ describe("org schedule signals", () => {
   });
 
   describe("toggleOrgScheduleEnabled$", () => {
-    it("should send zeroAgentId in toggle request body", async () => {
+    it("should send agentId in toggle request body", async () => {
       const captured: {
         action: string | null;
         body: Record<string, unknown> | null;
@@ -468,17 +463,17 @@ describe("org schedule signals", () => {
       await context.store.set(toggleOrgScheduleEnabled$, {
         name: "morning-briefing",
         enabled: false,
-        zeroAgentId: "agent-uuid-123",
+        agentId: "agent-uuid-123",
       });
 
       expect(captured.action).toBe("disable");
-      expect(captured.body?.zeroAgentId).toBe("agent-uuid-123");
+      expect(captured.body?.agentId).toBe("agent-uuid-123");
       expect(captured.body).not.toHaveProperty("composeId");
     });
   });
 
   describe("deleteOrgSchedule$", () => {
-    it("should send zeroAgentId as query param in DELETE request", async () => {
+    it("should send agentId as query param in DELETE request", async () => {
       let deletedName: string | null = null;
       let deletedAgentId: string | null = null;
 
@@ -488,7 +483,7 @@ describe("org schedule signals", () => {
           ({ params, request }) => {
             deletedName = params["name"] as string;
             const url = new URL(request.url);
-            deletedAgentId = url.searchParams.get("zeroAgentId");
+            deletedAgentId = url.searchParams.get("agentId");
             return new HttpResponse(null, { status: 204 });
           },
         ),
@@ -500,7 +495,7 @@ describe("org schedule signals", () => {
       await setup();
       await context.store.set(deleteOrgSchedule$, {
         name: "morning-briefing",
-        zeroAgentId: "agent-uuid-123",
+        agentId: "agent-uuid-123",
       });
 
       expect(deletedName).toBe("morning-briefing");

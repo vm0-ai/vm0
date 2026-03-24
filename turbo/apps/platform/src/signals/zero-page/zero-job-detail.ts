@@ -458,8 +458,7 @@ const fetchZeroJobFirewallPolicies$ = command(async ({ get, set }) => {
 
 interface ScheduleItem {
   id: string;
-  zeroAgentId: string;
-  agentName: string;
+  agentId: string;
   name: string;
   enabled: boolean;
   triggerType: "cron" | "once" | "loop";
@@ -573,8 +572,8 @@ export const zeroJobScheduleError$ = computed(
 );
 
 const fetchZeroJobSchedule$ = command(async ({ get, set }) => {
-  const name = get(internalAgentName$);
-  if (!name) {
+  const detail = get(zeroJobDetail$);
+  if (!detail) {
     return;
   }
 
@@ -588,7 +587,9 @@ const fetchZeroJobSchedule$ = command(async ({ get, set }) => {
     }
 
     const data = (await response.json()) as { schedules: ScheduleItem[] };
-    const agentSchedules = data.schedules.filter((s) => s.agentName === name);
+    const agentSchedules = data.schedules.filter(
+      (s) => s.agentId === detail.agentId,
+    );
     set(scheduleState$, { schedules: agentSchedules, error: null });
   } catch (error) {
     throwIfAbort(error);
@@ -630,7 +631,7 @@ export const saveZeroJobSchedule$ = command(
     const scheduleName = params.editName ?? `zero-${Date.now().toString(36)}`;
 
     const base = {
-      zeroAgentId: detail.agentId,
+      agentId: detail.agentId,
       name: scheduleName,
       timezone: params.timezone,
       prompt: params.prompt.trim(),
@@ -711,7 +712,7 @@ export const toggleZeroJobScheduleEnabled$ = command(
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ zeroAgentId: detail.agentId }),
+        body: JSON.stringify({ agentId: detail.agentId }),
       },
     );
 
@@ -739,7 +740,7 @@ export const deleteZeroJobSchedule$ = command(
 
     const fetchFn = get(fetch$);
     const response = await fetchFn(
-      `/api/zero/schedules/${encodeURIComponent(scheduleName)}?zeroAgentId=${encodeURIComponent(detail.agentId)}`,
+      `/api/zero/schedules/${encodeURIComponent(scheduleName)}?agentId=${encodeURIComponent(detail.agentId)}`,
       { method: "DELETE" },
     );
 

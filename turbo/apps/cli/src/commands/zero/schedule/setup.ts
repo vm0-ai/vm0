@@ -682,8 +682,8 @@ export const setupCommand = new Command()
   .option("--no-notify-slack", "Disable Slack notifications")
   .action(
     withErrorHandler(async (agentId: string, options: SetupOptions) => {
-      // 1. Resolve agent
-      const agent = await getZeroAgent(agentId);
+      // 1. Validate agent exists
+      await getZeroAgent(agentId);
       const scheduleName = options.name || "default";
 
       // 2. Check for existing schedule

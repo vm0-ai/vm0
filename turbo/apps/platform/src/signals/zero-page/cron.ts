@@ -13,7 +13,7 @@ export type CronTimeOption = Exclude<ScheduleTimeOption, "loop">;
 
 /** Discriminated union for schedule creation/update request body. */
 export type ScheduleBody = {
-  zeroAgentId: string;
+  agentId: string;
   name: string;
   timezone: string;
   prompt: string;
