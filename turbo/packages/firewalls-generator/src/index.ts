@@ -23,6 +23,7 @@ import { generate as generateJira } from "./jira";
 import { generate as generateLinear } from "./linear";
 import { generate as generateNotion } from "./notion";
 import { generate as generateOpenai } from "./openai";
+import { generate as generatePosthog } from "./posthog";
 import { generate as generateResend } from "./resend";
 import { generate as generateSlack } from "./slack";
 import { generate as generateStripe } from "./stripe";
@@ -52,6 +53,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   linear: generateLinear,
   notion: generateNotion,
   openai: generateOpenai,
+  posthog: generatePosthog,
   resend: generateResend,
   slack: generateSlack,
   stripe: generateStripe,
