@@ -288,11 +288,13 @@ async function verifyScheduleOwnership(
 
   // Resolve compose ID from agent name
   const compose = await resolveComposeByAgentId(resolvedId);
-  const composeId = compose?.id ?? resolvedId;
+  if (!compose) {
+    throw notFound(`Agent compose not found for agent '${resolvedId}'`);
+  }
 
   const orgSlug = await getOrgSlug(orgId);
 
-  return { schedule, composeId, orgSlug };
+  return { schedule, composeId: compose.id, orgSlug };
 }
 
 /**
@@ -485,7 +487,10 @@ export async function deploySchedule(
   // Normalize request to use the resolved agentId (handles composeId fallback from CLI)
   request = { ...request, agentId: agent.id };
   const compose = await resolveComposeByAgentId(agent.id);
-  const resolvedComposeId = compose?.id ?? agent.id;
+  if (!compose) {
+    throw notFound(`Agent compose not found for agent '${agent.id}'`);
+  }
+  const resolvedComposeId = compose.id;
   const orgSlug = await getOrgSlug(orgId);
 
   // Validate timezone
@@ -584,7 +589,7 @@ export async function listSchedules(
       composeId: agentComposes.id,
     })
     .from(zeroAgents)
-    .leftJoin(
+    .innerJoin(
       agentComposes,
       and(
         eq(agentComposes.orgId, zeroAgents.orgId),
@@ -610,7 +615,7 @@ export async function listSchedules(
     .map((schedule) => {
       const row = agentMap.get(schedule.agentId)!;
       const orgSlug = orgDataMap.get(schedule.orgId)?.slug ?? "";
-      return toResponse(schedule, row.composeId ?? row.agent.id, orgSlug);
+      return toResponse(schedule, row.composeId, orgSlug);
     });
 }
 

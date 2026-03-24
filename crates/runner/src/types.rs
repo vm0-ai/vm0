@@ -34,9 +34,8 @@ pub struct ExecutionContext {
     #[serde(default)]
     pub append_system_prompt: Option<String>,
     // Agent compose version ID (full SHA-256 content hash)
-    #[allow(dead_code)]
-    #[serde(default)]
-    pub agent_compose_version_id: Option<String>,
+    #[serde(default, rename = "agentComposeVersionId")]
+    pub _agent_compose_version_id: Option<String>,
     // Deserialized but not yet consumed by runner — vars are expanded at compose time
     #[allow(dead_code)]
     #[serde(default)]

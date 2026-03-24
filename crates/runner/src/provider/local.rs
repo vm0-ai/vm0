@@ -225,7 +225,7 @@ impl JobProvider for LocalProvider {
             run_id,
             prompt: req.prompt,
             append_system_prompt: None,
-            agent_compose_version_id: None,
+            _agent_compose_version_id: None,
             vars: req.vars,
             checkpoint_id: None,
             sandbox_token: String::new(),

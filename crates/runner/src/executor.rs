@@ -772,7 +772,7 @@ mod tests {
             run_id: Uuid::nil(),
             prompt: "test prompt".into(),
             append_system_prompt: None,
-            agent_compose_version_id: None,
+            _agent_compose_version_id: None,
             vars: None,
             checkpoint_id: None,
             sandbox_token: "tok".into(),
