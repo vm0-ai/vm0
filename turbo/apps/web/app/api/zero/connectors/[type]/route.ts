@@ -10,10 +10,33 @@ import {
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
-import { deleteConnector } from "../../../../../src/lib/connector/connector-service";
+import {
+  getConnector,
+  deleteConnector,
+} from "../../../../../src/lib/connector/connector-service";
 import { isNotFound } from "../../../../../src/lib/errors";
 
 const router = tsr.router(zeroConnectorsByTypeContract, {
+  get: async ({ params, headers }, { request }) => {
+    initServices();
+
+    const authCtx = await requireAuth(headers.authorization);
+    if (isAuthError(authCtx)) return authCtx;
+    const { userId } = authCtx;
+
+    const orgSlug = new URL(request.url).searchParams.get("org");
+    const { org } = await resolveOrg(authCtx, orgSlug);
+    const connector = await getConnector(org.orgId, userId, params.type);
+
+    if (!connector) {
+      return createErrorResponse("NOT_FOUND", "Connector not found");
+    }
+
+    return {
+      status: 200 as const,
+      body: connector,
+    };
+  },
   delete: async ({ params, headers }, { request }) => {
     initServices();
 
@@ -43,4 +66,4 @@ const handler = createHandler(zeroConnectorsByTypeContract, router, {
   errorHandler: createSafeErrorHandler("zero-connectors:type"),
 });
 
-export { handler as DELETE };
+export { handler as GET, handler as DELETE };

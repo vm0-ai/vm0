@@ -500,11 +500,17 @@ export {
   zeroConnectorsByTypeContract,
   zeroConnectorScopeDiffContract,
   zeroConnectorsSearchContract,
+  zeroConnectorSessionsContract,
+  zeroConnectorSessionByIdContract,
+  zeroComputerConnectorContract,
   type ConnectorSearchAuthMethod,
   type ZeroConnectorsMainContract,
   type ZeroConnectorsByTypeContract,
   type ZeroConnectorScopeDiffContract,
   type ZeroConnectorsSearchContract,
+  type ZeroConnectorSessionsContract,
+  type ZeroConnectorSessionByIdContract,
+  type ZeroComputerConnectorContract,
 } from "./zero-connectors";
 export {
   zeroOrgContract,
