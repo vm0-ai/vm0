@@ -4308,6 +4308,7 @@ export async function countOrgRows(
     | "usage_daily"
     | "export_jobs"
     | "zero_agents"
+    | "zero_agent_schedules"
     | "credit_usage"
     | "agent_sessions"
     | "email_thread_sessions"
