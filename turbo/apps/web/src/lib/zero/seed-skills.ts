@@ -1,3 +1,6 @@
+import { resolveSkillRef } from "@vm0/core";
+import type { skills } from "../../db/schema/skill";
+
 /**
  * Default skills always included in zero agent composes.
  * Source: https://github.com/vm0-ai/the-seed
@@ -39,3 +42,28 @@ export const SEED_SKILLS: readonly string[] = [
   "stats-methods",
   "status-updates",
 ] as const;
+
+/**
+ * Build skill insert values from a list of skill names.
+ * Shared by dev-seed and test helpers to avoid duplicated URL/frontmatter construction.
+ */
+export function buildSeedSkillValues(
+  names: readonly string[],
+): (typeof skills.$inferInsert)[] {
+  return names.map((name) => {
+    const url = resolveSkillRef(name);
+    const fullPath = url.replace("https://github.com/", "");
+    return {
+      url,
+      name,
+      fullPath,
+      versionHash: null,
+      frontmatter: {
+        name,
+        description: `${name} skill`,
+        vm0_secrets: [] as string[],
+        vm0_vars: [] as string[],
+      },
+    };
+  });
+}
