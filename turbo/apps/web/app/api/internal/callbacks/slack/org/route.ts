@@ -38,20 +38,24 @@ import type {
 
 const log = logger("callback:slack-org");
 
-function validatePayloadFields(p: Record<string, unknown>): string | null {
-  const required = [
-    "workspaceId",
-    "channelId",
-    "threadTs",
-    "messageTs",
-    "connectionId",
-    "agentName",
-    "composeId",
-  ] as const;
-  for (const field of required) {
-    if (typeof p[field] !== "string") return field;
-  }
-  return null;
+function isSlackOrgPayload(
+  payload: unknown,
+): payload is SlackOrgCallbackPayload {
+  if (!payload || typeof payload !== "object") return false;
+  const p = payload as Record<string, unknown>;
+  return (
+    typeof p.workspaceId === "string" &&
+    typeof p.channelId === "string" &&
+    typeof p.threadTs === "string" &&
+    typeof p.messageTs === "string" &&
+    typeof p.connectionId === "string" &&
+    typeof p.agentName === "string" &&
+    typeof p.composeId === "string"
+  );
+}
+
+function parsePayload(payload: unknown): SlackOrgCallbackPayload | null {
+  return isSlackOrgPayload(payload) ? payload : null;
 }
 
 function errorResponse(message: string, status: number): NextResponse {
@@ -198,22 +202,6 @@ async function saveOrgThreadSession(
   return newSessionId ?? existingSessionId;
 }
 
-function describePayload(raw: unknown): string {
-  const t = typeof raw;
-  if (!raw || t !== "object") return `Invalid payload (type=${t})`;
-  const p = raw as Record<string, unknown>;
-  const checks = [
-    `workspaceId:${typeof p.workspaceId}`,
-    `channelId:${typeof p.channelId}`,
-    `threadTs:${typeof p.threadTs}`,
-    `messageTs:${typeof p.messageTs}`,
-    `connectionId:${typeof p.connectionId}`,
-    `agentName:${typeof p.agentName}`,
-    `composeId:${typeof p.composeId}`,
-  ];
-  return `parsePayload rejected: ${checks.join(",")}`;
-}
-
 /**
  * POST /api/internal/callbacks/slack/org
  *
@@ -227,17 +215,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const { runId, status, error } = result.data;
 
-  const rawPayload = result.data.payload;
-  const badField =
-    !rawPayload || typeof rawPayload !== "object"
-      ? "NOT_OBJECT"
-      : validatePayloadFields(rawPayload as Record<string, unknown>);
-  const payload =
-    badField === null
-      ? (rawPayload as unknown as SlackOrgCallbackPayload)
-      : null;
+  const payload = parsePayload(result.data.payload);
   if (!payload) {
-    return errorResponse(`bad=${badField} ${describePayload(rawPayload)}`, 400);
+    return errorResponse("Invalid or missing payload", 400);
   }
 
   log.debug("Processing org Slack callback", {
