@@ -132,7 +132,7 @@ describe("zero-chat signals", () => {
       await context.store.set(fetchZeroSessionList$);
 
       expect(context.store.get(zeroSessionListError$)).toBe(
-        "Failed to load chats: Internal Server Error",
+        "Failed to load chats (500)",
       );
       expect(context.store.get(zeroSessionListLoading$)).toBeFalsy();
     });
@@ -233,7 +233,7 @@ describe("zero-chat signals", () => {
       useChatThreadHandlers();
       server.use(
         http.post("*/api/zero/runs", () => {
-          return HttpResponse.json({ runId: "run-old" });
+          return HttpResponse.json({ runId: "run-old" }, { status: 201 });
         }),
         http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
           return HttpResponse.json({
@@ -328,7 +328,7 @@ describe("zero-chat signals", () => {
       useChatThreadHandlers();
       server.use(
         http.post("*/api/zero/runs", () => {
-          return HttpResponse.json({ runId: "run-1" });
+          return HttpResponse.json({ runId: "run-1" }, { status: 201 });
         }),
         http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
           return HttpResponse.json({
@@ -393,7 +393,7 @@ describe("zero-chat signals", () => {
       let pollCount = 0;
       server.use(
         http.post("*/api/zero/runs", () => {
-          return HttpResponse.json({ runId: "run-poll" });
+          return HttpResponse.json({ runId: "run-poll" }, { status: 201 });
         }),
         http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
           return HttpResponse.json({
@@ -468,7 +468,7 @@ describe("zero-chat signals", () => {
         }),
         http.post("*/api/zero/runs", async ({ request }) => {
           capturedRunBody = (await request.json()) as Record<string, string>;
-          return HttpResponse.json({ runId: "run-123" });
+          return HttpResponse.json({ runId: "run-123" }, { status: 201 });
         }),
         http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
           return HttpResponse.json({
@@ -576,7 +576,7 @@ describe("zero-chat signals", () => {
 
       const messages = await context.store.get(zeroChatMessages$);
       const lastMsg = messages[messages.length - 1];
-      expect(lastMsg?.error).toBe("Failed to start agent run");
+      expect(lastMsg?.error).toBe("Failed to start agent run (502)");
       expect(context.store.get(zeroChatSending$)).toBeFalsy();
     });
 
@@ -601,7 +601,7 @@ describe("zero-chat signals", () => {
       server.use(
         http.post("*/api/zero/runs", () => {
           runCalled = true;
-          return HttpResponse.json({ runId: "run-123" });
+          return HttpResponse.json({ runId: "run-123" }, { status: 201 });
         }),
       );
 
@@ -644,7 +644,7 @@ describe("zero-chat signals", () => {
         }),
         http.post("*/api/zero/runs", async ({ request }) => {
           capturedRunBody = (await request.json()) as Record<string, string>;
-          return HttpResponse.json({ runId: "run-456" });
+          return HttpResponse.json({ runId: "run-456" }, { status: 201 });
         }),
         http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
           return HttpResponse.json({
@@ -778,7 +778,7 @@ describe("zero-chat signals", () => {
       let pollCount = 0;
       server.use(
         http.post("*/api/zero/runs", () => {
-          return HttpResponse.json({ runId: "run-q1" });
+          return HttpResponse.json({ runId: "run-q1" }, { status: 201 });
         }),
         http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
           return HttpResponse.json({
@@ -840,7 +840,7 @@ describe("zero-chat signals", () => {
     it("should reject a second queued message", async () => {
       server.use(
         http.post("*/api/zero/runs", () => {
-          return HttpResponse.json({ runId: "run-q2" });
+          return HttpResponse.json({ runId: "run-q2" }, { status: 201 });
         }),
         http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
           return HttpResponse.json({
@@ -884,7 +884,7 @@ describe("zero-chat signals", () => {
     it("should withdraw a queued message back into the input", async () => {
       server.use(
         http.post("*/api/zero/runs", () => {
-          return HttpResponse.json({ runId: "run-q3" });
+          return HttpResponse.json({ runId: "run-q3" }, { status: 201 });
         }),
         http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
           return HttpResponse.json({
@@ -937,7 +937,10 @@ describe("zero-chat signals", () => {
           runCount++;
           const body = (await request.json()) as Record<string, string>;
           latestPrompt = body.prompt;
-          return HttpResponse.json({ runId: `run-auto-${runCount}` });
+          return HttpResponse.json(
+            { runId: `run-auto-${runCount}` },
+            { status: 201 },
+          );
         }),
         http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
           return HttpResponse.json({
@@ -1011,7 +1014,7 @@ describe("zero-chat signals", () => {
     it("should auto-withdraw queued message back to input after run cancellation (cancelActiveRun$)", async () => {
       server.use(
         http.post("*/api/zero/runs", () => {
-          return HttpResponse.json({ runId: "run-cancel-1" });
+          return HttpResponse.json({ runId: "run-cancel-1" }, { status: 201 });
         }),
         http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
           return HttpResponse.json({

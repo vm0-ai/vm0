@@ -17,7 +17,7 @@ export const shortioFirewall: FirewallConfig = {
       base: "https://api.short.io",
       auth: {
         headers: {
-          Authorization: "${{ secrets.SHORTIO_TOKEN }}",
+          Authorization: "Bearer ${{ secrets.SHORTIO_TOKEN }}",
         },
       },
       permissions: [

@@ -18,11 +18,152 @@ interface ZeroConnectorCardProps {
   pollingType: ConnectorType | null;
   hasFirewall: boolean;
   isAdmin?: boolean;
+  /** When true, hide agent-level mutations (remove connector). Connect/Disconnect still works. */
+  readOnly?: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
   onRemove: () => void;
   onReviewScopes?: () => void;
   onManagePermissions?: () => void;
+}
+
+function ConnectionStatus({
+  connector,
+  isPolling,
+  onConnect,
+  onReviewScopes,
+}: {
+  connector: ConnectorTypeWithStatus | null;
+  isPolling: boolean;
+  onConnect: () => void;
+  onReviewScopes?: () => void;
+}) {
+  if (!connector) {
+    return <span className="text-xs text-muted-foreground">Added</span>;
+  }
+
+  if (isPolling) {
+    return (
+      <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <IconLoader2 size={12} stroke={1.5} className="animate-spin" />
+        Connecting…
+      </span>
+    );
+  }
+
+  if (connector.connected && connector.needsReconnect) {
+    return (
+      <span className="flex items-center gap-2 text-xs truncate">
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
+        <span className="text-amber-600 dark:text-amber-400">
+          Connection expired
+        </span>
+        <button
+          type="button"
+          onClick={onConnect}
+          className="font-medium text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300 transition-colors"
+        >
+          Reconnect
+        </button>
+      </span>
+    );
+  }
+
+  if (connector.connected && connector.scopeMismatch) {
+    return (
+      <span className="flex items-center gap-2 text-xs truncate">
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
+        <span className="text-amber-600 dark:text-amber-400">
+          Permissions update available
+        </span>
+        <button
+          type="button"
+          onClick={onReviewScopes}
+          className="font-medium text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300 transition-colors"
+        >
+          Review
+        </button>
+      </span>
+    );
+  }
+
+  if (connector.connected) {
+    return (
+      <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+        {connector.connector?.externalUsername
+          ? `@${connector.connector.externalUsername}`
+          : "Connected"}
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onConnect}
+      className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+    >
+      Connect
+    </button>
+  );
+}
+
+function CardDropdownMenu({
+  connector,
+  hasFirewall,
+  isAdmin,
+  readOnly,
+  onDisconnect,
+  onRemove,
+  onManagePermissions,
+}: {
+  connector: ConnectorTypeWithStatus | null;
+  hasFirewall: boolean;
+  isAdmin?: boolean;
+  readOnly?: boolean;
+  onDisconnect: () => void;
+  onRemove: () => void;
+  onManagePermissions?: () => void;
+}) {
+  // Hide entire menu when readOnly and no actionable items (not connected)
+  if (readOnly && !connector?.connected) {
+    return null;
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
+          aria-label="More options"
+        >
+          <IconDotsVertical size={14} stroke={1.5} />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        {hasFirewall && connector?.connected && isAdmin && (
+          <>
+            <DropdownMenuItem onClick={onManagePermissions}>
+              Permissions
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        )}
+        {connector?.connected ? (
+          <DropdownMenuItem onClick={onDisconnect}>Disconnect</DropdownMenuItem>
+        ) : (
+          !readOnly && (
+            <DropdownMenuItem onClick={onRemove}>
+              Remove connector
+            </DropdownMenuItem>
+          )
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
 
 export function ZeroConnectorCard({
@@ -32,6 +173,7 @@ export function ZeroConnectorCard({
   pollingType,
   hasFirewall,
   isAdmin,
+  readOnly,
   onConnect,
   onDisconnect,
   onRemove,
@@ -64,91 +206,22 @@ export function ZeroConnectorCard({
 
       <div className="flex h-11 items-center justify-between border-t border-border/50 pl-5 pr-2">
         <div className="flex items-center gap-2 min-w-0">
-          {connector &&
-            (isPolling ? (
-              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <IconLoader2 size={12} stroke={1.5} className="animate-spin" />
-                Connecting…
-              </span>
-            ) : connector.connected && connector.needsReconnect ? (
-              <span className="flex items-center gap-2 text-xs truncate">
-                <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
-                <span className="text-amber-600 dark:text-amber-400">
-                  Connection expired
-                </span>
-                <button
-                  type="button"
-                  onClick={onConnect}
-                  className="font-medium text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300 transition-colors"
-                >
-                  Reconnect
-                </button>
-              </span>
-            ) : connector.connected && connector.scopeMismatch ? (
-              <span className="flex items-center gap-2 text-xs truncate">
-                <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
-                <span className="text-amber-600 dark:text-amber-400">
-                  Permissions update available
-                </span>
-                <button
-                  type="button"
-                  onClick={onReviewScopes}
-                  className="font-medium text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300 transition-colors"
-                >
-                  Review
-                </button>
-              </span>
-            ) : connector.connected ? (
-              <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
-                {connector.connector?.externalUsername
-                  ? `@${connector.connector.externalUsername}`
-                  : "Connected"}
-              </span>
-            ) : (
-              <button
-                type="button"
-                onClick={onConnect}
-                className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
-              >
-                Connect
-              </button>
-            ))}
-          {!connector && (
-            <span className="text-xs text-muted-foreground">Added</span>
-          )}
+          <ConnectionStatus
+            connector={connector}
+            isPolling={isPolling}
+            onConnect={onConnect}
+            onReviewScopes={onReviewScopes}
+          />
         </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
-              aria-label="More options"
-            >
-              <IconDotsVertical size={14} stroke={1.5} />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
-            {hasFirewall && connector?.connected && isAdmin && (
-              <>
-                <DropdownMenuItem onClick={onManagePermissions}>
-                  Permissions
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-              </>
-            )}
-            {connector?.connected ? (
-              <DropdownMenuItem onClick={onDisconnect}>
-                Disconnect
-              </DropdownMenuItem>
-            ) : (
-              <DropdownMenuItem onClick={onRemove}>
-                Remove connector
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <CardDropdownMenu
+          connector={connector}
+          hasFirewall={hasFirewall}
+          isAdmin={isAdmin}
+          readOnly={readOnly}
+          onDisconnect={onDisconnect}
+          onRemove={onRemove}
+          onManagePermissions={onManagePermissions}
+        />
       </div>
     </div>
   );

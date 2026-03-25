@@ -43,4 +43,19 @@ export const onboardingStatusContract = c.router({
   },
 });
 
+export const onboardingCompleteContract = c.router({
+  complete: {
+    method: "POST",
+    path: "/api/zero/onboarding/complete",
+    headers: authHeadersSchema,
+    body: c.noBody(),
+    responses: {
+      200: z.object({ ok: z.boolean() }),
+      401: apiErrorSchema,
+    },
+    summary: "Mark member onboarding as complete",
+  },
+});
+
 export type OnboardingStatusContract = typeof onboardingStatusContract;
+export type OnboardingCompleteContract = typeof onboardingCompleteContract;

@@ -15,7 +15,7 @@ const mockLogDetails: LogDetail[] = [
   {
     id: "run_1",
     sessionId: "session_1",
-    agentName: "Test Agent",
+    agentId: "test-agent",
     displayName: null,
     framework: "claude-code",
     modelProvider: null,
@@ -35,7 +35,7 @@ const mockLogDetails: LogDetail[] = [
   {
     id: "run_2",
     sessionId: "session_2",
-    agentName: "Another Agent",
+    agentId: "another-agent",
     displayName: null,
     framework: "claude-code",
     modelProvider: null,
@@ -74,7 +74,7 @@ export const appLogsHandlers = [
       data: data.map((log) => ({
         id: log.id,
         sessionId: log.sessionId,
-        agentName: log.agentName,
+        agentId: log.agentId,
         displayName: null,
         orgSlug: null,
         framework: log.framework,

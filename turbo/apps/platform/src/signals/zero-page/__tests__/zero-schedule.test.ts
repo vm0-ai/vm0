@@ -525,7 +525,7 @@ describe("zero-schedule signals", () => {
           name: "nonexistent",
           enabled: true,
         }),
-      ).rejects.toThrow("Schedule not found");
+      ).rejects.toThrow("Failed to enable schedule (404)");
     });
   });
 

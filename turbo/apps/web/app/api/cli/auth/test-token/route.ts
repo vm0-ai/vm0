@@ -7,7 +7,11 @@ import { cliTokens } from "../../../../../src/db/schema/cli-tokens";
 import { orgCache } from "../../../../../src/db/schema/org-cache";
 import { orgMetadata } from "../../../../../src/db/schema/org-metadata";
 import { orgMembersCache } from "../../../../../src/db/schema/org-members-cache";
-import { getOrgData } from "../../../../../src/lib/org/org-cache-service";
+import {
+  getOrgData,
+  getOrgBySlug,
+} from "../../../../../src/lib/org/org-cache-service";
+import { generateCliToken } from "../../../../../src/lib/auth/sandbox-token";
 import {
   resolveTestUserId,
   isTestVariant,
@@ -144,13 +148,24 @@ export async function POST(request: Request) {
   // Auto-create org if user doesn't have one (creates real Clerk org or sentinel)
   const { slug: orgSlug } = await ensureTestOrg(userId);
 
-  // Generate CLI token
-  const randomBytes = crypto.randomBytes(32);
-  const token = `vm0_live_${randomBytes.toString("base64url")}`;
+  // Resolve orgId from slug (ensureTestOrg creates org_cache entry, so this is a cache hit)
+  const orgData = await getOrgBySlug(orgSlug);
+  if (!orgData) {
+    return NextResponse.json(
+      { error: `Organization not found for slug: ${orgSlug}` },
+      { status: 500 },
+    );
+  }
+  const orgId = orgData.orgId;
+
+  // Generate CLI JWT with tokenId for revocation tracking
+  const tokenId = crypto.randomUUID();
   const now = new Date();
   const expiresAt = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000); // 90 days
+  const token = await generateCliToken(userId, orgId, tokenId);
 
   await globalThis.services.db.insert(cliTokens).values({
+    id: tokenId,
     token,
     userId,
     name: "CI Test Token",

@@ -160,7 +160,7 @@ describe("zero-job-detail signals", () => {
 
       expect(detail).toBeNull();
       expect(loading).toBeFalsy();
-      expect(error).toBe("Failed to fetch agent: Not Found (404)");
+      expect(error).toBe("Failed to fetch agent (404)");
     });
 
     it("should set instructions error when instructions API fails", async () => {
@@ -189,9 +189,7 @@ describe("zero-job-detail signals", () => {
       const instructionsError = context.store.get(zeroJobInstructionsError$);
 
       expect(instructions).toBeNull();
-      expect(instructionsError).toBe(
-        "Failed to fetch instructions: Internal Server Error",
-      );
+      expect(instructionsError).toBe("Failed to fetch instructions (500)");
 
       // Detail should still succeed
       expect(context.store.get(zeroJobDetail$)).not.toBeNull();
@@ -223,7 +221,7 @@ describe("zero-job-detail signals", () => {
       const scheduleError = context.store.get(zeroJobScheduleError$);
 
       expect(entries).toStrictEqual([]);
-      expect(scheduleError).toBe("Failed to fetch schedules: Forbidden");
+      expect(scheduleError).toBe("Failed to fetch schedules (403)");
 
       // Detail and instructions should still succeed
       expect(context.store.get(zeroJobDetail$)).not.toBeNull();
@@ -231,26 +229,19 @@ describe("zero-job-detail signals", () => {
     });
 
     it("should pass agent name directly to API", async () => {
+      let capturedUrl = "";
       server.use(
-        http.get(
-          "http://localhost:3000/api/zero/agents/:name",
-          ({ params }) => {
-            expect(decodeURIComponent(params["name"] as string)).toBe(
-              "my-org/sub-agent",
-            );
-
-            return HttpResponse.json({
-              ...mockAgentResponse(),
-              name: "sub-agent",
-            });
-          },
-        ),
-        http.get(
-          "http://localhost:3000/api/zero/agents/:name/instructions",
-          () => {
+        http.get("http://localhost:3000/api/zero/agents/*", ({ request }) => {
+          capturedUrl = request.url;
+          // Only match the agent detail request, not the instructions sub-path
+          if (capturedUrl.includes("/instructions")) {
             return HttpResponse.json(mockInstructions());
-          },
-        ),
+          }
+          return HttpResponse.json({
+            ...mockAgentResponse(),
+            name: "sub-agent",
+          });
+        }),
         http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json({ schedules: [] });
         }),
@@ -261,6 +252,9 @@ describe("zero-job-detail signals", () => {
 
       const detail = context.store.get(zeroJobDetail$);
       expect(detail).not.toBeNull();
+      // Verify the agent name was included in the URL (percent-encoded)
+      expect(capturedUrl).toContain("my-org");
+      expect(capturedUrl).toContain("sub-agent");
     });
   });
 
@@ -459,7 +453,7 @@ describe("zero-job-detail signals", () => {
 
       await expect(
         context.store.set(saveZeroJobSchedule$, params),
-      ).rejects.toThrow("Quota exceeded");
+      ).rejects.toThrow("Save failed (429)");
     });
   });
 
@@ -537,7 +531,7 @@ describe("zero-job-detail signals", () => {
 
       await expect(
         context.store.set(deleteZeroJobSchedule$, "nonexistent"),
-      ).rejects.toThrow("Not found");
+      ).rejects.toThrow("Delete failed: Not found");
     });
   });
 
@@ -667,7 +661,7 @@ describe("zero-job-detail signals", () => {
           name: "daily-run",
           enabled: true,
         }),
-      ).rejects.toThrow("Server error");
+      ).rejects.toThrow("Failed to enable schedule (500)");
     });
   });
 

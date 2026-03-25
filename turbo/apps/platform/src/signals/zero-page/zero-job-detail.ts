@@ -1,11 +1,18 @@
 import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import { fetch$ } from "../fetch.ts";
+import {
+  zeroAgentsByIdContract,
+  zeroAgentInstructionsContract,
+  zeroSchedulesMainContract,
+  zeroSchedulesByNameContract,
+  zeroSchedulesEnableContract,
+  type FirewallPolicies,
+} from "@vm0/core";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
+import { zeroClient$ } from "../api-client.ts";
 import { search } from "../location.ts";
 import type { AgentDetail, AgentInstructions } from "./agent-types.ts";
-import type { FirewallPolicies } from "@vm0/core";
 import {
   buildCronExpression,
   buildAtTime,
@@ -93,21 +100,14 @@ const fetchZeroJobDetail$ = command(async ({ get, set }) => {
   set(detailState$, (prev) => ({ ...prev, loading: true, error: null }));
 
   try {
-    const fetchFn = get(fetch$);
-
-    const response = await fetchFn(
-      `/api/zero/agents/${encodeURIComponent(name)}`,
-    );
-    if (!response.ok) {
-      const status = response.status;
-      const text = response.statusText || `HTTP ${status}`;
-      throw new Error(`Failed to fetch agent: ${text} (${status})`);
+    const client = get(zeroClient$)(zeroAgentsByIdContract);
+    const result = await client.get({ params: { id: name } });
+    if (result.status !== 200) {
+      throw new Error(`Failed to fetch agent (${result.status})`);
     }
 
-    const data = (await response.json()) as AgentDetail;
-
     set(detailState$, {
-      detail: data,
+      detail: result.body,
       loading: false,
       error: null,
     });
@@ -157,17 +157,14 @@ const fetchZeroJobInstructions$ = command(async ({ get, set }) => {
   set(instructionsState$, { instructions: null, loading: true, error: null });
 
   try {
-    const fetchFn = get(fetch$);
-    const response = await fetchFn(
-      `/api/zero/agents/${encodeURIComponent(detail.agentId)}/instructions`,
-    );
-    if (!response.ok) {
-      throw new Error(`Failed to fetch instructions: ${response.statusText}`);
+    const client = get(zeroClient$)(zeroAgentInstructionsContract);
+    const result = await client.get({ params: { id: detail.agentId } });
+    if (result.status !== 200) {
+      throw new Error(`Failed to fetch instructions (${result.status})`);
     }
 
-    const data = (await response.json()) as AgentInstructions;
     set(instructionsState$, {
-      instructions: data,
+      instructions: result.body,
       loading: false,
       error: null,
     });
@@ -224,24 +221,21 @@ export const buildZeroJobInstructions$ = command(async ({ get, set }) => {
   set(internalBuildError$, null);
 
   try {
-    const fetchFn = get(fetch$);
+    const client = get(zeroClient$)(zeroAgentInstructionsContract);
+    const result = await client.update({
+      params: { id: detail.agentId },
+      body: { content: edited },
+    });
 
-    const resp = await fetchFn(
-      `/api/zero/agents/${encodeURIComponent(detail.agentId)}/instructions`,
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: edited }),
-      },
-    );
-
-    if (!resp.ok) {
-      const errorData = (await resp.json().catch(() => null)) as {
-        error?: { message?: string };
-      } | null;
-      throw new Error(
-        errorData?.error?.message ?? `Build failed: ${resp.statusText}`,
-      );
+    if (result.status !== 200) {
+      const detail =
+        result.status === 401 ||
+        result.status === 403 ||
+        result.status === 404 ||
+        result.status === 422
+          ? result.body.error.message
+          : `status ${result.status}`;
+      throw new Error(`Build failed: ${detail}`);
     }
 
     // Optimistically update instructions state
@@ -284,18 +278,19 @@ export const zeroJobUpdateSettings$ = command(
 
     set(internalSaving$, true);
     try {
-      const fetchFn = get(fetch$);
-      const response = await fetchFn(
-        `/api/zero/agents/${encodeURIComponent(detail.agentId)}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(update),
-        },
-      );
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(text || `HTTP ${response.status}`);
+      const client = get(zeroClient$)(zeroAgentsByIdContract);
+      const result = await client.updateMetadata({
+        params: { id: detail.agentId },
+        body: update,
+      });
+      if (result.status !== 200) {
+        const detail =
+          result.status === 401 ||
+          result.status === 403 ||
+          result.status === 404
+            ? result.body.error.message
+            : `status ${result.status}`;
+        throw new Error(`Save failed: ${detail}`);
       }
 
       await set(fetchZeroJobDetail$);
@@ -373,24 +368,22 @@ export const saveZeroJobConnectors$ = command(async ({ get, set }) => {
   set(internalSaving$, true);
   try {
     const newConnectors = get(internalAddedConnectors$) ?? [];
-    const fetchFn = get(fetch$);
+    const client = get(zeroClient$)(zeroAgentsByIdContract);
+    const result = await client.update({
+      params: { id: detail.agentId },
+      body: { connectors: newConnectors },
+    });
 
-    const resp = await fetchFn(
-      `/api/zero/agents/${encodeURIComponent(detail.agentId)}`,
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ connectors: newConnectors }),
-      },
-    );
-
-    if (!resp.ok) {
-      const errorData = (await resp.json().catch(() => null)) as {
-        error?: { message?: string };
-      } | null;
-      throw new Error(
-        errorData?.error?.message ?? `Save failed: ${resp.statusText}`,
-      );
+    if (result.status !== 200) {
+      const detail =
+        result.status === 400 ||
+        result.status === 401 ||
+        result.status === 403 ||
+        result.status === 404 ||
+        result.status === 422
+          ? result.body.error.message
+          : `status ${result.status}`;
+      throw new Error(`Save failed: ${detail}`);
     }
 
     set(internalAddedConnectors$, null);
@@ -431,21 +424,14 @@ const fetchZeroJobFirewallPolicies$ = command(async ({ get, set }) => {
   }
 
   try {
-    const fetchFn = get(fetch$);
-    const response = await fetchFn(
-      `/api/zero/agents/${encodeURIComponent(name)}`,
-    );
-    if (!response.ok) {
-      L.warn(
-        `Failed to fetch firewall policies: ${response.statusText} (${response.status})`,
-      );
+    const client = get(zeroClient$)(zeroAgentsByIdContract);
+    const result = await client.get({ params: { id: name } });
+    if (result.status !== 200) {
+      L.warn(`Failed to fetch firewall policies (${result.status})`);
       return;
     }
 
-    const data = (await response.json()) as {
-      firewallPolicies?: FirewallPolicies | null;
-    };
-    set(internalFirewallPolicies$, data.firewallPolicies ?? null);
+    set(internalFirewallPolicies$, result.body.firewallPolicies ?? null);
   } catch (error) {
     throwIfAbort(error);
     L.error("Failed to fetch firewall policies:", error);
@@ -587,14 +573,13 @@ const fetchZeroJobSchedule$ = command(async ({ get, set }) => {
   set(scheduleState$, { schedules: [], error: null });
 
   try {
-    const fetchFn = get(fetch$);
-    const response = await fetchFn("/api/zero/schedules");
-    if (!response.ok) {
-      throw new Error(`Failed to fetch schedules: ${response.statusText}`);
+    const client = get(zeroClient$)(zeroSchedulesMainContract);
+    const result = await client.list();
+    if (result.status !== 200) {
+      throw new Error(`Failed to fetch schedules (${result.status})`);
     }
 
-    const data = (await response.json()) as { schedules: ScheduleItem[] };
-    const agentSchedules = data.schedules.filter(
+    const agentSchedules = result.body.schedules.filter(
       (s) => s.agentId === detail.agentId,
     );
     set(scheduleState$, { schedules: agentSchedules, error: null });
@@ -634,7 +619,6 @@ export const saveZeroJobSchedule$ = command(
       throw new Error("No agent detail loaded");
     }
 
-    const fetchFn = get(fetch$);
     const scheduleName = params.editName ?? `zero-${Date.now().toString(36)}`;
 
     const base = {
@@ -685,19 +669,18 @@ export const saveZeroJobSchedule$ = command(
       body = { ...base, cronExpression };
     }
 
-    const response = await fetchFn("/api/zero/schedules", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    const client = get(zeroClient$)(zeroSchedulesMainContract);
+    const result = await client.deploy({ body });
 
-    if (!response.ok) {
-      const errorData = (await response.json().catch(() => null)) as {
-        error?: { message?: string };
-      } | null;
-      throw new Error(
-        errorData?.error?.message ?? `Save failed: ${response.statusText}`,
-      );
+    if (result.status !== 200 && result.status !== 201) {
+      const detail =
+        result.status === 400 ||
+        result.status === 401 ||
+        result.status === 403 ||
+        result.status === 404
+          ? result.body.error.message
+          : `Save failed (${result.status})`;
+      throw new Error(detail);
     }
 
     toast.success(params.editName ? "Schedule updated" : "Schedule created");
@@ -712,24 +695,15 @@ export const toggleZeroJobScheduleEnabled$ = command(
       throw new Error("No agent detail loaded");
     }
 
-    const fetchFn = get(fetch$);
+    const client = get(zeroClient$)(zeroSchedulesEnableContract);
     const action = params.enabled ? "enable" : "disable";
-    const response = await fetchFn(
-      `/api/zero/schedules/${encodeURIComponent(params.name)}/${action}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentId: detail.agentId }),
-      },
-    );
+    const result = await client[action]({
+      params: { name: params.name },
+      body: { agentId: detail.agentId },
+    });
 
-    if (!response.ok) {
-      const errorData = (await response.json().catch(() => null)) as {
-        error?: { message?: string };
-      } | null;
-      const message =
-        errorData?.error?.message ??
-        `Failed to ${action} schedule: ${response.statusText}`;
+    if (result.status !== 200) {
+      const message = `Failed to ${action} schedule (${result.status})`;
       toast.error(message);
       throw new Error(message);
     }
@@ -745,19 +719,18 @@ export const deleteZeroJobSchedule$ = command(
       throw new Error("No agent detail loaded");
     }
 
-    const fetchFn = get(fetch$);
-    const response = await fetchFn(
-      `/api/zero/schedules/${encodeURIComponent(scheduleName)}?agentId=${encodeURIComponent(detail.agentId)}`,
-      { method: "DELETE" },
-    );
+    const client = get(zeroClient$)(zeroSchedulesByNameContract);
+    const result = await client.delete({
+      params: { name: scheduleName },
+      query: { agentId: detail.agentId },
+    });
 
-    if (!response.ok && response.status !== 204) {
-      const errorData = (await response.json().catch(() => null)) as {
-        error?: { message?: string };
-      } | null;
-      throw new Error(
-        errorData?.error?.message ?? `Delete failed: ${response.statusText}`,
-      );
+    if (result.status !== 204) {
+      const msg =
+        result.status === 401 || result.status === 403 || result.status === 404
+          ? result.body.error.message
+          : `status ${result.status}`;
+      throw new Error(`Delete failed: ${msg}`);
     }
 
     toast.success("Schedule deleted");
@@ -775,27 +748,15 @@ export const deleteZeroJobAgent$ = command(async ({ get, set }) => {
     throw new Error("No agent detail loaded");
   }
 
-  const fetchFn = get(fetch$);
-  const response = await fetchFn(
-    `/api/zero/agents/${encodeURIComponent(detail.agentId)}`,
-    { method: "DELETE" },
-  );
+  const client = get(zeroClient$)(zeroAgentsByIdContract);
+  const result = await client.delete({ params: { id: detail.agentId } });
 
-  if (response.status === 409) {
-    throw new Error("Cannot delete agent while it is running");
-  }
-
-  if (!response.ok && response.status !== 204) {
-    const contentType = response.headers.get("content-type") ?? "";
-    if (contentType.includes("application/json")) {
-      const errorData = (await response.json()) as {
-        error?: { message?: string };
-      };
-      throw new Error(
-        errorData?.error?.message ?? `Delete failed: ${response.statusText}`,
-      );
-    }
-    throw new Error(`Delete failed: ${response.statusText}`);
+  if (result.status !== 204) {
+    const msg =
+      result.status === 401 || result.status === 403 || result.status === 404
+        ? result.body.error.message
+        : `status ${result.status}`;
+    throw new Error(`Delete failed: ${msg}`);
   }
 
   toast.success("Agent deleted");

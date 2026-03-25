@@ -15,7 +15,7 @@ export const brevoFirewall: FirewallConfig = {
   },
   apis: [
     {
-      base: "https://api.brevo.com/v3",
+      base: "https://api.brevo.com",
       auth: {
         headers: {
           "api-key": "${{ secrets.BREVO_TOKEN }}",

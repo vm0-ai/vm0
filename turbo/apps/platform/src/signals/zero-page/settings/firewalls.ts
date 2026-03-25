@@ -1,10 +1,11 @@
 import { command } from "ccstate";
-import type {
-  ConnectorType,
-  FirewallPolicies,
-  FirewallPolicyValue,
+import {
+  zeroAgentFirewallPoliciesContract,
+  type ConnectorType,
+  type FirewallPolicies,
+  type FirewallPolicyValue,
 } from "@vm0/core";
-import { fetch$ } from "../../fetch.ts";
+import { zeroClient$ } from "../../api-client.ts";
 
 /**
  * Maps platform connector types to their firewall ref name(s) in builtinFirewalls.
@@ -48,36 +49,22 @@ export const saveFirewallPolicies$ = command(
     agentName: string,
     policies: FirewallPolicies,
   ): Promise<FirewallPolicies | null> => {
-    const fetchFn = get(fetch$);
-
-    const resp = await fetchFn("/api/zero/firewall-policies", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: agentName, policies }),
+    const client = get(zeroClient$)(zeroAgentFirewallPoliciesContract);
+    const result = await client.update({
+      body: { agentId: agentName, policies },
     });
 
-    if (!resp.ok) {
-      const parsed: unknown = await resp.json().catch(() => null);
-      let detail = resp.statusText;
-      if (
-        parsed !== null &&
-        parsed !== undefined &&
-        typeof parsed === "object" &&
-        "error" in parsed &&
-        parsed.error !== null &&
-        parsed.error !== undefined &&
-        typeof parsed.error === "object" &&
-        "message" in parsed.error &&
-        typeof parsed.error.message === "string"
-      ) {
-        detail = parsed.error.message;
-      }
+    if (result.status !== 200) {
+      const detail =
+        result.status === 400 ||
+        result.status === 401 ||
+        result.status === 403 ||
+        result.status === 404
+          ? result.body.error.message
+          : `status ${result.status}`;
       throw new Error(`Save failed: ${detail}`);
     }
 
-    const data = (await resp.json()) as {
-      firewallPolicies?: FirewallPolicies | null;
-    };
-    return data.firewallPolicies ?? null;
+    return result.body.firewallPolicies ?? null;
   },
 );

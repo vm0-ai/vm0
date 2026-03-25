@@ -12,8 +12,7 @@ export interface TelegramCallbackPayload {
   messageId: string;
   rootMessageId: string | null;
   userLinkId: string;
-  agentName: string;
-  composeId: string;
+  agentId: string;
   existingSessionId: string | null;
   isDM: boolean;
   thinkingMessageId: string | null;
@@ -25,8 +24,7 @@ export interface SlackOrgCallbackPayload {
   threadTs: string;
   messageTs: string;
   connectionId: string;
-  agentName: string;
-  composeId: string;
+  agentId: string;
   existingSessionId?: string;
 }
 
@@ -56,14 +54,12 @@ export interface EmailReplyCallbackPayload {
 export interface EmailScheduleCallbackPayload {
   scheduleId: string;
   agentId: string;
-  agentName: string;
   userId: string;
 }
 
 export interface SlackScheduleCallbackPayload {
   scheduleId: string;
   agentId: string;
-  agentName: string;
   userId: string;
   orgId: string;
   slackChannelId?: string | null;
@@ -78,8 +74,7 @@ export interface GitHubIssuesCallbackPayload {
   installationId: string;
   repo: string;
   issueNumber: number;
-  agentName: string;
-  composeId: string;
+  agentId: string;
   existingSessionId?: string;
   triggerCommentId?: string;
   triggerCommentBody?: string;

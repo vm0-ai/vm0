@@ -10,7 +10,7 @@ import {
   billingStatusAsync$,
   type BillingTier,
 } from "../../../../signals/zero-page/billing.ts";
-import { updateMemberCreditCap$ } from "../../../../signals/zero-page/member-credit-cap.ts";
+import { setMemberCreditCap$ } from "../../../../signals/zero-page/member-credit-caps.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 
 const sectionCardStyle = {
@@ -257,7 +257,7 @@ function InlineCapInput({
   member: MemberUsage;
   onSaved: (cap: number | null) => void;
 }) {
-  const updateCap = useSet(updateMemberCreditCap$);
+  const updateCap = useSet(setMemberCreditCap$);
   const [value, setValue] = useState(
     member.creditCap !== null ? String(member.creditCap) : "",
   );
@@ -276,7 +276,7 @@ function InlineCapInput({
     setSaving(true);
     detach(
       (async () => {
-        await updateCap(member.userId, cap);
+        await updateCap({ userId: member.userId, creditCap: cap });
         onSaved(cap);
         setSaving(false);
       })().catch(() => {

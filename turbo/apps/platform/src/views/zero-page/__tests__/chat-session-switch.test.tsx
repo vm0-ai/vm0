@@ -67,7 +67,7 @@ describe("chat session switch", () => {
         HttpResponse.json({
           id: "run-active",
           sessionId: "session-1",
-          agentName: "zero",
+          agentId: "zero",
           displayName: null,
           framework: "claude-code",
           modelProvider: null,

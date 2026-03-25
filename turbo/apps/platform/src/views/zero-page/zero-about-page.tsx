@@ -7,9 +7,9 @@ interface ZeroAboutPageProps {
 }
 
 export function ZeroAboutPage({ onBack }: ZeroAboutPageProps) {
-  const agentNameLoadable = useLoadable(agentDisplayName$);
-  const agentName =
-    agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
+  const displayNameLoadable = useLoadable(agentDisplayName$);
+  const displayName =
+    displayNameLoadable.state === "hasData" ? displayNameLoadable.data : "Zero";
   return (
     <div className="flex flex-1 flex-col min-h-0 overflow-auto">
       <div className="mx-auto max-w-[900px] w-full px-4 sm:px-6 py-10 sm:py-14">
@@ -29,7 +29,7 @@ export function ZeroAboutPage({ onBack }: ZeroAboutPageProps) {
               About VM0 Zero
             </h1>
             <p className="mt-3 text-base text-muted-foreground leading-relaxed max-w-[560px]">
-              {agentName} is your AI teammate, not just a tool. It automates
+              {displayName} is your AI teammate, not just a tool. It automates
               workflows, grows with you, and works where you already are: in
               Slack, on the web, with access to what you need and memory of what
               you’ve done. Safe, easy to use, and built to feel like part of the
@@ -39,19 +39,19 @@ export function ZeroAboutPage({ onBack }: ZeroAboutPageProps) {
 
           <section className="space-y-4">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              Who {agentName} is for
+              Who {displayName} is for
             </h2>
             <p className="text-sm text-foreground leading-relaxed">
-              Whether you’re technical or not, {agentName} is ready. Use it for
-              quick help or go deep with workflows and automation. Everyone can
-              get started; power users can do more.
+              Whether you’re technical or not, {displayName} is ready. Use it
+              for quick help or go deep with workflows and automation. Everyone
+              can get started; power users can do more.
             </p>
             <ul className="space-y-3 text-sm text-foreground leading-relaxed">
               <li className="flex gap-3">
                 <span className="text-primary shrink-0">·</span>
                 <span>
                   <strong className="text-foreground">Managers</strong>. Use
-                  {agentName} in Slack and your workspace to boost team
+                  {displayName} in Slack and your workspace to boost team
                   efficiency, coordinate work, and treat it like an AI teammate
                   that supports the whole team.
                 </span>
@@ -69,7 +69,8 @@ export function ZeroAboutPage({ onBack }: ZeroAboutPageProps) {
                 <span>
                   <strong className="text-foreground">Individuals</strong>. Your
                   personal assistant on the web or in Slack: look things up, run
-                  tasks, and keep track of what {agentName} is handling for you.
+                  tasks, and keep track of what {displayName} is handling for
+                  you.
                 </span>
               </li>
             </ul>
@@ -77,7 +78,7 @@ export function ZeroAboutPage({ onBack }: ZeroAboutPageProps) {
 
           <section className="space-y-4">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              How {agentName} works
+              How {displayName} works
             </h2>
             <ul className="space-y-3 text-sm text-foreground leading-relaxed">
               <li className="flex gap-3">
@@ -86,7 +87,7 @@ export function ZeroAboutPage({ onBack }: ZeroAboutPageProps) {
                   <strong className="text-foreground">
                     IM + where you work
                   </strong>
-                  . Chat in Slack or on the web; {agentName} fits into your
+                  . Chat in Slack or on the web; {displayName} fits into your
                   existing channels.
                 </span>
               </li>
@@ -106,8 +107,8 @@ export function ZeroAboutPage({ onBack }: ZeroAboutPageProps) {
                   <strong className="text-foreground">
                     Automation that grows
                   </strong>
-                  . Run workflows, schedule agents, and let {agentName} take on
-                  more as you do.
+                  . Run workflows, schedule agents, and let {displayName} take
+                  on more as you do.
                 </span>
               </li>
             </ul>
@@ -115,7 +116,7 @@ export function ZeroAboutPage({ onBack }: ZeroAboutPageProps) {
 
           <section className="pt-4 border-t border-border">
             <p className="text-sm text-muted-foreground leading-relaxed">
-              {agentName} is built by VM0. Secure, friendly, and designed to
+              {displayName} is built by VM0. Secure, friendly, and designed to
               feel like a teammate.
             </p>
             <a

@@ -9,7 +9,7 @@ import {
 } from "../../signals/zero-page/zero-schedule.ts";
 
 interface ZeroScheduleTabProps {
-  agentName: string;
+  displayName: string;
   entries: ScheduleEntry[];
   scheduleError?: string | null;
   onSave: (params: ZeroScheduleSaveParams) => Promise<void>;
@@ -23,7 +23,7 @@ interface ZeroScheduleTabProps {
 }
 
 export function ZeroScheduleTab({
-  agentName,
+  displayName,
   entries,
   scheduleError,
   onSave,
@@ -62,8 +62,8 @@ export function ZeroScheduleTab({
   return (
     <div className="mx-auto max-w-[900px]">
       <ZeroScheduleCard
-        title={`${agentName}'s scheduled tasks`}
-        subtitle={`Tasks you've scheduled with ${agentName} to run automatically.`}
+        title={`${displayName}'s scheduled tasks`}
+        subtitle={`Tasks you've scheduled with ${displayName} to run automatically.`}
         initialSchedule={entries}
         onSave={handleSave}
         onDelete={onDelete}

@@ -19,7 +19,7 @@ export const TRIGGER_SOURCE_LABELS: Readonly<Record<TriggerSource, string>> = {
 export interface LogEntry {
   id: string;
   sessionId: string | null;
-  agentName: string;
+  agentId: string | null;
   displayName: string | null;
   orgSlug: string | null;
   framework: string | null;
@@ -53,7 +53,7 @@ interface Artifact {
 export interface LogDetail {
   id: string;
   sessionId: string | null;
-  agentName: string;
+  agentId: string | null;
   displayName: string | null;
   framework: string | null;
   modelProvider: string | null;

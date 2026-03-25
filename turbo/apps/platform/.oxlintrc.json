@@ -43,6 +43,13 @@
                 "allowTypeImports": true,
                 "name": "react"
               }
+            ],
+            "patterns": [
+              {
+                "group": ["**/fetch", "**/fetch.ts"],
+                "importNames": ["fetch$"],
+                "message": "Use zeroClient$ from api-client.ts instead of raw fetch$. Only exception: FormData uploads (ts-rest cannot handle multipart)."
+              }
             ]
           }
         ]
@@ -110,6 +117,23 @@
       "files": ["src/signals/log.ts"],
       "rules": {
         "no-console": "allow"
+      }
+    },
+    {
+      "files": ["src/signals/zero-page/zero-chat.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "deny",
+          {
+            "paths": [
+              {
+                "allowImportNames": ["createElement"],
+                "allowTypeImports": true,
+                "name": "react"
+              }
+            ]
+          }
+        ]
       }
     },
     {

@@ -15,7 +15,7 @@ function makeLogDetail(overrides: Partial<LogDetail>): LogDetail {
   return {
     id: "run_1",
     sessionId: "session_1",
-    agentName: "agent-1",
+    agentId: "agent-1",
     displayName: "Agent One",
     framework: "claude-code",
     modelProvider: null,
@@ -50,13 +50,13 @@ function makeEventsResponse(text: string): AgentEventsResponse {
 function mockAPIs() {
   const detail1 = makeLogDetail({
     id: "run_1",
-    agentName: "agent-1",
+    agentId: "agent-1",
     displayName: "Agent One",
   });
 
   const detail2 = makeLogDetail({
     id: "run_2",
-    agentName: "agent-2",
+    agentId: "agent-2",
     displayName: "Agent Two",
   });
 
@@ -64,7 +64,7 @@ function mockAPIs() {
     {
       id: "run_1",
       sessionId: "session_1",
-      agentName: "agent-1",
+      agentId: "agent-1",
       displayName: "Agent One",
       orgSlug: "test",
       framework: "claude-code",
@@ -77,7 +77,7 @@ function mockAPIs() {
     {
       id: "run_2",
       sessionId: "session_2",
-      agentName: "agent-2",
+      agentId: "agent-2",
       displayName: "Agent Two",
       orgSlug: "test",
       framework: "claude-code",

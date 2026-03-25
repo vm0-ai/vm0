@@ -6,6 +6,7 @@ import { decryptSecretValue } from "../../../../../src/lib/crypto/secrets-encryp
 import { telegramInstallations } from "../../../../../src/db/schema/telegram-installation";
 import { agentSessions } from "../../../../../src/db/schema/agent-session";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
+import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
 import {
   createTelegramClient,
   sendMessage,
@@ -14,7 +15,6 @@ import {
   deleteMessage,
 } from "../../../../../src/lib/telegram/client";
 import {
-  escapeHtml,
   splitMessage,
   buildTelegramResponse,
   buildTelegramErrorResponse,
@@ -45,8 +45,7 @@ function parsePayload(payload: unknown): TelegramCallbackPayload | null {
     typeof p.chatId !== "string" ||
     typeof p.messageId !== "string" ||
     typeof p.userLinkId !== "string" ||
-    typeof p.agentName !== "string" ||
-    typeof p.composeId !== "string"
+    typeof p.agentId !== "string"
   ) {
     return null;
   }
@@ -56,8 +55,7 @@ function parsePayload(payload: unknown): TelegramCallbackPayload | null {
     messageId: p.messageId,
     rootMessageId: typeof p.rootMessageId === "string" ? p.rootMessageId : null,
     userLinkId: p.userLinkId,
-    agentName: p.agentName,
-    composeId: p.composeId,
+    agentId: p.agentId,
     existingSessionId:
       typeof p.existingSessionId === "string" ? p.existingSessionId : null,
     isDM: p.isDM === true,
@@ -72,7 +70,7 @@ function errorResponse(message: string, status: number): NextResponse {
 
 async function findNewSessionId(
   userId: string,
-  composeId: string,
+  agentId: string,
   runCreatedAt: Date,
 ): Promise<string | undefined> {
   const [newSession] = await globalThis.services.db
@@ -81,7 +79,7 @@ async function findNewSessionId(
     .where(
       and(
         eq(agentSessions.userId, userId),
-        eq(agentSessions.agentComposeId, composeId),
+        eq(agentSessions.agentComposeId, agentId),
         gte(agentSessions.updatedAt, runCreatedAt),
       ),
     )
@@ -112,6 +110,18 @@ interface CompletionContext {
   payload: TelegramCallbackPayload;
 }
 
+async function resolveAgentInfo(agentId: string) {
+  const [agentRow] = await globalThis.services.db
+    .select({ displayName: zeroAgents.displayName, name: zeroAgents.name })
+    .from(zeroAgents)
+    .where(eq(zeroAgents.id, agentId))
+    .limit(1);
+  return {
+    label: agentRow?.displayName ?? agentRow?.name ?? "your agent",
+    name: agentRow?.name ?? "your agent",
+  };
+}
+
 async function handleCompletion(ctx: CompletionContext): Promise<void> {
   const { client, runId, status, error, payload } = ctx;
   const {
@@ -120,12 +130,13 @@ async function handleCompletion(ctx: CompletionContext): Promise<void> {
     messageId,
     rootMessageId: payloadRootMessageId,
     userLinkId,
-    agentName,
-    composeId,
+    agentId,
     existingSessionId,
     isDM,
     thinkingMessageId,
   } = payload;
+
+  const agent = await resolveAgentInfo(agentId);
 
   // Delete thinking placeholder message
   if (thinkingMessageId) {
@@ -146,7 +157,7 @@ async function handleCompletion(ctx: CompletionContext): Promise<void> {
   if (status === "failed") {
     log.error("Agent run failed", {
       runId,
-      agentName,
+      agentName: agent.name,
       chatId,
       error,
     });
@@ -162,11 +173,11 @@ async function handleCompletion(ctx: CompletionContext): Promise<void> {
     const deepLinks = buildDeepLinksFromFlags(
       runOutput,
       getAppUrl(),
-      agentName,
+      agent.name,
     );
     htmlOutput = buildTelegramResponse(
       responseText,
-      agentName,
+      agent.label,
       logsUrl,
       deepLinks,
     );
@@ -210,7 +221,7 @@ async function handleCompletion(ctx: CompletionContext): Promise<void> {
   // Save thread session mapping
   if (run && botReplyMessageId !== undefined) {
     const newSessionId = !existingSessionId
-      ? await findNewSessionId(run.userId, composeId, run.createdAt)
+      ? await findNewSessionId(run.userId, agentId, run.createdAt)
       : undefined;
 
     const newRootMessageId = isDM ? "dm" : String(botReplyMessageId);
@@ -277,7 +288,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     try {
       await sendChatAction(client, payload.chatId, "typing");
       if (payload.thinkingMessageId) {
-        const thinkingText = `<i>🤖 ${escapeHtml(payload.agentName)} is thinking...</i>`;
+        const thinkingText = `<i>🤖 is thinking...</i>`;
         await editMessageText(
           client,
           payload.chatId,

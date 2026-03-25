@@ -18,6 +18,7 @@ const SKIP_I18N_PREFIXES = [
   "/connector/",
   "/slack/",
   "/sign-in",
+  "/sign-in-token",
   "/sign-up",
   "/privacy-policy",
   "/terms-of-use",

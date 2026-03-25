@@ -1,10 +1,17 @@
 import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import { fetch$ } from "../fetch.ts";
 import { createElement } from "react";
 import { Link } from "../../views/router/link.tsx";
+import {
+  zeroSchedulesMainContract,
+  zeroSchedulesByNameContract,
+  zeroSchedulesEnableContract,
+  zeroScheduleRunContract,
+  type ScheduleResponse,
+} from "@vm0/core";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
+import { zeroClient$ } from "../api-client.ts";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
 import {
   buildCronExpression,
@@ -19,33 +26,6 @@ const L = logger("ZeroSchedule");
 function scheduleSaveFailure(message: string): never {
   toast.error(message);
   throw new Error(message);
-}
-
-// ---------------------------------------------------------------------------
-// Schedule response type (matches API schema)
-// ---------------------------------------------------------------------------
-
-interface ScheduleResponse {
-  id: string;
-  agentId: string;
-  agentName: string;
-  orgSlug: string;
-  name: string;
-  triggerType: "cron" | "once" | "loop";
-  cronExpression: string | null;
-  atTime: string | null;
-  intervalSeconds: number | null;
-  timezone: string;
-  prompt: string;
-  description: string | null;
-  enabled: boolean;
-  notifyEmail: boolean;
-  notifySlack: boolean;
-  slackChannelId: string | null;
-  nextRunAt: string | null;
-  lastRunAt: string | null;
-  createdAt: string;
-  updatedAt: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -189,20 +169,16 @@ export const fetchZeroSchedules$ = command(async ({ get, set }) => {
   }
 
   try {
-    const fetchFn = get(fetch$);
-    const response = await fetchFn("/api/zero/schedules");
+    const client = get(zeroClient$)(zeroSchedulesMainContract);
+    const result = await client.list();
 
-    if (!response.ok) {
+    if (result.status !== 200) {
       set(internalSchedules$, []);
       return;
     }
 
-    const data = (await response.json()) as {
-      schedules: ScheduleResponse[];
-    };
-
     // Filter schedules for this agent's composeId
-    const agentSchedules = data.schedules.filter(
+    const agentSchedules = result.body.schedules.filter(
       (s) => s.agentId === composeId,
     );
     set(internalSchedules$, agentSchedules);
@@ -216,6 +192,70 @@ export const fetchZeroSchedules$ = command(async ({ get, set }) => {
 // ---------------------------------------------------------------------------
 // Save schedule (create or update)
 // ---------------------------------------------------------------------------
+
+function buildScheduleBody(
+  agentId: string,
+  params: ZeroScheduleSaveParams,
+): ScheduleBody {
+  const scheduleName = params.editName ?? `zero-${Date.now().toString(36)}`;
+
+  const base = {
+    agentId,
+    name: scheduleName,
+    timezone: params.timezone,
+    prompt: params.prompt.trim(),
+    ...(params.description && { description: params.description.trim() }),
+    enabled: true,
+    ...(params.notifyEmail !== undefined && {
+      notifyEmail: params.notifyEmail,
+    }),
+    ...(params.notifySlack !== undefined && {
+      notifySlack: params.notifySlack,
+    }),
+    ...(params.slackChannelId !== undefined && {
+      slackChannelId: params.slackChannelId,
+    }),
+  };
+
+  if (params.freq === "every_n_minutes") {
+    return { ...base, intervalSeconds: params.intervalSeconds };
+  }
+
+  if (params.freq === "once") {
+    if (isAtTimePast(params.date, String(params.hour), String(params.minute))) {
+      throw new Error("Scheduled time must be in the future");
+    }
+    const atTime = buildAtTime(
+      params.date,
+      String(params.hour),
+      String(params.minute),
+    );
+    return { ...base, atTime };
+  }
+
+  if (params.freq === "now") {
+    return { ...base, atTime: new Date().toISOString() };
+  }
+
+  const freqMap: Record<string, CronTimeOption> = {
+    every_weekday: "every-weekday",
+    every_day: "every-day",
+    every_week: "every-week",
+    every_month: "every-month",
+  };
+  const timeOption = freqMap[params.freq];
+  if (!timeOption) {
+    throw new Error(`Unknown schedule frequency: ${params.freq}`);
+  }
+  const cronExpression = buildCronExpression({
+    timeOption,
+    hour: String(params.hour),
+    minute: String(params.minute),
+    dayOfWeek: params.dayOfWeek,
+    dayOfMonth: params.dayOfMonth,
+  });
+  return { ...base, cronExpression };
+}
 
 export interface ZeroScheduleSaveParams {
   prompt: string;
@@ -243,81 +283,20 @@ export const saveZeroSchedule$ = command(
       scheduleSaveFailure("No default agent configured");
     }
 
-    const fetchFn = get(fetch$);
-    const scheduleName = params.editName ?? `zero-${Date.now().toString(36)}`;
+    const body = buildScheduleBody(composeId, params);
 
-    const base = {
-      agentId: composeId,
-      name: scheduleName,
-      timezone: params.timezone,
-      prompt: params.prompt.trim(),
-      ...(params.description && { description: params.description.trim() }),
-      enabled: true,
-      ...(params.notifyEmail !== undefined && {
-        notifyEmail: params.notifyEmail,
-      }),
-      ...(params.notifySlack !== undefined && {
-        notifySlack: params.notifySlack,
-      }),
-      ...(params.slackChannelId !== undefined && {
-        slackChannelId: params.slackChannelId,
-      }),
-    };
+    const client = get(zeroClient$)(zeroSchedulesMainContract);
+    const result = await client.deploy({ body });
 
-    let body: ScheduleBody;
-
-    if (params.freq === "every_n_minutes") {
-      body = { ...base, intervalSeconds: params.intervalSeconds };
-    } else if (params.freq === "once") {
-      if (
-        isAtTimePast(params.date, String(params.hour), String(params.minute))
-      ) {
-        scheduleSaveFailure("Scheduled time must be in the future");
-      }
-      const atTime = buildAtTime(
-        params.date,
-        String(params.hour),
-        String(params.minute),
-      );
-      body = { ...base, atTime };
-    } else if (params.freq === "now") {
-      // "Now" → run once immediately (atTime = now)
-      body = { ...base, atTime: new Date().toISOString() };
-    } else {
-      // Map freq to cron time option
-      const freqMap: Record<string, CronTimeOption> = {
-        every_weekday: "every-weekday",
-        every_day: "every-day",
-        every_week: "every-week",
-        every_month: "every-month",
-      };
-      const timeOption = freqMap[params.freq];
-      if (!timeOption) {
-        scheduleSaveFailure(`Unknown schedule frequency: ${params.freq}`);
-      }
-      const cronExpression = buildCronExpression({
-        timeOption,
-        hour: String(params.hour),
-        minute: String(params.minute),
-        dayOfWeek: params.dayOfWeek,
-        dayOfMonth: params.dayOfMonth,
-      });
-      body = { ...base, cronExpression };
-    }
-
-    const response = await fetchFn("/api/zero/schedules", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-      const errorData = (await response.json().catch(() => null)) as {
-        error?: { message?: string };
-      } | null;
-      scheduleSaveFailure(
-        errorData?.error?.message ?? `Save failed: ${response.statusText}`,
-      );
+    if (result.status !== 200 && result.status !== 201) {
+      const message =
+        result.status === 400 ||
+        result.status === 401 ||
+        result.status === 403 ||
+        result.status === 404
+          ? result.body.error.message
+          : `Save failed (${result.status})`;
+      throw new Error(message);
     }
 
     toast.success(params.editName ? "Schedule updated" : "Schedule created");
@@ -337,24 +316,15 @@ export const toggleZeroScheduleEnabled$ = command(
       scheduleSaveFailure("No default agent configured");
     }
 
-    const fetchFn = get(fetch$);
+    const client = get(zeroClient$)(zeroSchedulesEnableContract);
     const action = params.enabled ? "enable" : "disable";
-    const response = await fetchFn(
-      `/api/zero/schedules/${encodeURIComponent(params.name)}/${action}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentId: composeId }),
-      },
-    );
+    const result = await client[action]({
+      params: { name: params.name },
+      body: { agentId: composeId },
+    });
 
-    if (!response.ok) {
-      const errorData = (await response.json().catch(() => null)) as {
-        error?: { message?: string };
-      } | null;
-      const message =
-        errorData?.error?.message ??
-        `Failed to ${action} schedule: ${response.statusText}`;
+    if (result.status !== 200) {
+      const message = `Failed to ${action} schedule (${result.status})`;
       toast.error(message);
       throw new Error(message);
     }
@@ -375,19 +345,18 @@ export const deleteZeroSchedule$ = command(
       throw new Error("No default agent configured");
     }
 
-    const fetchFn = get(fetch$);
-    const response = await fetchFn(
-      `/api/zero/schedules/${encodeURIComponent(scheduleName)}?agentId=${encodeURIComponent(composeId)}`,
-      { method: "DELETE" },
-    );
+    const client = get(zeroClient$)(zeroSchedulesByNameContract);
+    const result = await client.delete({
+      params: { name: scheduleName },
+      query: { agentId: composeId },
+    });
 
-    if (!response.ok && response.status !== 204) {
-      const errorData = (await response.json().catch(() => null)) as {
-        error?: { message?: string };
-      } | null;
-      throw new Error(
-        errorData?.error?.message ?? `Delete failed: ${response.statusText}`,
-      );
+    if (result.status !== 204) {
+      const msg =
+        result.status === 401 || result.status === 403 || result.status === 404
+          ? result.body.error.message
+          : `status ${result.status}`;
+      throw new Error(`Delete failed: ${msg}`);
     }
 
     toast.success("Schedule deleted");
@@ -413,7 +382,6 @@ export interface OrgScheduleEntry {
   timezone: string;
   intervalSeconds: number | null;
   agentId: string;
-  agentName: string;
   nextRunAt: string | null;
   lastRunAt: string | null;
 }
@@ -444,7 +412,6 @@ export const allOrgScheduleEntries$ = computed((get) => {
         timezone: s.timezone,
         intervalSeconds: s.intervalSeconds,
         agentId: s.agentId,
-        agentName: s.agentName,
         nextRunAt: s.nextRunAt,
         lastRunAt: s.lastRunAt,
       }),
@@ -452,17 +419,14 @@ export const allOrgScheduleEntries$ = computed((get) => {
 });
 
 export const fetchAllOrgSchedules$ = command(async ({ get, set }) => {
-  const fetchFn = get(fetch$);
   try {
-    const response = await fetchFn("/api/zero/schedules");
-    if (!response.ok) {
+    const client = get(zeroClient$)(zeroSchedulesMainContract);
+    const result = await client.list();
+    if (result.status !== 200) {
       set(internalAllSchedules$, []);
       return;
     }
-    const data = (await response.json()) as {
-      schedules: ScheduleResponse[];
-    };
-    set(internalAllSchedules$, data.schedules);
+    set(internalAllSchedules$, result.body.schedules);
   } catch (error) {
     throwIfAbort(error);
     L.error("Failed to fetch all org schedules:", error);
@@ -477,89 +441,23 @@ export const saveOrgSchedule$ = command(
     { get, set },
     params: ZeroScheduleSaveParams & { agentId: string },
   ) => {
-    const fetchFn = get(fetch$);
-    const scheduleName = params.editName ?? `zero-${Date.now().toString(36)}`;
+    const body = buildScheduleBody(params.agentId, params);
 
-    const base = {
-      agentId: params.agentId,
-      name: scheduleName,
-      timezone: params.timezone,
-      prompt: params.prompt.trim(),
-      ...(params.description && { description: params.description.trim() }),
-      enabled: true,
-      ...(params.notifyEmail !== undefined && {
-        notifyEmail: params.notifyEmail,
-      }),
-      ...(params.notifySlack !== undefined && {
-        notifySlack: params.notifySlack,
-      }),
-      ...(params.slackChannelId !== undefined && {
-        slackChannelId: params.slackChannelId,
-      }),
-    };
+    const client = get(zeroClient$)(zeroSchedulesMainContract);
+    const result = await client.deploy({ body });
 
-    let body: ScheduleBody;
-
-    if (params.freq === "every_n_minutes") {
-      body = { ...base, intervalSeconds: params.intervalSeconds };
-    } else if (params.freq === "once") {
-      if (
-        isAtTimePast(params.date, String(params.hour), String(params.minute))
-      ) {
-        scheduleSaveFailure("Scheduled time must be in the future");
-      }
-      const atTime = buildAtTime(
-        params.date,
-        String(params.hour),
-        String(params.minute),
-      );
-      body = { ...base, atTime };
-    } else if (params.freq === "now") {
-      body = { ...base, atTime: new Date().toISOString() };
-    } else {
-      const freqMap: Record<string, CronTimeOption> = {
-        every_weekday: "every-weekday",
-        every_day: "every-day",
-        every_week: "every-week",
-        every_month: "every-month",
-      };
-      const timeOption = freqMap[params.freq];
-      if (!timeOption) {
-        scheduleSaveFailure(`Unknown schedule frequency: ${params.freq}`);
-      }
-      const cronExpression = buildCronExpression({
-        timeOption,
-        hour: String(params.hour),
-        minute: String(params.minute),
-        dayOfWeek: params.dayOfWeek,
-        dayOfMonth: params.dayOfMonth,
-      });
-      body = { ...base, cronExpression };
+    if (result.status !== 200 && result.status !== 201) {
+      const message =
+        result.status === 400 ||
+        result.status === 401 ||
+        result.status === 403 ||
+        result.status === 404
+          ? result.body.error.message
+          : `Save failed (${result.status})`;
+      throw new Error(message);
     }
 
-    const response = await fetchFn("/api/zero/schedules", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-      const errorData = (await response.json().catch(() => null)) as {
-        error?: { message?: string };
-      } | null;
-      scheduleSaveFailure(
-        errorData?.error?.message ?? `Save failed: ${response.statusText}`,
-      );
-    }
-
-    const data = (await response.json()) as {
-      schedule?: { id?: string };
-    };
-
-    const scheduleId = data?.schedule?.id;
-    if (!scheduleId) {
-      scheduleSaveFailure("Unexpected response: missing schedule ID");
-    }
+    const scheduleId = result.body.schedule.id;
 
     toast.success(params.editName ? "Schedule updated" : "Schedule created");
     await set(fetchAllOrgSchedules$);
@@ -573,24 +471,15 @@ export const toggleOrgScheduleEnabled$ = command(
     { get, set },
     params: { name: string; enabled: boolean; agentId: string },
   ) => {
-    const fetchFn = get(fetch$);
+    const client = get(zeroClient$)(zeroSchedulesEnableContract);
     const action = params.enabled ? "enable" : "disable";
-    const response = await fetchFn(
-      `/api/zero/schedules/${encodeURIComponent(params.name)}/${action}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentId: params.agentId }),
-      },
-    );
+    const result = await client[action]({
+      params: { name: params.name },
+      body: { agentId: params.agentId },
+    });
 
-    if (!response.ok) {
-      const errorData = (await response.json().catch(() => null)) as {
-        error?: { message?: string };
-      } | null;
-      const message =
-        errorData?.error?.message ??
-        `Failed to ${action} schedule: ${response.statusText}`;
+    if (result.status !== 200) {
+      const message = `Failed to ${action} schedule (${result.status})`;
       toast.error(message);
       throw new Error(message);
     }
@@ -601,19 +490,18 @@ export const toggleOrgScheduleEnabled$ = command(
 
 export const deleteOrgSchedule$ = command(
   async ({ get, set }, params: { name: string; agentId: string }) => {
-    const fetchFn = get(fetch$);
-    const response = await fetchFn(
-      `/api/zero/schedules/${encodeURIComponent(params.name)}?agentId=${encodeURIComponent(params.agentId)}`,
-      { method: "DELETE" },
-    );
+    const client = get(zeroClient$)(zeroSchedulesByNameContract);
+    const result = await client.delete({
+      params: { name: params.name },
+      query: { agentId: params.agentId },
+    });
 
-    if (!response.ok && response.status !== 204) {
-      const errorData = (await response.json().catch(() => null)) as {
-        error?: { message?: string };
-      } | null;
-      throw new Error(
-        errorData?.error?.message ?? `Delete failed: ${response.statusText}`,
-      );
+    if (result.status !== 204) {
+      const msg =
+        result.status === 401 || result.status === 403 || result.status === 404
+          ? result.body.error.message
+          : `status ${result.status}`;
+      throw new Error(`Delete failed: ${msg}`);
     }
 
     toast.success("Schedule deleted");
@@ -628,24 +516,22 @@ export const deleteOrgSchedule$ = command(
 export const runScheduleNow$ = command(
   async ({ get }, scheduleId: string): Promise<string> => {
     const toastId = toast.loading("Starting run…");
-    const fetchFn = get(fetch$);
-    const response = await fetchFn("/api/zero/schedules/run", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scheduleId }),
-    });
+    const client = get(zeroClient$)(zeroScheduleRunContract);
+    const result = await client.run({ body: { scheduleId } });
 
-    if (!response.ok) {
-      const errorData = (await response.json().catch(() => null)) as {
-        error?: { message?: string };
-      } | null;
+    if (result.status !== 201) {
       const message =
-        errorData?.error?.message ?? `Run failed: ${response.status}`;
+        result.status === 400 ||
+        result.status === 401 ||
+        result.status === 404 ||
+        result.status === 409
+          ? result.body.error.message
+          : `Run failed (${result.status})`;
       toast.error(message, { id: toastId });
       throw new Error(message);
     }
 
-    const data = (await response.json()) as { runId: string };
+    const data = result.body;
 
     toast.success(
       createElement(

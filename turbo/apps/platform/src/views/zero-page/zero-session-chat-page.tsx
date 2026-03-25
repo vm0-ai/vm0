@@ -80,10 +80,10 @@ export function ZeroSessionChatPage({
   onAvatarClick,
   chatAgentName,
 }: ZeroSessionChatPageProps) {
-  const agentNameLoadable = useLoadable(agentDisplayName$);
-  const defaultAgentName =
-    agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
-  const agentName = chatAgentName ?? defaultAgentName;
+  const displayNameLoadable = useLoadable(agentDisplayName$);
+  const defaultDisplayName =
+    displayNameLoadable.state === "hasData" ? displayNameLoadable.data : "Zero";
+  const displayName = chatAgentName ?? defaultDisplayName;
   const messagesLoadable = useLoadable(zeroChatMessages$);
   const messages =
     messagesLoadable.state === "hasData" ? messagesLoadable.data : [];
@@ -176,7 +176,7 @@ export function ZeroSessionChatPage({
               </TooltipProvider>
             )}
           </div>
-          <span className="font-semibold text-foreground">{agentName}</span>
+          <span className="font-semibold text-foreground">{displayName}</span>
         </div>
         <div className="flex items-center gap-0.5">
           <Link
@@ -244,7 +244,7 @@ export function ZeroSessionChatPage({
               onCancel={() => void cancelRun()}
               queuedMessage={queuedMessage}
               onWithdraw={withdraw}
-              agentName={agentName}
+              displayName={displayName}
               autoFocus={messages.length === 0}
             />
           </div>

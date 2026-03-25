@@ -35,9 +35,9 @@ import emptyChatImg from "./assets/empty-chat.webp";
 import { ZERO_AVATARS } from "./zero-avatars.ts";
 
 export function ZeroJobsPage() {
-  const agentNameLoadable = useLoadable(agentDisplayName$);
-  const agentName =
-    agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
+  const displayNameLoadable = useLoadable(agentDisplayName$);
+  const displayName =
+    displayNameLoadable.state === "hasData" ? displayNameLoadable.data : "Zero";
   const rawNameLoadable = useLoadable(defaultAgentId$);
   const rawAgentName =
     rawNameLoadable.state === "hasData" ? rawNameLoadable.data : null;
@@ -86,7 +86,7 @@ export function ZeroJobsPage() {
             Agents
           </h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            {agentName} and sub-agents working together to run tailored
+            {displayName} and sub-agents working together to run tailored
             workflows for you and your team.
           </p>
         </div>
@@ -105,13 +105,13 @@ export function ZeroJobsPage() {
                 <CardContent className="p-5 flex items-center gap-4">
                   <img
                     src={zeroAvatarSrc}
-                    alt={agentName}
+                    alt={displayName}
                     className="h-12 w-12 shrink-0 rounded-full object-cover object-top"
                   />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <h2 className="text-base font-semibold tracking-tight text-foreground truncate">
-                        {agentName}
+                        {displayName}
                       </h2>
                       <span className="zero-pill inline-flex items-center gap-1.5 rounded-lg border px-2 py-0.5 text-xs font-medium">
                         <IconCrown
@@ -135,13 +135,13 @@ export function ZeroJobsPage() {
               <CardContent className="p-5 flex items-center gap-4">
                 <img
                   src={zeroAvatarSrc}
-                  alt={agentName}
+                  alt={displayName}
                   className="h-12 w-12 shrink-0 rounded-full object-cover object-top"
                 />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <h2 className="text-base font-semibold tracking-tight text-foreground truncate">
-                      {agentName}
+                      {displayName}
                     </h2>
                     <span className="zero-pill inline-flex items-center gap-1.5 rounded-lg border px-2 py-0.5 text-xs font-medium">
                       <IconCrown
@@ -195,53 +195,33 @@ export function ZeroJobsPage() {
           )}
 
           {!loading && !error && agents && agents.length === 0 && (
-            <Card className="zero-card">
-              <CardContent className="flex flex-col items-center justify-center px-6 py-12 gap-3">
-                <img
-                  src={emptyChatImg}
-                  alt="No teammates"
-                  loading="lazy"
-                  className="h-20 w-20 object-contain opacity-80"
-                />
-                <div className="text-center">
-                  <p className="text-sm font-medium text-foreground">
-                    Just {agentName} for now
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Ask {agentName} to create a teammate and they&apos;ll show
-                    up here.
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
+            <>
+              <CreateTeammateButton onClick={() => setDialogOpen(true)} />
+              <Card className="zero-card">
+                <CardContent className="flex flex-col items-center justify-center px-6 py-12 gap-3">
+                  <img
+                    src={emptyChatImg}
+                    alt="No teammates"
+                    loading="lazy"
+                    className="h-20 w-20 object-contain opacity-80"
+                  />
+                  <div className="text-center">
+                    <p className="text-sm font-medium text-foreground">
+                      Just {displayName} for now
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Ask {displayName} to create a teammate and they&apos;ll
+                      show up here.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </>
           )}
 
           {agents && agents.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {/* Create teammate */}
-              <button
-                type="button"
-                onClick={() => setDialogOpen(true)}
-                className="flex flex-col rounded-[var(--zero-card-radius)] border border-dashed border-[hsl(var(--gray-400))] transition-colors hover:border-[hsl(var(--gray-400))] hover:bg-muted/30 group cursor-pointer text-left"
-              >
-                <div className="flex items-center gap-3 px-4 py-3.5">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors">
-                    <IconPlus
-                      size={18}
-                      stroke={2}
-                      className="text-foreground/50 group-hover:text-foreground transition-colors"
-                    />
-                  </span>
-                  <span className="text-sm font-medium text-foreground/80 group-hover:text-foreground transition-colors">
-                    Create teammate
-                  </span>
-                </div>
-                <div className="border-t border-dashed border-[hsl(var(--gray-400))] px-4 py-2.5">
-                  <span className="text-xs text-muted-foreground">
-                    Create a new subagent
-                  </span>
-                </div>
-              </button>
+              <CreateTeammateButton onClick={() => setDialogOpen(true)} />
 
               {agents.map((agent) => (
                 <Link
@@ -267,6 +247,34 @@ export function ZeroJobsPage() {
         creating={creating}
       />
     </div>
+  );
+}
+
+function CreateTeammateButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex flex-col rounded-[var(--zero-card-radius)] border border-dashed border-[hsl(var(--gray-400))] transition-colors hover:border-[hsl(var(--gray-400))] hover:bg-muted/30 group cursor-pointer text-left"
+    >
+      <div className="flex items-center gap-3 px-4 py-3.5">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors">
+          <IconPlus
+            size={18}
+            stroke={2}
+            className="text-foreground/50 group-hover:text-foreground transition-colors"
+          />
+        </span>
+        <span className="text-sm font-medium text-foreground/80 group-hover:text-foreground transition-colors">
+          Create teammate
+        </span>
+      </div>
+      <div className="border-t border-dashed border-[hsl(var(--gray-400))] px-4 py-2.5">
+        <span className="text-xs text-muted-foreground">
+          Create a new subagent
+        </span>
+      </div>
+    </button>
   );
 }
 

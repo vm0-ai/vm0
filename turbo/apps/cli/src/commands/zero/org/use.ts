@@ -1,7 +1,8 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { listZeroOrgs } from "../../../lib/api";
-import { saveConfig } from "../../../lib/api/config";
+import { listZeroOrgs, switchZeroOrg } from "../../../lib/api";
+import { saveConfig, getToken } from "../../../lib/api/config";
+import { decodeCliTokenPayload } from "../../../lib/api/cli-token";
 import { withErrorHandler } from "../../../lib/command";
 
 export const useCommand = new Command()
@@ -16,7 +17,18 @@ export const useCommand = new Command()
         throw new Error(`Organization '${slug}' not found or not accessible.`);
       }
 
-      await saveConfig({ activeOrg: slug });
+      const token = await getToken();
+      if (decodeCliTokenPayload(token)) {
+        // JWT flow: get new token from server
+        const result = await switchZeroOrg(slug);
+        await saveConfig({
+          token: result.access_token,
+          activeOrg: result.org_slug,
+        });
+      } else {
+        // Legacy flow: just update config
+        await saveConfig({ activeOrg: slug });
+      }
       console.log(chalk.green(`✓ Switched to organization: ${slug}`));
     }),
   );

@@ -21,7 +21,7 @@ function createMockLogs() {
     {
       id: "log-1",
       sessionId: "session-1",
-      agentName: "zero",
+      agentId: "zero",
       orgSlug: "test",
       framework: "claude-code",
       status: "completed",
@@ -30,7 +30,7 @@ function createMockLogs() {
     {
       id: "log-2",
       sessionId: "session-2",
-      agentName: "zero",
+      agentId: "zero",
       orgSlug: "test",
       framework: "claude-code",
       status: "failed",
@@ -39,7 +39,7 @@ function createMockLogs() {
     {
       id: "log-3",
       sessionId: "session-3",
-      agentName: "zero",
+      agentId: "zero",
       orgSlug: "test",
       framework: "claude-code",
       status: "running",
@@ -52,7 +52,7 @@ function createMockLogDetail() {
   return {
     id: "log-1",
     sessionId: "session-1",
-    agentName: "zero",
+    agentId: "zero",
     framework: "claude-code",
     status: "completed",
     prompt: "Summarize today's activity",

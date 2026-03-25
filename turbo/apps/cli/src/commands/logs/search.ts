@@ -4,7 +4,7 @@ import {
   searchLogs,
   type RunEvent,
   type LogsSearchResponse,
-} from "../../lib/api/domains/logs";
+} from "../../lib/api";
 import { parseTime } from "../../lib/utils/time-parser";
 import { ClaudeEventParser } from "../../lib/events/claude-event-parser";
 import { EventRenderer } from "../../lib/events/event-renderer";

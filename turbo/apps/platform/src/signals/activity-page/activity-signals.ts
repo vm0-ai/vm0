@@ -1,16 +1,16 @@
 import { command, computed, state, type Computed } from "ccstate";
-import type {
-  LogDetail,
-  AgentEvent,
-  AgentEventsResponse,
-  LogStatus,
-} from "../zero-page/log-types.ts";
-import type { ComposeListItem } from "@vm0/core";
-import { fetch$ } from "../fetch.ts";
+import type { AgentEvent, LogStatus } from "../zero-page/log-types.ts";
+import {
+  zeroComposesListContract,
+  logsByIdContract,
+  zeroRunAgentEventsContract,
+  type ComposeListItem,
+} from "@vm0/core";
 import { searchParams$, updateSearchParams$ } from "../route.ts";
 import { createCursorPagination } from "../cursor-pagination.ts";
 import { throwIfAbort, detach, Reason } from "../utils.ts";
 import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
+import { zeroClient$ } from "../api-client.ts";
 import { delay } from "signal-timers";
 
 const EVENTS_PAGE_LIMIT = 30;
@@ -50,16 +50,17 @@ const internalOrgAgents$ = state<AgentOption[]>([]);
 const orgAgents$ = computed((get) => get(internalOrgAgents$));
 
 const fetchOrgAgents$ = command(async ({ get, set }) => {
-  const fetchFn = get(fetch$);
-  const resp = await fetchFn("/api/zero/composes/list");
-  if (!resp.ok) {
-    throw new Error(`Failed to fetch org agents: ${resp.statusText}`);
+  const client = get(zeroClient$)(zeroComposesListContract);
+  const result = await client.list();
+  if (result.status !== 200) {
+    throw new Error(`Failed to fetch org agents (${result.status})`);
   }
-  const data = (await resp.json()) as { composes: ComposeListItem[] };
-  const agents: AgentOption[] = data.composes.map((c) => ({
-    name: c.id,
-    displayName: c.displayName ?? c.id,
-  }));
+  const agents: AgentOption[] = result.body.composes.map(
+    (c: ComposeListItem) => ({
+      name: c.id,
+      displayName: c.displayName ?? c.id,
+    }),
+  );
   set(internalOrgAgents$, agents);
 });
 
@@ -264,12 +265,12 @@ export const zeroActivityDetail$ = computed(async (get) => {
     return null;
   }
 
-  const fetchFn = get(fetch$);
-  const response = await fetchFn(`/api/zero/logs/${logId}`);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch log detail: ${response.statusText}`);
+  const client = get(zeroClient$)(logsByIdContract);
+  const result = await client.getById({ params: { id: logId } });
+  if (result.status !== 200) {
+    throw new Error(`Failed to fetch log detail (${result.status})`);
   }
-  return (await response.json()) as LogDetail;
+  return result.body;
 });
 
 // ---------------------------------------------------------------------------
@@ -295,21 +296,22 @@ function createEventPageComputed(
   since?: string,
 ): Computed<Promise<PageResult>> {
   return computed(async (get) => {
-    const fetchFn = get(fetch$);
-    const params = new URLSearchParams({
-      limit: String(EVENTS_PAGE_LIMIT),
+    const client = get(zeroClient$)(zeroRunAgentEventsContract);
+    const query: { limit: number; order: "asc"; since?: number } = {
+      limit: EVENTS_PAGE_LIMIT,
       order: "asc",
-    });
+    };
     if (since) {
-      params.set("since", String(new Date(since).getTime()));
+      query.since = new Date(since).getTime();
     }
-    const response = await fetchFn(
-      `/api/zero/runs/${runId}/telemetry/agent?${params.toString()}`,
-    );
-    if (!response.ok) {
-      throw new Error(`Failed to fetch agent events: ${response.statusText}`);
+    const result = await client.getAgentEvents({
+      params: { id: runId },
+      query,
+    });
+    if (result.status !== 200) {
+      throw new Error(`Failed to fetch agent events (${result.status})`);
     }
-    const data = (await response.json()) as AgentEventsResponse;
+    const data = result.body;
     return { events: data.events, hasMore: data.hasMore };
   });
 }

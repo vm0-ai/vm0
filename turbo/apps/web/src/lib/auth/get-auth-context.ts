@@ -8,6 +8,7 @@ import {
   verifyZeroToken,
   verifyCliToken,
 } from "./sandbox-token";
+import { verifyMembershipCached } from "../org/org-membership-cache";
 import { logger } from "../logger";
 
 const log = logger("auth:user");
@@ -47,7 +48,18 @@ export async function getAuthContext(
       // Try CLI JWT first (accepted on all endpoints, no capability gating)
       const cliAuth = verifyCliToken(token);
       if (cliAuth) {
-        return resolveCliTokenFromDb(cliAuth);
+        const resolved = await resolveCliTokenFromDb(cliAuth);
+        if (!resolved) return null;
+        // Resolve org role so downstream admin checks work correctly
+        let orgRole: AuthContext["orgRole"];
+        if (resolved.orgId) {
+          const membership = await verifyMembershipCached(
+            resolved.orgId,
+            resolved.userId,
+          );
+          orgRole = membership?.role;
+        }
+        return { userId: resolved.userId, orgId: resolved.orgId, orgRole };
       }
       return authenticateSandboxToken(token, options);
     }

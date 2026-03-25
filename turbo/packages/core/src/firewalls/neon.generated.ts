@@ -14,7 +14,7 @@ export const neonFirewall: FirewallConfig = {
   },
   apis: [
     {
-      base: "https://console.neon.tech/api/v2",
+      base: "https://console.neon.tech/api",
       auth: {
         headers: {
           Authorization: "Bearer ${{ secrets.NEON_TOKEN }}",

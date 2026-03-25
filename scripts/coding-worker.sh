@@ -263,11 +263,33 @@ NEXT_ISSUE_JSON=$("$SCRIPT_DIR/next-issue.sh" "$LABEL" || true)
 if [ -n "$NEXT_ISSUE_JSON" ]; then
   ISSUE_NUMBER=$(echo "$NEXT_ISSUE_JSON" | jq -r '.number')
   ISSUE_TITLE=$(echo "$NEXT_ISSUE_JSON" | jq -r '.title')
+  IS_PENDING=$(echo "$NEXT_ISSUE_JSON" | jq -r '[.labels[] | select(. == "pending")] | length > 0')
 
   # Download and security-filter issue content
   if download_issue_content "$ISSUE_NUMBER"; then
     output_action
-    cat <<EOF
+
+    if [ "$IS_PENDING" = "true" ]; then
+      cat <<EOF
+Spawn a subagent to review the plan completeness for issue #${ISSUE_NUMBER}.
+
+Issue title: ${ISSUE_TITLE}
+Issue content: ${CONTENT_DIR}/issues/${ISSUE_NUMBER}.md
+
+Check whether issue #${ISSUE_NUMBER} has a complete plan:
+- If the plan includes changes to **web**, the issue must list a test plan following /testing web guidelines.
+- If the plan includes changes to **turbo/apps/app**, the issue must list a test plan following /testing platform guidelines.
+
+If the test plan is incomplete or missing:
+1. Add the missing test plan to the issue based on the relevant /testing skill.
+2. When done: git checkout main && git pull
+
+If the test plan is complete and the overall plan is solid with nothing requiring human confirmation:
+1. Remove the pending label: gh issue edit ${ISSUE_NUMBER} --remove-label "pending"
+2. When done: git checkout main && git pull
+EOF
+    else
+      cat <<EOF
 Spawn a subagent to work on issue #${ISSUE_NUMBER}.
 
 Issue title: ${ISSUE_TITLE}
@@ -285,6 +307,7 @@ If no plan exists:
 2. When done: git checkout main && git pull
 3. Do NOT run /issue-action in this iteration. Implementation will happen in the next iteration.
 EOF
+    fi
     exit 0
   fi
   # If download failed (untrusted author), fall through to idle

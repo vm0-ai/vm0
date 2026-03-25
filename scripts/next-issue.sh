@@ -4,7 +4,7 @@
 #   scripts/next-issue.sh <label>
 #
 # Output: JSON object of the next issue, or empty if none found
-# Filters: excludes pending, excludes PR-linked, picks lowest number
+# Filters: excludes PR-linked, picks lowest number
 
 set -euo pipefail
 
@@ -32,7 +32,6 @@ ISSUE=$(jq -n --argjson a "$ASSIGNED" --argjson b "$AUTHORED" '
   | group_by(.number)
   | map(.[0])
   | [.[]
-      | select(([.labels[].name] | any(. == "pending")) | not)
       | select(.closedByPullRequestsReferences | length == 0)
     ]
   | sort_by(.number)

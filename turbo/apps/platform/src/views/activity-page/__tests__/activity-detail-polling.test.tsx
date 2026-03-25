@@ -15,7 +15,7 @@ function makeLogDetail(overrides: Partial<LogDetail>): LogDetail {
   return {
     id: "run_new",
     sessionId: "session_new",
-    agentName: "agent-1",
+    agentId: "agent-1",
     displayName: "Agent One",
     framework: "claude-code",
     modelProvider: null,
