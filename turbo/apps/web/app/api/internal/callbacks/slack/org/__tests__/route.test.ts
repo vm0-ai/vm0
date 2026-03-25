@@ -11,7 +11,6 @@ import {
   createTestCallback,
   createTestSlackOrgInstallation,
   seedTestSlackOrgConnection,
-  createTestRequest,
   completeTestRun,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import { computeHmacSignature } from "../../../../../../../src/lib/callback/hmac";
@@ -40,39 +39,12 @@ function createCallbackRequest(
   secret: string,
 ): NextRequest {
   const bodyString = JSON.stringify(body);
-
-  // Validate the serialized body round-trips correctly (diagnostic for CI failures)
-  const parsed = JSON.parse(bodyString) as {
-    payload?: Record<string, unknown>;
-  };
-  const p = parsed.payload;
-  if (!p || typeof p !== "object") {
-    throw new Error(
-      `Body round-trip failed: payload is ${typeof p}: ${bodyString.slice(0, 200)}`,
-    );
-  }
-  for (const key of [
-    "workspaceId",
-    "channelId",
-    "threadTs",
-    "messageTs",
-    "connectionId",
-    "agentName",
-    "composeId",
-  ]) {
-    if (typeof p[key] !== "string" && p[key] !== undefined) {
-      throw new Error(
-        `Body round-trip: payload.${key} is ${typeof p[key]} (${String(p[key])}), expected string`,
-      );
-    }
-  }
-
   const timestamp = Math.floor(Date.now() / 1000);
   const signature = computeHmacSignature(bodyString, secret, timestamp);
 
-  return createTestRequest(
-    "http://localhost/api/internal/callbacks/slack/org",
-    {
+  // Construct via Request base to ensure body is properly buffered
+  return new NextRequest(
+    new Request("http://localhost/api/internal/callbacks/slack/org", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -80,7 +52,7 @@ function createCallbackRequest(
         "X-VM0-Timestamp": timestamp.toString(),
       },
       body: bodyString,
-    },
+    }),
   );
 }
 
@@ -165,27 +137,9 @@ describe("POST /api/internal/callbacks/slack/org", () => {
       secret,
     );
 
-    // Clone the actual request and verify its body before passing to POST
-    const clonedReq = request.clone();
-    const actualBody = await clonedReq.text();
-    const parsed = JSON.parse(actualBody) as { payload?: unknown };
-    if (
-      !parsed.payload ||
-      typeof parsed.payload !== "object" ||
-      typeof (parsed.payload as Record<string, unknown>).workspaceId !==
-        "string"
-    ) {
-      throw new Error(
-        `Cloned request body has bad payload: ${actualBody.slice(0, 300)}`,
-      );
-    }
-
     const response = await POST(request);
 
-    if (response.status !== 200) {
-      const errorBody = await response.clone().text();
-      throw new Error(`Expected 200 but got ${response.status}: ${errorBody}`);
-    }
+    expect(response.status).toBe(200);
     const data = await response.json();
     expect(data.success).toBe(true);
 
@@ -225,10 +179,7 @@ describe("POST /api/internal/callbacks/slack/org", () => {
     );
     const response = await POST(request);
 
-    if (response.status !== 200) {
-      const errorBody = await response.clone().text();
-      throw new Error(`Expected 200 but got ${response.status}: ${errorBody}`);
-    }
+    expect(response.status).toBe(200);
     const data = await response.json();
     expect(data.success).toBe(true);
 
@@ -271,10 +222,7 @@ describe("POST /api/internal/callbacks/slack/org", () => {
     );
     const response = await POST(request);
 
-    if (response.status !== 200) {
-      const errorBody = await response.clone().text();
-      throw new Error(`Expected 200 but got ${response.status}: ${errorBody}`);
-    }
+    expect(response.status).toBe(200);
     const data = await response.json();
     expect(data.success).toBe(true);
 
@@ -315,10 +263,7 @@ describe("POST /api/internal/callbacks/slack/org", () => {
     );
     const response = await POST(request);
 
-    if (response.status !== 404) {
-      const errorBody = await response.clone().text();
-      throw new Error(`Expected 404 but got ${response.status}: ${errorBody}`);
-    }
+    expect(response.status).toBe(404);
   });
 
   it("clears thread status after posting completion", async () => {
@@ -350,10 +295,7 @@ describe("POST /api/internal/callbacks/slack/org", () => {
     );
     const response = await POST(request);
 
-    if (response.status !== 200) {
-      const errorBody = await response.clone().text();
-      throw new Error(`Expected 200 but got ${response.status}: ${errorBody}`);
-    }
+    expect(response.status).toBe(200);
 
     // Thread status should be cleared (empty string)
     const { WebClient } = await import("@slack/web-api");
