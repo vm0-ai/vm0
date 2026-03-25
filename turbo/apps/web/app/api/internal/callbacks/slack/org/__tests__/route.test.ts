@@ -40,6 +40,33 @@ function createCallbackRequest(
   secret: string,
 ): NextRequest {
   const bodyString = JSON.stringify(body);
+
+  // Validate the serialized body round-trips correctly (diagnostic for CI failures)
+  const parsed = JSON.parse(bodyString) as {
+    payload?: Record<string, unknown>;
+  };
+  const p = parsed.payload;
+  if (!p || typeof p !== "object") {
+    throw new Error(
+      `Body round-trip failed: payload is ${typeof p}: ${bodyString.slice(0, 200)}`,
+    );
+  }
+  for (const key of [
+    "workspaceId",
+    "channelId",
+    "threadTs",
+    "messageTs",
+    "connectionId",
+    "agentName",
+    "composeId",
+  ]) {
+    if (typeof p[key] !== "string" && p[key] !== undefined) {
+      throw new Error(
+        `Body round-trip: payload.${key} is ${typeof p[key]} (${String(p[key])}), expected string`,
+      );
+    }
+  }
+
   const timestamp = Math.floor(Date.now() / 1000);
   const signature = computeHmacSignature(bodyString, secret, timestamp);
 
@@ -132,6 +159,21 @@ describe("POST /api/internal/callbacks/slack/org", () => {
       url: "http://localhost/api/internal/callbacks/slack/org",
       payload: { ...payload },
     });
+
+    const bodyObj = { runId, status: "progress" as const, payload };
+    const bodyString = JSON.stringify(bodyObj);
+
+    // Verify NextRequest body round-trip before calling the route
+    const testReq = new NextRequest(
+      "http://localhost/api/internal/callbacks/slack/org",
+      { method: "POST", body: bodyString },
+    );
+    const readBack = await testReq.text();
+    if (readBack !== bodyString) {
+      throw new Error(
+        `NextRequest body mismatch.\nExpected: ${bodyString.slice(0, 200)}\nGot: ${readBack.slice(0, 200)}`,
+      );
+    }
 
     const request = createCallbackRequest(
       { runId, status: "progress", payload },
