@@ -99,6 +99,7 @@ export async function getRunnerAuth(
 
   // Handle sandbox-prefixed JWT tokens
   if (isSandboxToken(token)) {
+    // TODO: Remove vm0_sandbox_ CLI backward compat after transition (~June 2026)
     // Backward compat: accept old vm0_sandbox_ prefix with scope "cli"
     const cliAuth = verifyCliToken(token);
     if (cliAuth) {

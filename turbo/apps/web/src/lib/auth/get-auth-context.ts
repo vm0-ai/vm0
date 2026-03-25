@@ -65,6 +65,7 @@ export async function getAuthContext(
     }
 
     if (isSandboxToken(token)) {
+      // TODO: Remove vm0_sandbox_ CLI backward compat after transition (~June 2026)
       // Try CLI JWT (backward compat: old vm0_sandbox_ prefix with scope "cli")
       const cliAuth = verifyCliToken(token);
       if (cliAuth) {
