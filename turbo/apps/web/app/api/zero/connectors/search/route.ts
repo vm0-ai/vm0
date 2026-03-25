@@ -23,7 +23,10 @@ const router = tsr.router(zeroConnectorsSearchContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
-    const featureStates = await getAllFeatureStates(authCtx.userId);
+    const featureStates = await getAllFeatureStates({
+      userId: authCtx.userId,
+      orgId: authCtx.orgId,
+    });
     const keyword = query.keyword?.toLowerCase();
 
     const connectors = (
