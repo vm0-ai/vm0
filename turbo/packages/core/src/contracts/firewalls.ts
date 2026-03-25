@@ -158,6 +158,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   reddit: ["reddit"],
   resend: ["resend"],
   runway: ["runway"],
+  scrapeninja: ["scrapeninja"],
   sentry: ["sentry"],
   serpapi: ["serpapi"],
   shortio: ["shortio"],
