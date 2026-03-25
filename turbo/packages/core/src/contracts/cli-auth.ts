@@ -70,5 +70,41 @@ export const cliAuthTokenContract = c.router({
   },
 });
 
+/**
+ * Error response schema for structured API errors
+ */
+const apiErrorResponseSchema = z.object({
+  error: z.object({ message: z.string(), code: z.string() }),
+});
+
+/**
+ * CLI auth org switch contract for /api/cli/auth/org
+ */
+export const cliAuthOrgContract = c.router({
+  /**
+   * POST /api/cli/auth/org
+   * Switch active organization and get new CLI JWT
+   */
+  switchOrg: {
+    method: "POST",
+    path: "/api/cli/auth/org",
+    body: z.object({ slug: z.string().min(1) }),
+    responses: {
+      200: z.object({
+        access_token: z.string(),
+        token_type: z.literal("Bearer"),
+        expires_in: z.number(),
+        org_slug: z.string(),
+      }),
+      400: oauthErrorSchema,
+      401: apiErrorResponseSchema,
+      403: apiErrorResponseSchema,
+      404: apiErrorResponseSchema,
+    },
+    summary: "Switch active organization and get new CLI JWT",
+  },
+});
+
 export type CliAuthDeviceContract = typeof cliAuthDeviceContract;
 export type CliAuthTokenContract = typeof cliAuthTokenContract;
+export type CliAuthOrgContract = typeof cliAuthOrgContract;

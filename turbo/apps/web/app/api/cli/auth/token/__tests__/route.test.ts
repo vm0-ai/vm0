@@ -92,7 +92,7 @@ describe("POST /api/cli/auth/token", () => {
 
     expect(response.status).toBe(200);
     expect(body).not.toHaveProperty("error");
-    expect(body.access_token).toMatch(/^vm0_live_/);
+    expect(body.access_token).toMatch(/^vm0_sandbox_/);
     expect(body.token_type).toBe("Bearer");
     expect(body.expires_in).toBe(90 * 24 * 60 * 60);
 

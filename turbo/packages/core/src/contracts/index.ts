@@ -168,8 +168,10 @@ export {
 export {
   cliAuthDeviceContract,
   cliAuthTokenContract,
+  cliAuthOrgContract,
   type CliAuthDeviceContract,
   type CliAuthTokenContract,
+  type CliAuthOrgContract,
 } from "./cli-auth";
 export { authContract, type AuthContract } from "./auth";
 export {
