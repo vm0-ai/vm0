@@ -2,6 +2,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { auth } from "@clerk/nextjs/server";
 import { getAuthContext, getUserId } from "../get-auth-context";
 import { generateSandboxToken, generateZeroToken } from "../sandbox-token";
+import { mockClerk } from "../../../__tests__/clerk-mock";
+import { clearOrgMembersCacheEntry } from "../../../__tests__/api-test-helpers";
+import { testContext } from "../../../__tests__/test-helpers";
+
+const context = testContext();
 
 describe("getUserId", () => {
   const mockAuth = vi.mocked(auth);
@@ -229,6 +234,7 @@ describe("getAuthContext auth() call optimization", () => {
   const mockAuth = vi.mocked(auth);
 
   beforeEach(() => {
+    context.setupMocks();
     mockAuth.mockResolvedValue({
       userId: null,
     } as Awaited<ReturnType<typeof auth>>);
@@ -264,6 +270,11 @@ describe("getAuthContext auth() call optimization", () => {
   });
 
   it("should not call auth() when zero token is provided", async () => {
+    mockClerk({
+      userId: "user-1",
+      clerkOrgs: [{ id: "org-1", slug: "org-1", name: "org-1" }],
+    });
+    await clearOrgMembersCacheEntry("org-1", "user-1");
     const token = await generateZeroToken("user-1", "run-1", "org-1");
     await getAuthContext(`Bearer ${token}`, {
       requiredCapability: "agent:read",
@@ -275,10 +286,16 @@ describe("getAuthContext auth() call optimization", () => {
 describe("getAuthContext with zero token and requiredCapability", () => {
   const mockAuth = vi.mocked(auth);
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    context.setupMocks();
     mockAuth.mockResolvedValue({
       userId: null,
     } as Awaited<ReturnType<typeof auth>>);
+    mockClerk({
+      userId: "user-123",
+      clerkOrgs: [{ id: "org-789", slug: "org-789", name: "org-789" }],
+    });
+    await clearOrgMembersCacheEntry("org-789", "user-123");
   });
 
   it("should accept zero token with matching capability", async () => {
@@ -314,10 +331,16 @@ describe("getAuthContext with zero token and requiredCapability", () => {
 describe("getAuthContext with zero token and acceptAnySandboxCapability", () => {
   const mockAuth = vi.mocked(auth);
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    context.setupMocks();
     mockAuth.mockResolvedValue({
       userId: null,
     } as Awaited<ReturnType<typeof auth>>);
+    mockClerk({
+      userId: "user-123",
+      clerkOrgs: [{ id: "org-789", slug: "org-789", name: "org-789" }],
+    });
+    await clearOrgMembersCacheEntry("org-789", "user-123");
   });
 
   it("should accept zero token on infra routes", async () => {

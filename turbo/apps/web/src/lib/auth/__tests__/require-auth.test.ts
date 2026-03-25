@@ -2,6 +2,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { auth } from "@clerk/nextjs/server";
 import { requireAuth, isAuthError } from "../require-auth";
 import { generateSandboxToken, generateZeroToken } from "../sandbox-token";
+import { mockClerk } from "../../../__tests__/clerk-mock";
+import { clearOrgMembersCacheEntry } from "../../../__tests__/api-test-helpers";
+import { testContext } from "../../../__tests__/test-helpers";
+
+const context = testContext();
 
 describe("requireAuth", () => {
   const mockAuth = vi.mocked(auth);
@@ -137,6 +142,12 @@ describe("requireAuth", () => {
   });
 
   it("should return AuthContext for zero token with matching capability", async () => {
+    context.setupMocks();
+    mockClerk({
+      userId: "user-1",
+      clerkOrgs: [{ id: "org-1", slug: "org-1", name: "org-1" }],
+    });
+    await clearOrgMembersCacheEntry("org-1", "user-1");
     const token = await generateZeroToken("user-1", "run-1", "org-1");
 
     const result = await requireAuth(`Bearer ${token}`, {

@@ -77,13 +77,13 @@ export async function getAuthContext(
 }
 
 /** Authenticate a sandbox-prefixed token (sandbox or zero scope). */
-function authenticateSandboxToken(
+async function authenticateSandboxToken(
   token: string,
   options?: {
     requiredCapability?: ZeroCapability;
     acceptAnySandboxCapability?: boolean;
   },
-): AuthContext | null {
+): Promise<AuthContext | null> {
   // Without any sandbox opt-in, reject sandbox tokens (existing behavior)
   if (!options?.requiredCapability && !options?.acceptAnySandboxCapability) {
     log.debug("Rejected sandbox JWT token on normal API endpoint");
@@ -99,7 +99,19 @@ function authenticateSandboxToken(
   // Try zero token (scope: "zero")
   const zeroAuth = verifyZeroToken(token);
   if (zeroAuth) {
-    return resolveZeroAuth(zeroAuth, options);
+    const result = resolveZeroAuth(zeroAuth, options);
+    if (result && result.orgId) {
+      const membership = await verifyMembershipCached(
+        result.orgId,
+        result.userId,
+      );
+      if (!membership) {
+        // User no longer a member — omit orgId (same pattern as CLI JWT path)
+        return { userId: result.userId, runId: result.runId };
+      }
+      return { ...result, orgRole: membership.role };
+    }
+    return result;
   }
 
   log.debug("Invalid or expired sandbox/zero token");
