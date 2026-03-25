@@ -10,6 +10,7 @@ import { zeroMemberCreditCapContract } from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
 import { usageMembersAsync$ } from "../usage-page/usage-signals.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
+import { throwIfAbort } from "../utils.ts";
 
 interface MemberCreditCap {
   creditCap: number | null;
@@ -102,7 +103,7 @@ function createMemberCapSetting(
   const internalSavingPromise$ = state<Promise<unknown> | null>(null);
   const savingPromise$ = computed((get) => get(internalSavingPromise$));
 
-  const save$ = command(({ get, set }) => {
+  const save$ = command(async ({ get, set }) => {
     const rawValue = get(value$);
     const parsed =
       rawValue.trim() === "" ? null : Number.parseInt(rawValue, 10);
@@ -110,45 +111,39 @@ function createMemberCapSetting(
       return;
     }
 
-    const promise = (async () => {
-      await set(setMemberCreditCap$, {
-        userId: member.userId,
-        creditCap: parsed,
-      });
-    })();
-
+    const promise = set(setMemberCreditCap$, {
+      userId: member.userId,
+      creditCap: parsed,
+    });
     set(internalSavingPromise$, promise);
 
-    promise
-      .then(() => {
-        set(internalSavingPromise$, null);
-        set(editMode$, false);
-      })
-      .catch(() => {
-        set(internalSavingPromise$, null);
-        toast.error("Failed to update credit cap. Please try again.");
-      });
+    try {
+      await promise;
+      set(internalSavingPromise$, null);
+      set(editMode$, false);
+    } catch (error) {
+      throwIfAbort(error);
+      set(internalSavingPromise$, null);
+      toast.error("Failed to update credit cap. Please try again.");
+    }
   });
 
-  const clearCap$ = command(({ set }) => {
-    const promise = (async () => {
-      await set(setMemberCreditCap$, {
-        userId: member.userId,
-        creditCap: null,
-      });
-    })();
-
+  const clearCap$ = command(async ({ set }) => {
+    const promise = set(setMemberCreditCap$, {
+      userId: member.userId,
+      creditCap: null,
+    });
     set(internalSavingPromise$, promise);
 
-    promise
-      .then(() => {
-        set(internalSavingPromise$, null);
-        set(editMode$, false);
-      })
-      .catch(() => {
-        set(internalSavingPromise$, null);
-        toast.error("Failed to clear credit cap. Please try again.");
-      });
+    try {
+      await promise;
+      set(internalSavingPromise$, null);
+      set(editMode$, false);
+    } catch (error) {
+      throwIfAbort(error);
+      set(internalSavingPromise$, null);
+      toast.error("Failed to clear credit cap. Please try again.");
+    }
   });
 
   const enterEditMode$ = command(({ set }) => {
