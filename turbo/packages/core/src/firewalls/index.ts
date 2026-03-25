@@ -78,6 +78,7 @@ import { supadataFirewall } from "./supadata.generated";
 import { tavilyFirewall } from "./tavily.generated";
 import { tldvFirewall } from "./tldv.generated";
 import { todoistFirewall } from "./todoist.generated";
+import { v0Firewall } from "./v0.generated";
 import { vercelFirewall } from "./vercel.generated";
 import { webflowFirewall } from "./webflow.generated";
 import { wixFirewall } from "./wix.generated";
@@ -160,6 +161,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   tavily: tavilyFirewall,
   tldv: tldvFirewall,
   todoist: todoistFirewall,
+  v0: v0Firewall,
   vercel: vercelFirewall,
   webflow: webflowFirewall,
   wix: wixFirewall,

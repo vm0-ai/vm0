@@ -77,6 +77,7 @@
     "generate:tavily": "tsx src/index.ts tavily",
     "generate:tldv": "tsx src/index.ts tldv",
     "generate:todoist": "tsx src/index.ts todoist",
+    "generate:v0": "tsx src/index.ts v0",
     "generate:vercel": "tsx src/index.ts vercel",
     "generate:webflow": "tsx src/index.ts webflow",
     "generate:wix": "tsx src/index.ts wix",
