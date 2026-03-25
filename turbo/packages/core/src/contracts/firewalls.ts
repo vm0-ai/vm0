@@ -152,6 +152,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   firecrawl: ["firecrawl"],
   notion: ["notion"],
   openai: ["openai"],
+  pdf4me: ["pdf4me"],
   pdfco: ["pdfco"],
   pdforge: ["pdforge"],
   perplexity: ["perplexity"],

@@ -66,6 +66,7 @@
     "generate:neon": "tsx src/index.ts neon",
     "generate:notion": "tsx src/index.ts notion",
     "generate:openai": "tsx src/index.ts openai",
+    "generate:pdf4me": "tsx src/index.ts pdf4me",
     "generate:pdfco": "tsx src/index.ts pdfco",
     "generate:pdforge": "tsx src/index.ts pdforge",
     "generate:perplexity": "tsx src/index.ts perplexity",

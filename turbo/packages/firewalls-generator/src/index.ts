@@ -61,6 +61,7 @@ import { generate as generateMonday } from "./monday";
 import { generate as generateNeon } from "./neon";
 import { generate as generateNotion } from "./notion";
 import { generate as generateOpenai } from "./openai";
+import { generate as generatePdf4me } from "./pdf4me";
 import { generate as generatePdfco } from "./pdfco";
 import { generate as generatePdforge } from "./pdforge";
 import { generate as generatePerplexity } from "./perplexity";
@@ -154,6 +155,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   neon: generateNeon,
   notion: generateNotion,
   openai: generateOpenai,
+  pdf4me: generatePdf4me,
   pdfco: generatePdfco,
   pdforge: generatePdforge,
   perplexity: generatePerplexity,
