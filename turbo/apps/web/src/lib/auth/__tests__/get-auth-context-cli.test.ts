@@ -35,15 +35,6 @@ describe("getAuthContext with CLI JWT", () => {
     expect(result?.runId).toBeUndefined();
   });
 
-  it("should accept CLI JWT without requiredCapability or acceptAnySandboxCapability", async () => {
-    const token = await createTestCliToken(user.userId);
-
-    const result = await getAuthContext(`Bearer ${token}`);
-
-    expect(result).not.toBeNull();
-    expect(result?.userId).toBe(user.userId);
-  });
-
   it("should accept CLI JWT even with requiredCapability option", async () => {
     const token = await createTestCliToken(user.userId, undefined, user.orgId);
 
@@ -91,11 +82,11 @@ describe("getAuthContext with CLI JWT", () => {
 
     await getAuthContext(`Bearer ${token}`);
 
-    // Small delay for the non-blocking update
-    await new Promise((resolve) => setTimeout(resolve, 50));
-
-    const record = await findTestCliToken(token);
-    expect(record?.lastUsedAt).not.toBeNull();
+    // Wait for the non-blocking lastUsedAt update to complete
+    await vi.waitFor(async () => {
+      const record = await findTestCliToken(token);
+      expect(record?.lastUsedAt).not.toBeNull();
+    });
   });
 
   it("should return null for CLI JWT with non-existent tokenId", async () => {

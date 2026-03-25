@@ -47,7 +47,7 @@ export async function getAuthContext(
       // Try CLI JWT first (accepted on all endpoints, no capability gating)
       const cliAuth = verifyCliToken(token);
       if (cliAuth) {
-        return resolveCliAuth(cliAuth);
+        return resolveCliTokenFromDb(cliAuth);
       }
       return authenticateSandboxToken(token, options);
     }
@@ -177,12 +177,18 @@ function resolveZeroAuth(
   };
 }
 
-/** Resolve CLI JWT auth by checking DB revocation. */
-async function resolveCliAuth(cliAuth: {
+/**
+ * Resolve CLI JWT auth by checking DB revocation and updating lastUsedAt.
+ * Shared by getAuthContext and getRunnerAuth to avoid duplicating the
+ * DB lookup + expiry check + lastUsedAt update logic.
+ *
+ * Returns { userId, orgId } on success, or null if the token is revoked/expired.
+ */
+export async function resolveCliTokenFromDb(cliAuth: {
   userId: string;
   orgId: string;
   tokenId: string;
-}): Promise<AuthContext | null> {
+}): Promise<{ userId: string; orgId: string } | null> {
   const [record] = await globalThis.services.db
     .select()
     .from(cliTokens)
