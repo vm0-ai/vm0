@@ -153,7 +153,6 @@ Type=simple
 ExecStart=\"{exe}\" start --config \"{config}\"{local_flag}
 Restart=on-failure
 RestartSec=5
-MemoryMax=2G
 KillSignal=SIGTERM
 TimeoutStopSec=300
 User={user}
@@ -289,7 +288,6 @@ async fn start(args: ServiceRunArgs) -> RunnerResult<()> {
         "--property=Type=exec",
         "--property=Restart=on-failure",
         "--property=RestartSec=5",
-        "--property=MemoryMax=2G",
         "--property=StandardOutput=journal",
         "--property=StandardError=journal",
         "--property=KillSignal=SIGTERM",
@@ -510,7 +508,6 @@ mod tests {
         assert!(content.contains("SyslogIdentifier=vm0-runner-v0.1.0"));
         assert!(content.contains("Restart=on-failure"));
         assert!(content.contains("TimeoutStopSec=300"));
-        assert!(content.contains("MemoryMax=2G"));
         assert!(content.contains("[Install]"));
         assert!(content.contains("WantedBy=multi-user.target"));
         assert!(!content.contains("Environment="));
