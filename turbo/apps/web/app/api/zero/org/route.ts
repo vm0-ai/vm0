@@ -76,9 +76,9 @@ const router = tsr.router(zeroOrgContract, {
     } catch (error) {
       if (isBadRequest(error)) {
         if (error.message.includes("already exists")) {
-          return createErrorResponse("CONFLICT", "Resource conflict");
+          return createErrorResponse("CONFLICT", error.message);
         }
-        return createErrorResponse("BAD_REQUEST", "Invalid request");
+        return createErrorResponse("BAD_REQUEST", error.message);
       }
       if (isForbidden(error)) {
         return createErrorResponse("FORBIDDEN", "Access denied");

@@ -133,7 +133,10 @@ describe("org general tab - profile section", () => {
     });
 
     await vi.waitFor(() => {
-      expect(requestBody).toHaveBeenCalledWith({ slug: "new-slug" });
+      expect(requestBody).toHaveBeenCalledWith({
+        slug: "new-slug",
+        force: true,
+      });
     });
   });
 
@@ -169,8 +172,69 @@ describe("org general tab - profile section", () => {
       expect(requestBody).toHaveBeenCalledWith({
         name: "New Name",
         slug: "new-slug",
+        force: true,
       });
     });
+  });
+
+  it("should show inline error when save fails", async () => {
+    mockAPIs({ slug: "old-slug" });
+    server.use(
+      http.put("*/api/zero/org", () => {
+        return HttpResponse.json(
+          { error: { message: "Slug is already taken" } },
+          { status: 409 },
+        );
+      }),
+    );
+
+    await openGeneralTab();
+
+    const slugInput = await screen.findByDisplayValue("old-slug");
+    await act(() => {
+      fireEvent.change(slugInput, { target: { value: "taken-slug" } });
+    });
+
+    await act(() => {
+      fireEvent.click(screen.getByText("Save changes"));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Slug is already taken")).toBeInTheDocument();
+    });
+  });
+
+  it("should clear inline error on discard", async () => {
+    mockAPIs({ slug: "old-slug" });
+    server.use(
+      http.put("*/api/zero/org", () => {
+        return HttpResponse.json(
+          { error: { message: "Slug is already taken" } },
+          { status: 409 },
+        );
+      }),
+    );
+
+    await openGeneralTab();
+
+    const slugInput = await screen.findByDisplayValue("old-slug");
+    await act(() => {
+      fireEvent.change(slugInput, { target: { value: "taken-slug" } });
+    });
+
+    await act(() => {
+      fireEvent.click(screen.getByText("Save changes"));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Slug is already taken")).toBeInTheDocument();
+    });
+
+    await act(() => {
+      fireEvent.click(screen.getByText("Discard"));
+    });
+
+    expect(screen.queryByText("Slug is already taken")).not.toBeInTheDocument();
   });
 
   it("should not send slug when only name is changed", async () => {
