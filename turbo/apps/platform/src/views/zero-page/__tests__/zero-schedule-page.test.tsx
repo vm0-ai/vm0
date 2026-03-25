@@ -105,6 +105,97 @@ async function openMenuAndClick(
   fireEvent.click(screen.getByRole("menuitem", { name: action }));
 }
 
+describe("zero schedule page - agent labels", () => {
+  it("should display agent displayName for schedules belonging to sub-agents", async () => {
+    // Mock team API with a sub-agent that has a displayName
+    server.use(
+      http.get("*/api/zero/team", () => {
+        return HttpResponse.json([
+          {
+            id: "mock-compose-id",
+            displayName: "Zero",
+            description: null,
+            sound: null,
+            headVersionId: "v1",
+            updatedAt: "2024-01-01T00:00:00Z",
+          },
+          {
+            id: "sub-agent-id",
+            displayName: "Research Agent",
+            description: null,
+            sound: null,
+            headVersionId: "v2",
+            updatedAt: "2024-01-02T00:00:00Z",
+          },
+        ]);
+      }),
+      http.get("*/api/zero/schedules", () => {
+        return HttpResponse.json({
+          schedules: [
+            {
+              ...createMockSchedules()[0],
+              agentId: "sub-agent-id",
+            },
+          ],
+        });
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+    await renderSchedulePage();
+
+    // The agent column should show "Research Agent" (resolved from displayName by id)
+    await waitFor(() => {
+      expect(screen.getByText("Research Agent")).toBeInTheDocument();
+    });
+  });
+
+  it("should fall back to agent id when displayName is null", async () => {
+    server.use(
+      http.get("*/api/zero/team", () => {
+        return HttpResponse.json([
+          {
+            id: "mock-compose-id",
+            displayName: null,
+            description: null,
+            sound: null,
+            headVersionId: "v1",
+            updatedAt: "2024-01-01T00:00:00Z",
+          },
+          {
+            id: "no-name-agent",
+            displayName: null,
+            description: null,
+            sound: null,
+            headVersionId: "v2",
+            updatedAt: "2024-01-02T00:00:00Z",
+          },
+        ]);
+      }),
+      http.get("*/api/zero/schedules", () => {
+        return HttpResponse.json({
+          schedules: [
+            {
+              ...createMockSchedules()[0],
+              agentId: "no-name-agent",
+            },
+          ],
+        });
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+    await renderSchedulePage();
+
+    // Falls back to raw agent id when displayName is null
+    await waitFor(() => {
+      expect(screen.getByText("no-name-agent")).toBeInTheDocument();
+    });
+  });
+});
+
 describe("zero schedule page - list view", () => {
   it("should render schedule entries with time and prompt", async () => {
     mockScheduleAPI();
