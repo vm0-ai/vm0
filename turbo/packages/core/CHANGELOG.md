@@ -1,5 +1,16 @@
 # Changelog
 
+## [8.112.0](https://github.com/vm0-ai/vm0/compare/core-v8.111.1...core-v8.112.0) (2026-03-25)
+
+
+### Features
+
+* add instagram firewall config ([#6701](https://github.com/vm0-ai/vm0/issues/6701)) ([488917b](https://github.com/vm0-ai/vm0/commit/488917b05bd031f44b6c43a85994994bfb45af42)), closes [#6358](https://github.com/vm0-ai/vm0/issues/6358)
+* add meta-ads firewall config ([#6696](https://github.com/vm0-ai/vm0/issues/6696)) ([b82e62b](https://github.com/vm0-ai/vm0/commit/b82e62b768874a4f0bbd82e5f0e8fb27fd0cff07)), closes [#6373](https://github.com/vm0-ai/vm0/issues/6373)
+* add outlook-calendar firewall config ([#6711](https://github.com/vm0-ai/vm0/issues/6711)) ([3447c9e](https://github.com/vm0-ai/vm0/commit/3447c9eface597c6aad617f714c0ebc926c1ce04)), closes [#6380](https://github.com/vm0-ai/vm0/issues/6380)
+* add prisma-postgres firewall config ([#6691](https://github.com/vm0-ai/vm0/issues/6691)) ([6cbcc40](https://github.com/vm0-ai/vm0/commit/6cbcc4034251bb5a766532ae2bb0f14a45372eb8)), closes [#6390](https://github.com/vm0-ai/vm0/issues/6390)
+* connect org management dialog billing tabs to real data ([#6692](https://github.com/vm0-ai/vm0/issues/6692)) ([00f8209](https://github.com/vm0-ai/vm0/commit/00f82091196d280878c632f895acc37457c6493c))
+
 ## [8.111.1](https://github.com/vm0-ai/vm0/compare/core-v8.111.0...core-v8.111.1) (2026-03-25)
 
 

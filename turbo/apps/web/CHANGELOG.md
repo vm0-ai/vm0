@@ -1,5 +1,32 @@
 # Changelog
 
+## [12.158.0](https://github.com/vm0-ai/vm0/compare/web-v12.157.0...web-v12.158.0) (2026-03-25)
+
+
+### Features
+
+* connect org management dialog billing tabs to real data ([#6692](https://github.com/vm0-ai/vm0/issues/6692)) ([00f8209](https://github.com/vm0-ai/vm0/commit/00f82091196d280878c632f895acc37457c6493c))
+
+
+### Bug Fixes
+
+* **cli:** add slack to capability map and replace curl guidance ([#6679](https://github.com/vm0-ai/vm0/issues/6679)) ([0ba1480](https://github.com/vm0-ai/vm0/commit/0ba1480cc8ab735d967df668806a3577595e5a1a))
+* **e2e:** detect google oauth redirect for new users in e2e-auth ([#6702](https://github.com/vm0-ai/vm0/issues/6702)) ([8c6c611](https://github.com/vm0-ai/vm0/commit/8c6c611f0a544cfad0adc70e79fc04abcbaa0907))
+* **web:** exclude connector env vars from secret connector map override filter ([#6684](https://github.com/vm0-ai/vm0/issues/6684)) ([89bfe8c](https://github.com/vm0-ai/vm0/commit/89bfe8c30d38b2ad61ef4a575ac3433fb87ef4de))
+
+
+### Refactoring
+
+* unify zero_agents primary key with agent_composes.id ([#6686](https://github.com/vm0-ai/vm0/issues/6686)) ([f451f21](https://github.com/vm0-ai/vm0/commit/f451f21e19eb9900ad2c7f92832593583e050097))
+* **web:** rename firewall type variable for clarity ([#6705](https://github.com/vm0-ai/vm0/issues/6705)) ([eae5ca3](https://github.com/vm0-ai/vm0/commit/eae5ca36c520a459e5a0a4f317a388fc8fcc79aa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.112.0
+
 ## [12.157.0](https://github.com/vm0-ai/vm0/compare/web-v12.156.1...web-v12.157.0) (2026-03-25)
 
 

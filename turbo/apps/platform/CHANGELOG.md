@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.149.0](https://github.com/vm0-ai/vm0/compare/app-v0.148.1...app-v0.149.0) (2026-03-25)
+
+
+### Features
+
+* connect org management dialog billing tabs to real data ([#6692](https://github.com/vm0-ai/vm0/issues/6692)) ([00f8209](https://github.com/vm0-ai/vm0/commit/00f82091196d280878c632f895acc37457c6493c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.112.0
+
 ## [0.148.1](https://github.com/vm0-ai/vm0/compare/app-v0.148.0...app-v0.148.1) (2026-03-25)
 
 
