@@ -33,7 +33,15 @@ function createMockTeamWithSubagents() {
   ];
 }
 
-function mockTeamAPI(agents = createMockTeamWithSubagents()) {
+function mockTeamAPI(
+  agents: {
+    id: string;
+    displayName: string | null;
+    description: string | null;
+    headVersionId: string;
+    updatedAt: string;
+  }[] = createMockTeamWithSubagents(),
+) {
   server.use(
     http.get("*/api/zero/team", () => {
       return HttpResponse.json(agents);
@@ -125,6 +133,51 @@ describe("zero jobs page - team list", () => {
     });
   });
 
+  it("should display multiple agents when team API returns multiple agents", async () => {
+    mockTeamAPI([
+      {
+        id: "mock-compose-id",
+        displayName: null,
+        description: null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: "agent-alpha",
+        displayName: "Alpha Agent",
+        description: "Handles alpha tasks",
+        headVersionId: "version_a",
+        updatedAt: "2024-01-02T00:00:00Z",
+      },
+      {
+        id: "agent-beta",
+        displayName: "Beta Agent",
+        description: "Handles beta tasks",
+        headVersionId: "version_b",
+        updatedAt: "2024-01-03T00:00:00Z",
+      },
+      {
+        id: "agent-gamma",
+        displayName: "Gamma Agent",
+        description: null,
+        headVersionId: "version_g",
+        updatedAt: "2024-01-04T00:00:00Z",
+      },
+    ]);
+    await renderTeamPage();
+
+    // All three sub-agents should be visible (default agent is filtered out)
+    await waitFor(() => {
+      expect(screen.getByText("Alpha Agent")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Beta Agent")).toBeInTheDocument();
+    expect(screen.getByText("Gamma Agent")).toBeInTheDocument();
+
+    // Descriptions should be visible where provided
+    expect(screen.getByText("Handles alpha tasks")).toBeInTheDocument();
+    expect(screen.getByText("Handles beta tasks")).toBeInTheDocument();
+  });
+
   it("should show error state with retry link when API fails", async () => {
     mockTeamAPIError();
     await renderTeamPage();
@@ -132,5 +185,133 @@ describe("zero jobs page - team list", () => {
     await waitFor(() => {
       expect(screen.getByText("Retry")).toBeInTheDocument();
     });
+  });
+});
+
+function createMockSchedulesFromAPI() {
+  return [
+    {
+      id: "sched-a1b2c3",
+      agentId: "mock-compose-id",
+      agentName: "test-agent",
+      orgSlug: "test",
+      userId: "user_test1",
+      name: "zero-morning",
+      triggerType: "cron",
+      cronExpression: "55 9 * * 1-5",
+      atTime: null,
+      intervalSeconds: null,
+      timezone: "Asia/Shanghai",
+      prompt: "Send morning brief pptx to the team channel",
+      description: "Morning brief",
+      appendSystemPrompt: null,
+      vars: null,
+      secretNames: null,
+      artifactName: null,
+      artifactVersion: null,
+      volumeVersions: null,
+      enabled: true,
+      notifyEmail: false,
+      notifySlack: false,
+      slackChannelId: null,
+      nextRunAt: "2026-03-26T01:55:00.000Z",
+      lastRunAt: "2026-03-25T01:55:22.168Z",
+      retryStartedAt: null,
+      consecutiveFailures: 0,
+      createdAt: "2026-03-18T06:30:22.322Z",
+      updatedAt: "2026-03-24T13:47:09.003Z",
+    },
+    {
+      id: "sched-d4e5f6",
+      agentId: "mock-compose-id",
+      agentName: "test-agent",
+      orgSlug: "test",
+      userId: "user_test1",
+      name: "zero-ac",
+      triggerType: "cron",
+      cronExpression: "0 9 * * 1-5",
+      atTime: null,
+      intervalSeconds: null,
+      timezone: "Asia/Shanghai",
+      prompt: "Turn on the air conditioning in my office",
+      description: "Office AC on",
+      appendSystemPrompt: null,
+      vars: null,
+      secretNames: null,
+      artifactName: null,
+      artifactVersion: null,
+      volumeVersions: null,
+      enabled: true,
+      notifyEmail: false,
+      notifySlack: false,
+      slackChannelId: null,
+      nextRunAt: "2026-03-26T01:00:00.000Z",
+      lastRunAt: "2026-03-25T01:00:27.774Z",
+      retryStartedAt: null,
+      consecutiveFailures: 0,
+      createdAt: "2026-03-20T02:58:38.749Z",
+      updatedAt: "2026-03-25T01:46:27.637Z",
+    },
+    {
+      id: "sched-g7h8i9",
+      agentId: "mock-compose-id",
+      agentName: "test-agent",
+      orgSlug: "test",
+      userId: "user_test1",
+      name: "zero-evening",
+      triggerType: "cron",
+      cronExpression: "0 19 * * 1-5",
+      atTime: null,
+      intervalSeconds: null,
+      timezone: "Asia/Shanghai",
+      prompt:
+        "Summarize today's work and post evening brief to the team channel",
+      description: "Evening work summary",
+      appendSystemPrompt: null,
+      vars: null,
+      secretNames: null,
+      artifactName: null,
+      artifactVersion: null,
+      volumeVersions: null,
+      enabled: true,
+      notifyEmail: false,
+      notifySlack: false,
+      slackChannelId: null,
+      nextRunAt: "2026-03-25T11:00:00.000Z",
+      lastRunAt: null,
+      retryStartedAt: null,
+      consecutiveFailures: 0,
+      createdAt: "2026-03-24T13:44:56.808Z",
+      updatedAt: "2026-03-24T13:47:30.699Z",
+    },
+  ];
+}
+
+function mockScheduleAPI(schedules = createMockSchedulesFromAPI()) {
+  server.use(
+    http.get("*/api/zero/schedules", () => {
+      return HttpResponse.json({ schedules });
+    }),
+    http.get("*/api/zero/chat-threads", () => {
+      return HttpResponse.json({ threads: [] });
+    }),
+  );
+}
+
+async function renderSchedulePage() {
+  await setupPage({ context, path: "/schedule" });
+}
+
+describe("zero jobs page - schedule list", () => {
+  it("should display multiple schedules when schedule API returns data", async () => {
+    mockScheduleAPI();
+    await renderSchedulePage();
+
+    // All three schedules should be visible (description is shown when available)
+    await waitFor(() => {
+      expect(screen.getByText("Morning brief")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Office AC on")).toBeInTheDocument();
+    expect(screen.getByText("Evening work summary")).toBeInTheDocument();
   });
 });
