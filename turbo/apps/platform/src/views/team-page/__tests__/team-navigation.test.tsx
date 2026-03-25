@@ -95,7 +95,7 @@ describe("team page navigation", () => {
     });
 
     // Click the breadcrumb link to navigate back to /team
-    const teamLinks = screen.getAllByText("Zero's team");
+    const teamLinks = screen.getAllByText("Agents");
     // Find the breadcrumb link (inside a nav with breadcrumb-like structure)
     const breadcrumbLink = teamLinks
       .map((el) => el.closest("a"))
@@ -107,7 +107,9 @@ describe("team page navigation", () => {
 
     // Wait for team list to render
     await waitFor(() => {
-      expect(screen.getByText(/team/i, { selector: "h1" })).toBeInTheDocument();
+      expect(
+        screen.getByText(/agents/i, { selector: "h1" }),
+      ).toBeInTheDocument();
     });
   });
 });

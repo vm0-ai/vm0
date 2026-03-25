@@ -117,7 +117,7 @@ export type ZeroNavId =
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 const MANAGE_NAV = [
-  { id: "team", label: "Zero's team", icon: IconUsers as NavIcon },
+  { id: "team", label: "Agents", icon: IconUsers as NavIcon },
   { id: "schedule", label: "Scheduled", icon: IconCalendar as NavIcon },
   { id: "activity", label: "Activity logs", icon: IconChartLine as NavIcon },
 ] as const;

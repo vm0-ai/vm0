@@ -83,7 +83,7 @@ describe("activity list refresh on navigation", () => {
     const initialFetchCount = fetchCount;
 
     // Navigate to team page via sidebar
-    const teamLink = screen.getByText("Zero's team").closest("a");
+    const teamLink = screen.getByText("Agents").closest("a");
     expect(teamLink).not.toBeNull();
     fireEvent.click(teamLink!);
 

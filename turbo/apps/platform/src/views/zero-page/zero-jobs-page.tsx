@@ -95,7 +95,7 @@ export function ZeroJobsPage() {
       <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-10 pb-3">
         <div className="mx-auto max-w-[900px]">
           <h1 className="text-lg font-semibold tracking-tight text-foreground">
-            {agentName}&apos;s team
+            Agents
           </h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
             {agentName} and sub-agents working together to run tailored

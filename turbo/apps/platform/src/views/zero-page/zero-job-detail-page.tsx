@@ -87,7 +87,7 @@ function Breadcrumb({ currentName }: { currentName?: string }) {
         className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors no-underline text-inherit"
       >
         <IconUsers size={14} stroke={1.5} className="shrink-0" />
-        Zero&apos;s team
+        Agents
       </Link>
       <span className="text-muted-foreground/40 select-none">/</span>
       <span className="rounded-md px-1.5 py-0.5 text-foreground font-medium truncate">
