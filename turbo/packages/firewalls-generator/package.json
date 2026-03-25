@@ -58,6 +58,7 @@
     "generate:line": "tsx src/index.ts line",
     "generate:linear": "tsx src/index.ts linear",
     "generate:loops": "tsx src/index.ts loops",
+    "generate:mailsac": "tsx src/index.ts mailsac",
     "generate:mercury": "tsx src/index.ts mercury",
     "generate:minimax": "tsx src/index.ts minimax",
     "generate:monday": "tsx src/index.ts monday",

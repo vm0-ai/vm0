@@ -142,6 +142,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   line: ["line"],
   linear: ["linear"],
   loops: ["loops"],
+  mailsac: ["mailsac"],
   mercury: ["mercury"],
   minimax: ["minimax"],
   monday: ["monday"],

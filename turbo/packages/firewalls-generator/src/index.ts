@@ -53,6 +53,7 @@ import { generate as generateLark } from "./lark";
 import { generate as generateLine } from "./line";
 import { generate as generateLinear } from "./linear";
 import { generate as generateLoops } from "./loops";
+import { generate as generateMailsac } from "./mailsac";
 import { generate as generateMercury } from "./mercury";
 import { generate as generateMinimax } from "./minimax";
 import { generate as generateMonday } from "./monday";
@@ -139,6 +140,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   line: generateLine,
   linear: generateLinear,
   loops: generateLoops,
+  mailsac: generateMailsac,
   mercury: generateMercury,
   minimax: generateMinimax,
   monday: generateMonday,
