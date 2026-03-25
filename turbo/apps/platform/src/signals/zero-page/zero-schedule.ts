@@ -553,13 +553,18 @@ export const saveOrgSchedule$ = command(
     }
 
     const data = (await response.json()) as {
-      schedule: { id: string };
+      schedule?: { id?: string };
     };
+
+    const scheduleId = data?.schedule?.id;
+    if (!scheduleId) {
+      scheduleSaveFailure("Unexpected response: missing schedule ID");
+    }
 
     toast.success(params.editName ? "Schedule updated" : "Schedule created");
     await set(fetchAllOrgSchedules$);
 
-    return data.schedule.id;
+    return scheduleId;
   },
 );
 
