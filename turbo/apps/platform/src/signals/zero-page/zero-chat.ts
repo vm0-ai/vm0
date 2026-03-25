@@ -430,6 +430,18 @@ function summarizeEvent(event: AgentEvent, skipText: boolean): string | null {
 
 const resetSending$ = resetSignal();
 
+/**
+ * Signal for talk-page sends that must survive page navigation.
+ *
+ * The talk page navigates from `/talk/` to `/chat/:sessionId` on send,
+ * which aborts the page-level signal.  This dedicated signal lets the
+ * talk page pass a cancellable AbortSignal without coupling to the page
+ * lifecycle.  It is reset each time `startNewZeroSession$` fires (which
+ * is called before every talk-page send), so stale controllers are
+ * cleaned up automatically.
+ */
+export const resetTalkSendSignal$ = resetSignal();
+
 // ---------------------------------------------------------------------------
 // Promise signals — UI derives busy state from these via useLoadable
 // ---------------------------------------------------------------------------
@@ -979,6 +991,7 @@ export const switchZeroSession$ = command(({ set }, threadId: string) => {
 export const startNewZeroSession$ = command(({ set }) => {
   // Abort any in-flight send/polling from the previous session
   set(resetSending$);
+  set(resetTalkSendSignal$);
 
   set(internalLocalMessages$, []);
   set(internalSessionId$, null);

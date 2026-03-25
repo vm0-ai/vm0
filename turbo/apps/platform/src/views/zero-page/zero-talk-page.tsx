@@ -13,6 +13,7 @@ import {
 } from "../../signals/zero-page/zero-agent-name.ts";
 import { navigateTo$ } from "../../signals/route.ts";
 import {
+  resetTalkSendSignal$,
   sendZeroChatMessage$,
   startNewZeroSession$,
 } from "../../signals/zero-page/zero-chat.ts";
@@ -52,6 +53,7 @@ export function ZeroTalkPage() {
   const navigateTo = useSet(navigateTo$);
   const sendMessage = useSet(sendZeroChatMessage$);
   const startNewSession = useSet(startNewZeroSession$);
+  const resetTalkSendSignal = useSet(resetTalkSendSignal$);
 
   const handleNavigateToMeet = (tab?: string) => {
     if (resolvedAgentId) {
@@ -76,11 +78,12 @@ export function ZeroTalkPage() {
     options?: { modelProvider?: string },
   ) => {
     startNewSession();
-    // Use a fresh signal instead of pageSignal because the send flow navigates
-    // from /talk/ to /chat/:sessionId, which aborts the current page signal.
-    // The send command manages its own cancellation via resetSending$.
-    const sendSignal = new AbortController().signal;
-    detach(sendMessage(message, options, sendSignal), Reason.DomCallback);
+    // Use a dedicated reset signal instead of pageSignal because the send
+    // flow navigates from /talk/ to /chat/:sessionId, which would abort the
+    // page signal.  resetTalkSendSignal$ is reset by startNewZeroSession$
+    // above, so each send gets a fresh signal and previous sends are aborted.
+    const talkSignal = resetTalkSendSignal();
+    detach(sendMessage(message, options, talkSignal), Reason.DomCallback);
   };
 
   return (
