@@ -476,14 +476,23 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Record<
  * Get firewall gateway config for a model provider type.
  * Returns undefined for providers without static base URLs (aws-bedrock, azure-foundry).
  */
+type FirewallSupportedProvider = Exclude<
+  ModelProviderType,
+  FirewallExcludedProvider
+>;
+
+function isFirewallSupported(
+  type: ModelProviderType,
+): type is FirewallSupportedProvider {
+  return type in MODEL_PROVIDER_FIREWALL_CONFIGS;
+}
+
 export function getModelProviderFirewall(
   type: ModelProviderType,
 ): ExpandedFirewallConfig | undefined {
-  return (
-    MODEL_PROVIDER_FIREWALL_CONFIGS as Partial<
-      Record<ModelProviderType, ExpandedFirewallConfig>
-    >
-  )[type];
+  return isFirewallSupported(type)
+    ? MODEL_PROVIDER_FIREWALL_CONFIGS[type]
+    : undefined;
 }
 
 export const modelProviderTypeSchema = z.enum([
