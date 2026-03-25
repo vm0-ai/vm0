@@ -42,7 +42,6 @@ import {
   TooltipTrigger,
 } from "@vm0/ui";
 import slackIcon from "./components/settings/icons/slack.svg";
-import zeroAvatarImg from "./assets/avatar_0.png";
 import { clerk$, user$ } from "../../signals/auth.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
@@ -83,11 +82,8 @@ import {
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { VM0ClerkProvider } from "../clerk/clerk-provider.tsx";
 import { ClerkOrgSwitcher } from "./clerk-org-switcher.tsx";
-import {
-  AGENT_AVATARS,
-  AgentAvatarImg,
-  type SubagentInfo,
-} from "./zero-sidebar-shared.tsx";
+import { AgentAvatarImg, type SubagentInfo } from "./zero-sidebar-shared.tsx";
+import { ZERO_AVATARS } from "./zero-avatars.ts";
 import { Link } from "../router/link.tsx";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { apiBaseForNavigation$ } from "../../signals/fetch.ts";
@@ -157,8 +153,6 @@ interface SessionAccount {
   imageUrl: string | undefined;
   isActive: boolean;
 }
-
-const ZERO_AVATARS = [zeroAvatarImg, ...AGENT_AVATARS] as const;
 
 function AccountAvatar({
   imageUrl,

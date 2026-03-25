@@ -31,20 +31,8 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 import { useAgentAvatar, AGENT_AVATARS } from "./zero-sidebar.tsx";
-import zeroAvatarImg from "./assets/avatar_0.png";
-import avatar1Img from "./assets/avatar_1.png";
-import avatar2Img from "./assets/avatar_2.png";
-import avatar3Img from "./assets/avatar_3.png";
-import avatar4Img from "./assets/avatar_4.png";
 import emptyChatImg from "./assets/empty-chat.webp";
-
-const ZERO_AVATARS = [
-  zeroAvatarImg,
-  avatar1Img,
-  avatar2Img,
-  avatar3Img,
-  avatar4Img,
-] as const;
+import { ZERO_AVATARS } from "./zero-avatars.ts";
 
 export function ZeroJobsPage() {
   const agentNameLoadable = useLoadable(agentDisplayName$);
