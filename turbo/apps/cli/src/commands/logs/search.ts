@@ -1,10 +1,10 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import {
-  apiClient,
+  searchLogs,
   type RunEvent,
   type LogsSearchResponse,
-} from "../../lib/api/api-client";
+} from "../../lib/api/domains/logs";
 import { parseTime } from "../../lib/utils/time-parser";
 import { ClaudeEventParser } from "../../lib/events/claude-event-parser";
 import { EventRenderer } from "../../lib/events/event-renderer";
@@ -164,7 +164,7 @@ export const searchCommand = new Command()
         : Date.now() - SEVEN_DAYS_MS;
       const limit = parseLimit(options.limit);
 
-      const response = await apiClient.searchLogs({
+      const response = await searchLogs({
         keyword,
         agent: options.agent,
         runId: options.run,
