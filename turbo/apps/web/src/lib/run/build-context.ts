@@ -772,11 +772,11 @@ async function resolveSecretsAndEnvironment(
 
   // Auto-generate firewall entry for model provider (if applicable).
   // For meta-providers like "vm0", use the concrete provider type for firewall lookup.
-  const firewallType =
+  const modelProviderFirewallType =
     modelProviderResult.concreteProviderType ??
     modelProviderResult.resolvedModelProvider;
-  const modelProviderFirewall = firewallType
-    ? getModelProviderFirewall(firewallType)
+  const modelProviderFirewall = modelProviderFirewallType
+    ? getModelProviderFirewall(modelProviderFirewallType)
     : undefined;
 
   // Expand environment variables from compose config.
