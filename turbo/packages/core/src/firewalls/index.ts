@@ -43,6 +43,7 @@ import { googleCalendarFirewall } from "./google-calendar.generated";
 import { googleDocsFirewall } from "./google-docs.generated";
 import { googleDriveFirewall } from "./google-drive.generated";
 import { googleSheetsFirewall } from "./google-sheets.generated";
+import { granolaFirewall } from "./granola.generated";
 import { heygenFirewall } from "./heygen.generated";
 import { hubspotFirewall } from "./hubspot.generated";
 import { huggingFaceFirewall } from "./hugging-face.generated";
@@ -125,6 +126,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   "google-docs": googleDocsFirewall,
   "google-drive": googleDriveFirewall,
   "google-sheets": googleSheetsFirewall,
+  granola: granolaFirewall,
   heygen: heygenFirewall,
   hubspot: hubspotFirewall,
   "hugging-face": huggingFaceFirewall,

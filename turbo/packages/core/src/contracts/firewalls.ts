@@ -123,6 +123,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   "google-docs": ["google-docs"],
   "google-drive": ["google-drive"],
   "google-calendar": ["google-calendar"],
+  granola: ["granola"],
   elevenlabs: ["elevenlabs"],
   fal: ["fal"],
   fireflies: ["fireflies"],
