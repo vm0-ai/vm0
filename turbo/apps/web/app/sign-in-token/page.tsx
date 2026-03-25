@@ -1,52 +1,51 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useSignIn } from "@clerk/nextjs";
 
 export default function SignInTokenPage() {
   const searchParams = useSearchParams();
   const { signIn, setActive, isLoaded } = useSignIn();
-  const [status, setStatus] = useState<"loading" | "success" | "error">(
-    "loading",
-  );
-  const [errorMessage, setErrorMessage] = useState("");
+  const [error, setError] = useState("");
+  const didRun = useRef(false);
+
+  const token = searchParams.get("token");
 
   useEffect(() => {
-    if (!isLoaded) return;
-
-    const token = searchParams.get("token");
-    if (!token) {
-      setStatus("error");
-      setErrorMessage("Missing token parameter");
-      return;
-    }
+    if (!isLoaded || !token || didRun.current) return;
+    didRun.current = true;
 
     signIn
       .create({ strategy: "ticket", ticket: token })
       .then((result) => {
         if (result.status === "complete" && result.createdSessionId) {
           return setActive({ session: result.createdSessionId }).then(() => {
-            setStatus("success");
             window.location.href = "/";
           });
         }
-        setStatus("error");
-        setErrorMessage(`Unexpected status: ${result.status}`);
+        throw new Error(`Unexpected status: ${result.status}`);
       })
       .catch((err: unknown) => {
-        setStatus("error");
-        setErrorMessage(
-          err instanceof Error ? err.message : "Sign-in failed",
-        );
+        setError(err instanceof Error ? err.message : "Sign-in failed");
       });
-  }, [isLoaded, searchParams, signIn, setActive]);
+  }, [isLoaded, token, signIn, setActive]);
+
+  if (!token) {
+    return (
+      <p style={{ padding: "2rem", fontFamily: "monospace" }}>
+        Error: Missing token parameter
+      </p>
+    );
+  }
+
+  if (error) {
+    return (
+      <p style={{ padding: "2rem", fontFamily: "monospace" }}>Error: {error}</p>
+    );
+  }
 
   return (
-    <div style={{ padding: "2rem", fontFamily: "monospace" }}>
-      {status === "loading" && <p>Signing in...</p>}
-      {status === "success" && <p>Success. Redirecting...</p>}
-      {status === "error" && <p>Error: {errorMessage}</p>}
-    </div>
+    <p style={{ padding: "2rem", fontFamily: "monospace" }}>Signing in...</p>
   );
 }
