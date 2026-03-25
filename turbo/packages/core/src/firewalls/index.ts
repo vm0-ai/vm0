@@ -72,6 +72,7 @@ import { slackFirewall } from "./slack.generated";
 import { stravaFirewall } from "./strava.generated";
 import { stripeFirewall } from "./stripe.generated";
 import { supabaseFirewall } from "./supabase.generated";
+import { supadataFirewall } from "./supadata.generated";
 import { tavilyFirewall } from "./tavily.generated";
 import { todoistFirewall } from "./todoist.generated";
 import { vercelFirewall } from "./vercel.generated";
@@ -149,6 +150,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   strava: stravaFirewall,
   stripe: stripeFirewall,
   supabase: supabaseFirewall,
+  supadata: supadataFirewall,
   tavily: tavilyFirewall,
   todoist: todoistFirewall,
   vercel: vercelFirewall,

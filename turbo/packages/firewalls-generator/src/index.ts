@@ -66,6 +66,7 @@ import { generate as generateSlack } from "./slack";
 import { generate as generateStrava } from "./strava";
 import { generate as generateStripe } from "./stripe";
 import { generate as generateSupabase } from "./supabase";
+import { generate as generateSupadata } from "./supadata";
 import { generate as generateTavily } from "./tavily";
 import { generate as generateTodoist } from "./todoist";
 import { generate as generateVercel } from "./vercel";
@@ -139,6 +140,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   strava: generateStrava,
   stripe: generateStripe,
   supabase: generateSupabase,
+  supadata: generateSupadata,
   tavily: generateTavily,
   todoist: generateTodoist,
   vercel: generateVercel,

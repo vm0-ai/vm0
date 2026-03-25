@@ -156,6 +156,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   strava: ["strava"],
   stripe: ["stripe"],
   supabase: ["supabase"],
+  supadata: ["supadata"],
   tavily: ["tavily"],
   todoist: ["todoist"],
   vercel: ["vercel"],
