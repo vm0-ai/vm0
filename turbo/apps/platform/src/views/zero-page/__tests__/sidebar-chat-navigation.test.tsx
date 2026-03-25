@@ -67,9 +67,11 @@ describe("sidebar chat navigation from /team", () => {
     mockAPIs();
     await setupPage({ context, path: "/team" });
 
-    // Verify team page is rendered
+    // Verify agents page is rendered
     await waitFor(() => {
-      expect(screen.getByText(/team/i, { selector: "h1" })).toBeInTheDocument();
+      expect(
+        screen.getByText(/agents/i, { selector: "h1" }),
+      ).toBeInTheDocument();
     });
 
     // Find and click the chat thread in sidebar
