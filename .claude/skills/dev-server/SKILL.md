@@ -60,7 +60,7 @@ While the runner is initializing in the background, run `prepare.sh` to set up t
 
 ```bash
 PROJECT_ROOT=$(git rev-parse --show-toplevel)
-cd "$PROJECT_ROOT" && bash scripts/prepare.sh 2>&1 | tee /tmp/prepare-output.log
+cd "$PROJECT_ROOT" && bash -c 'set -o pipefail; bash scripts/prepare.sh 2>&1 | tee /tmp/prepare-output.log'
 ```
 
 #### If prepare.sh fails
