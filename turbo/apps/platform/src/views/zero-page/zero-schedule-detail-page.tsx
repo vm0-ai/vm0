@@ -33,7 +33,7 @@ import { navigateTo$, pathParams$ } from "../../signals/route.ts";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import { agentsList$ } from "../../signals/zero-page/agents-list.ts";
 import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
-import { detach, Reason, throwIfAbort } from "../../signals/utils.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import {
   allOrgScheduleEntries$,
   allOrgSchedulesLoaded$,
@@ -70,15 +70,10 @@ function formatRunAt(iso: string | null): string {
   if (!iso) {
     return "—";
   }
-  try {
-    return new Date(iso).toLocaleString("en-US", {
-      dateStyle: "medium",
-      timeStyle: "short",
-    });
-  } catch (error) {
-    throwIfAbort(error);
-    return iso;
-  }
+  return new Date(iso).toLocaleString("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
 }
 
 /** Max length for schedule detail heading and breadcrumb (instruction-derived). */
