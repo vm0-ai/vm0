@@ -1375,29 +1375,30 @@ const CONNECTOR_TYPES_DEF = {
     oauth: {
       authorizationUrl: "https://twitter.com/i/oauth2/authorize",
       tokenUrl: "https://api.twitter.com/2/oauth2/token",
+      // https://docs.x.com/fundamentals/authentication/oauth-2-0/authorization-code
       scopes: [
-        "tweet.read",
-        "tweet.write",
-        "tweet.moderate.write",
-        "users.read",
-        "users.email",
-        "follows.read",
-        "follows.write",
-        "like.read",
-        "like.write",
-        "dm.read",
-        "dm.write",
-        "bookmark.read",
-        "bookmark.write",
-        "space.read",
-        "mute.read",
-        "mute.write",
-        "block.read",
-        "block.write",
-        "list.read",
-        "list.write",
-        "media.write",
-        "offline.access",
+        "tweet.read", // View tweets including from protected accounts
+        "tweet.write", // Create, delete tweets and retweets
+        "tweet.moderate.write", // Hide/unhide replies
+        "users.read", // View user profiles including protected accounts
+        "users.email", // Read authenticated user's email
+        "follows.read", // View followers and following
+        "follows.write", // Follow and unfollow users
+        "like.read", // View liked tweets
+        "like.write", // Like and unlike tweets
+        "dm.read", // View direct messages
+        "dm.write", // Send and manage direct messages
+        "bookmark.read", // View bookmarked tweets
+        "bookmark.write", // Add and remove bookmarks
+        "space.read", // View Spaces
+        "mute.read", // View muted accounts
+        "mute.write", // Mute and unmute accounts
+        "block.read", // View blocked accounts
+        "block.write", // Block and unblock accounts
+        "list.read", // View lists and list members
+        "list.write", // Create and manage lists
+        "media.write", // Upload media (images, videos)
+        "offline.access", // Refresh token for long-lived access
       ],
       environmentMapping: {
         X_ACCESS_TOKEN: "$secrets.X_ACCESS_TOKEN",
