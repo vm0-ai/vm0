@@ -320,7 +320,27 @@ async fn run_in_sandbox(
     let success = result.as_ref().is_ok_and(|exit| exit.exit_code == 0);
     let err = result.as_ref().err().map(|e| e.to_string());
     telemetry.record("agent_execute", t.elapsed(), success, err.as_deref());
-    let exit = result?;
+    let exit = match result {
+        Ok(exit) => exit,
+        Err(e) => {
+            // Sandbox crashed — check host dmesg for cgroup OOM kill of the
+            // firecracker process before propagating a generic error.
+            if let Some(pid) = sandbox.process_pid()
+                && check_host_oom(pid).await
+            {
+                warn!(run_id = %context.run_id, pid, "host OOM kill detected for firecracker");
+                return Ok((
+                    1,
+                    Some(
+                        "Firecracker VM killed by host OOM killer \
+                         (cgroup memory limit exceeded)"
+                            .into(),
+                    ),
+                ));
+            }
+            return Err(e.into());
+        }
+    };
 
     info!(
         run_id = %context.run_id,
@@ -408,6 +428,27 @@ async fn read_guest_error_file(sandbox: &dyn Sandbox, run_id: Uuid) -> Option<St
 fn dmesg_indicates_oom(stdout: &str) -> bool {
     let lower = stdout.to_lowercase();
     lower.contains("out of memory") || lower.contains("oom-kill") || lower.contains("oom_reaper")
+}
+
+/// Check host dmesg for a cgroup OOM kill of a specific firecracker process.
+async fn check_host_oom(pid: u32) -> bool {
+    let output = tokio::process::Command::new("sudo")
+        .args(["dmesg", "--time-format", "iso"])
+        .output()
+        .await;
+    match output {
+        Ok(out) if out.status.success() => {
+            host_dmesg_indicates_oom(&String::from_utf8_lossy(&out.stdout), pid)
+        }
+        _ => false,
+    }
+}
+
+/// Returns true if host dmesg output contains an OOM kill record for the
+/// given firecracker PID.
+fn host_dmesg_indicates_oom(dmesg: &str, pid: u32) -> bool {
+    let pattern = format!("task=firecracker,pid={pid}");
+    dmesg.contains("oom-kill") && dmesg.contains(&pattern)
 }
 
 /// Drain stdout chunks from the vsock receiver and write them to a host file.
@@ -1172,6 +1213,40 @@ mod tests {
         assert!(dmesg_indicates_oom("Out Of Memory: killed process 99"));
         assert!(!dmesg_indicates_oom("Killed process 99 (agent)"));
         assert!(dmesg_indicates_oom("OOM-kill: constraint=MEMCG"));
+    }
+
+    #[test]
+    fn host_oom_matches_firecracker_pid() {
+        let dmesg = "2026-03-25T01:59:21 oom-kill:constraint=CONSTRAINT_MEMCG,\
+            task=firecracker,pid=586629,uid=1000\n\
+            Memory cgroup out of memory: Killed process 586629 (firecracker)";
+        assert!(host_dmesg_indicates_oom(dmesg, 586629));
+    }
+
+    #[test]
+    fn host_oom_no_match_different_pid() {
+        let dmesg = "oom-kill:constraint=CONSTRAINT_MEMCG,\
+            task=firecracker,pid=99999,uid=1000";
+        assert!(!host_dmesg_indicates_oom(dmesg, 12345));
+    }
+
+    #[test]
+    fn host_oom_no_match_different_process() {
+        let dmesg = "oom-kill:constraint=CONSTRAINT_MEMCG,\
+            task=node,pid=586629,uid=1000";
+        assert!(!host_dmesg_indicates_oom(dmesg, 586629));
+    }
+
+    #[test]
+    fn host_oom_no_match_empty() {
+        assert!(!host_dmesg_indicates_oom("", 12345));
+    }
+
+    #[test]
+    fn host_oom_no_match_without_oom_kill() {
+        // Has the PID pattern but not "oom-kill"
+        let dmesg = "task=firecracker,pid=12345 started successfully";
+        assert!(!host_dmesg_indicates_oom(dmesg, 12345));
     }
 
     #[test]
