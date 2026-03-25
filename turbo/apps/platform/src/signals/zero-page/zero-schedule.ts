@@ -172,6 +172,7 @@ export const zeroScheduleEntries$ = computed((get) => {
 // Fetch schedules for the default agent
 // ---------------------------------------------------------------------------
 
+// eslint-disable-next-line ccstate/command-async-signal
 export const fetchZeroSchedules$ = command(async ({ get, set }) => {
   const status = await get(zeroOnboardingStatus$);
   const composeId = status.defaultAgentId;
@@ -228,6 +229,7 @@ export interface ZeroScheduleSaveParams {
 }
 
 export const saveZeroSchedule$ = command(
+  // eslint-disable-next-line ccstate/command-async-signal
   async ({ get, set }, params: ZeroScheduleSaveParams) => {
     const status = await get(zeroOnboardingStatus$);
     const composeId = status.defaultAgentId;
@@ -322,6 +324,7 @@ export const saveZeroSchedule$ = command(
 // ---------------------------------------------------------------------------
 
 export const toggleZeroScheduleEnabled$ = command(
+  // eslint-disable-next-line ccstate/command-async-signal
   async ({ get, set }, params: { name: string; enabled: boolean }) => {
     const status = await get(zeroOnboardingStatus$);
     const composeId = status.defaultAgentId;
@@ -360,6 +363,7 @@ export const toggleZeroScheduleEnabled$ = command(
 // ---------------------------------------------------------------------------
 
 export const deleteZeroSchedule$ = command(
+  // eslint-disable-next-line ccstate/command-async-signal
   async ({ get, set }, scheduleName: string) => {
     const status = await get(zeroOnboardingStatus$);
     const composeId = status.defaultAgentId;
@@ -437,6 +441,7 @@ export const allOrgScheduleEntries$ = computed((get) => {
     );
 });
 
+// eslint-disable-next-line ccstate/command-async-signal
 export const fetchAllOrgSchedules$ = command(async ({ get, set }) => {
   const fetchFn = get(fetch$);
   try {
@@ -461,6 +466,7 @@ export const fetchAllOrgSchedules$ = command(async ({ get, set }) => {
 export const saveOrgSchedule$ = command(
   async (
     { get, set },
+    // eslint-disable-next-line ccstate/command-async-signal
     params: ZeroScheduleSaveParams & { agentId: string },
   ) => {
     const fetchFn = get(fetch$);
@@ -546,6 +552,7 @@ export const saveOrgSchedule$ = command(
 export const toggleOrgScheduleEnabled$ = command(
   async (
     { get, set },
+    // eslint-disable-next-line ccstate/command-async-signal
     params: { name: string; enabled: boolean; agentId: string },
   ) => {
     const fetchFn = get(fetch$);
@@ -575,6 +582,7 @@ export const toggleOrgScheduleEnabled$ = command(
 );
 
 export const deleteOrgSchedule$ = command(
+  // eslint-disable-next-line ccstate/command-async-signal
   async ({ get, set }, params: { name: string; agentId: string }) => {
     const fetchFn = get(fetch$);
     const response = await fetchFn(

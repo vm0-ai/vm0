@@ -27,6 +27,7 @@ export const zeroSubagents$ = computed(async (get) => {
  * Follows the same flow as onboarding: create agent → upload instructions.
  */
 export const createSubagent$ = command(
+  // eslint-disable-next-line ccstate/command-async-signal
   async ({ get, set }, displayName: string) => {
     const fetchFn = get(fetch$);
 

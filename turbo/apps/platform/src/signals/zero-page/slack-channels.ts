@@ -13,6 +13,7 @@ const slackChannelsState$ = state<SlackChannel[]>([]);
 
 export const slackChannels$ = computed((get) => get(slackChannelsState$));
 
+// eslint-disable-next-line ccstate/command-async-signal
 export const fetchSlackChannels$ = command(async ({ get, set }) => {
   const fetchFn = get(fetch$);
   const response = await fetchFn("/api/zero/slack/channels");

@@ -75,6 +75,7 @@ interface PollableRunState {
 }
 
 const pollNewEvents$ = command(
+  // eslint-disable-next-line ccstate/command-async-signal
   async ({ get }, args: { runId: string; state: PollableRunState }) => {
     const { runId, state: runState } = args;
     const pages = runState.events$;
@@ -106,6 +107,7 @@ const pollNewEvents$ = command(
 export const setupPollingLoop$ = command(
   async (
     { get, set },
+    // eslint-disable-next-line ccstate/command-async-signal
     config: {
       runId: string;
       signal: AbortSignal;

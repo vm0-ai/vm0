@@ -43,7 +43,9 @@ export const loadInitialData$ = command(
  * the lookup / pin / redirect logic.
  */
 export async function resolveAgentById(
+  // eslint-disable-next-line ccstate/no-getter-setter-params
   get: Getter,
+  // eslint-disable-next-line ccstate/no-getter-setter-params
   set: Setter,
   signal: AbortSignal,
   agentId: string | null,

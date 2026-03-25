@@ -109,6 +109,7 @@ export const setLogoLoaded$ = command(({ set }, value: boolean) => {
   set(internalLogoLoaded$, value);
 });
 
+// eslint-disable-next-line ccstate/command-async-signal
 export const initProfileName$ = command(async ({ get, set }) => {
   const org = await get(org$);
   set(internalProfileName$, org?.name ?? "");

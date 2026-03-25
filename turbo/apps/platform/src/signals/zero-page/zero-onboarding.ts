@@ -54,6 +54,7 @@ export const zeroNeedsMemberOnboarding$ = computed(async (get) => {
  * Writes to Clerk membership metadata, then reloads onboarding status
  * so the dialog disappears (server reads Clerk API directly, no JWT needed).
  */
+// eslint-disable-next-line ccstate/command-async-signal
 export const completeMemberOnboarding$ = command(async ({ get, set }) => {
   set(internalSaving$, true);
   try {

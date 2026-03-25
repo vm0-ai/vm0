@@ -71,6 +71,7 @@ export const zeroAddedConnectors$ = computed(async (get) => {
 });
 
 /** Add a connector (local only, no compose job). */
+// eslint-disable-next-line ccstate/command-async-signal
 export const addZeroConnector$ = command(async ({ get, set }, name: string) => {
   if (get(internalAddedConnectors$) === null) {
     set(internalAddedConnectors$, await get(seededConnectors$));
@@ -79,6 +80,7 @@ export const addZeroConnector$ = command(async ({ get, set }, name: string) => {
 });
 
 /** Save connector changes: trigger compose job and wait for completion. */
+// eslint-disable-next-line ccstate/command-async-signal
 export const saveZeroConnectors$ = command(async ({ get, set }) => {
   set(internalSaving$, true);
   try {
@@ -100,6 +102,7 @@ export const saveZeroConnectors$ = command(async ({ get, set }) => {
 
 /** Sync the connectors list via zero agents API. */
 const syncConnectorsToCompose$ = command(
+  // eslint-disable-next-line ccstate/command-async-signal
   async ({ get, set }, connectorValues: string[]) => {
     const agent = await get(zeroAgent$);
     if (!agent) {

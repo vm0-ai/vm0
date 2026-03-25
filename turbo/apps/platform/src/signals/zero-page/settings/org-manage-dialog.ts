@@ -15,6 +15,7 @@ export const orgManageDialogOpen$ = computed((get) =>
 );
 
 export const setOrgManageDialogOpen$ = command(
+  // eslint-disable-next-line ccstate/command-async-signal
   async ({ set }, open: boolean) => {
     if (open) {
       await set(initProfileName$);
@@ -27,6 +28,7 @@ export const setOrgManageDialogOpen$ = command(
  * Check URL for `?settings=<tab>` param and auto-open the org manage dialog
  * on the specified tab. Strips the param from the URL after consuming it.
  */
+// eslint-disable-next-line ccstate/command-async-signal
 export const checkSettingsParam$ = command(async ({ get, set }) => {
   const params = get(searchParams$);
   const settingsValue = params.get("settings");

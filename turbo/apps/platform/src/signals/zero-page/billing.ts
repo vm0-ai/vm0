@@ -85,6 +85,7 @@ export const reloadBillingStatus$ = command(({ set }) => {
   set(billingReload$, (x) => x + 1);
 });
 
+// eslint-disable-next-line ccstate/command-async-signal
 export const openBillingDialog$ = command(async ({ get, set }) => {
   const status = await get(billingStatusAsync$);
   const currentTier = toBillingTier(status.tier);
@@ -98,6 +99,7 @@ export const closeBillingDialog$ = command(({ set }) => {
 });
 
 export const startCheckout$ = command(
+  // eslint-disable-next-line ccstate/command-async-signal
   async ({ get, set }, tier: "pro" | "team") => {
     set(internalDialogLoading$, true);
 
@@ -127,6 +129,7 @@ export const startCheckout$ = command(
   },
 );
 
+// eslint-disable-next-line ccstate/command-async-signal
 export const startDowngrade$ = command(async ({ get, set }) => {
   set(internalDialogLoading$, true);
 
@@ -151,6 +154,7 @@ export const startDowngrade$ = command(async ({ get, set }) => {
 export const saveAutoRecharge$ = command(
   async (
     { get, set },
+    // eslint-disable-next-line ccstate/command-async-signal
     config: { enabled: boolean; threshold?: number; amount?: number },
   ) => {
     set(internalDialogLoading$, true);

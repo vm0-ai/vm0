@@ -32,6 +32,7 @@ export const orgModelProviders$ = computed(async (get) => {
  * Create or update an org model provider (admin only).
  */
 export const createOrgModelProvider$ = command(
+  // eslint-disable-next-line ccstate/command-async-signal
   async ({ get, set }, request: UpsertModelProviderRequest) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroModelProvidersMainContract);
@@ -51,6 +52,7 @@ export const createOrgModelProvider$ = command(
  * Set an org model provider as the default (admin only).
  */
 export const setDefaultOrgModelProvider$ = command(
+  // eslint-disable-next-line ccstate/command-async-signal
   async ({ get, set }, type: ModelProviderType) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroModelProvidersDefaultContract);
@@ -72,6 +74,7 @@ export const setDefaultOrgModelProvider$ = command(
  * Delete an org model provider by type (admin only).
  */
 export const deleteOrgModelProvider$ = command(
+  // eslint-disable-next-line ccstate/command-async-signal
   async ({ get, set }, type: ModelProviderType) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroModelProvidersByTypeContract);

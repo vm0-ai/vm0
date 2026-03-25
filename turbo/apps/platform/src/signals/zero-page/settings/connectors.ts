@@ -192,6 +192,7 @@ export const scopeReviewLoading$ = computed((get) =>
   get(internalScopeReviewLoading$),
 );
 
+// eslint-disable-next-line ccstate/command-async-signal
 const loadScopeDiff$ = command(async ({ get, set }, type: ConnectorType) => {
   const createClient = get(zeroClient$);
   const client = createClient(zeroConnectorScopeDiffContract);

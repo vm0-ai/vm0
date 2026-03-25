@@ -68,6 +68,8 @@ export default [
       "ccstate/no-get-signal": "error",
       "ccstate/computed-const-args-package-scope": "error",
       "ccstate/no-store-in-params": "error",
+      "ccstate/command-async-signal": "error",
+      "ccstate/no-getter-setter-params": "error",
     },
   },
   {

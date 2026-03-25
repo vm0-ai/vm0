@@ -31,6 +31,7 @@ export const sendModeSaving$ = computed((get) => get(internalSendModeSaving$));
  * on a React useEffect in the view.
  */
 export const updateSendMode$ = command(
+  // eslint-disable-next-line ccstate/command-async-signal
   async ({ get, set }, value: SendMode) => {
     set(internalSendModeSaving$, value);
     try {

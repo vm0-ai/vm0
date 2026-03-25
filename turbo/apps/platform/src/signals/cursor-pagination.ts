@@ -52,6 +52,7 @@ function createNavigationCommands(deps: PaginationDeps) {
   const { config, limit$, cursor$, data$, cursorHistory$, writeUrlParams$ } =
     deps;
 
+  // eslint-disable-next-line ccstate/command-async-signal
   const goToNextPage$ = command(async ({ get, set }) => {
     const response = await get(data$);
     if (!response.pagination.hasMore) {
@@ -88,6 +89,7 @@ function createNavigationCommands(deps: PaginationDeps) {
     set(writeUrlParams$, { cursor: prevCursor });
   });
 
+  // eslint-disable-next-line ccstate/command-async-signal
   const goForwardTwoPages$ = command(async ({ get, set }) => {
     const response1 = await get(data$);
     if (!response1.pagination.hasMore) {

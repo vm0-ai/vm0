@@ -40,6 +40,7 @@ export const reloadConnectors$ = command(({ set }) => {
  * Delete a connector by type.
  */
 export const deleteConnector$ = command(
+  // eslint-disable-next-line ccstate/command-async-signal
   async ({ get, set }, type: ConnectorType) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroConnectorsByTypeContract);

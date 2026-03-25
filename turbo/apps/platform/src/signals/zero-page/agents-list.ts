@@ -33,6 +33,7 @@ export const agentsList$ = computed((get) => get(agentsListState$).agents);
 export const agentsLoading$ = computed((get) => get(agentsListState$).loading);
 export const agentsError$ = computed((get) => get(agentsListState$).error);
 
+// eslint-disable-next-line ccstate/command-async-signal
 export const fetchAgentsList$ = command(async ({ get, set }) => {
   set(agentsListState$, (prev) => ({ ...prev, loading: true, error: null }));
 

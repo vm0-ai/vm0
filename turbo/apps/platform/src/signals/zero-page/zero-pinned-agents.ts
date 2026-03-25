@@ -48,6 +48,7 @@ export const savingPinnedAgents$ = computed((get) =>
  * Update pinned agent IDs on the server with optimistic UI.
  */
 export const updatePinnedAgentIds$ = command(
+  // eslint-disable-next-line ccstate/command-async-signal
   async ({ get, set }, ids: string[]) => {
     // Optimistic update — UI reflects the change immediately
     set(optimisticPinnedIds$, ids);

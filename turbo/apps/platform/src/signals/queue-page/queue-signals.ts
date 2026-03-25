@@ -18,6 +18,7 @@ const internalQueueData$ = state<QueueData | null>(null);
 
 export const queueData$ = computed((get) => get(internalQueueData$));
 
+// eslint-disable-next-line ccstate/command-async-signal
 const fetchQueueData$ = command(async ({ get, set }) => {
   const fetchFn = get(fetch$);
   const response = await fetchFn("/api/zero/runs/queue");
@@ -49,6 +50,7 @@ export const startQueuePolling$ = command(
   },
 );
 
+// eslint-disable-next-line ccstate/command-async-signal
 export const cancelQueueRun$ = command(async ({ get, set }, runId: string) => {
   const fetchFn = get(fetch$);
   const response = await fetchFn(`/api/zero/runs/${runId}/cancel`, {
