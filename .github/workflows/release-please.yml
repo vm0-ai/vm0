@@ -68,10 +68,9 @@ jobs:
             echo "✅ Created $gate check run on $PR_HEAD"
           done
 
-  # Run database migrations in production
+  # Run database migrations in production (always runs as a gate for all deploy jobs)
   migrate-production:
     needs: release-please
-    if: ${{ needs.release-please.outputs.web_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260320
@@ -80,14 +79,55 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git safe directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - uses: ./.github/actions/toolchain-init
 
+      - name: Detect migration changes
+        id: detect
+        run: |
+          # Find the most recent web release tag
+          PREV_TAG=$(git tag --list 'web-v*' --sort=-v:refname | head -1)
+          if [ -z "$PREV_TAG" ]; then
+            echo "No previous web release tag found, running migration"
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Comparing $PREV_TAG..HEAD for migration changes"
+          if git diff --name-only "$PREV_TAG" HEAD | grep -qE "^turbo/apps/web/src/db/(migrations|schema)/"; then
+            echo "Migration changes detected"
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No migration changes"
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Notify Slack - Skipped
+        if: ${{ steps.detect.outputs.needed == 'false' && vars.SLACK_RELEASE_CHANNEL_ID != '' }}
+        uses: slackapi/slack-github-action@v3.0.1
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            text: "*Database Migration* ⏭️ Skipped (no migration changes)"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Database Migration* ⏭️ Skipped (no migration changes)"
+
       - name: Install neonctl
+        if: ${{ steps.detect.outputs.needed == 'true' }}
         run: npm install -g neonctl@2.15.0
 
       - name: Notify Slack - Starting
         id: slack-start
-        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
+        if: ${{ steps.detect.outputs.needed == 'true' && vars.SLACK_RELEASE_CHANNEL_ID != '' }}
         uses: slackapi/slack-github-action@v3.0.1
         with:
           method: chat.postMessage
@@ -103,10 +143,12 @@ jobs:
 
       - name: Record start time
         id: timer
+        if: ${{ steps.detect.outputs.needed == 'true' }}
         run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
 
       - name: Get Production Database URL
         id: get-db-url
+        if: ${{ steps.detect.outputs.needed == 'true' }}
         run: |
           # Get the main branch database URL (production)
           DATABASE_URL=$(neonctl connection-string production --project-id ${{ vars.NEON_PROJECT_ID }} --database-name neondb --pooled)
@@ -115,6 +157,7 @@ jobs:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
 
       - name: Run Production Migrations
+        if: ${{ steps.detect.outputs.needed == 'true' }}
         run: |
           cd turbo && pnpm -F web db:migrate
         env:
@@ -378,7 +421,7 @@ jobs:
 
   # Deploy docs app to production
   deploy-docs-production:
-    needs: release-please
+    needs: [release-please, migrate-production]
     if: ${{ needs.release-please.outputs.docs_release_created == 'true' }}
     runs-on: ubuntu-latest
     container:
@@ -468,8 +511,10 @@ jobs:
 
   # Deploy app (Vite SPA) to production
   deploy-app-production:
-    needs: release-please
-    if: ${{ needs.release-please.outputs.app_release_created == 'true' }}
+    needs: [release-please, migrate-production, deploy-web-production]
+    if: >-
+      !failure() && !cancelled() &&
+      needs.release-please.outputs.app_release_created == 'true'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260320
@@ -563,7 +608,7 @@ jobs:
                   text: "*App* ❌ Deploy failed\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.app_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
   publish-npm:
-    needs: release-please
+    needs: [release-please, migrate-production]
     if: ${{ needs.release-please.outputs.cli_release_created == 'true' }}
     runs-on: ubuntu-latest
     environment: npm
@@ -660,8 +705,10 @@ jobs:
 
   # Deploy runner to production metal instances
   deploy-runner-production:
-    needs: [release-please]
-    if: ${{ needs.release-please.outputs.runner_rs_release_created == 'true' }}
+    needs: [release-please, migrate-production, deploy-web-production]
+    if: >-
+      !failure() && !cancelled() &&
+      needs.release-please.outputs.runner_rs_release_created == 'true'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260320
@@ -876,7 +923,7 @@ jobs:
   # Build E2B templates to production account
   # Uses production environment E2B_API_KEY secret
   build-e2b-template-production:
-    needs: [release-please]
+    needs: [release-please, migrate-production]
     # Build when any release is created
     if: ${{ needs.release-please.outputs.releases_created == 'true' }}
     runs-on: ubuntu-latest
@@ -901,7 +948,7 @@ jobs:
 
   # Generate Software Bill of Materials (SBOM) for CASA compliance (CASA-DEP-003)
   sbom:
-    needs: release-please
+    needs: [release-please, migrate-production]
     if: ${{ needs.release-please.outputs.releases_created == 'true' }}
     runs-on: ubuntu-latest
     container:
