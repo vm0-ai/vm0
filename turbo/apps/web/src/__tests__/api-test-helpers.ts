@@ -3940,6 +3940,32 @@ export async function seedTestCompose(opts: {
 }
 
 /**
+ * Seed an agent compose record WITHOUT a corresponding zero_agents row.
+ * Useful for testing "agent not found" scenarios where the compose ID exists
+ * in agent_composes (satisfying FK constraints) but getWorkspaceAgent() returns
+ * undefined because there is no zero_agents row.
+ */
+export async function seedOrphanCompose(opts: {
+  userId: string;
+  name: string;
+  orgId: string;
+}): Promise<{ composeId: string }> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .insert(agentComposes)
+    .values({
+      userId: opts.userId,
+      name: opts.name,
+      orgId: opts.orgId,
+    })
+    .returning({ id: agentComposes.id });
+  if (!row) {
+    throw new Error("Failed to seed orphan agent compose");
+  }
+  return { composeId: row.id };
+}
+
+/**
  * Seed a Slack org pending question for testing.
  */
 export async function seedTestSlackOrgPendingQuestion(opts: {
