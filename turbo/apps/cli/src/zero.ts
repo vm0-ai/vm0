@@ -4,7 +4,7 @@ import "./instrument.js";
 import { Command } from "commander";
 import { configureGlobalProxyFromEnv } from "./lib/network/proxy.js";
 import { zeroOrgCommand } from "./commands/zero/org";
-import { agentCommand } from "./commands/zero/agent";
+import { zeroAgentCommand } from "./commands/zero/agent";
 import { zeroConnectorCommand } from "./commands/zero/connector";
 import { zeroPreferenceCommand } from "./commands/zero/preference";
 import { zeroScheduleCommand } from "./commands/zero/schedule";
@@ -90,7 +90,7 @@ program
 
 // Register all zero commands as top-level
 program.addCommand(zeroOrgCommand);
-program.addCommand(agentCommand);
+program.addCommand(zeroAgentCommand);
 program.addCommand(zeroConnectorCommand);
 program.addCommand(zeroPreferenceCommand);
 program.addCommand(zeroScheduleCommand);
