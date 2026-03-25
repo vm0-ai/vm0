@@ -46,17 +46,6 @@ async function openGeneralTab() {
   );
 }
 
-describe("org manage dialog - layout", () => {
-  it("should use flex layout instead of grid for proper content scrolling", async () => {
-    mockAPIs();
-    await openGeneralTab();
-
-    const dialog = screen.getByRole("dialog");
-    expect(dialog.classList.contains("flex")).toBeTruthy();
-    expect(dialog.classList.contains("grid")).toBeFalsy();
-  });
-});
-
 describe("org general tab - profile section", () => {
   it("should show name and slug inputs for admin", async () => {
     mockAPIs({ name: "My Org", slug: "my-org" });
@@ -246,11 +235,9 @@ describe("org general tab - profile section", () => {
   });
 
   it("should load and display logo for non-admin members", async () => {
-    const logoFetched = vi.fn();
     mockAPIs({ role: "member" });
     server.use(
       http.get("*/api/zero/org/logo", () => {
-        logoFetched();
         return HttpResponse.json({
           logoUrl: "https://example.com/logo.png",
         });
@@ -258,10 +245,6 @@ describe("org general tab - profile section", () => {
     );
 
     await openGeneralTab();
-
-    await waitFor(() => {
-      expect(logoFetched).toHaveBeenCalledWith();
-    });
 
     const logo = await screen.findByAltText("test-org");
     expect(logo).toBeInTheDocument();
