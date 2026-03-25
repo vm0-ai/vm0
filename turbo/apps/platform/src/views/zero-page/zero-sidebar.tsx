@@ -25,7 +25,6 @@ import {
   IconEdit,
   IconLayoutSidebarLeftCollapse,
   IconDatabaseExport,
-  IconCrown,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey, type ChatThreadListItem } from "@vm0/core";
 import {
@@ -88,11 +87,6 @@ import { ZERO_AVATARS } from "./zero-avatars.ts";
 import { Link } from "../router/link.tsx";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { apiBaseForNavigation$ } from "../../signals/fetch.ts";
-import {
-  billingStatusAsync$,
-  openBillingDialog$,
-} from "../../signals/zero-page/billing.ts";
-import { BillingDialog } from "./billing-dialog.tsx";
 import {
   ChatListDialog,
   ManagePinnedAgentsDialog,
@@ -774,32 +768,6 @@ function TalkToSection({
   );
 }
 
-function SidebarBillingButton() {
-  const billingLoadable = useLastLoadable(billingStatusAsync$);
-  const billing =
-    billingLoadable.state === "hasData" ? billingLoadable.data : null;
-  const openBilling = useSet(openBillingDialog$);
-  const pageSignal = useGet(pageSignal$);
-
-  if (!billing) {
-    return null;
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={() => detach(openBilling(pageSignal), Reason.DomCallback)}
-      className="flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 text-sidebar-foreground hover:bg-sidebar-accent"
-    >
-      <IconCrown size={16} className="shrink-0 text-primary" />
-      <span className="truncate capitalize">{billing.tier}</span>
-      <span className="ml-auto text-xs text-muted-foreground">
-        {billing.credits.toLocaleString()}
-      </span>
-    </button>
-  );
-}
-
 export function ZeroSidebar() {
   // Read all data from signals directly
   const activeId = useGet(zeroActiveId$);
@@ -850,9 +818,7 @@ export function ZeroSidebar() {
   };
   const managePinnedOpen = useGet(managePinnedDialogOpen$);
   const setManagePinnedOpen = useSet(setManagePinnedDialogOpen$);
-  // Billing
   const features = useLastResolved(featureSwitch$);
-  const showPricing = features?.[FeatureSwitchKey.Pricing] ?? false;
 
   // Compute selectedAgentIdFromChat for grey highlight
   const subagentIds = new Set(subagents.map((a) => a.id));
@@ -1052,7 +1018,6 @@ export function ZeroSidebar() {
         {/* Footer nav */}
         <div className="p-2">
           <div className="flex flex-col gap-1">
-            {showPricing && <SidebarBillingButton />}
             {footerNav.map(({ id, label, icon: Icon, iconImg }) => (
               <Link
                 key={id}
@@ -1101,9 +1066,6 @@ export function ZeroSidebar() {
         onPinnedIdsChange={setPinnedIds}
         saving={savingPinned}
       />
-
-      {/* Billing dialog */}
-      {showPricing && <BillingDialog />}
     </VM0ClerkProvider>
   );
 }

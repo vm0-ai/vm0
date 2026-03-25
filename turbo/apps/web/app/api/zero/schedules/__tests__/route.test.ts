@@ -7,6 +7,8 @@ import {
   getTestZeroAgentId,
   createTestOrg,
   createTestSchedule,
+  createTestSlackOrgInstallation,
+  createTestSlackOrgConnection,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -44,6 +46,15 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
     testComposeId = composeId;
     await createTestZeroAgent(orgId, agentName, {});
     testZeroAgentId = await getTestZeroAgentId(orgId, agentName);
+
+    // Set up Slack installation + user connection (required for notifySlack: true tests)
+    const { slackWorkspaceId } = await createTestSlackOrgInstallation({
+      orgId,
+    });
+    await createTestSlackOrgConnection({
+      slackWorkspaceId,
+      vm0UserId: user.userId,
+    });
   });
 
   it("should create schedule and return 201", async () => {

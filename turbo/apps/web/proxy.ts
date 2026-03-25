@@ -29,6 +29,8 @@ const isPublicRoute = createRouteMatcher([
   "/:locale/blog/posts/:slug",
   "/sign-in(.*)",
   "/sign-up(.*)",
+  "/sign-in-token",
+  "/:locale/sign-in-token",
   "/api/cli/auth/device",
   "/api/cli/auth/token",
   "/api/slack/oauth/(.*)",

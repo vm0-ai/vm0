@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.47.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.46.0...runner-rs-v0.47.0) (2026-03-25)
+
+
+### Features
+
+* **runner:** add cache version seeds to rootfs and snapshot hash computation ([#6769](https://github.com/vm0-ai/vm0/issues/6769)) ([59b4ce5](https://github.com/vm0-ai/vm0/commit/59b4ce5fbf80f027e89374239e6e36ce4997a656))
+
+
+### Bug Fixes
+
+* **runner:** add rerun-if-changed for embedded files in build.rs ([#6758](https://github.com/vm0-ai/vm0/issues/6758)) ([814d66c](https://github.com/vm0-ai/vm0/commit/814d66cc1d9601ea1a92342fc9697ec7694e4569))
+
 ## [0.46.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.45.8...runner-rs-v0.46.0) (2026-03-25)
 
 

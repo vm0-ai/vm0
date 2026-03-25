@@ -1,5 +1,17 @@
 # Changelog
 
+## [9.83.1](https://github.com/vm0-ai/vm0/compare/cli-v9.83.0...cli-v9.83.1) (2026-03-25)
+
+
+### Bug Fixes
+
+* address pr review findings (round 1) ([#6761](https://github.com/vm0-ai/vm0/issues/6761)) ([4dcf358](https://github.com/vm0-ai/vm0/commit/4dcf358b3d275990f5c7a1a6c8affafa8addc406))
+
+
+### Refactoring
+
+* **cli:** export logs domain through api barrel file ([#6756](https://github.com/vm0-ai/vm0/issues/6756)) ([07726ed](https://github.com/vm0-ai/vm0/commit/07726edfa0c2d3621b41afd997d4a2d19db74e73))
+
 ## [9.83.0](https://github.com/vm0-ai/vm0/compare/cli-v9.82.2...cli-v9.83.0) (2026-03-25)
 
 
