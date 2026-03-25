@@ -61,6 +61,7 @@
     "generate:loops": "tsx src/index.ts loops",
     "generate:mailsac": "tsx src/index.ts mailsac",
     "generate:mercury": "tsx src/index.ts mercury",
+    "generate:meta-ads": "tsx src/index.ts meta-ads",
     "generate:minimax": "tsx src/index.ts minimax",
     "generate:monday": "tsx src/index.ts monday",
     "generate:neon": "tsx src/index.ts neon",

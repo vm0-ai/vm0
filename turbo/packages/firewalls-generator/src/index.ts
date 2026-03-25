@@ -56,6 +56,7 @@ import { generate as generateLinear } from "./linear";
 import { generate as generateLoops } from "./loops";
 import { generate as generateMailsac } from "./mailsac";
 import { generate as generateMercury } from "./mercury";
+import { generate as generateMetaAds } from "./meta-ads";
 import { generate as generateMinimax } from "./minimax";
 import { generate as generateMonday } from "./monday";
 import { generate as generateNeon } from "./neon";
@@ -152,6 +153,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   loops: generateLoops,
   mailsac: generateMailsac,
   mercury: generateMercury,
+  "meta-ads": generateMetaAds,
   minimax: generateMinimax,
   monday: generateMonday,
   neon: generateNeon,

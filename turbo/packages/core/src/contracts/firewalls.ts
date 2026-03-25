@@ -145,6 +145,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   loops: ["loops"],
   mailsac: ["mailsac"],
   mercury: ["mercury"],
+  "meta-ads": ["meta-ads"],
   minimax: ["minimax"],
   monday: ["monday"],
   neon: ["neon"],

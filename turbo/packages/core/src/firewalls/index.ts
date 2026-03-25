@@ -62,6 +62,7 @@ import { linearFirewall } from "./linear.generated";
 import { loopsFirewall } from "./loops.generated";
 import { mailsacFirewall } from "./mailsac.generated";
 import { mercuryFirewall } from "./mercury.generated";
+import { metaAdsFirewall } from "./meta-ads.generated";
 import { minimaxFirewall } from "./minimax.generated";
 import { mondayFirewall } from "./monday.generated";
 import { neonFirewall } from "./neon.generated";
@@ -162,6 +163,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   loops: loopsFirewall,
   mailsac: mailsacFirewall,
   mercury: mercuryFirewall,
+  "meta-ads": metaAdsFirewall,
   minimax: minimaxFirewall,
   monday: mondayFirewall,
   neon: neonFirewall,
