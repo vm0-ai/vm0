@@ -1,0 +1,184 @@
+#!/usr/bin/env bash
+# browser.bash — Reusable bats helpers for agent-browser E2E tests
+#
+# Provides helper functions for browser automation via agent-browser.
+# Load from bats tests with: load '../../helpers/browser'
+#
+# Required env vars:
+#   VM0_API_URL  — Target site URL (e.g., https://www.vm7.ai:8443)
+#
+# Optional env vars:
+#   E2E_ACCOUNT  — Test email address (auto-generated if empty)
+
+# ---------------------------------------------------------------------------
+# browser_setup — Validate environment, initialize shared state
+# Call this in setup_file() before any browser interactions.
+# ---------------------------------------------------------------------------
+browser_setup() {
+  if [[ -z "${VM0_API_URL:-}" ]]; then
+    echo "VM0_API_URL is required but not set" >&2
+    return 1
+  fi
+
+  if ! command -v agent-browser &>/dev/null; then
+    echo "agent-browser is not installed. Install with: npm install -g agent-browser" >&2
+    return 1
+  fi
+
+  export NODE_TLS_REJECT_UNAUTHORIZED=0
+  export SCREENSHOT_DIR="/tmp/e2e-auth-screenshots"
+  mkdir -p "$SCREENSHOT_DIR"
+
+  export OTP="424242"
+  export STEP_NUM=0
+
+  if [[ -z "${E2E_ACCOUNT:-}" ]]; then
+    E2E_ACCOUNT="$(generate_test_email)"
+    export E2E_ACCOUNT
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# generate_test_email — Generate a random test email with +clerk_test suffix
+# ---------------------------------------------------------------------------
+generate_test_email() {
+  local random_prefix
+  random_prefix=$(head -c 8 /dev/urandom | od -An -tx1 | tr -d ' \n' | head -c 8)
+  echo "${random_prefix}+clerk_test@vm0.ai"
+}
+
+# ---------------------------------------------------------------------------
+# step_screenshot — Take a numbered screenshot + snapshot for debugging
+# ---------------------------------------------------------------------------
+step_screenshot() {
+  STEP_NUM=$((STEP_NUM + 1))
+  export STEP_NUM
+  local label="$1"
+  local filename
+  filename=$(printf "%02d-%s" "$STEP_NUM" "$label")
+  echo "# [$filename] Taking screenshot..." >&3 2>/dev/null || true
+  agent-browser screenshot "$SCREENSHOT_DIR/${filename}.png" 2>/dev/null || true
+  agent-browser snapshot > "$SCREENSHOT_DIR/${filename}.txt" 2>/dev/null || true
+}
+
+# ---------------------------------------------------------------------------
+# contains — Check if string contains pattern (case-insensitive)
+# ---------------------------------------------------------------------------
+contains() {
+  [[ "$(echo "$1" | grep -ci "$2" 2>/dev/null)" -gt 0 ]]
+}
+
+# ---------------------------------------------------------------------------
+# extract_ref — Extract @eN ref from a snapshot line containing [ref=eN]
+# ---------------------------------------------------------------------------
+extract_ref() {
+  local match
+  match=$(echo "$1" | grep -oE '\[ref=e[0-9]+\]' 2>/dev/null | head -1) || true
+  if [[ -n "$match" ]]; then
+    echo "$match" | sed 's/\[ref=/@/; s/\]//'
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# full_snapshot — Get full page snapshot text
+# ---------------------------------------------------------------------------
+full_snapshot() {
+  agent-browser snapshot 2>/dev/null || true
+}
+
+# ---------------------------------------------------------------------------
+# click_continue — Click form "Continue" button (not "Continue with Google")
+# ---------------------------------------------------------------------------
+click_continue() {
+  local snap_i ref
+  snap_i=$(agent-browser snapshot -i 2>/dev/null || true)
+  ref=$(echo "$snap_i" | grep -E 'button "Continue" \[ref=' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+  if [[ -n "$ref" ]]; then
+    agent-browser scrollintoview "$ref" 2>/dev/null || true
+    agent-browser wait 300
+    agent-browser click "$ref"
+  else
+    agent-browser find text "Continue" click
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# dismiss_cookie_banner — Dismiss cookie consent banner if present
+# ---------------------------------------------------------------------------
+dismiss_cookie_banner() {
+  if agent-browser find text "Accept" click 2>/dev/null; then
+    agent-browser wait 500
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# wait_for_redirect_away — Wait until URL no longer contains a pattern
+# ---------------------------------------------------------------------------
+wait_for_redirect_away() {
+  local pattern="$1"
+  local timeout_secs="${2:-30}"
+  for _i in $(seq 1 "$timeout_secs"); do
+    local current_url
+    current_url=$(agent-browser get url 2>/dev/null || true)
+    if [[ -n "$current_url" && ! "$current_url" =~ $pattern ]]; then
+      echo "$current_url"
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+# ---------------------------------------------------------------------------
+# wait_for_otp_screen — Wait for verification/OTP screen to appear
+# ---------------------------------------------------------------------------
+wait_for_otp_screen() {
+  local timeout_secs="${1:-10}"
+  for _i in $(seq 1 "$timeout_secs"); do
+    local snap
+    snap=$(full_snapshot)
+    if contains "$snap" "verify\|verification code\|enter.*code"; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+# ---------------------------------------------------------------------------
+# enter_otp — Enter OTP verification code
+# ---------------------------------------------------------------------------
+enter_otp() {
+  local code="$1"
+
+  if agent-browser find label "Enter verification code" fill "$code" 2>/dev/null; then
+    : # filled via label
+  elif agent-browser find placeholder "Enter verification code" fill "$code" 2>/dev/null; then
+    : # filled via placeholder
+  else
+    # Fallback: find first input and press digits one by one
+    agent-browser find first "input" click
+    agent-browser wait 300
+    for digit in $(echo "$code" | grep -o .); do
+      agent-browser press "$digit"
+    done
+  fi
+  agent-browser wait 2000
+
+  # Click Continue/Verify button if present (needed when OTP is a single text input)
+  if agent-browser find text "Continue" click 2>/dev/null; then
+    : # clicked Continue
+  elif agent-browser find text "Verify" click 2>/dev/null; then
+    : # clicked Verify
+  fi
+  agent-browser wait 5000
+}
+
+# ---------------------------------------------------------------------------
+# generate_password — Generate random 20-char password for sign-up
+# ---------------------------------------------------------------------------
+generate_password() {
+  local rand
+  rand=$(head -c 32 /dev/urandom | base64 | tr -d '/+=\n')
+  echo "${rand:0:16}!Aa1"
+}

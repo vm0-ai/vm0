@@ -40,7 +40,8 @@ GIT_EMAIL_PREFIX=$(git config user.email | sed 's/@.*//')
 HOSTNAME=$(hostname)
 TEST_EMAIL="${GIT_EMAIL_PREFIX}-${HOSTNAME}+clerk_test@vm0.ai"
 
-cd "$PROJECT_ROOT/e2e" && bash cli-auth-automation.sh "https://www.vm7.ai:8443" --email "$TEST_EMAIL"
+cd "$PROJECT_ROOT" && E2E_ACCOUNT="$TEST_EMAIL" VM0_API_URL="https://www.vm7.ai:8443" \
+  ./e2e/test/libs/bats/bin/bats ./e2e/tests/02-browser/brw-t01-auth.bats
 ```
 
 If the browser is already authenticated (check by navigating to `https://app.vm7.ai:8443` and verifying no redirect to sign-in), skip this step.
