@@ -73,6 +73,7 @@
     "generate:stripe": "tsx src/index.ts stripe",
     "generate:supabase": "tsx src/index.ts supabase",
     "generate:tavily": "tsx src/index.ts tavily",
+    "generate:tldv": "tsx src/index.ts tldv",
     "generate:todoist": "tsx src/index.ts todoist",
     "generate:vercel": "tsx src/index.ts vercel",
     "generate:webflow": "tsx src/index.ts webflow",
