@@ -32,7 +32,11 @@ export const orgModelProviders$ = computed(async (get) => {
  * Create or update an org model provider (admin only).
  */
 export const createOrgModelProvider$ = command(
-  async ({ get, set }, request: UpsertModelProviderRequest) => {
+  async (
+    { get, set },
+    request: UpsertModelProviderRequest,
+    _signal: AbortSignal,
+  ) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroModelProvidersMainContract);
     const result = await client.upsert({ body: request });
@@ -51,7 +55,7 @@ export const createOrgModelProvider$ = command(
  * Set an org model provider as the default (admin only).
  */
 export const setDefaultOrgModelProvider$ = command(
-  async ({ get, set }, type: ModelProviderType) => {
+  async ({ get, set }, type: ModelProviderType, _signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroModelProvidersDefaultContract);
     const result = await client.setDefault({
@@ -72,7 +76,7 @@ export const setDefaultOrgModelProvider$ = command(
  * Delete an org model provider by type (admin only).
  */
 export const deleteOrgModelProvider$ = command(
-  async ({ get, set }, type: ModelProviderType) => {
+  async ({ get, set }, type: ModelProviderType, _signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroModelProvidersByTypeContract);
     const result = await client.delete({ params: { type } });

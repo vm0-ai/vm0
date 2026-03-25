@@ -21,9 +21,9 @@ export const loadInitialData$ = command(
       return;
     }
     await Promise.all([
-      set(fetchAgentsList$),
+      set(fetchAgentsList$, signal),
       set(initZeroOnboarding$, signal),
-      set(initSlackOrg$),
+      set(initSlackOrg$, signal),
     ]);
     signal.throwIfAborted();
     set(initialDataLoaded$, true);

@@ -91,36 +91,38 @@ export const zeroJobDetailLoading$ = computed(
 );
 export const zeroJobDetailError$ = computed((get) => get(detailState$).error);
 
-const fetchZeroJobDetail$ = command(async ({ get, set }) => {
-  const name = get(internalAgentName$);
-  if (!name) {
-    return;
-  }
-
-  set(detailState$, (prev) => ({ ...prev, loading: true, error: null }));
-
-  try {
-    const client = get(zeroClient$)(zeroAgentsByIdContract);
-    const result = await client.get({ params: { id: name } });
-    if (result.status !== 200) {
-      throw new Error(`Failed to fetch agent (${result.status})`);
+const fetchZeroJobDetail$ = command(
+  async ({ get, set }, _signal: AbortSignal) => {
+    const name = get(internalAgentName$);
+    if (!name) {
+      return;
     }
 
-    set(detailState$, {
-      detail: result.body,
-      loading: false,
-      error: null,
-    });
-  } catch (error) {
-    throwIfAbort(error);
-    L.error("Failed to fetch agent detail:", error);
-    set(detailState$, (prev) => ({
-      ...prev,
-      loading: false,
-      error: error instanceof Error ? error.message : "Unknown error",
-    }));
-  }
-});
+    set(detailState$, (prev) => ({ ...prev, loading: true, error: null }));
+
+    try {
+      const client = get(zeroClient$)(zeroAgentsByIdContract);
+      const result = await client.get({ params: { id: name } });
+      if (result.status !== 200) {
+        throw new Error(`Failed to fetch agent (${result.status})`);
+      }
+
+      set(detailState$, {
+        detail: result.body,
+        loading: false,
+        error: null,
+      });
+    } catch (error) {
+      throwIfAbort(error);
+      L.error("Failed to fetch agent detail:", error);
+      set(detailState$, (prev) => ({
+        ...prev,
+        loading: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      }));
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Agent instructions
@@ -148,37 +150,39 @@ export const zeroJobInstructionsError$ = computed(
   (get) => get(instructionsState$).error,
 );
 
-const fetchZeroJobInstructions$ = command(async ({ get, set }) => {
-  const detail = get(zeroJobDetail$);
-  if (!detail) {
-    return;
-  }
-
-  set(instructionsState$, { instructions: null, loading: true, error: null });
-
-  try {
-    const client = get(zeroClient$)(zeroAgentInstructionsContract);
-    const result = await client.get({ params: { id: detail.agentId } });
-    if (result.status !== 200) {
-      throw new Error(`Failed to fetch instructions (${result.status})`);
+const fetchZeroJobInstructions$ = command(
+  async ({ get, set }, _signal: AbortSignal) => {
+    const detail = get(zeroJobDetail$);
+    if (!detail) {
+      return;
     }
 
-    set(instructionsState$, {
-      instructions: result.body,
-      loading: false,
-      error: null,
-    });
-  } catch (error) {
-    throwIfAbort(error);
-    L.error("Failed to fetch instructions:", error);
-    set(instructionsState$, {
-      instructions: null,
-      loading: false,
-      error:
-        error instanceof Error ? error.message : "Failed to load instructions",
-    });
-  }
-});
+    set(instructionsState$, { instructions: null, loading: true, error: null });
+
+    try {
+      const client = get(zeroClient$)(zeroAgentInstructionsContract);
+      const result = await client.get({ params: { id: detail.agentId } });
+      if (result.status !== 200) {
+        throw new Error(`Failed to fetch instructions (${result.status})`);
+      }
+
+      set(instructionsState$, {
+        instructions: result.body,
+        loading: false,
+        error: null,
+      });
+    } catch (error) {
+      throwIfAbort(error);
+      L.error("Failed to fetch instructions:", error);
+      set(instructionsState$, {
+        instructions: null,
+        loading: false,
+        error:
+          error instanceof Error ? error.message : "Failed to load instructions",
+      });
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Instructions editing
@@ -209,52 +213,57 @@ export const zeroJobBuilding$ = computed((get) => get(jobBuilding$));
 const internalBuildError$ = state<string | null>(null);
 export const zeroJobBuildError$ = computed((get) => get(internalBuildError$));
 
-export const buildZeroJobInstructions$ = command(async ({ get, set }) => {
-  const detail = get(zeroJobDetail$);
-  const raw = get(editedContent$);
-  if (!detail?.agentId || raw === null) {
-    return;
-  }
-  const edited = raw.trim();
-
-  set(jobBuilding$, true);
-  set(internalBuildError$, null);
-
-  try {
-    const client = get(zeroClient$)(zeroAgentInstructionsContract);
-    const result = await client.update({
-      params: { id: detail.agentId },
-      body: { content: edited },
-    });
-
-    if (result.status !== 200) {
-      const detail =
-        result.status === 401 ||
-        result.status === 403 ||
-        result.status === 404 ||
-        result.status === 422
-          ? result.body.error.message
-          : `status ${result.status}`;
-      throw new Error(`Build failed: ${detail}`);
+export const buildZeroJobInstructions$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const detail = get(zeroJobDetail$);
+    const raw = get(editedContent$);
+    if (!detail?.agentId || raw === null) {
+      return;
     }
+    const edited = raw.trim();
 
-    // Optimistically update instructions state
-    const current = get(instructionsState$).instructions;
-    set(instructionsState$, {
-      instructions: { content: edited, filename: current?.filename ?? null },
-      loading: false,
-      error: null,
-    });
+    set(jobBuilding$, true);
+    set(internalBuildError$, null);
 
-    set(editedContent$, null);
-    await set(fetchZeroJobDetail$);
-  } catch (error) {
-    throwIfAbort(error);
-    set(internalBuildError$, "Failed to build instructions. Please try again.");
-  } finally {
-    set(jobBuilding$, false);
-  }
-});
+    try {
+      const client = get(zeroClient$)(zeroAgentInstructionsContract);
+      const result = await client.update({
+        params: { id: detail.agentId },
+        body: { content: edited },
+      });
+
+      if (result.status !== 200) {
+        const errorDetail =
+          result.status === 401 ||
+          result.status === 403 ||
+          result.status === 404 ||
+          result.status === 422
+            ? result.body.error.message
+            : `status ${result.status}`;
+        throw new Error(`Build failed: ${errorDetail}`);
+      }
+
+      // Optimistically update instructions state
+      const current = get(instructionsState$).instructions;
+      set(instructionsState$, {
+        instructions: { content: edited, filename: current?.filename ?? null },
+        loading: false,
+        error: null,
+      });
+
+      set(editedContent$, null);
+      await set(fetchZeroJobDetail$, signal);
+    } catch (error) {
+      throwIfAbort(error);
+      set(
+        internalBuildError$,
+        "Failed to build instructions. Please try again.",
+      );
+    } finally {
+      set(jobBuilding$, false);
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Settings: update agent metadata (displayName, sound)
@@ -270,7 +279,7 @@ interface ZeroJobSettingsUpdate {
 }
 
 export const zeroJobUpdateSettings$ = command(
-  async ({ get, set }, update: ZeroJobSettingsUpdate) => {
+  async ({ get, set }, update: ZeroJobSettingsUpdate, signal: AbortSignal) => {
     const detail = get(zeroJobDetail$);
     if (!detail) {
       throw new Error("No compose detail found");
@@ -293,8 +302,8 @@ export const zeroJobUpdateSettings$ = command(
         throw new Error(`Save failed: ${detail}`);
       }
 
-      await set(fetchZeroJobDetail$);
-      await set(fetchAgentsList$);
+      await set(fetchZeroJobDetail$, signal);
+      await set(fetchAgentsList$, signal);
       toast.success("Profile saved");
     } catch (error) {
       throwIfAbort(error);
@@ -359,47 +368,49 @@ export const discardZeroJobConnectors$ = command(({ set }) => {
   set(internalAddedConnectors$, null);
 });
 
-export const saveZeroJobConnectors$ = command(async ({ get, set }) => {
-  const detail = get(zeroJobDetail$);
-  if (!detail?.agentId) {
-    throw new Error("No agent detail loaded");
-  }
-
-  set(internalSaving$, true);
-  try {
-    const newConnectors = get(internalAddedConnectors$) ?? [];
-    const client = get(zeroClient$)(zeroAgentsByIdContract);
-    const result = await client.update({
-      params: { id: detail.agentId },
-      body: { connectors: newConnectors },
-    });
-
-    if (result.status !== 200) {
-      const detail =
-        result.status === 400 ||
-        result.status === 401 ||
-        result.status === 403 ||
-        result.status === 404 ||
-        result.status === 422
-          ? result.body.error.message
-          : `status ${result.status}`;
-      throw new Error(`Save failed: ${detail}`);
+export const saveZeroJobConnectors$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const detail = get(zeroJobDetail$);
+    if (!detail?.agentId) {
+      throw new Error("No agent detail loaded");
     }
 
-    set(internalAddedConnectors$, null);
-    await set(fetchZeroJobDetail$);
-    set(reloadZeroCompose$);
-    toast.success("Connectors saved");
-  } catch (error) {
-    throwIfAbort(error);
-    L.error("Failed to save connectors:", error);
-    toast.error(
-      error instanceof Error ? error.message : "Failed to save connectors",
-    );
-  } finally {
-    set(internalSaving$, false);
-  }
-});
+    set(internalSaving$, true);
+    try {
+      const newConnectors = get(internalAddedConnectors$) ?? [];
+      const client = get(zeroClient$)(zeroAgentsByIdContract);
+      const result = await client.update({
+        params: { id: detail.agentId },
+        body: { connectors: newConnectors },
+      });
+
+      if (result.status !== 200) {
+        const errorDetail =
+          result.status === 400 ||
+          result.status === 401 ||
+          result.status === 403 ||
+          result.status === 404 ||
+          result.status === 422
+            ? result.body.error.message
+            : `status ${result.status}`;
+        throw new Error(`Save failed: ${errorDetail}`);
+      }
+
+      set(internalAddedConnectors$, null);
+      await set(fetchZeroJobDetail$, signal);
+      set(reloadZeroCompose$);
+      toast.success("Connectors saved");
+    } catch (error) {
+      throwIfAbort(error);
+      L.error("Failed to save connectors:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to save connectors",
+      );
+    } finally {
+      set(internalSaving$, false);
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Firewall policies — fetched from zero agents endpoint
@@ -417,26 +428,28 @@ export const setZeroJobFirewallPolicies$ = command(
   },
 );
 
-const fetchZeroJobFirewallPolicies$ = command(async ({ get, set }) => {
-  const name = get(internalAgentName$);
-  if (!name) {
-    return;
-  }
-
-  try {
-    const client = get(zeroClient$)(zeroAgentsByIdContract);
-    const result = await client.get({ params: { id: name } });
-    if (result.status !== 200) {
-      L.warn(`Failed to fetch firewall policies (${result.status})`);
+const fetchZeroJobFirewallPolicies$ = command(
+  async ({ get, set }, _signal: AbortSignal) => {
+    const name = get(internalAgentName$);
+    if (!name) {
       return;
     }
 
-    set(internalFirewallPolicies$, result.body.firewallPolicies ?? null);
-  } catch (error) {
-    throwIfAbort(error);
-    L.error("Failed to fetch firewall policies:", error);
-  }
-});
+    try {
+      const client = get(zeroClient$)(zeroAgentsByIdContract);
+      const result = await client.get({ params: { id: name } });
+      if (result.status !== 200) {
+        L.warn(`Failed to fetch firewall policies (${result.status})`);
+        return;
+      }
+
+      set(internalFirewallPolicies$, result.body.firewallPolicies ?? null);
+    } catch (error) {
+      throwIfAbort(error);
+      L.error("Failed to fetch firewall policies:", error);
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Agent schedule
@@ -564,35 +577,37 @@ export const zeroJobScheduleError$ = computed(
   (get) => get(scheduleState$).error,
 );
 
-const fetchZeroJobSchedule$ = command(async ({ get, set }) => {
-  const detail = get(zeroJobDetail$);
-  if (!detail) {
-    return;
-  }
-
-  set(scheduleState$, { schedules: [], error: null });
-
-  try {
-    const client = get(zeroClient$)(zeroSchedulesMainContract);
-    const result = await client.list();
-    if (result.status !== 200) {
-      throw new Error(`Failed to fetch schedules (${result.status})`);
+const fetchZeroJobSchedule$ = command(
+  async ({ get, set }, _signal: AbortSignal) => {
+    const detail = get(zeroJobDetail$);
+    if (!detail) {
+      return;
     }
 
-    const agentSchedules = result.body.schedules.filter(
-      (s) => s.agentId === detail.agentId,
-    );
-    set(scheduleState$, { schedules: agentSchedules, error: null });
-  } catch (error) {
-    throwIfAbort(error);
-    L.error("Failed to fetch schedules:", error);
-    set(scheduleState$, {
-      schedules: [],
-      error:
-        error instanceof Error ? error.message : "Failed to load schedules",
-    });
-  }
-});
+    set(scheduleState$, { schedules: [], error: null });
+
+    try {
+      const client = get(zeroClient$)(zeroSchedulesMainContract);
+      const result = await client.list();
+      if (result.status !== 200) {
+        throw new Error(`Failed to fetch schedules (${result.status})`);
+      }
+
+      const agentSchedules = result.body.schedules.filter(
+        (s) => s.agentId === detail.agentId,
+      );
+      set(scheduleState$, { schedules: agentSchedules, error: null });
+    } catch (error) {
+      throwIfAbort(error);
+      L.error("Failed to fetch schedules:", error);
+      set(scheduleState$, {
+        schedules: [],
+        error:
+          error instanceof Error ? error.message : "Failed to load schedules",
+      });
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Schedule CRUD
@@ -613,7 +628,11 @@ export interface ZeroJobScheduleSaveParams {
 }
 
 export const saveZeroJobSchedule$ = command(
-  async ({ get, set }, params: ZeroJobScheduleSaveParams) => {
+  async (
+    { get, set },
+    params: ZeroJobScheduleSaveParams,
+    signal: AbortSignal,
+  ) => {
     const detail = get(zeroJobDetail$);
     if (!detail) {
       throw new Error("No agent detail loaded");
@@ -684,12 +703,16 @@ export const saveZeroJobSchedule$ = command(
     }
 
     toast.success(params.editName ? "Schedule updated" : "Schedule created");
-    await set(fetchZeroJobSchedule$);
+    await set(fetchZeroJobSchedule$, signal);
   },
 );
 
 export const toggleZeroJobScheduleEnabled$ = command(
-  async ({ get, set }, params: { name: string; enabled: boolean }) => {
+  async (
+    { get, set },
+    params: { name: string; enabled: boolean },
+    signal: AbortSignal,
+  ) => {
     const detail = get(zeroJobDetail$);
     if (!detail) {
       throw new Error("No agent detail loaded");
@@ -708,12 +731,12 @@ export const toggleZeroJobScheduleEnabled$ = command(
       throw new Error(message);
     }
 
-    await set(fetchZeroJobSchedule$);
+    await set(fetchZeroJobSchedule$, signal);
   },
 );
 
 export const deleteZeroJobSchedule$ = command(
-  async ({ get, set }, scheduleName: string) => {
+  async ({ get, set }, scheduleName: string, signal: AbortSignal) => {
     const detail = get(zeroJobDetail$);
     if (!detail) {
       throw new Error("No agent detail loaded");
@@ -734,7 +757,7 @@ export const deleteZeroJobSchedule$ = command(
     }
 
     toast.success("Schedule deleted");
-    await set(fetchZeroJobSchedule$);
+    await set(fetchZeroJobSchedule$, signal);
   },
 );
 
@@ -742,49 +765,57 @@ export const deleteZeroJobSchedule$ = command(
 // Delete agent
 // ---------------------------------------------------------------------------
 
-export const deleteZeroJobAgent$ = command(async ({ get, set }) => {
-  const detail = get(zeroJobDetail$);
-  if (!detail) {
-    throw new Error("No agent detail loaded");
-  }
+export const deleteZeroJobAgent$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const detail = get(zeroJobDetail$);
+    if (!detail) {
+      throw new Error("No agent detail loaded");
+    }
 
-  const client = get(zeroClient$)(zeroAgentsByIdContract);
-  const result = await client.delete({ params: { id: detail.agentId } });
+    const client = get(zeroClient$)(zeroAgentsByIdContract);
+    const result = await client.delete({ params: { id: detail.agentId } });
 
-  if (result.status !== 204) {
-    const msg =
-      result.status === 401 || result.status === 403 || result.status === 404
-        ? result.body.error.message
-        : `status ${result.status}`;
-    throw new Error(`Delete failed: ${msg}`);
-  }
+    if (result.status !== 204) {
+      const msg =
+        result.status === 401 || result.status === 403 || result.status === 404
+          ? result.body.error.message
+          : `status ${result.status}`;
+      throw new Error(`Delete failed: ${msg}`);
+    }
 
-  toast.success("Agent deleted");
-  await set(fetchAgentsList$);
-});
+    toast.success("Agent deleted");
+    await set(fetchAgentsList$, signal);
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Combined fetch — loads detail, then instructions + schedule in parallel
 // ---------------------------------------------------------------------------
 
-export const fetchZeroJobData$ = command(async ({ set }, agentName: string) => {
-  // Reset all state so the skeleton screen shows while loading new data
-  set(detailState$, { detail: null, loading: false, error: null });
-  set(instructionsState$, { instructions: null, loading: false, error: null });
-  set(scheduleState$, { schedules: [], error: null });
-  set(editedContent$, null);
-  set(internalAddedConnectors$, null);
-  set(internalBuildError$, null);
-  set(jobBuilding$, false);
-  set(internalSaving$, false);
-  set(internalActiveTab$, getInitialTab());
-  set(internalFirewallPolicies$, null);
+export const fetchZeroJobData$ = command(
+  async ({ set }, agentName: string, signal: AbortSignal) => {
+    // Reset all state so the skeleton screen shows while loading new data
+    set(detailState$, { detail: null, loading: false, error: null });
+    set(instructionsState$, {
+      instructions: null,
+      loading: false,
+      error: null,
+    });
+    set(scheduleState$, { schedules: [], error: null });
+    set(editedContent$, null);
+    set(internalAddedConnectors$, null);
+    set(internalBuildError$, null);
+    set(jobBuilding$, false);
+    set(internalSaving$, false);
+    set(internalActiveTab$, getInitialTab());
+    set(internalFirewallPolicies$, null);
 
-  set(setZeroJobAgentName$, agentName);
-  await set(fetchZeroJobDetail$);
-  await Promise.all([
-    set(fetchZeroJobInstructions$),
-    set(fetchZeroJobSchedule$),
-    set(fetchZeroJobFirewallPolicies$),
-  ]);
-});
+    set(setZeroJobAgentName$, agentName);
+    await set(fetchZeroJobDetail$, signal);
+    await Promise.all([
+      set(fetchZeroJobInstructions$, signal),
+      set(fetchZeroJobSchedule$, signal),
+      set(fetchZeroJobFirewallPolicies$, signal),
+    ]);
+  },
+);

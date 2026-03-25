@@ -192,23 +192,25 @@ export const scopeReviewLoading$ = computed((get) =>
   get(internalScopeReviewLoading$),
 );
 
-const loadScopeDiff$ = command(async ({ get, set }, type: ConnectorType) => {
-  const createClient = get(zeroClient$);
-  const client = createClient(zeroConnectorScopeDiffContract);
-  try {
-    const result = await client.getScopeDiff({ params: { type } });
-    if (result.status === 200) {
-      set(internalScopeDiff$, result.body);
-    } else {
-      L.error(`Failed to fetch scope diff: ${result.status}`, result.body);
+const loadScopeDiff$ = command(
+  async ({ get, set }, type: ConnectorType, _signal: AbortSignal) => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroConnectorScopeDiffContract);
+    try {
+      const result = await client.getScopeDiff({ params: { type } });
+      if (result.status === 200) {
+        set(internalScopeDiff$, result.body);
+      } else {
+        L.error(`Failed to fetch scope diff: ${result.status}`, result.body);
+      }
+    } catch (error: unknown) {
+      throwIfAbort(error);
+      L.error("Failed to fetch scope diff:", error);
+    } finally {
+      set(internalScopeReviewLoading$, false);
     }
-  } catch (error: unknown) {
-    throwIfAbort(error);
-    L.error("Failed to fetch scope diff:", error);
-  } finally {
-    set(internalScopeReviewLoading$, false);
-  }
-});
+  },
+);
 
 export const setScopeReviewType$ = command(
   ({ set }, type: ConnectorType | null) => {
@@ -216,7 +218,10 @@ export const setScopeReviewType$ = command(
     if (type) {
       set(internalScopeDiff$, null);
       set(internalScopeReviewLoading$, true);
-      detach(set(loadScopeDiff$, type), Reason.Entrance);
+      detach(
+        set(loadScopeDiff$, type, AbortSignal.timeout(60_000)),
+        Reason.Entrance,
+      );
     }
   },
 );

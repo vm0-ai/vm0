@@ -13,7 +13,10 @@ import { startQueuePolling$ } from "./queue-signals.ts";
 export const setupQueuePage$ = command(async ({ set }, signal: AbortSignal) => {
   set(updatePage$, createElement(ZeroQueuePage));
   set(updateDocumentTitle$, "Queue");
-  await Promise.all([set(fetchAgentsList$), set(initZeroOnboarding$, signal)]);
+  await Promise.all([
+    set(fetchAgentsList$, signal),
+    set(initZeroOnboarding$, signal),
+  ]);
   signal.throwIfAborted();
 
   if (await set(onboardGuard$, signal)) {

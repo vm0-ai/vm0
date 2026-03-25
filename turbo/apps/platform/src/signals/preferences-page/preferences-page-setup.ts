@@ -13,7 +13,7 @@ export const setupPreferencesPage$ = command(
     set(updatePage$, createElement(ZeroPreferencesPageWrapper));
     set(updateDocumentTitle$, "Preferences");
     await Promise.all([
-      set(fetchAgentsList$),
+      set(fetchAgentsList$, signal),
       set(initZeroOnboarding$, signal),
     ]);
     signal.throwIfAborted();

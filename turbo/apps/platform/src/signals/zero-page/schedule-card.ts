@@ -35,7 +35,10 @@ export const addScheduleOpen$ = computed((get) => get(addScheduleOpenState$));
 export const setAddScheduleOpen$ = command(({ set }, open: boolean) => {
   set(addScheduleOpenState$, open);
   if (open) {
-    detach(set(fetchSlackChannels$), Reason.Deferred);
+    detach(
+      set(fetchSlackChannels$, AbortSignal.timeout(60_000)),
+      Reason.Deferred,
+    );
   }
 });
 
@@ -46,7 +49,10 @@ export const editingScheduleId$ = computed((get) =>
 export const setEditingScheduleId$ = command(({ set }, id: string | null) => {
   set(editingScheduleIdState$, id);
   if (id !== null) {
-    detach(set(fetchSlackChannels$), Reason.Deferred);
+    detach(
+      set(fetchSlackChannels$, AbortSignal.timeout(60_000)),
+      Reason.Deferred,
+    );
   }
 });
 

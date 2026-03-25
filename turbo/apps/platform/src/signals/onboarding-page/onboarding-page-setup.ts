@@ -18,7 +18,7 @@ export const setupOnboardingPage$ = command(
 
     await Promise.all([
       set(initZeroOnboarding$, signal),
-      set(fetchAgentsList$),
+      set(fetchAgentsList$, signal),
     ]);
     signal.throwIfAborted();
 

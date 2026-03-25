@@ -30,12 +30,12 @@ export const setupScheduleDetailPage$ = command(
     set(setScheduleRunHistoryScheduleId$, scheduleId);
     set(seedScheduleRunCursorHistory$);
 
-    detach(set(fetchAllOrgSchedules$), Reason.Entrance);
+    detach(set(fetchAllOrgSchedules$, signal), Reason.Entrance);
     await Promise.all([
-      set(fetchAgentsList$),
+      set(fetchAgentsList$, signal),
       set(initZeroOnboarding$, signal),
-      set(initSlackOrg$),
-      set(fetchSlackChannels$),
+      set(initSlackOrg$, signal),
+      set(fetchSlackChannels$, signal),
     ]);
     signal.throwIfAborted();
     set(switchActiveAgent$, null);

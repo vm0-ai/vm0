@@ -40,7 +40,7 @@ export const reloadConnectors$ = command(({ set }) => {
  * Delete a connector by type.
  */
 export const deleteConnector$ = command(
-  async ({ get, set }, type: ConnectorType) => {
+  async ({ get, set }, type: ConnectorType, _signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroConnectorsByTypeContract);
     const result = await client.delete({ params: { type } });

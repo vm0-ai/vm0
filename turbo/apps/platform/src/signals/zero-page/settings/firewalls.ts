@@ -48,6 +48,7 @@ export const saveFirewallPolicies$ = command(
     { get },
     agentName: string,
     policies: FirewallPolicies,
+    signal: AbortSignal,
   ): Promise<FirewallPolicies | null> => {
     const client = get(zeroClient$)(zeroAgentFirewallPoliciesContract);
     const result = await client.update({

@@ -14,7 +14,7 @@ export const setupChatPage$ = command(
     await set(loadInitialData$, signal);
 
     // Consume ?settings=<tab> param before redirecting
-    detach(set(checkSettingsParam$), Reason.Entrance);
+    detach(set(checkSettingsParam$, signal), Reason.Entrance);
 
     if (await set(onboardGuard$, signal)) {
       return;

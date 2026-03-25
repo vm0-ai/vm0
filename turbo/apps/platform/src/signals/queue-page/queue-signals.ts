@@ -19,7 +19,7 @@ const internalQueueData$ = state<QueueData | null>(null);
 
 export const queueData$ = computed((get) => get(internalQueueData$));
 
-const fetchQueueData$ = command(async ({ get, set }) => {
+const fetchQueueData$ = command(async ({ get, set }, _signal: AbortSignal) => {
   const client = get(zeroClient$)(zeroRunsQueueContract);
   const result = await client.getQueue();
   if (result.status !== 200) {
@@ -31,7 +31,7 @@ const fetchQueueData$ = command(async ({ get, set }) => {
 export const startQueuePolling$ = command(
   async ({ set }, signal: AbortSignal) => {
     // Initial fetch
-    await set(fetchQueueData$);
+    await set(fetchQueueData$, signal);
     signal.throwIfAborted();
 
     // Polling loop
@@ -39,7 +39,7 @@ export const startQueuePolling$ = command(
       try {
         await delay(POLL_INTERVAL, { signal });
         signal.throwIfAborted();
-        await set(fetchQueueData$);
+        await set(fetchQueueData$, signal);
         signal.throwIfAborted();
       } catch (error) {
         throwIfAbort(error);
@@ -49,14 +49,16 @@ export const startQueuePolling$ = command(
   },
 );
 
-export const cancelQueueRun$ = command(async ({ get, set }, runId: string) => {
-  const client = get(zeroClient$)(zeroRunsCancelContract);
-  const result = await client.cancel({
-    params: { id: runId },
-  });
-  if (result.status !== 200) {
-    throw new Error(`Failed to cancel run (${result.status})`);
-  }
-  // Refresh queue data after cancel
-  await set(fetchQueueData$);
-});
+export const cancelQueueRun$ = command(
+  async ({ get, set }, runId: string, signal: AbortSignal) => {
+    const client = get(zeroClient$)(zeroRunsCancelContract);
+    const result = await client.cancel({
+      params: { id: runId },
+    });
+    if (result.status !== 200) {
+      throw new Error(`Failed to cancel run (${result.status})`);
+    }
+    // Refresh queue data after cancel
+    await set(fetchQueueData$, signal);
+  },
+);

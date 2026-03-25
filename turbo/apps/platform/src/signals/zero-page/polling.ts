@@ -72,7 +72,11 @@ interface PollableRunState {
 }
 
 const pollNewEvents$ = command(
-  async ({ get }, args: { runId: string; state: PollableRunState }) => {
+  async (
+    { get },
+    args: { runId: string; state: PollableRunState },
+    _signal: AbortSignal,
+  ) => {
     const { runId, state: runState } = args;
     const pages = runState.events$;
     if (pages.length === 0) {
@@ -105,13 +109,13 @@ export const setupPollingLoop$ = command(
     { get, set },
     config: {
       runId: string;
-      signal: AbortSignal;
       state: PollableRunState;
       onTerminal?: (runId: string) => void;
       onPhase2Done?: () => void;
     },
+    signal: AbortSignal,
   ) => {
-    const { runId, signal, state: runState, onTerminal, onPhase2Done } = config;
+    const { runId, state: runState, onTerminal, onPhase2Done } = config;
 
     // Phase 1: Eager initial load — fetch all existing event pages
     const firstPage = createEventPageComputed(runId);
@@ -140,7 +144,7 @@ export const setupPollingLoop$ = command(
         runState.setStatus(result.body.status);
         runState.setError?.(result.body.error);
         if (isTerminalStatus(result.body.status)) {
-          await set(pollNewEvents$, { runId, state: runState });
+          await set(pollNewEvents$, { runId, state: runState }, signal);
           signal.throwIfAborted();
           onTerminal?.(runId);
           return;
@@ -173,14 +177,14 @@ export const setupPollingLoop$ = command(
           runState.setStatus(result.body.status);
           runState.setError?.(result.body.error);
           if (isTerminalStatus(result.body.status)) {
-            await set(pollNewEvents$, { runId, state: runState });
+            await set(pollNewEvents$, { runId, state: runState }, signal);
             signal.throwIfAborted();
             onTerminal?.(runId);
             return;
           }
         }
 
-        await set(pollNewEvents$, { runId, state: runState });
+        await set(pollNewEvents$, { runId, state: runState }, signal);
         signal.throwIfAborted();
         errorCount = 0;
       } catch (error) {

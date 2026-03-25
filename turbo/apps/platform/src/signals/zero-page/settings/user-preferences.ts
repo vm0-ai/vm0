@@ -33,7 +33,11 @@ export const userPreferences$ = computed(async (get) => {
 // ---------------------------------------------------------------------------
 
 export const updateUserPreference$ = command(
-  async ({ get, set }, update: UpdateUserPreferencesRequest) => {
+  async (
+    { get, set },
+    update: UpdateUserPreferencesRequest,
+    _signal: AbortSignal,
+  ) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroUserPreferencesContract);
     const result = await client.update({ body: update });

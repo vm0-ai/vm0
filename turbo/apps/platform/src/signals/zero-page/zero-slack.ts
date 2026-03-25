@@ -40,7 +40,7 @@ export const setShowUninstallDialog$ = command(({ set }, show: boolean) => {
   set(showUninstallDialogState$, show);
 });
 
-const fetchSlackOrg$ = command(async ({ get, set }) => {
+const fetchSlackOrg$ = command(async ({ get, set }, signal: AbortSignal) => {
   set(slackOrgState$, (prev) => ({
     ...prev,
     loading: true,
@@ -66,33 +66,37 @@ const fetchSlackOrg$ = command(async ({ get, set }) => {
   });
 });
 
-export const disconnectSlackOrg$ = command(async ({ get, set }) => {
-  const client = get(zeroClient$)(zeroIntegrationsSlackContract);
-  const result = await client.disconnect();
+export const disconnectSlackOrg$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const client = get(zeroClient$)(zeroIntegrationsSlackContract);
+    const result = await client.disconnect();
 
-  if (result.status !== 200) {
-    toast.error("Failed to disconnect Slack");
-    return;
-  }
+    if (result.status !== 200) {
+      toast.error("Failed to disconnect Slack");
+      return;
+    }
 
-  toast.success("Disconnected from Slack");
-  await set(fetchSlackOrg$);
-});
+    toast.success("Disconnected from Slack");
+    await set(fetchSlackOrg$, signal);
+  },
+);
 
-export const uninstallSlackOrg$ = command(async ({ get, set }) => {
-  const client = get(zeroClient$)(zeroIntegrationsSlackContract);
-  const result = await client.disconnect({
-    query: { action: "uninstall" },
-  });
+export const uninstallSlackOrg$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const client = get(zeroClient$)(zeroIntegrationsSlackContract);
+    const result = await client.disconnect({
+      query: { action: "uninstall" },
+    });
 
-  if (result.status !== 200) {
-    toast.error("Failed to uninstall Slack");
-    return;
-  }
+    if (result.status !== 200) {
+      toast.error("Failed to uninstall Slack");
+      return;
+    }
 
-  toast.success("Slack workspace uninstalled");
-  await set(fetchSlackOrg$);
-});
+    toast.success("Slack workspace uninstalled");
+    await set(fetchSlackOrg$, signal);
+  },
+);
 
 const POLL_INTERVAL_MS = 3000;
 
@@ -129,8 +133,8 @@ export const pollSlackConnection$ = command(
   },
 );
 
-export const initSlackOrg$ = command(async ({ set }) => {
-  await set(fetchSlackOrg$);
+export const initSlackOrg$ = command(async ({ set }, signal: AbortSignal) => {
+  await set(fetchSlackOrg$, signal);
 
   const params = new URLSearchParams(window.location.search);
   if (params.get("installed") === "1") {

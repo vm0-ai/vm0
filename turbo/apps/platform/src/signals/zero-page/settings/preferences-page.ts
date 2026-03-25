@@ -31,10 +31,10 @@ export const sendModeSaving$ = computed((get) => get(internalSendModeSaving$));
  * on a React useEffect in the view.
  */
 export const updateSendMode$ = command(
-  async ({ get, set }, value: SendMode) => {
+  async ({ get, set }, value: SendMode, signal: AbortSignal) => {
     set(internalSendModeSaving$, value);
     try {
-      await set(updateUserPreference$, { sendMode: value });
+      await set(updateUserPreference$, { sendMode: value }, signal);
       // After the command completes the refetch has been triggered.
       // Await the refetched sendMode so the UI never flashes back to the old value.
       const fetched = await get(sendMode$);

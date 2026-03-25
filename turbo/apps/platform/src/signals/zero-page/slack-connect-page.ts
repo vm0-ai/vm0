@@ -13,5 +13,8 @@ export const setupSlackConnectPage$ = command(({ set }) => {
   set(resetSlackConnectState$);
   set(updatePage$, createElement(ZeroSlackConnectPage));
   set(updateDocumentTitle$, "Connect Slack");
-  detach(set(initSlackConnectPage$), Reason.Entrance);
+  detach(
+    set(initSlackConnectPage$, AbortSignal.timeout(60_000)),
+    Reason.Entrance,
+  );
 });

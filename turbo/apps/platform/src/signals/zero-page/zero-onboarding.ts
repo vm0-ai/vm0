@@ -58,16 +58,18 @@ export const zeroNeedsMemberOnboarding$ = computed(async (get) => {
  * Writes to Clerk membership metadata, then reloads onboarding status
  * so the dialog disappears (server reads Clerk API directly, no JWT needed).
  */
-export const completeMemberOnboarding$ = command(async ({ get, set }) => {
-  set(internalSaving$, true);
-  try {
-    const client = get(zeroClient$)(onboardingCompleteContract);
-    await client.complete();
-    set(internalReload$, (x) => x + 1);
-  } finally {
-    set(internalSaving$, false);
-  }
-});
+export const completeMemberOnboarding$ = command(
+  async ({ get, set }, _signal: AbortSignal) => {
+    set(internalSaving$, true);
+    try {
+      const client = get(zeroClient$)(onboardingCompleteContract);
+      await client.complete();
+      set(internalReload$, (x) => x + 1);
+    } finally {
+      set(internalSaving$, false);
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Member welcome step state
@@ -177,10 +179,14 @@ export const completeZeroOnboarding$ = command(
       const createClient = get(zeroClient$);
 
       // Auto-initialize vm0 model provider with default model
-      await set(createOrgModelProvider$, {
-        type: "vm0",
-        selectedModel: "claude-sonnet-4.6",
-      });
+      await set(
+        createOrgModelProvider$,
+        {
+          type: "vm0",
+          selectedModel: "claude-sonnet-4.6",
+        },
+        signal,
+      );
       signal.throwIfAborted();
 
       // Create agent and upload instructions (server injects seed skills)

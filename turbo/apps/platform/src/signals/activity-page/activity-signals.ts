@@ -49,7 +49,7 @@ const internalOrgAgents$ = state<AgentOption[]>([]);
 /** All agents in the current org with display names (used internally for display name mapping). */
 const orgAgents$ = computed((get) => get(internalOrgAgents$));
 
-const fetchOrgAgents$ = command(async ({ get, set }) => {
+const fetchOrgAgents$ = command(async ({ get, set }, _signal: AbortSignal) => {
   const client = get(zeroClient$)(zeroComposesListContract);
   const result = await client.list();
   if (result.status !== 200) {
@@ -71,17 +71,21 @@ const fetchOrgAgents$ = command(async ({ get, set }) => {
 /** Agent name from onboarding (cached so pagination factory can read it). */
 const internalAgentName$ = state<string | null>(null);
 
-export const initZeroActivityAgentName$ = command(async ({ get, set }) => {
-  const status = await get(zeroOnboardingStatus$);
-  set(internalAgentName$, status.defaultAgentId);
-});
+export const initZeroActivityAgentName$ = command(
+  async ({ get, set }, _signal: AbortSignal) => {
+    const status = await get(zeroOnboardingStatus$);
+    set(internalAgentName$, status.defaultAgentId);
+  },
+);
 
 /** Initialize activity page: load agent name, org agents, and seed cursor history. */
-export const initZeroActivity$ = command(async ({ set }) => {
-  await set(initZeroActivityAgentName$);
-  await set(fetchOrgAgents$);
-  set(seedZeroActivityCursorHistory$);
-});
+export const initZeroActivity$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    await set(initZeroActivityAgentName$, signal);
+    await set(fetchOrgAgents$, signal);
+    set(seedZeroActivityCursorHistory$);
+  },
+);
 
 export const {
   limit$: zeroActivityLimit$,
@@ -329,27 +333,29 @@ export const zeroActivityEvents$ = computed(async (get) => {
 
 const pollInterval$ = state(3000);
 
-const pollNewEvents$ = command(async ({ get, set }, runId: string) => {
-  const pages = get(pagedEvents$);
-  if (pages.length === 0) {
-    return;
-  }
+const pollNewEvents$ = command(
+  async ({ get, set }, runId: string, _signal: AbortSignal) => {
+    const pages = get(pagedEvents$);
+    if (pages.length === 0) {
+      return;
+    }
 
-  const lastPage = await get(pages[pages.length - 1]);
-  if (lastPage.events.length === 0) {
-    // No events yet — replace with a fresh computed so we re-fetch from the start.
-    set(pagedEvents$, [createEventPageComputed(runId)]);
-    return;
-  }
+    const lastPage = await get(pages[pages.length - 1]);
+    if (lastPage.events.length === 0) {
+      // No events yet — replace with a fresh computed so we re-fetch from the start.
+      set(pagedEvents$, [createEventPageComputed(runId)]);
+      return;
+    }
 
-  const lastEvent = lastPage.events[lastPage.events.length - 1];
-  const newPage = createEventPageComputed(runId, lastEvent.createdAt);
-  const newPageResult = await get(newPage);
+    const lastEvent = lastPage.events[lastPage.events.length - 1];
+    const newPage = createEventPageComputed(runId, lastEvent.createdAt);
+    const newPageResult = await get(newPage);
 
-  if (newPageResult.events.length > 0) {
-    set(pagedEvents$, (prev) => [...prev, newPage]);
-  }
-});
+    if (newPageResult.events.length > 0) {
+      set(pagedEvents$, (prev) => [...prev, newPage]);
+    }
+  },
+);
 
 const setupZeroActivityEventPolling$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -407,7 +413,7 @@ const setupZeroActivityEventPolling$ = command(
           return;
         }
 
-        await set(pollNewEvents$, logId);
+        await set(pollNewEvents$, logId, signal);
         signal.throwIfAborted();
         errorCount = 0;
       } catch (error) {

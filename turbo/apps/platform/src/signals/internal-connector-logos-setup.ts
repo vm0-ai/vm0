@@ -15,9 +15,11 @@ export const setIconSize$ = command(({ set }, size: IconSize) => {
   set(internalIconSize$, size);
 });
 
-export const setupInternalConnectorLogos$ = command(async ({ set }) => {
-  const { InternalConnectorLogos } = await import(
-    "../views/internal-connector-logos.tsx"
-  );
-  set(updatePage$, createElement(InternalConnectorLogos));
-});
+export const setupInternalConnectorLogos$ = command(
+  async ({ set }, _signal: AbortSignal) => {
+    const { InternalConnectorLogos } = await import(
+      "../views/internal-connector-logos.tsx"
+    );
+    set(updatePage$, createElement(InternalConnectorLogos));
+  },
+);

@@ -15,14 +15,16 @@ export const slackChannelsInitialized$ = computed((get) =>
   get(slackChannelsLoaded$),
 );
 
-export const fetchSlackChannels$ = command(async ({ get, set }) => {
-  const client = get(zeroClient$)(zeroSlackChannelsContract);
-  const result = await client.list();
-  if (result.status !== 200) {
-    log.warn("Failed to fetch Slack channels", { status: result.status });
-    set(slackChannelsState$, []);
-  } else {
-    set(slackChannelsState$, result.body.channels);
-  }
-  set(slackChannelsLoaded$, true);
-});
+export const fetchSlackChannels$ = command(
+  async ({ get, set }, _signal: AbortSignal) => {
+    const client = get(zeroClient$)(zeroSlackChannelsContract);
+    const result = await client.list();
+    if (result.status !== 200) {
+      log.warn("Failed to fetch Slack channels", { status: result.status });
+      set(slackChannelsState$, []);
+    } else {
+      set(slackChannelsState$, result.body.channels);
+    }
+    set(slackChannelsLoaded$, true);
+  },
+);

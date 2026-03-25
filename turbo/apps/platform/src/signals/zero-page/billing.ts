@@ -86,20 +86,22 @@ export const reloadBillingStatus$ = command(({ set }) => {
   set(billingReload$, (x) => x + 1);
 });
 
-export const openBillingDialog$ = command(async ({ get, set }) => {
-  const status = await get(billingStatusAsync$);
-  const currentTier = toBillingTier(status.tier);
-  set(setSelectedPlanTier$, currentTier);
-  set(syncAutoRechargeForm$, status.autoRecharge);
-  set(internalDialogOpen$, true);
-});
+export const openBillingDialog$ = command(
+  async ({ get, set }, _signal: AbortSignal) => {
+    const status = await get(billingStatusAsync$);
+    const currentTier = toBillingTier(status.tier);
+    set(setSelectedPlanTier$, currentTier);
+    set(syncAutoRechargeForm$, status.autoRecharge);
+    set(internalDialogOpen$, true);
+  },
+);
 
 export const closeBillingDialog$ = command(({ set }) => {
   set(internalDialogOpen$, false);
 });
 
 export const startCheckout$ = command(
-  async ({ get, set }, tier: "pro" | "team") => {
+  async ({ get, set }, tier: "pro" | "team", _signal: AbortSignal) => {
     set(internalDialogLoading$, true);
 
     const currentUrl = window.location.href;
@@ -128,22 +130,24 @@ export const startCheckout$ = command(
   },
 );
 
-export const startDowngrade$ = command(async ({ get, set }) => {
-  set(internalDialogLoading$, true);
+export const startDowngrade$ = command(
+  async ({ get, set }, _signal: AbortSignal) => {
+    set(internalDialogLoading$, true);
 
-  const createClient = get(zeroClient$);
-  const client = createClient(zeroBillingPortalContract);
-  const result = await client.create({
-    body: { returnUrl: window.location.href },
-  });
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingPortalContract);
+    const result = await client.create({
+      body: { returnUrl: window.location.href },
+    });
 
-  if (result.status === 200) {
-    window.location.href = result.body.url;
-  } else {
-    log.error("Portal redirect failed", getErrorMessage(result.body));
-    set(internalDialogLoading$, false);
-  }
-});
+    if (result.status === 200) {
+      window.location.href = result.body.url;
+    } else {
+      log.error("Portal redirect failed", getErrorMessage(result.body));
+      set(internalDialogLoading$, false);
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Auto-recharge
@@ -153,6 +157,7 @@ export const saveAutoRecharge$ = command(
   async (
     { get, set },
     config: { enabled: boolean; threshold?: number; amount?: number },
+    _signal: AbortSignal,
   ) => {
     set(internalDialogLoading$, true);
 

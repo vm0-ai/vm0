@@ -37,45 +37,47 @@ export const agentsList$ = computed((get) => get(agentsListState$).agents);
 export const agentsLoading$ = computed((get) => get(agentsListState$).loading);
 export const agentsError$ = computed((get) => get(agentsListState$).error);
 
-export const fetchAgentsList$ = command(async ({ get, set }) => {
-  set(agentsListState$, (prev) => ({ ...prev, loading: true, error: null }));
+export const fetchAgentsList$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    set(agentsListState$, (prev) => ({ ...prev, loading: true, error: null }));
 
-  try {
-    // Fetch agents from app team endpoint (uses Clerk active org)
-    const teamClient = get(zeroClient$)(zeroTeamContract);
-    const agentsResult = await teamClient.list();
-
-    if (agentsResult.status !== 200) {
-      throw new Error(`Failed to fetch agents (${agentsResult.status})`);
-    }
-
-    const agents = agentsResult.body as ComposeListItem[];
-
-    // Fetch schedules (optional - don't fail if schedules API is unavailable)
-    let schedules: Schedule[] = [];
     try {
-      const schedulesClient = get(zeroClient$)(zeroSchedulesMainContract);
-      const schedulesResult = await schedulesClient.list();
-      if (schedulesResult.status === 200) {
-        schedules = schedulesResult.body.schedules;
+      // Fetch agents from app team endpoint (uses Clerk active org)
+      const teamClient = get(zeroClient$)(zeroTeamContract);
+      const agentsResult = await teamClient.list();
+
+      if (agentsResult.status !== 200) {
+        throw new Error(`Failed to fetch agents (${agentsResult.status})`);
       }
+
+      const agents = agentsResult.body as ComposeListItem[];
+
+      // Fetch schedules (optional - don't fail if schedules API is unavailable)
+      let schedules: Schedule[] = [];
+      try {
+        const schedulesClient = get(zeroClient$)(zeroSchedulesMainContract);
+        const schedulesResult = await schedulesClient.list();
+        if (schedulesResult.status === 200) {
+          schedules = schedulesResult.body.schedules;
+        }
+      } catch (error) {
+        throwIfAbort(error);
+        L.error("Failed to fetch schedules:", error);
+      }
+
+      set(agentsListState$, {
+        agents,
+        schedules,
+        loading: false,
+        error: null,
+      });
     } catch (error) {
       throwIfAbort(error);
-      L.error("Failed to fetch schedules:", error);
+      set(agentsListState$, (prev) => ({
+        ...prev,
+        loading: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      }));
     }
-
-    set(agentsListState$, {
-      agents,
-      schedules,
-      loading: false,
-      error: null,
-    });
-  } catch (error) {
-    throwIfAbort(error);
-    set(agentsListState$, (prev) => ({
-      ...prev,
-      loading: false,
-      error: error instanceof Error ? error.message : "Unknown error",
-    }));
-  }
-});
+  },
+);

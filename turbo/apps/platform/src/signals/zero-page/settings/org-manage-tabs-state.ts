@@ -97,11 +97,13 @@ export const setLogoLoaded$ = command(({ set }, value: boolean) => {
   set(internalLogoLoaded$, value);
 });
 
-export const initProfileName$ = command(async ({ get, set }) => {
-  const org = await get(org$);
-  set(internalProfileName$, org?.name ?? "");
-  set(internalProfileSlug$, org?.slug ?? "");
-});
+export const initProfileName$ = command(
+  async ({ get, set }, _signal: AbortSignal) => {
+    const org = await get(org$);
+    set(internalProfileName$, org?.name ?? "");
+    set(internalProfileSlug$, org?.slug ?? "");
+  },
+);
 
 // ---------------------------------------------------------------------------
 // org-general-tab: DangerZoneSection

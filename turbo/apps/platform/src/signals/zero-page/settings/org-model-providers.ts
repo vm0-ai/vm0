@@ -313,6 +313,7 @@ export const orgSubmitDialog$ = command(
       await set(
         createOrgModelProvider$,
         request as Parameters<typeof createOrgModelProvider$.write>[1],
+        signal,
       );
       signal.throwIfAborted();
 
@@ -374,7 +375,7 @@ export const orgConfirmDelete$ = command(
       MODEL_PROVIDER_TYPES[providerType]?.label ?? providerType;
 
     const promise = (async () => {
-      await set(deleteOrgModelProvider$, providerType);
+      await set(deleteOrgModelProvider$, providerType, signal);
       signal.throwIfAborted();
       toast.success(`${providerLabel} removed successfully`);
       set(internalOrgDeleteDialogState$, { open: false, providerType: null });
@@ -399,7 +400,7 @@ export const orgSetDefaultProvider$ = command(
     const providerLabel = MODEL_PROVIDER_TYPES[type]?.label ?? type;
 
     const promise = (async () => {
-      await set(setDefaultOrgModelProvider$, type);
+      await set(setDefaultOrgModelProvider$, type, signal);
       signal.throwIfAborted();
       toast.success(`${providerLabel} set as default`);
     })();

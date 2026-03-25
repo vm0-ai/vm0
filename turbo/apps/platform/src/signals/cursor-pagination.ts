@@ -64,7 +64,7 @@ function createNavigationCommands(deps: PaginationDeps) {
   const { config, limit$, cursor$, data$, cursorHistory$, writeUrlParams$ } =
     deps;
 
-  const goToNextPage$ = command(async ({ get, set }) => {
+  const goToNextPage$ = command(async ({ get, set }, _signal: AbortSignal) => {
     const response = await get(data$);
     if (!response.pagination.hasMore) {
       return;
@@ -100,65 +100,67 @@ function createNavigationCommands(deps: PaginationDeps) {
     set(writeUrlParams$, { cursor: prevCursor });
   });
 
-  const goForwardTwoPages$ = command(async ({ get, set }) => {
-    const response1 = await get(data$);
-    if (!response1.pagination.hasMore) {
-      return;
-    }
-
-    const cursor1 = response1.pagination.nextCursor;
-    if (!cursor1) {
-      return;
-    }
-
-    const currentCursor = get(cursor$);
-    const history = get(cursorHistory$);
-    const idx = Math.max(0, history.indexOf(currentCursor));
-
-    set(cursorHistory$, (prev) => {
-      const next = [...prev];
-      if (next.length <= idx + 1) {
-        next.push(cursor1);
-      } else {
-        next[idx + 1] = cursor1;
+  const goForwardTwoPages$ = command(
+    async ({ get, set }, _signal: AbortSignal) => {
+      const response1 = await get(data$);
+      if (!response1.pagination.hasMore) {
+        return;
       }
-      return next;
-    });
 
-    // Fetch intermediate page to get second cursor
-    const intermediateParams = config.buildFetchParams(
-      get(limit$),
-      cursor1,
-      get,
-    );
-    if (!intermediateParams) {
-      set(writeUrlParams$, { cursor: cursor1 });
-      return;
-    }
-
-    const client = get(zeroClient$)(logsListContract);
-    const result = await client.list({
-      query: paramsToQuery(intermediateParams),
-    });
-
-    if (result.status !== 200 || !result.body.pagination.hasMore) {
-      set(writeUrlParams$, { cursor: cursor1 });
-      return;
-    }
-
-    const cursor2 = result.body.pagination.nextCursor;
-    set(cursorHistory$, (prev) => {
-      const next = [...prev];
-      if (next.length <= idx + 2) {
-        next.push(cursor2);
-      } else {
-        next[idx + 2] = cursor2;
+      const cursor1 = response1.pagination.nextCursor;
+      if (!cursor1) {
+        return;
       }
-      return next;
-    });
 
-    set(writeUrlParams$, { cursor: cursor2 });
-  });
+      const currentCursor = get(cursor$);
+      const history = get(cursorHistory$);
+      const idx = Math.max(0, history.indexOf(currentCursor));
+
+      set(cursorHistory$, (prev) => {
+        const next = [...prev];
+        if (next.length <= idx + 1) {
+          next.push(cursor1);
+        } else {
+          next[idx + 1] = cursor1;
+        }
+        return next;
+      });
+
+      // Fetch intermediate page to get second cursor
+      const intermediateParams = config.buildFetchParams(
+        get(limit$),
+        cursor1,
+        get,
+      );
+      if (!intermediateParams) {
+        set(writeUrlParams$, { cursor: cursor1 });
+        return;
+      }
+
+      const client = get(zeroClient$)(logsListContract);
+      const result = await client.list({
+        query: paramsToQuery(intermediateParams),
+      });
+
+      if (result.status !== 200 || !result.body.pagination.hasMore) {
+        set(writeUrlParams$, { cursor: cursor1 });
+        return;
+      }
+
+      const cursor2 = result.body.pagination.nextCursor;
+      set(cursorHistory$, (prev) => {
+        const next = [...prev];
+        if (next.length <= idx + 2) {
+          next.push(cursor2);
+        } else {
+          next[idx + 2] = cursor2;
+        }
+        return next;
+      });
+
+      set(writeUrlParams$, { cursor: cursor2 });
+    },
+  );
 
   const goBackTwoPages$ = command(({ get, set }) => {
     const cursor = get(cursor$);

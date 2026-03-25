@@ -15,9 +15,9 @@ export const setupActivityPage$ = command(
     set(updateDocumentTitle$, "Activity");
     set(refreshZeroActivity$);
     await Promise.all([
-      set(fetchAgentsList$),
+      set(fetchAgentsList$, signal),
       set(initZeroOnboarding$, signal),
-      set(initZeroActivity$),
+      set(initZeroActivity$, signal),
     ]);
     signal.throwIfAborted();
 
