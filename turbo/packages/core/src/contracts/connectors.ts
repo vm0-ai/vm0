@@ -1401,7 +1401,7 @@ const CONNECTOR_TYPES_DEF = {
         "media.write", // Upload media.
       ],
       environmentMapping: {
-        X_ACCESS_TOKEN: "$secrets.X_ACCESS_TOKEN",
+        X_TOKEN: "$secrets.X_ACCESS_TOKEN",
       },
     } as ConnectorOAuthConfig,
   },
