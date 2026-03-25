@@ -1,15 +1,7 @@
-import {
-  command,
-  computed,
-  state,
-  type Command,
-  type Computed,
-  type State,
-} from "ccstate";
+import { command, computed, state, type Command, type State } from "ccstate";
 import { zeroMemberCreditCapContract } from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
 import { usageMembersAsync$ } from "../usage-page/usage-signals.ts";
-import { toast } from "@vm0/ui/components/ui/sonner";
 
 interface MemberCreditCap {
   creditCap: number | null;
@@ -86,9 +78,8 @@ export interface MemberCapSetting {
   creditCap: number | null;
   editMode$: State<boolean>;
   value$: State<string>;
-  savingPromise$: Computed<Promise<unknown> | null>;
-  save$: Command<void, []>;
-  clearCap$: Command<void, []>;
+  save$: Command<Promise<void>, [AbortSignal]>;
+  clearCap$: Command<Promise<void>, [AbortSignal]>;
   enterEditMode$: Command<void, []>;
   exitEditMode$: Command<void, []>;
   setValue$: Command<void, [string]>;
@@ -100,10 +91,8 @@ function createMemberCapSetting(
 ): MemberCapSetting {
   const editMode$ = state(false);
   const value$ = state(creditCap?.toString() ?? "");
-  const internalSavingPromise$ = state<Promise<unknown> | null>(null);
-  const savingPromise$ = computed((get) => get(internalSavingPromise$));
 
-  const save$ = command(({ get, set }) => {
+  const save$ = command(async ({ get, set }, signal: AbortSignal) => {
     const rawValue = get(value$);
     const parsed =
       rawValue.trim() === "" ? null : Number.parseInt(rawValue, 10);
@@ -111,53 +100,23 @@ function createMemberCapSetting(
       return;
     }
 
-    const promise = (async () => {
-      await set(
-        setMemberCreditCap$,
-        {
-          userId: member.userId,
-          creditCap: parsed,
-        },
-        AbortSignal.timeout(30_000),
-      );
-    })();
-
-    set(internalSavingPromise$, promise);
-
-    promise
-      .then(() => {
-        set(internalSavingPromise$, null);
-        set(editMode$, false);
-      })
-      .catch(() => {
-        set(internalSavingPromise$, null);
-        toast.error("Failed to update credit cap. Please try again.");
-      });
+    await set(
+      setMemberCreditCap$,
+      { userId: member.userId, creditCap: parsed },
+      signal,
+    );
+    signal.throwIfAborted();
+    set(editMode$, false);
   });
 
-  const clearCap$ = command(({ set }) => {
-    const promise = (async () => {
-      await set(
-        setMemberCreditCap$,
-        {
-          userId: member.userId,
-          creditCap: null,
-        },
-        AbortSignal.timeout(30_000),
-      );
-    })();
-
-    set(internalSavingPromise$, promise);
-
-    promise
-      .then(() => {
-        set(internalSavingPromise$, null);
-        set(editMode$, false);
-      })
-      .catch(() => {
-        set(internalSavingPromise$, null);
-        toast.error("Failed to clear credit cap. Please try again.");
-      });
+  const clearCap$ = command(async ({ set }, signal: AbortSignal) => {
+    await set(
+      setMemberCreditCap$,
+      { userId: member.userId, creditCap: null },
+      signal,
+    );
+    signal.throwIfAborted();
+    set(editMode$, false);
   });
 
   const enterEditMode$ = command(({ set }) => {
@@ -180,7 +139,6 @@ function createMemberCapSetting(
     creditCap,
     editMode$,
     value$,
-    savingPromise$,
     save$,
     clearCap$,
     enterEditMode$,

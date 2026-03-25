@@ -152,11 +152,7 @@ describe("save$ command", () => {
     expect(context.store.get(member.value$)).toBe("2000");
 
     // Save
-    context.store.set(member.save$);
-
-    // Wait for the saving promise to resolve
-    const promise = context.store.get(member.savingPromise$);
-    await promise;
+    await context.store.set(member.save$, context.signal);
 
     expect(captured.calls).toHaveLength(1);
     expect(captured.calls[0]).toStrictEqual({
@@ -181,7 +177,7 @@ describe("save$ command", () => {
 
     context.store.set(member.enterEditMode$);
     context.store.set(member.setValue$, "-5");
-    context.store.set(member.save$);
+    await context.store.set(member.save$, context.signal);
 
     expect(captured.calls).toHaveLength(0);
   });
@@ -201,7 +197,7 @@ describe("save$ command", () => {
 
     context.store.set(member.enterEditMode$);
     context.store.set(member.setValue$, "abc");
-    context.store.set(member.save$);
+    await context.store.set(member.save$, context.signal);
 
     expect(captured.calls).toHaveLength(0);
   });
@@ -221,10 +217,7 @@ describe("save$ command", () => {
 
     context.store.set(member.enterEditMode$);
     context.store.set(member.setValue$, "");
-    context.store.set(member.save$);
-
-    const promise = context.store.get(member.savingPromise$);
-    await promise;
+    await context.store.set(member.save$, context.signal);
 
     expect(captured.calls).toHaveLength(1);
     expect(captured.calls[0]).toStrictEqual({
@@ -249,10 +242,7 @@ describe("clearCap$ command", () => {
     const member = members[0];
 
     context.store.set(member.enterEditMode$);
-    context.store.set(member.clearCap$);
-
-    const promise = context.store.get(member.savingPromise$);
-    await promise;
+    await context.store.set(member.clearCap$, context.signal);
 
     expect(captured.calls).toHaveLength(1);
     expect(captured.calls[0]).toStrictEqual({

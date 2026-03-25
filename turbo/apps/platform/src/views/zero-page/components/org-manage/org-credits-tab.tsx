@@ -1,12 +1,13 @@
-import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
-import { IconLoader2 } from "@tabler/icons-react";
+import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { billingStatusAsync$ } from "../../../../signals/zero-page/billing.ts";
 import { isOrgAdmin$ } from "../../../../signals/org.ts";
 import {
   creditsMemberList$,
   type MemberCapSetting,
 } from "../../../../signals/zero-page/member-credit-caps.ts";
+import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { Button, Input } from "@vm0/ui";
+import { detach, Reason } from "../../../../signals/utils.ts";
 
 const sectionCardStyle = {
   border: "0.7px solid hsl(var(--gray-400))",
@@ -25,13 +26,12 @@ function MemberRow({
 }) {
   const editMode = useGet(member.editMode$);
   const value = useGet(member.value$);
-  const savingStatus = useLoadable(member.savingPromise$);
+  const pageSignal = useGet(pageSignal$);
   const save = useSet(member.save$);
   const clearCap = useSet(member.clearCap$);
   const enterEdit = useSet(member.enterEditMode$);
   const exitEdit = useSet(member.exitEditMode$);
   const setValue = useSet(member.setValue$);
-  const isSaving = savingStatus.state === "loading";
 
   return (
     <div className="grid grid-cols-[1fr_6rem_6rem] gap-x-4 items-center px-5 py-3">
@@ -43,13 +43,7 @@ function MemberRow({
       </span>
       {isAdmin && (
         <div className="flex justify-end">
-          {isSaving ? (
-            <IconLoader2
-              size={14}
-              stroke={1.5}
-              className="animate-spin text-muted-foreground"
-            />
-          ) : editMode ? (
+          {editMode ? (
             <div className="flex items-center gap-1.5">
               <Input
                 type="number"
@@ -61,7 +55,7 @@ function MemberRow({
                 autoFocus
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
-                    save();
+                    detach(save(pageSignal), Reason.DomCallback);
                   }
                   if (e.key === "Escape") {
                     exitEdit();
@@ -72,7 +66,7 @@ function MemberRow({
                 variant="outline"
                 size="sm"
                 className="h-7 text-xs px-2"
-                onClick={() => save()}
+                onClick={() => detach(save(pageSignal), Reason.DomCallback)}
               >
                 Save
               </Button>
@@ -81,7 +75,9 @@ function MemberRow({
                   variant="ghost"
                   size="sm"
                   className="h-7 text-xs px-2"
-                  onClick={() => clearCap()}
+                  onClick={() =>
+                    detach(clearCap(pageSignal), Reason.DomCallback)
+                  }
                 >
                   Clear
                 </Button>
