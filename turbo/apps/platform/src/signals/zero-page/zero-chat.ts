@@ -2,7 +2,13 @@ import { command, computed, state, type Computed } from "ccstate";
 import { timeout } from "signal-timers";
 import type { AgentEvent, LogStatus } from "./log-types.ts";
 import { fetch$ } from "../fetch.ts";
-import { throwIfAbort, resetSignal, detach, Reason } from "../utils.ts";
+import {
+  throwIfAbort,
+  isAbortError,
+  resetSignal,
+  detach,
+  Reason,
+} from "../utils.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { logger } from "../log.ts";
 import { setupPollingLoop$, type PageResult } from "./polling.ts";
@@ -900,8 +906,9 @@ const startLoop$ = command(
           onTerminal: (completedRunId) => {
             set(onZeroRunComplete$, completedRunId, signal).catch(
               (error: unknown) => {
-                throwIfAbort(error);
-                L.error("onRunComplete error:", error);
+                if (!isAbortError(error)) {
+                  L.error("onRunComplete error:", error);
+                }
               },
             );
           },
@@ -955,7 +962,9 @@ export const loadSessionFromSnapshot$ = command(
       const resumeSignal = set(resetSending$);
       set(startLoop$, { runId: snapshot.activeRunId }, resumeSignal).catch(
         (error: unknown) => {
-          throwIfAbort(error);
+          if (!isAbortError(error)) {
+            throw error;
+          }
         },
       );
     }
@@ -1212,8 +1221,9 @@ export const sendZeroChatMessage$ = command(
 
           // Refresh sidebar after run is associated (has preview now)
           set(fetchZeroSessionList$, combinedSignal).catch((error: unknown) => {
-            throwIfAbort(error);
-            L.error("Failed to refresh chat list:", error);
+            if (!isAbortError(error)) {
+              L.error("Failed to refresh chat list:", error);
+            }
           });
 
           set(internalLocalMessages$, (prev) => {
@@ -1368,8 +1378,9 @@ const onZeroRunComplete$ = command(
 
       // Refresh session list (messages are persisted server-side via webhook)
       set(fetchZeroSessionList$, signal).catch((error: unknown) => {
-        throwIfAbort(error);
-        L.error("Failed to refresh session list:", error);
+        if (!isAbortError(error)) {
+          L.error("Failed to refresh session list:", error);
+        }
       });
 
       // Refresh again after a short delay so the AI-generated title (produced by
@@ -1379,8 +1390,9 @@ const onZeroRunComplete$ = command(
       // (e.g. Ably or Zero sync) would be more reliable but is out of scope here.
       timeout(() => {
         set(fetchZeroSessionList$, signal).catch((error: unknown) => {
-          throwIfAbort(error);
-          L.error("Failed to refresh session list (delayed):", error);
+          if (!isAbortError(error)) {
+            L.error("Failed to refresh session list (delayed):", error);
+          }
         });
       }, 1000);
     } catch (error) {

@@ -100,7 +100,7 @@ export async function clearAllDetached() {
   return settledResult;
 }
 
-const isAbortError = (error: unknown): boolean => {
+export const isAbortError = (error: unknown): boolean => {
   if (
     (error instanceof Error || error instanceof DOMException) &&
     error.name === "AbortError"

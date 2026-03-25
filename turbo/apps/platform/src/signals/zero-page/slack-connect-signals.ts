@@ -52,6 +52,7 @@ export const initSlackConnectPage$ = command(
         set(internalStatus$, "success");
         return;
       }
+      set(internalStatus$, "idle");
     }
 
     if (initialStatus === "connected") {
