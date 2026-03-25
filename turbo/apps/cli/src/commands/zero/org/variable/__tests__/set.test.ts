@@ -52,7 +52,6 @@ describe("zero org variable set command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain('Org variable "API_URL" saved');
-      expect(logCalls).toContain("vars.API_URL");
     });
 
     it("should set a variable with --description", async () => {

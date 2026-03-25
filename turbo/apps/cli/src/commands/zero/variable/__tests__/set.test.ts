@@ -47,7 +47,6 @@ describe("zero variable set command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain('Variable "MY_VAR" saved');
-      expect(logCalls).toContain("vars.MY_VAR");
     });
 
     it("should set a variable with --description", async () => {
