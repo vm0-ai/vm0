@@ -91,6 +91,12 @@ describe("Sandbox capability enforcement on zero agent routes", () => {
       );
 
       const response = await GET(request);
+      if (response.status !== 403) {
+        const body = await response.text();
+        throw new Error(
+          `Expected 403 but got ${response.status}. Body: ${body}`,
+        );
+      }
       expect(response.status).toBe(403);
     });
 
@@ -128,6 +134,12 @@ describe("Sandbox capability enforcement on zero agent routes", () => {
       );
 
       const response = await PUT(request);
+      if (response.status !== 403) {
+        const body = await response.text();
+        throw new Error(
+          `Expected 403 but got ${response.status}. Body: ${body}`,
+        );
+      }
       expect(response.status).toBe(403);
     });
 
@@ -165,6 +177,12 @@ describe("Sandbox capability enforcement on zero agent routes", () => {
       );
 
       const response = await getInstructions(request);
+      if (response.status !== 403) {
+        const body = await response.text();
+        throw new Error(
+          `Expected 403 but got ${response.status}. Body: ${body}`,
+        );
+      }
       expect(response.status).toBe(403);
     });
 
@@ -202,6 +220,12 @@ describe("Sandbox capability enforcement on zero agent routes", () => {
       );
 
       const response = await putInstructions(request);
+      if (response.status !== 403) {
+        const body = await response.text();
+        throw new Error(
+          `Expected 403 but got ${response.status}. Body: ${body}`,
+        );
+      }
       expect(response.status).toBe(403);
     });
 
