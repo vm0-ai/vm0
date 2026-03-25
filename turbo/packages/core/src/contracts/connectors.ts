@@ -1387,6 +1387,13 @@ const CONNECTOR_TYPES_DEF = {
         "dm.write",
         "bookmark.read",
         "bookmark.write",
+        "space.read",
+        "mute.read",
+        "mute.write",
+        "block.read",
+        "block.write",
+        "list.read",
+        "list.write",
         "offline.access",
       ],
       environmentMapping: {
