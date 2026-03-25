@@ -333,10 +333,12 @@ export type ModelProviderFramework = "claude-code";
  * replacement cannot be used.  New selection is blocked until a proper
  * solution is implemented; existing configurations continue to work.
  */
-type HiddenProviderType = "aws-bedrock" | "azure-foundry";
+const HIDDEN_PROVIDER_LIST = ["aws-bedrock", "azure-foundry"] as const;
+type HiddenProviderType = (typeof HIDDEN_PROVIDER_LIST)[number];
 
-const HIDDEN_PROVIDER_TYPES: ReadonlySet<ModelProviderType> =
-  new Set<HiddenProviderType>(["aws-bedrock", "azure-foundry"]);
+const HIDDEN_PROVIDER_TYPES: ReadonlySet<ModelProviderType> = new Set(
+  HIDDEN_PROVIDER_LIST,
+);
 
 /**
  * Providers excluded from static firewall configs.
