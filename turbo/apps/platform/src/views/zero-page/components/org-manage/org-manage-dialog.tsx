@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useGet, useSet, useLastLoadable, useLoadable } from "ccstate-react";
-import { Dialog, DialogContent, cn } from "@vm0/ui";
+import { Dialog, DialogContent, DialogTitle, cn } from "@vm0/ui";
 import {
   IconBuilding,
   IconCpu,
@@ -139,7 +139,7 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
         }}
         aria-describedby={undefined}
       >
-        <div className="sr-only">Organization settings</div>
+        <DialogTitle className="sr-only">Organization settings</DialogTitle>
 
         <div className="flex h-full">
           {/* Sidebar nav — mirrors zero-sidebar.tsx styling */}
