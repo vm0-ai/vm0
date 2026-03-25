@@ -38,21 +38,20 @@ import type {
 
 const log = logger("callback:slack-org");
 
-function parsePayload(payload: unknown): SlackOrgCallbackPayload | null {
-  if (!payload || typeof payload !== "object") return null;
-  const p = payload as Record<string, unknown>;
-  if (
-    typeof p.workspaceId !== "string" ||
-    typeof p.channelId !== "string" ||
-    typeof p.threadTs !== "string" ||
-    typeof p.messageTs !== "string" ||
-    typeof p.connectionId !== "string" ||
-    typeof p.agentName !== "string" ||
-    typeof p.composeId !== "string"
-  ) {
-    return null;
+function validatePayloadFields(p: Record<string, unknown>): string | null {
+  const required = [
+    "workspaceId",
+    "channelId",
+    "threadTs",
+    "messageTs",
+    "connectionId",
+    "agentName",
+    "composeId",
+  ] as const;
+  for (const field of required) {
+    if (typeof p[field] !== "string") return field;
   }
-  return p as unknown as SlackOrgCallbackPayload;
+  return null;
 }
 
 function errorResponse(message: string, status: number): NextResponse {
@@ -228,9 +227,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const { runId, status, error } = result.data;
 
-  const payload = parsePayload(result.data.payload);
+  const rawPayload = result.data.payload;
+  const badField =
+    !rawPayload || typeof rawPayload !== "object"
+      ? "NOT_OBJECT"
+      : validatePayloadFields(rawPayload as Record<string, unknown>);
+  const payload =
+    badField === null
+      ? (rawPayload as unknown as SlackOrgCallbackPayload)
+      : null;
   if (!payload) {
-    return errorResponse(describePayload(result.data.payload), 400);
+    return errorResponse(`bad=${badField} ${describePayload(rawPayload)}`, 400);
   }
 
   log.debug("Processing org Slack callback", {
