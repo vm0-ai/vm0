@@ -963,7 +963,7 @@ export const loadSessionFromSnapshot$ = command(
       set(startLoop$, { runId: snapshot.activeRunId }, resumeSignal).catch(
         (error: unknown) => {
           if (!isAbortError(error)) {
-            throw error;
+            L.error("startLoop error during snapshot resume:", error);
           }
         },
       );
