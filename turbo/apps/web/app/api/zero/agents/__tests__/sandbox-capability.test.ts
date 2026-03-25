@@ -31,7 +31,7 @@ describe("Sandbox capability enforcement on zero agent routes", () => {
   });
 
   describe("POST /api/zero/agents (create)", () => {
-    it("sandbox token cannot create agent (sandbox tokens have no capabilities)", async () => {
+    it("sandbox token cannot create agent", async () => {
       await insertOrgMembersCacheEntry({
         userId: user.userId,
         orgId: user.orgId,
@@ -56,51 +56,10 @@ describe("Sandbox capability enforcement on zero agent routes", () => {
       const response = await POST(request);
       expect(response.status).toBe(403);
     });
-
-    it("sandbox token without agent:write gets 403", async () => {
-      mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, "run-123");
-
-      const request = createTestRequest(
-        `http://localhost:3000/api/zero/agents?org=${orgSlug}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ connectors: [] }),
-        },
-      );
-
-      const response = await POST(request);
-      expect(response.status).toBe(403);
-    });
   });
 
   describe("GET /api/zero/agents/:name", () => {
-    it("sandbox token cannot get agent (sandbox tokens have no capabilities)", async () => {
-      mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, "run-123");
-
-      const request = createTestRequest(
-        `http://localhost:3000/api/zero/agents/some-agent?org=${orgSlug}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
-
-      const response = await GET(request);
-      if (response.status !== 403) {
-        const body = await response.text();
-        throw new Error(
-          `Expected 403 but got ${response.status}. Body: ${body}`,
-        );
-      }
-      expect(response.status).toBe(403);
-    });
-
-    it("sandbox token without agent:read gets 403", async () => {
+    it("sandbox token cannot get agent", async () => {
       mockClerk({ userId: null });
       const token = await generateSandboxToken(user.userId, "run-123");
 
@@ -117,33 +76,7 @@ describe("Sandbox capability enforcement on zero agent routes", () => {
   });
 
   describe("PUT /api/zero/agents/:name", () => {
-    it("sandbox token cannot update agent (sandbox tokens have no capabilities)", async () => {
-      mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, "run-123");
-
-      const request = createTestRequest(
-        `http://localhost:3000/api/zero/agents/some-agent?org=${orgSlug}`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ connectors: [] }),
-        },
-      );
-
-      const response = await PUT(request);
-      if (response.status !== 403) {
-        const body = await response.text();
-        throw new Error(
-          `Expected 403 but got ${response.status}. Body: ${body}`,
-        );
-      }
-      expect(response.status).toBe(403);
-    });
-
-    it("sandbox token without agent:write gets 403", async () => {
+    it("sandbox token cannot update agent", async () => {
       mockClerk({ userId: null });
       const token = await generateSandboxToken(user.userId, "run-123");
 
@@ -165,28 +98,7 @@ describe("Sandbox capability enforcement on zero agent routes", () => {
   });
 
   describe("GET /api/zero/agents/:name/instructions", () => {
-    it("sandbox token cannot get instructions (sandbox tokens have no capabilities)", async () => {
-      mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, "run-123");
-
-      const request = createTestRequest(
-        `http://localhost:3000/api/zero/agents/some-agent/instructions?org=${orgSlug}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
-
-      const response = await getInstructions(request);
-      if (response.status !== 403) {
-        const body = await response.text();
-        throw new Error(
-          `Expected 403 but got ${response.status}. Body: ${body}`,
-        );
-      }
-      expect(response.status).toBe(403);
-    });
-
-    it("sandbox token without agent:read gets 403", async () => {
+    it("sandbox token cannot get instructions", async () => {
       mockClerk({ userId: null });
       const token = await generateSandboxToken(user.userId, "run-123");
 
@@ -203,33 +115,7 @@ describe("Sandbox capability enforcement on zero agent routes", () => {
   });
 
   describe("PUT /api/zero/agents/:name/instructions", () => {
-    it("sandbox token cannot update instructions (sandbox tokens have no capabilities)", async () => {
-      mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, "run-123");
-
-      const request = createTestRequest(
-        `http://localhost:3000/api/zero/agents/some-agent/instructions?org=${orgSlug}`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ content: "# Instructions" }),
-        },
-      );
-
-      const response = await putInstructions(request);
-      if (response.status !== 403) {
-        const body = await response.text();
-        throw new Error(
-          `Expected 403 but got ${response.status}. Body: ${body}`,
-        );
-      }
-      expect(response.status).toBe(403);
-    });
-
-    it("sandbox token without agent:write gets 403", async () => {
+    it("sandbox token cannot update instructions", async () => {
       mockClerk({ userId: null });
       const token = await generateSandboxToken(user.userId, "run-123");
 
