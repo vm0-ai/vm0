@@ -15,7 +15,6 @@ function createMockTeamWithSubagents() {
       description: null,
       headVersionId: "version_1",
       updatedAt: "2024-01-01T00:00:00Z",
-      isOwner: true,
     },
     {
       id: "agent-2",
@@ -23,7 +22,6 @@ function createMockTeamWithSubagents() {
       description: "Finds and summarizes information",
       headVersionId: "version_2",
       updatedAt: "2024-01-02T00:00:00Z",
-      isOwner: false,
     },
     {
       id: "agent-3",
@@ -31,15 +29,14 @@ function createMockTeamWithSubagents() {
       description: "Writes content based on research",
       headVersionId: "version_3",
       updatedAt: "2024-01-03T00:00:00Z",
-      isOwner: false,
     },
   ];
 }
 
-function mockTeamAPI(composes = createMockTeamWithSubagents()) {
+function mockTeamAPI(agents = createMockTeamWithSubagents()) {
   server.use(
     http.get("*/api/zero/team", () => {
-      return HttpResponse.json({ composes });
+      return HttpResponse.json(agents);
     }),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
@@ -92,7 +89,6 @@ describe("zero jobs page - team list", () => {
         description: null,
         headVersionId: "version_1",
         updatedAt: "2024-01-01T00:00:00Z",
-        isOwner: true,
       },
     ]);
     await renderTeamPage();

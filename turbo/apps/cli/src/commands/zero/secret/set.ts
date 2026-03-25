@@ -26,7 +26,8 @@ export const setCommand = new Command()
         } else if (isInteractive()) {
           const prompted = await promptPassword("Enter secret value:");
           if (prompted === undefined) {
-            process.exit(0);
+            console.log(chalk.dim("Cancelled"));
+            return;
           }
           value = prompted;
         } else {

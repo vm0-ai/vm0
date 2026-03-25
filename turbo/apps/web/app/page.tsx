@@ -1,3 +1,4 @@
+// Root page — redirects to the default locale
 export default function RootRedirect() {
   return (
     <div style={{ padding: "50px", textAlign: "center" }}>

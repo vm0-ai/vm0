@@ -286,7 +286,7 @@ scripts/sync-env.sh
 
 ### Problem: SSL Certificate Errors
 
-**Cause**: `CF_DNS_API_TOKEN` not set. Caddy needs this to provision Let's Encrypt certificates via DNS-01 challenge.
+**Cause**: `CF_DNS_AND_TUNNEL_API_TOKEN` not set. Caddy needs this to provision Let's Encrypt certificates via DNS-01 challenge.
 
 **Solution**:
 ```bash

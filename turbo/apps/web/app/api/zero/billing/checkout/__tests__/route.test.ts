@@ -11,6 +11,7 @@ import { reloadEnv } from "../../../../../../src/env";
 const stripeMocks = vi.hoisted<StripeMockFns>(() => ({
   subscriptionsRetrieve: vi.fn(),
   invoicesRetrieve: vi.fn(),
+  invoicesList: vi.fn(),
   customersCreate: vi.fn(),
   checkoutSessionsCreate: vi.fn(),
   billingPortalSessionsCreate: vi.fn(),
@@ -21,7 +22,10 @@ vi.mock("stripe", () => ({
   default: function MockStripe() {
     return {
       subscriptions: { retrieve: stripeMocks.subscriptionsRetrieve },
-      invoices: { retrieve: stripeMocks.invoicesRetrieve },
+      invoices: {
+        retrieve: stripeMocks.invoicesRetrieve,
+        list: stripeMocks.invoicesList,
+      },
       customers: { create: stripeMocks.customersCreate },
       checkout: { sessions: { create: stripeMocks.checkoutSessionsCreate } },
       billingPortal: {

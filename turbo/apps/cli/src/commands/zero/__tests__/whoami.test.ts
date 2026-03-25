@@ -76,10 +76,11 @@ describe("zero whoami command", () => {
       await runWhoami();
 
       const output = getAllOutput();
-      expect(output.some((line) => line.includes("Agent:"))).toBe(true);
+      expect(output.some((line) => line.includes("Agent ID:"))).toBe(true);
       expect(output.some((line) => line.includes("agent-123"))).toBe(true);
-      expect(output.some((line) => line.includes("Run:"))).toBe(true);
+      expect(output.some((line) => line.includes("Run ID:"))).toBe(true);
       expect(output.some((line) => line.includes("run-abc"))).toBe(true);
+      expect(output.some((line) => line.includes("Org ID:"))).toBe(true);
       expect(output.some((line) => line.includes("org-xyz"))).toBe(true);
       expect(output.some((line) => line.includes("Capabilities:"))).toBe(true);
       expect(output.some((line) => line.includes("agent:read"))).toBe(true);
@@ -92,8 +93,9 @@ describe("zero whoami command", () => {
       await runWhoami();
 
       const output = getAllOutput();
-      expect(output.some((line) => line.includes("Agent:"))).toBe(true);
+      expect(output.some((line) => line.includes("Agent ID:"))).toBe(true);
       expect(output.some((line) => line.includes("agent-no-token"))).toBe(true);
+      expect(output.some((line) => line.includes("Run ID:"))).toBe(true);
       expect(output.some((line) => line.includes("unavailable"))).toBe(true);
       expect(output.some((line) => line.includes("Capabilities:"))).toBe(false);
     });

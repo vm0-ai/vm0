@@ -6,6 +6,7 @@ import {
   isSandboxToken,
   verifySandboxToken,
   verifyZeroToken,
+  verifyCliToken,
 } from "./sandbox-token";
 import { logger } from "../logger";
 
@@ -43,6 +44,11 @@ export async function getAuthContext(
     const token = authHeader.substring(7); // Remove "Bearer "
 
     if (isSandboxToken(token)) {
+      // Try CLI JWT first (accepted on all endpoints, no capability gating)
+      const cliAuth = verifyCliToken(token);
+      if (cliAuth) {
+        return resolveCliTokenFromDb(cliAuth);
+      }
       return authenticateSandboxToken(token, options);
     }
 
@@ -168,6 +174,47 @@ function resolveZeroAuth(
     runId: zeroAuth.runId,
     orgId: zeroAuth.orgId,
     capabilities: [...zeroAuth.capabilities],
+  };
+}
+
+/**
+ * Resolve CLI JWT auth by checking DB revocation and updating lastUsedAt.
+ * Shared by getAuthContext and getRunnerAuth to avoid duplicating the
+ * DB lookup + expiry check + lastUsedAt update logic.
+ *
+ * Returns { userId, orgId } on success, or null if the token is revoked/expired.
+ */
+export async function resolveCliTokenFromDb(cliAuth: {
+  userId: string;
+  orgId: string;
+  tokenId: string;
+}): Promise<{ userId: string; orgId: string } | null> {
+  const [record] = await globalThis.services.db
+    .select()
+    .from(cliTokens)
+    .where(
+      and(
+        eq(cliTokens.id, cliAuth.tokenId),
+        gt(cliTokens.expiresAt, new Date()),
+      ),
+    )
+    .limit(1);
+
+  if (!record) {
+    log.debug("CLI JWT token revoked or expired in DB");
+    return null;
+  }
+
+  // Update last used timestamp (non-blocking)
+  globalThis.services.db
+    .update(cliTokens)
+    .set({ lastUsedAt: new Date() })
+    .where(eq(cliTokens.id, cliAuth.tokenId))
+    .catch((err) => log.error("Failed to update token lastUsedAt:", err));
+
+  return {
+    userId: cliAuth.userId,
+    orgId: cliAuth.orgId,
   };
 }
 

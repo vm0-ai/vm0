@@ -1,12 +1,13 @@
-import { useGet, useSet } from "ccstate-react";
+import { useState } from "react";
+import { useLastLoadable, useSet } from "ccstate-react";
 import { IconExternalLink, IconCrown } from "@tabler/icons-react";
 import {
-  billingIsPro$,
-  setBillingIsPro$,
-  billingPricingOpen$,
-  setBillingPricingOpen$,
-} from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
-import { Button, Dialog, DialogContent, Switch } from "@vm0/ui";
+  billingStatusAsync$,
+  startCheckout$,
+  startDowngrade$,
+} from "../../../../signals/zero-page/billing.ts";
+import { Button, Dialog, DialogContent } from "@vm0/ui";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import planFreeImg from "./assets/plan-free.webp";
 import planProImg from "./assets/plan-pro.webp";
 import planTeamImg from "./assets/plan-team.webp";
@@ -23,6 +24,7 @@ interface PlanConfig {
   badge?: string;
   image?: string;
   features: readonly string[];
+  tier?: "pro" | "team";
 }
 
 const PLANS = [
@@ -50,6 +52,7 @@ const PLANS = [
     primary: true,
     badge: "Popular",
     image: planProImg,
+    tier: "pro",
     features: [
       "20,000 credits / month",
       "2 active agents",
@@ -66,6 +69,7 @@ const PLANS = [
     description: "Scale fast with zero friction and full flexibility.",
     cta: "Upgrade to Team",
     image: planTeamImg,
+    tier: "team",
     features: [
       "120,000 credits / month",
       "5 active agents",
@@ -79,10 +83,10 @@ const PLANS = [
 
 function PlanCard({
   plan,
-  onClose,
+  onSelect,
 }: {
   plan: Readonly<PlanConfig>;
-  onClose: () => void;
+  onSelect: (tier: "pro" | "team") => void;
 }) {
   const isCurrentPlan = plan.cta === "Current plan";
 
@@ -175,7 +179,7 @@ function PlanCard({
           <Button
             size="sm"
             className="w-full rounded-lg h-9 text-xs"
-            onClick={() => onClose()}
+            onClick={() => plan.tier && onSelect(plan.tier)}
           >
             {plan.cta}
           </Button>
@@ -185,7 +189,7 @@ function PlanCard({
             size="sm"
             className="w-full rounded-lg h-9 text-xs"
             style={cardBorder}
-            onClick={() => onClose()}
+            onClick={() => plan.tier && onSelect(plan.tier)}
           >
             {plan.cta}
           </Button>
@@ -198,9 +202,11 @@ function PlanCard({
 function PricingDialog({
   open,
   onOpenChange,
+  onSelectTier,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onSelectTier: (tier: "pro" | "team") => void;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -224,11 +230,7 @@ function PricingDialog({
 
         <div className="grid grid-cols-3 gap-4 px-6 py-5">
           {PLANS.map((plan) => (
-            <PlanCard
-              key={plan.name}
-              plan={plan}
-              onClose={() => onOpenChange(false)}
-            />
+            <PlanCard key={plan.name} plan={plan} onSelect={onSelectTier} />
           ))}
         </div>
       </DialogContent>
@@ -237,36 +239,35 @@ function PricingDialog({
 }
 
 export function OrgBillingTab() {
-  const isPro = useGet(billingIsPro$);
-  const setIsPro = useSet(setBillingIsPro$);
-  const pricingOpen = useGet(billingPricingOpen$);
-  const setPricingOpen = useSet(setBillingPricingOpen$);
+  const billingLoadable = useLastLoadable(billingStatusAsync$);
+  const checkout = useSet(startCheckout$);
+  const downgrade = useSet(startDowngrade$);
+  const [pricingOpen, setPricingOpen] = useState(false);
+
+  const isPro =
+    billingLoadable.state === "hasData" && billingLoadable.data.tier !== "free";
+
+  const tierLabel =
+    billingLoadable.state === "hasData"
+      ? `${billingLoadable.data.tier.charAt(0).toUpperCase()}${billingLoadable.data.tier.slice(1)} plan`
+      : "Loading...";
+
+  const handleSelectTier = (tier: "pro" | "team") => {
+    setPricingOpen(false);
+    checkout(tier).catch(() => {
+      toast.error("Failed to start checkout. Please try again.");
+    });
+  };
 
   return (
     <div className="flex flex-col gap-8">
       <section className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium text-foreground">Plan</h3>
-          <div className="flex items-center gap-2">
-            <label
-              htmlFor="plan-toggle"
-              className="text-xs text-muted-foreground cursor-pointer"
-            >
-              Preview Pro
-            </label>
-            <Switch
-              id="plan-toggle"
-              checked={isPro}
-              onCheckedChange={setIsPro}
-              className="scale-75"
-            />
-          </div>
-        </div>
+        <h3 className="text-sm font-medium text-foreground">Plan</h3>
         <div className="overflow-hidden rounded-xl bg-card" style={cardBorder}>
           <div className="flex items-center justify-between gap-4 px-5 py-4">
             <div className="flex flex-col gap-0.5 min-w-0">
               <span className="text-sm font-medium text-foreground flex items-center gap-2">
-                {isPro ? "Pro plan" : "Free plan"}
+                {tierLabel}
               </span>
               <span className="text-[13px] text-muted-foreground">
                 Your current plan
@@ -276,10 +277,18 @@ export function OrgBillingTab() {
               <Button
                 variant="outline"
                 size="sm"
-                className="shrink-0 rounded-lg h-8 text-xs"
+                className="shrink-0 rounded-lg h-8 text-xs gap-1.5"
                 style={cardBorder}
+                onClick={() => {
+                  downgrade().catch(() => {
+                    toast.error(
+                      "Failed to open billing portal. Please try again.",
+                    );
+                  });
+                }}
               >
-                Downgrade
+                Manage billing
+                <IconExternalLink size={13} stroke={1.5} />
               </Button>
             ) : (
               <Button
@@ -309,12 +318,16 @@ export function OrgBillingTab() {
                   size="sm"
                   className="shrink-0 rounded-lg h-8 text-xs gap-1.5"
                   style={cardBorder}
-                  asChild
+                  onClick={() => {
+                    downgrade().catch(() => {
+                      toast.error(
+                        "Failed to open billing portal. Please try again.",
+                      );
+                    });
+                  }}
                 >
-                  <a href="#" target="_blank" rel="noopener noreferrer">
-                    Manage
-                    <IconExternalLink size={13} stroke={1.5} />
-                  </a>
+                  Manage
+                  <IconExternalLink size={13} stroke={1.5} />
                 </Button>
               </div>
             </>
@@ -380,7 +393,11 @@ export function OrgBillingTab() {
         </div>
       </section>
 
-      <PricingDialog open={pricingOpen} onOpenChange={setPricingOpen} />
+      <PricingDialog
+        open={pricingOpen}
+        onOpenChange={setPricingOpen}
+        onSelectTier={handleSelectTier}
+      />
     </div>
   );
 }

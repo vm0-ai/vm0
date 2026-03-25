@@ -5,7 +5,7 @@ import { viewCommand } from "./view";
 import { listCommand } from "./list";
 import { deleteCommand } from "./delete";
 
-export const agentCommand = new Command("agent")
+export const zeroAgentCommand = new Command("agent")
   .description("Manage zero agents")
   .addCommand(createCommand)
   .addCommand(editCommand)

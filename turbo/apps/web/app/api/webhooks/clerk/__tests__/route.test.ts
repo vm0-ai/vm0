@@ -351,7 +351,8 @@ describe("organization.deleted e2e cleanup", () => {
       s3Key: "exports/e2e.zip",
     });
 
-    // Zero agent
+    // Zero agent (need compose first since zero_agents.id = composeId)
+    await createTestCompose("e2e-zero-agent");
     await createTestZeroAgent(orgId, "e2e-zero-agent", {
       displayName: "E2E",
     });

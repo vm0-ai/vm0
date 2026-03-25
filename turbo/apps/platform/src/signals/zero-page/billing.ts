@@ -4,6 +4,7 @@ import {
   zeroBillingCheckoutContract,
   zeroBillingPortalContract,
   zeroBillingAutoRechargeContract,
+  zeroBillingInvoicesContract,
   type BillingStatusResponse,
 } from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
@@ -173,3 +174,20 @@ export const saveAutoRecharge$ = command(
     return { ok: true };
   },
 );
+
+// ---------------------------------------------------------------------------
+// Invoices
+// ---------------------------------------------------------------------------
+
+/**
+ * Async computed signal that fetches invoices for the current org.
+ */
+export const invoicesAsync$ = computed(async (get) => {
+  const createClient = get(zeroClient$);
+  const client = createClient(zeroBillingInvoicesContract);
+  const result = await client.get();
+  if (result.status !== 200) {
+    throw new Error(`Failed to fetch invoices: ${result.status}`);
+  }
+  return result.body;
+});

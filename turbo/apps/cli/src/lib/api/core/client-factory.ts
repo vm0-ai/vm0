@@ -70,10 +70,14 @@ export async function getClientConfig() {
     baseHeaders,
     jsonQuery: false as const,
     api: async (args: Parameters<typeof tsRestFetchApi>[0]) => {
-      const separator = args.path.includes("?") ? "&" : "?";
-      if (!args.path.includes("org=")) {
-        args.path = `${args.path}${separator}org=${encodeURIComponent(activeOrg)}`;
+      const [pathPart, queryPart] = args.path.split("?");
+      const params = new URLSearchParams(queryPart ?? "");
+      if (!params.has("org")) {
+        params.set("org", activeOrg);
       }
+      args.path = params.toString()
+        ? `${pathPart}?${params.toString()}`
+        : pathPart!;
       return tsRestFetchApi(args);
     },
   };

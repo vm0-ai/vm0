@@ -9,16 +9,19 @@ import {
   jsonb,
 } from "drizzle-orm/pg-core";
 import type { FirewallPolicies } from "@vm0/core";
+import { agentComposes } from "./agent-compose";
 
 /**
  * Zero Agents table
  * Stores agent metadata (display name, description, sound) as first-class columns.
- * Keyed by org_id + name to match agent_composes unique constraint.
+ * PK is the agent_composes.id (composeId) — one UUID used everywhere.
  */
 export const zeroAgents = pgTable(
   "zero_agents",
   {
-    id: uuid("id").defaultRandom().primaryKey(),
+    id: uuid("id")
+      .primaryKey()
+      .references(() => agentComposes.id, { onDelete: "cascade" }),
     orgId: text("org_id").notNull(),
     name: varchar("name", { length: 64 }).notNull(),
     displayName: varchar("display_name", { length: 256 }),

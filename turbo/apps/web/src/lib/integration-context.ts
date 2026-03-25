@@ -40,21 +40,6 @@ export function buildZeroCliGuidance(): string {
     "Run `npx -p @vm0/cli zero --help` to see all available commands.",
     "Do NOT use /loop or cron tools (CronCreate, CronList, CronDelete) — they are not available.",
     "For recurring or scheduled tasks, use the zero schedule CLI.",
+    "Use `zero slack message send` to send Slack messages as the bot user.",
   ].join("\n");
-}
-
-/**
- * Build system prompt guidance for Slack messaging via the vm0 proxy API.
- * Injected into Slack-triggered runs so agents know how to send messages.
- */
-export function buildSlackMessagingGuidance(): string {
-  return `# Sending Slack Messages
-You can send Slack messages directly using the vm0 integration API:
-curl -X POST "$VM0_API_URL/api/zero/integrations/slack/message" \\
-  -H "Authorization: Bearer $ZERO_TOKEN" \\
-  -H "Content-Type: application/json" \\
-  -d '{"channel": "<channel-id>", "text": "your message"}'
-Note: $VM0_TOKEN also works during the transition period.
-Optional fields: threadTs (reply in thread), blocks (Block Kit JSON).
-Messages are sent as the bot user, not as an individual user.`;
 }

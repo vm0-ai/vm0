@@ -33,7 +33,7 @@ Web App        Docs App       App
 scripts/sync-env.sh
 ```
 
-This provisions `CF_DNS_API_TOKEN` needed for Let's Encrypt DNS-01 challenge.
+This provisions `CF_DNS_AND_TUNNEL_API_TOKEN` needed for Let's Encrypt DNS-01 challenge.
 
 ### 2. Start Development Servers
 
@@ -91,7 +91,7 @@ The `Caddyfile` defines:
 
 ## Troubleshooting
 
-### Caddy won't start — missing CF_DNS_API_TOKEN
+### Caddy won't start — missing CF_DNS_AND_TUNNEL_API_TOKEN
 
 Run `scripts/sync-env.sh` to provision the Cloudflare DNS token from 1Password.
 

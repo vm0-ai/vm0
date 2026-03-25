@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.149.0](https://github.com/vm0-ai/vm0/compare/app-v0.148.1...app-v0.149.0) (2026-03-25)
+
+
+### Features
+
+* connect org management dialog billing tabs to real data ([#6692](https://github.com/vm0-ai/vm0/issues/6692)) ([00f8209](https://github.com/vm0-ai/vm0/commit/00f82091196d280878c632f895acc37457c6493c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.112.0
+
+## [0.148.1](https://github.com/vm0-ai/vm0/compare/app-v0.148.0...app-v0.148.1) (2026-03-25)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.111.1
+
+## [0.148.0](https://github.com/vm0-ai/vm0/compare/app-v0.147.0...app-v0.148.0) (2026-03-25)
+
+
+### Features
+
+* replace agent avatars with new illustrations and ui polish ([#6606](https://github.com/vm0-ai/vm0/issues/6606)) ([ccf26ac](https://github.com/vm0-ai/vm0/commit/ccf26ac0d9b9045d247121f62b6211a36a826040))
+
+
+### Refactoring
+
+* remove global notification preferences ([#6548](https://github.com/vm0-ai/vm0/issues/6548)) ([1d500cd](https://github.com/vm0-ai/vm0/commit/1d500cdf0d0571c8a92d22b5cd8fdf27f44c649e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.111.0
+
 ## [0.147.0](https://github.com/vm0-ai/vm0/compare/app-v0.146.4...app-v0.147.0) (2026-03-25)
 
 

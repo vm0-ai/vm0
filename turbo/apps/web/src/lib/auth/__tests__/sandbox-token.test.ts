@@ -7,6 +7,8 @@ import {
   verifyComposeJobToken,
   generateZeroToken,
   verifyZeroToken,
+  generateCliToken,
+  verifyCliToken,
   SANDBOX_TOKEN_PREFIX,
 } from "../sandbox-token";
 
@@ -334,10 +336,141 @@ describe("sandbox-token", () => {
         "run-456",
         "org-789",
       );
+      const cliToken = await generateCliToken(
+        "user-123",
+        "org-789",
+        "token-id-1",
+      );
 
       expect(isSandboxToken(sandboxToken)).toBe(true);
       expect(isSandboxToken(composeToken)).toBe(true);
       expect(isSandboxToken(zeroToken)).toBe(true);
+      expect(isSandboxToken(cliToken)).toBe(true);
+    });
+
+    it("should reject CLI token with verifySandboxToken", async () => {
+      const token = await generateCliToken("user-123", "org-789", "token-id-1");
+      expect(verifySandboxToken(token)).toBeNull();
+    });
+
+    it("should reject CLI token with verifyZeroToken", async () => {
+      const token = await generateCliToken("user-123", "org-789", "token-id-1");
+      expect(verifyZeroToken(token)).toBeNull();
+    });
+
+    it("should reject CLI token with verifyComposeJobToken", async () => {
+      const token = await generateCliToken("user-123", "org-789", "token-id-1");
+      expect(verifyComposeJobToken(token)).toBeNull();
+    });
+
+    it("should reject sandbox token with verifyCliToken", async () => {
+      const token = await generateSandboxToken("user-123", "run-456");
+      expect(verifyCliToken(token)).toBeNull();
+    });
+
+    it("should reject zero token with verifyCliToken", async () => {
+      const token = await generateZeroToken("user-123", "run-456", "org-789");
+      expect(verifyCliToken(token)).toBeNull();
+    });
+
+    it("should reject compose job token with verifyCliToken", async () => {
+      const token = await generateComposeJobToken("user-123", "job-456");
+      expect(verifyCliToken(token)).toBeNull();
+    });
+  });
+
+  describe("cli tokens", () => {
+    it("should generate a prefixed CLI token", async () => {
+      const token = await generateCliToken("user-123", "org-789", "token-id-1");
+
+      expect(token.startsWith(SANDBOX_TOKEN_PREFIX)).toBe(true);
+      const jwt = token.slice(SANDBOX_TOKEN_PREFIX.length);
+      expect(jwt.split(".")).toHaveLength(3);
+    });
+
+    it("should generate different tokens for different users", async () => {
+      const token1 = await generateCliToken(
+        "user-123",
+        "org-789",
+        "token-id-1",
+      );
+      const token2 = await generateCliToken(
+        "user-456",
+        "org-789",
+        "token-id-2",
+      );
+
+      expect(token1).not.toBe(token2);
+    });
+
+    it("should verify a valid CLI token", async () => {
+      const token = await generateCliToken("user-123", "org-789", "token-id-1");
+      const auth = verifyCliToken(token);
+
+      expect(auth).not.toBeNull();
+      expect(auth?.userId).toBe("user-123");
+      expect(auth?.orgId).toBe("org-789");
+      expect(auth?.tokenId).toBe("token-id-1");
+    });
+
+    it("should return null for expired CLI token", async () => {
+      const token = await generateCliToken("user-123", "org-789", "token-id-1");
+
+      // Mock time to be 91 days in the future (beyond 90 day expiration)
+      const realDateNow = Date.now;
+      Date.now = () => realDateNow() + 91 * 24 * 60 * 60 * 1000;
+
+      try {
+        const auth = verifyCliToken(token);
+        expect(auth).toBeNull();
+      } finally {
+        Date.now = realDateNow;
+      }
+    });
+
+    it("should verify token within expiration", async () => {
+      const token = await generateCliToken("user-123", "org-789", "token-id-1");
+
+      // Mock time to be 45 days in the future (within 90 day expiration)
+      const realDateNow = Date.now;
+      Date.now = () => realDateNow() + 45 * 24 * 60 * 60 * 1000;
+
+      try {
+        const auth = verifyCliToken(token);
+        expect(auth).not.toBeNull();
+        expect(auth?.userId).toBe("user-123");
+      } finally {
+        Date.now = realDateNow;
+      }
+    });
+
+    it("should return null for tampered CLI token", async () => {
+      const token = await generateCliToken("user-123", "org-789", "token-id-1");
+      const jwt = token.slice(SANDBOX_TOKEN_PREFIX.length);
+      const parts = jwt.split(".");
+      parts[1] = parts[1] + "tampered";
+      const tamperedToken = SANDBOX_TOKEN_PREFIX + parts.join(".");
+
+      expect(verifyCliToken(tamperedToken)).toBeNull();
+    });
+
+    it("should return null for token without prefix", () => {
+      expect(verifyCliToken("header.payload.signature")).toBeNull();
+    });
+
+    it("should return null for token with empty orgId", async () => {
+      const token = await generateCliToken("user-123", "", "token-id-1");
+      expect(verifyCliToken(token)).toBeNull();
+    });
+
+    it("should return null for token with empty tokenId", async () => {
+      const token = await generateCliToken("user-123", "org-789", "");
+      expect(verifyCliToken(token)).toBeNull();
+    });
+
+    it("should identify CLI tokens with isSandboxToken", async () => {
+      const token = await generateCliToken("user-123", "org-789", "token-id-1");
+      expect(isSandboxToken(token)).toBe(true);
     });
   });
 });

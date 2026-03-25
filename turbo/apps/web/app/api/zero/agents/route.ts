@@ -12,8 +12,7 @@ import {
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { serverSideCompose } from "../../../../src/lib/compose/server-side-compose";
 import { zeroAgents } from "../../../../src/db/schema/zero-agent";
-import { agentComposes } from "../../../../src/db/schema/agent-compose";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { buildComposeContent } from "../../../../src/lib/zero/build-compose-content";
 import { logger } from "../../../../src/lib/logger";
 
@@ -59,10 +58,11 @@ const router = tsr.router(zeroAgentsMainContract, {
       };
     }
 
-    // Write metadata to zero_agents
+    // Write metadata to zero_agents (PK = composeId)
     await globalThis.services.db
       .insert(zeroAgents)
       .values({
+        id: result.composeId,
         orgId: org.orgId,
         name: result.composeName,
         displayName: body.displayName ?? null,
@@ -109,7 +109,7 @@ const router = tsr.router(zeroAgentsMainContract, {
 
     const rows = await globalThis.services.db
       .select({
-        agentId: agentComposes.id,
+        agentId: zeroAgents.id,
         displayName: zeroAgents.displayName,
         description: zeroAgents.description,
         sound: zeroAgents.sound,
@@ -117,13 +117,6 @@ const router = tsr.router(zeroAgentsMainContract, {
         firewallPolicies: zeroAgents.firewallPolicies,
       })
       .from(zeroAgents)
-      .innerJoin(
-        agentComposes,
-        and(
-          eq(zeroAgents.orgId, agentComposes.orgId),
-          eq(zeroAgents.name, agentComposes.name),
-        ),
-      )
       .where(eq(zeroAgents.orgId, org.orgId))
       .orderBy(desc(zeroAgents.updatedAt));
 

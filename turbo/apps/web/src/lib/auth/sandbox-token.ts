@@ -50,6 +50,18 @@ interface ZeroTokenPayload {
 }
 
 /**
+ * JWT payload for CLI tokens (user CLI sessions)
+ */
+interface CliTokenPayload {
+  userId: string;
+  orgId: string;
+  tokenId: string;
+  scope: "cli";
+  iat: number;
+  exp: number;
+}
+
+/**
  * Result of verifying a sandbox token
  */
 export interface SandboxAuth {
@@ -65,6 +77,15 @@ export interface ZeroAuth {
   runId: string;
   orgId: string;
   capabilities: readonly ZeroCapability[];
+}
+
+/**
+ * Result of verifying a CLI token
+ */
+export interface CliAuth {
+  userId: string;
+  orgId: string;
+  tokenId: string;
 }
 
 /**
@@ -117,7 +138,8 @@ function getJwtKey(): Buffer {
 type JwtPayload =
   | SandboxTokenPayload
   | ComposeJobTokenPayload
-  | ZeroTokenPayload;
+  | ZeroTokenPayload
+  | CliTokenPayload;
 
 /**
  * Create a JWT token with HMAC-SHA256 signature
@@ -398,5 +420,73 @@ export function verifyComposeJobToken(token: string): ComposeJobAuth | null {
   return {
     userId: payload.userId,
     jobId: payload.jobId,
+  };
+}
+
+// ============================================================================
+// CLI Token Functions
+// ============================================================================
+
+/**
+ * Generate a JWT token for CLI authentication.
+ * Token is valid for 90 days (matching existing opaque token lifetime).
+ * Carries orgId for org-scoped operations and tokenId for revocation checks.
+ */
+export async function generateCliToken(
+  userId: string,
+  orgId: string,
+  tokenId: string,
+): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  const expiresIn = 90 * 24 * 60 * 60; // 90 days in seconds
+
+  const payload: CliTokenPayload = {
+    userId,
+    orgId,
+    tokenId,
+    scope: "cli",
+    iat: now,
+    exp: now + expiresIn,
+  };
+
+  const jwt = createJwt(payload);
+  log.debug(`Generated CLI JWT for user ${userId}`);
+  return SANDBOX_TOKEN_PREFIX + jwt;
+}
+
+/**
+ * Verify a CLI JWT token and extract auth info.
+ * Returns null if token is invalid, expired, or not a CLI token.
+ *
+ * @param token - The full prefixed token (without "Bearer " prefix)
+ */
+export function verifyCliToken(token: string): CliAuth | null {
+  if (!token.startsWith(SANDBOX_TOKEN_PREFIX)) {
+    return null;
+  }
+
+  const rawJwt = token.slice(SANDBOX_TOKEN_PREFIX.length);
+  const payload = verifyJwtPayload(rawJwt);
+  if (!payload) {
+    return null;
+  }
+
+  if (payload.scope !== "cli") {
+    return null;
+  }
+  if (
+    !payload.userId ||
+    !("orgId" in payload) ||
+    !payload.orgId ||
+    !("tokenId" in payload) ||
+    !payload.tokenId
+  ) {
+    return null;
+  }
+
+  return {
+    userId: payload.userId,
+    orgId: payload.orgId,
+    tokenId: payload.tokenId,
   };
 }

@@ -13,16 +13,16 @@
  *
  * Environment:
  *   DATABASE_URL        — Required
- *   CLERK_SECRET_KEY    — Required only with --migrate
+ *   CLERK_SECRET_KEY    — Required
  */
 
 import { parseArgs } from "node:util";
-import {
-  createClerkClient,
-  type Organization,
-  type OrganizationMembership,
-  type User,
-} from "@clerk/nextjs/server";
+import { createClerkClient } from "@clerk/backend";
+import type {
+  Organization,
+  OrganizationMembership,
+  User,
+} from "@clerk/backend";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { sql } from "drizzle-orm";
@@ -30,9 +30,6 @@ import postgres from "postgres";
 import { orgMetadata } from "../../../src/db/schema/org-metadata";
 import { orgMembersMetadata } from "../../../src/db/schema/org-members-metadata";
 import { users } from "../../../src/db/schema/user";
-import { agentComposes } from "../../../src/db/schema/agent-compose";
-import { zeroAgents } from "../../../src/db/schema/zero-agent";
-import { eq, and } from "drizzle-orm";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -152,25 +149,8 @@ export async function backfillOrgMetadata(
           continue;
         }
 
-        // Resolve Clerk's compose UUID → zero agent UUID
-        let zeroAgentId: string | null = null;
-        if (clerkComposeId) {
-          const [row] = await db
-            .select({
-              agentId: zeroAgents.id,
-            })
-            .from(agentComposes)
-            .innerJoin(
-              zeroAgents,
-              and(
-                eq(zeroAgents.orgId, agentComposes.orgId),
-                eq(zeroAgents.name, agentComposes.name),
-              ),
-            )
-            .where(eq(agentComposes.id, clerkComposeId))
-            .limit(1);
-          zeroAgentId = row?.agentId ?? null;
-        }
+        // Since zero_agents.id = agent_composes.id (composeId), use directly
+        const zeroAgentId: string | null = clerkComposeId ?? null;
 
         if (!dryRun) {
           await db
@@ -348,15 +328,11 @@ async function main(): Promise<void> {
   );
   console.log();
 
-  let clerk: ClerkClient | null = null;
-
-  if (!dryRun) {
-    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
-    if (!clerkSecretKey) {
-      throw new Error("CLERK_SECRET_KEY is required for --migrate");
-    }
-    clerk = createClerkClient({ secretKey: clerkSecretKey });
+  const clerkSecretKey = process.env.CLERK_SECRET_KEY;
+  if (!clerkSecretKey) {
+    throw new Error("CLERK_SECRET_KEY is required");
   }
+  const clerk = createClerkClient({ secretKey: clerkSecretKey });
 
   const pg = postgres(databaseUrl, { max: 1 });
   const db = drizzle(pg);
@@ -364,19 +340,13 @@ async function main(): Promise<void> {
 
   try {
     console.log("Phase 1: Backfilling org_metadata...");
-    if (clerk) {
-      await backfillOrgMetadata(clerk, db, stats, dryRun);
-    }
+    await backfillOrgMetadata(clerk, db, stats, dryRun);
 
     console.log("\nPhase 2: Backfilling org_members_metadata...");
-    if (clerk) {
-      await backfillOrgMembersMetadata(clerk, db, stats, dryRun);
-    }
+    await backfillOrgMembersMetadata(clerk, db, stats, dryRun);
 
     console.log("\nPhase 3: Backfilling users...");
-    if (clerk) {
-      await backfillUsers(clerk, db, stats, dryRun);
-    }
+    await backfillUsers(clerk, db, stats, dryRun);
 
     console.log("\n=== Summary ===");
     console.log(

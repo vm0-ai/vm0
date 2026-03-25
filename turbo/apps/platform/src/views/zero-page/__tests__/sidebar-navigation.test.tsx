@@ -11,24 +11,20 @@ const context = testContext();
 function mockSubagentAPIs() {
   server.use(
     http.get("*/api/zero/team", () => {
-      return HttpResponse.json({
-        composes: [
-          {
-            id: "mock-compose-id",
-            displayName: null,
-            headVersionId: "version_1",
-            updatedAt: "2024-01-01T00:00:00Z",
-            isOwner: true,
-          },
-          {
-            id: "subagent-compose-id",
-            displayName: "Helper Bot",
-            headVersionId: "version_2",
-            updatedAt: "2024-01-01T00:00:00Z",
-            isOwner: true,
-          },
-        ],
-      });
+      return HttpResponse.json([
+        {
+          id: "mock-compose-id",
+          displayName: null,
+          headVersionId: "version_1",
+          updatedAt: "2024-01-01T00:00:00Z",
+        },
+        {
+          id: "subagent-compose-id",
+          displayName: "Helper Bot",
+          headVersionId: "version_2",
+          updatedAt: "2024-01-01T00:00:00Z",
+        },
+      ]);
     }),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({

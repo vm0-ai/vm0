@@ -83,10 +83,10 @@ export async function givenGitHubInstallation(
     })
     .returning();
 
-  // Create zero agent so handler can resolve agentId
+  // Create zero agent (id = composeId after PK refactor)
   await globalThis.services.db
     .insert(zeroAgents)
-    .values({ orgId, name: compose!.name })
+    .values({ id: compose!.id, orgId, name: compose!.name })
     .onConflictDoNothing();
 
   // Create compose version (content-addressed: id is SHA-256 hash)

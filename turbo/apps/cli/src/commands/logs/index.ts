@@ -1,11 +1,14 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import {
-  apiClient,
-  TelemetryMetric,
-  RunEvent,
-  NetworkLogEntry,
-} from "../../lib/api/api-client";
+  getAgentEvents,
+  getSystemLog,
+  getMetrics,
+  getNetworkLogs,
+  type TelemetryMetric,
+  type RunEvent,
+  type NetworkLogEntry,
+} from "../../lib/api/domains/logs";
 import { getApiUrl } from "../../lib/api/config";
 import { parseTime } from "../../lib/utils/time-parser";
 import { formatBytes } from "../../lib/utils/file-utils";
@@ -319,7 +322,7 @@ async function showAgentEvents(
   platformUrl: string,
 ): Promise<void> {
   // Fetch first page to get framework info
-  const firstResponse = await apiClient.getAgentEvents(runId, {
+  const firstResponse = await getAgentEvents(runId, {
     since: options.since,
     limit: PAGE_LIMIT,
     order: options.order,
@@ -352,7 +355,7 @@ async function showAgentEvents(
 
     const remainingEvents = await paginate<RunEvent>({
       fetchPage: async (since) => {
-        const response = await apiClient.getAgentEvents(runId, {
+        const response = await getAgentEvents(runId, {
           since,
           limit: PAGE_LIMIT,
           order: options.order,
@@ -413,7 +416,7 @@ async function showSystemLog(
       ? PAGE_LIMIT
       : Math.min(options.targetCount, PAGE_LIMIT);
 
-  const response = await apiClient.getSystemLog(runId, {
+  const response = await getSystemLog(runId, {
     since: options.since,
     limit,
     order: options.order,
@@ -439,7 +442,7 @@ async function showMetrics(
   },
 ): Promise<void> {
   // Fetch first page
-  const firstResponse = await apiClient.getMetrics(runId, {
+  const firstResponse = await getMetrics(runId, {
     since: options.since,
     limit: PAGE_LIMIT,
     order: options.order,
@@ -472,7 +475,7 @@ async function showMetrics(
 
     const remainingMetrics = await paginate<TelemetryMetric>({
       fetchPage: async (since) => {
-        const response = await apiClient.getMetrics(runId, {
+        const response = await getMetrics(runId, {
           since,
           limit: PAGE_LIMIT,
           order: options.order,
@@ -519,7 +522,7 @@ async function showNetworkLogs(
   },
 ): Promise<void> {
   // Fetch first page
-  const firstResponse = await apiClient.getNetworkLogs(runId, {
+  const firstResponse = await getNetworkLogs(runId, {
     since: options.since,
     limit: PAGE_LIMIT,
     order: options.order,
@@ -557,7 +560,7 @@ async function showNetworkLogs(
 
     const remainingLogs = await paginate<NetworkLogEntry>({
       fetchPage: async (since) => {
-        const response = await apiClient.getNetworkLogs(runId, {
+        const response = await getNetworkLogs(runId, {
           since,
           limit: PAGE_LIMIT,
           order: options.order,

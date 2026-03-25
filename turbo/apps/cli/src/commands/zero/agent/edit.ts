@@ -75,7 +75,7 @@ export const editCommand = new Command()
           await updateZeroAgentInstructions(agentId, content);
         }
 
-        console.log(chalk.green(`✓ Zero agent '${agentId}' updated`));
+        console.log(chalk.green(`✓ Agent "${agentId}" updated`));
       },
     ),
   );

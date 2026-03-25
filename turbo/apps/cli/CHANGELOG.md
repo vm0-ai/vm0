@@ -1,5 +1,65 @@
 # Changelog
 
+## [9.82.2](https://github.com/vm0-ai/vm0/compare/cli-v9.82.1...cli-v9.82.2) (2026-03-25)
+
+
+### Bug Fixes
+
+* **cli:** remove redundant epipe error handlers from entry points ([#6697](https://github.com/vm0-ai/vm0/issues/6697)) ([f472091](https://github.com/vm0-ai/vm0/commit/f4720916d6b275d54b2eae07ca5f0a4ee7d5ae40))
+* **cli:** unify error handling inconsistencies ([#6703](https://github.com/vm0-ai/vm0/issues/6703)) ([e602ec6](https://github.com/vm0-ai/vm0/commit/e602ec632a12a67cd204fa67b2293c9fa2ed07bc))
+
+
+### Refactoring
+
+* **cli:** migrate logs commands from legacy api client to domain module ([#6710](https://github.com/vm0-ai/vm0/issues/6710)) ([7b59b2b](https://github.com/vm0-ai/vm0/commit/7b59b2b67dafdb97f9c1ce09dc0a37e9f0733d34)), closes [#6693](https://github.com/vm0-ai/vm0/issues/6693)
+* migrate skills.ts to ts-rest contract and fix org param injection ([#6704](https://github.com/vm0-ai/vm0/issues/6704)) ([18dc77d](https://github.com/vm0-ai/vm0/commit/18dc77d481ab954973f9ad40c7c06395dadc58ea)), closes [#6700](https://github.com/vm0-ai/vm0/issues/6700)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.112.0
+
+## [9.82.1](https://github.com/vm0-ai/vm0/compare/cli-v9.82.0...cli-v9.82.1) (2026-03-25)
+
+
+### Bug Fixes
+
+* **cli:** add slack to capability map and replace curl guidance ([#6679](https://github.com/vm0-ai/vm0/issues/6679)) ([0ba1480](https://github.com/vm0-ai/vm0/commit/0ba1480cc8ab735d967df668806a3577595e5a1a))
+
+
+### Refactoring
+
+* **cli:** rename agent command export to follow zero naming convention ([#6680](https://github.com/vm0-ai/vm0/issues/6680)) ([6daf6f2](https://github.com/vm0-ai/vm0/commit/6daf6f2a2513556b80fbf045e2969d6713dffd90))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.111.1
+
+## [9.82.0](https://github.com/vm0-ai/vm0/compare/cli-v9.81.0...cli-v9.82.0) (2026-03-25)
+
+
+### Features
+
+* **cli:** add zero slack message send command ([#6652](https://github.com/vm0-ai/vm0/issues/6652)) ([da77c47](https://github.com/vm0-ai/vm0/commit/da77c47885aba80bad5d15ca3710d7f65524f57e))
+* **cli:** hide zero commands based on token capabilities ([#6660](https://github.com/vm0-ai/vm0/issues/6660)) ([79e69a9](https://github.com/vm0-ai/vm0/commit/79e69a9f26913b3eb57f2f61c735658064e62f71))
+
+
+### Refactoring
+
+* remove global notification preferences ([#6548](https://github.com/vm0-ai/vm0/issues/6548)) ([1d500cd](https://github.com/vm0-ai/vm0/commit/1d500cdf0d0571c8a92d22b5cd8fdf27f44c649e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.111.0
+
 ## [9.81.0](https://github.com/vm0-ai/vm0/compare/cli-v9.80.0...cli-v9.81.0) (2026-03-25)
 
 

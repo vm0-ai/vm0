@@ -10,7 +10,7 @@ export const xFirewall: FirewallConfig = {
   name: "x",
   description: "X (Twitter) API",
   placeholders: {
-    X_ACCESS_TOKEN:
+    X_TOKEN:
       "AAAAAAAAAAAAAAAAAAAAAAVm0PlaceHolder0000000000000000000000000000000000000000000000000000000000000000000000",
   },
   apis: [
@@ -18,7 +18,7 @@ export const xFirewall: FirewallConfig = {
       base: "https://api.x.com",
       auth: {
         headers: {
-          Authorization: "Bearer ${{ secrets.X_ACCESS_TOKEN }}",
+          Authorization: "Bearer ${{ secrets.X_TOKEN }}",
         },
       },
       permissions: [

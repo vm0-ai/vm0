@@ -26,8 +26,6 @@ export const enableCommand = new Command()
         agentId: resolved.agentId,
       });
 
-      console.log(
-        chalk.green(`✓ Enabled schedule for agent ${chalk.cyan(agentName)}`),
-      );
+      console.log(chalk.green(`✓ Schedule "${resolved.name}" enabled`));
     }),
   );

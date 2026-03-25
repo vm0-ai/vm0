@@ -6,7 +6,7 @@
  * session orgId and does not fall through to heuristic org resolution.
  */
 import { NextResponse } from "next/server";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { initServices } from "../../../../src/lib/init-services";
 import { agentComposes } from "../../../../src/db/schema/agent-compose";
 import { zeroAgents } from "../../../../src/db/schema/zero-agent";
@@ -63,25 +63,18 @@ export async function GET() {
       sound: zeroAgents.sound,
     })
     .from(agentComposes)
-    .leftJoin(
-      zeroAgents,
-      and(
-        eq(agentComposes.orgId, zeroAgents.orgId),
-        eq(agentComposes.name, zeroAgents.name),
-      ),
-    )
+    .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
     .where(eq(agentComposes.orgId, resolvedOrgId))
     .orderBy(desc(agentComposes.updatedAt));
 
-  return NextResponse.json({
-    composes: composes.map((c) => ({
+  return NextResponse.json(
+    composes.map((c) => ({
       id: c.id,
       displayName: c.displayName ?? null,
       description: c.description ?? null,
       sound: c.sound ?? null,
       headVersionId: c.headVersionId,
       updatedAt: c.updatedAt.toISOString(),
-      isOwner: true,
     })),
-  });
+  );
 }

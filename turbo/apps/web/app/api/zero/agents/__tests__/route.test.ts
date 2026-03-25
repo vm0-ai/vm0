@@ -20,6 +20,8 @@ import {
   insertTestSlackOrgConnection,
   insertTestSlackOrgThreadSession,
   insertTestSlackOrgPendingQuestion,
+  setDefaultAgentByComposeId,
+  clearOrgMembersCacheEntry,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -901,6 +903,241 @@ describe("Zero Agents API", () => {
       expect(response.status).toBe(400);
       const data = await response.json();
       expect(data.error.code).toBe("BAD_REQUEST");
+    });
+  });
+
+  describe("default agent admin restriction", () => {
+    it("should return 403 when member patches default agent metadata", async () => {
+      // Create agent as admin
+      const created = await (
+        await postAgent(
+          { connectors: [], displayName: "Default" },
+          testCliToken,
+          testOrgSlug,
+        )
+      ).json();
+
+      const orgId = `org_mock_${user.userId}`;
+      await setDefaultAgentByComposeId(orgId, created.agentId);
+
+      // Re-mock as member and clear cached admin role
+      mockClerk({
+        userId: user.userId,
+        orgId,
+        orgRole: "org:member",
+        clerkOrgs: [
+          {
+            id: orgId,
+            slug: testOrgSlug,
+            name: testOrgSlug,
+            role: "org:member",
+          },
+        ],
+      });
+      await clearOrgMembersCacheEntry(orgId, user.userId);
+      const memberToken = await createTestCliToken(user.userId);
+
+      const response = await patchAgent(
+        created.agentId,
+        { displayName: "Hacked" },
+        memberToken,
+        testOrgSlug,
+      );
+      expect(response.status).toBe(403);
+      const data = await response.json();
+      expect(data.error.code).toBe("FORBIDDEN");
+    });
+
+    it("should return 403 when member updates default agent instructions", async () => {
+      const created = await (
+        await postAgent(
+          { connectors: [], displayName: "Default" },
+          testCliToken,
+          testOrgSlug,
+        )
+      ).json();
+
+      const orgId = `org_mock_${user.userId}`;
+      await setDefaultAgentByComposeId(orgId, created.agentId);
+
+      // Re-mock as member and clear cached admin role
+      mockClerk({
+        userId: user.userId,
+        orgId,
+        orgRole: "org:member",
+        clerkOrgs: [
+          {
+            id: orgId,
+            slug: testOrgSlug,
+            name: testOrgSlug,
+            role: "org:member",
+          },
+        ],
+      });
+      await clearOrgMembersCacheEntry(orgId, user.userId);
+      const memberToken = await createTestCliToken(user.userId);
+
+      const response = await putAgentInstructions(
+        created.agentId,
+        { content: "# Hacked instructions" },
+        memberToken,
+        testOrgSlug,
+      );
+      expect(response.status).toBe(403);
+      const data = await response.json();
+      expect(data.error.code).toBe("FORBIDDEN");
+    });
+
+    it("should allow admin to patch default agent metadata", async () => {
+      const created = await (
+        await postAgent(
+          { connectors: [], displayName: "Default" },
+          testCliToken,
+          testOrgSlug,
+        )
+      ).json();
+
+      const orgId = `org_mock_${user.userId}`;
+      await setDefaultAgentByComposeId(orgId, created.agentId);
+
+      // Admin can still update
+      const response = await patchAgent(
+        created.agentId,
+        { displayName: "Updated by Admin" },
+        testCliToken,
+        testOrgSlug,
+      );
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.displayName).toBe("Updated by Admin");
+    });
+
+    it("should allow member to patch non-default agent metadata", async () => {
+      // Create two agents — mark only one as default
+      const defaultAgent = await (
+        await postAgent(
+          { connectors: [], displayName: "Default" },
+          testCliToken,
+          testOrgSlug,
+        )
+      ).json();
+      const otherAgent = await (
+        await postAgent(
+          { connectors: [], displayName: "Other" },
+          testCliToken,
+          testOrgSlug,
+        )
+      ).json();
+
+      const orgId = `org_mock_${user.userId}`;
+      await setDefaultAgentByComposeId(orgId, defaultAgent.agentId);
+
+      // Re-mock as member and clear cached admin role
+      mockClerk({
+        userId: user.userId,
+        orgId,
+        orgRole: "org:member",
+        clerkOrgs: [
+          {
+            id: orgId,
+            slug: testOrgSlug,
+            name: testOrgSlug,
+            role: "org:member",
+          },
+        ],
+      });
+      await clearOrgMembersCacheEntry(orgId, user.userId);
+      const memberToken = await createTestCliToken(user.userId);
+
+      // Member can update non-default agent
+      const response = await patchAgent(
+        otherAgent.agentId,
+        { displayName: "Member Updated" },
+        memberToken,
+        testOrgSlug,
+      );
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.displayName).toBe("Member Updated");
+    });
+
+    it("should return 403 when member PUT-updates default agent", async () => {
+      const created = await (
+        await postAgent(
+          { connectors: [], displayName: "Default" },
+          testCliToken,
+          testOrgSlug,
+        )
+      ).json();
+
+      const orgId = `org_mock_${user.userId}`;
+      await setDefaultAgentByComposeId(orgId, created.agentId);
+
+      // Re-mock as member and clear cached admin role
+      mockClerk({
+        userId: user.userId,
+        orgId,
+        orgRole: "org:member",
+        clerkOrgs: [
+          {
+            id: orgId,
+            slug: testOrgSlug,
+            name: testOrgSlug,
+            role: "org:member",
+          },
+        ],
+      });
+      await clearOrgMembersCacheEntry(orgId, user.userId);
+      const memberToken = await createTestCliToken(user.userId);
+
+      const response = await putAgent(
+        created.agentId,
+        { connectors: [], displayName: "Hacked via PUT" },
+        memberToken,
+        testOrgSlug,
+      );
+      expect(response.status).toBe(403);
+      const data = await response.json();
+      expect(data.error.code).toBe("FORBIDDEN");
+    });
+
+    it("should return 403 when member deletes default agent", async () => {
+      const created = await (
+        await postAgent(
+          { connectors: [], displayName: "Default" },
+          testCliToken,
+          testOrgSlug,
+        )
+      ).json();
+
+      const orgId = `org_mock_${user.userId}`;
+      await setDefaultAgentByComposeId(orgId, created.agentId);
+
+      // Re-mock as member and clear cached admin role
+      mockClerk({
+        userId: user.userId,
+        orgId,
+        orgRole: "org:member",
+        clerkOrgs: [
+          {
+            id: orgId,
+            slug: testOrgSlug,
+            name: testOrgSlug,
+            role: "org:member",
+          },
+        ],
+      });
+      await clearOrgMembersCacheEntry(orgId, user.userId);
+      const memberToken = await createTestCliToken(user.userId);
+
+      const response = await deleteAgent(
+        created.agentId,
+        memberToken,
+        testOrgSlug,
+      );
+      expect(response.status).toBe(403);
+      const data = await response.json();
+      expect(data.error.code).toBe("FORBIDDEN");
     });
   });
 });

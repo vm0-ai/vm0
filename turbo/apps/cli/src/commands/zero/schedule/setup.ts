@@ -561,17 +561,13 @@ async function buildAndDeploy(params: {
 }
 
 function displayDeployResult(
-  agentName: string,
+  scheduleName: string,
   deployResult: DeployResult,
 ): void {
   if (deployResult.created) {
-    console.log(
-      chalk.green(`✓ Created schedule for agent ${chalk.cyan(agentName)}`),
-    );
+    console.log(chalk.green(`✓ Schedule "${scheduleName}" created`));
   } else {
-    console.log(
-      chalk.green(`✓ Updated schedule for agent ${chalk.cyan(agentName)}`),
-    );
+    console.log(chalk.green(`✓ Schedule "${scheduleName}" updated`));
   }
 
   console.log(chalk.dim(`  Timezone: ${deployResult.schedule.timezone}`));
@@ -610,9 +606,7 @@ async function tryEnableSchedule(
 ): Promise<void> {
   try {
     await enableZeroSchedule({ name: scheduleName, agentId });
-    console.log(
-      chalk.green(`✓ Enabled schedule for agent ${chalk.cyan(agentName)}`),
-    );
+    console.log(chalk.green(`✓ Schedule "${scheduleName}" enabled`));
   } catch (error) {
     console.error(chalk.yellow("⚠ Failed to enable schedule"));
     if (error instanceof ApiRequestError) {
@@ -773,7 +767,7 @@ export const setupCommand = new Command()
       });
 
       // 9. Display deployment result
-      displayDeployResult(agentName, deployResult);
+      displayDeployResult(scheduleName, deployResult);
 
       // 10. Handle schedule enabling
       const shouldPromptEnable =

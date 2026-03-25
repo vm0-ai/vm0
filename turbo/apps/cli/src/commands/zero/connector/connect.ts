@@ -14,6 +14,7 @@ import {
   setZeroSecret,
 } from "../../../lib/api";
 import { getBaseUrl } from "../../../lib/api/core/client-factory";
+import { getActiveOrg } from "../../../lib/api/config";
 import { withErrorHandler } from "../../../lib/command";
 import {
   checkComputerDependencies,
@@ -78,7 +79,8 @@ async function connectViaApiToken(
       );
 
       if (!value) {
-        throw new Error("Cancelled");
+        console.log(chalk.dim("Cancelled"));
+        return;
       }
 
       inputSecrets[secretName] = value;
@@ -92,9 +94,7 @@ async function connectViaApiToken(
       description: `API token for ${config.label} connector`,
     });
   }
-  console.log(
-    chalk.green(`\n✓ ${config.label} connected successfully via API token!`),
-  );
+  console.log(chalk.green(`\n✓ Connector "${connectorType}" connected`));
 }
 
 /**
@@ -118,12 +118,13 @@ async function connectComputer(): Promise<void> {
 async function resolveAuthMethod(
   connectorType: ConnectorType,
   tokenFlag?: string,
-): Promise<"oauth" | "api-token"> {
+): Promise<"oauth" | "api-token" | null> {
   const config = CONNECTOR_TYPES[connectorType];
   const oauthFlag = CONNECTOR_TYPES[connectorType].featureFlag;
+  const orgId = await getActiveOrg();
   const oauthAvailable =
     "oauth" in config.authMethods &&
-    (!oauthFlag || (await isFeatureEnabled(oauthFlag)));
+    (!oauthFlag || (await isFeatureEnabled(oauthFlag, { orgId })));
   const apiTokenAvailable = "api-token" in config.authMethods;
 
   if (tokenFlag) {
@@ -147,7 +148,8 @@ async function resolveAuthMethod(
       ],
     );
     if (!selected) {
-      throw new Error("Cancelled");
+      console.log(chalk.dim("Cancelled"));
+      return null;
     }
     return selected;
   }
@@ -193,7 +195,7 @@ async function connectViaOAuth(connectorType: ConnectorType): Promise<void> {
     switch (status.status) {
       case "complete":
         console.log(
-          chalk.green(`\n\n${connectorType} connected successfully!`),
+          chalk.green(`\n\n✓ Connector "${connectorType}" connected`),
         );
         return;
       case "expired":
@@ -234,6 +236,7 @@ export const connectCommand = new Command()
       }
 
       const authMethod = await resolveAuthMethod(connectorType, options.token);
+      if (!authMethod) return;
 
       if (authMethod === "api-token") {
         await connectViaApiToken(connectorType, options.token);

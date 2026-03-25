@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import {
   createHandler,
   createSafeErrorHandler,
@@ -13,7 +13,6 @@ import {
 import { createZeroRun } from "../../../../src/lib/zero/zero-run-service";
 import { isApiError } from "../../../../src/lib/errors";
 import { isRunDispatchError } from "../../../../src/lib/run";
-import { agentComposes } from "../../../../src/db/schema/agent-compose";
 import { zeroAgents } from "../../../../src/db/schema/zero-agent";
 
 /**
@@ -59,8 +58,8 @@ const router = tsr.router(zeroRunsMainContract, {
     if (isAuthError(authCtx)) return authCtx;
 
     try {
-      const composeId = body.agentId;
-      if (!composeId) {
+      const agentId = body.agentId;
+      if (!agentId) {
         return {
           status: 400 as const,
           body: {
@@ -72,17 +71,11 @@ const router = tsr.router(zeroRunsMainContract, {
         };
       }
 
+      // Verify agent exists — agentId is the composeId (= zeroAgents PK)
       const [agent] = await globalThis.services.db
         .select({ id: zeroAgents.id })
-        .from(agentComposes)
-        .innerJoin(
-          zeroAgents,
-          and(
-            eq(zeroAgents.orgId, agentComposes.orgId),
-            eq(zeroAgents.name, agentComposes.name),
-          ),
-        )
-        .where(eq(agentComposes.id, composeId))
+        .from(zeroAgents)
+        .where(eq(zeroAgents.id, agentId))
         .limit(1);
 
       if (!agent) {

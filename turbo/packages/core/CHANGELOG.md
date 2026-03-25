@@ -1,5 +1,39 @@
 # Changelog
 
+## [8.112.0](https://github.com/vm0-ai/vm0/compare/core-v8.111.1...core-v8.112.0) (2026-03-25)
+
+
+### Features
+
+* add instagram firewall config ([#6701](https://github.com/vm0-ai/vm0/issues/6701)) ([488917b](https://github.com/vm0-ai/vm0/commit/488917b05bd031f44b6c43a85994994bfb45af42)), closes [#6358](https://github.com/vm0-ai/vm0/issues/6358)
+* add meta-ads firewall config ([#6696](https://github.com/vm0-ai/vm0/issues/6696)) ([b82e62b](https://github.com/vm0-ai/vm0/commit/b82e62b768874a4f0bbd82e5f0e8fb27fd0cff07)), closes [#6373](https://github.com/vm0-ai/vm0/issues/6373)
+* add outlook-calendar firewall config ([#6711](https://github.com/vm0-ai/vm0/issues/6711)) ([3447c9e](https://github.com/vm0-ai/vm0/commit/3447c9eface597c6aad617f714c0ebc926c1ce04)), closes [#6380](https://github.com/vm0-ai/vm0/issues/6380)
+* add prisma-postgres firewall config ([#6691](https://github.com/vm0-ai/vm0/issues/6691)) ([6cbcc40](https://github.com/vm0-ai/vm0/commit/6cbcc4034251bb5a766532ae2bb0f14a45372eb8)), closes [#6390](https://github.com/vm0-ai/vm0/issues/6390)
+* connect org management dialog billing tabs to real data ([#6692](https://github.com/vm0-ai/vm0/issues/6692)) ([00f8209](https://github.com/vm0-ai/vm0/commit/00f82091196d280878c632f895acc37457c6493c))
+
+## [8.111.1](https://github.com/vm0-ai/vm0/compare/core-v8.111.0...core-v8.111.1) (2026-03-25)
+
+
+### Bug Fixes
+
+* rename x connector env var from x_access_token to x_token ([#6676](https://github.com/vm0-ai/vm0/issues/6676)) ([24d9a8e](https://github.com/vm0-ai/vm0/commit/24d9a8e6047d3d258c92e4dce3813c3759474f5f))
+
+## [8.111.0](https://github.com/vm0-ai/vm0/compare/core-v8.110.0...core-v8.111.0) (2026-03-25)
+
+
+### Features
+
+* add intervals-icu firewall config ([#6659](https://github.com/vm0-ai/vm0/issues/6659)) ([00b8772](https://github.com/vm0-ai/vm0/commit/00b87724ba0bb3cacfa8c3cb89a367e896f74358)), closes [#6361](https://github.com/vm0-ai/vm0/issues/6361)
+* add mailsac firewall config ([#6653](https://github.com/vm0-ai/vm0/issues/6653)) ([fadd4a7](https://github.com/vm0-ai/vm0/commit/fadd4a7f7bbf216513ae9f160682eb609abe5f23)), closes [#6370](https://github.com/vm0-ai/vm0/issues/6370)
+* add pdforge firewall config ([#6656](https://github.com/vm0-ai/vm0/issues/6656)) ([a8b0cac](https://github.com/vm0-ai/vm0/commit/a8b0cac98c4700a9b6d95951442b01baf2ecf9a1)), closes [#6384](https://github.com/vm0-ai/vm0/issues/6384)
+* add productlane firewall config ([#6661](https://github.com/vm0-ai/vm0/issues/6661)) ([11b4f84](https://github.com/vm0-ai/vm0/commit/11b4f84fe118f302eea0f0f1f0668cac3c4f5425)), closes [#6391](https://github.com/vm0-ai/vm0/issues/6391)
+* **cli:** add zero slack message send command ([#6652](https://github.com/vm0-ai/vm0/issues/6652)) ([da77c47](https://github.com/vm0-ai/vm0/commit/da77c47885aba80bad5d15ca3710d7f65524f57e))
+
+
+### Refactoring
+
+* remove global notification preferences ([#6548](https://github.com/vm0-ai/vm0/issues/6548)) ([1d500cd](https://github.com/vm0-ai/vm0/commit/1d500cdf0d0571c8a92d22b5cd8fdf27f44c649e))
+
 ## [8.110.0](https://github.com/vm0-ai/vm0/compare/core-v8.109.0...core-v8.110.0) (2026-03-25)
 
 

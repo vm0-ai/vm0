@@ -41,7 +41,7 @@ export const createCommand = new Command()
           await updateZeroAgentInstructions(agent.agentId, content);
         }
 
-        console.log(chalk.green(`✓ Zero agent '${agent.agentId}' created`));
+        console.log(chalk.green(`✓ Agent "${agent.agentId}" created`));
         console.log(`  Agent ID:     ${agent.agentId}`);
         console.log(`  Connectors:   ${agent.connectors.join(", ")}`);
         if (agent.displayName) {

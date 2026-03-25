@@ -44,9 +44,7 @@ export const deleteCommand = new Command()
           agentId: resolved.agentId,
         });
 
-        console.log(
-          chalk.green(`✓ Deleted schedule for agent ${chalk.cyan(agentName)}`),
-        );
+        console.log(chalk.green(`✓ Schedule "${resolved.name}" deleted`));
       },
     ),
   );

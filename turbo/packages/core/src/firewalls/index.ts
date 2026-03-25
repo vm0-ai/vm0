@@ -38,6 +38,7 @@ import { falFirewall } from "./fal.generated";
 import { figmaFirewall } from "./figma.generated";
 import { firecrawlFirewall } from "./firecrawl.generated";
 import { firefliesFirewall } from "./fireflies.generated";
+import { garminConnectFirewall } from "./garmin-connect.generated";
 import { githubFirewall } from "./github.generated";
 import { gitlabFirewall } from "./gitlab.generated";
 import { gmailFirewall } from "./gmail.generated";
@@ -51,6 +52,7 @@ import { hubspotFirewall } from "./hubspot.generated";
 import { huggingFaceFirewall } from "./hugging-face.generated";
 import { humeFirewall } from "./hume.generated";
 import { imgurFirewall } from "./imgur.generated";
+import { instagramFirewall } from "./instagram.generated";
 import { instantlyFirewall } from "./instantly.generated";
 import { intercomFirewall } from "./intercom.generated";
 import { intervalsIcuFirewall } from "./intervals-icu.generated";
@@ -62,20 +64,27 @@ import { linearFirewall } from "./linear.generated";
 import { loopsFirewall } from "./loops.generated";
 import { mailsacFirewall } from "./mailsac.generated";
 import { mercuryFirewall } from "./mercury.generated";
+import { metaAdsFirewall } from "./meta-ads.generated";
 import { minimaxFirewall } from "./minimax.generated";
 import { mondayFirewall } from "./monday.generated";
 import { neonFirewall } from "./neon.generated";
 import { notionFirewall } from "./notion.generated";
 import { openaiFirewall } from "./openai.generated";
+import { outlookCalendarFirewall } from "./outlook-calendar.generated";
+import { outlookMailFirewall } from "./outlook-mail.generated";
+import { pdf4meFirewall } from "./pdf4me.generated";
 import { pdfcoFirewall } from "./pdfco.generated";
 import { pdforgeFirewall } from "./pdforge.generated";
 import { perplexityFirewall } from "./perplexity.generated";
 import { plausibleFirewall } from "./plausible.generated";
+import { podchaserFirewall } from "./podchaser.generated";
 import { posthogFirewall } from "./posthog.generated";
 import { productlaneFirewall } from "./productlane.generated";
+import { prismaPostgresFirewall } from "./prisma-postgres.generated";
 import { pushinatorFirewall } from "./pushinator.generated";
 import { qiitaFirewall } from "./qiita.generated";
 import { redditFirewall } from "./reddit.generated";
+import { reporteiFirewall } from "./reportei.generated";
 import { resendFirewall } from "./resend.generated";
 import { revenuecatFirewall } from "./revenuecat.generated";
 import { runwayFirewall } from "./runway.generated";
@@ -135,6 +144,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   figma: figmaFirewall,
   firecrawl: firecrawlFirewall,
   fireflies: firefliesFirewall,
+  "garmin-connect": garminConnectFirewall,
   github: githubFirewall,
   gitlab: gitlabFirewall,
   gmail: gmailFirewall,
@@ -148,6 +158,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   "hugging-face": huggingFaceFirewall,
   hume: humeFirewall,
   imgur: imgurFirewall,
+  instagram: instagramFirewall,
   instantly: instantlyFirewall,
   intercom: intercomFirewall,
   "intervals-icu": intervalsIcuFirewall,
@@ -159,20 +170,27 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   loops: loopsFirewall,
   mailsac: mailsacFirewall,
   mercury: mercuryFirewall,
+  "meta-ads": metaAdsFirewall,
   minimax: minimaxFirewall,
   monday: mondayFirewall,
   neon: neonFirewall,
   notion: notionFirewall,
   openai: openaiFirewall,
+  "outlook-calendar": outlookCalendarFirewall,
+  "outlook-mail": outlookMailFirewall,
+  pdf4me: pdf4meFirewall,
   pdfco: pdfcoFirewall,
   pdforge: pdforgeFirewall,
   perplexity: perplexityFirewall,
   plausible: plausibleFirewall,
+  podchaser: podchaserFirewall,
   posthog: posthogFirewall,
   productlane: productlaneFirewall,
+  "prisma-postgres": prismaPostgresFirewall,
   pushinator: pushinatorFirewall,
   qiita: qiitaFirewall,
   reddit: redditFirewall,
+  reportei: reporteiFirewall,
   resend: resendFirewall,
   revenuecat: revenuecatFirewall,
   runway: runwayFirewall,

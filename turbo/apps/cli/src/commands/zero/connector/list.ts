@@ -7,6 +7,7 @@ import {
   type ConnectorType,
 } from "@vm0/core";
 import { listZeroConnectors } from "../../../lib/api";
+import { getActiveOrg } from "../../../lib/api/config";
 import { withErrorHandler } from "../../../lib/command";
 
 export const listCommand = new Command()
@@ -17,13 +18,18 @@ export const listCommand = new Command()
     withErrorHandler(async () => {
       const result = await listZeroConnectors();
       const connectedMap = new Map(result.connectors.map((c) => [c.type, c]));
+      const orgId = await getActiveOrg();
 
       const allTypesRaw = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
       const allTypes: ConnectorType[] = [];
       for (const type of allTypesRaw) {
         const flag = CONNECTOR_TYPES[type].featureFlag;
         const hasApiToken = "api-token" in CONNECTOR_TYPES[type].authMethods;
-        if (flag && !(await isFeatureEnabled(flag)) && !hasApiToken) {
+        if (
+          flag &&
+          !(await isFeatureEnabled(flag, { orgId })) &&
+          !hasApiToken
+        ) {
           continue;
         }
         allTypes.push(type);

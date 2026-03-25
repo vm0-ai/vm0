@@ -15,9 +15,35 @@ import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
 import { agentComposes } from "../../../../../src/db/schema/agent-compose";
 import { eq, and } from "drizzle-orm";
 import { buildComposeContent } from "../../../../../src/lib/zero/build-compose-content";
+import { isDefaultAgentCompose } from "../../../../../src/lib/zero/resolve-default-agent";
 import { logger } from "../../../../../src/lib/logger";
 
 const log = logger("api:zero-agents:id");
+
+type ForbiddenResponse = {
+  status: 403;
+  body: { error: { message: string; code: string } };
+};
+
+async function requireAdminForDefaultAgent(
+  orgId: string,
+  composeId: string,
+  memberRole: string,
+  label: string,
+): Promise<ForbiddenResponse | null> {
+  if (memberRole === "admin") return null;
+  const isDefault = await isDefaultAgentCompose(orgId, composeId);
+  if (!isDefault) return null;
+  return {
+    status: 403 as const,
+    body: {
+      error: {
+        message: `Only org admins can update the default agent's ${label}`,
+        code: "FORBIDDEN",
+      },
+    },
+  };
+}
 
 const router = tsr.router(zeroAgentsByIdContract, {
   get: async ({ params, headers }, { request }) => {
@@ -31,22 +57,14 @@ const router = tsr.router(zeroAgentsByIdContract, {
     const orgSlug = new URL(request.url).searchParams.get("org");
     const { org } = await resolveOrg(authCtx, orgSlug);
 
-    // Look up compose by ID
-    const [compose] = await globalThis.services.db
-      .select({
-        id: agentComposes.id,
-        name: agentComposes.name,
-      })
-      .from(agentComposes)
-      .where(
-        and(
-          eq(agentComposes.orgId, org.orgId),
-          eq(agentComposes.id, params.id),
-        ),
-      )
+    // Look up agent directly — params.id is the composeId which is also the PK
+    const [agent] = await globalThis.services.db
+      .select()
+      .from(zeroAgents)
+      .where(and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.id, params.id)))
       .limit(1);
 
-    if (!compose) {
+    if (!agent) {
       return {
         status: 404 as const,
         body: {
@@ -58,24 +76,15 @@ const router = tsr.router(zeroAgentsByIdContract, {
       };
     }
 
-    // Look up zero_agent metadata
-    const [agent] = await globalThis.services.db
-      .select()
-      .from(zeroAgents)
-      .where(
-        and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.name, compose.name)),
-      )
-      .limit(1);
-
     return {
       status: 200 as const,
       body: {
-        agentId: compose.id,
-        description: agent?.description ?? null,
-        displayName: agent?.displayName ?? null,
-        sound: agent?.sound ?? null,
-        connectors: agent?.connectors ?? [],
-        firewallPolicies: agent?.firewallPolicies ?? null,
+        agentId: agent.id,
+        description: agent.description ?? null,
+        displayName: agent.displayName ?? null,
+        sound: agent.sound ?? null,
+        connectors: agent.connectors,
+        firewallPolicies: agent.firewallPolicies ?? null,
       },
     };
   },
@@ -90,9 +99,9 @@ const router = tsr.router(zeroAgentsByIdContract, {
     const { userId } = authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org, member } = await resolveOrg(authCtx, orgSlug);
 
-    // Verify agent exists by compose ID
+    // Verify agent exists — need compose name for serverSideCompose
     const [existing] = await globalThis.services.db
       .select({ id: agentComposes.id, name: agentComposes.name })
       .from(agentComposes)
@@ -115,6 +124,15 @@ const router = tsr.router(zeroAgentsByIdContract, {
         },
       };
     }
+
+    // Only admins can update the default agent
+    const forbidden = await requireAdminForDefaultAgent(
+      org.orgId,
+      existing.id,
+      member.role,
+      "configuration",
+    );
+    if (forbidden) return forbidden;
 
     // Build compose content from connectors
     const content = buildComposeContent(existing.name, body.connectors);
@@ -145,6 +163,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
     await globalThis.services.db
       .insert(zeroAgents)
       .values({
+        id: result.composeId,
         orgId: org.orgId,
         name: result.composeName,
         displayName: body.displayName ?? null,
@@ -173,18 +192,13 @@ const router = tsr.router(zeroAgentsByIdContract, {
     const [agent] = await globalThis.services.db
       .select()
       .from(zeroAgents)
-      .where(
-        and(
-          eq(zeroAgents.orgId, org.orgId),
-          eq(zeroAgents.name, result.composeName),
-        ),
-      )
+      .where(eq(zeroAgents.id, params.id))
       .limit(1);
 
     return {
       status: 200 as const,
       body: {
-        agentId: result.composeId,
+        agentId: params.id,
         description: agent?.description ?? null,
         displayName: agent?.displayName ?? null,
         sound: agent?.sound ?? null,
@@ -203,24 +217,16 @@ const router = tsr.router(zeroAgentsByIdContract, {
     if (isAuthError(authCtx)) return authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org, member } = await resolveOrg(authCtx, orgSlug);
 
-    // Look up compose by ID
-    const [compose] = await globalThis.services.db
-      .select({
-        id: agentComposes.id,
-        name: agentComposes.name,
-      })
-      .from(agentComposes)
-      .where(
-        and(
-          eq(agentComposes.orgId, org.orgId),
-          eq(agentComposes.id, params.id),
-        ),
-      )
+    // Look up agent directly by id
+    const [existing] = await globalThis.services.db
+      .select()
+      .from(zeroAgents)
+      .where(and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.id, params.id)))
       .limit(1);
 
-    if (!compose) {
+    if (!existing) {
       return {
         status: 404 as const,
         body: {
@@ -232,46 +238,44 @@ const router = tsr.router(zeroAgentsByIdContract, {
       };
     }
 
-    // Upsert metadata — only overwrite fields explicitly provided
+    // Only admins can update the default agent's profile
+    const forbidden = await requireAdminForDefaultAgent(
+      org.orgId,
+      existing.id,
+      member.role,
+      "profile",
+    );
+    if (forbidden) return forbidden;
+
+    // Update metadata — only overwrite fields explicitly provided
     const now = new Date();
     await globalThis.services.db
-      .insert(zeroAgents)
-      .values({
-        orgId: org.orgId,
-        name: compose.name,
-        displayName: body.displayName ?? null,
-        description: body.description ?? null,
-        sound: body.sound ?? null,
+      .update(zeroAgents)
+      .set({
+        updatedAt: now,
+        ...(body.displayName !== undefined && {
+          displayName: body.displayName,
+        }),
+        ...(body.description !== undefined && {
+          description: body.description,
+        }),
+        ...(body.sound !== undefined && { sound: body.sound }),
       })
-      .onConflictDoUpdate({
-        target: [zeroAgents.orgId, zeroAgents.name],
-        set: {
-          updatedAt: now,
-          ...(body.displayName !== undefined && {
-            displayName: body.displayName,
-          }),
-          ...(body.description !== undefined && {
-            description: body.description,
-          }),
-          ...(body.sound !== undefined && { sound: body.sound }),
-        },
-      });
+      .where(eq(zeroAgents.id, params.id));
 
-    log.info(`Updated zero agent metadata: ${compose.name}`);
+    log.info(`Updated zero agent metadata: ${existing.name}`);
 
     // Re-query to return actual persisted state
     const [agent] = await globalThis.services.db
       .select()
       .from(zeroAgents)
-      .where(
-        and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.name, compose.name)),
-      )
+      .where(eq(zeroAgents.id, params.id))
       .limit(1);
 
     return {
       status: 200 as const,
       body: {
-        agentId: compose.id,
+        agentId: params.id,
         description: agent?.description ?? null,
         displayName: agent?.displayName ?? null,
         sound: agent?.sound ?? null,
@@ -290,21 +294,16 @@ const router = tsr.router(zeroAgentsByIdContract, {
     if (isAuthError(authCtx)) return authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org, member } = await resolveOrg(authCtx, orgSlug);
 
-    // Find compose by ID
-    const [compose] = await globalThis.services.db
-      .select({ id: agentComposes.id, name: agentComposes.name })
-      .from(agentComposes)
-      .where(
-        and(
-          eq(agentComposes.orgId, org.orgId),
-          eq(agentComposes.id, params.id),
-        ),
-      )
+    // Verify agent exists
+    const [agent] = await globalThis.services.db
+      .select({ id: zeroAgents.id, name: zeroAgents.name })
+      .from(zeroAgents)
+      .where(and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.id, params.id)))
       .limit(1);
 
-    if (!compose) {
+    if (!agent) {
       return {
         status: 404 as const,
         body: {
@@ -316,23 +315,23 @@ const router = tsr.router(zeroAgentsByIdContract, {
       };
     }
 
-    // Delete compose and metadata atomically
-    await globalThis.services.db.transaction(async (tx) => {
-      // Delete compose
-      await tx.delete(agentComposes).where(eq(agentComposes.id, compose.id));
+    // Only admins can delete the default agent
+    const forbidden = await requireAdminForDefaultAgent(
+      org.orgId,
+      agent.id,
+      member.role,
+      "agent",
+    );
+    if (forbidden) return forbidden;
 
-      // Delete zero_agents metadata (cascades to zero_agent_schedules via agentId FK)
-      await tx
-        .delete(zeroAgents)
-        .where(
-          and(
-            eq(zeroAgents.orgId, org.orgId),
-            eq(zeroAgents.name, compose.name),
-          ),
-        );
+    // Delete compose and metadata atomically
+    // Deleting agent_composes cascades to zero_agents (FK cascade),
+    // which cascades to schedules and email_thread_sessions.
+    await globalThis.services.db.transaction(async (tx) => {
+      await tx.delete(agentComposes).where(eq(agentComposes.id, params.id));
     });
 
-    log.info(`Deleted zero agent: ${compose.name}`);
+    log.info(`Deleted zero agent: ${agent.name}`);
 
     return { status: 204 as const, body: undefined };
   },

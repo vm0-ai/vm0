@@ -22,26 +22,6 @@ export const setActiveTab$ = command(({ set }, tab: OrgManageTab) => {
 });
 
 // ---------------------------------------------------------------------------
-// org-billing-tab
-// ---------------------------------------------------------------------------
-
-const internalIsPro$ = state(false);
-
-export const billingIsPro$ = computed((get) => get(internalIsPro$));
-
-export const setBillingIsPro$ = command(({ set }, value: boolean) => {
-  set(internalIsPro$, value);
-});
-
-const internalPricingOpen$ = state(false);
-
-export const billingPricingOpen$ = computed((get) => get(internalPricingOpen$));
-
-export const setBillingPricingOpen$ = command(({ set }, value: boolean) => {
-  set(internalPricingOpen$, value);
-});
-
-// ---------------------------------------------------------------------------
 // org-general-tab: ProfileSection
 // ---------------------------------------------------------------------------
 

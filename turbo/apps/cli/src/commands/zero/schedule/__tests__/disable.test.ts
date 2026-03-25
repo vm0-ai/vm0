@@ -95,8 +95,8 @@ describe("zero schedule disable command", () => {
       await disableCommand.parseAsync(["node", "cli", "my-agent"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("Disabled");
-      expect(logCalls).toContain("my-agent");
+      expect(logCalls).toContain("Schedule");
+      expect(logCalls).toContain("disabled");
     });
   });
 

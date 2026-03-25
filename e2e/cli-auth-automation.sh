@@ -104,10 +104,30 @@ full_snapshot() {
 }
 
 # ---------------------------------------------------------------------------
+# Helper: click the form's "Continue" button (not "Continue with Google")
+# ---------------------------------------------------------------------------
+click_continue() {
+  # The page has two buttons whose text contains "Continue":
+  #   - "Continue with Google" (OAuth, appears first in DOM)
+  #   - "Continue" (form submit)
+  # Use snapshot to find the exact form submit button ref.
+  local snap_i ref
+  snap_i=$(agent-browser snapshot -i 2>/dev/null || true)
+  ref=$(echo "$snap_i" | grep -E 'button "Continue" \[ref=' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+  if [[ -n "$ref" ]]; then
+    agent-browser scrollintoview "$ref" 2>/dev/null || true
+    agent-browser wait 300
+    agent-browser click "$ref"
+  else
+    agent-browser find text "Continue" click
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Helper: dismiss cookie consent banner if present
 # ---------------------------------------------------------------------------
 dismiss_cookie_banner() {
-  if agent-browser find role button click --name "Accept" 2>/dev/null; then
+  if agent-browser find text "Accept" click 2>/dev/null; then
     agent-browser wait 500
     echo "🍪 Dismissed cookie consent banner"
   fi
@@ -168,9 +188,9 @@ enter_otp() {
   agent-browser wait 2000
 
   # Click Continue/Verify button if present (needed when OTP is a single text input)
-  if agent-browser find role button click --name "Continue" --exact 2>/dev/null; then
+  if agent-browser find text "Continue" click 2>/dev/null; then
     echo "➡️ Clicking Continue"
-  elif agent-browser find role button click --name "Verify" --exact 2>/dev/null; then
+  elif agent-browser find text "Verify" click 2>/dev/null; then
     echo "➡️ Clicking Verify"
   fi
   agent-browser wait 5000
@@ -274,7 +294,7 @@ else
   echo "📧 Entering email: $EMAIL"
   agent-browser find label "Email address" fill "$EMAIL"
   agent-browser wait 500
-  agent-browser find role button click --name "Continue" --exact
+  click_continue
   agent-browser wait 5000
   step_screenshot "after-email-continue"
 
@@ -313,7 +333,7 @@ else
     agent-browser wait 500
     agent-browser find label "Password" fill "$SIGNUP_PASSWORD"
     agent-browser wait 500
-    agent-browser find role button click --name "Continue" --exact
+    click_continue
     agent-browser wait 5000
     step_screenshot "after-sign-up-continue"
 
@@ -403,7 +423,7 @@ fi
 echo ""
 echo "🔑 Phase 3: Entering device code on /cli-auth..."
 
-agent-browser open "$BASE_URL/cli-auth"
+agent-browser open "$BASE_URL/cli-auth" --ignore-https-errors
 agent-browser wait 3000
 
 # Wait for the code input fields to appear
@@ -462,9 +482,9 @@ echo "✅ Device code entered"
 agent-browser wait 1000
 
 # Click Verify button
-if agent-browser find role button click --name "Verify" 2>/dev/null; then
+if agent-browser find text "Verify" click 2>/dev/null; then
   echo "➡️ Clicked Verify"
-elif agent-browser find role button click --name "Authorize Device" 2>/dev/null; then
+elif agent-browser find text "Authorize Device" click 2>/dev/null; then
   echo "➡️ Clicked Authorize Device"
 else
   step_screenshot "verify-button-not-found"

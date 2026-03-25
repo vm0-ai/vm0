@@ -37,6 +37,7 @@ import { generate as generateFal } from "./fal";
 import { generate as generateFigma } from "./figma";
 import { generate as generateFirecrawl } from "./firecrawl";
 import { generate as generateFireflies } from "./fireflies";
+import { generate as generateGarminConnect } from "./garmin-connect";
 import { generate as generateGitHub } from "./github";
 import { generate as generateGitlab } from "./gitlab";
 import { generate as generateGranola } from "./granola";
@@ -45,6 +46,7 @@ import { generate as generateHubspot } from "./hubspot";
 import { generate as generateHuggingFace } from "./hugging-face";
 import { generate as generateHume } from "./hume";
 import { generate as generateImgur } from "./imgur";
+import { generate as generateInstagram } from "./instagram";
 import { generate as generateInstantly } from "./instantly";
 import { generate as generateIntercom } from "./intercom";
 import { generate as generateIntervalsIcu } from "./intervals-icu";
@@ -56,20 +58,27 @@ import { generate as generateLinear } from "./linear";
 import { generate as generateLoops } from "./loops";
 import { generate as generateMailsac } from "./mailsac";
 import { generate as generateMercury } from "./mercury";
+import { generate as generateMetaAds } from "./meta-ads";
 import { generate as generateMinimax } from "./minimax";
 import { generate as generateMonday } from "./monday";
 import { generate as generateNeon } from "./neon";
 import { generate as generateNotion } from "./notion";
 import { generate as generateOpenai } from "./openai";
+import { generate as generateOutlookCalendar } from "./outlook-calendar";
+import { generate as generateOutlookMail } from "./outlook-mail";
+import { generate as generatePdf4me } from "./pdf4me";
 import { generate as generatePdfco } from "./pdfco";
 import { generate as generatePdforge } from "./pdforge";
 import { generate as generatePerplexity } from "./perplexity";
 import { generate as generatePlausible } from "./plausible";
+import { generate as generatePodchaser } from "./podchaser";
 import { generate as generatePosthog } from "./posthog";
 import { generate as generateProductlane } from "./productlane";
+import { generate as generatePrismaPostgres } from "./prisma-postgres";
 import { generate as generatePushinator } from "./pushinator";
 import { generate as generateQiita } from "./qiita";
 import { generate as generateReddit } from "./reddit";
+import { generate as generateReportei } from "./reportei";
 import { generate as generateResend } from "./resend";
 import { generate as generateRevenuecat } from "./revenuecat";
 import { generate as generateRunway } from "./runway";
@@ -130,6 +139,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   figma: generateFigma,
   firecrawl: generateFirecrawl,
   fireflies: generateFireflies,
+  "garmin-connect": generateGarminConnect,
   github: generateGitHub,
   gitlab: generateGitlab,
   granola: generateGranola,
@@ -138,6 +148,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   "hugging-face": generateHuggingFace,
   hume: generateHume,
   imgur: generateImgur,
+  instagram: generateInstagram,
   instantly: generateInstantly,
   intercom: generateIntercom,
   "intervals-icu": generateIntervalsIcu,
@@ -149,20 +160,27 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   loops: generateLoops,
   mailsac: generateMailsac,
   mercury: generateMercury,
+  "meta-ads": generateMetaAds,
   minimax: generateMinimax,
   monday: generateMonday,
   neon: generateNeon,
   notion: generateNotion,
   openai: generateOpenai,
+  "outlook-calendar": generateOutlookCalendar,
+  "outlook-mail": generateOutlookMail,
+  pdf4me: generatePdf4me,
   pdfco: generatePdfco,
   pdforge: generatePdforge,
   perplexity: generatePerplexity,
   plausible: generatePlausible,
+  podchaser: generatePodchaser,
   posthog: generatePosthog,
   productlane: generateProductlane,
+  "prisma-postgres": generatePrismaPostgres,
   pushinator: generatePushinator,
   qiita: generateQiita,
   reddit: generateReddit,
+  reportei: generateReportei,
   resend: generateResend,
   revenuecat: generateRevenuecat,
   runway: generateRunway,

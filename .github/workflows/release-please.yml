@@ -35,7 +35,7 @@ jobs:
       cli_version: ${{ steps.release.outputs['turbo/apps/cli--version'] }}
       docs_version: ${{ steps.release.outputs['turbo/apps/docs--version'] }}
     steps:
-      - uses: seven332/release-please-action@vm0
+      - uses: vm0-ai/release-please-action@vm0
         id: release
         with:
           token: ${{ secrets.GITHUB_TOKEN }}

@@ -11,6 +11,7 @@ import {
   type OrgListResponse,
 } from "@vm0/core";
 import {
+  ApiRequestError,
   getClientConfig,
   getBaseUrl,
   handleError,
@@ -29,7 +30,7 @@ async function getUserTokenClientConfig(): Promise<{
   const baseUrl = await getBaseUrl();
   const token = await getToken();
   if (!token) {
-    throw new Error("Not authenticated. Run: vm0 auth login");
+    throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
   }
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,

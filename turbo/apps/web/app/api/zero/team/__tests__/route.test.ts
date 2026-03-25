@@ -45,7 +45,7 @@ describe("GET /api/zero/team", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    expect(data.composes).toEqual([]);
+    expect(data).toEqual([]);
   });
 
   it("should return composes for the active org", async () => {
@@ -56,9 +56,9 @@ describe("GET /api/zero/team", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    expect(data.composes).toHaveLength(1);
-    expect(data.composes[0].id).toBeDefined();
-    expect(data.composes[0].updatedAt).toBeDefined();
+    expect(data).toHaveLength(1);
+    expect(data[0].id).toBeDefined();
+    expect(data[0].updatedAt).toBeDefined();
   });
 
   it("should not return composes from other orgs", async () => {
@@ -79,7 +79,7 @@ describe("GET /api/zero/team", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    const ids = data.composes.map((c: { id: string }) => c.id);
+    const ids = data.map((c: { id: string }) => c.id);
     expect(ids).toHaveLength(1);
     expect(ids[0]).toBeDefined();
   });
