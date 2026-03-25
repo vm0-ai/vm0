@@ -1,21 +1,28 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  type MockInstance,
+  beforeEach,
+  afterEach,
+} from "vitest";
 import { withErrorHandler } from "../with-error-handler";
 import { ApiRequestError } from "../../api/core/client-factory";
 
 describe("withErrorHandler", () => {
-  const mockExit = vi
-    .spyOn(process, "exit")
-    .mockImplementation(() => undefined as never);
-  const mockConsoleError = vi
-    .spyOn(console, "error")
-    .mockImplementation(() => {});
+  let mockExit: MockInstance;
+  let mockConsoleError: MockInstance;
 
   beforeEach(() => {
-    mockExit.mockClear();
-    mockConsoleError.mockClear();
+    mockExit = vi
+      .spyOn(process, "exit")
+      .mockImplementation(() => undefined as never);
+    mockConsoleError = vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.unstubAllEnvs();
   });
 
