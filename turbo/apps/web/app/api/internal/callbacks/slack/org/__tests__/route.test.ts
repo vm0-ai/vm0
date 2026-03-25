@@ -27,7 +27,7 @@ interface OrgCallbackPayload {
   connectionId: string;
   agentName: string;
   composeId: string;
-  existingSessionId?: string;
+  existingSessionId?: string | undefined;
 }
 
 function createCallbackRequest(
