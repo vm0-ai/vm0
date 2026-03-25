@@ -9,6 +9,7 @@ import { zeroConnectorCommand } from "./commands/zero/connector";
 import { zeroPreferenceCommand } from "./commands/zero/preference";
 import { zeroScheduleCommand } from "./commands/zero/schedule";
 import { zeroSecretCommand } from "./commands/zero/secret";
+import { zeroSlackCommand } from "./commands/zero/slack";
 import { zeroVariableCommand } from "./commands/zero/variable";
 import { zeroWhoamiCommand } from "./commands/zero/whoami";
 
@@ -28,6 +29,7 @@ program.addCommand(zeroConnectorCommand);
 program.addCommand(zeroPreferenceCommand);
 program.addCommand(zeroScheduleCommand);
 program.addCommand(zeroSecretCommand);
+program.addCommand(zeroSlackCommand);
 program.addCommand(zeroVariableCommand);
 program.addCommand(zeroWhoamiCommand);
 
