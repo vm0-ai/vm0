@@ -70,6 +70,7 @@
     "generate:pdforge": "tsx src/index.ts pdforge",
     "generate:perplexity": "tsx src/index.ts perplexity",
     "generate:plausible": "tsx src/index.ts plausible",
+    "generate:podchaser": "tsx src/index.ts podchaser",
     "generate:posthog": "tsx src/index.ts posthog",
     "generate:productlane": "tsx src/index.ts productlane",
     "generate:pushinator": "tsx src/index.ts pushinator",

@@ -65,6 +65,7 @@ import { generate as generatePdfco } from "./pdfco";
 import { generate as generatePdforge } from "./pdforge";
 import { generate as generatePerplexity } from "./perplexity";
 import { generate as generatePlausible } from "./plausible";
+import { generate as generatePodchaser } from "./podchaser";
 import { generate as generatePosthog } from "./posthog";
 import { generate as generateProductlane } from "./productlane";
 import { generate as generatePushinator } from "./pushinator";
@@ -158,6 +159,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   pdforge: generatePdforge,
   perplexity: generatePerplexity,
   plausible: generatePlausible,
+  podchaser: generatePodchaser,
   posthog: generatePosthog,
   productlane: generateProductlane,
   pushinator: generatePushinator,

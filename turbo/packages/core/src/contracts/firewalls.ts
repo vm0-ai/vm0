@@ -156,6 +156,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   pdforge: ["pdforge"],
   perplexity: ["perplexity"],
   plausible: ["plausible"],
+  podchaser: ["podchaser"],
   posthog: ["posthog"],
   productlane: ["productlane"],
   pushinator: ["pushinator"],

@@ -71,6 +71,7 @@ import { pdfcoFirewall } from "./pdfco.generated";
 import { pdforgeFirewall } from "./pdforge.generated";
 import { perplexityFirewall } from "./perplexity.generated";
 import { plausibleFirewall } from "./plausible.generated";
+import { podchaserFirewall } from "./podchaser.generated";
 import { posthogFirewall } from "./posthog.generated";
 import { productlaneFirewall } from "./productlane.generated";
 import { pushinatorFirewall } from "./pushinator.generated";
@@ -168,6 +169,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   pdforge: pdforgeFirewall,
   perplexity: perplexityFirewall,
   plausible: plausibleFirewall,
+  podchaser: podchaserFirewall,
   posthog: posthogFirewall,
   productlane: productlaneFirewall,
   pushinator: pushinatorFirewall,
