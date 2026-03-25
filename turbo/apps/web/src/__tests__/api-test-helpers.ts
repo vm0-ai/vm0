@@ -10,7 +10,10 @@ import { vi } from "vitest";
 import { http as mswHttp, HttpResponse } from "msw";
 import { NextRequest } from "next/server";
 import type { AgentComposeYaml } from "../types/agent-compose";
-import { generateSandboxToken } from "../lib/auth/sandbox-token";
+import {
+  generateSandboxToken,
+  generateCliToken,
+} from "../lib/auth/sandbox-token";
 import { server } from "../mocks/server";
 import { reloadEnv } from "../env";
 import { randomBytes } from "crypto";
@@ -210,11 +213,20 @@ export async function createTestSandboxToken(
 export async function createTestCliToken(
   userId: string,
   expiresAt?: Date,
+  orgId?: string,
 ): Promise<string> {
-  const token = `vm0_live_test_${Date.now()}_${Math.random().toString(36).substring(7)}`;
   const expiration = expiresAt || new Date(Date.now() + 60 * 60 * 1000); // 1 hour default
+  const tokenId = randomUUID();
+
+  // Generate CLI JWT containing userId, orgId, and tokenId for revocation checks
+  const token = await generateCliToken(
+    userId,
+    orgId ?? "org_test_default",
+    tokenId,
+  );
 
   await globalThis.services.db.insert(cliTokens).values({
+    id: tokenId,
     token,
     userId,
     name: "Test Token",

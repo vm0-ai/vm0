@@ -8,7 +8,7 @@
 import { eq, and, gt } from "drizzle-orm";
 import { initServices } from "../init-services";
 import { cliTokens } from "../../db/schema/cli-tokens";
-import { isSandboxToken } from "./sandbox-token";
+import { isSandboxToken, verifyCliToken } from "./sandbox-token";
 import { logger } from "../logger";
 import { timingSafeEqual } from "crypto";
 
@@ -84,9 +84,41 @@ export async function getRunnerAuth(
 
   const token = authHeader.substring(7); // Remove "Bearer "
 
-  // Reject sandbox JWT tokens - they should only be used for webhooks
+  // Handle sandbox-prefixed JWT tokens
   if (isSandboxToken(token)) {
-    log.debug("Rejected sandbox JWT token on runner endpoint");
+    // Accept CLI JWT (scope: "cli") for user runners
+    const cliAuth = verifyCliToken(token);
+    if (cliAuth) {
+      initServices();
+
+      const [record] = await globalThis.services.db
+        .select()
+        .from(cliTokens)
+        .where(
+          and(
+            eq(cliTokens.id, cliAuth.tokenId),
+            gt(cliTokens.expiresAt, new Date()),
+          ),
+        )
+        .limit(1);
+
+      if (!record) {
+        log.debug("CLI JWT token revoked or expired in DB");
+        return null;
+      }
+
+      // Update last used timestamp (non-blocking)
+      globalThis.services.db
+        .update(cliTokens)
+        .set({ lastUsedAt: new Date() })
+        .where(eq(cliTokens.id, cliAuth.tokenId))
+        .catch((err) => log.error("Failed to update token lastUsedAt:", err));
+
+      return { type: "user", userId: cliAuth.userId };
+    }
+
+    // Reject other sandbox JWT tokens (sandbox, zero, compose-job)
+    log.debug("Rejected non-CLI sandbox JWT token on runner endpoint");
     return null;
   }
 
