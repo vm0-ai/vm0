@@ -33,7 +33,15 @@ function createMockTeamWithSubagents() {
   ];
 }
 
-function mockTeamAPI(agents = createMockTeamWithSubagents()) {
+function mockTeamAPI(
+  agents: {
+    id: string;
+    displayName: string | null;
+    description: string | null;
+    headVersionId: string;
+    updatedAt: string;
+  }[] = createMockTeamWithSubagents(),
+) {
   server.use(
     http.get("*/api/zero/team", () => {
       return HttpResponse.json(agents);
