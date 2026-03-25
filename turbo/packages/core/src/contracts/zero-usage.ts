@@ -12,6 +12,7 @@ const memberUsageSchema = z.object({
   cacheReadInputTokens: z.number(),
   cacheCreationInputTokens: z.number(),
   creditsCharged: z.number(),
+  creditCap: z.number().nullable(),
 });
 
 const usageMembersResponseSchema = z.object({

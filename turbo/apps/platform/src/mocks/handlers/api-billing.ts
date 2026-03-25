@@ -16,6 +16,10 @@ let mockBillingStatus: BillingStatus = {
   autoRecharge: { enabled: false, threshold: null, amount: null },
 };
 
+export function setMockBillingStatus(status: Partial<BillingStatus>): void {
+  mockBillingStatus = { ...mockBillingStatus, ...status };
+}
+
 export function resetMockBilling(): void {
   mockBillingStatus = {
     tier: "free",

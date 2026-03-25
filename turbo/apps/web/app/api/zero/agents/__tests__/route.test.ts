@@ -14,7 +14,10 @@ import {
   createTestSandboxToken,
   seedTestSkill,
   seedSeedSkills,
+  seedSeedSkillStorages,
   clearSkillsData,
+  createTestSchedule,
+  enableTestSchedule,
   createTestSessionWithConversation,
   insertTestSlackOrgInstallation,
   insertTestSlackOrgConnection,
@@ -29,6 +32,7 @@ import {
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { createSingleFileTar } from "../../../../../src/lib/tar";
+import { POST as runSchedule } from "../../schedules/run/route";
 
 const context = testContext();
 
@@ -1138,6 +1142,48 @@ describe("Zero Agents API", () => {
       expect(response.status).toBe(403);
       const data = await response.json();
       expect(data.error.code).toBe("FORBIDDEN");
+    });
+  });
+
+  describe("schedule run integration", () => {
+    it("should execute schedule for agent created via POST /api/zero/agents", async () => {
+      // Regression: serverSideCompose was called without instructions param,
+      // so agent-instructions storage was never created. Schedule runs then
+      // failed with "Storage agent-instructions@<id> not found".
+      await seedSeedSkillStorages();
+      await createTestOrgModelProvider("anthropic-api-key", "test-key");
+
+      // 1. Create agent via POST /api/zero/agents
+      const createResponse = await postAgent(
+        { connectors: [], displayName: "Schedule Bug Agent" },
+        testCliToken,
+        testOrgSlug,
+      );
+      expect(createResponse.status).toBe(201);
+      const agent = await createResponse.json();
+
+      // 2. Create and enable a schedule
+      const schedule = await createTestSchedule(agent.agentId, "zero-api-run", {
+        cronExpression: "0 9 * * *",
+        prompt: "Scheduled run",
+      });
+      await enableTestSchedule(agent.agentId, "zero-api-run");
+
+      // 3. Execute the schedule — should succeed
+      const response = await runSchedule(
+        createTestRequest(
+          `http://localhost:3000/api/zero/schedules/run?org=${testOrgSlug}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ scheduleId: schedule.id }),
+          },
+        ),
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(201);
+      expect(data.runId).toBeDefined();
     });
   });
 });

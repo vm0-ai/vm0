@@ -36,6 +36,28 @@ describe("checkSettingsParam$", () => {
     expect(store.get(activeTab$)).toBe("billing");
   });
 
+  it("should open dialog on usage tab when ?settings=usage is present", async () => {
+    const { store, signal } = context;
+    createPushStateMock(signal);
+    mockLocation({ pathname: "/", search: "?settings=usage" }, signal);
+
+    await store.set(checkSettingsParam$);
+
+    expect(store.get(orgManageDialogOpen$)).toBeTruthy();
+    expect(store.get(activeTab$)).toBe("usage");
+  });
+
+  it("should map legacy ?settings=credits to usage tab", async () => {
+    const { store, signal } = context;
+    createPushStateMock(signal);
+    mockLocation({ pathname: "/", search: "?settings=credits" }, signal);
+
+    await store.set(checkSettingsParam$);
+
+    expect(store.get(orgManageDialogOpen$)).toBeTruthy();
+    expect(store.get(activeTab$)).toBe("usage");
+  });
+
   it("should not open dialog when no settings param is present", async () => {
     const { store, signal } = context;
     createPushStateMock(signal);

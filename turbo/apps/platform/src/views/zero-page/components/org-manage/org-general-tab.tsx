@@ -187,7 +187,7 @@ function ProfileSection({
       setPendingLogoPreview(null);
       refreshOrg();
       await clerk?.organization?.reload();
-      toast.success("Organization updated");
+      toast.success("Workspace updated");
     } finally {
       setSaving(false);
     }
@@ -222,7 +222,7 @@ function ProfileSection({
           <div className="min-w-0">
             <p className="text-sm font-medium text-foreground">Logo</p>
             <p className="text-[13px] text-muted-foreground mt-0.5">
-              Organization avatar displayed across the app
+              Workspace avatar displayed across the app
             </p>
           </div>
           <div className="flex items-center gap-3 shrink-0">
@@ -281,7 +281,7 @@ function ProfileSection({
           <div className="min-w-0">
             <p className="text-sm font-medium text-foreground">Name</p>
             <p className="text-[13px] text-muted-foreground mt-0.5">
-              Used to identify this organization
+              Used to identify this workspace
             </p>
           </div>
           {isAdmin ? (
@@ -289,7 +289,7 @@ function ProfileSection({
               id="org-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Organization name"
+              placeholder="Workspace name"
               className="h-9 w-[220px] shrink-0 rounded-lg border-[0.7px] border-[hsl(var(--gray-400))]"
             />
           ) : (
@@ -381,7 +381,7 @@ function DangerZoneSection({
       const client = createClient(zeroOrgLeaveContract);
       const result = await client.leave({ body: {} });
       if (result.status === 200) {
-        toast.success("You have left the organization");
+        toast.success("You have left the workspace");
         window.location.reload();
       } else {
         toast.error(
@@ -402,7 +402,7 @@ function DangerZoneSection({
       const client = createClient(zeroOrgDeleteContract);
       const result = await client.delete({ body: { slug: org.slug } });
       if (result.status === 200) {
-        toast.success("Organization deleted");
+        toast.success("Workspace deleted");
         window.location.reload();
       } else {
         toast.error(
@@ -423,14 +423,14 @@ function DangerZoneSection({
       >
         {canLeave && (
           <>
-            {/* Leave organization */}
+            {/* Leave workspace */}
             <div className="flex items-center justify-between gap-4 px-5 py-4">
               <div className="min-w-0">
                 <p className="text-sm font-medium text-foreground">
-                  Leave organization
+                  Leave workspace
                 </p>
                 <p className="text-[13px] text-muted-foreground mt-0.5">
-                  You will lose access to this organization and its resources.
+                  You will lose access to this workspace and its resources.
                 </p>
               </div>
               <Dialog>
@@ -445,10 +445,10 @@ function DangerZoneSection({
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>Leave organization?</DialogTitle>
+                    <DialogTitle>Leave workspace?</DialogTitle>
                     <DialogDescription>
-                      You will no longer have access to this organization. You
-                      can rejoin only if an admin invites you again.
+                      You will no longer have access to this workspace. You can
+                      rejoin only if an admin invites you again.
                     </DialogDescription>
                   </DialogHeader>
                   <DialogFooter>
@@ -474,14 +474,14 @@ function DangerZoneSection({
         {isAdmin && (
           <>
             {canLeave && <div className="h-px bg-border/40 mx-5" />}
-            {/* Delete organization */}
+            {/* Delete workspace */}
             <div className="flex items-center justify-between gap-4 px-5 py-4">
               <div className="min-w-0">
                 <p className="text-sm font-medium text-foreground">
-                  Delete organization
+                  Delete workspace
                 </p>
                 <p className="text-[13px] text-muted-foreground mt-0.5">
-                  Permanently delete this organization and all its data. This
+                  Permanently delete this workspace and all its data. This
                   action cannot be undone.
                 </p>
               </div>
@@ -497,14 +497,14 @@ function DangerZoneSection({
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>Delete organization?</DialogTitle>
+                    <DialogTitle>Delete workspace?</DialogTitle>
                     <DialogDescription>
                       This will permanently delete{" "}
                       <span className="font-semibold text-foreground">
                         {org.slug}
                       </span>{" "}
                       and all its data. This action cannot be undone. Type the
-                      organization name to confirm.
+                      workspace name to confirm.
                     </DialogDescription>
                   </DialogHeader>
                   <Input
@@ -524,7 +524,7 @@ function DangerZoneSection({
                       onClick={() => detach(handleDelete(), Reason.DomCallback)}
                       disabled={deleting || deleteConfirm !== org.slug}
                     >
-                      {deleting ? "Deleting..." : "Delete organization"}
+                      {deleting ? "Deleting..." : "Delete workspace"}
                     </Button>
                   </DialogFooter>
                 </DialogContent>

@@ -711,7 +711,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
                       setOrgManageOpen(true, pageSignal).catch(() => undefined);
                     }}
                   >
-                    Set one up in Organization Settings
+                    Set one up in Workspace Settings
                   </button>{" "}
                   to get started.
                 </span>

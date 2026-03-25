@@ -121,11 +121,6 @@ export const orgConfiguredProviders$ = computed(async (get) => {
   );
 });
 
-export const orgDefaultProvider$ = computed(async (get) => {
-  const providers = await get(orgConfiguredProviders$);
-  return providers.find((p) => p.isDefault) ?? null;
-});
-
 // ---------------------------------------------------------------------------
 // Commands: dialog open/close
 // ---------------------------------------------------------------------------

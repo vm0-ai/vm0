@@ -2,6 +2,7 @@ import { command, computed, state } from "ccstate";
 import { clerk$ } from "../../auth.ts";
 import { detach, onRef, Reason } from "../../utils.ts";
 import { searchParams$, updateSearchParams$ } from "../../route.ts";
+import { reloadBillingStatus$ } from "../billing.ts";
 import {
   initProfileName$,
   setActiveTab$,
@@ -18,6 +19,7 @@ export const setOrgManageDialogOpen$ = command(
   async ({ set }, open: boolean, signal: AbortSignal) => {
     if (open) {
       await set(initProfileName$, signal);
+      set(reloadBillingStatus$);
     }
     set(internalOrgManageDialogOpen$, open);
   },
@@ -40,7 +42,8 @@ export const checkSettingsParam$ = command(
       general: "general",
       members: "members",
       billing: "billing",
-      credits: "credits",
+      usage: "usage",
+      credits: "usage",
       invoices: "invoices",
     };
     const tab = settingsTabMap[settingsValue];

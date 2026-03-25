@@ -71,9 +71,7 @@ const STAFF_ORG_ID_HASHES: readonly string[] = [
 const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.Pricing]: {
     maintainer: "ethan@vm0.ai",
-    enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.Dummy]: {
     maintainer: "ethan@vm0.ai",
@@ -257,6 +255,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledUserHashes: STAFF_USER_HASHES,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ConcurrentAddOn]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+  },
+  [FeatureSwitchKey.CreditAddOn]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
   },
 };
 

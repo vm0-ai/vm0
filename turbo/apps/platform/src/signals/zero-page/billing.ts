@@ -3,6 +3,7 @@ import {
   zeroBillingStatusContract,
   zeroBillingCheckoutContract,
   zeroBillingPortalContract,
+  zeroBillingAutoRechargeContract,
   zeroBillingInvoicesContract,
   type BillingStatusResponse,
 } from "@vm0/core";
@@ -14,6 +15,8 @@ const log = logger("billing");
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+
+export type BillingTier = "free" | "pro" | "team";
 
 export type BillingStatus = BillingStatusResponse;
 
@@ -34,15 +37,18 @@ function getErrorMessage(body: unknown): string | undefined {
 // State
 // ---------------------------------------------------------------------------
 
-const internalDialogLoading$ = state(false);
+const internalDialogOpen$ = state(false);
+const internalCheckoutLoading$ = state(false);
+const internalPortalLoading$ = state(false);
 const billingReload$ = state(0);
 
 // ---------------------------------------------------------------------------
 // Selectors
 // ---------------------------------------------------------------------------
 
-export const billingDialogLoading$ = computed((get) =>
-  get(internalDialogLoading$),
+export const billingDialogOpen$ = computed((get) => get(internalDialogOpen$));
+export const billingDialogLoading$ = computed(
+  (get) => get(internalCheckoutLoading$) || get(internalPortalLoading$),
 );
 
 /**
@@ -69,9 +75,13 @@ export const reloadBillingStatus$ = command(({ set }) => {
   set(billingReload$, (x) => x + 1);
 });
 
+export const closeBillingDialog$ = command(({ set }) => {
+  set(internalDialogOpen$, false);
+});
+
 export const startCheckout$ = command(
   async ({ get, set }, tier: "pro" | "team", _signal: AbortSignal) => {
-    set(internalDialogLoading$, true);
+    set(internalCheckoutLoading$, true);
 
     const currentUrl = window.location.href;
     const successUrl = new URL(currentUrl);
@@ -94,14 +104,14 @@ export const startCheckout$ = command(
       // Don't reset loading — page is navigating away
     } else {
       log.error("Checkout failed", getErrorMessage(result.body));
-      set(internalDialogLoading$, false);
+      set(internalCheckoutLoading$, false);
     }
   },
 );
 
 export const startDowngrade$ = command(
   async ({ get, set }, _signal: AbortSignal) => {
-    set(internalDialogLoading$, true);
+    set(internalPortalLoading$, true);
 
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingPortalContract);
@@ -113,8 +123,38 @@ export const startDowngrade$ = command(
       window.location.href = result.body.url;
     } else {
       log.error("Portal redirect failed", getErrorMessage(result.body));
-      set(internalDialogLoading$, false);
+      set(internalPortalLoading$, false);
     }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Auto-recharge
+// ---------------------------------------------------------------------------
+
+export const saveAutoRecharge$ = command(
+  async (
+    { get, set },
+    config: { enabled: boolean; threshold?: number; amount?: number },
+  ) => {
+    set(internalCheckoutLoading$, true);
+
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingAutoRechargeContract);
+    const result = await client.update({ body: config });
+
+    set(internalCheckoutLoading$, false);
+
+    if (result.status !== 200) {
+      const message = getErrorMessage(result.body);
+      log.error("Auto-recharge save failed", message);
+      return { ok: false, error: message };
+    }
+
+    // Invalidate billing status cache so the dialog shows fresh data on re-open
+    set(billingReload$, (x) => x + 1);
+
+    return { ok: true };
   },
 );
 
@@ -122,9 +162,6 @@ export const startDowngrade$ = command(
 // Invoices
 // ---------------------------------------------------------------------------
 
-/**
- * Async computed signal that fetches invoices for the current org.
- */
 export const invoicesAsync$ = computed(async (get) => {
   const createClient = get(zeroClient$);
   const client = createClient(zeroBillingInvoicesContract);

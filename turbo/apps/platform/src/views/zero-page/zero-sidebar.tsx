@@ -87,6 +87,15 @@ import { ZERO_AVATARS } from "./zero-avatars.ts";
 import { Link } from "../router/link.tsx";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { apiBaseForNavigation$ } from "../../signals/fetch.ts";
+import { billingStatusAsync$ } from "../../signals/zero-page/billing.ts";
+import planProImg from "./components/org-manage/assets/plan-pro.webp";
+import planTeamImg from "./components/org-manage/assets/plan-team.webp";
+import {
+  setActiveTab$,
+  setBillingSubPage$,
+} from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
+import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
+import { BillingDialog } from "./billing-dialog.tsx";
 import {
   ChatListDialog,
   ManagePinnedAgentsDialog,
@@ -768,6 +777,65 @@ function TalkToSection({
   );
 }
 
+function nextTierInfo(tier: string): { label: string; img: string } | null {
+  if (tier === "free") {
+    return { label: "Pro", img: planProImg };
+  }
+  if (tier === "pro") {
+    return { label: "Team", img: planTeamImg };
+  }
+  return null;
+}
+
+function SidebarUpgradeCard() {
+  const billingLoadable = useLastLoadable(billingStatusAsync$);
+  const billing =
+    billingLoadable.state === "hasData" ? billingLoadable.data : null;
+  const setTab = useSet(setActiveTab$);
+  const setSubPage = useSet(setBillingSubPage$);
+  const openManage = useSet(setOrgManageDialogOpen$);
+
+  if (!billing) {
+    return null;
+  }
+  const next = nextTierInfo(billing.tier);
+  if (!next) {
+    return null;
+  }
+
+  const handleClick = () => {
+    setTab("billing");
+    setSubPage(true);
+    detach(openManage(true), Reason.DomCallback);
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      className="flex w-full items-center gap-3 rounded-lg p-2.5 text-left transition-colors hover:bg-muted/30"
+      style={{
+        border: "0.7px solid hsl(var(--gray-300))",
+        backgroundColor: "hsl(var(--card))",
+        boxShadow:
+          "0 1px 2px hsl(220 12% 20% / 0.04), 0 4px 12px hsl(220 12% 20% / 0.03)",
+      }}
+    >
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-foreground">Get {next.label}</p>
+        <p className="text-[11px] text-muted-foreground mt-0.5">
+          More credits & active agents
+        </p>
+      </div>
+      <img
+        src={next.img}
+        alt={next.label}
+        className="h-14 w-14 shrink-0 object-contain -my-3"
+      />
+    </button>
+  );
+}
+
 export function ZeroSidebar() {
   // Read all data from signals directly
   const activeId = useGet(zeroActiveId$);
@@ -818,6 +886,7 @@ export function ZeroSidebar() {
   };
   const managePinnedOpen = useGet(managePinnedDialogOpen$);
   const setManagePinnedOpen = useSet(setManagePinnedDialogOpen$);
+  // Feature gates
   const features = useLastResolved(featureSwitch$);
 
   // Compute selectedAgentIdFromChat for grey highlight
@@ -1015,6 +1084,11 @@ export function ZeroSidebar() {
           />
         </nav>
 
+        {/* Upgrade card */}
+        <div className="px-2">
+          <SidebarUpgradeCard />
+        </div>
+
         {/* Footer nav */}
         <div className="p-2">
           <div className="flex flex-col gap-1">
@@ -1050,6 +1124,7 @@ export function ZeroSidebar() {
                 <span className="truncate">{label}</span>
               </Link>
             ))}
+            <div className="h-px bg-border/30 mx-1 my-1" />
             {/* Account dropdown */}
             <AccountDropdown onAccountAction={onAccountAction} />
           </div>
@@ -1066,6 +1141,9 @@ export function ZeroSidebar() {
         onPinnedIdsChange={setPinnedIds}
         saving={savingPinned}
       />
+
+      {/* Billing dialog */}
+      <BillingDialog />
     </VM0ClerkProvider>
   );
 }

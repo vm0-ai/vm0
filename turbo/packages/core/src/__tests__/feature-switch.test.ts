@@ -51,14 +51,16 @@ describe("isFeatureEnabled", () => {
   });
 
   it("should return false for disabled switch without context", async () => {
-    await expect(isFeatureEnabled(FeatureSwitchKey.Pricing)).resolves.toBe(
-      false,
-    );
+    await expect(
+      isFeatureEnabled(FeatureSwitchKey.AhrefsConnector),
+    ).resolves.toBe(false);
   });
 
   it("should return false for disabled switch with non-matching userId", async () => {
     await expect(
-      isFeatureEnabled(FeatureSwitchKey.Pricing, { userId: "some-user" }),
+      isFeatureEnabled(FeatureSwitchKey.AhrefsConnector, {
+        userId: "some-user",
+      }),
     ).resolves.toBe(false);
   });
 
@@ -109,8 +111,7 @@ describe("getAllFeatureStates", () => {
     const states = await getAllFeatureStates();
     // Globally enabled switches should be true
     expect(states[FeatureSwitchKey.Dummy]).toBe(true);
-    // Disabled switches without matching user/email should be false
-    expect(states[FeatureSwitchKey.Pricing]).toBe(false);
+    expect(states[FeatureSwitchKey.Pricing]).toBe(true);
   });
 
   it("should enable switches when orgId matches enabledOrgIdHashes", async () => {
@@ -118,7 +119,6 @@ describe("getAllFeatureStates", () => {
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
     // Switches with STAFF_ORG_ID_HASHES should be true
-    expect(states[FeatureSwitchKey.Pricing]).toBe(true);
     expect(states[FeatureSwitchKey.AhrefsConnector]).toBe(true);
     // Globally enabled should still be true
     expect(states[FeatureSwitchKey.Dummy]).toBe(true);
@@ -130,7 +130,6 @@ describe("getAllFeatureStates", () => {
     const states = await getAllFeatureStates({
       orgId: "org_nonexistent",
     });
-    expect(states[FeatureSwitchKey.Pricing]).toBe(false);
     expect(states[FeatureSwitchKey.AhrefsConnector]).toBe(false);
   });
 });

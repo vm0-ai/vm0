@@ -52,7 +52,7 @@ export function OrgProviderDialog() {
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="font-normal leading-7">
-              Organization Model Provider
+              Workspace Model Provider
             </DialogTitle>
           </DialogHeader>
         </DialogContent>
@@ -79,16 +79,16 @@ export function OrgProviderDialog() {
   const isMultiAuth = shape === "multi-auth";
   const providerHelpText = "helpText" in config ? config.helpText : undefined;
   const titleText = isMultiAuth
-    ? `${isEdit ? "Edit" : "Add"} ${label} provider (Organization)`
+    ? `${isEdit ? "Edit" : "Add"} ${label} provider (Workspace)`
     : isEdit
-      ? `Edit organization ${label}`
-      : `Add organization ${label}`;
+      ? `Edit workspace ${label}`
+      : `Add workspace ${label}`;
   const descriptionText =
     isMultiAuth && providerHelpText
       ? providerHelpText.replace(/\n/g, " ")
       : isEdit
-        ? `Update the organization ${label}${subtitleSuffix}`
-        : `Add an organization-level ${label}${subtitleSuffix} for all members`;
+        ? `Update the workspace ${label}${subtitleSuffix}`
+        : `Add a workspace-level ${label}${subtitleSuffix} for all members`;
 
   return (
     <Dialog open={dialog.open} onOpenChange={() => close()}>

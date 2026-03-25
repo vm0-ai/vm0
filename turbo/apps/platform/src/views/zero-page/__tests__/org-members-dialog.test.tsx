@@ -65,7 +65,7 @@ describe("org members - invite dialog loading state", () => {
     });
 
     // Open invite dialog
-    fireEvent.click(screen.getByRole("button", { name: /Invite/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Add member/i }));
     await waitFor(() => {
       expect(
         screen.getByRole("heading", { name: "Invite member" }),
@@ -117,7 +117,7 @@ describe("org members - invite dialog loading state", () => {
       expect(screen.getByText("admin@example.com")).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /Invite/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Add member/i }));
     await waitFor(() => {
       expect(
         screen.getByRole("heading", { name: "Invite member" }),
@@ -161,7 +161,7 @@ describe("org members - invite dialog loading state", () => {
       expect(screen.getByText("admin@example.com")).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /Invite/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Add member/i }));
     await waitFor(() => {
       expect(
         screen.getByRole("heading", { name: "Invite member" }),
