@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { program } from "../zero";
+import { program, registerZeroCommands } from "../zero";
 
 describe("zero CLI program", () => {
+  registerZeroCommands(program);
   const commandNames = program.commands.map((cmd) => cmd.name());
 
   it("should be named 'zero'", () => {
