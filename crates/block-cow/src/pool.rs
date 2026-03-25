@@ -155,6 +155,13 @@ impl BaseImagePool {
             }
         };
 
+        if entry.refcount == 0 {
+            warn!(
+                base = %base_key.display(),
+                "base image pool: release called with refcount already 0"
+            );
+            return Ok(());
+        }
         entry.refcount -= 1;
         if entry.refcount == 0 {
             info!(

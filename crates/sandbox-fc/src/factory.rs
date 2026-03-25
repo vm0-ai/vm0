@@ -412,6 +412,9 @@ impl SandboxFactory for FirecrackerFactory {
         // be exiting after kill_process_group + child.wait() — the outer sudo
         // exits first while the inner process releases file descriptors.
         // Retry a few times to let it finish.
+        // Destroy runs synchronous subprocesses (dmsetup remove, losetup -d)
+        // without spawn_blocking.  Unlike create (hot path, concurrent), destroy
+        // runs after the sandbox is dead — blocking ~100ms per attempt is acceptable.
         let mut cow_destroyed = false;
         for attempt in 0..DESTROY_RETRIES {
             match sandbox.cow_device.destroy() {
