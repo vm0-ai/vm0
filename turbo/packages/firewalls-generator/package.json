@@ -63,6 +63,7 @@
     "generate:neon": "tsx src/index.ts neon",
     "generate:notion": "tsx src/index.ts notion",
     "generate:openai": "tsx src/index.ts openai",
+    "generate:pdfco": "tsx src/index.ts pdfco",
     "generate:perplexity": "tsx src/index.ts perplexity",
     "generate:plausible": "tsx src/index.ts plausible",
     "generate:posthog": "tsx src/index.ts posthog",
