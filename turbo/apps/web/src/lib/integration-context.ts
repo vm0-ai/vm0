@@ -39,6 +39,7 @@ export function buildZeroCliGuidance(): string {
     "Tip: run `alias zero='npx -p @vm0/cli zero'` first, then use `zero <command>` for brevity.",
     "Run `npx -p @vm0/cli zero --help` to see all available commands.",
     "Do NOT use /loop or cron tools (CronCreate, CronList, CronDelete) — they are not available.",
+    "For recurring or scheduled tasks, use the zero schedule CLI.",
   ].join("\n");
 }
 
