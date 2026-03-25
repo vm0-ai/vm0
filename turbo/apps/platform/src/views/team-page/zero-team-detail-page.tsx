@@ -14,7 +14,7 @@ export function ZeroTeamDetailPage({ agentId }: { agentId: string | null }) {
     defaultAgentIdLoadable.state === "hasData"
       ? defaultAgentIdLoadable.data
       : null;
-  const isDefaultAgent = agentId != null && agentId === defaultAgentId;
+  const isDefaultAgent = agentId !== null && agentId === defaultAgentId;
 
   const avatarIndex = useGet(zeroAvatarIndex$);
   const zeroAvatarSrc = ZERO_AVATARS[avatarIndex] ?? ZERO_AVATARS[0];
