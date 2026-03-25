@@ -66,6 +66,7 @@ import { neonFirewall } from "./neon.generated";
 import { notionFirewall } from "./notion.generated";
 import { openaiFirewall } from "./openai.generated";
 import { pdfcoFirewall } from "./pdfco.generated";
+import { pdforgeFirewall } from "./pdforge.generated";
 import { perplexityFirewall } from "./perplexity.generated";
 import { plausibleFirewall } from "./plausible.generated";
 import { posthogFirewall } from "./posthog.generated";
@@ -159,6 +160,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   notion: notionFirewall,
   openai: openaiFirewall,
   pdfco: pdfcoFirewall,
+  pdforge: pdforgeFirewall,
   perplexity: perplexityFirewall,
   plausible: plausibleFirewall,
   posthog: posthogFirewall,
