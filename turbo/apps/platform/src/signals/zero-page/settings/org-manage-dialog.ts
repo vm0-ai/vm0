@@ -3,6 +3,7 @@ import { clerk$ } from "../../auth.ts";
 import { detach, onRef, Reason } from "../../utils.ts";
 import { searchParams$, updateSearchParams$ } from "../../route.ts";
 import { reloadBillingStatus$ } from "../billing.ts";
+import { isOrgAdmin$ } from "../../org.ts";
 import {
   initProfileName$,
   setActiveTab$,
@@ -46,9 +47,19 @@ export const checkSettingsParam$ = command(
       credits: "usage",
       invoices: "invoices",
     };
+    const ADMIN_ONLY_TABS = new Set<OrgManageTab>([
+      "billing",
+      "usage",
+      "invoices",
+      "providers",
+    ]);
     const tab = settingsTabMap[settingsValue];
     if (tab) {
-      set(setActiveTab$, tab);
+      const isAdmin = await get(isOrgAdmin$);
+      signal.throwIfAborted();
+      const resolvedTab =
+        !isAdmin && ADMIN_ONLY_TABS.has(tab) ? "general" : tab;
+      set(setActiveTab$, resolvedTab);
       await set(setOrgManageDialogOpen$, true, signal);
     }
 

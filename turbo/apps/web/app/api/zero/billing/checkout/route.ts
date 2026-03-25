@@ -34,7 +34,13 @@ const router = tsr.router(zeroBillingCheckoutContract, {
     if (isAuthError(authCtx)) return authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org, member } = await resolveOrg(authCtx, orgSlug);
+    if (member.role !== "admin") {
+      return createErrorResponse(
+        "FORBIDDEN",
+        "Only org admins can manage billing",
+      );
+    }
 
     const priceId =
       body.tier === "pro" ? ZERO_PRO_PLAN_PRICE_ID : ZERO_MAX_PLAN_PRICE_ID;

@@ -104,6 +104,26 @@ describe("POST /api/zero/billing/portal", () => {
     expect(response.status).toBe(400);
   });
 
+  it("returns 403 for non-admin member", async () => {
+    mockClerk({
+      userId: user.userId,
+      orgId: user.orgId,
+      orgRole: "org:member",
+    });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/billing/portal",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ returnUrl: "http://localhost/settings" }),
+      },
+    );
+    const response = await POST(request);
+
+    expect(response.status).toBe(403);
+  });
+
   it("returns portal URL on success", async () => {
     await updateOrgStripeFields(user.orgId, {
       stripeCustomerId: uniqueId("cus-portal"),

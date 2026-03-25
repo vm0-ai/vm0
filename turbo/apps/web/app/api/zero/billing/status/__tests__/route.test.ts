@@ -100,6 +100,20 @@ describe("GET /api/zero/billing/status", () => {
     expect(data.hasSubscription).toBe(true);
   });
 
+  it("returns 200 for non-admin member", async () => {
+    const { userId, orgId } = await context.setupUser({
+      prefix: "member-status",
+    });
+    mockClerk({ userId, orgId, orgRole: "org:member" });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/billing/status",
+    );
+    const response = await GET(request);
+
+    expect(response.status).toBe(200);
+  });
+
   it("returns defaults when org row does not exist", async () => {
     const newOrgId = uniqueId("org-nonexistent");
     mockClerk({

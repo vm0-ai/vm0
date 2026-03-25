@@ -29,7 +29,13 @@ const router = tsr.router(zeroBillingPortalContract, {
     if (isAuthError(authCtx)) return authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org, member } = await resolveOrg(authCtx, orgSlug);
+    if (member.role !== "admin") {
+      return createErrorResponse(
+        "FORBIDDEN",
+        "Only org admins can manage billing",
+      );
+    }
 
     const url = await createBillingPortalSession(org.orgId, body.returnUrl);
 

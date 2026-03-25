@@ -3,7 +3,7 @@ import {
   createSafeErrorHandler,
   tsr,
 } from "../../../../../src/lib/ts-rest-handler";
-import { zeroBillingInvoicesContract } from "@vm0/core";
+import { zeroBillingInvoicesContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -20,7 +20,13 @@ const router = tsr.router(zeroBillingInvoicesContract, {
     if (isAuthError(authCtx)) return authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org, member } = await resolveOrg(authCtx, orgSlug);
+    if (member.role !== "admin") {
+      return createErrorResponse(
+        "FORBIDDEN",
+        "Only org admins can view invoices",
+      );
+    }
 
     const result = await getOrgInvoices(org.orgId);
 

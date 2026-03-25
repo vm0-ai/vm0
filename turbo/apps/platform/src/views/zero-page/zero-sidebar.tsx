@@ -95,6 +95,7 @@ import {
   setBillingSubPage$,
 } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
+import { isOrgAdmin$ } from "../../signals/org.ts";
 import { BillingDialog } from "./billing-dialog.tsx";
 import {
   ChatListDialog,
@@ -792,9 +793,16 @@ function SidebarUpgradeCard() {
   const billingLoadable = useLastLoadable(billingStatusAsync$);
   const billing =
     billingLoadable.state === "hasData" ? billingLoadable.data : null;
+  const isAdminLoadable = useLoadable(isOrgAdmin$);
+  const isAdmin =
+    isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
   const setTab = useSet(setActiveTab$);
   const setSubPage = useSet(setBillingSubPage$);
   const openManage = useSet(setOrgManageDialogOpen$);
+
+  if (!isAdmin) {
+    return null;
+  }
 
   if (!billing) {
     return null;

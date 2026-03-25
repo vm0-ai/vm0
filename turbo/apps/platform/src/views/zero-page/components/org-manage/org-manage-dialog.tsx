@@ -128,7 +128,7 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
     ...BASE_SIDEBAR_GROUPS.slice(0, 1),
     ...(isAdmin ? [CONFIGURATION_GROUP] : []),
     ...BASE_SIDEBAR_GROUPS.slice(1),
-    BILLING_GROUP,
+    ...(isAdmin ? [BILLING_GROUP] : []),
   ];
 
   const meta = TAB_META[activeTab];

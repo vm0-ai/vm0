@@ -116,6 +116,29 @@ describe("POST /api/zero/billing/checkout", () => {
     expect(response.status).toBe(400);
   });
 
+  it("returns 403 for non-admin member", async () => {
+    const { userId, orgId } = await context.setupUser({
+      prefix: "member-checkout",
+    });
+    mockClerk({ userId, orgId, orgRole: "org:member" });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/billing/checkout",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tier: "pro",
+          successUrl: "https://app.vm7.ai/billing?billing=success",
+          cancelUrl: "https://app.vm7.ai/billing?billing=canceled",
+        }),
+      },
+    );
+    const response = await POST(request);
+
+    expect(response.status).toBe(403);
+  });
+
   it("returns checkout URL on success", async () => {
     stripeMocks.customersCreate.mockResolvedValue({
       id: uniqueId("cus-checkout"),

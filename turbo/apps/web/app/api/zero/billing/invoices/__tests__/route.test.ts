@@ -7,6 +7,7 @@ import {
   testContext,
   uniqueId,
 } from "../../../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import type { StripeMockFns } from "../../../../../../src/__tests__/stripe-mock";
 import { reloadEnv } from "../../../../../../src/env";
 
@@ -51,6 +52,20 @@ describe("GET /api/zero/billing/invoices", () => {
     reloadEnv();
 
     stripeMocks.invoicesList.mockReset();
+  });
+
+  it("returns 403 for non-admin member", async () => {
+    const { userId, orgId } = await context.setupUser({
+      prefix: "member-invoices",
+    });
+    mockClerk({ userId, orgId, orgRole: "org:member" });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/billing/invoices",
+    );
+    const response = await GET(request);
+
+    expect(response.status).toBe(403);
   });
 
   it("returns invoices for org with active subscription", async () => {
