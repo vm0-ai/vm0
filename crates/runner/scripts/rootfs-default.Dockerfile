@@ -82,7 +82,8 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
 
 # Install Google Workspace CLI for Google Workspace service access
 ARG GWS_CLI_VERSION=0.22.0
-RUN npm install -g @googleworkspace/cli@${GWS_CLI_VERSION}
+RUN npm install -g @googleworkspace/cli@${GWS_CLI_VERSION} \
+    && npm cache clean --force
 
 # Create 'user' account (UID 1000) matching E2B sandbox default
 # - Home directory at /home/user
