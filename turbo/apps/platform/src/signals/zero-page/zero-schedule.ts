@@ -161,9 +161,9 @@ export const zeroScheduleEntries$ = computed((get) => {
 // ---------------------------------------------------------------------------
 
 export const fetchZeroSchedules$ = command(
-  async ({ get, set }, _signal: AbortSignal) => {
+  async ({ get, set }, signal: AbortSignal) => {
     const status = await get(zeroOnboardingStatus$);
-    _signal.throwIfAborted();
+    signal.throwIfAborted();
     const composeId = status.defaultAgentId;
     if (!composeId) {
       set(internalSchedules$, []);
@@ -173,6 +173,7 @@ export const fetchZeroSchedules$ = command(
     try {
       const client = get(zeroClient$)(zeroSchedulesMainContract);
       const result = await client.list();
+      signal.throwIfAborted();
 
       if (result.status !== 200) {
         set(internalSchedules$, []);
@@ -511,13 +512,14 @@ export const deleteOrgSchedule$ = command(
   async (
     { get, set },
     params: { name: string; agentId: string },
-    _signal: AbortSignal,
+    signal: AbortSignal,
   ) => {
     const client = get(zeroClient$)(zeroSchedulesByNameContract);
     const result = await client.delete({
       params: { name: params.name },
       query: { agentId: params.agentId },
     });
+    signal.throwIfAborted();
 
     if (result.status !== 204) {
       const msg =
@@ -528,7 +530,7 @@ export const deleteOrgSchedule$ = command(
     }
 
     toast.success("Schedule deleted");
-    await set(fetchAllOrgSchedules$, _signal);
+    await set(fetchAllOrgSchedules$, signal);
   },
 );
 
