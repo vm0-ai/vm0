@@ -78,16 +78,6 @@ if (
   process.argv[1]?.endsWith("zero.ts") ||
   process.argv[1]?.endsWith("zero")
 ) {
-  // Handle EPIPE gracefully (e.g., `zero schedule list | head`)
-  process.stdout.on("error", (err) => {
-    if (err.code === "EPIPE") process.exit(0);
-    throw err;
-  });
-  process.stderr.on("error", (err) => {
-    if (err.code === "EPIPE") process.exit(0);
-    throw err;
-  });
-
   configureGlobalProxyFromEnv();
   applyCapabilityVisibility(program);
   program.parse();
