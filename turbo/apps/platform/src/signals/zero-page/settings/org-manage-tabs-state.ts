@@ -10,7 +10,7 @@ export type OrgManageTab =
   | "providers"
   | "members"
   | "billing"
-  | "credits"
+  | "usage"
   | "invoices";
 
 const internalActiveTab$ = state<OrgManageTab>("general");
@@ -129,6 +129,18 @@ export const deleteConfirm$ = computed((get) => get(internalDeleteConfirm$));
 
 export const setDeleteConfirm$ = command(({ set }, value: string) => {
   set(internalDeleteConfirm$, value);
+});
+
+// ---------------------------------------------------------------------------
+// org-billing-tab: sub-page
+// ---------------------------------------------------------------------------
+
+const internalBillingSubPage$ = state(false);
+
+export const billingSubPage$ = computed((get) => get(internalBillingSubPage$));
+
+export const setBillingSubPage$ = command(({ set }, value: boolean) => {
+  set(internalBillingSubPage$, value);
 });
 
 // ---------------------------------------------------------------------------

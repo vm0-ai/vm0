@@ -7,7 +7,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@vm0/ui/components/ui/dialog";
-import { Button } from "@vm0/ui";
+import { Button, Input, Switch } from "@vm0/ui";
 import { IconCheck } from "@tabler/icons-react";
 import {
   type BillingTier,
@@ -114,12 +114,19 @@ function PlanCard({
 
 const CREDITS_PER_DOLLAR = 1000;
 
-function AutoRechargeSection({
+const settingsCardBorder = {
+  border: "0.7px solid hsl(var(--gray-400))",
+} as const;
+
+export function AutoRechargeSection({
   currentTier,
   loading,
+  variant = "dialog",
 }: {
   currentTier: BillingTier;
   loading: boolean;
+  /** `settings`: General-tab style section + card (org manage). `dialog`: compact block for billing modal. */
+  variant?: "dialog" | "settings";
 }) {
   const save = useSet(saveAutoRecharge$);
   const enabled = useGet(autoRechargeEnabled$);
@@ -134,8 +141,9 @@ function AutoRechargeSection({
   }
 
   const amountNum = Number(amount);
+  const amountParsed = Number.isFinite(amountNum) ? amountNum : 0;
   const dollarAmount =
-    amountNum > 0 ? (amountNum / CREDITS_PER_DOLLAR).toFixed(2) : "0.00";
+    amountParsed > 0 ? (amountParsed / CREDITS_PER_DOLLAR).toFixed(2) : "0.00";
 
   const canSave =
     !loading &&
@@ -150,6 +158,117 @@ function AutoRechargeSection({
       Reason.DomCallback,
     );
   };
+
+  const persistIfValid = () => {
+    if (canSave) {
+      handleSave();
+    }
+  };
+
+  const inputRowClass =
+    "h-9 w-[200px] shrink-0 rounded-lg border-[0.7px] border-[hsl(var(--gray-400))]";
+
+  if (variant === "settings") {
+    return (
+      <section className="flex flex-col gap-3">
+        <h3 className="text-sm font-medium text-foreground">Auto-recharge</h3>
+        <div
+          className="overflow-hidden rounded-xl bg-card"
+          style={settingsCardBorder}
+        >
+          <div className="flex items-center justify-between gap-4 px-5 py-4">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground">
+                Automatic top-ups
+              </p>
+              <p className="text-[13px] text-muted-foreground mt-0.5">
+                Purchase credits when your balance falls below a threshold.
+              </p>
+            </div>
+            <Switch
+              checked={enabled}
+              onCheckedChange={(v) => {
+                setEnabled(v);
+                if (!v) {
+                  detach(save({ enabled: false }), Reason.DomCallback);
+                  return;
+                }
+                const t = Number(threshold);
+                const a = Number(amount);
+                if (!loading && t > 0 && a >= CREDITS_PER_DOLLAR) {
+                  detach(
+                    save({ enabled: true, threshold: t, amount: a }),
+                    Reason.DomCallback,
+                  );
+                }
+              }}
+              disabled={loading}
+              className="shrink-0"
+              aria-label="Enable auto-recharge"
+            />
+          </div>
+          {enabled && (
+            <>
+              <div className="h-px bg-border/40 mx-5" />
+              <div className="flex items-center justify-between gap-4 px-5 py-4">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground">
+                    When credits drop below
+                  </p>
+                  <p className="text-[13px] text-muted-foreground mt-0.5">
+                    Trigger a purchase when your credit balance goes under this
+                    number.
+                  </p>
+                </div>
+                <Input
+                  id="org-auto-recharge-threshold"
+                  type="number"
+                  min={1}
+                  value={threshold}
+                  onChange={(e) => setThreshold(e.target.value)}
+                  onBlur={() => persistIfValid()}
+                  placeholder="e.g. 2000"
+                  className={inputRowClass}
+                  aria-label="Credit threshold for auto-recharge"
+                />
+              </div>
+              <div className="h-px bg-border/40 mx-5" />
+              <div className="flex items-center justify-between gap-4 px-5 py-4">
+                <div className="min-w-0 flex flex-col gap-1">
+                  <span className="text-xl font-semibold tabular-nums tracking-tight text-foreground">
+                    ${dollarAmount}
+                  </span>
+                  <p className="text-[13px] font-normal text-muted-foreground">
+                    Recharge amount
+                  </p>
+                </div>
+                <div className="relative w-[200px] shrink-0">
+                  <Input
+                    id="org-auto-recharge-amount"
+                    type="number"
+                    min={CREDITS_PER_DOLLAR}
+                    step={CREDITS_PER_DOLLAR}
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    onBlur={() => persistIfValid()}
+                    placeholder="100000"
+                    className={`${inputRowClass} pr-[4.25rem] tabular-nums`}
+                    aria-label="Auto-recharge credit amount in credits"
+                  />
+                  <span
+                    className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[13px] text-muted-foreground"
+                    aria-hidden
+                  >
+                    credits
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </section>
+    );
+  }
 
   return (
     <div className="border-t border-border pt-4 mt-4">

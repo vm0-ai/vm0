@@ -4,15 +4,10 @@ import {
   zeroBillingCheckoutContract,
   zeroBillingPortalContract,
   zeroBillingAutoRechargeContract,
-  zeroBillingInvoicesContract,
   type BillingStatusResponse,
 } from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
 import { logger } from "../log.ts";
-import {
-  setSelectedPlanTier$,
-  syncAutoRechargeForm$,
-} from "./billing-dialog-state.ts";
 
 const log = logger("billing");
 
@@ -23,14 +18,6 @@ const log = logger("billing");
 export type BillingTier = "free" | "pro" | "team";
 
 export type BillingStatus = BillingStatusResponse;
-
-function isBillingTier(tier: string): tier is BillingTier {
-  return tier === "free" || tier === "pro" || tier === "team";
-}
-
-function toBillingTier(tier: string): BillingTier {
-  return isBillingTier(tier) ? tier : "free";
-}
 
 /** Extract error message from a ts-rest error response body. */
 function getErrorMessage(body: unknown): string | undefined {
@@ -59,11 +46,7 @@ const billingReload$ = state(0);
 // ---------------------------------------------------------------------------
 
 export const billingDialogOpen$ = computed((get) => get(internalDialogOpen$));
-export const checkoutLoading$ = computed((get) =>
-  get(internalCheckoutLoading$),
-);
-export const portalLoading$ = computed((get) => get(internalPortalLoading$));
-/** @deprecated Use checkoutLoading$ or portalLoading$ instead */
+/** @deprecated Use more specific loading signals instead */
 export const billingDialogLoading$ = computed(
   (get) => get(internalCheckoutLoading$) || get(internalPortalLoading$),
 );
@@ -90,14 +73,6 @@ export const billingStatusAsync$ = computed(async (get) => {
 /** Force a refetch of billing status (e.g. after onboarding creates the org row). */
 export const reloadBillingStatus$ = command(({ set }) => {
   set(billingReload$, (x) => x + 1);
-});
-
-export const openBillingDialog$ = command(async ({ get, set }) => {
-  const status = await get(billingStatusAsync$);
-  const currentTier = toBillingTier(status.tier);
-  set(setSelectedPlanTier$, currentTier);
-  set(syncAutoRechargeForm$, status.autoRecharge);
-  set(internalDialogOpen$, true);
 });
 
 export const closeBillingDialog$ = command(({ set }) => {
@@ -180,20 +155,3 @@ export const saveAutoRecharge$ = command(
     return { ok: true };
   },
 );
-
-// ---------------------------------------------------------------------------
-// Invoices
-// ---------------------------------------------------------------------------
-
-/**
- * Async computed signal that fetches invoices for the current org.
- */
-export const invoicesAsync$ = computed(async (get) => {
-  const createClient = get(zeroClient$);
-  const client = createClient(zeroBillingInvoicesContract);
-  const result = await client.get();
-  if (result.status !== 200) {
-    throw new Error(`Failed to fetch invoices: ${result.status}`);
-  }
-  return result.body;
-});

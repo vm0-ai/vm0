@@ -49,7 +49,7 @@ import {
   setInviteTouched$,
 } from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
 
-const ROW_GRID = "grid grid-cols-[1fr_8rem_6rem_3rem] gap-x-6 items-center";
+const ROW_GRID = "grid grid-cols-[1fr_6rem_5.5rem_2rem] gap-x-4 items-center";
 
 function displayName(m: OrgMember): string {
   const parts = [m.firstName, m.lastName].filter(Boolean);
@@ -171,7 +171,7 @@ export function OrgMembersTab() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-3">
-        <div className="relative w-80">
+        <div className="relative flex-1">
           <IconSearch
             size={15}
             stroke={1.5}
@@ -189,21 +189,21 @@ export function OrgMembersTab() {
       </div>
 
       <div
-        className="overflow-hidden rounded-[10px] bg-card"
+        className="overflow-hidden rounded-xl bg-card"
         style={{ border: "0.7px solid hsl(var(--gray-400))" }}
       >
         <div
           className={cn(
             ROW_GRID,
-            "sticky top-0 z-10 px-4 py-3 text-sm font-medium text-foreground bg-card",
+            "sticky top-0 z-10 px-5 py-2.5 text-[13px] font-medium text-foreground bg-card",
           )}
         >
-          <div className="text-left">User</div>
-          <div className="text-left">Joined</div>
-          <div className="text-left">Role</div>
+          <div>User</div>
+          <div>Joined</div>
+          <div>Role</div>
           <div />
         </div>
-        <div className="h-px bg-border/40 mx-4" />
+        <div className="h-px bg-border/40 mx-5" />
 
         {isLoading && (
           <>
@@ -226,7 +226,7 @@ export function OrgMembersTab() {
         {!isLoading &&
           filtered.map((m, i) => (
             <div key={m.userId}>
-              {i > 0 && <div className="h-px bg-border/40 mx-4" />}
+              {i > 0 && <div className="h-px bg-border/40 mx-5" />}
               <MemberRow
                 member={m}
                 isCurrentUser={m.userId === currentUserId}
@@ -241,7 +241,7 @@ export function OrgMembersTab() {
           filteredPending.map((inv, i) => (
             <div key={inv.email}>
               {(i > 0 || filtered.length > 0) && (
-                <div className="h-px bg-border/40 mx-4" />
+                <div className="h-px bg-border/40 mx-5" />
               )}
               <PendingInvitationRow invitation={inv} />
             </div>
@@ -301,14 +301,14 @@ function InviteDialog({
       <DialogTrigger asChild>
         <Button size="sm" className="gap-1.5 rounded-lg">
           <IconPlus size={14} stroke={2} />
-          Invite
+          Add member
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Invite member</DialogTitle>
           <DialogDescription>
-            Send an invitation to join this organization.
+            Send an invitation to join this workspace.
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-1.5">
@@ -366,7 +366,7 @@ function MemberRow({
   const canSelfDemote = isAdmin && isCurrentUser && member.role === "admin";
 
   return (
-    <div className={cn(ROW_GRID, "py-3 px-4")}>
+    <div className={cn(ROW_GRID, "py-3 px-5")}>
       <div className="flex items-center gap-3 min-w-0">
         <MemberAvatar
           imageUrl={member.imageUrl}
@@ -389,20 +389,26 @@ function MemberRow({
           </p>
         </div>
       </div>
-      <div className="text-left text-sm text-muted-foreground tabular-nums">
+      <div className="text-[13px] text-muted-foreground tabular-nums">
         {formatDate(member.joinedAt)}
       </div>
-      <div className="text-left">
+      <div>
         <span
-          className="inline-flex items-center gap-1.5 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground"
+          className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground"
           style={{
             border: "0.7px solid hsl(var(--gray-400))",
             backgroundColor: "hsl(var(--gray-0))",
           }}
         >
-          {member.role === "admin" && (
-            <IconShieldCheck size={12} stroke={1.8} className="text-blue-500" />
-          )}
+          <IconShieldCheck
+            size={12}
+            stroke={1.8}
+            className={
+              member.role === "admin"
+                ? "text-blue-500"
+                : "text-muted-foreground/40"
+            }
+          />
           {member.role === "admin" ? "Admin" : "Member"}
         </span>
       </div>
@@ -571,8 +577,8 @@ function MemberActions({
         <DialogHeader>
           <DialogTitle>Remove member?</DialogTitle>
           <DialogDescription>
-            {member.email} will be removed from this organization and lose
-            access to all resources.
+            {member.email} will be removed from this workspace and lose access
+            to all resources.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
@@ -606,7 +612,7 @@ function PendingInvitationRow({
   const initial = invitation.email.charAt(0).toUpperCase();
 
   return (
-    <div className={cn(ROW_GRID, "py-3 px-4 opacity-60")}>
+    <div className={cn(ROW_GRID, "py-3 px-5")}>
       <div className="flex items-center gap-3 min-w-0">
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted/50 text-xs font-medium text-muted-foreground border border-dashed border-border">
           {initial}
@@ -615,18 +621,18 @@ function PendingInvitationRow({
           <p className="text-sm text-foreground truncate">{invitation.email}</p>
         </div>
       </div>
-      <div className="text-left text-sm text-muted-foreground tabular-nums">
+      <div className="text-[13px] text-muted-foreground tabular-nums">
         {formatDate(invitation.createdAt)}
       </div>
-      <div className="text-left">
+      <div>
         <span
-          className="inline-flex items-center gap-1.5 rounded-lg px-2 py-0.5 text-xs font-medium text-amber-600"
+          className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground"
           style={{
             border: "0.7px solid hsl(var(--gray-400))",
             backgroundColor: "hsl(var(--gray-0))",
           }}
         >
-          <IconClock size={12} stroke={1.8} />
+          <IconClock size={12} stroke={1.8} className="text-amber-500" />
           Pending
         </span>
       </div>
@@ -660,7 +666,7 @@ function MemberAvatar({
 
 function MemberRowSkeleton() {
   return (
-    <div className={cn(ROW_GRID, "py-3 px-4 animate-pulse")}>
+    <div className={cn(ROW_GRID, "py-3 px-5 animate-pulse")}>
       <div className="flex items-center gap-3">
         <div className="h-8 w-8 shrink-0 rounded-lg bg-muted/50" />
         <div className="flex flex-col gap-1">

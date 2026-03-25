@@ -690,8 +690,8 @@ export function MemberWelcome({
               </DialogTitle>
             </DialogHeader>
             <p className="text-sm text-muted-foreground leading-relaxed mt-1 mb-6">
-              Your organization uses these tools with {agentName}. Connect the
-              ones you use to get started.
+              Your workspace uses these tools with {agentName}. Connect the ones
+              you use to get started.
             </p>
             {memberConnectors.length > 0 ? (
               <div className="w-full px-4 flex-1 min-h-0">

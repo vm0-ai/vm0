@@ -3,6 +3,7 @@ import { type MemberUsage, type UsageMembersResponse } from "@vm0/core";
 import { getOrgBillingPeriod } from "../org/org-cache-service";
 import { creditUsage } from "../../db/schema/credit-usage";
 import { userCache } from "../../db/schema/user-cache";
+import { orgMembersMetadata } from "../../db/schema/org-members-metadata";
 import { clerkClient } from "@clerk/nextjs/server";
 
 /**
@@ -104,6 +105,21 @@ export async function getUsageMembers(
     }
   }
 
+  // Fetch credit caps for all members in one query
+  const capRows = await db
+    .select({
+      userId: orgMembersMetadata.userId,
+      creditCap: orgMembersMetadata.creditCap,
+    })
+    .from(orgMembersMetadata)
+    .where(
+      and(
+        eq(orgMembersMetadata.orgId, orgId),
+        inArray(orgMembersMetadata.userId, userIds),
+      ),
+    );
+  const capMap = new Map(capRows.map((r) => [r.userId, r.creditCap]));
+
   const members: MemberUsage[] = rows.map((row) => ({
     userId: row.userId,
     email: emailMap.get(row.userId) ?? "unknown",
@@ -112,6 +128,7 @@ export async function getUsageMembers(
     cacheReadInputTokens: Number(row.cacheReadInputTokens),
     cacheCreationInputTokens: Number(row.cacheCreationInputTokens),
     creditsCharged: Number(row.creditsCharged),
+    creditCap: capMap.get(row.userId) ?? null,
   }));
 
   // Sort by credits charged descending

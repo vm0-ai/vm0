@@ -2,7 +2,6 @@ import { command, computed, state } from "ccstate";
 import {
   zeroModelProvidersMainContract,
   zeroModelProvidersByTypeContract,
-  zeroModelProvidersDefaultContract,
   type UpsertModelProviderRequest,
   type ModelProviderType,
 } from "@vm0/core";
@@ -44,27 +43,6 @@ export const createOrgModelProvider$ = command(
     set(internalReloadOrgModelProviders$, (x) => x + 1);
 
     return result.body;
-  },
-);
-
-/**
- * Set an org model provider as the default (admin only).
- */
-export const setDefaultOrgModelProvider$ = command(
-  async ({ get, set }, type: ModelProviderType) => {
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroModelProvidersDefaultContract);
-    const result = await client.setDefault({
-      params: { type },
-    });
-
-    if (result.status !== 200) {
-      throw new Error(
-        `Failed to set default org model provider: ${result.status}`,
-      );
-    }
-
-    set(internalReloadOrgModelProviders$, (x) => x + 1);
   },
 );
 
