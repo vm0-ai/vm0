@@ -199,6 +199,14 @@ async function saveOrgThreadSession(
   return newSessionId ?? existingSessionId;
 }
 
+function describePayload(raw: unknown): string {
+  const t = typeof raw;
+  if (!raw || t !== "object") return `Invalid payload (type=${t})`;
+  const keys = Object.keys(raw as Record<string, unknown>);
+  const json = JSON.stringify(raw)?.slice(0, 200);
+  return `Invalid or missing payload: keys=${keys.join(",")} json=${json}`;
+}
+
 /**
  * POST /api/internal/callbacks/slack/org
  *
@@ -214,10 +222,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const payload = parsePayload(result.data.payload);
   if (!payload) {
-    return errorResponse(
-      `Invalid or missing payload: type=${typeof result.data.payload} keys=${result.data.payload && typeof result.data.payload === "object" ? Object.keys(result.data.payload as Record<string, unknown>).join(",") : "N/A"} json=${JSON.stringify(result.data.payload)?.slice(0, 200)}`,
-      400,
-    );
+    return errorResponse(describePayload(result.data.payload), 400);
   }
 
   log.debug("Processing org Slack callback", {
