@@ -6,21 +6,25 @@ use crate::error::Result;
 /// Attach a file to a free loop device. Returns the loop device path
 /// (e.g. `/dev/loop0`).
 ///
-/// Read-only base loops use buffered I/O (no `--direct-io`) so the host
-/// page cache absorbs random reads from the guest — critical for EBS
-/// where uncached 4KB IOPS are limited to ~3000.  The COW loop uses
-/// `--direct-io=on` to avoid double-caching writes (loop block cache +
-/// file page cache).
+/// Attach without `--direct-io` so all I/O goes through the host page
+/// cache.  This is critical on EBS-backed storage where direct IOPS are
+/// limited (~3000 baseline for gp3).  Without page cache buffering:
+///
+/// - **Reads**: every guest read through dm-snapshot hits EBS; chromium
+///   startup (~100K random 4KB reads) would take ~30s vs <1s from cache.
+/// - **Writes**: every dm-snapshot COW operation (read original chunk +
+///   write new chunk) hits EBS synchronously; chromium startup writes
+///   ~46K chunks ≈ ~93K IOPS ≈ 30s.
+///
+/// The old overlay approach used regular file I/O (no loop device), so
+/// reads and writes naturally went through page cache.  Omitting
+/// `--direct-io` gives the same buffering behavior through the loop
+/// device's block cache + backing file's page cache.
 pub fn attach(file_path: &Path, read_only: bool) -> Result<PathBuf> {
     let file_str = file_path.to_string_lossy();
     let mut args = vec!["--find", "--show"];
     if read_only {
-        // Read-only base: rely on file page cache for reads.
-        // Caller should prefetch the file to warm the cache.
         args.push("--read-only");
-    } else {
-        // Writable COW: direct-io avoids double-caching writes.
-        args.push("--direct-io=on");
     }
     args.push(&file_str);
 
