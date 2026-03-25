@@ -6,6 +6,7 @@ import {
   creditsMemberList$,
   type MemberCapSetting,
 } from "../../../../signals/zero-page/member-credit-caps.ts";
+import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { Button, Input } from "@vm0/ui";
 
 const sectionCardStyle = {

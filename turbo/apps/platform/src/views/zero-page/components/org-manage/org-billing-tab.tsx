@@ -1,6 +1,7 @@
 import { type ComponentProps, useState } from "react";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { IconExternalLink, IconCrown, IconLoader2 } from "@tabler/icons-react";
+import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
   billingStatusAsync$,
   billingDialogLoading$,
@@ -270,6 +271,7 @@ export function OrgBillingTab() {
   const billingLoading = useGet(billingDialogLoading$);
   const checkout = useSet(startCheckout$);
   const downgrade = useSet(startDowngrade$);
+  const pageSignal = useGet(pageSignal$);
   const [pricingOpen, setPricingOpen] = useState(false);
 
   if (billingLoadable.state === "loading") {
@@ -290,7 +292,7 @@ export function OrgBillingTab() {
 
   const handleSelectTier = (tier: "pro" | "team") => {
     setPricingOpen(false);
-    checkout(tier).catch(() => {
+    checkout(tier, pageSignal).catch(() => {
       toast.error("Failed to start checkout. Please try again.");
     });
   };
@@ -317,7 +319,7 @@ export function OrgBillingTab() {
                 style={cardBorder}
                 loading={billingLoading}
                 onClick={() => {
-                  downgrade().catch(() => {
+                  downgrade(pageSignal).catch(() => {
                     toast.error(
                       "Failed to open billing portal. Please try again.",
                     );
@@ -358,7 +360,7 @@ export function OrgBillingTab() {
                   style={cardBorder}
                   loading={billingLoading}
                   onClick={() => {
-                    downgrade().catch(() => {
+                    downgrade(pageSignal).catch(() => {
                       toast.error(
                         "Failed to open billing portal. Please try again.",
                       );

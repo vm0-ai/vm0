@@ -66,6 +66,7 @@ const setMemberCreditCap$ = command(
   async (
     { get, set },
     params: { userId: string; creditCap: number | null },
+    _signal: AbortSignal,
   ) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroMemberCreditCapContract);
