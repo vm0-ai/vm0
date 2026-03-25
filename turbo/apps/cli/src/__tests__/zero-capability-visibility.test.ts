@@ -21,6 +21,7 @@ function buildProgram(): Command {
   prog.addCommand(new Command("preference"));
   prog.addCommand(new Command("schedule"));
   prog.addCommand(new Command("secret"));
+  prog.addCommand(new Command("slack"));
   prog.addCommand(new Command("variable"));
   prog.addCommand(new Command("whoami"));
   return prog;
@@ -110,6 +111,7 @@ describe("applyCapabilityVisibility", () => {
       "connector",
       "preference",
       "secret",
+      "slack",
       "variable",
     ]);
   });
@@ -147,6 +149,20 @@ describe("applyCapabilityVisibility", () => {
     applyCapabilityVisibility(prog);
 
     expect(visibleCommandNames(prog)).toEqual(["whoami"]);
+  });
+
+  it("should show slack when slack:write capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["slack:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+    applyCapabilityVisibility(prog);
+
+    expect(visibleCommandNames(prog)).toContain("slack");
+    expect(visibleCommandNames(prog)).toContain("whoami");
   });
 
   it("should hide agent when agent:read capability is missing", () => {

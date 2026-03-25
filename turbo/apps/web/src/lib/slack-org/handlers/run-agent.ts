@@ -1,9 +1,6 @@
 import { isRunDispatchError } from "../../run";
 import { createZeroRun } from "../../zero/zero-run-service";
-import {
-  buildIntegrationContext,
-  buildSlackMessagingGuidance,
-} from "../../integration-context";
+import { buildIntegrationContext } from "../../integration-context";
 import { isApiError } from "../../errors";
 import { RUN_ERROR_GUIDANCE } from "@vm0/core";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
@@ -64,7 +61,6 @@ export async function runAgentForSlackOrg(
       buildIntegrationContext("Slack", { botUserId }),
       threadContext,
       userContext,
-      buildSlackMessagingGuidance(),
     ].filter(Boolean);
     const appendSystemPrompt =
       contextParts.length > 0 ? contextParts.join("\n\n") : undefined;
