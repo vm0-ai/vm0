@@ -69,6 +69,7 @@ export function mockChatLifecycle(options?: {
     status: string;
     prompt: string;
     error: string | null;
+    createdAt?: string;
   }[];
   threadTitle?: string | null;
 }): MockLifecycleControl {
