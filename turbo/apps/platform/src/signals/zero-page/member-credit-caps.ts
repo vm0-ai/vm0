@@ -88,8 +88,8 @@ interface MemberCapSetting {
   editMode$: State<boolean>;
   value$: State<string>;
   savingPromise$: Computed<Promise<unknown> | null>;
-  save$: Command<void, []>;
-  clearCap$: Command<void, []>;
+  save$: Command<Promise<void>, [AbortSignal]>;
+  clearCap$: Command<Promise<void>, [AbortSignal]>;
   enterEditMode$: Command<void, []>;
   exitEditMode$: Command<void, []>;
   setValue$: Command<void, [string]>;
@@ -112,10 +112,11 @@ function createMemberCapSetting(
       return;
     }
 
-    const promise = set(setMemberCreditCap$, {
-      userId: member.userId,
-      creditCap: parsed,
-    });
+    const promise = set(
+      setMemberCreditCap$,
+      { userId: member.userId, creditCap: parsed },
+      _signal,
+    );
     set(internalSavingPromise$, promise);
 
     try {
@@ -130,10 +131,11 @@ function createMemberCapSetting(
   });
 
   const clearCap$ = command(async ({ set }, _signal: AbortSignal) => {
-    const promise = set(setMemberCreditCap$, {
-      userId: member.userId,
-      creditCap: null,
-    });
+    const promise = set(
+      setMemberCreditCap$,
+      { userId: member.userId, creditCap: null },
+      _signal,
+    );
     set(internalSavingPromise$, promise);
 
     try {

@@ -41,7 +41,7 @@ describe("checkSettingsParam$", () => {
     createPushStateMock(signal);
     mockLocation({ pathname: "/", search: "?settings=usage" }, signal);
 
-    await store.set(checkSettingsParam$);
+    await store.set(checkSettingsParam$, signal);
 
     expect(store.get(orgManageDialogOpen$)).toBeTruthy();
     expect(store.get(activeTab$)).toBe("usage");
@@ -52,7 +52,7 @@ describe("checkSettingsParam$", () => {
     createPushStateMock(signal);
     mockLocation({ pathname: "/", search: "?settings=credits" }, signal);
 
-    await store.set(checkSettingsParam$);
+    await store.set(checkSettingsParam$, signal);
 
     expect(store.get(orgManageDialogOpen$)).toBeTruthy();
     expect(store.get(activeTab$)).toBe("usage");

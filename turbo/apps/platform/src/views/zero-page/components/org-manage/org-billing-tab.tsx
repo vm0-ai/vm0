@@ -6,6 +6,7 @@ import {
   IconChevronRight,
   IconCoins,
 } from "@tabler/icons-react";
+import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
   billingStatusAsync$,
   reloadBillingStatus$,
@@ -238,6 +239,7 @@ function PricingPage({
   currentTier: BillingTier;
   onBack: () => void;
 }) {
+  const pageSignal = useGet(pageSignal$);
   const loading = useGet(billingDialogLoading$);
   const checkout = useSet(startCheckout$);
   const portal = useSet(startDowngrade$);
@@ -247,10 +249,13 @@ function PricingPage({
       return;
     }
     if (planTier === "free" || tierRank(planTier) < tierRank(currentTier)) {
-      detach(portal(), Reason.DomCallback);
+      detach(portal(pageSignal), Reason.DomCallback);
       return;
     }
-    detach(checkout(planTier as "pro" | "team"), Reason.DomCallback);
+    detach(
+      checkout(planTier as "pro" | "team", pageSignal),
+      Reason.DomCallback,
+    );
   };
 
   return (
@@ -295,6 +300,7 @@ export function OrgBillingTab() {
   const pricingOpen = useGet(billingSubPage$);
   const setBillingSubPage = useSet(setBillingSubPage$);
   const setPricingOpen = (v: boolean) => setBillingSubPage(v);
+  const pageSignal = useGet(pageSignal$);
   const reloadBilling = useSet(reloadBillingStatus$);
   const portal = useSet(startDowngrade$);
   const statusLoadable = useLoadable(billingStatusAsync$);
@@ -314,7 +320,7 @@ export function OrgBillingTab() {
       : null;
 
   const openPortal = () => {
-    detach(portal(), Reason.DomCallback);
+    detach(portal(pageSignal), Reason.DomCallback);
   };
 
   if (pricingOpen) {

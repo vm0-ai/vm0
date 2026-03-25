@@ -1,4 +1,5 @@
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   Dialog,
@@ -128,6 +129,7 @@ export function AutoRechargeSection({
   /** `settings`: General-tab style section + card (org manage). `dialog`: compact block for billing modal. */
   variant?: "dialog" | "settings";
 }) {
+  const pageSignal = useGet(pageSignal$);
   const save = useSet(saveAutoRecharge$);
   const enabled = useGet(autoRechargeEnabled$);
   const threshold = useGet(autoRechargeThreshold$);
@@ -151,10 +153,15 @@ export function AutoRechargeSection({
 
   const handleSave = () => {
     detach(
-      save({
-        enabled,
-        ...(enabled ? { threshold: Number(threshold), amount: amountNum } : {}),
-      }),
+      save(
+        {
+          enabled,
+          ...(enabled
+            ? { threshold: Number(threshold), amount: amountNum }
+            : {}),
+        },
+        pageSignal,
+      ),
       Reason.DomCallback,
     );
   };
@@ -190,14 +197,20 @@ export function AutoRechargeSection({
               onCheckedChange={(v) => {
                 setEnabled(v);
                 if (!v) {
-                  detach(save({ enabled: false }), Reason.DomCallback);
+                  detach(
+                    save({ enabled: false }, pageSignal),
+                    Reason.DomCallback,
+                  );
                   return;
                 }
                 const t = Number(threshold);
                 const a = Number(amount);
                 if (!loading && t > 0 && a >= CREDITS_PER_DOLLAR) {
                   detach(
-                    save({ enabled: true, threshold: t, amount: a }),
+                    save(
+                      { enabled: true, threshold: t, amount: a },
+                      pageSignal,
+                    ),
                     Reason.DomCallback,
                   );
                 }
@@ -346,6 +359,7 @@ export function AutoRechargeSection({
 }
 
 export function BillingDialog() {
+  const pageSignal = useGet(pageSignal$);
   const open = useGet(billingDialogOpen$);
   const loading = useGet(billingDialogLoading$);
   const statusLoadable = useLastLoadable(billingStatusAsync$);
@@ -366,9 +380,12 @@ export function BillingDialog() {
 
   const handleAction = () => {
     if (isUpgrade) {
-      detach(checkout(selectedTier as "pro" | "team"), Reason.DomCallback);
+      detach(
+        checkout(selectedTier as "pro" | "team", pageSignal),
+        Reason.DomCallback,
+      );
     } else if (isDowngrade) {
-      detach(downgrade(), Reason.DomCallback);
+      detach(downgrade(pageSignal), Reason.DomCallback);
     }
   };
 

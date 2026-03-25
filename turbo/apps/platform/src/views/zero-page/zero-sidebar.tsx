@@ -788,6 +788,7 @@ function nextTierInfo(tier: string): { label: string; img: string } | null {
 }
 
 function SidebarUpgradeCard() {
+  const pageSignal = useGet(pageSignal$);
   const billingLoadable = useLastLoadable(billingStatusAsync$);
   const billing =
     billingLoadable.state === "hasData" ? billingLoadable.data : null;
@@ -806,7 +807,7 @@ function SidebarUpgradeCard() {
   const handleClick = () => {
     setTab("billing");
     setSubPage(true);
-    detach(openManage(true), Reason.DomCallback);
+    detach(openManage(true, pageSignal), Reason.DomCallback);
   };
 
   return (
