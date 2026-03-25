@@ -242,7 +242,7 @@ describe("PUT /api/zero/firewall-policies", () => {
     mockClerk({ userId: null });
 
     const response = await putPolicies(
-      "any-agent",
+      "00000000-0000-4000-8000-000000000001",
       { policies: {} },
       "no-token",
     );

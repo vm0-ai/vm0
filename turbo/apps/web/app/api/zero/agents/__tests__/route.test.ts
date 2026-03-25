@@ -728,7 +728,7 @@ describe("Zero Agents API", () => {
     it("should return 401 without auth", async () => {
       mockClerk({ userId: null });
       const response = await patchAgent(
-        "00000000-0000-0000-0000-000000000001",
+        "00000000-0000-4000-8000-000000000001",
         { displayName: "X" },
         "no-token",
       );
@@ -838,10 +838,77 @@ describe("Zero Agents API", () => {
     it("should return 401 without auth", async () => {
       mockClerk({ userId: null });
       const response = await deleteAgent(
-        "00000000-0000-0000-0000-000000000001",
+        "00000000-0000-4000-8000-000000000001",
         "no-token",
       );
       expect(response.status).toBe(401);
+    });
+  });
+
+  describe("invalid UUID handling", () => {
+    it("GET should return 400 for invalid UUID", async () => {
+      const response = await getAgent("abc", testCliToken, testOrgSlug);
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.code).toBe("BAD_REQUEST");
+    });
+
+    it("PUT should return 400 for invalid UUID", async () => {
+      const response = await putAgent(
+        "not-a-uuid",
+        { connectors: [] },
+        testCliToken,
+        testOrgSlug,
+      );
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.code).toBe("BAD_REQUEST");
+    });
+
+    it("PATCH should return 400 for invalid UUID", async () => {
+      const response = await patchAgent(
+        "not-a-uuid",
+        { displayName: "X" },
+        testCliToken,
+        testOrgSlug,
+      );
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.code).toBe("BAD_REQUEST");
+    });
+
+    it("DELETE should return 400 for invalid UUID", async () => {
+      const response = await deleteAgent(
+        "not-a-uuid",
+        testCliToken,
+        testOrgSlug,
+      );
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.code).toBe("BAD_REQUEST");
+    });
+
+    it("GET instructions should return 400 for invalid UUID", async () => {
+      const response = await getAgentInstructions(
+        "not-a-uuid",
+        testCliToken,
+        testOrgSlug,
+      );
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.code).toBe("BAD_REQUEST");
+    });
+
+    it("PUT instructions should return 400 for invalid UUID", async () => {
+      const response = await putAgentInstructions(
+        "not-a-uuid",
+        { content: "# test" },
+        testCliToken,
+        testOrgSlug,
+      );
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.code).toBe("BAD_REQUEST");
     });
   });
 });

@@ -88,7 +88,7 @@ export const zeroAgentsByIdContract = c.router({
     method: "GET",
     path: "/api/zero/agents/:id",
     headers: authHeadersSchema,
-    pathParams: z.object({ id: z.string() }),
+    pathParams: z.object({ id: z.string().uuid() }),
     responses: {
       200: zeroAgentResponseSchema,
       401: apiErrorSchema,
@@ -100,7 +100,7 @@ export const zeroAgentsByIdContract = c.router({
     method: "PUT",
     path: "/api/zero/agents/:id",
     headers: authHeadersSchema,
-    pathParams: z.object({ id: z.string() }),
+    pathParams: z.object({ id: z.string().uuid() }),
     body: zeroAgentRequestSchema,
     responses: {
       200: zeroAgentResponseSchema,
@@ -115,7 +115,7 @@ export const zeroAgentsByIdContract = c.router({
     method: "PATCH",
     path: "/api/zero/agents/:id",
     headers: authHeadersSchema,
-    pathParams: z.object({ id: z.string() }),
+    pathParams: z.object({ id: z.string().uuid() }),
     body: zeroAgentMetadataRequestSchema,
     responses: {
       200: zeroAgentResponseSchema,
@@ -128,7 +128,7 @@ export const zeroAgentsByIdContract = c.router({
     method: "DELETE",
     path: "/api/zero/agents/:id",
     headers: authHeadersSchema,
-    pathParams: z.object({ id: z.string() }),
+    pathParams: z.object({ id: z.string().uuid() }),
     body: c.noBody(),
     responses: {
       204: c.noBody(),
@@ -143,7 +143,7 @@ export const zeroAgentsByIdContract = c.router({
  * Update firewall policies request schema
  */
 export const zeroAgentFirewallPoliciesRequestSchema = z.object({
-  agentId: z.string(),
+  agentId: z.string().uuid(),
   policies: firewallPoliciesSchema,
 });
 
@@ -175,7 +175,7 @@ export const zeroAgentInstructionsContract = c.router({
     method: "GET",
     path: "/api/zero/agents/:id/instructions",
     headers: authHeadersSchema,
-    pathParams: z.object({ id: z.string() }),
+    pathParams: z.object({ id: z.string().uuid() }),
     responses: {
       200: zeroAgentInstructionsResponseSchema,
       401: apiErrorSchema,
@@ -187,7 +187,7 @@ export const zeroAgentInstructionsContract = c.router({
     method: "PUT",
     path: "/api/zero/agents/:id/instructions",
     headers: authHeadersSchema,
-    pathParams: z.object({ id: z.string() }),
+    pathParams: z.object({ id: z.string().uuid() }),
     body: zeroAgentInstructionsRequestSchema,
     responses: {
       200: zeroAgentResponseSchema,
