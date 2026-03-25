@@ -155,3 +155,16 @@ generate_password() {
   rand=$(head -c 32 /dev/urandom | base64 | tr -d '/+=\n')
   echo "${rand:0:16}!Aa1"
 }
+
+# ---------------------------------------------------------------------------
+# browser_teardown — Kill agent-browser and any spawned browser processes
+# Call this in teardown_file() to prevent bats from hanging.
+# ---------------------------------------------------------------------------
+browser_teardown() {
+  # Close browser gracefully first
+  agent-browser close 2>/dev/null || true
+
+  # Kill any remaining agent-browser or chromium processes
+  pkill -f 'agent-browser' 2>/dev/null || true
+  pkill -f '[c]hrom(e|ium)' 2>/dev/null || true
+}
