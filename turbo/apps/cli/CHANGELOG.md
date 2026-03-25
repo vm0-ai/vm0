@@ -1,5 +1,24 @@
 # Changelog
 
+## [9.80.0](https://github.com/vm0-ai/vm0/compare/cli-v9.79.3...cli-v9.80.0) (2026-03-25)
+
+
+### Features
+
+* **cli:** decode org from zero token jwt in active org resolution ([#6550](https://github.com/vm0-ai/vm0/issues/6550)) ([cb2528b](https://github.com/vm0-ai/vm0/commit/cb2528baafa34c24bfd15dfabaa1bcb4921e8416)), closes [#6546](https://github.com/vm0-ai/vm0/issues/6546)
+
+
+### Refactoring
+
+* remove vm0 zero subcommand bridge ([#6542](https://github.com/vm0-ai/vm0/issues/6542)) ([e559410](https://github.com/vm0-ai/vm0/commit/e55941022d90cddd19564f0e6de4165c75d6a3e5)), closes [#6529](https://github.com/vm0-ai/vm0/issues/6529)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.109.0
+
 ## [9.79.3](https://github.com/vm0-ai/vm0/compare/cli-v9.79.2...cli-v9.79.3) (2026-03-24)
 
 

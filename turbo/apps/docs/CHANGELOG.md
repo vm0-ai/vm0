@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.29.0](https://github.com/vm0-ai/vm0/compare/docs-v2.28.3...docs-v2.29.0) (2026-03-25)
+
+
+### Features
+
+* **docs:** rewrite capabilities documentation for zero token system ([#6576](https://github.com/vm0-ai/vm0/issues/6576)) ([4b9f277](https://github.com/vm0-ai/vm0/commit/4b9f277de7e6208ed80582783017c45c67cd52d8))
+
+
+### Refactoring
+
+* remove experimental_capabilities and make vm0_token injection unconditional ([#6573](https://github.com/vm0-ai/vm0/issues/6573)) ([#6579](https://github.com/vm0-ai/vm0/issues/6579)) ([1fb7df0](https://github.com/vm0-ai/vm0/commit/1fb7df0201d70223d486c91b536cad93a78c23a3))
+
 ## [2.28.3](https://github.com/vm0-ai/vm0/compare/docs-v2.28.2...docs-v2.28.3) (2026-03-23)
 
 

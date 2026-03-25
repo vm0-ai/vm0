@@ -1,5 +1,62 @@
 # Changelog
 
+## [8.109.0](https://github.com/vm0-ai/vm0/compare/core-v8.108.0...core-v8.109.0) (2026-03-25)
+
+
+### Features
+
+* add apify firewall config ([#6557](https://github.com/vm0-ai/vm0/issues/6557)) ([0227e98](https://github.com/vm0-ai/vm0/commit/0227e98cf780f7e1611a551f85540a7c871146d4))
+* add brevo firewall config ([#6559](https://github.com/vm0-ai/vm0/issues/6559)) ([bcf0442](https://github.com/vm0-ai/vm0/commit/bcf044278287fbfb77a73f3d64114800fc6be345))
+* add bright-data firewall config ([#6577](https://github.com/vm0-ai/vm0/issues/6577)) ([4711334](https://github.com/vm0-ai/vm0/commit/471133473beb67c88e97a20c6940150928748820)), closes [#6323](https://github.com/vm0-ai/vm0/issues/6323)
+* add browserbase firewall config ([#6578](https://github.com/vm0-ai/vm0/issues/6578)) ([c7ea00d](https://github.com/vm0-ai/vm0/commit/c7ea00d2f4a4477cb69463a16fc812b2226407da)), closes [#6324](https://github.com/vm0-ai/vm0/issues/6324)
+* add browserless firewall config ([#6581](https://github.com/vm0-ai/vm0/issues/6581)) ([e8a6706](https://github.com/vm0-ai/vm0/commit/e8a67066b6d8e3cf78f7c759371ecbef82908069)), closes [#6325](https://github.com/vm0-ai/vm0/issues/6325)
+* add cal-com firewall config ([#6582](https://github.com/vm0-ai/vm0/issues/6582)) ([f3cefce](https://github.com/vm0-ai/vm0/commit/f3cefce73f2e69e44c792ab4b33ff37001c1542f)), closes [#6327](https://github.com/vm0-ai/vm0/issues/6327)
+* add calendly firewall config ([#6583](https://github.com/vm0-ai/vm0/issues/6583)) ([b19b384](https://github.com/vm0-ai/vm0/commit/b19b38485c069c43b18fefe890e8a3e06229ff6a)), closes [#6328](https://github.com/vm0-ai/vm0/issues/6328)
+* add canva firewall config ([#6594](https://github.com/vm0-ai/vm0/issues/6594)) ([919e9fc](https://github.com/vm0-ai/vm0/commit/919e9fc2b58d3d30a55b71d0bbfdf035eefb2443))
+* add close firewall config ([#6545](https://github.com/vm0-ai/vm0/issues/6545)) ([aab02c4](https://github.com/vm0-ai/vm0/commit/aab02c4fdfb75be97b247f25752c09256a662e01))
+* add customer-io firewall config ([#6584](https://github.com/vm0-ai/vm0/issues/6584)) ([764215b](https://github.com/vm0-ai/vm0/commit/764215b977bd83fa59629a1e75d7e3b579340d9b)), closes [#6336](https://github.com/vm0-ai/vm0/issues/6336)
+* add deel firewall config ([#6596](https://github.com/vm0-ai/vm0/issues/6596)) ([cfb0791](https://github.com/vm0-ai/vm0/commit/cfb07918395a16790021d7b561be51f75ed1195a))
+* add devto firewall config ([#6558](https://github.com/vm0-ai/vm0/issues/6558)) ([765b7a9](https://github.com/vm0-ai/vm0/commit/765b7a929f2186df5da2525d2a9e7e4b9d25a5b4))
+* add dropbox firewall config ([#6586](https://github.com/vm0-ai/vm0/issues/6586)) ([d88125f](https://github.com/vm0-ai/vm0/commit/d88125f1ff7c0528bc3cc8f13ccc4f15dfd1848f)), closes [#6585](https://github.com/vm0-ai/vm0/issues/6585)
+* add fireflies firewall config ([#6560](https://github.com/vm0-ai/vm0/issues/6560)) ([7f24432](https://github.com/vm0-ai/vm0/commit/7f24432919060346381bf72fd3a14d2f957b336f))
+* add granola firewall config ([#6612](https://github.com/vm0-ai/vm0/issues/6612)) ([5be68de](https://github.com/vm0-ai/vm0/commit/5be68dedd596d82908c9b8ed10c5a81bb0db0ab6))
+* add heygen firewall config ([#6568](https://github.com/vm0-ai/vm0/issues/6568)) ([c7bcf93](https://github.com/vm0-ai/vm0/commit/c7bcf933bff2fc53f34138cee26be7f38d4cabd4))
+* add hugging-face firewall config ([#6562](https://github.com/vm0-ai/vm0/issues/6562)) ([8d04655](https://github.com/vm0-ai/vm0/commit/8d04655020de8d5c61cf1b66dacab176a1ec2dcf))
+* add hume firewall config ([#6593](https://github.com/vm0-ai/vm0/issues/6593)) ([d4c892b](https://github.com/vm0-ai/vm0/commit/d4c892b0b4ce69cc4bebba436a75d29f0fe951d3)), closes [#6355](https://github.com/vm0-ai/vm0/issues/6355)
+* add imgur firewall config ([#6590](https://github.com/vm0-ai/vm0/issues/6590)) ([fea8612](https://github.com/vm0-ai/vm0/commit/fea8612f6a763ee80370567efb1f1387143aaeaf)), closes [#6356](https://github.com/vm0-ai/vm0/issues/6356)
+* add instantly firewall config ([#6601](https://github.com/vm0-ai/vm0/issues/6601)) ([664dcb4](https://github.com/vm0-ai/vm0/commit/664dcb47f31a04aee71fa6f2b36f5f7247a4b4f1))
+* add intercom firewall config ([#6555](https://github.com/vm0-ai/vm0/issues/6555)) ([90d48a2](https://github.com/vm0-ai/vm0/commit/90d48a280002645cdac93d42be75539be42a15de))
+* add jotform firewall config ([#6591](https://github.com/vm0-ai/vm0/issues/6591)) ([9c2ca1e](https://github.com/vm0-ai/vm0/commit/9c2ca1eda3975b1cb84a8ded37f10c795ce6d707)), closes [#6363](https://github.com/vm0-ai/vm0/issues/6363)
+* add lark firewall config ([#6597](https://github.com/vm0-ai/vm0/issues/6597)) ([2a6a7be](https://github.com/vm0-ai/vm0/commit/2a6a7be0e53570171aa02c9fc35e6739f30fe3d1))
+* add line firewall config ([#6616](https://github.com/vm0-ai/vm0/issues/6616)) ([b5ae39e](https://github.com/vm0-ai/vm0/commit/b5ae39e70d4a3f406e36ef3c50916309c074d7dc))
+* add loops firewall config ([#6564](https://github.com/vm0-ai/vm0/issues/6564)) ([d1e6658](https://github.com/vm0-ai/vm0/commit/d1e66589c0089776256b013a57b61dc4330d1033))
+* add mercury firewall config ([#6604](https://github.com/vm0-ai/vm0/issues/6604)) ([cea918e](https://github.com/vm0-ai/vm0/commit/cea918e236bd276a2f5964a8abe3ae4727740fda))
+* add minimax firewall config ([#6592](https://github.com/vm0-ai/vm0/issues/6592)) ([08700a1](https://github.com/vm0-ai/vm0/commit/08700a17c4c5e151a8065b7e99739f381f7fa5ff)), closes [#6375](https://github.com/vm0-ai/vm0/issues/6375)
+* add plausible firewall config ([#6566](https://github.com/vm0-ai/vm0/issues/6566)) ([1f8e884](https://github.com/vm0-ai/vm0/commit/1f8e884fe94850165da2041febbf8985e0f081f5))
+* add qiita firewall config ([#6598](https://github.com/vm0-ai/vm0/issues/6598)) ([0a35b06](https://github.com/vm0-ai/vm0/commit/0a35b06687cbc8973444978a0ca9cb64ce7f12a2))
+* add reddit firewall config ([#6587](https://github.com/vm0-ai/vm0/issues/6587)) ([6d55c8c](https://github.com/vm0-ai/vm0/commit/6d55c8c711f85adf46b8170cdd34fc47353919c3)), closes [#6395](https://github.com/vm0-ai/vm0/issues/6395)
+* add runway firewall config ([#6563](https://github.com/vm0-ai/vm0/issues/6563)) ([fe230f9](https://github.com/vm0-ai/vm0/commit/fe230f925c4084d2d61b7aaf0a2b1e91fec91471))
+* add shortio firewall config ([#6567](https://github.com/vm0-ai/vm0/issues/6567)) ([b2688e2](https://github.com/vm0-ai/vm0/commit/b2688e27f24501ae684189594e9c2b9c92433556))
+* add strava firewall config ([#6588](https://github.com/vm0-ai/vm0/issues/6588)) ([05acfa6](https://github.com/vm0-ai/vm0/commit/05acfa660a930c9581371a5bc30eddca920e729a)), closes [#6406](https://github.com/vm0-ai/vm0/issues/6406)
+* add supadata firewall config ([#6602](https://github.com/vm0-ai/vm0/issues/6602)) ([0903fb9](https://github.com/vm0-ai/vm0/commit/0903fb96ceed4ea3a6bb134b93733563ce6d6191))
+* add tldv firewall config ([#6603](https://github.com/vm0-ai/vm0/issues/6603)) ([f65963a](https://github.com/vm0-ai/vm0/commit/f65963a4ff6b116357a9a422d4e59cc157cce1eb))
+* add webflow firewall config ([#6589](https://github.com/vm0-ai/vm0/issues/6589)) ([ab43e84](https://github.com/vm0-ai/vm0/commit/ab43e84e852fd5fd64ec6164f7e2c0af9aeaf1a3)), closes [#6415](https://github.com/vm0-ai/vm0/issues/6415)
+* add wix firewall config ([#6599](https://github.com/vm0-ai/vm0/issues/6599)) ([b744f09](https://github.com/vm0-ai/vm0/commit/b744f09355d48ba6af6387572669ca40964273d9))
+* add xero firewall config ([#6595](https://github.com/vm0-ai/vm0/issues/6595)) ([02e7b19](https://github.com/vm0-ai/vm0/commit/02e7b194fe3a174ecbe71f49185476f4e54ca759))
+
+
+### Bug Fixes
+
+* align firewall secret names with connector env var names ([#6554](https://github.com/vm0-ai/vm0/issues/6554)) ([0e47a77](https://github.com/vm0-ai/vm0/commit/0e47a77f039cc4c3e82908450d942c1227e7b50f))
+* **core:** correct stale cli hint references in run error guidance ([#6569](https://github.com/vm0-ai/vm0/issues/6569)) ([#6575](https://github.com/vm0-ai/vm0/issues/6575)) ([4fd95eb](https://github.com/vm0-ai/vm0/commit/4fd95eb648315bdb97854c3de605cb0951bf1660))
+* revert x connector env var name from x_token to x_access_token ([#6611](https://github.com/vm0-ai/vm0/issues/6611)) ([0710a09](https://github.com/vm0-ai/vm0/commit/0710a0981886dd226bf2a854c483c0534fd3ece6)), closes [#6600](https://github.com/vm0-ai/vm0/issues/6600)
+* **web:** harden zero token validation and update stale capability jsdoc ([#6580](https://github.com/vm0-ai/vm0/issues/6580)) ([4f38903](https://github.com/vm0-ai/vm0/commit/4f3890374ba0c20275108cd1d26623013452c431)), closes [#6565](https://github.com/vm0-ai/vm0/issues/6565)
+
+
+### Refactoring
+
+* remove experimental_capabilities and make vm0_token injection unconditional ([#6573](https://github.com/vm0-ai/vm0/issues/6573)) ([#6579](https://github.com/vm0-ai/vm0/issues/6579)) ([1fb7df0](https://github.com/vm0-ai/vm0/commit/1fb7df0201d70223d486c91b536cad93a78c23a3))
+
 ## [8.108.0](https://github.com/vm0-ai/vm0/compare/core-v8.107.0...core-v8.108.0) (2026-03-24)
 
 

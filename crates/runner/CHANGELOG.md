@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.45.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.45.6...runner-rs-v0.45.7) (2026-03-25)
+
+
+### Refactoring
+
+* remove experimental_capabilities and make vm0_token injection unconditional ([#6573](https://github.com/vm0-ai/vm0/issues/6573)) ([#6579](https://github.com/vm0-ai/vm0/issues/6579)) ([1fb7df0](https://github.com/vm0-ai/vm0/commit/1fb7df0201d70223d486c91b536cad93a78c23a3))
+
 ## [0.45.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.45.5...runner-rs-v0.45.6) (2026-03-24)
 
 

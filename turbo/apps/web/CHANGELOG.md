@@ -1,5 +1,26 @@
 # Changelog
 
+## [12.155.1](https://github.com/vm0-ai/vm0/compare/web-v12.155.0...web-v12.155.1) (2026-03-25)
+
+
+### Bug Fixes
+
+* **web:** harden zero token validation and update stale capability jsdoc ([#6580](https://github.com/vm0-ai/vm0/issues/6580)) ([4f38903](https://github.com/vm0-ai/vm0/commit/4f3890374ba0c20275108cd1d26623013452c431)), closes [#6565](https://github.com/vm0-ai/vm0/issues/6565)
+
+
+### Refactoring
+
+* migrate org_metadata default_agent_compose_id to default_agent_id ([#6536](https://github.com/vm0-ai/vm0/issues/6536)) ([e413b38](https://github.com/vm0-ai/vm0/commit/e413b388b290392d2addbc956ab6a25293588b63))
+* remove experimental_capabilities and make vm0_token injection unconditional ([#6573](https://github.com/vm0-ai/vm0/issues/6573)) ([#6579](https://github.com/vm0-ai/vm0/issues/6579)) ([1fb7df0](https://github.com/vm0-ai/vm0/commit/1fb7df0201d70223d486c91b536cad93a78c23a3))
+* **web:** rename integration-slack:write to slack:write and add run route capability checks ([#6552](https://github.com/vm0-ai/vm0/issues/6552)) ([ee21d72](https://github.com/vm0-ai/vm0/commit/ee21d7267c3f88799dc6ad1e8c3a2572193ae0b9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.109.0
+
 ## [12.155.0](https://github.com/vm0-ai/vm0/compare/web-v12.154.2...web-v12.155.0) (2026-03-24)
 
 
