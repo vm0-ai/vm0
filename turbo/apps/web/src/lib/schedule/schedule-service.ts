@@ -1,7 +1,6 @@
 import { eq, and, lte, inArray, desc } from "drizzle-orm";
 import { Cron } from "croner";
 import { zeroAgentSchedules } from "../../db/schema/zero-agent-schedule";
-import { zeroAgents } from "../../db/schema/zero-agent";
 import { agentComposes } from "../../db/schema/agent-compose";
 import { agentRuns } from "../../db/schema/agent-run";
 import { decryptSecretsMap } from "../crypto";
@@ -189,9 +188,9 @@ async function verifyScheduleOwnership(
   orgSlug: string;
 }> {
   const [agent] = await globalThis.services.db
-    .select()
-    .from(zeroAgents)
-    .where(eq(zeroAgents.id, agentId))
+    .select({ id: agentComposes.id, name: agentComposes.name })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, agentId))
     .limit(1);
 
   if (!agent) throw notFound("Agent not found");
@@ -407,9 +406,9 @@ export async function deploySchedule(
   log.debug(`Deploying schedule ${request.name} for agent ${request.agentId}`);
 
   const [agent] = await globalThis.services.db
-    .select()
-    .from(zeroAgents)
-    .where(eq(zeroAgents.id, request.agentId))
+    .select({ id: agentComposes.id, name: agentComposes.name })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, request.agentId))
     .limit(1);
 
   if (!agent) throw notFound("Agent not found");
@@ -504,12 +503,12 @@ export async function listSchedules(
     return [];
   }
 
-  // Load zero agent data for all schedules
+  // Load agent compose data for all schedules
   const agentIds = [...new Set(userSchedules.map((s) => s.agentId))];
   const agentRows = await globalThis.services.db
-    .select()
-    .from(zeroAgents)
-    .where(inArray(zeroAgents.id, agentIds));
+    .select({ id: agentComposes.id, name: agentComposes.name })
+    .from(agentComposes)
+    .where(inArray(agentComposes.id, agentIds));
   const agentMap = new Map(agentRows.map((r) => [r.id, r]));
 
   // Load org slugs via org cache (by orgId from schedule records)
