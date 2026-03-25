@@ -51,6 +51,7 @@
     "generate:hugging-face": "tsx src/index.ts hugging-face",
     "generate:hume": "tsx src/index.ts hume",
     "generate:imgur": "tsx src/index.ts imgur",
+    "generate:instagram": "tsx src/index.ts instagram",
     "generate:instantly": "tsx src/index.ts instantly",
     "generate:intercom": "tsx src/index.ts intercom",
     "generate:intervals-icu": "tsx src/index.ts intervals-icu",

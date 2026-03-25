@@ -46,6 +46,7 @@ import { generate as generateHubspot } from "./hubspot";
 import { generate as generateHuggingFace } from "./hugging-face";
 import { generate as generateHume } from "./hume";
 import { generate as generateImgur } from "./imgur";
+import { generate as generateInstagram } from "./instagram";
 import { generate as generateInstantly } from "./instantly";
 import { generate as generateIntercom } from "./intercom";
 import { generate as generateIntervalsIcu } from "./intervals-icu";
@@ -143,6 +144,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   "hugging-face": generateHuggingFace,
   hume: generateHume,
   imgur: generateImgur,
+  instagram: generateInstagram,
   instantly: generateInstantly,
   intercom: generateIntercom,
   "intervals-icu": generateIntervalsIcu,

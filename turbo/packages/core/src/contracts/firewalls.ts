@@ -135,6 +135,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   "hugging-face": ["hugging-face"],
   hume: ["hume"],
   imgur: ["imgur"],
+  instagram: ["instagram"],
   instantly: ["instantly"],
   intercom: ["intercom"],
   "intervals-icu": ["intervals-icu"],

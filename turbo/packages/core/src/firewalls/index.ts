@@ -52,6 +52,7 @@ import { hubspotFirewall } from "./hubspot.generated";
 import { huggingFaceFirewall } from "./hugging-face.generated";
 import { humeFirewall } from "./hume.generated";
 import { imgurFirewall } from "./imgur.generated";
+import { instagramFirewall } from "./instagram.generated";
 import { instantlyFirewall } from "./instantly.generated";
 import { intercomFirewall } from "./intercom.generated";
 import { intervalsIcuFirewall } from "./intervals-icu.generated";
@@ -153,6 +154,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   "hugging-face": huggingFaceFirewall,
   hume: humeFirewall,
   imgur: imgurFirewall,
+  instagram: instagramFirewall,
   instantly: instantlyFirewall,
   intercom: intercomFirewall,
   "intervals-icu": intervalsIcuFirewall,
