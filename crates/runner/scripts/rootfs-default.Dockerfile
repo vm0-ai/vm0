@@ -43,8 +43,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     sudo \
     libnss3 \
-    p11-kit-modules \
-    && apt-get clean
+    p11-kit-modules
 
 # Make NSS-based applications (Chromium, Firefox) trust the system CA store.
 # By default NSS uses a built-in trust module (libnssckbi.so) with Mozilla's
