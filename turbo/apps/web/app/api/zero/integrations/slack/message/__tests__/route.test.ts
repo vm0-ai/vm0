@@ -6,6 +6,7 @@ import {
   createTestCompose,
   createTestRunInDb,
   createTestSlackOrgInstallation,
+  insertOrgMembersCacheEntry,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -74,6 +75,11 @@ describe("POST /api/zero/integrations/slack/message", () => {
 
   it("returns 404 when no Slack installation exists for org", async () => {
     mockClerk({ userId: null });
+    await insertOrgMembersCacheEntry({
+      orgId: user.orgId,
+      userId: user.userId,
+      role: "admin",
+    });
     const token = await generateZeroToken(user.userId, "run-1", user.orgId);
 
     const request = createTestRequest(URL, {
@@ -94,6 +100,11 @@ describe("POST /api/zero/integrations/slack/message", () => {
 
   it("sends message successfully and returns Slack response", async () => {
     mockClerk({ userId: null });
+    await insertOrgMembersCacheEntry({
+      orgId: user.orgId,
+      userId: user.userId,
+      role: "admin",
+    });
     const token = await generateZeroToken(user.userId, "run-1", user.orgId);
 
     // Create Slack installation for the user's org
@@ -132,6 +143,11 @@ describe("POST /api/zero/integrations/slack/message", () => {
 
   it("forwards Slack API error with 400 status", async () => {
     mockClerk({ userId: null });
+    await insertOrgMembersCacheEntry({
+      orgId: user.orgId,
+      userId: user.userId,
+      role: "admin",
+    });
     const token = await generateZeroToken(user.userId, "run-1", user.orgId);
 
     await createTestSlackOrgInstallation({ orgId: user.orgId });
