@@ -7,7 +7,7 @@ import {
   index,
 } from "drizzle-orm/pg-core";
 import { agentSessions } from "./agent-session";
-import { zeroAgents } from "./zero-agent";
+import { agentComposes } from "./agent-compose";
 
 /**
  * Email Thread Sessions table
@@ -21,7 +21,7 @@ export const emailThreadSessions = pgTable(
     userId: varchar("user_id", { length: 255 }).notNull(),
     agentId: uuid("agent_id")
       .notNull()
-      .references(() => zeroAgents.id, { onDelete: "cascade" }),
+      .references(() => agentComposes.id, { onDelete: "cascade" }),
     agentSessionId: uuid("agent_session_id")
       .notNull()
       .references(() => agentSessions.id, { onDelete: "cascade" }),

@@ -12,7 +12,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { agentRuns } from "./agent-run";
-import { zeroAgents } from "./zero-agent";
+import { agentComposes } from "./agent-compose";
 
 /**
  * Zero Agent Schedules table
@@ -35,7 +35,7 @@ export const zeroAgentSchedules = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     agentId: uuid("agent_id")
       .notNull()
-      .references(() => zeroAgents.id, { onDelete: "cascade" }),
+      .references(() => agentComposes.id, { onDelete: "cascade" }),
     userId: text("user_id").notNull(),
     orgId: text("org_id").notNull(),
     name: varchar("name", { length: 64 }).notNull(),
