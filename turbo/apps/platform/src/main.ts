@@ -1,5 +1,5 @@
 // lighthouse-ci: trigger platform-changed detection
-import { deferSentryInit, Sentry } from "./lib/sentry.ts";
+import { initSentry, Sentry } from "./lib/sentry.ts";
 import "./polyfill.ts";
 import { createRoot } from "react-dom/client";
 import { appStore, AppStoreProvider } from "./signals/app-store.ts";
@@ -9,8 +9,8 @@ import { initTheme$ } from "./signals/theme.ts";
 import { detach, Reason } from "./signals/utils.ts";
 import { setupRouter } from "./views/main.tsx";
 
-// Kick off deferred Sentry initialization via requestIdleCallback
-deferSentryInit();
+// Initialize Sentry before bootstrap so errors during startup are captured
+initSentry();
 
 setLogErrorHandler((loggerName, args) => {
   const error = args.find((a): a is Error => a instanceof Error);
