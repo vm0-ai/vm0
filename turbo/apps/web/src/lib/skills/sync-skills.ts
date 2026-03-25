@@ -6,13 +6,8 @@
  * and database upserts for storages, storageVersions, and skills tables.
  */
 
-import {
-  mkdtempSync,
-  mkdirSync,
-  writeFileSync,
-  readFileSync,
-  rmSync,
-} from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
+import { mkdtemp, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import * as tar from "tar";
@@ -80,24 +75,31 @@ export async function syncSkills(): Promise<SyncResult> {
   // 3. Download and extract tarball
   const extractedSkills = await downloadAndExtractSkills();
 
-  // 4. Sync each skill
+  // 4. Sync each skill concurrently
+  const results = await Promise.allSettled(
+    extractedSkills.map((extracted) => syncSingleSkill(db, extracted, headSha)),
+  );
+
   let synced = 0;
   let skipped = 0;
   let failed = 0;
 
-  for (const extracted of extractedSkills) {
-    try {
-      const wasUpdated = await syncSingleSkill(db, extracted, headSha);
-      if (wasUpdated) {
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i]!;
+    if (result.status === "fulfilled") {
+      if (result.value) {
         synced++;
       } else {
         skipped++;
       }
-    } catch (error) {
+    } else {
       failed++;
       log.warn("Skipping skill due to sync error", {
-        skillName: extracted.skillName,
-        error: error instanceof Error ? error.message : String(error),
+        skillName: extractedSkills[i]!.skillName,
+        error:
+          result.reason instanceof Error
+            ? result.reason.message
+            : String(result.reason),
       });
     }
   }
@@ -166,7 +168,7 @@ async function syncSingleSkill(
   }
 
   // Create archive.tar.gz and manifest.json
-  const { archiveBuffer, manifestBuffer } = createSkillArchive(files);
+  const { archiveBuffer, manifestBuffer } = await createSkillArchive(files);
 
   // Upload to S3
   const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
@@ -286,35 +288,36 @@ async function syncSingleSkill(
  * Writes files to a temp directory, creates the tar with `tar.create()`,
  * then reads the result back as Buffers.
  */
-function createSkillArchive(
+async function createSkillArchive(
   files: Array<{ path: string; content: Buffer; hash: string; size: number }>,
-): { archiveBuffer: Buffer; manifestBuffer: Buffer } {
-  const tmpDir = mkdtempSync(join(tmpdir(), "vm0-skill-"));
+): Promise<{ archiveBuffer: Buffer; manifestBuffer: Buffer }> {
+  const tmpDir = await mkdtemp(join(tmpdir(), "vm0-skill-"));
 
   try {
     // Write files to temp directory
-    for (const file of files) {
-      const filePath = join(tmpDir, file.path);
-      const dir = join(filePath, "..");
-      mkdirSync(dir, { recursive: true });
-      writeFileSync(filePath, file.content);
-    }
+    await Promise.all(
+      files.map((file) => {
+        const filePath = join(tmpDir, file.path);
+        const dir = join(filePath, "..");
+        mkdirSync(dir, { recursive: true });
+        return writeFile(filePath, file.content);
+      }),
+    );
 
-    // Create tar.gz synchronously
+    // Create tar.gz asynchronously
     const tarPath = join(tmpDir, "__archive.tar.gz");
     const filePaths = files.map((f) => f.path);
 
-    tar.create(
+    await tar.create(
       {
         gzip: true,
         file: tarPath,
         cwd: tmpDir,
-        sync: true,
       },
       filePaths,
     );
 
-    const archiveBuffer = readFileSync(tarPath);
+    const archiveBuffer = await readFile(tarPath);
 
     // Create manifest
     const manifest = {
