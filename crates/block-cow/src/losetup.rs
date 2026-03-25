@@ -38,11 +38,20 @@ impl LoopDevice {
     /// Detach the loop device.
     ///
     /// Drops the holder fd first (so we don't EBUSY ourselves), then
-    /// calls `losetup --detach`.  On failure the holder is already gone
-    /// — GC or a subsequent retry can finish the detach.
+    /// calls `losetup --detach`.  If the device is already gone (e.g.
+    /// because GC's `losetup -d` set `LO_FLAGS_AUTOCLEAR` and dropping
+    /// the holder fd triggered kernel auto-detach), the error is ignored.
     pub fn detach(&mut self) -> Result<()> {
         self.holder = None;
-        detach_by_path(&self.path)
+        match detach_by_path(&self.path) {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                // If the device no longer exists, it was already auto-detached
+                // by the kernel (GC's `losetup -d` sets LO_FLAGS_AUTOCLEAR on
+                // active devices; dropping the holder fd then triggers cleanup).
+                if !self.path.exists() { Ok(()) } else { Err(e) }
+            }
+        }
     }
 }
 
