@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use sandbox::{ExecRequest, Sandbox, SandboxConfig, SandboxFactory};
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 /// Maximum wall-clock time for a single job (2 hours).
@@ -441,7 +441,19 @@ async fn check_host_oom(pid: u32) -> bool {
         Ok(out) if out.status.success() => {
             host_dmesg_indicates_oom(&String::from_utf8_lossy(&out.stdout), pid)
         }
-        _ => false,
+        Ok(out) => {
+            // grep found no match (exit code 1) — not an OOM kill.
+            debug!(
+                pid,
+                exit_code = out.status.code(),
+                "host dmesg grep found no oom-kill"
+            );
+            false
+        }
+        Err(e) => {
+            warn!(pid, error = %e, "failed to run host dmesg for OOM check");
+            false
+        }
     }
 }
 
