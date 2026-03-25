@@ -332,14 +332,11 @@ export type ModelProviderFramework = "claude-code";
  * These providers cannot support token replacement (firewall-based secret protection),
  * so new selection is blocked until a proper solution is implemented.
  */
-const HIDDEN_PROVIDER_TYPES = new Set([
-  "aws-bedrock",
-  "azure-foundry",
-] as const);
+/** Provider types that lack static firewall support (dynamic URLs or SigV4). */
+type HiddenProviderType = "aws-bedrock" | "azure-foundry";
 
-/** Union of hidden provider type literals. */
-type HiddenProviderType =
-  typeof HIDDEN_PROVIDER_TYPES extends ReadonlySet<infer T> ? T : never;
+const HIDDEN_PROVIDER_TYPES: ReadonlySet<ModelProviderType> =
+  new Set<HiddenProviderType>(["aws-bedrock", "azure-foundry"]);
 
 /**
  * Providers excluded from static firewall configs.
