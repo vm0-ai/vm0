@@ -1,5 +1,26 @@
 # Changelog
 
+## [9.83.0](https://github.com/vm0-ai/vm0/compare/cli-v9.82.2...cli-v9.83.0) (2026-03-25)
+
+
+### Features
+
+* **cli:** update cli to use jwt org context and remove org injection ([#6755](https://github.com/vm0-ai/vm0/issues/6755)) ([fcad5f6](https://github.com/vm0-ai/vm0/commit/fcad5f6333df1add8e79e611fd5519a8ca4b99ea)), closes [#6720](https://github.com/vm0-ai/vm0/issues/6720)
+
+
+### Bug Fixes
+
+* **cli:** flatten zero whoami sandbox output labels ([#6728](https://github.com/vm0-ai/vm0/issues/6728)) ([37341b3](https://github.com/vm0-ai/vm0/commit/37341b3017cfeda4fb1844e045efbff479941898))
+* **cli:** replace internal _hidden access with public hidden option ([#6712](https://github.com/vm0-ai/vm0/issues/6712)) ([ee2b12c](https://github.com/vm0-ai/vm0/commit/ee2b12c457e88930501d040bd9c5bc064ea0fe8d))
+* **cli:** standardize success message format across commands ([#6721](https://github.com/vm0-ai/vm0/issues/6721)) ([89700eb](https://github.com/vm0-ai/vm0/commit/89700eb29aa245121e0d3eb4e050f8d4d5ef5e10))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.113.0
+
 ## [9.82.2](https://github.com/vm0-ai/vm0/compare/cli-v9.82.1...cli-v9.82.2) (2026-03-25)
 
 

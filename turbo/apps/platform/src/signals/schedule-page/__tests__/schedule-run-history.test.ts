@@ -41,7 +41,7 @@ function logsResponse(
       {
         id: "run-1",
         sessionId: null,
-        agentName: "test-agent",
+        agentId: "test-agent",
         displayName: "Test Agent",
         orgSlug: null,
         framework: null,

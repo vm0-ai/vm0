@@ -184,10 +184,33 @@ export const zeroSchedulesEnableContract = c.router({
   },
 });
 
+/**
+ * Zero schedule run-now contract (POST /api/zero/schedules/run)
+ */
+export const zeroScheduleRunContract = c.router({
+  run: {
+    method: "POST",
+    path: "/api/zero/schedules/run",
+    headers: authHeadersSchema,
+    body: z.object({
+      scheduleId: z.string().uuid("Invalid schedule ID"),
+    }),
+    responses: {
+      201: z.object({ runId: z.string() }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+    },
+    summary: "Execute a schedule immediately (run now)",
+  },
+});
+
 // Contract type exports
 export type ZeroSchedulesMainContract = typeof zeroSchedulesMainContract;
 export type ZeroSchedulesByNameContract = typeof zeroSchedulesByNameContract;
 export type ZeroSchedulesEnableContract = typeof zeroSchedulesEnableContract;
+export type ZeroScheduleRunContract = typeof zeroScheduleRunContract;
 
 // Inferred types from response schemas
 export type ScheduleResponse = z.infer<typeof scheduleResponseSchema>;

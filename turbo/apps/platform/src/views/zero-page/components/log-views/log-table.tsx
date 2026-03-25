@@ -49,7 +49,7 @@ function LogRow({
   gridClassName: string;
 }) {
   const time = formatLogTime(entry.createdAt);
-  const agentName = entry.displayName ?? entry.agentName;
+  const agentName = entry.displayName ?? entry.agentId;
 
   return (
     <Link

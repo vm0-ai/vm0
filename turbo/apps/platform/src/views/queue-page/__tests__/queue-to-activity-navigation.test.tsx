@@ -50,7 +50,7 @@ function mockActivityDetailAPIs(runId: string) {
   const logDetail: LogDetail = {
     id: runId,
     sessionId: "session_1",
-    agentName: "test-agent",
+    agentId: "test-agent",
     displayName: "Test Agent",
     framework: "claude-code",
     modelProvider: null,

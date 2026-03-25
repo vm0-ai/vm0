@@ -1,5 +1,7 @@
 import { tsRestFetchApi } from "@ts-rest/core";
 import { getApiUrl, getActiveToken, getActiveOrg } from "../config";
+import { decodeCliTokenPayload } from "../cli-token";
+import { decodeZeroTokenPayload } from "../zero-token";
 import type { ApiErrorResponse } from "@vm0/core";
 
 /**
@@ -58,6 +60,17 @@ export async function getClientConfig() {
   const baseUrl = await getBaseUrl();
   const baseHeaders = await getHeaders();
 
+  // Check if current token is a self-signed JWT with embedded orgId
+  const token = await getActiveToken();
+  const isJwtToken =
+    decodeCliTokenPayload(token) ?? decodeZeroTokenPayload(token);
+
+  if (isJwtToken) {
+    // JWT tokens carry orgId in payload — server extracts it from authCtx.orgId
+    return { baseUrl, baseHeaders, jsonQuery: false as const };
+  }
+
+  // Legacy opaque tokens: inject ?org= query parameter
   const activeOrg = await getActiveOrg();
   if (!activeOrg) {
     throw new Error(

@@ -1,12 +1,12 @@
 import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import { fetch$ } from "../fetch.ts";
+import { zeroAgentsByIdContract } from "@vm0/core";
 import { reloadOnboardingStatus$ } from "./zero-onboarding.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
-import { zeroChatAgentName$ } from "./zero-nav.ts";
+import { zeroClient$ } from "../api-client.ts";
+import { zeroTalkAgentId$ } from "./zero-nav.ts";
 import { defaultAgentId$ } from "./zero-agent-name.ts";
-import type { AgentDetail } from "./agent-types.ts";
 
 const L = logger("ZeroConnectors");
 
@@ -14,10 +14,10 @@ const L = logger("ZeroConnectors");
 // Agent name resolution
 // ---------------------------------------------------------------------------
 
-const zeroAgentName$ = computed(async (get) => {
-  const chatAgentName = get(zeroChatAgentName$);
-  if (chatAgentName !== null) {
-    return chatAgentName;
+const zeroAgentId$ = computed(async (get) => {
+  const agentId = get(zeroTalkAgentId$);
+  if (agentId !== null) {
+    return agentId;
   }
   return await get(defaultAgentId$);
 });
@@ -31,19 +31,17 @@ export const reloadZeroCompose$ = command(({ set }) => {
 
 const zeroAgent$ = computed(async (get) => {
   get(internalComposeReload$);
-  const agentName = await get(zeroAgentName$);
-  if (!agentName) {
+  const agentId = await get(zeroAgentId$);
+  if (!agentId) {
     return null;
   }
 
-  const fetchFn = get(fetch$);
-  const resp = await fetchFn(
-    `/api/zero/agents/${encodeURIComponent(agentName)}`,
-  );
-  if (!resp.ok) {
-    throw new Error(`Failed to fetch agent: ${resp.statusText}`);
+  const client = get(zeroClient$)(zeroAgentsByIdContract);
+  const result = await client.get({ params: { id: agentId } });
+  if (result.status !== 200) {
+    throw new Error(`Failed to fetch agent: ${result.status}`);
   }
-  return (await resp.json()) as AgentDetail;
+  return result.body;
 });
 
 // ---------------------------------------------------------------------------
@@ -106,24 +104,22 @@ const syncConnectorsToCompose$ = command(
       throw new Error("No agent available");
     }
 
-    const fetchFn = get(fetch$);
+    const client = get(zeroClient$)(zeroAgentsByIdContract);
+    const result = await client.update({
+      params: { id: agent.agentId },
+      body: { connectors: connectorValues },
+    });
 
-    const resp = await fetchFn(
-      `/api/zero/agents/${encodeURIComponent(agent.agentId)}`,
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ connectors: connectorValues }),
-      },
-    );
-
-    if (!resp.ok) {
-      const errorData = (await resp.json().catch(() => null)) as {
-        error?: { message?: string };
-      } | null;
-      throw new Error(
-        errorData?.error?.message ?? `Save failed: ${resp.statusText}`,
-      );
+    if (result.status !== 200) {
+      const detail =
+        result.status === 400 ||
+        result.status === 401 ||
+        result.status === 403 ||
+        result.status === 404 ||
+        result.status === 422
+          ? result.body.error.message
+          : `status ${result.status}`;
+      throw new Error(`Save failed: ${detail}`);
     }
 
     await set(reloadOnboardingStatus$);

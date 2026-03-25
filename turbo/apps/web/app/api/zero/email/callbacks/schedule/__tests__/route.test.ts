@@ -24,7 +24,6 @@ const mockResend = vi.mocked(new Resend(""), true);
 interface ScheduleCallbackPayload {
   scheduleId: string;
   agentId: string;
-  agentName: string;
   userId: string;
 }
 
@@ -80,7 +79,7 @@ describe("POST /api/zero/email/callbacks/schedule", () => {
       const payload: ScheduleCallbackPayload = {
         scheduleId: schedule.id,
         agentId,
-        agentName,
+
         userId: user.userId,
       };
 
@@ -112,7 +111,7 @@ describe("POST /api/zero/email/callbacks/schedule", () => {
       const payload: ScheduleCallbackPayload = {
         scheduleId: schedule.id,
         agentId,
-        agentName,
+
         userId: user.userId,
       };
 
@@ -146,7 +145,7 @@ describe("POST /api/zero/email/callbacks/schedule", () => {
       const payload: ScheduleCallbackPayload = {
         scheduleId: schedule.id,
         agentId,
-        agentName,
+
         userId: user.userId,
       };
 
@@ -185,7 +184,7 @@ describe("POST /api/zero/email/callbacks/schedule", () => {
       const payload: ScheduleCallbackPayload = {
         scheduleId: schedule.id,
         agentId,
-        agentName,
+
         userId: user.userId,
       };
 
@@ -228,7 +227,7 @@ describe("POST /api/zero/email/callbacks/schedule", () => {
       const payload: ScheduleCallbackPayload = {
         scheduleId: schedule.id,
         agentId,
-        agentName,
+
         userId: user.userId,
       };
 

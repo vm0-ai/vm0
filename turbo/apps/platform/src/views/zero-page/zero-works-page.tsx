@@ -122,7 +122,7 @@ function SlackCardActions({
   );
 }
 
-function SlackCard({ agentName }: { agentName: string }) {
+function SlackCard({ displayName }: { displayName: string }) {
   const slackData = useGet(slackOrgData$);
   const disconnect = useSet(disconnectSlackOrg$);
   const uninstall = useSet(uninstallSlackOrg$);
@@ -165,7 +165,7 @@ function SlackCard({ agentName }: { agentName: string }) {
             <DialogTitle>Uninstall Slack integration?</DialogTitle>
             <DialogDescription>
               This will remove the Slack integration for your entire workspace.
-              All connected users will be disconnected and {agentName} will no
+              All connected users will be disconnected and {displayName} will no
               longer respond to messages or mentions in Slack. This action
               cannot be undone.
             </DialogDescription>
@@ -194,26 +194,26 @@ function SlackCard({ agentName }: { agentName: string }) {
 }
 
 export function ZeroWorksPage() {
-  const agentNameLoadable = useLoadable(agentDisplayName$);
-  const agentName =
-    agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
+  const displayNameLoadable = useLoadable(agentDisplayName$);
+  const displayName =
+    displayNameLoadable.state === "hasData" ? displayNameLoadable.data : "Zero";
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
       <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-10 pb-3">
         <div className="mx-auto max-w-[900px]">
           <h1 className="text-lg font-semibold tracking-tight text-foreground">
-            Where {agentName} works
+            Where {displayName} works
           </h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            Connect with {agentName} through these channels
+            Connect with {displayName} through these channels
           </p>
         </div>
       </header>
 
       <main className="flex-1 overflow-auto px-4 sm:px-6 pt-4 pb-8">
         <div className="mx-auto max-w-[900px] flex flex-col gap-4">
-          <SlackCard agentName={agentName} />
+          <SlackCard displayName={displayName} />
         </div>
       </main>
     </div>

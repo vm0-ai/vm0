@@ -260,9 +260,11 @@ function extractAgentFields(
 function JobConnectorsTab({
   agentId,
   agentDisplayName,
+  readOnly,
 }: {
   agentId: string;
   agentDisplayName: string;
+  readOnly?: boolean;
 }) {
   const addedConnectors = useGet(zeroJobAddedConnectors$);
   const connectorsDirty = useGet(zeroJobConnectorsDirty$);
@@ -280,19 +282,20 @@ function JobConnectorsTab({
       addedConnectorsLoading={false}
       connectorsDirty={connectorsDirty}
       connectorsSaving={connectorsSaving}
-      agentName={agentId}
-      agentDisplayName={agentDisplayName}
+      agentId={agentId}
+      displayName={agentDisplayName}
       firewallPolicies={firewallPolicies}
       onFirewallPoliciesChange={setFirewallPolicies}
       onAddConnector={addConnector}
       onRemoveConnector={removeConnector}
       onSaveConnectors={() => detach(saveConnectors(), Reason.DomCallback)}
       onDiscardConnectors={() => discardConnectors()}
+      readOnly={readOnly}
     />
   );
 }
 
-function JobScheduleTab({ agentId }: { agentId: string }) {
+function JobScheduleTab({ displayName }: { displayName: string }) {
   const entriesLoadable = useLoadable(zeroJobScheduleEntries$);
   const scheduleError = useGet(zeroJobScheduleError$);
   const saveSchedule = useSet(saveZeroJobSchedule$);
@@ -314,7 +317,7 @@ function JobScheduleTab({ agentId }: { agentId: string }) {
 
   return (
     <ZeroScheduleTab
-      agentName={agentId}
+      displayName={displayName}
       entries={entries}
       scheduleError={scheduleError}
       onSave={saveSchedule}
@@ -504,15 +507,21 @@ export function ZeroJobDetailPage({
 
       <main className="shrink-0 px-4 sm:px-6 pt-4 pb-16">
         {activeTab === "connectors" && (
-          <JobConnectorsTab agentId={agentId} agentDisplayName={displayName} />
+          <JobConnectorsTab
+            agentId={agentId}
+            agentDisplayName={displayName}
+            readOnly={hideProfileAndInstructions}
+          />
         )}
 
-        {activeTab === "schedule" && <JobScheduleTab agentId={displayName} />}
+        {activeTab === "schedule" && (
+          <JobScheduleTab displayName={displayName} />
+        )}
 
         {activeTab === "profile" && (
           <ZeroSettingsTab
             key={`${displayName}\0${description}\0${resolvedSound}`}
-            agentName={displayName}
+            displayName={displayName}
             description={description ?? ""}
             sound={resolvedSound}
             saving={saving}

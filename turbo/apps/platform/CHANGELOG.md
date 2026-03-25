@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.150.0](https://github.com/vm0-ai/vm0/compare/app-v0.149.0...app-v0.150.0) (2026-03-25)
+
+
+### Features
+
+* add create teammate card in team empty state ([#6736](https://github.com/vm0-ai/vm0/issues/6736)) ([c64f2b8](https://github.com/vm0-ai/vm0/commit/c64f2b88474d2e516334b510d1ef3f8a2a16921e))
+* add loading states and save indicators to org billing tabs ([#6729](https://github.com/vm0-ai/vm0/issues/6729)) ([6be932f](https://github.com/vm0-ai/vm0/commit/6be932f64a0527f968578476f61ae1eed243b05d))
+* **schedule:** simplify create dialog, navigate to detail, add run history tab ([#6715](https://github.com/vm0-ai/vm0/issues/6715)) ([2275f60](https://github.com/vm0-ai/vm0/commit/2275f6042e99ea04f8ffdb9d376153a0c993e603))
+
+
+### Bug Fixes
+
+* **platform:** hide add/remove connector actions for members on default agent ([#6753](https://github.com/vm0-ai/vm0/issues/6753)) ([ffff043](https://github.com/vm0-ai/vm0/commit/ffff04346f26467f233bcd89b68914ca828bad86))
+
+
+### Refactoring
+
+* migrate platform signals from raw fetch to typed zero client ([#6677](https://github.com/vm0-ai/vm0/issues/6677)) ([68d7cda](https://github.com/vm0-ai/vm0/commit/68d7cda17f9276412e7121af1ed3bf9a9aef89d5))
+* **web:** return flat array from team api endpoint ([#6730](https://github.com/vm0-ai/vm0/issues/6730)) ([2b6ccae](https://github.com/vm0-ai/vm0/commit/2b6ccae92de330f25e0612ecdffc66ccc85b2689))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.113.0
+
 ## [0.149.0](https://github.com/vm0-ai/vm0/compare/app-v0.148.1...app-v0.149.0) (2026-03-25)
 
 

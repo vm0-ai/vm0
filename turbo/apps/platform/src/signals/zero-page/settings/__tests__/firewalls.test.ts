@@ -69,7 +69,7 @@ describe("saveFirewallPolicies$", () => {
     );
 
     expect(capturedBody).not.toBeNull();
-    expect(capturedBody!.name).toBe("my-agent");
+    expect(capturedBody!.agentId).toBe("my-agent");
     expect(capturedBody!.policies).toStrictEqual(policies);
     expect(result).toStrictEqual(policies);
   });
@@ -90,6 +90,6 @@ describe("saveFirewallPolicies$", () => {
 
     await expect(
       context.store.set(saveFirewallPolicies$, "my-agent", {}),
-    ).rejects.toThrow("Only org admins can update");
+    ).rejects.toThrow("Save failed: Only org admins can update");
   });
 });

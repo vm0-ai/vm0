@@ -6,7 +6,8 @@ import {
   type Computed,
   type State,
 } from "ccstate";
-import { fetch$ } from "../fetch.ts";
+import { zeroMemberCreditCapContract } from "@vm0/core";
+import { zeroClient$ } from "../api-client.ts";
 import { usageMembersAsync$ } from "../usage-page/usage-signals.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 
@@ -24,27 +25,26 @@ const memberCreditCapsReload$ = state(0);
 const memberCreditCaps$ = computed(async (get) => {
   get(memberCreditCapsReload$);
   const usage = await get(usageMembersAsync$);
-  const fetchFn = get(fetch$);
+  const createClient = get(zeroClient$);
+  const client = createClient(zeroMemberCreditCapContract);
 
   const caps = new Map<string, MemberCreditCap>();
 
   // Fetch caps for all members in parallel
   const results = await Promise.all(
     usage.members.map(async (member) => {
-      const response = await fetchFn(
-        `/api/zero/org/members/credit-cap?userId=${encodeURIComponent(member.userId)}`,
-      );
-      if (!response.ok) {
+      const result = await client.get({
+        query: { userId: member.userId },
+      });
+      if (result.status !== 200) {
         return { userId: member.userId, cap: null };
       }
-      const data = (await response.json()) as {
-        userId: string;
-        creditCap: number | null;
-        creditEnabled: boolean;
-      };
       return {
         userId: member.userId,
-        cap: { creditCap: data.creditCap, creditEnabled: data.creditEnabled },
+        cap: {
+          creditCap: result.body.creditCap,
+          creditEnabled: result.body.creditEnabled,
+        },
       };
     }),
   );
@@ -67,12 +67,9 @@ const setMemberCreditCap$ = command(
     { get, set },
     params: { userId: string; creditCap: number | null },
   ) => {
-    const fetchFn = get(fetch$);
-    await fetchFn("/api/zero/org/members/credit-cap", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(params),
-    });
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroMemberCreditCapContract);
+    await client.set({ body: params });
     set(memberCreditCapsReload$, (x) => x + 1);
   },
 );

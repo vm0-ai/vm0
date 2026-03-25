@@ -39,10 +39,10 @@ const KEYWORD_LINK_MAPPINGS: readonly KeywordLinkMapping[] = Object.freeze([
   },
 ]);
 
-function buildPath(category: KeywordCategory, agentName?: string): string {
+function buildPath(category: KeywordCategory, agentId?: string): string {
   // Connector links route to the agent's team page with connectors tab
-  if (category === "connector" && agentName) {
-    return `/team/${encodeURIComponent(agentName)}?tab=connectors`;
+  if (category === "connector" && agentId) {
+    return `/team/${encodeURIComponent(agentId)}?tab=connectors`;
   }
   return "/team";
 }
@@ -65,20 +65,20 @@ export function buildModelProviderLink(appUrl: string): DeepLink {
  * Scans the text for known configuration-related keywords and returns
  * matching platform deep links (deduplicated by destination path).
  *
- * When `agentName` is provided, connector links point to
- * `/team/{agentName}?tab=connectors` instead of the generic team page.
+ * When `agentId` is provided, connector links point to
+ * `/team/{agentId}?tab=connectors` instead of the generic team page.
  */
 export function detectDeepLinks(
   responseText: string,
   appUrl: string,
-  agentName?: string,
+  agentId?: string,
 ): DeepLink[] {
   const lowerText = responseText.toLowerCase();
   const seen = new Set<string>();
   const links: DeepLink[] = [];
 
   for (const mapping of KEYWORD_LINK_MAPPINGS) {
-    const path = buildPath(mapping.category, agentName);
+    const path = buildPath(mapping.category, agentId);
     if (seen.has(path)) {
       continue;
     }

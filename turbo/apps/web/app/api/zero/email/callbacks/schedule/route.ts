@@ -29,7 +29,6 @@ function parsePayload(payload: unknown): EmailScheduleCallbackPayload | null {
   if (
     typeof p.scheduleId !== "string" ||
     typeof p.agentId !== "string" ||
-    typeof p.agentName !== "string" ||
     typeof p.userId !== "string"
   ) {
     return null;
@@ -74,7 +73,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return errorResponse("Invalid or missing payload", 400);
   }
 
-  const { agentName, userId } = payload;
+  const { userId } = payload;
 
   log.debug("Processing email schedule callback", { runId, status });
 
@@ -102,7 +101,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // Resolve agent and org slug for from address
   const [agent] = await globalThis.services.db
-    .select({ orgId: zeroAgents.orgId })
+    .select({
+      orgId: zeroAgents.orgId,
+      displayName: zeroAgents.displayName,
+      name: zeroAgents.name,
+    })
     .from(zeroAgents)
     .where(eq(zeroAgents.id, payload.agentId))
     .limit(1);
@@ -110,6 +113,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!agent) {
     return errorResponse("Agent not found", 404);
   }
+  const agentLabel = agent.displayName ?? agent.name ?? "your agent";
   const org = await getOrgData(agent.orgId);
 
   if (status === "completed") {
@@ -138,11 +142,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     await enqueueEmail({
       from: buildFromAddress(org.slug),
       to: userEmail,
-      subject: `VM0 - Scheduled run for "${agentName}" completed`,
+      subject: `VM0 - Scheduled run for "${agentLabel}" completed`,
       template: {
         template: "schedule-completed",
         props: {
-          agentName,
+          agentName: agentLabel,
           output: truncatedOutput,
           logsUrl,
           unsubscribeUrl,
@@ -165,11 +169,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     await enqueueEmail({
       from: buildFromAddress(org.slug),
       to: userEmail,
-      subject: `VM0 - Scheduled run for "${agentName}" failed`,
+      subject: `VM0 - Scheduled run for "${agentLabel}" failed`,
       template: {
         template: "schedule-failed",
         props: {
-          agentName,
+          agentName: agentLabel,
           errorMessage: error ?? "Unknown error",
           logsUrl,
           unsubscribeUrl,
@@ -182,7 +186,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   log.info("Sent email schedule notification", {
     runId,
     status,
-    agentName,
+    agentId: payload.agentId,
   });
 
   return NextResponse.json({ success: true });

@@ -49,7 +49,6 @@ import { navigateTo$ } from "../../signals/route.ts";
 
 export type CombinedEntry = ScheduleEntry & {
   agentLabel: string;
-  agentName: string;
   agentId: string;
   timezone: string;
   nextRunAt: string | null;
@@ -76,8 +75,7 @@ export function buildCombinedSchedule(
     agentLabel:
       e.agentId === defaultComposeId
         ? agentName
-        : (nameToDisplay.get(e.agentName) ?? e.agentName),
-    agentName: e.agentName,
+        : (nameToDisplay.get(e.agentId) ?? e.agentId),
     agentId: e.agentId,
     timezone: e.timezone,
     nextRunAt: e.nextRunAt,
@@ -399,9 +397,9 @@ function ScheduleCalendarSkeleton() {
 // ---------------------------------------------------------------------------
 
 export function ZeroSchedulePage() {
-  const agentNameLoadable = useLoadable(agentDisplayName$);
-  const agentName =
-    agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
+  const displayNameLoadable = useLoadable(agentDisplayName$);
+  const displayName =
+    displayNameLoadable.state === "hasData" ? displayNameLoadable.data : "Zero";
 
   const statusLoadable = useLoadable(zeroOnboardingStatus$);
   const defaultComposeId =
@@ -431,6 +429,7 @@ export function ZeroSchedulePage() {
     "list",
   );
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
   const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
@@ -440,7 +439,7 @@ export function ZeroSchedulePage() {
 
   const combinedSchedule = buildCombinedSchedule(
     entries,
-    agentName,
+    displayName,
     defaultComposeId,
     nameToDisplay,
   );
@@ -457,6 +456,7 @@ export function ZeroSchedulePage() {
 
   const handleCreateSave = (values: ScheduleFormValues) => {
     setSaving(true);
+    setSaveError(null);
     detach(
       saveSchedule({
         prompt: values.prompt.trim(),
@@ -484,8 +484,10 @@ export function ZeroSchedulePage() {
             pathParams: { scheduleId },
           });
         })
-        .catch(() => {
-          /* Error surfaced via toast in saveOrgSchedule$ */
+        .catch((error: unknown) => {
+          setSaveError(
+            error instanceof Error ? error.message : "Failed to save schedule",
+          );
         })
         .finally(() => {
           setSaving(false);
@@ -641,6 +643,7 @@ export function ZeroSchedulePage() {
         onClose={() => setCreateOpen(false)}
         onSave={handleCreateSave}
         saving={saving}
+        saveError={saveError}
         mode="create"
         agents={agents}
         initialValues={{

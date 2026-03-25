@@ -6,6 +6,7 @@ import { githubInstallations } from "../../../../../../src/db/schema/github-inst
 import { githubIssueSessions } from "../../../../../../src/db/schema/github-issue-session";
 import { agentSessions } from "../../../../../../src/db/schema/agent-session";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
+import { zeroAgents } from "../../../../../../src/db/schema/zero-agent";
 import { getInstallationAccessToken } from "../../../../../../src/lib/github/github-app";
 import {
   postIssueComment,
@@ -29,8 +30,7 @@ function parsePayload(payload: unknown): GitHubIssuesCallbackPayload | null {
     typeof p.installationId !== "string" ||
     typeof p.repo !== "string" ||
     typeof p.issueNumber !== "number" ||
-    typeof p.composeId !== "string" ||
-    typeof p.agentName !== "string"
+    typeof p.agentId !== "string"
   ) {
     return null;
   }
@@ -43,7 +43,7 @@ function errorResponse(message: string, status: number): NextResponse {
 
 async function findNewSessionId(
   userId: string,
-  composeId: string,
+  agentId: string,
   runCreatedAt: Date,
 ): Promise<string | undefined> {
   const [newSession] = await globalThis.services.db
@@ -52,13 +52,80 @@ async function findNewSessionId(
     .where(
       and(
         eq(agentSessions.userId, userId),
-        eq(agentSessions.agentComposeId, composeId),
+        eq(agentSessions.agentComposeId, agentId),
         gte(agentSessions.updatedAt, runCreatedAt),
       ),
     )
     .orderBy(desc(agentSessions.updatedAt))
     .limit(1);
   return newSession?.id;
+}
+
+async function resolveAgentInfo(agentId: string) {
+  const [agentRow] = await globalThis.services.db
+    .select({ displayName: zeroAgents.displayName, name: zeroAgents.name })
+    .from(zeroAgents)
+    .where(eq(zeroAgents.id, agentId))
+    .limit(1);
+  return {
+    label: agentRow?.displayName ?? agentRow?.name ?? "your agent",
+    name: agentRow?.name ?? "your agent",
+  };
+}
+
+async function saveIssueSession(opts: {
+  runId: string;
+  agentId: string;
+  installationId: string;
+  repo: string;
+  issueNumber: number;
+  existingSessionId: string | undefined;
+  commentId: string;
+  status: string;
+}) {
+  const [run] = await globalThis.services.db
+    .select({ userId: agentRuns.userId, createdAt: agentRuns.createdAt })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, opts.runId))
+    .limit(1);
+
+  if (!run) return;
+
+  const newSessionId = !opts.existingSessionId
+    ? await findNewSessionId(run.userId, opts.agentId, run.createdAt)
+    : undefined;
+
+  if (!opts.existingSessionId && newSessionId) {
+    await globalThis.services.db
+      .insert(githubIssueSessions)
+      .values({
+        userId: run.userId,
+        installationId: opts.installationId,
+        repo: opts.repo,
+        issueNumber: opts.issueNumber,
+        agentSessionId: newSessionId,
+        lastCommentId: opts.commentId,
+      })
+      .onConflictDoNothing();
+  } else if (
+    opts.existingSessionId &&
+    opts.status === "completed" &&
+    opts.commentId
+  ) {
+    await globalThis.services.db
+      .update(githubIssueSessions)
+      .set({
+        lastCommentId: opts.commentId,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(githubIssueSessions.installationId, opts.installationId),
+          eq(githubIssueSessions.repo, opts.repo),
+          eq(githubIssueSessions.issueNumber, opts.issueNumber),
+        ),
+      );
+  }
 }
 
 /**
@@ -130,7 +197,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return errorResponse("Invalid or missing payload", 400);
   }
 
-  const { installationId, repo, issueNumber, composeId, existingSessionId } =
+  const { installationId, repo, issueNumber, agentId, existingSessionId } =
     payload;
 
   log.debug("Processing GitHub issues callback", {
@@ -178,6 +245,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     installation.installationId,
   );
 
+  const agent = await resolveAgentInfo(agentId);
+
   // Query Axiom for the agent's output
   const resultData = await extractRunOutput(runId, error);
 
@@ -185,13 +254,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const deepLinks = buildDeepLinksFromFlags(
     resultData,
     getAppUrl(),
-    payload.agentName,
+    agent.name,
   );
 
   // Format and post comment to GitHub issue
   const commentBody = formatGitHubComment({
     status,
-    agentName: payload.agentName,
+    agentName: agent.label,
     runId,
     output: resultData.result ?? undefined,
     error,
@@ -215,49 +284,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // Get run to find userId for session lookup
-  const [run] = await globalThis.services.db
-    .select({ userId: agentRuns.userId, createdAt: agentRuns.createdAt })
-    .from(agentRuns)
-    .where(eq(agentRuns.id, runId))
-    .limit(1);
-
   // Save issue session mapping
-  if (run) {
-    const newSessionId = !existingSessionId
-      ? await findNewSessionId(run.userId, composeId, run.createdAt)
-      : undefined;
-
-    if (!existingSessionId && newSessionId) {
-      // New issue thread — create mapping
-      await globalThis.services.db
-        .insert(githubIssueSessions)
-        .values({
-          userId: run.userId,
-          installationId,
-          repo,
-          issueNumber,
-          agentSessionId: newSessionId,
-          lastCommentId: commentId,
-        })
-        .onConflictDoNothing();
-    } else if (existingSessionId && status === "completed" && commentId) {
-      // Existing issue thread — update lastCommentId
-      await globalThis.services.db
-        .update(githubIssueSessions)
-        .set({
-          lastCommentId: commentId,
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(githubIssueSessions.installationId, installationId),
-            eq(githubIssueSessions.repo, repo),
-            eq(githubIssueSessions.issueNumber, issueNumber),
-          ),
-        );
-    }
-  }
+  await saveIssueSession({
+    runId,
+    agentId,
+    installationId,
+    repo,
+    issueNumber,
+    existingSessionId,
+    commentId,
+    status,
+  });
 
   log.debug("GitHub issues callback processed successfully", {
     runId,

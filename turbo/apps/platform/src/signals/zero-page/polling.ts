@@ -1,13 +1,9 @@
 import { command, computed, type Computed } from "ccstate";
-import type {
-  AgentEvent,
-  AgentEventsResponse,
-  LogDetail,
-  LogStatus,
-} from "./log-types.ts";
+import type { AgentEvent, LogStatus } from "./log-types.ts";
 import { delay } from "signal-timers";
-import { fetch$ } from "../fetch.ts";
+import { zeroRunAgentEventsContract, logsByIdContract } from "@vm0/core";
 import { throwIfAbort } from "../utils.ts";
+import { zeroClient$ } from "../api-client.ts";
 
 const AGENT_EVENTS_PAGE_LIMIT = 30;
 const MAX_INTERVAL = 30_000;
@@ -40,21 +36,22 @@ function createEventPageComputed(
   since?: string,
 ): Computed<Promise<PageResult>> {
   return computed(async (get) => {
-    const fetchFn = get(fetch$);
-    const params = new URLSearchParams({
-      limit: String(AGENT_EVENTS_PAGE_LIMIT),
+    const client = get(zeroClient$)(zeroRunAgentEventsContract);
+    const query: { limit: number; order: "asc"; since?: number } = {
+      limit: AGENT_EVENTS_PAGE_LIMIT,
       order: "asc",
-    });
+    };
     if (since) {
-      params.set("since", String(new Date(since).getTime()));
+      query.since = new Date(since).getTime();
     }
-    const response = await fetchFn(
-      `/api/zero/runs/${runId}/telemetry/agent?${params.toString()}`,
-    );
-    if (!response.ok) {
-      throw new Error(`Failed to fetch agent events: ${response.statusText}`);
+    const result = await client.getAgentEvents({
+      params: { id: runId },
+      query,
+    });
+    if (result.status !== 200) {
+      throw new Error(`Failed to fetch agent events (${result.status})`);
     }
-    const data = (await response.json()) as AgentEventsResponse;
+    const data = result.body;
     return { events: data.events, hasMore: data.hasMore };
   });
 }
@@ -136,14 +133,13 @@ export const setupPollingLoop$ = command(
 
     // Phase 2: Check if already terminal
     try {
-      const fetchFn = get(fetch$);
-      const response = await fetchFn(`/api/zero/logs/${runId}`);
+      const client = get(zeroClient$)(logsByIdContract);
+      const result = await client.getById({ params: { id: runId } });
       signal.throwIfAborted();
-      if (response.ok) {
-        const detail = (await response.json()) as LogDetail;
-        runState.setStatus(detail.status);
-        runState.setError?.(detail.error);
-        if (isTerminalStatus(detail.status)) {
+      if (result.status === 200) {
+        runState.setStatus(result.body.status);
+        runState.setError?.(result.body.error);
+        if (isTerminalStatus(result.body.status)) {
           await set(pollNewEvents$, { runId, state: runState });
           signal.throwIfAborted();
           onTerminal?.(runId);
@@ -169,15 +165,14 @@ export const setupPollingLoop$ = command(
       signal.throwIfAborted();
 
       try {
-        const fetchFn = get(fetch$);
-        const response = await fetchFn(`/api/zero/logs/${runId}`);
+        const client = get(zeroClient$)(logsByIdContract);
+        const result = await client.getById({ params: { id: runId } });
         signal.throwIfAborted();
 
-        if (response.ok) {
-          const detail = (await response.json()) as LogDetail;
-          runState.setStatus(detail.status);
-          runState.setError?.(detail.error);
-          if (isTerminalStatus(detail.status)) {
+        if (result.status === 200) {
+          runState.setStatus(result.body.status);
+          runState.setError?.(result.body.error);
+          if (isTerminalStatus(result.body.status)) {
             await set(pollNewEvents$, { runId, state: runState });
             signal.throwIfAborted();
             onTerminal?.(runId);

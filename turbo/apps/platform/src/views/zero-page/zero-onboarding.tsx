@@ -554,10 +554,10 @@ export function ZeroOnboarding({
 // ---------------------------------------------------------------------------
 
 export function MemberWelcome({
-  agentName = "Zero",
+  displayName = "Zero",
   zeroAvatarSrc = zeroAvatarImg,
 }: {
-  agentName?: string;
+  displayName?: string;
   zeroAvatarSrc?: string;
 }) {
   const step = useGet(memberWelcomeStep$);
@@ -642,7 +642,7 @@ export function MemberWelcome({
           style={{ position: "fixed", overflow: "hidden" }}
         >
           <DialogTitle className="sr-only">
-            Meet {agentName}, your new teammate!
+            Meet {displayName}, your new teammate!
           </DialogTitle>
           <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center text-center px-8 py-8">
             <span className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full mb-5">
@@ -654,8 +654,8 @@ export function MemberWelcome({
               />
             </span>
             <WelcomeAnimation
-              title={`Meet ${agentName}, your new teammate!`}
-              subtitle={`Think of ${agentName} as a teammate in the office you can casually talk to, delegate tasks, and count on to get things done.`}
+              title={`Meet ${displayName}, your new teammate!`}
+              subtitle={`Think of ${displayName} as a teammate in the office you can casually talk to, delegate tasks, and count on to get things done.`}
             />
           </div>
           <div className={`${footerClass} justify-end`}>
@@ -690,7 +690,7 @@ export function MemberWelcome({
               </DialogTitle>
             </DialogHeader>
             <p className="text-sm text-muted-foreground leading-relaxed mt-1 mb-6">
-              Your organization uses these tools with {agentName}. Connect the
+              Your organization uses these tools with {displayName}. Connect the
               ones you use to get started.
             </p>
             {memberConnectors.length > 0 ? (
@@ -775,11 +775,11 @@ export function MemberWelcome({
           <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center text-center px-8 py-8">
             <DialogHeader className="space-y-2">
               <DialogTitle className="text-xl font-semibold tracking-tight">
-                Where would you like to work with {agentName}?
+                Where would you like to work with {displayName}?
               </DialogTitle>
             </DialogHeader>
             <p className="text-sm text-muted-foreground leading-relaxed max-w-[400px] mt-1 mb-6">
-              Your admin has already added {agentName} to your workspace. Pick
+              Your admin has already added {displayName} to your workspace. Pick
               how you&apos;d like to get started.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-[560px]">
@@ -791,7 +791,7 @@ export function MemberWelcome({
                   Open in Slack
                 </span>
                 <p className="text-xs text-muted-foreground leading-relaxed mb-4 flex-1">
-                  {agentName} is already in your Slack workspace. Send a DM to
+                  {displayName} is already in your Slack workspace. Send a DM to
                   start chatting.
                 </p>
                 <Button
@@ -817,8 +817,8 @@ export function MemberWelcome({
                   Continue in web
                 </span>
                 <p className="text-xs text-muted-foreground leading-relaxed mb-4 flex-1">
-                  Chat with {agentName} right here with full access to workflows
-                  and settings.
+                  Chat with {displayName} right here with full access to
+                  workflows and settings.
                 </p>
                 <Button
                   size="sm"
@@ -827,7 +827,7 @@ export function MemberWelcome({
                   onClick={handleContinueWeb}
                   disabled={saving}
                 >
-                  {saving ? "Saving\u2026" : `Chat with ${agentName}`}
+                  {saving ? "Saving\u2026" : `Chat with ${displayName}`}
                 </Button>
               </div>
             </div>

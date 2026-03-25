@@ -28,8 +28,7 @@ interface TelegramCallbackPayload {
   chatId: string;
   messageId: string;
   userLinkId: string;
-  agentName: string;
-  composeId: string;
+  agentId: string;
   existingSessionId: string | null;
   isDM: boolean;
   thinkingMessageId: string | null;
@@ -131,8 +130,7 @@ async function setupTelegramCallback() {
     chatId,
     messageId,
     userLinkId,
-    agentName: "test-agent",
-    composeId,
+    agentId: composeId,
     existingSessionId: null,
     isDM: false,
     thinkingMessageId: "100",
@@ -211,8 +209,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
               chatId: "123",
               messageId: "1",
               userLinkId: "link-123",
-              agentName: "test-agent",
-              composeId: "compose-123",
+              agentId: "compose-123",
               existingSessionId: null,
             },
           }),
@@ -409,8 +406,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
               chatId: "123",
               messageId: "1",
               userLinkId: "link-123",
-              agentName: "test-agent",
-              composeId: "compose-123",
+              agentId: "compose-123",
               existingSessionId: null,
             },
           }),
@@ -464,8 +460,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
         chatId: "123",
         messageId: "1",
         userLinkId: "link-123",
-        agentName: "test-agent",
-        composeId: "compose-123",
+        agentId: "compose-123",
         existingSessionId: null,
         isDM: false,
         thinkingMessageId: null,

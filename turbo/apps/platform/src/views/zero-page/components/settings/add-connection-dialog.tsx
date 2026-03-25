@@ -509,7 +509,7 @@ export function AddConnectionDialog({
   excludeTypes,
   onConnectSuccess,
   onAdd,
-  agentName,
+  displayName,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -517,7 +517,7 @@ export function AddConnectionDialog({
   excludeTypes?: ReadonlySet<string>;
   onConnectSuccess?: (type: ConnectorType) => void;
   onAdd?: (type: ConnectorType) => void;
-  agentName?: string;
+  displayName?: string;
 }) {
   const isZero = variant === "zero";
 
@@ -529,7 +529,7 @@ export function AddConnectionDialog({
         excludeTypes={excludeTypes}
         onConnectSuccess={onConnectSuccess}
         onAdd={onAdd}
-        agentName={agentName}
+        displayName={displayName}
       />
     );
   }
@@ -619,14 +619,14 @@ function ZeroAddConnectionDialog({
   excludeTypes,
   onConnectSuccess,
   onAdd,
-  agentName,
+  displayName,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   excludeTypes?: ReadonlySet<string>;
   onConnectSuccess?: (type: ConnectorType) => void;
   onAdd?: (type: ConnectorType) => void;
-  agentName?: string;
+  displayName?: string;
 }) {
   const connectorTypes = useLastResolved(allConnectorTypes$);
   const search = useGet(zeroDialogSearch$);
@@ -675,7 +675,7 @@ function ZeroAddConnectionDialog({
     >
       <DialogContent className="max-w-2xl h-[85vh] min-w-0 flex flex-col overflow-hidden pr-0 pb-0 zero-app">
         <DialogHeader>
-          <DialogTitle>Add connector to {agentName ?? "agent"}</DialogTitle>
+          <DialogTitle>Add connector to {displayName ?? "agent"}</DialogTitle>
         </DialogHeader>
         <p className="text-sm text-muted-foreground pr-6">
           Connectors let your agents access and interact with third-party

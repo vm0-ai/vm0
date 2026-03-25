@@ -39,7 +39,6 @@ function isSlackSchedulePayload(
   return (
     typeof p.scheduleId === "string" &&
     typeof p.agentId === "string" &&
-    typeof p.agentName === "string" &&
     typeof p.userId === "string" &&
     typeof p.orgId === "string"
   );
@@ -143,7 +142,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return errorResponse("Invalid or missing payload", 400);
   }
 
-  const { agentName, userId, orgId } = payload;
+  const { userId, orgId } = payload;
   const targetChannelId = payload.slackChannelId;
 
   log.debug("Processing Slack org schedule callback", {
@@ -202,11 +201,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // Resolve display name from zeroAgents
   const [agentInfo] = await globalThis.services.db
-    .select({ displayName: zeroAgents.displayName })
+    .select({ displayName: zeroAgents.displayName, name: zeroAgents.name })
     .from(zeroAgents)
     .where(eq(zeroAgents.id, payload.agentId))
     .limit(1);
-  const displayName = agentInfo?.displayName ?? agentName;
+  const displayName = agentInfo?.displayName ?? agentInfo?.name ?? "your agent";
+  const agentName = agentInfo?.name ?? "your agent";
 
   // Use configured channel if set, otherwise fall back to user DM
   const notifyChannel = targetChannelId ?? connection.slackUserId;
@@ -268,7 +268,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   log.info("Sent Slack org schedule notification", {
     runId,
     status,
-    agentName,
+    agentId: payload.agentId,
   });
 
   return NextResponse.json({ success: true });

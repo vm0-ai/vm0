@@ -1,8 +1,12 @@
 import { command, computed, state } from "ccstate";
-import type { ComposeListItem } from "@vm0/core";
-import { fetch$ } from "../fetch.ts";
+import {
+  zeroTeamContract,
+  zeroSchedulesMainContract,
+  type ComposeListItem,
+} from "@vm0/core";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
+import { zeroClient$ } from "../api-client.ts";
 
 const L = logger("AgentsList");
 
@@ -10,8 +14,8 @@ interface Schedule {
   name: string;
   agentId: string;
   enabled: boolean;
-  cronExpression?: string;
-  atTime?: string;
+  cronExpression: string | null;
+  atTime: string | null;
   timezone: string;
 }
 
@@ -37,26 +41,23 @@ export const fetchAgentsList$ = command(async ({ get, set }) => {
   set(agentsListState$, (prev) => ({ ...prev, loading: true, error: null }));
 
   try {
-    const fetchFn = get(fetch$);
-
     // Fetch agents from app team endpoint (uses Clerk active org)
-    const agentsResponse = await fetchFn("/api/zero/team");
+    const teamClient = get(zeroClient$)(zeroTeamContract);
+    const agentsResult = await teamClient.list();
 
-    if (!agentsResponse.ok) {
-      throw new Error(`Failed to fetch agents: ${agentsResponse.statusText}`);
+    if (agentsResult.status !== 200) {
+      throw new Error(`Failed to fetch agents (${agentsResult.status})`);
     }
 
-    const agents = (await agentsResponse.json()) as ComposeListItem[];
+    const agents = agentsResult.body as ComposeListItem[];
 
     // Fetch schedules (optional - don't fail if schedules API is unavailable)
     let schedules: Schedule[] = [];
     try {
-      const schedulesResponse = await fetchFn("/api/zero/schedules");
-      if (schedulesResponse.ok) {
-        const schedulesData = (await schedulesResponse.json()) as {
-          schedules: Schedule[];
-        };
-        schedules = schedulesData.schedules;
+      const schedulesClient = get(zeroClient$)(zeroSchedulesMainContract);
+      const schedulesResult = await schedulesClient.list();
+      if (schedulesResult.status === 200) {
+        schedules = schedulesResult.body.schedules;
       }
     } catch (error) {
       throwIfAbort(error);

@@ -1,6 +1,7 @@
 # Firecracker VM rootfs image
 # Based on Node.js 24 with Python 3.11+, guest-init, and agent CLIs
 #
+#
 # Included CLIs:
 # - Claude Code CLI (@anthropic-ai/claude-code)
 # - GitHub CLI (gh)

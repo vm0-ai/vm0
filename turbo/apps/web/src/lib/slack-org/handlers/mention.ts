@@ -168,8 +168,7 @@ export async function handleOrgMention(
     threadTs,
     messageTs: context.messageTs,
     connectionId: connection.id,
-    agentName,
-    composeId,
+    agentId: composeId,
     existingSessionId,
   };
 

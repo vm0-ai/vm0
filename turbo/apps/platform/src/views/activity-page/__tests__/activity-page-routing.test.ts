@@ -16,7 +16,7 @@ function mockActivityAPIs() {
     {
       id: "log-1",
       sessionId: "session-1",
-      agentName: "test-agent",
+      agentId: "test-agent",
       displayName: "Test Agent",
       orgSlug: "test",
       framework: "claude-code",
@@ -31,7 +31,7 @@ function mockActivityAPIs() {
   const logDetail: LogDetail = {
     id: "log-1",
     sessionId: "session-1",
-    agentName: "test-agent",
+    agentId: "test-agent",
     displayName: "Test Agent",
     framework: "claude-code",
     modelProvider: null,

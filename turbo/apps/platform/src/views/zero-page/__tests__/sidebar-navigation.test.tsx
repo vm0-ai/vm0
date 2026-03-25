@@ -63,10 +63,13 @@ function mockSubagentAPIs() {
       });
     }),
     http.post("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({
-        id: "new-thread-id",
-        title: null,
-      });
+      return HttpResponse.json(
+        {
+          id: "new-thread-id",
+          title: null,
+        },
+        { status: 201 },
+      );
     }),
   );
 }
@@ -121,10 +124,13 @@ describe("sidebar new chat navigation", () => {
     server.use(
       http.post("*/api/zero/chat-threads", async () => {
         await delay(500);
-        return HttpResponse.json({
-          id: "delayed-thread-id",
-          title: null,
-        });
+        return HttpResponse.json(
+          {
+            id: "delayed-thread-id",
+            title: null,
+          },
+          { status: 201 },
+        );
       }),
     );
 

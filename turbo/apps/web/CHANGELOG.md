@@ -1,5 +1,32 @@
 # Changelog
 
+## [12.159.0](https://github.com/vm0-ai/vm0/compare/web-v12.158.0...web-v12.159.0) (2026-03-25)
+
+
+### Features
+
+* **auth:** add cli jwt token type and auth context support ([#6725](https://github.com/vm0-ai/vm0/issues/6725)) ([40f233d](https://github.com/vm0-ai/vm0/commit/40f233d9a00b82b521daff7a6d286e8f00ac329a))
+* **auth:** update server api endpoints to generate cli jwt tokens ([#6740](https://github.com/vm0-ai/vm0/issues/6740)) ([509893c](https://github.com/vm0-ai/vm0/commit/509893ca0eac7364ce422cd994fa3461399713d7))
+* **schedule:** simplify create dialog, navigate to detail, add run history tab ([#6715](https://github.com/vm0-ai/vm0/issues/6715)) ([2275f60](https://github.com/vm0-ai/vm0/commit/2275f6042e99ea04f8ffdb9d376153a0c993e603))
+
+
+### Bug Fixes
+
+* use @clerk/backend for backfill script clerk client ([#6056](https://github.com/vm0-ai/vm0/issues/6056)) ([22d87e4](https://github.com/vm0-ai/vm0/commit/22d87e451944eebbd49d58ded6e925cae2a8a3c0))
+
+
+### Refactoring
+
+* **web:** convert skill sync to async i/o and concurrent processing ([#6748](https://github.com/vm0-ai/vm0/issues/6748)) ([d4d111b](https://github.com/vm0-ai/vm0/commit/d4d111ba50fb0a6ed98a5aeeda66eb7b458888ba))
+* **web:** return flat array from team api endpoint ([#6730](https://github.com/vm0-ai/vm0/issues/6730)) ([2b6ccae](https://github.com/vm0-ai/vm0/commit/2b6ccae92de330f25e0612ecdffc66ccc85b2689))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.113.0
+
 ## [12.158.0](https://github.com/vm0-ai/vm0/compare/web-v12.157.0...web-v12.158.0) (2026-03-25)
 
 

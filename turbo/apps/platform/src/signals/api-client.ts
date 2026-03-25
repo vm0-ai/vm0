@@ -5,9 +5,24 @@
  * compile-time type checking for request/response shapes.
  */
 import { computed } from "ccstate";
-import { initClient, tsRestFetchApi, type AppRouter } from "@ts-rest/core";
+import {
+  initClient,
+  tsRestFetchApi,
+  type AppRouter,
+  type InitClientReturn,
+  type InitClientArgs,
+} from "@ts-rest/core";
 import { clerk$ } from "./auth.ts";
 import { apiBase$ } from "./fetch.ts";
+
+/**
+ * Type alias for the factory function returned by `get(zeroClient$)`.
+ * Useful for shared helper functions that accept the client factory
+ * as a parameter (e.g. `createZeroAgent`).
+ */
+export type ZeroClientFactory = <T extends AppRouter>(
+  contract: T,
+) => InitClientReturn<T, InitClientArgs>;
 
 /**
  * Factory signal for creating typed ts-rest clients.

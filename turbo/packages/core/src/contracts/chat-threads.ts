@@ -108,7 +108,7 @@ export const chatThreadRunsContract = c.router({
       runId: z.string().min(1),
     }),
     responses: {
-      204: z.void(),
+      204: c.noBody(),
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
