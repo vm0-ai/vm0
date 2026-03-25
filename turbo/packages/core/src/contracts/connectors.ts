@@ -1378,6 +1378,7 @@ const CONNECTOR_TYPES_DEF = {
       scopes: [
         "tweet.read",
         "tweet.write",
+        "tweet.moderate.write",
         "users.read",
         "follows.read",
         "follows.write",
@@ -1394,6 +1395,7 @@ const CONNECTOR_TYPES_DEF = {
         "block.write",
         "list.read",
         "list.write",
+        "media.write",
         "offline.access",
       ],
       environmentMapping: {
