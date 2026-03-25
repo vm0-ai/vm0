@@ -7,6 +7,8 @@ import {
 } from "ccstate-react";
 import slackIcon from "./components/settings/icons/slack.svg";
 import zeroAvatarImg from "./assets/avatar_0.png";
+import zeroAnimatedSrc from "./assets/zero-animated.webp";
+import slackPreviewImg from "./assets/Slack.png";
 import { Button, Input } from "@vm0/ui";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
@@ -42,7 +44,12 @@ import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { slackOrgData$ } from "../../signals/zero-page/zero-slack.ts";
 import { reloadBillingStatus$ } from "../../signals/zero-page/billing.ts";
-import { IconCircleCheck, IconLoader, IconSearch } from "@tabler/icons-react";
+import {
+  IconCircleCheck,
+  IconCircleCheckFilled,
+  IconLoader,
+  IconSearch,
+} from "@tabler/icons-react";
 import { detach, Reason } from "../../signals/utils.ts";
 import { create as createConfetti } from "canvas-confetti";
 
@@ -208,11 +215,9 @@ function OnboardingConnectorCard({
       onClick={onClick}
       disabled={isPolling}
       className={`flex items-center gap-3 rounded-xl border px-4 py-3.5 transition-colors focus:outline-none ${
-        isSelected
-          ? "border-primary/40 bg-primary/5 cursor-pointer"
-          : isPolling
-            ? "border-yellow-500/30 bg-yellow-500/5"
-            : "border-border hover:bg-muted/30 cursor-pointer"
+        isPolling
+          ? "border-yellow-500/30 bg-yellow-500/5"
+          : "border-border hover:bg-muted/30 cursor-pointer"
       }`}
     >
       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted/40 overflow-hidden">
@@ -224,7 +229,7 @@ function OnboardingConnectorCard({
         </span>
       </span>
       {isSelected && (
-        <IconCircleCheck className="h-4 w-4 shrink-0 text-primary" />
+        <IconCircleCheckFilled className="h-4 w-4 shrink-0 text-primary" />
       )}
       {isPolling && (
         <IconLoader className="h-4 w-4 shrink-0 text-yellow-500 animate-spin" />
@@ -347,7 +352,8 @@ function ConnectStepContent({
         Connect your apps
       </h2>
       <p className="text-sm text-muted-foreground leading-relaxed mt-2 mb-6">
-        Authorize each app so Zero can work with it.
+        Authorize each app so Zero can work with it. You can always add more
+        later.
       </p>
       {selectedEntries.length === 0 ? (
         <p className="text-sm text-muted-foreground py-8">
@@ -362,18 +368,23 @@ function ConnectStepContent({
             return (
               <div
                 key={type}
-                className={`flex items-center gap-4 rounded-xl border px-5 py-4 transition-colors ${
-                  isConnected
-                    ? "border-green-500/30 bg-green-500/5"
-                    : "border-border"
-                }`}
+                className="flex items-center gap-4 rounded-xl border border-border px-5 py-4"
               >
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted/40 overflow-hidden">
                   <ConnectorIcon type={type} size={20} />
                 </span>
-                <span className="min-w-0 flex-1 text-sm font-medium text-foreground">
-                  {config.label}
-                </span>
+                <div className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium text-foreground">
+                    {config.label}
+                  </span>
+                  {"helpText" in config && config.helpText && (
+                    <span className="block text-xs text-muted-foreground mt-0.5 line-clamp-1">
+                      {(config.helpText as string)
+                        .replace(/^Connect your \w+ account to /, "")
+                        .replace(/^Connect /, "")}
+                    </span>
+                  )}
+                </div>
                 {isConnected ? (
                   <span className="flex items-center gap-1.5 text-xs text-green-600 font-medium">
                     <IconCircleCheck className="h-4 w-4" />
@@ -490,34 +501,109 @@ function WhereToWorkContent({
 // Full-page layout wrapper
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Chat preview for workspace step
+// ---------------------------------------------------------------------------
+
+function ChatPreview() {
+  return (
+    <div className="w-full max-w-[360px] flex flex-col items-center">
+      {/* Header */}
+      <img
+        src={zeroAnimatedSrc}
+        alt=""
+        role="presentation"
+        className="h-24 w-24 object-contain mb-5"
+      />
+      <h3 className="text-lg font-semibold text-foreground text-center leading-snug">
+        AI that works alongside your team
+      </h3>
+      <p className="text-sm text-muted-foreground text-center leading-relaxed mt-2 mb-6 max-w-[300px]">
+        Zero lives in your workspace, works across your tools, and helps
+        everyone stay aligned.
+      </p>
+
+      {/* Mock chat — offset down */}
+      <div className="mt-10" />
+      <div className="zero-app w-full flex flex-col gap-5">
+        {/* User message */}
+        <div className="flex flex-col items-end pl-10">
+          <div className="zero-chat-bubble-user rounded-xl text-[13px] leading-relaxed">
+            <div className="px-4 py-3">
+              Draft a Q2 brief and share it with the team
+            </div>
+          </div>
+        </div>
+
+        {/* Zero reply */}
+        <div className="flex items-start gap-2.5 pr-10">
+          <img
+            src={zeroAvatarImg}
+            alt=""
+            className="h-6 w-6 shrink-0 object-contain mt-0.5"
+          />
+          <div className="text-[13px] text-foreground leading-relaxed">
+            Created in Notion and shared in #product. Sarah and James tagged for
+            review.
+          </div>
+        </div>
+
+        {/* User follow-up */}
+        <div className="flex flex-col items-end pl-10">
+          <div className="zero-chat-bubble-user rounded-xl text-[13px] leading-relaxed">
+            <div className="px-4 py-3">
+              Keep it updated weekly and notify the team
+            </div>
+          </div>
+        </div>
+
+        {/* Zero reply */}
+        <div className="flex items-start gap-2.5 pr-10">
+          <img
+            src={zeroAvatarImg}
+            alt=""
+            className="h-6 w-6 shrink-0 object-contain mt-0.5"
+          />
+          <div className="text-[13px] text-foreground leading-relaxed">
+            Done! I&apos;ll update every Friday and post a summary to #product.
+            🔄
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Step-specific illustration hints for the right panel
-const STEP_ILLUSTRATIONS: Record<string, { title: string; subtitle: string }> =
-  {
-    workspace: {
-      title: "Meet Zero, your new teammate!",
-      subtitle:
-        "Think of Zero as a teammate you can casually talk to, delegate tasks, and count on to get things done.",
-    },
-    connectors: {
-      title: "Your tools, automated",
-      subtitle:
-        "Zero works across your apps — managing tasks, syncing data, and handling workflows so you don't have to.",
-    },
-    where: {
-      title: "Almost there!",
-      subtitle: "Choose where you'd like to chat with Zero — Slack or the web.",
-    },
-  };
+const STEP_ILLUSTRATIONS: Record<
+  string,
+  { title: string; subtitle: string; showSlackPreview?: boolean }
+> = {
+  workspace: {
+    title: "AI that works alongside your team",
+    subtitle:
+      "Zero lives in your workspace, works across your tools, and helps everyone stay aligned.",
+  },
+  connectors: {
+    title: "Your tools, automated",
+    subtitle:
+      "Zero works across your apps — managing tasks, syncing data, and handling workflows so you don't have to.",
+  },
+  where: {
+    title: "Works where your team works",
+    subtitle:
+      "Zero lives in Slack, connects your tools securely, and handles tasks so your team can focus on what matters.",
+    showSlackPreview: true,
+  },
+};
 
 // ---------------------------------------------------------------------------
 // Orbit illustration — selected connectors orbit around Zero
 // ---------------------------------------------------------------------------
 
 function OrbitIllustration({
-  zeroAvatarSrc,
   selectedConnectors,
 }: {
-  zeroAvatarSrc: string;
   selectedConnectors: string[];
 }) {
   const entries = (
@@ -527,17 +613,16 @@ function OrbitIllustration({
     ][]
   ).filter(([type]) => selectedConnectors.includes(type));
 
-  // Distribute connectors in up to 2 orbit rings
-  const innerRadius = 90;
-  const outerRadius = 145;
+  const innerRadius = 110;
+  const outerRadius = 175;
   const inner = entries.slice(0, 6);
   const outer = entries.slice(6, 14);
 
   return (
-    <div className="relative w-[340px] h-[340px]">
-      {/* Orbit rings */}
+    <div className="relative w-[400px] h-[400px]">
+      {/* Spinning orbit rings */}
       <div
-        className="absolute rounded-full border border-dashed border-border/25"
+        className="absolute rounded-full border border-dashed border-foreground/8 animate-[spin_60s_linear_infinite]"
         style={{
           top: `calc(50% - ${innerRadius}px)`,
           left: `calc(50% - ${innerRadius}px)`,
@@ -547,7 +632,7 @@ function OrbitIllustration({
       />
       {entries.length > 6 && (
         <div
-          className="absolute rounded-full border border-dashed border-border/15"
+          className="absolute rounded-full border border-dashed border-foreground/6 animate-[spin_90s_linear_infinite_reverse]"
           style={{
             top: `calc(50% - ${outerRadius}px)`,
             left: `calc(50% - ${outerRadius}px)`,
@@ -557,13 +642,13 @@ function OrbitIllustration({
         />
       )}
 
-      {/* Zero at center */}
+      {/* Zero animated avatar at center */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
         <img
-          src={zeroAvatarSrc}
+          src={zeroAnimatedSrc}
           alt=""
           role="presentation"
-          className="h-16 w-16 object-contain"
+          className="h-20 w-20 object-contain"
         />
       </div>
 
@@ -576,13 +661,14 @@ function OrbitIllustration({
         return (
           <div
             key={type}
-            className="absolute z-10 flex h-9 w-9 items-center justify-center rounded-lg bg-background border border-border/60 shadow-sm transition-all duration-500 ease-out"
+            className="absolute z-10 flex h-11 w-11 items-center justify-center rounded-xl bg-background shadow-sm transition-all duration-500 ease-out"
             style={{
-              top: `calc(50% + ${y}px - 18px)`,
-              left: `calc(50% + ${x}px - 18px)`,
+              border: "0.7px solid hsl(var(--gray-400))",
+              top: `calc(50% + ${y}px - 22px)`,
+              left: `calc(50% + ${x}px - 22px)`,
             }}
           >
-            <ConnectorIcon type={type} size={18} />
+            <ConnectorIcon type={type} size={22} />
           </div>
         );
       })}
@@ -596,13 +682,14 @@ function OrbitIllustration({
         return (
           <div
             key={type}
-            className="absolute z-10 flex h-8 w-8 items-center justify-center rounded-lg bg-background border border-border/50 shadow-sm transition-all duration-500 ease-out"
+            className="absolute z-10 flex h-10 w-10 items-center justify-center rounded-xl bg-background shadow-sm transition-all duration-500 ease-out"
             style={{
-              top: `calc(50% + ${y}px - 16px)`,
-              left: `calc(50% + ${x}px - 16px)`,
+              border: "0.7px solid hsl(var(--gray-400))",
+              top: `calc(50% + ${y}px - 20px)`,
+              left: `calc(50% + ${x}px - 20px)`,
             }}
           >
-            <ConnectorIcon type={type} size={16} />
+            <ConnectorIcon type={type} size={20} />
           </div>
         );
       })}
@@ -616,10 +703,10 @@ function OrbitIllustration({
           return (
             <div
               key={i}
-              className="absolute h-3 w-3 rounded-full bg-border/30"
+              className="absolute h-3.5 w-3.5 rounded-full bg-foreground/10"
               style={{
-                top: `calc(50% + ${y}px - 6px)`,
-                left: `calc(50% + ${x}px - 6px)`,
+                top: `calc(50% + ${y}px - 7px)`,
+                left: `calc(50% + ${x}px - 7px)`,
               }}
             />
           );
@@ -641,7 +728,7 @@ function OnboardingPage({
   showBack,
   showNext,
   nextDisabled,
-  zeroAvatarSrc,
+  zeroAvatarSrc: _,
   selectedConnectors,
   children,
 }: {
@@ -660,13 +747,60 @@ function OnboardingPage({
   const illustration =
     STEP_ILLUSTRATIONS[stepKey] ?? STEP_ILLUSTRATIONS.workspace;
   const showOrbit = stepKey === "connectors" && selectedConnectors;
+  const showChat = stepKey === "workspace";
 
   return (
-    <div className="zero-app flex h-dvh bg-muted/30">
+    <div className="zero-app flex h-dvh bg-muted/30 relative">
+      {/* VM0 logo — top left */}
+      <div className="absolute top-6 left-6 z-20 text-foreground">
+        <svg
+          width="80"
+          height="24"
+          viewBox="0 0 100 30"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M13.3915 0.0627979C13.2455 -0.0209506 13.0657 -0.020839 12.9198 0.0630906L1.0053 6.91543C0.692394 7.09539 0.690093 7.54442 1.00114 7.72755L12.9156 14.7423C13.0636 14.8295 13.2475 14.8296 13.3957 14.7426L25.3445 7.72785C25.6562 7.54485 25.6539 7.09497 25.3404 6.91514L13.3915 0.0627979Z"
+            fill="#ED4E01"
+          />
+          <path
+            d="M0.710495 8.33374L12.6479 15.2595C12.7944 15.3445 12.8846 15.5015 12.8846 15.6715L12.8843 29.5237C12.8843 29.8899 12.4897 30.1187 12.1741 29.9356L0.236691 23.0096C0.0902206 22.9246 -3.46036e-06 22.7676 0 22.5977L0.00028208 8.74568C0.000289537 8.37949 0.394855 8.15064 0.710495 8.33374Z"
+            fill="#ED4E01"
+          />
+          <path
+            d="M24.947 21.6772C24.947 21.9507 24.8017 22.2036 24.5655 22.3415L16.2103 27.219C15.6975 27.5184 15.0533 27.1485 15.0533 26.5547L15.0531 16.7842C15.0531 16.5107 15.1983 16.2578 15.4345 16.1199L23.7897 11.2425C24.3025 10.9431 24.9468 11.313 24.9468 11.9068L24.947 21.6772ZM13.6541 16.3426V29.5279C13.6541 29.8852 14.0308 30.1106 14.3391 29.9444L14.3538 29.9362L25.5769 23.3654C26.25 22.9808 26.3462 22.6924 26.3459 22.1188L26.3459 8.93378C26.3459 8.57084 25.9572 8.344 25.6462 8.52548L14.4231 15.0001C14.0385 15.2885 13.6539 15.577 13.6541 16.3426Z"
+            fill="#ED4E01"
+          />
+          <path
+            d="M25.9616 10.58L15.2113 28.4616L14.2308 27.8817L24.981 10.0001L25.9616 10.58Z"
+            fill="#ED4E01"
+          />
+          <path
+            d="M42.1865 25L34.3459 5H37.4651L43.7887 21.4575L50.1264 5H53.2315L45.3908 25H42.1865Z"
+            fill="currentColor"
+          />
+          <path
+            d="M66.9877 25L59.4023 10.3417V25H56.4957V5H59.6716L67.413 20.0628L75.1686 5H78.3304V25H75.438V10.3417L67.8526 25H66.9877Z"
+            fill="currentColor"
+          />
+          <path
+            d="M99.3459 22.1409C99.3459 22.5314 99.2703 22.9033 99.1191 23.2566C98.9678 23.6007 98.7599 23.9028 98.4952 24.1632C98.2305 24.4235 97.9186 24.6281 97.5594 24.7768C97.2097 24.9256 96.8363 25 96.4393 25H86.2735C85.8765 25 85.4984 24.9256 85.1392 24.7768C84.7894 24.6281 84.4822 24.4235 84.2176 24.1632C83.9529 23.9028 83.745 23.6007 83.5937 23.2566C83.4425 22.9033 83.3669 22.5314 83.3669 22.1409V7.85914C83.3669 7.46862 83.4425 7.10135 83.5937 6.75732C83.745 6.404 83.9529 6.10181 84.2176 5.85077C84.4822 5.59042 84.7894 5.38587 85.1392 5.2371C85.4984 5.07903 85.8765 5 86.2735 5H96.4393C96.8363 5 97.2097 5.07903 97.5594 5.2371C97.9186 5.38587 98.2305 5.59042 98.4952 5.85077C98.7599 6.10181 98.9678 6.404 99.1191 6.75732C99.2703 7.10135 99.3459 7.46862 99.3459 7.85914V22.1409ZM86.2735 7.85914V22.1409H96.4393V7.85914H86.2735Z"
+            fill="currentColor"
+          />
+          <path
+            d="M94.8994 6.79107L97.1494 8.06891L87.8973 23.8325L85.6473 22.5547L94.8994 6.79107Z"
+            fill="currentColor"
+          />
+        </svg>
+      </div>
+
       {/* Left panel — brand / illustration */}
-      <div className="hidden lg:flex w-2/5 shrink-0 flex-col items-center justify-center p-10 relative overflow-hidden">
-        {/* Decorative circles (non-orbit steps) */}
-        {!showOrbit && (
+      <div
+        className={`hidden lg:flex w-2/5 shrink-0 flex-col items-center p-10 relative overflow-hidden ${showChat ? "pt-[8%]" : "justify-center"}`}
+      >
+        {/* Decorative circles (non-orbit, non-chat steps) */}
+        {!showOrbit && !showChat && (
           <div className="absolute inset-0 pointer-events-none" aria-hidden>
             <div className="absolute top-[15%] left-[10%] h-48 w-48 rounded-full border border-border/20" />
             <div className="absolute top-[25%] left-[20%] h-64 w-64 rounded-full border border-border/15" />
@@ -676,34 +810,46 @@ function OnboardingPage({
         )}
 
         <div className="relative z-10 flex flex-col items-center">
-          {showOrbit && zeroAvatarSrc ? (
+          {showChat ? (
+            <ChatPreview />
+          ) : showOrbit && selectedConnectors ? (
             <>
-              <OrbitIllustration
-                zeroAvatarSrc={zeroAvatarSrc}
-                selectedConnectors={selectedConnectors}
-              />
-              <p className="text-sm text-muted-foreground text-center leading-relaxed mt-6 max-w-[280px]">
+              <OrbitIllustration selectedConnectors={selectedConnectors} />
+              <p className="text-sm text-muted-foreground text-center leading-relaxed mt-6 max-w-[300px]">
                 {selectedConnectors.length === 0
-                  ? "Select apps to connect with Zero"
-                  : `${selectedConnectors.length} app${selectedConnectors.length === 1 ? "" : "s"} selected`}
+                  ? "Pick your tools and Zero will handle the rest, securely."
+                  : `${selectedConnectors.length} app${selectedConnectors.length === 1 ? "" : "s"} selected. Zero will securely manage ${selectedConnectors.length === 1 ? "it" : "them"} for you so you don\u2019t have to.`}
+              </p>
+              <p className="text-[11px] text-muted-foreground/50 text-center mt-4">
+                Sandboxed VMs&ensp;|&ensp;No credential
+                exposure&ensp;|&ensp;Full audit trail&ensp;|&ensp;Open source
               </p>
             </>
           ) : (
             <>
-              {zeroAvatarSrc && (
-                <img
-                  src={zeroAvatarSrc}
-                  alt=""
-                  role="presentation"
-                  className="h-24 w-24 object-contain mb-8"
-                />
-              )}
+              <img
+                src={zeroAnimatedSrc}
+                alt=""
+                role="presentation"
+                className="h-24 w-24 object-contain mb-8"
+              />
               <h3 className="text-xl font-semibold text-foreground text-center leading-snug">
                 {illustration.title}
               </h3>
-              <p className="text-sm text-muted-foreground text-center leading-relaxed mt-3 max-w-[300px]">
-                {illustration.subtitle}
-              </p>
+              {illustration.subtitle && (
+                <p className="text-sm text-muted-foreground text-center leading-relaxed mt-3 max-w-[300px]">
+                  {illustration.subtitle}
+                </p>
+              )}
+              {illustration.showSlackPreview && (
+                <div className="mt-8 w-full max-w-[340px]">
+                  <img
+                    src={slackPreviewImg}
+                    alt="Zero working in Slack"
+                    className="w-full"
+                  />
+                </div>
+              )}
             </>
           )}
         </div>
@@ -718,7 +864,7 @@ function OnboardingPage({
           </div>
 
           {/* Content */}
-          <main className="flex-1 min-h-0 overflow-y-auto px-10 py-6 [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden">
+          <main className="flex-1 min-h-0 overflow-y-auto px-10 pt-[12%] pb-6 [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden">
             {children}
           </main>
 
@@ -780,11 +926,10 @@ function WorkspaceStep({
       nextDisabled={!workspaceName.trim()}
     >
       <h2 className="text-2xl font-semibold tracking-tight">
-        Create your workspace
+        Name your workspace
       </h2>
       <p className="text-sm text-muted-foreground leading-relaxed mt-2 mb-8">
-        Workspaces are shared environments where your team can collaborate with
-        Zero.
+        This is where your team will collaborate with Zero and other AI agents.
       </p>
       <div className="w-full">
         <label
