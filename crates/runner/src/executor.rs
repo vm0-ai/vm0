@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use sandbox::{ExecRequest, Sandbox, SandboxConfig, SandboxFactory};
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 /// Maximum wall-clock time for a single job (2 hours).
@@ -431,12 +431,13 @@ fn dmesg_indicates_oom(stdout: &str) -> bool {
 }
 
 /// Check host dmesg for a cgroup OOM kill of a specific firecracker process.
-/// Scans the entire ring buffer (~512KB) via `dmesg | grep` which takes <30ms
-/// on production hosts.  Times out after 5s to avoid blocking if sudo hangs.
+/// Reads the entire ring buffer (~512KB) directly — no shell wrapper needed
+/// since the pure function handles filtering.  Times out after 5s to avoid
+/// blocking if sudo hangs.
 async fn check_host_oom(pid: u32) -> bool {
     let result = tokio::time::timeout(Duration::from_secs(5), async {
-        tokio::process::Command::new("sh")
-            .args(["-c", "sudo -n dmesg | grep 'oom-kill'"])
+        tokio::process::Command::new("sudo")
+            .args(["-n", "dmesg"])
             .output()
             .await
     })
@@ -446,16 +447,11 @@ async fn check_host_oom(pid: u32) -> bool {
             host_dmesg_indicates_oom(&String::from_utf8_lossy(&out.stdout), pid)
         }
         Ok(Ok(out)) => {
-            // grep found no match (exit code 1) — not an OOM kill.
-            debug!(
-                pid,
-                exit_code = out.status.code(),
-                "host dmesg grep found no oom-kill"
-            );
+            warn!(pid, exit_code = out.status.code(), "sudo dmesg failed");
             false
         }
         Ok(Err(e)) => {
-            warn!(pid, error = %e, "failed to run host dmesg for OOM check");
+            warn!(pid, error = %e, "failed to run sudo dmesg for OOM check");
             false
         }
         Err(_) => {
