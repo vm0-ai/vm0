@@ -8,22 +8,24 @@ const CADDYFILE = path.join(__dirname, "../Caddyfile");
 
 console.log("🚀 Starting Caddy reverse proxy...\n");
 
-// Ensure CF_DNS_API_TOKEN is available (needed for Let's Encrypt DNS-01 challenge)
-if (!process.env.CF_DNS_API_TOKEN) {
+// Ensure CF_DNS_AND_TUNNEL_API_TOKEN is available (needed for Let's Encrypt DNS-01 challenge)
+if (!process.env.CF_DNS_AND_TUNNEL_API_TOKEN) {
   // Try loading from scripts/.env.local
   const envLocalPath = path.join(__dirname, "../../../../scripts/.env.local");
   if (fs.existsSync(envLocalPath)) {
     const content = fs.readFileSync(envLocalPath, "utf-8");
-    const match = content.match(/^CF_DNS_API_TOKEN=(.+)$/m);
+    const match = content.match(/^CF_DNS_AND_TUNNEL_API_TOKEN=(.+)$/m);
     if (match) {
-      process.env.CF_DNS_API_TOKEN = match[1].trim();
-      console.log("✓ Loaded CF_DNS_API_TOKEN from scripts/.env.local\n");
+      process.env.CF_DNS_AND_TUNNEL_API_TOKEN = match[1].trim();
+      console.log(
+        "✓ Loaded CF_DNS_AND_TUNNEL_API_TOKEN from scripts/.env.local\n",
+      );
     }
   }
 }
 
-if (!process.env.CF_DNS_API_TOKEN) {
-  console.error("❌ CF_DNS_API_TOKEN is not set.");
+if (!process.env.CF_DNS_AND_TUNNEL_API_TOKEN) {
+  console.error("❌ CF_DNS_AND_TUNNEL_API_TOKEN is not set.");
   console.error(
     "\nThis token is required for automatic Let's Encrypt certificate provisioning.",
   );

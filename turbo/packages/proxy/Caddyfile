@@ -9,7 +9,7 @@
 # Main domain redirect to www
 vm7.ai:8443 {
   tls {
-    dns cloudflare {env.CF_DNS_API_TOKEN}
+    dns cloudflare {env.CF_DNS_AND_TUNNEL_API_TOKEN}
   }
   redir https://www.vm7.ai:8443{uri} permanent
 }
@@ -17,7 +17,7 @@ vm7.ai:8443 {
 # Web application
 www.vm7.ai:8443 {
   tls {
-    dns cloudflare {env.CF_DNS_API_TOKEN}
+    dns cloudflare {env.CF_DNS_AND_TUNNEL_API_TOKEN}
   }
   reverse_proxy localhost:3000
 }
@@ -25,7 +25,7 @@ www.vm7.ai:8443 {
 # Docs application
 docs.vm7.ai:8443 {
   tls {
-    dns cloudflare {env.CF_DNS_API_TOKEN}
+    dns cloudflare {env.CF_DNS_AND_TUNNEL_API_TOKEN}
   }
   reverse_proxy localhost:3001
 }
@@ -33,7 +33,7 @@ docs.vm7.ai:8443 {
 # App application
 app.vm7.ai:8443 {
   tls {
-    dns cloudflare {env.CF_DNS_API_TOKEN}
+    dns cloudflare {env.CF_DNS_AND_TUNNEL_API_TOKEN}
   }
   reverse_proxy localhost:3002
 }
