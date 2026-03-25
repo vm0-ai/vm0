@@ -158,6 +158,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   todoist: ["todoist"],
   vercel: ["vercel"],
   webflow: ["webflow"],
+  wix: ["wix"],
   x: ["x"],
   xero: ["xero"],
   youtube: ["youtube"],
