@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useSignIn } from "@clerk/nextjs";
 
-export default function SignInTokenPage() {
+function SignInTokenContent() {
   const searchParams = useSearchParams();
   const { signIn, setActive, isLoaded } = useSignIn();
   const [error, setError] = useState("");
@@ -47,5 +47,17 @@ export default function SignInTokenPage() {
 
   return (
     <p style={{ padding: "2rem", fontFamily: "monospace" }}>Signing in...</p>
+  );
+}
+
+export default function SignInTokenPage() {
+  return (
+    <Suspense
+      fallback={
+        <p style={{ padding: "2rem", fontFamily: "monospace" }}>Loading...</p>
+      }
+    >
+      <SignInTokenContent />
+    </Suspense>
   );
 }
