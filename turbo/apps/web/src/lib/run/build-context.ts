@@ -99,7 +99,7 @@ function resolveProviderType(
   } else {
     throw badRequest(
       "No model provider configured. " +
-        "Run 'vm0 org model-provider setup' to configure one, " +
+        "Run 'zero org model-provider setup' to configure one, " +
         "or add environment variables to your vm0.yaml.",
     );
   }

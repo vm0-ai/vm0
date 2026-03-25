@@ -2,7 +2,7 @@
 
 # Test VM0 org model provider commands (happy path)
 #
-# This test covers org-level model provider CLI (vm0 org model-provider)
+# This test covers org-level model provider CLI (zero org model-provider)
 #
 # Updated for org-level migration: user-level model-provider was removed,
 # all operations are now under `zero org model-provider`

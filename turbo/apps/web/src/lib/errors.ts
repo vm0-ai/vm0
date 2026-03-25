@@ -156,7 +156,7 @@ export function providerIncompatible(
 }
 
 export function noModelProvider(
-  message = "No model provider configured. Run 'vm0 org model-provider setup' to configure one, or add environment variables to your vm0.yaml.",
+  message = "No model provider configured. Run 'zero org model-provider setup' to configure one, or add environment variables to your vm0.yaml.",
 ): NoModelProviderError {
   const error = new Error(message) as NoModelProviderError;
   (error as { name: string }).name = "NoModelProviderError";

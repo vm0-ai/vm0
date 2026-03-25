@@ -86,7 +86,7 @@ const router = tsr.router(zeroOrgContract, {
       if (isNotFound(error)) {
         return createErrorResponse(
           "NOT_FOUND",
-          "No org configured. Set your org with: vm0 org set <slug>",
+          "No org configured. Set your org with: zero org set <slug>",
         );
       }
       throw error;

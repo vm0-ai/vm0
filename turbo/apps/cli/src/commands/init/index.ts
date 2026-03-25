@@ -120,7 +120,7 @@ export const initCommand = new Command()
       console.log();
       console.log("Next steps:");
       console.log(
-        `  1. Set up model provider (one-time): ${chalk.cyan("vm0 org model-provider setup")}`,
+        `  1. Set up model provider (one-time): ${chalk.cyan("zero org model-provider setup")}`,
       );
       console.log(
         `  2. Edit ${chalk.cyan("AGENTS.md")} to customize your agent's workflow`,

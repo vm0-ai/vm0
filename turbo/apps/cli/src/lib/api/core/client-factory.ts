@@ -61,7 +61,7 @@ export async function getClientConfig() {
   const activeOrg = await getActiveOrg();
   if (!activeOrg) {
     throw new Error(
-      "No active organization configured. Run: vm0 org use <slug>",
+      "No active organization configured. Run: zero org use <slug>",
     );
   }
 
