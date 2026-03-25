@@ -94,7 +94,7 @@ async function openChatListDialog() {
   });
 }
 
-describe("ChatListDialog", () => {
+describe("chatListDialog", () => {
   it("should navigate to chat when clicking a pinned agent", async () => {
     mockAPIsWithSubagents();
     await setupPage({ context, path: "/team" });
