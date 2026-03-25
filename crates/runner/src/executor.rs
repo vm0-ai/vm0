@@ -436,7 +436,7 @@ fn dmesg_indicates_oom(stdout: &str) -> bool {
 async fn check_host_oom(pid: u32) -> bool {
     let result = tokio::time::timeout(Duration::from_secs(5), async {
         tokio::process::Command::new("sh")
-            .args(["-c", "sudo dmesg | grep 'oom-kill'"])
+            .args(["-c", "sudo -n dmesg | grep 'oom-kill'"])
             .output()
             .await
     })
