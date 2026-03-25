@@ -59,7 +59,7 @@ interface PlanConfig {
   features: readonly string[];
 }
 
-const PLANS = [
+const PLANS: readonly PlanConfig[] = [
   {
     tier: "free" as const,
     name: "Free",
@@ -112,7 +112,7 @@ const PLANS = [
       "Priority support",
     ],
   },
-] satisfies PlanConfig[];
+];
 
 function planButtonLabel(
   plan: (typeof PLANS)[number],
