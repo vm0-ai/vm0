@@ -3548,6 +3548,7 @@ export async function createTestSlackOrgInstallation(opts: {
 }): Promise<{
   slackWorkspaceId: string;
   slackWorkspaceName: string;
+  installation: typeof slackOrgInstallations.$inferSelect;
 }> {
   initServices();
   const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
@@ -3560,15 +3561,26 @@ export async function createTestSlackOrgInstallation(opts: {
     SECRETS_ENCRYPTION_KEY,
   );
 
-  await globalThis.services.db.insert(slackOrgInstallations).values({
+  const [installation] = await globalThis.services.db
+    .insert(slackOrgInstallations)
+    .values({
+      slackWorkspaceId: workspaceId,
+      slackWorkspaceName: workspaceName,
+      orgId: opts.orgId,
+      encryptedBotToken,
+      botUserId: `B-${randomUUID().slice(0, 8)}`,
+    })
+    .returning();
+
+  if (!installation) {
+    throw new Error("Failed to create test Slack org installation");
+  }
+
+  return {
     slackWorkspaceId: workspaceId,
     slackWorkspaceName: workspaceName,
-    orgId: opts.orgId,
-    encryptedBotToken,
-    botUserId: `B-${randomUUID().slice(0, 8)}`,
-  });
-
-  return { slackWorkspaceId: workspaceId, slackWorkspaceName: workspaceName };
+    installation,
+  };
 }
 
 /**
@@ -3940,6 +3952,32 @@ export async function seedTestCompose(opts: {
 }
 
 /**
+ * Seed an agent compose record WITHOUT a corresponding zero_agents row.
+ * Useful for testing "agent not found" scenarios where the compose ID exists
+ * in agent_composes (satisfying FK constraints) but getWorkspaceAgent() returns
+ * undefined because there is no zero_agents row.
+ */
+export async function seedOrphanCompose(opts: {
+  userId: string;
+  name: string;
+  orgId: string;
+}): Promise<{ composeId: string }> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .insert(agentComposes)
+    .values({
+      userId: opts.userId,
+      name: opts.name,
+      orgId: opts.orgId,
+    })
+    .returning({ id: agentComposes.id });
+  if (!row) {
+    throw new Error("Failed to seed orphan agent compose");
+  }
+  return { composeId: row.id };
+}
+
+/**
  * Seed a Slack org pending question for testing.
  */
 export async function seedTestSlackOrgPendingQuestion(opts: {
@@ -3947,6 +3985,7 @@ export async function seedTestSlackOrgPendingQuestion(opts: {
   slackWorkspaceId: string;
   slackChannelId: string;
   slackThreadTs: string;
+  slackMessageTs?: string;
   connectionId: string;
   composeId: string;
   agentName: string;
@@ -3961,6 +4000,7 @@ export async function seedTestSlackOrgPendingQuestion(opts: {
       slackWorkspaceId: opts.slackWorkspaceId,
       slackChannelId: opts.slackChannelId,
       slackThreadTs: opts.slackThreadTs,
+      slackMessageTs: opts.slackMessageTs,
       connectionId: opts.connectionId,
       composeId: opts.composeId,
       agentName: opts.agentName,

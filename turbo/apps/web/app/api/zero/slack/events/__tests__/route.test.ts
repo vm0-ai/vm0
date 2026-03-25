@@ -10,6 +10,7 @@ import {
   createTestSlackOrgInstallation,
   seedTestSlackOrgConnection,
   seedTestCompose,
+  seedOrphanCompose,
   seedTestSlackOrgPendingQuestion,
   updateOrgDefaultAgent,
   countSlackOrgInstallations,
@@ -100,6 +101,183 @@ describe("POST /api/zero/slack/events", () => {
     });
   });
 
+  describe("app_mention — pre-dispatch validation", () => {
+    it("silently returns when workspace has no installation", async () => {
+      const request = createSlackEventRequest({
+        type: "event_callback",
+        team_id: "T-nonexistent-ws",
+        event: {
+          type: "app_mention",
+          user: "U-random",
+          text: "Hello",
+          ts: uniqueId("ts"),
+          channel: "C-test",
+          event_ts: uniqueId("ts"),
+        },
+        event_id: uniqueId("evt"),
+        event_time: Date.now(),
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      const { WebClient } = await import("@slack/web-api");
+      const mockClient = new WebClient();
+      expect(mockClient.chat.postMessage).not.toHaveBeenCalled();
+      expect(mockClient.chat.postEphemeral).not.toHaveBeenCalled();
+    });
+
+    it("silently returns when installation has no orgId bound", async () => {
+      const workspaceId = uniqueId("T-ws");
+      await createTestSlackOrgInstallation({ workspaceId, orgId: null });
+
+      const request = createSlackEventRequest({
+        type: "event_callback",
+        team_id: workspaceId,
+        event: {
+          type: "app_mention",
+          user: "U-random",
+          text: "Hello",
+          ts: uniqueId("ts"),
+          channel: "C-test",
+          event_ts: uniqueId("ts"),
+        },
+        event_id: uniqueId("evt"),
+        event_time: Date.now(),
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      const { WebClient } = await import("@slack/web-api");
+      const mockClient = new WebClient();
+      expect(mockClient.chat.postMessage).not.toHaveBeenCalled();
+      expect(mockClient.chat.postEphemeral).not.toHaveBeenCalled();
+    });
+
+    it("sends ephemeral login prompt when user is not connected", async () => {
+      const workspaceId = uniqueId("T-ws");
+      const channelId = uniqueId("C-ch");
+      await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
+
+      const request = createSlackEventRequest({
+        type: "event_callback",
+        team_id: workspaceId,
+        event: {
+          type: "app_mention",
+          user: "U-not-connected",
+          text: "Hello agent",
+          ts: uniqueId("ts"),
+          channel: channelId,
+          event_ts: uniqueId("ts"),
+        },
+        event_id: uniqueId("evt"),
+        event_time: Date.now(),
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      const { WebClient } = await import("@slack/web-api");
+      const mockClient = new WebClient();
+      expect(mockClient.chat.postEphemeral).toHaveBeenCalledOnce();
+      expect(mockClient.chat.postEphemeral).toHaveBeenCalledWith(
+        expect.objectContaining({
+          channel: channelId,
+          user: "U-not-connected",
+        }),
+      );
+    });
+
+    it("sends ephemeral message when no default agent is configured", async () => {
+      const workspaceId = uniqueId("T-ws");
+      const slackUserId = uniqueId("U-slack");
+      await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
+      await seedTestSlackOrgConnection({
+        slackUserId,
+        slackWorkspaceId: workspaceId,
+        vm0UserId: user.userId,
+      });
+
+      const request = createSlackEventRequest({
+        type: "event_callback",
+        team_id: workspaceId,
+        event: {
+          type: "app_mention",
+          user: slackUserId,
+          text: "Hello agent",
+          ts: uniqueId("ts"),
+          channel: "C-test",
+          event_ts: uniqueId("ts"),
+        },
+        event_id: uniqueId("evt"),
+        event_time: Date.now(),
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      const { WebClient } = await import("@slack/web-api");
+      const mockClient = new WebClient();
+      expect(mockClient.chat.postEphemeral).toHaveBeenCalledOnce();
+      expect(mockClient.chat.postEphemeral).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining("No agent is configured"),
+        }),
+      );
+    });
+
+    it("sends ephemeral message when configured agent is not found", async () => {
+      const workspaceId = uniqueId("T-ws");
+      const slackUserId = uniqueId("U-slack");
+      await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
+      await seedTestSlackOrgConnection({
+        slackUserId,
+        slackWorkspaceId: workspaceId,
+        vm0UserId: user.userId,
+      });
+      // Create a compose record WITHOUT a zero_agents row so getWorkspaceAgent returns undefined
+      const { composeId: orphanId } = await seedOrphanCompose({
+        userId: user.userId,
+        name: uniqueId("orphan-agent"),
+        orgId: user.orgId,
+      });
+      await updateOrgDefaultAgent(user.orgId, orphanId);
+
+      const request = createSlackEventRequest({
+        type: "event_callback",
+        team_id: workspaceId,
+        event: {
+          type: "app_mention",
+          user: slackUserId,
+          text: "Hello agent",
+          ts: uniqueId("ts"),
+          channel: "C-test",
+          event_ts: uniqueId("ts"),
+        },
+        event_id: uniqueId("evt"),
+        event_time: Date.now(),
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      const { WebClient } = await import("@slack/web-api");
+      const mockClient = new WebClient();
+      expect(mockClient.chat.postEphemeral).toHaveBeenCalledOnce();
+      expect(mockClient.chat.postEphemeral).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining("could not be found"),
+        }),
+      );
+    });
+  });
+
   describe("app_mention — error deduplication", () => {
     async function setupWorkspace(orgId: string) {
       const workspaceId = uniqueId("T-ws");
@@ -185,6 +363,280 @@ describe("POST /api/zero/slack/events", () => {
     });
   });
 
+  describe("direct_message — routing filters", () => {
+    it("ignores messages with bot_id (bot messages)", async () => {
+      const workspaceId = uniqueId("T-ws");
+      await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
+
+      const request = createSlackEventRequest({
+        type: "event_callback",
+        team_id: workspaceId,
+        event: {
+          type: "message",
+          channel_type: "im",
+          user: "U-someone",
+          text: "I am a bot",
+          ts: uniqueId("ts"),
+          channel: "D-test",
+          event_ts: uniqueId("ts"),
+          bot_id: "B-bot",
+        },
+        event_id: uniqueId("evt"),
+        event_time: Date.now(),
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      const { WebClient } = await import("@slack/web-api");
+      const mockClient = new WebClient();
+      expect(mockClient.chat.postMessage).not.toHaveBeenCalled();
+      expect(mockClient.chat.postEphemeral).not.toHaveBeenCalled();
+    });
+
+    it("ignores messages with non-file_share subtypes", async () => {
+      const workspaceId = uniqueId("T-ws");
+      await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
+
+      const request = createSlackEventRequest({
+        type: "event_callback",
+        team_id: workspaceId,
+        event: {
+          type: "message",
+          channel_type: "im",
+          user: "U-someone",
+          text: "edited message",
+          ts: uniqueId("ts"),
+          channel: "D-test",
+          event_ts: uniqueId("ts"),
+          subtype: "message_changed",
+        },
+        event_id: uniqueId("evt"),
+        event_time: Date.now(),
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      const { WebClient } = await import("@slack/web-api");
+      const mockClient = new WebClient();
+      expect(mockClient.chat.postMessage).not.toHaveBeenCalled();
+    });
+
+    it("processes file_share subtype messages", async () => {
+      const workspaceId = uniqueId("T-ws");
+      await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
+
+      const request = createSlackEventRequest({
+        type: "event_callback",
+        team_id: workspaceId,
+        event: {
+          type: "message",
+          channel_type: "im",
+          user: "U-not-connected",
+          text: "file upload",
+          ts: uniqueId("ts"),
+          channel: "D-test",
+          event_ts: uniqueId("ts"),
+          subtype: "file_share",
+        },
+        event_id: uniqueId("evt"),
+        event_time: Date.now(),
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      // DM handler was invoked — user not connected so login prompt is sent via postMessage
+      const { WebClient } = await import("@slack/web-api");
+      const mockClient = new WebClient();
+      expect(mockClient.chat.postMessage).toHaveBeenCalledOnce();
+    });
+
+    it("ignores non-im channel type messages", async () => {
+      const workspaceId = uniqueId("T-ws");
+      await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
+
+      const request = createSlackEventRequest({
+        type: "event_callback",
+        team_id: workspaceId,
+        event: {
+          type: "message",
+          channel_type: "channel",
+          user: "U-someone",
+          text: "Hello",
+          ts: uniqueId("ts"),
+          channel: "C-test",
+          event_ts: uniqueId("ts"),
+        },
+        event_id: uniqueId("evt"),
+        event_time: Date.now(),
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      const { WebClient } = await import("@slack/web-api");
+      const mockClient = new WebClient();
+      expect(mockClient.chat.postMessage).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("direct_message — pre-dispatch validation", () => {
+    it("silently returns when workspace has no installation", async () => {
+      const request = createSlackEventRequest({
+        type: "event_callback",
+        team_id: "T-nonexistent-dm",
+        event: {
+          type: "message",
+          channel_type: "im",
+          user: "U-random",
+          text: "Hello",
+          ts: uniqueId("ts"),
+          channel: "D-test",
+          event_ts: uniqueId("ts"),
+        },
+        event_id: uniqueId("evt"),
+        event_time: Date.now(),
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      const { WebClient } = await import("@slack/web-api");
+      const mockClient = new WebClient();
+      expect(mockClient.chat.postMessage).not.toHaveBeenCalled();
+    });
+
+    it("sends login prompt via postMessage when user is not connected", async () => {
+      const workspaceId = uniqueId("T-ws");
+      const channelId = uniqueId("D-ch");
+      await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
+
+      const request = createSlackEventRequest({
+        type: "event_callback",
+        team_id: workspaceId,
+        event: {
+          type: "message",
+          channel_type: "im",
+          user: "U-not-connected",
+          text: "Hello agent",
+          ts: uniqueId("ts"),
+          channel: channelId,
+          event_ts: uniqueId("ts"),
+        },
+        event_id: uniqueId("evt"),
+        event_time: Date.now(),
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      // DM handler uses postMessage (not postEphemeral) for login prompt
+      const { WebClient } = await import("@slack/web-api");
+      const mockClient = new WebClient();
+      expect(mockClient.chat.postMessage).toHaveBeenCalledOnce();
+      expect(mockClient.chat.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          channel: channelId,
+        }),
+      );
+      expect(mockClient.chat.postEphemeral).not.toHaveBeenCalled();
+    });
+
+    it("sends message when no default agent is configured", async () => {
+      const workspaceId = uniqueId("T-ws");
+      const slackUserId = uniqueId("U-slack");
+      await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
+      await seedTestSlackOrgConnection({
+        slackUserId,
+        slackWorkspaceId: workspaceId,
+        vm0UserId: user.userId,
+      });
+
+      const request = createSlackEventRequest({
+        type: "event_callback",
+        team_id: workspaceId,
+        event: {
+          type: "message",
+          channel_type: "im",
+          user: slackUserId,
+          text: "Hello agent",
+          ts: uniqueId("ts"),
+          channel: "D-test",
+          event_ts: uniqueId("ts"),
+        },
+        event_id: uniqueId("evt"),
+        event_time: Date.now(),
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      const { WebClient } = await import("@slack/web-api");
+      const mockClient = new WebClient();
+      expect(mockClient.chat.postMessage).toHaveBeenCalledOnce();
+      expect(mockClient.chat.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining("No agent is configured"),
+        }),
+      );
+    });
+
+    it("sends message when configured agent is not found", async () => {
+      const workspaceId = uniqueId("T-ws");
+      const slackUserId = uniqueId("U-slack");
+      await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
+      await seedTestSlackOrgConnection({
+        slackUserId,
+        slackWorkspaceId: workspaceId,
+        vm0UserId: user.userId,
+      });
+      const { composeId: orphanId } = await seedOrphanCompose({
+        userId: user.userId,
+        name: uniqueId("orphan-agent"),
+        orgId: user.orgId,
+      });
+      await updateOrgDefaultAgent(user.orgId, orphanId);
+
+      const request = createSlackEventRequest({
+        type: "event_callback",
+        team_id: workspaceId,
+        event: {
+          type: "message",
+          channel_type: "im",
+          user: slackUserId,
+          text: "Hello agent",
+          ts: uniqueId("ts"),
+          channel: "D-test",
+          event_ts: uniqueId("ts"),
+        },
+        event_id: uniqueId("evt"),
+        event_time: Date.now(),
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      const { WebClient } = await import("@slack/web-api");
+      const mockClient = new WebClient();
+      expect(mockClient.chat.postMessage).toHaveBeenCalledOnce();
+      expect(mockClient.chat.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining("could not be found"),
+        }),
+      );
+    });
+  });
+
   describe("direct_message — error deduplication", () => {
     async function setupWorkspace(orgId: string) {
       const workspaceId = uniqueId("T-ws");
@@ -263,6 +715,239 @@ describe("POST /api/zero/slack/events", () => {
 
       const { WebClient } = await import("@slack/web-api");
       const mockClient = new WebClient();
+      expect(mockClient.chat.postMessage).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe("app_home_opened — home tab", () => {
+    it("silently returns when workspace has no installation", async () => {
+      const request = createSlackEventRequest({
+        type: "event_callback",
+        team_id: "T-nonexistent-home",
+        event: {
+          type: "app_home_opened",
+          user: "U-random",
+          tab: "home",
+          channel: "D-test",
+        },
+        event_id: uniqueId("evt"),
+        event_time: Date.now(),
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      const { WebClient } = await import("@slack/web-api");
+      const mockClient = new WebClient();
+      expect(mockClient.views.publish).not.toHaveBeenCalled();
+    });
+
+    it("publishes connect prompt when user is not connected", async () => {
+      const workspaceId = uniqueId("T-ws");
+      await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
+
+      const request = createSlackEventRequest({
+        type: "event_callback",
+        team_id: workspaceId,
+        event: {
+          type: "app_home_opened",
+          user: "U-not-connected",
+          tab: "home",
+          channel: "D-test",
+        },
+        event_id: uniqueId("evt"),
+        event_time: Date.now(),
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      const { WebClient } = await import("@slack/web-api");
+      const mockClient = new WebClient();
+      expect(mockClient.views.publish).toHaveBeenCalledOnce();
+      expect(mockClient.views.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          user_id: "U-not-connected",
+        }),
+      );
+    });
+
+    it("publishes linked App Home when user is connected", async () => {
+      const workspaceId = uniqueId("T-ws");
+      const slackUserId = uniqueId("U-slack");
+      await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
+      await seedTestSlackOrgConnection({
+        slackUserId,
+        slackWorkspaceId: workspaceId,
+        vm0UserId: user.userId,
+      });
+
+      const request = createSlackEventRequest({
+        type: "event_callback",
+        team_id: workspaceId,
+        event: {
+          type: "app_home_opened",
+          user: slackUserId,
+          tab: "home",
+          channel: "D-test",
+        },
+        event_id: uniqueId("evt"),
+        event_time: Date.now(),
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      const { WebClient } = await import("@slack/web-api");
+      const mockClient = new WebClient();
+      expect(mockClient.views.publish).toHaveBeenCalledOnce();
+      expect(mockClient.views.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          user_id: slackUserId,
+        }),
+      );
+    });
+  });
+
+  describe("app_home_opened — messages tab", () => {
+    it("silently returns when workspace has no installation", async () => {
+      const request = createSlackEventRequest({
+        type: "event_callback",
+        team_id: "T-nonexistent-msg",
+        event: {
+          type: "app_home_opened",
+          user: "U-random",
+          tab: "messages",
+          channel: "D-test",
+        },
+        event_id: uniqueId("evt"),
+        event_time: Date.now(),
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      const { WebClient } = await import("@slack/web-api");
+      const mockClient = new WebClient();
+      expect(mockClient.chat.postMessage).not.toHaveBeenCalled();
+    });
+
+    it("silently returns when user is not connected", async () => {
+      const workspaceId = uniqueId("T-ws");
+      await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
+
+      const request = createSlackEventRequest({
+        type: "event_callback",
+        team_id: workspaceId,
+        event: {
+          type: "app_home_opened",
+          user: "U-not-connected",
+          tab: "messages",
+          channel: "D-test",
+        },
+        event_id: uniqueId("evt"),
+        event_time: Date.now(),
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      const { WebClient } = await import("@slack/web-api");
+      const mockClient = new WebClient();
+      expect(mockClient.chat.postMessage).not.toHaveBeenCalled();
+    });
+
+    it("sends welcome message on first messages tab open", async () => {
+      const workspaceId = uniqueId("T-ws");
+      const slackUserId = uniqueId("U-slack");
+      const channelId = uniqueId("D-ch");
+      await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
+      await seedTestSlackOrgConnection({
+        slackUserId,
+        slackWorkspaceId: workspaceId,
+        vm0UserId: user.userId,
+      });
+
+      const request = createSlackEventRequest({
+        type: "event_callback",
+        team_id: workspaceId,
+        event: {
+          type: "app_home_opened",
+          user: slackUserId,
+          tab: "messages",
+          channel: channelId,
+        },
+        event_id: uniqueId("evt"),
+        event_time: Date.now(),
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      const { WebClient } = await import("@slack/web-api");
+      const mockClient = new WebClient();
+      expect(mockClient.chat.postMessage).toHaveBeenCalledOnce();
+      expect(mockClient.chat.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          channel: channelId,
+        }),
+      );
+    });
+
+    it("does not send welcome message on subsequent messages tab opens", async () => {
+      const workspaceId = uniqueId("T-ws");
+      const slackUserId = uniqueId("U-slack");
+      const channelId = uniqueId("D-ch");
+      await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
+      await seedTestSlackOrgConnection({
+        slackUserId,
+        slackWorkspaceId: workspaceId,
+        vm0UserId: user.userId,
+      });
+
+      // First open — sends welcome
+      const request1 = createSlackEventRequest({
+        type: "event_callback",
+        team_id: workspaceId,
+        event: {
+          type: "app_home_opened",
+          user: slackUserId,
+          tab: "messages",
+          channel: channelId,
+        },
+        event_id: uniqueId("evt"),
+        event_time: Date.now(),
+      });
+      await POST(request1);
+      await context.mocks.flushAfter();
+
+      const { WebClient } = await import("@slack/web-api");
+      const mockClient = new WebClient();
+      expect(mockClient.chat.postMessage).toHaveBeenCalledOnce();
+
+      // Second open — should NOT send welcome again
+      const request2 = createSlackEventRequest({
+        type: "event_callback",
+        team_id: workspaceId,
+        event: {
+          type: "app_home_opened",
+          user: slackUserId,
+          tab: "messages",
+          channel: channelId,
+        },
+        event_id: uniqueId("evt"),
+        event_time: Date.now(),
+      });
+      await POST(request2);
+      await context.mocks.flushAfter();
+
+      // Still only one call from the first open
       expect(mockClient.chat.postMessage).toHaveBeenCalledOnce();
     });
   });
