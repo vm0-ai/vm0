@@ -74,13 +74,16 @@ describe("token resolution", () => {
   });
 
   describe("getActiveOrg", () => {
-    function buildFakeJwt(payload: Record<string, unknown>): string {
+    function buildFakeJwt(
+      payload: Record<string, unknown>,
+      prefix = "vm0_sandbox_",
+    ): string {
       const header = Buffer.from(
         JSON.stringify({ alg: "HS256", typ: "JWT" }),
       ).toString("base64url");
       const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
       const sig = Buffer.from("fake-signature").toString("base64url");
-      return `vm0_sandbox_${header}.${body}.${sig}`;
+      return `${prefix}${header}.${body}.${sig}`;
     }
 
     it("should return orgId from ZERO_TOKEN when set", async () => {
@@ -137,12 +140,15 @@ describe("token resolution", () => {
     });
 
     it("should return orgId from CLI JWT when config token is JWT format", async () => {
-      const cliJwt = buildFakeJwt({
-        scope: "cli",
-        orgId: "cli-org",
-        userId: "user-1",
-        tokenId: "tok-1",
-      });
+      const cliJwt = buildFakeJwt(
+        {
+          scope: "cli",
+          orgId: "cli-org",
+          userId: "user-1",
+          tokenId: "tok-1",
+        },
+        "vm0_pat_",
+      );
       await writeConfigToken(cliJwt);
 
       const org = await getActiveOrg();
@@ -154,25 +160,32 @@ describe("token resolution", () => {
         "ZERO_TOKEN",
         buildFakeJwt({ scope: "zero", orgId: "zero-org", capabilities: [] }),
       );
-      const cliJwt = buildFakeJwt({
-        scope: "cli",
-        orgId: "cli-org",
-        userId: "user-1",
-        tokenId: "tok-1",
-      });
+      const cliJwt = buildFakeJwt(
+        {
+          scope: "cli",
+          orgId: "cli-org",
+          userId: "user-1",
+          tokenId: "tok-1",
+        },
+        "vm0_pat_",
+      );
       await writeConfigToken(cliJwt);
 
       const org = await getActiveOrg();
       expect(org).toBe("zero-org");
     });
 
-    it("should return orgId from CLI JWT in config", async () => {
-      const cliJwt = buildFakeJwt({
-        scope: "cli",
-        orgId: "cli-org",
-        userId: "user-1",
-        tokenId: "tok-1",
-      });
+    it("should prefer CLI JWT over VM0_ACTIVE_ORG env var", async () => {
+      vi.stubEnv("VM0_ACTIVE_ORG", "env-org");
+      const cliJwt = buildFakeJwt(
+        {
+          scope: "cli",
+          orgId: "cli-org",
+          userId: "user-1",
+          tokenId: "tok-1",
+        },
+        "vm0_pat_",
+      );
       await writeConfigToken(cliJwt);
 
       const org = await getActiveOrg();

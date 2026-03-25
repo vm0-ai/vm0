@@ -100,6 +100,21 @@ describe("proxy middleware: sandbox token handling", () => {
     expect(capturedClerkRequest!.headers.get("x-vm0-authorization")).toBeNull();
   });
 
+  it("should skip Clerk for PAT tokens and preserve authorization header", async () => {
+    const token = "Bearer vm0_pat_header.payload.signature";
+    const request = new NextRequest("https://www.vm0.ai/api/runs", {
+      headers: { authorization: token },
+    });
+
+    const response = await middleware(request, createMockEvent());
+
+    // Clerk should NOT be called for PAT token requests
+    expect(capturedClerkRequest).toBeUndefined();
+
+    // Response should be a pass-through (NextResponse.next())
+    expect(response).toBeDefined();
+  });
+
   it("should pass non-sandbox tokens through to Clerk unchanged", async () => {
     const token = "Bearer invalid_abc123def456";
     const request = new NextRequest("https://www.vm0.ai/api/runs", {
@@ -109,6 +124,19 @@ describe("proxy middleware: sandbox token handling", () => {
     await middleware(request, createMockEvent());
 
     // Non-sandbox tokens should pass through to Clerk
+    expect(capturedClerkRequest).toBeDefined();
+    expect(capturedClerkRequest!.headers.get("authorization")).toBe(token);
+  });
+
+  it("should pass legacy CLI tokens through to Clerk unchanged", async () => {
+    const token = "Bearer vm0_live_abc123def456";
+    const request = new NextRequest("https://www.vm0.ai/api/runs", {
+      headers: { authorization: token },
+    });
+
+    await middleware(request, createMockEvent());
+
+    // Legacy CLI tokens (vm0_live_) are not self-signed tokens and should pass through
     expect(capturedClerkRequest).toBeDefined();
     expect(capturedClerkRequest!.headers.get("authorization")).toBe(token);
   });

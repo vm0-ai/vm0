@@ -86,7 +86,7 @@ export async function getActiveOrg(): Promise<string | undefined> {
   const zeroPayload = decodeZeroTokenPayload();
   if (zeroPayload) return zeroPayload.orgId;
 
-  // CLI JWT token carries orgId in payload
+  // Try CLI JWT token (format: vm0_pat_ with scope "cli")
   const token = await getToken();
   const cliPayload = decodeCliTokenPayload(token);
   if (cliPayload) return cliPayload.orgId;

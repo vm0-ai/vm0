@@ -8,11 +8,17 @@ type ZeroCapability = (typeof ZERO_CAPABILITIES)[number];
 const log = logger("auth:sandbox");
 
 /**
- * Token prefix for self-signed JWTs (sandbox and compose-job tokens).
- * Both token types share this prefix and are differentiated by the
+ * Token prefix for self-signed JWTs (sandbox, compose-job, and zero tokens).
+ * These token types share this prefix and are differentiated by the
  * `scope` field inside the JWT payload.
  */
 export const SANDBOX_TOKEN_PREFIX = "vm0_sandbox_";
+
+/**
+ * Token prefix for CLI personal access tokens (PAT).
+ * CLI tokens use this prefix to distinguish from sandbox/zero/compose-job tokens.
+ */
+export const PAT_TOKEN_PREFIX = "vm0_pat_";
 
 /**
  * JWT payload for sandbox tokens (agent runs)
@@ -282,6 +288,14 @@ export function isSandboxToken(token: string): boolean {
   return token.startsWith(SANDBOX_TOKEN_PREFIX);
 }
 
+/**
+ * Check if a token is a CLI personal access token
+ * by checking for the vm0_pat_ prefix.
+ */
+export function isPatToken(token: string): boolean {
+  return token.startsWith(PAT_TOKEN_PREFIX);
+}
+
 // ============================================================================
 // Zero Token Functions
 // ============================================================================
@@ -451,7 +465,7 @@ export async function generateCliToken(
 
   const jwt = createJwt(payload);
   log.debug(`Generated CLI JWT for user ${userId}`);
-  return SANDBOX_TOKEN_PREFIX + jwt;
+  return PAT_TOKEN_PREFIX + jwt;
 }
 
 /**
@@ -461,11 +475,15 @@ export async function generateCliToken(
  * @param token - The full prefixed token (without "Bearer " prefix)
  */
 export function verifyCliToken(token: string): CliAuth | null {
-  if (!token.startsWith(SANDBOX_TOKEN_PREFIX)) {
+  let rawJwt: string;
+  if (token.startsWith(PAT_TOKEN_PREFIX)) {
+    rawJwt = token.slice(PAT_TOKEN_PREFIX.length);
+  } else if (token.startsWith(SANDBOX_TOKEN_PREFIX)) {
+    // Backward compat: accept old vm0_sandbox_ prefix for CLI tokens during transition
+    rawJwt = token.slice(SANDBOX_TOKEN_PREFIX.length);
+  } else {
     return null;
   }
-
-  const rawJwt = token.slice(SANDBOX_TOKEN_PREFIX.length);
   const payload = verifyJwtPayload(rawJwt);
   if (!payload) {
     return null;

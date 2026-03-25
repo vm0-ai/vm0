@@ -3,6 +3,7 @@ import {
   generateSandboxToken,
   verifySandboxToken,
   isSandboxToken,
+  isPatToken,
   generateComposeJobToken,
   verifyComposeJobToken,
   generateZeroToken,
@@ -10,6 +11,7 @@ import {
   generateCliToken,
   verifyCliToken,
   SANDBOX_TOKEN_PREFIX,
+  PAT_TOKEN_PREFIX,
 } from "../sandbox-token";
 
 // SECRETS_ENCRYPTION_KEY is set in setup.ts
@@ -324,7 +326,7 @@ describe("sandbox-token", () => {
       expect(auth).toBeNull();
     });
 
-    it("should identify all token types with isSandboxToken", async () => {
+    it("should identify sandbox/compose/zero token types with isSandboxToken", async () => {
       const sandboxToken = await generateSandboxToken("user-123", "run-456");
       const composeToken = await generateComposeJobToken("user-123", "job-456");
       const zeroToken = await generateZeroToken(
@@ -341,7 +343,20 @@ describe("sandbox-token", () => {
       expect(isSandboxToken(sandboxToken)).toBe(true);
       expect(isSandboxToken(composeToken)).toBe(true);
       expect(isSandboxToken(zeroToken)).toBe(true);
-      expect(isSandboxToken(cliToken)).toBe(true);
+      // CLI tokens now use vm0_pat_ prefix, not vm0_sandbox_
+      expect(isSandboxToken(cliToken)).toBe(false);
+    });
+
+    it("should identify CLI tokens with isPatToken", async () => {
+      const cliToken = await generateCliToken(
+        "user-123",
+        "org-789",
+        "token-id-1",
+      );
+      const sandboxToken = await generateSandboxToken("user-123", "run-456");
+
+      expect(isPatToken(cliToken)).toBe(true);
+      expect(isPatToken(sandboxToken)).toBe(false);
     });
 
     it("should reject CLI token with verifySandboxToken", async () => {
@@ -376,11 +391,11 @@ describe("sandbox-token", () => {
   });
 
   describe("cli tokens", () => {
-    it("should generate a prefixed CLI token", async () => {
+    it("should generate a prefixed CLI token with vm0_pat_ prefix", async () => {
       const token = await generateCliToken("user-123", "org-789", "token-id-1");
 
-      expect(token.startsWith(SANDBOX_TOKEN_PREFIX)).toBe(true);
-      const jwt = token.slice(SANDBOX_TOKEN_PREFIX.length);
+      expect(token.startsWith(PAT_TOKEN_PREFIX)).toBe(true);
+      const jwt = token.slice(PAT_TOKEN_PREFIX.length);
       expect(jwt.split(".")).toHaveLength(3);
     });
 
@@ -442,10 +457,10 @@ describe("sandbox-token", () => {
 
     it("should return null for tampered CLI token", async () => {
       const token = await generateCliToken("user-123", "org-789", "token-id-1");
-      const jwt = token.slice(SANDBOX_TOKEN_PREFIX.length);
+      const jwt = token.slice(PAT_TOKEN_PREFIX.length);
       const parts = jwt.split(".");
       parts[1] = parts[1] + "tampered";
-      const tamperedToken = SANDBOX_TOKEN_PREFIX + parts.join(".");
+      const tamperedToken = PAT_TOKEN_PREFIX + parts.join(".");
 
       expect(verifyCliToken(tamperedToken)).toBeNull();
     });
@@ -464,9 +479,23 @@ describe("sandbox-token", () => {
       expect(verifyCliToken(token)).toBeNull();
     });
 
-    it("should identify CLI tokens with isSandboxToken", async () => {
+    it("should identify CLI tokens with isPatToken", async () => {
       const token = await generateCliToken("user-123", "org-789", "token-id-1");
-      expect(isSandboxToken(token)).toBe(true);
+      expect(isPatToken(token)).toBe(true);
+      expect(isSandboxToken(token)).toBe(false);
+    });
+
+    it("should verify CLI token with legacy vm0_sandbox_ prefix (backward compat)", async () => {
+      const token = await generateCliToken("user-123", "org-789", "token-id-1");
+      // Replace vm0_pat_ prefix with vm0_sandbox_ to simulate old token
+      const legacyToken =
+        SANDBOX_TOKEN_PREFIX + token.slice(PAT_TOKEN_PREFIX.length);
+      const auth = verifyCliToken(legacyToken);
+
+      expect(auth).not.toBeNull();
+      expect(auth?.userId).toBe("user-123");
+      expect(auth?.orgId).toBe("org-789");
+      expect(auth?.tokenId).toBe("token-id-1");
     });
   });
 });

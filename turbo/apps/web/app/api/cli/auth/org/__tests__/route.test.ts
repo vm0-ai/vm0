@@ -66,7 +66,7 @@ describe("POST /api/cli/auth/org", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.access_token).toMatch(/^vm0_sandbox_/);
+    expect(body.access_token).toMatch(/^vm0_pat_/);
     expect(body.token_type).toBe("Bearer");
     expect(body.expires_in).toBe(90 * 24 * 60 * 60);
     expect(body.org_slug).toBe(slug);

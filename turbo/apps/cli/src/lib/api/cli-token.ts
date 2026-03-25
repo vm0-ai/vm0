@@ -18,9 +18,18 @@ export function decodeCliTokenPayload(
   const raw = token ?? undefined;
   if (!raw) return undefined;
 
-  const prefix = "vm0_sandbox_";
-  if (!raw.startsWith(prefix)) return undefined;
-  const jwt = raw.slice(prefix.length);
+  const patPrefix = "vm0_pat_";
+  const legacyPrefix = "vm0_sandbox_";
+
+  let jwt: string;
+  if (raw.startsWith(patPrefix)) {
+    jwt = raw.slice(patPrefix.length);
+  } else if (raw.startsWith(legacyPrefix)) {
+    // Backward compat: accept old vm0_sandbox_ prefix during transition
+    jwt = raw.slice(legacyPrefix.length);
+  } else {
+    return undefined;
+  }
 
   const parts = jwt.split(".");
   if (parts.length !== 3) return undefined;

@@ -6,7 +6,7 @@
  */
 
 import { initServices } from "../init-services";
-import { isSandboxToken, verifyCliToken } from "./sandbox-token";
+import { isSandboxToken, isPatToken, verifyCliToken } from "./sandbox-token";
 import { resolveCliTokenFromDb } from "./get-auth-context";
 import { logger } from "../logger";
 import { timingSafeEqual } from "crypto";
@@ -83,9 +83,23 @@ export async function getRunnerAuth(
 
   const token = authHeader.substring(7); // Remove "Bearer "
 
+  // Handle PAT tokens (vm0_pat_ prefix — CLI personal access tokens)
+  if (isPatToken(token)) {
+    const cliAuth = verifyCliToken(token);
+    if (cliAuth) {
+      initServices();
+      const resolved = await resolveCliTokenFromDb(cliAuth);
+      if (!resolved) {
+        return null;
+      }
+      return { type: "user", userId: resolved.userId };
+    }
+    return null;
+  }
+
   // Handle sandbox-prefixed JWT tokens
   if (isSandboxToken(token)) {
-    // Accept CLI JWT (scope: "cli") for user runners
+    // Backward compat: accept old vm0_sandbox_ prefix with scope "cli"
     const cliAuth = verifyCliToken(token);
     if (cliAuth) {
       initServices();

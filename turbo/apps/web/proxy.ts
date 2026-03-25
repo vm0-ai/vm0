@@ -41,13 +41,14 @@ const isPublicRoute = createRouteMatcher([
 ]);
 
 /**
- * Token prefix for self-signed sandbox/compose-job JWTs.
+ * Token prefixes for self-signed JWTs.
  * Clerk cannot parse these tokens because they are not standard JWTs
  * (they have a non-base64 prefix). We must strip the Authorization header
  * before the request reaches Clerk middleware, and restore it via a
  * forwarding header so route handlers can still authenticate.
  */
 const SANDBOX_TOKEN_PREFIX = "vm0_sandbox_";
+const PAT_TOKEN_PREFIX = "vm0_pat_";
 
 // ---------------------------------------------------------------------------
 // Clerk middleware (inner)
@@ -95,11 +96,12 @@ export default async function middleware(
   event: NextFetchEvent,
 ) {
   const authHeader = request.headers.get("authorization");
-  const hasSandboxToken =
-    authHeader?.startsWith("Bearer " + SANDBOX_TOKEN_PREFIX) ?? false;
+  const hasSelfSignedToken =
+    authHeader?.startsWith("Bearer " + SANDBOX_TOKEN_PREFIX) ||
+    authHeader?.startsWith("Bearer " + PAT_TOKEN_PREFIX);
 
-  if (hasSandboxToken) {
-    // Sandbox tokens are used by webhook endpoints which don't need Clerk auth.
+  if (hasSelfSignedToken) {
+    // Self-signed tokens (sandbox, PAT) are used by API endpoints which don't need Clerk auth.
     // Skip Clerk entirely and pass the request through with the original
     // Authorization header intact. This avoids relying on x-middleware-request-*
     // header restoration which doesn't work reliably in Next.js dev mode.

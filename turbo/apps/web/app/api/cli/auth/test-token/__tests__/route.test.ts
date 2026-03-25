@@ -201,7 +201,7 @@ describe("/api/cli/auth/test-token", () => {
       const response = await POST(request);
       const data = await response.json();
 
-      expect(data.access_token).toMatch(/^vm0_sandbox_/);
+      expect(data.access_token).toMatch(/^vm0_pat_/);
       expect(data.token_type).toBe("Bearer");
       expect(data.expires_in).toBe(90 * 24 * 60 * 60);
       expect(data.user_id).toBe("user_test123");
