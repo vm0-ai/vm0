@@ -14,6 +14,8 @@ import {
   findTestScheduleById,
   updateTestScheduleState,
   disableAllSchedules,
+  createTestSlackOrgInstallation,
+  createTestSlackOrgConnection,
 } from "../../../__tests__/api-test-helpers";
 import { mockClerk } from "../../../__tests__/clerk-mock";
 import { POST as deployScheduleRoute } from "../../../../app/api/zero/schedules/route";
@@ -93,6 +95,15 @@ describe("Schedule notification control - per-schedule settings", () => {
     await createTestCompose(agentName);
     await createTestZeroAgent(user.orgId, agentName, {});
     agentId = await getTestZeroAgentId(user.orgId, agentName);
+
+    // Set up Slack installation + user connection (required for notifySlack: true)
+    const { slackWorkspaceId } = await createTestSlackOrgInstallation({
+      orgId: user.orgId,
+    });
+    await createTestSlackOrgConnection({
+      slackWorkspaceId,
+      vm0UserId: user.userId,
+    });
 
     // Disable any schedules from other tests to avoid interference
     await disableAllSchedules(user.orgId);
@@ -184,5 +195,78 @@ describe("Schedule notification control - per-schedule settings", () => {
     expect(callbackUrls).not.toContainEqual(
       expect.stringContaining("/callbacks/slack/org/schedule"),
     );
+  });
+
+  it("should reject notifySlack: true when user has no Slack connection", async () => {
+    // Create a second user without Slack connection (custom prefix to avoid cache)
+    const user2 = await context.setupUser({ prefix: "no-slack-user" });
+    const slug2 = uniqueId("no-slack");
+    mockClerk({
+      userId: user2.userId,
+      orgId: user2.orgId,
+      orgRole: "org:admin",
+    });
+    await createTestOrg(slug2);
+
+    const agentName2 = uniqueId("no-slack-agent");
+    await createTestCompose(agentName2);
+    await createTestZeroAgent(user2.orgId, agentName2, {});
+    const agentId2 = await getTestZeroAgentId(user2.orgId, agentName2);
+
+    const createReq = createTestRequest(
+      `http://localhost:3000/api/zero/schedules?org=${slug2}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: agentId2,
+          name: "no-slack-schedule",
+          cronExpression: "0 0 * * *",
+          timezone: "UTC",
+          prompt: "Test no slack connection",
+          notifySlack: true,
+        }),
+      },
+    );
+    const res = await deployScheduleRoute(createReq);
+    expect(res.status).toBe(400);
+
+    const data = await res.json();
+    expect(data.error.message).toContain("Slack");
+  });
+
+  it("should accept notifySlack: false without Slack connection", async () => {
+    // Create a second user without Slack connection (custom prefix to avoid cache)
+    const user2 = await context.setupUser({ prefix: "no-slack-ok-user" });
+    const slug2 = uniqueId("no-slack-ok");
+    mockClerk({
+      userId: user2.userId,
+      orgId: user2.orgId,
+      orgRole: "org:admin",
+    });
+    await createTestOrg(slug2);
+
+    const agentName2 = uniqueId("no-slack-ok-agent");
+    await createTestCompose(agentName2);
+    await createTestZeroAgent(user2.orgId, agentName2, {});
+    const agentId2 = await getTestZeroAgentId(user2.orgId, agentName2);
+
+    const createReq = createTestRequest(
+      `http://localhost:3000/api/zero/schedules?org=${slug2}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: agentId2,
+          name: "no-slack-ok-schedule",
+          cronExpression: "0 0 * * *",
+          timezone: "UTC",
+          prompt: "Test no slack but not requesting it",
+          notifySlack: false,
+        }),
+      },
+    );
+    const res = await deployScheduleRoute(createReq);
+    expect(res.status).toBe(201);
   });
 });

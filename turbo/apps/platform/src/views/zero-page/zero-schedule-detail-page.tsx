@@ -246,7 +246,7 @@ function ScheduleNotificationSettings({
 }) {
   const slackData = useLoadable(slackOrgData$);
   const slackHasBot =
-    slackData.state === "hasData" && slackData.data?.isInstalled === true;
+    slackData.state === "hasData" && slackData.data?.isConnected === true;
   const slackChannelsLoadable = useLoadable(slackChannels$);
   const slackChannelsList =
     slackChannelsLoadable.state === "hasData" ? slackChannelsLoadable.data : [];
@@ -271,7 +271,9 @@ function ScheduleNotificationSettings({
         description={
           slackHasBot
             ? "Send a Slack message when a run completes."
-            : "Connect a Slack workspace in Settings to enable Slack notifications."
+            : slackData.state === "hasData" && slackData.data?.isInstalled
+              ? "Connect your Slack account in Settings to enable Slack notifications."
+              : "Install Slack in Settings to enable Slack notifications."
         }
         alignControls="center"
       >

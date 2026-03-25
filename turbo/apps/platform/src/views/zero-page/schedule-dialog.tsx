@@ -441,6 +441,7 @@ function ScheduleNotificationFields({
   notifySlack,
   setNotifySlack,
   slackHasBot,
+  slackIsInstalled,
   slackChannels,
   slackChannelId,
   setSlackChannelId,
@@ -450,6 +451,7 @@ function ScheduleNotificationFields({
   notifySlack: boolean;
   setNotifySlack: (v: boolean) => void;
   slackHasBot: boolean;
+  slackIsInstalled: boolean;
   slackChannels: SlackChannelOption[];
   slackChannelId: string | null;
   setSlackChannelId: (v: string | null) => void;
@@ -473,7 +475,9 @@ function ScheduleNotificationFields({
       </div>
       {!slackHasBot && (
         <p className="text-xs text-muted-foreground">
-          Connect a Slack workspace in Settings to enable Slack notifications.
+          {slackIsInstalled
+            ? "Connect your Slack account in Settings to enable Slack notifications."
+            : "Install Slack in Settings to enable Slack notifications."}
         </p>
       )}
       {notifySlack && slackHasBot && slackChannels.length > 0 && (
@@ -582,6 +586,8 @@ function ScheduleFormDialogInner({
 }: Omit<ScheduleFormDialogProps, "open">) {
   const slackData = useLoadable(slackOrgData$);
   const slackHasBot =
+    slackData.state === "hasData" && slackData.data?.isConnected === true;
+  const slackIsInstalled =
     slackData.state === "hasData" && slackData.data?.isInstalled === true;
   const slackChannelsLoadable = useLoadable(slackChannels$);
   const slackChannels: SlackChannelOption[] =
@@ -765,6 +771,7 @@ function ScheduleFormDialogInner({
               notifySlack={notifySlack}
               setNotifySlack={setNotifySlack}
               slackHasBot={slackHasBot}
+              slackIsInstalled={slackIsInstalled}
               slackChannels={slackChannels}
               slackChannelId={slackChannelId}
               setSlackChannelId={setSlackChannelId}

@@ -193,6 +193,37 @@ describe("slack schedule notification signals", () => {
     });
   });
 
+  describe("/schedule page — installed but user not connected", () => {
+    it("should have isInstalled true but isConnected false", async () => {
+      server.use(
+        http.get("*/api/zero/integrations/slack", () => {
+          return HttpResponse.json({
+            isConnected: false,
+            isInstalled: true,
+            workspaceName: "Test Workspace",
+            isAdmin: false,
+            installUrl: null,
+            connectUrl: "https://example.com/connect",
+            defaultAgentName: null,
+            agentOrgSlug: null,
+            environment: {
+              requiredSecrets: [],
+              requiredVars: [],
+              missingSecrets: [],
+              missingVars: [],
+            },
+          });
+        }),
+      );
+
+      await setup("/schedule");
+
+      const data = context.store.get(slackOrgData$);
+      expect(data?.isInstalled).toBeTruthy();
+      expect(data?.isConnected).toBeFalsy();
+    });
+  });
+
   describe("/schedule page — no slack installation", () => {
     it("should show not installed and return empty channels", async () => {
       server.use(

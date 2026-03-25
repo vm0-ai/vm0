@@ -2,6 +2,8 @@ import { eq, and, lte, inArray, desc } from "drizzle-orm";
 import { Cron } from "croner";
 import { zeroAgentSchedules } from "../../db/schema/zero-agent-schedule";
 import { agentComposes } from "../../db/schema/agent-compose";
+import { slackOrgConnections } from "../../db/schema/slack-org-connection";
+import { slackOrgInstallations } from "../../db/schema/slack-org-installation";
 import { agentRuns } from "../../db/schema/agent-run";
 import { decryptSecretsMap } from "../crypto";
 import { getOrgData } from "../org/org-cache-service";
@@ -422,6 +424,31 @@ export async function deploySchedule(
 
   // Reject one-time schedules with past atTime when enabled
   validateAtTimeNotPast(request);
+
+  // Validate Slack connection exists when Slack notifications are requested
+  if (request.notifySlack) {
+    const [slackConnection] = await globalThis.services.db
+      .select({ id: slackOrgConnections.id })
+      .from(slackOrgConnections)
+      .innerJoin(
+        slackOrgInstallations,
+        eq(
+          slackOrgConnections.slackWorkspaceId,
+          slackOrgInstallations.slackWorkspaceId,
+        ),
+      )
+      .where(
+        and(
+          eq(slackOrgConnections.vm0UserId, userId),
+          eq(slackOrgInstallations.orgId, orgId),
+        ),
+      )
+      .limit(1);
+
+    if (!slackConnection) {
+      throw badRequest("Slack notifications require a connected Slack account");
+    }
+  }
 
   // Auto-generate description if not provided (undefined/null means not provided;
   // empty string means the user explicitly cleared it — skip auto-generation)
