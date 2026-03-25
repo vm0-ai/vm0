@@ -111,6 +111,49 @@ describe("POST /api/internal/callbacks/slack/org", () => {
     expect(response.status).toBe(400);
   });
 
+  it("verifyCallback returns correct payload for valid request", async () => {
+    const { composeId } = await createTestCompose(uniqueId("agent"));
+    const { runId } = await createTestRun(composeId, "Test prompt");
+
+    const payload: OrgCallbackPayload = {
+      workspaceId: uniqueId("T-ws"),
+      channelId: uniqueId("C-ch"),
+      threadTs: uniqueId("ts"),
+      messageTs: uniqueId("ts"),
+      connectionId: uniqueId("conn"),
+      agentName: "test-agent",
+      composeId,
+    };
+
+    const { secret } = await createTestCallback({
+      runId,
+      url: "http://localhost/api/internal/callbacks/slack/org",
+      payload: { ...payload },
+    });
+
+    const request = createCallbackRequest(
+      { runId, status: "progress", payload },
+      secret,
+    );
+
+    // Call verifyCallback directly to see what it returns
+    const { verifyCallback } = await import(
+      "../../../../../../../src/lib/callback"
+    );
+    const log = { warn: () => {} };
+    const result = await verifyCallback(request, log);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const p = result.data.payload as Record<string, unknown>;
+      expect(p).toBeDefined();
+      expect(typeof p.workspaceId).toBe("string");
+      expect(typeof p.channelId).toBe("string");
+      expect(typeof p.composeId).toBe("string");
+      expect(p.workspaceId).toBe(payload.workspaceId);
+    }
+  });
+
   it("handles progress status by setting thinking status", async () => {
     const { workspaceId, connectionId } = await setupOrgSlack();
     const { composeId } = await createTestCompose(uniqueId("agent"));
