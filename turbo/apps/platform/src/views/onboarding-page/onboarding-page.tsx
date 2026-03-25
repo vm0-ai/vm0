@@ -110,7 +110,7 @@ export function OnboardingPage() {
         {showOnboarding && <ZeroOnboarding zeroAvatarSrc={zeroAvatarSrc} />}
         {showMemberWelcome && (
           <MemberWelcome
-            agentName={agentDisplayName}
+            displayName={agentDisplayName}
             zeroAvatarSrc={zeroAvatarSrc}
           />
         )}

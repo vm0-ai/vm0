@@ -5,7 +5,7 @@ import { reloadOnboardingStatus$ } from "./zero-onboarding.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { zeroChatAgentName$ } from "./zero-nav.ts";
+import { zeroTalkAgentId$ } from "./zero-nav.ts";
 import { defaultAgentId$ } from "./zero-agent-name.ts";
 
 const L = logger("ZeroConnectors");
@@ -14,10 +14,10 @@ const L = logger("ZeroConnectors");
 // Agent name resolution
 // ---------------------------------------------------------------------------
 
-const zeroAgentName$ = computed(async (get) => {
-  const chatAgentName = get(zeroChatAgentName$);
-  if (chatAgentName !== null) {
-    return chatAgentName;
+const zeroAgentId$ = computed(async (get) => {
+  const agentId = get(zeroTalkAgentId$);
+  if (agentId !== null) {
+    return agentId;
   }
   return await get(defaultAgentId$);
 });
@@ -31,13 +31,13 @@ export const reloadZeroCompose$ = command(({ set }) => {
 
 const zeroAgent$ = computed(async (get) => {
   get(internalComposeReload$);
-  const agentName = await get(zeroAgentName$);
-  if (!agentName) {
+  const agentId = await get(zeroAgentId$);
+  if (!agentId) {
     return null;
   }
 
   const client = get(zeroClient$)(zeroAgentsByIdContract);
-  const result = await client.get({ params: { id: agentName } });
+  const result = await client.get({ params: { id: agentId } });
   if (result.status !== 200) {
     throw new Error(`Failed to fetch agent: ${result.status}`);
   }

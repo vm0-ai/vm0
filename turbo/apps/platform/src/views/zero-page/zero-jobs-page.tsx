@@ -35,9 +35,9 @@ import emptyChatImg from "./assets/empty-chat.webp";
 import { ZERO_AVATARS } from "./zero-avatars.ts";
 
 export function ZeroJobsPage() {
-  const agentNameLoadable = useLoadable(agentDisplayName$);
-  const agentName =
-    agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
+  const displayNameLoadable = useLoadable(agentDisplayName$);
+  const displayName =
+    displayNameLoadable.state === "hasData" ? displayNameLoadable.data : "Zero";
   const rawNameLoadable = useLoadable(defaultAgentId$);
   const rawAgentName =
     rawNameLoadable.state === "hasData" ? rawNameLoadable.data : null;
@@ -86,7 +86,7 @@ export function ZeroJobsPage() {
             Agents
           </h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            {agentName} and sub-agents working together to run tailored
+            {displayName} and sub-agents working together to run tailored
             workflows for you and your team.
           </p>
         </div>
@@ -105,13 +105,13 @@ export function ZeroJobsPage() {
                 <CardContent className="p-5 flex items-center gap-4">
                   <img
                     src={zeroAvatarSrc}
-                    alt={agentName}
+                    alt={displayName}
                     className="h-12 w-12 shrink-0 rounded-full object-cover object-top"
                   />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <h2 className="text-base font-semibold tracking-tight text-foreground truncate">
-                        {agentName}
+                        {displayName}
                       </h2>
                       <span className="zero-pill inline-flex items-center gap-1.5 rounded-lg border px-2 py-0.5 text-xs font-medium">
                         <IconCrown
@@ -135,13 +135,13 @@ export function ZeroJobsPage() {
               <CardContent className="p-5 flex items-center gap-4">
                 <img
                   src={zeroAvatarSrc}
-                  alt={agentName}
+                  alt={displayName}
                   className="h-12 w-12 shrink-0 rounded-full object-cover object-top"
                 />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <h2 className="text-base font-semibold tracking-tight text-foreground truncate">
-                      {agentName}
+                      {displayName}
                     </h2>
                     <span className="zero-pill inline-flex items-center gap-1.5 rounded-lg border px-2 py-0.5 text-xs font-medium">
                       <IconCrown
@@ -207,11 +207,11 @@ export function ZeroJobsPage() {
                   />
                   <div className="text-center">
                     <p className="text-sm font-medium text-foreground">
-                      Just {agentName} for now
+                      Just {displayName} for now
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Ask {agentName} to create a teammate and they&apos;ll show
-                      up here.
+                      Ask {displayName} to create a teammate and they&apos;ll
+                      show up here.
                     </p>
                   </div>
                 </CardContent>

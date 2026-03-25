@@ -142,7 +142,7 @@ function ActivityNotFound() {
 }
 
 function ActivityHeaderCard({
-  agentName,
+  displayName,
   status,
   triggerSource,
   detail,
@@ -150,7 +150,7 @@ function ActivityHeaderCard({
   time,
   events,
 }: {
-  agentName: string;
+  displayName: string;
   status: LogStatus;
   triggerSource: TriggerSource | null;
   detail: {
@@ -167,7 +167,7 @@ function ActivityHeaderCard({
     <div className="zero-card shrink-0 px-4 py-3">
       <div className="flex items-center gap-y-2 overflow-hidden">
         <h2 className="text-base font-semibold tracking-tight text-foreground truncate min-w-0 pr-3 shrink-0">
-          {agentName}
+          {displayName}
         </h2>
         <span
           className="w-px h-3.5 shrink-0 bg-border self-center"
@@ -256,7 +256,7 @@ export function ZeroActivityDetailPage() {
     detailLoadable.state === "hasData" ? detailLoadable.data : null;
   // Detect stale detail from previous navigation (useLastLoadable keeps old data)
   const isStale = detail !== null && detail.id !== selectedLogId;
-  const agentName =
+  const displayName =
     detail && !isStale
       ? (detail.displayName ?? detail.agentId ?? "Agent")
       : "Agent";
@@ -304,12 +304,12 @@ export function ZeroActivityDetailPage() {
           <ActivityBreadcrumbLink />
           <span className="text-muted-foreground/40 select-none">/</span>
           <span className="rounded-md px-1.5 py-0.5 text-foreground font-medium truncate">
-            {agentName}
+            {displayName}
           </span>
         </nav>
         <div className="mx-auto w-full max-w-[900px] px-4 sm:px-6 pt-4 pb-8">
           <ActivityHeaderCard
-            agentName={agentName}
+            displayName={displayName}
             status={status}
             triggerSource={detail.triggerSource ?? null}
             detail={detail}

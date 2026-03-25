@@ -801,9 +801,9 @@ function SidebarBillingButton() {
 export function ZeroSidebar() {
   // Read all data from signals directly
   const activeId = useGet(zeroActiveId$);
-  const agentNameLoadable = useLastLoadable(agentDisplayName$);
-  const agentName =
-    agentNameLoadable.state === "hasData" ? agentNameLoadable.data : null;
+  const displayNameLoadable = useLastLoadable(agentDisplayName$);
+  const displayNameRaw =
+    displayNameLoadable.state === "hasData" ? displayNameLoadable.data : null;
   const defaultAgentIdLoadable = useLastLoadable(defaultAgentId$);
   const defaultAgentRawName =
     defaultAgentIdLoadable.state === "hasData"
@@ -836,7 +836,7 @@ export function ZeroSidebar() {
   const onNewChat = (agentId: string | null) => {
     detach(createNewChat(agentId), Reason.DomCallback);
   };
-  const displayName = agentName || "Zero";
+  const displayName = displayNameRaw || "Zero";
   const pinnedIdsLoadable = useLastLoadable(pinnedAgentIds$);
   const pinnedIds =
     pinnedIdsLoadable.state === "hasData" ? pinnedIdsLoadable.data : [];

@@ -28,8 +28,7 @@ interface CallbackPayload {
   installationId: string;
   repo: string;
   issueNumber: number;
-  composeId: string;
-  agentName: string;
+  agentId: string;
   existingSessionId?: string;
 }
 
@@ -131,8 +130,7 @@ async function givenGitHubCallbackSetup(overrides?: {
     installationId: installation.id,
     repo: "test-org/test-repo",
     issueNumber: 42,
-    composeId,
-    agentName: "gh-callback-agent",
+    agentId: composeId,
     existingSessionId: overrides?.existingSessionId,
   };
 
@@ -204,7 +202,7 @@ describe("POST /api/internal/callbacks/github/issues", () => {
             installationId: "inst-123",
             repo: "org/repo",
             issueNumber: 1,
-            composeId: "compose-123",
+            agentId: "compose-123",
           },
         }),
       });
@@ -231,7 +229,7 @@ describe("POST /api/internal/callbacks/github/issues", () => {
             installationId: "inst-123",
             repo: "org/repo",
             issueNumber: 1,
-            composeId: "compose-123",
+            agentId: "compose-123",
           },
         }),
       });
@@ -339,8 +337,7 @@ describe("POST /api/internal/callbacks/github/issues", () => {
         installationId: "00000000-0000-0000-0000-000000000099",
         repo: "org/repo",
         issueNumber: 1,
-        composeId,
-        agentName: "gh-missing-agent",
+        agentId: composeId,
       };
 
       const { secret } = await createTestCallback({

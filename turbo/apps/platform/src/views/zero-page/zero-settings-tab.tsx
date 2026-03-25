@@ -29,7 +29,7 @@ import type { Command } from "ccstate";
 import { InlineSettingsRow } from "./components/zero-inline-settings-row.tsx";
 
 interface ZeroSettingsTabProps {
-  agentName: string;
+  displayName: string;
   description: string;
   sound: Tone;
   saving: boolean;
@@ -45,7 +45,7 @@ interface ZeroSettingsTabProps {
 }
 
 export function ZeroSettingsTab({
-  agentName: resolvedAgentName,
+  displayName: resolvedAgentName,
   description: initialDescription,
   sound: initialSound,
   saving,

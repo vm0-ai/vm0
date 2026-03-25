@@ -146,16 +146,16 @@ export function ZeroChatPage({
   chatAgentName,
   onAvatarClick,
 }: ZeroChatPageProps) {
-  const agentNameLoadable = useLoadable(agentDisplayName$);
-  const defaultAgentId =
-    agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
-  const agentName = chatAgentName ?? defaultAgentId;
+  const displayNameLoadable = useLoadable(agentDisplayName$);
+  const defaultDisplayName =
+    displayNameLoadable.state === "hasData" ? displayNameLoadable.data : "Zero";
+  const displayName = chatAgentName ?? defaultDisplayName;
   const userName = useUserFirstName();
 
   const input = useGet(chatPageInput$);
   const setInput = useSet(setChatPageInput$);
   const taglineIndex = useGet(chatPageTaglineIndex$);
-  const tagline = getTagline(agentName, userName, taglineIndex);
+  const tagline = getTagline(displayName, userName, taglineIndex);
   const [showIdeation, setShowIdeation] = useState(false);
   const [suggestedPrompts] = useState(() => getRandomPrompts(2));
 
@@ -251,7 +251,7 @@ export function ZeroChatPage({
             input={input}
             onInputChange={setInput}
             onSend={handleSend}
-            agentName={agentName}
+            displayName={displayName}
             onManageConnectors={() => onNavigateToMeet?.("connectors")}
           />
 

@@ -397,9 +397,9 @@ function ScheduleCalendarSkeleton() {
 // ---------------------------------------------------------------------------
 
 export function ZeroSchedulePage() {
-  const agentNameLoadable = useLoadable(agentDisplayName$);
-  const agentName =
-    agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
+  const displayNameLoadable = useLoadable(agentDisplayName$);
+  const displayName =
+    displayNameLoadable.state === "hasData" ? displayNameLoadable.data : "Zero";
 
   const statusLoadable = useLoadable(zeroOnboardingStatus$);
   const defaultComposeId =
@@ -439,7 +439,7 @@ export function ZeroSchedulePage() {
 
   const combinedSchedule = buildCombinedSchedule(
     entries,
-    agentName,
+    displayName,
     defaultComposeId,
     nameToDisplay,
   );

@@ -172,8 +172,7 @@ export async function handleTelegramDirectMessage(
       messageId: String(message.message_id),
       rootMessageId: "dm",
       userLinkId: userLink.id,
-      agentName,
-      composeId,
+      agentId: composeId,
       existingSessionId: existingSessionId ?? null,
       isDM: true,
       thinkingMessageId: thinkingMessage

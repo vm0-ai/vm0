@@ -178,13 +178,13 @@ export async function getAllRunOutputTexts(runId: string): Promise<string[]> {
 export function buildDeepLinksFromFlags(
   output: RunOutput,
   appUrl: string,
-  agentName?: string,
+  agentId?: string,
 ): DeepLink[] {
   const links: DeepLink[] = [];
 
   if (output.connectorIssue) {
-    const path = agentName
-      ? `/team/${encodeURIComponent(agentName)}?tab=connectors`
+    const path = agentId
+      ? `/team/${encodeURIComponent(agentId)}?tab=connectors`
       : "/team";
     links.push({
       emoji: "🔌",

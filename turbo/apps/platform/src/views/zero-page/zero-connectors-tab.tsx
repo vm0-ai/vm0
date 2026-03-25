@@ -41,8 +41,8 @@ interface ZeroConnectorsTabProps {
   onRemoveConnector: (name: string) => void;
   onSaveConnectors: () => void;
   onDiscardConnectors: () => void;
-  agentName?: string;
-  agentDisplayName?: string;
+  agentId?: string;
+  displayName?: string;
   firewallPolicies?: FirewallPolicies | null;
   onFirewallPoliciesChange?: (policies: FirewallPolicies | null) => void;
 }
@@ -52,8 +52,8 @@ export function ZeroConnectorsTab({
   addedConnectorsLoading,
   connectorsDirty,
   connectorsSaving,
-  agentName,
-  agentDisplayName,
+  agentId,
+  displayName,
   firewallPolicies,
   onFirewallPoliciesChange,
   onAddConnector,
@@ -203,7 +203,7 @@ export function ZeroConnectorsTab({
         excludeTypes={addedSet}
         onConnectSuccess={handleConnectSuccess}
         onAdd={handleConnectSuccess}
-        agentName={agentDisplayName ?? agentName}
+        displayName={displayName ?? agentId}
       />
 
       {selectedType && (
@@ -228,13 +228,13 @@ export function ZeroConnectorsTab({
         />
       )}
 
-      {firewallType && agentName && (
+      {firewallType && agentId && (
         <FirewallPermissionsDrawer
           connectorType={firewallType}
-          agentName={agentDisplayName ?? agentName}
+          displayName={displayName ?? agentId}
           initialPolicies={firewallPolicies ?? {}}
           onApply={async (policies) => {
-            const saved = await saveFirewallPol(agentName, policies);
+            const saved = await saveFirewallPol(agentId, policies);
             if (saved !== undefined) {
               onFirewallPoliciesChange?.(saved);
             }

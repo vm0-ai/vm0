@@ -966,9 +966,9 @@ export function ZeroScheduleDetailPage() {
       ? String(params.scheduleId)
       : null;
 
-  const agentNameLoadable = useLoadable(agentDisplayName$);
-  const agentName =
-    agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
+  const displayNameLoadable = useLoadable(agentDisplayName$);
+  const displayName =
+    displayNameLoadable.state === "hasData" ? displayNameLoadable.data : "Zero";
 
   const statusLoadable = useLoadable(zeroOnboardingStatus$);
   const defaultComposeId =
@@ -1000,7 +1000,7 @@ export function ZeroScheduleDetailPage() {
   const [running, setRunning] = useState(false);
   const combinedSchedule = buildCombinedSchedule(
     entries,
-    agentName,
+    displayName,
     defaultComposeId,
     nameToDisplay,
   );

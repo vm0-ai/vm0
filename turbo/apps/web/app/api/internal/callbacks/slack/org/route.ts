@@ -7,6 +7,7 @@ import { slackOrgInstallations } from "../../../../../../src/db/schema/slack-org
 import { slackOrgPendingQuestions } from "../../../../../../src/db/schema/slack-org-pending-question";
 import { agentSessions } from "../../../../../../src/db/schema/agent-session";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
+import { zeroAgents } from "../../../../../../src/db/schema/zero-agent";
 import {
   createSlackClient,
   postMessage,
@@ -47,8 +48,7 @@ function parsePayload(payload: unknown): SlackOrgCallbackPayload | null {
     typeof p.threadTs !== "string" ||
     typeof p.messageTs !== "string" ||
     typeof p.connectionId !== "string" ||
-    typeof p.agentName !== "string" ||
-    typeof p.composeId !== "string"
+    typeof p.agentId !== "string"
   ) {
     return null;
   }
@@ -61,7 +61,7 @@ function errorResponse(message: string, status: number): NextResponse {
 
 async function findNewSessionId(
   userId: string,
-  composeId: string,
+  agentId: string,
   runCreatedAt: Date,
 ): Promise<string | undefined> {
   const [newSession] = await globalThis.services.db
@@ -70,7 +70,7 @@ async function findNewSessionId(
     .where(
       and(
         eq(agentSessions.userId, userId),
-        eq(agentSessions.agentComposeId, composeId),
+        eq(agentSessions.agentComposeId, agentId),
         gte(agentSessions.updatedAt, runCreatedAt),
       ),
     )
@@ -88,6 +88,7 @@ async function postAskUserInteractiveCard(
   payload: SlackOrgCallbackPayload,
   runId: string,
   resolvedSessionId: string | undefined,
+  agentLabel: string,
 ): Promise<void> {
   const allQuestions: AskUserQuestion[] = [];
   for (const denial of resultData.askUserDenials) {
@@ -110,8 +111,8 @@ async function postAskUserInteractiveCard(
       slackChannelId: payload.channelId,
       slackThreadTs: payload.threadTs,
       connectionId: payload.connectionId,
-      composeId: payload.composeId,
-      agentName: payload.agentName,
+      composeId: payload.agentId,
+      agentName: agentLabel,
       sessionId: resolvedSessionId,
       questions: allQuestions,
       expiresAt,
@@ -168,7 +169,7 @@ async function saveOrgThreadSession(
     channelId,
     threadTs,
     messageTs,
-    composeId,
+    agentId,
     existingSessionId,
   } = payload;
 
@@ -183,7 +184,7 @@ async function saveOrgThreadSession(
   }
 
   const newSessionId = !existingSessionId
-    ? await findNewSessionId(run.userId, composeId, run.createdAt)
+    ? await findNewSessionId(run.userId, agentId, run.createdAt)
     : undefined;
 
   await saveThreadSession({
@@ -274,6 +275,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   );
   const client = createSlackClient(botToken);
 
+  // Resolve agent display name and slug from zeroAgents
+  const [agentRow] = await globalThis.services.db
+    .select({ displayName: zeroAgents.displayName, name: zeroAgents.name })
+    .from(zeroAgents)
+    .where(eq(zeroAgents.id, payload.agentId))
+    .limit(1);
+  const agentLabel = agentRow?.displayName ?? agentRow?.name ?? "your agent";
+  const agentName = agentRow?.name ?? "your agent";
+
   const allOutputs = await extractAllRunOutputs(runId, error);
   const lastOutput = allOutputs[allOutputs.length - 1]!;
   const hasAskUserDenials = lastOutput.askUserDenials.length > 0;
@@ -290,7 +300,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const isLast = i === allOutputs.length - 1;
     const logsUrl = isLast ? buildLogsUrl(runId) : undefined;
     const deepLinks = isLast
-      ? buildDeepLinksFromFlags(output, getAppUrl(), payload.agentName)
+      ? buildDeepLinksFromFlags(output, getAppUrl(), agentName)
       : [];
 
     await postMessage(client, payload.channelId, responseText, {
@@ -307,6 +317,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       payload,
       runId,
       resolvedSessionId,
+      agentLabel,
     );
   }
 

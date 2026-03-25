@@ -552,8 +552,7 @@ async function finishSubmit(
     threadTs: claimed.slackThreadTs,
     messageTs: claimed.slackThreadTs,
     connectionId: claimed.connectionId,
-    agentName: claimed.agentName,
-    composeId: claimed.composeId,
+    agentId: claimed.composeId,
     existingSessionId: claimed.sessionId ?? undefined,
   };
 

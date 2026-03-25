@@ -47,10 +47,10 @@ export const zeroSessionId$ = computed((get): string | null => {
 });
 
 /**
- * Agent name extracted from `/talk/:id`.
+ * Agent ID extracted from `/talk/:id`.
  * Returns null when chatting with the default agent.
  */
-export const zeroChatAgentName$ = computed((get): string | null => {
+export const zeroTalkAgentId$ = computed((get): string | null => {
   const path = get(pathname$);
   const match = /^\/talk\/([^/]+)/.exec(path);
   return match ? decodeURIComponent(match[1]) : null;

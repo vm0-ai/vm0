@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { zeroChatAgentName$ } from "./zero-nav.ts";
+import { zeroTalkAgentId$ } from "./zero-nav.ts";
 
 function readModelPreference(key: string): string {
   if (typeof window === "undefined") {
@@ -16,8 +16,8 @@ function writeModelPreference(key: string, value: string) {
   }
 }
 
-function modelStorageKey(agentName: string | null): string {
-  return `zero.modelProvider.${agentName ?? "default"}`;
+function modelStorageKey(agentId: string | null): string {
+  return `zero.modelProvider.${agentId ?? "default"}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -37,11 +37,11 @@ export const setSelectedModel$ = command(({ set }, value: string) => {
 /**
  * Sync model preference from localStorage for the current agent.
  * Called from each route's setup function on navigation — eliminates the
- * prevAgentName + queueMicrotask pattern entirely.
+ * prevAgentId + queueMicrotask pattern entirely.
  */
 export const syncModelPreference$ = command(({ get, set }) => {
-  const agentName = get(zeroChatAgentName$);
-  const key = modelStorageKey(agentName);
+  const agentId = get(zeroTalkAgentId$);
+  const key = modelStorageKey(agentId);
   set(internalSelectedModel$, readModelPreference(key));
 });
 
@@ -50,8 +50,8 @@ export const syncModelPreference$ = command(({ get, set }) => {
  * Called before sending a message.
  */
 export const persistModelPreference$ = command(({ get }) => {
-  const agentName = get(zeroChatAgentName$);
-  const key = modelStorageKey(agentName);
+  const agentId = get(zeroTalkAgentId$);
+  const key = modelStorageKey(agentId);
   const value = get(internalSelectedModel$);
   writeModelPreference(key, value);
 });

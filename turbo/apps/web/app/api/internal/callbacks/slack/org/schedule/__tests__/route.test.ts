@@ -27,7 +27,6 @@ const context = testContext();
 interface OrgScheduleCallbackPayload {
   scheduleId: string;
   agentId: string;
-  agentName: string;
   userId: string;
   orgId: string;
   slackChannelId?: string | null;
@@ -93,7 +92,7 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
       payload: {
         scheduleId: schedule.id,
         agentId: composeId,
-        agentName: "sched-agent",
+
         userId: user.userId,
         // orgId intentionally missing
       },
@@ -106,7 +105,7 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
         payload: {
           scheduleId: schedule.id,
           agentId: composeId,
-          agentName: "sched-agent",
+
           userId: user.userId,
           orgId: undefined as unknown as string, // missing orgId
         },
@@ -131,7 +130,7 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
     const payload: OrgScheduleCallbackPayload = {
       scheduleId: schedule.id,
       agentId: composeId,
-      agentName: "sched-agent",
+
       userId: user.userId,
       orgId: user.orgId,
       slackChannelId: "C-TARGET-CHANNEL",
@@ -198,7 +197,7 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
     const payload: OrgScheduleCallbackPayload = {
       scheduleId: schedule.id,
       agentId: composeId,
-      agentName: "sched-agent",
+
       userId: user.userId,
       orgId: user.orgId,
       // slackChannelId not set — should fall back to DM
@@ -245,7 +244,7 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
     const payload: OrgScheduleCallbackPayload = {
       scheduleId: schedule.id,
       agentId: composeId,
-      agentName: "sched-agent",
+
       userId: user.userId,
       orgId: user.orgId,
       slackChannelId: "C-FAIL-CHANNEL",
@@ -309,7 +308,7 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
     const payload: OrgScheduleCallbackPayload = {
       scheduleId: schedule.id,
       agentId: composeId,
-      agentName: "sched-agent",
+
       userId: user.userId,
       orgId: user.orgId,
       slackChannelId: "C-DEEP-LINK",
@@ -378,7 +377,6 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
     const payload: OrgScheduleCallbackPayload = {
       scheduleId: schedule.id,
       agentId: composeId,
-      agentName: "sched-agent",
       userId: user.userId,
       orgId: otherOrgId, // different org — no Slack installation here
     };
@@ -434,7 +432,6 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
     const payload: OrgScheduleCallbackPayload = {
       scheduleId: schedule.id,
       agentId: composeId,
-      agentName: "sched-agent",
       userId: user.userId,
       orgId: orgB,
     };
