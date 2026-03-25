@@ -66,6 +66,7 @@ import { generate as generatePosthog } from "./posthog";
 import { generate as generatePushinator } from "./pushinator";
 import { generate as generateQiita } from "./qiita";
 import { generate as generateReddit } from "./reddit";
+import { generate as generateReportei } from "./reportei";
 import { generate as generateResend } from "./resend";
 import { generate as generateRevenuecat } from "./revenuecat";
 import { generate as generateRunway } from "./runway";
@@ -155,6 +156,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   pushinator: generatePushinator,
   qiita: generateQiita,
   reddit: generateReddit,
+  reportei: generateReportei,
   resend: generateResend,
   revenuecat: generateRevenuecat,
   runway: generateRunway,

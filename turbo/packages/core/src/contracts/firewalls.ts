@@ -157,6 +157,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   pushinator: ["pushinator"],
   qiita: ["qiita"],
   reddit: ["reddit"],
+  reportei: ["reportei"],
   resend: ["resend"],
   revenuecat: ["revenuecat"],
   runway: ["runway"],
