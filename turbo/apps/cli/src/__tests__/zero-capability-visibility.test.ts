@@ -1,9 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { Command } from "commander";
-import {
-  applyCapabilityVisibility,
-  decodeCapabilitiesFromZeroToken,
-} from "../zero";
+import { applyCapabilityVisibility } from "../zero";
+import { decodeZeroTokenPayload } from "../lib/api/zero-token";
 
 function buildZeroToken(payload: Record<string, unknown>): string {
   const header = Buffer.from(JSON.stringify({ alg: "HS256" })).toString(
@@ -38,48 +36,57 @@ function hiddenCommandNames(prog: Command): string[] {
     .map((cmd) => cmd.name());
 }
 
-describe("decodeCapabilitiesFromZeroToken", () => {
-  it("should decode capabilities from a valid zero-scoped token", () => {
+describe("decodeZeroTokenPayload", () => {
+  it("should decode payload from a valid zero-scoped token", () => {
     const token = buildZeroToken({
+      userId: "user-1",
+      runId: "run-1",
+      orgId: "org-1",
       scope: "zero",
       capabilities: ["agent:read", "schedule:read"],
+      iat: 1000,
+      exp: 2000,
     });
-    expect(decodeCapabilitiesFromZeroToken(token)).toEqual([
-      "agent:read",
-      "schedule:read",
-    ]);
+    const payload = decodeZeroTokenPayload(token);
+    expect(payload).toEqual({
+      userId: "user-1",
+      runId: "run-1",
+      orgId: "org-1",
+      scope: "zero",
+      capabilities: ["agent:read", "schedule:read"],
+      iat: 1000,
+      exp: 2000,
+    });
   });
 
-  it("should return null for token without vm0_sandbox_ prefix", () => {
-    expect(decodeCapabilitiesFromZeroToken("some-other-token")).toBeNull();
+  it("should return undefined for token without vm0_sandbox_ prefix", () => {
+    expect(decodeZeroTokenPayload("some-other-token")).toBeUndefined();
   });
 
-  it("should return null for malformed JWT (not 3 parts)", () => {
-    expect(
-      decodeCapabilitiesFromZeroToken("vm0_sandbox_only-one-part"),
-    ).toBeNull();
+  it("should return undefined for malformed JWT (not 3 parts)", () => {
+    expect(decodeZeroTokenPayload("vm0_sandbox_only-one-part")).toBeUndefined();
   });
 
-  it("should return null for non-zero scope", () => {
+  it("should return undefined for non-zero scope", () => {
     const token = buildZeroToken({
       scope: "sandbox",
       capabilities: ["agent:read"],
     });
-    expect(decodeCapabilitiesFromZeroToken(token)).toBeNull();
+    expect(decodeZeroTokenPayload(token)).toBeUndefined();
   });
 
-  it("should return null when capabilities is not an array", () => {
+  it("should return undefined when capabilities is not an array", () => {
     const token = buildZeroToken({
       scope: "zero",
       capabilities: "not-an-array",
     });
-    expect(decodeCapabilitiesFromZeroToken(token)).toBeNull();
+    expect(decodeZeroTokenPayload(token)).toBeUndefined();
   });
 
-  it("should return null for invalid base64 payload", () => {
+  it("should return undefined for invalid base64 payload", () => {
     expect(
-      decodeCapabilitiesFromZeroToken("vm0_sandbox_a.!!!invalid.c"),
-    ).toBeNull();
+      decodeZeroTokenPayload("vm0_sandbox_a.!!!invalid.c"),
+    ).toBeUndefined();
   });
 });
 

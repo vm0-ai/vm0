@@ -2,6 +2,7 @@ import { homedir } from "os";
 import { join } from "path";
 import { readFile, writeFile, mkdir, unlink } from "fs/promises";
 import { existsSync } from "fs";
+import { decodeZeroTokenPayload } from "./zero-token.js";
 
 interface CliConfig {
   token?: string;
@@ -74,42 +75,7 @@ export async function getApiUrl(): Promise<string> {
   return config.apiUrl ?? "https://www.vm0.ai";
 }
 
-interface ZeroTokenPayload {
-  userId: string;
-  runId: string;
-  orgId: string;
-  scope: string;
-  capabilities: string[];
-  iat: number;
-  exp: number;
-}
-
-/**
- * Decode the ZERO_TOKEN JWT payload.
- * Only decodes — does NOT verify signature (server does that).
- * Returns undefined if token is missing, malformed, or not a zero-scoped token.
- */
-export function decodeZeroTokenPayload(): ZeroTokenPayload | undefined {
-  const token = process.env.ZERO_TOKEN;
-  if (!token) return undefined;
-
-  const prefix = "vm0_sandbox_";
-  if (!token.startsWith(prefix)) return undefined;
-  const jwt = token.slice(prefix.length);
-
-  const parts = jwt.split(".");
-  if (parts.length !== 3) return undefined;
-
-  try {
-    const payload = JSON.parse(
-      Buffer.from(parts[1]!, "base64url").toString(),
-    ) as ZeroTokenPayload;
-    if (payload.scope === "zero") return payload;
-  } catch {
-    // Malformed token — fall through
-  }
-  return undefined;
-}
+export { decodeZeroTokenPayload };
 
 /**
  * Get the active organization for API requests.

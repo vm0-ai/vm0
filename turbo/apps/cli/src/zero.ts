@@ -12,6 +12,7 @@ import { zeroSecretCommand } from "./commands/zero/secret";
 import { zeroSlackCommand } from "./commands/zero/slack";
 import { zeroVariableCommand } from "./commands/zero/variable";
 import { zeroWhoamiCommand } from "./commands/zero/whoami";
+import { decodeZeroTokenPayload } from "./lib/api/zero-token.js";
 
 /**
  * Map of command names to the capability required to see them.
@@ -25,36 +26,6 @@ const COMMAND_CAPABILITY_MAP: Record<string, string | null> = {
 };
 
 /**
- * Decode capabilities from a ZERO_TOKEN JWT without signature verification.
- * Returns null if token is missing, malformed, or not a zero-scoped token.
- *
- * Mirrors the decode logic in src/lib/api/config.ts but kept local
- * to avoid pulling config dependencies into the entry point.
- */
-export function decodeCapabilitiesFromZeroToken(
-  token: string,
-): string[] | null {
-  const prefix = "vm0_sandbox_";
-  if (!token.startsWith(prefix)) return null;
-  const jwt = token.slice(prefix.length);
-
-  const parts = jwt.split(".");
-  if (parts.length !== 3) return null;
-
-  try {
-    const payload = JSON.parse(
-      Buffer.from(parts[1]!, "base64url").toString(),
-    ) as Record<string, unknown>;
-    if (payload.scope === "zero" && Array.isArray(payload.capabilities)) {
-      return payload.capabilities as string[];
-    }
-  } catch {
-    // Malformed token — fall through
-  }
-  return null;
-}
-
-/**
  * Hide commands that the current ZERO_TOKEN does not grant access to.
  * When no ZERO_TOKEN is present (human user with VM0_TOKEN or config),
  * all commands remain visible.
@@ -63,19 +34,19 @@ export function applyCapabilityVisibility(prog: Command): void {
   const token = process.env.ZERO_TOKEN;
   if (!token) return;
 
-  const capabilities = decodeCapabilitiesFromZeroToken(token);
-  if (!capabilities) return;
+  const payload = decodeZeroTokenPayload(token);
+  if (!payload) return;
 
   for (const cmd of prog.commands) {
     const requiredCap = COMMAND_CAPABILITY_MAP[cmd.name()];
     if (requiredCap === undefined) {
-      // Command not in map → hide in sandbox
       (cmd as unknown as { _hidden: boolean })._hidden = true;
-    } else if (requiredCap !== null && !capabilities.includes(requiredCap)) {
-      // Command in map but capability missing → hide
+    } else if (
+      requiredCap !== null &&
+      !payload.capabilities.includes(requiredCap)
+    ) {
       (cmd as unknown as { _hidden: boolean })._hidden = true;
     }
-    // requiredCap === null → always visible (e.g., whoami)
   }
 }
 
