@@ -13,6 +13,7 @@ import {
   startCheckout$,
   startDowngrade$,
   billingDialogLoading$,
+  apiTierToBillingTier,
   type BillingTier,
 } from "../../../../signals/zero-page/billing.ts";
 import { Button } from "@vm0/ui";
@@ -38,13 +39,6 @@ function tierRank(t: BillingTier): number {
     return 1;
   }
   return 2;
-}
-
-function apiTierToBillingTier(tier: string | undefined): BillingTier {
-  if (tier === "free" || tier === "pro" || tier === "team") {
-    return tier;
-  }
-  return "free";
 }
 
 const PLANS = [
@@ -252,10 +246,10 @@ function PricingPage({
       detach(portal(pageSignal), Reason.DomCallback);
       return;
     }
-    detach(
-      checkout(planTier as "pro" | "team", pageSignal),
-      Reason.DomCallback,
-    );
+    if (planTier !== "pro" && planTier !== "team") {
+      return;
+    }
+    detach(checkout(planTier, pageSignal), Reason.DomCallback);
   };
 
   return (

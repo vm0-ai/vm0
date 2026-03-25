@@ -341,13 +341,14 @@ const HIDDEN_PROVIDER_TYPES: ReadonlySet<ModelProviderType> = new Set(
 );
 
 /**
- * Providers excluded from static firewall configs.
- * = hidden providers (dynamic URLs / SigV4) + vm0 (meta-provider).
- *
- * Adding a new provider to MODEL_PROVIDER_TYPES without either adding it here
- * or adding a firewall config entry will cause a compile error.
+ * Provider type that supports firewall (has a static base URL and secretName).
+ * Excludes hidden providers (dynamic URLs / SigV4) and vm0 (meta-provider).
+ * Adding a new provider without a firewall config entry will cause a compile error.
  */
-type FirewallExcludedProvider = HiddenProviderType | "vm0";
+type FirewallSupportedProvider = Exclude<
+  ModelProviderType,
+  HiddenProviderType | "vm0"
+>;
 
 /**
  * Get provider types available for user selection.
@@ -373,31 +374,43 @@ function getFirewallBaseUrl(type: ModelProviderType): string {
   return getEnvironmentMapping(type)?.ANTHROPIC_BASE_URL ?? ANTHROPIC_API_BASE;
 }
 
+/**
+ * Build a firewall config for a model provider.
+ *
+ * The secret name is derived from MODEL_PROVIDER_TYPES[type].secretName
+ * (single source of truth), so callers never specify it — eliminating
+ * any possibility of mismatch between auth header templates and placeholders.
+ */
 function mpFirewall(
-  type: ModelProviderType,
-  authHeaders: Record<string, string>,
-  placeholders: Record<string, string>,
+  type: FirewallSupportedProvider,
+  authHeader: { name: string; valuePrefix?: string },
+  placeholderValue: string,
 ): ExpandedFirewallConfig {
+  const secretName = MODEL_PROVIDER_TYPES[type].secretName;
+  const secretRef = `\${{ secrets.${secretName} }}`;
+  const headerValue = authHeader.valuePrefix
+    ? `${authHeader.valuePrefix} ${secretRef}`
+    : secretRef;
   return {
     name: `model-provider:${type}`,
     ref: "__auto__",
     apis: [
       {
         base: getFirewallBaseUrl(type),
-        auth: { headers: authHeaders },
+        auth: { headers: { [authHeader.name]: headerValue } },
         permissions: [{ name: "unrestricted", rules: ["ANY /{path*}"] }],
       },
     ],
-    placeholders,
+    placeholders: { [secretName]: placeholderValue },
   };
 }
 
 /**
- * Every provider NOT in FirewallExcludedProvider must have an entry here.
+ * Every FirewallSupportedProvider must have an entry here.
  * Adding a new provider without a firewall config will cause a type error.
  */
 export const MODEL_PROVIDER_FIREWALL_CONFIGS: Record<
-  Exclude<ModelProviderType, FirewallExcludedProvider>,
+  FirewallSupportedProvider,
   ExpandedFirewallConfig
 > = {
   // Placeholder: sk-ant-api03-{93 word/hyphen chars}AA (108 chars total)
@@ -405,11 +418,8 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Record<
   //   https://semgrep.dev/blog/2025/secrets-story-and-prefixed-secrets/
   "anthropic-api-key": mpFirewall(
     "anthropic-api-key",
-    { "x-api-key": "${{ secrets.ANTHROPIC_API_KEY }}" },
-    {
-      ANTHROPIC_API_KEY:
-        "sk-ant-api03-vm0placeholder0000000000000000000000000000000000000000000000000000000000000000000000000000000AA",
-    },
+    { name: "x-api-key" },
+    "sk-ant-api03-vm0placeholder0000000000000000000000000000000000000000000000000000000000000000000000000000000AA",
   ),
   // Placeholder: sk-ant-oat01-{93 word/hyphen chars}AA (108 chars total)
   // Source: same structure as API key; prefix from claude setup-token output
@@ -417,11 +427,8 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Record<
   //   Example: sk-ant-oat01-xxxxx...xxxxx (1-year OAuth token)
   "claude-code-oauth-token": mpFirewall(
     "claude-code-oauth-token",
-    { Authorization: "Bearer ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}" },
-    {
-      CLAUDE_CODE_OAUTH_TOKEN:
-        "sk-ant-oat01-vm0placeholder0000000000000000000000000000000000000000000000000000000000000000000000000000000AA",
-    },
+    { name: "Authorization", valuePrefix: "Bearer" },
+    "sk-ant-oat01-vm0placeholder0000000000000000000000000000000000000000000000000000000000000000000000000000000AA",
   ),
   // Placeholder: sk-or-v1-{64 hex chars} (73 chars total)
   // Source: real key observed in GitHub issue
@@ -429,48 +436,45 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Record<
   //   Example: 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
   "openrouter-api-key": mpFirewall(
     "openrouter-api-key",
-    { Authorization: "Bearer ${{ secrets.OPENROUTER_API_KEY }}" },
-    {
-      OPENROUTER_API_KEY:
-        "sk-or-v1-vm0placeholder00000000000000000000000000000000000000000000000000",
-    },
+    { name: "Authorization", valuePrefix: "Bearer" },
+    "sk-or-v1-vm0placeholder00000000000000000000000000000000000000000000000000",
   ),
   // Placeholder: sk-{32 chars} (35 chars total)
   // Source: no authoritative format documentation found; using generic sk- prefix
   "moonshot-api-key": mpFirewall(
     "moonshot-api-key",
-    { Authorization: "Bearer ${{ secrets.MOONSHOT_API_KEY }}" },
-    { MOONSHOT_API_KEY: "sk-vm0placeholder000000000000000000" },
+    { name: "Authorization", valuePrefix: "Bearer" },
+    "sk-vm0placeholder000000000000000000",
   ),
   // Placeholder: eyJ... (JWT-style, variable length)
   // Source: no authoritative format documentation found; MiniMax docs do not disclose key format
   //   https://platform.minimax.io/docs/api-reference/api-overview
   "minimax-api-key": mpFirewall(
     "minimax-api-key",
-    { Authorization: "Bearer ${{ secrets.MINIMAX_API_KEY }}" },
-    { MINIMAX_API_KEY: "eyvm0placeholder000000000000000000000000000000000000" },
+    { name: "Authorization", valuePrefix: "Bearer" },
+    "eyvm0placeholder000000000000000000000000000000000000",
   ),
   // Placeholder: sk-{32 hex chars} (35 chars total)
   // Source: Semgrep regex \bsk-[a-f0-9]{32}\b
   //   https://semgrep.dev/blog/2025/secrets-story-and-prefixed-secrets/
   "deepseek-api-key": mpFirewall(
     "deepseek-api-key",
-    { Authorization: "Bearer ${{ secrets.DEEPSEEK_API_KEY }}" },
-    { DEEPSEEK_API_KEY: "sk-vm0placeholder000000000000000000" },
+    { name: "Authorization", valuePrefix: "Bearer" },
+    "sk-vm0placeholder000000000000000000",
   ),
   // Placeholder: sk-{32 chars} (35 chars total)
   // Source: no authoritative format documentation found; using generic sk- prefix
   "zai-api-key": mpFirewall(
     "zai-api-key",
-    { Authorization: "Bearer ${{ secrets.ZAI_API_KEY }}" },
-    { ZAI_API_KEY: "sk-vm0placeholder000000000000000000" },
+    { name: "Authorization", valuePrefix: "Bearer" },
+    "sk-vm0placeholder000000000000000000",
   ),
   // Placeholder: sk-{32 chars} (35 chars total)
   // Source: no authoritative format documentation found; Vercel gateway proxies upstream providers
   "vercel-ai-gateway": mpFirewall(
     "vercel-ai-gateway",
-    { Authorization: "Bearer ${{ secrets.VERCEL_AI_GATEWAY_API_KEY }}" },
-    { VERCEL_AI_GATEWAY_API_KEY: "sk-vm0placeholder000000000000000000" },
+    { name: "Authorization", valuePrefix: "Bearer" },
+    "sk-vm0placeholder000000000000000000",
   ),
 };
 
@@ -478,11 +482,6 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Record<
  * Get firewall gateway config for a model provider type.
  * Returns undefined for providers without static base URLs (aws-bedrock, azure-foundry).
  */
-type FirewallSupportedProvider = Exclude<
-  ModelProviderType,
-  FirewallExcludedProvider
->;
-
 function isFirewallSupported(
   type: ModelProviderType,
 ): type is FirewallSupportedProvider {

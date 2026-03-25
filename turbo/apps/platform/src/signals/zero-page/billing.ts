@@ -20,6 +20,13 @@ export type BillingTier = "free" | "pro" | "team";
 
 export type BillingStatus = BillingStatusResponse;
 
+export function apiTierToBillingTier(tier: string | undefined): BillingTier {
+  if (tier === "free" || tier === "pro" || tier === "team") {
+    return tier;
+  }
+  return "free";
+}
+
 /** Extract error message from a ts-rest error response body. */
 function getErrorMessage(body: unknown): string | undefined {
   if (typeof body !== "object" || body === null || !("error" in body)) {

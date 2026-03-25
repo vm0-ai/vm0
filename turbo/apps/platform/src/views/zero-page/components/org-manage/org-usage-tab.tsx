@@ -3,12 +3,14 @@ import { useGet, useLoadable, useSet } from "ccstate-react";
 import type { OrgMember, MemberUsage } from "@vm0/core";
 import { IconUsers } from "@tabler/icons-react";
 import { Input, Popover, PopoverAnchor, PopoverContent } from "@vm0/ui";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { usageMembersAsync$ } from "../../../../signals/usage-page/usage-signals.ts";
 import { orgMembers$ } from "../../../../signals/external/org-members.ts";
 import { isOrgAdmin$ } from "../../../../signals/org.ts";
 import {
   billingStatusAsync$,
+  apiTierToBillingTier,
   type BillingTier,
 } from "../../../../signals/zero-page/billing.ts";
 import { setMemberCreditCap$ } from "../../../../signals/zero-page/member-credit-caps.ts";
@@ -217,13 +219,6 @@ function displayName(m: OrgMember): string {
   return parts.length > 0 ? parts.join(" ") : "";
 }
 
-function apiTierToBillingTier(tier: string | undefined): BillingTier {
-  if (tier === "free" || tier === "pro" || tier === "team") {
-    return tier;
-  }
-  return "free";
-}
-
 // ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
@@ -283,6 +278,7 @@ function InlineCapInput({
         setSaving(false);
       })().catch(() => {
         setSaving(false);
+        toast.error("Failed to update credit cap. Please try again.");
       }),
       Reason.DomCallback,
     );
@@ -300,7 +296,7 @@ function InlineCapInput({
       onKeyDown={(e) => {
         if (e.key === "Enter") {
           commit();
-          (e.target as HTMLInputElement).blur();
+          e.currentTarget.blur();
         }
       }}
       disabled={saving}

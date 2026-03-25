@@ -12,6 +12,7 @@ import { Button, Input, Switch } from "@vm0/ui";
 import { IconCheck } from "@tabler/icons-react";
 import {
   type BillingTier,
+  apiTierToBillingTier,
   billingDialogOpen$,
   billingDialogLoading$,
   billingStatusAsync$,
@@ -371,7 +372,7 @@ export function BillingDialog() {
   const selectedTier = useGet(selectedPlanTier$);
   const setSelectedTier = useSet(setSelectedPlanTier$);
 
-  const currentTier: BillingTier = (status?.tier as BillingTier) ?? "free";
+  const currentTier: BillingTier = apiTierToBillingTier(status?.tier);
 
   const selectedOrder = TIER_ORDER[selectedTier];
   const currentOrder = TIER_ORDER[currentTier];
@@ -379,11 +380,8 @@ export function BillingDialog() {
   const isDowngrade = selectedOrder < currentOrder;
 
   const handleAction = () => {
-    if (isUpgrade) {
-      detach(
-        checkout(selectedTier as "pro" | "team", pageSignal),
-        Reason.DomCallback,
-      );
+    if (isUpgrade && (selectedTier === "pro" || selectedTier === "team")) {
+      detach(checkout(selectedTier, pageSignal), Reason.DomCallback);
     } else if (isDowngrade) {
       detach(downgrade(pageSignal), Reason.DomCallback);
     }
