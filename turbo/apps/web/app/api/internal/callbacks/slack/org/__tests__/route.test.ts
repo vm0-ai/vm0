@@ -10,6 +10,7 @@ import {
   createTestRun,
   createTestCallback,
   createTestSlackOrgInstallation,
+  createTestRequest,
   seedTestSlackOrgConnection,
   completeTestRun,
 } from "../../../../../../../src/__tests__/api-test-helpers";
@@ -42,9 +43,9 @@ function createCallbackRequest(
   const timestamp = Math.floor(Date.now() / 1000);
   const signature = computeHmacSignature(bodyString, secret, timestamp);
 
-  // Construct via Request base to ensure body is properly buffered
-  return new NextRequest(
-    new Request("http://localhost/api/internal/callbacks/slack/org", {
+  return createTestRequest(
+    "http://localhost/api/internal/callbacks/slack/org",
+    {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -52,7 +53,7 @@ function createCallbackRequest(
         "X-VM0-Timestamp": timestamp.toString(),
       },
       body: bodyString,
-    }),
+    },
   );
 }
 
@@ -181,10 +182,12 @@ describe("POST /api/internal/callbacks/slack/org", () => {
     );
 
     const response = await POST(request);
-
-    expect(response.status).toBe(200);
     const data = await response.json();
-    expect(data.success).toBe(true);
+
+    // Include response body in assertion for CI debugging
+    expect({ status: response.status, data }).toEqual(
+      expect.objectContaining({ status: 200, data: { success: true } }),
+    );
 
     // Verify thread status was set
     const { WebClient } = await import("@slack/web-api");
@@ -221,10 +224,11 @@ describe("POST /api/internal/callbacks/slack/org", () => {
       secret,
     );
     const response = await POST(request);
-
-    expect(response.status).toBe(200);
     const data = await response.json();
-    expect(data.success).toBe(true);
+
+    expect({ status: response.status, data }).toEqual(
+      expect.objectContaining({ status: 200, data: { success: true } }),
+    );
 
     // Verify message was posted to the thread
     const { WebClient } = await import("@slack/web-api");
@@ -264,10 +268,11 @@ describe("POST /api/internal/callbacks/slack/org", () => {
       secret,
     );
     const response = await POST(request);
-
-    expect(response.status).toBe(200);
     const data = await response.json();
-    expect(data.success).toBe(true);
+
+    expect({ status: response.status, data }).toEqual(
+      expect.objectContaining({ status: 200, data: { success: true } }),
+    );
 
     // Verify error message was posted
     const { WebClient } = await import("@slack/web-api");
@@ -305,8 +310,15 @@ describe("POST /api/internal/callbacks/slack/org", () => {
       secret,
     );
     const response = await POST(request);
+    const data = await response.json();
 
-    expect(response.status).toBe(404);
+    // Should fail with 404 (installation not found), not 400 (payload parse)
+    expect({ status: response.status, data }).toEqual(
+      expect.objectContaining({
+        status: 404,
+        data: { error: "Slack installation not found" },
+      }),
+    );
   });
 
   it("clears thread status after posting completion", async () => {
@@ -337,8 +349,11 @@ describe("POST /api/internal/callbacks/slack/org", () => {
       secret,
     );
     const response = await POST(request);
+    const data = await response.json();
 
-    expect(response.status).toBe(200);
+    expect({ status: response.status, data }).toEqual(
+      expect.objectContaining({ status: 200, data: { success: true } }),
+    );
 
     // Thread status should be cleared (empty string)
     const { WebClient } = await import("@slack/web-api");
