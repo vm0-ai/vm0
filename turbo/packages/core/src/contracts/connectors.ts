@@ -1377,28 +1377,28 @@ const CONNECTOR_TYPES_DEF = {
       tokenUrl: "https://api.twitter.com/2/oauth2/token",
       // https://docs.x.com/fundamentals/authentication/oauth-2-0/authorization-code
       scopes: [
-        "tweet.read", // View tweets including from protected accounts
-        "tweet.write", // Create, delete tweets and retweets
-        "tweet.moderate.write", // Hide/unhide replies
-        "users.read", // View user profiles including protected accounts
-        "users.email", // Read authenticated user's email
-        "follows.read", // View followers and following
-        "follows.write", // Follow and unfollow users
-        "like.read", // View liked tweets
-        "like.write", // Like and unlike tweets
-        "dm.read", // View direct messages
-        "dm.write", // Send and manage direct messages
-        "bookmark.read", // View bookmarked tweets
-        "bookmark.write", // Add and remove bookmarks
-        "space.read", // View Spaces
-        "mute.read", // View muted accounts
-        "mute.write", // Mute and unmute accounts
-        "block.read", // View blocked accounts
-        "block.write", // Block and unblock accounts
-        "list.read", // View lists and list members
-        "list.write", // Create and manage lists
-        "media.write", // Upload media (images, videos)
-        "offline.access", // Refresh token for long-lived access
+        "tweet.read", // All the Tweets you can view, including Tweets from protected accounts.
+        "tweet.write", // Tweet and Retweet for you.
+        "tweet.moderate.write", // Hide and unhide replies to your Tweets.
+        "users.read", // Any account you can view, including protected accounts.
+        "users.email", // Email from an authenticated user.
+        "follows.read", // People who follow you and people who you follow.
+        "follows.write", // Follow and unfollow people for you.
+        "like.read", // Tweets you've liked and likes you can view.
+        "like.write", // Like and un-like Tweets for you.
+        "dm.read", // All the Direct Messages you can view, including Direct Messages from protected accounts.
+        "dm.write", // Send and manage Direct Messages for you.
+        "bookmark.read", // Get Bookmarked Tweets from an authenticated user.
+        "bookmark.write", // Bookmark and remove Bookmarks from Tweets.
+        "space.read", // All the Spaces you can view.
+        "mute.read", // Accounts you've muted.
+        "mute.write", // Mute and unmute accounts for you.
+        "block.read", // Accounts you've blocked.
+        "block.write", // Block and unblock accounts for you.
+        "list.read", // Lists, list members, and list followers of lists you've created or are a member of, including private lists.
+        "list.write", // Create and manage Lists for you.
+        "media.write", // Upload media.
+        "offline.access", // Stay connected to your account until you revoke access.
       ],
       environmentMapping: {
         X_ACCESS_TOKEN: "$secrets.X_ACCESS_TOKEN",
