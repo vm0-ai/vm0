@@ -5,28 +5,16 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers";
 import { setupPage } from "../../../__tests__/page-helper";
 import { setMockBillingStatus } from "../../../mocks/handlers/api-billing";
-import { FeatureSwitchKey } from "@vm0/core";
 
 const context = testContext();
 
 describe("billing in sidebar", () => {
-  it("should not show billing button when pricing feature is disabled", async () => {
-    await setupPage({
-      context,
-      path: "/works",
-      featureSwitches: { [FeatureSwitchKey.Pricing]: false },
-    });
-
-    expect(screen.queryByText("Free")).not.toBeInTheDocument();
-  });
-
-  it("should show tier and credits in sidebar when pricing feature is enabled", async () => {
+  it("should show tier and credits in sidebar", async () => {
     setMockBillingStatus({ tier: "free", credits: 10_000 });
 
     await setupPage({
       context,
       path: "/works",
-      featureSwitches: { [FeatureSwitchKey.Pricing]: true },
     });
 
     const billingButton = await screen.findByText(
@@ -44,7 +32,6 @@ describe("billing in sidebar", () => {
     await setupPage({
       context,
       path: "/works",
-      featureSwitches: { [FeatureSwitchKey.Pricing]: true },
     });
 
     const billingButton = await screen.findByText(
@@ -62,7 +49,6 @@ describe("billing in sidebar", () => {
     await setupPage({
       context,
       path: "/works",
-      featureSwitches: { [FeatureSwitchKey.Pricing]: true },
     });
 
     const billingButton = await screen.findByText(
@@ -90,7 +76,6 @@ describe("billing in sidebar", () => {
     await setupPage({
       context,
       path: "/works",
-      featureSwitches: { [FeatureSwitchKey.Pricing]: true },
     });
 
     const billingButton = await screen.findByText("pro", {}, { timeout: 3000 });
@@ -108,7 +93,6 @@ describe("billing in sidebar", () => {
     await setupPage({
       context,
       path: "/works",
-      featureSwitches: { [FeatureSwitchKey.Pricing]: true },
     });
 
     const billingButton = await screen.findByText(
@@ -143,7 +127,6 @@ describe("billing in sidebar", () => {
     await setupPage({
       context,
       path: "/works",
-      featureSwitches: { [FeatureSwitchKey.Pricing]: true },
     });
 
     const billingButton = await screen.findByText("pro", {}, { timeout: 3000 });
@@ -174,7 +157,6 @@ describe("billing in sidebar", () => {
     await setupPage({
       context,
       path: "/works",
-      featureSwitches: { [FeatureSwitchKey.Pricing]: true },
     });
 
     const billingButton = await screen.findByText(
@@ -204,7 +186,6 @@ describe("billing in sidebar", () => {
     await setupPage({
       context,
       path: "/works",
-      featureSwitches: { [FeatureSwitchKey.Pricing]: true },
     });
 
     const billingButton = await screen.findByText(
@@ -234,7 +215,6 @@ describe("billing in sidebar", () => {
     await setupPage({
       context,
       path: "/works",
-      featureSwitches: { [FeatureSwitchKey.Pricing]: true },
     });
 
     const billingButton = await screen.findByText(
@@ -257,7 +237,6 @@ describe("auto-recharge in billing dialog", () => {
     await setupPage({
       context,
       path: "/works",
-      featureSwitches: { [FeatureSwitchKey.Pricing]: true },
     });
 
     const billingButton = await screen.findByText(tier, {}, { timeout: 3000 });

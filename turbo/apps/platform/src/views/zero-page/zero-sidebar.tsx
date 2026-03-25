@@ -847,9 +847,8 @@ export function ZeroSidebar() {
   };
   const managePinnedOpen = useGet(managePinnedDialogOpen$);
   const setManagePinnedOpen = useSet(setManagePinnedDialogOpen$);
-  // Billing
+  // Feature gates
   const features = useLastResolved(featureSwitch$);
-  const showPricing = features?.[FeatureSwitchKey.Pricing] ?? false;
 
   // Compute selectedAgentIdFromChat for grey highlight
   const subagentIds = new Set(subagents.map((a) => a.id));
@@ -1049,7 +1048,7 @@ export function ZeroSidebar() {
         {/* Footer nav */}
         <div className="p-2">
           <div className="flex flex-col gap-1">
-            {showPricing && <SidebarBillingButton />}
+            <SidebarBillingButton />
             {footerNav.map(({ id, label, icon: Icon, iconImg }) => (
               <Link
                 key={id}
@@ -1100,7 +1099,7 @@ export function ZeroSidebar() {
       />
 
       {/* Billing dialog */}
-      {showPricing && <BillingDialog />}
+      <BillingDialog />
     </VM0ClerkProvider>
   );
 }

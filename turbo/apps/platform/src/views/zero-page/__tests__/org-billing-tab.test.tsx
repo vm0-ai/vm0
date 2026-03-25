@@ -53,7 +53,6 @@ describe("org billing tab - loading state isolation", () => {
       context,
       path: "/?settings=billing",
       featureSwitches: {
-        [FeatureSwitchKey.Pricing]: true,
         [FeatureSwitchKey.ConcurrentAddOn]: true,
         [FeatureSwitchKey.CreditAddOn]: true,
       },
@@ -121,7 +120,6 @@ describe("org billing tab - loading state isolation", () => {
       context,
       path: "/?settings=billing",
       featureSwitches: {
-        [FeatureSwitchKey.Pricing]: true,
         [FeatureSwitchKey.ConcurrentAddOn]: true,
         [FeatureSwitchKey.CreditAddOn]: true,
       },
@@ -172,9 +170,6 @@ describe("org billing tab - add-on visibility", () => {
     await setupPage({
       context,
       path: "/?settings=billing",
-      featureSwitches: {
-        [FeatureSwitchKey.Pricing]: true,
-      },
     });
 
     await waitFor(
@@ -209,7 +204,6 @@ describe("org billing tab - add-on visibility", () => {
       context,
       path: "/?settings=billing",
       featureSwitches: {
-        [FeatureSwitchKey.Pricing]: true,
         [FeatureSwitchKey.ConcurrentAddOn]: true,
       },
     });

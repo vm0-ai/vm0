@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useGet, useSet, useLastLoadable, useLoadable } from "ccstate-react";
+import { useGet, useSet, useLoadable } from "ccstate-react";
 import { Dialog, DialogContent, DialogTitle, cn } from "@vm0/ui";
 import {
   IconBuilding,
@@ -16,7 +16,6 @@ import { OrgMembersTab } from "./org-members-tab.tsx";
 import { OrgBillingTab } from "./org-billing-tab.tsx";
 import { OrgCreditsTab } from "./org-credits-tab.tsx";
 import { OrgInvoicesTab } from "./org-invoices-tab.tsx";
-import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { isOrgAdmin$ } from "../../../../signals/org.ts";
 import {
   activeTab$,
@@ -116,14 +115,11 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
 
-  const featuresLoadable = useLastLoadable(featureSwitch$);
-  const pricingEnabled =
-    featuresLoadable.state === "hasData" && !!featuresLoadable.data?.pricing;
   const sidebarGroups = [
     ...BASE_SIDEBAR_GROUPS.slice(0, 1),
     ...(isAdmin ? [CONFIGURATION_GROUP] : []),
     ...BASE_SIDEBAR_GROUPS.slice(1),
-    ...(pricingEnabled ? [BILLING_GROUP] : []),
+    BILLING_GROUP,
   ];
 
   const meta = TAB_META[activeTab];

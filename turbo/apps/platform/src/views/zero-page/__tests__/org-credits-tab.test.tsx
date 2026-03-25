@@ -5,7 +5,6 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { setMockBillingStatus } from "../../../mocks/handlers/api-billing.ts";
-import { FeatureSwitchKey } from "@vm0/core";
 
 const context = testContext();
 interface MockMember {
@@ -71,7 +70,6 @@ async function openCreditsTab() {
   await setupPage({
     context,
     path: "/?settings=credits",
-    featureSwitches: { [FeatureSwitchKey.Pricing]: true },
   });
   await waitFor(
     () => {
