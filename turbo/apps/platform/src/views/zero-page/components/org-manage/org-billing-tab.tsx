@@ -21,7 +21,7 @@ function LoadingButton({
   ...props
 }: ComponentProps<typeof Button> & { loading: boolean }) {
   return (
-    <Button {...props} disabled={props.disabled ?? loading}>
+    <Button {...props} disabled={props.disabled || loading}>
       {loading ? (
         <IconLoader2 size={13} stroke={1.5} className="animate-spin" />
       ) : null}
