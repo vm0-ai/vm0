@@ -172,6 +172,9 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260320
+    outputs:
+      deployment_url: ${{ steps.deploy.outputs.url }}
+      vercel_dashboard_url: ${{ steps.vercel-dashboard.outputs.url }}
     permissions:
       contents: read
       deployments: write
@@ -333,6 +336,38 @@ jobs:
             GITHUB_APP_WEBHOOK_SECRET=${{ secrets.VM0_GITHUB_APP_WEBHOOK_SECRET }}
             GITHUB_APP_PRIVATE_KEY=${{ secrets.VM0_GITHUB_APP_PRIVATE_KEY }}
 
+      - name: Resolve Vercel dashboard URL
+        id: vercel-dashboard
+        if: ${{ steps.deploy.outputs.url != '' }}
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          DEPLOYMENT_URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          # Extract hostname from deployment URL
+          HOSTNAME=$(echo "$DEPLOYMENT_URL" | sed 's|https://||')
+
+          # Query Vercel API to get deployment details
+          RESPONSE=$(curl -sf -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v13/deployments/$HOSTNAME" 2>/dev/null) || true
+
+          if [ -n "$RESPONSE" ]; then
+            TEAM_SLUG=$(echo "$RESPONSE" | jq -r '.team.slug // empty')
+            PROJECT_NAME=$(echo "$RESPONSE" | jq -r '.name // empty')
+            DEPLOY_ID=$(echo "$RESPONSE" | jq -r '.id // empty')
+
+            if [ -n "$TEAM_SLUG" ] && [ -n "$PROJECT_NAME" ] && [ -n "$DEPLOY_ID" ]; then
+              DASHBOARD_URL="https://vercel.com/$TEAM_SLUG/$PROJECT_NAME/$DEPLOY_ID"
+              echo "url=$DASHBOARD_URL" >> "$GITHUB_OUTPUT"
+              echo "Resolved dashboard URL: $DASHBOARD_URL"
+            else
+              echo "url=$DEPLOYMENT_URL" >> "$GITHUB_OUTPUT"
+              echo "Could not resolve dashboard URL, using deployment URL"
+            fi
+          else
+            echo "url=$DEPLOYMENT_URL" >> "$GITHUB_OUTPUT"
+            echo "Vercel API call failed, using deployment URL as fallback"
+          fi
+
       - name: Calculate duration
         id: duration
         if: ${{ always() && steps.timer.outputs.start }}
@@ -358,7 +393,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*Web App* ✅ Deployed successfully\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>"
+                  text: "*Web App* ✅ Deployed successfully\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>\n🔄 <${{ github.server_url }}/${{ github.repository }}/issues/${{ vars.ROLLBACK_ISSUE_NUMBER }}|Rollback Dashboard>"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
@@ -473,6 +508,9 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260320
+    outputs:
+      deployment_url: ${{ steps.deploy.outputs.url }}
+      vercel_dashboard_url: ${{ steps.vercel-dashboard.outputs.url }}
     permissions:
       contents: read
       deployments: write
@@ -519,6 +557,38 @@ jobs:
             SENTRY_ORG=${{ vars.SENTRY_ORG }}
             SENTRY_PROJECT=${{ vars.SENTRY_PROJECT_APP }}
 
+      - name: Resolve Vercel dashboard URL
+        id: vercel-dashboard
+        if: ${{ steps.deploy.outputs.url != '' }}
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          DEPLOYMENT_URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          # Extract hostname from deployment URL
+          HOSTNAME=$(echo "$DEPLOYMENT_URL" | sed 's|https://||')
+
+          # Query Vercel API to get deployment details
+          RESPONSE=$(curl -sf -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v13/deployments/$HOSTNAME" 2>/dev/null) || true
+
+          if [ -n "$RESPONSE" ]; then
+            TEAM_SLUG=$(echo "$RESPONSE" | jq -r '.team.slug // empty')
+            PROJECT_NAME=$(echo "$RESPONSE" | jq -r '.name // empty')
+            DEPLOY_ID=$(echo "$RESPONSE" | jq -r '.id // empty')
+
+            if [ -n "$TEAM_SLUG" ] && [ -n "$PROJECT_NAME" ] && [ -n "$DEPLOY_ID" ]; then
+              DASHBOARD_URL="https://vercel.com/$TEAM_SLUG/$PROJECT_NAME/$DEPLOY_ID"
+              echo "url=$DASHBOARD_URL" >> "$GITHUB_OUTPUT"
+              echo "Resolved dashboard URL: $DASHBOARD_URL"
+            else
+              echo "url=$DEPLOYMENT_URL" >> "$GITHUB_OUTPUT"
+              echo "Could not resolve dashboard URL, using deployment URL"
+            fi
+          else
+            echo "url=$DEPLOYMENT_URL" >> "$GITHUB_OUTPUT"
+            echo "Vercel API call failed, using deployment URL as fallback"
+          fi
+
       - name: Calculate duration
         id: duration
         if: ${{ always() && steps.timer.outputs.start }}
@@ -544,7 +614,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*App* ✅ Deployed successfully\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.app_version }}|View Release>"
+                  text: "*App* ✅ Deployed successfully\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.app_version }}|View Release>\n🔄 <${{ github.server_url }}/${{ github.repository }}/issues/${{ vars.ROLLBACK_ISSUE_NUMBER }}|Rollback Dashboard>"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}
@@ -561,6 +631,204 @@ jobs:
                 text:
                   type: mrkdwn
                   text: "*App* ❌ Deploy failed\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/platform-v${{ needs.release-please.outputs.app_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+
+  # Update rollback dashboard issue after deployments
+  update-rollback-dashboard:
+    needs: [release-please, deploy-web-production, deploy-app-production]
+    if: >-
+      always() &&
+      (needs.deploy-web-production.result == 'success' || needs.deploy-app-production.result == 'success')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect migration safety
+        id: migration-safety
+        env:
+          WEB_VERSION: ${{ needs.release-please.outputs.web_version }}
+        run: |
+          if [ -z "$WEB_VERSION" ]; then
+            echo "indicator=safe" >> "$GITHUB_OUTPUT"
+            echo "details=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          CURRENT_TAG="web-v${WEB_VERSION}"
+
+          # Find previous web tag
+          PREV_TAG=$(git tag --list 'web-v*' --sort=-version:refname | grep -A1 "^${CURRENT_TAG}$" | tail -1)
+
+          if [ -z "$PREV_TAG" ] || [ "$PREV_TAG" = "$CURRENT_TAG" ]; then
+            echo "indicator=safe" >> "$GITHUB_OUTPUT"
+            echo "details=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Find new migration files
+          NEW_MIGRATIONS=$(git diff --name-only "$PREV_TAG".."$CURRENT_TAG" -- turbo/apps/web/src/db/migrations/ | grep '\.sql$' || true)
+
+          if [ -z "$NEW_MIGRATIONS" ]; then
+            echo "indicator=safe" >> "$GITHUB_OUTPUT"
+            echo "details=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Check for destructive operations
+          DESTRUCTIVE=false
+          FILENAMES=""
+          for FILE in $NEW_MIGRATIONS; do
+            BASENAME=$(basename "$FILE")
+            FILENAMES="${FILENAMES:+$FILENAMES, }$BASENAME"
+            if git show "$CURRENT_TAG:$FILE" 2>/dev/null | grep -qiE 'DROP\s+(COLUMN|TABLE|INDEX)|RENAME\s+(COLUMN|TABLE)|ALTER.*DROP'; then
+              DESTRUCTIVE=true
+            fi
+          done
+
+          # Check for major version bump
+          PREV_MAJOR=$(echo "$PREV_TAG" | sed 's/web-v//' | cut -d. -f1)
+          CURR_MAJOR=$(echo "$WEB_VERSION" | cut -d. -f1)
+
+          if [ "$DESTRUCTIVE" = true ]; then
+            SAFETY="destructive"
+          elif [ "$PREV_MAJOR" != "$CURR_MAJOR" ]; then
+            SAFETY="major"
+          else
+            SAFETY="migration"
+          fi
+
+          echo "indicator=$SAFETY" >> "$GITHUB_OUTPUT"
+          echo "details=$FILENAMES" >> "$GITHUB_OUTPUT"
+
+      - name: Build dashboard entry
+        id: entry
+        env:
+          WEB_VERSION: ${{ needs.release-please.outputs.web_version }}
+          APP_VERSION: ${{ needs.release-please.outputs.app_version }}
+          WEB_RESULT: ${{ needs.deploy-web-production.result }}
+          APP_RESULT: ${{ needs.deploy-app-production.result }}
+          WEB_DASHBOARD_URL: ${{ needs.deploy-web-production.outputs.vercel_dashboard_url }}
+          APP_DASHBOARD_URL: ${{ needs.deploy-app-production.outputs.vercel_dashboard_url }}
+          SAFETY: ${{ steps.migration-safety.outputs.indicator }}
+          MIGRATION_FILES: ${{ steps.migration-safety.outputs.details }}
+        run: |
+          DATE=$(date -u +%Y-%m-%d)
+
+          # Build title parts
+          TITLE_PARTS=""
+          if [ "$WEB_RESULT" = "success" ] && [ -n "$WEB_VERSION" ]; then
+            TITLE_PARTS="web v${WEB_VERSION}"
+          fi
+          if [ "$APP_RESULT" = "success" ] && [ -n "$APP_VERSION" ]; then
+            TITLE_PARTS="${TITLE_PARTS:+$TITLE_PARTS / }app v${APP_VERSION}"
+          fi
+
+          # Safety indicator
+          case "$SAFETY" in
+            destructive)
+              INDICATOR="🔴 **Warning: destructive migration** ($MIGRATION_FILES)"
+              ;;
+            major)
+              INDICATOR="🔴 **Warning: major version bump**"
+              ;;
+            migration)
+              INDICATOR="🟡 **Warning: includes migration** ($MIGRATION_FILES)"
+              ;;
+            *)
+              INDICATOR="🟢 Safe to rollback"
+              ;;
+          esac
+
+          # Build table rows
+          ROWS=""
+          if [ -n "$WEB_VERSION" ]; then
+            if [ "$WEB_RESULT" = "success" ] && [ -n "$WEB_DASHBOARD_URL" ]; then
+              ROWS="| web | v${WEB_VERSION} | [Rollback in Vercel](${WEB_DASHBOARD_URL}) |"
+            elif [ "$WEB_RESULT" = "success" ]; then
+              ROWS="| web | v${WEB_VERSION} | _URL unavailable_ |"
+            else
+              ROWS="| web | v${WEB_VERSION} | ❌ Deploy failed |"
+            fi
+          fi
+
+          if [ -n "$APP_VERSION" ]; then
+            ROW=""
+            if [ "$APP_RESULT" = "success" ] && [ -n "$APP_DASHBOARD_URL" ]; then
+              ROW="| app | v${APP_VERSION} | [Rollback in Vercel](${APP_DASHBOARD_URL}) |"
+            elif [ "$APP_RESULT" = "success" ]; then
+              ROW="| app | v${APP_VERSION} | _URL unavailable_ |"
+            else
+              ROW="| app | v${APP_VERSION} | ❌ Deploy failed |"
+            fi
+            if [ -n "$ROWS" ]; then
+              ROWS="${ROWS}
+          ${ROW}"
+            else
+              ROWS="$ROW"
+            fi
+          fi
+
+          # Build full entry
+          {
+            echo "### ${DATE} — ${TITLE_PARTS}"
+            echo "${INDICATOR}"
+            echo "| Component | Version | Rollback via Vercel |"
+            echo "|-----------|---------|---------------------|"
+            echo "${ROWS}"
+          } > /tmp/dashboard-entry.md
+
+      - name: Update rollback dashboard issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ vars.ROLLBACK_ISSUE_NUMBER }}
+        run: |
+          if [ -z "$ISSUE_NUMBER" ]; then
+            echo "ROLLBACK_ISSUE_NUMBER not set, skipping dashboard update"
+            exit 0
+          fi
+
+          # Fetch current issue body
+          BODY=$(gh api "repos/${{ github.repository }}/issues/${ISSUE_NUMBER}" --jq '.body')
+
+          # Read new entry
+          NEW_ENTRY=$(cat /tmp/dashboard-entry.md)
+
+          # Insert after start sentinel, before existing entries
+          UPDATED_BODY=$(echo "$BODY" | awk -v entry="$NEW_ENTRY" '
+            /<!-- ROLLBACK_ENTRIES_START -->/ {
+              print
+              print entry
+              next
+            }
+            { print }
+          ')
+
+          # Trim to 20 entries (count ### headers between sentinels)
+          TRIMMED_BODY=$(echo "$UPDATED_BODY" | awk '
+            BEGIN { in_section=0; entry_count=0; skip=0 }
+            /<!-- ROLLBACK_ENTRIES_START -->/ { in_section=1; print; next }
+            /<!-- ROLLBACK_ENTRIES_END -->/ { in_section=0; print; next }
+            in_section && /^### / {
+              entry_count++
+              if (entry_count > 20) { skip=1 } else { skip=0 }
+            }
+            in_section && skip { next }
+            { print }
+          ')
+
+          # Remove the placeholder text if present
+          TRIMMED_BODY=$(echo "$TRIMMED_BODY" | grep -v '_No deployments recorded yet._')
+
+          # Update issue
+          gh api "repos/${{ github.repository }}/issues/${ISSUE_NUMBER}" \
+            -X PATCH \
+            -f body="$TRIMMED_BODY"
+
+          echo "Updated rollback dashboard issue #${ISSUE_NUMBER}"
 
   publish-npm:
     needs: release-please
