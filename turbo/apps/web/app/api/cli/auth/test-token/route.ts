@@ -150,7 +150,13 @@ export async function POST(request: Request) {
 
   // Resolve orgId from slug (ensureTestOrg creates org_cache entry, so this is a cache hit)
   const orgData = await getOrgBySlug(orgSlug);
-  const orgId = orgData?.orgId ?? "";
+  if (!orgData) {
+    return NextResponse.json(
+      { error: `Organization not found for slug: ${orgSlug}` },
+      { status: 500 },
+    );
+  }
+  const orgId = orgData.orgId;
 
   // Generate CLI JWT with tokenId for revocation tracking
   const tokenId = crypto.randomUUID();

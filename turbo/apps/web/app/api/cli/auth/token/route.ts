@@ -79,7 +79,16 @@ const router = tsr.router(cliAuthTokenContract, {
         let orgId = "";
         if (session.orgSlug) {
           const orgData = await getOrgBySlug(session.orgSlug);
-          orgId = orgData?.orgId ?? "";
+          if (!orgData) {
+            return {
+              status: 500 as const,
+              body: {
+                error: "server_error",
+                error_description: `Organization not found for slug: ${session.orgSlug}`,
+              },
+            };
+          }
+          orgId = orgData.orgId;
         }
 
         // Generate CLI JWT with tokenId for revocation tracking

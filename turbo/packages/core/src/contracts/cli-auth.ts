@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { initContract } from "./base";
+import { initContract, authHeadersSchema } from "./base";
 
 const c = initContract();
 
@@ -88,6 +88,7 @@ export const cliAuthOrgContract = c.router({
   switchOrg: {
     method: "POST",
     path: "/api/cli/auth/org",
+    headers: authHeadersSchema,
     body: z.object({ slug: z.string().min(1) }),
     responses: {
       200: z.object({

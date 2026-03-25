@@ -15,7 +15,7 @@ import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 
 const context = testContext();
 
-function makeOrgSwitchRequest(slug: string, token?: string): Request {
+function makeOrgSwitchRequest(slug: string, token?: string) {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };

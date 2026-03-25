@@ -5,6 +5,7 @@ import {
   createTestDeviceCode,
   findTestDeviceCode,
   findTestCliToken,
+  insertOrgCacheEntry,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -107,6 +108,9 @@ describe("POST /api/cli/auth/token", () => {
   });
 
   it("should return org_slug when device code has org context", async () => {
+    // Insert org_cache entry so getOrgBySlug resolves the slug to an orgId
+    await insertOrgCacheEntry({ orgId: "org_my_test", slug: "my-test-org" });
+
     const code = await createTestDeviceCode({
       status: "authenticated",
       userId: user.userId,
