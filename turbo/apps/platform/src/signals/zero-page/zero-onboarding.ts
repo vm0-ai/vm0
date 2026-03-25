@@ -93,7 +93,7 @@ export const setMemberWelcomeStep$ = command(
 // Onboarding form state
 // ---------------------------------------------------------------------------
 
-type ZeroOnboardingStep = "1" | "3" | "4" | "done";
+type ZeroOnboardingStep = "1" | "3" | "3c" | "4" | "done";
 
 const internalStep$ = state<ZeroOnboardingStep>("1");
 const internalAgentName$ = state("Zero");
@@ -160,7 +160,7 @@ export const initZeroOnboarding$ = command(
       return;
     }
 
-    // Always start from step 1 when onboarding is needed
+    // Start from workspace creation step
     set(internalStep$, "1");
   },
 );
