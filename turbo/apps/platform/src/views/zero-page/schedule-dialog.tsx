@@ -122,7 +122,7 @@ interface ScheduleFormDialogProps {
   mode: "create" | "edit";
   initialValues?: Partial<ScheduleFormValues>;
   /** When provided, renders an agent selector dropdown. */
-  agents?: { id: string; name: string; displayName?: string | null }[];
+  agents?: { id: string; displayName?: string | null }[];
   /** Error message displayed above the footer. */
   saveError?: string | null;
 }
@@ -696,7 +696,7 @@ function ScheduleFormDialogInner({
                 <SelectContent>
                   {agents.map((a) => (
                     <SelectItem key={a.id} value={a.id}>
-                      {a.displayName ?? a.name}
+                      {a.displayName ?? a.id}
                     </SelectItem>
                   ))}
                 </SelectContent>

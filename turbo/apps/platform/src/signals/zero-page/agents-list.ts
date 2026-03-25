@@ -2,7 +2,7 @@ import { command, computed, state } from "ccstate";
 import {
   zeroTeamContract,
   zeroSchedulesMainContract,
-  type ComposeListItem,
+  type TeamComposeItem,
 } from "@vm0/core";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
@@ -20,7 +20,7 @@ interface Schedule {
 }
 
 interface AgentsListState {
-  agents: ComposeListItem[];
+  agents: TeamComposeItem[];
   schedules: Schedule[];
   loading: boolean;
   error: string | null;
@@ -49,7 +49,7 @@ export const fetchAgentsList$ = command(async ({ get, set }) => {
       throw new Error(`Failed to fetch agents (${agentsResult.status})`);
     }
 
-    const agents = agentsResult.body as ComposeListItem[];
+    const agents = agentsResult.body;
 
     // Fetch schedules (optional - don't fail if schedules API is unavailable)
     let schedules: Schedule[] = [];
