@@ -46,20 +46,7 @@ function apiTierToBillingTier(tier: string | undefined): BillingTier {
   return "free";
 }
 
-interface PlanConfig {
-  tier: BillingTier;
-  name: string;
-  price: string;
-  period: string;
-  description: string;
-  cta: string;
-  primary?: boolean;
-  badge?: string;
-  image?: string;
-  features: readonly string[];
-}
-
-const PLANS: readonly PlanConfig[] = [
+const PLANS = [
   {
     tier: "free" as const,
     name: "Free",
@@ -112,7 +99,7 @@ const PLANS: readonly PlanConfig[] = [
       "Priority support",
     ],
   },
-];
+] as const;
 
 function planButtonLabel(
   plan: (typeof PLANS)[number],
@@ -152,7 +139,7 @@ function PlanCard({
         padding: "28px 24px",
       }}
     >
-      {plan.badge && (
+      {"badge" in plan && plan.badge && (
         <span
           className="absolute top-3 right-3 inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground"
           style={{
@@ -220,10 +207,20 @@ function PlanCard({
 
       <div className="mt-auto">
         <Button
-          variant={isCurrent ? "outline" : plan.primary ? "default" : "outline"}
+          variant={
+            isCurrent
+              ? "outline"
+              : "primary" in plan && plan.primary
+                ? "default"
+                : "outline"
+          }
           size="sm"
           className="w-full rounded-lg h-9 text-xs"
-          style={!plan.primary && !isCurrent ? sectionCardStyle : undefined}
+          style={
+            !("primary" in plan && plan.primary) && !isCurrent
+              ? sectionCardStyle
+              : undefined
+          }
           disabled={loading || isCurrent}
           onClick={() => onAction(plan.tier)}
         >
