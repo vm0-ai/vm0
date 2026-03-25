@@ -885,13 +885,14 @@ async function advanceScheduleState(
       .where(eq(zeroAgentSchedules.id, schedule.id));
   } else if (schedule.triggerType === "cron") {
     if (!schedule.cronExpression) {
-      log.error(
-        `Cron schedule ${schedule.name} (${schedule.id}) missing cronExpression — skipping disable`,
+      throw new Error(
+        `Cron schedule ${schedule.name} (${schedule.id}) missing cronExpression`,
       );
     }
-    const nextRunAt = schedule.cronExpression
-      ? calculateNextRun(schedule.cronExpression, schedule.timezone)
-      : null;
+    const nextRunAt = calculateNextRun(
+      schedule.cronExpression,
+      schedule.timezone,
+    );
     await globalThis.services.db
       .update(zeroAgentSchedules)
       .set({
