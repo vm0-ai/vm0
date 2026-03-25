@@ -222,6 +222,7 @@ export async function updateComposeMetadata(
   await db
     .insert(zeroAgents)
     .values({
+      id: compose.id,
       orgId: compose.orgId,
       name: compose.name,
       displayName: body.displayName ?? null,
@@ -260,13 +261,7 @@ export async function listComposes(
       sound: zeroAgents.sound,
     })
     .from(agentComposes)
-    .leftJoin(
-      zeroAgents,
-      and(
-        eq(agentComposes.orgId, zeroAgents.orgId),
-        eq(agentComposes.name, zeroAgents.name),
-      ),
-    )
+    .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
     .where(eq(agentComposes.orgId, orgId))
     .orderBy(desc(agentComposes.updatedAt));
 

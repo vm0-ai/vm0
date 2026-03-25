@@ -37,10 +37,10 @@ their metadata to the corresponding DB tables:
 
 ## Environment Variables
 
-| Variable           | Required              | Description                  |
-| ------------------ | --------------------- | ---------------------------- |
-| `DATABASE_URL`     | Yes                   | PostgreSQL connection string |
-| `CLERK_SECRET_KEY` | Only with `--migrate` | Clerk API secret key         |
+| Variable           | Required | Description                  |
+| ------------------ | -------- | ---------------------------- |
+| `DATABASE_URL`     | Yes      | PostgreSQL connection string |
+| `CLERK_SECRET_KEY` | Yes      | Clerk API secret key         |
 
 ## Usage
 

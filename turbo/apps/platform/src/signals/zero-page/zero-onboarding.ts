@@ -1,7 +1,11 @@
 import { command, computed, state } from "ccstate";
-import { onboardingStatusResponseSchema } from "@vm0/core";
-import { fetch$ } from "../fetch.ts";
+import {
+  onboardingStatusContract,
+  onboardingCompleteContract,
+  orgDefaultAgentContract,
+} from "@vm0/core";
 import { clerk$ } from "../auth.ts";
+import { zeroClient$ } from "../api-client.ts";
 import { createOrgModelProvider$ } from "../external/org-model-providers.ts";
 import { createZeroAgent } from "./create-zero-agent.ts";
 import { throwIfAbort } from "../utils.ts";
@@ -22,12 +26,12 @@ export const reloadOnboardingStatus$ = command(({ set }) => {
 
 export const zeroOnboardingStatus$ = computed(async (get) => {
   get(internalReload$);
-  const fetchFn = get(fetch$);
-  const resp = await fetchFn("/api/zero/onboarding/status");
-  if (!resp.ok) {
-    throw new Error(`Failed to fetch onboarding status: ${resp.status}`);
+  const client = get(zeroClient$)(onboardingStatusContract);
+  const result = await client.getStatus();
+  if (result.status !== 200) {
+    throw new Error(`Failed to fetch onboarding status: ${result.status}`);
   }
-  return onboardingStatusResponseSchema.parse(await resp.json());
+  return result.body;
 });
 
 /**
@@ -57,8 +61,8 @@ export const zeroNeedsMemberOnboarding$ = computed(async (get) => {
 export const completeMemberOnboarding$ = command(async ({ get, set }) => {
   set(internalSaving$, true);
   try {
-    const fetchFn = get(fetch$);
-    await fetchFn("/api/zero/onboarding/complete", { method: "POST" });
+    const client = get(zeroClient$)(onboardingCompleteContract);
+    await client.complete();
     set(internalReload$, (x) => x + 1);
   } finally {
     set(internalSaving$, false);
@@ -170,7 +174,7 @@ export const completeZeroOnboarding$ = command(
     try {
       const displayName = get(internalAgentName$);
       const selectedConnectors = get(internalSelectedConnectors$);
-      const fetchFn = get(fetch$);
+      const createClient = get(zeroClient$);
 
       // Auto-initialize vm0 model provider with default model
       await set(createOrgModelProvider$, {
@@ -180,7 +184,7 @@ export const completeZeroOnboarding$ = command(
       signal.throwIfAborted();
 
       // Create agent and upload instructions (server injects seed skills)
-      const agent = await createZeroAgent(fetchFn, {
+      const agent = await createZeroAgent(createClient, {
         connectors: selectedConnectors,
         displayName,
         sound: "professional",
@@ -188,17 +192,14 @@ export const completeZeroOnboarding$ = command(
       signal.throwIfAborted();
 
       // Set as default agent
-      const defaultResp = await fetchFn("/api/zero/default-agent", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          agentId: agent.agentId,
-        }),
+      const defaultAgentClient = createClient(orgDefaultAgentContract);
+      const result = await defaultAgentClient.setDefaultAgent({
+        body: { agentId: agent.agentId },
       });
       signal.throwIfAborted();
 
-      if (!defaultResp.ok) {
-        throw new Error(`Failed to set default agent: ${defaultResp.status}`);
+      if (result.status !== 200) {
+        throw new Error(`Failed to set default agent: ${result.status}`);
       }
 
       L.debug("Zero onboarding completed", {

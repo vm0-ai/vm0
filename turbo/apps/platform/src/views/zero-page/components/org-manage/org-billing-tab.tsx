@@ -1,8 +1,9 @@
-import { useState } from "react";
-import { useLastLoadable, useSet } from "ccstate-react";
-import { IconExternalLink, IconCrown } from "@tabler/icons-react";
+import { type ComponentProps, useState } from "react";
+import { useGet, useLastLoadable, useSet } from "ccstate-react";
+import { IconExternalLink, IconCrown, IconLoader2 } from "@tabler/icons-react";
 import {
   billingStatusAsync$,
+  billingDialogLoading$,
   startCheckout$,
   startDowngrade$,
 } from "../../../../signals/zero-page/billing.ts";
@@ -13,6 +14,21 @@ import planProImg from "./assets/plan-pro.webp";
 import planTeamImg from "./assets/plan-team.webp";
 
 const cardBorder = { border: "0.7px solid hsl(var(--gray-400))" } as const;
+
+function LoadingButton({
+  loading,
+  children,
+  ...props
+}: ComponentProps<typeof Button> & { loading: boolean }) {
+  return (
+    <Button {...props} disabled={props.disabled || loading}>
+      {loading ? (
+        <IconLoader2 size={13} stroke={1.5} className="animate-spin" />
+      ) : null}
+      {children}
+    </Button>
+  );
+}
 
 interface PlanConfig {
   name: string;
@@ -84,9 +100,11 @@ const PLANS = [
 function PlanCard({
   plan,
   onSelect,
+  loading,
 }: {
   plan: Readonly<PlanConfig>;
   onSelect: (tier: "pro" | "team") => void;
+  loading: boolean;
 }) {
   const isCurrentPlan = plan.cta === "Current plan";
 
@@ -176,23 +194,25 @@ function PlanCard({
             Current plan
           </Button>
         ) : plan.primary ? (
-          <Button
+          <LoadingButton
             size="sm"
             className="w-full rounded-lg h-9 text-xs"
+            loading={loading}
             onClick={() => plan.tier && onSelect(plan.tier)}
           >
             {plan.cta}
-          </Button>
+          </LoadingButton>
         ) : (
-          <Button
+          <LoadingButton
             variant="outline"
             size="sm"
             className="w-full rounded-lg h-9 text-xs"
             style={cardBorder}
+            loading={loading}
             onClick={() => plan.tier && onSelect(plan.tier)}
           >
             {plan.cta}
-          </Button>
+          </LoadingButton>
         )}
       </div>
     </div>
@@ -203,10 +223,12 @@ function PricingDialog({
   open,
   onOpenChange,
   onSelectTier,
+  loading,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSelectTier: (tier: "pro" | "team") => void;
+  loading: boolean;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -230,7 +252,12 @@ function PricingDialog({
 
         <div className="grid grid-cols-3 gap-4 px-6 py-5">
           {PLANS.map((plan) => (
-            <PlanCard key={plan.name} plan={plan} onSelect={onSelectTier} />
+            <PlanCard
+              key={plan.name}
+              plan={plan}
+              onSelect={onSelectTier}
+              loading={loading}
+            />
           ))}
         </div>
       </DialogContent>
@@ -240,9 +267,18 @@ function PricingDialog({
 
 export function OrgBillingTab() {
   const billingLoadable = useLastLoadable(billingStatusAsync$);
+  const billingLoading = useGet(billingDialogLoading$);
   const checkout = useSet(startCheckout$);
   const downgrade = useSet(startDowngrade$);
   const [pricingOpen, setPricingOpen] = useState(false);
+
+  if (billingLoadable.state === "loading") {
+    return (
+      <div className="flex flex-col gap-4">
+        <p className="text-sm text-muted-foreground">Loading billing...</p>
+      </div>
+    );
+  }
 
   const isPro =
     billingLoadable.state === "hasData" && billingLoadable.data.tier !== "free";
@@ -274,11 +310,12 @@ export function OrgBillingTab() {
               </span>
             </div>
             {isPro ? (
-              <Button
+              <LoadingButton
                 variant="outline"
                 size="sm"
                 className="shrink-0 rounded-lg h-8 text-xs gap-1.5"
                 style={cardBorder}
+                loading={billingLoading}
                 onClick={() => {
                   downgrade().catch(() => {
                     toast.error(
@@ -289,15 +326,16 @@ export function OrgBillingTab() {
               >
                 Manage billing
                 <IconExternalLink size={13} stroke={1.5} />
-              </Button>
+              </LoadingButton>
             ) : (
-              <Button
+              <LoadingButton
                 size="sm"
                 className="shrink-0 rounded-lg h-8 text-xs"
+                loading={billingLoading}
                 onClick={() => setPricingOpen(true)}
               >
                 Upgrade
-              </Button>
+              </LoadingButton>
             )}
           </div>
           {isPro && (
@@ -313,11 +351,12 @@ export function OrgBillingTab() {
                     invoices on Stripe.
                   </span>
                 </div>
-                <Button
+                <LoadingButton
                   variant="outline"
                   size="sm"
                   className="shrink-0 rounded-lg h-8 text-xs gap-1.5"
                   style={cardBorder}
+                  loading={billingLoading}
                   onClick={() => {
                     downgrade().catch(() => {
                       toast.error(
@@ -328,7 +367,7 @@ export function OrgBillingTab() {
                 >
                   Manage
                   <IconExternalLink size={13} stroke={1.5} />
-                </Button>
+                </LoadingButton>
               </div>
             </>
           )}
@@ -349,19 +388,24 @@ export function OrgBillingTab() {
               </span>
             </div>
             {isPro ? (
-              <Button size="sm" className="shrink-0 rounded-lg h-8 text-xs">
+              <LoadingButton
+                size="sm"
+                className="shrink-0 rounded-lg h-8 text-xs"
+                loading={billingLoading}
+              >
                 Add
-              </Button>
+              </LoadingButton>
             ) : (
-              <Button
+              <LoadingButton
                 variant="outline"
                 size="sm"
                 className="shrink-0 rounded-lg h-8 text-xs"
                 style={cardBorder}
+                loading={billingLoading}
                 onClick={() => setPricingOpen(true)}
               >
                 Upgrade
-              </Button>
+              </LoadingButton>
             )}
           </div>
           <div className="h-px bg-border/40 mx-5" />
@@ -375,19 +419,24 @@ export function OrgBillingTab() {
               </span>
             </div>
             {isPro ? (
-              <Button size="sm" className="shrink-0 rounded-lg h-8 text-xs">
+              <LoadingButton
+                size="sm"
+                className="shrink-0 rounded-lg h-8 text-xs"
+                loading={billingLoading}
+              >
                 Add
-              </Button>
+              </LoadingButton>
             ) : (
-              <Button
+              <LoadingButton
                 variant="outline"
                 size="sm"
                 className="shrink-0 rounded-lg h-8 text-xs"
                 style={cardBorder}
+                loading={billingLoading}
                 onClick={() => setPricingOpen(true)}
               >
                 Upgrade
-              </Button>
+              </LoadingButton>
             )}
           </div>
         </div>
@@ -397,6 +446,7 @@ export function OrgBillingTab() {
         open={pricingOpen}
         onOpenChange={setPricingOpen}
         onSelectTier={handleSelectTier}
+        loading={billingLoading}
       />
     </div>
   );

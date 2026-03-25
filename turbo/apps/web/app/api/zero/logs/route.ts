@@ -55,6 +55,7 @@ interface LogsQuery {
   search?: string;
   status?: LogStatus;
   triggerSource?: TriggerSource;
+  scheduleId?: string;
   cursor?: string;
   limit?: number;
 }
@@ -113,6 +114,9 @@ async function getTotalCount(
   }
   if (query.triggerSource) {
     conditions.push(eq(agentRuns.triggerSource, query.triggerSource));
+  }
+  if (query.scheduleId) {
+    conditions.push(eq(agentRuns.scheduleId, query.scheduleId));
   }
 
   const [result] = await globalThis.services.db
@@ -257,6 +261,9 @@ const router = tsr.router(logsListContract, {
     if (query.triggerSource) {
       conditions.push(eq(agentRuns.triggerSource, query.triggerSource));
     }
+    if (query.scheduleId) {
+      conditions.push(eq(agentRuns.scheduleId, query.scheduleId));
+    }
 
     const runs = await globalThis.services.db
       .select({
@@ -285,13 +292,7 @@ const router = tsr.router(logsListContract, {
         agentComposes,
         eq(agentComposeVersions.composeId, agentComposes.id),
       )
-      .leftJoin(
-        zeroAgents,
-        and(
-          eq(agentComposes.orgId, zeroAgents.orgId),
-          eq(agentComposes.name, zeroAgents.name),
-        ),
-      )
+      .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
       .leftJoin(conversations, eq(agentRuns.id, conversations.runId))
       .where(and(...conditions))
       .orderBy(desc(agentRuns.createdAt), desc(agentRuns.id))

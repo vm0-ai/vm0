@@ -143,6 +143,7 @@ describe("deleteOrgData", () => {
     const { userId, orgId } = await context.setupUser();
 
     await createTestVariable("TEST_VAR", "test-value");
+    await createTestCompose("test-zero-agent");
     await createTestZeroAgent(orgId, "test-zero-agent", {
       displayName: "Test",
     });

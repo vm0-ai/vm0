@@ -6,7 +6,7 @@ import {
   fetchAgentsList$,
 } from "./agents-list.ts";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
-import { fetch$ } from "../fetch.ts";
+import { zeroClient$ } from "../api-client.ts";
 import { createZeroAgent } from "./create-zero-agent.ts";
 
 export { agentsLoading$, agentsError$, fetchAgentsList$ };
@@ -28,9 +28,9 @@ export const zeroSubagents$ = computed(async (get) => {
  */
 export const createSubagent$ = command(
   async ({ get, set }, displayName: string) => {
-    const fetchFn = get(fetch$);
+    const createClient = get(zeroClient$);
 
-    await createZeroAgent(fetchFn, {
+    await createZeroAgent(createClient, {
       connectors: [],
       displayName,
     });

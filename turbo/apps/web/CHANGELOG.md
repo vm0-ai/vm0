@@ -1,5 +1,59 @@
 # Changelog
 
+## [12.159.0](https://github.com/vm0-ai/vm0/compare/web-v12.158.0...web-v12.159.0) (2026-03-25)
+
+
+### Features
+
+* **auth:** add cli jwt token type and auth context support ([#6725](https://github.com/vm0-ai/vm0/issues/6725)) ([40f233d](https://github.com/vm0-ai/vm0/commit/40f233d9a00b82b521daff7a6d286e8f00ac329a))
+* **auth:** update server api endpoints to generate cli jwt tokens ([#6740](https://github.com/vm0-ai/vm0/issues/6740)) ([509893c](https://github.com/vm0-ai/vm0/commit/509893ca0eac7364ce422cd994fa3461399713d7))
+* **schedule:** simplify create dialog, navigate to detail, add run history tab ([#6715](https://github.com/vm0-ai/vm0/issues/6715)) ([2275f60](https://github.com/vm0-ai/vm0/commit/2275f6042e99ea04f8ffdb9d376153a0c993e603))
+
+
+### Bug Fixes
+
+* use @clerk/backend for backfill script clerk client ([#6056](https://github.com/vm0-ai/vm0/issues/6056)) ([22d87e4](https://github.com/vm0-ai/vm0/commit/22d87e451944eebbd49d58ded6e925cae2a8a3c0))
+
+
+### Refactoring
+
+* **web:** convert skill sync to async i/o and concurrent processing ([#6748](https://github.com/vm0-ai/vm0/issues/6748)) ([d4d111b](https://github.com/vm0-ai/vm0/commit/d4d111ba50fb0a6ed98a5aeeda66eb7b458888ba))
+* **web:** return flat array from team api endpoint ([#6730](https://github.com/vm0-ai/vm0/issues/6730)) ([2b6ccae](https://github.com/vm0-ai/vm0/commit/2b6ccae92de330f25e0612ecdffc66ccc85b2689))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.113.0
+
+## [12.158.0](https://github.com/vm0-ai/vm0/compare/web-v12.157.0...web-v12.158.0) (2026-03-25)
+
+
+### Features
+
+* connect org management dialog billing tabs to real data ([#6692](https://github.com/vm0-ai/vm0/issues/6692)) ([00f8209](https://github.com/vm0-ai/vm0/commit/00f82091196d280878c632f895acc37457c6493c))
+
+
+### Bug Fixes
+
+* **cli:** add slack to capability map and replace curl guidance ([#6679](https://github.com/vm0-ai/vm0/issues/6679)) ([0ba1480](https://github.com/vm0-ai/vm0/commit/0ba1480cc8ab735d967df668806a3577595e5a1a))
+* **e2e:** detect google oauth redirect for new users in e2e-auth ([#6702](https://github.com/vm0-ai/vm0/issues/6702)) ([8c6c611](https://github.com/vm0-ai/vm0/commit/8c6c611f0a544cfad0adc70e79fc04abcbaa0907))
+* **web:** exclude connector env vars from secret connector map override filter ([#6684](https://github.com/vm0-ai/vm0/issues/6684)) ([89bfe8c](https://github.com/vm0-ai/vm0/commit/89bfe8c30d38b2ad61ef4a575ac3433fb87ef4de))
+
+
+### Refactoring
+
+* unify zero_agents primary key with agent_composes.id ([#6686](https://github.com/vm0-ai/vm0/issues/6686)) ([f451f21](https://github.com/vm0-ai/vm0/commit/f451f21e19eb9900ad2c7f92832593583e050097))
+* **web:** rename firewall type variable for clarity ([#6705](https://github.com/vm0-ai/vm0/issues/6705)) ([eae5ca3](https://github.com/vm0-ai/vm0/commit/eae5ca36c520a459e5a0a4f317a388fc8fcc79aa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.112.0
+
 ## [12.157.0](https://github.com/vm0-ai/vm0/compare/web-v12.156.1...web-v12.157.0) (2026-03-25)
 
 

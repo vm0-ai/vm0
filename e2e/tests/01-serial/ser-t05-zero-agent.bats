@@ -49,7 +49,7 @@ teardown_file() {
     assert_success
     assert_output --partial "created"
 
-    name=$(echo "$output" | grep -oP "agent '\K[^']+")
+    name=$(echo "$output" | grep -oP 'Agent "\K[^"]+')
     echo "$name" > "$(agent_name_file)"
 }
 

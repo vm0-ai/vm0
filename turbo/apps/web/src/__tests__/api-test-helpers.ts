@@ -10,7 +10,10 @@ import { vi } from "vitest";
 import { http as mswHttp, HttpResponse } from "msw";
 import { NextRequest } from "next/server";
 import type { AgentComposeYaml } from "../types/agent-compose";
-import { generateSandboxToken } from "../lib/auth/sandbox-token";
+import {
+  generateSandboxToken,
+  generateCliToken,
+} from "../lib/auth/sandbox-token";
 import { server } from "../mocks/server";
 import { reloadEnv } from "../env";
 import { randomBytes } from "crypto";
@@ -210,11 +213,20 @@ export async function createTestSandboxToken(
 export async function createTestCliToken(
   userId: string,
   expiresAt?: Date,
+  orgId?: string,
 ): Promise<string> {
-  const token = `vm0_live_test_${Date.now()}_${Math.random().toString(36).substring(7)}`;
   const expiration = expiresAt || new Date(Date.now() + 60 * 60 * 1000); // 1 hour default
+  const tokenId = randomUUID();
+
+  // Generate CLI JWT containing userId, orgId, and tokenId for revocation checks
+  const token = await generateCliToken(
+    userId,
+    orgId ?? "org_test_default",
+    tokenId,
+  );
 
   await globalThis.services.db.insert(cliTokens).values({
+    id: tokenId,
     token,
     userId,
     name: "Test Token",
@@ -388,7 +400,7 @@ export async function createTestCompose(
   const result: { composeId: string; versionId: string; name: string } =
     await response.json();
 
-  // Ensure a matching zero_agents row exists so callers can resolve agentId
+  // Ensure a matching zero_agents row exists (id = composeId after PK refactor)
   initServices();
   const [compose] = await globalThis.services.db
     .select({ orgId: agentComposes.orgId })
@@ -398,27 +410,18 @@ export async function createTestCompose(
   if (compose) {
     await globalThis.services.db
       .insert(zeroAgents)
-      .values({ orgId: compose.orgId, name: result.name })
+      .values({ id: result.composeId, orgId: compose.orgId, name: result.name })
       .onConflictDoNothing();
   }
 
-  // Resolve the agentId from zero_agents
-  const [agentRow] = await globalThis.services.db
-    .select({ id: zeroAgents.id })
-    .from(zeroAgents)
-    .where(
-      and(
-        eq(zeroAgents.orgId, compose!.orgId),
-        eq(zeroAgents.name, result.name),
-      ),
-    )
-    .limit(1);
-
-  return { ...result, agentId: agentRow!.id };
+  return { ...result, agentId: result.composeId };
 }
 
 /**
- * Create a test zero_agents row for agent metadata.
+ * Create or update a test zero_agents row for agent metadata.
+ *
+ * Since zero_agents.id = agent_composes.id (composeId), this looks up
+ * the composeId by (orgId, name) and upserts the metadata row.
  *
  * @param orgId - The org ID
  * @param name - The agent name (must match compose name)
@@ -435,9 +438,22 @@ export async function createTestZeroAgent(
   },
 ): Promise<void> {
   initServices();
+
+  // Resolve composeId from compose table (zero_agents.id = composeId)
+  const [compose] = await globalThis.services.db
+    .select({ id: agentComposes.id })
+    .from(agentComposes)
+    .where(and(eq(agentComposes.orgId, orgId), eq(agentComposes.name, name)))
+    .limit(1);
+
+  if (!compose) {
+    throw new Error(`Compose not found for org=${orgId} name=${name}`);
+  }
+
   await globalThis.services.db
     .insert(zeroAgents)
     .values({
+      id: compose.id,
       orgId,
       name,
       displayName: metadata.displayName ?? null,
@@ -3914,32 +3930,13 @@ export async function seedTestCompose(opts: {
     throw new Error("Failed to seed agent compose");
   }
 
-  // Ensure a matching zero_agents row exists so handlers can resolve agentId
-  const [agentRow] = await globalThis.services.db
+  // Ensure a matching zero_agents row exists (id = composeId after PK refactor)
+  await globalThis.services.db
     .insert(zeroAgents)
-    .values({ orgId: opts.orgId, name: opts.name })
-    .onConflictDoNothing()
-    .returning({ id: zeroAgents.id });
+    .values({ id: row.id, orgId: opts.orgId, name: opts.name })
+    .onConflictDoNothing();
 
-  // If onConflictDoNothing didn't return (row already existed), fetch it
-  let agentId: string;
-  if (agentRow) {
-    agentId = agentRow.id;
-  } else {
-    const [existing] = await globalThis.services.db
-      .select({ id: zeroAgents.id })
-      .from(zeroAgents)
-      .where(
-        and(eq(zeroAgents.orgId, opts.orgId), eq(zeroAgents.name, opts.name)),
-      )
-      .limit(1);
-    if (!existing) {
-      throw new Error("Failed to resolve zero agent for test compose");
-    }
-    agentId = existing.id;
-  }
-
-  return { composeId: row.id, agentId };
+  return { composeId: row.id, agentId: row.id };
 }
 
 /**

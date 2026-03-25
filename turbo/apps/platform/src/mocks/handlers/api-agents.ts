@@ -10,17 +10,14 @@ import { http, HttpResponse } from "msw";
 export const apiAgentsHandlers = [
   // GET /api/zero/team
   http.get("/api/zero/team", () => {
-    return HttpResponse.json({
-      composes: [
-        {
-          id: "mock-compose-id",
-          displayName: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-          isOwner: true,
-        },
-      ],
-    });
+    return HttpResponse.json([
+      {
+        id: "mock-compose-id",
+        displayName: null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+    ]);
   }),
 
   // GET /api/zero/composes/list

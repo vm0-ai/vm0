@@ -39,7 +39,7 @@ function mockChatAPIs() {
       return HttpResponse.json({
         id: "run-abc-123",
         sessionId: "session-1",
-        agentName: "zero",
+        agentId: "zero",
         displayName: null,
         framework: "claude-code",
         modelProvider: null,
@@ -122,10 +122,13 @@ describe("talk navigation", () => {
       // Agent creation
       http.post("*/api/zero/agents", () => {
         onboardingComplete = true;
-        return HttpResponse.json({
-          name: "zero",
-          agentId: "new-compose-id",
-        });
+        return HttpResponse.json(
+          {
+            name: "zero",
+            agentId: "new-compose-id",
+          },
+          { status: 201 },
+        );
       }),
       // Instructions upload
       http.put("*/api/zero/agents/:name/instructions", () => {

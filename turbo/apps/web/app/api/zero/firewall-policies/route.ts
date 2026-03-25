@@ -15,7 +15,6 @@ import {
 } from "../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { zeroAgents } from "../../../../src/db/schema/zero-agent";
-import { agentComposes } from "../../../../src/db/schema/agent-compose";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../../../../src/lib/logger";
 
@@ -84,22 +83,16 @@ const router = tsr.router(zeroAgentFirewallPoliciesContract, {
       };
     }
 
-    // Verify agent exists
-    const [compose] = await globalThis.services.db
-      .select({
-        id: agentComposes.id,
-        name: agentComposes.name,
-      })
-      .from(agentComposes)
+    // Verify agent exists — body.agentId is the composeId (= zeroAgents PK)
+    const [existing] = await globalThis.services.db
+      .select({ id: zeroAgents.id })
+      .from(zeroAgents)
       .where(
-        and(
-          eq(agentComposes.orgId, org.orgId),
-          eq(agentComposes.id, body.agentId),
-        ),
+        and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.id, body.agentId)),
       )
       .limit(1);
 
-    if (!compose) {
+    if (!existing) {
       return {
         status: 404 as const,
         body: {
@@ -111,38 +104,29 @@ const router = tsr.router(zeroAgentFirewallPoliciesContract, {
       };
     }
 
-    // Upsert firewall policies
+    // Update firewall policies
     const now = new Date();
     await globalThis.services.db
-      .insert(zeroAgents)
-      .values({
-        orgId: org.orgId,
-        name: compose.name,
+      .update(zeroAgents)
+      .set({
         firewallPolicies: body.policies,
+        updatedAt: now,
       })
-      .onConflictDoUpdate({
-        target: [zeroAgents.orgId, zeroAgents.name],
-        set: {
-          firewallPolicies: body.policies,
-          updatedAt: now,
-        },
-      });
+      .where(eq(zeroAgents.id, body.agentId));
 
-    log.info(`Updated firewall policies for agent: ${compose.name}`);
+    log.info(`Updated firewall policies for agent: ${body.agentId}`);
 
     // Re-query to return actual persisted state
     const [agent] = await globalThis.services.db
       .select()
       .from(zeroAgents)
-      .where(
-        and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.name, compose.name)),
-      )
+      .where(eq(zeroAgents.id, body.agentId))
       .limit(1);
 
     return {
       status: 200 as const,
       body: {
-        agentId: compose.id,
+        agentId: body.agentId,
         description: agent?.description ?? null,
         displayName: agent?.displayName ?? null,
         sound: agent?.sound ?? null,

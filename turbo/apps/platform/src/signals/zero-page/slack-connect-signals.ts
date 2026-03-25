@@ -1,6 +1,7 @@
 import { command, computed, state } from "ccstate";
 import { searchParams$ } from "../route.ts";
-import { fetch$ } from "../fetch.ts";
+import { zeroSlackConnectContract } from "@vm0/core";
+import { zeroClient$ } from "../api-client.ts";
 
 // Internal state
 const internalStatus$ = state<
@@ -44,14 +45,11 @@ export const initSlackConnectPage$ = command(async ({ get, set }) => {
 
   if (!initialStatus && !initialError && workspaceId) {
     set(internalStatus$, "checking");
-    const fetchFn = await get(fetch$);
-    const res = await fetchFn("/api/zero/integrations/slack/connect");
-    if (res.ok) {
-      const data = (await res.json()) as { isConnected?: boolean };
-      if (data.isConnected) {
-        set(internalStatus$, "success");
-        return;
-      }
+    const client = get(zeroClient$)(zeroSlackConnectContract);
+    const result = await client.getStatus();
+    if (result.status === 200 && result.body.isConnected) {
+      set(internalStatus$, "success");
+      return;
     }
     set(internalStatus$, "idle");
   }
@@ -71,31 +69,30 @@ export const connectSlackAccount$ = command(async ({ get, set }) => {
   }
 
   set(internalStatus$, "connecting");
-  const fetchFn = await get(fetch$);
+  const client = get(zeroClient$)(zeroSlackConnectContract);
   const channelId = params.get("c");
   const threadTs = params.get("t");
-  const res = await fetchFn("/api/zero/integrations/slack/connect", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+  const result = await client.connect({
+    body: {
       workspaceId,
       slackUserId,
       ...(channelId ? { channelId } : {}),
       ...(threadTs ? { threadTs } : {}),
-    }),
+    },
   });
 
-  if (res.ok) {
+  if (result.status === 200) {
     set(internalStatus$, "success");
     window.location.href = "slack://open";
   } else {
-    const body = (await res.json().catch(() => ({}))) as {
-      error?: { message?: string };
-    };
-    set(
-      internalErrorMsg$,
-      body.error?.message ?? "Failed to connect. Please try again.",
-    );
+    const msg =
+      result.status === 400 ||
+      result.status === 401 ||
+      result.status === 403 ||
+      result.status === 404
+        ? result.body.error.message
+        : "Failed to connect. Please try again.";
+    set(internalErrorMsg$, msg);
     set(internalStatus$, "error");
   }
 });

@@ -14,7 +14,7 @@ export const granolaFirewall: FirewallConfig = {
   },
   apis: [
     {
-      base: "https://api.granola.ai",
+      base: "https://public-api.granola.ai",
       auth: {
         headers: {
           Authorization: "Bearer ${{ secrets.GRANOLA_TOKEN }}",

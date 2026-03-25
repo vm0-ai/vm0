@@ -94,9 +94,7 @@ async function connectViaApiToken(
       description: `API token for ${config.label} connector`,
     });
   }
-  console.log(
-    chalk.green(`\n✓ ${config.label} connected successfully via API token!`),
-  );
+  console.log(chalk.green(`\n✓ Connector "${connectorType}" connected`));
 }
 
 /**
@@ -197,7 +195,7 @@ async function connectViaOAuth(connectorType: ConnectorType): Promise<void> {
     switch (status.status) {
       case "complete":
         console.log(
-          chalk.green(`\n\n${connectorType} connected successfully!`),
+          chalk.green(`\n\n✓ Connector "${connectorType}" connected`),
         );
         return;
       case "expired":

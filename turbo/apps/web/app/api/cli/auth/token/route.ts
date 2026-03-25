@@ -9,6 +9,8 @@ import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { deviceCodes } from "../../../../../src/db/schema/device-codes";
 import { cliTokens } from "../../../../../src/db/schema/cli-tokens";
+import { generateCliToken } from "../../../../../src/lib/auth/sandbox-token";
+import { getOrgBySlug } from "../../../../../src/lib/org/org-cache-service";
 
 const router = tsr.router(cliAuthTokenContract, {
   exchange: async ({ body }) => {
@@ -73,13 +75,30 @@ const router = tsr.router(cliAuthTokenContract, {
       case "authenticated": {
         const userId = session.userId as string;
 
-        // Generate CLI token (no org binding — org context comes from client-side activeOrg)
-        const randomBytes = crypto.randomBytes(32);
-        const cliToken = `vm0_live_${randomBytes.toString("base64url")}`;
+        // Resolve orgId from orgSlug (set during device flow approval)
+        let orgId = "";
+        if (session.orgSlug) {
+          const orgData = await getOrgBySlug(session.orgSlug);
+          if (!orgData) {
+            return {
+              status: 500 as const,
+              body: {
+                error: "server_error",
+                error_description: `Organization not found for slug: ${session.orgSlug}`,
+              },
+            };
+          }
+          orgId = orgData.orgId;
+        }
+
+        // Generate CLI JWT with tokenId for revocation tracking
+        const tokenId = crypto.randomUUID();
         const now = new Date();
         const expiresAt = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000); // 90 days
+        const cliToken = await generateCliToken(userId, orgId, tokenId);
 
         await globalThis.services.db.insert(cliTokens).values({
+          id: tokenId,
           token: cliToken,
           userId,
           name: "CLI Device Flow Authentication",

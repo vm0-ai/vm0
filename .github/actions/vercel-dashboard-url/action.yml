@@ -1,0 +1,50 @@
+name: "Vercel Dashboard URL"
+description: "Resolve a Vercel deployment URL to its dashboard URL for rollback access"
+
+inputs:
+  vercel-token:
+    description: "Vercel authentication token"
+    required: true
+  deployment-url:
+    description: "Vercel deployment URL to resolve"
+    required: true
+
+outputs:
+  url:
+    description: "The resolved Vercel dashboard URL (falls back to deployment URL)"
+    value: ${{ steps.resolve.outputs.url }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Resolve Vercel dashboard URL
+      id: resolve
+      shell: bash
+      env:
+        VERCEL_TOKEN: ${{ inputs.vercel-token }}
+        DEPLOYMENT_URL: ${{ inputs.deployment-url }}
+      run: |
+        # Extract hostname from deployment URL
+        HOSTNAME=$(echo "$DEPLOYMENT_URL" | sed 's|https://||')
+
+        # Query Vercel API to get deployment details
+        RESPONSE=$(curl -sf -H "Authorization: Bearer $VERCEL_TOKEN" \
+          "https://api.vercel.com/v13/deployments/$HOSTNAME" 2>/dev/null) || true
+
+        if [ -n "$RESPONSE" ]; then
+          TEAM_SLUG=$(echo "$RESPONSE" | jq -r '.team.slug // empty')
+          PROJECT_NAME=$(echo "$RESPONSE" | jq -r '.name // empty')
+          DEPLOY_ID=$(echo "$RESPONSE" | jq -r '.id // empty')
+
+          if [ -n "$TEAM_SLUG" ] && [ -n "$PROJECT_NAME" ] && [ -n "$DEPLOY_ID" ]; then
+            DASHBOARD_URL="https://vercel.com/$TEAM_SLUG/$PROJECT_NAME/$DEPLOY_ID"
+            echo "url=$DASHBOARD_URL" >> "$GITHUB_OUTPUT"
+            echo "Resolved dashboard URL: $DASHBOARD_URL"
+          else
+            echo "::warning::Could not resolve Vercel dashboard URL from API response (missing team.slug, name, or id). Using deployment URL as fallback."
+            echo "url=$DEPLOYMENT_URL" >> "$GITHUB_OUTPUT"
+          fi
+        else
+          echo "::warning::Vercel API call failed for deployment $HOSTNAME. Check VERCEL_TOKEN validity. Using deployment URL as fallback."
+          echo "url=$DEPLOYMENT_URL" >> "$GITHUB_OUTPUT"
+        fi

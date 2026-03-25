@@ -74,8 +74,8 @@ setup() {
         --timezone "UTC" \
         --prompt "Run scheduled task"
     assert_success
-    assert_output --partial "Created schedule"
-    assert_output --partial "$AGENT_NAME"
+    assert_output --partial "created"
+    assert_output --partial "Schedule"
 
     # --- List ---
     run $ZERO_CLI schedule list
@@ -99,7 +99,7 @@ setup() {
         --timezone "America/New_York" \
         --prompt "Updated scheduled task"
     assert_success
-    assert_output --partial "Updated schedule"
+    assert_output --partial "updated"
 
     # Verify update via status
     run $ZERO_CLI schedule status "$AGENT_NAME"
@@ -109,7 +109,7 @@ setup() {
     # --- Enable ---
     run $ZERO_CLI schedule enable "$AGENT_NAME"
     assert_success
-    assert_output --partial "Enabled"
+    assert_output --partial "enabled"
 
     # Verify enabled in list
     run $ZERO_CLI schedule list
@@ -119,12 +119,12 @@ setup() {
     # --- Disable ---
     run $ZERO_CLI schedule disable "$AGENT_NAME"
     assert_success
-    assert_output --partial "Disabled"
+    assert_output --partial "disabled"
 
     # --- Delete ---
     run $ZERO_CLI schedule delete "$AGENT_NAME" --yes
     assert_success
-    assert_output --partial "Deleted"
+    assert_output --partial "deleted"
 }
 
 @test "t20-2: loop schedule lifecycle" {
@@ -153,7 +153,7 @@ EOF
         --timezone "UTC" \
         --prompt "Loop task every 5 minutes"
     assert_success
-    assert_output --partial "Created schedule"
+    assert_output --partial "created"
 
     # --- Status ---
     run $ZERO_CLI schedule status "$LOOP_AGENT_NAME"
@@ -169,17 +169,17 @@ EOF
     # --- Enable ---
     run $ZERO_CLI schedule enable "$LOOP_AGENT_NAME"
     assert_success
-    assert_output --partial "Enabled"
+    assert_output --partial "enabled"
 
     # --- Disable ---
     run $ZERO_CLI schedule disable "$LOOP_AGENT_NAME"
     assert_success
-    assert_output --partial "Disabled"
+    assert_output --partial "disabled"
 
     # --- Delete ---
     run $ZERO_CLI schedule delete "$LOOP_AGENT_NAME" --yes
     assert_success
-    assert_output --partial "Deleted"
+    assert_output --partial "deleted"
 
     # Clean up
     rm -rf "$LOOP_TEST_DIR"

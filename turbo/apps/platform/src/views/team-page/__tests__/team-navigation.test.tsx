@@ -15,7 +15,6 @@ function createMockTeamWithSubagents() {
       description: null,
       headVersionId: "version_1",
       updatedAt: "2024-01-01T00:00:00Z",
-      isOwner: true,
     },
     {
       id: "agent-2",
@@ -23,7 +22,6 @@ function createMockTeamWithSubagents() {
       description: "Finds and summarizes information",
       headVersionId: "version_2",
       updatedAt: "2024-01-02T00:00:00Z",
-      isOwner: false,
     },
   ];
 }
@@ -31,7 +29,7 @@ function createMockTeamWithSubagents() {
 function mockAPIs() {
   server.use(
     http.get("*/api/zero/team", () => {
-      return HttpResponse.json({ composes: createMockTeamWithSubagents() });
+      return HttpResponse.json(createMockTeamWithSubagents());
     }),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });

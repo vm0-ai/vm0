@@ -6,6 +6,7 @@ import {
   zeroOrgInviteContract,
   zeroOrgLeaveContract,
   zeroOrgDeleteContract,
+  cliAuthOrgContract,
   type OrgResponse,
   type OrgMembersResponse,
   type OrgListResponse,
@@ -179,4 +180,26 @@ export async function deleteZeroOrg(slug: string): Promise<void> {
   }
 
   handleError(result, "Failed to delete organization");
+}
+
+/**
+ * Switch active organization and get a new CLI JWT token.
+ * Uses the user's current token for auth (not org-scoped).
+ */
+export async function switchZeroOrg(
+  slug: string,
+): Promise<{ access_token: string; org_slug: string }> {
+  const config = await getUserTokenClientConfig();
+  const client = initClient(cliAuthOrgContract, config);
+
+  const result = await client.switchOrg({
+    headers: { authorization: `Bearer ${(await getToken())!}` },
+    body: { slug },
+  });
+
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(result, "Failed to switch organization");
 }

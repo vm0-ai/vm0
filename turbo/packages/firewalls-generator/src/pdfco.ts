@@ -22,7 +22,7 @@ function generateTypeScript(): string {
     "  },",
     "  apis: [",
     "    {",
-    '      base: "https://api.pdf.co/v1",',
+    '      base: "https://api.pdf.co",',
     "      auth: {",
     "        headers: {",
     '          "x-api-key": "${{ secrets.PDFCO_TOKEN }}",',

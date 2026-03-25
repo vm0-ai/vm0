@@ -748,4 +748,82 @@ describe("GET /api/zero/logs", () => {
       expect(data.filters.statuses).toContain("failed");
     });
   });
+
+  describe("scheduleId filter", () => {
+    let testComposeId: string;
+    let scheduleId: string;
+
+    beforeEach(async () => {
+      const { composeId } = await createTestCompose(
+        `sched-filter-${randomUUID().slice(0, 8)}`,
+      );
+      testComposeId = composeId;
+
+      const schedule = await createTestSchedule(
+        testComposeId,
+        `sched-${randomUUID().slice(0, 8)}`,
+      );
+      scheduleId = schedule.id;
+
+      // Create a run linked to the schedule
+      await createTestRunInDb(user.userId, testComposeId, {
+        status: "completed",
+        scheduleId,
+        startedAt: new Date(),
+        completedAt: new Date(),
+      });
+
+      // Create a run NOT linked to any schedule
+      await createTestRunInDb(user.userId, testComposeId, {
+        status: "completed",
+        startedAt: new Date(),
+        completedAt: new Date(),
+      });
+    });
+
+    it("should return only runs for the given scheduleId", async () => {
+      const request = createTestRequest(
+        `http://localhost:3000/api/zero/logs?scheduleId=${scheduleId}`,
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data).toHaveLength(1);
+    });
+
+    it("should return empty list when scheduleId has no matching runs", async () => {
+      const request = createTestRequest(
+        `http://localhost:3000/api/zero/logs?scheduleId=${randomUUID()}`,
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data).toEqual([]);
+    });
+
+    it("should correctly count total pages with scheduleId filter", async () => {
+      const request = createTestRequest(
+        `http://localhost:3000/api/zero/logs?scheduleId=${scheduleId}&limit=1`,
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.data).toHaveLength(1);
+      expect(data.pagination.totalPages).toBe(1);
+    });
+
+    it("should return 400 for invalid scheduleId format", async () => {
+      const request = createTestRequest(
+        "http://localhost:3000/api/zero/logs?scheduleId=not-a-uuid",
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error.code).toBe("BAD_REQUEST");
+    });
+  });
 });

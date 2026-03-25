@@ -23,10 +23,13 @@ function mockOnboardingNeededAdmin() {
     }),
     // Mock the agent creation endpoint
     http.post("*/api/zero/agents", () => {
-      return HttpResponse.json({
-        name: "zero",
-        agentId: "new-compose-id",
-      });
+      return HttpResponse.json(
+        {
+          name: "zero",
+          agentId: "new-compose-id",
+        },
+        { status: 201 },
+      );
     }),
     // Mock instructions upload
     http.put("*/api/zero/agents/:name/instructions", () => {

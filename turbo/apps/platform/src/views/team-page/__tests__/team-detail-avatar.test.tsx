@@ -15,19 +15,16 @@ const context = testContext();
 function mockDefaultAgentAPIs() {
   server.use(
     http.get("*/api/zero/team", () =>
-      HttpResponse.json({
-        composes: [
-          {
-            id: "mock-compose-id",
-            name: "zero",
-            displayName: "Zero",
-            description: null,
-            headVersionId: "version_1",
-            updatedAt: "2024-01-01T00:00:00Z",
-            isOwner: true,
-          },
-        ],
-      }),
+      HttpResponse.json([
+        {
+          id: "mock-compose-id",
+          name: "zero",
+          displayName: "Zero",
+          description: null,
+          headVersionId: "version_1",
+          updatedAt: "2024-01-01T00:00:00Z",
+        },
+      ]),
     ),
     http.get("*/api/zero/chat-threads", () =>
       HttpResponse.json({ threads: [] }),
@@ -54,28 +51,24 @@ function mockDefaultAgentAPIs() {
 function mockSubAgentAPIs() {
   server.use(
     http.get("*/api/zero/team", () =>
-      HttpResponse.json({
-        composes: [
-          {
-            id: "mock-compose-id",
-            name: "zero",
-            displayName: null,
-            description: null,
-            headVersionId: "version_1",
-            updatedAt: "2024-01-01T00:00:00Z",
-            isOwner: true,
-          },
-          {
-            id: "sub-agent-id",
-            name: "sub-agent",
-            displayName: "Sub Agent",
-            description: "A sub agent",
-            headVersionId: "version_2",
-            updatedAt: "2024-01-02T00:00:00Z",
-            isOwner: false,
-          },
-        ],
-      }),
+      HttpResponse.json([
+        {
+          id: "mock-compose-id",
+          name: "zero",
+          displayName: null,
+          description: null,
+          headVersionId: "version_1",
+          updatedAt: "2024-01-01T00:00:00Z",
+        },
+        {
+          id: "sub-agent-id",
+          name: "sub-agent",
+          displayName: "Sub Agent",
+          description: "A sub agent",
+          headVersionId: "version_2",
+          updatedAt: "2024-01-02T00:00:00Z",
+        },
+      ]),
     ),
     http.get("*/api/zero/chat-threads", () =>
       HttpResponse.json({ threads: [] }),

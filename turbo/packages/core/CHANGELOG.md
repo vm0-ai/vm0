@@ -1,5 +1,36 @@
 # Changelog
 
+## [8.113.0](https://github.com/vm0-ai/vm0/compare/core-v8.112.0...core-v8.113.0) (2026-03-25)
+
+
+### Features
+
+* **auth:** update server api endpoints to generate cli jwt tokens ([#6740](https://github.com/vm0-ai/vm0/issues/6740)) ([509893c](https://github.com/vm0-ai/vm0/commit/509893ca0eac7364ce422cd994fa3461399713d7))
+* **schedule:** simplify create dialog, navigate to detail, add run history tab ([#6715](https://github.com/vm0-ai/vm0/issues/6715)) ([2275f60](https://github.com/vm0-ai/vm0/commit/2275f6042e99ea04f8ffdb9d376153a0c993e603))
+
+
+### Bug Fixes
+
+* correct alphabetical order in firewall registration files ([#6742](https://github.com/vm0-ai/vm0/issues/6742)) ([3944990](https://github.com/vm0-ai/vm0/commit/3944990cb90a3c68672bb5987719c206e0872e9e))
+* correct firewall base urls and auth headers from validation audit ([#6754](https://github.com/vm0-ai/vm0/issues/6754)) ([b07892f](https://github.com/vm0-ai/vm0/commit/b07892f9011fbe87aecafec2774f34b5e16b8071))
+
+
+### Refactoring
+
+* **core:** make firewall config type-safe for model providers ([#6723](https://github.com/vm0-ai/vm0/issues/6723)) ([f47938f](https://github.com/vm0-ai/vm0/commit/f47938f66520ac88c31afe87f35960220c95816f))
+* migrate platform signals from raw fetch to typed zero client ([#6677](https://github.com/vm0-ai/vm0/issues/6677)) ([68d7cda](https://github.com/vm0-ai/vm0/commit/68d7cda17f9276412e7121af1ed3bf9a9aef89d5))
+
+## [8.112.0](https://github.com/vm0-ai/vm0/compare/core-v8.111.1...core-v8.112.0) (2026-03-25)
+
+
+### Features
+
+* add instagram firewall config ([#6701](https://github.com/vm0-ai/vm0/issues/6701)) ([488917b](https://github.com/vm0-ai/vm0/commit/488917b05bd031f44b6c43a85994994bfb45af42)), closes [#6358](https://github.com/vm0-ai/vm0/issues/6358)
+* add meta-ads firewall config ([#6696](https://github.com/vm0-ai/vm0/issues/6696)) ([b82e62b](https://github.com/vm0-ai/vm0/commit/b82e62b768874a4f0bbd82e5f0e8fb27fd0cff07)), closes [#6373](https://github.com/vm0-ai/vm0/issues/6373)
+* add outlook-calendar firewall config ([#6711](https://github.com/vm0-ai/vm0/issues/6711)) ([3447c9e](https://github.com/vm0-ai/vm0/commit/3447c9eface597c6aad617f714c0ebc926c1ce04)), closes [#6380](https://github.com/vm0-ai/vm0/issues/6380)
+* add prisma-postgres firewall config ([#6691](https://github.com/vm0-ai/vm0/issues/6691)) ([6cbcc40](https://github.com/vm0-ai/vm0/commit/6cbcc4034251bb5a766532ae2bb0f14a45372eb8)), closes [#6390](https://github.com/vm0-ai/vm0/issues/6390)
+* connect org management dialog billing tabs to real data ([#6692](https://github.com/vm0-ai/vm0/issues/6692)) ([00f8209](https://github.com/vm0-ai/vm0/commit/00f82091196d280878c632f895acc37457c6493c))
+
 ## [8.111.1](https://github.com/vm0-ai/vm0/compare/core-v8.111.0...core-v8.111.1) (2026-03-25)
 
 

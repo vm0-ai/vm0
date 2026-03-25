@@ -6,8 +6,8 @@
  * needs to provide a URL builder for the data fetch.
  */
 import { state, computed, command, type Computed, type State } from "ccstate";
-import type { LogsListResponse } from "./zero-page/log-types.ts";
-import { fetch$ } from "./fetch.ts";
+import { logsListContract, type LogsListResponse } from "@vm0/core";
+import { zeroClient$ } from "./api-client.ts";
 import { searchParams$, updateSearchParams$ } from "./route.ts";
 
 const DEFAULT_LIMIT = 10;
@@ -46,6 +46,18 @@ interface PaginationDeps {
   data$: Computed<Promise<LogsListResponse>>;
   cursorHistory$: State<(string | null)[]>;
   writeUrlParams$: ReturnType<typeof command<void, [UrlParamOverrides]>>;
+}
+
+/** Convert URLSearchParams to a plain query object for ts-rest. */
+function paramsToQuery(
+  params: URLSearchParams,
+): Record<string, string | number> {
+  const obj: Record<string, string | number> = {};
+  for (const [key, value] of params) {
+    // Convert limit to number since the contract expects it
+    obj[key] = key === "limit" ? Number(value) : value;
+  }
+  return obj;
 }
 
 function createNavigationCommands(deps: PaginationDeps) {
@@ -124,23 +136,17 @@ function createNavigationCommands(deps: PaginationDeps) {
       return;
     }
 
-    const fetchFn = get(fetch$);
-    const resp2 = await fetchFn(
-      `/api/zero/logs?${intermediateParams.toString()}`,
-    );
+    const client = get(zeroClient$)(logsListContract);
+    const result = await client.list({
+      query: paramsToQuery(intermediateParams),
+    });
 
-    if (!resp2.ok) {
+    if (result.status !== 200 || !result.body.pagination.hasMore) {
       set(writeUrlParams$, { cursor: cursor1 });
       return;
     }
 
-    const response2 = (await resp2.json()) as LogsListResponse;
-    if (!response2.pagination.hasMore) {
-      set(writeUrlParams$, { cursor: cursor1 });
-      return;
-    }
-
-    const cursor2 = response2.pagination.nextCursor;
+    const cursor2 = result.body.pagination.nextCursor;
     set(cursorHistory$, (prev) => {
       const next = [...prev];
       if (next.length <= idx + 2) {
@@ -199,7 +205,6 @@ export function createCursorPagination(config: CursorPaginationConfig) {
 
   const data$ = computed(async (get) => {
     get(refreshTick$);
-    const fetchFn = get(fetch$);
     const limit = get(limit$);
     const cursor = get(cursor$);
 
@@ -212,11 +217,12 @@ export function createCursorPagination(config: CursorPaginationConfig) {
       } satisfies LogsListResponse;
     }
 
-    const response = await fetchFn(`/api/zero/logs?${params.toString()}`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch logs: ${response.statusText}`);
+    const client = get(zeroClient$)(logsListContract);
+    const result = await client.list({ query: paramsToQuery(params) });
+    if (result.status !== 200) {
+      throw new Error(`Failed to fetch logs (${result.status})`);
     }
-    return (await response.json()) as LogsListResponse;
+    return result.body;
   });
 
   const cursorHistory$ = state<(string | null)[]>([null]);

@@ -361,4 +361,112 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
       elements: [{ type: "mrkdwn", text: expect.stringContaining("Audit") }],
     });
   });
+
+  it("does not send notification to wrong org's Slack when user has connections in multiple orgs", async () => {
+    // Setup: user has Slack connected in org A (their default org)
+    await setupSlackOrg(user);
+    mockClerk({ userId: user.userId });
+
+    const { composeId } = await createTestCompose(uniqueId("sched-agent"));
+    const schedule = await createTestSchedule(composeId, uniqueId("sched"));
+    const { runId } = await createTestRun(composeId, "Test prompt");
+    await linkRunToSchedule(runId, schedule.id);
+    await completeTestRun(user.userId, runId);
+
+    // Schedule callback comes from org B (a different org where user has NO Slack)
+    const otherOrgId = "org_other_no_slack";
+    const payload: OrgScheduleCallbackPayload = {
+      scheduleId: schedule.id,
+      agentId: composeId,
+      agentName: "sched-agent",
+      userId: user.userId,
+      orgId: otherOrgId, // different org — no Slack installation here
+    };
+
+    const { secret } = await createTestCallback({
+      runId,
+      url: "http://localhost/api/internal/callbacks/slack/org/schedule",
+      payload: { ...payload },
+    });
+
+    const request = createCallbackRequest(
+      { runId, status: "completed", payload },
+      secret,
+    );
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    // Should skip — no Slack connection for otherOrgId
+    expect(data.skipped).toBe(true);
+
+    // Verify postMessage was NOT called (should not leak to org A's Slack)
+    const mockClient = new WebClient();
+    const postMessageMock = mockClient.chat.postMessage as ReturnType<
+      typeof import("vitest").vi.fn
+    >;
+    expect(postMessageMock).not.toHaveBeenCalled();
+  });
+
+  it("sends notification to correct org when user has Slack in multiple orgs", async () => {
+    // Setup: user has Slack in org A (default) and org B
+    const { slackUserId: slackUserIdOrgA } = await setupSlackOrg(user);
+    mockClerk({ userId: user.userId });
+
+    const orgB = `org_mock_${uniqueId("org-b")}`;
+    const { slackWorkspaceId: wsB } = await createTestSlackOrgInstallation({
+      orgId: orgB,
+    });
+    const { slackUserId: slackUserIdOrgB } = await createTestSlackOrgConnection(
+      {
+        slackWorkspaceId: wsB,
+        vm0UserId: user.userId,
+      },
+    );
+
+    const { composeId } = await createTestCompose(uniqueId("sched-agent"));
+    const schedule = await createTestSchedule(composeId, uniqueId("sched"));
+    const { runId } = await createTestRun(composeId, "Test prompt");
+    await linkRunToSchedule(runId, schedule.id);
+    await completeTestRun(user.userId, runId);
+
+    // Schedule callback targets org B
+    const payload: OrgScheduleCallbackPayload = {
+      scheduleId: schedule.id,
+      agentId: composeId,
+      agentName: "sched-agent",
+      userId: user.userId,
+      orgId: orgB,
+    };
+
+    const { secret } = await createTestCallback({
+      runId,
+      url: "http://localhost/api/internal/callbacks/slack/org/schedule",
+      payload: { ...payload },
+    });
+
+    const request = createCallbackRequest(
+      { runId, status: "completed", payload },
+      secret,
+    );
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.success).toBe(true);
+
+    // Verify postMessage was called with org B's Slack user ID, not org A's
+    const mockClient = new WebClient();
+    const postMessageMock = mockClient.chat.postMessage as ReturnType<
+      typeof import("vitest").vi.fn
+    >;
+    expect(postMessageMock).toHaveBeenCalled();
+
+    const firstCall = postMessageMock.mock.calls[0]![0] as {
+      channel: string;
+    };
+    // Should use org B's slack user for DM, not org A's
+    expect(firstCall.channel).toBe(slackUserIdOrgB);
+    expect(firstCall.channel).not.toBe(slackUserIdOrgA);
+  });
 });

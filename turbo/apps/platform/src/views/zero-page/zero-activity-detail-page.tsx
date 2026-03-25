@@ -25,7 +25,7 @@ import {
   type TriggerSource,
   type AgentEvent,
 } from "../../signals/zero-page/log-types.ts";
-import { StatusBadge } from "./components/logs/status-badge.tsx";
+import { StatusBadge } from "./components/log-views/status-badge.tsx";
 import {
   zeroActivityDetail$,
   zeroActivityEvents$,
@@ -39,9 +39,9 @@ import {
   groupEventsIntoMessages,
   groupedMessageMatchesSearch,
   type GroupedMessage,
-} from "./components/logs/log-detail-utils.ts";
-import { GroupedMessageCard } from "./components/logs/grouped-message-card.tsx";
-import { StatusDot } from "./components/logs/status-dot.tsx";
+} from "./components/log-views/log-detail-utils.ts";
+import { GroupedMessageCard } from "./components/log-views/grouped-message-card.tsx";
+import { StatusDot } from "./components/log-views/status-dot.tsx";
 import { Markdown } from "../components/markdown.tsx";
 import { ZeroNoPermissionIllustration } from "./components/zero-no-permission-illustration.tsx";
 
@@ -257,7 +257,9 @@ export function ZeroActivityDetailPage() {
   // Detect stale detail from previous navigation (useLastLoadable keeps old data)
   const isStale = detail !== null && detail.id !== selectedLogId;
   const agentName =
-    detail && !isStale ? (detail.displayName ?? detail.agentName) : "Agent";
+    detail && !isStale
+      ? (detail.displayName ?? detail.agentId ?? "Agent")
+      : "Agent";
 
   const stepSearch = useGet(zeroActivityStepSearch$);
   const setStepSearch = useSet(setZeroActivityStepSearch$);

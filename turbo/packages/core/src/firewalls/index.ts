@@ -71,6 +71,7 @@ import { neonFirewall } from "./neon.generated";
 import { notionFirewall } from "./notion.generated";
 import { openaiFirewall } from "./openai.generated";
 import { outlookCalendarFirewall } from "./outlook-calendar.generated";
+import { outlookMailFirewall } from "./outlook-mail.generated";
 import { pdf4meFirewall } from "./pdf4me.generated";
 import { pdfcoFirewall } from "./pdfco.generated";
 import { pdforgeFirewall } from "./pdforge.generated";
@@ -132,8 +133,8 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   confluence: confluenceFirewall,
   cronlytic: cronlyticFirewall,
   "customer-io": customerIoFirewall,
-  deepseek: deepseekFirewall,
   deel: deelFirewall,
+  deepseek: deepseekFirewall,
   devto: devtoFirewall,
   discord: discordFirewall,
   dropbox: dropboxFirewall,
@@ -176,6 +177,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   notion: notionFirewall,
   openai: openaiFirewall,
   "outlook-calendar": outlookCalendarFirewall,
+  "outlook-mail": outlookMailFirewall,
   pdf4me: pdf4meFirewall,
   pdfco: pdfcoFirewall,
   pdforge: pdforgeFirewall,
@@ -183,8 +185,8 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   plausible: plausibleFirewall,
   podchaser: podchaserFirewall,
   posthog: posthogFirewall,
-  productlane: productlaneFirewall,
   "prisma-postgres": prismaPostgresFirewall,
+  productlane: productlaneFirewall,
   pushinator: pushinatorFirewall,
   qiita: qiitaFirewall,
   reddit: redditFirewall,

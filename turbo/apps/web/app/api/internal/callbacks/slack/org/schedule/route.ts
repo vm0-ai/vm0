@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { initServices } from "../../../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../../../src/lib/callback";
 import { decryptSecretValue } from "../../../../../../../src/lib/crypto/secrets-encryption";
@@ -143,7 +143,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return errorResponse("Invalid or missing payload", 400);
   }
 
-  const { agentName, userId } = payload;
+  const { agentName, userId, orgId } = payload;
   const targetChannelId = payload.slackChannelId;
 
   log.debug("Processing Slack org schedule callback", {
@@ -154,42 +154,46 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const { SECRETS_ENCRYPTION_KEY } = env();
 
-  // Find connection for this VM0 user
-  const [connection] = await globalThis.services.db
+  // Find connection for this VM0 user scoped to the schedule's org.
+  // JOIN installations to filter by orgId — prevents cross-org notifications
+  // when a user has Slack connections in multiple orgs.
+  const [row] = await globalThis.services.db
     .select({
-      id: slackOrgConnections.id,
+      connectionId: slackOrgConnections.id,
       slackUserId: slackOrgConnections.slackUserId,
-      slackWorkspaceId: slackOrgConnections.slackWorkspaceId,
+      encryptedBotToken: slackOrgInstallations.encryptedBotToken,
     })
     .from(slackOrgConnections)
-    .where(eq(slackOrgConnections.vm0UserId, userId))
+    .innerJoin(
+      slackOrgInstallations,
+      eq(
+        slackOrgConnections.slackWorkspaceId,
+        slackOrgInstallations.slackWorkspaceId,
+      ),
+    )
+    .where(
+      and(
+        eq(slackOrgConnections.vm0UserId, userId),
+        eq(slackOrgInstallations.orgId, orgId),
+      ),
+    )
     .limit(1);
 
-  if (!connection) {
-    log.debug("No Slack org connection found, skipping notification", {
+  if (!row) {
+    log.debug("No Slack org connection found for org, skipping notification", {
       userId,
+      orgId,
     });
     return NextResponse.json({ success: true, skipped: true });
   }
 
-  // Get installation and decrypt bot token
-  const [installation] = await globalThis.services.db
-    .select()
-    .from(slackOrgInstallations)
-    .where(
-      eq(slackOrgInstallations.slackWorkspaceId, connection.slackWorkspaceId),
-    )
-    .limit(1);
-
-  if (!installation) {
-    log.warn("No Slack org installation found for workspace", {
-      workspaceId: connection.slackWorkspaceId,
-    });
-    return errorResponse("Slack installation not found", 404);
-  }
+  const connection = {
+    id: row.connectionId,
+    slackUserId: row.slackUserId,
+  };
 
   const botToken = decryptSecretValue(
-    installation.encryptedBotToken,
+    row.encryptedBotToken,
     SECRETS_ENCRYPTION_KEY,
   );
   const client = createSlackClient(botToken);

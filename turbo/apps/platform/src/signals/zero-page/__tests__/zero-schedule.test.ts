@@ -525,7 +525,7 @@ describe("zero-schedule signals", () => {
           name: "nonexistent",
           enabled: true,
         }),
-      ).rejects.toThrow("Schedule not found");
+      ).rejects.toThrow("Failed to enable schedule (404)");
     });
   });
 
@@ -888,7 +888,9 @@ describe("org schedule signals", () => {
           "http://localhost:3000/api/zero/schedules",
           async ({ request }) => {
             captured.body = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json({ success: true });
+            return HttpResponse.json({
+              schedule: { id: "schedule-new" },
+            });
           },
         ),
         http.get("http://localhost:3000/api/zero/schedules", () => {

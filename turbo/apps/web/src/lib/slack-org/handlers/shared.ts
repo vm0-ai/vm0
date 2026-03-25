@@ -2,12 +2,10 @@ import { eq, and } from "drizzle-orm";
 import { slackOrgInstallations } from "../../../db/schema/slack-org-installation";
 import { slackOrgConnections } from "../../../db/schema/slack-org-connection";
 import { slackOrgThreadSessions } from "../../../db/schema/slack-org-thread-session";
-import { agentComposes } from "../../../db/schema/agent-compose";
 import { zeroAgents } from "../../../db/schema/zero-agent";
 import { orgMetadata as orgTable } from "../../../db/schema/org-metadata";
 import { getAppUrl } from "../../url";
 import { resolveDefaultAgentComposeId } from "../../agent-compose/resolve-default";
-import { resolveComposeIdFromAgentId } from "../../zero/resolve-default-agent";
 import { ensureStorageExists } from "../../storage/storage-service";
 import {
   createSlackClient,
@@ -70,8 +68,7 @@ export async function resolveConnectionFromSlackUser(
 
 /**
  * Resolve default agent compose ID from org table.
- * Reads the zero agent UUID from org_metadata.defaultAgentId, then resolves
- * back to the compose UUID via zero_agents → agent_composes JOIN.
+ * Since zero_agents.id = composeId, defaultAgentId IS the composeId.
  * Falls back to VM0_DEFAULT_AGENT env var.
  */
 export async function resolveDefaultComposeId(
@@ -83,10 +80,7 @@ export async function resolveDefaultComposeId(
     .where(eq(orgTable.orgId, orgId))
     .limit(1);
 
-  if (orgRow?.defaultAgentId) {
-    const composeId = await resolveComposeIdFromAgentId(orgRow.defaultAgentId);
-    if (composeId) return composeId;
-  }
+  if (orgRow?.defaultAgentId) return orgRow.defaultAgentId;
 
   return resolveDefaultAgentComposeId();
 }
@@ -297,7 +291,7 @@ export async function fetchConversationContexts(
 }
 
 /**
- * Resolve workspace agent from composeId.
+ * Resolve workspace agent from composeId (= zeroAgents.id).
  * Returns id, name, and displayName from the zero_agents table.
  */
 export async function getWorkspaceAgent(composeId: string): Promise<
@@ -310,39 +304,23 @@ export async function getWorkspaceAgent(composeId: string): Promise<
   | undefined
 > {
   const db = globalThis.services.db;
-  const [compose] = await db
-    .select({
-      id: agentComposes.id,
-      name: agentComposes.name,
-      orgId: agentComposes.orgId,
-    })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, composeId))
-    .limit(1);
-
-  if (!compose) return undefined;
-
   const [agent] = await db
     .select({
-      agentId: zeroAgents.id,
+      id: zeroAgents.id,
+      name: zeroAgents.name,
       displayName: zeroAgents.displayName,
     })
     .from(zeroAgents)
-    .where(
-      and(
-        eq(zeroAgents.orgId, compose.orgId),
-        eq(zeroAgents.name, compose.name),
-      ),
-    )
+    .where(eq(zeroAgents.id, composeId))
     .limit(1);
 
   if (!agent) return undefined;
 
   return {
-    id: compose.id,
-    name: compose.name,
+    id: agent.id,
+    name: agent.name,
     displayName: agent.displayName,
-    agentId: agent.agentId,
+    agentId: agent.id,
   };
 }
 

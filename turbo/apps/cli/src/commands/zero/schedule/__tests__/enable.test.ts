@@ -93,8 +93,8 @@ describe("zero schedule enable command", () => {
       await enableCommand.parseAsync(["node", "cli", "my-agent"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("Enabled");
-      expect(logCalls).toContain("my-agent");
+      expect(logCalls).toContain("Schedule");
+      expect(logCalls).toContain("enabled");
     });
   });
 

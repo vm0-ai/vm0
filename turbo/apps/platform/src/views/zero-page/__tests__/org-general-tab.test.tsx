@@ -21,19 +21,16 @@ function mockAPIs(overrides?: { slug?: string; name?: string; role?: string }) {
     ),
     http.get("*/api/zero/org/logo", () => HttpResponse.json({ logoUrl: null })),
     http.get("*/api/zero/team", () =>
-      HttpResponse.json({
-        composes: [
-          {
-            id: "mock-compose-id",
-            name: "zero",
-            displayName: null,
-            description: null,
-            headVersionId: "version_1",
-            updatedAt: "2024-01-01T00:00:00Z",
-            isOwner: true,
-          },
-        ],
-      }),
+      HttpResponse.json([
+        {
+          id: "mock-compose-id",
+          name: "zero",
+          displayName: null,
+          description: null,
+          headVersionId: "version_1",
+          updatedAt: "2024-01-01T00:00:00Z",
+        },
+      ]),
     ),
   );
   return org;

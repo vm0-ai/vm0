@@ -501,13 +501,7 @@ export async function getRunQueueStatus(
       agentComposes,
       eq(agentComposeVersions.composeId, agentComposes.id),
     )
-    .leftJoin(
-      zeroAgents,
-      and(
-        eq(agentComposes.orgId, zeroAgents.orgId),
-        eq(agentComposes.name, zeroAgents.name),
-      ),
-    )
+    .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
     .where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.status, "queued")))
     .orderBy(asc(agentRuns.createdAt));
 
@@ -529,13 +523,7 @@ export async function getRunQueueStatus(
       agentComposes,
       eq(agentComposeVersions.composeId, agentComposes.id),
     )
-    .leftJoin(
-      zeroAgents,
-      and(
-        eq(agentComposes.orgId, zeroAgents.orgId),
-        eq(agentComposes.name, zeroAgents.name),
-      ),
-    )
+    .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
     .where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.status, "running")))
     .orderBy(asc(agentRuns.startedAt));
 

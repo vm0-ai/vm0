@@ -14,6 +14,36 @@ export const falFirewall: FirewallConfig = {
   },
   apis: [
     {
+      base: "https://fal.run",
+      auth: {
+        headers: {
+          Authorization: "Key ${{ secrets.FAL_TOKEN }}",
+        },
+      },
+      permissions: [
+        {
+          name: "unrestricted",
+          description: "Allow all endpoints",
+          rules: ["ANY /{path*}"],
+        },
+      ],
+    },
+    {
+      base: "https://queue.fal.run",
+      auth: {
+        headers: {
+          Authorization: "Key ${{ secrets.FAL_TOKEN }}",
+        },
+      },
+      permissions: [
+        {
+          name: "unrestricted",
+          description: "Allow all endpoints",
+          rules: ["ANY /{path*}"],
+        },
+      ],
+    },
+    {
       base: "https://api.fal.ai",
       auth: {
         headers: {

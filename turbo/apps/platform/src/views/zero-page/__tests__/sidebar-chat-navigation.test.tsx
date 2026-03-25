@@ -10,18 +10,15 @@ const context = testContext();
 function mockAPIs() {
   server.use(
     http.get("*/api/zero/team", () => {
-      return HttpResponse.json({
-        composes: [
-          {
-            id: "mock-compose-id",
-            displayName: null,
-            description: null,
-            headVersionId: "version_1",
-            updatedAt: "2024-01-01T00:00:00Z",
-            isOwner: true,
-          },
-        ],
-      });
+      return HttpResponse.json([
+        {
+          id: "mock-compose-id",
+          displayName: null,
+          description: null,
+          headVersionId: "version_1",
+          updatedAt: "2024-01-01T00:00:00Z",
+        },
+      ]);
     }),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({

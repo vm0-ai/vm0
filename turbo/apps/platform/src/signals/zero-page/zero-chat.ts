@@ -13,7 +13,19 @@ import {
   setZeroChatAgent$,
   zeroSessionId$,
 } from "./zero-nav.ts";
-import { RUN_ERROR_GUIDANCE, type ChatThreadListItem } from "@vm0/core";
+import {
+  RUN_ERROR_GUIDANCE,
+  zeroRunsCancelContract,
+  zeroRunsMainContract,
+  zeroRunsByIdContract,
+  zeroQueuePositionContract,
+  chatThreadsContract,
+  chatThreadByIdContract,
+  chatThreadRunsContract,
+  zeroSessionsByIdContract,
+  type ChatThreadListItem,
+} from "@vm0/core";
+import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 
 const L = logger("ZeroChat");
 
@@ -66,27 +78,25 @@ async function extractResultFromEvents(
 
 /** Fetch queue position for a run. Returns 0 if not queued. */
 async function fetchQueuePosition(
-  fetchFn: typeof fetch,
+  createClient: ZeroClientFactory,
   runId: string,
 ): Promise<number> {
-  const resp = await fetchFn(
-    `/api/zero/queue-position?runId=${encodeURIComponent(runId)}`,
-  );
-  if (!resp.ok) {
+  const client = createClient(zeroQueuePositionContract);
+  const result = await client.getPosition({ query: { runId } });
+  if (result.status !== 200) {
     return 0;
   }
-  const data = (await resp.json()) as { position: number };
-  return data.position;
+  return result.body.position;
 }
 
 function updateQueuePosition(
   status: string,
-  fetchFn: typeof fetch,
+  createClient: ZeroClientFactory,
   runId: string,
   setPosition: (pos: number) => void,
 ) {
   if (status === "queued") {
-    fetchQueuePosition(fetchFn, runId)
+    fetchQueuePosition(createClient, runId)
       .then((pos) => setPosition(pos))
       .catch(() => {});
   } else {
@@ -96,77 +106,62 @@ function updateQueuePosition(
 
 /** Start an agent run and return the runId. Throws on failure with the API error message. */
 async function startAgentRun(
-  fetchFn: typeof fetch,
+  createClient: ZeroClientFactory,
   composeId: string,
   prompt: string,
   sessionId?: string | null,
   modelProvider?: string | null,
 ): Promise<string> {
-  const body: Record<string, string> = {
-    agentId: composeId,
-    prompt: prompt.trim(),
-  };
-  if (sessionId) {
-    body.sessionId = sessionId;
-  }
-  if (modelProvider) {
-    body.modelProvider = modelProvider;
-  }
-
-  const response = await fetchFn("/api/zero/runs", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+  const client = createClient(zeroRunsMainContract);
+  const result = await client.create({
+    body: {
+      prompt: prompt.trim(),
+      agentId: composeId,
+      ...(sessionId ? { sessionId } : {}),
+      ...(modelProvider ? { modelProvider } : {}),
+    },
   });
-
-  if (!response.ok) {
-    const errBody = (await response.json().catch(() => null)) as {
-      error?: { message?: string; code?: string };
-    } | null;
-    const code = errBody?.error?.code;
+  if (result.status === 201) {
+    return result.body.runId;
+  }
+  if (result.status === 400 || result.status === 403 || result.status === 404) {
+    const code = result.body.error.code;
     const guidance = code ? RUN_ERROR_GUIDANCE[code] : undefined;
     const message = guidance
       ? `${guidance.title}: ${guidance.guidance}`
-      : (errBody?.error?.message ?? "Failed to start agent run");
+      : result.body.error.message;
     throw new Error(message);
   }
-
-  const data = (await response.json()) as { runId: string };
-  return data.runId;
+  throw new Error(`Failed to start agent run (${result.status})`);
 }
 
 async function createChatThread(
-  fetchFn: typeof fetch,
+  createClient: ZeroClientFactory,
   agentId: string,
   title?: string,
 ): Promise<{ id: string; title: string | null }> {
-  const response = await fetchFn("/api/zero/chat-threads", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ agentId, title }),
+  const client = createClient(chatThreadsContract);
+  const result = await client.create({
+    body: { agentId, ...(title ? { title } : {}) },
   });
-  if (!response.ok) {
+  if (result.status !== 201) {
     throw new Error("Failed to create chat thread");
   }
-  const data = (await response.json()) as {
-    id: string;
-    title: string | null;
-  };
-  return { id: data.id, title: data.title };
+  return { id: result.body.id, title: result.body.title };
 }
 
 async function addRunToThread(
-  fetchFn: typeof fetch,
+  createClient: ZeroClientFactory,
   threadId: string,
   runId: string,
 ): Promise<void> {
-  const response = await fetchFn(`/api/zero/chat-threads/${threadId}/runs`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ runId }),
+  const client = createClient(chatThreadRunsContract);
+  const result = await client.addRun({
+    params: { id: threadId },
+    body: { runId },
   });
-  if (!response.ok) {
-    throw new Error(`Failed to associate run with thread: ${response.status}`);
+  if (result.status !== 204) {
+    throw new Error(`Failed to associate run with thread (${result.status})`);
   }
 }
 
@@ -246,8 +241,8 @@ export const cancelActiveRun$ = command(async ({ get, set }) => {
   // the `cancelled` status on the next poll (~3s).
   set(resetSending$);
 
-  const fetchFn = get(fetch$);
-  await fetchFn(`/api/zero/runs/${runId}/cancel`, { method: "POST" });
+  const client = get(zeroClient$)(zeroRunsCancelContract);
+  await client.cancel({ params: { id: runId } });
 });
 
 /** Queue position for the active run (0 = not queued). */
@@ -510,49 +505,52 @@ export const chatSessionSnapshot$ = computed(
       return null;
     }
 
-    const fetchFn = get(fetch$);
-
-    let res: Response;
+    let agentComposeId: string | undefined;
+    let chatMessages: {
+      role: "user" | "assistant";
+      content: string;
+      runId?: string;
+      error?: string;
+      summaries?: string[];
+      createdAt: string;
+    }[] = [];
+    let latestSessionId: string | null = null;
+    let unsavedRuns: {
+      runId: string;
+      status: string;
+      prompt: string;
+      error: string | null;
+    }[] = [];
     let isLegacySession = false;
-    try {
-      res = await fetchFn(`/api/zero/chat-threads/${threadId}`);
-      if (!res.ok) {
-        res = await fetchFn(`/api/zero/sessions/${threadId}`);
-        isLegacySession = true;
+
+    const threadClient = get(zeroClient$)(chatThreadByIdContract);
+    const threadResult = await threadClient.get({
+      params: { id: threadId },
+    });
+    if (threadResult.status === 200) {
+      const body = threadResult.body;
+      agentComposeId = body.agentId;
+      chatMessages = body.chatMessages ?? [];
+      latestSessionId = body.latestSessionId ?? null;
+      unsavedRuns = body.unsavedRuns ?? [];
+    } else {
+      const sessionClient = get(zeroClient$)(zeroSessionsByIdContract);
+      const sessionResult = await sessionClient.getById({
+        params: { id: threadId },
+      });
+      if (sessionResult.status !== 200) {
+        L.warn("Failed to load chat");
+        return null;
       }
-    } catch (error) {
-      throwIfAbort(error);
-      throw error;
-    }
-    if (!res.ok) {
-      L.warn("Failed to load chat:", res.statusText);
-      return null;
+      const body = sessionResult.body;
+      agentComposeId = body.agentId;
+      chatMessages = body.chatMessages ?? [];
+      isLegacySession = true;
     }
 
-    const data = (await res.json()) as {
-      agentComposeId?: string;
-      chatMessages?: {
-        role: "user" | "assistant";
-        content: string;
-        runId?: string;
-        error?: string;
-        summaries?: string[];
-        createdAt: string;
-      }[];
-      latestSessionId?: string | null;
-      unsavedRuns?: {
-        runId: string;
-        status: string;
-        prompt: string;
-        error: string | null;
-      }[];
-    };
+    const resolvedSessionId = isLegacySession ? threadId : latestSessionId;
 
-    const latestSessionId = isLegacySession
-      ? threadId
-      : (data.latestSessionId ?? null);
-
-    const messages: ZeroChatMessage[] = (data.chatMessages ?? []).map((m) => {
+    const messages: ZeroChatMessage[] = chatMessages.map((m) => {
       const summaries =
         m.summaries && m.summaries.length > 0
           ? m.summaries.map((s) =>
@@ -571,7 +569,7 @@ export const chatSessionSnapshot$ = computed(
 
     let activeRunId: string | null = null;
     const activeRunMessages: ZeroChatMessage[] = [];
-    for (const run of data.unsavedRuns ?? []) {
+    for (const run of unsavedRuns) {
       const userMsg: ZeroChatMessage = {
         id: crypto.randomUUID(),
         role: "user",
@@ -611,8 +609,8 @@ export const chatSessionSnapshot$ = computed(
     return {
       messages,
       activeRunMessages,
-      latestSessionId,
-      agentComposeId: data.agentComposeId,
+      latestSessionId: resolvedSessionId,
+      agentComposeId,
       activeRunId,
     };
   },
@@ -773,16 +771,13 @@ export const fetchZeroSessionList$ = command(async ({ get, set }) => {
     return;
   }
   try {
-    const fetchFn = get(fetch$);
-    const res = await fetchFn(
-      `/api/zero/chat-threads?agentId=${encodeURIComponent(composeId)}`,
-    );
-    if (!res.ok) {
-      set(internalSessionListError$, `Failed to load chats: ${res.statusText}`);
+    const client = get(zeroClient$)(chatThreadsContract);
+    const result = await client.list({ query: { agentId: composeId } });
+    if (result.status !== 200) {
+      set(internalSessionListError$, `Failed to load chats (${result.status})`);
       return;
     }
-    const data = (await res.json()) as { threads: ChatThreadListItem[] };
-    set(internalSessionList$, data.threads);
+    set(internalSessionList$, result.body.threads);
   } catch (error) {
     throwIfAbort(error);
     const msg = error instanceof Error ? error.message : "Failed to load chats";
@@ -842,7 +837,7 @@ const startLoop$ = command(
     config: { runId: string; signal: AbortSignal },
   ): Promise<void> => {
     const { runId, signal } = config;
-    const fetchFn = get(fetch$);
+    const createClient = get(zeroClient$);
 
     set(internalActiveRunId$, runId);
 
@@ -859,7 +854,7 @@ const startLoop$ = command(
           },
           setStatus: (s) => {
             set(internalRunStatus$, s);
-            updateQueuePosition(s, fetchFn, runId, (pos) =>
+            updateQueuePosition(s, createClient, runId, (pos) =>
               set(internalQueuePosition$, pos),
             );
             // Cycle thinking message on each status update
@@ -987,8 +982,8 @@ export const createNewChatSession$ = command(
         return;
       }
 
-      const fetchFn = get(fetch$);
-      const thread = await createChatThread(fetchFn, resolvedComposeId);
+      const createClient = get(zeroClient$);
+      const thread = await createChatThread(createClient, resolvedComposeId);
 
       const now = new Date().toISOString();
       set(internalSessionList$, (prev) => [
@@ -1073,11 +1068,11 @@ const ensureChatThread$ = command(
       return threadId;
     }
 
-    const fetchFn = get(fetch$);
+    const createClient = get(zeroClient$);
     const title = args.prompt.trim().slice(0, 100);
     let thread: { id: string; title: string | null };
     try {
-      thread = await createChatThread(fetchFn, args.composeId, title);
+      thread = await createChatThread(createClient, args.composeId, title);
     } catch (error) {
       throwIfAbort(error);
       set(internalLocalMessages$, (prev) => {
@@ -1139,7 +1134,7 @@ export const sendZeroChatMessage$ = command(
         const { fullPrompt } = set(prepareMessages$, currentPrompt);
 
         try {
-          const fetchFn = get(fetch$);
+          const createClient = get(zeroClient$);
           const sessionId = get(internalSessionId$);
 
           const threadId = await set(ensureChatThread$, {
@@ -1158,7 +1153,7 @@ export const sendZeroChatMessage$ = command(
               ? currentOptions.modelProvider
               : undefined;
           const runId = await startAgentRun(
-            fetchFn,
+            createClient,
             composeId,
             fullPrompt,
             sessionId,
@@ -1168,7 +1163,7 @@ export const sendZeroChatMessage$ = command(
           signal.throwIfAborted();
 
           // Associate run to thread (must complete before polling so refresh works)
-          await addRunToThread(fetchFn, threadId, runId);
+          await addRunToThread(createClient, threadId, runId);
 
           // Refresh sidebar after run is associated (has preview now)
           set(fetchZeroSessionList$).catch((error: unknown) => {
@@ -1299,15 +1294,12 @@ const onZeroRunComplete$ = command(async ({ get, set }, runId: string) => {
   const pages = get(internalRunEvents$);
 
   try {
-    const fetchFn = get(fetch$);
-    const res = await fetchFn(`/api/zero/runs/${runId}`);
-    if (res.ok) {
-      const data = (await res.json()) as {
-        result?: { output?: string; agentSessionId?: string };
-      };
+    const client = get(zeroClient$)(zeroRunsByIdContract);
+    const result = await client.getById({ params: { id: runId } });
+    if (result.status === 200) {
       // Store sessionId for conversation continuity (used by next message)
-      if (data.result?.agentSessionId) {
-        set(internalSessionId$, data.result.agentSessionId);
+      if (result.body.result?.agentSessionId) {
+        set(internalSessionId$, result.body.result.agentSessionId);
       }
     }
 
