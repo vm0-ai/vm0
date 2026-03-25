@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { Command } from "commander";
-import { applyCapabilityVisibility } from "../zero";
+import { Command, Help } from "commander";
+import { registerZeroCommands } from "../zero";
 import { decodeZeroTokenPayload } from "../lib/api/zero-token";
 
 function buildZeroToken(payload: Record<string, unknown>): string {
@@ -11,30 +11,38 @@ function buildZeroToken(payload: Record<string, unknown>): string {
   return `vm0_sandbox_${header}.${body}.test-signature`;
 }
 
+function buildCommands(): Command[] {
+  return [
+    new Command("org"),
+    new Command("agent"),
+    new Command("connector"),
+    new Command("preference"),
+    new Command("schedule"),
+    new Command("secret"),
+    new Command("slack"),
+    new Command("variable"),
+    new Command("whoami"),
+  ];
+}
+
 function buildProgram(): Command {
   const prog = new Command();
-  prog.addCommand(new Command("org"));
-  prog.addCommand(new Command("agent"));
-  prog.addCommand(new Command("connector"));
-  prog.addCommand(new Command("preference"));
-  prog.addCommand(new Command("schedule"));
-  prog.addCommand(new Command("secret"));
-  prog.addCommand(new Command("slack"));
-  prog.addCommand(new Command("variable"));
-  prog.addCommand(new Command("whoami"));
+  registerZeroCommands(prog, buildCommands());
   return prog;
 }
 
 function visibleCommandNames(prog: Command): string[] {
-  return prog.commands
-    .filter((cmd) => !(cmd as unknown as { _hidden: boolean })._hidden)
-    .map((cmd) => cmd.name());
+  return new Help()
+    .visibleCommands(prog)
+    .map((cmd) => cmd.name())
+    .filter((name) => name !== "help");
 }
 
 function hiddenCommandNames(prog: Command): string[] {
+  const visible = new Set(visibleCommandNames(prog));
   return prog.commands
-    .filter((cmd) => (cmd as unknown as { _hidden: boolean })._hidden)
-    .map((cmd) => cmd.name());
+    .map((cmd) => cmd.name())
+    .filter((name) => !visible.has(name));
 }
 
 describe("decodeZeroTokenPayload", () => {
@@ -91,14 +99,13 @@ describe("decodeZeroTokenPayload", () => {
   });
 });
 
-describe("applyCapabilityVisibility", () => {
+describe("registerZeroCommands", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
   });
 
   it("should not hide any commands when ZERO_TOKEN is absent", () => {
     const prog = buildProgram();
-    applyCapabilityVisibility(prog);
     expect(hiddenCommandNames(prog)).toEqual([]);
   });
 
@@ -110,7 +117,6 @@ describe("applyCapabilityVisibility", () => {
     vi.stubEnv("ZERO_TOKEN", token);
 
     const prog = buildProgram();
-    applyCapabilityVisibility(prog);
 
     expect(visibleCommandNames(prog)).toEqual(["agent", "schedule", "whoami"]);
     expect(hiddenCommandNames(prog)).toEqual([
@@ -127,7 +133,6 @@ describe("applyCapabilityVisibility", () => {
     vi.stubEnv("ZERO_TOKEN", "not-a-valid-token");
 
     const prog = buildProgram();
-    applyCapabilityVisibility(prog);
 
     expect(hiddenCommandNames(prog)).toEqual([]);
   });
@@ -140,7 +145,6 @@ describe("applyCapabilityVisibility", () => {
     vi.stubEnv("ZERO_TOKEN", token);
 
     const prog = buildProgram();
-    applyCapabilityVisibility(prog);
 
     expect(hiddenCommandNames(prog)).toEqual([]);
   });
@@ -153,7 +157,6 @@ describe("applyCapabilityVisibility", () => {
     vi.stubEnv("ZERO_TOKEN", token);
 
     const prog = buildProgram();
-    applyCapabilityVisibility(prog);
 
     expect(visibleCommandNames(prog)).toEqual(["whoami"]);
   });
@@ -166,7 +169,6 @@ describe("applyCapabilityVisibility", () => {
     vi.stubEnv("ZERO_TOKEN", token);
 
     const prog = buildProgram();
-    applyCapabilityVisibility(prog);
 
     expect(visibleCommandNames(prog)).toContain("slack");
     expect(visibleCommandNames(prog)).toContain("whoami");
@@ -180,7 +182,6 @@ describe("applyCapabilityVisibility", () => {
     vi.stubEnv("ZERO_TOKEN", token);
 
     const prog = buildProgram();
-    applyCapabilityVisibility(prog);
 
     expect(visibleCommandNames(prog)).toEqual(["schedule", "whoami"]);
     expect(hiddenCommandNames(prog)).toContain("agent");

@@ -12,7 +12,10 @@ import { zeroSecretCommand } from "./commands/zero/secret";
 import { zeroSlackCommand } from "./commands/zero/slack";
 import { zeroVariableCommand } from "./commands/zero/variable";
 import { zeroWhoamiCommand } from "./commands/zero/whoami";
-import { decodeZeroTokenPayload } from "./lib/api/zero-token.js";
+import {
+  decodeZeroTokenPayload,
+  type ZeroTokenPayload,
+} from "./lib/api/zero-token.js";
 
 /**
  * Map of command names to the capability required to see them.
@@ -26,28 +29,46 @@ const COMMAND_CAPABILITY_MAP: Record<string, string | null> = {
   whoami: null,
 };
 
+const DEFAULT_COMMANDS: Command[] = [
+  zeroOrgCommand,
+  zeroAgentCommand,
+  zeroConnectorCommand,
+  zeroPreferenceCommand,
+  zeroScheduleCommand,
+  zeroSecretCommand,
+  zeroSlackCommand,
+  zeroVariableCommand,
+  zeroWhoamiCommand,
+];
+
+function shouldHideCommand(
+  name: string,
+  payload: ZeroTokenPayload | undefined,
+): boolean {
+  if (!payload) return false;
+  const requiredCap = COMMAND_CAPABILITY_MAP[name];
+  if (requiredCap === undefined) return true;
+  return requiredCap !== null && !payload.capabilities.includes(requiredCap);
+}
+
 /**
- * Hide commands that the current ZERO_TOKEN does not grant access to.
- * When no ZERO_TOKEN is present (human user with VM0_TOKEN or config),
- * all commands remain visible.
+ * Register commands with visibility based on ZERO_TOKEN capabilities.
+ * Commands not granted by the token are registered as hidden via
+ * Commander's public `addCommand(cmd, { hidden: true })` API.
+ * When no ZERO_TOKEN is present, all commands remain visible.
+ *
+ * @param commands - override default commands (used in tests)
  */
-export function applyCapabilityVisibility(prog: Command): void {
+export function registerZeroCommands(
+  prog: Command,
+  commands?: Command[],
+): void {
   const token = process.env.ZERO_TOKEN;
-  if (!token) return;
+  const payload = token ? decodeZeroTokenPayload(token) : undefined;
 
-  const payload = decodeZeroTokenPayload(token);
-  if (!payload) return;
-
-  for (const cmd of prog.commands) {
-    const requiredCap = COMMAND_CAPABILITY_MAP[cmd.name()];
-    if (requiredCap === undefined) {
-      (cmd as unknown as { _hidden: boolean })._hidden = true;
-    } else if (
-      requiredCap !== null &&
-      !payload.capabilities.includes(requiredCap)
-    ) {
-      (cmd as unknown as { _hidden: boolean })._hidden = true;
-    }
+  for (const cmd of commands ?? DEFAULT_COMMANDS) {
+    const hidden = shouldHideCommand(cmd.name(), payload);
+    prog.addCommand(cmd, hidden ? { hidden: true } : {});
   }
 }
 
@@ -60,17 +81,6 @@ program
   .description("Zero CLI - Manage your zero platform")
   .version(__CLI_VERSION__);
 
-// Register all zero commands as top-level
-program.addCommand(zeroOrgCommand);
-program.addCommand(zeroAgentCommand);
-program.addCommand(zeroConnectorCommand);
-program.addCommand(zeroPreferenceCommand);
-program.addCommand(zeroScheduleCommand);
-program.addCommand(zeroSecretCommand);
-program.addCommand(zeroSlackCommand);
-program.addCommand(zeroVariableCommand);
-program.addCommand(zeroWhoamiCommand);
-
 export { program };
 
 if (
@@ -79,6 +89,6 @@ if (
   process.argv[1]?.endsWith("zero")
 ) {
   configureGlobalProxyFromEnv();
-  applyCapabilityVisibility(program);
+  registerZeroCommands(program);
   program.parse();
 }

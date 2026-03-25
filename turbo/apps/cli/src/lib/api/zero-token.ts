@@ -1,4 +1,4 @@
-interface ZeroTokenPayload {
+export interface ZeroTokenPayload {
   userId: string;
   runId: string;
   orgId: string;
