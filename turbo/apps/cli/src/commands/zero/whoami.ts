@@ -21,15 +21,9 @@ async function showSandboxInfo(): Promise<void> {
   const agentId = process.env.ZERO_AGENT_ID;
   const payload = decodeZeroTokenPayload();
 
-  // Agent section
-  console.log(chalk.bold("Agent:"));
-  console.log(`  ID:           ${agentId}`);
-  console.log();
-
-  // Run section
-  console.log(chalk.bold("Run:"));
-  console.log(`  ID:           ${payload?.runId ?? chalk.dim("unavailable")}`);
-  console.log(`  Org:          ${payload?.orgId ?? chalk.dim("unavailable")}`);
+  console.log(`Agent ID:   ${agentId}`);
+  console.log(`Run ID:     ${payload?.runId ?? chalk.dim("unavailable")}`);
+  console.log(`Org ID:     ${payload?.orgId ?? chalk.dim("unavailable")}`);
 
   // Capabilities section
   if (payload?.capabilities?.length) {
