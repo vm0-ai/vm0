@@ -52,6 +52,9 @@ pub struct CowDevice {
     cow_loop: PathBuf,
     /// Path to the COW sparse file on disk.
     cow_file: PathBuf,
+    /// Open fd on the dm device — keeps open count > 0 so that
+    /// `dmsetup remove` from GC returns EBUSY for active devices.
+    _device_holder: Option<fs::File>,
     /// Whether the device is currently active.
     active: bool,
 }
@@ -232,6 +235,17 @@ impl CowDevice {
             return Err(e);
         }
 
+        // Hold the dm device open so its open count stays > 0.
+        // This prevents concurrent GC from removing the target via
+        // `dmsetup remove` (which returns EBUSY when openers exist).
+        let device_holder = match fs::File::open(&device_path) {
+            Ok(f) => Some(f),
+            Err(e) => {
+                warn!(id, error = %e, "failed to open dm device for holder — GC protection disabled");
+                None
+            }
+        };
+
         info!(
             device = %device_path.display(),
             id,
@@ -245,6 +259,7 @@ impl CowDevice {
             device_path,
             cow_loop,
             cow_file,
+            _device_holder: device_holder,
             active: true,
         })
     }
@@ -266,13 +281,11 @@ impl CowDevice {
         // Once the snapshot is removed, everything else is independent
         // and proceeds best-effort.
 
-        // Step 1: remove the snapshot target. This is the only step that
-        // can legitimately fail due to "device busy" (Firecracker still
-        // has the device open). If it fails, bail — nothing else can be
-        // cleaned up yet.
-        //
-        // No warn here — callers (factory destroy, snapshot teardown) retry
-        // this step and log only when retries are exhausted.
+        // Step 1: remove the snapshot target. Drop our holder fd first
+        // so we don't contribute to the open count.  Firecracker may still
+        // have the device open — if so, dmsetup remove fails with EBUSY
+        // and we bail to let the caller retry.
+        self._device_holder = None;
         dmsetup::remove(&cow_name)?;
 
         // Snapshot is gone — past the point of no return. Mark inactive
