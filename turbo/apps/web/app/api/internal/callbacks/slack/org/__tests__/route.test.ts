@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { NextRequest } from "next/server";
 import {
   testContext,
   uniqueId,
