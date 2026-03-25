@@ -49,12 +49,13 @@ export async function POST(
 
   initServices();
 
-  // Look up installation for webhook secret
+  // Look up installation for webhook secret and enabled status
   const [installation] = await globalThis.services.db
     .select({
       id: telegramInstallations.id,
       webhookSecret: telegramInstallations.webhookSecret,
       botUsername: telegramInstallations.botUsername,
+      enabled: telegramInstallations.enabled,
     })
     .from(telegramInstallations)
     .where(eq(telegramInstallations.id, installationId))
@@ -62,6 +63,11 @@ export async function POST(
 
   if (!installation) {
     return new Response("Not Found", { status: 404 });
+  }
+
+  // Silently drop messages when bot is disabled (return 200 to avoid Telegram retries)
+  if (!installation.enabled) {
+    return new Response("OK", { status: 200 });
   }
 
   // Verify webhook secret

@@ -12,6 +12,10 @@ import {
   initSlackOrg$,
   pollSlackConnection$,
 } from "../zero-page/zero-slack.ts";
+import {
+  initTelegramOrg$,
+  pollTelegramConnection$,
+} from "../zero-page/zero-telegram.ts";
 
 export const setupWorksPage$ = command(async ({ set }, signal: AbortSignal) => {
   set(updatePage$, createElement(ZeroWorksPageWrapper));
@@ -20,9 +24,11 @@ export const setupWorksPage$ = command(async ({ set }, signal: AbortSignal) => {
     set(fetchAgentsList$),
     set(initZeroOnboarding$, signal),
     set(initSlackOrg$),
+    set(initTelegramOrg$),
   ]);
   signal.throwIfAborted();
   detach(set(pollSlackConnection$, signal), Reason.Entrance);
+  detach(set(pollTelegramConnection$, signal), Reason.Entrance);
 
   if (await set(onboardGuard$, signal)) {
     return;

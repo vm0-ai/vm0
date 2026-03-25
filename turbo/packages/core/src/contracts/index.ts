@@ -621,6 +621,12 @@ export {
   type SlackOrgStatus,
 } from "./zero-integrations-slack";
 export {
+  zeroIntegrationsTelegramContract,
+  telegramOrgStatusSchema,
+  type ZeroIntegrationsTelegramContract,
+  type TelegramOrgStatus,
+} from "./zero-integrations-telegram";
+export {
   zeroSlackConnectContract,
   type ZeroSlackConnectContract,
 } from "./zero-slack-connect";

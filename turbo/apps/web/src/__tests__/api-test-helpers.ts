@@ -2647,6 +2647,104 @@ export async function createTestTelegramInstallation(options?: {
 }
 
 /**
+ * Create an org-scoped Telegram installation.
+ * Uses an existing org (from createTestOrg) and sets up the installation with `orgId`.
+ * Optionally auto-creates a user link.
+ * Returns the installation ID and telegramBotId for assertions.
+ */
+export async function createTestOrgTelegramInstallation(options: {
+  orgId: string;
+  adminUserId: string;
+  vm0UserId?: string;
+  telegramBotId?: string;
+  enabled?: boolean;
+}): Promise<{ installationId: string; telegramBotId: string }> {
+  initServices();
+  const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
+
+  const suffix = uniqueId("tg");
+  const telegramBotId = options.telegramBotId ?? suffix;
+
+  // Create agent compose linked to this org
+  const [compose] = await globalThis.services.db
+    .insert(agentComposes)
+    .values({
+      userId: options.adminUserId,
+      orgId: options.orgId,
+      name: uniqueId("compose"),
+    })
+    .returning();
+
+  const [installation] = await globalThis.services.db
+    .insert(telegramInstallations)
+    .values({
+      telegramBotId,
+      botUsername: `bot_${telegramBotId}`,
+      encryptedBotToken: encryptSecretValue(
+        "test-bot-token",
+        SECRETS_ENCRYPTION_KEY,
+      ),
+      webhookSecret: uniqueId("secret"),
+      defaultComposeId: compose!.id,
+      adminUserId: options.adminUserId,
+      orgId: options.orgId,
+      enabled: options.enabled ?? true,
+    })
+    .returning();
+
+  // Auto-create user link if vm0UserId is provided
+  if (options.vm0UserId) {
+    await globalThis.services.db
+      .insert(telegramUserLinks)
+      .values({
+        telegramUserId: suffix,
+        installationId: installation!.id,
+        vm0UserId: options.vm0UserId,
+      })
+      .onConflictDoNothing();
+  }
+
+  return {
+    installationId: installation!.id,
+    telegramBotId,
+  };
+}
+
+/**
+ * Find a Telegram installation by org ID.
+ */
+export async function findTestOrgTelegramInstallation(
+  orgId: string,
+): Promise<typeof telegramInstallations.$inferSelect | undefined> {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(telegramInstallations)
+    .where(eq(telegramInstallations.orgId, orgId))
+    .limit(1);
+  return row;
+}
+
+/**
+ * Find a Telegram user link by user ID and installation ID.
+ */
+export async function findTestTelegramUserLink(
+  vm0UserId: string,
+  installationId: string,
+): Promise<typeof telegramUserLinks.$inferSelect | undefined> {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(telegramUserLinks)
+    .where(
+      and(
+        eq(telegramUserLinks.vm0UserId, vm0UserId),
+        eq(telegramUserLinks.installationId, installationId),
+      ),
+    )
+    .limit(1);
+  return row;
+}
+
+/**
  * Insert test telegram messages with a specific creation date.
  * Used by cleanup cron tests.
  */
