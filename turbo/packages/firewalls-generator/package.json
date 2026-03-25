@@ -49,6 +49,7 @@
     "generate:intercom": "tsx src/index.ts intercom",
     "generate:jira": "tsx src/index.ts jira",
     "generate:jotform": "tsx src/index.ts jotform",
+    "generate:lark": "tsx src/index.ts lark",
     "generate:linear": "tsx src/index.ts linear",
     "generate:loops": "tsx src/index.ts loops",
     "generate:minimax": "tsx src/index.ts minimax",

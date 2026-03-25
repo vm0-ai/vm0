@@ -133,6 +133,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   intercom: ["intercom"],
   atlassian: ["jira", "confluence"],
   jotform: ["jotform"],
+  lark: ["lark"],
   linear: ["linear"],
   loops: ["loops"],
   minimax: ["minimax"],

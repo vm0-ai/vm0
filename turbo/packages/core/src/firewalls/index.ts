@@ -50,6 +50,7 @@ import { imgurFirewall } from "./imgur.generated";
 import { intercomFirewall } from "./intercom.generated";
 import { jiraFirewall } from "./jira.generated";
 import { jotformFirewall } from "./jotform.generated";
+import { larkFirewall } from "./lark.generated";
 import { linearFirewall } from "./linear.generated";
 import { loopsFirewall } from "./loops.generated";
 import { minimaxFirewall } from "./minimax.generated";
@@ -125,6 +126,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   intercom: intercomFirewall,
   jira: jiraFirewall,
   jotform: jotformFirewall,
+  lark: larkFirewall,
   linear: linearFirewall,
   loops: loopsFirewall,
   minimax: minimaxFirewall,
