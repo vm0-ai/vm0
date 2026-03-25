@@ -230,9 +230,6 @@ function ProfileSection({
               <input
                 ref={(el) => {
                   setFileInputEl(el);
-                  if (el) {
-                    handleLogoLoad();
-                  }
                 }}
                 type="file"
                 accept="image/png,image/jpeg,image/gif,image/webp"
@@ -248,6 +245,11 @@ function ProfileSection({
             )}
             <button
               type="button"
+              ref={(el) => {
+                if (el) {
+                  handleLogoLoad();
+                }
+              }}
               className="group relative h-9 w-9 shrink-0 rounded-lg overflow-hidden"
               disabled={!isAdmin}
               onClick={() => {
