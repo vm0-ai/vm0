@@ -1,7 +1,8 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { leaveZeroOrg, listZeroOrgs } from "../../../lib/api";
-import { saveConfig } from "../../../lib/api/config";
+import { leaveZeroOrg, listZeroOrgs, switchZeroOrg } from "../../../lib/api";
+import { saveConfig, getToken } from "../../../lib/api/config";
+import { decodeCliTokenPayload } from "../../../lib/api/cli-token";
 import { withErrorHandler } from "../../../lib/command";
 
 export const leaveCommand = new Command()
@@ -13,7 +14,7 @@ export const leaveCommand = new Command()
 
       const { orgs } = await listZeroOrgs();
       if (orgs.length === 0) {
-        await saveConfig({ activeOrg: undefined });
+        await saveConfig({ activeOrg: undefined, token: undefined });
         console.log(chalk.green("✓ Left organization."));
         console.log(
           chalk.yellow("No remaining organizations. Run: vm0 auth login"),
@@ -22,7 +23,17 @@ export const leaveCommand = new Command()
       }
 
       const nextOrg = orgs[0]!.slug;
-      await saveConfig({ activeOrg: nextOrg });
+      const token = await getToken();
+      if (decodeCliTokenPayload(token)) {
+        // JWT flow: get new token for next org
+        const result = await switchZeroOrg(nextOrg);
+        await saveConfig({
+          token: result.access_token,
+          activeOrg: result.org_slug,
+        });
+      } else {
+        await saveConfig({ activeOrg: nextOrg });
+      }
       console.log(chalk.green(`✓ Left organization. Switched to: ${nextOrg}`));
     }),
   );
