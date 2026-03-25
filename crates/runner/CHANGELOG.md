@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.48.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.47.0...runner-rs-v0.48.0) (2026-03-25)
+
+
+### Features
+
+* install @googleworkspace/cli in docker image ([#6751](https://github.com/vm0-ai/vm0/issues/6751)) ([32a45c3](https://github.com/vm0-ai/vm0/commit/32a45c3f2c56a587f001b55d545e02c2823c80ab))
+
 ## [0.47.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.46.0...runner-rs-v0.47.0) (2026-03-25)
 
 

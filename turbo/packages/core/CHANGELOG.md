@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.114.0](https://github.com/vm0-ai/vm0/compare/core-v8.113.0...core-v8.114.0) (2026-03-25)
+
+
+### Features
+
+* **billing:** redesign workspace settings, remove pricing gate, integrate PR [#6551](https://github.com/vm0-ai/vm0/issues/6551) ([#6760](https://github.com/vm0-ai/vm0/issues/6760)) ([e89a9f0](https://github.com/vm0-ai/vm0/commit/e89a9f0a05e4ef02e6e40dfd77c795e6b1fe7c61))
+
+
+### Refactoring
+
+* **core:** derive firewall secret name from provider type config ([#6787](https://github.com/vm0-ai/vm0/issues/6787)) ([3da61d2](https://github.com/vm0-ai/vm0/commit/3da61d2284e76e22c39f42c0887ef8d4a0390975))
+
 ## [8.113.0](https://github.com/vm0-ai/vm0/compare/core-v8.112.0...core-v8.113.0) (2026-03-25)
 
 

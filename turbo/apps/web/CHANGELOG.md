@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.160.0](https://github.com/vm0-ai/vm0/compare/web-v12.159.1...web-v12.160.0) (2026-03-25)
+
+
+### Features
+
+* **billing:** redesign workspace settings, remove pricing gate, integrate PR [#6551](https://github.com/vm0-ai/vm0/issues/6551) ([#6760](https://github.com/vm0-ai/vm0/issues/6760)) ([e89a9f0](https://github.com/vm0-ai/vm0/commit/e89a9f0a05e4ef02e6e40dfd77c795e6b1fe7c61))
+
+
+### Bug Fixes
+
+* **platform:** create agent-instructions storage on agent creation ([#6783](https://github.com/vm0-ai/vm0/issues/6783)) ([6a21c6c](https://github.com/vm0-ai/vm0/commit/6a21c6cfda5df99262bc26417ce5b88bea0eb346))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.114.0
+
 ## [12.159.1](https://github.com/vm0-ai/vm0/compare/web-v12.159.0...web-v12.159.1) (2026-03-25)
 
 

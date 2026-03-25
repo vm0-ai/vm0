@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.152.0](https://github.com/vm0-ai/vm0/compare/app-v0.151.0...app-v0.152.0) (2026-03-25)
+
+
+### Features
+
+* **billing:** redesign workspace settings, remove pricing gate, integrate PR [#6551](https://github.com/vm0-ai/vm0/issues/6551) ([#6760](https://github.com/vm0-ai/vm0/issues/6760)) ([e89a9f0](https://github.com/vm0-ai/vm0/commit/e89a9f0a05e4ef02e6e40dfd77c795e6b1fe7c61))
+
+
+### Bug Fixes
+
+* **billing:** add error toast to inline cap input, replace type assertions with narrowing ([#6790](https://github.com/vm0-ai/vm0/issues/6790)) ([438c602](https://github.com/vm0-ai/vm0/commit/438c602a3a8694e4c0d0d4e6f0900a1460dcde1e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.114.0
+
 ## [0.151.0](https://github.com/vm0-ai/vm0/compare/app-v0.150.1...app-v0.151.0) (2026-03-25)
 
 
