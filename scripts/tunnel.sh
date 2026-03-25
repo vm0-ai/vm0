@@ -45,7 +45,7 @@ else
   EMAIL=$(git config user.email 2>/dev/null || true)
   DOMAIN="${EMAIL##*@}"
 
-  if [[ "$DOMAIN" == "vm0.ai" ]]; then
+  if [[ "$DOMAIN" == "vm0.ai" ]] && [[ -f "$HOME/.cloudflared/cert.pem" ]]; then
     MODE="named"
     USERNAME="${EMAIL%%@*}"
     MACHINE_HOSTNAME=$(hostname)
@@ -62,6 +62,10 @@ else
     TUNNEL_NAME="tunnel-${USERNAME}-${MACHINE_HOSTNAME}-${SERVICE}"
     TUNNEL_URL="https://${FQDN}"
   else
+    if [[ "$DOMAIN" == "vm0.ai" ]]; then
+      log "Not authenticated (no cert.pem). Falling back to anonymous tunnel."
+      log "Run 'cloudflared tunnel login' to enable named tunnels."
+    fi
     MODE="anonymous"
   fi
 fi
@@ -69,12 +73,6 @@ fi
 # --- Named tunnel setup ---
 if [[ "$MODE" == "named" ]]; then
   log "Named tunnel: ${FQDN} -> localhost:${PORT}"
-
-  # Ensure authenticated
-  if [[ ! -f "$HOME/.cloudflared/cert.pem" ]]; then
-    log "Not authenticated. Running cloudflared tunnel login..."
-    cloudflared tunnel login >&2
-  fi
 
   # Reuse existing tunnel or create a new one
   TUNNEL_ID=$(cloudflared tunnel list --name "$TUNNEL_NAME" 2>/dev/null | { grep "$TUNNEL_NAME" || true; } | awk '{print $1}')
