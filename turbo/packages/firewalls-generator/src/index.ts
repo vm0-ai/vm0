@@ -69,6 +69,7 @@ import { generate as generatePlausible } from "./plausible";
 import { generate as generatePodchaser } from "./podchaser";
 import { generate as generatePosthog } from "./posthog";
 import { generate as generateProductlane } from "./productlane";
+import { generate as generatePrismaPostgres } from "./prisma-postgres";
 import { generate as generatePushinator } from "./pushinator";
 import { generate as generateQiita } from "./qiita";
 import { generate as generateReddit } from "./reddit";
@@ -165,6 +166,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   podchaser: generatePodchaser,
   posthog: generatePosthog,
   productlane: generateProductlane,
+  "prisma-postgres": generatePrismaPostgres,
   pushinator: generatePushinator,
   qiita: generateQiita,
   reddit: generateReddit,

@@ -75,6 +75,7 @@ import { plausibleFirewall } from "./plausible.generated";
 import { podchaserFirewall } from "./podchaser.generated";
 import { posthogFirewall } from "./posthog.generated";
 import { productlaneFirewall } from "./productlane.generated";
+import { prismaPostgresFirewall } from "./prisma-postgres.generated";
 import { pushinatorFirewall } from "./pushinator.generated";
 import { qiitaFirewall } from "./qiita.generated";
 import { redditFirewall } from "./reddit.generated";
@@ -175,6 +176,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   podchaser: podchaserFirewall,
   posthog: posthogFirewall,
   productlane: productlaneFirewall,
+  "prisma-postgres": prismaPostgresFirewall,
   pushinator: pushinatorFirewall,
   qiita: qiitaFirewall,
   reddit: redditFirewall,

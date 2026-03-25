@@ -160,6 +160,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   podchaser: ["podchaser"],
   posthog: ["posthog"],
   productlane: ["productlane"],
+  "prisma-postgres": ["prisma-postgres"],
   pushinator: ["pushinator"],
   qiita: ["qiita"],
   reddit: ["reddit"],
