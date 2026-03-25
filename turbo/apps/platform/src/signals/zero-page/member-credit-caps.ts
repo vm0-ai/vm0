@@ -80,7 +80,7 @@ export const setMemberCreditCap$ = command(
 // Per-member signal factory
 // ---------------------------------------------------------------------------
 
-export interface MemberCapSetting {
+interface MemberCapSetting {
   userId: string;
   email: string;
   creditsCharged: number;

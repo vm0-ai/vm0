@@ -136,6 +136,7 @@ export const saveAutoRecharge$ = command(
   async (
     { get, set },
     config: { enabled: boolean; threshold?: number; amount?: number },
+    _signal: AbortSignal,
   ) => {
     set(internalCheckoutLoading$, true);
 

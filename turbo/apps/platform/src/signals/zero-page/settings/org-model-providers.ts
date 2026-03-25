@@ -15,7 +15,6 @@ import {
   createOrgModelProvider$,
   deleteOrgModelProvider$,
   orgModelProviders$,
-  setDefaultOrgModelProvider$,
 } from "../../external/org-model-providers.ts";
 
 // ---------------------------------------------------------------------------
@@ -374,30 +373,6 @@ export const orgConfirmDelete$ = command(
       signal.throwIfAborted();
       toast.success(`${providerLabel} removed successfully`);
       set(internalOrgDeleteDialogState$, { open: false, providerType: null });
-    })();
-
-    set(internalOrgActionPromise$, promise);
-    signal.addEventListener("abort", () => {
-      set(internalOrgActionPromise$, null);
-    });
-
-    await promise;
-    signal.throwIfAborted();
-  },
-);
-
-// ---------------------------------------------------------------------------
-// Commands: set default provider
-// ---------------------------------------------------------------------------
-
-export const orgSetDefaultProvider$ = command(
-  async ({ set }, type: ModelProviderType, signal: AbortSignal) => {
-    const providerLabel = MODEL_PROVIDER_TYPES[type]?.label ?? type;
-
-    const promise = (async () => {
-      await set(setDefaultOrgModelProvider$, type, signal);
-      signal.throwIfAborted();
-      toast.success(`${providerLabel} set as default`);
     })();
 
     set(internalOrgActionPromise$, promise);
