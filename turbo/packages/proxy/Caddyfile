@@ -19,6 +19,20 @@ www.vm7.ai:8443 {
   tls {
     dns cloudflare {env.CF_DNS_API_TOKEN}
   }
+
+  @cors_preflight {
+    method OPTIONS
+    header Origin https://app.vm7.ai:8443
+  }
+  route @cors_preflight {
+    header Access-Control-Allow-Origin "https://app.vm7.ai:8443"
+    header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, PATCH, OPTIONS"
+    header Access-Control-Allow-Headers "Authorization, Content-Type, X-Requested-With, Accept"
+    header Access-Control-Allow-Credentials "true"
+    header Access-Control-Max-Age "86400"
+    respond 204
+  }
+
   reverse_proxy localhost:3000
 }
 

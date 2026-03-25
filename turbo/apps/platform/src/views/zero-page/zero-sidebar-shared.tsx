@@ -1,9 +1,9 @@
 import { useGet } from "ccstate-react";
 import { agentAvatarOverrides$ } from "../../signals/zero-page/zero-agent-avatars.ts";
-import avatar1Img from "./assets/avatar-1.webp";
-import avatar2Img from "./assets/avatar-2.webp";
-import avatar3Img from "./assets/avatar-3.webp";
-import avatar4Img from "./assets/avatar-4.webp";
+import avatar1Img from "./assets/avatar_1.png";
+import avatar2Img from "./assets/avatar_2.png";
+import avatar3Img from "./assets/avatar_3.png";
+import avatar4Img from "./assets/avatar_4.png";
 
 export const AGENT_AVATARS = [
   avatar1Img,

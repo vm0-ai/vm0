@@ -23,8 +23,7 @@ import {
 } from "../../signals/zero-page/zero-chat-page.ts";
 import { ZeroIdeationPage, getRandomPrompts } from "./zero-ideation-page.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
-import zeroAvatarImg from "./assets/zero-avatar.webp";
-import chatFolderImg from "./assets/chat-folder.webp";
+import zeroAvatarImg from "./assets/avatar_0.png";
 
 function getTagline(
   agentName: string,
@@ -158,7 +157,7 @@ export function ZeroChatPage({
   const taglineIndex = useGet(chatPageTaglineIndex$);
   const tagline = getTagline(agentName, userName, taglineIndex);
   const [showIdeation, setShowIdeation] = useState(false);
-  const [suggestedPrompts] = useState(() => getRandomPrompts(3));
+  const [suggestedPrompts] = useState(() => getRandomPrompts(2));
 
   // Pin pill
   const currentChatAgentId = useGet(zeroChatAgentId$);
@@ -257,60 +256,60 @@ export function ZeroChatPage({
           />
 
           {/* Suggested prompts */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 w-full">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 w-full">
             {suggestedPrompts.map(
               ({ title, description, connectors, prompt }) => (
                 <button
                   key={title}
                   type="button"
-                  className="zero-card cursor-pointer p-4 text-left flex flex-col gap-3 relative group"
+                  className="zero-card cursor-pointer p-4 text-left flex flex-col relative group hover:bg-muted/30 transition-colors"
                   onClick={() => setInput(prompt)}
                 >
                   <IconArrowUpRight
                     size={14}
                     stroke={2}
-                    className="absolute top-2.5 right-2.5 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
+                    className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
                   />
-                  <div className="flex items-center gap-3">
-                    {connectors?.map((type) => (
-                      <ConnectorIcon key={type} type={type} size={16} />
-                    ))}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-foreground">
-                      {title}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {description}
-                    </p>
-                  </div>
+                  <p className="text-sm font-semibold text-foreground pr-5">
+                    {title}
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
+                    {description}
+                  </p>
+                  {connectors && connectors.length > 0 && (
+                    <div className="flex items-center gap-1.5 mt-auto pt-2.5">
+                      {connectors.map((type) => (
+                        <span
+                          key={type}
+                          className="flex h-7 w-7 items-center justify-center rounded-md border border-border/60 bg-background"
+                        >
+                          <ConnectorIcon type={type} size={14} />
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </button>
               ),
             )}
             <button
               type="button"
-              className="zero-card cursor-pointer p-4 text-left flex flex-col gap-3 relative group"
+              className="zero-card cursor-pointer p-4 text-left flex flex-col relative group hover:bg-muted/30 transition-colors"
               onClick={() => setShowIdeation(true)}
             >
               <IconArrowUpRight
                 size={14}
                 stroke={2}
-                className="absolute top-2.5 right-2.5 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
+                className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
               />
-              <img
-                src={chatFolderImg}
-                alt=""
-                role="presentation"
-                loading="lazy"
-                className="h-8 w-8 object-contain"
-              />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-foreground">
-                  Explore more ideas
-                </p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Browse use cases across all connectors
-                </p>
+              <p className="text-sm font-semibold text-foreground pr-5">
+                Ideas &amp; use cases
+              </p>
+              <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
+                Browse use cases across all connectors
+              </p>
+              <div className="flex items-center gap-1.5 mt-auto pt-2.5 text-sm font-medium text-primary">
+                <span>View all</span>
+                <IconArrowUpRight size={14} stroke={2} />
               </div>
             </button>
           </div>

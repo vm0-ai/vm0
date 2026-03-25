@@ -42,7 +42,7 @@ import {
   TooltipTrigger,
 } from "@vm0/ui";
 import slackIcon from "./components/settings/icons/slack.svg";
-import zeroAvatarImg from "./assets/zero-avatar.webp";
+import zeroAvatarImg from "./assets/avatar_0.png";
 import { clerk$, user$ } from "../../signals/auth.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
@@ -598,7 +598,7 @@ function RecentChatSection({
                 }}
                 className={`flex h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors ${
                   selectedRecentId === session.id
-                    ? "bg-sidebar-active text-sidebar-primary font-medium"
+                    ? "bg-slate-200 text-slate-900 font-medium"
                     : "text-sidebar-foreground hover:bg-sidebar-accent"
                 }`}
               >
@@ -687,7 +687,7 @@ function TalkToSection({
               }
               className={`flex w-full h-8 shrink-0 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
                 isPrimarySelected
-                  ? "bg-sidebar-active text-sidebar-primary font-medium"
+                  ? "bg-slate-200 text-slate-900 font-medium"
                   : isFromChat
                     ? "border-l-2 border-[hsl(var(--gray-400))] bg-sidebar-accent/50"
                     : "text-sidebar-foreground hover:bg-sidebar-accent"
@@ -716,7 +716,7 @@ function TalkToSection({
                 options={{ pathParams: { id: agent.id } }}
                 className={`flex w-full h-8 shrink-0 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
                   isPrimarySelected
-                    ? "bg-sidebar-active text-sidebar-primary font-medium"
+                    ? "bg-slate-200 text-slate-900 font-medium"
                     : isFromChat
                       ? "border-l-2 border-[hsl(var(--gray-400))] bg-sidebar-accent/50"
                       : "text-sidebar-foreground hover:bg-sidebar-accent"
@@ -941,7 +941,7 @@ export function ZeroSidebar() {
                         }}
                         className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
                           activeId === id
-                            ? "bg-sidebar-active text-sidebar-primary"
+                            ? "bg-slate-200 text-slate-900"
                             : "text-sidebar-foreground hover:bg-sidebar-accent"
                         }`}
                       >
@@ -1010,7 +1010,7 @@ export function ZeroSidebar() {
                   }}
                   className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
                     activeId === id
-                      ? "bg-sidebar-active text-sidebar-primary font-medium"
+                      ? "bg-slate-200 text-slate-900 font-medium"
                       : "text-sidebar-foreground hover:bg-sidebar-accent"
                   }`}
                 >
@@ -1070,7 +1070,7 @@ export function ZeroSidebar() {
                 }}
                 className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
                   activeId === id
-                    ? "bg-sidebar-active text-sidebar-primary font-medium"
+                    ? "bg-slate-200 text-slate-900 font-medium"
                     : "text-sidebar-foreground hover:bg-sidebar-accent"
                 }`}
               >

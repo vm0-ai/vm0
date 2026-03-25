@@ -31,11 +31,11 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 import { useAgentAvatar, AGENT_AVATARS } from "./zero-sidebar.tsx";
-import zeroAvatarImg from "./assets/zero-avatar.webp";
-import avatar1Img from "./assets/avatar-1.webp";
-import avatar2Img from "./assets/avatar-2.webp";
-import avatar3Img from "./assets/avatar-3.webp";
-import avatar4Img from "./assets/avatar-4.webp";
+import zeroAvatarImg from "./assets/avatar_0.png";
+import avatar1Img from "./assets/avatar_1.png";
+import avatar2Img from "./assets/avatar_2.png";
+import avatar3Img from "./assets/avatar_3.png";
+import avatar4Img from "./assets/avatar_4.png";
 import emptyChatImg from "./assets/empty-chat.webp";
 
 const ZERO_AVATARS = [
