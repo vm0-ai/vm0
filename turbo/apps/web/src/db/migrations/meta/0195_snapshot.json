@@ -1,6 +1,6 @@
 {
-  "id": "ad24ff48-0c13-44a1-b618-350bc115826b",
-  "prevId": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+  "id": "f368ecb1-2553-40d7-b841-086083c98bd0",
+  "prevId": "ad24ff48-0c13-44a1-b618-350bc115826b",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -3265,20 +3265,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
-        },
-        "notify_email": {
-          "name": "notify_email",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "notify_slack": {
-          "name": "notify_slack",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
         },
         "pinned_agent_ids": {
           "name": "pinned_agent_ids",
