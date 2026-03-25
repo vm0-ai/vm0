@@ -41,6 +41,7 @@ import { generate as generateHubspot } from "./hubspot";
 import { generate as generateHuggingFace } from "./hugging-face";
 import { generate as generateHume } from "./hume";
 import { generate as generateImgur } from "./imgur";
+import { generate as generateInstantly } from "./instantly";
 import { generate as generateIntercom } from "./intercom";
 import { generate as generateJira } from "./jira";
 import { generate as generateJotform } from "./jotform";
@@ -112,6 +113,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   "hugging-face": generateHuggingFace,
   hume: generateHume,
   imgur: generateImgur,
+  instantly: generateInstantly,
   intercom: generateIntercom,
   jira: generateJira,
   jotform: generateJotform,
