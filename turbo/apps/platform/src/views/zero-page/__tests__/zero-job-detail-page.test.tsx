@@ -220,6 +220,20 @@ function mockAPIsWithSchedules() {
   );
 }
 
+async function openScheduleMenuAndClick(
+  timeLabel: string,
+  action: "Edit" | "Delete" | "Run now",
+) {
+  const menuTrigger = screen.getByRole("button", {
+    name: `More actions for ${timeLabel}`,
+  });
+  fireEvent.pointerDown(menuTrigger, { button: 0, ctrlKey: false });
+  await waitFor(() => {
+    expect(screen.getByRole("menuitem", { name: action })).toBeInTheDocument();
+  });
+  fireEvent.click(screen.getByRole("menuitem", { name: action }));
+}
+
 describe("zero job detail page - schedule card delete confirmation", () => {
   it("should show confirmation dialog when delete button is clicked in card view", async () => {
     mockAPIsWithSchedules();
@@ -227,11 +241,11 @@ describe("zero job detail page - schedule card delete confirmation", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByLabelText("Delete Every weekday at 9:00 AM"),
+        screen.getByText("Summarize yesterday's threads"),
       ).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByLabelText("Delete Every weekday at 9:00 AM"));
+    await openScheduleMenuAndClick("Every weekday at 9:00 AM", "Delete");
 
     await waitFor(() => {
       expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
@@ -256,11 +270,11 @@ describe("zero job detail page - schedule card delete confirmation", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByLabelText("Delete Every weekday at 9:00 AM"),
+        screen.getByText("Summarize yesterday's threads"),
       ).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByLabelText("Delete Every weekday at 9:00 AM"));
+    await openScheduleMenuAndClick("Every weekday at 9:00 AM", "Delete");
 
     await waitFor(() => {
       expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
@@ -289,11 +303,11 @@ describe("zero job detail page - schedule card delete confirmation", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByLabelText("Delete Every weekday at 9:00 AM"),
+        screen.getByText("Summarize yesterday's threads"),
       ).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByLabelText("Delete Every weekday at 9:00 AM"));
+    await openScheduleMenuAndClick("Every weekday at 9:00 AM", "Delete");
 
     await waitFor(() => {
       expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
