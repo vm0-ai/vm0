@@ -236,7 +236,6 @@ export const zeroChatSending$ = computed(
 export const zeroChatRunStatus$ = computed((get) => get(internalRunStatus$));
 
 /** Cancel the currently active run. */
-// eslint-disable-next-line ccstate/command-async-signal
 export const cancelActiveRun$ = command(async ({ get, set }) => {
   const runId = get(internalActiveRunId$);
   if (!runId) {
@@ -523,10 +522,7 @@ export const chatSessionSnapshot$ = computed(
       }
     } catch (error) {
       throwIfAbort(error);
-      // Network error — return null so the snapshot doesn't produce
-      // unhandled rejections when MSW has no handler.
-      L.error("Failed to fetch session data:", error);
-      return null;
+      throw error;
     }
     if (!res.ok) {
       L.warn("Failed to load chat:", res.statusText);
@@ -671,7 +667,6 @@ export const setZeroDragOver$ = command(({ set }, value: boolean) => {
 const uploadAbortControllers$ = state(new Map<string, AbortController>());
 
 export const uploadZeroAttachment$ = command(
-  // eslint-disable-next-line ccstate/command-async-signal
   async ({ get, set }, file: File) => {
     const id = crypto.randomUUID();
     const placeholder: ZeroChatAttachment = {
@@ -764,7 +759,6 @@ export const cancelZeroAttachmentUpload$ = command(
 // Commands: session list management
 // ---------------------------------------------------------------------------
 
-// eslint-disable-next-line ccstate/command-async-signal
 export const fetchZeroSessionList$ = command(async ({ get, set }) => {
   // Keep previous list visible while loading (no flash to empty).
   set(internalSessionListLoading$, true);
@@ -811,7 +805,6 @@ export const switchActiveAgent$ = command(({ set }, agentId: string | null) => {
 
 /** Resolve which agent to activate based on the thread's agentComposeId. */
 const syncAgentForThread$ = command(
-  // eslint-disable-next-line ccstate/command-async-signal
   async ({ get, set }, agentComposeId: string | undefined) => {
     if (agentComposeId) {
       const currentAgentId = get(zeroChatAgentId$);
@@ -846,7 +839,6 @@ const syncAgentForThread$ = command(
 const startLoop$ = command(
   async (
     { get, set },
-    // eslint-disable-next-line ccstate/command-async-signal
     config: { runId: string; signal: AbortSignal },
   ): Promise<void> => {
     const { runId, signal } = config;
@@ -983,7 +975,6 @@ export const zeroCreatingNewSession$ = computed((get) =>
 );
 
 export const createNewChatSession$ = command(
-  // eslint-disable-next-line ccstate/command-async-signal
   async ({ get, set }, agentComposeId: string | null) => {
     set(creatingNewSession$, true);
     try {
@@ -1075,7 +1066,6 @@ const prepareMessages$ = command(
 const ensureChatThread$ = command(
   async (
     { get, set },
-    // eslint-disable-next-line ccstate/command-async-signal
     args: { composeId: string; prompt: string },
   ): Promise<string | null> => {
     const threadId = get(zeroSessionId$);
@@ -1125,7 +1115,6 @@ export const sendZeroChatMessage$ = command(
   async (
     { get, set },
     prompt: string,
-    // eslint-disable-next-line ccstate/command-async-signal
     options?: { modelProvider?: string },
   ) => {
     const chatAgentId = get(zeroChatAgentId$);
@@ -1274,7 +1263,6 @@ const updateLastAssistantMessage$ = command(
   },
 );
 
-// eslint-disable-next-line ccstate/command-async-signal
 const onZeroRunComplete$ = command(async ({ get, set }, runId: string) => {
   const runStatus = get(internalRunStatus$);
   const runError = get(internalRunError$);

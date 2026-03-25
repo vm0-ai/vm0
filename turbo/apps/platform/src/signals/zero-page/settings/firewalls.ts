@@ -46,7 +46,6 @@ export const saveFirewallPolicies$ = command(
   async (
     { get },
     agentName: string,
-    // eslint-disable-next-line ccstate/command-async-signal
     policies: FirewallPolicies,
   ): Promise<FirewallPolicies | null> => {
     const fetchFn = get(fetch$);

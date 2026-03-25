@@ -15,7 +15,6 @@ export const setIconSize$ = command(({ set }, size: IconSize) => {
   set(internalIconSize$, size);
 });
 
-// eslint-disable-next-line ccstate/command-async-signal
 export const setupInternalConnectorLogos$ = command(async ({ set }) => {
   const { InternalConnectorLogos } = await import(
     "../views/internal-connector-logos.tsx"

@@ -84,7 +84,6 @@ export const zeroJobDetailLoading$ = computed(
 );
 export const zeroJobDetailError$ = computed((get) => get(detailState$).error);
 
-// eslint-disable-next-line ccstate/command-async-signal
 const fetchZeroJobDetail$ = command(async ({ get, set }) => {
   const name = get(internalAgentName$);
   if (!name) {
@@ -149,7 +148,6 @@ export const zeroJobInstructionsError$ = computed(
   (get) => get(instructionsState$).error,
 );
 
-// eslint-disable-next-line ccstate/command-async-signal
 const fetchZeroJobInstructions$ = command(async ({ get, set }) => {
   const detail = get(zeroJobDetail$);
   if (!detail) {
@@ -214,7 +212,6 @@ export const zeroJobBuilding$ = computed((get) => get(jobBuilding$));
 const internalBuildError$ = state<string | null>(null);
 export const zeroJobBuildError$ = computed((get) => get(internalBuildError$));
 
-// eslint-disable-next-line ccstate/command-async-signal
 export const buildZeroJobInstructions$ = command(async ({ get, set }) => {
   const detail = get(zeroJobDetail$);
   const raw = get(editedContent$);
@@ -279,7 +276,6 @@ interface ZeroJobSettingsUpdate {
 }
 
 export const zeroJobUpdateSettings$ = command(
-  // eslint-disable-next-line ccstate/command-async-signal
   async ({ get, set }, update: ZeroJobSettingsUpdate) => {
     const detail = get(zeroJobDetail$);
     if (!detail) {
@@ -368,7 +364,6 @@ export const discardZeroJobConnectors$ = command(({ set }) => {
   set(internalAddedConnectors$, null);
 });
 
-// eslint-disable-next-line ccstate/command-async-signal
 export const saveZeroJobConnectors$ = command(async ({ get, set }) => {
   const detail = get(zeroJobDetail$);
   if (!detail?.agentId) {
@@ -429,7 +424,6 @@ export const setZeroJobFirewallPolicies$ = command(
   },
 );
 
-// eslint-disable-next-line ccstate/command-async-signal
 const fetchZeroJobFirewallPolicies$ = command(async ({ get, set }) => {
   const name = get(internalAgentName$);
   if (!name) {
@@ -584,7 +578,6 @@ export const zeroJobScheduleError$ = computed(
   (get) => get(scheduleState$).error,
 );
 
-// eslint-disable-next-line ccstate/command-async-signal
 const fetchZeroJobSchedule$ = command(async ({ get, set }) => {
   const detail = get(zeroJobDetail$);
   if (!detail) {
@@ -635,7 +628,6 @@ export interface ZeroJobScheduleSaveParams {
 }
 
 export const saveZeroJobSchedule$ = command(
-  // eslint-disable-next-line ccstate/command-async-signal
   async ({ get, set }, params: ZeroJobScheduleSaveParams) => {
     const detail = get(zeroJobDetail$);
     if (!detail) {
@@ -714,7 +706,6 @@ export const saveZeroJobSchedule$ = command(
 );
 
 export const toggleZeroJobScheduleEnabled$ = command(
-  // eslint-disable-next-line ccstate/command-async-signal
   async ({ get, set }, params: { name: string; enabled: boolean }) => {
     const detail = get(zeroJobDetail$);
     if (!detail) {
@@ -748,7 +739,6 @@ export const toggleZeroJobScheduleEnabled$ = command(
 );
 
 export const deleteZeroJobSchedule$ = command(
-  // eslint-disable-next-line ccstate/command-async-signal
   async ({ get, set }, scheduleName: string) => {
     const detail = get(zeroJobDetail$);
     if (!detail) {
@@ -779,7 +769,6 @@ export const deleteZeroJobSchedule$ = command(
 // Delete agent
 // ---------------------------------------------------------------------------
 
-// eslint-disable-next-line ccstate/command-async-signal
 export const deleteZeroJobAgent$ = command(async ({ get, set }) => {
   const detail = get(zeroJobDetail$);
   if (!detail) {
@@ -817,7 +806,6 @@ export const deleteZeroJobAgent$ = command(async ({ get, set }) => {
 // Combined fetch — loads detail, then instructions + schedule in parallel
 // ---------------------------------------------------------------------------
 
-// eslint-disable-next-line ccstate/command-async-signal
 export const fetchZeroJobData$ = command(async ({ set }, agentName: string) => {
   // Reset all state so the skeleton screen shows while loading new data
   set(detailState$, { detail: null, loading: false, error: null });

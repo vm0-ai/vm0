@@ -50,7 +50,6 @@ export const setShowUninstallDialog$ = command(({ set }, show: boolean) => {
   set(showUninstallDialogState$, show);
 });
 
-// eslint-disable-next-line ccstate/command-async-signal
 const fetchSlackOrg$ = command(async ({ get, set }) => {
   set(slackOrgState$, (prev) => ({
     ...prev,
@@ -82,7 +81,6 @@ const fetchSlackOrg$ = command(async ({ get, set }) => {
   });
 });
 
-// eslint-disable-next-line ccstate/command-async-signal
 export const disconnectSlackOrg$ = command(async ({ get, set }) => {
   const fetchFn = get(fetch$);
   const response = await fetchFn("/api/zero/integrations/slack", {
@@ -98,7 +96,6 @@ export const disconnectSlackOrg$ = command(async ({ get, set }) => {
   await set(fetchSlackOrg$);
 });
 
-// eslint-disable-next-line ccstate/command-async-signal
 export const uninstallSlackOrg$ = command(async ({ get, set }) => {
   const fetchFn = get(fetch$);
   const response = await fetchFn(
@@ -150,7 +147,6 @@ export const pollSlackConnection$ = command(
   },
 );
 
-// eslint-disable-next-line ccstate/command-async-signal
 export const initSlackOrg$ = command(async ({ set }) => {
   await set(fetchSlackOrg$);
 

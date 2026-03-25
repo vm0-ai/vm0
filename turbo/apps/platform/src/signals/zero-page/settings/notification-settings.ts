@@ -55,7 +55,6 @@ export const notificationPreferences$ = computed(async (get) => {
 // ---------------------------------------------------------------------------
 
 export const updateNotificationPreference$ = command(
-  // eslint-disable-next-line ccstate/command-async-signal
   async ({ get, set }, update: UpdateUserPreferencesRequest) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroUserPreferencesContract);

@@ -49,7 +49,6 @@ const internalOrgAgents$ = state<AgentOption[]>([]);
 /** All agents in the current org with display names (used internally for display name mapping). */
 const orgAgents$ = computed((get) => get(internalOrgAgents$));
 
-// eslint-disable-next-line ccstate/command-async-signal
 const fetchOrgAgents$ = command(async ({ get, set }) => {
   const fetchFn = get(fetch$);
   const resp = await fetchFn("/api/zero/composes/list");
@@ -71,14 +70,12 @@ const fetchOrgAgents$ = command(async ({ get, set }) => {
 /** Agent name from onboarding (cached so pagination factory can read it). */
 const internalAgentName$ = state<string | null>(null);
 
-// eslint-disable-next-line ccstate/command-async-signal
 export const initZeroActivityAgentName$ = command(async ({ get, set }) => {
   const status = await get(zeroOnboardingStatus$);
   set(internalAgentName$, status.defaultAgentId);
 });
 
 /** Initialize activity page: load agent name, org agents, and seed cursor history. */
-// eslint-disable-next-line ccstate/command-async-signal
 export const initZeroActivity$ = command(async ({ set }) => {
   await set(initZeroActivityAgentName$);
   await set(fetchOrgAgents$);
@@ -330,7 +327,6 @@ export const zeroActivityEvents$ = computed(async (get) => {
 
 const pollInterval$ = state(3000);
 
-// eslint-disable-next-line ccstate/command-async-signal
 const pollNewEvents$ = command(async ({ get, set }, runId: string) => {
   const pages = get(pagedEvents$);
   if (pages.length === 0) {

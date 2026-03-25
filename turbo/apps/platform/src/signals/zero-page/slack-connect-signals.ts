@@ -36,7 +36,6 @@ export const resetSlackConnectState$ = command(({ set }) => {
 });
 
 // Init: check connection on page load
-// eslint-disable-next-line ccstate/command-async-signal
 export const initSlackConnectPage$ = command(async ({ get, set }) => {
   const params = get(searchParams$);
   const workspaceId = params.get("w");
@@ -63,7 +62,6 @@ export const initSlackConnectPage$ = command(async ({ get, set }) => {
 });
 
 // Connect account
-// eslint-disable-next-line ccstate/command-async-signal
 export const connectSlackAccount$ = command(async ({ get, set }) => {
   const params = get(searchParams$);
   const workspaceId = params.get("w");

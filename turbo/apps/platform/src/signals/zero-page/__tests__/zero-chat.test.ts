@@ -58,6 +58,12 @@ function useChatThreadHandlers() {
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
     }),
+    http.get("*/api/zero/chat-threads/:id", () => {
+      return HttpResponse.json({
+        chatMessages: [],
+        unsavedRuns: [],
+      });
+    }),
   );
 }
 
@@ -224,6 +230,7 @@ describe("zero-chat signals", () => {
 
     it("should abort in-flight polling when switching threads", async () => {
       let pollCount = 0;
+      useChatThreadHandlers();
       server.use(
         http.post("*/api/zero/runs", () => {
           return HttpResponse.json({ runId: "run-old" });
@@ -265,7 +272,6 @@ describe("zero-chat signals", () => {
           });
         }),
       );
-      useChatThreadHandlers();
 
       await setup();
 
@@ -453,6 +459,12 @@ describe("zero-chat signals", () => {
         }),
         http.get("*/api/zero/chat-threads", () => {
           return HttpResponse.json({ threads: [] });
+        }),
+        http.get("*/api/zero/chat-threads/:id", () => {
+          return HttpResponse.json({
+            chatMessages: [],
+            unsavedRuns: [],
+          });
         }),
         http.post("*/api/zero/runs", async ({ request }) => {
           capturedRunBody = (await request.json()) as Record<string, string>;
