@@ -310,7 +310,9 @@ describe("slack schedule notification signals", () => {
           "http://localhost:3000/api/zero/schedules",
           async ({ request }) => {
             captured.body = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json({ success: true });
+            return HttpResponse.json({
+              schedule: { id: "schedule-1" },
+            });
           },
         ),
         http.get("http://localhost:3000/api/zero/schedules", () => {
@@ -347,7 +349,9 @@ describe("slack schedule notification signals", () => {
           "http://localhost:3000/api/zero/schedules",
           async ({ request }) => {
             captured.body = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json({ success: true });
+            return HttpResponse.json({
+              schedule: { id: "schedule-2" },
+            });
           },
         ),
         http.get("http://localhost:3000/api/zero/schedules", () => {
@@ -384,7 +388,9 @@ describe("slack schedule notification signals", () => {
           "http://localhost:3000/api/zero/schedules",
           async ({ request }) => {
             captured.body = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json({ success: true });
+            return HttpResponse.json({
+              schedule: { id: "schedule-3" },
+            });
           },
         ),
         http.get("http://localhost:3000/api/zero/schedules", () => {

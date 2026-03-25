@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor, fireEvent, within } from "@testing-library/react";
+import { screen, waitFor, fireEvent } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -250,7 +250,9 @@ describe("zero schedule page - create dialog", () => {
       }),
       http.post("*/api/zero/schedules", async ({ request }) => {
         capturedBody = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json({ success: true });
+        return HttpResponse.json({
+          schedule: { id: "schedule-new" },
+        });
       }),
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
@@ -548,7 +550,7 @@ describe("zero schedule page - schedule dialog fields", () => {
     expect(screen.getByLabelText("Agent")).toBeInTheDocument();
   });
 
-  it("should show notification toggles in create dialog", async () => {
+  it("should hide notification toggles in create dialog", async () => {
     mockScheduleAPI();
     await renderSchedulePage();
 
@@ -566,9 +568,9 @@ describe("zero schedule page - schedule dialog fields", () => {
       ).toBeInTheDocument();
     });
 
-    expect(screen.getByText("Notifications")).toBeInTheDocument();
-    expect(screen.getByText("Email")).toBeInTheDocument();
-    expect(screen.getByText("Slack")).toBeInTheDocument();
+    expect(screen.queryByText("Notifications")).not.toBeInTheDocument();
+    expect(screen.queryByText("Email")).not.toBeInTheDocument();
+    expect(screen.queryByText("Slack")).not.toBeInTheDocument();
   });
 
   it("should disable Create button when prompt is empty", async () => {
@@ -617,7 +619,7 @@ describe("zero schedule page - schedule dialog fields", () => {
     expect(screen.getByRole("button", { name: "Create" })).toBeEnabled();
   });
 
-  it("should include notification values in save request", async () => {
+  it("should send default notification values in create request", async () => {
     let capturedBody: Record<string, unknown> | null = null;
 
     server.use(
@@ -626,7 +628,9 @@ describe("zero schedule page - schedule dialog fields", () => {
       }),
       http.post("*/api/zero/schedules", async ({ request }) => {
         capturedBody = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json({ success: true });
+        return HttpResponse.json({
+          schedule: { id: "schedule-new" },
+        });
       }),
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
@@ -654,17 +658,12 @@ describe("zero schedule page - schedule dialog fields", () => {
       target: { value: "Test with notifications" },
     });
 
-    // Toggle email notification on
-    const emailRow = screen.getByText("Email").parentElement!;
-    const emailSwitch = within(emailRow).getByRole("switch");
-    fireEvent.click(emailSwitch);
-
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
 
     await waitFor(() => {
       expect(capturedBody).toBeTruthy();
     });
-    expect(capturedBody).toHaveProperty("notifyEmail", true);
+    expect(capturedBody).toHaveProperty("notifyEmail", false);
     expect(capturedBody).toHaveProperty("notifySlack", false);
   });
 
