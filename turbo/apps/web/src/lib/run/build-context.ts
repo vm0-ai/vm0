@@ -765,22 +765,10 @@ async function resolveSecretsAndEnvironment(
     : undefined;
 
   // Filter secretConnectorMap: remove keys overridden by higher-priority sources.
-  // If a secret is provided by CLI, user DB, or model-provider, OAuth refresh should
-  // not overwrite it at runtime.
-  let secretConnectorMap: Record<string, string> | undefined;
-  if (connectorResult.secretConnectorMap) {
-    const overrideKeys = new Set(
-      [modelProviderResult.secrets, dbSecrets, cliSecrets].flatMap((s) =>
-        s ? Object.keys(s) : [],
-      ),
-    );
-    const filtered = Object.fromEntries(
-      Object.entries(connectorResult.secretConnectorMap).filter(
-        ([key]) => !overrideKeys.has(key),
-      ),
-    );
-    if (Object.keys(filtered).length) secretConnectorMap = filtered;
-  }
+  const secretConnectorMap = filterSecretConnectorMap(
+    connectorResult.secretConnectorMap,
+    [modelProviderResult.secrets, dbSecrets, cliSecrets],
+  );
 
   // Auto-generate firewall entry for model provider (if applicable).
   // For meta-providers like "vm0", use the concrete provider type for firewall lookup.
@@ -926,6 +914,29 @@ interface BuildContextResult {
   resolvedModelProvider: ModelProviderType | undefined;
   /** The logical model name selected by the user, for credit usage billing. */
   selectedModel: string | undefined;
+}
+
+/**
+ * Filter secretConnectorMap by removing keys that are overridden by
+ * higher-priority secret sources (CLI, DB, model-provider).  Connector's own
+ * injected env vars are NOT overrides — they come from the connector itself.
+ *
+ * @internal Exported for testing.
+ */
+export function filterSecretConnectorMap(
+  secretConnectorMap: Record<string, string> | undefined,
+  overrideSources: (Record<string, string> | undefined)[],
+): Record<string, string> | undefined {
+  if (!secretConnectorMap) return undefined;
+  const overrideKeys = new Set(
+    overrideSources.flatMap((s) => (s ? Object.keys(s) : [])),
+  );
+  const filtered = Object.fromEntries(
+    Object.entries(secretConnectorMap).filter(
+      ([key]) => !overrideKeys.has(key),
+    ),
+  );
+  return Object.keys(filtered).length > 0 ? filtered : undefined;
 }
 
 /**
