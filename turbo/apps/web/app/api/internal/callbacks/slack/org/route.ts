@@ -202,9 +202,17 @@ async function saveOrgThreadSession(
 function describePayload(raw: unknown): string {
   const t = typeof raw;
   if (!raw || t !== "object") return `Invalid payload (type=${t})`;
-  const keys = Object.keys(raw as Record<string, unknown>);
-  const json = JSON.stringify(raw)?.slice(0, 200);
-  return `Invalid or missing payload: keys=${keys.join(",")} json=${json}`;
+  const p = raw as Record<string, unknown>;
+  const checks = [
+    `workspaceId:${typeof p.workspaceId}`,
+    `channelId:${typeof p.channelId}`,
+    `threadTs:${typeof p.threadTs}`,
+    `messageTs:${typeof p.messageTs}`,
+    `connectionId:${typeof p.connectionId}`,
+    `agentName:${typeof p.agentName}`,
+    `composeId:${typeof p.composeId}`,
+  ];
+  return `parsePayload rejected: ${checks.join(",")}`;
 }
 
 /**
