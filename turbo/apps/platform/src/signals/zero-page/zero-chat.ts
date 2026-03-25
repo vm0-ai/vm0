@@ -13,7 +13,6 @@ import {
   setZeroChatAgent$,
   zeroSessionId$,
 } from "./zero-nav.ts";
-import { agentsList$ } from "./agents-list.ts";
 import { RUN_ERROR_GUIDANCE, type ChatThreadListItem } from "@vm0/core";
 
 const L = logger("ZeroChat");
@@ -817,15 +816,10 @@ const syncAgentForThread$ = command(
     if (agentComposeId) {
       const currentAgentId = get(zeroChatAgentId$);
       const status = await get(zeroOnboardingStatus$);
-      const isDefault = agentComposeId === status.defaultAgentComposeId;
+      const isDefault = agentComposeId === status.defaultAgentId;
       const newAgentId = isDefault ? null : agentComposeId;
       if (newAgentId !== currentAgentId) {
-        const agentName =
-          newAgentId && get(agentsList$).find((a) => a.id === newAgentId)?.name;
-        set(
-          switchActiveAgent$,
-          newAgentId ? { id: newAgentId, name: agentName ?? "" } : null,
-        );
+        set(switchActiveAgent$, newAgentId);
       } else if (get(internalSessionList$).length === 0) {
         detach(set(fetchZeroSessionList$), Reason.DomCallback);
       }
@@ -996,7 +990,7 @@ export const createNewChatSession$ = command(
       set(startNewZeroSession$);
 
       const resolvedComposeId =
-        agentId ?? (await get(zeroOnboardingStatus$)).defaultAgentId;
+        agentComposeId ?? (await get(zeroOnboardingStatus$)).defaultAgentId;
       if (!resolvedComposeId) {
         toast.error("No agent available for new chat session");
         return;
@@ -1114,7 +1108,7 @@ const ensureChatThread$ = command(
         id: thread.id,
         title: thread.title ?? title,
         preview: null,
-        agentComposeId: args.composeId,
+        agentId: args.composeId,
         createdAt: now,
         updatedAt: now,
       },
