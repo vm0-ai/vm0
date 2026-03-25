@@ -429,6 +429,7 @@ export function ZeroSchedulePage() {
     "list",
   );
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
   const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
@@ -455,6 +456,7 @@ export function ZeroSchedulePage() {
 
   const handleCreateSave = (values: ScheduleFormValues) => {
     setSaving(true);
+    setSaveError(null);
     detach(
       saveSchedule({
         prompt: values.prompt.trim(),
@@ -482,8 +484,10 @@ export function ZeroSchedulePage() {
             pathParams: { scheduleId },
           });
         })
-        .catch(() => {
-          /* Error surfaced via toast in saveOrgSchedule$ */
+        .catch((error: unknown) => {
+          setSaveError(
+            error instanceof Error ? error.message : "Failed to save schedule",
+          );
         })
         .finally(() => {
           setSaving(false);
@@ -639,6 +643,7 @@ export function ZeroSchedulePage() {
         onClose={() => setCreateOpen(false)}
         onSave={handleCreateSave}
         saving={saving}
+        saveError={saveError}
         mode="create"
         agents={agents}
         initialValues={{
