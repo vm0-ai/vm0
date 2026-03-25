@@ -474,12 +474,11 @@ fn host_dmesg_indicates_oom(dmesg: &str, pid: u32) -> bool {
         let abs = start + pos + needle.len();
         // Accept if needle is at end of string or next char is not a digit.
         match dmesg.as_bytes().get(abs) {
-            None | Some(b',' | b' ' | b'\n' | b'\r') => return true,
-            Some(c) if !c.is_ascii_digit() => return true,
-            _ => {
+            Some(c) if c.is_ascii_digit() => {
                 // Prefix match (e.g. pid=1234 inside pid=12345) — keep searching.
                 start = abs;
             }
+            _ => return true,
         }
     }
     false
