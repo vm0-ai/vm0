@@ -75,32 +75,36 @@ export async function syncSkills(): Promise<SyncResult> {
   // 3. Download and extract tarball
   const extractedSkills = await downloadAndExtractSkills();
 
-  // 4. Sync each skill concurrently
-  const results = await Promise.allSettled(
-    extractedSkills.map((extracted) => syncSingleSkill(db, extracted, headSha)),
-  );
-
+  // 4. Sync each skill concurrently (batched to avoid exhausting DB pool / S3)
+  const BATCH_SIZE = 5;
   let synced = 0;
   let skipped = 0;
   let failed = 0;
 
-  for (let i = 0; i < results.length; i++) {
-    const result = results[i]!;
-    if (result.status === "fulfilled") {
-      if (result.value) {
-        synced++;
+  for (let i = 0; i < extractedSkills.length; i += BATCH_SIZE) {
+    const batch = extractedSkills.slice(i, i + BATCH_SIZE);
+    const results = await Promise.allSettled(
+      batch.map((extracted) => syncSingleSkill(db, extracted, headSha)),
+    );
+
+    for (let j = 0; j < results.length; j++) {
+      const result = results[j]!;
+      if (result.status === "fulfilled") {
+        if (result.value) {
+          synced++;
+        } else {
+          skipped++;
+        }
       } else {
-        skipped++;
+        failed++;
+        log.warn("Skipping skill due to sync error", {
+          skillName: batch[j]!.skillName,
+          error:
+            result.reason instanceof Error
+              ? result.reason.message
+              : String(result.reason),
+        });
       }
-    } else {
-      failed++;
-      log.warn("Skipping skill due to sync error", {
-        skillName: extractedSkills[i]!.skillName,
-        error:
-          result.reason instanceof Error
-            ? result.reason.message
-            : String(result.reason),
-      });
     }
   }
 
