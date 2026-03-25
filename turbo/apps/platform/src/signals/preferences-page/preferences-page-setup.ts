@@ -22,6 +22,6 @@ export const setupPreferencesPage$ = command(
       return;
     }
 
-    set(switchActiveAgent$, null);
+    await set(switchActiveAgent$, null, signal);
   },
 );

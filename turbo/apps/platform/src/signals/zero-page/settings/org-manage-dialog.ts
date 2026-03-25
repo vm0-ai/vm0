@@ -67,7 +67,7 @@ const patchClerkOrgProfile$ = command(
     const original = clerk.openOrganizationProfile.bind(clerk);
     clerk.openOrganizationProfile = () => {
       detach(
-        set(setOrgManageDialogOpen$, true, AbortSignal.timeout(60_000)),
+        set(setOrgManageDialogOpen$, true, signal),
         Reason.DomCallback,
       );
     };

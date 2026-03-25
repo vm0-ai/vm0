@@ -196,7 +196,7 @@ export function ZeroConnectorsTab({
                   toast.success(`${label} disconnected`);
                 }}
                 onRemove={() => handleRemoveConnector(name)}
-                onReviewScopes={() => setScopeReviewType(name as ConnectorType)}
+                onReviewScopes={() => setScopeReviewType(name as ConnectorType, signal)}
                 onManagePermissions={() =>
                   setFirewallType(name as ConnectorType)
                 }
@@ -229,9 +229,9 @@ export function ZeroConnectorsTab({
       {scopeReviewType && (
         <ScopeReviewModal
           connectorType={scopeReviewType}
-          onClose={() => setScopeReviewType(null)}
+          onClose={() => setScopeReviewType(null, signal)}
           onReconnect={(type) => {
-            setScopeReviewType(null);
+            setScopeReviewType(null, signal);
             detach(connect(type, signal), Reason.DomCallback);
           }}
         />

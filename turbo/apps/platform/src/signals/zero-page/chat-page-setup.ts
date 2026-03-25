@@ -5,7 +5,6 @@ import { logger } from "../log.ts";
 import { defaultAgentId$ } from "./zero-agent-name.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
 import { loadInitialData$ } from "./zero-page.ts";
-import { detach, Reason } from "../utils.ts";
 
 const L = logger("ChatPage");
 
@@ -13,12 +12,11 @@ export const setupChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     await set(loadInitialData$, signal);
 
-    // Consume ?settings=<tab> param before redirecting
-    detach(set(checkSettingsParam$, signal), Reason.Entrance);
-
     if (await set(onboardGuard$, signal)) {
       return;
     }
+
+    await set(checkSettingsParam$, signal);
 
     // Redirect bare / to /talk/:defaultAgent
     const rawName = await get(defaultAgentId$);

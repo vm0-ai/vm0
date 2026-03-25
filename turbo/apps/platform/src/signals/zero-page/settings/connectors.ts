@@ -14,7 +14,7 @@ import { featureSwitch$ } from "../../external/feature-switch.ts";
 import { connectors$, reloadConnectors$ } from "../../external/connectors.ts";
 import { apiBaseForNavigation$ } from "../../fetch.ts";
 import { zeroClient$ } from "../../api-client.ts";
-import { detach, Reason, throwIfAbort } from "../../utils.ts";
+import { throwIfAbort } from "../../utils.ts";
 import { logger } from "../../log.ts";
 import { delay } from "signal-timers";
 import { localStorageSignals } from "../../external/local-storage.ts";
@@ -213,15 +213,12 @@ const loadScopeDiff$ = command(
 );
 
 export const setScopeReviewType$ = command(
-  ({ set }, type: ConnectorType | null) => {
+  async ({ set }, type: ConnectorType | null, signal: AbortSignal) => {
     set(internalScopeReviewType$, type);
     if (type) {
       set(internalScopeDiff$, null);
       set(internalScopeReviewLoading$, true);
-      detach(
-        set(loadScopeDiff$, type, AbortSignal.timeout(60_000)),
-        Reason.Entrance,
-      );
+      await set(loadScopeDiff$, type, signal);
     }
   },
 );

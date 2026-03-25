@@ -25,6 +25,6 @@ export const setupActivityPage$ = command(
       return;
     }
 
-    set(switchActiveAgent$, null);
+    await set(switchActiveAgent$, null, signal);
   },
 );

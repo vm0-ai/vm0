@@ -810,13 +810,12 @@ export const fetchZeroSessionList$ = command(
  * Sets the agent identity AND refreshes the session list atomically.
  * All callers that need to change the active agent should use this.
  */
-export const switchActiveAgent$ = command(({ set }, agentId: string | null) => {
-  set(setZeroChatAgent$, agentId);
-  detach(
-    set(fetchZeroSessionList$, AbortSignal.timeout(60_000)),
-    Reason.DomCallback,
-  );
-});
+export const switchActiveAgent$ = command(
+  async ({ set }, agentId: string | null, signal: AbortSignal) => {
+    set(setZeroChatAgent$, agentId);
+    await set(fetchZeroSessionList$, signal);
+  },
+);
 
 /** Resolve which agent to activate based on the thread's agentComposeId. */
 const syncAgentForThread$ = command(
@@ -832,12 +831,12 @@ const syncAgentForThread$ = command(
       const isDefault = agentComposeId === status.defaultAgentId;
       const newAgentId = isDefault ? null : agentComposeId;
       if (newAgentId !== currentAgentId) {
-        set(switchActiveAgent$, newAgentId);
+        await set(switchActiveAgent$, newAgentId, signal);
       } else if (get(internalSessionList$).length === 0) {
         detach(set(fetchZeroSessionList$, signal), Reason.DomCallback);
       }
     } else if (get(zeroChatAgentId$) !== null) {
-      set(switchActiveAgent$, null);
+      await set(switchActiveAgent$, null, signal);
     } else if (get(internalSessionList$).length === 0) {
       detach(set(fetchZeroSessionList$, signal), Reason.DomCallback);
     }
@@ -904,14 +903,12 @@ const startLoop$ = command(
             );
           },
           onTerminal: (completedRunId) => {
-            set(
-              onZeroRunComplete$,
-              completedRunId,
-              AbortSignal.timeout(60_000),
-            ).catch((error: unknown) => {
-              throwIfAbort(error);
-              L.error("onRunComplete error:", error);
-            });
+            set(onZeroRunComplete$, completedRunId, signal).catch(
+              (error: unknown) => {
+                throwIfAbort(error);
+                L.error("onRunComplete error:", error);
+              },
+            );
           },
         },
         signal,
@@ -1386,12 +1383,10 @@ const onZeroRunComplete$ = command(
       // in which case the user will see it on next navigation. A push-based approach
       // (e.g. Ably or Zero sync) would be more reliable but is out of scope here.
       timeout(() => {
-        set(fetchZeroSessionList$, AbortSignal.timeout(60_000)).catch(
-          (error: unknown) => {
-            throwIfAbort(error);
-            L.error("Failed to refresh session list (delayed):", error);
-          },
-        );
+        set(fetchZeroSessionList$, signal).catch((error: unknown) => {
+          throwIfAbort(error);
+          L.error("Failed to refresh session list (delayed):", error);
+        });
       }, 1000);
     } catch (error) {
       throwIfAbort(error);

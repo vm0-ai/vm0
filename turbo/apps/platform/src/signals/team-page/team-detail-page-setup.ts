@@ -38,6 +38,6 @@ export const setupTeamDetailPage$ = command(
       set(updateDocumentTitle$, displayName);
     }
 
-    set(switchActiveAgent$, null);
+    await set(switchActiveAgent$, null, signal);
   },
 );

@@ -26,6 +26,7 @@ import {
   TabsTrigger,
 } from "@vm0/ui";
 import { throwIfAbort, detach, Reason } from "../../signals/utils.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   ScheduleFormDialog,
   type ScheduleFormValues,
@@ -254,6 +255,7 @@ export function ZeroScheduleCard({
   onOpenDetails,
   saving,
 }: ZeroScheduleCardProps) {
+  const signal = useGet(pageSignal$);
   const scheduleViewMode = useGet(scheduleViewMode$);
   const setScheduleViewMode = useSet(setScheduleViewMode$);
   const internalScheduleList = useGet(internalScheduleList$);
@@ -275,7 +277,7 @@ export function ZeroScheduleCard({
 
   const openAddSchedule = () => {
     setSaveError(null);
-    setAddScheduleOpen(true);
+    setAddScheduleOpen(true, signal);
   };
 
   const [pendingDelete, setPendingDelete] = useState<ScheduleEntry | null>(
@@ -284,7 +286,7 @@ export function ZeroScheduleCard({
 
   const openEditSchedule = (entry: ScheduleEntry) => {
     setSaveError(null);
-    setEditingScheduleId(entry.id);
+    setEditingScheduleId(entry.id, signal);
   };
 
   const handleToggle = onToggleEnabled
@@ -362,7 +364,7 @@ export function ZeroScheduleCard({
           slackChannelId: values.slackChannelId,
         })
           .then(() => {
-            setAddScheduleOpen(false);
+            setAddScheduleOpen(false, signal);
           })
           .catch((error: unknown) => {
             throwIfAbort(error);
@@ -394,7 +396,7 @@ export function ZeroScheduleCard({
         prompt: values.prompt.trim(),
       },
     ]);
-    setAddScheduleOpen(false);
+    setAddScheduleOpen(false, signal);
   };
 
   const handleEditSave = (values: ScheduleFormValues) => {
@@ -420,7 +422,7 @@ export function ZeroScheduleCard({
           slackChannelId: values.slackChannelId,
         })
           .then(() => {
-            setEditingScheduleId(null);
+            setEditingScheduleId(null, signal);
           })
           .catch((error: unknown) => {
             throwIfAbort(error);
@@ -452,7 +454,7 @@ export function ZeroScheduleCard({
             : e,
         ),
       );
-      setEditingScheduleId(null);
+      setEditingScheduleId(null, signal);
     }
   };
 
@@ -529,7 +531,7 @@ export function ZeroScheduleCard({
 
       <ScheduleFormDialog
         open={addScheduleOpen}
-        onClose={() => setAddScheduleOpen(false)}
+        onClose={() => setAddScheduleOpen(false, signal)}
         onSave={handleCreateSave}
         saving={!!saving}
         mode="create"
@@ -537,7 +539,7 @@ export function ZeroScheduleCard({
       />
       <ScheduleFormDialog
         open={editingScheduleId !== null}
-        onClose={() => setEditingScheduleId(null)}
+        onClose={() => setEditingScheduleId(null, signal)}
         onSave={handleEditSave}
         saving={!!saving}
         mode="edit"

@@ -36,6 +36,6 @@ export const setupActivityDetailPage$ = command(
       return;
     }
 
-    set(switchActiveAgent$, null);
+    await set(switchActiveAgent$, null, signal);
   },
 );

@@ -38,6 +38,6 @@ export const setupScheduleDetailPage$ = command(
       set(fetchSlackChannels$, signal),
     ]);
     signal.throwIfAborted();
-    set(switchActiveAgent$, null);
+    await set(switchActiveAgent$, null, signal);
   },
 );

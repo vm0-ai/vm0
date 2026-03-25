@@ -21,5 +21,5 @@ export const setupUsagePage$ = command(async ({ set }, signal: AbortSignal) => {
     return;
   }
 
-  set(switchActiveAgent$, null);
+  await set(switchActiveAgent$, null, signal);
 });

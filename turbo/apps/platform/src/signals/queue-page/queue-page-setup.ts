@@ -23,6 +23,6 @@ export const setupQueuePage$ = command(async ({ set }, signal: AbortSignal) => {
     return;
   }
 
-  set(switchActiveAgent$, null);
+  await set(switchActiveAgent$, null, signal);
   detach(set(startQueuePolling$, signal), Reason.Entrance);
 });
