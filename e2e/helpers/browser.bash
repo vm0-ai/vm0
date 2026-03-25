@@ -69,17 +69,6 @@ contains() {
 }
 
 # ---------------------------------------------------------------------------
-# extract_ref — Extract @eN ref from a snapshot line containing [ref=eN]
-# ---------------------------------------------------------------------------
-extract_ref() {
-  local match
-  match=$(echo "$1" | grep -oE '\[ref=e[0-9]+\]' 2>/dev/null | head -1) || true
-  if [[ -n "$match" ]]; then
-    echo "$match" | sed 's/\[ref=/@/; s/\]//'
-  fi
-}
-
-# ---------------------------------------------------------------------------
 # full_snapshot — Get full page snapshot text
 # ---------------------------------------------------------------------------
 full_snapshot() {
@@ -109,24 +98,6 @@ dismiss_cookie_banner() {
   if agent-browser find text "Accept" click 2>/dev/null; then
     agent-browser wait 500
   fi
-}
-
-# ---------------------------------------------------------------------------
-# wait_for_redirect_away — Wait until URL no longer contains a pattern
-# ---------------------------------------------------------------------------
-wait_for_redirect_away() {
-  local pattern="$1"
-  local timeout_secs="${2:-30}"
-  for _i in $(seq 1 "$timeout_secs"); do
-    local current_url
-    current_url=$(agent-browser get url 2>/dev/null || true)
-    if [[ -n "$current_url" && ! "$current_url" =~ $pattern ]]; then
-      echo "$current_url"
-      return 0
-    fi
-    sleep 1
-  done
-  return 1
 }
 
 # ---------------------------------------------------------------------------
