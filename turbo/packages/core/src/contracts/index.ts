@@ -577,6 +577,8 @@ export {
 export {
   integrationsSlackMessageContract,
   type IntegrationsSlackMessageContract,
+  type SendSlackMessageBody,
+  type SendSlackMessageResponse,
 } from "./integrations";
 export {
   zeroBillingStatusContract,
