@@ -219,6 +219,8 @@ pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
             &work_dir_str,
             "--ca-dir",
             &ca_dir_str,
+            "--hash",
+            &hash,
             "--guest-agent",
             &guest_agent_str,
             "--guest-download",

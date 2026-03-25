@@ -24,6 +24,7 @@ set -euo pipefail
 OUTPUT_DIR=""
 WORK_DIR=""
 CA_DIR=""
+INPUT_HASH=""
 GUEST_AGENT=""
 GUEST_DOWNLOAD=""
 GUEST_INIT=""
@@ -34,6 +35,7 @@ while [[ $# -gt 0 ]]; do
     --output-dir)       OUTPUT_DIR="$2";       shift 2 ;;
     --work-dir)   WORK_DIR="$2";   shift 2 ;;
     --ca-dir)     CA_DIR="$2";     shift 2 ;;
+    --hash)       INPUT_HASH="$2"; shift 2 ;;
     --guest-agent)      GUEST_AGENT="$2";      shift 2 ;;
     --guest-download)   GUEST_DOWNLOAD="$2";   shift 2 ;;
     --guest-init)       GUEST_INIT="$2";       shift 2 ;;
@@ -42,7 +44,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-for var in OUTPUT_DIR WORK_DIR CA_DIR GUEST_AGENT GUEST_DOWNLOAD GUEST_INIT GUEST_MOCK_CLAUDE; do
+for var in OUTPUT_DIR WORK_DIR CA_DIR INPUT_HASH GUEST_AGENT GUEST_DOWNLOAD GUEST_INIT GUEST_MOCK_CLAUDE; do
   if [[ -z "${!var}" ]]; then
     echo "error: --$(echo "$var" | tr '_' '-' | tr '[:upper:]' '[:lower:]') is required" >&2
     exit 1
@@ -222,8 +224,16 @@ create_ext4() {
     image_bytes=268435456
   fi
 
+  # Derive a deterministic UUID from the input hash.  ext4 uses the UUID
+  # as the htree seed for directory hashing — a fixed UUID ensures
+  # identical block layout for identical content, making the rootfs
+  # reproducible.  This matters because dm-snapshot COW files record
+  # sector-level offsets: if the rootfs is rebuilt with a different block
+  # layout, existing snapshots become corrupt.
+  local fs_uuid="${INPUT_HASH:0:8}-${INPUT_HASH:8:4}-${INPUT_HASH:12:4}-${INPUT_HASH:16:4}-${INPUT_HASH:20:12}"
+
   truncate -s "$image_bytes" "$TMP_ROOTFS_PATH"
-  mkfs.ext4 -F -q "$TMP_ROOTFS_PATH"
+  mkfs.ext4 -F -q -U "$fs_uuid" "$TMP_ROOTFS_PATH"
 
   EXT4_MOUNT_DIR=$(mktemp -d)
   sudo mount -o loop "$TMP_ROOTFS_PATH" "$EXT4_MOUNT_DIR"
