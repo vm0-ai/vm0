@@ -53,6 +53,14 @@ export const setProfileName$ = command(({ set }, value: string) => {
   set(internalProfileName$, value);
 });
 
+const internalProfileSlug$ = state("");
+
+export const profileSlug$ = computed((get) => get(internalProfileSlug$));
+
+export const setProfileSlug$ = command(({ set }, value: string) => {
+  set(internalProfileSlug$, value);
+});
+
 const internalProfileSaving$ = state(false);
 
 export const profileSaving$ = computed((get) => get(internalProfileSaving$));
@@ -112,6 +120,7 @@ export const setLogoLoaded$ = command(({ set }, value: boolean) => {
 export const initProfileName$ = command(async ({ get, set }) => {
   const org = await get(org$);
   set(internalProfileName$, org?.name ?? "");
+  set(internalProfileSlug$, org?.slug ?? "");
 });
 
 // ---------------------------------------------------------------------------
