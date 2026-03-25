@@ -341,13 +341,10 @@ const HIDDEN_PROVIDER_TYPES: ReadonlySet<ModelProviderType> = new Set(
 );
 
 /**
- * Providers excluded from static firewall configs.
- * = hidden providers (dynamic URLs / SigV4) + vm0 (meta-provider).
- *
- * Adding a new provider to MODEL_PROVIDER_TYPES without either adding it here
- * or adding a firewall config entry will cause a compile error.
+ * Provider type that supports firewall (has a static base URL and secretName).
+ * Excludes hidden providers (dynamic URLs / SigV4) and vm0 (meta-provider).
+ * Adding a new provider without a firewall config entry will cause a compile error.
  */
-/** Provider type that supports firewall (has a static base URL and secretName). */
 type FirewallSupportedProvider = Exclude<
   ModelProviderType,
   HiddenProviderType | "vm0"
@@ -389,7 +386,7 @@ function mpFirewall(
   authHeader: { name: string; valuePrefix?: string },
   placeholderValue: string,
 ): ExpandedFirewallConfig {
-  const secretName = getSecretNameForType(type)!;
+  const secretName = MODEL_PROVIDER_TYPES[type].secretName;
   const secretRef = `\${{ secrets.${secretName} }}`;
   const headerValue = authHeader.valuePrefix
     ? `${authHeader.valuePrefix} ${secretRef}`
