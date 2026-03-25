@@ -178,26 +178,24 @@ impl CowDevice {
         };
         info!(cow_loop = %cow_loop.display(), "attached COW file");
 
-        // 2. Create dm-snapshot target directly on the shared base loop device
-        //    with ownership set to the current user (--uid/--gid).
+        // 2. Create dm-snapshot target directly on the shared base loop device.
         //
         //    No dm-linear origin needed — the base loop is read-only and shared
         //    across all COW devices via BaseImagePool.
         //
-        //    dm devices default to root:disk 0660; passing --uid/--gid sets
-        //    ownership atomically at creation time, avoiding a separate chown.
+        //    dm devices default to root:disk 0660. We chown to the current user
+        //    after creation so Firecracker (running as that user) can open the
+        //    device via bind mount.  Note: dmsetup's --uid/--gid flags are NOT
+        //    reliable — udev rules re-apply default ownership (root:disk) after
+        //    device creation, racing with the flag-set values.
         let base_loop_str = base.loop_path.to_string_lossy();
         let cow_loop_str = cow_loop.to_string_lossy();
-        let uid = nix::unistd::getuid().as_raw();
-        let gid = nix::unistd::getgid().as_raw();
         let device_path = match dmsetup::create_snapshot(
             &cow_name,
             &base_loop_str,
             &cow_loop_str,
             sectors,
             chunk_size,
-            uid,
-            gid,
         ) {
             Ok(p) => p,
             Err(e) => {
@@ -208,6 +206,22 @@ impl CowDevice {
                 return Err(e);
             }
         };
+
+        // chown the device to the current user.  Must happen after dmsetup
+        // create (not via --uid/--gid) because udev rules reset ownership.
+        let uid = nix::unistd::getuid().as_raw();
+        let gid = nix::unistd::getgid().as_raw();
+        let device_str = device_path.to_string_lossy();
+        if let Err(e) =
+            crate::command::run("chown", &[&format!("{uid}:{gid}"), device_str.as_ref()])
+        {
+            let _ = dmsetup::remove(&cow_name);
+            let _ = losetup::detach(&cow_loop);
+            if created_cow {
+                let _ = fs::remove_file(&cow_file);
+            }
+            return Err(e);
+        }
 
         info!(
             device = %device_path.display(),
