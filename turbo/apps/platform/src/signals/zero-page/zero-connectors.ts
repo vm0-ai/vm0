@@ -114,6 +114,7 @@ const syncConnectorsToCompose$ = command(
       params: { id: agent.agentId },
       body: { connectors: connectorValues },
     });
+    signal.throwIfAborted();
 
     if (result.status !== 200) {
       const detail =

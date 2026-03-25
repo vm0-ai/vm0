@@ -652,6 +652,7 @@ function ScheduleInstructionEditorBlock({
 // ---------------------------------------------------------------------------
 
 function ScheduleRunHistoryTab() {
+  const pageSignal = useGet(pageSignal$);
   const dataLoadable = useLoadable(scheduleRunData$);
   const hasPrev = useGet(scheduleRunHasPrev$);
   const currentPage = useGet(scheduleRunCurrentPage$);
@@ -732,9 +733,11 @@ function ScheduleRunHistoryTab() {
           isLoading={isLoading}
           labelClassName="font-normal text-muted-foreground"
           buttonClassName="bg-transparent border-border/70"
-          onNextPage={() => detach(goToNext(), Reason.DomCallback)}
+          onNextPage={() => detach(goToNext(pageSignal), Reason.DomCallback)}
           onPrevPage={() => goToPrev()}
-          onForwardTwoPages={() => detach(goForwardTwo(), Reason.DomCallback)}
+          onForwardTwoPages={() =>
+            detach(goForwardTwo(pageSignal), Reason.DomCallback)
+          }
           onBackTwoPages={() => goBackTwo()}
           onRowsPerPageChange={(limit) => setRowsPerPage(limit)}
         />

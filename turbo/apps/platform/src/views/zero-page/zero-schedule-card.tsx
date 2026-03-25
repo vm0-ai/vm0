@@ -277,7 +277,7 @@ export function ZeroScheduleCard({
 
   const openAddSchedule = () => {
     setSaveError(null);
-    setAddScheduleOpen(true, signal);
+    detach(setAddScheduleOpen(true, signal), Reason.DomCallback);
   };
 
   const [pendingDelete, setPendingDelete] = useState<ScheduleEntry | null>(
@@ -286,7 +286,7 @@ export function ZeroScheduleCard({
 
   const openEditSchedule = (entry: ScheduleEntry) => {
     setSaveError(null);
-    setEditingScheduleId(entry.id, signal);
+    detach(setEditingScheduleId(entry.id, signal), Reason.DomCallback);
   };
 
   const handleToggle = onToggleEnabled
@@ -364,7 +364,7 @@ export function ZeroScheduleCard({
           slackChannelId: values.slackChannelId,
         })
           .then(() => {
-            setAddScheduleOpen(false, signal);
+            detach(setAddScheduleOpen(false, signal), Reason.DomCallback);
           })
           .catch((error: unknown) => {
             throwIfAbort(error);
@@ -396,7 +396,7 @@ export function ZeroScheduleCard({
         prompt: values.prompt.trim(),
       },
     ]);
-    setAddScheduleOpen(false, signal);
+    detach(setAddScheduleOpen(false, signal), Reason.DomCallback);
   };
 
   const handleEditSave = (values: ScheduleFormValues) => {
@@ -422,7 +422,7 @@ export function ZeroScheduleCard({
           slackChannelId: values.slackChannelId,
         })
           .then(() => {
-            setEditingScheduleId(null, signal);
+            detach(setEditingScheduleId(null, signal), Reason.DomCallback);
           })
           .catch((error: unknown) => {
             throwIfAbort(error);
@@ -454,7 +454,7 @@ export function ZeroScheduleCard({
             : e,
         ),
       );
-      setEditingScheduleId(null, signal);
+      detach(setEditingScheduleId(null, signal), Reason.DomCallback);
     }
   };
 
@@ -531,7 +531,9 @@ export function ZeroScheduleCard({
 
       <ScheduleFormDialog
         open={addScheduleOpen}
-        onClose={() => setAddScheduleOpen(false, signal)}
+        onClose={() =>
+          detach(setAddScheduleOpen(false, signal), Reason.DomCallback)
+        }
         onSave={handleCreateSave}
         saving={!!saving}
         mode="create"
@@ -539,7 +541,9 @@ export function ZeroScheduleCard({
       />
       <ScheduleFormDialog
         open={editingScheduleId !== null}
-        onClose={() => setEditingScheduleId(null, signal)}
+        onClose={() =>
+          detach(setEditingScheduleId(null, signal), Reason.DomCallback)
+        }
         onSave={handleEditSave}
         saving={!!saving}
         mode="edit"

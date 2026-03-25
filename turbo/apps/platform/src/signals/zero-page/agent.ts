@@ -1,6 +1,5 @@
 import { computed } from "ccstate";
 import { pathParams$ } from "../route";
-import { defaultAgentId$ } from "./zero-agent-name";
 import { zeroClient$ } from "../api-client";
 import { zeroAgentsByIdContract } from "@vm0/core";
 
@@ -9,11 +8,7 @@ export const currentAgentId$ = computed((get) => {
   return params?.id ?? null;
 });
 
-export const isDefaultAgent$ = computed(async (get) => {
-  return get(currentAgentId$) === (await get(defaultAgentId$));
-});
-
-export const currentAgent$ = computed(async (get) => {
+const currentAgent$ = computed(async (get) => {
   const agentId = get(currentAgentId$);
   if (!agentId) {
     return null;

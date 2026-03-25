@@ -38,7 +38,7 @@ export const agentsLoading$ = computed((get) => get(agentsListState$).loading);
 export const agentsError$ = computed((get) => get(agentsListState$).error);
 
 export const fetchAgentsList$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
+  async ({ get, set }, _signal: AbortSignal) => {
     set(agentsListState$, (prev) => ({ ...prev, loading: true, error: null }));
 
     try {

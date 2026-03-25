@@ -49,6 +49,7 @@ const fetchSlackOrg$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   const client = get(zeroClient$)(zeroIntegrationsSlackContract);
   const result = await client.getStatus();
+  signal.throwIfAborted();
 
   if (result.status !== 200) {
     set(slackOrgState$, (prev) => ({
@@ -70,6 +71,7 @@ export const disconnectSlackOrg$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const client = get(zeroClient$)(zeroIntegrationsSlackContract);
     const result = await client.disconnect();
+    signal.throwIfAborted();
 
     if (result.status !== 200) {
       toast.error("Failed to disconnect Slack");
@@ -87,6 +89,7 @@ export const uninstallSlackOrg$ = command(
     const result = await client.disconnect({
       query: { action: "uninstall" },
     });
+    signal.throwIfAborted();
 
     if (result.status !== 200) {
       toast.error("Failed to uninstall Slack");

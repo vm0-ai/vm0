@@ -196,7 +196,7 @@ describe("schedule-run-history signals", () => {
       );
 
       // Navigate to next page
-      await context.store.set(goToNextScheduleRunPage$);
+      await context.store.set(goToNextScheduleRunPage$, context.signal);
 
       expect(context.store.get(scheduleRunCurrentPage$)).toBe(2);
       expect(context.store.get(scheduleRunHasPrev$)).toBeTruthy();
@@ -239,7 +239,7 @@ describe("schedule-run-history signals", () => {
           },
         }),
       );
-      await context.store.set(goToNextScheduleRunPage$);
+      await context.store.set(goToNextScheduleRunPage$, context.signal);
       expect(context.store.get(scheduleRunCurrentPage$)).toBe(2);
 
       // Change rows per page — should reset to page 1

@@ -178,7 +178,9 @@ const fetchZeroJobInstructions$ = command(
         instructions: null,
         loading: false,
         error:
-          error instanceof Error ? error.message : "Failed to load instructions",
+          error instanceof Error
+            ? error.message
+            : "Failed to load instructions",
       });
     }
   },
@@ -231,6 +233,7 @@ export const buildZeroJobInstructions$ = command(
         params: { id: detail.agentId },
         body: { content: edited },
       });
+      signal.throwIfAborted();
 
       if (result.status !== 200) {
         const errorDetail =
@@ -292,6 +295,7 @@ export const zeroJobUpdateSettings$ = command(
         params: { id: detail.agentId },
         body: update,
       });
+      signal.throwIfAborted();
       if (result.status !== 200) {
         const detail =
           result.status === 401 ||
@@ -383,6 +387,7 @@ export const saveZeroJobConnectors$ = command(
         params: { id: detail.agentId },
         body: { connectors: newConnectors },
       });
+      signal.throwIfAborted();
 
       if (result.status !== 200) {
         const errorDetail =
@@ -690,6 +695,7 @@ export const saveZeroJobSchedule$ = command(
 
     const client = get(zeroClient$)(zeroSchedulesMainContract);
     const result = await client.deploy({ body });
+    signal.throwIfAborted();
 
     if (result.status !== 200 && result.status !== 201) {
       const detail =
@@ -724,6 +730,7 @@ export const toggleZeroJobScheduleEnabled$ = command(
       params: { name: params.name },
       body: { agentId: detail.agentId },
     });
+    signal.throwIfAborted();
 
     if (result.status !== 200) {
       const message = `Failed to ${action} schedule (${result.status})`;
@@ -747,6 +754,7 @@ export const deleteZeroJobSchedule$ = command(
       params: { name: scheduleName },
       query: { agentId: detail.agentId },
     });
+    signal.throwIfAborted();
 
     if (result.status !== 204) {
       const msg =
@@ -774,6 +782,7 @@ export const deleteZeroJobAgent$ = command(
 
     const client = get(zeroClient$)(zeroAgentsByIdContract);
     const result = await client.delete({ params: { id: detail.agentId } });
+    signal.throwIfAborted();
 
     if (result.status !== 204) {
       const msg =

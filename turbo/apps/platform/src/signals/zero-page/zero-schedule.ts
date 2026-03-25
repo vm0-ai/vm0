@@ -163,7 +163,7 @@ export const zeroScheduleEntries$ = computed((get) => {
 export const fetchZeroSchedules$ = command(
   async ({ get, set }, _signal: AbortSignal) => {
     const status = await get(zeroOnboardingStatus$);
-    signal.throwIfAborted();
+    _signal.throwIfAborted();
     const composeId = status.defaultAgentId;
     if (!composeId) {
       set(internalSchedules$, []);
@@ -291,6 +291,7 @@ export const saveZeroSchedule$ = command(
 
     const client = get(zeroClient$)(zeroSchedulesMainContract);
     const result = await client.deploy({ body });
+    signal.throwIfAborted();
 
     if (result.status !== 200 && result.status !== 201) {
       const message =
@@ -331,6 +332,7 @@ export const toggleZeroScheduleEnabled$ = command(
       params: { name: params.name },
       body: { agentId: composeId },
     });
+    signal.throwIfAborted();
 
     if (result.status !== 200) {
       const message = `Failed to ${action} schedule (${result.status})`;
@@ -360,6 +362,7 @@ export const deleteZeroSchedule$ = command(
       params: { name: scheduleName },
       query: { agentId: composeId },
     });
+    signal.throwIfAborted();
 
     if (result.status !== 204) {
       const msg =
@@ -458,6 +461,7 @@ export const saveOrgSchedule$ = command(
 
     const client = get(zeroClient$)(zeroSchedulesMainContract);
     const result = await client.deploy({ body });
+    signal.throwIfAborted();
 
     if (result.status !== 200 && result.status !== 201) {
       const message =
@@ -491,6 +495,7 @@ export const toggleOrgScheduleEnabled$ = command(
       params: { name: params.name },
       body: { agentId: params.agentId },
     });
+    signal.throwIfAborted();
 
     if (result.status !== 200) {
       const message = `Failed to ${action} schedule (${result.status})`;
@@ -523,7 +528,7 @@ export const deleteOrgSchedule$ = command(
     }
 
     toast.success("Schedule deleted");
-    await set(fetchAllOrgSchedules$, signal);
+    await set(fetchAllOrgSchedules$, _signal);
   },
 );
 
@@ -536,6 +541,7 @@ export const runScheduleNow$ = command(
     const toastId = toast.loading("Starting run…");
     const client = get(zeroClient$)(zeroScheduleRunContract);
     const result = await client.run({ body: { scheduleId } });
+    signal.throwIfAborted();
 
     if (result.status !== 201) {
       const message =

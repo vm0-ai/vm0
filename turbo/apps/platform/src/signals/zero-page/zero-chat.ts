@@ -788,8 +788,12 @@ export const fetchZeroSessionList$ = command(
     try {
       const client = get(zeroClient$)(chatThreadsContract);
       const result = await client.list({ query: { agentId: composeId } });
+      signal.throwIfAborted();
       if (result.status !== 200) {
-        set(internalSessionListError$, `Failed to load chats (${result.status})`);
+        set(
+          internalSessionListError$,
+          `Failed to load chats (${result.status})`,
+        );
         return;
       }
       set(internalSessionList$, result.body.threads);
@@ -880,7 +884,7 @@ const startLoop$ = command(
             },
             setStatus: (s) => {
               set(internalRunStatus$, s);
-              updateQueuePosition(s, fetchFn, runId, (pos) =>
+              updateQueuePosition(s, createClient, runId, (pos) =>
                 set(internalQueuePosition$, pos),
               );
               // Cycle thinking message on each status update
@@ -892,15 +896,6 @@ const startLoop$ = command(
             setError: (e) => {
               set(internalRunError$, e);
             },
-          },
-          setEvents: (updater) => {
-            set(internalRunEvents$, updater);
-          },
-          setStatus: (s) => {
-            set(internalRunStatus$, s);
-            updateQueuePosition(s, createClient, runId, (pos) =>
-              set(internalQueuePosition$, pos),
-            );
           },
           onTerminal: (completedRunId) => {
             set(onZeroRunComplete$, completedRunId, signal).catch(

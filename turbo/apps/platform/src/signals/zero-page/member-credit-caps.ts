@@ -112,10 +112,14 @@ function createMemberCapSetting(
     }
 
     const promise = (async () => {
-      await set(setMemberCreditCap$, {
-        userId: member.userId,
-        creditCap: parsed,
-      });
+      await set(
+        setMemberCreditCap$,
+        {
+          userId: member.userId,
+          creditCap: parsed,
+        },
+        AbortSignal.timeout(30_000),
+      );
     })();
 
     set(internalSavingPromise$, promise);
@@ -133,10 +137,14 @@ function createMemberCapSetting(
 
   const clearCap$ = command(({ set }) => {
     const promise = (async () => {
-      await set(setMemberCreditCap$, {
-        userId: member.userId,
-        creditCap: null,
-      });
+      await set(
+        setMemberCreditCap$,
+        {
+          userId: member.userId,
+          creditCap: null,
+        },
+        AbortSignal.timeout(30_000),
+      );
     })();
 
     set(internalSavingPromise$, promise);
