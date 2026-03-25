@@ -71,6 +71,7 @@ jobs:
   # Run database migrations in production (always runs as a gate for all deploy jobs)
   migrate-production:
     needs: release-please
+    if: ${{ needs.release-please.outputs.releases_created == 'true' }}
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260320

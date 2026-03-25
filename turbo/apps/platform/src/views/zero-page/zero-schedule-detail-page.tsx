@@ -2,8 +2,10 @@ import { useState } from "react";
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
 import {
   IconCalendar,
+  IconCircleDot,
   IconFileText,
   IconPlayerPlay,
+  IconRotateClockwise2,
   IconSettings,
   IconTrash,
 } from "@tabler/icons-react";
@@ -52,6 +54,26 @@ import {
   slackChannels$,
   slackChannelsInitialized$,
 } from "../../signals/zero-page/slack-channels.ts";
+import {
+  scheduleDetailTab$,
+  setScheduleDetailTab$,
+} from "../../signals/schedule-page/schedule-detail-tab.ts";
+import { LogTable, STATUS_LABELS } from "./components/log-views/log-table.tsx";
+import { Pagination } from "../components/pagination.tsx";
+import {
+  scheduleRunData$,
+  scheduleRunLimit$,
+  scheduleRunHasPrev$,
+  scheduleRunCurrentPage$,
+  goToNextScheduleRunPage$,
+  goToPrevScheduleRunPage$,
+  goForwardTwoScheduleRunPages$,
+  goBackTwoScheduleRunPages$,
+  setScheduleRunRowsPerPage$,
+  scheduleRunStatusFilter$,
+  setScheduleRunStatusFilter$,
+  scheduleRunAvailableStatuses$,
+} from "../../signals/schedule-page/schedule-run-history.ts";
 import { ZeroNoPermissionIllustration } from "./components/zero-no-permission-illustration.tsx";
 import { InlineSettingsRow } from "./components/zero-inline-settings-row.tsx";
 import {
@@ -624,6 +646,106 @@ function ScheduleInstructionEditorBlock({
   );
 }
 
+// ---------------------------------------------------------------------------
+// Run History tab
+// ---------------------------------------------------------------------------
+
+function ScheduleRunHistoryTab() {
+  const dataLoadable = useLoadable(scheduleRunData$);
+  const hasPrev = useGet(scheduleRunHasPrev$);
+  const currentPage = useGet(scheduleRunCurrentPage$);
+  const rowsPerPage = useGet(scheduleRunLimit$);
+  const goToNext = useSet(goToNextScheduleRunPage$);
+  const goToPrev = useSet(goToPrevScheduleRunPage$);
+  const goForwardTwo = useSet(goForwardTwoScheduleRunPages$);
+  const goBackTwo = useSet(goBackTwoScheduleRunPages$);
+  const setRowsPerPage = useSet(setScheduleRunRowsPerPage$);
+
+  const statusFilter = useGet(scheduleRunStatusFilter$);
+  const setStatusFilter = useSet(setScheduleRunStatusFilter$);
+  const availableStatusesLoadable = useLoadable(scheduleRunAvailableStatuses$);
+
+  const logs = dataLoadable.state === "hasData" ? dataLoadable.data.data : [];
+  const hasNext =
+    dataLoadable.state === "hasData" && dataLoadable.data.pagination.hasMore;
+  const totalPages =
+    dataLoadable.state === "hasData"
+      ? dataLoadable.data.pagination.totalPages
+      : undefined;
+  const isLoading = dataLoadable.state === "loading";
+
+  const statusOptions = [
+    { value: "all", label: "All status" },
+    ...(availableStatusesLoadable.state === "hasData"
+      ? availableStatusesLoadable.data.map((s) => ({
+          value: s,
+          label: STATUS_LABELS[s],
+        }))
+      : []),
+  ];
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Filter row */}
+      <div className="flex items-center gap-2">
+        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v)}>
+          <SelectTrigger className="zero-btn-morandi h-9 w-auto gap-1.5 rounded-lg px-3.5 text-sm font-medium">
+            <IconCircleDot size={14} stroke={1.5} className="shrink-0" />
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {statusOptions.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Table */}
+      <Card className="zero-card overflow-hidden">
+        <CardContent className="px-4 sm:px-7 pb-3 pt-0">
+          <LogTable
+            logs={logs}
+            isLoading={isLoading}
+            rowsPerPage={rowsPerPage}
+            emptyTitle="No runs yet"
+            emptyDescription="When this schedule runs, its history will show up here."
+            filteredEmptyTitle="Nothing matches that filter"
+            filteredEmptyDescription="Try a different status filter."
+            hasActiveFilter={statusFilter !== "all"}
+            minWidth="440px"
+          />
+        </CardContent>
+      </Card>
+
+      {/* Pagination */}
+      {(totalPages === undefined || totalPages > 1) && (
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          rowsPerPage={rowsPerPage}
+          hasNext={hasNext}
+          hasPrev={hasPrev}
+          isLoading={isLoading}
+          labelClassName="font-normal text-muted-foreground"
+          buttonClassName="bg-transparent border-border/70"
+          onNextPage={() => detach(goToNext(), Reason.DomCallback)}
+          onPrevPage={() => goToPrev()}
+          onForwardTwoPages={() => detach(goForwardTwo(), Reason.DomCallback)}
+          onBackTwoPages={() => goBackTwo()}
+          onRowsPerPageChange={(limit) => setRowsPerPage(limit)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Detail view
+// ---------------------------------------------------------------------------
+
 function ScheduleDetailView({
   entry,
   dimmed,
@@ -670,16 +792,15 @@ function ScheduleDetailView({
   const nextRunLabel = formatRunAt(entry.nextRunAt);
   const isActive = entry.enabled !== false;
 
-  const [activeTab, setActiveTab] = useState<"settings" | "instructions">(
-    "settings",
-  );
+  const activeTab = useGet(scheduleDetailTab$);
+  const setActiveTab = useSet(setScheduleDetailTab$);
 
   return (
     <div className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]">
       <Tabs
         value={activeTab}
         onValueChange={(v) => {
-          if (v === "settings" || v === "instructions") {
+          if (v === "settings" || v === "instructions" || v === "history") {
             setActiveTab(v);
           }
         }}
@@ -774,6 +895,13 @@ function ScheduleDetailView({
                   <IconFileText size={14} stroke={1.5} />
                   Instructions
                 </TabsTrigger>
+                <TabsTrigger
+                  value="history"
+                  className={SCHEDULE_DETAIL_TAB_TRIGGER_CLASS}
+                >
+                  <IconRotateClockwise2 size={14} stroke={1.5} />
+                  Run History
+                </TabsTrigger>
               </TabsList>
               <Button
                 type="button"
@@ -822,6 +950,8 @@ function ScheduleDetailView({
                 />
               </div>
             )}
+
+            {activeTab === "history" && <ScheduleRunHistoryTab />}
           </div>
         </main>
       </Tabs>

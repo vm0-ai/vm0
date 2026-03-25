@@ -329,14 +329,25 @@ export type ModelProviderFramework = "claude-code";
 
 /**
  * Provider types hidden from user-facing selection UI.
- * These providers cannot support token replacement (firewall-based secret protection),
- * so new selection is blocked until a proper solution is implemented.
- * Existing configurations continue to work at runtime.
+ * These lack static firewall support (dynamic URLs or SigV4), so token
+ * replacement cannot be used.  New selection is blocked until a proper
+ * solution is implemented; existing configurations continue to work.
  */
-const HIDDEN_PROVIDER_TYPES: ReadonlySet<ModelProviderType> = new Set([
-  "aws-bedrock",
-  "azure-foundry",
-]);
+const HIDDEN_PROVIDER_LIST = ["aws-bedrock", "azure-foundry"] as const;
+type HiddenProviderType = (typeof HIDDEN_PROVIDER_LIST)[number];
+
+const HIDDEN_PROVIDER_TYPES: ReadonlySet<ModelProviderType> = new Set(
+  HIDDEN_PROVIDER_LIST,
+);
+
+/**
+ * Providers excluded from static firewall configs.
+ * = hidden providers (dynamic URLs / SigV4) + vm0 (meta-provider).
+ *
+ * Adding a new provider to MODEL_PROVIDER_TYPES without either adding it here
+ * or adding a firewall config entry will cause a compile error.
+ */
+type FirewallExcludedProvider = HiddenProviderType | "vm0";
 
 /**
  * Get provider types available for user selection.
@@ -381,8 +392,13 @@ function mpFirewall(
   };
 }
 
-export const MODEL_PROVIDER_FIREWALL_CONFIGS: Partial<
-  Record<ModelProviderType, ExpandedFirewallConfig>
+/**
+ * Every provider NOT in FirewallExcludedProvider must have an entry here.
+ * Adding a new provider without a firewall config will cause a type error.
+ */
+export const MODEL_PROVIDER_FIREWALL_CONFIGS: Record<
+  Exclude<ModelProviderType, FirewallExcludedProvider>,
+  ExpandedFirewallConfig
 > = {
   // Placeholder: sk-ant-api03-{93 word/hyphen chars}AA (108 chars total)
   // Source: Semgrep regex \Bsk-ant-api03-[\w\-]{93}AA\B
@@ -462,10 +478,23 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Partial<
  * Get firewall gateway config for a model provider type.
  * Returns undefined for providers without static base URLs (aws-bedrock, azure-foundry).
  */
+type FirewallSupportedProvider = Exclude<
+  ModelProviderType,
+  FirewallExcludedProvider
+>;
+
+function isFirewallSupported(
+  type: ModelProviderType,
+): type is FirewallSupportedProvider {
+  return type in MODEL_PROVIDER_FIREWALL_CONFIGS;
+}
+
 export function getModelProviderFirewall(
   type: ModelProviderType,
 ): ExpandedFirewallConfig | undefined {
-  return MODEL_PROVIDER_FIREWALL_CONFIGS[type];
+  return isFirewallSupported(type)
+    ? MODEL_PROVIDER_FIREWALL_CONFIGS[type]
+    : undefined;
 }
 
 export const modelProviderTypeSchema = z.enum([

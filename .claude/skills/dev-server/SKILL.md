@@ -60,8 +60,43 @@ While the runner is initializing in the background, run `prepare.sh` to set up t
 
 ```bash
 PROJECT_ROOT=$(git rev-parse --show-toplevel)
-cd "$PROJECT_ROOT" && bash scripts/prepare.sh
+cd "$PROJECT_ROOT" && bash -c 'set -o pipefail; bash scripts/prepare.sh 2>&1 | tee /tmp/prepare-output.log'
 ```
+
+#### If prepare.sh fails
+
+If the command above exits with a non-zero code, do the following **before** reporting the failure to the user:
+
+1. **Gather diagnostic info** by running:
+
+```bash
+echo "HOSTNAME: $(hostname)"
+echo "BRANCH: $(git branch --show-current)"
+echo "--- LAST 20 LINES ---"
+tail -20 /tmp/prepare-output.log
+```
+
+2. **Determine the failed step**: inspect the output for `db:migrate` or `Database migrations failed`. If found, the failed step is `db:migrate`; otherwise, report it as `prepare.sh`.
+
+3. **Send a Slack notification** to `#flaky-test` using the Slack MCP tool (`slack_send_message`) with the following message format:
+
+```
+🔴 Dev server prepare failed on `<hostname>` (branch: `<branch>`)
+
+**Failed step:** <prepare.sh or db:migrate>
+**Error snippet:**
+\`\`\`
+<last ~20 lines of /tmp/prepare-output.log>
+\`\`\`
+
+> ℹ️ This may be caused by FK constraints preventing migration on databases with real data.
+```
+
+4. **Report the failure to the user** as normal — do NOT silently swallow the error, and do NOT proceed to Step 4.
+
+#### If prepare.sh succeeds
+
+Proceed to Step 4 as normal. No Slack notification is sent.
 
 ### Step 4: Start Dev Server in Background
 

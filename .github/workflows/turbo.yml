@@ -1057,6 +1057,10 @@ jobs:
         run: npm install -g agent-browser@0.22.0
       - name: Run browser E2E tests
         run: |
+          echo "Verifying device flow with ${{ needs.deploy-web.outputs.preview-url }}"
+          cd e2e
+          bash cli-auth-automation.sh "${{ needs.deploy-web.outputs.preview-url }}" || true
+          cd ..
           echo "Running browser E2E tests against ${{ needs.deploy-web.outputs.preview-url }}"
           BATS_TEST_TIMEOUT=120 ./e2e/test/libs/bats/bin/bats -T ./e2e/tests/02-browser/*.bats
         env:

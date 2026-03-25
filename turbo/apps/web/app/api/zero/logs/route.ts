@@ -55,6 +55,7 @@ interface LogsQuery {
   search?: string;
   status?: LogStatus;
   triggerSource?: TriggerSource;
+  scheduleId?: string;
   cursor?: string;
   limit?: number;
 }
@@ -113,6 +114,9 @@ async function getTotalCount(
   }
   if (query.triggerSource) {
     conditions.push(eq(agentRuns.triggerSource, query.triggerSource));
+  }
+  if (query.scheduleId) {
+    conditions.push(eq(agentRuns.scheduleId, query.scheduleId));
   }
 
   const [result] = await globalThis.services.db
@@ -256,6 +260,9 @@ const router = tsr.router(logsListContract, {
     }
     if (query.triggerSource) {
       conditions.push(eq(agentRuns.triggerSource, query.triggerSource));
+    }
+    if (query.scheduleId) {
+      conditions.push(eq(agentRuns.scheduleId, query.scheduleId));
     }
 
     const runs = await globalThis.services.db

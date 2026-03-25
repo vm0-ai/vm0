@@ -74,21 +74,3 @@ export function highlightText(
     matchCount,
   };
 }
-
-/**
- * Count the number of matches of a search term in text without creating elements.
- * More efficient when you only need the count.
- */
-export function countMatches(text: string, searchTerm: string): number {
-  if (!searchTerm.trim() || !text) {
-    return 0;
-  }
-
-  const escapedTerm = searchTerm.replace(
-    /[.*+?^${}()|[\]\\]/g,
-    String.raw`\$&`,
-  );
-  const regex = new RegExp(escapedTerm, "gi");
-  const matches = text.match(regex);
-  return matches?.length ?? 0;
-}
