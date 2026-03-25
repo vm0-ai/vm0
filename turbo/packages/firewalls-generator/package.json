@@ -24,6 +24,7 @@
     "generate:close": "tsx src/index.ts close",
     "generate:cloudflare": "tsx src/index.ts cloudflare",
     "generate:confluence": "tsx src/index.ts confluence",
+    "generate:cronlytic": "tsx src/index.ts cronlytic",
     "generate:customer-io": "tsx src/index.ts customer-io",
     "generate:deepseek": "tsx src/index.ts deepseek",
     "generate:deel": "tsx src/index.ts deel",

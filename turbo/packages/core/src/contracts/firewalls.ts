@@ -109,6 +109,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   clickup: ["clickup"],
   close: ["close"],
   cloudflare: ["cloudflare"],
+  cronlytic: ["cronlytic"],
   "customer-io": ["customer-io"],
   deepseek: ["deepseek"],
   deel: ["deel"],
