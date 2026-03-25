@@ -1,8 +1,5 @@
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import {
-  IconClock,
-  IconChevronRight,
-  IconLoader2,
   IconUsers,
   IconCircleDot,
   IconPlugConnected,
@@ -13,14 +10,9 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  cn,
 } from "@vm0/ui";
-import {
-  TRIGGER_SOURCE_LABELS,
-  type LogEntry,
-  type LogStatus,
-} from "../../signals/zero-page/log-types.ts";
-import { StatusBadge } from "./components/logs/status-badge.tsx";
+import { TRIGGER_SOURCE_LABELS } from "../../signals/zero-page/log-types.ts";
+import { LogTable, STATUS_LABELS } from "./components/log-views/log-table.tsx";
 import { Pagination } from "../components/pagination.tsx";
 import {
   zeroActivityAgentFilter$,
@@ -36,85 +28,11 @@ import {
   goForwardTwoZeroActivityPages$,
   goBackTwoZeroActivityPages$,
   setZeroActivityRowsPerPage$,
-  formatLogTime,
-  formatDuration,
   zeroActivityAvailableStatuses$,
   zeroActivityAvailableSources$,
   zeroActivityAvailableAgents$,
 } from "../../signals/activity-page/activity-signals.ts";
-import { Link } from "../router/link.tsx";
 import { Reason, detach } from "../../signals/utils.ts";
-import emptyActivityImg from "./assets/empty-activity.webp";
-
-const STATUS_LABELS: Readonly<Record<LogStatus, string>> = {
-  queued: "Queued",
-  pending: "Pending",
-  running: "Running",
-  completed: "Completed",
-  failed: "Failed",
-  timeout: "Timeout",
-  cancelled: "Cancelled",
-};
-
-const ROW_GRID =
-  "grid grid-cols-[1fr_5rem_1fr_8rem_5rem_2.5rem] gap-x-6 items-center";
-
-function ActivityRow({
-  entry,
-  logId,
-  agentName = "Zero",
-}: {
-  entry: LogEntry;
-  logId: string;
-  agentName?: string;
-}) {
-  const time = formatLogTime(entry.createdAt);
-  return (
-    <Link
-      pathname="/activity/:logId"
-      options={{ pathParams: { logId } }}
-      className="block py-3 transition-colors hover:bg-muted/50 cursor-pointer border-b border-border/40 last:border-b-0 no-underline text-inherit"
-    >
-      <div className={cn(ROW_GRID)}>
-        <div className="min-w-0 truncate text-left text-sm font-medium text-foreground">
-          {agentName}
-        </div>
-        <div className="text-left text-sm text-muted-foreground">
-          {entry.triggerSource
-            ? TRIGGER_SOURCE_LABELS[entry.triggerSource]
-            : "—"}
-        </div>
-        <div className="text-left">
-          <StatusBadge status={entry.status} zeroStyle />
-        </div>
-        <div className="text-left text-sm text-muted-foreground tabular-nums">
-          {time}
-        </div>
-        <div className="text-left text-sm text-muted-foreground tabular-nums">
-          {entry.status === "running" ? (
-            <span className="inline-flex items-center gap-1">
-              <IconLoader2 size={12} stroke={1.5} className="animate-spin" />
-              Running
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-0.5">
-              <IconClock size={12} stroke={1.5} />
-              {formatDuration(entry.startedAt, entry.completedAt) ?? "—"}
-            </span>
-          )}
-        </div>
-        <div>
-          <span
-            className="rounded p-1 text-muted-foreground hover:bg-muted/80 hover:text-foreground transition-colors inline-flex"
-            aria-hidden="true"
-          >
-            <IconChevronRight size={14} stroke={1.5} />
-          </span>
-        </div>
-      </div>
-    </Link>
-  );
-}
 
 export function ZeroActivityPage() {
   const dataLoadable = useLoadable(zeroActivityData$);
@@ -251,73 +169,17 @@ export function ZeroActivityPage() {
       <div className="flex-1 min-h-0 overflow-auto px-4 sm:px-6 pt-4">
         <div className="mx-auto max-w-[900px]">
           <div className="zero-card overflow-hidden px-4 sm:px-7 pb-3">
-            <div className="overflow-x-auto">
-              <div className="min-w-[540px]">
-                {(logs.length > 0 || isLoading) && (
-                  <div
-                    className={cn(
-                      ROW_GRID,
-                      "sticky top-0 z-10 py-3 text-sm font-medium text-muted-foreground bg-card border-b border-border/40",
-                    )}
-                  >
-                    <div className="text-left">Agent</div>
-                    <div className="text-left">Source</div>
-                    <div className="text-left">Status</div>
-                    <div className="text-left">Start Time</div>
-                    <div className="text-left">Duration</div>
-                    <div />
-                  </div>
-                )}
-                {isLoading ? (
-                  <div className="divide-y divide-border/40">
-                    {Array.from({ length: rowsPerPage }, (_, i) => (
-                      <div key={i} className={cn(ROW_GRID, "py-3")}>
-                        <div className="h-4 w-20 rounded bg-muted/50 animate-pulse" />
-                        <div className="h-4 w-12 rounded bg-muted/50 animate-pulse" />
-                        <div className="h-5 w-16 rounded-full bg-muted/50 animate-pulse" />
-                        <div className="h-4 w-24 rounded bg-muted/50 animate-pulse" />
-                        <div className="h-4 w-14 rounded bg-muted/50 animate-pulse" />
-                        <div />
-                      </div>
-                    ))}
-                  </div>
-                ) : logs.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center min-h-[20rem] gap-4">
-                    <img
-                      src={emptyActivityImg}
-                      alt=""
-                      loading="lazy"
-                      className="h-20 w-20 object-contain opacity-80"
-                    />
-                    <div className="text-center">
-                      <p className="text-sm font-medium text-foreground">
-                        {agentFilter === "all" &&
-                        statusFilter === "all" &&
-                        sourceFilter === "all"
-                          ? "All quiet for now"
-                          : "Nothing matches those filters"}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {agentFilter === "all" &&
-                        statusFilter === "all" &&
-                        sourceFilter === "all"
-                          ? "When your agents start working, their activity will show up here."
-                          : "Try different filters to find what you're looking for."}
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  logs.map((entry) => (
-                    <ActivityRow
-                      key={entry.id}
-                      entry={entry}
-                      logId={entry.id}
-                      agentName={entry.displayName ?? entry.agentName}
-                    />
-                  ))
-                )}
-              </div>
-            </div>
+            <LogTable
+              logs={logs}
+              isLoading={isLoading}
+              rowsPerPage={rowsPerPage}
+              showSource
+              hasActiveFilter={
+                agentFilter !== "all" ||
+                statusFilter !== "all" ||
+                sourceFilter !== "all"
+              }
+            />
           </div>
         </div>
       </div>

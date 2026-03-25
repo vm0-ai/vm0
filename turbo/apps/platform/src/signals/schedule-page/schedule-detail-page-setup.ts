@@ -14,10 +14,12 @@ import {
   setScheduleRunHistoryScheduleId$,
   seedScheduleRunCursorHistory$,
 } from "./schedule-run-history.ts";
+import { initScheduleDetailTab$ } from "./schedule-detail-tab.ts";
 
 export const setupScheduleDetailPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(updatePage$, createElement(ZeroScheduleDetailPageWrapper));
+    set(initScheduleDetailTab$);
 
     // Initialize run history with the current schedule ID from the URL
     const params = get(pathParams$);

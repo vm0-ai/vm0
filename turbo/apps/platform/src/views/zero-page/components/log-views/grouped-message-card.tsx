@@ -338,9 +338,7 @@ interface ToolGroup {
  * Group consecutive tool operations by tool name.
  * Non-consecutive operations of the same type stay in separate groups.
  */
-export function groupConsecutiveTools(
-  operations: ToolOperation[],
-): ToolGroup[] {
+function groupConsecutiveTools(operations: ToolOperation[]): ToolGroup[] {
   const groups: ToolGroup[] = [];
   for (const op of operations) {
     const last = groups[groups.length - 1];

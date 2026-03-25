@@ -2,11 +2,8 @@ import { useState } from "react";
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
 import {
   IconCalendar,
-  IconChevronRight,
   IconCircleDot,
-  IconClock,
   IconFileText,
-  IconLoader2,
   IconPlayerPlay,
   IconRotateClockwise2,
   IconSettings,
@@ -57,13 +54,12 @@ import {
   slackChannels$,
   slackChannelsInitialized$,
 } from "../../signals/zero-page/slack-channels.ts";
-import type { LogEntry, LogStatus } from "../../signals/zero-page/log-types.ts";
-import { StatusBadge } from "./components/logs/status-badge.tsx";
-import { Pagination } from "../components/pagination.tsx";
 import {
-  formatLogTime,
-  formatDuration,
-} from "../../signals/activity-page/activity-signals.ts";
+  scheduleDetailTab$,
+  setScheduleDetailTab$,
+} from "../../signals/schedule-page/schedule-detail-tab.ts";
+import { LogTable, STATUS_LABELS } from "./components/log-views/log-table.tsx";
+import { Pagination } from "../components/pagination.tsx";
 import {
   scheduleRunData$,
   scheduleRunLimit$,
@@ -78,7 +74,6 @@ import {
   setScheduleRunStatusFilter$,
   scheduleRunAvailableStatuses$,
 } from "../../signals/schedule-page/schedule-run-history.ts";
-import emptyActivityImg from "./assets/empty-activity.webp";
 import { ZeroNoPermissionIllustration } from "./components/zero-no-permission-illustration.tsx";
 import { InlineSettingsRow } from "./components/zero-inline-settings-row.tsx";
 import {
@@ -655,69 +650,6 @@ function ScheduleInstructionEditorBlock({
 // Run History tab
 // ---------------------------------------------------------------------------
 
-const RUN_HISTORY_STATUS_LABELS: Readonly<Record<LogStatus, string>> = {
-  queued: "Queued",
-  pending: "Pending",
-  running: "Running",
-  completed: "Completed",
-  failed: "Failed",
-  timeout: "Timeout",
-  cancelled: "Cancelled",
-};
-
-const RUN_HISTORY_ROW_GRID =
-  "grid grid-cols-[1fr_1fr_8rem_5rem_2.5rem] gap-x-6 items-center";
-
-function RunHistoryRow({
-  entry,
-  agentName = "Zero",
-}: {
-  entry: LogEntry;
-  agentName?: string;
-}) {
-  const time = formatLogTime(entry.createdAt);
-  return (
-    <Link
-      pathname="/activity/:logId"
-      options={{ pathParams: { logId: entry.id } }}
-      className="block py-3 transition-colors hover:bg-muted/50 cursor-pointer border-b border-border/40 last:border-b-0 no-underline text-inherit"
-    >
-      <div className={cn(RUN_HISTORY_ROW_GRID)}>
-        <div className="min-w-0 truncate text-left text-sm font-medium text-foreground">
-          {agentName}
-        </div>
-        <div className="text-left">
-          <StatusBadge status={entry.status} zeroStyle />
-        </div>
-        <div className="text-left text-sm text-muted-foreground tabular-nums">
-          {time}
-        </div>
-        <div className="text-left text-sm text-muted-foreground tabular-nums">
-          {entry.status === "running" ? (
-            <span className="inline-flex items-center gap-1">
-              <IconLoader2 size={12} stroke={1.5} className="animate-spin" />
-              Running
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-0.5">
-              <IconClock size={12} stroke={1.5} />
-              {formatDuration(entry.startedAt, entry.completedAt) ?? "—"}
-            </span>
-          )}
-        </div>
-        <div>
-          <span
-            className="rounded p-1 text-muted-foreground hover:bg-muted/80 hover:text-foreground transition-colors inline-flex"
-            aria-hidden="true"
-          >
-            <IconChevronRight size={14} stroke={1.5} />
-          </span>
-        </div>
-      </div>
-    </Link>
-  );
-}
-
 function ScheduleRunHistoryTab() {
   const dataLoadable = useLoadable(scheduleRunData$);
   const hasPrev = useGet(scheduleRunHasPrev$);
@@ -747,7 +679,7 @@ function ScheduleRunHistoryTab() {
     ...(availableStatusesLoadable.state === "hasData"
       ? availableStatusesLoadable.data.map((s) => ({
           value: s,
-          label: RUN_HISTORY_STATUS_LABELS[s],
+          label: STATUS_LABELS[s],
         }))
       : []),
   ];
@@ -774,66 +706,17 @@ function ScheduleRunHistoryTab() {
       {/* Table */}
       <Card className="zero-card overflow-hidden">
         <CardContent className="px-4 sm:px-7 pb-3 pt-0">
-          <div className="overflow-x-auto">
-            <div className="min-w-[440px]">
-              {(logs.length > 0 || isLoading) && (
-                <div
-                  className={cn(
-                    RUN_HISTORY_ROW_GRID,
-                    "sticky top-0 z-10 py-3 text-sm font-medium text-muted-foreground bg-card border-b border-border/40",
-                  )}
-                >
-                  <div className="text-left">Agent</div>
-                  <div className="text-left">Status</div>
-                  <div className="text-left">Start Time</div>
-                  <div className="text-left">Duration</div>
-                  <div />
-                </div>
-              )}
-              {isLoading ? (
-                <div className="divide-y divide-border/40">
-                  {Array.from({ length: rowsPerPage }, (_, i) => (
-                    <div key={i} className={cn(RUN_HISTORY_ROW_GRID, "py-3")}>
-                      <div className="h-4 w-20 rounded bg-muted/50 animate-pulse" />
-                      <div className="h-5 w-16 rounded-full bg-muted/50 animate-pulse" />
-                      <div className="h-4 w-24 rounded bg-muted/50 animate-pulse" />
-                      <div className="h-4 w-14 rounded bg-muted/50 animate-pulse" />
-                      <div />
-                    </div>
-                  ))}
-                </div>
-              ) : logs.length === 0 ? (
-                <div className="flex flex-col items-center justify-center min-h-[20rem] gap-4">
-                  <img
-                    src={emptyActivityImg}
-                    alt=""
-                    loading="lazy"
-                    className="h-20 w-20 object-contain opacity-80"
-                  />
-                  <div className="text-center">
-                    <p className="text-sm font-medium text-foreground">
-                      {statusFilter === "all"
-                        ? "No runs yet"
-                        : "Nothing matches that filter"}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {statusFilter === "all"
-                        ? "When this schedule runs, its history will show up here."
-                        : "Try a different status filter."}
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                logs.map((logEntry) => (
-                  <RunHistoryRow
-                    key={logEntry.id}
-                    entry={logEntry}
-                    agentName={logEntry.displayName ?? logEntry.agentName}
-                  />
-                ))
-              )}
-            </div>
-          </div>
+          <LogTable
+            logs={logs}
+            isLoading={isLoading}
+            rowsPerPage={rowsPerPage}
+            emptyTitle="No runs yet"
+            emptyDescription="When this schedule runs, its history will show up here."
+            filteredEmptyTitle="Nothing matches that filter"
+            filteredEmptyDescription="Try a different status filter."
+            hasActiveFilter={statusFilter !== "all"}
+            minWidth="440px"
+          />
         </CardContent>
       </Card>
 
@@ -909,9 +792,8 @@ function ScheduleDetailView({
   const nextRunLabel = formatRunAt(entry.nextRunAt);
   const isActive = entry.enabled !== false;
 
-  const [activeTab, setActiveTab] = useState<
-    "settings" | "instructions" | "history"
-  >("settings");
+  const activeTab = useGet(scheduleDetailTab$);
+  const setActiveTab = useSet(setScheduleDetailTab$);
 
   return (
     <div className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]">
