@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.147.0](https://github.com/vm0-ai/vm0/compare/app-v0.146.4...app-v0.147.0) (2026-03-25)
+
+
+### Features
+
+* add slug editing to org settings dialog ([#6617](https://github.com/vm0-ai/vm0/issues/6617)) ([daf8229](https://github.com/vm0-ai/vm0/commit/daf82295869ddd7fffcfab337a832052e900698f))
+* **platform:** zero schedule detail route and schedule list UX ([#6155](https://github.com/vm0-ai/vm0/issues/6155)) ([3a1a466](https://github.com/vm0-ai/vm0/commit/3a1a466d4619865a99ad0144608e88bcb50a121f))
+
+
+### Refactoring
+
+* rename "Zero's team" to "Agents" in sidebar and team pages ([#6622](https://github.com/vm0-ai/vm0/issues/6622)) ([36e7869](https://github.com/vm0-ai/vm0/commit/36e7869e7fa2a13ad1368ea39e329a21c966d6ae))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.110.0
+
 ## [0.146.4](https://github.com/vm0-ai/vm0/compare/app-v0.146.3...app-v0.146.4) (2026-03-25)
 
 

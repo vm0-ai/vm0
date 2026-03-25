@@ -1,5 +1,24 @@
 # Changelog
 
+## [9.81.0](https://github.com/vm0-ai/vm0/compare/cli-v9.80.0...cli-v9.81.0) (2026-03-25)
+
+
+### Features
+
+* **cli:** add whoami command to zero cli ([#6638](https://github.com/vm0-ai/vm0/issues/6638)) ([8576915](https://github.com/vm0-ai/vm0/commit/857691582536cdc7d2ec3a07b4357c8c4d1af77a))
+
+
+### Bug Fixes
+
+* rename agent command argument from &lt;name&gt; to &lt;agent-id&gt; ([#6626](https://github.com/vm0-ai/vm0/issues/6626)) ([84a8e9f](https://github.com/vm0-ai/vm0/commit/84a8e9f0bdfaf2db8c38cd068ea43e83ebeb1bb3)), closes [#6620](https://github.com/vm0-ai/vm0/issues/6620)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.110.0
+
 ## [9.80.0](https://github.com/vm0-ai/vm0/compare/cli-v9.79.3...cli-v9.80.0) (2026-03-25)
 
 

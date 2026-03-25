@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.45.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.45.7...runner-rs-v0.45.8) (2026-03-25)
+
+
+### Bug Fixes
+
+* remove hardcoded memorymax=2g from runner systemd service ([#6632](https://github.com/vm0-ai/vm0/issues/6632)) ([c091eb7](https://github.com/vm0-ai/vm0/commit/c091eb7f6e71098a05dc5da0aadde69ebceace83)), closes [#6631](https://github.com/vm0-ai/vm0/issues/6631)
+
 ## [0.45.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.45.6...runner-rs-v0.45.7) (2026-03-25)
 
 

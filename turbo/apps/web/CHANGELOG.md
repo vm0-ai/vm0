@@ -1,5 +1,27 @@
 # Changelog
 
+## [12.156.0](https://github.com/vm0-ai/vm0/compare/web-v12.155.1...web-v12.156.0) (2026-03-25)
+
+
+### Features
+
+* add slug editing to org settings dialog ([#6617](https://github.com/vm0-ai/vm0/issues/6617)) ([daf8229](https://github.com/vm0-ai/vm0/commit/daf82295869ddd7fffcfab337a832052e900698f))
+* **platform:** zero schedule detail route and schedule list UX ([#6155](https://github.com/vm0-ai/vm0/issues/6155)) ([3a1a466](https://github.com/vm0-ai/vm0/commit/3a1a466d4619865a99ad0144608e88bcb50a121f))
+
+
+### Bug Fixes
+
+* add retry and graceful fallback for empty openrouter responses ([#6625](https://github.com/vm0-ai/vm0/issues/6625)) ([846408b](https://github.com/vm0-ai/vm0/commit/846408bdb6c45dad82f6050d742e4da124d73e8b))
+* remove noisy info log from slack status endpoint ([#6634](https://github.com/vm0-ai/vm0/issues/6634)) ([9383598](https://github.com/vm0-ai/vm0/commit/93835983d3ea2b15e0aab25f6ca45993db158352)), closes [#6607](https://github.com/vm0-ai/vm0/issues/6607)
+* validate uuid format in zero agent api path params ([#6629](https://github.com/vm0-ai/vm0/issues/6629)) ([cebaef4](https://github.com/vm0-ai/vm0/commit/cebaef4ddb7dddde3ba8e5113c6772aa2f134fa9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.110.0
+
 ## [12.155.1](https://github.com/vm0-ai/vm0/compare/web-v12.155.0...web-v12.155.1) (2026-03-25)
 
 
