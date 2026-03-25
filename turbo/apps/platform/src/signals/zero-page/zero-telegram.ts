@@ -61,7 +61,7 @@ const fetchTelegramOrg$ = command(async ({ get, set }) => {
   }));
 
   const client = get(zeroClient$)(zeroIntegrationsTelegramContract);
-  const result = await client.getStatus();
+  const result = await client.getStatus({ headers: {} });
 
   if (result.status !== 200) {
     set(telegramOrgState$, (prev) => ({
@@ -129,7 +129,7 @@ export const connectTelegramOrg$ = command(
   ) => {
     const client = get(zeroClient$)(zeroIntegrationsTelegramContract);
     const result = await client.connect({
-      body: params as Parameters<typeof client.connect>[0]["body"],
+      body: params as NonNullable<Parameters<typeof client.connect>[0]>["body"],
     });
 
     if (result.status !== 200) {
@@ -208,7 +208,7 @@ export const pollTelegramConnection$ = command(
       await delay(POLL_INTERVAL_MS, { signal });
 
       const client = get(zeroClient$)(zeroIntegrationsTelegramContract);
-      const result = await client.getStatus();
+      const result = await client.getStatus({ headers: {} });
       signal.throwIfAborted();
       if (result.status !== 200) {
         continue;
