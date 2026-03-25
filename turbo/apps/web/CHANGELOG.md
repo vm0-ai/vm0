@@ -1,5 +1,20 @@
 # Changelog
 
+## [12.160.1](https://github.com/vm0-ai/vm0/compare/web-v12.160.0...web-v12.160.1) (2026-03-25)
+
+
+### Bug Fixes
+
+* **auth:** reject cli jwt requests when user is no longer an org member ([#6781](https://github.com/vm0-ai/vm0/issues/6781)) ([b0c889f](https://github.com/vm0-ai/vm0/commit/b0c889f6a86f463bc8e5a03c811896aa350b14bd)), closes [#6776](https://github.com/vm0-ai/vm0/issues/6776)
+* **auth:** resolve membership role for zero tokens ([#6805](https://github.com/vm0-ai/vm0/issues/6805)) ([7c40dbb](https://github.com/vm0-ai/vm0/commit/7c40dbbf2e61f678b6e1405b0cc8f484f049926d))
+* wrap cli command example in backticks to prevent markdown parsing ([#6782](https://github.com/vm0-ai/vm0/issues/6782)) ([a3070fd](https://github.com/vm0-ai/vm0/commit/a3070fd59635e1bbe8f77ae828d36baf0ad64f76))
+
+
+### Refactoring
+
+* **auth:** rename cli jwt token prefix from vm0_sandbox_ to vm0_pat_ ([#6784](https://github.com/vm0-ai/vm0/issues/6784)) ([63e848d](https://github.com/vm0-ai/vm0/commit/63e848d0fc07fa2d297097eb417c165c38551440))
+* remove legacy vm0_live_ opaque cli token support ([#6786](https://github.com/vm0-ai/vm0/issues/6786)) ([06ea1c6](https://github.com/vm0-ai/vm0/commit/06ea1c6c28c271ae3ddc9ffdf96678c372cc21c0))
+
 ## [12.160.0](https://github.com/vm0-ai/vm0/compare/web-v12.159.1...web-v12.160.0) (2026-03-25)
 
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## [9.83.3](https://github.com/vm0-ai/vm0/compare/cli-v9.83.2...cli-v9.83.3) (2026-03-25)
+
+
+### Refactoring
+
+* **auth:** rename cli jwt token prefix from vm0_sandbox_ to vm0_pat_ ([#6784](https://github.com/vm0-ai/vm0/issues/6784)) ([63e848d](https://github.com/vm0-ai/vm0/commit/63e848d0fc07fa2d297097eb417c165c38551440))
+* remove legacy vm0_live_ opaque cli token support ([#6786](https://github.com/vm0-ai/vm0/issues/6786)) ([06ea1c6](https://github.com/vm0-ai/vm0/commit/06ea1c6c28c271ae3ddc9ffdf96678c372cc21c0))
+
 ## [9.83.2](https://github.com/vm0-ai/vm0/compare/cli-v9.83.1...cli-v9.83.2) (2026-03-25)
 
 
