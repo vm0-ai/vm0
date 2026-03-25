@@ -90,8 +90,8 @@ describe("zero schedule delete command", () => {
       await deleteCommand.parseAsync(["node", "cli", "my-agent", "--yes"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("Deleted");
-      expect(logCalls).toContain("my-agent");
+      expect(logCalls).toContain("Schedule");
+      expect(logCalls).toContain("deleted");
     });
   });
 

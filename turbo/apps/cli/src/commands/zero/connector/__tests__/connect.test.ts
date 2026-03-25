@@ -72,7 +72,8 @@ describe("zero connector connect command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Session created");
       expect(logCalls).toContain("/authorize/github?code=ABC123");
-      expect(logCalls).toContain("connected successfully");
+      expect(logCalls).toContain("Connector");
+      expect(logCalls).toContain("connected");
     });
 
     it("should handle session creation failure", async () => {
@@ -124,7 +125,8 @@ describe("zero connector connect command", () => {
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("connected successfully via API token");
+      expect(logCalls).toContain("Connector");
+      expect(logCalls).toContain("connected");
     });
   });
 

@@ -29,6 +29,6 @@ export const deleteCommand = new Command()
       }
 
       await deleteZeroAgent(agentId);
-      console.log(chalk.green(`✓ Zero agent '${agentId}' deleted`));
+      console.log(chalk.green(`✓ Agent "${agentId}" deleted`));
     }),
   );

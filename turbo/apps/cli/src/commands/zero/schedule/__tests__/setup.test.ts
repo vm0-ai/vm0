@@ -112,7 +112,8 @@ describe("zero schedule setup command", () => {
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("Created schedule");
+      expect(logCalls).toContain("Schedule");
+      expect(logCalls).toContain("created");
       expect(logCalls).toContain("my-agent");
     });
 
@@ -160,7 +161,8 @@ describe("zero schedule setup command", () => {
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("Created schedule");
+      expect(logCalls).toContain("Schedule");
+      expect(logCalls).toContain("created");
     });
   });
 
