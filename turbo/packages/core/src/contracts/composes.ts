@@ -107,7 +107,7 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
     "agent:read": { group: "Agent", label: "Read agents" },
     "agent:write": { group: "Agent", label: "Create, update & delete agents" },
     "agent-run:read": { group: "Agent Runs", label: "View runs & telemetry" },
-    "agent-run:write": { group: "Agent Runs", label: "Cancel runs" },
+    "agent-run:write": { group: "Agent Runs", label: "Create & cancel runs" },
     "schedule:read": { group: "Schedules", label: "View schedules" },
     "schedule:write": {
       group: "Schedules",
