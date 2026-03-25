@@ -136,7 +136,26 @@ export const startDowngrade$ = command(
 );
 
 // ---------------------------------------------------------------------------
-// Auto-recharge
+// Auto-recharge config (reload pattern)
+// ---------------------------------------------------------------------------
+
+/**
+ * Pure computed derived from billingStatusAsync$.
+ * Re-derives automatically when billingReload$ bumps (after save).
+ * The component reads this via useLastLoadable for display and form values.
+ */
+export const autoRechargeConfig$ = computed(async (get) => {
+  const status = await get(billingStatusAsync$);
+  const ar = status.autoRecharge;
+  return {
+    enabled: ar.enabled,
+    threshold: ar.threshold !== null ? String(ar.threshold) : "",
+    amount: ar.amount !== null ? String(ar.amount) : "",
+  };
+});
+
+// ---------------------------------------------------------------------------
+// Auto-recharge save
 // ---------------------------------------------------------------------------
 
 export const saveAutoRecharge$ = command(
@@ -159,7 +178,7 @@ export const saveAutoRecharge$ = command(
       return { ok: false, error: message };
     }
 
-    // Invalidate billing status cache so the dialog shows fresh data on re-open
+    // Reload billing status — autoRechargeConfig$ re-derives automatically
     set(billingReload$, (x) => x + 1);
 
     return { ok: true };

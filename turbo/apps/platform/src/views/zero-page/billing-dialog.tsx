@@ -20,16 +20,11 @@ import {
   startCheckout$,
   startDowngrade$,
   saveAutoRecharge$,
+  autoRechargeConfig$,
 } from "../../signals/zero-page/billing.ts";
 import {
   selectedPlanTier$,
   setSelectedPlanTier$,
-  autoRechargeEnabled$,
-  autoRechargeThreshold$,
-  autoRechargeAmount$,
-  setAutoRechargeEnabled$,
-  setAutoRechargeThreshold$,
-  setAutoRechargeAmount$,
 } from "../../signals/zero-page/billing-dialog-state.ts";
 
 const PLANS = [
@@ -132,35 +127,53 @@ export function AutoRechargeSection({
 }) {
   const pageSignal = useGet(pageSignal$);
   const save = useSet(saveAutoRecharge$);
-  const enabled = useGet(autoRechargeEnabled$);
-  const threshold = useGet(autoRechargeThreshold$);
-  const amount = useGet(autoRechargeAmount$);
-  const setEnabled = useSet(setAutoRechargeEnabled$);
-  const setThreshold = useSet(setAutoRechargeThreshold$);
-  const setAmount = useSet(setAutoRechargeAmount$);
+  const configLoadable = useLastLoadable(autoRechargeConfig$);
+  const config =
+    configLoadable.state === "hasData"
+      ? configLoadable.data
+      : { enabled: false, threshold: "", amount: "" };
 
   if (currentTier === "free") {
     return null;
   }
 
+  const { enabled, threshold, amount } = config;
   const amountNum = Number(amount);
   const amountParsed = Number.isFinite(amountNum) ? amountNum : 0;
   const dollarAmount =
     amountParsed > 0 ? (amountParsed / CREDITS_PER_DOLLAR).toFixed(2) : "0.00";
 
-  const canSave =
-    !loading &&
-    (!enabled || (Number(threshold) > 0 && amountNum >= CREDITS_PER_DOLLAR));
+  const readInputNumbers = () => {
+    const thresholdEl = document.getElementById(
+      "org-auto-recharge-threshold",
+    ) as HTMLInputElement | null;
+    const amountEl = document.getElementById(
+      "org-auto-recharge-amount",
+    ) as HTMLInputElement | null;
+    const tVal = Number(thresholdEl?.value);
+    const aVal = Number(amountEl?.value);
+    return {
+      threshold:
+        Number.isFinite(tVal) && thresholdEl?.value !== ""
+          ? tVal
+          : Number(threshold),
+      amount:
+        Number.isFinite(aVal) && amountEl?.value !== "" ? aVal : amountNum,
+    };
+  };
 
-  const handleSave = () => {
+  const saveCurrent = (overrides?: {
+    enabled?: boolean;
+    threshold?: number;
+    amount?: number;
+  }) => {
+    const e = overrides?.enabled ?? enabled;
+    const inputs = readInputNumbers();
+    const t = overrides?.threshold ?? inputs.threshold;
+    const a = overrides?.amount ?? inputs.amount;
     detach(
       save(
-        {
-          enabled,
-          ...(enabled
-            ? { threshold: Number(threshold), amount: amountNum }
-            : {}),
-        },
+        { enabled: e, ...(e ? { threshold: t, amount: a } : {}) },
         pageSignal,
       ),
       Reason.DomCallback,
@@ -168,8 +181,9 @@ export function AutoRechargeSection({
   };
 
   const persistIfValid = () => {
-    if (canSave) {
-      handleSave();
+    const { threshold: t, amount: a } = readInputNumbers();
+    if (!loading && (!enabled || (t > 0 && a >= CREDITS_PER_DOLLAR))) {
+      saveCurrent({ threshold: t, amount: a });
     }
   };
 
@@ -196,24 +210,14 @@ export function AutoRechargeSection({
             <Switch
               checked={enabled}
               onCheckedChange={(v) => {
-                setEnabled(v);
                 if (!v) {
-                  detach(
-                    save({ enabled: false }, pageSignal),
-                    Reason.DomCallback,
-                  );
+                  saveCurrent({ enabled: false });
                   return;
                 }
                 const t = Number(threshold);
-                const a = Number(amount);
+                const a = amountNum;
                 if (!loading && t > 0 && a >= CREDITS_PER_DOLLAR) {
-                  detach(
-                    save(
-                      { enabled: true, threshold: t, amount: a },
-                      pageSignal,
-                    ),
-                    Reason.DomCallback,
-                  );
+                  saveCurrent({ enabled: true, threshold: t, amount: a });
                 }
               }}
               disabled={loading}
@@ -235,11 +239,11 @@ export function AutoRechargeSection({
                   </p>
                 </div>
                 <Input
+                  key={`threshold-${threshold}`}
                   id="org-auto-recharge-threshold"
                   type="number"
                   min={1}
-                  value={threshold}
-                  onChange={(e) => setThreshold(e.target.value)}
+                  defaultValue={threshold}
                   onBlur={() => persistIfValid()}
                   placeholder="e.g. 2000"
                   className={inputRowClass}
@@ -258,12 +262,12 @@ export function AutoRechargeSection({
                 </div>
                 <div className="relative w-[200px] shrink-0">
                   <Input
+                    key={`amount-${amount}`}
                     id="org-auto-recharge-amount"
                     type="number"
                     min={CREDITS_PER_DOLLAR}
                     step={CREDITS_PER_DOLLAR}
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
+                    defaultValue={amount}
                     onBlur={() => persistIfValid()}
                     placeholder="100000"
                     className={`${inputRowClass} pr-[4.25rem] tabular-nums`}
@@ -294,7 +298,9 @@ export function AutoRechargeSection({
           type="button"
           role="switch"
           aria-checked={enabled}
-          onClick={() => setEnabled(!enabled)}
+          onClick={() => {
+            saveCurrent({ enabled: !enabled });
+          }}
           className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
             enabled ? "bg-primary" : "bg-muted"
           }`}
@@ -314,10 +320,11 @@ export function AutoRechargeSection({
               When credits drop below
             </span>
             <input
+              key={`dialog-threshold-${threshold}`}
+              id="org-auto-recharge-threshold"
               type="number"
               min={1}
-              value={threshold}
-              onChange={(e) => setThreshold(e.target.value)}
+              defaultValue={threshold}
               placeholder="e.g. 1000"
               className="rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
             />
@@ -329,11 +336,12 @@ export function AutoRechargeSection({
             </span>
             <div className="flex items-center gap-2">
               <input
+                key={`dialog-amount-${amount}`}
+                id="org-auto-recharge-amount"
                 type="number"
                 min={CREDITS_PER_DOLLAR}
                 step={CREDITS_PER_DOLLAR}
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                defaultValue={amount}
                 placeholder="e.g. 10000"
                 className="rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground flex-1"
               />
@@ -349,8 +357,8 @@ export function AutoRechargeSection({
         <Button
           size="sm"
           variant="outline"
-          disabled={!canSave}
-          onClick={handleSave}
+          disabled={loading}
+          onClick={() => saveCurrent()}
         >
           {loading ? "Saving..." : "Save"}
         </Button>

@@ -215,4 +215,119 @@ describe("org billing tab - auto-recharge section", () => {
 
     expect(screen.queryByText("Auto-recharge")).not.toBeInTheDocument();
   });
+
+  it("should hydrate form with server auto-recharge config when enabled", async () => {
+    mockAPIs();
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+      autoRecharge: { enabled: true, threshold: 5000, amount: 50_000 },
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Auto-recharge")).toBeInTheDocument();
+    });
+
+    // Toggle should be on
+    const toggle = screen.getByRole("switch", {
+      name: /enable auto-recharge/i,
+    });
+    expect(toggle).toHaveAttribute("data-state", "checked");
+
+    // Threshold and amount inputs should show server values
+    const thresholdInput = screen.getByLabelText(
+      /credit threshold for auto-recharge/i,
+    );
+    expect(thresholdInput).toHaveValue(5000);
+
+    const amountInput = screen.getByLabelText(
+      /auto-recharge credit amount in credits/i,
+    );
+    expect(amountInput).toHaveValue(50_000);
+  });
+
+  it("should show toggle off when server auto-recharge is disabled", async () => {
+    mockAPIs();
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+      autoRecharge: { enabled: false, threshold: null, amount: null },
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Auto-recharge")).toBeInTheDocument();
+    });
+
+    const toggle = screen.getByRole("switch", {
+      name: /enable auto-recharge/i,
+    });
+    expect(toggle).toHaveAttribute("data-state", "unchecked");
+
+    // Threshold and amount inputs should not be visible when disabled
+    expect(
+      screen.queryByLabelText(/credit threshold for auto-recharge/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("should send correct data when saving auto-recharge config", async () => {
+    let capturedBody: unknown = null;
+    server.use(
+      http.put("*/api/zero/billing/auto-recharge", async ({ request }) => {
+        capturedBody = await request.json();
+        return HttpResponse.json({
+          enabled: true,
+          threshold: 2000,
+          amount: 10_000,
+        });
+      }),
+    );
+
+    mockAPIs();
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+      autoRecharge: { enabled: true, threshold: 2000, amount: 10_000 },
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Auto-recharge")).toBeInTheDocument();
+    });
+
+    // Wait for form to hydrate with server values
+    const thresholdInput = await waitFor(() => {
+      const input = screen.getByLabelText(
+        /credit threshold for auto-recharge/i,
+      );
+      expect(input).toHaveValue(2000);
+      return input;
+    });
+
+    // Change threshold and blur to trigger save
+    await act(() => {
+      fireEvent.change(thresholdInput, { target: { value: "3000" } });
+    });
+    await act(() => {
+      fireEvent.blur(thresholdInput);
+    });
+
+    await waitFor(() => {
+      expect(capturedBody).toStrictEqual({
+        enabled: true,
+        threshold: 3000,
+        amount: 10_000,
+      });
+    });
+  });
 });
