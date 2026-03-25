@@ -1,14 +1,14 @@
 #!/bin/bash
-# Coding Loop Driver — deterministic decision script for the autonomous coding agent
+# Coding Worker — deterministic decision script for the autonomous coding agent
 # Usage:
-#   scripts/coding-loop.sh <label>
+#   scripts/coding-worker.sh <label>
 #
 # Output format:
 #   First line: INTERVAL:<minutes>
 #   Remaining lines: action prompt for the LLM (or "idle")
 #
 # The script queries GitHub state, makes all decisions, and outputs a prompt
-# that /begin-coding-loop follows exactly.
+# that /begin-coding-worker follows exactly.
 
 set -euo pipefail
 
@@ -17,68 +17,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_common.sh"
 
 LABEL="${1:?Usage: $0 <label>}"
-STATE_FILE="/tmp/coding-loop-interval-${LABEL}"
-CONTENT_DIR="/tmp/coding-loop"
+STATE_FILE="/tmp/coding-worker-interval-${LABEL}"
+CONTENT_DIR="/tmp/coding-worker"
 
 mkdir -p "$CONTENT_DIR/issues" "$CONTENT_DIR/prs"
-
-# --- Gist logging setup ---
-# Mirror stdout and stderr to a log file via tee so the caller still sees
-# output in real-time while we capture everything for gist upload.
-_LOG_OUTPUT="/tmp/coding-loop-output-${LABEL}.$$"
-_LOG_FIFO="/tmp/coding-loop-fifo-${LABEL}.$$"
-_TEE_PID=""
-
-# Timeout (seconds) for gist upload to prevent hanging the autonomous loop.
-_GIST_TIMEOUT=30
-
-mkfifo "$_LOG_FIFO"
-tee "$_LOG_OUTPUT" < "$_LOG_FIFO" &
-_TEE_PID=$!
-# Save original stderr so trap warnings are visible after exec >/dev/null.
-exec 3>&2
-# Redirect both stdout and stderr through the FIFO → tee.
-exec > "$_LOG_FIFO" 2>&1
-
-_update_gist() {
-  # Disable errexit inside trap to ensure full cleanup on any failure.
-  set +e
-
-  # Close the FIFO so tee receives EOF, then wait for it to flush.
-  exec >/dev/null 2>&1
-  if [ -n "$_TEE_PID" ]; then
-    wait "$_TEE_PID" 2>/dev/null
-  fi
-  rm -f "$_LOG_FIFO"
-
-  # Only attempt upload if the log file exists and is non-empty.
-  if [ ! -s "$_LOG_OUTPUT" ]; then
-    exec 3>&-
-    rm -f "$_LOG_OUTPUT"
-    return
-  fi
-
-  local gist_name="coding-loop-log-${LABEL}"
-  local gist_id
-  gist_id=$(timeout "$_GIST_TIMEOUT" gh gist list --limit 100 2>/dev/null \
-    | awk -v name="$gist_name" '$2 == name {print $1; exit}') || true
-
-  if [ -n "$gist_id" ]; then
-    if ! timeout "$_GIST_TIMEOUT" gh api --method PATCH "gists/$gist_id" \
-      --input <(jq -Rs --arg f "$gist_name" '{"files": {($f): {"content": .}}}' "$_LOG_OUTPUT") \
-      >/dev/null 2>&1; then
-      echo "warning: failed to update gist $gist_id" >&3
-    fi
-  else
-    if ! timeout "$_GIST_TIMEOUT" gh gist create --filename "$gist_name" --desc "$gist_name" - < "$_LOG_OUTPUT" >/dev/null 2>&1; then
-      echo "warning: failed to create gist for $gist_name" >&3
-    fi
-  fi
-  exec 3>&-
-  rm -f "$_LOG_OUTPUT"
-}
-
-trap _update_gist EXIT
 
 # --- Helper functions ---
 

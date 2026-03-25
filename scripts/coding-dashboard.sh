@@ -176,31 +176,15 @@ MQ_NUMBERS=$(jq '[.merge_queue[].number]' "$WORK_DIR/pipeline.json")
 
 jq -r --argjson mq "$MQ_NUMBERS" --arg green "$GREEN" --arg yellow "$YELLOW" --arg nc "$NC" '
   .[] |
-  # Format gist updated_at as relative time suffix
-  (if .gist.updated_at then
-    "  (log updated: \(.gist.updated_at | split("T") | .[0] + " " + (.[1] | split(".")[0] | split("Z")[0])))"
-  else "" end) as $gist_time |
-  # Truncate gist content to last few lines for brevity
-  (if .gist.content then
-    (.gist.content | split("\n") |
-      . as $lines |
-      [to_entries[] | select(.value | test("^INTERVAL:"))] |
-      if length > 0 then
-        (last.key) as $idx | $lines[$idx:] | map(select(. != "")) | map("  │ \(.)") | join("\n")
-      else
-        $lines | map(select(. != "")) | .[-5:] | map("  │ \(.)") | join("\n")
-      end)
-  else null end) as $gist_lines |
-  "\n\(.lane)\($gist_time)" as $header |
+  "\n\(.lane)" as $header |
   if (.issue_count + .pr_count) == 0 then
-    ([$header, "  -- idle"] + (if $gist_lines then [$gist_lines] else [] end) | join("\n"))
+    ([$header, "  -- idle"] | join("\n"))
   else
     # Collect all PR numbers linked to any issue
     ([.issues[].linked_prs[]?]) as $linked |
     # Index PRs by number for title lookup
     ([.prs[] | {(.number | tostring): .}] | add // {}) as $pr_map |
     [ $header ] +
-    (if $gist_lines then [$gist_lines] else [] end) +
     [
       .issues[] |
       # [Queued] if any linked PR is in merge queue
