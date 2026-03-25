@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { WebClient } from "@slack/web-api";
+import type { Block, KnownBlock } from "@slack/web-api";
 import { NextRequest } from "next/server";
 import { POST } from "../route";
 import {
@@ -161,8 +162,27 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
 
     const firstCall = postMessageMock.mock.calls[0]![0] as {
       channel: string;
+      blocks: (Block | KnownBlock)[];
     };
     expect(firstCall.channel).toBe("C-TARGET-CHANNEL");
+
+    // Verify blocks use markdown block type (from buildAgentResponseMessage)
+    const markdownBlock = firstCall.blocks.find((b) => b.type === "markdown");
+    expect(markdownBlock).toBeDefined();
+
+    // Verify header is included in the markdown content
+    const markdownText = (markdownBlock as { type: "markdown"; text: string })
+      .text;
+    expect(markdownText).toContain("Scheduled run for");
+    expect(markdownText).toContain("completed");
+
+    // Verify audit link is present as a context block
+    const contextBlock = firstCall.blocks.find((b) => b.type === "context");
+    expect(contextBlock).toBeDefined();
+    expect(contextBlock).toMatchObject({
+      type: "context",
+      elements: [{ type: "mrkdwn", text: expect.stringContaining("Audit") }],
+    });
   });
 
   it("falls back to user DM when slackChannelId is not set", async () => {
@@ -255,8 +275,25 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
     const call = postMessageMock.mock.calls[0]![0] as {
       channel: string;
       text: string;
+      blocks: (Block | KnownBlock)[];
     };
     expect(call.channel).toBe("C-FAIL-CHANNEL");
     expect(call.text).toContain("failed");
+
+    // Verify failure message uses markdown block with error content
+    const markdownBlock = call.blocks.find((b) => b.type === "markdown");
+    expect(markdownBlock).toBeDefined();
+    const markdownText = (markdownBlock as { type: "markdown"; text: string })
+      .text;
+    expect(markdownText).toContain("failed");
+    expect(markdownText).toContain("Agent crashed");
+
+    // Verify audit link is present
+    const contextBlock = call.blocks.find((b) => b.type === "context");
+    expect(contextBlock).toBeDefined();
+    expect(contextBlock).toMatchObject({
+      type: "context",
+      elements: [{ type: "mrkdwn", text: expect.stringContaining("Audit") }],
+    });
   });
 });
