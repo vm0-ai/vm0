@@ -47,6 +47,7 @@ import { generate as generateHume } from "./hume";
 import { generate as generateImgur } from "./imgur";
 import { generate as generateInstantly } from "./instantly";
 import { generate as generateIntercom } from "./intercom";
+import { generate as generateIntervalsIcu } from "./intervals-icu";
 import { generate as generateJira } from "./jira";
 import { generate as generateJotform } from "./jotform";
 import { generate as generateLark } from "./lark";
@@ -136,6 +137,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   imgur: generateImgur,
   instantly: generateInstantly,
   intercom: generateIntercom,
+  "intervals-icu": generateIntervalsIcu,
   jira: generateJira,
   jotform: generateJotform,
   lark: generateLark,

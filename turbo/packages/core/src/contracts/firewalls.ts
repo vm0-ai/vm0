@@ -136,6 +136,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   imgur: ["imgur"],
   instantly: ["instantly"],
   intercom: ["intercom"],
+  "intervals-icu": ["intervals-icu"],
   atlassian: ["jira", "confluence"],
   jotform: ["jotform"],
   lark: ["lark"],

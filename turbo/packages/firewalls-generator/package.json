@@ -52,6 +52,7 @@
     "generate:imgur": "tsx src/index.ts imgur",
     "generate:instantly": "tsx src/index.ts instantly",
     "generate:intercom": "tsx src/index.ts intercom",
+    "generate:intervals-icu": "tsx src/index.ts intervals-icu",
     "generate:jira": "tsx src/index.ts jira",
     "generate:jotform": "tsx src/index.ts jotform",
     "generate:lark": "tsx src/index.ts lark",

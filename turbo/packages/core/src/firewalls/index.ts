@@ -53,6 +53,7 @@ import { humeFirewall } from "./hume.generated";
 import { imgurFirewall } from "./imgur.generated";
 import { instantlyFirewall } from "./instantly.generated";
 import { intercomFirewall } from "./intercom.generated";
+import { intervalsIcuFirewall } from "./intervals-icu.generated";
 import { jiraFirewall } from "./jira.generated";
 import { jotformFirewall } from "./jotform.generated";
 import { larkFirewall } from "./lark.generated";
@@ -146,6 +147,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   imgur: imgurFirewall,
   instantly: instantlyFirewall,
   intercom: intercomFirewall,
+  "intervals-icu": intervalsIcuFirewall,
   jira: jiraFirewall,
   jotform: jotformFirewall,
   lark: larkFirewall,
