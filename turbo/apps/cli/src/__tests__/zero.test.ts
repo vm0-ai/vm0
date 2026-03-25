@@ -17,6 +17,7 @@ describe("zero CLI program", () => {
       "schedule",
       "secret",
       "variable",
+      "whoami",
     ];
     for (const name of expectedCommands) {
       expect(commandNames).toContain(name);
@@ -35,7 +36,6 @@ describe("zero CLI program", () => {
       "cook",
       "init",
       "upgrade",
-      "whoami",
       "info",
     ];
     for (const name of excludedCommands) {
@@ -44,6 +44,6 @@ describe("zero CLI program", () => {
   });
 
   it("should have exactly 7 commands", () => {
-    expect(commandNames).toHaveLength(7);
+    expect(commandNames).toHaveLength(8);
   });
 });

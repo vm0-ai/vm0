@@ -10,6 +10,7 @@ import { zeroPreferenceCommand } from "./commands/zero/preference";
 import { zeroScheduleCommand } from "./commands/zero/schedule";
 import { zeroSecretCommand } from "./commands/zero/secret";
 import { zeroVariableCommand } from "./commands/zero/variable";
+import { zeroWhoamiCommand } from "./commands/zero/whoami";
 
 const program = new Command();
 
@@ -28,6 +29,7 @@ program.addCommand(zeroPreferenceCommand);
 program.addCommand(zeroScheduleCommand);
 program.addCommand(zeroSecretCommand);
 program.addCommand(zeroVariableCommand);
+program.addCommand(zeroWhoamiCommand);
 
 export { program };
 
