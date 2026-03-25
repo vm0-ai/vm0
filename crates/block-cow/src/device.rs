@@ -3,9 +3,10 @@ use std::path::{Path, PathBuf};
 
 use tracing::{info, warn};
 
+use crate::dmsetup;
 use crate::error::{BlockCowError, Result};
+use crate::losetup::{self, LoopDevice};
 use crate::pool::BaseHandle;
-use crate::{dmsetup, losetup};
 
 /// Default dm-snapshot chunk size in 512-byte sectors.
 /// 8 sectors = 4KB, matching the common filesystem block size.
@@ -48,8 +49,8 @@ pub struct CowDevice {
     id: String,
     /// The block device path for Firecracker: `/dev/mapper/cow-{id}`.
     device_path: PathBuf,
-    /// Loop device for the COW sparse file.
-    cow_loop: PathBuf,
+    /// Loop device for the COW sparse file (path + holder fd).
+    cow_loop: LoopDevice,
     /// Path to the COW sparse file on disk.
     cow_file: PathBuf,
     /// Open fd on the dm device — keeps open count > 0 so that
@@ -179,7 +180,7 @@ impl CowDevice {
             }
         };
 
-        let cow_loop = match losetup::attach(&cow_file, false) {
+        let mut cow_loop = match losetup::attach(&cow_file, false) {
             Ok(l) => l,
             Err(e) => {
                 if created_cow {
@@ -188,7 +189,7 @@ impl CowDevice {
                 return Err(e);
             }
         };
-        info!(cow_loop = %cow_loop.display(), "attached COW file");
+        info!(cow_loop = %cow_loop.path().display(), "attached COW file");
 
         // 2. Create dm-snapshot target directly on the shared base loop device.
         //
@@ -201,7 +202,7 @@ impl CowDevice {
         //    reliable — udev rules re-apply default ownership (root:disk) after
         //    device creation, racing with the flag-set values.
         let base_loop_str = base.loop_path.to_string_lossy();
-        let cow_loop_str = cow_loop.to_string_lossy();
+        let cow_loop_str = cow_loop.path().to_string_lossy().into_owned();
         let device_path = match dmsetup::create_snapshot(
             &cow_name,
             &base_loop_str,
@@ -211,7 +212,7 @@ impl CowDevice {
         ) {
             Ok(p) => p,
             Err(e) => {
-                let _ = losetup::detach(&cow_loop);
+                let _ = cow_loop.detach();
                 if created_cow {
                     let _ = fs::remove_file(&cow_file);
                 }
@@ -228,7 +229,7 @@ impl CowDevice {
             crate::command::run("chown", &[&format!("{uid}:{gid}"), device_str.as_ref()])
         {
             let _ = dmsetup::remove(&cow_name);
-            let _ = losetup::detach(&cow_loop);
+            let _ = cow_loop.detach();
             if created_cow {
                 let _ = fs::remove_file(&cow_file);
             }
@@ -281,7 +282,7 @@ impl CowDevice {
         // Once the snapshot is removed, everything else is independent
         // and proceeds best-effort.
 
-        // Step 1: remove the snapshot target. Drop our holder fd first
+        // Step 1: remove the snapshot target. Drop our dm holder fd first
         // so we don't contribute to the open count.  Firecracker may still
         // have the device open — if so, dmsetup remove fails with EBUSY
         // and we bail to let the caller retry.
@@ -303,7 +304,7 @@ impl CowDevice {
             }
         };
 
-        record(losetup::detach(&self.cow_loop), "detach COW loop");
+        record(self.cow_loop.detach(), "detach COW loop");
 
         if delete_cow_file {
             record(

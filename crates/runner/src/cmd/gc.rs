@@ -472,9 +472,11 @@ async fn gc_versions(home: &HomePaths, dry_run: bool) -> RunnerResult<Vec<String
 /// Two passes:
 /// 1. Remove orphaned `cow-*` dm-snapshot targets (`dmsetup remove`).
 /// 2. Detach orphaned loop devices backing files under `~/.vm0-runner/`.
-///    After pass 1 frees dm-snapshot references, previously-busy loop
-///    devices become detachable. Any loop still referenced by an active
-///    dm-snapshot will return EBUSY and is safely skipped.
+///    After pass 1 frees dm-snapshot references, previously-busy COW
+///    loop devices become detachable.  Base loop devices held by a live
+///    runner's `BaseImagePool` are protected by a holder fd (EBUSY).
+///    Only loops from dead processes (where the kernel closed the fd)
+///    are successfully detached.
 fn gc_block_cow(dry_run: bool) -> RunnerResult<u32> {
     let mut removed: u32 = 0;
 
@@ -496,22 +498,22 @@ fn gc_block_cow(dry_run: bool) -> RunnerResult<u32> {
 
     // Pass 2: detach orphaned loop devices.
     //
-    // IMPORTANT: only detach loops whose backing file no longer exists
-    // (shown as "(deleted)" by the kernel).  A loop device backing a
-    // *valid* file may be held by another runner's BaseImagePool — it
-    // won't be EBUSY if no dm-snapshot currently references it (e.g.
-    // runner is idle between sandbox creates), but detaching it would
-    // corrupt that runner's base handle and cause "Invalid argument"
-    // errors on the next sandbox create.
+    // Try to detach ALL loop devices whose backing files are under
+    // `~/.vm0-runner/`.  Active devices are protected by EBUSY:
+    //
+    // - Base loops held by a live runner's BaseImagePool: the pool
+    //   keeps an open fd on the loop device, so `losetup -d` returns
+    //   EBUSY.  If the runner was killed (SIGKILL), the fd is closed
+    //   by the kernel and GC can reclaim the loop.
+    //
+    // - COW loops referenced by an active dm-snapshot: the dm target
+    //   holds a reference, so `losetup -d` returns EBUSY.  Pass 1
+    //   removes orphaned dm targets first, freeing their COW loops.
     let runner_root = match std::env::var("HOME") {
         Ok(home) => format!("{home}/.vm0-runner/"),
         Err(_) => return Ok(removed),
     };
     for (loop_dev, backing) in parse_losetup(&losetup_list(), &runner_root) {
-        if !backing.contains("(deleted)") {
-            continue;
-        }
-
         if dry_run {
             info!(loop_dev, backing, "would detach orphaned loop device");
             removed += 1;
@@ -522,7 +524,7 @@ fn gc_block_cow(dry_run: bool) -> RunnerResult<u32> {
             info!(loop_dev, backing, "detached orphaned loop device");
             removed += 1;
         }
-        // EBUSY → still in use by an active dm-snapshot, skip silently.
+        // EBUSY → still in use (holder fd or dm-snapshot reference), skip.
     }
 
     if removed > 0 {

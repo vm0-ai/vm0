@@ -3,13 +3,14 @@ use std::path::{Path, PathBuf};
 
 use tracing::{info, warn};
 
+use crate::blockdev;
 use crate::error::Result;
-use crate::{blockdev, losetup};
+use crate::losetup::{self, LoopDevice};
 
 /// A shared base loop device with reference count.
 struct BaseEntry {
-    /// The loop device path (e.g. `/dev/loop0`).
-    loop_path: PathBuf,
+    /// The attached loop device (path + holder fd for GC protection).
+    loop_dev: LoopDevice,
     /// Size of the base image in 512-byte sectors.
     sectors: u64,
     /// Number of active users (COW devices) sharing this loop.
@@ -53,7 +54,7 @@ impl BaseHandle {
 ///
 /// ```text
 /// pool.acquire("/path/to/rootfs.ext4")
-///   → first call: losetup --find --show --read-only --direct-io=on
+///   → first call: losetup --find --show --read-only
 ///   → subsequent: refcount++ and return existing loop path
 ///
 /// pool.release("/path/to/rootfs.ext4")
@@ -83,7 +84,7 @@ impl BaseImagePool {
     /// Acquire a shared base loop device for the given image.
     ///
     /// If the image is already loaded, increments the reference count.
-    /// Otherwise, attaches a new read-only loop device with direct I/O.
+    /// Otherwise, attaches a new read-only loop device.
     pub fn acquire(&mut self, base_image: &Path) -> Result<BaseHandle> {
         let key = base_image.to_path_buf();
 
@@ -91,36 +92,36 @@ impl BaseImagePool {
             entry.refcount += 1;
             info!(
                 base = %base_image.display(),
-                loop_dev = %entry.loop_path.display(),
+                loop_dev = %entry.loop_dev.path().display(),
                 refcount = entry.refcount,
                 "base image pool: reusing existing loop"
             );
             return Ok(BaseHandle {
-                loop_path: entry.loop_path.clone(),
+                loop_path: entry.loop_dev.path().to_owned(),
                 sectors: entry.sectors,
                 base_key: key,
             });
         }
 
         // First user — attach a new read-only loop device.
-        let loop_path = losetup::attach(base_image, true)?;
-        let sectors = match blockdev::get_size_sectors(&loop_path) {
+        let mut loop_dev = losetup::attach(base_image, true)?;
+        let sectors = match blockdev::get_size_sectors(loop_dev.path()) {
             Ok(s) => s,
             Err(e) => {
-                let _ = losetup::detach(&loop_path);
+                let _ = loop_dev.detach();
                 return Err(e);
             }
         };
 
         info!(
             base = %base_image.display(),
-            loop_dev = %loop_path.display(),
+            loop_dev = %loop_dev.path().display(),
             sectors,
             "base image pool: attached new loop"
         );
 
         let handle = BaseHandle {
-            loop_path: loop_path.clone(),
+            loop_path: loop_dev.path().to_owned(),
             sectors,
             base_key: key.clone(),
         };
@@ -128,7 +129,7 @@ impl BaseImagePool {
         self.entries.insert(
             key,
             BaseEntry {
-                loop_path,
+                loop_dev,
                 sectors,
                 refcount: 1,
             },
@@ -155,15 +156,14 @@ impl BaseImagePool {
 
         entry.refcount -= 1;
         if entry.refcount == 0 {
-            let loop_path = entry.loop_path.clone();
             info!(
                 base = %base_key.display(),
-                loop_dev = %loop_path.display(),
+                loop_dev = %entry.loop_dev.path().display(),
                 "base image pool: detaching loop (refcount=0)"
             );
             // Detach first — if it fails, the entry stays in the map
             // so cleanup() can retry later.
-            losetup::detach(&loop_path)?;
+            entry.loop_dev.detach()?;
             self.entries.remove(&key);
         } else {
             info!(
@@ -181,18 +181,18 @@ impl BaseImagePool {
     /// Called during shutdown as a safety net. Logs warnings for failures
     /// but does not propagate errors.
     pub fn cleanup(&mut self) {
-        for (key, entry) in self.entries.drain() {
-            if let Err(e) = losetup::detach(&entry.loop_path) {
+        for (key, mut entry) in self.entries.drain() {
+            if let Err(e) = entry.loop_dev.detach() {
                 warn!(
                     base = %key.display(),
-                    loop_dev = %entry.loop_path.display(),
+                    loop_dev = %entry.loop_dev.path().display(),
                     error = %e,
                     "base image pool: cleanup failed to detach loop"
                 );
             } else {
                 info!(
                     base = %key.display(),
-                    loop_dev = %entry.loop_path.display(),
+                    loop_dev = %entry.loop_dev.path().display(),
                     "base image pool: cleanup detached loop"
                 );
             }
