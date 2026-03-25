@@ -58,6 +58,7 @@ export const notionFirewall: FirewallConfig = {
           rules: [
             "GET /blocks/{block_id}",
             "GET /blocks/{block_id}/children",
+            "GET /custom_emojis",
             "GET /data_sources/{data_source_id}",
             "POST /data_sources/{data_source_id}/query",
             "GET /data_sources/{data_source_id}/templates",
