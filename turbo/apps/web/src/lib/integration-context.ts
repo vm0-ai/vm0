@@ -38,15 +38,7 @@ export function buildZeroCliGuidance(): string {
     "Run commands with: npx -p @vm0/cli zero <command>",
     "Tip: run `alias zero='npx -p @vm0/cli zero'` first, then use `zero <command>` for brevity.",
     "Run `npx -p @vm0/cli zero --help` to see all available commands.",
-    "",
-    "## Scheduling Tasks",
     "Do NOT use /loop or cron tools (CronCreate, CronList, CronDelete) — they are not available.",
-    "For recurring or scheduled tasks, use the zero schedule CLI:",
-    "- Create: zero schedule setup $ZERO_AGENT_ID",
-    "- List: zero schedule list",
-    "- Delete: zero schedule delete $ZERO_AGENT_ID --name <schedule-name>",
-    "- Enable/Disable: zero schedule enable/disable $ZERO_AGENT_ID --name <schedule-name>",
-    'Choose a short, descriptive schedule name based on the task (e.g., "deploy-check", "daily-report").',
   ].join("\n");
 }
 
