@@ -22,6 +22,7 @@ export const setOrgManageDialogOpen$ = command(
       await set(initProfileName$, signal);
       set(reloadBillingStatus$);
       const status = await get(billingStatusAsync$);
+      signal.throwIfAborted();
       set(syncAutoRechargeForm$, status.autoRecharge);
     }
     set(internalOrgManageDialogOpen$, open);

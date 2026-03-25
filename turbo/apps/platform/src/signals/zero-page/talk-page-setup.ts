@@ -30,6 +30,6 @@ export const setupTalkPage$ = command(
     set(updateDocumentTitle$, agentName ?? "Agent");
     await set(resolveAgentById$, agentId, signal);
 
-    await set(syncModelPreference$);
+    await set(syncModelPreference$, signal);
   },
 );

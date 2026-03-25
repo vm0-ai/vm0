@@ -3,11 +3,6 @@ import { zeroUserPreferencesContract } from "@vm0/core";
 import { zeroTalkAgentId$ } from "./zero-nav.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { clerk$ } from "../auth.ts";
-import { throwIfAbort } from "../utils.ts";
-import { logger } from "../log.ts";
-
-const L = logger("ZeroModelPreference");
-
 // ---------------------------------------------------------------------------
 // Server-backed model preferences
 // ---------------------------------------------------------------------------
@@ -62,30 +57,26 @@ export const setSelectedModel$ = command(({ set }, value: string) => {
  * Sync model preference from server for the current agent.
  * Called from each route's setup function on navigation.
  */
-export const syncModelPreference$ = command(async ({ get, set }) => {
-  const agentId = get(zeroTalkAgentId$);
-  const key = agentId ?? "default";
-  try {
+export const syncModelPreference$ = command(
+  async ({ get, set }, _signal: AbortSignal) => {
+    const agentId = get(zeroTalkAgentId$);
+    const key = agentId ?? "default";
     const prefs = await get(modelPreferences$);
     const value = prefs[key] ?? "default";
     set(internalSelectedModel$, value);
-  } catch (error) {
-    throwIfAbort(error);
-    L.error("Failed to sync model preference:", error);
-    set(internalSelectedModel$, "default");
-  }
-});
+  },
+);
 
 /**
  * Persist the current model selection to the server.
  * Called before sending a message.
  */
-export const persistModelPreference$ = command(async ({ get, set }) => {
-  const agentId = get(zeroTalkAgentId$);
-  const key = agentId ?? "default";
-  const value = get(internalSelectedModel$);
+export const persistModelPreference$ = command(
+  async ({ get, set }, _signal: AbortSignal) => {
+    const agentId = get(zeroTalkAgentId$);
+    const key = agentId ?? "default";
+    const value = get(internalSelectedModel$);
 
-  try {
     // Read current preferences
     const currentPrefs = await get(modelPreferences$);
 
@@ -100,25 +91,25 @@ export const persistModelPreference$ = command(async ({ get, set }) => {
     // Optimistic update
     set(optimisticModelPreferences$, updated);
 
-    // Persist to server
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroUserPreferencesContract);
-    const result = await client.update({ body: { modelPreferences: updated } });
+    try {
+      // Persist to server
+      const createClient = get(zeroClient$);
+      const client = createClient(zeroUserPreferencesContract);
+      const result = await client.update({
+        body: { modelPreferences: updated },
+      });
 
-    if (result.status !== 200) {
-      L.error("Failed to persist model preference:", result.status);
-      return;
+      if (result.status !== 200) {
+        throw new Error(`Failed to persist model preference: ${result.status}`);
+      }
+
+      // Force JWT refresh so updated membership metadata is available immediately
+      const clerk = await get(clerk$);
+      await clerk.session?.getToken({ skipCache: true });
+
+      set(reloadModelPreferences$, (x) => x + 1);
+    } finally {
+      set(optimisticModelPreferences$, null);
     }
-
-    // Force JWT refresh so updated membership metadata is available immediately
-    const clerk = await get(clerk$);
-    await clerk.session?.getToken({ skipCache: true });
-
-    set(reloadModelPreferences$, (x) => x + 1);
-  } catch (error) {
-    throwIfAbort(error);
-    L.error("Failed to persist model preference:", error);
-  } finally {
-    set(optimisticModelPreferences$, null);
-  }
-});
+  },
+);

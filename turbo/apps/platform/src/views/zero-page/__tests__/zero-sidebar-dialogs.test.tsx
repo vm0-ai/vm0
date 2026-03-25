@@ -68,6 +68,7 @@ function mockAPIsWithSubagents({
         timezone: null,
         pinnedAgentIds,
         sendMode: "enter" as const,
+        modelPreferences: {},
       });
     }),
     http.post("*/api/zero/user-preferences", async ({ request }) => {
@@ -76,6 +77,7 @@ function mockAPIsWithSubagents({
         timezone: null,
         pinnedAgentIds: body.pinnedAgentIds ?? pinnedAgentIds,
         sendMode: "enter" as const,
+        modelPreferences: {},
       });
     }),
   );

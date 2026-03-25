@@ -35,6 +35,6 @@ export const setupChatSessionPage$ = command(
       set(updateDocumentTitle$, sessionTitle);
     }
 
-    await set(syncModelPreference$);
+    await set(syncModelPreference$, signal);
   },
 );

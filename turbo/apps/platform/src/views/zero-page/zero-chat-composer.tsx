@@ -476,7 +476,7 @@ export function ZeroChatComposer({
     if (!trimmed || !!queuedMessage) {
       return;
     }
-    detach(persistSelection(), Reason.DomCallback);
+    detach(persistSelection(new AbortController().signal), Reason.DomCallback);
     onSend(trimmed, buildModelOpts(selectedModel));
   };
 

@@ -37,7 +37,7 @@ describe("zero-model-preference signals", () => {
 
     mockLocation({ pathname: "/talk/my-agent", search: "" }, context.signal);
 
-    await context.store.set(syncModelPreference$);
+    await context.store.set(syncModelPreference$, context.signal);
 
     expect(context.store.get(selectedModel$)).toBe("anthropic");
   });
@@ -57,7 +57,7 @@ describe("zero-model-preference signals", () => {
     mockLocation({ pathname: "/talk/new-agent", search: "" }, context.signal);
     context.store.set(setSelectedModel$, "openai");
 
-    await context.store.set(syncModelPreference$);
+    await context.store.set(syncModelPreference$, context.signal);
 
     expect(context.store.get(selectedModel$)).toBe("default");
   });
@@ -76,7 +76,7 @@ describe("zero-model-preference signals", () => {
 
     mockLocation({ pathname: "/", search: "" }, context.signal);
 
-    await context.store.set(syncModelPreference$);
+    await context.store.set(syncModelPreference$, context.signal);
 
     expect(context.store.get(selectedModel$)).toBe("anthropic");
   });
@@ -107,7 +107,7 @@ describe("zero-model-preference signals", () => {
     mockLocation({ pathname: "/talk/my-agent", search: "" }, context.signal);
     context.store.set(setSelectedModel$, "openai");
 
-    await context.store.set(persistModelPreference$);
+    await context.store.set(persistModelPreference$, context.signal);
 
     expect(capturedBody).toStrictEqual({
       modelPreferences: { "my-agent": "openai" },
@@ -140,7 +140,7 @@ describe("zero-model-preference signals", () => {
     mockLocation({ pathname: "/talk/my-agent", search: "" }, context.signal);
     context.store.set(setSelectedModel$, "default");
 
-    await context.store.set(persistModelPreference$);
+    await context.store.set(persistModelPreference$, context.signal);
 
     expect(capturedBody).toStrictEqual({
       modelPreferences: {},
@@ -161,14 +161,14 @@ describe("zero-model-preference signals", () => {
 
     // Start on agent-a
     mockLocation({ pathname: "/talk/agent-a", search: "" }, context.signal);
-    await context.store.set(syncModelPreference$);
+    await context.store.set(syncModelPreference$, context.signal);
     expect(context.store.get(selectedModel$)).toBe("anthropic");
 
     // Navigate to agent-b
     setPathname("/talk/agent-b");
     context.store.set(updatePathname$, "/talk/agent-b");
 
-    await context.store.set(syncModelPreference$);
+    await context.store.set(syncModelPreference$, context.signal);
     expect(context.store.get(selectedModel$)).toBe("default");
   });
 });
