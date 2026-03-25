@@ -79,7 +79,8 @@ async function connectViaApiToken(
       );
 
       if (!value) {
-        throw new Error("Cancelled");
+        console.log(chalk.dim("Cancelled"));
+        return;
       }
 
       inputSecrets[secretName] = value;
@@ -119,7 +120,7 @@ async function connectComputer(): Promise<void> {
 async function resolveAuthMethod(
   connectorType: ConnectorType,
   tokenFlag?: string,
-): Promise<"oauth" | "api-token"> {
+): Promise<"oauth" | "api-token" | null> {
   const config = CONNECTOR_TYPES[connectorType];
   const oauthFlag = CONNECTOR_TYPES[connectorType].featureFlag;
   const orgId = await getActiveOrg();
@@ -149,7 +150,8 @@ async function resolveAuthMethod(
       ],
     );
     if (!selected) {
-      throw new Error("Cancelled");
+      console.log(chalk.dim("Cancelled"));
+      return null;
     }
     return selected;
   }
@@ -236,6 +238,7 @@ export const connectCommand = new Command()
       }
 
       const authMethod = await resolveAuthMethod(connectorType, options.token);
+      if (!authMethod) return;
 
       if (authMethod === "api-token") {
         await connectViaApiToken(connectorType, options.token);

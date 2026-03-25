@@ -34,6 +34,12 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
     });
   }
 
+  let cancelled = false;
+  const onCancel = () => {
+    cancelled = true;
+    return false;
+  };
+
   // Fetch configured org providers to annotate choices
   const { modelProviders: configuredProviders } =
     await listZeroOrgModelProviders();
@@ -64,8 +70,13 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
       message: "Select provider type:",
       choices: annotatedChoices,
     },
-    { onCancel: () => process.exit(0) },
+    { onCancel },
   );
+
+  if (cancelled) {
+    console.log(chalk.dim("Cancelled"));
+    return null;
+  }
 
   const type = typeResponse.type as ModelProviderType;
 
@@ -87,8 +98,13 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
           { title: "Update secret", value: "update" },
         ],
       },
-      { onCancel: () => process.exit(0) },
+      { onCancel },
     );
+
+    if (cancelled) {
+      console.log(chalk.dim("Cancelled"));
+      return null;
+    }
 
     if (actionResponse.action === "keep") {
       const selectedModel = await promptForModelSelection(type);
@@ -136,8 +152,13 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
       validate: (value: string) =>
         value.length > 0 || `${secretLabel} is required`,
     },
-    { onCancel: () => process.exit(0) },
+    { onCancel },
   );
+
+  if (cancelled) {
+    console.log(chalk.dim("Cancelled"));
+    return null;
+  }
 
   const secret = secretResponse.secret as string;
   const selectedModel = await promptForModelSelection(type);
@@ -152,6 +173,7 @@ async function promptSetAsDefault(
 ): Promise<void> {
   if (isDefault) return;
 
+  let cancelled = false;
   const response = await prompts(
     {
       type: "confirm",
@@ -159,8 +181,18 @@ async function promptSetAsDefault(
       message: "Set this provider as default?",
       initial: false,
     },
-    { onCancel: () => process.exit(0) },
+    {
+      onCancel: () => {
+        cancelled = true;
+        return false;
+      },
+    },
   );
+
+  if (cancelled) {
+    console.log(chalk.dim("Cancelled"));
+    return;
+  }
 
   if (response.setDefault) {
     await setZeroOrgModelProviderDefault(type);

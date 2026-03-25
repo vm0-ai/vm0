@@ -18,8 +18,13 @@ export function withErrorHandler<T extends unknown[]>(
     } catch (error) {
       if (error instanceof ApiRequestError) {
         if (error.code === "UNAUTHORIZED") {
-          console.error(chalk.red("✗ Not authenticated"));
-          console.error(chalk.dim("  Run: vm0 auth login"));
+          if (process.env.ZERO_TOKEN) {
+            console.error(chalk.red("✗ Authentication failed"));
+            console.error(chalk.dim("  ZERO_TOKEN is invalid or expired"));
+          } else {
+            console.error(chalk.red("✗ Not authenticated"));
+            console.error(chalk.dim("  Run: vm0 auth login"));
+          }
         } else {
           const guidance = RUN_ERROR_GUIDANCE[error.code];
           if (guidance) {
