@@ -431,12 +431,12 @@ fn dmesg_indicates_oom(stdout: &str) -> bool {
 }
 
 /// Check host dmesg for a cgroup OOM kill of a specific firecracker process.
-/// Only reads the last 200 lines to avoid loading the entire ring buffer.
-/// Times out after 5 seconds to avoid blocking if sudo or dmesg hangs.
+/// Scans the entire ring buffer (~512KB) via `dmesg | grep` which takes <30ms
+/// on production hosts.  Times out after 5s to avoid blocking if sudo hangs.
 async fn check_host_oom(pid: u32) -> bool {
     let result = tokio::time::timeout(Duration::from_secs(5), async {
         tokio::process::Command::new("sh")
-            .args(["-c", "sudo dmesg | tail -200 | grep 'oom-kill'"])
+            .args(["-c", "sudo dmesg | grep 'oom-kill'"])
             .output()
             .await
     })
