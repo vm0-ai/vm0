@@ -52,6 +52,7 @@ import { intercomFirewall } from "./intercom.generated";
 import { jiraFirewall } from "./jira.generated";
 import { jotformFirewall } from "./jotform.generated";
 import { larkFirewall } from "./lark.generated";
+import { lineFirewall } from "./line.generated";
 import { linearFirewall } from "./linear.generated";
 import { loopsFirewall } from "./loops.generated";
 import { mercuryFirewall } from "./mercury.generated";
@@ -134,6 +135,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   jira: jiraFirewall,
   jotform: jotformFirewall,
   lark: larkFirewall,
+  line: lineFirewall,
   linear: linearFirewall,
   loops: loopsFirewall,
   mercury: mercuryFirewall,

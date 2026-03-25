@@ -46,6 +46,7 @@ import { generate as generateIntercom } from "./intercom";
 import { generate as generateJira } from "./jira";
 import { generate as generateJotform } from "./jotform";
 import { generate as generateLark } from "./lark";
+import { generate as generateLine } from "./line";
 import { generate as generateLinear } from "./linear";
 import { generate as generateLoops } from "./loops";
 import { generate as generateMercury } from "./mercury";
@@ -124,6 +125,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   jira: generateJira,
   jotform: generateJotform,
   lark: generateLark,
+  line: generateLine,
   linear: generateLinear,
   loops: generateLoops,
   mercury: generateMercury,

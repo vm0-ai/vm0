@@ -135,6 +135,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   atlassian: ["jira", "confluence"],
   jotform: ["jotform"],
   lark: ["lark"],
+  line: ["line"],
   linear: ["linear"],
   loops: ["loops"],
   mercury: ["mercury"],
