@@ -6,11 +6,11 @@ beforeAll(() => {
   server.listen({ onUnhandledRequest: "error" });
 });
 
-// Baseline: no auth, no API URL, default org. Test files override in their own beforeEach.
+// Baseline: no auth, no API URL. Test files override in their own beforeEach.
 beforeEach(() => {
   vi.stubEnv("VM0_API_URL", undefined);
   vi.stubEnv("VM0_TOKEN", "");
-  vi.stubEnv("VM0_ACTIVE_ORG", "test-org");
+
   vi.stubEnv("SENTRY_DSN", "");
 });
 

@@ -1131,7 +1131,6 @@ mod tests {
         let ctx = minimal_context();
         let env = build_env_json(&ctx, "http://localhost");
         assert!(!env.contains_key("VM0_TOKEN"));
-        assert!(!env.contains_key("VM0_ACTIVE_ORG"));
     }
 
     #[test]

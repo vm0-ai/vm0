@@ -19,7 +19,7 @@ async function showSandboxInfo(): Promise<void> {
   const cliAgentType = process.env.CLI_AGENT_TYPE;
 
   const runId = process.env.VM0_RUN_ID;
-  const activeOrg = process.env.VM0_ACTIVE_ORG;
+  const activeOrg = await getActiveOrg();
   const apiUrl = process.env.VM0_API_URL;
 
   // Agent section

@@ -174,23 +174,6 @@ describe("token resolution", () => {
       const org = await getActiveOrg();
       expect(org).toBe("zero-org");
     });
-
-    it("should prefer CLI JWT over VM0_ACTIVE_ORG env var", async () => {
-      vi.stubEnv("VM0_ACTIVE_ORG", "env-org");
-      const cliJwt = buildFakeJwt(
-        {
-          scope: "cli",
-          orgId: "cli-org",
-          userId: "user-1",
-          tokenId: "tok-1",
-        },
-        "vm0_pat_",
-      );
-      await writeConfigToken(cliJwt);
-
-      const org = await getActiveOrg();
-      expect(org).toBe("cli-org");
-    });
   });
 
   describe("getToken", () => {

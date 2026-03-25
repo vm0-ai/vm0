@@ -68,7 +68,14 @@ describe("whoami command", () => {
       vi.stubEnv("VM0_RUN_ID", "run-123");
       vi.stubEnv("ZERO_AGENT_ID", "agent-456");
       vi.stubEnv("CLI_AGENT_TYPE", "claude");
-      vi.stubEnv("VM0_ACTIVE_ORG", "active-org");
+      vi.stubEnv(
+        "ZERO_TOKEN",
+        buildFakeCliJwt({
+          scope: "zero",
+          orgId: "active-org",
+          capabilities: [],
+        }),
+      );
       vi.stubEnv("VM0_API_URL", "https://api.vm0.ai");
 
       await runWhoami();
