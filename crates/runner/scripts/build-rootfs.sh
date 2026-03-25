@@ -216,13 +216,15 @@ extract_and_inject() {
 create_ext4() {
   echo "creating ext4 image..."
 
-  # Size the image to fit content + 20% headroom, minimum 256 MiB.
+  # Size the image to content + 2 GiB free space.
+  # With dm-snapshot COW, the guest filesystem is limited to this image
+  # size — there is no separate writable layer.  The old overlayfs approach
+  # had a 2 GiB upper layer for writes; we match that by reserving 2 GiB
+  # of free space inside the rootfs itself.
   local content_bytes
   content_bytes=$(sudo du -sb "$EXTRACT_DIR" | cut -f1)
-  local image_bytes=$(( content_bytes * 120 / 100 ))
-  if (( image_bytes < 268435456 )); then
-    image_bytes=268435456
-  fi
+  local free_space=2147483648  # 2 GiB
+  local image_bytes=$(( content_bytes + free_space ))
 
   # Derive a deterministic UUID from the input hash.  ext4 uses the UUID
   # as the htree seed for directory hashing — a fixed UUID ensures
