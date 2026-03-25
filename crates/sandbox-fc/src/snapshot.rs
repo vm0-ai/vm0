@@ -146,12 +146,14 @@ pub async fn create_snapshot(
         cow_dir,
         chunk_size: None,
     };
-    let base_for_create = base_handle.clone();
-    let cow_device =
-        tokio::task::spawn_blocking(move || CowDevice::create(&base_for_create, &cow_config))
-            .await
-            .map_err(|e| SnapshotError::Setup(format!("join: {e}")))?
-            .map_err(|e| SnapshotError::Setup(format!("create COW device: {e}")))?;
+    let base_loop = base_handle.loop_path.clone();
+    let base_sectors = base_handle.sectors;
+    let cow_device = tokio::task::spawn_blocking(move || {
+        CowDevice::create(&base_loop, base_sectors, &cow_config)
+    })
+    .await
+    .map_err(|e| SnapshotError::Setup(format!("join: {e}")))?
+    .map_err(|e| SnapshotError::Setup(format!("create COW device: {e}")))?;
 
     info!(device = %cow_device.device_path().display(), "COW device created");
 
@@ -274,6 +276,13 @@ async fn run_snapshot_workflow(
     // Kill Firecracker first — it holds the dm device fd open.
     kill_process_group(&child);
     let _ = child.wait().await;
+
+    // Release network namespace back to the pool before teardown.
+    // Without this, the namespace resources (veth, iptables) leak
+    // because cleanup() only drains queued (unused) namespaces.
+    if let Err(e) = netns_pool.release(network).await {
+        tracing::warn!(error = %e, "failed to release netns");
+    }
 
     // Tear down: umount bind mount, then remove dm-snapshot.
     //

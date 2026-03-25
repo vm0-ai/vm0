@@ -21,7 +21,6 @@ struct BaseEntry {
 ///
 /// Contains everything a [`CowDevice`](crate::CowDevice) needs from the
 /// base image without managing the loop device lifetime.
-#[derive(Clone)]
 pub struct BaseHandle {
     /// Path to the read-only loop device for the base image.
     pub loop_path: PathBuf,
@@ -86,7 +85,9 @@ impl BaseImagePool {
     /// If the image is already loaded, increments the reference count.
     /// Otherwise, attaches a new read-only loop device.
     pub fn acquire(&mut self, base_image: &Path) -> Result<BaseHandle> {
-        let key = base_image.to_path_buf();
+        // Canonicalize so the same file accessed via different paths
+        // (symlinks, relative paths) maps to a single pool entry.
+        let key = std::fs::canonicalize(base_image)?;
 
         if let Some(entry) = self.entries.get_mut(&key) {
             entry.refcount += 1;

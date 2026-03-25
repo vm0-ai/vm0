@@ -76,7 +76,7 @@ fn create_and_destroy() {
     let handle = setup.pool.acquire(&setup.base_image).expect("acquire");
     let config = setup.cow_config();
 
-    let mut device = CowDevice::create(&handle, &config).expect("create");
+    let mut device = CowDevice::create(&handle.loop_path, handle.sectors, &config).expect("create");
     let dev_path = device.device_path().to_owned();
     let cow_file = device.cow_file().to_owned();
 
@@ -98,7 +98,7 @@ fn destroy_keep_cow_preserves_file() {
     let handle = setup.pool.acquire(&setup.base_image).expect("acquire");
     let config = setup.cow_config();
 
-    let mut device = CowDevice::create(&handle, &config).expect("create");
+    let mut device = CowDevice::create(&handle.loop_path, handle.sectors, &config).expect("create");
     let cow_file = device.cow_file().to_owned();
     let dev_path = device.device_path().to_owned();
 
@@ -117,7 +117,7 @@ fn cow_file_is_sparse() {
     let handle = setup.pool.acquire(&setup.base_image).expect("acquire");
     let config = setup.cow_config();
 
-    let mut device = CowDevice::create(&handle, &config).expect("create");
+    let mut device = CowDevice::create(&handle.loop_path, handle.sectors, &config).expect("create");
     let cow_file = device.cow_file().to_owned();
 
     let meta = fs::metadata(&cow_file).expect("metadata");
@@ -146,8 +146,10 @@ fn multiple_devices_from_same_base() {
     let handle = setup.pool.acquire(&setup.base_image).expect("acquire");
     let config = setup.cow_config();
 
-    let mut device1 = CowDevice::create(&handle, &config).expect("create device 1");
-    let mut device2 = CowDevice::create(&handle, &config).expect("create device 2");
+    let mut device1 =
+        CowDevice::create(&handle.loop_path, handle.sectors, &config).expect("create device 1");
+    let mut device2 =
+        CowDevice::create(&handle.loop_path, handle.sectors, &config).expect("create device 2");
 
     assert_ne!(device1.device_path(), device2.device_path());
     assert!(device1.device_path().exists());
@@ -166,7 +168,7 @@ fn restore_from_existing_cow() {
     let handle = setup.pool.acquire(&setup.base_image).expect("acquire");
     let config = setup.cow_config();
 
-    let mut device = CowDevice::create(&handle, &config).expect("create");
+    let mut device = CowDevice::create(&handle.loop_path, handle.sectors, &config).expect("create");
     let cow_file = device.cow_file().to_owned();
     let dev_path = device.device_path().to_owned();
 
@@ -178,7 +180,9 @@ fn restore_from_existing_cow() {
     assert!(cow_file.exists(), "COW file should be preserved");
 
     // Restore from the saved COW file.
-    let mut restored = CowDevice::restore(&handle, &config, cow_file.clone()).expect("restore");
+    let mut restored =
+        CowDevice::restore(&handle.loop_path, handle.sectors, &config, cow_file.clone())
+            .expect("restore");
     let restored_path = restored.device_path().to_owned();
 
     // Read back the marker from the restored device.
@@ -206,7 +210,7 @@ fn device_path_format() {
     let handle = setup.pool.acquire(&setup.base_image).expect("acquire");
     let config = setup.cow_config();
 
-    let mut device = CowDevice::create(&handle, &config).expect("create");
+    let mut device = CowDevice::create(&handle.loop_path, handle.sectors, &config).expect("create");
     let path_str = device.device_path().to_string_lossy();
 
     assert!(

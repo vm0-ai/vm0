@@ -6,7 +6,6 @@ use tracing::{info, warn};
 use crate::dmsetup;
 use crate::error::{BlockCowError, Result};
 use crate::losetup::{self, LoopDevice};
-use crate::pool::BaseHandle;
 
 /// Default dm-snapshot chunk size in 512-byte sectors.
 /// 8 sectors = 4KB, matching the common filesystem block size.
@@ -55,21 +54,24 @@ pub struct CowDevice {
     cow_file: PathBuf,
     /// Open fd on the dm device — keeps open count > 0 so that
     /// `dmsetup remove` from GC returns EBUSY for active devices.
-    _device_holder: Option<fs::File>,
+    _device_holder: Option<fs::File>, // None only after teardown drops it
     /// Whether the device is currently active.
     active: bool,
 }
 
 impl CowDevice {
-    /// Create a new COW device backed by a shared base image handle.
+    /// Create a new COW device backed by a shared base loop device.
     ///
-    /// The `base` handle comes from [`BaseImagePool::acquire`](crate::BaseImagePool::acquire).
+    /// `base_loop` is the read-only loop device path from
+    /// [`BaseImagePool::acquire`](crate::BaseImagePool::acquire).
+    /// `sectors` is the base image size in 512-byte sectors.
+    ///
     /// This creates a fresh sparse COW file in `config.cow_dir` and sets up
     /// a COW loop device and dm-snapshot target. The resulting block device at
     /// [`device_path`](Self::device_path) can be passed to Firecracker.
-    pub fn create(base: &BaseHandle, config: &CowDeviceConfig) -> Result<Self> {
+    pub fn create(base_loop: &Path, sectors: u64, config: &CowDeviceConfig) -> Result<Self> {
         let id = uuid::Uuid::new_v4().to_string();
-        Self::setup(base, config, &id, None)
+        Self::setup(base_loop, sectors, config, &id, None)
     }
 
     /// Restore a COW device from a previously persisted COW file.
@@ -79,7 +81,12 @@ impl CowDevice {
     ///
     /// On failure the caller retains ownership of `cow_file` and is
     /// responsible for cleanup.
-    pub fn restore(base: &BaseHandle, config: &CowDeviceConfig, cow_file: PathBuf) -> Result<Self> {
+    pub fn restore(
+        base_loop: &Path,
+        sectors: u64,
+        config: &CowDeviceConfig,
+        cow_file: PathBuf,
+    ) -> Result<Self> {
         if !cow_file.is_file() {
             return Err(BlockCowError::Io(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
@@ -87,7 +94,7 @@ impl CowDevice {
             )));
         }
         let id = uuid::Uuid::new_v4().to_string();
-        Self::setup(base, config, &id, Some(cow_file))
+        Self::setup(base_loop, sectors, config, &id, Some(cow_file))
     }
 
     /// Path to the block device (e.g. `/dev/mapper/cow-{id}`).
@@ -147,14 +154,14 @@ impl CowDevice {
     // -----------------------------------------------------------------------
 
     fn setup(
-        base: &BaseHandle,
+        base_loop: &Path,
+        sectors: u64,
         config: &CowDeviceConfig,
         id: &str,
         existing_cow: Option<PathBuf>,
     ) -> Result<Self> {
         let chunk_size = config.chunk_size.unwrap_or(DEFAULT_CHUNK_SIZE);
         let cow_name = format!("cow-{id}");
-        let sectors = base.sectors;
 
         // 1. Create or reuse COW sparse file and attach to loop device.
         let created_cow = existing_cow.is_none();
@@ -201,7 +208,7 @@ impl CowDevice {
         //    device via bind mount.  Note: dmsetup's --uid/--gid flags are NOT
         //    reliable — udev rules re-apply default ownership (root:disk) after
         //    device creation, racing with the flag-set values.
-        let base_loop_str = base.loop_path.to_string_lossy();
+        let base_loop_str = base_loop.to_string_lossy();
         let cow_loop_str = cow_loop.path().to_string_lossy().into_owned();
         let device_path = match dmsetup::create_snapshot(
             &cow_name,
@@ -240,10 +247,14 @@ impl CowDevice {
         // This prevents concurrent GC from removing the target via
         // `dmsetup remove` (which returns EBUSY when openers exist).
         let device_holder = match fs::File::open(&device_path) {
-            Ok(f) => Some(f),
+            Ok(f) => f,
             Err(e) => {
-                warn!(id, error = %e, "failed to open dm device for holder — GC protection disabled");
-                None
+                let _ = dmsetup::remove(&cow_name);
+                let _ = cow_loop.detach();
+                if created_cow {
+                    let _ = fs::remove_file(&cow_file);
+                }
+                return Err(BlockCowError::Io(e));
             }
         };
 
@@ -260,7 +271,7 @@ impl CowDevice {
             device_path,
             cow_loop,
             cow_file,
-            _device_holder: device_holder,
+            _device_holder: Some(device_holder),
             active: true,
         })
     }

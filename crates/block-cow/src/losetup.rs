@@ -76,6 +76,17 @@ pub fn attach(file_path: &Path, read_only: bool) -> Result<LoopDevice> {
     let stdout = command::run("losetup", &args)?;
     let path = PathBuf::from(&stdout);
 
+    // Loop devices are created by sudo losetup as root:disk 0660.
+    // The runner process runs as a regular user (not in the disk group),
+    // so we must chown the device to open it for the holder fd.
+    let path_str = path.to_string_lossy();
+    let uid = nix::unistd::getuid().as_raw();
+    let gid = nix::unistd::getgid().as_raw();
+    if let Err(e) = command::run("chown", &[&format!("{uid}:{gid}"), &path_str]) {
+        let _ = detach_by_path(&path);
+        return Err(e);
+    }
+
     // Open immediately so the loop's kernel open count is > 0 before
     // this function returns.  This closes the race window where GC
     // could detach the device between attach and the caller using it.
