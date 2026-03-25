@@ -509,8 +509,8 @@ fn gc_block_cow(dry_run: bool) -> RunnerResult<u32> {
     // - COW loops referenced by an active dm-snapshot: the dm target
     //   holds a reference, so `losetup -d` returns EBUSY.  Pass 1
     //   removes orphaned dm targets first, freeing their COW loops.
-    let runner_root = match std::env::var("HOME") {
-        Ok(home) => format!("{home}/.vm0-runner/"),
+    let runner_root = match crate::paths::HomePaths::new() {
+        Ok(paths) => format!("{}/", paths.root().display()),
         Err(_) => return Ok(removed),
     };
     for (loop_dev, backing) in parse_losetup(&losetup_list(), &runner_root) {
