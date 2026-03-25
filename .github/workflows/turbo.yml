@@ -1056,7 +1056,7 @@ jobs:
         run: |
           echo "Verifying device flow with ${{ needs.deploy-web.outputs.preview-url }}"
           cd e2e
-          bash cli-auth-automation.sh "${{ needs.deploy-web.outputs.preview-url }}" || true
+          bash cli-auth-automation.sh "${{ needs.deploy-web.outputs.preview-url }}"
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
       - name: Upload auth screenshots

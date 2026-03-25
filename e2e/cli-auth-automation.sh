@@ -280,11 +280,14 @@ else
 
   # -----------------------------------------------------------------------
   # Decide: sign-in succeeded, need sign-up, or need OTP?
-  # Check snapshot text instead of relying on URL redirects.
+  # Check snapshot text AND URL — Clerk may redirect to Google OAuth for
+  # unknown users instead of showing an inline error message.
   # -----------------------------------------------------------------------
   SNAP=$(full_snapshot)
+  CURRENT_URL=$(agent-browser get url 2>/dev/null || true)
 
-  if contains "$SNAP" "identifier is invalid\|couldn.t find your account"; then
+  if contains "$SNAP" "identifier is invalid\|couldn.t find your account" \
+     || [[ "$CURRENT_URL" =~ accounts\.google\.com ]]; then
     # ---- Account does not exist → sign-up flow ----
     step_screenshot "account-not-found"
     echo "📝 Account not found — switching to sign-up flow"
