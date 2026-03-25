@@ -137,7 +137,7 @@ describe("Sandbox capability enforcement on zero agent routes", () => {
       ]);
 
       const request = createTestRequest(
-        `http://localhost:3000/api/zero/agents/some-agent?org=${orgSlug}`,
+        `http://localhost:3000/api/zero/agents/00000000-0000-0000-0000-000000000000?org=${orgSlug}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         },
@@ -210,7 +210,7 @@ describe("Sandbox capability enforcement on zero agent routes", () => {
       ]);
 
       const request = createTestRequest(
-        `http://localhost:3000/api/zero/agents/some-agent?org=${orgSlug}`,
+        `http://localhost:3000/api/zero/agents/00000000-0000-0000-0000-000000000000?org=${orgSlug}`,
         {
           method: "PUT",
           headers: {
@@ -280,7 +280,7 @@ describe("Sandbox capability enforcement on zero agent routes", () => {
       ]);
 
       const request = createTestRequest(
-        `http://localhost:3000/api/zero/agents/some-agent/instructions?org=${orgSlug}`,
+        `http://localhost:3000/api/zero/agents/00000000-0000-0000-0000-000000000000/instructions?org=${orgSlug}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         },
@@ -350,7 +350,7 @@ describe("Sandbox capability enforcement on zero agent routes", () => {
       ]);
 
       const request = createTestRequest(
-        `http://localhost:3000/api/zero/agents/some-agent/instructions?org=${orgSlug}`,
+        `http://localhost:3000/api/zero/agents/00000000-0000-0000-0000-000000000000/instructions?org=${orgSlug}`,
         {
           method: "PUT",
           headers: {
