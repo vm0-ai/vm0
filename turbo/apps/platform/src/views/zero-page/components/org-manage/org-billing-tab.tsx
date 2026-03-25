@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { useLastLoadable, useSet } from "ccstate-react";
-import { IconExternalLink, IconCrown } from "@tabler/icons-react";
+import { useGet, useLastLoadable, useSet } from "ccstate-react";
+import { IconExternalLink, IconCrown, IconLoader2 } from "@tabler/icons-react";
 import {
   billingStatusAsync$,
+  billingDialogLoading$,
   startCheckout$,
   startDowngrade$,
 } from "../../../../signals/zero-page/billing.ts";
@@ -84,9 +85,11 @@ const PLANS = [
 function PlanCard({
   plan,
   onSelect,
+  loading,
 }: {
   plan: Readonly<PlanConfig>;
   onSelect: (tier: "pro" | "team") => void;
+  loading: boolean;
 }) {
   const isCurrentPlan = plan.cta === "Current plan";
 
@@ -179,8 +182,12 @@ function PlanCard({
           <Button
             size="sm"
             className="w-full rounded-lg h-9 text-xs"
+            disabled={loading}
             onClick={() => plan.tier && onSelect(plan.tier)}
           >
+            {loading ? (
+              <IconLoader2 size={13} stroke={1.5} className="animate-spin" />
+            ) : null}
             {plan.cta}
           </Button>
         ) : (
@@ -189,8 +196,12 @@ function PlanCard({
             size="sm"
             className="w-full rounded-lg h-9 text-xs"
             style={cardBorder}
+            disabled={loading}
             onClick={() => plan.tier && onSelect(plan.tier)}
           >
+            {loading ? (
+              <IconLoader2 size={13} stroke={1.5} className="animate-spin" />
+            ) : null}
             {plan.cta}
           </Button>
         )}
@@ -203,10 +214,12 @@ function PricingDialog({
   open,
   onOpenChange,
   onSelectTier,
+  loading,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSelectTier: (tier: "pro" | "team") => void;
+  loading: boolean;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -230,7 +243,12 @@ function PricingDialog({
 
         <div className="grid grid-cols-3 gap-4 px-6 py-5">
           {PLANS.map((plan) => (
-            <PlanCard key={plan.name} plan={plan} onSelect={onSelectTier} />
+            <PlanCard
+              key={plan.name}
+              plan={plan}
+              onSelect={onSelectTier}
+              loading={loading}
+            />
           ))}
         </div>
       </DialogContent>
@@ -240,9 +258,18 @@ function PricingDialog({
 
 export function OrgBillingTab() {
   const billingLoadable = useLastLoadable(billingStatusAsync$);
+  const billingLoading = useGet(billingDialogLoading$);
   const checkout = useSet(startCheckout$);
   const downgrade = useSet(startDowngrade$);
   const [pricingOpen, setPricingOpen] = useState(false);
+
+  if (billingLoadable.state === "loading") {
+    return (
+      <div className="flex flex-col gap-4">
+        <p className="text-sm text-muted-foreground">Loading billing...</p>
+      </div>
+    );
+  }
 
   const isPro =
     billingLoadable.state === "hasData" && billingLoadable.data.tier !== "free";
@@ -279,6 +306,7 @@ export function OrgBillingTab() {
                 size="sm"
                 className="shrink-0 rounded-lg h-8 text-xs gap-1.5"
                 style={cardBorder}
+                disabled={billingLoading}
                 onClick={() => {
                   downgrade().catch(() => {
                     toast.error(
@@ -287,6 +315,13 @@ export function OrgBillingTab() {
                   });
                 }}
               >
+                {billingLoading ? (
+                  <IconLoader2
+                    size={13}
+                    stroke={1.5}
+                    className="animate-spin"
+                  />
+                ) : null}
                 Manage billing
                 <IconExternalLink size={13} stroke={1.5} />
               </Button>
@@ -294,8 +329,16 @@ export function OrgBillingTab() {
               <Button
                 size="sm"
                 className="shrink-0 rounded-lg h-8 text-xs"
+                disabled={billingLoading}
                 onClick={() => setPricingOpen(true)}
               >
+                {billingLoading ? (
+                  <IconLoader2
+                    size={13}
+                    stroke={1.5}
+                    className="animate-spin"
+                  />
+                ) : null}
                 Upgrade
               </Button>
             )}
@@ -318,6 +361,7 @@ export function OrgBillingTab() {
                   size="sm"
                   className="shrink-0 rounded-lg h-8 text-xs gap-1.5"
                   style={cardBorder}
+                  disabled={billingLoading}
                   onClick={() => {
                     downgrade().catch(() => {
                       toast.error(
@@ -326,6 +370,13 @@ export function OrgBillingTab() {
                     });
                   }}
                 >
+                  {billingLoading ? (
+                    <IconLoader2
+                      size={13}
+                      stroke={1.5}
+                      className="animate-spin"
+                    />
+                  ) : null}
                   Manage
                   <IconExternalLink size={13} stroke={1.5} />
                 </Button>
@@ -349,7 +400,18 @@ export function OrgBillingTab() {
               </span>
             </div>
             {isPro ? (
-              <Button size="sm" className="shrink-0 rounded-lg h-8 text-xs">
+              <Button
+                size="sm"
+                className="shrink-0 rounded-lg h-8 text-xs"
+                disabled={billingLoading}
+              >
+                {billingLoading ? (
+                  <IconLoader2
+                    size={13}
+                    stroke={1.5}
+                    className="animate-spin"
+                  />
+                ) : null}
                 Add
               </Button>
             ) : (
@@ -358,8 +420,16 @@ export function OrgBillingTab() {
                 size="sm"
                 className="shrink-0 rounded-lg h-8 text-xs"
                 style={cardBorder}
+                disabled={billingLoading}
                 onClick={() => setPricingOpen(true)}
               >
+                {billingLoading ? (
+                  <IconLoader2
+                    size={13}
+                    stroke={1.5}
+                    className="animate-spin"
+                  />
+                ) : null}
                 Upgrade
               </Button>
             )}
@@ -375,7 +445,18 @@ export function OrgBillingTab() {
               </span>
             </div>
             {isPro ? (
-              <Button size="sm" className="shrink-0 rounded-lg h-8 text-xs">
+              <Button
+                size="sm"
+                className="shrink-0 rounded-lg h-8 text-xs"
+                disabled={billingLoading}
+              >
+                {billingLoading ? (
+                  <IconLoader2
+                    size={13}
+                    stroke={1.5}
+                    className="animate-spin"
+                  />
+                ) : null}
                 Add
               </Button>
             ) : (
@@ -384,8 +465,16 @@ export function OrgBillingTab() {
                 size="sm"
                 className="shrink-0 rounded-lg h-8 text-xs"
                 style={cardBorder}
+                disabled={billingLoading}
                 onClick={() => setPricingOpen(true)}
               >
+                {billingLoading ? (
+                  <IconLoader2
+                    size={13}
+                    stroke={1.5}
+                    className="animate-spin"
+                  />
+                ) : null}
                 Upgrade
               </Button>
             )}
@@ -397,6 +486,7 @@ export function OrgBillingTab() {
         open={pricingOpen}
         onOpenChange={setPricingOpen}
         onSelectTier={handleSelectTier}
+        loading={billingLoading}
       />
     </div>
   );
