@@ -151,6 +151,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   perplexity: ["perplexity"],
   plausible: ["plausible"],
   posthog: ["posthog"],
+  pushinator: ["pushinator"],
   qiita: ["qiita"],
   reddit: ["reddit"],
   resend: ["resend"],
