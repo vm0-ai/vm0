@@ -978,9 +978,6 @@ export async function executeSchedule(
     throw new Error(`Compose ${compose.name} has no versions`);
   }
 
-  // Load org tier and slug from org_cache (Clerk as source of truth)
-  const orgData = await getOrgData(schedule.orgId);
-
   // Build callbacks for run completion notifications
   const callbacks: Array<{
     url: string;

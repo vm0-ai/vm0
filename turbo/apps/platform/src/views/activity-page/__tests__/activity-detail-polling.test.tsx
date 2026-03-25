@@ -106,7 +106,7 @@ describe("activity detail polling with initially empty events", () => {
       () => {
         expect(screen.getByText("Polled response arrived")).toBeInTheDocument();
       },
-      { timeout: 15000 },
+      { timeout: 15_000 },
     );
 
     // Confirm the telemetry endpoint was called multiple times (re-fetched after empty)
@@ -117,7 +117,7 @@ describe("activity detail polling with initially empty events", () => {
       () => {
         expect(screen.getByText("Done")).toBeInTheDocument();
       },
-      { timeout: 15000 },
+      { timeout: 15_000 },
     );
   }, 30_000);
 });

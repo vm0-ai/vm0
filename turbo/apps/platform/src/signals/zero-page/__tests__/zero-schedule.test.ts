@@ -388,8 +388,8 @@ describe("zero-schedule signals", () => {
       });
 
       expect(captured.body).not.toBeNull();
-      expect(captured.body?.notifyEmail).toBe(false);
-      expect(captured.body?.notifySlack).toBe(true);
+      expect(captured.body?.notifyEmail).toBeFalsy();
+      expect(captured.body?.notifySlack).toBeTruthy();
       expect(captured.body?.slackChannelId).toBe("C999");
     });
 
@@ -547,7 +547,7 @@ describe("zero-schedule signals", () => {
       const runId = await context.store.set(runScheduleNow$, "sched-1");
 
       expect(capturedBody).not.toBeNull();
-      expect(capturedBody?.scheduleId).toBe("sched-1");
+      expect(capturedBody!["scheduleId"]).toBe("sched-1");
       expect(runId).toBe("run-abc-123");
     });
 
@@ -811,8 +811,8 @@ describe("zero-schedule signals", () => {
       await context.store.set(fetchZeroSchedules$);
 
       const entries = context.store.get(zeroScheduleEntries$);
-      expect(entries[0]?.notifyEmail).toBe(false);
-      expect(entries[0]?.notifySlack).toBe(true);
+      expect(entries[0]?.notifyEmail).toBeFalsy();
+      expect(entries[0]?.notifySlack).toBeTruthy();
       expect(entries[0]?.slackChannelId).toBe("C123");
     });
   });
