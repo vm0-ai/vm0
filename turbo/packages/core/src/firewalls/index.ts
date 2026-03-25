@@ -54,6 +54,7 @@ import { jotformFirewall } from "./jotform.generated";
 import { larkFirewall } from "./lark.generated";
 import { linearFirewall } from "./linear.generated";
 import { loopsFirewall } from "./loops.generated";
+import { mercuryFirewall } from "./mercury.generated";
 import { minimaxFirewall } from "./minimax.generated";
 import { mondayFirewall } from "./monday.generated";
 import { neonFirewall } from "./neon.generated";
@@ -133,6 +134,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   lark: larkFirewall,
   linear: linearFirewall,
   loops: loopsFirewall,
+  mercury: mercuryFirewall,
   minimax: minimaxFirewall,
   monday: mondayFirewall,
   neon: neonFirewall,

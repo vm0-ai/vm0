@@ -48,6 +48,7 @@ import { generate as generateJotform } from "./jotform";
 import { generate as generateLark } from "./lark";
 import { generate as generateLinear } from "./linear";
 import { generate as generateLoops } from "./loops";
+import { generate as generateMercury } from "./mercury";
 import { generate as generateMinimax } from "./minimax";
 import { generate as generateMonday } from "./monday";
 import { generate as generateNeon } from "./neon";
@@ -123,6 +124,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   lark: generateLark,
   linear: generateLinear,
   loops: generateLoops,
+  mercury: generateMercury,
   minimax: generateMinimax,
   monday: generateMonday,
   neon: generateNeon,

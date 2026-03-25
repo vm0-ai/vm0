@@ -53,6 +53,7 @@
     "generate:lark": "tsx src/index.ts lark",
     "generate:linear": "tsx src/index.ts linear",
     "generate:loops": "tsx src/index.ts loops",
+    "generate:mercury": "tsx src/index.ts mercury",
     "generate:minimax": "tsx src/index.ts minimax",
     "generate:monday": "tsx src/index.ts monday",
     "generate:neon": "tsx src/index.ts neon",

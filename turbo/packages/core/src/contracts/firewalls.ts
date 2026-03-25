@@ -137,6 +137,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   lark: ["lark"],
   linear: ["linear"],
   loops: ["loops"],
+  mercury: ["mercury"],
   minimax: ["minimax"],
   monday: ["monday"],
   neon: ["neon"],
