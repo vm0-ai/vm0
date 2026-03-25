@@ -434,10 +434,7 @@ fn dmesg_indicates_oom(stdout: &str) -> bool {
 /// Only reads the last 200 lines to avoid loading the entire ring buffer.
 async fn check_host_oom(pid: u32) -> bool {
     let output = tokio::process::Command::new("sh")
-        .args([
-            "-c",
-            &format!("sudo dmesg | tail -200 | grep 'task=firecracker,pid={pid}'"),
-        ])
+        .args(["-c", "sudo dmesg | tail -200 | grep 'oom-kill'"])
         .output()
         .await;
     match output {
@@ -449,9 +446,10 @@ async fn check_host_oom(pid: u32) -> bool {
 }
 
 /// Returns true if host dmesg output contains an OOM kill record for the
-/// given firecracker PID.
+/// given firecracker PID.  Uses a trailing comma to avoid prefix matches
+/// (e.g. pid=1234 must not match pid=12345).
 fn host_dmesg_indicates_oom(dmesg: &str, pid: u32) -> bool {
-    let pattern = format!("task=firecracker,pid={pid}");
+    let pattern = format!("task=firecracker,pid={pid},");
     dmesg.contains("oom-kill") && dmesg.contains(&pattern)
 }
 
@@ -1248,9 +1246,17 @@ mod tests {
 
     #[test]
     fn host_oom_no_match_without_oom_kill() {
-        // Has the PID pattern but not "oom-kill"
-        let dmesg = "task=firecracker,pid=12345 started successfully";
+        // Has the PID pattern but missing oom-kill context
+        let dmesg = "task=firecracker,pid=12345,uid=1000 started successfully";
         assert!(!host_dmesg_indicates_oom(dmesg, 12345));
+    }
+
+    #[test]
+    fn host_oom_no_prefix_match() {
+        // pid=1234 must NOT match pid=12345
+        let dmesg = "oom-kill:constraint=CONSTRAINT_MEMCG,\
+            task=firecracker,pid=12345,uid=1000";
+        assert!(!host_dmesg_indicates_oom(dmesg, 1234));
     }
 
     #[test]
