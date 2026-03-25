@@ -111,7 +111,15 @@ const syncConnectorsToCompose$ = command(
     });
 
     if (result.status !== 200) {
-      throw new Error(`Save failed (${result.status})`);
+      const detail =
+        result.status === 400 ||
+        result.status === 401 ||
+        result.status === 403 ||
+        result.status === 404 ||
+        result.status === 422
+          ? result.body.error.message
+          : `status ${result.status}`;
+      throw new Error(`Save failed: ${detail}`);
     }
 
     await set(reloadOnboardingStatus$);

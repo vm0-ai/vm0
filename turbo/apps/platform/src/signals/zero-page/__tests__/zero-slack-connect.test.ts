@@ -103,9 +103,7 @@ describe("slack-connect-page signals", () => {
       await context.store.set(connectSlackAccount$);
 
       expect(context.store.get(slackConnectStatus$)).toBe("error");
-      expect(context.store.get(effectiveError$)).toBe(
-        "Failed to connect. Please try again.",
-      );
+      expect(context.store.get(effectiveError$)).toBe("Account already linked");
     });
 
     it("should not connect without workspace and user params", async () => {

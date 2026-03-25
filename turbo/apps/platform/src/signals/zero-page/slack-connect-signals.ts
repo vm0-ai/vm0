@@ -85,7 +85,14 @@ export const connectSlackAccount$ = command(async ({ get, set }) => {
     set(internalStatus$, "success");
     window.location.href = "slack://open";
   } else {
-    set(internalErrorMsg$, "Failed to connect. Please try again.");
+    const msg =
+      result.status === 400 ||
+      result.status === 401 ||
+      result.status === 403 ||
+      result.status === 404
+        ? result.body.error.message
+        : "Failed to connect. Please try again.";
+    set(internalErrorMsg$, msg);
     set(internalStatus$, "error");
   }
 });

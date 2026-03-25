@@ -90,6 +90,6 @@ describe("saveFirewallPolicies$", () => {
 
     await expect(
       context.store.set(saveFirewallPolicies$, "my-agent", {}),
-    ).rejects.toThrow("Save failed (403)");
+    ).rejects.toThrow("Save failed: Only org admins can update");
   });
 });

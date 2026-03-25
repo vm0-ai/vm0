@@ -505,24 +505,22 @@ export const chatSessionSnapshot$ = computed(
       return null;
     }
 
-    let data: {
-      agentComposeId?: string;
-      chatMessages?: {
-        role: "user" | "assistant";
-        content: string;
-        runId?: string;
-        error?: string;
-        summaries?: string[];
-        createdAt: string;
-      }[];
-      latestSessionId?: string | null;
-      unsavedRuns?: {
-        runId: string;
-        status: string;
-        prompt: string;
-        error: string | null;
-      }[];
-    };
+    let agentComposeId: string | undefined;
+    let chatMessages: {
+      role: "user" | "assistant";
+      content: string;
+      runId?: string;
+      error?: string;
+      summaries?: string[];
+      createdAt: string;
+    }[] = [];
+    let latestSessionId: string | null = null;
+    let unsavedRuns: {
+      runId: string;
+      status: string;
+      prompt: string;
+      error: string | null;
+    }[] = [];
     let isLegacySession = false;
 
     const threadClient = get(zeroClient$)(chatThreadByIdContract);
@@ -530,7 +528,11 @@ export const chatSessionSnapshot$ = computed(
       params: { id: threadId },
     });
     if (threadResult.status === 200) {
-      data = threadResult.body;
+      const body = threadResult.body;
+      agentComposeId = body.agentId;
+      chatMessages = body.chatMessages ?? [];
+      latestSessionId = body.latestSessionId ?? null;
+      unsavedRuns = body.unsavedRuns ?? [];
     } else {
       const sessionClient = get(zeroClient$)(zeroSessionsByIdContract);
       const sessionResult = await sessionClient.getById({
@@ -540,15 +542,15 @@ export const chatSessionSnapshot$ = computed(
         L.warn("Failed to load chat");
         return null;
       }
-      data = sessionResult.body;
+      const body = sessionResult.body;
+      agentComposeId = body.agentId;
+      chatMessages = body.chatMessages ?? [];
       isLegacySession = true;
     }
 
-    const latestSessionId = isLegacySession
-      ? threadId
-      : (data.latestSessionId ?? null);
+    const resolvedSessionId = isLegacySession ? threadId : latestSessionId;
 
-    const messages: ZeroChatMessage[] = (data.chatMessages ?? []).map((m) => {
+    const messages: ZeroChatMessage[] = chatMessages.map((m) => {
       const summaries =
         m.summaries && m.summaries.length > 0
           ? m.summaries.map((s) =>
@@ -567,7 +569,7 @@ export const chatSessionSnapshot$ = computed(
 
     let activeRunId: string | null = null;
     const activeRunMessages: ZeroChatMessage[] = [];
-    for (const run of data.unsavedRuns ?? []) {
+    for (const run of unsavedRuns) {
       const userMsg: ZeroChatMessage = {
         id: crypto.randomUUID(),
         role: "user",
@@ -607,8 +609,8 @@ export const chatSessionSnapshot$ = computed(
     return {
       messages,
       activeRunMessages,
-      latestSessionId,
-      agentComposeId: data.agentComposeId,
+      latestSessionId: resolvedSessionId,
+      agentComposeId,
       activeRunId,
     };
   },

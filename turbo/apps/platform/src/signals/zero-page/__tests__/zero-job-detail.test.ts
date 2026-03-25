@@ -531,7 +531,7 @@ describe("zero-job-detail signals", () => {
 
       await expect(
         context.store.set(deleteZeroJobSchedule$, "nonexistent"),
-      ).rejects.toThrow("Delete failed (404)");
+      ).rejects.toThrow("Delete failed: Not found");
     });
   });
 

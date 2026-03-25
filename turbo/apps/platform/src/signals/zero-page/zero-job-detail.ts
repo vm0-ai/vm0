@@ -228,7 +228,14 @@ export const buildZeroJobInstructions$ = command(async ({ get, set }) => {
     });
 
     if (result.status !== 200) {
-      throw new Error(`Build failed (${result.status})`);
+      const detail =
+        result.status === 401 ||
+        result.status === 403 ||
+        result.status === 404 ||
+        result.status === 422
+          ? result.body.error.message
+          : `status ${result.status}`;
+      throw new Error(`Build failed: ${detail}`);
     }
 
     // Optimistically update instructions state
@@ -277,7 +284,13 @@ export const zeroJobUpdateSettings$ = command(
         body: update,
       });
       if (result.status !== 200) {
-        throw new Error(`Save failed (${result.status})`);
+        const detail =
+          result.status === 401 ||
+          result.status === 403 ||
+          result.status === 404
+            ? result.body.error.message
+            : `status ${result.status}`;
+        throw new Error(`Save failed: ${detail}`);
       }
 
       await set(fetchZeroJobDetail$);
@@ -362,7 +375,15 @@ export const saveZeroJobConnectors$ = command(async ({ get, set }) => {
     });
 
     if (result.status !== 200) {
-      throw new Error(`Save failed (${result.status})`);
+      const detail =
+        result.status === 400 ||
+        result.status === 401 ||
+        result.status === 403 ||
+        result.status === 404 ||
+        result.status === 422
+          ? result.body.error.message
+          : `status ${result.status}`;
+      throw new Error(`Save failed: ${detail}`);
     }
 
     set(internalAddedConnectors$, null);
@@ -652,7 +673,14 @@ export const saveZeroJobSchedule$ = command(
     const result = await client.deploy({ body });
 
     if (result.status !== 200 && result.status !== 201) {
-      throw new Error(`Save failed (${result.status})`);
+      const detail =
+        result.status === 400 ||
+        result.status === 401 ||
+        result.status === 403 ||
+        result.status === 404
+          ? result.body.error.message
+          : `Save failed (${result.status})`;
+      throw new Error(detail);
     }
 
     toast.success(params.editName ? "Schedule updated" : "Schedule created");
@@ -698,7 +726,11 @@ export const deleteZeroJobSchedule$ = command(
     });
 
     if (result.status !== 204) {
-      throw new Error(`Delete failed (${result.status})`);
+      const msg =
+        result.status === 401 || result.status === 403 || result.status === 404
+          ? result.body.error.message
+          : `status ${result.status}`;
+      throw new Error(`Delete failed: ${msg}`);
     }
 
     toast.success("Schedule deleted");
@@ -720,7 +752,11 @@ export const deleteZeroJobAgent$ = command(async ({ get, set }) => {
   const result = await client.delete({ params: { id: detail.agentId } });
 
   if (result.status !== 204) {
-    throw new Error(`Delete failed (${result.status})`);
+    const msg =
+      result.status === 401 || result.status === 403 || result.status === 404
+        ? result.body.error.message
+        : `status ${result.status}`;
+    throw new Error(`Delete failed: ${msg}`);
   }
 
   toast.success("Agent deleted");

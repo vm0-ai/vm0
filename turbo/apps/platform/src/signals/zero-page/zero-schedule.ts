@@ -352,7 +352,11 @@ export const deleteZeroSchedule$ = command(
     });
 
     if (result.status !== 204) {
-      throw new Error(`Delete failed (${result.status})`);
+      const msg =
+        result.status === 401 || result.status === 403 || result.status === 404
+          ? result.body.error.message
+          : `status ${result.status}`;
+      throw new Error(`Delete failed: ${msg}`);
     }
 
     toast.success("Schedule deleted");
@@ -500,7 +504,11 @@ export const deleteOrgSchedule$ = command(
     });
 
     if (result.status !== 204) {
-      throw new Error(`Delete failed (${result.status})`);
+      const msg =
+        result.status === 401 || result.status === 403 || result.status === 404
+          ? result.body.error.message
+          : `status ${result.status}`;
+      throw new Error(`Delete failed: ${msg}`);
     }
 
     toast.success("Schedule deleted");
