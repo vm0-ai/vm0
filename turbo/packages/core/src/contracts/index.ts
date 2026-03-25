@@ -581,15 +581,19 @@ export {
   zeroBillingCheckoutContract,
   zeroBillingPortalContract,
   zeroBillingAutoRechargeContract,
+  zeroBillingInvoicesContract,
   type ZeroBillingStatusContract,
   type ZeroBillingCheckoutContract,
   type ZeroBillingPortalContract,
   type ZeroBillingAutoRechargeContract,
+  type ZeroBillingInvoicesContract,
   // Inferred types
   type BillingStatusResponse,
   type AutoRechargeConfig,
   type CheckoutResponse,
   type PortalResponse,
+  type BillingInvoice,
+  type BillingInvoicesResponse,
 } from "./zero-billing";
 export {
   zeroUsageMembersContract,

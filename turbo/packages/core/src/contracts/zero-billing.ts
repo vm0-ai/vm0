@@ -152,8 +152,44 @@ export const zeroBillingAutoRechargeContract = c.router({
 export type ZeroBillingAutoRechargeContract =
   typeof zeroBillingAutoRechargeContract;
 
+/**
+ * Zero contract for GET /api/zero/billing/invoices
+ */
+const invoiceSchema = z.object({
+  id: z.string(),
+  number: z.string().nullable(),
+  date: z.number(),
+  amount: z.number(),
+  status: z.string().nullable(),
+  hostedInvoiceUrl: z.string().nullable(),
+});
+
+const billingInvoicesResponseSchema = z.object({
+  invoices: z.array(invoiceSchema),
+});
+
+export const zeroBillingInvoicesContract = c.router({
+  get: {
+    method: "GET",
+    path: "/api/zero/billing/invoices",
+    headers: authHeadersSchema,
+    responses: {
+      200: billingInvoicesResponseSchema,
+      401: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Get invoices for current org",
+  },
+});
+
+export type ZeroBillingInvoicesContract = typeof zeroBillingInvoicesContract;
+
 // Inferred types from Zod schemas
 export type BillingStatusResponse = z.infer<typeof billingStatusResponseSchema>;
 export type AutoRechargeConfig = z.infer<typeof autoRechargeSchema>;
 export type CheckoutResponse = z.infer<typeof checkoutResponseSchema>;
 export type PortalResponse = z.infer<typeof portalResponseSchema>;
+export type BillingInvoice = z.infer<typeof invoiceSchema>;
+export type BillingInvoicesResponse = z.infer<
+  typeof billingInvoicesResponseSchema
+>;
