@@ -495,11 +495,23 @@ fn gc_block_cow(dry_run: bool) -> RunnerResult<u32> {
     }
 
     // Pass 2: detach orphaned loop devices.
+    //
+    // IMPORTANT: only detach loops whose backing file no longer exists
+    // (shown as "(deleted)" by the kernel).  A loop device backing a
+    // *valid* file may be held by another runner's BaseImagePool — it
+    // won't be EBUSY if no dm-snapshot currently references it (e.g.
+    // runner is idle between sandbox creates), but detaching it would
+    // corrupt that runner's base handle and cause "Invalid argument"
+    // errors on the next sandbox create.
     let runner_root = match std::env::var("HOME") {
         Ok(home) => format!("{home}/.vm0-runner/"),
         Err(_) => return Ok(removed),
     };
     for (loop_dev, backing) in parse_losetup(&losetup_list(), &runner_root) {
+        if !backing.contains("(deleted)") {
+            continue;
+        }
+
         if dry_run {
             info!(loop_dev, backing, "would detach orphaned loop device");
             removed += 1;
