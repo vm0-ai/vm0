@@ -13,6 +13,11 @@ interface ZeroTokenPayload {
   exp: number;
 }
 
+/**
+ * Detect if running inside a zero sandbox (agent runtime).
+ * Uses ZERO_AGENT_ID (not VM0_RUN_ID) because the zero CLI operates in the
+ * zero agent context where ZERO_AGENT_ID is the canonical sandbox indicator.
+ */
 function isInsideSandbox(): boolean {
   return !!process.env.ZERO_AGENT_ID;
 }
