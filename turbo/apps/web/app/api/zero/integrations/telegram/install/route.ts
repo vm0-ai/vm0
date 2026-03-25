@@ -89,17 +89,32 @@ export async function POST(request: Request) {
   const db = globalThis.services.db;
 
   // 1. Validate bot token
-  const botInfo = await getMe(body.botToken).catch(() => null);
-  if (!botInfo) {
+  let botInfo;
+  try {
+    botInfo = await getMe(body.botToken);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("Telegram API error")) {
+      return NextResponse.json(
+        {
+          error: {
+            message:
+              "Invalid bot token. Please verify your token with @BotFather.",
+            code: "BAD_REQUEST",
+          },
+        },
+        { status: 400 },
+      );
+    }
+    log.error("Failed to validate bot token", { error });
     return NextResponse.json(
       {
         error: {
-          message:
-            "Invalid bot token. Please verify your token with @BotFather.",
-          code: "BAD_REQUEST",
+          message: "Failed to reach Telegram API",
+          code: "BAD_GATEWAY",
         },
       },
-      { status: 400 },
+      { status: 502 },
     );
   }
 
