@@ -154,6 +154,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   firecrawl: ["firecrawl"],
   notion: ["notion"],
   openai: ["openai"],
+  "outlook-calendar": ["outlook-calendar"],
   pdf4me: ["pdf4me"],
   pdfco: ["pdfco"],
   pdforge: ["pdforge"],

@@ -69,6 +69,7 @@ import { mondayFirewall } from "./monday.generated";
 import { neonFirewall } from "./neon.generated";
 import { notionFirewall } from "./notion.generated";
 import { openaiFirewall } from "./openai.generated";
+import { outlookCalendarFirewall } from "./outlook-calendar.generated";
 import { pdf4meFirewall } from "./pdf4me.generated";
 import { pdfcoFirewall } from "./pdfco.generated";
 import { pdforgeFirewall } from "./pdforge.generated";
@@ -172,6 +173,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   neon: neonFirewall,
   notion: notionFirewall,
   openai: openaiFirewall,
+  "outlook-calendar": outlookCalendarFirewall,
   pdf4me: pdf4meFirewall,
   pdfco: pdfcoFirewall,
   pdforge: pdforgeFirewall,
