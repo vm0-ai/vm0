@@ -58,8 +58,6 @@ export async function GET(request: Request) {
 
   const db = globalThis.services.db;
 
-  log.info("Fetching Slack org status", { orgId: org.orgId, userId });
-
   // Find the workspace installation for this org
   const [orgInstallation] = await db
     .select()
