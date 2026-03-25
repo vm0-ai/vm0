@@ -73,15 +73,14 @@ export async function GET() {
     .where(eq(agentComposes.orgId, resolvedOrgId))
     .orderBy(desc(agentComposes.updatedAt));
 
-  return NextResponse.json({
-    composes: composes.map((c) => ({
+  return NextResponse.json(
+    composes.map((c) => ({
       id: c.id,
       displayName: c.displayName ?? null,
       description: c.description ?? null,
       sound: c.sound ?? null,
       headVersionId: c.headVersionId,
       updatedAt: c.updatedAt.toISOString(),
-      isOwner: true,
     })),
-  });
+  );
 }

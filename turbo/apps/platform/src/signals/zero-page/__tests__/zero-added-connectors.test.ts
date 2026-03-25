@@ -65,24 +65,20 @@ describe("zeroAddedConnectors$", () => {
       }),
       // Include cycling-coach in the team list so route setup resolves it
       http.get("*/api/zero/team", () => {
-        return HttpResponse.json({
-          composes: [
-            {
-              id: "mock-compose-id",
-              displayName: null,
-              headVersionId: "version_1",
-              updatedAt: "2024-01-01T00:00:00Z",
-              isOwner: true,
-            },
-            {
-              id: "sub-agent-compose-id",
-              displayName: "Cycling Coach",
-              headVersionId: "version_2",
-              updatedAt: "2024-01-01T00:00:00Z",
-              isOwner: false,
-            },
-          ],
-        });
+        return HttpResponse.json([
+          {
+            id: "mock-compose-id",
+            displayName: null,
+            headVersionId: "version_1",
+            updatedAt: "2024-01-01T00:00:00Z",
+          },
+          {
+            id: "sub-agent-compose-id",
+            displayName: "Cycling Coach",
+            headVersionId: "version_2",
+            updatedAt: "2024-01-01T00:00:00Z",
+          },
+        ]);
       }),
     );
 

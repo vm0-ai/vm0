@@ -46,9 +46,7 @@ export const fetchAgentsList$ = command(async ({ get, set }) => {
       throw new Error(`Failed to fetch agents: ${agentsResponse.statusText}`);
     }
 
-    const agentsData = (await agentsResponse.json()) as {
-      composes: ComposeListItem[];
-    };
+    const agents = (await agentsResponse.json()) as ComposeListItem[];
 
     // Fetch schedules (optional - don't fail if schedules API is unavailable)
     let schedules: Schedule[] = [];
@@ -66,7 +64,7 @@ export const fetchAgentsList$ = command(async ({ get, set }) => {
     }
 
     set(agentsListState$, {
-      agents: agentsData.composes,
+      agents,
       schedules,
       loading: false,
       error: null,

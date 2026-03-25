@@ -10,28 +10,24 @@ const context = testContext();
 function mockAPIs() {
   server.use(
     http.get("*/api/zero/team", () => {
-      return HttpResponse.json({
-        composes: [
-          {
-            id: "mock-compose-id",
-            name: "zero",
-            displayName: null,
-            description: null,
-            headVersionId: "version_1",
-            updatedAt: "2024-01-01T00:00:00Z",
-            isOwner: true,
-          },
-          {
-            id: "agent-detail-id",
-            name: "my-agent",
-            displayName: "My Agent",
-            description: "A helpful agent",
-            headVersionId: "version_2",
-            updatedAt: "2024-01-02T00:00:00Z",
-            isOwner: false,
-          },
-        ],
-      });
+      return HttpResponse.json([
+        {
+          id: "mock-compose-id",
+          name: "zero",
+          displayName: null,
+          description: null,
+          headVersionId: "version_1",
+          updatedAt: "2024-01-01T00:00:00Z",
+        },
+        {
+          id: "agent-detail-id",
+          name: "my-agent",
+          displayName: "My Agent",
+          description: "A helpful agent",
+          headVersionId: "version_2",
+          updatedAt: "2024-01-02T00:00:00Z",
+        },
+      ]);
     }),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
@@ -102,19 +98,16 @@ describe("zero job detail page", () => {
   it("should show not-found error for unknown agent", async () => {
     server.use(
       http.get("*/api/zero/team", () => {
-        return HttpResponse.json({
-          composes: [
-            {
-              id: "mock-compose-id",
-              name: "zero",
-              displayName: null,
-              description: null,
-              headVersionId: "version_1",
-              updatedAt: "2024-01-01T00:00:00Z",
-              isOwner: true,
-            },
-          ],
-        });
+        return HttpResponse.json([
+          {
+            id: "mock-compose-id",
+            name: "zero",
+            displayName: null,
+            description: null,
+            headVersionId: "version_1",
+            updatedAt: "2024-01-01T00:00:00Z",
+          },
+        ]);
       }),
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
@@ -151,28 +144,24 @@ describe("zero job detail page", () => {
 function mockAPIsWithSchedules() {
   server.use(
     http.get("*/api/zero/team", () => {
-      return HttpResponse.json({
-        composes: [
-          {
-            id: "mock-compose-id",
-            name: "zero",
-            displayName: null,
-            description: null,
-            headVersionId: "version_1",
-            updatedAt: "2024-01-01T00:00:00Z",
-            isOwner: true,
-          },
-          {
-            id: "agent-detail-id",
-            name: "my-agent",
-            displayName: "My Agent",
-            description: "A helpful agent",
-            headVersionId: "version_2",
-            updatedAt: "2024-01-02T00:00:00Z",
-            isOwner: false,
-          },
-        ],
-      });
+      return HttpResponse.json([
+        {
+          id: "mock-compose-id",
+          name: "zero",
+          displayName: null,
+          description: null,
+          headVersionId: "version_1",
+          updatedAt: "2024-01-01T00:00:00Z",
+        },
+        {
+          id: "agent-detail-id",
+          name: "my-agent",
+          displayName: "My Agent",
+          description: "A helpful agent",
+          headVersionId: "version_2",
+          updatedAt: "2024-01-02T00:00:00Z",
+        },
+      ]);
     }),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
