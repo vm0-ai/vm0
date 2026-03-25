@@ -339,34 +339,10 @@ jobs:
       - name: Resolve Vercel dashboard URL
         id: vercel-dashboard
         if: ${{ steps.deploy.outputs.url != '' }}
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          DEPLOYMENT_URL: ${{ steps.deploy.outputs.url }}
-        run: |
-          # Extract hostname from deployment URL
-          HOSTNAME=$(echo "$DEPLOYMENT_URL" | sed 's|https://||')
-
-          # Query Vercel API to get deployment details
-          RESPONSE=$(curl -sf -H "Authorization: Bearer $VERCEL_TOKEN" \
-            "https://api.vercel.com/v13/deployments/$HOSTNAME" 2>/dev/null) || true
-
-          if [ -n "$RESPONSE" ]; then
-            TEAM_SLUG=$(echo "$RESPONSE" | jq -r '.team.slug // empty')
-            PROJECT_NAME=$(echo "$RESPONSE" | jq -r '.name // empty')
-            DEPLOY_ID=$(echo "$RESPONSE" | jq -r '.id // empty')
-
-            if [ -n "$TEAM_SLUG" ] && [ -n "$PROJECT_NAME" ] && [ -n "$DEPLOY_ID" ]; then
-              DASHBOARD_URL="https://vercel.com/$TEAM_SLUG/$PROJECT_NAME/$DEPLOY_ID"
-              echo "url=$DASHBOARD_URL" >> "$GITHUB_OUTPUT"
-              echo "Resolved dashboard URL: $DASHBOARD_URL"
-            else
-              echo "url=$DEPLOYMENT_URL" >> "$GITHUB_OUTPUT"
-              echo "Could not resolve dashboard URL, using deployment URL"
-            fi
-          else
-            echo "url=$DEPLOYMENT_URL" >> "$GITHUB_OUTPUT"
-            echo "Vercel API call failed, using deployment URL as fallback"
-          fi
+        uses: ./.github/actions/vercel-dashboard-url
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          deployment-url: ${{ steps.deploy.outputs.url }}
 
       - name: Calculate duration
         id: duration
@@ -560,34 +536,10 @@ jobs:
       - name: Resolve Vercel dashboard URL
         id: vercel-dashboard
         if: ${{ steps.deploy.outputs.url != '' }}
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          DEPLOYMENT_URL: ${{ steps.deploy.outputs.url }}
-        run: |
-          # Extract hostname from deployment URL
-          HOSTNAME=$(echo "$DEPLOYMENT_URL" | sed 's|https://||')
-
-          # Query Vercel API to get deployment details
-          RESPONSE=$(curl -sf -H "Authorization: Bearer $VERCEL_TOKEN" \
-            "https://api.vercel.com/v13/deployments/$HOSTNAME" 2>/dev/null) || true
-
-          if [ -n "$RESPONSE" ]; then
-            TEAM_SLUG=$(echo "$RESPONSE" | jq -r '.team.slug // empty')
-            PROJECT_NAME=$(echo "$RESPONSE" | jq -r '.name // empty')
-            DEPLOY_ID=$(echo "$RESPONSE" | jq -r '.id // empty')
-
-            if [ -n "$TEAM_SLUG" ] && [ -n "$PROJECT_NAME" ] && [ -n "$DEPLOY_ID" ]; then
-              DASHBOARD_URL="https://vercel.com/$TEAM_SLUG/$PROJECT_NAME/$DEPLOY_ID"
-              echo "url=$DASHBOARD_URL" >> "$GITHUB_OUTPUT"
-              echo "Resolved dashboard URL: $DASHBOARD_URL"
-            else
-              echo "url=$DEPLOYMENT_URL" >> "$GITHUB_OUTPUT"
-              echo "Could not resolve dashboard URL, using deployment URL"
-            fi
-          else
-            echo "url=$DEPLOYMENT_URL" >> "$GITHUB_OUTPUT"
-            echo "Vercel API call failed, using deployment URL as fallback"
-          fi
+        uses: ./.github/actions/vercel-dashboard-url
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          deployment-url: ${{ steps.deploy.outputs.url }}
 
       - name: Calculate duration
         id: duration
@@ -794,14 +746,13 @@ jobs:
           # Fetch current issue body
           BODY=$(gh api "repos/${{ github.repository }}/issues/${ISSUE_NUMBER}" --jq '.body')
 
-          # Read new entry
-          NEW_ENTRY=$(cat /tmp/dashboard-entry.md)
-
-          # Insert after start sentinel, before existing entries
-          UPDATED_BODY=$(echo "$BODY" | awk -v entry="$NEW_ENTRY" '
+          # Insert new entry after start sentinel using file-based approach
+          # This avoids awk -v issues with multi-line strings containing backslashes or special chars
+          UPDATED_BODY=$(echo "$BODY" | awk '
             /<!-- ROLLBACK_ENTRIES_START -->/ {
               print
-              print entry
+              while ((getline line < "/tmp/dashboard-entry.md") > 0) print line
+              close("/tmp/dashboard-entry.md")
               next
             }
             { print }
