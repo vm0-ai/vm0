@@ -94,6 +94,32 @@ jobs:
           branch-name: "pr-${{ github.event.pull_request.number }}"
           action: "cleanup"
 
+  cleanup-test-users:
+    # Delete Clerk test users created by e2e browser tests for this PR
+    if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete test users from Clerk
+        env:
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          JOB_REF="pr-${PR_NUMBER}"
+          echo "Searching for test users with email matching ${JOB_REF}+clerk_test"
+          USERS=$(curl -sS -X GET "https://api.clerk.com/v1/users?query=${JOB_REF}%2Bclerk_test&limit=100" \
+            -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
+            -H "Content-Type: application/json")
+          USER_IDS=$(echo "$USERS" | jq -r '.[].id // empty' 2>/dev/null || true)
+          if [[ -z "$USER_IDS" ]]; then
+            echo "No test users found to clean up"
+          else
+            for uid in $USER_IDS; do
+              echo "Deleting user $uid"
+              curl -sS -X DELETE "https://api.clerk.com/v1/users/${uid}" \
+                -H "Authorization: Bearer ${CLERK_SECRET_KEY}" || true
+            done
+          fi
+
   cleanup-deployments:
     # Skip for release-please PRs (only version bumps and changelogs)
     if: "!startsWith(github.head_ref || '', 'release-please--branches--')"

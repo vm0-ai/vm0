@@ -1030,7 +1030,7 @@ jobs:
     concurrency:
       group: cli-e2e-02-browser-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
-    needs: [prepare, build-cli, deploy-web]
+    needs: [prepare, deploy-web]
     if: |
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
       needs.prepare.outputs.job-ref != '' && (
@@ -1046,21 +1046,14 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 22
-      - name: Download CLI artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: cli-dist
-          path: /tmp/cli-deploy
-      - name: Link CLI globally
-        run: cd /tmp/cli-deploy && sudo npm link
       - name: Install E2E dependencies
         run: npm install -g agent-browser@0.22.0
       - name: Run browser E2E tests
         run: |
-          echo "Running browser E2E tests against ${{ needs.deploy-web.outputs.preview-url }}"
           BATS_TEST_TIMEOUT=120 ./e2e/test/libs/bats/bin/bats -T ./e2e/tests/02-browser/*.bats
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
       - name: Upload auth screenshots
         if: always()
         uses: actions/upload-artifact@v7

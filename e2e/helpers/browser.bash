@@ -40,11 +40,13 @@ browser_setup() {
 
 # ---------------------------------------------------------------------------
 # generate_test_email — Generate a random test email with +clerk_test suffix
+# Format: ${JOB_REF}+clerk_test@${8_RANDOM_HEX}.ai
 # ---------------------------------------------------------------------------
 generate_test_email() {
-  local random_prefix
-  random_prefix=$(head -c 8 /dev/urandom | od -An -tx1 | tr -d ' \n' | head -c 8)
-  echo "${random_prefix}+clerk_test@vm0.ai"
+  local job_ref="${JOB_REF:-local}"
+  local rand_hex
+  rand_hex=$(head -c 8 /dev/urandom | od -An -tx1 | tr -d ' \n' | head -c 8)
+  echo "${job_ref}+clerk_test@${rand_hex}.ai"
 }
 
 # ---------------------------------------------------------------------------
