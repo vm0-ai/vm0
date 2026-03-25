@@ -129,6 +129,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   explorium: ["explorium"],
   fal: ["fal"],
   fireflies: ["fireflies"],
+  "garmin-connect": ["garmin-connect"],
   heygen: ["heygen"],
   hubspot: ["hubspot"],
   "hugging-face": ["hugging-face"],
