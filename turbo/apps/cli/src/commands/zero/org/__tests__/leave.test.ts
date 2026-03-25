@@ -40,6 +40,13 @@ describe("zero org leave command", () => {
   });
 
   it("should leave org and auto-switch to remaining org", async () => {
+    const newJwt = buildFakeCliJwt({
+      scope: "cli",
+      orgId: "org-id-other",
+      userId: "user-1",
+      tokenId: "tok-1",
+    });
+
     server.use(
       http.post("http://localhost:3000/api/zero/org/leave", () => {
         return HttpResponse.json({
@@ -53,6 +60,14 @@ describe("zero org leave command", () => {
             { slug: "another-org", role: "admin" },
           ],
           active: undefined,
+        });
+      }),
+      http.post("http://localhost:3000/api/cli/auth/org", () => {
+        return HttpResponse.json({
+          access_token: newJwt,
+          token_type: "Bearer",
+          expires_in: 7776000,
+          org_slug: "other-org",
         });
       }),
     );

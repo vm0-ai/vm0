@@ -40,6 +40,13 @@ describe("zero org use command", () => {
   });
 
   it("should switch to a valid organization", async () => {
+    const newJwt = buildFakeCliJwt({
+      scope: "cli",
+      orgId: "org-id-b",
+      userId: "user-1",
+      tokenId: "tok-1",
+    });
+
     server.use(
       http.get("http://localhost:3000/api/zero/org/list", () => {
         return HttpResponse.json({
@@ -48,6 +55,14 @@ describe("zero org use command", () => {
             { slug: "org-b", role: "member" },
           ],
           active: undefined,
+        });
+      }),
+      http.post("http://localhost:3000/api/cli/auth/org", () => {
+        return HttpResponse.json({
+          access_token: newJwt,
+          token_type: "Bearer",
+          expires_in: 7776000,
+          org_slug: "org-b",
         });
       }),
     );

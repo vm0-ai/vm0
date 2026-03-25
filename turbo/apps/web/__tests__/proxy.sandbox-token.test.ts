@@ -100,15 +100,15 @@ describe("proxy middleware: sandbox token handling", () => {
     expect(capturedClerkRequest!.headers.get("x-vm0-authorization")).toBeNull();
   });
 
-  it("should pass CLI tokens through to Clerk unchanged", async () => {
-    const token = "Bearer vm0_live_abc123def456";
+  it("should pass non-sandbox tokens through to Clerk unchanged", async () => {
+    const token = "Bearer invalid_abc123def456";
     const request = new NextRequest("https://www.vm0.ai/api/runs", {
       headers: { authorization: token },
     });
 
     await middleware(request, createMockEvent());
 
-    // CLI tokens (vm0_live_) are not sandbox tokens and should pass through
+    // Non-sandbox tokens should pass through to Clerk
     expect(capturedClerkRequest).toBeDefined();
     expect(capturedClerkRequest!.headers.get("authorization")).toBe(token);
   });

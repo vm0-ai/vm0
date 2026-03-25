@@ -65,6 +65,13 @@ describe("zero org set command", () => {
   });
 
   it("should update organization with --force", async () => {
+    const newJwt = buildFakeCliJwt({
+      scope: "cli",
+      orgId: "org-id-new",
+      userId: "user-1",
+      tokenId: "tok-1",
+    });
+
     server.use(
       http.get("http://localhost:3000/api/zero/org", () => {
         return HttpResponse.json({
@@ -80,6 +87,14 @@ describe("zero org set command", () => {
           slug: "newslug",
           createdAt: "2024-01-01T00:00:00Z",
           updatedAt: "2024-01-01T00:00:00Z",
+        });
+      }),
+      http.post("http://localhost:3000/api/cli/auth/org", () => {
+        return HttpResponse.json({
+          access_token: newJwt,
+          token_type: "Bearer",
+          expires_in: 7776000,
+          org_slug: "newslug",
         });
       }),
     );

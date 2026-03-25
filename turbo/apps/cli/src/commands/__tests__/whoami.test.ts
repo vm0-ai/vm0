@@ -14,6 +14,15 @@ import * as os from "os";
 import chalk from "chalk";
 import { whoamiCommand } from "../whoami";
 
+function buildFakeCliJwt(payload: Record<string, unknown>): string {
+  const header = Buffer.from(
+    JSON.stringify({ alg: "HS256", typ: "JWT" }),
+  ).toString("base64url");
+  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const sig = Buffer.from("fake-signature").toString("base64url");
+  return `vm0_sandbox_${header}.${body}.${sig}`;
+}
+
 // Mock os.homedir to use temp directory for config isolation
 const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "test-whoami-home-"));
 vi.mock("os", async (importOriginal) => {
@@ -140,8 +149,14 @@ describe("whoami command", () => {
       );
     });
 
-    it("should display active org when VM0_ACTIVE_ORG is set", async () => {
-      vi.stubEnv("VM0_ACTIVE_ORG", "test-org-slug");
+    it("should display active org from CLI JWT token", async () => {
+      const cliJwt = buildFakeCliJwt({
+        scope: "cli",
+        orgId: "test-org-slug",
+        userId: "user-1",
+        tokenId: "tok-1",
+      });
+      vi.stubEnv("VM0_TOKEN", cliJwt);
 
       await runWhoami();
 

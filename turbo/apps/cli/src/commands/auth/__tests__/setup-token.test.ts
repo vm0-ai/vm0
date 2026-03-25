@@ -61,7 +61,7 @@ describe("auth setup-token", () => {
       await fs.mkdir(configDir, { recursive: true });
       await fs.writeFile(
         path.join(configDir, "config.json"),
-        JSON.stringify({ token: "vm0_live_test123" }),
+        JSON.stringify({ token: "test_token_abc123" }),
       );
 
       await setupTokenCommand.parseAsync(["node", "cli"]);
@@ -69,7 +69,7 @@ describe("auth setup-token", () => {
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("token exported successfully"),
       );
-      expect(mockConsoleLog).toHaveBeenCalledWith("vm0_live_test123");
+      expect(mockConsoleLog).toHaveBeenCalledWith("test_token_abc123");
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("export VM0_TOKEN"),
       );
@@ -78,14 +78,14 @@ describe("auth setup-token", () => {
 
   describe("authenticated via environment", () => {
     it("should output token from VM0_TOKEN env var", async () => {
-      vi.stubEnv("VM0_TOKEN", "vm0_live_envtoken456");
+      vi.stubEnv("VM0_TOKEN", "test_token_env456");
 
       await setupTokenCommand.parseAsync(["node", "cli"]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("token exported successfully"),
       );
-      expect(mockConsoleLog).toHaveBeenCalledWith("vm0_live_envtoken456");
+      expect(mockConsoleLog).toHaveBeenCalledWith("test_token_env456");
     });
   });
 

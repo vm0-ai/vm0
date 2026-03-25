@@ -83,15 +83,6 @@ describe("token resolution", () => {
       return `vm0_sandbox_${header}.${body}.${sig}`;
     }
 
-    async function writeConfigOrg(activeOrg: string): Promise<void> {
-      const configDir = path.join(TEST_HOME, ".vm0");
-      await fs.mkdir(configDir, { recursive: true });
-      await fs.writeFile(
-        path.join(configDir, "config.json"),
-        JSON.stringify({ activeOrg }),
-      );
-    }
-
     it("should return orgId from ZERO_TOKEN when set", async () => {
       vi.stubEnv(
         "ZERO_TOKEN",
@@ -106,35 +97,7 @@ describe("token resolution", () => {
       expect(org).toBe("org-from-jwt");
     });
 
-    it("should prefer ZERO_TOKEN over VM0_ACTIVE_ORG", async () => {
-      vi.stubEnv(
-        "ZERO_TOKEN",
-        buildFakeJwt({ scope: "zero", orgId: "jwt-org", capabilities: [] }),
-      );
-      vi.stubEnv("VM0_ACTIVE_ORG", "env-org");
-
-      const org = await getActiveOrg();
-      expect(org).toBe("jwt-org");
-    });
-
-    it("should fall back to VM0_ACTIVE_ORG when ZERO_TOKEN is absent", async () => {
-      vi.stubEnv("VM0_ACTIVE_ORG", "env-org");
-
-      const org = await getActiveOrg();
-      expect(org).toBe("env-org");
-    });
-
-    it("should fall back to config file when both env vars are absent", async () => {
-      vi.stubEnv("VM0_ACTIVE_ORG", "");
-      await writeConfigOrg("config-org");
-
-      const org = await getActiveOrg();
-      expect(org).toBe("config-org");
-    });
-
-    it("should return undefined when nothing is set", async () => {
-      vi.stubEnv("VM0_ACTIVE_ORG", "");
-
+    it("should return undefined when no JWT token is available", async () => {
       const org = await getActiveOrg();
       expect(org).toBeUndefined();
     });
@@ -144,10 +107,9 @@ describe("token resolution", () => {
         "ZERO_TOKEN",
         buildFakeJwt({ scope: "sandbox", runId: "run-1" }),
       );
-      vi.stubEnv("VM0_ACTIVE_ORG", "fallback-org");
 
       const org = await getActiveOrg();
-      expect(org).toBe("fallback-org");
+      expect(org).toBeUndefined();
     });
 
     it("should ignore compose-job-scoped token", async () => {
@@ -155,26 +117,23 @@ describe("token resolution", () => {
         "ZERO_TOKEN",
         buildFakeJwt({ scope: "compose-job", jobId: "job-1" }),
       );
-      vi.stubEnv("VM0_ACTIVE_ORG", "fallback-org");
 
       const org = await getActiveOrg();
-      expect(org).toBe("fallback-org");
+      expect(org).toBeUndefined();
     });
 
     it("should ignore malformed ZERO_TOKEN", async () => {
       vi.stubEnv("ZERO_TOKEN", "not-a-valid-token");
-      vi.stubEnv("VM0_ACTIVE_ORG", "fallback-org");
 
       const org = await getActiveOrg();
-      expect(org).toBe("fallback-org");
+      expect(org).toBeUndefined();
     });
 
     it("should ignore ZERO_TOKEN with invalid base64 payload", async () => {
       vi.stubEnv("ZERO_TOKEN", "vm0_sandbox_header.!!!invalid!!!.signature");
-      vi.stubEnv("VM0_ACTIVE_ORG", "fallback-org");
 
       const org = await getActiveOrg();
-      expect(org).toBe("fallback-org");
+      expect(org).toBeUndefined();
     });
 
     it("should return orgId from CLI JWT when config token is JWT format", async () => {
@@ -188,19 +147,6 @@ describe("token resolution", () => {
 
       const org = await getActiveOrg();
       expect(org).toBe("cli-org");
-    });
-
-    it("should fall back to config activeOrg when token is vm0_live_ format", async () => {
-      vi.stubEnv("VM0_ACTIVE_ORG", "");
-      const configDir = path.join(TEST_HOME, ".vm0");
-      await fs.mkdir(configDir, { recursive: true });
-      await fs.writeFile(
-        path.join(configDir, "config.json"),
-        JSON.stringify({ token: "vm0_live_abc123", activeOrg: "config-org" }),
-      );
-
-      const org = await getActiveOrg();
-      expect(org).toBe("config-org");
     });
 
     it("should prefer ZERO_TOKEN JWT over CLI JWT", async () => {
@@ -220,8 +166,7 @@ describe("token resolution", () => {
       expect(org).toBe("zero-org");
     });
 
-    it("should prefer CLI JWT over VM0_ACTIVE_ORG env var", async () => {
-      vi.stubEnv("VM0_ACTIVE_ORG", "env-org");
+    it("should return orgId from CLI JWT in config", async () => {
       const cliJwt = buildFakeJwt({
         scope: "cli",
         orgId: "cli-org",

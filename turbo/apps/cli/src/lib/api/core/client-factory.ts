@@ -1,7 +1,4 @@
-import { tsRestFetchApi } from "@ts-rest/core";
-import { getApiUrl, getActiveToken, getActiveOrg } from "../config";
-import { decodeCliTokenPayload } from "../cli-token";
-import { decodeZeroTokenPayload } from "../zero-token";
+import { getApiUrl, getActiveToken } from "../config";
 import type { ApiErrorResponse } from "@vm0/core";
 
 /**
@@ -59,39 +56,8 @@ export async function getClientConfig() {
   }
   const baseHeaders = buildHeaders(token);
 
-  // Check if current token is a self-signed JWT with embedded orgId
-  const jwtPayload =
-    decodeCliTokenPayload(token) ?? decodeZeroTokenPayload(token);
-
-  if (jwtPayload) {
-    // JWT tokens carry orgId in payload — server extracts it from authCtx.orgId
-    return { baseUrl, baseHeaders, jsonQuery: false as const };
-  }
-
-  // Legacy opaque tokens: inject ?org= query parameter
-  const activeOrg = await getActiveOrg();
-  if (!activeOrg) {
-    throw new Error(
-      "No active organization configured. Run: zero org use <slug>",
-    );
-  }
-
-  return {
-    baseUrl,
-    baseHeaders,
-    jsonQuery: false as const,
-    api: async (args: Parameters<typeof tsRestFetchApi>[0]) => {
-      const [pathPart, queryPart] = args.path.split("?");
-      const params = new URLSearchParams(queryPart ?? "");
-      if (!params.has("org")) {
-        params.set("org", activeOrg);
-      }
-      args.path = params.toString()
-        ? `${pathPart}?${params.toString()}`
-        : pathPart!;
-      return tsRestFetchApi(args);
-    },
-  };
+  // JWT tokens carry orgId in payload — server extracts it from authCtx.orgId
+  return { baseUrl, baseHeaders, jsonQuery: false as const };
 }
 
 /**

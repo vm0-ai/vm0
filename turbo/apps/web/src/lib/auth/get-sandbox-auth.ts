@@ -38,8 +38,7 @@ export function getSandboxAuthForRun(
 
   const token = authHeader.substring(7); // Remove "Bearer "
 
-  // Only accept JWT tokens (sandbox tokens)
-  // Regular CLI tokens (vm0_live_xxx) are rejected
+  // Only accept JWT tokens with sandbox scope
   if (!isSandboxToken(token)) {
     log.debug("Rejected non-JWT token on webhook endpoint");
     return null;

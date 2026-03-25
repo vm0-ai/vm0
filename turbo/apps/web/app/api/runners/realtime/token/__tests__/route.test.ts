@@ -88,7 +88,7 @@ describe("POST /api/runners/realtime/token", () => {
       const response = await POST(
         makeRequest(
           { group: "vm0/production" },
-          "Bearer vm0_live_nonexistent_token",
+          "Bearer invalid_nonexistent_token",
         ),
       );
       const data = await response.json();

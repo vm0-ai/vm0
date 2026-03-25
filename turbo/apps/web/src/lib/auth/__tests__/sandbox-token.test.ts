@@ -128,10 +128,6 @@ describe("sandbox-token", () => {
       expect(isSandboxToken("vm0_sandbox_anything")).toBe(true);
     });
 
-    it("should return false for CLI tokens", () => {
-      expect(isSandboxToken("vm0_live_abc123")).toBe(false);
-    });
-
     it("should return false for raw JWTs without prefix", () => {
       expect(isSandboxToken("a.b.c")).toBe(false);
       expect(isSandboxToken("header.payload.signature")).toBe(false);

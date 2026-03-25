@@ -31,10 +31,6 @@ describe("decodeCliTokenPayload", () => {
     });
   });
 
-  it("should return undefined for vm0_live_ tokens (old format)", () => {
-    expect(decodeCliTokenPayload("vm0_live_abc123")).toBeUndefined();
-  });
-
   it("should return undefined for zero-scoped tokens", () => {
     const token = buildCliJwt({
       scope: "zero",

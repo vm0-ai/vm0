@@ -1,8 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { getZeroOrg, updateZeroOrg, switchZeroOrg } from "../../../lib/api";
-import { saveConfig, getToken } from "../../../lib/api/config";
-import { decodeCliTokenPayload } from "../../../lib/api/cli-token";
+import { saveConfig } from "../../../lib/api/config";
 import { withErrorHandler } from "../../../lib/command";
 
 export const setCommand = new Command()
@@ -29,17 +28,11 @@ export const setCommand = new Command()
 
         const org = await updateZeroOrg({ slug, force: true });
 
-        const token = await getToken();
-        if (decodeCliTokenPayload(token)) {
-          // JWT flow: get new token with updated org context
-          const result = await switchZeroOrg(org.slug);
-          await saveConfig({
-            token: result.access_token,
-            activeOrg: result.org_slug,
-          });
-        } else {
-          await saveConfig({ activeOrg: org.slug });
-        }
+        const result = await switchZeroOrg(org.slug);
+        await saveConfig({
+          token: result.access_token,
+          activeOrg: result.org_slug,
+        });
 
         console.log(chalk.green(`✓ Organization updated to ${org.slug}`));
         console.log();

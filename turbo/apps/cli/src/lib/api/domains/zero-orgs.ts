@@ -20,7 +20,7 @@ import {
 import { getToken } from "../config";
 
 /**
- * Get client config that always uses the user token (vm0_live_),
+ * Get client config that always uses the user token,
  * not the org token. Used for org list operations.
  */
 async function getUserTokenClientConfig(): Promise<{

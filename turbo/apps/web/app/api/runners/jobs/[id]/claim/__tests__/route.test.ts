@@ -174,7 +174,7 @@ describe("POST /api/runners/jobs/:id/claim", () => {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: "Bearer vm0_live_nonexistent_token",
+              Authorization: "Bearer invalid_nonexistent_token",
             },
             body: JSON.stringify({}),
           },

@@ -151,8 +151,14 @@ describe("zero whoami command", () => {
       );
     });
 
-    it("should display active org when set", async () => {
-      vi.stubEnv("VM0_ACTIVE_ORG", "test-org-slug");
+    it("should display active org from CLI JWT token", async () => {
+      const cliJwt = buildZeroToken({
+        scope: "cli",
+        orgId: "test-org-slug",
+        userId: "user-1",
+        tokenId: "tok-1",
+      });
+      vi.stubEnv("VM0_TOKEN", cliJwt);
 
       await runWhoami();
 

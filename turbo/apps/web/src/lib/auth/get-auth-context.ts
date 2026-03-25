@@ -63,32 +63,6 @@ export async function getAuthContext(
       }
       return authenticateSandboxToken(token, options);
     }
-
-    // Check for CLI token format (vm0_live_)
-    if (token.startsWith("vm0_live_")) {
-      const [tokenRecord] = await globalThis.services.db
-        .select()
-        .from(cliTokens)
-        .where(
-          and(eq(cliTokens.token, token), gt(cliTokens.expiresAt, new Date())),
-        )
-        .limit(1);
-
-      if (!tokenRecord) {
-        return null;
-      }
-
-      // Update last used timestamp (non-blocking)
-      globalThis.services.db
-        .update(cliTokens)
-        .set({ lastUsedAt: new Date() })
-        .where(eq(cliTokens.token, token))
-        .catch((err) => log.error("Failed to update token lastUsedAt:", err));
-
-      return {
-        userId: tokenRecord.userId,
-      };
-    }
   }
 
   // Fall back to Clerk session auth

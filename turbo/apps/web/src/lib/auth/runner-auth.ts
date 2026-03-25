@@ -2,12 +2,10 @@
  * Runner authentication module
  *
  * Handles authentication for runner endpoints (poll, claim).
- * Supports official runners (vm0_official_*) and user runners (vm0_live_*).
+ * Supports official runners (vm0_official_*) and user runners (via CLI JWT tokens).
  */
 
-import { eq, and, gt } from "drizzle-orm";
 import { initServices } from "../init-services";
-import { cliTokens } from "../../db/schema/cli-tokens";
 import { isSandboxToken, verifyCliToken } from "./sandbox-token";
 import { resolveCliTokenFromDb } from "./get-auth-context";
 import { logger } from "../logger";
@@ -69,8 +67,8 @@ function validateOfficialRunnerSecret(providedSecret: string): boolean {
  *    - Validated against OFFICIAL_RUNNER_SECRET env var
  *    - Returns { type: 'official-runner' }
  *
- * 2. User runner: Uses `vm0_live_<token>` CLI token format
- *    - Validated against cli_tokens table
+ * 2. User runner: Uses CLI JWT token (`vm0_sandbox_` prefix with scope "cli")
+ *    - Validated via JWT signature + cli_tokens table revocation check
  *    - Returns { type: 'user', userId }
  *
  * @param authHeader - The Authorization header value (optional)
@@ -113,35 +111,6 @@ export async function getRunnerAuth(
     }
 
     log.warn("Invalid official runner secret");
-    return null;
-  }
-
-  // Check for CLI token format (vm0_live_)
-  if (token.startsWith("vm0_live_")) {
-    initServices();
-
-    const [tokenRecord] = await globalThis.services.db
-      .select()
-      .from(cliTokens)
-      .where(
-        and(eq(cliTokens.token, token), gt(cliTokens.expiresAt, new Date())),
-      )
-      .limit(1);
-
-    if (tokenRecord) {
-      // Update last used timestamp (non-blocking)
-      globalThis.services.db
-        .update(cliTokens)
-        .set({ lastUsedAt: new Date() })
-        .where(eq(cliTokens.token, token))
-        .catch((err) => log.error("Failed to update token lastUsedAt:", err));
-
-      return {
-        type: "user",
-        userId: tokenRecord.userId,
-      };
-    }
-
     return null;
   }
 
