@@ -882,7 +882,6 @@ export async function executeSchedule(
     const emailPayload: EmailScheduleCallbackPayload = {
       scheduleId: schedule.id,
       agentId: schedule.agentId,
-      agentName: compose.name,
       userId: schedule.userId,
     };
     callbacks.push({
@@ -897,7 +896,6 @@ export async function executeSchedule(
     const slackPayload: SlackScheduleCallbackPayload = {
       scheduleId: schedule.id,
       agentId: schedule.agentId,
-      agentName: compose.name,
       userId: schedule.userId,
       orgId: schedule.orgId,
       slackChannelId: schedule.slackChannelId,

@@ -6,7 +6,7 @@ import { createPushStateMock } from "../../../__tests__/page-helper.ts";
 import {
   zeroActiveId$,
   setZeroActiveId$,
-  zeroChatAgentName$,
+  zeroTalkAgentId$,
   zeroChatAgentId$,
   setZeroChatAgent$,
   zeroAvatarIndex$,
@@ -142,20 +142,20 @@ describe("zero-nav", () => {
     });
   });
 
-  describe("zeroChatAgentName$", () => {
+  describe("zeroTalkAgentId$", () => {
     it("should return null for /", () => {
       mockLocation({ pathname: "/", search: "" }, context.signal);
-      expect(context.store.get(zeroChatAgentName$)).toBeNull();
+      expect(context.store.get(zeroTalkAgentId$)).toBeNull();
     });
 
     it("should return null for /chat", () => {
       mockLocation({ pathname: "/chat", search: "" }, context.signal);
-      expect(context.store.get(zeroChatAgentName$)).toBeNull();
+      expect(context.store.get(zeroTalkAgentId$)).toBeNull();
     });
 
     it("should extract agent name from /talk/:name", () => {
       mockLocation({ pathname: "/talk/my-agent", search: "" }, context.signal);
-      expect(context.store.get(zeroChatAgentName$)).toBe("my-agent");
+      expect(context.store.get(zeroTalkAgentId$)).toBe("my-agent");
     });
 
     it("should decode URI-encoded agent names", () => {
@@ -163,7 +163,7 @@ describe("zero-nav", () => {
         { pathname: "/talk/agent%20with%20spaces", search: "" },
         context.signal,
       );
-      expect(context.store.get(zeroChatAgentName$)).toBe("agent with spaces");
+      expect(context.store.get(zeroTalkAgentId$)).toBe("agent with spaces");
     });
   });
 

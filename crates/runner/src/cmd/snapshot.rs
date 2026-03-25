@@ -9,6 +9,9 @@ use crate::error::{RunnerError, RunnerResult};
 use crate::lock;
 use crate::paths::{HomePaths, RootfsPaths, touch_mtime};
 
+/// Bump this to invalidate all cached snapshots without changing any input files.
+const SNAPSHOT_CACHE_VERSION: u32 = 1;
+
 #[derive(Args, Clone)]
 pub struct SnapshotArgs {
     /// SHA-256 hash of the rootfs inputs (output of `rootfs`).
@@ -135,6 +138,9 @@ async fn is_snapshot_complete(output: &SnapshotOutputPaths) -> RunnerResult<bool
 pub(crate) fn compute_snapshot_hash(args: &SnapshotArgs) -> String {
     let fc_config = sandbox_fc::config_hash();
     let mut hasher = Sha256::new();
+    // Cache version seed — bump SNAPSHOT_CACHE_VERSION to force invalidation.
+    hasher.update(b"version:");
+    hasher.update(SNAPSHOT_CACHE_VERSION.to_le_bytes());
     hasher.update(b"fc_config:");
     hasher.update(fc_config.as_bytes());
     hasher.update(b"rootfs:");
@@ -201,7 +207,7 @@ mod tests {
         // Changing this assertion means ALL existing cached snapshots are
         // invalidated.  Only update deliberately.
         assert_eq!(
-            hash, "293b14570b00874e4cf5adf3c8c099e18a59c2eadcce8c26f267a41ace35b5f8",
+            hash, "c3a6b6de68a3432cf445929376de33f7dfe854493ad91cd42d2b6bdc6d6adca6",
             "snapshot hash changed — this invalidates all cached snapshots"
         );
     }

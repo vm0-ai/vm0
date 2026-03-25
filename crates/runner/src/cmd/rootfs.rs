@@ -12,6 +12,9 @@ use crate::profile;
 const BUILD_SCRIPT: &str = include_str!("../../scripts/build-rootfs.sh");
 const VERIFY_SCRIPT: &str = include_str!("../../scripts/verify-rootfs.sh");
 
+/// Bump this to invalidate all cached rootfs images without changing any input files.
+const ROOTFS_CACHE_VERSION: u32 = 1;
+
 #[cfg(bundled_guests)]
 mod embedded {
     pub const GUEST_INIT: &[u8] = include_bytes!(env!("BUNDLED_GUEST_INIT"));
@@ -279,6 +282,10 @@ async fn compute_input_hash(
     guest_bins: &[(&Path, &str)],
 ) -> RunnerResult<String> {
     let mut hasher = Sha256::new();
+
+    // Cache version seed — bump ROOTFS_CACHE_VERSION to force invalidation.
+    hasher.update(b"version:");
+    hasher.update(ROOTFS_CACHE_VERSION.to_le_bytes());
 
     // Hash build script content (includes resolv.conf, constants, all logic)
     hasher.update(b"script:");

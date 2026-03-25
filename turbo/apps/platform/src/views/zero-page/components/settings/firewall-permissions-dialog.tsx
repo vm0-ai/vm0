@@ -29,7 +29,7 @@ interface FirewallPermission {
 
 interface FirewallPermissionsDrawerProps {
   connectorType: ConnectorType;
-  agentName: string;
+  displayName: string;
   initialPolicies: FirewallPolicies;
   onApply: (policies: FirewallPolicies) => Promise<void>;
   onClose: () => void;
@@ -131,7 +131,7 @@ function PolicyPill({
 
 export function FirewallPermissionsDrawer({
   connectorType,
-  agentName,
+  displayName,
   initialPolicies,
   onApply,
   onClose,
@@ -210,7 +210,7 @@ export function FirewallPermissionsDrawer({
             <SheetTitle className="text-base">
               {connectorLabel} permissions
               <span className="text-sm font-normal text-muted-foreground ml-1">
-                for {agentName}
+                for {displayName}
               </span>
             </SheetTitle>
           </div>

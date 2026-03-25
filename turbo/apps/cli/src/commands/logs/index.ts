@@ -8,7 +8,7 @@ import {
   type TelemetryMetric,
   type RunEvent,
   type NetworkLogEntry,
-} from "../../lib/api/domains/logs";
+} from "../../lib/api";
 import { getApiUrl } from "../../lib/api/config";
 import { parseTime } from "../../lib/utils/time-parser";
 import { formatBytes } from "../../lib/utils/file-utils";

@@ -6,6 +6,13 @@ use std::path::PathBuf;
 fn main() {
     println!("cargo::rustc-check-cfg=cfg(bundled_guests)");
 
+    // Rebuild when embedded files change (include_str! tracks deps for rustc,
+    // but CI artifact caches may not — explicit rerun-if-changed ensures correctness).
+    println!("cargo::rerun-if-changed=scripts/build-rootfs.sh");
+    println!("cargo::rerun-if-changed=scripts/verify-rootfs.sh");
+    println!("cargo::rerun-if-changed=scripts/rootfs-default.Dockerfile");
+    println!("cargo::rerun-if-changed=mitm-addon/src/mitm_addon.py");
+
     // Build scripts run with cwd=CARGO_MANIFEST_DIR (crates/runner/), but
     // GUEST_*_PATH values are relative to the workspace root (crates/).
     // Resolve relative paths against the workspace root so canonicalize works.
@@ -23,7 +30,7 @@ fn main() {
 
     // Always rebuild when any of these env vars change.
     for (env_var, _) in &guests {
-        println!("cargo:rerun-if-env-changed={env_var}");
+        println!("cargo::rerun-if-env-changed={env_var}");
     }
 
     // All-or-nothing: either all GUEST_*_PATH vars are set, or none.
@@ -45,7 +52,7 @@ fn main() {
     }
 
     if paths.len() == guests.len() {
-        println!("cargo:rustc-cfg=bundled_guests");
+        println!("cargo::rustc-cfg=bundled_guests");
         for ((_, bundled_key), (_, raw_path)) in guests.iter().zip(paths.iter()) {
             let resolved = if std::path::Path::new(raw_path).is_relative() {
                 workspace_root.join(raw_path)
@@ -57,8 +64,8 @@ fn main() {
             let abs_str = abs
                 .to_str()
                 .unwrap_or_else(|| panic!("non-UTF-8 path: {}", abs.display()));
-            println!("cargo:rustc-env={bundled_key}={abs_str}");
-            println!("cargo:rerun-if-changed={abs_str}");
+            println!("cargo::rustc-env={bundled_key}={abs_str}");
+            println!("cargo::rerun-if-changed={abs_str}");
         }
     }
 }

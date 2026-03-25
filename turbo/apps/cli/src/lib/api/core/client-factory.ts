@@ -19,14 +19,9 @@ export class ApiRequestError extends Error {
 }
 
 /**
- * Get authentication headers for API requests
+ * Build authentication headers from a token
  */
-async function getHeaders(): Promise<Record<string, string>> {
-  const token = await getActiveToken();
-  if (!token) {
-    throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
-  }
-
+function buildHeaders(token: string): Record<string, string> {
   // Note: Don't set Content-Type here - ts-rest automatically adds it for requests with body.
   // Setting Content-Type for bodyless requests (GET, DELETE) can cause server-side parsing issues.
   const headers: Record<string, string> = {
@@ -58,14 +53,17 @@ export async function getBaseUrl(): Promise<string> {
  */
 export async function getClientConfig() {
   const baseUrl = await getBaseUrl();
-  const baseHeaders = await getHeaders();
+  const token = await getActiveToken();
+  if (!token) {
+    throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
+  }
+  const baseHeaders = buildHeaders(token);
 
   // Check if current token is a self-signed JWT with embedded orgId
-  const token = await getActiveToken();
-  const isJwtToken =
+  const jwtPayload =
     decodeCliTokenPayload(token) ?? decodeZeroTokenPayload(token);
 
-  if (isJwtToken) {
+  if (jwtPayload) {
     // JWT tokens carry orgId in payload — server extracts it from authCtx.orgId
     return { baseUrl, baseHeaders, jsonQuery: false as const };
   }

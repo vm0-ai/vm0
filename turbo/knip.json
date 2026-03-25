@@ -28,7 +28,9 @@
     "apps/cli": {
       "entry": [
         "src/**/__tests__/**/*.{test,spec}.ts",
-        "src/**/*.{test,spec}.ts"
+        "src/**/*.{test,spec}.ts",
+        "src/commands/logs/index.ts",
+        "src/commands/logs/search.ts"
       ],
       "project": ["src/**/*.ts"],
       "ignoreDependencies": ["@types/tar"],
@@ -103,7 +105,6 @@
     "apps/platform/src/test/mocks/clerk-react-experimental.ts",
     "apps/web/src/lib/schedule/schedule-service.ts",
     "apps/web/src/lib/model-provider/model-provider-service.ts",
-    "apps/cli/src/lib/api/domains/logs.ts",
     "apps/cli/src/lib/utils/paginate.ts",
     "apps/cli/src/commands/cook/cook.ts",
     "apps/web/src/lib/auth/sandbox-token.ts",

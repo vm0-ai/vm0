@@ -79,7 +79,7 @@ interface ZeroChatComposerProps {
   queuedMessage?: { text: string } | null;
   /** Withdraw the queued message back into the input for editing. */
   onWithdraw?: () => void;
-  agentName: string;
+  displayName: string;
   /** Navigate to connectors management page. */
   onManageConnectors?: () => void;
   className?: string;
@@ -277,13 +277,13 @@ function ConnectorsPopoverButton({
   onOpenAddDialog,
   onConnect,
   onManageConnectors,
-  agentName,
+  displayName,
 }: {
   agentConnectors: ComposerConnectorItem[];
   onOpenAddDialog: () => void;
   onConnect: (type: string) => void;
   onManageConnectors?: () => void;
-  agentName: string;
+  displayName: string;
 }) {
   const hasAgentConnectors = agentConnectors.length > 0;
   return (
@@ -315,7 +315,7 @@ function ConnectorsPopoverButton({
             >
               <div className="px-2 pt-1 pb-1">
                 <span className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider">
-                  Connectors used by {agentName}
+                  Connectors used by {displayName}
                 </span>
               </div>
               <div className="flex flex-col">
@@ -371,7 +371,7 @@ function ConnectorsPopoverButton({
                 stroke={1.5}
                 className="shrink-0 text-muted-foreground"
               />
-              Manage connectors in {agentName}
+              Manage connectors in {displayName}
             </button>
           )}
         </div>
@@ -392,7 +392,7 @@ export function ZeroChatComposer({
   onCancel,
   queuedMessage,
   onWithdraw,
-  agentName,
+  displayName,
   onManageConnectors,
   className,
   autoFocus,
@@ -596,7 +596,7 @@ export function ZeroChatComposer({
                   onOpenAddDialog={() => setAddDialogOpen(true)}
                   onConnect={handleConnectConnector}
                   onManageConnectors={onManageConnectors}
-                  agentName={agentName}
+                  displayName={displayName}
                 />
               </div>
               <div className="flex items-center gap-2">
@@ -650,7 +650,7 @@ export function ZeroChatComposer({
         excludeTypes={addedSet}
         onConnectSuccess={handleConnectSuccess}
         onAdd={handleConnectSuccess}
-        agentName={agentName}
+        displayName={displayName}
       />
       {selectedConnType && (
         <ConnectModal

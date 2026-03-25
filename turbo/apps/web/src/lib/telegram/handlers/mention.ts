@@ -159,8 +159,7 @@ export async function handleTelegramMention(
       messageId: String(message.message_id),
       rootMessageId: rootMessageId ?? null,
       userLinkId: userLink.id,
-      agentName,
-      composeId,
+      agentId: composeId,
       existingSessionId: existingSessionId ?? null,
       isDM: false,
       thinkingMessageId: thinkingMessage

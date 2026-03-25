@@ -40,7 +40,7 @@ describe("zero-model-preference signals", () => {
     expect(context.store.get(selectedModel$)).toBe("default");
   });
 
-  it("should use 'default' key when zeroChatAgentName is null", () => {
+  it("should use 'default' key when zeroTalkAgentId is null", () => {
     mockLocation({ pathname: "/", search: "" }, context.signal);
     localStorage.setItem("zero.modelProvider.default", "anthropic");
 

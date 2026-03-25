@@ -127,3 +127,16 @@ export {
   disableZeroSchedule,
   resolveZeroScheduleByAgent,
 } from "./domains/zero-schedules";
+
+// Domain modules - Logs
+export {
+  getSystemLog,
+  getMetrics,
+  getAgentEvents,
+  getNetworkLogs,
+  searchLogs,
+  type RunEvent,
+  type TelemetryMetric,
+  type NetworkLogEntry,
+  type LogsSearchResponse,
+} from "./domains/logs";

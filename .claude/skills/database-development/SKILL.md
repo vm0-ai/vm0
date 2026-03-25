@@ -15,39 +15,27 @@ pnpm db:migrate    # Run pending migrations
 pnpm db:studio     # Open Drizzle Studio UI
 ```
 
-## Critical: _journal.json
-
-**Manual migrations MUST have an entry in `src/db/migrations/meta/_journal.json`.**
-
-Without this entry, the migration will NOT run and CI will fail.
-
-```json
-{
-  "idx": 25,                           // Next sequential number
-  "version": "7",                      // Always "7"
-  "when": 1765000000000,               // Timestamp (ms)
-  "tag": "0025_my_migration",          // Must match filename without .sql
-  "breakpoints": true
-}
-```
-
 ## Migration Workflows
 
 ### Auto-Generated (simple changes)
 
 ```bash
 # 1. Edit schema in src/db/schema/
-# 2. Generate (auto-updates _journal.json)
+# 2. Generate migration (auto-updates _journal.json and snapshot)
 pnpm db:generate
 # 3. Run locally
 pnpm db:migrate
 ```
 
-### Manual (renames, complex ALTER)
+### Custom SQL (renames, complex ALTER, data transforms)
+
+Use `drizzle-kit generate --custom` to create an empty migration file managed by Drizzle.
+This auto-updates `_journal.json` and snapshot — **never edit these manually**.
 
 ```bash
-# 1. Create: src/db/migrations/XXXX_name.sql
-# 2. Add entry to _journal.json  ← DON'T FORGET!
+# 1. Generate empty migration file
+pnpm drizzle-kit generate --custom --name=rename_foo_to_bar
+# 2. Write SQL in the generated file
 # 3. Update schema file to match
 # 4. Run locally
 pnpm db:migrate
@@ -82,6 +70,6 @@ Before committing:
 
 - [ ] Schema file updated in `src/db/schema/`
 - [ ] Schema exported in `src/db/db.ts` (if new table)
-- [ ] `_journal.json` updated (manual migrations)
+- [ ] Custom migrations created via `drizzle-kit generate --custom` (not manually)
 - [ ] `pnpm db:migrate` works locally
 - [ ] `pnpm test` passes
