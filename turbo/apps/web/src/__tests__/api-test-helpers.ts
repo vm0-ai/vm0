@@ -3548,6 +3548,7 @@ export async function createTestSlackOrgInstallation(opts: {
 }): Promise<{
   slackWorkspaceId: string;
   slackWorkspaceName: string;
+  installation: typeof slackOrgInstallations.$inferSelect;
 }> {
   initServices();
   const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
@@ -3560,15 +3561,26 @@ export async function createTestSlackOrgInstallation(opts: {
     SECRETS_ENCRYPTION_KEY,
   );
 
-  await globalThis.services.db.insert(slackOrgInstallations).values({
+  const [installation] = await globalThis.services.db
+    .insert(slackOrgInstallations)
+    .values({
+      slackWorkspaceId: workspaceId,
+      slackWorkspaceName: workspaceName,
+      orgId: opts.orgId,
+      encryptedBotToken,
+      botUserId: `B-${randomUUID().slice(0, 8)}`,
+    })
+    .returning();
+
+  if (!installation) {
+    throw new Error("Failed to create test Slack org installation");
+  }
+
+  return {
     slackWorkspaceId: workspaceId,
     slackWorkspaceName: workspaceName,
-    orgId: opts.orgId,
-    encryptedBotToken,
-    botUserId: `B-${randomUUID().slice(0, 8)}`,
-  });
-
-  return { slackWorkspaceId: workspaceId, slackWorkspaceName: workspaceName };
+    installation,
+  };
 }
 
 /**
@@ -3973,6 +3985,7 @@ export async function seedTestSlackOrgPendingQuestion(opts: {
   slackWorkspaceId: string;
   slackChannelId: string;
   slackThreadTs: string;
+  slackMessageTs?: string;
   connectionId: string;
   composeId: string;
   agentName: string;
@@ -3987,6 +4000,7 @@ export async function seedTestSlackOrgPendingQuestion(opts: {
       slackWorkspaceId: opts.slackWorkspaceId,
       slackChannelId: opts.slackChannelId,
       slackThreadTs: opts.slackThreadTs,
+      slackMessageTs: opts.slackMessageTs,
       connectionId: opts.connectionId,
       composeId: opts.composeId,
       agentName: opts.agentName,
