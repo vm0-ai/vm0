@@ -1,5 +1,156 @@
 # Changelog
 
+## [12.157.0](https://github.com/vm0-ai/vm0/compare/web-v12.156.1...web-v12.157.0) (2026-03-25)
+
+
+### Features
+
+* add billing dialog and rename stripe price env vars ([#5782](https://github.com/vm0-ai/vm0/issues/5782)) ([f6ea54d](https://github.com/vm0-ai/vm0/commit/f6ea54d138d6f65e7a1cf03262e6e71372a7fd82))
+* add clerk metadata backfill script for complete data migration ([#5973](https://github.com/vm0-ai/vm0/issues/5973)) ([c32a23b](https://github.com/vm0-ai/vm0/commit/c32a23b0b2f59f761e0041e5da6e10f6a7da48dd))
+* add clerk webhook endpoint with svix verification ([#5983](https://github.com/vm0-ai/vm0/issues/5983)) ([c2467d0](https://github.com/vm0-ai/vm0/commit/c2467d02132ae38e192bc9cc2f13031f6241b39b)), closes [#5977](https://github.com/vm0-ai/vm0/issues/5977)
+* add connector search endpoint for connector discovery ([#6065](https://github.com/vm0-ai/vm0/issues/6065)) ([54cf245](https://github.com/vm0-ai/vm0/commit/54cf245a0fc4d768ded13aadb30b0437c2e79700))
+* add description field to schedule with auto-generation fallback ([#6113](https://github.com/vm0-ai/vm0/issues/6113)) ([699c2ac](https://github.com/vm0-ai/vm0/commit/699c2acc587f3a118c49d3c2943090c1c923eab7))
+* add dev seed script for credit pricing and api keys ([#5853](https://github.com/vm0-ai/vm0/issues/5853)) ([50bcc9f](https://github.com/vm0-ai/vm0/commit/50bcc9f5f502dd189d1d3f8ea0344e4c2002af11))
+* add firewall config for linear connector ([#6448](https://github.com/vm0-ai/vm0/issues/6448)) ([823f8a0](https://github.com/vm0-ai/vm0/commit/823f8a0c9daa8af14bb0ff0049ffb1a12b902968))
+* add integration-slack:write capability and proxy api endpoint ([#5970](https://github.com/vm0-ai/vm0/issues/5970)) ([afafbfc](https://github.com/vm0-ai/vm0/commit/afafbfc74e3f82ec9c80170869d0594713bf0385))
+* add no-self-api-call eslint rule ([#6001](https://github.com/vm0-ai/vm0/issues/6001)) ([0d2b26f](https://github.com/vm0-ai/vm0/commit/0d2b26f0df6bf2661561a34539f9ae32e897e449))
+* add org deletion service for database cascade cleanup ([#5988](https://github.com/vm0-ai/vm0/issues/5988)) ([220403f](https://github.com/vm0-ai/vm0/commit/220403fe8448534bb4a82627d7ad04105552b53c))
+* add org external service cleanup function ([#5987](https://github.com/vm0-ai/vm0/issues/5987)) ([5acfc43](https://github.com/vm0-ai/vm0/commit/5acfc430c834f7488e7844a1edf19eef1864aca5))
+* add org s3 data cleanup service for org deletion ([#5984](https://github.com/vm0-ai/vm0/issues/5984)) ([1981651](https://github.com/vm0-ai/vm0/commit/1981651631fcc2e9fbbd772fec01818d9fd50b55)), closes [#5979](https://github.com/vm0-ai/vm0/issues/5979)
+* add org-level targeting to feature switch system ([#6667](https://github.com/vm0-ai/vm0/issues/6667)) ([46e96a1](https://github.com/vm0-ai/vm0/commit/46e96a137585c23ac82a12a904fd7215b2733b82)), closes [#6643](https://github.com/vm0-ai/vm0/issues/6643)
+* add pay-as-you-go auto-recharge for org credits ([#5834](https://github.com/vm0-ai/vm0/issues/5834)) ([66228b7](https://github.com/vm0-ai/vm0/commit/66228b7494af85d25a3dbe54210149de7964fb43))
+* add pre-flight credit check for vm0 model provider runs ([#5917](https://github.com/vm0-ai/vm0/issues/5917)) ([3bc42e8](https://github.com/vm0-ai/vm0/commit/3bc42e8662e8b7f54aab394401444fb7e6d74794))
+* add slack channel selection for schedule notifications ([#6156](https://github.com/vm0-ai/vm0/issues/6156)) ([059f723](https://github.com/vm0-ai/vm0/commit/059f72309f67fe99bb1259ded54c56c2da33df2d))
+* add slug editing to org settings dialog ([#6617](https://github.com/vm0-ai/vm0/issues/6617)) ([daf8229](https://github.com/vm0-ai/vm0/commit/daf82295869ddd7fffcfab337a832052e900698f))
+* add stripe webhook forwarding to dev environment ([#6161](https://github.com/vm0-ai/vm0/issues/6161)) ([8bb7223](https://github.com/vm0-ai/vm0/commit/8bb7223b420b7ebb946054e7f714d09d45233a27))
+* add trigger source filter to activity page ([#6091](https://github.com/vm0-ai/vm0/issues/6091)) ([89013bb](https://github.com/vm0-ai/vm0/commit/89013bb68137e74f355f7f6330cc17c394990c26))
+* add usage page showing per-member token consumption in billing period ([#6019](https://github.com/vm0-ai/vm0/issues/6019)) ([b88b6b3](https://github.com/vm0-ai/vm0/commit/b88b6b33276c7551203f6ef91318439fb94cfcb5))
+* add user deletion s3 and external service cleanup ([#6180](https://github.com/vm0-ai/vm0/issues/6180)) ([748b453](https://github.com/vm0-ai/vm0/commit/748b45310900ee0d670ae661265beda20d981b92))
+* add user deletion service for database cascade cleanup ([#6169](https://github.com/vm0-ai/vm0/issues/6169)) ([#6181](https://github.com/vm0-ai/vm0/issues/6181)) ([772a7f9](https://github.com/vm0-ai/vm0/commit/772a7f926bfc654e1d24ece3184e8d150b6cfb26))
+* add zero connector contracts for sessions, computer, and get-by-type ([#6286](https://github.com/vm0-ai/vm0/issues/6286)) ([ce04430](https://github.com/vm0-ai/vm0/commit/ce044303cb2c3ba9bc1d6b8b03d10d0815a750de))
+* add zero connector routes for sessions and computer ([#6298](https://github.com/vm0-ai/vm0/issues/6298)) ([82a4a38](https://github.com/vm0-ai/vm0/commit/82a4a38782a1d57a4535d6d70ad33d9bd25fca44)), closes [#6293](https://github.com/vm0-ai/vm0/issues/6293)
+* **api:** add get and delete endpoints for zero secrets and variables ([#6144](https://github.com/vm0-ai/vm0/issues/6144)) ([5b41bac](https://github.com/vm0-ai/vm0/commit/5b41bac8297c8f924261b53dd58a3ca40cd9a749)), closes [#6138](https://github.com/vm0-ai/vm0/issues/6138)
+* **api:** add zero agent list and delete endpoints ([#6176](https://github.com/vm0-ai/vm0/issues/6176)) ([24a303b](https://github.com/vm0-ai/vm0/commit/24a303be859378eb9895c1c7d388d16b4d96a039))
+* **api:** add zero org list endpoint ([#6150](https://github.com/vm0-ai/vm0/issues/6150)) ([98b39e9](https://github.com/vm0-ai/vm0/commit/98b39e96779d0d016aaa02ee0ff2cd4a68604f6f)), closes [#6139](https://github.com/vm0-ai/vm0/issues/6139)
+* apply firewall policies when running zero agents ([#6288](https://github.com/vm0-ai/vm0/issues/6288)) ([f7a3f59](https://github.com/vm0-ai/vm0/commit/f7a3f594a5cf5a0eb8ace683da643d0e7276c4ab))
+* auto-generate chat thread titles via lightweight model ([#6063](https://github.com/vm0-ai/vm0/issues/6063)) ([86f3bfb](https://github.com/vm0-ai/vm0/commit/86f3bfb82258ebe9cc8740e58755e03bf6d6eebb))
+* **core:** restrict default agent profile and instructions to admin only ([#6658](https://github.com/vm0-ai/vm0/issues/6658)) ([a7e56af](https://github.com/vm0-ai/vm0/commit/a7e56af90508b1b12d2ddba9a42770f40a1de213))
+* create zero-run-service to unify all zero trigger paths ([#6028](https://github.com/vm0-ai/vm0/issues/6028)) ([97f1854](https://github.com/vm0-ai/vm0/commit/97f1854c2b3458642022cb6430cf33b4db953b07))
+* deduplicate auto-generated firewalls against compose-declared firewalls ([#6126](https://github.com/vm0-ai/vm0/issues/6126)) ([ced37df](https://github.com/vm0-ai/vm0/commit/ced37df6596e791085544e22bc3744507d286a46))
+* handle no-model-provider error with dedicated deep link ([#6030](https://github.com/vm0-ai/vm0/issues/6030)) ([0707acd](https://github.com/vm0-ai/vm0/commit/0707acd4a384e0864aa947d432589b32123eef83))
+* increase default starter credits from 2000 to 10000 ([#6055](https://github.com/vm0-ai/vm0/issues/6055)) ([c16b93e](https://github.com/vm0-ai/vm0/commit/c16b93e63937b899234f6b38d7591fe85e3d2a28)), closes [#6049](https://github.com/vm0-ai/vm0/issues/6049)
+* integrate stripe billing for pro/max subscription plans ([#5764](https://github.com/vm0-ai/vm0/issues/5764)) ([078646b](https://github.com/vm0-ai/vm0/commit/078646baf6476061e4b9b15ebe5adca45d656139))
+* log non-tcp traffic from sandbox vms via iptables and /dev/kmsg ([#6060](https://github.com/vm0-ai/vm0/issues/6060)) ([ddf2a0c](https://github.com/vm0-ai/vm0/commit/ddf2a0c3c2c99928d4f12eda1f48a887cfd5533a))
+* per-member credit cap for VM0 model provider organizations ([#6173](https://github.com/vm0-ai/vm0/issues/6173)) ([1a551aa](https://github.com/vm0-ai/vm0/commit/1a551aa4a6b11bc0e7865a44e11d3b1737551bac))
+* **platform:** add org management dialog with billing, members, and invoices tabs ([#5605](https://github.com/vm0-ai/vm0/issues/5605)) ([a7b3e28](https://github.com/vm0-ai/vm0/commit/a7b3e28c9bd1dbc61d79ee0d8d1155faea14915c))
+* **platform:** firewall permissions drawer with persistent policies ([#5467](https://github.com/vm0-ai/vm0/issues/5467)) ([829485f](https://github.com/vm0-ai/vm0/commit/829485f8222f732217e68daae10fe0d56567cc81))
+* **platform:** zero chat ux improvements ([#6067](https://github.com/vm0-ai/vm0/issues/6067)) ([8f1b188](https://github.com/vm0-ai/vm0/commit/8f1b188ffb795440858dc16b6f45a23d4ae55c40))
+* **platform:** zero schedule detail route and schedule list UX ([#6155](https://github.com/vm0-ai/vm0/issues/6155)) ([3a1a466](https://github.com/vm0-ai/vm0/commit/3a1a466d4619865a99ad0144608e88bcb50a121f))
+* **runner:** add job cancellation via ably real-time notifications ([#5949](https://github.com/vm0-ai/vm0/issues/5949)) ([e157f92](https://github.com/vm0-ai/vm0/commit/e157f925312c50ff8de62e986d7bc7afac0a3d53)), closes [#5762](https://github.com/vm0-ai/vm0/issues/5762)
+* **slack:** add system prompt guidance for Slack messaging API ([#5967](https://github.com/vm0-ai/vm0/issues/5967)) ([2149427](https://github.com/vm0-ai/vm0/commit/2149427761367ad0ea2b520d88def8491b9d97d9)), closes [#5966](https://github.com/vm0-ai/vm0/issues/5966)
+* **slack:** disable cron tools and add vm0 schedule guidance ([#5779](https://github.com/vm0-ai/vm0/issues/5779)) ([fa01ad9](https://github.com/vm0-ai/vm0/commit/fa01ad962c8cf22cb1b864aec0def756ddd0b416))
+* structured error codes for pre-run checks with client-side guidance ([#5936](https://github.com/vm0-ai/vm0/issues/5936)) ([c6c0dda](https://github.com/vm0-ai/vm0/commit/c6c0ddaebfc7b0b2fc188a537e16d45fa7a65c02))
+* support --settings flag for vm0 run ([#5663](https://github.com/vm0-ai/vm0/issues/5663)) ([#5753](https://github.com/vm0-ai/vm0/issues/5753)) ([d0aad87](https://github.com/vm0-ai/vm0/commit/d0aad87539c31ae4664d41b1cca46b556b3de66e))
+* support --tools cli parameter across full pipeline ([#5752](https://github.com/vm0-ai/vm0/issues/5752)) ([b0cf364](https://github.com/vm0-ai/vm0/commit/b0cf364a8598dcd36ed1a6ffffdb8c1e03d1841c))
+* switch zero schedule contracts to use zero agent id ([#6172](https://github.com/vm0-ai/vm0/issues/6172)) ([9b74977](https://github.com/vm0-ai/vm0/commit/9b749779d4c79795d8c982fb684fbc5ab1dbe624))
+* update plan credits and pricing (free 10k, pro $40/20k, team $200/120k) ([#6075](https://github.com/vm0-ai/vm0/issues/6075)) ([7898caa](https://github.com/vm0-ai/vm0/commit/7898caa94a65ea855375fb9c6aae07207906429b))
+* **web:** add zero token generation, secrets injection, and auth ([#6534](https://github.com/vm0-ai/vm0/issues/6534)) ([e7daeab](https://github.com/vm0-ai/vm0/commit/e7daeabb49f6cafad2b775cd6eca770b0e843ff2))
+* wire org deletion cleanup into clerk webhook handler ([#6068](https://github.com/vm0-ai/vm0/issues/6068)) ([43594f0](https://github.com/vm0-ai/vm0/commit/43594f0ccc7a3c68d6576cd723a98a99de1d846b)), closes [#5981](https://github.com/vm0-ai/vm0/issues/5981)
+* wire user deletion into clerk webhook handler ([#6171](https://github.com/vm0-ai/vm0/issues/6171)) ([#6211](https://github.com/vm0-ai/vm0/issues/6211)) ([bfcf53c](https://github.com/vm0-ai/vm0/commit/bfcf53c1e873783c7d2d7e11e561dc285ad66c2d))
+
+
+### Bug Fixes
+
+* accept compose id as alternative to zero agent id in schedule api ([#6265](https://github.com/vm0-ai/vm0/issues/6265)) ([e3061eb](https://github.com/vm0-ai/vm0/commit/e3061eb1a2b274040e337d5b5eb95b2d2de81c85))
+* add missing cascade/set-null to slack foreign key constraints ([#6256](https://github.com/vm0-ai/vm0/issues/6256)) ([7d7c517](https://github.com/vm0-ai/vm0/commit/7d7c5176f7cb607093046491ab2a8fe80415a06c)), closes [#6241](https://github.com/vm0-ai/vm0/issues/6241)
+* add missing fields to claim route response ([#5940](https://github.com/vm0-ai/vm0/issues/5940)) ([881e0b9](https://github.com/vm0-ai/vm0/commit/881e0b9f36653f08f2214e661c6404708746ff8e))
+* add retry and graceful fallback for empty openrouter responses ([#6625](https://github.com/vm0-ai/vm0/issues/6625)) ([846408b](https://github.com/vm0-ai/vm0/commit/846408bdb6c45dad82f6050d742e4da124d73e8b))
+* clean up schedules before agent runs in org deletion ([#6266](https://github.com/vm0-ai/vm0/issues/6266)) ([9213163](https://github.com/vm0-ai/vm0/commit/921316378162e8a4df61e4d9bff6b9cd363ef461))
+* **cli:** add slack to capability map and replace curl guidance ([#6679](https://github.com/vm0-ai/vm0/issues/6679)) ([0ba1480](https://github.com/vm0-ai/vm0/commit/0ba1480cc8ab735d967df668806a3577595e5a1a))
+* **core:** replace stale vm0 org cli references with zero org ([#6618](https://github.com/vm0-ai/vm0/issues/6618)) ([6756ab3](https://github.com/vm0-ai/vm0/commit/6756ab3f499fcffb5b54b0ba160ec995e387f533))
+* **guest-agent:** add -- separator to prevent variadic flags from swallowing prompt ([#5789](https://github.com/vm0-ai/vm0/issues/5789)) ([b9b2fab](https://github.com/vm0-ai/vm0/commit/b9b2fabe509046af54776cb540b71deee0653c11))
+* remove noisy info log from slack status endpoint ([#6634](https://github.com/vm0-ai/vm0/issues/6634)) ([9383598](https://github.com/vm0-ai/vm0/commit/93835983d3ea2b15e0aab25f6ca45993db158352)), closes [#6607](https://github.com/vm0-ai/vm0/issues/6607)
+* resolve dark mode toggle hydration mismatch on landing page ([#5892](https://github.com/vm0-ai/vm0/issues/5892)) ([4e5b2d9](https://github.com/vm0-ai/vm0/commit/4e5b2d9f3aeed17c26a6abb7aba1d1743b966772))
+* resolve eslint set-state-in-effect error in theme provider ([#5898](https://github.com/vm0-ai/vm0/issues/5898)) ([46f4fd4](https://github.com/vm0-ai/vm0/commit/46f4fd4ae1bb93979c8ee099d03ba223c9d0cb24)), closes [#5896](https://github.com/vm0-ai/vm0/issues/5896)
+* return chat message summaries on page refresh ([#6003](https://github.com/vm0-ai/vm0/issues/6003)) ([51aa74f](https://github.com/vm0-ai/vm0/commit/51aa74f9e4b6d0ac7bf44b8776064b78a22ce49b))
+* skip startup skills sync in production ([#6665](https://github.com/vm0-ai/vm0/issues/6665)) ([3030c11](https://github.com/vm0-ai/vm0/commit/3030c11bae7e78d8afc24630d89e87f1e18f94ef)), closes [#6608](https://github.com/vm0-ai/vm0/issues/6608)
+* **slack:** remove disallowed-tools param to unblock agent runs ([#5783](https://github.com/vm0-ai/vm0/issues/5783)) ([cba9918](https://github.com/vm0-ai/vm0/commit/cba9918904814c6ea2aa5c706e945c01bcd091e2))
+* update outbox-service test fixture to use new from address format ([#6454](https://github.com/vm0-ai/vm0/issues/6454)) ([e54539c](https://github.com/vm0-ai/vm0/commit/e54539c4dc5c68250a0c1f6ea8d9280abb3169ac)), closes [#6441](https://github.com/vm0-ai/vm0/issues/6441)
+* update schedule guidance to use zero cli and new auth token ([#6477](https://github.com/vm0-ai/vm0/issues/6477)) ([1d51688](https://github.com/vm0-ai/vm0/commit/1d51688546873808ea30fefc727a9454acc553bf))
+* update stale cascade comment in agent delete handler ([#6514](https://github.com/vm0-ai/vm0/issues/6514)) ([047bc66](https://github.com/vm0-ai/vm0/commit/047bc66c615a25d123999f399dd46534f2c1e8c7))
+* use add column if not exists in migration 0178 to prevent duplicate column error ([#6096](https://github.com/vm0-ai/vm0/issues/6096)) ([318f562](https://github.com/vm0-ai/vm0/commit/318f5628013fe7c2973e225ca53e738c6d6b7874))
+* use fake model names in vm0-provider test to avoid polluting dev database ([#6250](https://github.com/vm0-ai/vm0/issues/6250)) ([3b84007](https://github.com/vm0-ai/vm0/commit/3b8400764b4f3b4669fe9fdce8ba007364b9b3c3)), closes [#6243](https://github.com/vm0-ai/vm0/issues/6243)
+* validate uuid format in zero agent api path params ([#6629](https://github.com/vm0-ai/vm0/issues/6629)) ([cebaef4](https://github.com/vm0-ai/vm0/commit/cebaef4ddb7dddde3ba8e5113c6772aa2f134fa9))
+* **web:** align secret connector map keys with firewall template references ([#6428](https://github.com/vm0-ai/vm0/issues/6428)) ([a33d1a4](https://github.com/vm0-ai/vm0/commit/a33d1a46ee5839e377b8fcf7930980ff762d786c)), closes [#6264](https://github.com/vm0-ai/vm0/issues/6264)
+* **web:** harden zero token validation and update stale capability jsdoc ([#6580](https://github.com/vm0-ai/vm0/issues/6580)) ([4f38903](https://github.com/vm0-ai/vm0/commit/4f3890374ba0c20275108cd1d26623013452c431)), closes [#6565](https://github.com/vm0-ai/vm0/issues/6565)
+* **web:** return 502 when firewall auth token refresh fails ([#6462](https://github.com/vm0-ai/vm0/issues/6462)) ([6dc6d68](https://github.com/vm0-ai/vm0/commit/6dc6d68be3280d720abe8dfc88224ffc5723aed0))
+* **www:** hide blog nav link when blog feature is disabled ([#5887](https://github.com/vm0-ai/vm0/issues/5887)) ([5678b01](https://github.com/vm0-ai/vm0/commit/5678b01b0b252d871ab2e2883bbe6cfdefc0754e)), closes [#5870](https://github.com/vm0-ai/vm0/issues/5870)
+
+
+### CI
+
+* add stripe billing environment variables to ci workflows ([#5758](https://github.com/vm0-ai/vm0/issues/5758)) ([7d48161](https://github.com/vm0-ai/vm0/commit/7d48161d4eb44bbabd0c79c191bd4d3ea38f6a96))
+* upgrade deploy-web job to ubuntu-8core runner ([#6122](https://github.com/vm0-ai/vm0/issues/6122)) ([eba7167](https://github.com/vm0-ai/vm0/commit/eba7167567cbce76db7b0878d863e89784fe3191))
+
+
+### Documentation
+
+* **web:** update stale comments in firewall auth endpoint ([#6473](https://github.com/vm0-ai/vm0/issues/6473)) ([bca9a68](https://github.com/vm0-ai/vm0/commit/bca9a680a1a1d23eecdb001b6806a4e8d6fc22ee))
+
+
+### Refactoring
+
+* add zero model-providers update-model endpoint and cleanup orphans ([#5759](https://github.com/vm0-ai/vm0/issues/5759)) ([298a384](https://github.com/vm0-ai/vm0/commit/298a384ad2c95de4af1a685875ebf25a552e64b3))
+* add zero-agent-id column to zero_agent_schedules and backfill ([#6136](https://github.com/vm0-ai/vm0/issues/6136)) ([dd1d65e](https://github.com/vm0-ai/vm0/commit/dd1d65efadd637709c2be1db1816ba50c1f6a868))
+* **api:** use zero agent id instead of compose id for run creation ([#6239](https://github.com/vm0-ai/vm0/issues/6239)) ([51a1e64](https://github.com/vm0-ai/vm0/commit/51a1e6474c74d054dd8b2bf1fc75413188dfc4ee))
+* clean up old agent schedule routes, cli commands, and compose-id column ([#6240](https://github.com/vm0-ai/vm0/issues/6240)) ([a77c622](https://github.com/vm0-ai/vm0/commit/a77c622ae11dde9f32d7a1ff0dea54f202f8f735))
+* **db:** rename zeroAgentId to agentId across codebase ([#6272](https://github.com/vm0-ai/vm0/issues/6272)) ([4d3b01d](https://github.com/vm0-ai/vm0/commit/4d3b01de976b2a200117f3b0deed8bb841f24a62))
+* **email:** migrate email thread sessions from compose-id to agent-id ([#6443](https://github.com/vm0-ai/vm0/issues/6443)) ([09bfb82](https://github.com/vm0-ai/vm0/commit/09bfb82c3cf22f60109ada3d0a09525b65f087db)), closes [#6431](https://github.com/vm0-ai/vm0/issues/6431)
+* **email:** move email routes to /api/zero/email/ namespace ([#6470](https://github.com/vm0-ai/vm0/issues/6470)) ([9def766](https://github.com/vm0-ai/vm0/commit/9def766a08022989a84557ddd41c736766a9468e))
+* enforce no-self-api-call eslint rule globally ([#6054](https://github.com/vm0-ai/vm0/issues/6054)) ([a9131c0](https://github.com/vm0-ai/vm0/commit/a9131c083971c66ec2e2193cbf7fe015742c44a2))
+* enforce no-self-api-call eslint rule globally ([#6057](https://github.com/vm0-ai/vm0/issues/6057)) ([3f4a352](https://github.com/vm0-ai/vm0/commit/3f4a352d9c04bd098d01e12c0baa5b47af9e0f0b))
+* extract onboard helper for zero api tests ([#6280](https://github.com/vm0-ai/vm0/issues/6280)) ([aa54ff7](https://github.com/vm0-ai/vm0/commit/aa54ff7caddafcf7c565d6208e02bc239bcacd8d)), closes [#6270](https://github.com/vm0-ai/vm0/issues/6270)
+* extract run service functions and replace infra-client proxy in run routes ([#6094](https://github.com/vm0-ai/vm0/issues/6094)) ([3bd8770](https://github.com/vm0-ai/vm0/commit/3bd877009ffac52c6dc1e4d7879ab45d6e680e27))
+* extract service functions for queue, sessions, and composes zero routes ([#6103](https://github.com/vm0-ai/vm0/issues/6103)) ([48476ba](https://github.com/vm0-ai/vm0/commit/48476ba7286af5a5ab3250e9ffb3128155865f0a))
+* generalize slack file handling to support all file types ([#6093](https://github.com/vm0-ai/vm0/issues/6093)) ([a44492d](https://github.com/vm0-ai/vm0/commit/a44492dd0364d902e7b47ad7b2600d39dc463139))
+* make plausible analytics config environment-driven ([#5985](https://github.com/vm0-ai/vm0/issues/5985)) ([7ec3011](https://github.com/vm0-ai/vm0/commit/7ec3011f04eb0ae66e328012fdd2a28af8ebe01d))
+* migrate /api/agent/integrations/slack/message to /api/zero/integrations/slack/message ([#6279](https://github.com/vm0-ai/vm0/issues/6279)) ([e2c50dd](https://github.com/vm0-ai/vm0/commit/e2c50dde55ddb649a0cfbe661829955a40740955)), closes [#6276](https://github.com/vm0-ai/vm0/issues/6276)
+* migrate org_metadata default_agent_compose_id to default_agent_id ([#6536](https://github.com/vm0-ai/vm0/issues/6536)) ([e413b38](https://github.com/vm0-ai/vm0/commit/e413b388b290392d2addbc956ab6a25293588b63))
+* migrate remaining agent api routes to ts-rest contracts ([#5971](https://github.com/vm0-ai/vm0/issues/5971)) ([0dabe60](https://github.com/vm0-ai/vm0/commit/0dabe60a38e3d8bb96326ab701a272a1a3ac2d6c))
+* migrate remaining non-zero api calls to /api/zero/ and add lint rule ([#6116](https://github.com/vm0-ai/vm0/issues/6116)) ([853e76a](https://github.com/vm0-ai/vm0/commit/853e76ac623682e91e31b5a9e87338fb3875cc0c))
+* migrate vm0 preference to vm0 zero preference ([#6435](https://github.com/vm0-ai/vm0/issues/6435)) ([3a12d10](https://github.com/vm0-ai/vm0/commit/3a12d10dd4e3ffa5f20f5223e0ac2ba91e9b1387))
+* remove agent-composes dependency from email default agent resolver ([#6502](https://github.com/vm0-ai/vm0/issues/6502)) ([1539f8f](https://github.com/vm0-ai/vm0/commit/1539f8f4d7a28e4195ba264e1a56bf6b5b5cf0c3)), closes [#6497](https://github.com/vm0-ai/vm0/issues/6497)
+* remove experimental_capabilities and make vm0_token injection unconditional ([#6573](https://github.com/vm0-ai/vm0/issues/6573)) ([#6579](https://github.com/vm0-ai/vm0/issues/6579)) ([1fb7df0](https://github.com/vm0-ai/vm0/commit/1fb7df0201d70223d486c91b536cad93a78c23a3))
+* remove global notification preferences ([#6548](https://github.com/vm0-ai/vm0/issues/6548)) ([1d500cd](https://github.com/vm0-ai/vm0/commit/1d500cdf0d0571c8a92d22b5cd8fdf27f44c649e))
+* remove infra-client.ts and knip ignore entry ([#6127](https://github.com/vm0-ai/vm0/issues/6127)) ([f0fd988](https://github.com/vm0-ai/vm0/commit/f0fd988b30d5fb716383aca15afdc835146ebd31))
+* remove non-anthropic vm0 model providers ([#6066](https://github.com/vm0-ai/vm0/issues/6066)) ([04e13fc](https://github.com/vm0-ai/vm0/commit/04e13fc8386361690f72f520d0810aeb0302c733))
+* remove unused `triggerLocalPart` from email trigger payload ([#6456](https://github.com/vm0-ai/vm0/issues/6456)) ([b21169b](https://github.com/vm0-ai/vm0/commit/b21169b015e48fe2921ddbf8589a52f492fbda3c))
+* remove vm0 model provider feature switch and auto-init during onboarding ([#6042](https://github.com/vm0-ai/vm0/issues/6042)) ([37dfd70](https://github.com/vm0-ai/vm0/commit/37dfd707b1c92def0237641293ee782843fc8bd8)), closes [#6033](https://github.com/vm0-ai/vm0/issues/6033)
+* rename agent_schedules to zero_agent_schedules ([#6119](https://github.com/vm0-ai/vm0/issues/6119)) ([#6124](https://github.com/vm0-ai/vm0/issues/6124)) ([b40ed1d](https://github.com/vm0-ai/vm0/commit/b40ed1d09fd1bee713a3d50a803560ca77c29f84))
+* rename organization tier 'max' to 'team' ([#6043](https://github.com/vm0-ai/vm0/issues/6043)) ([9727f5a](https://github.com/vm0-ai/vm0/commit/9727f5aee40559e7a2cc65db91c10c7f96e22556))
+* replace agent name with id across zero platform routes and views ([#6541](https://github.com/vm0-ai/vm0/issues/6541)) ([a70cb4b](https://github.com/vm0-ai/vm0/commit/a70cb4b03ac003b7f44132a3dc5ba2a88d597ee6))
+* replace http proxy with direct service calls in zero schedule routes ([#6053](https://github.com/vm0-ai/vm0/issues/6053)) ([c74a13c](https://github.com/vm0-ai/vm0/commit/c74a13c33276470d4cb61a35f2cf0ea0e7cfab8d))
+* replace infra-client proxy with direct service calls in connector and org zero routes ([#6081](https://github.com/vm0-ai/vm0/issues/6081)) ([3f87c28](https://github.com/vm0-ai/vm0/commit/3f87c288259f330cb50c0e5cb87bace164d434c1))
+* rewrite inbound email parsing and routing to org-level ([#6309](https://github.com/vm0-ai/vm0/issues/6309)) ([f25f6af](https://github.com/vm0-ai/vm0/commit/f25f6afd9fd83696744b51aa4cf4649436014a96))
+* separate auth error from firewall action in network logs ([#5756](https://github.com/vm0-ai/vm0/issues/5756)) ([7b56aed](https://github.com/vm0-ai/vm0/commit/7b56aedb93ba323a4076af6ca19fb43a520aa6e1)), closes [#5754](https://github.com/vm0-ai/vm0/issues/5754)
+* separate connectors from seed skills in zero agent API ([#6204](https://github.com/vm0-ai/vm0/issues/6204)) ([c7fd608](https://github.com/vm0-ai/vm0/commit/c7fd608cc73b9ae95725bc4828440b38d700f67c))
+* store connectors directly in zero_agents table ([#6301](https://github.com/vm0-ai/vm0/issues/6301)) ([0e8ba67](https://github.com/vm0-ai/vm0/commit/0e8ba67c5fe354f9698f412c149d9dd0b85b886c))
+* unify agent identity fields across all zero api endpoints ([#6302](https://github.com/vm0-ai/vm0/issues/6302)) ([83a0e5d](https://github.com/vm0-ai/vm0/commit/83a0e5d5b5981b709b1dd8e8e318946b6330d2c7))
+* unify schedule slack notifications with shared block builder ([#6538](https://github.com/vm0-ai/vm0/issues/6538)) ([78f935d](https://github.com/vm0-ai/vm0/commit/78f935de0e955748c7a502577a0f3a9f4d26d690))
+* unify zero cli guidance for sandbox agents ([#6649](https://github.com/vm0-ai/vm0/issues/6649)) ([2110e59](https://github.com/vm0-ai/vm0/commit/2110e5922b6fd6b2468a34ac54e5ad5f3e15b3b1))
+* unify zero trigger params — typed callbacks and prompt standardization ([#6106](https://github.com/vm0-ai/vm0/issues/6106)) ([254529d](https://github.com/vm0-ai/vm0/commit/254529d854512b521dd48cbdd29914ec8e6dc230))
+* update email callback from addresses to use org slug ([#6311](https://github.com/vm0-ai/vm0/issues/6311)) ([d7813b4](https://github.com/vm0-ai/vm0/commit/d7813b43f865c79ca23d0bdc724a0feec6a78aff))
+* update email template signatures to use zero branding ([#6439](https://github.com/vm0-ai/vm0/issues/6439)) ([#6452](https://github.com/vm0-ai/vm0/issues/6452)) ([c2a7f32](https://github.com/vm0-ai/vm0/commit/c2a7f324adfcb89882ced83cd31d108f60820096))
+* **web:** remove capability checks from infra routes ([#6496](https://github.com/vm0-ai/vm0/issues/6496)) ([af72f21](https://github.com/vm0-ai/vm0/commit/af72f21c901b702689040e308cb3aa177c77f137))
+* **web:** rename integration-slack:write to slack:write and add run route capability checks ([#6552](https://github.com/vm0-ai/vm0/issues/6552)) ([ee21d72](https://github.com/vm0-ai/vm0/commit/ee21d7267c3f88799dc6ad1e8c3a2572193ae0b9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.111.1
+
 ## [12.156.1](https://github.com/vm0-ai/vm0/compare/web-v12.156.0...web-v12.156.1) (2026-03-25)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.111.1](https://github.com/vm0-ai/vm0/compare/core-v8.111.0...core-v8.111.1) (2026-03-25)
+
+
+### Bug Fixes
+
+* rename x connector env var from x_access_token to x_token ([#6676](https://github.com/vm0-ai/vm0/issues/6676)) ([24d9a8e](https://github.com/vm0-ai/vm0/commit/24d9a8e6047d3d258c92e4dce3813c3759474f5f))
+
 ## [8.111.0](https://github.com/vm0-ai/vm0/compare/core-v8.110.0...core-v8.111.0) (2026-03-25)
 
 

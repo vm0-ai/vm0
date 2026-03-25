@@ -1,5 +1,24 @@
 # Changelog
 
+## [9.82.1](https://github.com/vm0-ai/vm0/compare/cli-v9.82.0...cli-v9.82.1) (2026-03-25)
+
+
+### Bug Fixes
+
+* **cli:** add slack to capability map and replace curl guidance ([#6679](https://github.com/vm0-ai/vm0/issues/6679)) ([0ba1480](https://github.com/vm0-ai/vm0/commit/0ba1480cc8ab735d967df668806a3577595e5a1a))
+
+
+### Refactoring
+
+* **cli:** rename agent command export to follow zero naming convention ([#6680](https://github.com/vm0-ai/vm0/issues/6680)) ([6daf6f2](https://github.com/vm0-ai/vm0/commit/6daf6f2a2513556b80fbf045e2969d6713dffd90))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.111.1
+
 ## [9.82.0](https://github.com/vm0-ai/vm0/compare/cli-v9.81.0...cli-v9.82.0) (2026-03-25)
 
 
