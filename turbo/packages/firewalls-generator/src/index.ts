@@ -31,6 +31,7 @@ import { generate as generateDevto } from "./devto";
 import { generate as generateDiscord } from "./discord";
 import { generate as generateDropbox } from "./dropbox";
 import { generate as generateElevenlabs } from "./elevenlabs";
+import { generate as generateExplorium } from "./explorium";
 import { generate as generateFal } from "./fal";
 import { generate as generateFigma } from "./figma";
 import { generate as generateFirecrawl } from "./firecrawl";
@@ -112,6 +113,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   discord: generateDiscord,
   dropbox: generateDropbox,
   elevenlabs: generateElevenlabs,
+  explorium: generateExplorium,
   fal: generateFal,
   figma: generateFigma,
   firecrawl: generateFirecrawl,

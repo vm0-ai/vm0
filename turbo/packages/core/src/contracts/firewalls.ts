@@ -125,6 +125,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   "google-calendar": ["google-calendar"],
   granola: ["granola"],
   elevenlabs: ["elevenlabs"],
+  explorium: ["explorium"],
   fal: ["fal"],
   fireflies: ["fireflies"],
   heygen: ["heygen"],

@@ -31,6 +31,7 @@
     "generate:discord": "tsx src/index.ts discord",
     "generate:dropbox": "tsx src/index.ts dropbox",
     "generate:elevenlabs": "tsx src/index.ts elevenlabs",
+    "generate:explorium": "tsx src/index.ts explorium",
     "generate:fal": "tsx src/index.ts fal",
     "generate:figma": "tsx src/index.ts figma",
     "generate:firecrawl": "tsx src/index.ts firecrawl",
