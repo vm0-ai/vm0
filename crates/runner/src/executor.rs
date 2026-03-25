@@ -432,16 +432,20 @@ fn dmesg_indicates_oom(stdout: &str) -> bool {
 
 /// Check host dmesg for a cgroup OOM kill of a specific firecracker process.
 /// Only reads the last 200 lines to avoid loading the entire ring buffer.
+/// Times out after 5 seconds to avoid blocking if sudo or dmesg hangs.
 async fn check_host_oom(pid: u32) -> bool {
-    let output = tokio::process::Command::new("sh")
-        .args(["-c", "sudo dmesg | tail -200 | grep 'oom-kill'"])
-        .output()
-        .await;
-    match output {
-        Ok(out) if out.status.success() => {
+    let result = tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::process::Command::new("sh")
+            .args(["-c", "sudo dmesg | tail -200 | grep 'oom-kill'"])
+            .output()
+            .await
+    })
+    .await;
+    match result {
+        Ok(Ok(out)) if out.status.success() => {
             host_dmesg_indicates_oom(&String::from_utf8_lossy(&out.stdout), pid)
         }
-        Ok(out) => {
+        Ok(Ok(out)) => {
             // grep found no match (exit code 1) — not an OOM kill.
             debug!(
                 pid,
@@ -450,19 +454,39 @@ async fn check_host_oom(pid: u32) -> bool {
             );
             false
         }
-        Err(e) => {
+        Ok(Err(e)) => {
             warn!(pid, error = %e, "failed to run host dmesg for OOM check");
+            false
+        }
+        Err(_) => {
+            warn!(pid, "host dmesg OOM check timed out");
             false
         }
     }
 }
 
 /// Returns true if host dmesg output contains an OOM kill record for the
-/// given firecracker PID.  Uses a trailing comma to avoid prefix matches
-/// (e.g. pid=1234 must not match pid=12345).
+/// given firecracker PID.  Checks that the character after the PID is not
+/// a digit to avoid prefix matches (e.g. pid=1234 must not match pid=12345).
 fn host_dmesg_indicates_oom(dmesg: &str, pid: u32) -> bool {
-    let pattern = format!("task=firecracker,pid={pid},");
-    dmesg.contains("oom-kill") && dmesg.contains(&pattern)
+    if !dmesg.contains("oom-kill") {
+        return false;
+    }
+    let needle = format!("task=firecracker,pid={pid}");
+    let mut start = 0;
+    while let Some(pos) = dmesg[start..].find(&needle) {
+        let abs = start + pos + needle.len();
+        // Accept if needle is at end of string or next char is not a digit.
+        match dmesg.as_bytes().get(abs) {
+            None | Some(b',' | b' ' | b'\n' | b'\r') => return true,
+            Some(c) if !c.is_ascii_digit() => return true,
+            _ => {
+                // Prefix match (e.g. pid=1234 inside pid=12345) — keep searching.
+                start = abs;
+            }
+        }
+    }
+    false
 }
 
 /// Drain stdout chunks from the vsock receiver and write them to a host file.
@@ -1269,6 +1293,15 @@ mod tests {
         let dmesg = "oom-kill:constraint=CONSTRAINT_MEMCG,\
             task=firecracker,pid=12345,uid=1000";
         assert!(!host_dmesg_indicates_oom(dmesg, 1234));
+    }
+
+    #[test]
+    fn host_oom_pid_at_end_of_line() {
+        // PID at end of string (no trailing comma)
+        let dmesg = "oom-kill:constraint=CONSTRAINT_MEMCG,\
+            task=firecracker,pid=42";
+        assert!(host_dmesg_indicates_oom(dmesg, 42));
+        assert!(!host_dmesg_indicates_oom(dmesg, 4));
     }
 
     #[test]
