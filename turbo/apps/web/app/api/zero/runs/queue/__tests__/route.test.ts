@@ -77,7 +77,7 @@ describe("GET /api/zero/runs/queue", () => {
 
   it("should return 403 for sandbox token without agent-run:read capability", async () => {
     mockClerk({ userId: null });
-    const token = await generateSandboxToken("user-1", "run-1", ["agent:read"]);
+    const token = await generateSandboxToken("user-1", "run-1");
 
     const response = await GET(
       createTestRequest("http://localhost:3000/api/zero/runs/queue?org=test", {

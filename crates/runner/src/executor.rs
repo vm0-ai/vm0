@@ -669,12 +669,6 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
     // The certificate is pre-baked into the rootfs at build time.
     env.insert("NODE_EXTRA_CA_CERTS".into(), VM_PROXY_CA_PATH.into());
 
-    // Inject CLI-compatible env vars so vm0 CLI can authenticate inside the sandbox.
-    env.insert("VM0_TOKEN".into(), context.sandbox_token.clone());
-    if let Some(slug) = &context.agent_org_slug {
-        env.insert("VM0_ACTIVE_ORG".into(), slug.clone());
-    }
-
     // Artifact config
     if let Some(manifest) = &context.storage_manifest
         && let Some(artifact) = &manifest.artifact
@@ -780,7 +774,6 @@ mod tests {
             debug_no_mock_claude: None,
             api_start_time: None,
             user_timezone: None,
-            agent_org_slug: None,
             memory_name: None,
             experimental_firewalls: None,
             disallowed_tools: None,
@@ -1060,33 +1053,11 @@ mod tests {
     }
 
     #[test]
-    fn build_env_json_injects_cli_vars() {
-        let mut ctx = minimal_context();
-        ctx.agent_org_slug = Some("my-org".into());
-        let env = build_env_json(&ctx, "http://localhost");
-        assert_eq!(env.get("VM0_TOKEN").unwrap(), "tok");
-        assert_eq!(env.get("VM0_ACTIVE_ORG").unwrap(), "my-org");
-    }
-
-    #[test]
-    fn build_env_json_injects_vm0_token_without_org() {
+    fn build_env_json_does_not_inject_vm0_token() {
         let ctx = minimal_context();
         let env = build_env_json(&ctx, "http://localhost");
-        assert_eq!(env.get("VM0_TOKEN").unwrap(), "tok");
+        assert!(!env.contains_key("VM0_TOKEN"));
         assert!(!env.contains_key("VM0_ACTIVE_ORG"));
-    }
-
-    #[test]
-    fn build_env_json_cli_vars_override_user_env() {
-        let mut ctx = minimal_context();
-        ctx.agent_org_slug = Some("my-org".into());
-        ctx.environment = Some(HashMap::from([
-            ("VM0_TOKEN".into(), "tampered".into()),
-            ("VM0_ACTIVE_ORG".into(), "evil-org".into()),
-        ]));
-        let env = build_env_json(&ctx, "http://localhost");
-        assert_eq!(env.get("VM0_TOKEN").unwrap(), "tok");
-        assert_eq!(env.get("VM0_ACTIVE_ORG").unwrap(), "my-org");
     }
 
     #[test]

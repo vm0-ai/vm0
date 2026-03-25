@@ -192,9 +192,8 @@ export function createDefaultComposeConfig(
 export async function createTestSandboxToken(
   userId: string,
   runId: string,
-  capabilities?: Parameters<typeof generateSandboxToken>[2],
 ): Promise<string> {
-  return generateSandboxToken(userId, runId, capabilities);
+  return generateSandboxToken(userId, runId);
 }
 
 // ============================================================================

@@ -1567,9 +1567,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       // Now switch to sandbox auth (no Clerk session)
       mockClerk({ userId: null });
 
-      const token = await generateSandboxToken(user.userId, runId, [
-        "agent-run:read",
-      ]);
+      const token = await generateSandboxToken(user.userId, runId);
 
       const orgEntry = await getOrgCacheEntry(user.orgId);
       const request = createTestRequest(
@@ -1595,9 +1593,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       });
 
       mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, "run-1", [
-        "schedule:read",
-      ]);
+      const token = await generateSandboxToken(user.userId, "run-1");
 
       const orgEntry = await getOrgCacheEntry(user.orgId);
       const request = createTestRequest(
@@ -1611,9 +1607,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
     it("should accept sandbox token with agent-run:write for create", async () => {
       mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, "run-1", [
-        "agent-run:write",
-      ]);
+      const token = await generateSandboxToken(user.userId, "run-1");
 
       const request = createTestRequest(
         "http://localhost:3000/api/agent/runs",
@@ -1637,9 +1631,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
     it("should accept sandbox token with any capability for create", async () => {
       mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, "run-1", [
-        "agent-run:read",
-      ]);
+      const token = await generateSandboxToken(user.userId, "run-1");
 
       const request = createTestRequest(
         "http://localhost:3000/api/agent/runs",

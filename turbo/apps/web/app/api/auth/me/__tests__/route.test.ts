@@ -44,9 +44,7 @@ describe("GET /api/auth/me", () => {
   describe("sandbox token support", () => {
     it("sandbox token with any capability returns user info", async () => {
       mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, "run-123", [
-        "agent:read",
-      ]);
+      const token = await generateSandboxToken(user.userId, "run-123");
 
       const response = await GET(
         createTestRequest("http://localhost:3000/api/auth/me", {
@@ -61,9 +59,7 @@ describe("GET /api/auth/me", () => {
 
     it("sandbox token with storage:write returns user info", async () => {
       mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, "run-456", [
-        "agent:write",
-      ]);
+      const token = await generateSandboxToken(user.userId, "run-456");
 
       const response = await GET(
         createTestRequest("http://localhost:3000/api/auth/me", {
@@ -76,7 +72,7 @@ describe("GET /api/auth/me", () => {
       expect(body.userId).toBe(user.userId);
     });
 
-    it("sandbox token with no capabilities gets 403", async () => {
+    it("sandbox token with no capabilities is accepted (acceptAnySandboxCapability)", async () => {
       mockClerk({ userId: null });
       const token = await generateSandboxToken(user.userId, "run-789");
 
@@ -87,8 +83,8 @@ describe("GET /api/auth/me", () => {
       );
       const body = await response.json();
 
-      expect(response.status).toBe(403);
-      expect(body.error.code).toBe("FORBIDDEN");
+      expect(response.status).toBe(200);
+      expect(body.userId).toBe(user.userId);
     });
   });
 });

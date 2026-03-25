@@ -6,7 +6,6 @@ import {
   PUT as putInstructions,
 } from "../[id]/instructions/route";
 import {
-  createTestCliToken,
   createTestRequest,
   insertOrgMembersCacheEntry,
   seedSeedSkills,
@@ -32,7 +31,7 @@ describe("Sandbox capability enforcement on zero agent routes", () => {
   });
 
   describe("POST /api/zero/agents (create)", () => {
-    it("sandbox token with agent:write can create agent", async () => {
+    it("sandbox token cannot create agent (sandbox tokens have no capabilities)", async () => {
       await insertOrgMembersCacheEntry({
         userId: user.userId,
         orgId: user.orgId,
@@ -40,9 +39,7 @@ describe("Sandbox capability enforcement on zero agent routes", () => {
       });
 
       mockClerk({ userId: null, orgId: user.orgId });
-      const token = await generateSandboxToken(user.userId, "run-123", [
-        "agent:write",
-      ]);
+      const token = await generateSandboxToken(user.userId, "run-123");
 
       const request = createTestRequest(
         `http://localhost:3000/api/zero/agents?org=${orgSlug}`,
@@ -57,14 +54,12 @@ describe("Sandbox capability enforcement on zero agent routes", () => {
       );
 
       const response = await POST(request);
-      expect(response.status).toBe(201);
+      expect(response.status).toBe(403);
     });
 
     it("sandbox token without agent:write gets 403", async () => {
       mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, "run-123", [
-        "agent:read",
-      ]);
+      const token = await generateSandboxToken(user.userId, "run-123");
 
       const request = createTestRequest(
         `http://localhost:3000/api/zero/agents?org=${orgSlug}`,
@@ -84,57 +79,24 @@ describe("Sandbox capability enforcement on zero agent routes", () => {
   });
 
   describe("GET /api/zero/agents/:name", () => {
-    it("sandbox token with agent:read can get agent", async () => {
-      // First create an agent with a regular CLI token
-      const cliUser = await context.setupUser();
-
-      const cliToken = await createTestCliToken(cliUser.userId);
-      const cliOrgSlug = `org-${cliUser.userId.slice(-8)}`;
-
-      const createResponse = await POST(
-        createTestRequest(
-          `http://localhost:3000/api/zero/agents?org=${cliOrgSlug}`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${cliToken}`,
-            },
-            body: JSON.stringify({ connectors: [] }),
-          },
-        ),
-      );
-      expect(createResponse.status).toBe(201);
-      const created = await createResponse.json();
-
-      // Now access with sandbox token
-      await insertOrgMembersCacheEntry({
-        userId: cliUser.userId,
-        orgId: cliUser.orgId,
-        role: "admin",
-      });
-
-      mockClerk({ userId: null, orgId: cliUser.orgId });
-      const token = await generateSandboxToken(cliUser.userId, "run-123", [
-        "agent:read",
-      ]);
+    it("sandbox token cannot get agent (sandbox tokens have no capabilities)", async () => {
+      mockClerk({ userId: null });
+      const token = await generateSandboxToken(user.userId, "run-123");
 
       const request = createTestRequest(
-        `http://localhost:3000/api/zero/agents/${created.agentId}?org=${cliOrgSlug}`,
+        `http://localhost:3000/api/zero/agents/some-agent?org=${orgSlug}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         },
       );
 
       const response = await GET(request);
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(403);
     });
 
     it("sandbox token without agent:read gets 403", async () => {
       mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, "run-123", [
-        "schedule:read",
-      ]);
+      const token = await generateSandboxToken(user.userId, "run-123");
 
       const request = createTestRequest(
         `http://localhost:3000/api/zero/agents/some-agent?org=${orgSlug}`,
@@ -149,65 +111,29 @@ describe("Sandbox capability enforcement on zero agent routes", () => {
   });
 
   describe("PUT /api/zero/agents/:name", () => {
-    it("sandbox token with agent:write can update agent", async () => {
-      // First create an agent with a regular CLI token
-      const cliUser = await context.setupUser();
-
-      const cliToken = await createTestCliToken(cliUser.userId);
-      const cliOrgSlug = `org-${cliUser.userId.slice(-8)}`;
-
-      const createResponse = await POST(
-        createTestRequest(
-          `http://localhost:3000/api/zero/agents?org=${cliOrgSlug}`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${cliToken}`,
-            },
-            body: JSON.stringify({ connectors: [] }),
-          },
-        ),
-      );
-      expect(createResponse.status).toBe(201);
-      const created = await createResponse.json();
-
-      // Now update with sandbox token
-      await insertOrgMembersCacheEntry({
-        userId: cliUser.userId,
-        orgId: cliUser.orgId,
-        role: "admin",
-      });
-
-      mockClerk({ userId: null, orgId: cliUser.orgId });
-      const token = await generateSandboxToken(cliUser.userId, "run-123", [
-        "agent:write",
-      ]);
+    it("sandbox token cannot update agent (sandbox tokens have no capabilities)", async () => {
+      mockClerk({ userId: null });
+      const token = await generateSandboxToken(user.userId, "run-123");
 
       const request = createTestRequest(
-        `http://localhost:3000/api/zero/agents/${created.agentId}?org=${cliOrgSlug}`,
+        `http://localhost:3000/api/zero/agents/some-agent?org=${orgSlug}`,
         {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({
-            connectors: [],
-            displayName: "Updated via sandbox",
-          }),
+          body: JSON.stringify({ connectors: [] }),
         },
       );
 
       const response = await PUT(request);
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(403);
     });
 
     it("sandbox token without agent:write gets 403", async () => {
       mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, "run-123", [
-        "agent:read",
-      ]);
+      const token = await generateSandboxToken(user.userId, "run-123");
 
       const request = createTestRequest(
         `http://localhost:3000/api/zero/agents/some-agent?org=${orgSlug}`,
@@ -227,57 +153,24 @@ describe("Sandbox capability enforcement on zero agent routes", () => {
   });
 
   describe("GET /api/zero/agents/:name/instructions", () => {
-    it("sandbox token with agent:read can get instructions", async () => {
-      // First create an agent with a regular CLI token
-      const cliUser = await context.setupUser();
-
-      const cliToken = await createTestCliToken(cliUser.userId);
-      const cliOrgSlug = `org-${cliUser.userId.slice(-8)}`;
-
-      const createResponse = await POST(
-        createTestRequest(
-          `http://localhost:3000/api/zero/agents?org=${cliOrgSlug}`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${cliToken}`,
-            },
-            body: JSON.stringify({ connectors: [] }),
-          },
-        ),
-      );
-      expect(createResponse.status).toBe(201);
-      const created = await createResponse.json();
-
-      // Now access instructions with sandbox token
-      await insertOrgMembersCacheEntry({
-        userId: cliUser.userId,
-        orgId: cliUser.orgId,
-        role: "admin",
-      });
-
-      mockClerk({ userId: null, orgId: cliUser.orgId });
-      const token = await generateSandboxToken(cliUser.userId, "run-123", [
-        "agent:read",
-      ]);
+    it("sandbox token cannot get instructions (sandbox tokens have no capabilities)", async () => {
+      mockClerk({ userId: null });
+      const token = await generateSandboxToken(user.userId, "run-123");
 
       const request = createTestRequest(
-        `http://localhost:3000/api/zero/agents/${created.agentId}/instructions?org=${cliOrgSlug}`,
+        `http://localhost:3000/api/zero/agents/some-agent/instructions?org=${orgSlug}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         },
       );
 
       const response = await getInstructions(request);
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(403);
     });
 
     it("sandbox token without agent:read gets 403", async () => {
       mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, "run-123", [
-        "schedule:read",
-      ]);
+      const token = await generateSandboxToken(user.userId, "run-123");
 
       const request = createTestRequest(
         `http://localhost:3000/api/zero/agents/some-agent/instructions?org=${orgSlug}`,
@@ -292,62 +185,29 @@ describe("Sandbox capability enforcement on zero agent routes", () => {
   });
 
   describe("PUT /api/zero/agents/:name/instructions", () => {
-    it("sandbox token with agent:write can update instructions", async () => {
-      // First create an agent with a regular CLI token
-      const cliUser = await context.setupUser();
-
-      const cliToken = await createTestCliToken(cliUser.userId);
-      const cliOrgSlug = `org-${cliUser.userId.slice(-8)}`;
-
-      const createResponse = await POST(
-        createTestRequest(
-          `http://localhost:3000/api/zero/agents?org=${cliOrgSlug}`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${cliToken}`,
-            },
-            body: JSON.stringify({ connectors: [] }),
-          },
-        ),
-      );
-      expect(createResponse.status).toBe(201);
-      const created = await createResponse.json();
-
-      // Now update instructions with sandbox token
-      await insertOrgMembersCacheEntry({
-        userId: cliUser.userId,
-        orgId: cliUser.orgId,
-        role: "admin",
-      });
-
-      mockClerk({ userId: null, orgId: cliUser.orgId });
-      const token = await generateSandboxToken(cliUser.userId, "run-123", [
-        "agent:write",
-      ]);
+    it("sandbox token cannot update instructions (sandbox tokens have no capabilities)", async () => {
+      mockClerk({ userId: null });
+      const token = await generateSandboxToken(user.userId, "run-123");
 
       const request = createTestRequest(
-        `http://localhost:3000/api/zero/agents/${created.agentId}/instructions?org=${cliOrgSlug}`,
+        `http://localhost:3000/api/zero/agents/some-agent/instructions?org=${orgSlug}`,
         {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ content: "# Updated Instructions" }),
+          body: JSON.stringify({ content: "# Instructions" }),
         },
       );
 
       const response = await putInstructions(request);
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(403);
     });
 
     it("sandbox token without agent:write gets 403", async () => {
       mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, "run-123", [
-        "agent:read",
-      ]);
+      const token = await generateSandboxToken(user.userId, "run-123");
 
       const request = createTestRequest(
         `http://localhost:3000/api/zero/agents/some-agent/instructions?org=${orgSlug}`,

@@ -572,7 +572,7 @@ describe("Zero Agents API", () => {
   });
 
   describe("sandbox token (VM0_TOKEN) access", () => {
-    it("should allow GET /api/zero/agents/:name with sandbox token from a run", async () => {
+    it("should reject GET /api/zero/agents/:name with sandbox token (sandbox tokens have no capabilities)", async () => {
       // Given — create an agent via POST
       const createResponse = await postAgent(
         {
@@ -588,31 +588,23 @@ describe("Zero Agents API", () => {
       const created = await createResponse.json();
 
       // When — create a run for this agent, then generate a sandbox token
-      // (VM0_TOKEN) with agent:read capability (simulating runner injection)
       await createTestOrgModelProvider("anthropic-api-key", "test-key");
       const { runId } = await createTestRun(created.agentId, "test prompt");
 
       // Reset Clerk so sandbox token is the only auth path
       mockClerk({ userId: null });
 
-      const sandboxToken = await createTestSandboxToken(user.userId, runId, [
-        "agent:read",
-      ]);
+      const sandboxToken = await createTestSandboxToken(user.userId, runId);
 
-      // Use the sandbox token (VM0_TOKEN) to GET the agent
+      // Use the sandbox token to GET the agent — should be rejected
       const response = await getAgent(
         created.agentId,
         sandboxToken,
         testOrgSlug,
       );
 
-      // Then — should return agent details
-      expect(response.status).toBe(200);
-      const data = await response.json();
-      expect(data.agentId).toBe(created.agentId);
-      expect(data.displayName).toBe("Sandbox Access Agent");
-      expect(data.description).toBe("Agent accessible via sandbox token");
-      expect(data.sound).toBe("professional");
+      // Then — sandbox tokens can no longer satisfy requiredCapability
+      expect(response.status).toBe(403);
     });
   });
 
