@@ -60,23 +60,16 @@ impl LoopDevice {
 /// Opens a holder fd immediately after attach to prevent GC from
 /// detaching the device before the caller can use it.
 ///
-/// Attach without `--direct-io` so all I/O goes through the host page
-/// cache.  This is critical on EBS-backed storage where direct IOPS are
-/// limited (~3000 baseline for gp3).  Without page cache buffering:
-///
-/// - **Reads**: every guest read through dm-snapshot hits EBS; chromium
-///   startup (~100K random 4KB reads) would take ~30s vs <1s from cache.
-/// - **Writes**: every dm-snapshot COW operation (read original chunk +
-///   write new chunk) hits EBS synchronously; chromium startup writes
-///   ~46K chunks ≈ ~93K IOPS ≈ 30s.
-///
-/// The old overlay approach used regular file I/O (no loop device), so
-/// reads and writes naturally went through page cache.  Omitting
-/// `--direct-io` gives the same buffering behavior through the loop
-/// device's block cache + backing file's page cache.
+/// Uses `--direct-io=on` to avoid double page-cache buffering: without
+/// it, data is cached both in the loop device's page cache (via the
+/// backing file) and in the guest's own page cache, wasting host memory.
+/// With direct-io, the loop driver uses O_DIRECT on the backing file,
+/// bypassing the host page cache entirely.  The guest kernel still
+/// maintains its own page cache for filesystem reads, so repeated
+/// accesses are served from guest memory without hitting EBS.
 pub fn attach(file_path: &Path, read_only: bool) -> Result<LoopDevice> {
     let file_str = file_path.to_string_lossy();
-    let mut args = vec!["--find", "--show"];
+    let mut args = vec!["--find", "--show", "--direct-io=on"];
     if read_only {
         args.push("--read-only");
     }

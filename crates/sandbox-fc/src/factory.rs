@@ -236,38 +236,6 @@ impl SandboxFactory for FirecrackerFactory {
             "base image acquired from pool"
         );
 
-        // Warm the host page cache with the base image so the first
-        // sandbox doesn't pay cold-cache penalties through dm-snapshot.
-        // Unlike the old overlay approach where `cp` implicitly warmed
-        // the entire rootfs, dm-snapshot only sparse-copies the small
-        // COW file, leaving chromium's shared libraries cold on EBS.
-        let rootfs_for_prefetch = self.config.rootfs_path.clone();
-        tokio::task::spawn_blocking(move || {
-            use std::io::Read;
-            let mut file = match std::fs::File::open(&rootfs_for_prefetch) {
-                Ok(f) => f,
-                Err(e) => {
-                    warn!(error = %e, "rootfs prefetch failed");
-                    return;
-                }
-            };
-            let mut buf = vec![0u8; 1024 * 1024];
-            let mut total: u64 = 0;
-            loop {
-                match file.read(&mut buf) {
-                    Ok(0) => break,
-                    Ok(n) => total += n as u64,
-                    Err(e) => {
-                        warn!(error = %e, bytes = total, "rootfs prefetch read error");
-                        return;
-                    }
-                }
-            }
-            info!(bytes = total, "rootfs prefetch complete");
-        })
-        .await
-        .ok();
-
         self.base_handle = Some(base_handle);
 
         self.started = true;
