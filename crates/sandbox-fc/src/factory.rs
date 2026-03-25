@@ -402,6 +402,9 @@ impl SandboxFactory for FirecrackerFactory {
         let sock_dir = sandbox.sock_paths.dir().to_owned();
         let workspace = sandbox.sandbox_paths.workspace().to_owned();
 
+        // Log dm-snapshot stats before teardown for performance debugging.
+        sandbox.cow_device.log_status();
+
         // Destroy the COW device (removes dm target, detaches cow loop, deletes COW file).
         //
         // The inner Firecracker process (inside netns via sudo -u) may still

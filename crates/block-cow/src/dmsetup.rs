@@ -25,6 +25,14 @@ pub fn create_snapshot(
     Ok(PathBuf::from(format!("{DM_DEV_PREFIX}{name}")))
 }
 
+/// Query dm-snapshot status. Returns the raw status string.
+///
+/// Format: `<used_sectors>/<total_sectors> <metadata_sectors>`
+/// Useful for debugging COW usage after sandbox execution.
+pub fn status(name: &str) -> Result<String> {
+    command::run("dmsetup", &["status", name])
+}
+
 /// Remove a device mapper target.
 pub fn remove(name: &str) -> Result<()> {
     command::run("dmsetup", &["remove", name])?;

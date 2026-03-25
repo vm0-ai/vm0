@@ -101,6 +101,15 @@ impl CowDevice {
         &self.cow_file
     }
 
+    /// Log dm-snapshot status (COW allocation) for debugging.
+    pub fn log_status(&self) {
+        let cow_name = format!("cow-{}", self.id);
+        match dmsetup::status(&cow_name) {
+            Ok(s) => info!(id = self.id, status = %s, "dm-snapshot status"),
+            Err(e) => warn!(id = self.id, error = %e, "dm-snapshot status query failed"),
+        }
+    }
+
     /// Tear down: remove dm target, detach COW loop device, delete COW file.
     ///
     /// Takes `&mut self` so the caller can retry on failure. On success the
