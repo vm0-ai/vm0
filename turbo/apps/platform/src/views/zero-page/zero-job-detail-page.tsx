@@ -66,6 +66,7 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { AGENT_AVATARS, useAgentAvatar } from "./zero-sidebar.tsx";
 import { setAgentAvatar$ } from "../../signals/zero-page/zero-agent-avatars.ts";
 import { agentsList$ } from "../../signals/zero-page/agents-list.ts";
+import { isOrgAdmin$ } from "../../signals/org.ts";
 import { ZeroNoPermissionIllustration } from "./components/zero-no-permission-illustration.tsx";
 
 // ---------------------------------------------------------------------------
@@ -174,6 +175,62 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
 
 const TAB_TRIGGER_CLASS =
   "gap-1.5 text-sm data-[state=active]:bg-background px-3";
+
+/** Coerce hidden tabs back to "connectors" for non-admin default-agent view. */
+function resolveVisibleTab(
+  rawTab: string,
+  hideProfileAndInstructions: boolean,
+): string {
+  if (
+    hideProfileAndInstructions &&
+    rawTab !== "connectors" &&
+    rawTab !== "schedule"
+  ) {
+    return "connectors";
+  }
+  return rawTab;
+}
+
+function AgentTabNav({
+  activeTab,
+  onTabChange,
+  showProfileAndInstructions,
+}: {
+  activeTab: string;
+  onTabChange: (tab: string) => void;
+  showProfileAndInstructions: boolean;
+}) {
+  return (
+    <Tabs
+      value={activeTab}
+      onValueChange={onTabChange}
+      className="flex-1 min-w-0"
+    >
+      <TabsList className="zero-tabs h-9 w-full sm:w-auto gap-1 px-1 py-1 overflow-x-auto">
+        <TabsTrigger value="connectors" className={TAB_TRIGGER_CLASS}>
+          <IconPlug size={14} stroke={1.5} />
+          Connectors
+        </TabsTrigger>
+        <TabsTrigger value="schedule" className={TAB_TRIGGER_CLASS}>
+          <IconCalendar size={14} stroke={1.5} />
+          Scheduled
+        </TabsTrigger>
+        {showProfileAndInstructions && (
+          <TabsTrigger value="profile" className={TAB_TRIGGER_CLASS}>
+            <IconUserCircle size={14} stroke={1.5} />
+            Profile
+          </TabsTrigger>
+        )}
+        {showProfileAndInstructions && (
+          <TabsTrigger value="instructions" className={TAB_TRIGGER_CLASS}>
+            <IconFileText size={14} stroke={1.5} />
+            Instructions
+          </TabsTrigger>
+        )}
+      </TabsList>
+    </Tabs>
+  );
+}
 
 function extractAgentFields(
   detail: AgentDetail | null,
@@ -350,13 +407,20 @@ export function ZeroJobDetailPage({
     (statusLoadable.data.defaultAgentId === agentId ||
       statusLoadable.data.defaultAgentId === detail?.agentId);
 
+  const adminLoadable = useLoadable(isOrgAdmin$);
+  const isAdmin = adminLoadable.state === "hasData" && adminLoadable.data;
+
+  // Non-admin users cannot access profile/instructions tabs for the default agent
+  const hideProfileAndInstructions = isDefaultAgent && !isAdmin;
+
   const handleDelete = async () => {
     await deleteAgent();
     nav("/team");
   };
 
-  const activeTab = useGet(zeroJobActiveTab$);
+  const rawTab = useGet(zeroJobActiveTab$);
   const setActiveTab = useSet(setZeroJobActiveTab$);
+  const activeTab = resolveVisibleTab(rawTab, hideProfileAndInstructions);
 
   const agentAvatar = useAgentAvatar(agentId);
   const setAgentAvatarCmd = useSet(setAgentAvatar$);
@@ -409,30 +473,11 @@ export function ZeroJobDetailPage({
           </div>
 
           <div className="mt-4 flex h-9 items-center justify-between gap-6">
-            <Tabs
-              value={activeTab}
-              onValueChange={setActiveTab}
-              className="flex-1 min-w-0"
-            >
-              <TabsList className="zero-tabs h-9 w-full sm:w-auto gap-1 px-1 py-1 overflow-x-auto">
-                <TabsTrigger value="connectors" className={TAB_TRIGGER_CLASS}>
-                  <IconPlug size={14} stroke={1.5} />
-                  Connectors
-                </TabsTrigger>
-                <TabsTrigger value="schedule" className={TAB_TRIGGER_CLASS}>
-                  <IconCalendar size={14} stroke={1.5} />
-                  Scheduled
-                </TabsTrigger>
-                <TabsTrigger value="profile" className={TAB_TRIGGER_CLASS}>
-                  <IconUserCircle size={14} stroke={1.5} />
-                  Profile
-                </TabsTrigger>
-                <TabsTrigger value="instructions" className={TAB_TRIGGER_CLASS}>
-                  <IconFileText size={14} stroke={1.5} />
-                  Instructions
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
+            <AgentTabNav
+              activeTab={activeTab}
+              onTabChange={setActiveTab}
+              showProfileAndInstructions={!hideProfileAndInstructions}
+            />
             <TooltipProvider delayDuration={300}>
               <Tooltip>
                 <TooltipTrigger asChild>

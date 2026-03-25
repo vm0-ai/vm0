@@ -34,9 +34,34 @@ import {
 } from "../../../../../../src/lib/s3/s3-client";
 import { extractFileFromTar } from "../../../../../../src/lib/tar";
 import { env } from "../../../../../../src/env";
+import { isDefaultAgentCompose } from "../../../../../../src/lib/zero/resolve-default-agent";
 import { logger } from "../../../../../../src/lib/logger";
 
 const log = logger("api:zero-agents:instructions");
+
+type ForbiddenResponse = {
+  status: 403;
+  body: { error: { message: string; code: string } };
+};
+
+async function requireAdminForDefault(
+  orgId: string,
+  composeId: string,
+  memberRole: string,
+): Promise<ForbiddenResponse | null> {
+  if (memberRole === "admin") return null;
+  const isDefault = await isDefaultAgentCompose(orgId, composeId);
+  if (!isDefault) return null;
+  return {
+    status: 403 as const,
+    body: {
+      error: {
+        message: "Only org admins can update the default agent's instructions",
+        code: "FORBIDDEN",
+      },
+    },
+  };
+}
 
 const router = tsr.router(zeroAgentInstructionsContract, {
   get: async ({ params, headers }, { request }) => {
@@ -189,7 +214,7 @@ const router = tsr.router(zeroAgentInstructionsContract, {
     const { userId } = authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org, member } = await resolveOrg(authCtx, orgSlug);
 
     // Look up existing compose by ID
     const [compose] = await globalThis.services.db
@@ -222,6 +247,14 @@ const router = tsr.router(zeroAgentInstructionsContract, {
         },
       };
     }
+
+    // Only admins can update the default agent's instructions
+    const forbidden = await requireAdminForDefault(
+      org.orgId,
+      compose.id,
+      member.role,
+    );
+    if (forbidden) return forbidden;
 
     // Re-compose with existing content + new instructions
     const existingContent = (compose.content ?? {}) as Record<string, unknown>;

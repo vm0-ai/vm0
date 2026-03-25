@@ -3041,6 +3041,51 @@ export async function findOrgMembersCacheEntry(orgId: string, userId: string) {
 }
 
 /**
+ * Delete a cached membership entry. Useful for tests that need to change
+ * a user's role mid-test (the cache would otherwise serve the stale role).
+ */
+export async function clearOrgMembersCacheEntry(
+  orgId: string,
+  userId: string,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .delete(orgMembersCache)
+    .where(
+      and(eq(orgMembersCache.orgId, orgId), eq(orgMembersCache.userId, userId)),
+    );
+}
+
+/**
+ * Set the org's default agent by compose ID.
+ * Resolves compose → zero_agent via (orgId, name) and sets default_agent_id.
+ */
+export async function setDefaultAgentByComposeId(
+  orgId: string,
+  composeId: string,
+): Promise<void> {
+  initServices();
+  const [compose] = await globalThis.services.db
+    .select({ name: agentComposes.name })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, composeId))
+    .limit(1);
+  if (!compose) throw new Error(`Compose not found: ${composeId}`);
+
+  const [agent] = await globalThis.services.db
+    .select({ id: zeroAgents.id })
+    .from(zeroAgents)
+    .where(and(eq(zeroAgents.orgId, orgId), eq(zeroAgents.name, compose.name)))
+    .limit(1);
+  if (!agent) throw new Error(`Zero agent not found for compose: ${composeId}`);
+
+  await globalThis.services.db
+    .update(orgMetadata)
+    .set({ defaultAgentId: agent.id, updatedAt: new Date() })
+    .where(eq(orgMetadata.orgId, orgId));
+}
+
+/**
  * Insert an org_members entry for testing member preferences.
  */
 export async function insertOrgMembersEntry(entry: {
