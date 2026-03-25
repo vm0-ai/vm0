@@ -37,12 +37,15 @@ const router = tsr.router(zeroAgentsMainContract, {
     // Build compose content from connectors
     const content = buildComposeContent(agentName, body.connectors);
 
-    // Run synchronous compose
+    // Run synchronous compose (pass empty instructions so the
+    // agent-instructions storage record is created — without it,
+    // schedule runs fail with "storage not found").
     const result = await serverSideCompose({
       userId,
       orgId: org.orgId,
       orgSlug: org.slug,
       content,
+      instructions: "",
     });
 
     if (!result) {
