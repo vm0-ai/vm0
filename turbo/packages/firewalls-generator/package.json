@@ -70,6 +70,7 @@
     "generate:qiita": "tsx src/index.ts qiita",
     "generate:reddit": "tsx src/index.ts reddit",
     "generate:resend": "tsx src/index.ts resend",
+    "generate:revenuecat": "tsx src/index.ts revenuecat",
     "generate:runway": "tsx src/index.ts runway",
     "generate:sentry": "tsx src/index.ts sentry",
     "generate:serpapi": "tsx src/index.ts serpapi",
