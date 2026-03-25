@@ -1383,6 +1383,10 @@ const CONNECTOR_TYPES_DEF = {
         "follows.write",
         "like.read",
         "like.write",
+        "dm.read",
+        "dm.write",
+        "bookmark.read",
+        "bookmark.write",
         "offline.access",
       ],
       environmentMapping: {
