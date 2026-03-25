@@ -196,29 +196,7 @@ export function ZeroJobsPage() {
 
           {!loading && !error && agents && agents.length === 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setDialogOpen(true)}
-                className="flex flex-col rounded-[var(--zero-card-radius)] border border-dashed border-[hsl(var(--gray-400))] transition-colors hover:border-[hsl(var(--gray-400))] hover:bg-muted/30 group cursor-pointer text-left"
-              >
-                <div className="flex items-center gap-3 px-4 py-3.5">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors">
-                    <IconPlus
-                      size={18}
-                      stroke={2}
-                      className="text-foreground/50 group-hover:text-foreground transition-colors"
-                    />
-                  </span>
-                  <span className="text-sm font-medium text-foreground/80 group-hover:text-foreground transition-colors">
-                    Create teammate
-                  </span>
-                </div>
-                <div className="border-t border-dashed border-[hsl(var(--gray-400))] px-4 py-2.5">
-                  <span className="text-xs text-muted-foreground">
-                    Create a new subagent
-                  </span>
-                </div>
-              </button>
+              <CreateTeammateButton onClick={() => setDialogOpen(true)} />
 
               <Card className="zero-card">
                 <CardContent className="flex flex-col items-center justify-center px-6 py-12 gap-3">
@@ -244,30 +222,7 @@ export function ZeroJobsPage() {
 
           {agents && agents.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {/* Create teammate */}
-              <button
-                type="button"
-                onClick={() => setDialogOpen(true)}
-                className="flex flex-col rounded-[var(--zero-card-radius)] border border-dashed border-[hsl(var(--gray-400))] transition-colors hover:border-[hsl(var(--gray-400))] hover:bg-muted/30 group cursor-pointer text-left"
-              >
-                <div className="flex items-center gap-3 px-4 py-3.5">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors">
-                    <IconPlus
-                      size={18}
-                      stroke={2}
-                      className="text-foreground/50 group-hover:text-foreground transition-colors"
-                    />
-                  </span>
-                  <span className="text-sm font-medium text-foreground/80 group-hover:text-foreground transition-colors">
-                    Create teammate
-                  </span>
-                </div>
-                <div className="border-t border-dashed border-[hsl(var(--gray-400))] px-4 py-2.5">
-                  <span className="text-xs text-muted-foreground">
-                    Create a new subagent
-                  </span>
-                </div>
-              </button>
+              <CreateTeammateButton onClick={() => setDialogOpen(true)} />
 
               {agents.map((agent) => (
                 <Link
@@ -293,6 +248,34 @@ export function ZeroJobsPage() {
         creating={creating}
       />
     </div>
+  );
+}
+
+function CreateTeammateButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex flex-col rounded-[var(--zero-card-radius)] border border-dashed border-[hsl(var(--gray-400))] transition-colors hover:border-[hsl(var(--gray-400))] hover:bg-muted/30 group cursor-pointer text-left"
+    >
+      <div className="flex items-center gap-3 px-4 py-3.5">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors">
+          <IconPlus
+            size={18}
+            stroke={2}
+            className="text-foreground/50 group-hover:text-foreground transition-colors"
+          />
+        </span>
+        <span className="text-sm font-medium text-foreground/80 group-hover:text-foreground transition-colors">
+          Create teammate
+        </span>
+      </div>
+      <div className="border-t border-dashed border-[hsl(var(--gray-400))] px-4 py-2.5">
+        <span className="text-xs text-muted-foreground">
+          Create a new subagent
+        </span>
+      </div>
+    </button>
   );
 }
 
