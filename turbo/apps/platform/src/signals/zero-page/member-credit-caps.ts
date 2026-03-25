@@ -184,15 +184,35 @@ function createMemberCapSetting(
 }
 
 /**
+ * Signal holding a cache of MemberCapSetting objects keyed by userId.
+ * Preserved across recomputations so that in-progress edits
+ * (edit mode, typed input values, saving state) are not destroyed
+ * when another member's cap is saved.
+ */
+const memberCapSettingCache$ = state(new Map<string, MemberCapSetting>());
+
+/**
  * Async computed that fetches members + caps together,
  * returns MemberCapSetting[] with per-member signal bundles.
+ * Reuses existing MemberCapSetting objects when the creditCap hasn't changed,
+ * preserving in-progress edit state for other rows.
  */
 export const creditsMemberList$ = computed(async (get) => {
   const usage = await get(usageMembersAsync$);
   const caps = await get(memberCreditCaps$);
+  const cache = get(memberCapSettingCache$);
 
   return usage.members.map((member) => {
     const cap = caps.get(member.userId);
-    return createMemberCapSetting(member, cap?.creditCap ?? null);
+    const creditCap = cap?.creditCap ?? null;
+
+    const cached = cache.get(member.userId);
+    if (cached && cached.creditCap === creditCap) {
+      return cached;
+    }
+
+    const setting = createMemberCapSetting(member, creditCap);
+    cache.set(member.userId, setting);
+    return setting;
   });
 });

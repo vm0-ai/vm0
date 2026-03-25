@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type ComponentProps, useState } from "react";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { IconExternalLink, IconCrown, IconLoader2 } from "@tabler/icons-react";
 import {
@@ -14,6 +14,21 @@ import planProImg from "./assets/plan-pro.webp";
 import planTeamImg from "./assets/plan-team.webp";
 
 const cardBorder = { border: "0.7px solid hsl(var(--gray-400))" } as const;
+
+function LoadingButton({
+  loading,
+  children,
+  ...props
+}: ComponentProps<typeof Button> & { loading: boolean }) {
+  return (
+    <Button {...props} disabled={props.disabled ?? loading}>
+      {loading ? (
+        <IconLoader2 size={13} stroke={1.5} className="animate-spin" />
+      ) : null}
+      {children}
+    </Button>
+  );
+}
 
 interface PlanConfig {
   name: string;
@@ -179,31 +194,25 @@ function PlanCard({
             Current plan
           </Button>
         ) : plan.primary ? (
-          <Button
+          <LoadingButton
             size="sm"
             className="w-full rounded-lg h-9 text-xs"
-            disabled={loading}
+            loading={loading}
             onClick={() => plan.tier && onSelect(plan.tier)}
           >
-            {loading ? (
-              <IconLoader2 size={13} stroke={1.5} className="animate-spin" />
-            ) : null}
             {plan.cta}
-          </Button>
+          </LoadingButton>
         ) : (
-          <Button
+          <LoadingButton
             variant="outline"
             size="sm"
             className="w-full rounded-lg h-9 text-xs"
             style={cardBorder}
-            disabled={loading}
+            loading={loading}
             onClick={() => plan.tier && onSelect(plan.tier)}
           >
-            {loading ? (
-              <IconLoader2 size={13} stroke={1.5} className="animate-spin" />
-            ) : null}
             {plan.cta}
-          </Button>
+          </LoadingButton>
         )}
       </div>
     </div>
@@ -301,12 +310,12 @@ export function OrgBillingTab() {
               </span>
             </div>
             {isPro ? (
-              <Button
+              <LoadingButton
                 variant="outline"
                 size="sm"
                 className="shrink-0 rounded-lg h-8 text-xs gap-1.5"
                 style={cardBorder}
-                disabled={billingLoading}
+                loading={billingLoading}
                 onClick={() => {
                   downgrade().catch(() => {
                     toast.error(
@@ -315,32 +324,18 @@ export function OrgBillingTab() {
                   });
                 }}
               >
-                {billingLoading ? (
-                  <IconLoader2
-                    size={13}
-                    stroke={1.5}
-                    className="animate-spin"
-                  />
-                ) : null}
                 Manage billing
                 <IconExternalLink size={13} stroke={1.5} />
-              </Button>
+              </LoadingButton>
             ) : (
-              <Button
+              <LoadingButton
                 size="sm"
                 className="shrink-0 rounded-lg h-8 text-xs"
-                disabled={billingLoading}
+                loading={billingLoading}
                 onClick={() => setPricingOpen(true)}
               >
-                {billingLoading ? (
-                  <IconLoader2
-                    size={13}
-                    stroke={1.5}
-                    className="animate-spin"
-                  />
-                ) : null}
                 Upgrade
-              </Button>
+              </LoadingButton>
             )}
           </div>
           {isPro && (
@@ -356,12 +351,12 @@ export function OrgBillingTab() {
                     invoices on Stripe.
                   </span>
                 </div>
-                <Button
+                <LoadingButton
                   variant="outline"
                   size="sm"
                   className="shrink-0 rounded-lg h-8 text-xs gap-1.5"
                   style={cardBorder}
-                  disabled={billingLoading}
+                  loading={billingLoading}
                   onClick={() => {
                     downgrade().catch(() => {
                       toast.error(
@@ -370,16 +365,9 @@ export function OrgBillingTab() {
                     });
                   }}
                 >
-                  {billingLoading ? (
-                    <IconLoader2
-                      size={13}
-                      stroke={1.5}
-                      className="animate-spin"
-                    />
-                  ) : null}
                   Manage
                   <IconExternalLink size={13} stroke={1.5} />
-                </Button>
+                </LoadingButton>
               </div>
             </>
           )}
@@ -400,38 +388,24 @@ export function OrgBillingTab() {
               </span>
             </div>
             {isPro ? (
-              <Button
+              <LoadingButton
                 size="sm"
                 className="shrink-0 rounded-lg h-8 text-xs"
-                disabled={billingLoading}
+                loading={billingLoading}
               >
-                {billingLoading ? (
-                  <IconLoader2
-                    size={13}
-                    stroke={1.5}
-                    className="animate-spin"
-                  />
-                ) : null}
                 Add
-              </Button>
+              </LoadingButton>
             ) : (
-              <Button
+              <LoadingButton
                 variant="outline"
                 size="sm"
                 className="shrink-0 rounded-lg h-8 text-xs"
                 style={cardBorder}
-                disabled={billingLoading}
+                loading={billingLoading}
                 onClick={() => setPricingOpen(true)}
               >
-                {billingLoading ? (
-                  <IconLoader2
-                    size={13}
-                    stroke={1.5}
-                    className="animate-spin"
-                  />
-                ) : null}
                 Upgrade
-              </Button>
+              </LoadingButton>
             )}
           </div>
           <div className="h-px bg-border/40 mx-5" />
@@ -445,38 +419,24 @@ export function OrgBillingTab() {
               </span>
             </div>
             {isPro ? (
-              <Button
+              <LoadingButton
                 size="sm"
                 className="shrink-0 rounded-lg h-8 text-xs"
-                disabled={billingLoading}
+                loading={billingLoading}
               >
-                {billingLoading ? (
-                  <IconLoader2
-                    size={13}
-                    stroke={1.5}
-                    className="animate-spin"
-                  />
-                ) : null}
                 Add
-              </Button>
+              </LoadingButton>
             ) : (
-              <Button
+              <LoadingButton
                 variant="outline"
                 size="sm"
                 className="shrink-0 rounded-lg h-8 text-xs"
                 style={cardBorder}
-                disabled={billingLoading}
+                loading={billingLoading}
                 onClick={() => setPricingOpen(true)}
               >
-                {billingLoading ? (
-                  <IconLoader2
-                    size={13}
-                    stroke={1.5}
-                    className="animate-spin"
-                  />
-                ) : null}
                 Upgrade
-              </Button>
+              </LoadingButton>
             )}
           </div>
         </div>
