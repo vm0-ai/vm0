@@ -22,9 +22,8 @@ interface OpenRouterResponse {
  *
  * This is an internal-only service for cheap NLP tasks like title generation.
  *
- * Returns null if OPENROUTER_API_KEY is not configured or the model returns
- * empty content after retries.
- * Throws on HTTP errors — callers handle errors.
+ * Returns null if OPENROUTER_API_KEY is not configured.
+ * Throws on HTTP errors or empty responses — callers handle errors.
  */
 async function generateText(messages: ChatMessage[]): Promise<string | null> {
   const { OPENROUTER_API_KEY } = env();
@@ -33,37 +32,33 @@ async function generateText(messages: ChatMessage[]): Promise<string | null> {
     return null;
   }
 
-  const MAX_ATTEMPTS = 2;
+  const response = await fetch(BASE_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      messages,
+      max_tokens: 30,
+      temperature: 0.3,
+    }),
+  });
 
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const response = await fetch(BASE_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        messages,
-        max_tokens: 30,
-        temperature: 0.3,
-      }),
-    });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => "unknown error");
-      throw new Error(`OpenRouter request failed: ${response.status} ${text}`);
-    }
-
-    const data = (await response.json()) as OpenRouterResponse;
-    const content = data.choices[0]?.message?.content?.trim();
-
-    if (content) {
-      return content;
-    }
+  if (!response.ok) {
+    const text = await response.text().catch(() => "unknown error");
+    throw new Error(`OpenRouter request failed: ${response.status} ${text}`);
   }
 
-  return null;
+  const data = (await response.json()) as OpenRouterResponse;
+  const content = data.choices[0]?.message?.content?.trim();
+
+  if (!content) {
+    throw new Error("OpenRouter returned empty content");
+  }
+
+  return content;
 }
 
 /**
