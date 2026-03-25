@@ -193,7 +193,7 @@ export async function switchZeroOrg(
   const client = initClient(cliAuthOrgContract, config);
 
   const result = await client.switchOrg({
-    headers: { authorization: `Bearer ${(await getToken())!}` },
+    headers: {},
     body: { slug },
   });
 
