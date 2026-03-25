@@ -448,9 +448,9 @@ export function ZeroChatComposer({
     const label = resolveConnectorLabel(type, connectorMap);
     detach(
       (async () => {
-        await addConnector(type);
+        await addConnector(type, pageSignal);
         try {
-          await saveConnectors();
+          await saveConnectors(pageSignal);
         } catch (error) {
           throwIfAbort(error);
           // May fail during onboarding when compose doesn't exist yet — ignore
@@ -496,7 +496,7 @@ export function ZeroChatComposer({
       return;
     }
     for (const file of files) {
-      detach(uploadAttachment(file), Reason.DomCallback);
+      detach(uploadAttachment(file, pageSignal), Reason.DomCallback);
     }
     e.target.value = "";
   };

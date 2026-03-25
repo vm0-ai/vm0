@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 import { IconList, IconLayoutGrid, IconPlus } from "@tabler/icons-react";
 import {
   Card,
@@ -423,6 +424,7 @@ export function ZeroSchedulePage() {
   const toggleEnabled = useSet(toggleOrgScheduleEnabled$);
   const deleteSchedule = useSet(deleteOrgSchedule$);
   const runScheduleNow = useSet(runScheduleNow$);
+  const pageSignal = useGet(pageSignal$);
   const navigate = useSet(navigateTo$);
 
   const [scheduleViewMode, setScheduleViewMode] = useState<"list" | "calendar">(
@@ -458,26 +460,29 @@ export function ZeroSchedulePage() {
     setSaving(true);
     setSaveError(null);
     detach(
-      saveSchedule({
-        prompt: values.prompt.trim(),
-        description: values.description.trim() || undefined,
-        freq: values.freq,
-        date: values.date,
-        hour: values.hour,
-        minute: values.minute,
-        timezone: values.timezone,
-        intervalSeconds: values.loopMinutes * 60,
-        agentId: values.agentId,
-        notifyEmail: values.notifyEmail,
-        notifySlack: values.notifySlack,
-        slackChannelId: values.slackChannelId,
-        ...(values.freq === "every_week"
-          ? { dayOfWeek: values.dayOfWeek }
-          : {}),
-        ...(values.freq === "every_month"
-          ? { dayOfMonth: values.dayOfMonth }
-          : {}),
-      })
+      saveSchedule(
+        {
+          prompt: values.prompt.trim(),
+          description: values.description.trim() || undefined,
+          freq: values.freq,
+          date: values.date,
+          hour: values.hour,
+          minute: values.minute,
+          timezone: values.timezone,
+          intervalSeconds: values.loopMinutes * 60,
+          agentId: values.agentId,
+          notifyEmail: values.notifyEmail,
+          notifySlack: values.notifySlack,
+          slackChannelId: values.slackChannelId,
+          ...(values.freq === "every_week"
+            ? { dayOfWeek: values.dayOfWeek }
+            : {}),
+          ...(values.freq === "every_month"
+            ? { dayOfMonth: values.dayOfMonth }
+            : {}),
+        },
+        pageSignal,
+      )
         .then((scheduleId) => {
           setCreateOpen(false);
           navigate("/schedule/:scheduleId", {
@@ -503,11 +508,14 @@ export function ZeroSchedulePage() {
     const id = entry.id;
     setTogglingIds((prev) => new Set([...prev, id]));
     try {
-      await toggleEnabled({
-        name: entry.name,
-        enabled,
-        agentId: entry.agentId,
-      });
+      await toggleEnabled(
+        {
+          name: entry.name,
+          enabled,
+          agentId: entry.agentId,
+        },
+        pageSignal,
+      );
     } finally {
       setTogglingIds((prev) => {
         const next = new Set(prev);
@@ -521,7 +529,7 @@ export function ZeroSchedulePage() {
     const id = entry.id;
     setRunningIds((prev) => new Set([...prev, id]));
     try {
-      await runScheduleNow(entry.id);
+      await runScheduleNow(entry.id, pageSignal);
     } finally {
       setRunningIds((prev) => {
         const next = new Set(prev);
@@ -542,7 +550,7 @@ export function ZeroSchedulePage() {
     }
     setPendingDelete(null);
     detach(
-      deleteSchedule({ name: entry.name, agentId: entry.agentId }),
+      deleteSchedule({ name: entry.name, agentId: entry.agentId }, pageSignal),
       Reason.DomCallback,
     );
   };

@@ -66,6 +66,7 @@ describe("saveFirewallPolicies$", () => {
       saveFirewallPolicies$,
       "my-agent",
       policies,
+      context.signal,
     );
 
     expect(capturedBody).not.toBeNull();
@@ -89,7 +90,7 @@ describe("saveFirewallPolicies$", () => {
     );
 
     await expect(
-      context.store.set(saveFirewallPolicies$, "my-agent", {}),
+      context.store.set(saveFirewallPolicies$, "my-agent", {}, context.signal),
     ).rejects.toThrow("Save failed: Only org admins can update");
   });
 });

@@ -111,7 +111,7 @@ describe("zero-job-detail signals", () => {
       );
 
       await setupPage({ context, path: "/", withoutRender: true });
-      await context.store.set(fetchZeroJobData$, "my-agent");
+      await context.store.set(fetchZeroJobData$, "my-agent", context.signal);
 
       const detail = context.store.get(zeroJobDetail$);
       const loading = context.store.get(zeroJobDetailLoading$);
@@ -152,7 +152,11 @@ describe("zero-job-detail signals", () => {
       );
 
       await setupPage({ context, path: "/", withoutRender: true });
-      await context.store.set(fetchZeroJobData$, "missing-agent");
+      await context.store.set(
+        fetchZeroJobData$,
+        "missing-agent",
+        context.signal,
+      );
 
       const detail = context.store.get(zeroJobDetail$);
       const loading = context.store.get(zeroJobDetailLoading$);
@@ -183,7 +187,7 @@ describe("zero-job-detail signals", () => {
       );
 
       await setupPage({ context, path: "/", withoutRender: true });
-      await context.store.set(fetchZeroJobData$, "my-agent");
+      await context.store.set(fetchZeroJobData$, "my-agent", context.signal);
 
       const instructions = context.store.get(zeroJobInstructions$);
       const instructionsError = context.store.get(zeroJobInstructionsError$);
@@ -215,7 +219,7 @@ describe("zero-job-detail signals", () => {
       );
 
       await setupPage({ context, path: "/", withoutRender: true });
-      await context.store.set(fetchZeroJobData$, "my-agent");
+      await context.store.set(fetchZeroJobData$, "my-agent", context.signal);
 
       const entries = await context.store.get(zeroJobScheduleEntries$);
       const scheduleError = context.store.get(zeroJobScheduleError$);
@@ -248,7 +252,11 @@ describe("zero-job-detail signals", () => {
       );
 
       await setupPage({ context, path: "/", withoutRender: true });
-      await context.store.set(fetchZeroJobData$, "my-org/sub-agent");
+      await context.store.set(
+        fetchZeroJobData$,
+        "my-org/sub-agent",
+        context.signal,
+      );
 
       const detail = context.store.get(zeroJobDetail$);
       expect(detail).not.toBeNull();
@@ -276,7 +284,7 @@ describe("zero-job-detail signals", () => {
       );
 
       await setupPage({ context, path: "/", withoutRender: true });
-      await context.store.set(fetchZeroJobData$, "my-agent");
+      await context.store.set(fetchZeroJobData$, "my-agent", context.signal);
     }
 
     it("should save a cron schedule with every_day frequency", async () => {
@@ -307,7 +315,7 @@ describe("zero-job-detail signals", () => {
         intervalSeconds: 0,
       };
 
-      await context.store.set(saveZeroJobSchedule$, params);
+      await context.store.set(saveZeroJobSchedule$, params, context.signal);
 
       expect(capturedBody).toMatchObject({
         agentId: "compose-1",
@@ -348,7 +356,7 @@ describe("zero-job-detail signals", () => {
         intervalSeconds: 0,
       };
 
-      await context.store.set(saveZeroJobSchedule$, params);
+      await context.store.set(saveZeroJobSchedule$, params, context.signal);
 
       expect(capturedBody).toMatchObject({
         prompt: "Run daily task",
@@ -384,7 +392,7 @@ describe("zero-job-detail signals", () => {
         intervalSeconds: 0,
       };
 
-      await context.store.set(saveZeroJobSchedule$, params);
+      await context.store.set(saveZeroJobSchedule$, params, context.signal);
 
       expect(capturedBody).not.toHaveProperty("description");
     });
@@ -417,7 +425,7 @@ describe("zero-job-detail signals", () => {
         intervalSeconds: 300,
       };
 
-      await context.store.set(saveZeroJobSchedule$, params);
+      await context.store.set(saveZeroJobSchedule$, params, context.signal);
 
       expect(capturedBody).toMatchObject({
         agentId: "compose-1",
@@ -452,7 +460,7 @@ describe("zero-job-detail signals", () => {
       };
 
       await expect(
-        context.store.set(saveZeroJobSchedule$, params),
+        context.store.set(saveZeroJobSchedule$, params, context.signal),
       ).rejects.toThrow("Save failed (429)");
     });
   });
@@ -477,7 +485,7 @@ describe("zero-job-detail signals", () => {
       );
 
       await setupPage({ context, path: "/", withoutRender: true });
-      await context.store.set(fetchZeroJobData$, "my-agent");
+      await context.store.set(fetchZeroJobData$, "my-agent", context.signal);
 
       server.use(
         http.delete(
@@ -492,7 +500,11 @@ describe("zero-job-detail signals", () => {
         }),
       );
 
-      await context.store.set(deleteZeroJobSchedule$, "daily-run");
+      await context.store.set(
+        deleteZeroJobSchedule$,
+        "daily-run",
+        context.signal,
+      );
 
       expect(capturedUrl).toContain("/api/zero/schedules/daily-run");
       expect(capturedUrl).toContain("agentId=compose-1");
@@ -518,7 +530,7 @@ describe("zero-job-detail signals", () => {
       );
 
       await setupPage({ context, path: "/", withoutRender: true });
-      await context.store.set(fetchZeroJobData$, "my-agent");
+      await context.store.set(fetchZeroJobData$, "my-agent", context.signal);
 
       server.use(
         http.delete("http://localhost:3000/api/zero/schedules/:name", () => {
@@ -530,7 +542,11 @@ describe("zero-job-detail signals", () => {
       );
 
       await expect(
-        context.store.set(deleteZeroJobSchedule$, "nonexistent"),
+        context.store.set(
+          deleteZeroJobSchedule$,
+          "nonexistent",
+          context.signal,
+        ),
       ).rejects.toThrow("Delete failed: Not found");
     });
   });
@@ -556,7 +572,7 @@ describe("zero-job-detail signals", () => {
       );
 
       await setupPage({ context, path: "/", withoutRender: true });
-      await context.store.set(fetchZeroJobData$, "my-agent");
+      await context.store.set(fetchZeroJobData$, "my-agent", context.signal);
 
       server.use(
         http.post(
@@ -572,10 +588,14 @@ describe("zero-job-detail signals", () => {
         }),
       );
 
-      await context.store.set(toggleZeroJobScheduleEnabled$, {
-        name: "daily-run",
-        enabled: true,
-      });
+      await context.store.set(
+        toggleZeroJobScheduleEnabled$,
+        {
+          name: "daily-run",
+          enabled: true,
+        },
+        context.signal,
+      );
 
       expect(capturedUrl).toContain("/api/zero/schedules/daily-run/enable");
       expect(capturedBody).not.toBeNull();
@@ -602,7 +622,7 @@ describe("zero-job-detail signals", () => {
       );
 
       await setupPage({ context, path: "/", withoutRender: true });
-      await context.store.set(fetchZeroJobData$, "my-agent");
+      await context.store.set(fetchZeroJobData$, "my-agent", context.signal);
 
       server.use(
         http.post(
@@ -617,10 +637,14 @@ describe("zero-job-detail signals", () => {
         }),
       );
 
-      await context.store.set(toggleZeroJobScheduleEnabled$, {
-        name: "daily-run",
-        enabled: false,
-      });
+      await context.store.set(
+        toggleZeroJobScheduleEnabled$,
+        {
+          name: "daily-run",
+          enabled: false,
+        },
+        context.signal,
+      );
 
       expect(capturedUrl).toContain("/api/zero/schedules/daily-run/disable");
     });
@@ -642,7 +666,7 @@ describe("zero-job-detail signals", () => {
       );
 
       await setupPage({ context, path: "/", withoutRender: true });
-      await context.store.set(fetchZeroJobData$, "my-agent");
+      await context.store.set(fetchZeroJobData$, "my-agent", context.signal);
 
       server.use(
         http.post(
@@ -657,10 +681,14 @@ describe("zero-job-detail signals", () => {
       );
 
       await expect(
-        context.store.set(toggleZeroJobScheduleEnabled$, {
-          name: "daily-run",
-          enabled: true,
-        }),
+        context.store.set(
+          toggleZeroJobScheduleEnabled$,
+          {
+            name: "daily-run",
+            enabled: true,
+          },
+          context.signal,
+        ),
       ).rejects.toThrow("Failed to enable schedule (500)");
     });
   });
@@ -683,7 +711,7 @@ describe("zero-job-detail signals", () => {
       );
 
       await setupPage({ context, path: "/", withoutRender: true });
-      await context.store.set(fetchZeroJobData$, "my-agent");
+      await context.store.set(fetchZeroJobData$, "my-agent", context.signal);
     }
 
     it("should track edited content and dirty state", async () => {
@@ -736,7 +764,7 @@ describe("zero-job-detail signals", () => {
       );
 
       context.store.set(setZeroJobEditedContent$, "Updated instructions");
-      await context.store.set(buildZeroJobInstructions$);
+      await context.store.set(buildZeroJobInstructions$, context.signal);
 
       // Build should succeed without errors
       expect(context.store.get(zeroJobBuildError$)).toBeNull();
@@ -771,7 +799,7 @@ describe("zero-job-detail signals", () => {
       );
 
       context.store.set(setZeroJobEditedContent$, "Updated instructions");
-      await context.store.set(buildZeroJobInstructions$);
+      await context.store.set(buildZeroJobInstructions$, context.signal);
 
       expect(context.store.get(zeroJobBuilding$)).toBeFalsy();
       expect(context.store.get(zeroJobBuildError$)).toBe(
@@ -806,7 +834,7 @@ describe("zero-job-detail signals", () => {
         ),
       );
 
-      await context.store.set(buildZeroJobInstructions$);
+      await context.store.set(buildZeroJobInstructions$, context.signal);
       expect(apiCalled).toBeFalsy();
     });
   });
@@ -829,7 +857,7 @@ describe("zero-job-detail signals", () => {
       );
 
       await setupPage({ context, path: "/", withoutRender: true });
-      await context.store.set(fetchZeroJobData$, "my-agent");
+      await context.store.set(fetchZeroJobData$, "my-agent", context.signal);
     }
 
     it("should update settings via PATCH agents API and refetch", async () => {
@@ -857,10 +885,14 @@ describe("zero-job-detail signals", () => {
         }),
       );
 
-      await context.store.set(zeroJobUpdateSettings$, {
-        displayName: "New Name",
-        sound: "friendly",
-      });
+      await context.store.set(
+        zeroJobUpdateSettings$,
+        {
+          displayName: "New Name",
+          sound: "friendly",
+        },
+        context.signal,
+      );
 
       // Should have sent the update fields directly to the agents PATCH endpoint
       expect(capturedBody["displayName"]).toBe("New Name");
@@ -892,7 +924,7 @@ describe("zero-job-detail signals", () => {
         }),
       );
 
-      await context.store.set(zeroJobUpdateSettings$, {});
+      await context.store.set(zeroJobUpdateSettings$, {}, context.signal);
 
       // The PATCH is always sent — idempotency is handled server-side
       expect(patchCalled).toBeTruthy();
@@ -909,9 +941,13 @@ describe("zero-job-detail signals", () => {
       );
 
       // Should not throw — errors are caught and shown via toast
-      await context.store.set(zeroJobUpdateSettings$, {
-        displayName: "New Name",
-      });
+      await context.store.set(
+        zeroJobUpdateSettings$,
+        {
+          displayName: "New Name",
+        },
+        context.signal,
+      );
 
       expect(context.store.get(zeroJobSettingsSaving$)).toBeFalsy();
     });
@@ -935,7 +971,7 @@ describe("zero-job-detail signals", () => {
       );
 
       await setupPage({ context, path: "/", withoutRender: true });
-      await context.store.set(fetchZeroJobData$, "my-agent");
+      await context.store.set(fetchZeroJobData$, "my-agent", context.signal);
     }
 
     it("should seed connectors from agent response", async () => {
@@ -1006,7 +1042,7 @@ describe("zero-job-detail signals", () => {
       );
 
       context.store.set(addZeroJobConnector$, "gmail");
-      await context.store.set(saveZeroJobConnectors$);
+      await context.store.set(saveZeroJobConnectors$, context.signal);
 
       // Verify connectors were sent as short names
       expect(capturedBody).toBeTruthy();
@@ -1032,7 +1068,7 @@ describe("zero-job-detail signals", () => {
       context.store.set(addZeroJobConnector$, "gmail");
 
       // Should not throw — errors are caught and shown via toast
-      await context.store.set(saveZeroJobConnectors$);
+      await context.store.set(saveZeroJobConnectors$, context.signal);
 
       expect(context.store.get(zeroJobSettingsSaving$)).toBeFalsy();
     });

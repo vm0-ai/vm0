@@ -1,5 +1,6 @@
 import { Component, useState } from "react";
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 import { user$ } from "../../signals/auth.ts";
 import { IconArrowUpRight, IconPin } from "@tabler/icons-react";
 import {
@@ -165,12 +166,13 @@ export function ZeroChatPage({
   const pinnedIds =
     pinnedLoadable.state === "hasData" ? pinnedLoadable.data : [];
   const savePinnedIds = useSet(updatePinnedAgentIds$);
+  const pageSignal = useGet(pageSignal$);
   const showPinPill =
     currentChatAgentId !== null && !pinnedIds.includes(currentChatAgentId);
   const handlePin = () => {
     if (currentChatAgentId) {
       detach(
-        savePinnedIds([...pinnedIds, currentChatAgentId]),
+        savePinnedIds([...pinnedIds, currentChatAgentId], pageSignal),
         Reason.DomCallback,
       );
     }

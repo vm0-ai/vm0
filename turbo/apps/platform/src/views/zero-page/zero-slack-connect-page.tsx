@@ -1,4 +1,5 @@
 import { useGet, useSet } from "ccstate-react";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   IconBrandSlack,
   IconLoader2,
@@ -50,8 +51,9 @@ export function ZeroSlackConnectPage() {
   const eError = useGet(effectiveError$);
 
   const connect = useSet(connectSlackAccount$);
+  const pageSignal = useGet(pageSignal$);
   const handleConnect = () => {
-    detach(connect(), Reason.DomCallback);
+    detach(connect(pageSignal), Reason.DomCallback);
   };
 
   return (

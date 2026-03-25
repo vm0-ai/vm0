@@ -816,6 +816,7 @@ const syncAgentForThread$ = command(
     if (agentComposeId) {
       const currentAgentId = get(zeroChatAgentId$);
       const status = await get(zeroOnboardingStatus$);
+      signal.throwIfAborted();
       const isDefault = agentComposeId === status.defaultAgentId;
       const newAgentId = isDefault ? null : agentComposeId;
       if (newAgentId !== currentAgentId) {
@@ -1177,6 +1178,7 @@ export const sendZeroChatMessage$ = command(
             },
             combinedSignal,
           );
+          signal.throwIfAborted();
           if (!threadId) {
             return;
           }
@@ -1195,11 +1197,13 @@ export const sendZeroChatMessage$ = command(
             sessionId,
             modelProvider,
           );
+          signal.throwIfAborted();
 
           combinedSignal.throwIfAborted();
 
           // Associate run to thread (must complete before polling so refresh works)
           await addRunToThread(createClient, threadId, runId);
+          signal.throwIfAborted();
 
           // Refresh sidebar after run is associated (has preview now)
           set(fetchZeroSessionList$, combinedSignal).catch((error: unknown) => {
@@ -1333,6 +1337,7 @@ const onZeroRunComplete$ = command(
     try {
       const client = get(zeroClient$)(zeroRunsByIdContract);
       const result = await client.getById({ params: { id: runId } });
+      signal.throwIfAborted();
       if (result.status === 200) {
         // Store sessionId for conversation continuity (used by next message)
         if (result.body.result?.agentSessionId) {
@@ -1343,6 +1348,7 @@ const onZeroRunComplete$ = command(
       // Extract result content and summaries from telemetry events
       const { result: resultContent, summaries } =
         await extractResultFromEvents(pages, get);
+      signal.throwIfAborted();
 
       if (resultContent || summaries.length > 0) {
         set(updateAssistantMessage$, {

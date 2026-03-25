@@ -1,4 +1,5 @@
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 import { SidebarLayout } from "./sidebar-layout.tsx";
 import { ZeroChatPage } from "./zero-chat-page.tsx";
 import { useAgentAvatar } from "./zero-sidebar.tsx";
@@ -52,6 +53,7 @@ export function ZeroTalkPage() {
   const navigateTo = useSet(navigateTo$);
   const sendMessage = useSet(sendZeroChatMessage$);
   const startNewSession = useSet(startNewZeroSession$);
+  const pageSignal = useGet(pageSignal$);
 
   const handleNavigateToMeet = (tab?: string) => {
     if (resolvedAgentId) {
@@ -76,7 +78,7 @@ export function ZeroTalkPage() {
     options?: { modelProvider?: string },
   ) => {
     startNewSession();
-    detach(sendMessage(message, options), Reason.DomCallback);
+    detach(sendMessage(message, options, pageSignal), Reason.DomCallback);
   };
 
   return (

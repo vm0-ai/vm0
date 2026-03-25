@@ -163,6 +163,7 @@ export const zeroScheduleEntries$ = computed((get) => {
 export const fetchZeroSchedules$ = command(
   async ({ get, set }, _signal: AbortSignal) => {
     const status = await get(zeroOnboardingStatus$);
+    signal.throwIfAborted();
     const composeId = status.defaultAgentId;
     if (!composeId) {
       set(internalSchedules$, []);
@@ -280,6 +281,7 @@ export interface ZeroScheduleSaveParams {
 export const saveZeroSchedule$ = command(
   async ({ get, set }, params: ZeroScheduleSaveParams, signal: AbortSignal) => {
     const status = await get(zeroOnboardingStatus$);
+    signal.throwIfAborted();
     const composeId = status.defaultAgentId;
     if (!composeId) {
       scheduleSaveFailure("No default agent configured");
@@ -317,6 +319,7 @@ export const toggleZeroScheduleEnabled$ = command(
     signal: AbortSignal,
   ) => {
     const status = await get(zeroOnboardingStatus$);
+    signal.throwIfAborted();
     const composeId = status.defaultAgentId;
     if (!composeId) {
       scheduleSaveFailure("No default agent configured");
@@ -346,6 +349,7 @@ export const toggleZeroScheduleEnabled$ = command(
 export const deleteZeroSchedule$ = command(
   async ({ get, set }, scheduleName: string, signal: AbortSignal) => {
     const status = await get(zeroOnboardingStatus$);
+    signal.throwIfAborted();
     const composeId = status.defaultAgentId;
     if (!composeId) {
       throw new Error("No default agent configured");

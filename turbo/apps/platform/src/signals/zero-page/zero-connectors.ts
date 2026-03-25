@@ -104,6 +104,7 @@ export const saveZeroConnectors$ = command(
 const syncConnectorsToCompose$ = command(
   async ({ get, set }, connectorValues: string[], signal: AbortSignal) => {
     const agent = await get(zeroAgent$);
+    signal.throwIfAborted();
     if (!agent) {
       throw new Error("No agent available");
     }
@@ -127,6 +128,7 @@ const syncConnectorsToCompose$ = command(
     }
 
     await set(reloadOnboardingStatus$);
+    signal.throwIfAborted();
     set(internalComposeReload$, (x) => x + 1);
   },
 );

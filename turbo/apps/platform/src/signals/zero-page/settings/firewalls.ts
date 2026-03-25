@@ -55,6 +55,7 @@ export const saveFirewallPolicies$ = command(
       body: { agentId: agentName, policies },
     });
 
+    signal.throwIfAborted();
     if (result.status !== 200) {
       const detail =
         result.status === 400 ||

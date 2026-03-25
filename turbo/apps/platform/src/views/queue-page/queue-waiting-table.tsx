@@ -1,9 +1,10 @@
-import { useSet } from "ccstate-react";
+import { useGet, useSet } from "ccstate-react";
 import { cn } from "@vm0/ui";
 import {
   cancelQueueRun$,
   type QueueEntry,
 } from "../../signals/queue-page/queue-signals.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 import { Link } from "../router/link.tsx";
 
 const ROW_GRID =
@@ -40,6 +41,7 @@ export function QueueWaitingTable({
   estimatedTimePerRun,
 }: QueueWaitingTableProps) {
   const cancelRun = useSet(cancelQueueRun$);
+  const pageSignal = useGet(pageSignal$);
   return (
     <div>
       <p className="text-sm font-medium text-muted-foreground mb-2 px-1">
@@ -110,7 +112,7 @@ export function QueueWaitingTable({
                     <button
                       type="button"
                       className="text-sm text-destructive hover:underline"
-                      onClick={() => void cancelRun(runId)}
+                      onClick={() => void cancelRun(runId, pageSignal)}
                     >
                       Cancel
                     </button>

@@ -309,6 +309,7 @@ export function ZeroOnboarding({
   const onboardingError = useGet(zeroOnboardingError$);
   const clearOnboardingError = useSet(clearZeroOnboardingError$);
   const reloadBilling = useSet(reloadBillingStatus$);
+  const pageSignal = useGet(pageSignal$);
   const selectedConnectorType = useGet(selectedConnectorType$);
   const setSelected = useSet(setSelectedConnectorType$);
   const slackData = useGet(slackOrgData$);
@@ -365,7 +366,11 @@ export function ZeroOnboarding({
         navigate("/");
         startNewSession();
         detach(
-          sendMessage("Who are you and what can you do?"),
+          sendMessage(
+            "Who are you and what can you do?",
+            undefined,
+            pageSignal,
+          ),
           Reason.DomCallback,
         );
         dismissOnboarding();
@@ -603,7 +608,7 @@ export function MemberWelcome({
   const handleOpenSlack = () => {
     detach(
       (async () => {
-        await completeMember();
+        await completeMember(pageSignal);
         navigate("/works");
       })(),
       Reason.DomCallback,
@@ -613,11 +618,11 @@ export function MemberWelcome({
   const handleContinueWeb = () => {
     detach(
       (async () => {
-        await completeMember();
+        await completeMember(pageSignal);
         navigate("/");
         startNewSession();
         detach(
-          sendIntro("Who are you and what can you do?"),
+          sendIntro("Who are you and what can you do?", undefined, pageSignal),
           Reason.DomCallback,
         );
       })(),

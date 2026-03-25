@@ -108,7 +108,7 @@ describe("zero-chat signals", () => {
       );
 
       await setup();
-      await context.store.set(fetchZeroSessionList$);
+      await context.store.set(fetchZeroSessionList$, context.signal);
 
       const threads = context.store.get(zeroSessionList$);
       expect(threads).toHaveLength(2);
@@ -129,7 +129,7 @@ describe("zero-chat signals", () => {
       );
 
       await setup();
-      await context.store.set(fetchZeroSessionList$);
+      await context.store.set(fetchZeroSessionList$, context.signal);
 
       expect(context.store.get(zeroSessionListError$)).toBe(
         "Failed to load chats (500)",
@@ -147,7 +147,7 @@ describe("zero-chat signals", () => {
       );
 
       await setup();
-      await context.store.set(fetchZeroSessionList$);
+      await context.store.set(fetchZeroSessionList$, context.signal);
 
       const url = new URL(capturedUrl);
       expect(url.searchParams.get("agentId")).toBe("mock-compose-id");
@@ -276,7 +276,7 @@ describe("zero-chat signals", () => {
       await setup();
 
       const sendPromise = context.store
-        .set(sendZeroChatMessage$, "Start polling")
+        .set(sendZeroChatMessage$, "Start polling", undefined, context.signal)
         .catch(() => {});
 
       await delay(50);
@@ -358,7 +358,12 @@ describe("zero-chat signals", () => {
       await setup();
 
       // Send a message to populate messages
-      await context.store.set(sendZeroChatMessage$, "Hello");
+      await context.store.set(
+        sendZeroChatMessage$,
+        "Hello",
+        undefined,
+        context.signal,
+      );
       await delay(50);
       expect(
         (await context.store.get(zeroChatMessages$)).length,
@@ -420,7 +425,7 @@ describe("zero-chat signals", () => {
       await setup();
 
       const sendPromise = context.store
-        .set(sendZeroChatMessage$, "Start polling")
+        .set(sendZeroChatMessage$, "Start polling", undefined, context.signal)
         .catch(() => {});
 
       await delay(50);
@@ -496,7 +501,12 @@ describe("zero-chat signals", () => {
       );
 
       await setup();
-      await context.store.set(sendZeroChatMessage$, "What can you do?");
+      await context.store.set(
+        sendZeroChatMessage$,
+        "What can you do?",
+        undefined,
+        context.signal,
+      );
 
       expect(threadCreated).toBeTruthy();
       expect(runAssociated).toBeTruthy();
@@ -527,7 +537,12 @@ describe("zero-chat signals", () => {
       );
 
       await setup();
-      await context.store.set(sendZeroChatMessage$, "Hello");
+      await context.store.set(
+        sendZeroChatMessage$,
+        "Hello",
+        undefined,
+        context.signal,
+      );
 
       const messages = await context.store.get(zeroChatMessages$);
       const lastMsg = messages[messages.length - 1];
@@ -553,7 +568,12 @@ describe("zero-chat signals", () => {
       );
 
       await setup();
-      await context.store.set(sendZeroChatMessage$, "Hello");
+      await context.store.set(
+        sendZeroChatMessage$,
+        "Hello",
+        undefined,
+        context.signal,
+      );
 
       const messages = await context.store.get(zeroChatMessages$);
       const lastMsg = messages[messages.length - 1];
@@ -572,7 +592,12 @@ describe("zero-chat signals", () => {
       );
 
       await setup();
-      await context.store.set(sendZeroChatMessage$, "Hello");
+      await context.store.set(
+        sendZeroChatMessage$,
+        "Hello",
+        undefined,
+        context.signal,
+      );
 
       const messages = await context.store.get(zeroChatMessages$);
       const lastMsg = messages[messages.length - 1];
@@ -588,7 +613,12 @@ describe("zero-chat signals", () => {
       );
 
       await setup();
-      await context.store.set(sendZeroChatMessage$, "Hello");
+      await context.store.set(
+        sendZeroChatMessage$,
+        "Hello",
+        undefined,
+        context.signal,
+      );
 
       const messages = await context.store.get(zeroChatMessages$);
       const lastMsg = messages[messages.length - 1];
@@ -606,7 +636,12 @@ describe("zero-chat signals", () => {
       );
 
       await setup();
-      await context.store.set(sendZeroChatMessage$, "   ");
+      await context.store.set(
+        sendZeroChatMessage$,
+        "   ",
+        undefined,
+        context.signal,
+      );
 
       expect(runCalled).toBeFalsy();
       await expect(context.store.get(zeroChatMessages$)).resolves.toHaveLength(
@@ -678,7 +713,12 @@ describe("zero-chat signals", () => {
       await context.store.set(loadSessionFromSnapshot$, context.signal);
 
       // Now send a follow-up — should NOT create a new thread
-      await context.store.set(sendZeroChatMessage$, "Follow up");
+      await context.store.set(
+        sendZeroChatMessage$,
+        "Follow up",
+        undefined,
+        context.signal,
+      );
 
       expect(threadCreateCalled).toBeFalsy();
       expect(capturedRunBody).toBeTruthy();
@@ -806,7 +846,7 @@ describe("zero-chat signals", () => {
 
       // Start a send — this puts the system into "sending" state
       const sendPromise = context.store
-        .set(sendZeroChatMessage$, "first message")
+        .set(sendZeroChatMessage$, "first message", undefined, context.signal)
         .catch(() => {});
 
       await delay(50);
@@ -866,7 +906,7 @@ describe("zero-chat signals", () => {
       await setup();
 
       const sendPromise = context.store
-        .set(sendZeroChatMessage$, "first")
+        .set(sendZeroChatMessage$, "first", undefined, context.signal)
         .catch(() => {});
 
       await delay(50);
@@ -910,7 +950,7 @@ describe("zero-chat signals", () => {
       await setup();
 
       const sendPromise = context.store
-        .set(sendZeroChatMessage$, "first")
+        .set(sendZeroChatMessage$, "first", undefined, context.signal)
         .catch(() => {});
 
       await delay(50);
@@ -982,7 +1022,7 @@ describe("zero-chat signals", () => {
       await setup();
 
       const sendPromise = context.store
-        .set(sendZeroChatMessage$, "first message")
+        .set(sendZeroChatMessage$, "first message", undefined, context.signal)
         .catch(() => {});
 
       await delay(50);
@@ -1043,7 +1083,7 @@ describe("zero-chat signals", () => {
       await setup();
 
       const sendPromise = context.store
-        .set(sendZeroChatMessage$, "first message")
+        .set(sendZeroChatMessage$, "first message", undefined, context.signal)
         .catch(() => {});
 
       await delay(50);
@@ -1055,7 +1095,7 @@ describe("zero-chat signals", () => {
 
       // Cancel the active run — aborts the send signal, pending message
       // is auto-withdrawn back to input (not auto-sent)
-      await context.store.set(cancelActiveRun$);
+      await context.store.set(cancelActiveRun$, context.signal);
       await sendPromise;
 
       // The queued message should be withdrawn back to input
@@ -1095,7 +1135,11 @@ describe("zero-chat signals", () => {
       useUploadHandler();
       await setup();
 
-      await context.store.set(uploadZeroAttachment$, createTestFile());
+      await context.store.set(
+        uploadZeroAttachment$,
+        createTestFile(),
+        context.signal,
+      );
 
       const attachments = context.store.get(zeroChatAttachments$);
       expect(attachments).toHaveLength(1);
@@ -1109,7 +1153,7 @@ describe("zero-chat signals", () => {
       await setup();
 
       const uploadPromise = context.store
-        .set(uploadZeroAttachment$, createTestFile())
+        .set(uploadZeroAttachment$, createTestFile(), context.signal)
         .catch(() => {});
 
       // Wait for the placeholder to appear
@@ -1132,7 +1176,11 @@ describe("zero-chat signals", () => {
       useUploadHandler();
       await setup();
 
-      await context.store.set(uploadZeroAttachment$, createTestFile());
+      await context.store.set(
+        uploadZeroAttachment$,
+        createTestFile(),
+        context.signal,
+      );
 
       const attachments = context.store.get(zeroChatAttachments$);
       expect(attachments).toHaveLength(1);
@@ -1165,10 +1213,18 @@ describe("zero-chat signals", () => {
       await setup();
 
       const promise1 = context.store
-        .set(uploadZeroAttachment$, createTestFile("file-a.png"))
+        .set(
+          uploadZeroAttachment$,
+          createTestFile("file-a.png"),
+          context.signal,
+        )
         .catch(() => {});
       const promise2 = context.store
-        .set(uploadZeroAttachment$, createTestFile("file-b.png"))
+        .set(
+          uploadZeroAttachment$,
+          createTestFile("file-b.png"),
+          context.signal,
+        )
         .catch(() => {});
 
       // Wait for both placeholders
@@ -1197,7 +1253,11 @@ describe("zero-chat signals", () => {
       );
       await setup();
 
-      await context.store.set(uploadZeroAttachment$, createTestFile());
+      await context.store.set(
+        uploadZeroAttachment$,
+        createTestFile(),
+        context.signal,
+      );
 
       expect(context.store.get(zeroChatAttachments$)).toHaveLength(0);
     });

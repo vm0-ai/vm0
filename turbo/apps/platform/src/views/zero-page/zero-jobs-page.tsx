@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   IconCrown,
   IconLoader2,
@@ -50,6 +51,7 @@ export function ZeroJobsPage() {
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
   const createSubagent = useSet(createSubagent$);
+  const pageSignal = useGet(pageSignal$);
 
   const handleCreateTeammate = () => {
     const trimmed = newName.trim();
@@ -58,7 +60,7 @@ export function ZeroJobsPage() {
     }
     setCreating(true);
     detach(
-      createSubagent(trimmed).then(
+      createSubagent(trimmed, pageSignal).then(
         () => {
           setDialogOpen(false);
           setNewName("");

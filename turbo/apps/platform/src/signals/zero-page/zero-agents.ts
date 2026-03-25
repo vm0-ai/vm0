@@ -34,6 +34,7 @@ export const createSubagent$ = command(
       connectors: [],
       displayName,
     });
+    signal.throwIfAborted();
 
     // Refresh the agents list so the new agent appears immediately
     await set(fetchAgentsList$, signal);

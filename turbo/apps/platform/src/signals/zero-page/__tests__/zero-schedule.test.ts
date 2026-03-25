@@ -96,7 +96,7 @@ describe("zero-schedule signals", () => {
       );
 
       await setup();
-      await context.store.set(fetchZeroSchedules$);
+      await context.store.set(fetchZeroSchedules$, context.signal);
 
       const entries = context.store.get(zeroScheduleEntries$);
       expect(entries).toHaveLength(2);
@@ -112,7 +112,7 @@ describe("zero-schedule signals", () => {
       );
 
       await setup();
-      await context.store.set(fetchZeroSchedules$);
+      await context.store.set(fetchZeroSchedules$, context.signal);
 
       const entries = context.store.get(zeroScheduleEntries$);
       expect(entries[0]?.time).toBe("Every weekday at 9:00 AM");
@@ -126,7 +126,7 @@ describe("zero-schedule signals", () => {
       );
 
       await setup();
-      await context.store.set(fetchZeroSchedules$);
+      await context.store.set(fetchZeroSchedules$, context.signal);
 
       const entries = context.store.get(zeroScheduleEntries$);
       expect(entries[1]?.time).toBe("Every 15 minutes");
@@ -140,7 +140,7 @@ describe("zero-schedule signals", () => {
       );
 
       await setup();
-      await context.store.set(fetchZeroSchedules$);
+      await context.store.set(fetchZeroSchedules$, context.signal);
 
       const entries = context.store.get(zeroScheduleEntries$);
       expect(entries).toHaveLength(0);
@@ -154,7 +154,7 @@ describe("zero-schedule signals", () => {
       );
 
       await setup();
-      await context.store.set(fetchZeroSchedules$);
+      await context.store.set(fetchZeroSchedules$, context.signal);
 
       const entries = context.store.get(zeroScheduleEntries$);
       expect(entries).toHaveLength(0);
@@ -179,15 +179,19 @@ describe("zero-schedule signals", () => {
       );
 
       await setup();
-      await context.store.set(saveZeroSchedule$, {
-        prompt: "Daily standup summary",
-        freq: "every_day",
-        date: "2026-03-15",
-        hour: 9,
-        minute: 0,
-        timezone: "UTC",
-        intervalSeconds: 900,
-      });
+      await context.store.set(
+        saveZeroSchedule$,
+        {
+          prompt: "Daily standup summary",
+          freq: "every_day",
+          date: "2026-03-15",
+          hour: 9,
+          minute: 0,
+          timezone: "UTC",
+          intervalSeconds: 900,
+        },
+        context.signal,
+      );
 
       expect(captured.body).not.toBeNull();
       expect(captured.body?.agentId).toBe("mock-compose-id");
@@ -214,15 +218,19 @@ describe("zero-schedule signals", () => {
       );
 
       await setup();
-      await context.store.set(saveZeroSchedule$, {
-        prompt: "Check inbox",
-        freq: "every_n_minutes",
-        date: "2026-03-15",
-        hour: 9,
-        minute: 0,
-        timezone: "UTC",
-        intervalSeconds: 900,
-      });
+      await context.store.set(
+        saveZeroSchedule$,
+        {
+          prompt: "Check inbox",
+          freq: "every_n_minutes",
+          date: "2026-03-15",
+          hour: 9,
+          minute: 0,
+          timezone: "UTC",
+          intervalSeconds: 900,
+        },
+        context.signal,
+      );
 
       expect(captured.body).not.toBeNull();
       expect(captured.body?.intervalSeconds).toBe(900);
@@ -245,16 +253,20 @@ describe("zero-schedule signals", () => {
       );
 
       await setup();
-      await context.store.set(saveZeroSchedule$, {
-        prompt: "Updated prompt",
-        freq: "every_weekday",
-        date: "2026-03-15",
-        hour: 10,
-        minute: 30,
-        timezone: "America/New_York",
-        intervalSeconds: 900,
-        editName: "existing-schedule",
-      });
+      await context.store.set(
+        saveZeroSchedule$,
+        {
+          prompt: "Updated prompt",
+          freq: "every_weekday",
+          date: "2026-03-15",
+          hour: 10,
+          minute: 30,
+          timezone: "America/New_York",
+          intervalSeconds: 900,
+          editName: "existing-schedule",
+        },
+        context.signal,
+      );
 
       expect(captured.body?.name).toBe("existing-schedule");
       expect(captured.body?.cronExpression).toBe("30 10 * * 1-5");
@@ -277,15 +289,19 @@ describe("zero-schedule signals", () => {
       );
 
       await setup();
-      await context.store.set(saveZeroSchedule$, {
-        prompt: "One-time task",
-        freq: "once",
-        date: "2030-06-15",
-        hour: 14,
-        minute: 30,
-        timezone: "UTC",
-        intervalSeconds: 0,
-      });
+      await context.store.set(
+        saveZeroSchedule$,
+        {
+          prompt: "One-time task",
+          freq: "once",
+          date: "2030-06-15",
+          hour: 14,
+          minute: 30,
+          timezone: "UTC",
+          intervalSeconds: 0,
+        },
+        context.signal,
+      );
 
       expect(captured.body).not.toBeNull();
       expect(captured.body?.atTime).toBeDefined();
@@ -310,16 +326,20 @@ describe("zero-schedule signals", () => {
       );
 
       await setup();
-      await context.store.set(saveZeroSchedule$, {
-        prompt: "Weekly report",
-        freq: "every_week",
-        date: "2026-03-15",
-        hour: 10,
-        minute: 0,
-        timezone: "UTC",
-        intervalSeconds: 0,
-        dayOfWeek: "5",
-      });
+      await context.store.set(
+        saveZeroSchedule$,
+        {
+          prompt: "Weekly report",
+          freq: "every_week",
+          date: "2026-03-15",
+          hour: 10,
+          minute: 0,
+          timezone: "UTC",
+          intervalSeconds: 0,
+          dayOfWeek: "5",
+        },
+        context.signal,
+      );
 
       expect(captured.body).not.toBeNull();
       expect(captured.body?.cronExpression).toBe("0 10 * * 5");
@@ -342,16 +362,20 @@ describe("zero-schedule signals", () => {
       );
 
       await setup();
-      await context.store.set(saveZeroSchedule$, {
-        prompt: "Monthly review",
-        freq: "every_month",
-        date: "2026-03-15",
-        hour: 9,
-        minute: 0,
-        timezone: "UTC",
-        intervalSeconds: 0,
-        dayOfMonth: "15",
-      });
+      await context.store.set(
+        saveZeroSchedule$,
+        {
+          prompt: "Monthly review",
+          freq: "every_month",
+          date: "2026-03-15",
+          hour: 9,
+          minute: 0,
+          timezone: "UTC",
+          intervalSeconds: 0,
+          dayOfMonth: "15",
+        },
+        context.signal,
+      );
 
       expect(captured.body).not.toBeNull();
       expect(captured.body?.cronExpression).toBe("0 9 15 * *");
@@ -374,18 +398,22 @@ describe("zero-schedule signals", () => {
       );
 
       await setup();
-      await context.store.set(saveZeroSchedule$, {
-        prompt: "Notify test",
-        freq: "every_day",
-        date: "2026-03-15",
-        hour: 9,
-        minute: 0,
-        timezone: "UTC",
-        intervalSeconds: 0,
-        notifyEmail: false,
-        notifySlack: true,
-        slackChannelId: "C999",
-      });
+      await context.store.set(
+        saveZeroSchedule$,
+        {
+          prompt: "Notify test",
+          freq: "every_day",
+          date: "2026-03-15",
+          hour: 9,
+          minute: 0,
+          timezone: "UTC",
+          intervalSeconds: 0,
+          notifyEmail: false,
+          notifySlack: true,
+          slackChannelId: "C999",
+        },
+        context.signal,
+      );
 
       expect(captured.body).not.toBeNull();
       expect(captured.body?.notifyEmail).toBeFalsy();
@@ -410,16 +438,20 @@ describe("zero-schedule signals", () => {
       );
 
       await setup();
-      await context.store.set(saveZeroSchedule$, {
-        prompt: "Described task",
-        description: "Custom description here",
-        freq: "every_day",
-        date: "2026-03-15",
-        hour: 9,
-        minute: 0,
-        timezone: "UTC",
-        intervalSeconds: 0,
-      });
+      await context.store.set(
+        saveZeroSchedule$,
+        {
+          prompt: "Described task",
+          description: "Custom description here",
+          freq: "every_day",
+          date: "2026-03-15",
+          hour: 9,
+          minute: 0,
+          timezone: "UTC",
+          intervalSeconds: 0,
+        },
+        context.signal,
+      );
 
       expect(captured.body).not.toBeNull();
       expect(captured.body?.description).toBe("Custom description here");
@@ -437,15 +469,19 @@ describe("zero-schedule signals", () => {
 
       await setup();
       await expect(
-        context.store.set(saveZeroSchedule$, {
-          prompt: "Bad save",
-          freq: "every_day",
-          date: "2026-03-15",
-          hour: 9,
-          minute: 0,
-          timezone: "Invalid/TZ",
-          intervalSeconds: 0,
-        }),
+        context.store.set(
+          saveZeroSchedule$,
+          {
+            prompt: "Bad save",
+            freq: "every_day",
+            date: "2026-03-15",
+            hour: 9,
+            minute: 0,
+            timezone: "Invalid/TZ",
+            intervalSeconds: 0,
+          },
+          context.signal,
+        ),
       ).rejects.toThrow("Invalid timezone");
     });
   });
@@ -472,10 +508,14 @@ describe("zero-schedule signals", () => {
       );
 
       await setup();
-      await context.store.set(toggleZeroScheduleEnabled$, {
-        name: "morning-briefing",
-        enabled: true,
-      });
+      await context.store.set(
+        toggleZeroScheduleEnabled$,
+        {
+          name: "morning-briefing",
+          enabled: true,
+        },
+        context.signal,
+      );
 
       expect(captured.action).toBe("enable");
       expect(captured.body?.agentId).toBe("mock-compose-id");
@@ -498,10 +538,14 @@ describe("zero-schedule signals", () => {
       );
 
       await setup();
-      await context.store.set(toggleZeroScheduleEnabled$, {
-        name: "morning-briefing",
-        enabled: false,
-      });
+      await context.store.set(
+        toggleZeroScheduleEnabled$,
+        {
+          name: "morning-briefing",
+          enabled: false,
+        },
+        context.signal,
+      );
 
       expect(captured.action).toBe("disable");
     });
@@ -521,10 +565,14 @@ describe("zero-schedule signals", () => {
 
       await setup();
       await expect(
-        context.store.set(toggleZeroScheduleEnabled$, {
-          name: "nonexistent",
-          enabled: true,
-        }),
+        context.store.set(
+          toggleZeroScheduleEnabled$,
+          {
+            name: "nonexistent",
+            enabled: true,
+          },
+          context.signal,
+        ),
       ).rejects.toThrow("Failed to enable schedule (404)");
     });
   });
@@ -544,7 +592,11 @@ describe("zero-schedule signals", () => {
       );
 
       await setup();
-      const runId = await context.store.set(runScheduleNow$, "sched-1");
+      const runId = await context.store.set(
+        runScheduleNow$,
+        "sched-1",
+        context.signal,
+      );
 
       expect(capturedBody).not.toBeNull();
       expect(capturedBody!["scheduleId"]).toBe("sched-1");
@@ -563,7 +615,7 @@ describe("zero-schedule signals", () => {
 
       await setup();
       await expect(
-        context.store.set(runScheduleNow$, "nonexistent-id"),
+        context.store.set(runScheduleNow$, "nonexistent-id", context.signal),
       ).rejects.toThrow("Schedule not found");
     });
 
@@ -579,7 +631,7 @@ describe("zero-schedule signals", () => {
 
       await setup();
       await expect(
-        context.store.set(runScheduleNow$, "sched-1"),
+        context.store.set(runScheduleNow$, "sched-1", context.signal),
       ).rejects.toThrow("Previous run is still active");
     });
   });
@@ -617,7 +669,7 @@ describe("zero-schedule signals", () => {
       );
 
       await setup();
-      await context.store.set(fetchZeroSchedules$);
+      await context.store.set(fetchZeroSchedules$, context.signal);
 
       const entries = context.store.get(zeroScheduleEntries$);
       expect(entries).toHaveLength(1);
@@ -656,7 +708,7 @@ describe("zero-schedule signals", () => {
       );
 
       await setup();
-      await context.store.set(fetchZeroSchedules$);
+      await context.store.set(fetchZeroSchedules$, context.signal);
 
       const entries = context.store.get(zeroScheduleEntries$);
       expect(entries[0]?.time).toBe("Every day at 2:00 PM");
@@ -694,7 +746,7 @@ describe("zero-schedule signals", () => {
       );
 
       await setup();
-      await context.store.set(fetchZeroSchedules$);
+      await context.store.set(fetchZeroSchedules$, context.signal);
 
       const entries = context.store.get(zeroScheduleEntries$);
       expect(entries[0]?.time).toBe("Every month on day 15 at 9:00 AM");
@@ -732,7 +784,7 @@ describe("zero-schedule signals", () => {
       );
 
       await setup();
-      await context.store.set(fetchZeroSchedules$);
+      await context.store.set(fetchZeroSchedules$, context.signal);
 
       const entries = context.store.get(zeroScheduleEntries$);
       expect(entries[0]?.time).toBe("Every week on Wednesday at 10:00 AM");
@@ -770,7 +822,7 @@ describe("zero-schedule signals", () => {
       );
 
       await setup();
-      await context.store.set(fetchZeroSchedules$);
+      await context.store.set(fetchZeroSchedules$, context.signal);
 
       const entries = context.store.get(zeroScheduleEntries$);
       expect(entries[0]?.description).toBe("A detailed description");
@@ -808,7 +860,7 @@ describe("zero-schedule signals", () => {
       );
 
       await setup();
-      await context.store.set(fetchZeroSchedules$);
+      await context.store.set(fetchZeroSchedules$, context.signal);
 
       const entries = context.store.get(zeroScheduleEntries$);
       expect(entries[0]?.notifyEmail).toBeFalsy();
@@ -838,7 +890,11 @@ describe("zero-schedule signals", () => {
       );
 
       await setup();
-      await context.store.set(deleteZeroSchedule$, "morning-briefing");
+      await context.store.set(
+        deleteZeroSchedule$,
+        "morning-briefing",
+        context.signal,
+      );
 
       expect(deletedName).toBe("morning-briefing");
       expect(deletedAgentId).toBe("mock-compose-id");
@@ -864,7 +920,7 @@ describe("org schedule signals", () => {
       );
 
       await setup();
-      await context.store.set(fetchAllOrgSchedules$);
+      await context.store.set(fetchAllOrgSchedules$, context.signal);
 
       const entries = context.store.get(allOrgScheduleEntries$);
       expect(entries).toHaveLength(3);
@@ -899,16 +955,20 @@ describe("org schedule signals", () => {
       );
 
       await setup();
-      await context.store.set(saveOrgSchedule$, {
-        prompt: "Org-wide daily task",
-        freq: "every_day",
-        date: "2030-01-01",
-        hour: 8,
-        minute: 0,
-        timezone: "UTC",
-        intervalSeconds: 0,
-        agentId: "agent-uuid-123",
-      });
+      await context.store.set(
+        saveOrgSchedule$,
+        {
+          prompt: "Org-wide daily task",
+          freq: "every_day",
+          date: "2030-01-01",
+          hour: 8,
+          minute: 0,
+          timezone: "UTC",
+          intervalSeconds: 0,
+          agentId: "agent-uuid-123",
+        },
+        context.signal,
+      );
 
       expect(captured.body).not.toBeNull();
       expect(captured.body?.agentId).toBe("agent-uuid-123");
@@ -940,11 +1000,15 @@ describe("org schedule signals", () => {
       );
 
       await setup();
-      await context.store.set(toggleOrgScheduleEnabled$, {
-        name: "morning-briefing",
-        enabled: false,
-        agentId: "agent-uuid-123",
-      });
+      await context.store.set(
+        toggleOrgScheduleEnabled$,
+        {
+          name: "morning-briefing",
+          enabled: false,
+          agentId: "agent-uuid-123",
+        },
+        context.signal,
+      );
 
       expect(captured.action).toBe("disable");
       expect(captured.body?.agentId).toBe("agent-uuid-123");
@@ -973,10 +1037,14 @@ describe("org schedule signals", () => {
       );
 
       await setup();
-      await context.store.set(deleteOrgSchedule$, {
-        name: "morning-briefing",
-        agentId: "agent-uuid-123",
-      });
+      await context.store.set(
+        deleteOrgSchedule$,
+        {
+          name: "morning-briefing",
+          agentId: "agent-uuid-123",
+        },
+        context.signal,
+      );
 
       expect(deletedName).toBe("morning-briefing");
       expect(deletedAgentId).toBe("agent-uuid-123");

@@ -1,4 +1,5 @@
 import { useGet, useSet, useLoadable } from "ccstate-react";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   IconCircleCheck,
   IconDotsVertical,
@@ -126,6 +127,7 @@ function SlackCard({ agentName }: { agentName: string }) {
   const slackData = useGet(slackOrgData$);
   const disconnect = useSet(disconnectSlackOrg$);
   const uninstall = useSet(uninstallSlackOrg$);
+  const pageSignal = useGet(pageSignal$);
 
   const showUninstallDialog = useGet(showUninstallDialog$);
   const setShowUninstallDialog = useSet(setShowUninstallDialog$);
@@ -154,7 +156,9 @@ function SlackCard({ agentName }: { agentName: string }) {
           isAdmin={isAdmin}
           installUrl={slackData?.installUrl}
           connectUrl={slackData?.connectUrl}
-          onDisconnect={() => detach(disconnect(), Reason.DomCallback)}
+          onDisconnect={() =>
+            detach(disconnect(pageSignal), Reason.DomCallback)
+          }
           onUninstall={() => setShowUninstallDialog(true)}
         />
       </div>
@@ -181,7 +185,7 @@ function SlackCard({ agentName }: { agentName: string }) {
               variant="destructive"
               onClick={() => {
                 setShowUninstallDialog(false);
-                detach(uninstall(), Reason.DomCallback);
+                detach(uninstall(pageSignal), Reason.DomCallback);
               }}
             >
               Uninstall

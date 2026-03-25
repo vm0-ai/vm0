@@ -1,4 +1,5 @@
 import { useGet, useSet, useLoadable } from "ccstate-react";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   IconSun,
   IconMoon,
@@ -98,9 +99,10 @@ function SendModeSettings() {
     prefsLoadable.state === "hasData" ? prefsLoadable.data : "enter";
   const saving = useGet(sendModeSaving$);
   const saveSendMode = useSet(updateSendMode$);
+  const pageSignal = useGet(pageSignal$);
 
   const handleChange = (value: SendMode) => {
-    detach(saveSendMode(value), Reason.DomCallback);
+    detach(saveSendMode(value, pageSignal), Reason.DomCallback);
   };
 
   return (

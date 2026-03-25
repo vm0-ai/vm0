@@ -94,6 +94,10 @@ export const config = [
       "turbo/no-undeclared-env-vars": "warn",
       complexity: ["error", { max: 20 }],
       "vm0/no-msw-bypass": "error",
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
     },
   },
   {

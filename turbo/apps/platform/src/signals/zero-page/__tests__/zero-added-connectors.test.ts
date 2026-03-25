@@ -118,7 +118,7 @@ describe("addZeroConnector$", () => {
     await setupPage({ context, path: "/", withoutRender: true });
 
     // Add connector locally (deferred save pattern)
-    await context.store.set(addZeroConnector$, "github");
+    await context.store.set(addZeroConnector$, "github", context.signal);
 
     // Local state should include both connectors
     const connectors = await context.store.get(zeroAddedConnectors$);
@@ -126,7 +126,7 @@ describe("addZeroConnector$", () => {
     expect(connectors).toContain("github");
 
     // Save triggers the zero agents API
-    await context.store.set(saveZeroConnectors$);
+    await context.store.set(saveZeroConnectors$, context.signal);
 
     expect(capturedBody).not.toBeNull();
     // Connectors are sent as short names

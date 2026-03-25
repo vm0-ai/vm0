@@ -86,7 +86,7 @@ describe("slack-connect-page signals", () => {
         new URLSearchParams("w=ws1&u=user1"),
       );
 
-      await context.store.set(connectSlackAccount$);
+      await context.store.set(connectSlackAccount$, context.signal);
 
       expect(context.store.get(slackConnectStatus$)).toBe("success");
     });
@@ -100,7 +100,7 @@ describe("slack-connect-page signals", () => {
         new URLSearchParams("w=ws1&u=user1"),
       );
 
-      await context.store.set(connectSlackAccount$);
+      await context.store.set(connectSlackAccount$, context.signal);
 
       expect(context.store.get(slackConnectStatus$)).toBe("error");
       expect(context.store.get(effectiveError$)).toBe("Account already linked");
@@ -109,7 +109,7 @@ describe("slack-connect-page signals", () => {
     it("should not connect without workspace and user params", async () => {
       await setup("/slack/connect");
 
-      await context.store.set(connectSlackAccount$);
+      await context.store.set(connectSlackAccount$, context.signal);
 
       expect(context.store.get(slackConnectStatus$)).toBe("idle");
     });

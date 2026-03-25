@@ -1,5 +1,6 @@
 import { OrganizationSwitcher } from "@clerk/clerk-react";
 import { useGet, useSet } from "ccstate-react";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 import { watchOrgSwitch$ } from "../../signals/auth.ts";
 import { onRef } from "../../signals/utils.ts";
 import {
@@ -16,6 +17,7 @@ export function ClerkOrgSwitcher() {
   const patchRef = useSet(patchRef$);
   const dialogOpen = useGet(orgManageDialogOpen$);
   const setDialogOpen = useSet(setOrgManageDialogOpen$);
+  const pageSignal = useGet(pageSignal$);
 
   return (
     <>
@@ -46,7 +48,7 @@ export function ClerkOrgSwitcher() {
       </div>
       <OrgManageDialog
         open={dialogOpen}
-        onOpenChange={(open) => void setDialogOpen(open)}
+        onOpenChange={(open) => void setDialogOpen(open, pageSignal)}
       />
     </>
   );

@@ -76,7 +76,7 @@ describe("slack schedule notification signals", () => {
   describe("fetchSlackChannels$", () => {
     it("should fetch channels when slack is installed", async () => {
       await setup();
-      await context.store.set(fetchSlackChannels$);
+      await context.store.set(fetchSlackChannels$, context.signal);
 
       const channels = context.store.get(slackChannels$);
       expect(channels.length).toBeGreaterThan(0);
@@ -94,7 +94,7 @@ describe("slack schedule notification signals", () => {
       );
 
       await setup();
-      await context.store.set(fetchSlackChannels$);
+      await context.store.set(fetchSlackChannels$, context.signal);
 
       const channels = context.store.get(slackChannels$);
       expect(channels).toHaveLength(0);
@@ -106,7 +106,7 @@ describe("slack schedule notification signals", () => {
       await setup();
       context.store.set(setAddScheduleOpen$, true);
       // wait for the async fetch triggered by dialog open
-      await context.store.set(fetchSlackChannels$);
+      await context.store.set(fetchSlackChannels$, context.signal);
 
       const channels = context.store.get(slackChannels$);
       expect(channels.length).toBeGreaterThan(0);
@@ -115,7 +115,7 @@ describe("slack schedule notification signals", () => {
     it("should fetch channels when edit schedule dialog opens", async () => {
       await setup();
       context.store.set(setEditingScheduleId$, "sched-1");
-      await context.store.set(fetchSlackChannels$);
+      await context.store.set(fetchSlackChannels$, context.signal);
 
       const channels = context.store.get(slackChannels$);
       expect(channels.length).toBeGreaterThan(0);
@@ -135,7 +135,7 @@ describe("slack schedule notification signals", () => {
       );
 
       await setup();
-      await context.store.set(fetchAllOrgSchedules$);
+      await context.store.set(fetchAllOrgSchedules$, context.signal);
 
       const entries = context.store.get(allOrgScheduleEntries$);
       expect(entries).toHaveLength(1);
@@ -158,7 +158,7 @@ describe("slack schedule notification signals", () => {
       );
 
       await setup();
-      await context.store.set(fetchAllOrgSchedules$);
+      await context.store.set(fetchAllOrgSchedules$, context.signal);
 
       const entries = context.store.get(allOrgScheduleEntries$);
       expect(entries[0]?.notifySlack).toBeTruthy();
@@ -174,7 +174,7 @@ describe("slack schedule notification signals", () => {
       expect(data?.isInstalled).toBeTruthy();
 
       context.store.set(setAddScheduleOpen$, true);
-      await context.store.set(fetchSlackChannels$);
+      await context.store.set(fetchSlackChannels$, context.signal);
 
       const channels = context.store.get(slackChannels$);
       expect(channels).toHaveLength(2);
@@ -186,7 +186,7 @@ describe("slack schedule notification signals", () => {
       await setup("/schedule");
 
       context.store.set(setEditingScheduleId$, "sched-1");
-      await context.store.set(fetchSlackChannels$);
+      await context.store.set(fetchSlackChannels$, context.signal);
 
       const channels = context.store.get(slackChannels$);
       expect(channels).toHaveLength(2);
@@ -226,7 +226,7 @@ describe("slack schedule notification signals", () => {
       expect(data?.isInstalled).toBeFalsy();
 
       context.store.set(setAddScheduleOpen$, true);
-      await context.store.set(fetchSlackChannels$);
+      await context.store.set(fetchSlackChannels$, context.signal);
 
       const channels = context.store.get(slackChannels$);
       expect(channels).toHaveLength(0);
@@ -241,7 +241,7 @@ describe("slack schedule notification signals", () => {
       expect(data?.isInstalled).toBeTruthy();
 
       context.store.set(setAddScheduleOpen$, true);
-      await context.store.set(fetchSlackChannels$);
+      await context.store.set(fetchSlackChannels$, context.signal);
 
       const channels = context.store.get(slackChannels$);
       expect(channels).toHaveLength(2);
@@ -252,7 +252,7 @@ describe("slack schedule notification signals", () => {
       await setup("/team/zero");
 
       context.store.set(setEditingScheduleId$, "sched-1");
-      await context.store.set(fetchSlackChannels$);
+      await context.store.set(fetchSlackChannels$, context.signal);
 
       const channels = context.store.get(slackChannels$);
       expect(channels).toHaveLength(2);
@@ -292,7 +292,7 @@ describe("slack schedule notification signals", () => {
       expect(data?.isInstalled).toBeFalsy();
 
       context.store.set(setAddScheduleOpen$, true);
-      await context.store.set(fetchSlackChannels$);
+      await context.store.set(fetchSlackChannels$, context.signal);
 
       const channels = context.store.get(slackChannels$);
       expect(channels).toHaveLength(0);
@@ -321,18 +321,22 @@ describe("slack schedule notification signals", () => {
       );
 
       await setup();
-      await context.store.set(saveOrgSchedule$, {
-        prompt: "Post to channel",
-        freq: "every_day",
-        date: "2030-01-01",
-        hour: 9,
-        minute: 0,
-        timezone: "UTC",
-        intervalSeconds: 0,
-        agentId: "agent-1",
-        notifySlack: true,
-        slackChannelId: "C-ALERTS",
-      });
+      await context.store.set(
+        saveOrgSchedule$,
+        {
+          prompt: "Post to channel",
+          freq: "every_day",
+          date: "2030-01-01",
+          hour: 9,
+          minute: 0,
+          timezone: "UTC",
+          intervalSeconds: 0,
+          agentId: "agent-1",
+          notifySlack: true,
+          slackChannelId: "C-ALERTS",
+        },
+        context.signal,
+      );
 
       expect(captured.body).not.toBeNull();
       expect(captured.body?.notifySlack).toBeTruthy();
@@ -360,18 +364,22 @@ describe("slack schedule notification signals", () => {
       );
 
       await setup();
-      await context.store.set(saveOrgSchedule$, {
-        prompt: "DM notification",
-        freq: "every_day",
-        date: "2030-01-01",
-        hour: 9,
-        minute: 0,
-        timezone: "UTC",
-        intervalSeconds: 0,
-        agentId: "agent-1",
-        notifySlack: true,
-        slackChannelId: null,
-      });
+      await context.store.set(
+        saveOrgSchedule$,
+        {
+          prompt: "DM notification",
+          freq: "every_day",
+          date: "2030-01-01",
+          hour: 9,
+          minute: 0,
+          timezone: "UTC",
+          intervalSeconds: 0,
+          agentId: "agent-1",
+          notifySlack: true,
+          slackChannelId: null,
+        },
+        context.signal,
+      );
 
       expect(captured.body).not.toBeNull();
       expect(captured.body?.notifySlack).toBeTruthy();
@@ -399,16 +407,20 @@ describe("slack schedule notification signals", () => {
       );
 
       await setup();
-      await context.store.set(saveOrgSchedule$, {
-        prompt: "No slack",
-        freq: "every_day",
-        date: "2030-01-01",
-        hour: 9,
-        minute: 0,
-        timezone: "UTC",
-        intervalSeconds: 0,
-        agentId: "agent-1",
-      });
+      await context.store.set(
+        saveOrgSchedule$,
+        {
+          prompt: "No slack",
+          freq: "every_day",
+          date: "2030-01-01",
+          hour: 9,
+          minute: 0,
+          timezone: "UTC",
+          intervalSeconds: 0,
+          agentId: "agent-1",
+        },
+        context.signal,
+      );
 
       expect(captured.body).not.toBeNull();
       expect(captured.body).not.toHaveProperty("slackChannelId");

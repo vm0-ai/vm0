@@ -1,4 +1,5 @@
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   IconAlertCircle,
   IconLoader2,
@@ -103,6 +104,7 @@ export function ZeroSessionChatPage({
   const queuedMessage = useGet(zeroChatQueuedMessage$);
   const queueMessage = useSet(queueZeroChatMessage$);
   const withdraw = useSet(withdrawQueuedMessage$);
+  const pageSignal = useGet(pageSignal$);
 
   // Pin pill
   const currentChatAgentId = useGet(zeroChatAgentId$);
@@ -115,7 +117,7 @@ export function ZeroSessionChatPage({
   const handlePin = () => {
     if (currentChatAgentId) {
       detach(
-        savePinnedIds([...pinnedIds, currentChatAgentId]),
+        savePinnedIds([...pinnedIds, currentChatAgentId], pageSignal),
         Reason.DomCallback,
       );
     }
@@ -133,7 +135,7 @@ export function ZeroSessionChatPage({
       queueMessage(text, opts);
     } else {
       clearInput();
-      detach(send(text, opts), Reason.DomCallback);
+      detach(send(text, opts, pageSignal), Reason.DomCallback);
     }
   };
 
@@ -241,7 +243,7 @@ export function ZeroSessionChatPage({
               onInputChange={setInput}
               onSend={handleSend}
               sending={sending}
-              onCancel={() => void cancelRun()}
+              onCancel={() => void cancelRun(pageSignal)}
               queuedMessage={queuedMessage}
               onWithdraw={withdraw}
               agentName={agentName}
@@ -596,6 +598,7 @@ interface AssistantMessageProps {
 function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
   const setOrgManageOpen = useSet(setOrgManageDialogOpen$);
   const setTab = useSet(setActiveTab$);
+  const pageSignal = useGet(pageSignal$);
   const avatar = (
     <div className="h-9 w-9 shrink-0 mt-0.5 overflow-hidden rounded-xl">
       <img
@@ -705,7 +708,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
                     className="inline-flex items-center gap-1 text-amber-500 underline underline-offset-2 hover:text-amber-400"
                     onClick={() => {
                       setTab("providers");
-                      setOrgManageOpen(true).catch(() => undefined);
+                      setOrgManageOpen(true, pageSignal).catch(() => undefined);
                     }}
                   >
                     Set one up in Organization Settings

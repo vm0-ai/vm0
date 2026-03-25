@@ -1,4 +1,5 @@
 import { useGet, useSet, useLoadable } from "ccstate-react";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   IconUsers,
   IconCircleDot,
@@ -44,6 +45,7 @@ export function ZeroActivityPage() {
   const goForwardTwo = useSet(goForwardTwoZeroActivityPages$);
   const goBackTwo = useSet(goBackTwoZeroActivityPages$);
   const setRowsPerPage = useSet(setZeroActivityRowsPerPage$);
+  const pageSignal = useGet(pageSignal$);
 
   const agentFilter = useGet(zeroActivityAgentFilter$);
   const statusFilter = useGet(zeroActivityStatusFilter$);
@@ -197,10 +199,12 @@ export function ZeroActivityPage() {
               isLoading={isLoading}
               labelClassName="font-normal text-muted-foreground"
               buttonClassName="bg-transparent border-border/70"
-              onNextPage={() => detach(goToNext(), Reason.DomCallback)}
+              onNextPage={() =>
+                detach(goToNext(pageSignal), Reason.DomCallback)
+              }
               onPrevPage={() => goToPrev()}
               onForwardTwoPages={() =>
-                detach(goForwardTwo(), Reason.DomCallback)
+                detach(goForwardTwo(pageSignal), Reason.DomCallback)
               }
               onBackTwoPages={() => goBackTwo()}
               onRowsPerPageChange={(limit) => setRowsPerPage(limit)}

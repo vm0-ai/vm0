@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { useSet } from "ccstate-react";
+import { useGet, useSet } from "ccstate-react";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   Button,
   Card,
@@ -35,7 +36,7 @@ interface ZeroSettingsTabProps {
   saving: boolean;
   updateSettings$: Command<
     Promise<void>,
-    [{ displayName: string; sound: string; description: string }]
+    [{ displayName: string; sound: string; description: string }, AbortSignal]
   >;
   inputId?: string;
   /** Whether this is the default agent (cannot be deleted). */
@@ -76,13 +77,17 @@ export function ZeroSettingsTab({
   };
 
   const triggerUpdateSettings = useSet(updateSettings$);
+  const pageSignal = useGet(pageSignal$);
 
   const handleSaveSettings = async () => {
-    await triggerUpdateSettings({
-      displayName: agentName,
-      description: desc,
-      sound: tone,
-    });
+    await triggerUpdateSettings(
+      {
+        displayName: agentName,
+        description: desc,
+        sound: tone,
+      },
+      pageSignal,
+    );
     setSavedSettings({
       name: agentName,
       description: desc,

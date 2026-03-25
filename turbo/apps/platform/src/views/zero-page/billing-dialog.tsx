@@ -1,4 +1,5 @@
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   Dialog,
@@ -122,6 +123,7 @@ function AutoRechargeSection({
   loading: boolean;
 }) {
   const save = useSet(saveAutoRecharge$);
+  const pageSignal = useGet(pageSignal$);
   const enabled = useGet(autoRechargeEnabled$);
   const threshold = useGet(autoRechargeThreshold$);
   const amount = useGet(autoRechargeAmount$);
@@ -143,10 +145,15 @@ function AutoRechargeSection({
 
   const handleSave = () => {
     detach(
-      save({
-        enabled,
-        ...(enabled ? { threshold: Number(threshold), amount: amountNum } : {}),
-      }),
+      save(
+        {
+          enabled,
+          ...(enabled
+            ? { threshold: Number(threshold), amount: amountNum }
+            : {}),
+        },
+        pageSignal,
+      ),
       Reason.DomCallback,
     );
   };
@@ -235,6 +242,7 @@ export function BillingDialog() {
   const close = useSet(closeBillingDialog$);
   const checkout = useSet(startCheckout$);
   const downgrade = useSet(startDowngrade$);
+  const pageSignal = useGet(pageSignal$);
   const selectedTier = useGet(selectedPlanTier$);
   const setSelectedTier = useSet(setSelectedPlanTier$);
 
@@ -247,9 +255,12 @@ export function BillingDialog() {
 
   const handleAction = () => {
     if (isUpgrade) {
-      detach(checkout(selectedTier as "pro" | "team"), Reason.DomCallback);
+      detach(
+        checkout(selectedTier as "pro" | "team", pageSignal),
+        Reason.DomCallback,
+      );
     } else if (isDowngrade) {
-      detach(downgrade(), Reason.DomCallback);
+      detach(downgrade(pageSignal), Reason.DomCallback);
     }
   };
 

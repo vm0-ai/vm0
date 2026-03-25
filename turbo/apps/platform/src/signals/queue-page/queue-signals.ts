@@ -55,6 +55,7 @@ export const cancelQueueRun$ = command(
     const result = await client.cancel({
       params: { id: runId },
     });
+    signal.throwIfAborted();
     if (result.status !== 200) {
       throw new Error(`Failed to cancel run (${result.status})`);
     }

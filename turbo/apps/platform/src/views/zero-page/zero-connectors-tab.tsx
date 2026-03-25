@@ -187,7 +187,10 @@ export function ZeroConnectorsTab({
                   }
                 }}
                 onDisconnect={() => {
-                  detach(disconnect(name as ConnectorType), Reason.DomCallback);
+                  detach(
+                    disconnect(name as ConnectorType, signal),
+                    Reason.DomCallback,
+                  );
                   const label =
                     connectorMap.get(name as ConnectorType)?.label ?? name;
                   toast.success(`${label} disconnected`);
@@ -240,7 +243,7 @@ export function ZeroConnectorsTab({
           agentName={agentDisplayName ?? agentName}
           initialPolicies={firewallPolicies ?? {}}
           onApply={async (policies) => {
-            const saved = await saveFirewallPol(agentName, policies);
+            const saved = await saveFirewallPol(agentName, policies, signal);
             if (saved !== undefined) {
               onFirewallPoliciesChange?.(saved);
             }

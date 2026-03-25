@@ -1,4 +1,5 @@
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   IconFileText,
   IconUserCircle,
@@ -275,6 +276,7 @@ function JobConnectorsTab({
   const discardConnectors = useSet(discardZeroJobConnectors$);
   const firewallPolicies = useGet(zeroJobFirewallPolicies$);
   const setFirewallPolicies = useSet(setZeroJobFirewallPolicies$);
+  const pageSignal = useGet(pageSignal$);
 
   return (
     <ZeroConnectorsTab
@@ -288,7 +290,9 @@ function JobConnectorsTab({
       onFirewallPoliciesChange={setFirewallPolicies}
       onAddConnector={addConnector}
       onRemoveConnector={removeConnector}
-      onSaveConnectors={() => detach(saveConnectors(), Reason.DomCallback)}
+      onSaveConnectors={() =>
+        detach(saveConnectors(pageSignal), Reason.DomCallback)
+      }
       onDiscardConnectors={() => discardConnectors()}
       readOnly={readOnly}
     />
@@ -303,12 +307,13 @@ function JobScheduleTab({ agentId }: { agentId: string }) {
   const toggleEnabled = useSet(toggleZeroJobScheduleEnabled$);
   const runScheduleNow = useSet(runScheduleNow$);
   const nav = useSet(navigateTo$);
+  const pageSignal = useGet(pageSignal$);
 
   const entries: ScheduleEntry[] =
     entriesLoadable.state === "hasData" ? entriesLoadable.data : [];
 
   const handleRunNow = async (entry: ScheduleEntry) => {
-    await runScheduleNow(entry.id);
+    await runScheduleNow(entry.id, pageSignal);
   };
 
   const handleOpenDetails = (entry: ScheduleEntry) => {
@@ -320,9 +325,9 @@ function JobScheduleTab({ agentId }: { agentId: string }) {
       agentName={agentId}
       entries={entries}
       scheduleError={scheduleError}
-      onSave={saveSchedule}
-      onDelete={deleteSchedule}
-      onToggleEnabled={toggleEnabled}
+      onSave={(params) => saveSchedule(params, pageSignal)}
+      onDelete={(name) => deleteSchedule(name, pageSignal)}
+      onToggleEnabled={(params) => toggleEnabled(params, pageSignal)}
       onRunNow={handleRunNow}
       onOpenDetails={handleOpenDetails}
     />
@@ -330,6 +335,7 @@ function JobScheduleTab({ agentId }: { agentId: string }) {
 }
 
 function JobInstructionsTab() {
+  const pageSignal = useGet(pageSignal$);
   const instructionsLoadable = useLoadable(zeroJobInstructions$);
   const loadingLoadable = useLoadable(zeroJobInstructionsLoading$);
   const instructionsErrorLoadable = useLoadable(zeroJobInstructionsError$);
@@ -370,7 +376,7 @@ function JobInstructionsTab() {
       buildError={buildError}
       onEdit={setEdited}
       onDiscard={discard}
-      onBuild={() => detach(build(), Reason.DomCallback)}
+      onBuild={() => detach(build(pageSignal), Reason.DomCallback)}
     />
   );
 }
@@ -403,6 +409,7 @@ export function ZeroJobDetailPage({
   const saving = useGet(zeroJobSettingsSaving$);
   const deleteAgent = useSet(deleteZeroJobAgent$);
   const nav = useSet(navigateTo$);
+  const pageSignal = useGet(pageSignal$);
 
   const statusLoadable = useLastLoadable(zeroOnboardingStatus$);
   const isDefaultAgent =
@@ -417,7 +424,7 @@ export function ZeroJobDetailPage({
   const hideProfileAndInstructions = isDefaultAgent && !isAdmin;
 
   const handleDelete = async () => {
-    await deleteAgent();
+    await deleteAgent(pageSignal);
     nav("/team");
   };
 

@@ -38,6 +38,7 @@ export const updateSendMode$ = command(
       // After the command completes the refetch has been triggered.
       // Await the refetched sendMode so the UI never flashes back to the old value.
       const fetched = await get(sendMode$);
+      signal.throwIfAborted();
       if (fetched === value) {
         set(internalSendModeSaving$, null);
       }

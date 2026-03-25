@@ -44,7 +44,7 @@ describe("cancelQueueRun$", () => {
     await setupPage({ context, path: "/", withoutRender: true });
 
     // Cancel a run — this also triggers fetchQueueData$ internally
-    await context.store.set(cancelQueueRun$, "run-1");
+    await context.store.set(cancelQueueRun$, "run-1", context.signal);
 
     // Verify cancel was called with correct run ID
     expect(cancelCalledWith).toBe("run-1");
@@ -72,8 +72,8 @@ describe("cancelQueueRun$", () => {
 
     await setupPage({ context, path: "/", withoutRender: true });
 
-    await expect(context.store.set(cancelQueueRun$, "run-1")).rejects.toThrow(
-      "Failed to cancel run",
-    );
+    await expect(
+      context.store.set(cancelQueueRun$, "run-1", context.signal),
+    ).rejects.toThrow("Failed to cancel run");
   });
 });

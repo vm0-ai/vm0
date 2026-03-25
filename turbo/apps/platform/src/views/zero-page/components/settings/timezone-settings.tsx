@@ -1,4 +1,5 @@
 import { useGet, useLastResolved, useSet } from "ccstate-react";
+import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
   Select,
   SelectContent,
@@ -43,13 +44,14 @@ function getCommonTimezones() {
 export function TimezoneSettings() {
   const preferences = useLastResolved(userPreferences$);
   const updatePreference = useSet(updateUserPreference$);
+  const pageSignal = useGet(pageSignal$);
 
   const loading = useGet(timezoneSaving$);
   const setLoading = useSet(setTimezoneSaving$);
 
   const handleChange = (value: string) => {
     setLoading(true);
-    updatePreference({ timezone: value })
+    updatePreference({ timezone: value }, pageSignal)
       .finally(() => setLoading(false))
       .catch(() => toast.error("Failed to update timezone"));
   };

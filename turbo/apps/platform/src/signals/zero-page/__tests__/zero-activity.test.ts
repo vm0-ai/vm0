@@ -88,7 +88,7 @@ describe("zero-activity signals", () => {
       );
 
       await setup();
-      await context.store.set(initZeroActivityAgentName$);
+      await context.store.set(initZeroActivityAgentName$, context.signal);
 
       const response = await context.store.get(zeroActivityData$);
       expect(response.data).toHaveLength(3);
@@ -107,7 +107,7 @@ describe("zero-activity signals", () => {
       );
 
       await setup();
-      await context.store.set(initZeroActivityAgentName$);
+      await context.store.set(initZeroActivityAgentName$, context.signal);
 
       const response = await context.store.get(zeroActivityData$);
       expect(response.data).toHaveLength(0);
@@ -121,7 +121,7 @@ describe("zero-activity signals", () => {
       );
 
       await setup();
-      await context.store.set(initZeroActivityAgentName$);
+      await context.store.set(initZeroActivityAgentName$, context.signal);
 
       await expect(context.store.get(zeroActivityData$)).rejects.toThrow(
         "Failed to fetch logs",
@@ -143,7 +143,7 @@ describe("zero-activity signals", () => {
       );
 
       await setup();
-      await context.store.set(initZeroActivityAgentName$);
+      await context.store.set(initZeroActivityAgentName$, context.signal);
 
       expect(context.store.get(zeroActivityHasPrev$)).toBeFalsy();
     });
@@ -164,7 +164,7 @@ describe("zero-activity signals", () => {
       );
 
       await setup();
-      await context.store.set(initZeroActivityAgentName$);
+      await context.store.set(initZeroActivityAgentName$, context.signal);
       context.store.set(setZeroActivityFilter$, "status", "completed");
       // The computed data$ will re-fetch with the new status param
       await context.store.get(zeroActivityData$);

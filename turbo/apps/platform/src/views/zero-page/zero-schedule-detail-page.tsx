@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   IconCalendar,
   IconCircleDot,
@@ -994,6 +995,7 @@ export function ZeroScheduleDetailPage() {
   const deleteSchedule = useSet(deleteOrgSchedule$);
   const runScheduleNow = useSet(runScheduleNow$);
   const navigate = useSet(navigateTo$);
+  const pageSignal = useGet(pageSignal$);
 
   const [saving, setSaving] = useState(false);
   const [toggling, setToggling] = useState(false);
@@ -1031,7 +1033,7 @@ export function ZeroScheduleDetailPage() {
   ) => {
     setSaving(true);
     try {
-      await saveSchedule(params);
+      await saveSchedule(params, pageSignal);
     } finally {
       setSaving(false);
     }
@@ -1044,21 +1046,24 @@ export function ZeroScheduleDetailPage() {
     const parsed = parseScheduleTimeString(entry.time);
     setSaving(true);
     detach(
-      saveSchedule({
-        prompt,
-        description: entry.description ?? undefined,
-        freq: parsed.freq,
-        date: parsed.date,
-        hour: parsed.hour,
-        minute: parsed.minute,
-        timezone: parsed.timezone,
-        intervalSeconds: parsed.loopMinutes * 60,
-        editName: entry.name,
-        agentId: entry.agentId,
-        notifyEmail: entry.notifyEmail,
-        notifySlack: entry.notifySlack,
-        slackChannelId: entry.slackChannelId,
-      }).finally(() => {
+      saveSchedule(
+        {
+          prompt,
+          description: entry.description ?? undefined,
+          freq: parsed.freq,
+          date: parsed.date,
+          hour: parsed.hour,
+          minute: parsed.minute,
+          timezone: parsed.timezone,
+          intervalSeconds: parsed.loopMinutes * 60,
+          editName: entry.name,
+          agentId: entry.agentId,
+          notifyEmail: entry.notifyEmail,
+          notifySlack: entry.notifySlack,
+          slackChannelId: entry.slackChannelId,
+        },
+        pageSignal,
+      ).finally(() => {
         setSaving(false);
       }),
       Reason.DomCallback,
@@ -1071,11 +1076,14 @@ export function ZeroScheduleDetailPage() {
     }
     setToggling(true);
     try {
-      await toggleEnabled({
-        name: entry.name,
-        enabled,
-        agentId: entry.agentId,
-      });
+      await toggleEnabled(
+        {
+          name: entry.name,
+          enabled,
+          agentId: entry.agentId,
+        },
+        pageSignal,
+      );
     } finally {
       setToggling(false);
     }
@@ -1084,7 +1092,7 @@ export function ZeroScheduleDetailPage() {
   const handleRunNow = async () => {
     setRunning(true);
     try {
-      await runScheduleNow(entry.id);
+      await runScheduleNow(entry.id, pageSignal);
     } finally {
       setRunning(false);
     }
@@ -1095,7 +1103,10 @@ export function ZeroScheduleDetailPage() {
       return;
     }
     detach(
-      deleteSchedule({ name: entry.name, agentId: entry.agentId }).then(() => {
+      deleteSchedule(
+        { name: entry.name, agentId: entry.agentId },
+        pageSignal,
+      ).then(() => {
         navigate("/schedule");
       }),
       Reason.DomCallback,
