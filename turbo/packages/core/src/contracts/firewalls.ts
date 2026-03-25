@@ -156,6 +156,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   notion: ["notion"],
   openai: ["openai"],
   "outlook-calendar": ["outlook-calendar"],
+  "outlook-mail": ["outlook-mail"],
   pdf4me: ["pdf4me"],
   pdfco: ["pdfco"],
   pdforge: ["pdforge"],
