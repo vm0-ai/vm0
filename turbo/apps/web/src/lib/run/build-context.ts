@@ -770,12 +770,9 @@ async function resolveSecretsAndEnvironment(
   let secretConnectorMap: Record<string, string> | undefined;
   if (connectorResult.secretConnectorMap) {
     const overrideKeys = new Set(
-      [
-        connectorResult.injectedEnvVars,
-        modelProviderResult.secrets,
-        dbSecrets,
-        cliSecrets,
-      ].flatMap((s) => (s ? Object.keys(s) : [])),
+      [modelProviderResult.secrets, dbSecrets, cliSecrets].flatMap((s) =>
+        s ? Object.keys(s) : [],
+      ),
     );
     const filtered = Object.fromEntries(
       Object.entries(connectorResult.secretConnectorMap).filter(
