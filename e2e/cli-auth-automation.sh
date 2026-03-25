@@ -341,6 +341,10 @@ else
       echo "❌ Sign-up did not complete" >&2
       exit 1
     fi
+    # Navigate back to app domain to establish session cookie
+    echo "🔄 Returning to app to sync session..."
+    agent-browser open "$BASE_URL" --ignore-https-errors
+    agent-browser wait 5000
     echo "✅ Sign-up successful!"
 
   elif ! contains "$SNAP" "sign.in\|password\|email address"; then
@@ -406,7 +410,7 @@ fi
 echo ""
 echo "🔑 Phase 3: Entering device code on /cli-auth..."
 
-agent-browser open "$BASE_URL/cli-auth"
+agent-browser open "$BASE_URL/cli-auth" --ignore-https-errors
 agent-browser wait 3000
 
 # Wait for the code input fields to appear
