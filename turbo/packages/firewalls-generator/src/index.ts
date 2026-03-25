@@ -68,6 +68,7 @@ import { generate as generateRunway } from "./runway";
 import { generate as generateSentry } from "./sentry";
 import { generate as generateSerpapi } from "./serpapi";
 import { generate as generateShortio } from "./shortio";
+import { generate as generateSimilarweb } from "./similarweb";
 import { generate as generateSlack } from "./slack";
 import { generate as generateStrava } from "./strava";
 import { generate as generateStripe } from "./stripe";
@@ -150,6 +151,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   sentry: generateSentry,
   serpapi: generateSerpapi,
   shortio: generateShortio,
+  similarweb: generateSimilarweb,
   slack: generateSlack,
   strava: generateStrava,
   stripe: generateStripe,
