@@ -35,7 +35,7 @@ export function buildZeroCliGuidance(): string {
   return [
     "# Zero CLI",
     "You have access to the Zero CLI for managing platform resources.",
-    "Run commands with: npx -p @vm0/cli zero <command>",
+    "Run commands with: `npx -p @vm0/cli zero <command>`",
     "Tip: run `alias zero='npx -p @vm0/cli zero'` first, then use `zero <command>` for brevity.",
     "Run `npx -p @vm0/cli zero --help` to see all available commands.",
     "Do NOT use /loop or cron tools (CronCreate, CronList, CronDelete) — they are not available.",
