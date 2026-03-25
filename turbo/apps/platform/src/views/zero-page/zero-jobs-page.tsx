@@ -195,9 +195,8 @@ export function ZeroJobsPage() {
           )}
 
           {!loading && !error && agents && agents.length === 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="flex flex-col gap-3">
               <CreateTeammateButton onClick={() => setDialogOpen(true)} />
-
               <Card className="zero-card">
                 <CardContent className="flex flex-col items-center justify-center px-6 py-12 gap-3">
                   <img
