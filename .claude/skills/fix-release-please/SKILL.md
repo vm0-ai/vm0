@@ -43,7 +43,7 @@ Create a fix branch from `main`, make the fix, then cherry-pick to `vm0`:
 cd /tmp/release-please
 git checkout main
 git checkout -b fix/<description>
-# ... make the fix, commit ...
+# ... make the fix, write tests to verify, commit ...
 git push origin fix/<description>
 git checkout vm0
 git cherry-pick <commit-sha>
