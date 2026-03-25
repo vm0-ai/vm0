@@ -540,6 +540,8 @@ export {
   type ZeroSchedulesMainContract,
   type ZeroSchedulesByNameContract,
   type ZeroSchedulesEnableContract,
+  zeroScheduleRunContract,
+  type ZeroScheduleRunContract,
   type ScheduleResponse,
   type ScheduleListResponse,
   type DeployScheduleResponse,

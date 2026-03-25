@@ -769,16 +769,13 @@ export const fetchZeroSessionList$ = command(async ({ get, set }) => {
     return;
   }
   try {
-    const fetchFn = get(fetch$);
-    const res = await fetchFn(
-      `/api/zero/chat-threads?agentId=${encodeURIComponent(composeId)}`,
-    );
-    if (!res.ok) {
-      set(internalSessionListError$, `Failed to load chats: ${res.statusText}`);
+    const client = get(zeroClient$)(chatThreadsContract);
+    const result = await client.list({ query: { agentId: composeId } });
+    if (result.status !== 200) {
+      set(internalSessionListError$, `Failed to load chats (${result.status})`);
       return;
     }
-    const data = (await res.json()) as { threads: ChatThreadListItem[] };
-    set(internalSessionList$, data.threads);
+    set(internalSessionList$, result.body.threads);
   } catch (error) {
     throwIfAbort(error);
     const msg = error instanceof Error ? error.message : "Failed to load chats";

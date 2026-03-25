@@ -1,9 +1,5 @@
 import { command, computed, type Computed } from "ccstate";
-import type {
-  AgentEvent,
-  AgentEventsResponse,
-  LogStatus,
-} from "./log-types.ts";
+import type { AgentEvent, LogStatus } from "./log-types.ts";
 import { delay } from "signal-timers";
 import { zeroRunAgentEventsContract, logsByIdContract } from "@vm0/core";
 import { throwIfAbort } from "../utils.ts";
@@ -55,7 +51,7 @@ function createEventPageComputed(
     if (result.status !== 200) {
       throw new Error(`Failed to fetch agent events (${result.status})`);
     }
-    const data = result.body as AgentEventsResponse;
+    const data = result.body;
     return { events: data.events, hasMore: data.hasMore };
   });
 }

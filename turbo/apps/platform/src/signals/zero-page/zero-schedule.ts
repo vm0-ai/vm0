@@ -6,9 +6,9 @@ import {
   zeroSchedulesMainContract,
   zeroSchedulesByNameContract,
   zeroSchedulesEnableContract,
+  zeroScheduleRunContract,
   type ScheduleResponse,
 } from "@vm0/core";
-import { fetch$ } from "../fetch.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -289,7 +289,14 @@ export const saveZeroSchedule$ = command(
     const result = await client.deploy({ body });
 
     if (result.status !== 200 && result.status !== 201) {
-      throw new Error(`Save failed (${result.status})`);
+      const message =
+        result.status === 400 ||
+        result.status === 401 ||
+        result.status === 403 ||
+        result.status === 404
+          ? result.body.error.message
+          : `Save failed (${result.status})`;
+      throw new Error(message);
     }
 
     toast.success(params.editName ? "Schedule updated" : "Schedule created");
@@ -436,7 +443,14 @@ export const saveOrgSchedule$ = command(
     const result = await client.deploy({ body });
 
     if (result.status !== 200 && result.status !== 201) {
-      throw new Error(`Save failed (${result.status})`);
+      const message =
+        result.status === 400 ||
+        result.status === 401 ||
+        result.status === 403 ||
+        result.status === 404
+          ? result.body.error.message
+          : `Save failed (${result.status})`;
+      throw new Error(message);
     }
 
     const data = (await response.json()) as {
@@ -501,24 +515,22 @@ export const deleteOrgSchedule$ = command(
 export const runScheduleNow$ = command(
   async ({ get }, scheduleId: string): Promise<string> => {
     const toastId = toast.loading("Starting run…");
-    const fetchFn = get(fetch$);
-    const response = await fetchFn("/api/zero/schedules/run", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scheduleId }),
-    });
+    const client = get(zeroClient$)(zeroScheduleRunContract);
+    const result = await client.run({ body: { scheduleId } });
 
-    if (!response.ok) {
-      const errorData = (await response.json().catch(() => null)) as {
-        error?: { message?: string };
-      } | null;
+    if (result.status !== 201) {
       const message =
-        errorData?.error?.message ?? `Run failed: ${response.status}`;
+        result.status === 400 ||
+        result.status === 401 ||
+        result.status === 404 ||
+        result.status === 409
+          ? result.body.error.message
+          : `Run failed (${result.status})`;
       toast.error(message, { id: toastId });
       throw new Error(message);
     }
 
-    const data = (await response.json()) as { runId: string };
+    const data = result.body;
 
     toast.success(
       createElement(

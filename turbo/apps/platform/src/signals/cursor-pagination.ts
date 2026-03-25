@@ -222,7 +222,7 @@ export function createCursorPagination(config: CursorPaginationConfig) {
     if (result.status !== 200) {
       throw new Error(`Failed to fetch logs (${result.status})`);
     }
-    return result.body as LogsListResponse;
+    return result.body;
   });
 
   const cursorHistory$ = state<(string | null)[]>([null]);
