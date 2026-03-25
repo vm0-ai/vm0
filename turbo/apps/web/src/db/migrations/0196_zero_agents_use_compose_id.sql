@@ -78,16 +78,15 @@ ALTER TABLE "zero_agents"
 CREATE UNIQUE INDEX "idx_zero_agents_org_name" ON "zero_agents" ("org_id", "name");
 CREATE INDEX "idx_zero_agents_org" ON "zero_agents" ("org_id");
 
--- Step 10: Re-create FK constraints pointing to agent_composes (not zero_agents,
--- since zero_agents is optional metadata — not every compose has a zero_agents row)
+-- Step 10: Re-create FK constraints on downstream tables
 ALTER TABLE "zero_agent_schedules"
-  ADD CONSTRAINT "zero_agent_schedules_agent_id_agent_composes_id_fk"
-  FOREIGN KEY ("agent_id") REFERENCES "agent_composes"("id") ON DELETE CASCADE;
+  ADD CONSTRAINT "zero_agent_schedules_agent_id_zero_agents_id_fk"
+  FOREIGN KEY ("agent_id") REFERENCES "zero_agents"("id") ON DELETE CASCADE;
 
 ALTER TABLE "email_thread_sessions"
-  ADD CONSTRAINT "email_thread_sessions_agent_id_agent_composes_id_fk"
-  FOREIGN KEY ("agent_id") REFERENCES "agent_composes"("id") ON DELETE CASCADE;
+  ADD CONSTRAINT "email_thread_sessions_agent_id_zero_agents_id_fk"
+  FOREIGN KEY ("agent_id") REFERENCES "zero_agents"("id") ON DELETE CASCADE;
 
 ALTER TABLE "org_metadata"
-  ADD CONSTRAINT "org_metadata_default_agent_id_agent_composes_id_fk"
-  FOREIGN KEY ("default_agent_id") REFERENCES "agent_composes"("id") ON DELETE SET NULL;
+  ADD CONSTRAINT "org_metadata_default_agent_id_zero_agents_id_fk"
+  FOREIGN KEY ("default_agent_id") REFERENCES "zero_agents"("id") ON DELETE SET NULL;
