@@ -4,7 +4,7 @@
 #   scripts/next-issue.sh <label>
 #
 # Output: JSON object of the next issue, or empty if none found
-# Filters: excludes pending, excludes PR-linked, picks lowest number
+# Filters: excludes PR-linked, picks lowest number
 
 set -euo pipefail
 
