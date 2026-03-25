@@ -104,6 +104,21 @@ full_snapshot() {
 }
 
 # ---------------------------------------------------------------------------
+# Helper: click the form's "Continue" button (not "Continue with Google")
+# ---------------------------------------------------------------------------
+click_continue() {
+  local snap_i
+  snap_i=$(agent-browser snapshot -i 2>/dev/null || true)
+  local ref
+  ref=$(echo "$snap_i" | grep -E 'button "Continue" \[ref=' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+  if [[ -n "$ref" ]]; then
+    agent-browser click "$ref"
+  else
+    agent-browser find text "Continue" click
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Helper: dismiss cookie consent banner if present
 # ---------------------------------------------------------------------------
 dismiss_cookie_banner() {
@@ -274,20 +289,17 @@ else
   echo "📧 Entering email: $EMAIL"
   agent-browser find label "Email address" fill "$EMAIL"
   agent-browser wait 500
-  agent-browser find text "Continue" click
+  click_continue
   agent-browser wait 5000
   step_screenshot "after-email-continue"
 
   # -----------------------------------------------------------------------
   # Decide: sign-in succeeded, need sign-up, or need OTP?
-  # Check snapshot text AND URL — Clerk may redirect to Google OAuth for
-  # unknown users instead of showing an inline error message.
+  # Check snapshot text instead of relying on URL redirects.
   # -----------------------------------------------------------------------
   SNAP=$(full_snapshot)
-  CURRENT_URL=$(agent-browser get url 2>/dev/null || true)
 
-  if contains "$SNAP" "identifier is invalid\|couldn.t find your account" \
-     || [[ "$CURRENT_URL" =~ accounts\.google\.com ]]; then
+  if contains "$SNAP" "identifier is invalid\|couldn.t find your account"; then
     # ---- Account does not exist → sign-up flow ----
     step_screenshot "account-not-found"
     echo "📝 Account not found — switching to sign-up flow"
@@ -316,7 +328,7 @@ else
     agent-browser wait 500
     agent-browser find label "Password" fill "$SIGNUP_PASSWORD"
     agent-browser wait 500
-    agent-browser find text "Continue" click
+    click_continue
     agent-browser wait 5000
     step_screenshot "after-sign-up-continue"
 
@@ -341,10 +353,6 @@ else
       echo "❌ Sign-up did not complete" >&2
       exit 1
     fi
-    # Navigate back to app domain to establish session cookie
-    echo "🔄 Returning to app to sync session..."
-    agent-browser open "$BASE_URL" --ignore-https-errors
-    agent-browser wait 5000
     echo "✅ Sign-up successful!"
 
   elif ! contains "$SNAP" "sign.in\|password\|email address"; then
