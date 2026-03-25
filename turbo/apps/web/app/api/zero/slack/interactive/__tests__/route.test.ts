@@ -253,16 +253,17 @@ describe("POST /api/zero/slack/interactive", () => {
         state: { values: {} },
       });
 
+      // Get mock client reference before POST so we can verify after
+      const { WebClient } = await import("@slack/web-api");
+      const mockClient = new WebClient();
+
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      // Short wait to ensure the fire-and-forget handler has a chance to complete
-      await new Promise((resolve) => setTimeout(resolve, 50));
-
-      // No card update or run dispatch for expired question
-      const { WebClient } = await import("@slack/web-api");
-      const mockClient = new WebClient();
-      expect(mockClient.chat.update).not.toHaveBeenCalled();
+      // Wait for the fire-and-forget handler to settle, then verify no card update
+      await vi.waitFor(() => {
+        expect(mockClient.chat.update).not.toHaveBeenCalled();
+      });
     });
 
     it("rejects unauthorized submitter", async () => {
