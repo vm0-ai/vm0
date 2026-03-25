@@ -116,7 +116,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
     const { userId } = authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org, member } = await resolveOrg(authCtx, orgSlug);
 
     // Verify agent exists by compose ID
     const [existing] = await globalThis.services.db
@@ -141,6 +141,15 @@ const router = tsr.router(zeroAgentsByIdContract, {
         },
       };
     }
+
+    // Only admins can update the default agent
+    const forbidden = await requireAdminForDefaultAgent(
+      org.orgId,
+      existing.id,
+      member.role,
+      "configuration",
+    );
+    if (forbidden) return forbidden;
 
     // Build compose content from connectors
     const content = buildComposeContent(existing.name, body.connectors);
@@ -325,7 +334,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
     if (isAuthError(authCtx)) return authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org, member } = await resolveOrg(authCtx, orgSlug);
 
     // Find compose by ID
     const [compose] = await globalThis.services.db
@@ -350,6 +359,15 @@ const router = tsr.router(zeroAgentsByIdContract, {
         },
       };
     }
+
+    // Only admins can delete the default agent
+    const forbidden = await requireAdminForDefaultAgent(
+      org.orgId,
+      compose.id,
+      member.role,
+      "agent",
+    );
+    if (forbidden) return forbidden;
 
     // Delete compose and metadata atomically
     await globalThis.services.db.transaction(async (tx) => {

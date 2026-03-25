@@ -1060,5 +1060,84 @@ describe("Zero Agents API", () => {
       const data = await response.json();
       expect(data.displayName).toBe("Member Updated");
     });
+
+    it("should return 403 when member PUT-updates default agent", async () => {
+      const created = await (
+        await postAgent(
+          { connectors: [], displayName: "Default" },
+          testCliToken,
+          testOrgSlug,
+        )
+      ).json();
+
+      const orgId = `org_mock_${user.userId}`;
+      await setDefaultAgentByComposeId(orgId, created.agentId);
+
+      // Re-mock as member and clear cached admin role
+      mockClerk({
+        userId: user.userId,
+        orgId,
+        orgRole: "org:member",
+        clerkOrgs: [
+          {
+            id: orgId,
+            slug: testOrgSlug,
+            name: testOrgSlug,
+            role: "org:member",
+          },
+        ],
+      });
+      await clearOrgMembersCacheEntry(orgId, user.userId);
+      const memberToken = await createTestCliToken(user.userId);
+
+      const response = await putAgent(
+        created.agentId,
+        { connectors: [], displayName: "Hacked via PUT" },
+        memberToken,
+        testOrgSlug,
+      );
+      expect(response.status).toBe(403);
+      const data = await response.json();
+      expect(data.error.code).toBe("FORBIDDEN");
+    });
+
+    it("should return 403 when member deletes default agent", async () => {
+      const created = await (
+        await postAgent(
+          { connectors: [], displayName: "Default" },
+          testCliToken,
+          testOrgSlug,
+        )
+      ).json();
+
+      const orgId = `org_mock_${user.userId}`;
+      await setDefaultAgentByComposeId(orgId, created.agentId);
+
+      // Re-mock as member and clear cached admin role
+      mockClerk({
+        userId: user.userId,
+        orgId,
+        orgRole: "org:member",
+        clerkOrgs: [
+          {
+            id: orgId,
+            slug: testOrgSlug,
+            name: testOrgSlug,
+            role: "org:member",
+          },
+        ],
+      });
+      await clearOrgMembersCacheEntry(orgId, user.userId);
+      const memberToken = await createTestCliToken(user.userId);
+
+      const response = await deleteAgent(
+        created.agentId,
+        memberToken,
+        testOrgSlug,
+      );
+      expect(response.status).toBe(403);
+      const data = await response.json();
+      expect(data.error.code).toBe("FORBIDDEN");
+    });
   });
 });
