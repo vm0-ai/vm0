@@ -520,6 +520,7 @@ export const chatSessionSnapshot$ = computed(
       status: string;
       prompt: string;
       error: string | null;
+      createdAt: string;
     }[] = [];
     let isLegacySession = false;
 
@@ -550,6 +551,8 @@ export const chatSessionSnapshot$ = computed(
 
     const resolvedSessionId = isLegacySession ? threadId : latestSessionId;
 
+    // Track createdAt alongside messages for chronological insertion
+    const messageTimestamps: string[] = [];
     const messages: ZeroChatMessage[] = chatMessages.map((m) => {
       const summaries =
         m.summaries && m.summaries.length > 0
@@ -557,6 +560,7 @@ export const chatSessionSnapshot$ = computed(
               TOOL_LABELS[s] ? humanizeToolUse(s, undefined) : s,
             )
           : undefined;
+      messageTimestamps.push(m.createdAt);
       return {
         id: crypto.randomUUID(),
         role: m.role,
@@ -580,9 +584,8 @@ export const chatSessionSnapshot$ = computed(
       const isFailed =
         run.status === "failed" || run.status === "timeout" || isCancelled;
       if (isFailed) {
-        // Failed/cancelled runs are immutable — go to messages
-        messages.push(userMsg);
-        messages.push({
+        // Failed/cancelled runs are immutable — insert at chronological position
+        const assistantMsg: ZeroChatMessage = {
           id: crypto.randomUUID(),
           role: "assistant",
           content: "",
@@ -592,7 +595,17 @@ export const chatSessionSnapshot$ = computed(
             ? "Run cancelled."
             : (run.error ??
               "Something went wrong. Check the activity logs for details."),
-        });
+        };
+        const insertIdx = messageTimestamps.findIndex(
+          (t) => t > run.createdAt,
+        );
+        if (insertIdx === -1) {
+          messages.push(userMsg, assistantMsg);
+          messageTimestamps.push(run.createdAt, run.createdAt);
+        } else {
+          messages.splice(insertIdx, 0, userMsg, assistantMsg);
+          messageTimestamps.splice(insertIdx, 0, run.createdAt, run.createdAt);
+        }
       } else {
         // Active run — goes to activeRunMessages (will be copied to local state)
         activeRunMessages.push(userMsg);

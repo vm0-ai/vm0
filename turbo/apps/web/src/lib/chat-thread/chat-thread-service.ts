@@ -163,6 +163,7 @@ interface UnsavedRun {
   status: string;
   prompt: string;
   error: string | null;
+  createdAt: string;
 }
 
 export async function getChatThreadMessages(
@@ -262,6 +263,7 @@ export async function getChatThreadMessages(
       status: r.status,
       prompt: r.prompt,
       error: r.error,
+      createdAt: r.createdAt.toISOString(),
     }));
 
   return {
