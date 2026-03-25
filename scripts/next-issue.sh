@@ -32,7 +32,6 @@ ISSUE=$(jq -n --argjson a "$ASSIGNED" --argjson b "$AUTHORED" '
   | group_by(.number)
   | map(.[0])
   | [.[]
-      | select(([.labels[].name] | any(. == "pending")) | not)
       | select(.closedByPullRequestsReferences | length == 0)
     ]
   | sort_by(.number)
