@@ -10,6 +10,7 @@ import { notFound, badRequest, schedulePast } from "../errors";
 import { logger } from "../logger";
 import { createZeroRun } from "../zero/zero-run-service";
 import { generateCallbackSecret, getApiUrl } from "../callback";
+import { generateScheduleDescription } from "../ai/lightweight-model";
 import type {
   EmailScheduleCallbackPayload,
   SlackScheduleCallbackPayload,
@@ -252,16 +253,10 @@ async function loadZeroAgent(
 
 /**
  * Load org slug by ID.
- * Never throws — Clerk/cache failures would otherwise turn schedule APIs into 500s.
  */
 async function getOrgSlug(orgId: string): Promise<string> {
-  try {
-    const orgData = await getOrgData(orgId);
-    return orgData.slug;
-  } catch (error) {
-    log.warn("getOrgSlug: getOrgData failed", { orgId, error });
-    return "";
-  }
+  const orgData = await getOrgData(orgId);
+  return orgData.slug;
 }
 
 /**
@@ -456,8 +451,8 @@ function buildTemplateDescription(
 
 /**
  * Generate a concise schedule description using the lightweight model.
- * Falls back to a template-based description if the model is unavailable
- * or if the model call fails (rate limits, network, empty response, etc.).
+ * Falls back to a template-based description if the model returns null
+ * (e.g., model unavailable or empty response).
  */
 async function generateDescription(
   request: DeployScheduleRequest,
@@ -471,26 +466,14 @@ async function generateDescription(
         ? `loop every ${request.intervalSeconds}s`
         : "unknown trigger";
 
-  try {
-    const { generateScheduleDescription } = await import(
-      "../ai/lightweight-model"
-    );
+  const text = await generateScheduleDescription(
+    agentName,
+    request.name,
+    triggerSummary,
+    request.prompt,
+  );
 
-    const text = await generateScheduleDescription(
-      agentName,
-      request.name,
-      triggerSummary,
-      request.prompt,
-    );
-
-    return text ?? buildTemplateDescription(request, agentName);
-  } catch (error) {
-    log.warn(
-      "Schedule description generation failed; using template fallback",
-      error,
-    );
-    return buildTemplateDescription(request, agentName);
-  }
+  return text ?? buildTemplateDescription(request, agentName);
 }
 
 /**
@@ -622,22 +605,7 @@ export async function listSchedules(
   // Load org slugs via org cache (by orgId from schedule records)
   const uniqueClerkOrgIds = [...new Set(userSchedules.map((s) => s.orgId))];
   const orgDataEntries = await Promise.all(
-    uniqueClerkOrgIds.map(async (id) => {
-      try {
-        return [id, await getOrgData(id)] as const;
-      } catch (error) {
-        log.warn("listSchedules: getOrgData failed", { orgId: id, error });
-        return [
-          id,
-          {
-            orgId: id,
-            slug: "",
-            name: "",
-            tier: "free",
-          },
-        ] as const;
-      }
-    }),
+    uniqueClerkOrgIds.map(async (id) => [id, await getOrgData(id)] as const),
   );
   const orgDataMap = new Map(orgDataEntries);
 
