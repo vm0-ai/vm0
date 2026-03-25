@@ -160,25 +160,26 @@ describe("POST /api/internal/callbacks/slack/org", () => {
       payload: { ...payload },
     });
 
-    const bodyObj = { runId, status: "progress" as const, payload };
-    const bodyString = JSON.stringify(bodyObj);
-
-    // Verify NextRequest body round-trip before calling the route
-    const testReq = new NextRequest(
-      "http://localhost/api/internal/callbacks/slack/org",
-      { method: "POST", body: bodyString },
-    );
-    const readBack = await testReq.text();
-    if (readBack !== bodyString) {
-      throw new Error(
-        `NextRequest body mismatch.\nExpected: ${bodyString.slice(0, 200)}\nGot: ${readBack.slice(0, 200)}`,
-      );
-    }
-
     const request = createCallbackRequest(
       { runId, status: "progress", payload },
       secret,
     );
+
+    // Clone the actual request and verify its body before passing to POST
+    const clonedReq = request.clone();
+    const actualBody = await clonedReq.text();
+    const parsed = JSON.parse(actualBody) as { payload?: unknown };
+    if (
+      !parsed.payload ||
+      typeof parsed.payload !== "object" ||
+      typeof (parsed.payload as Record<string, unknown>).workspaceId !==
+        "string"
+    ) {
+      throw new Error(
+        `Cloned request body has bad payload: ${actualBody.slice(0, 300)}`,
+      );
+    }
+
     const response = await POST(request);
 
     if (response.status !== 200) {
