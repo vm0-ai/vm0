@@ -42,6 +42,6 @@ export function buildZeroCliGuidance(): string {
     "For recurring or scheduled tasks, use the zero schedule CLI.",
     "",
     "## Sending Slack Messages",
-    "Use `zero slack message send` to send Slack messages. Do not use your own Slack tokens.",
+    "Use `zero slack message send` to send Slack messages as the bot user.",
   ].join("\n");
 }
