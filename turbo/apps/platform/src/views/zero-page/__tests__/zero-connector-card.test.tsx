@@ -328,3 +328,136 @@ describe("zero connector card scope review modal", () => {
     });
   });
 });
+
+/**
+ * Render the default agent's connector tab as a non-admin member.
+ * This triggers readOnly=true (hideProfileAndInstructions) in ZeroJobDetailPage.
+ */
+async function renderTeamPageAsMember(connectors: string[]) {
+  server.use(
+    // Agent detail — agentId matches defaultAgentId below
+    http.get("*/api/zero/agents/zero", () => {
+      return HttpResponse.json({
+        name: "zero",
+        agentId: "compose-1",
+        description: null,
+        displayName: null,
+        sound: null,
+        connectors,
+      });
+    }),
+    // Chat threads — required when viewing a job detail page
+    http.get("*/api/zero/chat-threads", () => {
+      return HttpResponse.json({ threads: [] });
+    }),
+    // Onboarding status — default agent matches the agent being viewed
+    http.get("*/api/zero/onboarding/status", () => {
+      return HttpResponse.json({
+        needsOnboarding: false,
+        isAdmin: false,
+        hasOrg: true,
+        hasDefaultAgent: true,
+        defaultAgentId: "compose-1",
+        defaultAgentMetadata: { displayName: "Zero" },
+        defaultAgentSkills: [],
+      });
+    }),
+    // Org — role=member so isOrgAdmin$ resolves to false
+    http.get("*/api/zero/org", () => {
+      return HttpResponse.json({
+        id: "org_1",
+        slug: "user-12345678",
+        name: "User 12345678",
+        role: "member",
+      });
+    }),
+  );
+
+  await setupPage({ context, path: "/team/zero" });
+}
+
+describe("zero connector card readOnly behavior (member on default agent)", () => {
+  it("hides the Add connector button when readOnly", async () => {
+    mockConnectors([
+      makeConnector({
+        type: "github",
+        externalUsername: "testuser",
+        oauthScopes: ["repo", "project"],
+      }),
+    ]);
+
+    await renderTeamPageAsMember(["github"]);
+
+    // Wait for the connector card to render
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "More options" }),
+      ).toBeInTheDocument();
+    });
+
+    // "Add connector" button should NOT be present
+    expect(screen.queryByText("Add connector")).not.toBeInTheDocument();
+  });
+
+  it("hides the dropdown menu entirely for unconnected connector when readOnly", async () => {
+    mockConnectors([]);
+
+    await renderTeamPageAsMember(["github"]);
+
+    // Wait for the Connect button to appear (proves the card rendered)
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Connect" }),
+      ).toBeInTheDocument();
+    });
+
+    // When readOnly and not connected, CardDropdownMenu returns null
+    expect(
+      screen.queryByRole("button", { name: "More options" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("still shows Connect button for unconnected connector when readOnly", async () => {
+    mockConnectors([]);
+
+    await renderTeamPageAsMember(["github"]);
+
+    // Connect should still be available (user-scoped OAuth)
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Connect" }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("still shows Disconnect in dropdown for connected connector when readOnly", async () => {
+    mockConnectors([
+      makeConnector({
+        type: "github",
+        externalUsername: "testuser",
+        oauthScopes: ["repo", "project"],
+      }),
+    ]);
+
+    await renderTeamPageAsMember(["github"]);
+
+    // Connected card should still have the dropdown menu
+    const menuButton = await waitFor(() =>
+      screen.getByRole("button", { name: "More options" }),
+    );
+
+    // Radix DropdownMenu requires pointerDown to open
+    fireEvent.pointerDown(menuButton, { button: 0, ctrlKey: false });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("menuitem", { name: "Disconnect" }),
+      ).toBeInTheDocument();
+    });
+
+    // "Remove connector" should NOT appear
+    expect(
+      screen.queryByRole("menuitem", { name: "Remove connector" }),
+    ).not.toBeInTheDocument();
+  });
+});
