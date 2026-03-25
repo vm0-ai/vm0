@@ -1,5 +1,24 @@
 # Changelog
 
+## [8.111.0](https://github.com/vm0-ai/vm0/compare/core-v8.110.0...core-v8.111.0) (2026-03-25)
+
+
+### Features
+
+* add intervals-icu firewall config ([#6659](https://github.com/vm0-ai/vm0/issues/6659)) ([00b8772](https://github.com/vm0-ai/vm0/commit/00b87724ba0bb3cacfa8c3cb89a367e896f74358)), closes [#6361](https://github.com/vm0-ai/vm0/issues/6361)
+* add mailsac firewall config ([#6653](https://github.com/vm0-ai/vm0/issues/6653)) ([fadd4a7](https://github.com/vm0-ai/vm0/commit/fadd4a7f7bbf216513ae9f160682eb609abe5f23)), closes [#6370](https://github.com/vm0-ai/vm0/issues/6370)
+* add pdforge firewall config ([#6656](https://github.com/vm0-ai/vm0/issues/6656)) ([a8b0cac](https://github.com/vm0-ai/vm0/commit/a8b0cac98c4700a9b6d95951442b01baf2ecf9a1)), closes [#6384](https://github.com/vm0-ai/vm0/issues/6384)
+* add podchaser firewall config ([#6671](https://github.com/vm0-ai/vm0/issues/6671)) ([83f945c](https://github.com/vm0-ai/vm0/commit/83f945c0d7805eae1807cd8433394f32e21cb278)), closes [#6388](https://github.com/vm0-ai/vm0/issues/6388)
+* add productlane firewall config ([#6661](https://github.com/vm0-ai/vm0/issues/6661)) ([11b4f84](https://github.com/vm0-ai/vm0/commit/11b4f84fe118f302eea0f0f1f0668cac3c4f5425)), closes [#6391](https://github.com/vm0-ai/vm0/issues/6391)
+* add reportei firewall config ([#6669](https://github.com/vm0-ai/vm0/issues/6669)) ([0aaa0d8](https://github.com/vm0-ai/vm0/commit/0aaa0d84f9abbcc0f12937173ced01ecf685ab85)), closes [#6397](https://github.com/vm0-ai/vm0/issues/6397)
+* add write scopes to x oauth connector ([#6662](https://github.com/vm0-ai/vm0/issues/6662)) ([eb43ed0](https://github.com/vm0-ai/vm0/commit/eb43ed01093e29b664bd009be89c496e1729769d))
+* **cli:** add zero slack message send command ([#6652](https://github.com/vm0-ai/vm0/issues/6652)) ([da77c47](https://github.com/vm0-ai/vm0/commit/da77c47885aba80bad5d15ca3710d7f65524f57e))
+
+
+### Refactoring
+
+* remove global notification preferences ([#6548](https://github.com/vm0-ai/vm0/issues/6548)) ([1d500cd](https://github.com/vm0-ai/vm0/commit/1d500cdf0d0571c8a92d22b5cd8fdf27f44c649e))
+
 ## [8.110.0](https://github.com/vm0-ai/vm0/compare/core-v8.109.0...core-v8.110.0) (2026-03-25)
 
 
