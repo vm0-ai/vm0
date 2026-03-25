@@ -364,7 +364,6 @@ function AgentCard({
 }: {
   agent: {
     id: string;
-    name: string;
     displayName?: string | null;
     description?: string | null;
   };

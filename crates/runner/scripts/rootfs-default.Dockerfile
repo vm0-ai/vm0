@@ -5,6 +5,7 @@
 # - Claude Code CLI (@anthropic-ai/claude-code)
 # - GitHub CLI (gh)
 # - agent-browser (Chromium browser automation)
+# - Google Workspace CLI (@googleworkspace/cli)
 #
 # Build: docker build -t vm0-rootfs .
 # Export: See build-rootfs.sh
@@ -41,9 +42,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     sudo \
     libnss3 \
-    p11-kit-modules \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+    p11-kit-modules
 
 # Make NSS-based applications (Chromium, Firefox) trust the system CA store.
 # By default NSS uses a built-in trust module (libnssckbi.so) with Mozilla's
@@ -75,8 +74,11 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
     | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
     && apt-get update \
-    && apt-get install -y gh \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get install -y gh
+
+# Install Google Workspace CLI for Google Workspace service access
+ARG GWS_CLI_VERSION=0.22.0
+RUN npm install -g @googleworkspace/cli@${GWS_CLI_VERSION}
 
 # Create 'user' account (UID 1000) matching E2B sandbox default
 # - Home directory at /home/user
@@ -103,5 +105,9 @@ ENV LANG=C.UTF-8
 ARG AGENT_BROWSER_VERSION=0.21.0
 RUN npm install -g agent-browser@${AGENT_BROWSER_VERSION} \
     && apt-get update \
-    && apt-get install -y --no-install-recommends chromium \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get install -y --no-install-recommends chromium
+
+# Clean up caches to reduce rootfs size.
+# Docker layers don't matter since the image is exported as a flat rootfs.
+RUN rm -rf /var/lib/apt/lists/* /var/cache/apt/* \
+    && npm cache clean --force

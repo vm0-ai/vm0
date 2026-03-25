@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.151.0](https://github.com/vm0-ai/vm0/compare/app-v0.150.1...app-v0.151.0) (2026-03-25)
+
+
+### Features
+
+* make agent list items clickable to chat and fix unpinned agent opacity ([#6768](https://github.com/vm0-ai/vm0/issues/6768)) ([16b71a3](https://github.com/vm0-ai/vm0/commit/16b71a30c6a61c745d03b7692f2707cf0d48acb6))
+
+
+### Bug Fixes
+
+* **platform:** initialize sentry synchronously to capture bootstrap errors ([#6779](https://github.com/vm0-ai/vm0/issues/6779)) ([42b4f0f](https://github.com/vm0-ai/vm0/commit/42b4f0f39a5c201a30b1bd65a49550265499b038))
+* **platform:** use flex layout for org dialog and fix logo load for non-admin members ([#6771](https://github.com/vm0-ai/vm0/issues/6771)) ([85e32a5](https://github.com/vm0-ai/vm0/commit/85e32a5755f087eab851a32704908849ffb17fe0))
+
+
+### Refactoring
+
+* **platform:** align agents list with team compose item type ([#6780](https://github.com/vm0-ai/vm0/issues/6780)) ([cd08650](https://github.com/vm0-ai/vm0/commit/cd086508d1a5c7782f2355454e9ed4f489be7f66))
+
 ## [0.150.1](https://github.com/vm0-ai/vm0/compare/app-v0.150.0...app-v0.150.1) (2026-03-25)
 
 

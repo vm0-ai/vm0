@@ -131,7 +131,7 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-[960px] h-[85vh] p-0 gap-0 overflow-hidden"
+        className="flex flex-col max-w-[960px] h-[85vh] p-0 gap-0 overflow-hidden"
         style={{
           border: "0.7px solid hsl(var(--gray-400))",
           borderRadius: "0.75rem",

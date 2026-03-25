@@ -234,6 +234,23 @@ describe("org general tab - profile section", () => {
     expect(screen.queryByText("Slug is already taken")).not.toBeInTheDocument();
   });
 
+  it("should load and display logo for non-admin members", async () => {
+    mockAPIs({ role: "member" });
+    server.use(
+      http.get("*/api/zero/org/logo", () => {
+        return HttpResponse.json({
+          logoUrl: "https://example.com/logo.png",
+        });
+      }),
+    );
+
+    await openGeneralTab();
+
+    const logo = await screen.findByAltText("test-org");
+    expect(logo).toBeInTheDocument();
+    expect(logo).toHaveAttribute("src", "https://example.com/logo.png");
+  });
+
   it("should not send slug when only name is changed", async () => {
     const requestBody = vi.fn();
     mockAPIs({ name: "Old Name", slug: "keep-slug" });

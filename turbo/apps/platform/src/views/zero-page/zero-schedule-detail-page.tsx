@@ -224,7 +224,6 @@ const SCHEDULE_DETAIL_CONTROL_WIDTH =
 
 type ScheduleAgentOption = {
   id: string;
-  name: string;
   displayName?: string | null;
 };
 
@@ -489,7 +488,7 @@ function ScheduleSettingsForm({
                 <SelectContent>
                   {agents.map((a) => (
                     <SelectItem key={a.id} value={a.id}>
-                      {a.displayName ?? a.name}
+                      {a.displayName ?? a.id}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -989,7 +988,7 @@ export function ZeroScheduleDetailPage() {
   const agentsLoadable = useLoadable(agentsList$);
   const agents = agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
   const nameToDisplay = new Map(
-    agents.filter((a) => a.displayName).map((a) => [a.name, a.displayName!]),
+    agents.filter((a) => a.displayName).map((a) => [a.id, a.displayName!]),
   );
 
   const loaded = useGet(allOrgSchedulesLoaded$);
