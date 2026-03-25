@@ -97,12 +97,7 @@ describe("applyCapabilityVisibility", () => {
   it("should hide unmapped commands and show capable ones with valid token", () => {
     const token = buildZeroToken({
       scope: "zero",
-      capabilities: [
-        "agent:read",
-        "schedule:read",
-        "schedule:write",
-        "slack:write",
-      ],
+      capabilities: ["agent:read", "schedule:read", "schedule:write"],
     });
     vi.stubEnv("ZERO_TOKEN", token);
 

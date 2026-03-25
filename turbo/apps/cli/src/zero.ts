@@ -20,7 +20,6 @@ import { zeroWhoamiCommand } from "./commands/zero/whoami";
 const COMMAND_CAPABILITY_MAP: Record<string, string | null> = {
   agent: "agent:read",
   schedule: "schedule:read",
-  slack: "slack:write",
   whoami: null,
 };
 
