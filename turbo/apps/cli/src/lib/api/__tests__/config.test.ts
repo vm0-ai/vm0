@@ -176,6 +176,63 @@ describe("token resolution", () => {
       const org = await getActiveOrg();
       expect(org).toBe("fallback-org");
     });
+
+    it("should return orgId from CLI JWT when config token is JWT format", async () => {
+      const cliJwt = buildFakeJwt({
+        scope: "cli",
+        orgId: "cli-org",
+        userId: "user-1",
+        tokenId: "tok-1",
+      });
+      await writeConfigToken(cliJwt);
+
+      const org = await getActiveOrg();
+      expect(org).toBe("cli-org");
+    });
+
+    it("should fall back to config activeOrg when token is vm0_live_ format", async () => {
+      vi.stubEnv("VM0_ACTIVE_ORG", "");
+      const configDir = path.join(TEST_HOME, ".vm0");
+      await fs.mkdir(configDir, { recursive: true });
+      await fs.writeFile(
+        path.join(configDir, "config.json"),
+        JSON.stringify({ token: "vm0_live_abc123", activeOrg: "config-org" }),
+      );
+
+      const org = await getActiveOrg();
+      expect(org).toBe("config-org");
+    });
+
+    it("should prefer ZERO_TOKEN JWT over CLI JWT", async () => {
+      vi.stubEnv(
+        "ZERO_TOKEN",
+        buildFakeJwt({ scope: "zero", orgId: "zero-org", capabilities: [] }),
+      );
+      const cliJwt = buildFakeJwt({
+        scope: "cli",
+        orgId: "cli-org",
+        userId: "user-1",
+        tokenId: "tok-1",
+      });
+      await writeConfigToken(cliJwt);
+
+      const org = await getActiveOrg();
+      expect(org).toBe("zero-org");
+    });
+
+    it("should prefer CLI JWT over VM0_ACTIVE_ORG env var", async () => {
+      vi.stubEnv("VM0_ACTIVE_ORG", "env-org");
+      const cliJwt = buildFakeJwt({
+        scope: "cli",
+        orgId: "cli-org",
+        userId: "user-1",
+        tokenId: "tok-1",
+      });
+      await writeConfigToken(cliJwt);
+
+      const org = await getActiveOrg();
+      expect(org).toBe("cli-org");
+    });
   });
 
   describe("getToken", () => {

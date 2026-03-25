@@ -2,6 +2,7 @@ import { homedir } from "os";
 import { join } from "path";
 import { readFile, writeFile, mkdir, unlink } from "fs/promises";
 import { existsSync } from "fs";
+import { decodeCliTokenPayload } from "./cli-token.js";
 import { decodeZeroTokenPayload } from "./zero-token.js";
 
 interface CliConfig {
@@ -79,12 +80,17 @@ export { decodeZeroTokenPayload };
 
 /**
  * Get the active organization for API requests.
- * Priority: ZERO_TOKEN JWT orgId > VM0_ACTIVE_ORG env var > activeOrg from config file
+ * Priority: ZERO_TOKEN JWT orgId > CLI JWT orgId > VM0_ACTIVE_ORG env var > activeOrg from config file
  */
 export async function getActiveOrg(): Promise<string | undefined> {
   // Prefer orgId decoded from ZERO_TOKEN JWT (zero agent runs)
   const zeroPayload = decodeZeroTokenPayload();
   if (zeroPayload) return zeroPayload.orgId;
+
+  // Try CLI JWT token (new format: vm0_sandbox_ with scope "cli")
+  const token = await getToken();
+  const cliPayload = decodeCliTokenPayload(token);
+  if (cliPayload) return cliPayload.orgId;
 
   // Fall back to VM0_ACTIVE_ORG env var (legacy)
   if (process.env.VM0_ACTIVE_ORG) {
