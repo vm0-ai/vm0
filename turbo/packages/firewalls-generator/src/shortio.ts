@@ -4,7 +4,7 @@
  * Data source: https://developers.short.io/docs/cre
  *
  * Short.io is a URL shortening and link management platform.
- * Uses bare Authorization header (no Bearer prefix).
+ * Uses Bearer token authentication.
  * Only unrestricted permissions for now.
  */
 
@@ -35,7 +35,7 @@ function generateTypeScript(): string {
     '      base: "https://api.short.io",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "${{ secrets.SHORTIO_TOKEN }}",',
+    '          Authorization: "Bearer ${{ secrets.SHORTIO_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [",

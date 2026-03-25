@@ -137,8 +137,7 @@ function buildGroups(spec: OpenApiSpec): PermissionGroup[] {
       const capability = getCapability(tag, methodLower, apiPath);
       if (!capability) continue;
 
-      // Strip /v1 prefix since the base URL already includes it
-      const rulePath = apiPath.startsWith("/v1/") ? apiPath.slice(3) : apiPath;
+      const rulePath = apiPath;
       const rule = `${methodLower.toUpperCase()} ${rulePath}`;
       let ruleSet = groups.get(capability);
       if (!ruleSet) {
@@ -185,7 +184,7 @@ function generateTypeScript(permissions: PermissionGroup[]): string {
     "  },",
     "  apis: [",
     "    {",
-    '      base: "https://api.notion.com/v1",',
+    '      base: "https://api.notion.com",',
     "      auth: {",
     "        headers: {",
     '          Authorization: "Bearer ${{ secrets.NOTION_TOKEN }}",',

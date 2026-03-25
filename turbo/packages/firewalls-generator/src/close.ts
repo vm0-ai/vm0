@@ -32,7 +32,7 @@ function generateTypeScript(): string {
     "  },",
     "  apis: [",
     "    {",
-    '      base: "https://api.close.com/api/v1",',
+    '      base: "https://api.close.com/api",',
     "      auth: {",
     "        headers: {",
     '          Authorization: "Bearer ${{ secrets.CLOSE_TOKEN }}",',
