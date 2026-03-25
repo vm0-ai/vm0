@@ -285,13 +285,7 @@ const router = tsr.router(logsListContract, {
         agentComposes,
         eq(agentComposeVersions.composeId, agentComposes.id),
       )
-      .leftJoin(
-        zeroAgents,
-        and(
-          eq(agentComposes.orgId, zeroAgents.orgId),
-          eq(agentComposes.name, zeroAgents.name),
-        ),
-      )
+      .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
       .leftJoin(conversations, eq(agentRuns.id, conversations.runId))
       .where(and(...conditions))
       .orderBy(desc(agentRuns.createdAt), desc(agentRuns.id))

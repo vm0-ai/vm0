@@ -1,6 +1,5 @@
 import { eq, and } from "drizzle-orm";
 import { env } from "../../env";
-import { agentComposes } from "../../db/schema/agent-compose";
 import { orgMetadata } from "../../db/schema/org-metadata";
 import { zeroAgents } from "../../db/schema/zero-agent";
 import { getOrgBySlug } from "../org/org-cache-service";
@@ -12,11 +11,13 @@ const log = logger("zero:resolve-default-agent");
  * Resolve the default zero-layer agent ID for an org.
  *
  * Primary path: reads defaultAgentId directly from org_metadata.
+ * Since zero_agents.id = agentComposes.id (composeId), the returned
+ * value can be used directly as both agentId and composeId.
  *
  * Fallback path: parses VM0_DEFAULT_AGENT env var ("org-slug/agent-name"),
  * resolves the org, then queries zero_agents directly by (orgId, name).
  *
- * Returns the zero_agents.id or null if no default agent is configured.
+ * Returns the agent/compose ID or null if no default agent is configured.
  */
 export async function resolveDefaultAgentId(
   orgId: string,
@@ -37,7 +38,7 @@ export async function resolveDefaultAgentId(
  * Resolve the default agent ID from the VM0_DEFAULT_AGENT env var.
  * Format: "org-slug/agent-name" (e.g. "yuma/deep-dive")
  *
- * Queries zero_agents directly by (orgId, name) — no agentComposes needed.
+ * Queries zero_agents directly by (orgId, name).
  */
 async function resolveDefaultAgentIdFromEnv(): Promise<string | null> {
   const { VM0_DEFAULT_AGENT } = env();
@@ -78,28 +79,4 @@ async function resolveDefaultAgentIdFromEnv(): Promise<string | null> {
   }
 
   return agent.id;
-}
-
-/**
- * Reverse-resolve a zero agent UUID back to its compose UUID.
- * JOINs zero_agents → agent_composes via (orgId, name).
- * Returns the compose UUID or null if no matching compose exists.
- */
-export async function resolveComposeIdFromAgentId(
-  agentId: string,
-): Promise<string | null> {
-  const [row] = await globalThis.services.db
-    .select({ composeId: agentComposes.id })
-    .from(zeroAgents)
-    .innerJoin(
-      agentComposes,
-      and(
-        eq(agentComposes.orgId, zeroAgents.orgId),
-        eq(agentComposes.name, zeroAgents.name),
-      ),
-    )
-    .where(eq(zeroAgents.id, agentId))
-    .limit(1);
-
-  return row?.composeId ?? null;
 }

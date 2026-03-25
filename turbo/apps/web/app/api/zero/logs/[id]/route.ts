@@ -146,13 +146,7 @@ const router = tsr.router(logsByIdContract, {
         agentComposes,
         eq(agentComposeVersions.composeId, agentComposes.id),
       )
-      .leftJoin(
-        zeroAgents,
-        and(
-          eq(agentComposes.orgId, zeroAgents.orgId),
-          eq(agentComposes.name, zeroAgents.name),
-        ),
-      )
+      .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
       .where(
         and(
           eq(agentRuns.id, params.id),

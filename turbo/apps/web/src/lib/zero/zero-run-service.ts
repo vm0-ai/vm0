@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import type { TriggerSource, FirewallPolicies } from "@vm0/core";
 import { startRun, type CreateRunResult } from "../run";
 import {
@@ -8,49 +8,6 @@ import {
 import { formatAgentIdentityPrompt } from "../agent-identity";
 import type { CallbackPayload } from "../callback/callback-payloads";
 import { zeroAgents } from "../../db/schema/zero-agent";
-import { agentComposes } from "../../db/schema/agent-compose";
-
-/**
- * Resolve agent identity metadata and the corresponding composeId
- * from a agentId. Uses leftJoin so it works even if no matching
- * agentComposes row exists (forward-compatible).
- */
-async function resolveZeroAgent(agentId: string): Promise<{
-  displayName: string | null;
-  description: string | null;
-  sound: string | null;
-  composeId: string | null;
-  firewallPolicies: FirewallPolicies | null;
-}> {
-  const [row] = await globalThis.services.db
-    .select({
-      displayName: zeroAgents.displayName,
-      description: zeroAgents.description,
-      sound: zeroAgents.sound,
-      composeId: agentComposes.id,
-      firewallPolicies: zeroAgents.firewallPolicies,
-    })
-    .from(zeroAgents)
-    .leftJoin(
-      agentComposes,
-      and(
-        eq(agentComposes.orgId, zeroAgents.orgId),
-        eq(agentComposes.name, zeroAgents.name),
-      ),
-    )
-    .where(eq(zeroAgents.id, agentId))
-    .limit(1);
-
-  return (
-    row ?? {
-      displayName: null,
-      description: null,
-      sound: null,
-      composeId: null,
-      firewallPolicies: null,
-    }
-  );
-}
 
 /**
  * Parameters accepted by createZeroRun().
@@ -72,15 +29,37 @@ interface ZeroRunParams {
 /**
  * Create an agent run with zero-layer defaults.
  *
- * Resolves the agent's composeId internally from agentId, then injects
- * agent identity, memoryName, artifactName, and disallowedTools so that
- * every zero trigger path gets consistent identity, memory persistence,
- * artifact storage, and cron-tool restrictions.
+ * agentId is the composeId (single UUID). Fetches agent metadata from
+ * zero_agents, then injects agent identity, memoryName, artifactName,
+ * and disallowedTools so that every zero trigger path gets consistent
+ * identity, memory persistence, artifact storage, and cron-tool restrictions.
  */
 export async function createZeroRun(
   params: ZeroRunParams,
 ): Promise<CreateRunResult> {
-  const agent = await resolveZeroAgent(params.agentId);
+  // Fetch agent metadata (displayName, description, sound, firewallPolicies)
+  const [row] = await globalThis.services.db
+    .select({
+      displayName: zeroAgents.displayName,
+      description: zeroAgents.description,
+      sound: zeroAgents.sound,
+      firewallPolicies: zeroAgents.firewallPolicies,
+    })
+    .from(zeroAgents)
+    .where(eq(zeroAgents.id, params.agentId))
+    .limit(1);
+
+  const agent: {
+    displayName: string | null;
+    description: string | null;
+    sound: string | null;
+    firewallPolicies: FirewallPolicies | null;
+  } = row ?? {
+    displayName: null,
+    description: null,
+    sound: null,
+    firewallPolicies: null,
+  };
 
   // Inject agent identity into appendSystemPrompt
   let { appendSystemPrompt } = params;
@@ -100,7 +79,7 @@ export async function createZeroRun(
   return startRun({
     userId: params.userId,
     prompt: params.prompt,
-    composeId: agent.composeId ?? undefined,
+    composeId: params.agentId,
     triggerSource: params.triggerSource,
     sessionId: params.sessionId,
     appendSystemPrompt,
@@ -110,7 +89,7 @@ export async function createZeroRun(
     memoryName: "memory",
     artifactName: "artifact",
     disallowedTools: [...DISALLOWED_CRON_TOOLS],
-    vars: agent.composeId ? { ZERO_AGENT_ID: agent.composeId } : undefined,
+    vars: { ZERO_AGENT_ID: params.agentId },
     firewallPolicies: agent.firewallPolicies ?? undefined,
     injectZeroToken: true,
   });

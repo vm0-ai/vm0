@@ -7,7 +7,6 @@ import { orgDefaultAgentContract } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
-import { agentComposes } from "../../../../src/db/schema/agent-compose";
 import { zeroAgents } from "../../../../src/db/schema/zero-agent";
 import { orgMetadata as orgTable } from "../../../../src/db/schema/org-metadata";
 import { eq, and } from "drizzle-orm";
@@ -75,47 +74,13 @@ const router = tsr.router(orgDefaultAgentContract, {
       }
     }
 
-    // agentId from frontend is a compose UUID — resolve to zero agent UUID
-    let zeroAgentId: string | null = null;
+    // agentId is the composeId (= zeroAgents PK) — store directly
     if (agentId !== null) {
-      // Verify compose exists and belongs to this org
-      const [compose] = await globalThis.services.db
-        .select({
-          id: agentComposes.id,
-          name: agentComposes.name,
-          orgId: agentComposes.orgId,
-        })
-        .from(agentComposes)
-        .where(
-          and(
-            eq(agentComposes.id, agentId),
-            eq(agentComposes.orgId, org.orgId),
-          ),
-        )
-        .limit(1);
-
-      if (!compose) {
-        return {
-          status: 404 as const,
-          body: {
-            error: {
-              message: "Agent not found in this org",
-              code: "NOT_FOUND",
-            },
-          },
-        };
-      }
-
-      // Resolve compose → zero agent via (orgId, name)
+      // Verify agent exists and belongs to this org
       const [agent] = await globalThis.services.db
         .select({ id: zeroAgents.id })
         .from(zeroAgents)
-        .where(
-          and(
-            eq(zeroAgents.orgId, compose.orgId),
-            eq(zeroAgents.name, compose.name),
-          ),
-        )
+        .where(and(eq(zeroAgents.id, agentId), eq(zeroAgents.orgId, org.orgId)))
         .limit(1);
 
       if (!agent) {
@@ -129,19 +94,16 @@ const router = tsr.router(orgDefaultAgentContract, {
           },
         };
       }
-
-      zeroAgentId = agent.id;
     }
 
     await globalThis.services.db
       .insert(orgTable)
-      .values({ orgId: org.orgId, defaultAgentId: zeroAgentId })
+      .values({ orgId: org.orgId, defaultAgentId: agentId })
       .onConflictDoUpdate({
         target: orgTable.orgId,
-        set: { defaultAgentId: zeroAgentId, updatedAt: new Date() },
+        set: { defaultAgentId: agentId, updatedAt: new Date() },
       });
 
-    // Return compose UUID for backward compatibility
     return {
       status: 200 as const,
       body: {

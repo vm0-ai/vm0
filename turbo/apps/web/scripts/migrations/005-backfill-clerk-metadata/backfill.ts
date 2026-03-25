@@ -30,9 +30,6 @@ import postgres from "postgres";
 import { orgMetadata } from "../../../src/db/schema/org-metadata";
 import { orgMembersMetadata } from "../../../src/db/schema/org-members-metadata";
 import { users } from "../../../src/db/schema/user";
-import { agentComposes } from "../../../src/db/schema/agent-compose";
-import { zeroAgents } from "../../../src/db/schema/zero-agent";
-import { eq, and } from "drizzle-orm";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -152,25 +149,8 @@ export async function backfillOrgMetadata(
           continue;
         }
 
-        // Resolve Clerk's compose UUID → zero agent UUID
-        let zeroAgentId: string | null = null;
-        if (clerkComposeId) {
-          const [row] = await db
-            .select({
-              agentId: zeroAgents.id,
-            })
-            .from(agentComposes)
-            .innerJoin(
-              zeroAgents,
-              and(
-                eq(zeroAgents.orgId, agentComposes.orgId),
-                eq(zeroAgents.name, agentComposes.name),
-              ),
-            )
-            .where(eq(agentComposes.id, clerkComposeId))
-            .limit(1);
-          zeroAgentId = row?.agentId ?? null;
-        }
+        // Since zero_agents.id = agent_composes.id (composeId), use directly
+        const zeroAgentId: string | null = clerkComposeId ?? null;
 
         if (!dryRun) {
           await db
