@@ -14,6 +14,7 @@ import {
   setZeroSecret,
 } from "../../../lib/api";
 import { getBaseUrl } from "../../../lib/api/core/client-factory";
+import { getActiveOrg } from "../../../lib/api/config";
 import { withErrorHandler } from "../../../lib/command";
 import {
   checkComputerDependencies,
@@ -121,9 +122,10 @@ async function resolveAuthMethod(
 ): Promise<"oauth" | "api-token"> {
   const config = CONNECTOR_TYPES[connectorType];
   const oauthFlag = CONNECTOR_TYPES[connectorType].featureFlag;
+  const orgId = await getActiveOrg();
   const oauthAvailable =
     "oauth" in config.authMethods &&
-    (!oauthFlag || (await isFeatureEnabled(oauthFlag)));
+    (!oauthFlag || (await isFeatureEnabled(oauthFlag, { orgId })));
   const apiTokenAvailable = "api-token" in config.authMethods;
 
   if (tokenFlag) {

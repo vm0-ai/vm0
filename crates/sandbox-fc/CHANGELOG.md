@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.15.0...sandbox-fc-v0.16.0) (2026-03-25)
+
+
+### Features
+
+* **runner:** detect host-side cgroup oom kill of firecracker process ([#6630](https://github.com/vm0-ai/vm0/issues/6630)) ([34fa116](https://github.com/vm0-ai/vm0/commit/34fa11698b8e1c83f2cb93d82e281c099d114a49))
+
 ## [0.15.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.14.1...sandbox-fc-v0.15.0) (2026-03-23)
 
 

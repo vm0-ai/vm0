@@ -6,7 +6,7 @@ import {
   useLastResolved,
 } from "ccstate-react";
 import slackIcon from "./components/settings/icons/slack.svg";
-import zeroAvatarImg from "./assets/zero-avatar.webp";
+import zeroAvatarImg from "./assets/avatar_0.png";
 import {
   Dialog,
   DialogContent,

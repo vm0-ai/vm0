@@ -59,32 +59,23 @@ describe("getAuthContext with requiredCapability", () => {
   });
 
   it("should reject sandbox token without requiredCapability (backward compat)", async () => {
-    const token = await generateSandboxToken("user-123", "run-456", [
-      "agent:read",
-    ]);
+    const token = await generateSandboxToken("user-123", "run-456");
     const result = await getAuthContext(`Bearer ${token}`);
 
     expect(result).toBeNull();
   });
 
-  it("should accept sandbox token with matching capability", async () => {
-    const token = await generateSandboxToken("user-123", "run-456", [
-      "agent:read",
-    ]);
+  it("should reject sandbox token with requiredCapability (sandbox tokens have no capabilities)", async () => {
+    const token = await generateSandboxToken("user-123", "run-456");
     const result = await getAuthContext(`Bearer ${token}`, {
       requiredCapability: "agent:read",
     });
 
-    expect(result).not.toBeNull();
-    expect(result?.userId).toBe("user-123");
-    expect(result?.runId).toBe("run-456");
-    expect(result?.capabilities).toContain("agent:read");
+    expect(result).toBeNull();
   });
 
   it("should reject sandbox token without matching capability", async () => {
-    const token = await generateSandboxToken("user-123", "run-456", [
-      "agent:read",
-    ]);
+    const token = await generateSandboxToken("user-123", "run-456");
     const result = await getAuthContext(`Bearer ${token}`, {
       requiredCapability: "agent:write",
     });
@@ -125,10 +116,8 @@ describe("getAuthContext with acceptAnySandboxCapability", () => {
     } as Awaited<ReturnType<typeof auth>>);
   });
 
-  it("should accept sandbox token with any capability", async () => {
-    const token = await generateSandboxToken("user-123", "run-456", [
-      "agent:read",
-    ]);
+  it("should accept sandbox token with acceptAnySandboxCapability", async () => {
+    const token = await generateSandboxToken("user-123", "run-456");
     const result = await getAuthContext(`Bearer ${token}`, {
       acceptAnySandboxCapability: true,
     });
@@ -136,31 +125,27 @@ describe("getAuthContext with acceptAnySandboxCapability", () => {
     expect(result).not.toBeNull();
     expect(result?.userId).toBe("user-123");
     expect(result?.runId).toBe("run-456");
-    expect(result?.capabilities).toContain("agent:read");
   });
 
-  it("should accept sandbox token with multiple capabilities", async () => {
-    const token = await generateSandboxToken("user-123", "run-456", [
-      "agent:read",
-      "agent:write",
-    ]);
+  it("should accept sandbox token without capabilities via acceptAnySandboxCapability", async () => {
+    const token = await generateSandboxToken("user-123", "run-456");
     const result = await getAuthContext(`Bearer ${token}`, {
       acceptAnySandboxCapability: true,
     });
 
     expect(result).not.toBeNull();
     expect(result?.userId).toBe("user-123");
-    expect(result?.capabilities).toContain("agent:read");
-    expect(result?.capabilities).toContain("agent:write");
   });
 
-  it("should reject sandbox token with no capabilities", async () => {
+  it("should accept sandbox token with no capabilities when acceptAnySandboxCapability is true", async () => {
     const token = await generateSandboxToken("user-123", "run-456");
     const result = await getAuthContext(`Bearer ${token}`, {
       acceptAnySandboxCapability: true,
     });
 
-    expect(result).toBeNull();
+    expect(result).not.toBeNull();
+    expect(result?.userId).toBe("user-123");
+    expect(result?.runId).toBe("run-456");
   });
 
   it("should return Clerk session auth regardless of acceptAnySandboxCapability", async () => {
@@ -228,11 +213,9 @@ describe("getAuthContext org fields from Clerk session", () => {
   });
 
   it("should not populate org fields for sandbox tokens", async () => {
-    const token = await generateSandboxToken("user-123", "run-456", [
-      "agent:read",
-    ]);
+    const token = await generateSandboxToken("user-123", "run-456");
     const result = await getAuthContext(`Bearer ${token}`, {
-      requiredCapability: "agent:read",
+      acceptAnySandboxCapability: true,
     });
 
     expect(result?.userId).toBe("user-123");
@@ -252,7 +235,7 @@ describe("getAuthContext auth() call optimization", () => {
   });
 
   it("should not call auth() when sandbox token is provided", async () => {
-    const token = await generateSandboxToken("user-1", "run-1", ["agent:read"]);
+    const token = await generateSandboxToken("user-1", "run-1");
     await getAuthContext(`Bearer ${token}`, {
       requiredCapability: "agent:read",
     });
@@ -260,7 +243,7 @@ describe("getAuthContext auth() call optimization", () => {
   });
 
   it("should not call auth() when sandbox token is rejected", async () => {
-    const token = await generateSandboxToken("user-1", "run-1", ["agent:read"]);
+    const token = await generateSandboxToken("user-1", "run-1");
     await getAuthContext(`Bearer ${token}`);
     expect(mockAuth).not.toHaveBeenCalled();
   });
@@ -309,15 +292,6 @@ describe("getAuthContext with zero token and requiredCapability", () => {
     expect(result?.runId).toBe("run-456");
     expect(result?.orgId).toBe("org-789");
     expect(result?.capabilities).toContain("agent:read");
-  });
-
-  it("should reject zero token with missing capability", async () => {
-    const token = await generateZeroToken("user-123", "run-456", "org-789");
-    const result = await getAuthContext(`Bearer ${token}`, {
-      requiredCapability: "integration-slack:write",
-    });
-
-    expect(result).toBeNull();
   });
 
   it("should reject zero token without requiredCapability opt-in", async () => {

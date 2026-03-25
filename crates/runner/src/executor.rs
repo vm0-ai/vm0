@@ -320,7 +320,27 @@ async fn run_in_sandbox(
     let success = result.as_ref().is_ok_and(|exit| exit.exit_code == 0);
     let err = result.as_ref().err().map(|e| e.to_string());
     telemetry.record("agent_execute", t.elapsed(), success, err.as_deref());
-    let exit = result?;
+    let exit = match result {
+        Ok(exit) => exit,
+        Err(e) => {
+            // Sandbox crashed — check host dmesg for cgroup OOM kill of the
+            // firecracker process before propagating a generic error.
+            if let Some(pid) = sandbox.process_pid()
+                && check_host_oom(pid).await
+            {
+                warn!(run_id = %context.run_id, pid, "host OOM kill detected for firecracker");
+                return Ok((
+                    1,
+                    Some(
+                        "Firecracker VM killed by host OOM killer \
+                         (cgroup memory limit exceeded)"
+                            .into(),
+                    ),
+                ));
+            }
+            return Err(e.into());
+        }
+    };
 
     info!(
         run_id = %context.run_id,
@@ -408,6 +428,60 @@ async fn read_guest_error_file(sandbox: &dyn Sandbox, run_id: Uuid) -> Option<St
 fn dmesg_indicates_oom(stdout: &str) -> bool {
     let lower = stdout.to_lowercase();
     lower.contains("out of memory") || lower.contains("oom-kill") || lower.contains("oom_reaper")
+}
+
+/// Check host dmesg for a cgroup OOM kill of a specific firecracker process.
+/// Reads the entire ring buffer (~512KB) directly — no shell wrapper needed
+/// since the pure function handles filtering.  Times out after 5s to avoid
+/// blocking if sudo hangs.
+async fn check_host_oom(pid: u32) -> bool {
+    let result = tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::process::Command::new("sudo")
+            .args(["-n", "dmesg"])
+            .output()
+            .await
+    })
+    .await;
+    match result {
+        Ok(Ok(out)) if out.status.success() => {
+            host_dmesg_indicates_oom(&String::from_utf8_lossy(&out.stdout), pid)
+        }
+        Ok(Ok(out)) => {
+            warn!(pid, exit_code = out.status.code(), "sudo dmesg failed");
+            false
+        }
+        Ok(Err(e)) => {
+            warn!(pid, error = %e, "failed to run sudo dmesg for OOM check");
+            false
+        }
+        Err(_) => {
+            warn!(pid, "host dmesg OOM check timed out");
+            false
+        }
+    }
+}
+
+/// Returns true if host dmesg output contains an OOM kill record for the
+/// given firecracker PID.  Checks that the character after the PID is not
+/// a digit to avoid prefix matches (e.g. pid=1234 must not match pid=12345).
+fn host_dmesg_indicates_oom(dmesg: &str, pid: u32) -> bool {
+    if !dmesg.contains("oom-kill") {
+        return false;
+    }
+    let needle = format!("task=firecracker,pid={pid}");
+    let mut start = 0;
+    while let Some(pos) = dmesg[start..].find(&needle) {
+        let abs = start + pos + needle.len();
+        // Accept if needle is at end of string or next char is not a digit.
+        match dmesg.as_bytes().get(abs) {
+            Some(c) if c.is_ascii_digit() => {
+                // Prefix match (e.g. pid=1234 inside pid=12345) — keep searching.
+                start = abs;
+            }
+            _ => return true,
+        }
+    }
+    false
 }
 
 /// Drain stdout chunks from the vsock receiver and write them to a host file.
@@ -669,12 +743,6 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
     // The certificate is pre-baked into the rootfs at build time.
     env.insert("NODE_EXTRA_CA_CERTS".into(), VM_PROXY_CA_PATH.into());
 
-    // Inject CLI-compatible env vars so vm0 CLI can authenticate inside the sandbox.
-    env.insert("VM0_TOKEN".into(), context.sandbox_token.clone());
-    if let Some(slug) = &context.agent_org_slug {
-        env.insert("VM0_ACTIVE_ORG".into(), slug.clone());
-    }
-
     // Artifact config
     if let Some(manifest) = &context.storage_manifest
         && let Some(artifact) = &manifest.artifact
@@ -780,7 +848,6 @@ mod tests {
             debug_no_mock_claude: None,
             api_start_time: None,
             user_timezone: None,
-            agent_org_slug: None,
             memory_name: None,
             experimental_firewalls: None,
             disallowed_tools: None,
@@ -1060,33 +1127,11 @@ mod tests {
     }
 
     #[test]
-    fn build_env_json_injects_cli_vars() {
-        let mut ctx = minimal_context();
-        ctx.agent_org_slug = Some("my-org".into());
-        let env = build_env_json(&ctx, "http://localhost");
-        assert_eq!(env.get("VM0_TOKEN").unwrap(), "tok");
-        assert_eq!(env.get("VM0_ACTIVE_ORG").unwrap(), "my-org");
-    }
-
-    #[test]
-    fn build_env_json_injects_vm0_token_without_org() {
+    fn build_env_json_does_not_inject_vm0_token() {
         let ctx = minimal_context();
         let env = build_env_json(&ctx, "http://localhost");
-        assert_eq!(env.get("VM0_TOKEN").unwrap(), "tok");
+        assert!(!env.contains_key("VM0_TOKEN"));
         assert!(!env.contains_key("VM0_ACTIVE_ORG"));
-    }
-
-    #[test]
-    fn build_env_json_cli_vars_override_user_env() {
-        let mut ctx = minimal_context();
-        ctx.agent_org_slug = Some("my-org".into());
-        ctx.environment = Some(HashMap::from([
-            ("VM0_TOKEN".into(), "tampered".into()),
-            ("VM0_ACTIVE_ORG".into(), "evil-org".into()),
-        ]));
-        let env = build_env_json(&ctx, "http://localhost");
-        assert_eq!(env.get("VM0_TOKEN").unwrap(), "tok");
-        assert_eq!(env.get("VM0_ACTIVE_ORG").unwrap(), "my-org");
     }
 
     #[test]
@@ -1172,6 +1217,55 @@ mod tests {
         assert!(dmesg_indicates_oom("Out Of Memory: killed process 99"));
         assert!(!dmesg_indicates_oom("Killed process 99 (agent)"));
         assert!(dmesg_indicates_oom("OOM-kill: constraint=MEMCG"));
+    }
+
+    /// Real `sudo dmesg | grep 'oom-kill'` output captured from prod-3.
+    const PROD3_OOM_GREP: &str = "\
+        [1718300.650867] fc_vcpu 0 invoked oom-killer: gfp_mask=0xcc0(GFP_KERNEL), order=0, oom_score_adj=0\n\
+        [1718300.651117] oom-kill:constraint=CONSTRAINT_MEMCG,nodemask=(null),cpuset=vm0-runner-v0.45.6.service,mems_allowed=0,oom_memcg=/system.slice/vm0-runner-v0.45.6.service,task_memcg=/system.slice/vm0-runner-v0.45.6.service,task=firecracker,pid=586629,uid=1000";
+
+    #[test]
+    fn host_oom_matches_real_prod3_output() {
+        assert!(host_dmesg_indicates_oom(PROD3_OOM_GREP, 586629));
+    }
+
+    #[test]
+    fn host_oom_no_match_different_pid() {
+        assert!(!host_dmesg_indicates_oom(PROD3_OOM_GREP, 12345));
+    }
+
+    #[test]
+    fn host_oom_no_match_different_process() {
+        // Same structure as prod-3 but task=node instead of task=firecracker
+        let dmesg = "[1718300.651117] oom-kill:constraint=CONSTRAINT_MEMCG,\
+            task=node,pid=586629,uid=1000";
+        assert!(!host_dmesg_indicates_oom(dmesg, 586629));
+    }
+
+    #[test]
+    fn host_oom_no_match_empty() {
+        assert!(!host_dmesg_indicates_oom("", 12345));
+    }
+
+    #[test]
+    fn host_oom_no_match_without_oom_kill() {
+        // Has the PID pattern but no oom-kill keyword
+        let dmesg = "[1718300.651117] task=firecracker,pid=12345,uid=1000 started";
+        assert!(!host_dmesg_indicates_oom(dmesg, 12345));
+    }
+
+    #[test]
+    fn host_oom_no_prefix_match() {
+        // pid=58662 must NOT match pid=586629
+        assert!(!host_dmesg_indicates_oom(PROD3_OOM_GREP, 58662));
+    }
+
+    #[test]
+    fn host_oom_pid_at_end_of_line() {
+        // PID at end of string (no trailing comma) — edge case
+        let dmesg = "[0.0] oom-kill:constraint=CONSTRAINT_MEMCG,task=firecracker,pid=42";
+        assert!(host_dmesg_indicates_oom(dmesg, 42));
+        assert!(!host_dmesg_indicates_oom(dmesg, 4));
     }
 
     #[test]

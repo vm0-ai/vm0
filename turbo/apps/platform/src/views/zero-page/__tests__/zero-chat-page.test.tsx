@@ -80,21 +80,21 @@ describe("zero chat page - suggested prompts", () => {
     await renderChatPage();
 
     const exploreButton = await waitFor(() =>
-      screen.getByRole("button", { name: /Explore more ideas/ }),
+      screen.getByRole("button", { name: /Ideas & use cases/ }),
     );
     expect(exploreButton).toBeInTheDocument();
 
-    // The prompt grid is the parent of the "Explore more ideas" button
+    // The prompt grid is the parent of the "Ideas & use cases" button
     const promptGrid = exploreButton.parentElement!;
     const gridButtons = within(promptGrid).getAllByRole("button");
 
-    // 3 random prompt cards + 1 "Explore more ideas" card
-    expect(gridButtons).toHaveLength(4);
+    // 2 random prompt cards + 1 "Ideas & use cases" card
+    expect(gridButtons).toHaveLength(3);
 
     // Each random card title should come from the known dataset
     for (const button of gridButtons) {
       const text = button.textContent ?? "";
-      if (text.includes("Explore more ideas")) {
+      if (text.includes("Ideas & use cases")) {
         continue;
       }
       const matchesDataset = allUseCases.some((u) => text.includes(u.title));
@@ -106,14 +106,14 @@ describe("zero chat page - suggested prompts", () => {
     await renderChatPage();
 
     const exploreButton = await waitFor(() =>
-      screen.getByRole("button", { name: /Explore more ideas/ }),
+      screen.getByRole("button", { name: /Ideas & use cases/ }),
     );
     const promptGrid = exploreButton.parentElement!;
     const gridButtons = within(promptGrid).getAllByRole("button");
 
-    // Find the first random prompt card (not "Explore more ideas")
+    // Find the first random prompt card (not "Ideas & use cases")
     const promptCard = gridButtons.find(
-      (btn) => !btn.textContent?.includes("Explore more ideas"),
+      (btn) => !btn.textContent?.includes("Ideas & use cases"),
     )!;
 
     // Identify which use case this card represents
@@ -299,11 +299,11 @@ describe("zero chat page - ideation page", () => {
     await renderChatPage();
 
     await waitFor(() => {
-      expect(screen.getByText("Explore more ideas")).toBeInTheDocument();
+      expect(screen.getByText("Ideas & use cases")).toBeInTheDocument();
     });
 
-    // Find the "Explore more ideas" text, then navigate up to the button and click it
-    const exploreText = screen.getByText("Explore more ideas");
+    // Find the "Ideas & use cases" text, then navigate up to the button and click it
+    const exploreText = screen.getByText("Ideas & use cases");
     const exploreButton = exploreText.closest("button")!;
     expect(exploreButton).toBeInTheDocument();
 
@@ -325,10 +325,10 @@ describe("zero chat page - ideation page", () => {
 
   async function navigateToIdeation() {
     await waitFor(() => {
-      expect(screen.getByText("Explore more ideas")).toBeInTheDocument();
+      expect(screen.getByText("Ideas & use cases")).toBeInTheDocument();
     });
     const exploreButton = screen
-      .getByText("Explore more ideas")
+      .getByText("Ideas & use cases")
       .closest("button")!;
     await act(() => {
       fireEvent.click(exploreButton);
@@ -392,7 +392,7 @@ describe("zero chat page - ideation page", () => {
 
     // Should be back on the chat page
     await waitFor(() => {
-      expect(screen.getByText("Explore more ideas")).toBeInTheDocument();
+      expect(screen.getByText("Ideas & use cases")).toBeInTheDocument();
     });
   });
 });

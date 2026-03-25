@@ -1,4 +1,4 @@
-import type { ValidCapability, ZeroCapability } from "@vm0/core";
+import type { ZeroCapability } from "@vm0/core";
 import { getAuthContext, type AuthContext } from "./get-auth-context";
 import {
   isSandboxToken,
@@ -6,8 +6,6 @@ import {
   verifyZeroToken,
 } from "./sandbox-token";
 import { missingCapabilityError } from "./capability-check";
-
-type AnyCapability = ValidCapability | ZeroCapability;
 
 type AuthErrorResponse = {
   status: 401 | 403;
@@ -23,7 +21,7 @@ type AuthErrorResponse = {
 export async function requireAuth(
   authHeader: string | undefined,
   options?: {
-    requiredCapability?: AnyCapability;
+    requiredCapability?: ZeroCapability;
     acceptAnySandboxCapability?: boolean;
   },
 ): Promise<AuthContext | AuthErrorResponse> {

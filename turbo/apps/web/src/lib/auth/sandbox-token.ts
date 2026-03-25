@@ -1,9 +1,8 @@
 import { createHmac, hkdfSync } from "crypto";
-import { VALID_CAPABILITIES, ZERO_CAPABILITIES } from "@vm0/core";
+import { ZERO_CAPABILITIES } from "@vm0/core";
 import { env } from "../../env";
 import { logger } from "../logger";
 
-type Capability = (typeof VALID_CAPABILITIES)[number];
 type ZeroCapability = (typeof ZERO_CAPABILITIES)[number];
 
 const log = logger("auth:sandbox");
@@ -22,7 +21,6 @@ interface SandboxTokenPayload {
   userId: string;
   runId: string;
   scope: "sandbox";
-  capabilities?: readonly Capability[];
   iat: number;
   exp: number;
 }
@@ -57,7 +55,6 @@ interface ZeroTokenPayload {
 export interface SandboxAuth {
   userId: string;
   runId: string;
-  capabilities?: readonly Capability[];
 }
 
 /**
@@ -207,7 +204,6 @@ function verifyJwtPayload(rawJwt: string): JwtPayload | null {
 export async function generateSandboxToken(
   userId: string,
   runId: string,
-  capabilities?: readonly Capability[],
 ): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const expiresIn = 2 * 60 * 60; // 2 hours in seconds
@@ -216,7 +212,6 @@ export async function generateSandboxToken(
     userId,
     runId,
     scope: "sandbox",
-    ...(capabilities && capabilities.length > 0 ? { capabilities } : {}),
     iat: now,
     exp: now + expiresIn,
   };
@@ -251,24 +246,9 @@ export function verifySandboxToken(token: string): SandboxAuth | null {
     return null;
   }
 
-  // Validate capability values if present
-  if (payload.capabilities) {
-    if (!Array.isArray(payload.capabilities)) {
-      return null;
-    }
-    const validSet = new Set<string>(VALID_CAPABILITIES);
-    for (const cap of payload.capabilities) {
-      if (typeof cap !== "string" || !validSet.has(cap)) {
-        log.debug(`Invalid capability in token: ${String(cap)}`);
-        return null;
-      }
-    }
-  }
-
   return {
     userId: payload.userId,
     runId: payload.runId,
-    ...(payload.capabilities ? { capabilities: payload.capabilities } : {}),
   };
 }
 

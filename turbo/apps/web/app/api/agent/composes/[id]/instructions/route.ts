@@ -26,6 +26,7 @@ import {
   isAuthError,
 } from "../../../../../../src/lib/auth/require-auth";
 import { canAccessCompose } from "../../../../../../src/lib/agent/compose-access";
+import { isSandboxAuth } from "../../../../../../src/lib/auth/capability-check";
 import { resolveOrg } from "../../../../../../src/lib/org/resolve-org";
 import {
   downloadManifest,
@@ -79,9 +80,9 @@ const router = tsr.router(composesInstructionsContract, {
     }
 
     // Check access (owner or org member).
-    // Sandbox tokens (with capabilities) are already authorized via requireAuth;
+    // Sandbox tokens are already authorized via requireAuth;
     // use the compose's orgId since sandbox tokens lack org context.
-    const orgId = authResult.capabilities
+    const orgId = isSandboxAuth(authResult)
       ? result.orgId
       : (await resolveOrg(authResult)).org.orgId;
     const hasAccess = canAccessCompose(userId, orgId, result);

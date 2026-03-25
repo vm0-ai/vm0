@@ -1,7 +1,7 @@
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import { Card, CardContent } from "@vm0/ui";
 import { ZeroScheduleCard, type ScheduleEntry } from "./zero-schedule-card.tsx";
-import { notificationPreferences$ } from "../../signals/zero-page/settings/notification-settings.ts";
+import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
 import {
   scheduleTabSaving$,
   setScheduleTabSaving$,
@@ -32,7 +32,7 @@ export function ZeroScheduleTab({
   onRunNow,
   onOpenDetails,
 }: ZeroScheduleTabProps) {
-  const prefsLoadable = useLoadable(notificationPreferences$);
+  const prefsLoadable = useLoadable(userPreferences$);
   const userTimezone =
     prefsLoadable.state === "hasData" ? prefsLoadable.data.timezone : null;
   const saving = useGet(scheduleTabSaving$);

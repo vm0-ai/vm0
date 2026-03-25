@@ -14,32 +14,10 @@ import { clerk$ } from "../../auth.ts";
 const internalReloadPreferences$ = state(0);
 
 // ---------------------------------------------------------------------------
-// Loading keys — tracks which notification toggles are currently saving
-// ---------------------------------------------------------------------------
-
-const internalLoadingKeys$ = state<Set<string>>(new Set());
-
-export const notificationLoadingKeys$ = computed((get) =>
-  get(internalLoadingKeys$),
-);
-
-export const addNotificationLoadingKey$ = command(({ set }, key: string) => {
-  set(internalLoadingKeys$, (prev) => new Set([...prev, key]));
-});
-
-export const removeNotificationLoadingKey$ = command(({ set }, key: string) => {
-  set(internalLoadingKeys$, (prev) => {
-    const next = new Set(prev);
-    next.delete(key);
-    return next;
-  });
-});
-
-// ---------------------------------------------------------------------------
 // Data fetching
 // ---------------------------------------------------------------------------
 
-export const notificationPreferences$ = computed(async (get) => {
+export const userPreferences$ = computed(async (get) => {
   get(internalReloadPreferences$);
   const createClient = get(zeroClient$);
   const client = createClient(zeroUserPreferencesContract);
@@ -54,14 +32,14 @@ export const notificationPreferences$ = computed(async (get) => {
 // Update command
 // ---------------------------------------------------------------------------
 
-export const updateNotificationPreference$ = command(
+export const updateUserPreference$ = command(
   async ({ get, set }, update: UpdateUserPreferencesRequest) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroUserPreferencesContract);
     const result = await client.update({ body: update });
 
     if (result.status !== 200) {
-      toast.error("Failed to update notification preference");
+      toast.error("Failed to update preference");
       return;
     }
 

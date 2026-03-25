@@ -27,23 +27,22 @@ describe("requireAuth", () => {
     }
   });
 
-  it("should return AuthContext for sandbox token with matching capability", async () => {
-    const token = await generateSandboxToken("user-1", "run-1", ["agent:read"]);
+  it("should return 403 for sandbox token with requiredCapability (sandbox tokens have no capabilities)", async () => {
+    const token = await generateSandboxToken("user-1", "run-1");
 
     const result = await requireAuth(`Bearer ${token}`, {
       requiredCapability: "agent:read",
     });
 
-    expect(isAuthError(result)).toBe(false);
-    if (!isAuthError(result)) {
-      expect(result.userId).toBe("user-1");
-      expect(result.runId).toBe("run-1");
-      expect(result.capabilities).toContain("agent:read");
+    expect(isAuthError(result)).toBe(true);
+    if (isAuthError(result)) {
+      expect(result.status).toBe(403);
+      expect(result.body.error.code).toBe("FORBIDDEN");
     }
   });
 
   it("should return 403 for sandbox token missing required capability", async () => {
-    const token = await generateSandboxToken("user-1", "run-1", ["agent:read"]);
+    const token = await generateSandboxToken("user-1", "run-1");
 
     const result = await requireAuth(`Bearer ${token}`, {
       requiredCapability: "agent:write",
@@ -77,7 +76,7 @@ describe("requireAuth", () => {
   });
 
   it("should return 403 for sandbox token on uncovered endpoint", async () => {
-    const token = await generateSandboxToken("user-1", "run-1", ["agent:read"]);
+    const token = await generateSandboxToken("user-1", "run-1");
 
     // No requiredCapability = uncovered endpoint
     const result = await requireAuth(`Bearer ${token}`);
@@ -92,17 +91,17 @@ describe("requireAuth", () => {
     }
   });
 
-  it("should return 403 for acceptAnySandboxCapability with no capabilities", async () => {
+  it("should return AuthContext for acceptAnySandboxCapability (sandbox tokens always accepted)", async () => {
     const token = await generateSandboxToken("user-1", "run-1");
 
     const result = await requireAuth(`Bearer ${token}`, {
       acceptAnySandboxCapability: true,
     });
 
-    expect(isAuthError(result)).toBe(true);
-    if (isAuthError(result)) {
-      expect(result.status).toBe(403);
-      expect(result.body.error.code).toBe("FORBIDDEN");
+    expect(isAuthError(result)).toBe(false);
+    if (!isAuthError(result)) {
+      expect(result.userId).toBe("user-1");
+      expect(result.runId).toBe("run-1");
     }
   });
 
@@ -150,24 +149,6 @@ describe("requireAuth", () => {
       expect(result.orgId).toBe("org-1");
       expect(result.runId).toBe("run-1");
       expect(result.capabilities).toContain("agent-run:read");
-    }
-  });
-
-  it("should return 403 for zero token missing required capability", async () => {
-    const token = await generateZeroToken("user-1", "run-1", "org-1");
-
-    // "integration-slack:write" is NOT in ZERO_CAPABILITIES
-    const result = await requireAuth(`Bearer ${token}`, {
-      requiredCapability: "integration-slack:write",
-    });
-
-    expect(isAuthError(result)).toBe(true);
-    if (isAuthError(result)) {
-      expect(result.status).toBe(403);
-      expect(result.body.error.code).toBe("FORBIDDEN");
-      expect(result.body.error.message).toBe(
-        "Missing required capability: integration-slack:write",
-      );
     }
   });
 

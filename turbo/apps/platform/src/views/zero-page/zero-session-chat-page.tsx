@@ -61,7 +61,7 @@ import {
   copiedMessageIdValue$,
   copyMessageContent$,
 } from "../../signals/zero-page/zero-session-chat-ui.ts";
-import zeroAvatarImg from "./assets/zero-avatar.webp";
+import zeroAvatarImg from "./assets/avatar_0.png";
 
 // ---------------------------------------------------------------------------
 // ZeroSessionChatPage — real conversation backed by agent runs

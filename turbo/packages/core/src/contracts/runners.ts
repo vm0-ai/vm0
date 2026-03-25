@@ -117,8 +117,6 @@ export const storedExecutionContextSchema = z.object({
   apiStartTime: z.number().optional(),
   // User's timezone preference (IANA format, e.g., "Asia/Shanghai")
   userTimezone: z.string().optional(),
-  // Org slug for agent — used for VM0_ACTIVE_ORG
-  agentOrgSlug: z.string().optional(),
   // Memory storage name (for first-run when manifest.memory is null)
   memoryName: z.string().optional(),
   // Experimental firewall for proxy-side token replacement
@@ -163,8 +161,6 @@ export const executionContextSchema = z.object({
   apiStartTime: z.number().optional(),
   // User's timezone preference (IANA format, e.g., "Asia/Shanghai")
   userTimezone: z.string().optional(),
-  // Org slug for agent — used for VM0_ACTIVE_ORG
-  agentOrgSlug: z.string().optional(),
   // Memory storage name (for first-run when manifest.memory is null)
   memoryName: z.string().optional(),
   // Experimental firewall for proxy-side token replacement

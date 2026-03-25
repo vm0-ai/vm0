@@ -69,9 +69,6 @@ pub struct ExecutionContext {
     pub api_start_time: Option<f64>,
     #[serde(default)]
     pub user_timezone: Option<String>,
-    // Org slug for agent — used for VM0_ACTIVE_ORG
-    #[serde(default)]
-    pub agent_org_slug: Option<String>,
     // Memory storage name for first-run init — not yet consumed by runner
     #[allow(dead_code)]
     #[serde(default)]

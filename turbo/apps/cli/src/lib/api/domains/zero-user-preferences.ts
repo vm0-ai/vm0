@@ -26,8 +26,6 @@ export async function getZeroUserPreferences(): Promise<UserPreferencesResponse>
  */
 export async function updateZeroUserPreferences(body: {
   timezone?: string;
-  notifyEmail?: boolean;
-  notifySlack?: boolean;
 }): Promise<UserPreferencesResponse> {
   const config = await getClientConfig();
   const client = initClient(zeroUserPreferencesContract, config);

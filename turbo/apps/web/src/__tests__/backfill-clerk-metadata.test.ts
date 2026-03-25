@@ -329,8 +329,6 @@ describe("backfill-clerk-metadata", () => {
       const row = await getOrgMembersEntry(orgId, userId);
       expect(row).toBeDefined();
       expect(row!.timezone).toBe("America/New_York");
-      expect(row!.notifyEmail).toBe(true);
-      expect(row!.notifySlack).toBe(false);
       expect(row!.pinnedAgentIds).toEqual(["agent-1", "agent-2"]);
       expect(row!.sendMode).toBe("cmd-enter");
       expect(row!.onboardingDone).toBe(true);
@@ -346,8 +344,6 @@ describe("backfill-clerk-metadata", () => {
         orgId,
         userId,
         timezone: "Asia/Tokyo",
-        notifyEmail: true,
-        notifySlack: false,
         pinnedAgentIds: ["my-agent"],
         sendMode: "cmd-enter",
         onboardingDone: true,
@@ -374,8 +370,6 @@ describe("backfill-clerk-metadata", () => {
       const row = await getOrgMembersEntry(orgId, userId);
       // Original values preserved (onConflictDoNothing)
       expect(row!.timezone).toBe("Asia/Tokyo");
-      expect(row!.notifyEmail).toBe(true);
-      expect(row!.notifySlack).toBe(false);
       expect(row!.pinnedAgentIds).toEqual(["my-agent"]);
     });
 

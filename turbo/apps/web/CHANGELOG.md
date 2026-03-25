@@ -1,5 +1,25 @@
 # Changelog
 
+## [12.156.1](https://github.com/vm0-ai/vm0/compare/web-v12.156.0...web-v12.156.1) (2026-03-25)
+
+
+### Bug Fixes
+
+* skip startup skills sync in production ([#6665](https://github.com/vm0-ai/vm0/issues/6665)) ([3030c11](https://github.com/vm0-ai/vm0/commit/3030c11bae7e78d8afc24630d89e87f1e18f94ef)), closes [#6608](https://github.com/vm0-ai/vm0/issues/6608)
+
+
+### Refactoring
+
+* remove global notification preferences ([#6548](https://github.com/vm0-ai/vm0/issues/6548)) ([1d500cd](https://github.com/vm0-ai/vm0/commit/1d500cdf0d0571c8a92d22b5cd8fdf27f44c649e))
+* unify zero cli guidance for sandbox agents ([#6649](https://github.com/vm0-ai/vm0/issues/6649)) ([2110e59](https://github.com/vm0-ai/vm0/commit/2110e5922b6fd6b2468a34ac54e5ad5f3e15b3b1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.111.0
+
 ## [12.156.0](https://github.com/vm0-ai/vm0/compare/web-v12.155.1...web-v12.156.0) (2026-03-25)
 
 

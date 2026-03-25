@@ -1,7 +1,5 @@
-import type { ValidCapability, ZeroCapability } from "@vm0/core";
+import type { ZeroCapability } from "@vm0/core";
 import type { AuthContext } from "./get-auth-context";
-
-type AnyCapability = ValidCapability | ZeroCapability;
 
 /**
  * Check if auth context is from a sandbox token.
@@ -18,7 +16,7 @@ export function isSandboxAuth(
  * Build 403 response body for missing capability.
  * Response body tells which capability is missing (aids debugging).
  */
-export function missingCapabilityError(capability: AnyCapability): {
+export function missingCapabilityError(capability: ZeroCapability): {
   error: { message: string; code: string };
 } {
   return {

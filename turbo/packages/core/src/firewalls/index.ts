@@ -53,6 +53,7 @@ import { humeFirewall } from "./hume.generated";
 import { imgurFirewall } from "./imgur.generated";
 import { instantlyFirewall } from "./instantly.generated";
 import { intercomFirewall } from "./intercom.generated";
+import { intervalsIcuFirewall } from "./intervals-icu.generated";
 import { jiraFirewall } from "./jira.generated";
 import { jotformFirewall } from "./jotform.generated";
 import { larkFirewall } from "./lark.generated";
@@ -66,14 +67,18 @@ import { mondayFirewall } from "./monday.generated";
 import { neonFirewall } from "./neon.generated";
 import { notionFirewall } from "./notion.generated";
 import { openaiFirewall } from "./openai.generated";
+import { pdf4meFirewall } from "./pdf4me.generated";
 import { pdfcoFirewall } from "./pdfco.generated";
 import { pdforgeFirewall } from "./pdforge.generated";
 import { perplexityFirewall } from "./perplexity.generated";
 import { plausibleFirewall } from "./plausible.generated";
+import { podchaserFirewall } from "./podchaser.generated";
 import { posthogFirewall } from "./posthog.generated";
+import { productlaneFirewall } from "./productlane.generated";
 import { pushinatorFirewall } from "./pushinator.generated";
 import { qiitaFirewall } from "./qiita.generated";
 import { redditFirewall } from "./reddit.generated";
+import { reporteiFirewall } from "./reportei.generated";
 import { resendFirewall } from "./resend.generated";
 import { revenuecatFirewall } from "./revenuecat.generated";
 import { runwayFirewall } from "./runway.generated";
@@ -148,6 +153,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   imgur: imgurFirewall,
   instantly: instantlyFirewall,
   intercom: intercomFirewall,
+  "intervals-icu": intervalsIcuFirewall,
   jira: jiraFirewall,
   jotform: jotformFirewall,
   lark: larkFirewall,
@@ -161,14 +167,18 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   neon: neonFirewall,
   notion: notionFirewall,
   openai: openaiFirewall,
+  pdf4me: pdf4meFirewall,
   pdfco: pdfcoFirewall,
   pdforge: pdforgeFirewall,
   perplexity: perplexityFirewall,
   plausible: plausibleFirewall,
+  podchaser: podchaserFirewall,
   posthog: posthogFirewall,
+  productlane: productlaneFirewall,
   pushinator: pushinatorFirewall,
   qiita: qiitaFirewall,
   reddit: redditFirewall,
+  reportei: reporteiFirewall,
   resend: resendFirewall,
   revenuecat: revenuecatFirewall,
   runway: runwayFirewall,

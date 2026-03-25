@@ -1,5 +1,25 @@
 # Changelog
 
+## [9.82.0](https://github.com/vm0-ai/vm0/compare/cli-v9.81.0...cli-v9.82.0) (2026-03-25)
+
+
+### Features
+
+* **cli:** add zero slack message send command ([#6652](https://github.com/vm0-ai/vm0/issues/6652)) ([da77c47](https://github.com/vm0-ai/vm0/commit/da77c47885aba80bad5d15ca3710d7f65524f57e))
+* **cli:** hide zero commands based on token capabilities ([#6660](https://github.com/vm0-ai/vm0/issues/6660)) ([79e69a9](https://github.com/vm0-ai/vm0/commit/79e69a9f26913b3eb57f2f61c735658064e62f71))
+
+
+### Refactoring
+
+* remove global notification preferences ([#6548](https://github.com/vm0-ai/vm0/issues/6548)) ([1d500cd](https://github.com/vm0-ai/vm0/commit/1d500cdf0d0571c8a92d22b5cd8fdf27f44c649e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.111.0
+
 ## [9.81.0](https://github.com/vm0-ai/vm0/compare/cli-v9.80.0...cli-v9.81.0) (2026-03-25)
 
 
