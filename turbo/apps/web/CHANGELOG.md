@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.159.1](https://github.com/vm0-ai/vm0/compare/web-v12.159.0...web-v12.159.1) (2026-03-25)
+
+
+### Refactoring
+
+* disambiguate agent name semantics across frontend and backend ([#6743](https://github.com/vm0-ai/vm0/issues/6743)) ([7998f02](https://github.com/vm0-ai/vm0/commit/7998f020c40dee64c6ebf2f67eacbfe77f4121fb)), closes [#6733](https://github.com/vm0-ai/vm0/issues/6733)
+
 ## [12.159.0](https://github.com/vm0-ai/vm0/compare/web-v12.158.0...web-v12.159.0) (2026-03-25)
 
 

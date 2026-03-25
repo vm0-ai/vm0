@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.150.1](https://github.com/vm0-ai/vm0/compare/app-v0.150.0...app-v0.150.1) (2026-03-25)
+
+
+### Refactoring
+
+* disambiguate agent name semantics across frontend and backend ([#6743](https://github.com/vm0-ai/vm0/issues/6743)) ([7998f02](https://github.com/vm0-ai/vm0/commit/7998f020c40dee64c6ebf2f67eacbfe77f4121fb)), closes [#6733](https://github.com/vm0-ai/vm0/issues/6733)
+
 ## [0.150.0](https://github.com/vm0-ai/vm0/compare/app-v0.149.0...app-v0.150.0) (2026-03-25)
 
 
