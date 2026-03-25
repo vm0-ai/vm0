@@ -416,8 +416,10 @@ export {
 export {
   userPreferencesResponseSchema,
   updateUserPreferencesRequestSchema,
+  modelPreferencesSchema,
   type UserPreferencesResponse,
   type UpdateUserPreferencesRequest,
+  type ModelPreferences,
   sendModeSchema,
   type SendMode,
 } from "./zero-user-preferences";

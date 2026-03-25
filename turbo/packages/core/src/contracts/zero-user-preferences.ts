@@ -10,10 +10,14 @@ const c = initContract();
 export const sendModeSchema = z.enum(["enter", "cmd-enter"]);
 export type SendMode = z.infer<typeof sendModeSchema>;
 
+export const modelPreferencesSchema = z.record(z.string(), z.string());
+export type ModelPreferences = z.infer<typeof modelPreferencesSchema>;
+
 export const userPreferencesResponseSchema = z.object({
   timezone: z.string().nullable(),
   pinnedAgentIds: z.array(z.string()),
   sendMode: sendModeSchema,
+  modelPreferences: modelPreferencesSchema,
 });
 
 export type UserPreferencesResponse = z.infer<
@@ -25,12 +29,14 @@ export const updateUserPreferencesRequestSchema = z
     timezone: z.string().min(1).optional(),
     pinnedAgentIds: z.array(z.string()).optional(),
     sendMode: sendModeSchema.optional(),
+    modelPreferences: modelPreferencesSchema.optional(),
   })
   .refine(
     (data) =>
       data.timezone !== undefined ||
       data.pinnedAgentIds !== undefined ||
-      data.sendMode !== undefined,
+      data.sendMode !== undefined ||
+      data.modelPreferences !== undefined,
     {
       message: "At least one preference must be provided",
     },

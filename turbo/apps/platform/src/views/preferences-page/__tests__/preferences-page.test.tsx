@@ -15,6 +15,7 @@ function createMockPreferences(
     timezone: "UTC",
     pinnedAgentIds: [],
     sendMode: "enter",
+    modelPreferences: {},
     ...overrides,
   };
 }

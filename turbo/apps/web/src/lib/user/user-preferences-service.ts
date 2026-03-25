@@ -16,12 +16,30 @@ function toStringArray(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === "string");
 }
 
+/**
+ * Safely extract a Record<string, string> from an unknown jsonb value.
+ * Returns {} if the value is not a valid string-to-string record.
+ */
+function toStringRecord(value: unknown): Record<string, string> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return {};
+  }
+  const result: Record<string, string> = {};
+  for (const [k, v] of Object.entries(value)) {
+    if (typeof v === "string") {
+      result[k] = v;
+    }
+  }
+  return result;
+}
+
 type SendMode = "enter" | "cmd-enter";
 
 interface UserPreferences {
   timezone: string | null;
   pinnedAgentIds: string[];
   sendMode: SendMode;
+  modelPreferences: Record<string, string>;
 }
 
 function parseSendMode(value: unknown): SendMode {
@@ -41,6 +59,7 @@ const DEFAULTS: UserPreferences = {
   timezone: null,
   pinnedAgentIds: [],
   sendMode: "enter",
+  modelPreferences: {},
 };
 
 /**
@@ -69,6 +88,7 @@ export async function getUserPreferences(
       timezone: row.timezone,
       pinnedAgentIds: toStringArray(row.pinnedAgentIds),
       sendMode: parseSendMode(row.sendMode),
+      modelPreferences: toStringRecord(row.modelPreferences),
     };
   }
 
@@ -85,6 +105,7 @@ export async function updateUserPreferences(
     timezone?: string;
     pinnedAgentIds?: string[];
     sendMode?: SendMode;
+    modelPreferences?: Record<string, string>;
   },
 ): Promise<UserPreferences> {
   if (prefs.timezone !== undefined) {
@@ -103,6 +124,10 @@ export async function updateUserPreferences(
         ? prefs.pinnedAgentIds
         : existing.pinnedAgentIds,
     sendMode: prefs.sendMode !== undefined ? prefs.sendMode : existing.sendMode,
+    modelPreferences:
+      prefs.modelPreferences !== undefined
+        ? prefs.modelPreferences
+        : existing.modelPreferences,
   };
 
   const now = new Date();
@@ -114,6 +139,7 @@ export async function updateUserPreferences(
       timezone: merged.timezone,
       pinnedAgentIds: merged.pinnedAgentIds,
       sendMode: merged.sendMode,
+      modelPreferences: merged.modelPreferences,
       createdAt: now,
       updatedAt: now,
     })
@@ -125,6 +151,9 @@ export async function updateUserPreferences(
           pinnedAgentIds: prefs.pinnedAgentIds,
         }),
         ...(prefs.sendMode !== undefined && { sendMode: prefs.sendMode }),
+        ...(prefs.modelPreferences !== undefined && {
+          modelPreferences: prefs.modelPreferences,
+        }),
         updatedAt: now,
       },
     });

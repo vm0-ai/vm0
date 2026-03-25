@@ -2,7 +2,8 @@ import { command, computed, state } from "ccstate";
 import { clerk$ } from "../../auth.ts";
 import { detach, onRef, Reason } from "../../utils.ts";
 import { searchParams$, updateSearchParams$ } from "../../route.ts";
-import { reloadBillingStatus$ } from "../billing.ts";
+import { billingStatusAsync$, reloadBillingStatus$ } from "../billing.ts";
+import { syncAutoRechargeForm$ } from "../billing-dialog-state.ts";
 import {
   initProfileName$,
   setActiveTab$,
@@ -16,10 +17,12 @@ export const orgManageDialogOpen$ = computed((get) =>
 );
 
 export const setOrgManageDialogOpen$ = command(
-  async ({ set }, open: boolean, signal: AbortSignal) => {
+  async ({ get, set }, open: boolean, signal: AbortSignal) => {
     if (open) {
       await set(initProfileName$, signal);
       set(reloadBillingStatus$);
+      const status = await get(billingStatusAsync$);
+      set(syncAutoRechargeForm$, status.autoRecharge);
     }
     set(internalOrgManageDialogOpen$, open);
   },

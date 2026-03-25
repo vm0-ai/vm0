@@ -20,6 +20,9 @@ export const orgMembersMetadata = pgTable(
     timezone: text("timezone"),
     pinnedAgentIds: jsonb("pinned_agent_ids").$type<string[]>().default([]),
     sendMode: text("send_mode").notNull().default("enter"),
+    modelPreferences: jsonb("model_preferences")
+      .$type<Record<string, string>>()
+      .default({}),
     onboardingDone: boolean("onboarding_done").notNull().default(false),
     creditCap: bigint("credit_cap", { mode: "number" }),
     creditEnabled: boolean("credit_enabled").notNull().default(true),

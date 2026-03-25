@@ -40,3 +40,25 @@ export const setAutoRechargeThreshold$ = command(
 export const setAutoRechargeAmount$ = command(({ set }, amount: string) => {
   set(internalAutoRechargeAmount$, amount);
 });
+
+/** Hydrate auto-recharge form state from server data. */
+export const syncAutoRechargeForm$ = command(
+  (
+    { set },
+    config: {
+      enabled: boolean;
+      threshold: number | null;
+      amount: number | null;
+    },
+  ) => {
+    set(internalAutoRechargeEnabled$, config.enabled);
+    set(
+      internalAutoRechargeThreshold$,
+      config.threshold !== null ? String(config.threshold) : "",
+    );
+    set(
+      internalAutoRechargeAmount$,
+      config.amount !== null ? String(config.amount) : "",
+    );
+  },
+);
