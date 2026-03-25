@@ -95,7 +95,11 @@ describe("token resolution", () => {
     it("should return orgId from ZERO_TOKEN when set", async () => {
       vi.stubEnv(
         "ZERO_TOKEN",
-        buildFakeJwt({ scope: "zero", orgId: "org-from-jwt" }),
+        buildFakeJwt({
+          scope: "zero",
+          orgId: "org-from-jwt",
+          capabilities: [],
+        }),
       );
 
       const org = await getActiveOrg();
@@ -105,7 +109,7 @@ describe("token resolution", () => {
     it("should prefer ZERO_TOKEN over VM0_ACTIVE_ORG", async () => {
       vi.stubEnv(
         "ZERO_TOKEN",
-        buildFakeJwt({ scope: "zero", orgId: "jwt-org" }),
+        buildFakeJwt({ scope: "zero", orgId: "jwt-org", capabilities: [] }),
       );
       vi.stubEnv("VM0_ACTIVE_ORG", "env-org");
 
