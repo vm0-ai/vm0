@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.152.1](https://github.com/vm0-ai/vm0/compare/app-v0.152.0...app-v0.152.1) (2026-03-25)
+
+
+### Refactoring
+
+* enable command-async-signal and no-getter-setter-params eslint rules ([#6727](https://github.com/vm0-ai/vm0/issues/6727)) ([2ae2123](https://github.com/vm0-ai/vm0/commit/2ae212386efd858002c6e0949c99b73b6f42c6d5))
+
 ## [0.152.0](https://github.com/vm0-ai/vm0/compare/app-v0.151.0...app-v0.152.0) (2026-03-25)
 
 
