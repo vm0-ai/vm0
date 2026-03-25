@@ -139,7 +139,10 @@ describe("POST /api/internal/callbacks/slack/org", () => {
     );
     const response = await POST(request);
 
-    expect(response.status).toBe(200);
+    if (response.status !== 200) {
+      const errorBody = await response.clone().text();
+      throw new Error(`Expected 200 but got ${response.status}: ${errorBody}`);
+    }
     const data = await response.json();
     expect(data.success).toBe(true);
 
@@ -179,7 +182,10 @@ describe("POST /api/internal/callbacks/slack/org", () => {
     );
     const response = await POST(request);
 
-    expect(response.status).toBe(200);
+    if (response.status !== 200) {
+      const errorBody = await response.clone().text();
+      throw new Error(`Expected 200 but got ${response.status}: ${errorBody}`);
+    }
     const data = await response.json();
     expect(data.success).toBe(true);
 
@@ -222,7 +228,10 @@ describe("POST /api/internal/callbacks/slack/org", () => {
     );
     const response = await POST(request);
 
-    expect(response.status).toBe(200);
+    if (response.status !== 200) {
+      const errorBody = await response.clone().text();
+      throw new Error(`Expected 200 but got ${response.status}: ${errorBody}`);
+    }
     const data = await response.json();
     expect(data.success).toBe(true);
 
@@ -263,7 +272,10 @@ describe("POST /api/internal/callbacks/slack/org", () => {
     );
     const response = await POST(request);
 
-    expect(response.status).toBe(404);
+    if (response.status !== 404) {
+      const errorBody = await response.clone().text();
+      throw new Error(`Expected 404 but got ${response.status}: ${errorBody}`);
+    }
   });
 
   it("clears thread status after posting completion", async () => {
@@ -293,7 +305,12 @@ describe("POST /api/internal/callbacks/slack/org", () => {
       { runId, status: "completed", payload },
       secret,
     );
-    await POST(request);
+    const response = await POST(request);
+
+    if (response.status !== 200) {
+      const errorBody = await response.clone().text();
+      throw new Error(`Expected 200 but got ${response.status}: ${errorBody}`);
+    }
 
     // Thread status should be cleared (empty string)
     const { WebClient } = await import("@slack/web-api");
