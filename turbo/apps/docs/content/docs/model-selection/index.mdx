@@ -10,7 +10,7 @@ VM0 agents use model providers to connect to AI models. The **model provider sys
 Configure a model provider with a single command:
 
 ```bash
-vm0 org model-provider setup
+zero org model-provider setup
 ```
 
 This interactive command will:
@@ -45,10 +45,10 @@ For CI/CD or scripting, provide credentials via flags:
 
 ```bash
 # Simple providers (single credential)
-vm0 org model-provider setup --type anthropic-api-key --secret "sk-xxx"
+zero org model-provider setup --type anthropic-api-key --secret "sk-xxx"
 
 # With model selection
-vm0 org model-provider setup --type openrouter-api-key --secret "sk-xxx" --model "anthropic/claude-sonnet-4.5"
+zero org model-provider setup --type openrouter-api-key --secret "sk-xxx" --model "anthropic/claude-sonnet-4.5"
 ```
 
 ## Model Selection
@@ -69,13 +69,13 @@ Some providers support choosing specific models. During setup, you'll be prompte
 
 ```bash
 # List all configured providers
-vm0 org model-provider list
+zero org model-provider list
 
 # Set a provider as default
-vm0 org model-provider set-default openrouter-api-key
+zero org model-provider set-default openrouter-api-key
 
 # Delete a provider
-vm0 org model-provider remove anthropic-api-key
+zero org model-provider remove anthropic-api-key
 ```
 
 <Callout type="info" title="How Credential Injection Works">
@@ -96,7 +96,7 @@ vm0 run my-agent "build a todo app" --model-provider openrouter-api-key
 ## Advanced: Manual Configuration
 
 <Callout type="warning">
-For most users, `vm0 org model-provider setup` is the recommended approach. Manual configuration is only needed for advanced use cases.
+For most users, `zero org model-provider setup` is the recommended approach. Manual configuration is only needed for advanced use cases.
 </Callout>
 
 If you need per-agent authentication overrides or custom configurations, you can set environment variables directly in your `vm0.yaml`:

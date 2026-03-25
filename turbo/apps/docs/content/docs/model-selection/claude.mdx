@@ -9,10 +9,10 @@ Use Claude models directly from Anthropic with full control over model selection
 
 ```bash
 # Using OAuth token (requires Claude Pro/Max subscription)
-vm0 org model-provider setup --type claude-code-oauth-token
+zero org model-provider setup --type claude-code-oauth-token
 
 # Using API key (pay-per-token)
-vm0 org model-provider setup --type anthropic-api-key
+zero org model-provider setup --type anthropic-api-key
 ```
 
 Once configured, run agents without any additional configuration.
@@ -36,10 +36,10 @@ Do not set both OAuth token and API key at the same time. This will cause authen
 
 ```bash
 # OAuth token
-vm0 org model-provider setup --type claude-code-oauth-token --secret "your-oauth-token"
+zero org model-provider setup --type claude-code-oauth-token --secret "your-oauth-token"
 
 # API key
-vm0 org model-provider setup --type anthropic-api-key --secret "sk-ant-xxx"
+zero org model-provider setup --type anthropic-api-key --secret "sk-ant-xxx"
 ```
 
 ## Model Tier Configuration

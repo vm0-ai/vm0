@@ -40,22 +40,22 @@ Configure model providers for agent runs at the organization level.
 
 | Command | Description | Options |
 | ------- | ----------- | ------- |
-| `vm0 org model-provider list` | List configured model providers | - |
-| `vm0 org model-provider setup` | Configure a model provider | `-t, --type <type>`, `-s, --secret <value>`, `-a, --auth-method <method>`, `-m, --model <model>` |
-| `vm0 org model-provider remove <type>` | Remove a model provider | - |
-| `vm0 org model-provider set-default <type>` | Set a model provider as default for its framework | - |
+| `zero org model-provider list` | List configured model providers | - |
+| `zero org model-provider setup` | Configure a model provider | `-t, --type <type>`, `-s, --secret <value>`, `-a, --auth-method <method>`, `-m, --model <model>` |
+| `zero org model-provider remove <type>` | Remove a model provider | - |
+| `zero org model-provider set-default <type>` | Set a model provider as default for its framework | - |
 
-### `vm0 org model-provider setup` Examples
+### `zero org model-provider setup` Examples
 
 ```bash
 # Interactive setup
-vm0 org model-provider setup
+zero org model-provider setup
 
 # Non-interactive setup
-vm0 org model-provider setup --type anthropic-api-key --secret "sk-ant-xxx"
+zero org model-provider setup --type anthropic-api-key --secret "sk-ant-xxx"
 
 # Non-interactive with auth method and model
-vm0 org model-provider setup --type aws-bedrock --auth-method iam --secret "AWS_ACCESS_KEY_ID=xxx" --secret "AWS_SECRET_ACCESS_KEY=yyy" --model claude-sonnet-4-20250514
+zero org model-provider setup --type aws-bedrock --auth-method iam --secret "AWS_ACCESS_KEY_ID=xxx" --secret "AWS_SECRET_ACCESS_KEY=yyy" --model claude-sonnet-4-20250514
 ```
 
 ## Secret Management
@@ -119,14 +119,14 @@ Organizations are namespaces for organizing agents.
 
 | Command | Description | Options |
 | ------- | ----------- | ------- |
-| `vm0 org status` | Show current organization | - |
-| `vm0 org set <slug>` | Set the active organization | `--force` |
-| `vm0 org list` | List all accessible organizations | - |
-| `vm0 org use <slug>` | Switch to a different organization | - |
-| `vm0 org members` | View organization members | - |
-| `vm0 org invite` | Invite a member to the current organization | `--email <email>` (required) |
-| `vm0 org remove <email>` | Remove a member from the current organization | - |
-| `vm0 org leave` | Leave the current organization | - |
+| `zero org status` | Show current organization | - |
+| `zero org set <slug>` | Set the active organization | `--force` |
+| `zero org list` | List all accessible organizations | - |
+| `zero org use <slug>` | Switch to a different organization | - |
+| `zero org members` | View organization members | - |
+| `zero org invite` | Invite a member to the current organization | `--email <email>` (required) |
+| `zero org remove <email>` | Remove a member from the current organization | - |
+| `zero org leave` | Leave the current organization | - |
 
 ## Agent Management
 
