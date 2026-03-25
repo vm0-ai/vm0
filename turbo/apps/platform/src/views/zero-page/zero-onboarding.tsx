@@ -509,6 +509,129 @@ const STEP_ILLUSTRATIONS: Record<string, { title: string; subtitle: string }> =
     },
   };
 
+// ---------------------------------------------------------------------------
+// Orbit illustration — selected connectors orbit around Zero
+// ---------------------------------------------------------------------------
+
+function OrbitIllustration({
+  zeroAvatarSrc,
+  selectedConnectors,
+}: {
+  zeroAvatarSrc: string;
+  selectedConnectors: string[];
+}) {
+  const entries = (
+    Object.entries(CONNECTOR_TYPES) as [
+      ConnectorType,
+      (typeof CONNECTOR_TYPES)[ConnectorType],
+    ][]
+  ).filter(([type]) => selectedConnectors.includes(type));
+
+  // Distribute connectors in up to 2 orbit rings
+  const innerRadius = 90;
+  const outerRadius = 145;
+  const inner = entries.slice(0, 6);
+  const outer = entries.slice(6, 14);
+
+  return (
+    <div className="relative w-[340px] h-[340px]">
+      {/* Orbit rings */}
+      <div
+        className="absolute rounded-full border border-dashed border-border/25"
+        style={{
+          top: `calc(50% - ${innerRadius}px)`,
+          left: `calc(50% - ${innerRadius}px)`,
+          width: innerRadius * 2,
+          height: innerRadius * 2,
+        }}
+      />
+      {entries.length > 6 && (
+        <div
+          className="absolute rounded-full border border-dashed border-border/15"
+          style={{
+            top: `calc(50% - ${outerRadius}px)`,
+            left: `calc(50% - ${outerRadius}px)`,
+            width: outerRadius * 2,
+            height: outerRadius * 2,
+          }}
+        />
+      )}
+
+      {/* Zero at center */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
+        <img
+          src={zeroAvatarSrc}
+          alt=""
+          role="presentation"
+          className="h-16 w-16 object-contain"
+        />
+      </div>
+
+      {/* Inner orbit connectors */}
+      {inner.map(([type], i) => {
+        const angle =
+          (i / Math.max(inner.length, 1)) * Math.PI * 2 - Math.PI / 2;
+        const x = Math.cos(angle) * innerRadius;
+        const y = Math.sin(angle) * innerRadius;
+        return (
+          <div
+            key={type}
+            className="absolute z-10 flex h-9 w-9 items-center justify-center rounded-lg bg-background border border-border/60 shadow-sm transition-all duration-500 ease-out"
+            style={{
+              top: `calc(50% + ${y}px - 18px)`,
+              left: `calc(50% + ${x}px - 18px)`,
+            }}
+          >
+            <ConnectorIcon type={type} size={18} />
+          </div>
+        );
+      })}
+
+      {/* Outer orbit connectors */}
+      {outer.map(([type], i) => {
+        const angle =
+          (i / Math.max(outer.length, 1)) * Math.PI * 2 - Math.PI / 2 + 0.3;
+        const x = Math.cos(angle) * outerRadius;
+        const y = Math.sin(angle) * outerRadius;
+        return (
+          <div
+            key={type}
+            className="absolute z-10 flex h-8 w-8 items-center justify-center rounded-lg bg-background border border-border/50 shadow-sm transition-all duration-500 ease-out"
+            style={{
+              top: `calc(50% + ${y}px - 16px)`,
+              left: `calc(50% + ${x}px - 16px)`,
+            }}
+          >
+            <ConnectorIcon type={type} size={16} />
+          </div>
+        );
+      })}
+
+      {/* Empty state dots on orbit */}
+      {entries.length === 0 &&
+        Array.from({ length: 6 }, (_, i) => {
+          const angle = (i / 6) * Math.PI * 2 - Math.PI / 2;
+          const x = Math.cos(angle) * innerRadius;
+          const y = Math.sin(angle) * innerRadius;
+          return (
+            <div
+              key={i}
+              className="absolute h-3 w-3 rounded-full bg-border/30"
+              style={{
+                top: `calc(50% + ${y}px - 6px)`,
+                left: `calc(50% + ${x}px - 6px)`,
+              }}
+            />
+          );
+        })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Full-page layout wrapper
+// ---------------------------------------------------------------------------
+
 function OnboardingPage({
   currentStep,
   totalSteps,
@@ -519,6 +642,7 @@ function OnboardingPage({
   showNext,
   nextDisabled,
   zeroAvatarSrc,
+  selectedConnectors,
   children,
 }: {
   currentStep: number;
@@ -530,38 +654,58 @@ function OnboardingPage({
   showNext: boolean;
   nextDisabled?: boolean;
   zeroAvatarSrc?: string;
+  selectedConnectors?: string[];
   children: React.ReactNode;
 }) {
   const illustration =
-    STEP_ILLUSTRATIONS[stepKey] ?? STEP_ILLUSTRATIONS.welcome;
+    STEP_ILLUSTRATIONS[stepKey] ?? STEP_ILLUSTRATIONS.workspace;
+  const showOrbit = stepKey === "connectors" && selectedConnectors;
 
   return (
     <div className="zero-app flex h-dvh bg-muted/30">
       {/* Left panel — brand / illustration */}
       <div className="hidden lg:flex w-2/5 shrink-0 flex-col items-center justify-center p-10 relative overflow-hidden">
-        {/* Decorative circles */}
-        <div className="absolute inset-0 pointer-events-none" aria-hidden>
-          <div className="absolute top-[15%] left-[10%] h-48 w-48 rounded-full border border-border/20" />
-          <div className="absolute top-[25%] left-[20%] h-64 w-64 rounded-full border border-border/15" />
-          <div className="absolute bottom-[20%] right-[5%] h-40 w-40 rounded-full border border-border/20" />
-          <div className="absolute top-[60%] left-[5%] h-32 w-32 rounded-full border border-border/10" />
-        </div>
+        {/* Decorative circles (non-orbit steps) */}
+        {!showOrbit && (
+          <div className="absolute inset-0 pointer-events-none" aria-hidden>
+            <div className="absolute top-[15%] left-[10%] h-48 w-48 rounded-full border border-border/20" />
+            <div className="absolute top-[25%] left-[20%] h-64 w-64 rounded-full border border-border/15" />
+            <div className="absolute bottom-[20%] right-[5%] h-40 w-40 rounded-full border border-border/20" />
+            <div className="absolute top-[60%] left-[5%] h-32 w-32 rounded-full border border-border/10" />
+          </div>
+        )}
 
         <div className="relative z-10 flex flex-col items-center">
-          {zeroAvatarSrc && (
-            <img
-              src={zeroAvatarSrc}
-              alt=""
-              role="presentation"
-              className="h-24 w-24 object-contain mb-8"
-            />
+          {showOrbit && zeroAvatarSrc ? (
+            <>
+              <OrbitIllustration
+                zeroAvatarSrc={zeroAvatarSrc}
+                selectedConnectors={selectedConnectors}
+              />
+              <p className="text-sm text-muted-foreground text-center leading-relaxed mt-6 max-w-[280px]">
+                {selectedConnectors.length === 0
+                  ? "Select apps to connect with Zero"
+                  : `${selectedConnectors.length} app${selectedConnectors.length === 1 ? "" : "s"} selected`}
+              </p>
+            </>
+          ) : (
+            <>
+              {zeroAvatarSrc && (
+                <img
+                  src={zeroAvatarSrc}
+                  alt=""
+                  role="presentation"
+                  className="h-24 w-24 object-contain mb-8"
+                />
+              )}
+              <h3 className="text-xl font-semibold text-foreground text-center leading-snug">
+                {illustration.title}
+              </h3>
+              <p className="text-sm text-muted-foreground text-center leading-relaxed mt-3 max-w-[300px]">
+                {illustration.subtitle}
+              </p>
+            </>
           )}
-          <h3 className="text-xl font-semibold text-foreground text-center leading-snug">
-            {illustration.title}
-          </h3>
-          <p className="text-sm text-muted-foreground text-center leading-relaxed mt-3 max-w-[300px]">
-            {illustration.subtitle}
-          </p>
         </div>
       </div>
 
@@ -756,6 +900,7 @@ export function ZeroOnboarding({
           totalSteps={ADMIN_STEPS.length}
           stepKey="connectors"
           zeroAvatarSrc={zeroAvatarSrc}
+          selectedConnectors={selectedConnectors}
           showBack
           showNext
           onBack={() => setStep("1")}
@@ -772,6 +917,7 @@ export function ZeroOnboarding({
           totalSteps={ADMIN_STEPS.length}
           stepKey="connectors"
           zeroAvatarSrc={zeroAvatarSrc}
+          selectedConnectors={selectedConnectors}
           showBack
           showNext
           onBack={() => setStep("3")}
