@@ -13,7 +13,7 @@ export const leaveCommand = new Command()
 
       const { orgs } = await listZeroOrgs();
       if (orgs.length === 0) {
-        await saveConfig({ activeOrg: undefined, token: undefined });
+        await saveConfig({ token: undefined });
         console.log(chalk.green("✓ Left organization."));
         console.log(
           chalk.yellow("No remaining organizations. Run: vm0 auth login"),
@@ -25,7 +25,6 @@ export const leaveCommand = new Command()
       const result = await switchZeroOrg(nextOrg);
       await saveConfig({
         token: result.access_token,
-        activeOrg: result.org_slug,
       });
       console.log(chalk.green(`✓ Left organization. Switched to: ${nextOrg}`));
     }),

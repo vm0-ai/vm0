@@ -8,7 +8,6 @@ import { decodeZeroTokenPayload } from "./zero-token.js";
 interface CliConfig {
   token?: string;
   apiUrl?: string;
-  activeOrg?: string;
 }
 
 // Use functions for lazy evaluation (enables testing with mocked homedir)

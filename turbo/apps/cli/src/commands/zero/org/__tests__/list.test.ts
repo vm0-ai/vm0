@@ -3,7 +3,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server";
 import { listCommand } from "../list";
 import { mkdtempSync } from "fs";
-import { mkdir, writeFile, rm } from "fs/promises";
+import { mkdir, rm } from "fs/promises";
 import * as path from "path";
 import * as os from "os";
 import chalk from "chalk";
@@ -44,10 +44,6 @@ describe("zero org list command", () => {
     vi.stubEnv("VM0_TOKEN", cliJwt);
     const configDir = path.join(TEST_HOME, ".vm0");
     await mkdir(configDir, { recursive: true });
-    await writeFile(
-      path.join(configDir, "config.json"),
-      JSON.stringify({ activeOrg: "my-org" }),
-    );
   });
 
   afterEach(async () => {

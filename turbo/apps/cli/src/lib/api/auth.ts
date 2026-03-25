@@ -131,7 +131,6 @@ export async function authenticate(apiUrl?: string): Promise<void> {
       await saveConfig({
         token: tokenResult.access_token,
         apiUrl: targetApiUrl,
-        ...(tokenResult.org_slug && { activeOrg: tokenResult.org_slug }),
       });
 
       console.log(chalk.green("\nAuthentication successful!"));

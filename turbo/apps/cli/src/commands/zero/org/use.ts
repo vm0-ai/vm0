@@ -19,7 +19,6 @@ export const useCommand = new Command()
       const result = await switchZeroOrg(slug);
       await saveConfig({
         token: result.access_token,
-        activeOrg: result.org_slug,
       });
       console.log(chalk.green(`✓ Switched to organization: ${slug}`));
     }),
