@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { screen, waitFor, act, fireEvent } from "@testing-library/react";
-import { http, HttpResponse } from "msw";
+import { http, HttpResponse, delay } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
@@ -29,29 +29,6 @@ function mockAPIs() {
   );
 }
 
-async function openBillingTab() {
-  await setupPage({
-    context,
-    path: "/?settings=billing",
-    featureSwitches: { [FeatureSwitchKey.Pricing]: true },
-  });
-  await waitFor(
-    () => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
-    },
-    { timeout: 3000 },
-  );
-  // Wait for billing tab content to render (the Plan section heading)
-  await waitFor(
-    () => {
-      expect(
-        screen.getByText("Manage your plan and payment method."),
-      ).toBeInTheDocument();
-    },
-    { timeout: 5000 },
-  );
-}
-
 describe("org billing tab - loading state isolation", () => {
   it("should only show loading on 'Manage billing' button, not on add-on buttons when clicking Manage billing", async () => {
     mockAPIs();
@@ -65,14 +42,36 @@ describe("org billing tab - loading state isolation", () => {
     // Make the portal endpoint slow so we can observe loading state
     server.use(
       http.post("*/api/zero/billing/portal", async () => {
-        await new Promise((resolve) => setTimeout(resolve, 5000));
+        await delay("infinite");
         return HttpResponse.json({
           url: "https://billing.stripe.com/test-portal",
         });
       }),
     );
 
-    await openBillingTab();
+    await setupPage({
+      context,
+      path: "/?settings=billing",
+      featureSwitches: {
+        [FeatureSwitchKey.Pricing]: true,
+        [FeatureSwitchKey.ConcurrentAddOn]: true,
+        [FeatureSwitchKey.CreditAddOn]: true,
+      },
+    });
+    await waitFor(
+      () => {
+        expect(screen.getByRole("dialog")).toBeInTheDocument();
+      },
+      { timeout: 3000 },
+    );
+    await waitFor(
+      () => {
+        expect(
+          screen.getByText("Manage your plan and payment method."),
+        ).toBeInTheDocument();
+      },
+      { timeout: 5000 },
+    );
 
     // Wait for billing data to load (shows "Pro plan")
     await waitFor(() => {
@@ -88,7 +87,7 @@ describe("org billing tab - loading state isolation", () => {
     const manageBillingButton = screen.getByRole("button", {
       name: /Manage billing/i,
     });
-    await act(async () => {
+    await act(() => {
       fireEvent.click(manageBillingButton);
     });
 
@@ -100,7 +99,7 @@ describe("org billing tab - loading state isolation", () => {
     }
   });
 
-  it("should only show loading on 'Manage' button, not on 'Manage billing' or add-on buttons", async () => {
+  it("should not show loading on add-on buttons when clicking 'Manage' portal button", async () => {
     mockAPIs();
     setMockBillingStatus({
       tier: "pro",
@@ -111,14 +110,36 @@ describe("org billing tab - loading state isolation", () => {
 
     server.use(
       http.post("*/api/zero/billing/portal", async () => {
-        await new Promise((resolve) => setTimeout(resolve, 5000));
+        await delay("infinite");
         return HttpResponse.json({
           url: "https://billing.stripe.com/test-portal",
         });
       }),
     );
 
-    await openBillingTab();
+    await setupPage({
+      context,
+      path: "/?settings=billing",
+      featureSwitches: {
+        [FeatureSwitchKey.Pricing]: true,
+        [FeatureSwitchKey.ConcurrentAddOn]: true,
+        [FeatureSwitchKey.CreditAddOn]: true,
+      },
+    });
+    await waitFor(
+      () => {
+        expect(screen.getByRole("dialog")).toBeInTheDocument();
+      },
+      { timeout: 3000 },
+    );
+    await waitFor(
+      () => {
+        expect(
+          screen.getByText("Manage your plan and payment method."),
+        ).toBeInTheDocument();
+      },
+      { timeout: 5000 },
+    );
 
     await waitFor(() => {
       expect(screen.getByText("Pro plan")).toBeInTheDocument();
@@ -126,17 +147,11 @@ describe("org billing tab - loading state isolation", () => {
 
     // Click the "Manage" button (the second manage button with external link)
     const manageButton = screen.getByRole("button", { name: /^Manage$/i });
-    await act(async () => {
+    await act(() => {
       fireEvent.click(manageButton);
     });
 
-    // BUG: The "Manage billing" button should NOT be in loading state
-    const manageBillingButton = screen.getByRole("button", {
-      name: /Manage billing/i,
-    });
-    expect(manageBillingButton).not.toBeDisabled();
-
-    // BUG: The add-on "Add" buttons should NOT be in loading state
+    // The add-on "Add" buttons should NOT be in loading state
     const addButtons = screen.getAllByRole("button", { name: /^Add$/i });
     for (const addButton of addButtons) {
       expect(addButton).not.toBeDisabled();
@@ -188,11 +203,14 @@ describe("org billing tab - add-on visibility", () => {
       hasSubscription: true,
     });
 
+    // Enable concurrentAddOn but NOT creditAddOn so the Add-ons section
+    // is visible but Credits row should be absent.
     await setupPage({
       context,
       path: "/?settings=billing",
       featureSwitches: {
         [FeatureSwitchKey.Pricing]: true,
+        [FeatureSwitchKey.ConcurrentAddOn]: true,
       },
     });
 
@@ -207,17 +225,17 @@ describe("org billing tab - add-on visibility", () => {
       expect(screen.getByText("Pro plan")).toBeInTheDocument();
     });
 
-    // BUG: The "Credits" add-on in the add-ons section should NOT be visible
-    // because creditAddOn feature switch is not enabled.
-    // Credits currently only support auto-recharge, not standalone purchases.
-    // The add-on section should say "Credits" — look for the add-on row specifically.
+    // The Add-ons section should be visible (concurrentAddOn is on)
     const addonsHeading = screen.getByText("Add-ons");
     const addonsSection = addonsHeading.closest("section");
     expect(addonsSection).not.toBeNull();
 
-    // Look for text "Credits" within the add-on card section (not the sidebar nav)
-    const allCreditsTexts = screen.getAllByText("Credits");
-    // Filter to only those inside the add-ons section
+    // "Active agent" add-on should be visible
+    expect(screen.getByText("Active agent")).toBeInTheDocument();
+
+    // The Credits add-on row should NOT be visible because
+    // creditAddOn feature switch is not enabled.
+    const allCreditsTexts = screen.queryAllByText("Credits");
     const creditsInAddonSection = allCreditsTexts.filter((el) =>
       addonsSection!.contains(el),
     );

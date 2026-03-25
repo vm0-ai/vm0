@@ -123,7 +123,7 @@ describe("org credits tab - member cap re-edit", () => {
     expect(noLimitButton).toBeInTheDocument();
 
     // Click to enter edit mode
-    await act(async () => {
+    await act(() => {
       fireEvent.click(noLimitButton);
     });
 
@@ -134,13 +134,13 @@ describe("org credits tab - member cap re-edit", () => {
 
     // Type a cap value
     const input = screen.getByRole("spinbutton");
-    await act(async () => {
+    await act(() => {
       fireEvent.change(input, { target: { value: "5000" } });
     });
 
     // Click Save
     const saveButton = screen.getByRole("button", { name: "Save" });
-    await act(async () => {
+    await act(() => {
       fireEvent.click(saveButton);
     });
 
@@ -157,7 +157,7 @@ describe("org credits tab - member cap re-edit", () => {
     // edit mode again. Currently this fails because the new MemberCapSetting
     // created after re-fetch may not properly allow re-entering edit mode.
     const capButton = screen.getByText("5,000");
-    await act(async () => {
+    await act(() => {
       fireEvent.click(capButton);
     });
 
@@ -200,16 +200,16 @@ describe("org credits tab - member cap re-edit", () => {
 
     // First edit: set cap to 3000
     const noLimitButton = screen.getByText("No limit");
-    await act(async () => {
+    await act(() => {
       fireEvent.click(noLimitButton);
     });
 
     let input = screen.getByRole("spinbutton");
-    await act(async () => {
+    await act(() => {
       fireEvent.change(input, { target: { value: "3000" } });
     });
 
-    await act(async () => {
+    await act(() => {
       fireEvent.click(screen.getByRole("button", { name: "Save" }));
     });
 
@@ -222,7 +222,7 @@ describe("org credits tab - member cap re-edit", () => {
 
     // Second edit: change cap from 3000 to 7000
     const capButton3000 = screen.getByText("3,000");
-    await act(async () => {
+    await act(() => {
       fireEvent.click(capButton3000);
     });
 
@@ -231,11 +231,11 @@ describe("org credits tab - member cap re-edit", () => {
     });
 
     input = screen.getByRole("spinbutton");
-    await act(async () => {
+    await act(() => {
       fireEvent.change(input, { target: { value: "7000" } });
     });
 
-    await act(async () => {
+    await act(() => {
       fireEvent.click(screen.getByRole("button", { name: "Save" }));
     });
 
@@ -249,7 +249,7 @@ describe("org credits tab - member cap re-edit", () => {
 
     // Third attempt: should still be able to click to edit
     const capButton7000 = screen.getByText("7,000");
-    await act(async () => {
+    await act(() => {
       fireEvent.click(capButton7000);
     });
 
