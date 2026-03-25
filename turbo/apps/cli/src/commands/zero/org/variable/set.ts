@@ -38,10 +38,6 @@ export const setCommand = new Command()
         }
 
         console.log(chalk.green(`✓ Org variable "${variable.name}" saved`));
-        console.log();
-        console.log("Use in vm0.yaml:");
-        console.log(chalk.cyan(`  environment:`));
-        console.log(chalk.cyan(`    ${name}: \${{ vars.${name} }}`));
       },
     ),
   );

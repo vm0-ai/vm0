@@ -31,7 +31,7 @@ const router = tsr.router(composesByIdContract, {
     // Sandbox tokens lack org context — pass compose's own orgId to satisfy
     // the canAccessCompose org check. Standard auth resolves org normally.
     let orgId: string;
-    if (authResult.capabilities) {
+    if (isSandboxAuth(authResult)) {
       // Sandbox: derive orgId from the compose itself (deferred to service)
       // canAccessCompose(userId, compose.orgId, compose) always matches on orgId
       orgId = await getComposeOrgId(params.id);

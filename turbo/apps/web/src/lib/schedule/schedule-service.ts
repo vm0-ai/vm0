@@ -9,8 +9,8 @@ import { getOrgData } from "../org/org-cache-service";
 import { notFound, badRequest, schedulePast } from "../errors";
 import { logger } from "../logger";
 import { createZeroRun } from "../zero/zero-run-service";
-import { getUserPreferences } from "../user/user-preferences-service";
 import { generateCallbackSecret, getApiUrl } from "../callback";
+import { generateScheduleDescription } from "../ai/lightweight-model";
 import type {
   EmailScheduleCallbackPayload,
   SlackScheduleCallbackPayload,
@@ -25,6 +25,7 @@ const log = logger("service:schedule");
 export interface ScheduleResponse {
   id: string;
   agentId: string;
+  agentName: string;
   orgSlug: string;
   userId: string;
   name: string;
@@ -141,8 +142,9 @@ export async function resolveComposeByAgentId(
  */
 function toResponse(
   schedule: typeof zeroAgentSchedules.$inferSelect,
-  composeId: string,
+  agentName: string,
   orgSlug: string,
+  composeId?: string,
 ): ScheduleResponse {
   // Extract secret names from encrypted secrets (values are never returned)
   let secretNames: string[] | null = null;
@@ -158,7 +160,8 @@ function toResponse(
 
   return {
     id: schedule.id,
-    agentId: composeId,
+    agentId: composeId ?? schedule.agentId,
+    agentName,
     orgSlug,
     userId: schedule.userId,
     name: schedule.name,
@@ -249,7 +252,7 @@ async function loadZeroAgent(
 }
 
 /**
- * Load org slug by ID
+ * Load org slug by ID.
  */
 async function getOrgSlug(orgId: string): Promise<string> {
   const orgData = await getOrgData(orgId);
@@ -266,38 +269,35 @@ async function verifyScheduleOwnership(
   name: string,
 ): Promise<{
   schedule: typeof zeroAgentSchedules.$inferSelect;
-  composeId: string;
+  agentName: string;
   orgSlug: string;
+  composeId: string | undefined;
 }> {
   const agent = await loadZeroAgent(agentId);
   const resolvedId = agent.id;
 
-  const [schedule] = await globalThis.services.db
-    .select()
-    .from(zeroAgentSchedules)
-    .where(
-      and(
-        eq(zeroAgentSchedules.agentId, resolvedId),
-        eq(zeroAgentSchedules.name, name),
-        eq(zeroAgentSchedules.orgId, orgId),
-        eq(zeroAgentSchedules.userId, userId),
-      ),
-    )
-    .limit(1);
+  const [[schedule], orgSlug, compose] = await Promise.all([
+    globalThis.services.db
+      .select()
+      .from(zeroAgentSchedules)
+      .where(
+        and(
+          eq(zeroAgentSchedules.agentId, resolvedId),
+          eq(zeroAgentSchedules.name, name),
+          eq(zeroAgentSchedules.orgId, orgId),
+          eq(zeroAgentSchedules.userId, userId),
+        ),
+      )
+      .limit(1),
+    getOrgSlug(orgId),
+    resolveComposeByAgentId(resolvedId),
+  ]);
 
   if (!schedule) {
     throw notFound(`Schedule '${name}' not found`);
   }
 
-  // Resolve compose ID from agent ID
-  const compose = await resolveComposeByAgentId(resolvedId);
-  if (!compose) {
-    throw notFound(`Agent compose not found for agent '${resolvedId}'`);
-  }
-
-  const orgSlug = await getOrgSlug(orgId);
-
-  return { schedule, composeId: compose.id, orgSlug };
+  return { schedule, agentName: agent.name, orgSlug, composeId: compose?.id };
 }
 
 /**
@@ -451,16 +451,13 @@ function buildTemplateDescription(
 
 /**
  * Generate a concise schedule description using the lightweight model.
- * Falls back to a template-based description if the model is unavailable.
+ * Falls back to a template-based description if the model returns null
+ * (e.g., model unavailable or empty response).
  */
 async function generateDescription(
   request: DeployScheduleRequest,
   agentName: string,
 ): Promise<string> {
-  const { generateScheduleDescription } = await import(
-    "../ai/lightweight-model"
-  );
-
   const triggerSummary = request.cronExpression
     ? `cron: ${request.cronExpression}`
     : request.atTime
@@ -493,12 +490,11 @@ export async function deploySchedule(
   const agent = await loadZeroAgent(request.agentId);
   // Normalize request to use the resolved agentId (handles composeId fallback from CLI)
   request = { ...request, agentId: agent.id };
-  const compose = await resolveComposeByAgentId(agent.id);
-  if (!compose) {
-    throw notFound(`Agent compose not found for agent '${agent.id}'`);
-  }
-  const resolvedComposeId = compose.id;
-  const orgSlug = await getOrgSlug(orgId);
+  const [orgSlug, compose] = await Promise.all([
+    getOrgSlug(orgId),
+    resolveComposeByAgentId(agent.id),
+  ]);
+  const composeId = compose?.id;
 
   // Validate timezone
   if (!isValidTimezone(request.timezone)) {
@@ -542,7 +538,7 @@ export async function deploySchedule(
     );
     log.debug(`Updated schedule ${request.name} (${existing.id})`);
     return {
-      schedule: toResponse(updated, resolvedComposeId, orgSlug),
+      schedule: toResponse(updated, agent.name, orgSlug, composeId),
       created: false,
     };
   }
@@ -557,7 +553,7 @@ export async function deploySchedule(
   );
   log.debug(`Created schedule ${request.name} (${created.id})`);
   return {
-    schedule: toResponse(created, resolvedComposeId, orgSlug),
+    schedule: toResponse(created, agent.name, orgSlug, composeId),
     created: true,
   };
 }
@@ -588,7 +584,7 @@ export async function listSchedules(
     return [];
   }
 
-  // Load zero agent data and resolve compose IDs for all schedules
+  // Load zero agent data for all schedules, joined with composes to get composeId
   const agentIds = [...new Set(userSchedules.map((s) => s.agentId))];
   const agentRows = await globalThis.services.db
     .select({
@@ -596,7 +592,7 @@ export async function listSchedules(
       composeId: agentComposes.id,
     })
     .from(zeroAgents)
-    .innerJoin(
+    .leftJoin(
       agentComposes,
       and(
         eq(agentComposes.orgId, zeroAgents.orgId),
@@ -622,7 +618,12 @@ export async function listSchedules(
     .map((schedule) => {
       const row = agentMap.get(schedule.agentId)!;
       const orgSlug = orgDataMap.get(schedule.orgId)?.slug ?? "";
-      return toResponse(schedule, row.composeId, orgSlug);
+      return toResponse(
+        schedule,
+        row.agent.name,
+        orgSlug,
+        row.composeId ?? undefined,
+      );
     });
 }
 
@@ -637,14 +638,10 @@ export async function getScheduleByName(
 ): Promise<ScheduleResponse> {
   log.debug(`Getting schedule ${name} for agent ${agentId}`);
 
-  const { schedule, composeId, orgSlug } = await verifyScheduleOwnership(
-    userId,
-    orgId,
-    agentId,
-    name,
-  );
+  const { schedule, agentName, orgSlug, composeId } =
+    await verifyScheduleOwnership(userId, orgId, agentId, name);
 
-  return toResponse(schedule, composeId, orgSlug);
+  return toResponse(schedule, agentName, orgSlug, composeId);
 }
 
 /**
@@ -727,12 +724,8 @@ export async function enableSchedule(
 ): Promise<ScheduleResponse> {
   log.debug(`Enabling schedule ${name} for agent ${agentId}`);
 
-  const { schedule, composeId, orgSlug } = await verifyScheduleOwnership(
-    userId,
-    orgId,
-    agentId,
-    name,
-  );
+  const { schedule, agentName, orgSlug, composeId } =
+    await verifyScheduleOwnership(userId, orgId, agentId, name);
 
   // Recalculate next run time
   let nextRunAt: Date | null = null;
@@ -771,7 +764,7 @@ export async function enableSchedule(
 
   log.debug(`Enabled schedule ${name}`);
 
-  return toResponse(updated, composeId, orgSlug);
+  return toResponse(updated, agentName, orgSlug, composeId);
 }
 
 /**
@@ -785,12 +778,8 @@ export async function disableSchedule(
 ): Promise<ScheduleResponse> {
   log.debug(`Disabling schedule ${name} for agent ${agentId}`);
 
-  const { schedule, composeId, orgSlug } = await verifyScheduleOwnership(
-    userId,
-    orgId,
-    agentId,
-    name,
-  );
+  const { schedule, agentName, orgSlug, composeId } =
+    await verifyScheduleOwnership(userId, orgId, agentId, name);
 
   const [updated] = await globalThis.services.db
     .update(zeroAgentSchedules)
@@ -808,7 +797,7 @@ export async function disableSchedule(
 
   log.debug(`Disabled schedule ${name}`);
 
-  return toResponse(updated, composeId, orgSlug);
+  return toResponse(updated, agentName, orgSlug, composeId);
 }
 
 /**
@@ -894,7 +883,12 @@ async function advanceScheduleState(
         nextRunAt: null, // Will be set by loop callback on run completion
       })
       .where(eq(zeroAgentSchedules.id, schedule.id));
-  } else if (schedule.cronExpression) {
+  } else if (schedule.triggerType === "cron") {
+    if (!schedule.cronExpression) {
+      throw new Error(
+        `Cron schedule ${schedule.name} (${schedule.id}) missing cronExpression`,
+      );
+    }
     const nextRunAt = calculateNextRun(
       schedule.cronExpression,
       schedule.timezone,
@@ -909,7 +903,12 @@ async function advanceScheduleState(
       })
       .where(eq(zeroAgentSchedules.id, schedule.id));
   } else {
-    // One-time: disable after execution
+    // One-time (once): disable after execution
+    if (schedule.triggerType !== "once") {
+      log.warn(
+        `advanceScheduleState reached one-time branch for schedule ${schedule.name} (${schedule.id}) with triggerType=${schedule.triggerType}`,
+      );
+    }
     await globalThis.services.db
       .update(zeroAgentSchedules)
       .set({
@@ -924,11 +923,11 @@ async function advanceScheduleState(
 }
 
 /**
- * Execute a single schedule
+ * Execute a single schedule and return the created run ID.
  */
-async function executeSchedule(
+export async function executeSchedule(
   schedule: typeof zeroAgentSchedules.$inferSelect,
-): Promise<void> {
+): Promise<string> {
   log.debug(`Executing schedule ${schedule.name} (${schedule.id})`);
 
   // Resolve compose via zero agent (single JOIN query)
@@ -940,16 +939,13 @@ async function executeSchedule(
       .update(zeroAgentSchedules)
       .set({ enabled: false })
       .where(eq(zeroAgentSchedules.id, schedule.id));
-    return;
+    throw new Error(`Agent or compose for schedule ${schedule.name} not found`);
   }
 
   if (!compose.headVersionId) {
     log.error(`Compose ${compose.name} has no versions`);
-    return;
+    throw new Error(`Compose ${compose.name} has no versions`);
   }
-
-  // Load org tier and slug from org_cache (Clerk as source of truth)
-  const orgData = await getOrgData(schedule.orgId);
 
   // Build callbacks for run completion notifications
   const callbacks: Array<{
@@ -961,14 +957,8 @@ async function executeSchedule(
       | ScheduleLoopCallbackPayload;
   }> = [];
 
-  const prefs = await getUserPreferences(orgData.orgId, schedule.userId);
-
-  // Email schedule notification callback (only if Resend is configured AND user + schedule opted in)
-  if (
-    globalThis.services.env.RESEND_API_KEY &&
-    prefs.notifyEmail &&
-    schedule.notifyEmail
-  ) {
+  // Email schedule notification callback (only if Resend is configured AND schedule opted in)
+  if (globalThis.services.env.RESEND_API_KEY && schedule.notifyEmail) {
     const emailPayload: EmailScheduleCallbackPayload = {
       scheduleId: schedule.id,
       agentId: schedule.agentId,
@@ -982,8 +972,8 @@ async function executeSchedule(
     });
   }
 
-  // Slack schedule DM notification callback (only if user + schedule opted in)
-  if (prefs.notifySlack && schedule.notifySlack) {
+  // Slack schedule DM notification callback (only if schedule opted in)
+  if (schedule.notifySlack) {
     const slackPayload: SlackScheduleCallbackPayload = {
       scheduleId: schedule.id,
       agentId: schedule.agentId,
@@ -993,7 +983,7 @@ async function executeSchedule(
       slackChannelId: schedule.slackChannelId,
     };
     callbacks.push({
-      url: `${getApiUrl()}/api/internal/callbacks/slack/schedule`,
+      url: `${getApiUrl()}/api/internal/callbacks/slack/org/schedule`,
       secret: generateCallbackSecret(),
       payload: slackPayload,
     });
@@ -1039,4 +1029,5 @@ async function executeSchedule(
   // - loop: clear nextRunAt (callback will set it on completion)
   await advanceScheduleState(schedule, runId);
   log.debug(`Schedule ${schedule.name} (${schedule.triggerType}) executed`);
+  return runId;
 }

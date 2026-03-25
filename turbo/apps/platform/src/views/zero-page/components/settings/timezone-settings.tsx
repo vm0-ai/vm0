@@ -10,9 +10,9 @@ import { Skeleton } from "@vm0/ui/components/ui/skeleton";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { IconClock, IconLoader2 } from "@tabler/icons-react";
 import {
-  notificationPreferences$,
-  updateNotificationPreference$,
-} from "../../../../signals/zero-page/settings/notification-settings.ts";
+  userPreferences$,
+  updateUserPreference$,
+} from "../../../../signals/zero-page/settings/user-preferences.ts";
 import {
   timezoneSaving$,
   setTimezoneSaving$,
@@ -41,8 +41,8 @@ function getCommonTimezones() {
 }
 
 export function TimezoneSettings() {
-  const preferences = useLastResolved(notificationPreferences$);
-  const updatePreference = useSet(updateNotificationPreference$);
+  const preferences = useLastResolved(userPreferences$);
+  const updatePreference = useSet(updateUserPreference$);
 
   const loading = useGet(timezoneSaving$);
   const setLoading = useSet(setTimezoneSaving$);

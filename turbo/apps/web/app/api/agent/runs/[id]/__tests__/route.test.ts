@@ -196,9 +196,7 @@ describe("GET /api/agent/runs/:id - Get Run By ID", () => {
       });
 
       mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, run.runId, [
-        "agent-run:read",
-      ]);
+      const token = await generateSandboxToken(user.userId, run.runId);
 
       const orgEntry = await getOrgCacheEntry(user.orgId);
       const request = createTestRequest(
@@ -212,9 +210,7 @@ describe("GET /api/agent/runs/:id - Get Run By ID", () => {
 
     it("should accept sandbox token with any capability", async () => {
       mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, "run-1", [
-        "schedule:read",
-      ]);
+      const token = await generateSandboxToken(user.userId, "run-1");
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/runs/${randomUUID()}`,

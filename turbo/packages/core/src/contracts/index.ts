@@ -43,10 +43,6 @@ export {
   composeListItemSchema,
   metadataUpdateSchema,
   composeInstructionsResponseSchema,
-  VALID_CAPABILITIES,
-  CAPABILITY_META,
-  type ValidCapability,
-  type CapabilityMeta,
   ZERO_CAPABILITIES,
   ZERO_CAPABILITY_META,
   type ZeroCapability,
@@ -577,6 +573,8 @@ export {
 export {
   integrationsSlackMessageContract,
   type IntegrationsSlackMessageContract,
+  type SendSlackMessageBody,
+  type SendSlackMessageResponse,
 } from "./integrations";
 export {
   zeroBillingStatusContract,

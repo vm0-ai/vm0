@@ -1366,6 +1366,13 @@
       "when": 1774828800000,
       "tag": "0194_org_metadata_default_agent_id",
       "breakpoints": true
+    },
+    {
+      "idx": 195,
+      "version": "7",
+      "when": 1774828800001,
+      "tag": "0195_drop_global_notify_columns",
+      "breakpoints": true
     }
   ]
 }

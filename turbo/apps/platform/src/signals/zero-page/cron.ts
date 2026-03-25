@@ -91,11 +91,6 @@ export const COMMON_TIMEZONES = [
   "Pacific/Auckland",
 ] as const;
 
-/** Return the browser-detected timezone. */
-export function getBrowserTimezone(): string {
-  return new Intl.DateTimeFormat().resolvedOptions().timeZone;
-}
-
 export function buildCronExpression(opts: {
   timeOption: CronTimeOption;
   hour: string;

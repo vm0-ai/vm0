@@ -90,6 +90,21 @@ async function renderSchedulePage() {
   await setupPage({ context, path: "/schedule" });
 }
 
+/** Open the dropdown menu for a schedule row, then click a menu item. */
+async function openMenuAndClick(
+  timeLabel: string,
+  action: "Edit" | "Delete" | "Run now",
+) {
+  const menuTrigger = screen.getByRole("button", {
+    name: `More actions for ${timeLabel}`,
+  });
+  fireEvent.pointerDown(menuTrigger, { button: 0, ctrlKey: false });
+  await waitFor(() => {
+    expect(screen.getByRole("menuitem", { name: action })).toBeInTheDocument();
+  });
+  fireEvent.click(screen.getByRole("menuitem", { name: action }));
+}
+
 describe("zero schedule page - list view", () => {
   it("should render schedule entries with time and prompt", async () => {
     mockScheduleAPI();
@@ -104,8 +119,8 @@ describe("zero schedule page - list view", () => {
     expect(
       screen.getByText("Check inbox for urgent items"),
     ).toBeInTheDocument();
-    expect(screen.getByText("Every weekday at 9:00 AM")).toBeInTheDocument();
-    expect(screen.getByText("Every 15 minutes")).toBeInTheDocument();
+    expect(screen.getByText(/Every weekday at 9:00 AM/)).toBeInTheDocument();
+    expect(screen.getByText(/Every 15 minutes/)).toBeInTheDocument();
   });
 
   it("should render page title and subtitle", async () => {
@@ -127,7 +142,7 @@ describe("zero schedule page - list view", () => {
     await renderSchedulePage();
 
     await waitFor(() => {
-      expect(screen.getByText("Nothing on the calendar")).toBeInTheDocument();
+      expect(screen.getByText("No runs scheduled")).toBeInTheDocument();
     });
     expect(
       screen.getByText(
@@ -147,25 +162,58 @@ describe("zero schedule page - list view", () => {
     });
   });
 
-  it("should show edit buttons for each schedule entry", async () => {
+  it("should show a row action menu for each schedule entry", async () => {
     mockScheduleAPI();
     await renderSchedulePage();
 
     await waitFor(() => {
       expect(
-        screen.getByLabelText("Edit Every weekday at 9:00 AM"),
+        screen.getByText("Summarize yesterday's threads"),
       ).toBeInTheDocument();
     });
-    expect(screen.getByLabelText("Edit Every 15 minutes")).toBeInTheDocument();
+    const menus = screen.getAllByRole("button", { name: /More actions for/ });
+    expect(menus).toHaveLength(3);
   });
 
-  it("should show delete buttons for named schedule entries", async () => {
+  it("should make each schedule row clickable to detail page", async () => {
     mockScheduleAPI();
     await renderSchedulePage();
 
     await waitFor(() => {
       expect(
-        screen.getByLabelText("Delete Every weekday at 9:00 AM"),
+        screen.getByText("Summarize yesterday's threads"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByRole("link", {
+        name: /Open schedule Summarize yesterday's threads/i,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("should expose Run now, Edit, and Delete in the row menu", async () => {
+    mockScheduleAPI();
+    await renderSchedulePage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Summarize yesterday's threads"),
+      ).toBeInTheDocument();
+    });
+    const menuTrigger = screen.getByRole("button", {
+      name: "More actions for Every weekday at 9:00 AM",
+    });
+    // Radix DropdownMenu opens on pointerDown in tests (see zero-settings-page tests)
+    fireEvent.pointerDown(menuTrigger, { button: 0, ctrlKey: false });
+    await waitFor(() => {
+      expect(
+        screen.getByRole("menuitem", { name: /Run now/ }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("menuitem", { name: "Edit" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("menuitem", { name: "Delete" }),
       ).toBeInTheDocument();
     });
   });
@@ -287,11 +335,11 @@ describe("zero schedule page - delete confirmation", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByLabelText("Delete Every weekday at 9:00 AM"),
+        screen.getByText("Summarize yesterday's threads"),
       ).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByLabelText("Delete Every weekday at 9:00 AM"));
+    await openMenuAndClick("Every weekday at 9:00 AM", "Delete");
 
     await waitFor(() => {
       expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
@@ -321,11 +369,11 @@ describe("zero schedule page - delete confirmation", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByLabelText("Delete Every weekday at 9:00 AM"),
+        screen.getByText("Summarize yesterday's threads"),
       ).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByLabelText("Delete Every weekday at 9:00 AM"));
+    await openMenuAndClick("Every weekday at 9:00 AM", "Delete");
 
     await waitFor(() => {
       expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
@@ -359,11 +407,11 @@ describe("zero schedule page - delete confirmation", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByLabelText("Delete Every weekday at 9:00 AM"),
+        screen.getByText("Summarize yesterday's threads"),
       ).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByLabelText("Delete Every weekday at 9:00 AM"));
+    await openMenuAndClick("Every weekday at 9:00 AM", "Delete");
 
     await waitFor(() => {
       expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
@@ -376,18 +424,16 @@ describe("zero schedule page - delete confirmation", () => {
     });
   });
 
-  it("should show loading state and close only after delete completes", async () => {
-    let resolveDelete: (() => void) | null = null;
+  it("should close dialog immediately after Delete is confirmed", async () => {
+    let deletedName: string | null = null;
 
     server.use(
       http.get("*/api/zero/schedules", () => {
         return HttpResponse.json({ schedules: createMockSchedules() });
       }),
-      http.delete("*/api/zero/schedules/:name", () => {
-        return new Promise<Response>((resolve) => {
-          resolveDelete = () =>
-            resolve(new HttpResponse(null, { status: 204 }));
-        });
+      http.delete("*/api/zero/schedules/:name", ({ params }) => {
+        deletedName = params["name"] as string;
+        return new HttpResponse(null, { status: 204 });
       }),
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
@@ -398,11 +444,11 @@ describe("zero schedule page - delete confirmation", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByLabelText("Delete Every weekday at 9:00 AM"),
+        screen.getByText("Summarize yesterday's threads"),
       ).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByLabelText("Delete Every weekday at 9:00 AM"));
+    await openMenuAndClick("Every weekday at 9:00 AM", "Delete");
 
     await waitFor(() => {
       expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
@@ -410,198 +456,11 @@ describe("zero schedule page - delete confirmation", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
 
-    // Dialog should stay open with loading state
-    await waitFor(() => {
-      expect(screen.getByText("Deleting...")).toBeInTheDocument();
-    });
-    expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
-
-    // Resolve the delete
-    resolveDelete!();
-
-    // Dialog should close after completion
+    // Dialog should close immediately
     await waitFor(() => {
       expect(screen.queryByText("Delete schedule?")).not.toBeInTheDocument();
     });
-  });
-});
-
-describe("zero schedule page - edit dialog confirm close", () => {
-  it("should show confirm overlay when Cancel is clicked with unsaved changes", async () => {
-    mockScheduleAPI();
-    await renderSchedulePage();
-
-    // Wait for schedule list
-    await waitFor(() => {
-      expect(
-        screen.getByLabelText("Edit Every weekday at 9:00 AM"),
-      ).toBeInTheDocument();
-    });
-
-    // Open edit dialog
-    fireEvent.click(screen.getByLabelText("Edit Every weekday at 9:00 AM"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Edit schedule")).toBeInTheDocument();
-    });
-
-    // Modify the prompt
-    const promptInput = screen.getByLabelText("Prompt");
-    fireEvent.change(promptInput, {
-      target: { value: "Changed prompt text" },
-    });
-
-    // Click Cancel
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-
-    // Confirm overlay should appear
-    await waitFor(() => {
-      expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
-    });
-    expect(
-      screen.getByRole("button", { name: "Continue Editing" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Discard Changes" }),
-    ).toBeInTheDocument();
-  });
-
-  it("should show confirm overlay when ESC key is pressed with unsaved changes", async () => {
-    mockScheduleAPI();
-    await renderSchedulePage();
-
-    await waitFor(() => {
-      expect(
-        screen.getByLabelText("Edit Every weekday at 9:00 AM"),
-      ).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByLabelText("Edit Every weekday at 9:00 AM"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Edit schedule")).toBeInTheDocument();
-    });
-
-    const promptInput = screen.getByLabelText("Prompt");
-    fireEvent.change(promptInput, {
-      target: { value: "Changed prompt text" },
-    });
-
-    // Press ESC key on the dialog content
-    const dialogContent = screen
-      .getByText("Edit schedule")
-      .closest("[role=dialog]");
-    fireEvent.keyDown(dialogContent!, { key: "Escape" });
-
-    // Confirm overlay should appear
-    await waitFor(() => {
-      expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
-    });
-  });
-
-  it("should close dialog directly when Cancel is clicked without changes", async () => {
-    mockScheduleAPI();
-    await renderSchedulePage();
-
-    await waitFor(() => {
-      expect(
-        screen.getByLabelText("Edit Every weekday at 9:00 AM"),
-      ).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByLabelText("Edit Every weekday at 9:00 AM"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Edit schedule")).toBeInTheDocument();
-    });
-
-    // Click Cancel without making changes
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-
-    // Dialog should close immediately
-    await waitFor(() => {
-      expect(screen.queryByText("Edit schedule")).not.toBeInTheDocument();
-    });
-    // No confirm overlay
-    expect(
-      screen.queryByText("You have unsaved changes"),
-    ).not.toBeInTheDocument();
-  });
-
-  it("should return to editing when Continue Editing is clicked", async () => {
-    mockScheduleAPI();
-    await renderSchedulePage();
-
-    await waitFor(() => {
-      expect(
-        screen.getByLabelText("Edit Every weekday at 9:00 AM"),
-      ).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByLabelText("Edit Every weekday at 9:00 AM"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Edit schedule")).toBeInTheDocument();
-    });
-
-    const promptInput = screen.getByLabelText("Prompt");
-    fireEvent.change(promptInput, {
-      target: { value: "Changed prompt text" },
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-
-    await waitFor(() => {
-      expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
-    });
-
-    // Click Continue Editing
-    fireEvent.click(screen.getByRole("button", { name: "Continue Editing" }));
-
-    // Confirm overlay dismissed, dialog still open with edits preserved
-    await waitFor(() => {
-      expect(
-        screen.queryByText("You have unsaved changes"),
-      ).not.toBeInTheDocument();
-    });
-    expect(screen.getByText("Edit schedule")).toBeInTheDocument();
-  });
-
-  it("should close dialog when Discard Changes is clicked", async () => {
-    mockScheduleAPI();
-    await renderSchedulePage();
-
-    await waitFor(() => {
-      expect(
-        screen.getByLabelText("Edit Every weekday at 9:00 AM"),
-      ).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByLabelText("Edit Every weekday at 9:00 AM"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Edit schedule")).toBeInTheDocument();
-    });
-
-    const promptInput = screen.getByLabelText("Prompt");
-    fireEvent.change(promptInput, {
-      target: { value: "Changed prompt text" },
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-
-    await waitFor(() => {
-      expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
-    });
-
-    // Click Discard Changes
-    fireEvent.click(screen.getByRole("button", { name: "Discard Changes" }));
-
-    // Dialog should close
-    await waitFor(() => {
-      expect(screen.queryByText("Edit schedule")).not.toBeInTheDocument();
-    });
+    expect(deletedName).toBe("morning-briefing");
   });
 });
 
@@ -705,27 +564,6 @@ describe("zero schedule page - schedule dialog fields", () => {
       expect(
         screen.getByRole("heading", { name: "Add schedule" }),
       ).toBeInTheDocument();
-    });
-
-    expect(screen.getByText("Notifications")).toBeInTheDocument();
-    expect(screen.getByText("Email")).toBeInTheDocument();
-    expect(screen.getByText("Slack")).toBeInTheDocument();
-  });
-
-  it("should show notification toggles in edit dialog", async () => {
-    mockScheduleAPI();
-    await renderSchedulePage();
-
-    await waitFor(() => {
-      expect(
-        screen.getByLabelText("Edit Every weekday at 9:00 AM"),
-      ).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByLabelText("Edit Every weekday at 9:00 AM"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Edit schedule")).toBeInTheDocument();
     });
 
     expect(screen.getByText("Notifications")).toBeInTheDocument();
@@ -875,139 +713,6 @@ describe("zero schedule page - schedule dialog fields", () => {
     expect(
       screen.getByRole("heading", { name: "Add schedule" }),
     ).toBeInTheDocument();
-  });
-
-  it("should pre-fill prompt when editing an existing schedule", async () => {
-    mockScheduleAPI();
-    await renderSchedulePage();
-
-    await waitFor(() => {
-      expect(
-        screen.getByLabelText("Edit Every weekday at 9:00 AM"),
-      ).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByLabelText("Edit Every weekday at 9:00 AM"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Edit schedule")).toBeInTheDocument();
-    });
-
-    const promptInput = screen.getByLabelText("Prompt") as HTMLTextAreaElement;
-    expect(promptInput.value).toBe("Summarize yesterday's threads");
-  });
-
-  it("should not show agent selector in edit dialog", async () => {
-    mockScheduleAPI();
-    await renderSchedulePage();
-
-    await waitFor(() => {
-      expect(
-        screen.getByLabelText("Edit Every weekday at 9:00 AM"),
-      ).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByLabelText("Edit Every weekday at 9:00 AM"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Edit schedule")).toBeInTheDocument();
-    });
-
-    expect(screen.queryByLabelText("Agent")).not.toBeInTheDocument();
-  });
-});
-
-describe("zero schedule page - timezone preservation", () => {
-  it("should show stored timezone in edit dialog", async () => {
-    const schedules = [{ ...createMockSchedules()[0], timezone: "Asia/Tokyo" }];
-    mockScheduleAPI(schedules);
-    await renderSchedulePage();
-
-    await waitFor(() => {
-      expect(
-        screen.getByLabelText("Edit Every weekday at 9:00 AM"),
-      ).toBeInTheDocument();
-    });
-    fireEvent.click(screen.getByLabelText("Edit Every weekday at 9:00 AM"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Edit schedule")).toBeInTheDocument();
-    });
-
-    // The timezone selector trigger should show the stored timezone value
-    const tzTrigger = document.getElementById("schedule-dialog-tz");
-    expect(tzTrigger).toBeInTheDocument();
-    expect(tzTrigger?.textContent).toContain("Asia/Tokyo");
-  });
-
-  it("should show non-preset timezone in edit dialog", async () => {
-    const schedules = [
-      { ...createMockSchedules()[0], timezone: "Africa/Nairobi" },
-    ];
-    mockScheduleAPI(schedules);
-    await renderSchedulePage();
-
-    await waitFor(() => {
-      expect(
-        screen.getByLabelText("Edit Every weekday at 9:00 AM"),
-      ).toBeInTheDocument();
-    });
-    fireEvent.click(screen.getByLabelText("Edit Every weekday at 9:00 AM"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Edit schedule")).toBeInTheDocument();
-    });
-
-    // The timezone selector trigger should show the non-preset timezone value
-    const tzTrigger = document.getElementById("schedule-dialog-tz");
-    expect(tzTrigger).toBeInTheDocument();
-    expect(tzTrigger?.textContent).toContain("Africa/Nairobi");
-  });
-
-  it("should preserve timezone when saving edited schedule", async () => {
-    let capturedBody: Record<string, unknown> | null = null;
-
-    server.use(
-      http.get("*/api/zero/schedules", () => {
-        return HttpResponse.json({
-          schedules: [{ ...createMockSchedules()[0], timezone: "Asia/Tokyo" }],
-        });
-      }),
-      http.post("*/api/zero/schedules", async ({ request }) => {
-        capturedBody = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json({ success: true });
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
-    );
-
-    await renderSchedulePage();
-
-    await waitFor(() => {
-      expect(
-        screen.getByLabelText("Edit Every weekday at 9:00 AM"),
-      ).toBeInTheDocument();
-    });
-    fireEvent.click(screen.getByLabelText("Edit Every weekday at 9:00 AM"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Edit schedule")).toBeInTheDocument();
-    });
-
-    // Change only the prompt, do NOT change timezone
-    const promptInput = screen.getByLabelText("Prompt");
-    fireEvent.change(promptInput, {
-      target: { value: "Updated prompt text" },
-    });
-
-    // Click Save
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-
-    await waitFor(() => {
-      expect(capturedBody).toBeTruthy();
-    });
-    expect(capturedBody).toHaveProperty("timezone", "Asia/Tokyo");
   });
 });
 

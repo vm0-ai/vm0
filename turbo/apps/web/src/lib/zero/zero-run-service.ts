@@ -1,7 +1,10 @@
 import { eq, and } from "drizzle-orm";
 import type { TriggerSource, FirewallPolicies } from "@vm0/core";
 import { startRun, type CreateRunResult } from "../run";
-import { DISALLOWED_CRON_TOOLS } from "../integration-context";
+import {
+  DISALLOWED_CRON_TOOLS,
+  buildZeroCliGuidance,
+} from "../integration-context";
 import { formatAgentIdentityPrompt } from "../agent-identity";
 import type { CallbackPayload } from "../callback/callback-payloads";
 import { zeroAgents } from "../../db/schema/zero-agent";
@@ -87,6 +90,12 @@ export async function createZeroRun(
       ? `${identity}\n\n${appendSystemPrompt}`
       : identity;
   }
+
+  // Append zero CLI guidance so all trigger paths know how to use the CLI
+  const zeroGuidance = buildZeroCliGuidance();
+  appendSystemPrompt = appendSystemPrompt
+    ? `${appendSystemPrompt}\n\n${zeroGuidance}`
+    : zeroGuidance;
 
   return startRun({
     userId: params.userId,

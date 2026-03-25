@@ -1,7 +1,7 @@
 import { useState, type ChangeEvent } from "react";
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import {
-  IconSend,
+  IconArrowUp,
   IconPaperclip,
   IconPlayerStop,
   IconPlug,
@@ -635,7 +635,7 @@ export function ZeroChatComposer({
                     disabled={!input.trim()}
                     aria-label={sending ? "Queue message" : "Send"}
                   >
-                    <IconSend size={16} stroke={2} />
+                    <IconArrowUp size={16} stroke={2} />
                   </Button>
                 )}
               </div>

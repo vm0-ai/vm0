@@ -103,3 +103,19 @@ export async function resolveComposeIdFromAgentId(
 
   return row?.composeId ?? null;
 }
+
+/**
+ * Check whether a given compose ID belongs to the org's default agent.
+ * Reuses resolveDefaultAgentId (handles env-var fallback) and
+ * resolveComposeIdFromAgentId for the reverse lookup.
+ */
+export async function isDefaultAgentCompose(
+  orgId: string,
+  composeId: string,
+): Promise<boolean> {
+  const defaultAgentId = await resolveDefaultAgentId(orgId);
+  if (!defaultAgentId) return false;
+
+  const defaultComposeId = await resolveComposeIdFromAgentId(defaultAgentId);
+  return defaultComposeId === composeId;
+}

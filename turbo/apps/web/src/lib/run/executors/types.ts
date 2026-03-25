@@ -61,9 +61,6 @@ export interface PreparedContext {
   // Routing hint (runner group name)
   runnerGroup: string | null;
 
-  // Org slug for agent — used for VM0_ACTIVE_ORG when capabilities are present
-  agentOrgSlug: string | null;
-
   // Metadata for vm0_start event
   resumedFromCheckpointId: string | null;
   continuedFromSessionId: string | null;

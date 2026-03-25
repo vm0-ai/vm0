@@ -68,7 +68,6 @@ export async function executeRunnerJob(
     debugNoMockClaude: context.debugNoMockClaude || undefined,
     apiStartTime: context.apiStartTime ?? undefined,
     userTimezone: context.userTimezone ?? undefined,
-    agentOrgSlug: context.agentOrgSlug ?? undefined,
     memoryName: context.memoryName ?? undefined,
   };
 

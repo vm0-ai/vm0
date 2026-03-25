@@ -46,6 +46,17 @@ describe("zero-nav", () => {
       expect(context.store.get(zeroActiveId$)).toBe("schedule");
     });
 
+    it("should resolve /schedule/:id to 'schedule'", () => {
+      mockLocation(
+        {
+          pathname: "/schedule/2f3cad0c-cf1a-4b82-a104-529c9c70a360",
+          search: "",
+        },
+        context.signal,
+      );
+      expect(context.store.get(zeroActiveId$)).toBe("schedule");
+    });
+
     it("should resolve /team to 'team'", () => {
       mockLocation({ pathname: "/team", search: "" }, context.signal);
       expect(context.store.get(zeroActiveId$)).toBe("team");

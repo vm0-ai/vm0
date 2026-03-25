@@ -158,13 +158,14 @@ export function ZeroIdeationPage({
                             </p>
                             {useCase.connectors &&
                               useCase.connectors.length > 0 && (
-                                <div className="flex items-center gap-2.5 mt-2.5">
+                                <div className="flex items-center gap-1.5 mt-2.5">
                                   {useCase.connectors.map((type) => (
-                                    <ConnectorIcon
+                                    <span
                                       key={type}
-                                      type={type}
-                                      size={16}
-                                    />
+                                      className="flex h-7 w-7 items-center justify-center rounded-md border border-border/60 bg-background"
+                                    >
+                                      <ConnectorIcon type={type} size={14} />
+                                    </span>
                                   ))}
                                 </div>
                               )}

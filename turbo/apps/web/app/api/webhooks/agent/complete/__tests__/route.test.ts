@@ -1394,7 +1394,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       });
       await createTestCallback({
         runId,
-        url: "http://localhost/api/internal/callbacks/slack/schedule",
+        url: "http://localhost/api/internal/callbacks/slack/org/schedule",
         payload: {
           scheduleId: schedule.id,
           agentId: schedule.agentId,

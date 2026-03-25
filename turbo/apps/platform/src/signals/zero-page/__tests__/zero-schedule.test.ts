@@ -14,6 +14,7 @@ import {
   saveOrgSchedule$,
   toggleOrgScheduleEnabled$,
   deleteOrgSchedule$,
+  runScheduleNow$,
 } from "../zero-schedule.ts";
 
 const context = testContext();
@@ -258,6 +259,195 @@ describe("zero-schedule signals", () => {
       expect(captured.body?.name).toBe("existing-schedule");
       expect(captured.body?.cronExpression).toBe("30 10 * * 1-5");
     });
+
+    it("should POST a one-time schedule with atTime", async () => {
+      const captured: { body: Record<string, unknown> | null } = { body: null };
+
+      server.use(
+        http.post(
+          "http://localhost:3000/api/zero/schedules",
+          async ({ request }) => {
+            captured.body = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json({ success: true });
+          },
+        ),
+        http.get("http://localhost:3000/api/zero/schedules", () => {
+          return HttpResponse.json({ schedules: [] });
+        }),
+      );
+
+      await setup();
+      await context.store.set(saveZeroSchedule$, {
+        prompt: "One-time task",
+        freq: "once",
+        date: "2030-06-15",
+        hour: 14,
+        minute: 30,
+        timezone: "UTC",
+        intervalSeconds: 0,
+      });
+
+      expect(captured.body).not.toBeNull();
+      expect(captured.body?.atTime).toBeDefined();
+      expect(captured.body).not.toHaveProperty("cronExpression");
+      expect(captured.body).not.toHaveProperty("intervalSeconds");
+    });
+
+    it("should POST a weekly schedule with dayOfWeek", async () => {
+      const captured: { body: Record<string, unknown> | null } = { body: null };
+
+      server.use(
+        http.post(
+          "http://localhost:3000/api/zero/schedules",
+          async ({ request }) => {
+            captured.body = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json({ success: true });
+          },
+        ),
+        http.get("http://localhost:3000/api/zero/schedules", () => {
+          return HttpResponse.json({ schedules: [] });
+        }),
+      );
+
+      await setup();
+      await context.store.set(saveZeroSchedule$, {
+        prompt: "Weekly report",
+        freq: "every_week",
+        date: "2026-03-15",
+        hour: 10,
+        minute: 0,
+        timezone: "UTC",
+        intervalSeconds: 0,
+        dayOfWeek: "5",
+      });
+
+      expect(captured.body).not.toBeNull();
+      expect(captured.body?.cronExpression).toBe("0 10 * * 5");
+    });
+
+    it("should POST a monthly schedule with dayOfMonth", async () => {
+      const captured: { body: Record<string, unknown> | null } = { body: null };
+
+      server.use(
+        http.post(
+          "http://localhost:3000/api/zero/schedules",
+          async ({ request }) => {
+            captured.body = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json({ success: true });
+          },
+        ),
+        http.get("http://localhost:3000/api/zero/schedules", () => {
+          return HttpResponse.json({ schedules: [] });
+        }),
+      );
+
+      await setup();
+      await context.store.set(saveZeroSchedule$, {
+        prompt: "Monthly review",
+        freq: "every_month",
+        date: "2026-03-15",
+        hour: 9,
+        minute: 0,
+        timezone: "UTC",
+        intervalSeconds: 0,
+        dayOfMonth: "15",
+      });
+
+      expect(captured.body).not.toBeNull();
+      expect(captured.body?.cronExpression).toBe("0 9 15 * *");
+    });
+
+    it("should include notification settings in POST body", async () => {
+      const captured: { body: Record<string, unknown> | null } = { body: null };
+
+      server.use(
+        http.post(
+          "http://localhost:3000/api/zero/schedules",
+          async ({ request }) => {
+            captured.body = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json({ success: true });
+          },
+        ),
+        http.get("http://localhost:3000/api/zero/schedules", () => {
+          return HttpResponse.json({ schedules: [] });
+        }),
+      );
+
+      await setup();
+      await context.store.set(saveZeroSchedule$, {
+        prompt: "Notify test",
+        freq: "every_day",
+        date: "2026-03-15",
+        hour: 9,
+        minute: 0,
+        timezone: "UTC",
+        intervalSeconds: 0,
+        notifyEmail: false,
+        notifySlack: true,
+        slackChannelId: "C999",
+      });
+
+      expect(captured.body).not.toBeNull();
+      expect(captured.body?.notifyEmail).toBeFalsy();
+      expect(captured.body?.notifySlack).toBeTruthy();
+      expect(captured.body?.slackChannelId).toBe("C999");
+    });
+
+    it("should include description in POST body when provided", async () => {
+      const captured: { body: Record<string, unknown> | null } = { body: null };
+
+      server.use(
+        http.post(
+          "http://localhost:3000/api/zero/schedules",
+          async ({ request }) => {
+            captured.body = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json({ success: true });
+          },
+        ),
+        http.get("http://localhost:3000/api/zero/schedules", () => {
+          return HttpResponse.json({ schedules: [] });
+        }),
+      );
+
+      await setup();
+      await context.store.set(saveZeroSchedule$, {
+        prompt: "Described task",
+        description: "Custom description here",
+        freq: "every_day",
+        date: "2026-03-15",
+        hour: 9,
+        minute: 0,
+        timezone: "UTC",
+        intervalSeconds: 0,
+      });
+
+      expect(captured.body).not.toBeNull();
+      expect(captured.body?.description).toBe("Custom description here");
+    });
+
+    it("should throw on API error during save", async () => {
+      server.use(
+        http.post("http://localhost:3000/api/zero/schedules", () => {
+          return HttpResponse.json(
+            { error: { message: "Invalid timezone" } },
+            { status: 400 },
+          );
+        }),
+      );
+
+      await setup();
+      await expect(
+        context.store.set(saveZeroSchedule$, {
+          prompt: "Bad save",
+          freq: "every_day",
+          date: "2026-03-15",
+          hour: 9,
+          minute: 0,
+          timezone: "Invalid/TZ",
+          intervalSeconds: 0,
+        }),
+      ).rejects.toThrow("Invalid timezone");
+    });
   });
 
   describe("toggleZeroScheduleEnabled$", () => {
@@ -336,6 +526,294 @@ describe("zero-schedule signals", () => {
           enabled: true,
         }),
       ).rejects.toThrow("Schedule not found");
+    });
+  });
+
+  describe("runScheduleNow$", () => {
+    it("should POST to run endpoint and return runId", async () => {
+      let capturedBody: Record<string, unknown> | null = null;
+
+      server.use(
+        http.post(
+          "http://localhost:3000/api/zero/schedules/run",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json({ runId: "run-abc-123" }, { status: 201 });
+          },
+        ),
+      );
+
+      await setup();
+      const runId = await context.store.set(runScheduleNow$, "sched-1");
+
+      expect(capturedBody).not.toBeNull();
+      expect(capturedBody!["scheduleId"]).toBe("sched-1");
+      expect(runId).toBe("run-abc-123");
+    });
+
+    it("should throw on API error", async () => {
+      server.use(
+        http.post("http://localhost:3000/api/zero/schedules/run", () => {
+          return HttpResponse.json(
+            { error: { message: "Schedule not found" } },
+            { status: 404 },
+          );
+        }),
+      );
+
+      await setup();
+      await expect(
+        context.store.set(runScheduleNow$, "nonexistent-id"),
+      ).rejects.toThrow("Schedule not found");
+    });
+
+    it("should throw on conflict when previous run is active", async () => {
+      server.use(
+        http.post("http://localhost:3000/api/zero/schedules/run", () => {
+          return HttpResponse.json(
+            { error: { message: "Previous run is still active" } },
+            { status: 409 },
+          );
+        }),
+      );
+
+      await setup();
+      await expect(
+        context.store.set(runScheduleNow$, "sched-1"),
+      ).rejects.toThrow("Previous run is still active");
+    });
+  });
+
+  describe("schedule display strings", () => {
+    it("should convert one-time schedule to display string", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/zero/schedules", () => {
+          return HttpResponse.json({
+            schedules: [
+              {
+                id: "sched-once",
+                agentId: "mock-compose-id",
+                orgSlug: "test",
+                name: "one-time",
+                triggerType: "once",
+                cronExpression: null,
+                atTime: "2026-06-15T14:30:00.000Z",
+                intervalSeconds: null,
+                timezone: "UTC",
+                prompt: "One-time task",
+                description: null,
+                enabled: true,
+                notifyEmail: true,
+                notifySlack: true,
+                slackChannelId: null,
+                nextRunAt: null,
+                lastRunAt: null,
+                createdAt: "2026-03-01T00:00:00Z",
+                updatedAt: "2026-03-01T00:00:00Z",
+              },
+            ],
+          });
+        }),
+      );
+
+      await setup();
+      await context.store.set(fetchZeroSchedules$);
+
+      const entries = context.store.get(zeroScheduleEntries$);
+      expect(entries).toHaveLength(1);
+      expect(entries[0]?.time).toMatch(/^Once on 2026-06-15 at/);
+    });
+
+    it("should convert daily cron to display string", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/zero/schedules", () => {
+          return HttpResponse.json({
+            schedules: [
+              {
+                id: "sched-daily",
+                agentId: "mock-compose-id",
+                orgSlug: "test",
+                name: "daily",
+                triggerType: "cron",
+                cronExpression: "0 14 * * *",
+                atTime: null,
+                intervalSeconds: null,
+                timezone: "UTC",
+                prompt: "Daily task",
+                description: null,
+                enabled: true,
+                notifyEmail: true,
+                notifySlack: true,
+                slackChannelId: null,
+                nextRunAt: null,
+                lastRunAt: null,
+                createdAt: "2026-03-01T00:00:00Z",
+                updatedAt: "2026-03-01T00:00:00Z",
+              },
+            ],
+          });
+        }),
+      );
+
+      await setup();
+      await context.store.set(fetchZeroSchedules$);
+
+      const entries = context.store.get(zeroScheduleEntries$);
+      expect(entries[0]?.time).toBe("Every day at 2:00 PM");
+    });
+
+    it("should convert monthly cron to display string", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/zero/schedules", () => {
+          return HttpResponse.json({
+            schedules: [
+              {
+                id: "sched-monthly",
+                agentId: "mock-compose-id",
+                orgSlug: "test",
+                name: "monthly",
+                triggerType: "cron",
+                cronExpression: "0 9 15 * *",
+                atTime: null,
+                intervalSeconds: null,
+                timezone: "UTC",
+                prompt: "Monthly task",
+                description: null,
+                enabled: true,
+                notifyEmail: true,
+                notifySlack: true,
+                slackChannelId: null,
+                nextRunAt: null,
+                lastRunAt: null,
+                createdAt: "2026-03-01T00:00:00Z",
+                updatedAt: "2026-03-01T00:00:00Z",
+              },
+            ],
+          });
+        }),
+      );
+
+      await setup();
+      await context.store.set(fetchZeroSchedules$);
+
+      const entries = context.store.get(zeroScheduleEntries$);
+      expect(entries[0]?.time).toBe("Every month on day 15 at 9:00 AM");
+    });
+
+    it("should convert weekly cron to display string with day name", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/zero/schedules", () => {
+          return HttpResponse.json({
+            schedules: [
+              {
+                id: "sched-weekly",
+                agentId: "mock-compose-id",
+                orgSlug: "test",
+                name: "weekly",
+                triggerType: "cron",
+                cronExpression: "0 10 * * 3",
+                atTime: null,
+                intervalSeconds: null,
+                timezone: "UTC",
+                prompt: "Weekly task",
+                description: null,
+                enabled: true,
+                notifyEmail: true,
+                notifySlack: true,
+                slackChannelId: null,
+                nextRunAt: null,
+                lastRunAt: null,
+                createdAt: "2026-03-01T00:00:00Z",
+                updatedAt: "2026-03-01T00:00:00Z",
+              },
+            ],
+          });
+        }),
+      );
+
+      await setup();
+      await context.store.set(fetchZeroSchedules$);
+
+      const entries = context.store.get(zeroScheduleEntries$);
+      expect(entries[0]?.time).toBe("Every week on Wednesday at 10:00 AM");
+    });
+
+    it("should include description in entries", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/zero/schedules", () => {
+          return HttpResponse.json({
+            schedules: [
+              {
+                id: "sched-desc",
+                agentId: "mock-compose-id",
+                orgSlug: "test",
+                name: "described",
+                triggerType: "cron",
+                cronExpression: "0 9 * * *",
+                atTime: null,
+                intervalSeconds: null,
+                timezone: "UTC",
+                prompt: "Task with description",
+                description: "A detailed description",
+                enabled: true,
+                notifyEmail: true,
+                notifySlack: true,
+                slackChannelId: null,
+                nextRunAt: null,
+                lastRunAt: null,
+                createdAt: "2026-03-01T00:00:00Z",
+                updatedAt: "2026-03-01T00:00:00Z",
+              },
+            ],
+          });
+        }),
+      );
+
+      await setup();
+      await context.store.set(fetchZeroSchedules$);
+
+      const entries = context.store.get(zeroScheduleEntries$);
+      expect(entries[0]?.description).toBe("A detailed description");
+    });
+
+    it("should include notification fields in entries", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/zero/schedules", () => {
+          return HttpResponse.json({
+            schedules: [
+              {
+                id: "sched-notify",
+                agentId: "mock-compose-id",
+                orgSlug: "test",
+                name: "notified",
+                triggerType: "cron",
+                cronExpression: "0 9 * * *",
+                atTime: null,
+                intervalSeconds: null,
+                timezone: "UTC",
+                prompt: "Notify test",
+                description: null,
+                enabled: true,
+                notifyEmail: false,
+                notifySlack: true,
+                slackChannelId: "C123",
+                nextRunAt: null,
+                lastRunAt: null,
+                createdAt: "2026-03-01T00:00:00Z",
+                updatedAt: "2026-03-01T00:00:00Z",
+              },
+            ],
+          });
+        }),
+      );
+
+      await setup();
+      await context.store.set(fetchZeroSchedules$);
+
+      const entries = context.store.get(zeroScheduleEntries$);
+      expect(entries[0]?.notifyEmail).toBeFalsy();
+      expect(entries[0]?.notifySlack).toBeTruthy();
+      expect(entries[0]?.slackChannelId).toBe("C123");
     });
   });
 

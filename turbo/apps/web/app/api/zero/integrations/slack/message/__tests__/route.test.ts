@@ -30,14 +30,12 @@ describe("POST /api/zero/integrations/slack/message", () => {
     user = await context.setupUser();
   });
 
-  /** Helper: create a run and return a sandbox token with given capabilities */
-  async function sandboxTokenWithRun(
-    capabilities: Parameters<typeof generateSandboxToken>[2],
-  ) {
+  /** Helper: create a run and return a sandbox token */
+  async function sandboxTokenWithRun() {
     const { composeId } = await createTestCompose(uniqueId("agent"));
     const { runId } = await createTestRunInDb(user.userId, composeId);
     mockClerk({ userId: null });
-    const token = await generateSandboxToken(user.userId, runId, capabilities);
+    const token = await generateSandboxToken(user.userId, runId);
     return { token, runId };
   }
 
@@ -56,7 +54,7 @@ describe("POST /api/zero/integrations/slack/message", () => {
   });
 
   it("returns 403 when sandbox token lacks slack:write", async () => {
-    const { token } = await sandboxTokenWithRun(["agent:read"]);
+    const { token } = await sandboxTokenWithRun();
 
     const request = createTestRequest(URL, {
       method: "POST",

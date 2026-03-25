@@ -335,6 +335,8 @@ const pollNewEvents$ = command(async ({ get, set }, runId: string) => {
 
   const lastPage = await get(pages[pages.length - 1]);
   if (lastPage.events.length === 0) {
+    // No events yet — replace with a fresh computed so we re-fetch from the start.
+    set(pagedEvents$, [createEventPageComputed(runId)]);
     return;
   }
 

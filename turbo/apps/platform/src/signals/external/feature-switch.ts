@@ -3,7 +3,7 @@ import { logger } from "../log";
 import { FeatureSwitchKey, getAllFeatureStates } from "@vm0/core";
 import { localStorageSignals } from "./local-storage";
 import { throwIfAbort } from "../utils";
-import { user$ } from "../auth";
+import { clerk$, user$ } from "../auth";
 
 const L = logger("FeatureSwitch");
 const { get$, set$ } = localStorageSignals("featureSwitch");
@@ -18,8 +18,10 @@ export const featureSwitch$ = computed(async (get) => {
   const user = await get(user$);
   const userId = user?.id;
   const email = user?.primaryEmailAddress?.emailAddress;
+  const clerk = await get(clerk$);
+  const orgId = clerk.organization?.id;
 
-  const result = await getAllFeatureStates(userId, email);
+  const result = await getAllFeatureStates({ userId, email, orgId });
 
   const override = get(get$);
   if (!override) {

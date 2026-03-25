@@ -235,43 +235,6 @@ describe("POST /api/runners/jobs/:id/claim", () => {
   });
 
   describe("Claim flow - Agent metadata", () => {
-    it("should return agentOrgSlug in claim response when set", async () => {
-      // Create compose and look up org slug
-      const { composeId, versionId } = await createTestCompose("test-agent");
-      const composeInfo = await findTestComposeWithOrg(composeId);
-      const orgSlug = composeInfo!.orgSlug;
-
-      // Create runner job with agentOrgSlug in stored context
-      const { runId } = await createTestRunnerJob(
-        user.userId,
-        versionId,
-        `${orgSlug}/default`,
-        {
-          agentOrgSlug: orgSlug,
-        },
-      );
-
-      // Claim the job
-      const token = await createTestCliToken(user.userId);
-      const request = createTestRequest(
-        `http://localhost:3000/api/runners/jobs/${runId}/claim`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({}),
-        },
-      );
-
-      const response = await POST(request);
-      expect(response.status).toBe(200);
-
-      const data = await response.json();
-      expect(data.agentOrgSlug).toBe(orgSlug);
-    });
-
     it("should return appendSystemPrompt in claim response", async () => {
       const { composeId, versionId } = await createTestCompose("test-asp");
       const composeInfo = await findTestComposeWithOrg(composeId);
@@ -368,7 +331,7 @@ describe("POST /api/runners/jobs/:id/claim", () => {
       const data = await response.json();
       const sandboxAuth = verifySandboxToken(data.sandboxToken);
       expect(sandboxAuth).not.toBeNull();
-      expect(sandboxAuth!.capabilities).toBeUndefined();
+      expect(sandboxAuth!.userId).toBe(user.userId);
     });
   });
 

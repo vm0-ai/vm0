@@ -42,7 +42,6 @@ import {
   TooltipTrigger,
 } from "@vm0/ui";
 import slackIcon from "./components/settings/icons/slack.svg";
-import zeroAvatarImg from "./assets/zero-avatar.webp";
 import { clerk$, user$ } from "../../signals/auth.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
@@ -83,11 +82,8 @@ import {
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { VM0ClerkProvider } from "../clerk/clerk-provider.tsx";
 import { ClerkOrgSwitcher } from "./clerk-org-switcher.tsx";
-import {
-  AGENT_AVATARS,
-  AgentAvatarImg,
-  type SubagentInfo,
-} from "./zero-sidebar-shared.tsx";
+import { AgentAvatarImg, type SubagentInfo } from "./zero-sidebar-shared.tsx";
+import { ZERO_AVATARS } from "./zero-avatars.ts";
 import { Link } from "../router/link.tsx";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { apiBaseForNavigation$ } from "../../signals/fetch.ts";
@@ -157,8 +153,6 @@ interface SessionAccount {
   imageUrl: string | undefined;
   isActive: boolean;
 }
-
-const ZERO_AVATARS = [zeroAvatarImg, ...AGENT_AVATARS] as const;
 
 function AccountAvatar({
   imageUrl,
@@ -598,7 +592,7 @@ function RecentChatSection({
                 }}
                 className={`flex h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors ${
                   selectedRecentId === session.id
-                    ? "bg-sidebar-active text-sidebar-primary font-medium"
+                    ? "bg-slate-200 text-slate-900 font-medium"
                     : "text-sidebar-foreground hover:bg-sidebar-accent"
                 }`}
               >
@@ -687,7 +681,7 @@ function TalkToSection({
               }
               className={`flex w-full h-8 shrink-0 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
                 isPrimarySelected
-                  ? "bg-sidebar-active text-sidebar-primary font-medium"
+                  ? "bg-slate-200 text-slate-900 font-medium"
                   : isFromChat
                     ? "border-l-2 border-[hsl(var(--gray-400))] bg-sidebar-accent/50"
                     : "text-sidebar-foreground hover:bg-sidebar-accent"
@@ -716,7 +710,7 @@ function TalkToSection({
                 options={{ pathParams: { id: agent.id } }}
                 className={`flex w-full h-8 shrink-0 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
                   isPrimarySelected
-                    ? "bg-sidebar-active text-sidebar-primary font-medium"
+                    ? "bg-slate-200 text-slate-900 font-medium"
                     : isFromChat
                       ? "border-l-2 border-[hsl(var(--gray-400))] bg-sidebar-accent/50"
                       : "text-sidebar-foreground hover:bg-sidebar-accent"
@@ -941,7 +935,7 @@ export function ZeroSidebar() {
                         }}
                         className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
                           activeId === id
-                            ? "bg-sidebar-active text-sidebar-primary"
+                            ? "bg-slate-200 text-slate-900"
                             : "text-sidebar-foreground hover:bg-sidebar-accent"
                         }`}
                       >
@@ -1010,7 +1004,7 @@ export function ZeroSidebar() {
                   }}
                   className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
                     activeId === id
-                      ? "bg-sidebar-active text-sidebar-primary font-medium"
+                      ? "bg-slate-200 text-slate-900 font-medium"
                       : "text-sidebar-foreground hover:bg-sidebar-accent"
                   }`}
                 >
@@ -1070,7 +1064,7 @@ export function ZeroSidebar() {
                 }}
                 className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
                   activeId === id
-                    ? "bg-sidebar-active text-sidebar-primary font-medium"
+                    ? "bg-slate-200 text-slate-900 font-medium"
                     : "text-sidebar-foreground hover:bg-sidebar-accent"
                 }`}
               >

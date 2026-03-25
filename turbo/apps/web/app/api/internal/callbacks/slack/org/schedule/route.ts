@@ -207,6 +207,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // Use configured channel if set, otherwise fall back to user DM
   const notifyChannel = targetChannelId ?? connection.slackUserId;
 
+  if (status === "progress") {
+    // Progress heartbeat — no notification needed
+    return NextResponse.json({ success: true, skipped: true });
+  }
+
   if (status === "completed") {
     const allOutputs = await extractAllRunOutputs(runId);
 

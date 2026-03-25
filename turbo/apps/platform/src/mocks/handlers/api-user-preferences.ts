@@ -9,8 +9,6 @@ import type { UserPreferencesResponse } from "@vm0/core";
 
 let mockPreferences: UserPreferencesResponse = {
   timezone: null,
-  notifyEmail: false,
-  notifySlack: false,
   pinnedAgentIds: [],
   sendMode: "enter",
 };
@@ -18,8 +16,6 @@ let mockPreferences: UserPreferencesResponse = {
 export function resetMockUserPreferences(): void {
   mockPreferences = {
     timezone: null,
-    notifyEmail: false,
-    notifySlack: false,
     pinnedAgentIds: [],
     sendMode: "enter",
   };
@@ -35,12 +31,6 @@ export const apiUserPreferencesHandlers = [
   http.post("/api/zero/user-preferences", async ({ request }) => {
     const body = (await request.json()) as Partial<UserPreferencesResponse>;
 
-    if (body.notifyEmail !== undefined) {
-      mockPreferences.notifyEmail = body.notifyEmail;
-    }
-    if (body.notifySlack !== undefined) {
-      mockPreferences.notifySlack = body.notifySlack;
-    }
     if (body.timezone !== undefined) {
       mockPreferences.timezone = body.timezone;
     }

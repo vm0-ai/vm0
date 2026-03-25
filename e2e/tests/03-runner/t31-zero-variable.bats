@@ -29,8 +29,6 @@ teardown() {
     run $ZERO_CLI variable set "$TEST_VAR_NAME" "test-variable-value"
     assert_success
     assert_output --partial "Variable \"$TEST_VAR_NAME\" saved"
-    assert_output --partial "Use in vm0.yaml"
-    assert_output --partial "\${{ vars.$TEST_VAR_NAME }}"
 }
 
 @test "zero variable list shows created variable with value" {

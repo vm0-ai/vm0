@@ -76,6 +76,9 @@ pub struct FirecrackerSandbox {
     /// Overlay file path (deleted on destroy).
     pub(crate) overlay: PathBuf,
     process: Option<tokio::process::Child>,
+    /// Firecracker process PID, captured at spawn time before the process
+    /// could exit and be reaped.  Used for host-side OOM detection.
+    firecracker_pid: Option<u32>,
     /// Lifecycle state, shared with background log tasks for crash detection.
     state: Arc<AtomicU8>,
     /// Vsock guest connection, shared with background log tasks so they can
@@ -111,6 +114,7 @@ impl FirecrackerSandbox {
             network,
             overlay,
             process: None,
+            firecracker_pid: None,
             state: Arc::new(AtomicU8::new(SandboxState::Created as u8)),
             guest: Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>)),
             crash_notify: Arc::new(Notify::new()),
@@ -216,6 +220,7 @@ impl FirecrackerSandbox {
             .spawn()
             .map_err(|e| SandboxError::StartFailed(format!("spawn firecracker: {e}")))?;
 
+        self.firecracker_pid = child.id();
         monitor_process(
             &self.id,
             &mut child,
@@ -326,6 +331,7 @@ impl FirecrackerSandbox {
             .spawn()
             .map_err(|e| SandboxError::StartFailed(format!("spawn firecracker: {e}")))?;
 
+        self.firecracker_pid = child.id();
         monitor_process(
             &self.id,
             &mut child,
@@ -470,6 +476,10 @@ impl Sandbox for FirecrackerSandbox {
 
     fn source_ip(&self) -> &str {
         &self.network.peer_ip
+    }
+
+    fn process_pid(&self) -> Option<u32> {
+        self.firecracker_pid
     }
 
     // -- lifecycle --

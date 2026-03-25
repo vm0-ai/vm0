@@ -6,7 +6,7 @@ import { disconnectCommand } from "./disconnect";
 
 export const zeroConnectorCommand = new Command()
   .name("connector")
-  .description("Manage third-party service connections (zero)")
+  .description("Manage third-party service connections")
   .addCommand(listCommand)
   .addCommand(statusCommand)
   .addCommand(connectCommand)

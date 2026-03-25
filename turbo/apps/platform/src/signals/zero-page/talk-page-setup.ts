@@ -9,7 +9,7 @@ import { logger } from "../log.ts";
 import { agentDisplayName$, defaultAgentId$ } from "./zero-agent-name.ts";
 import { zeroSubagents$ } from "./zero-agents.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
-import { loadInitialData$, resolveAgentById } from "./zero-page.ts";
+import { loadInitialData$, resolveAgentById$ } from "./zero-page.ts";
 
 const L = logger("TalkPage");
 
@@ -29,7 +29,7 @@ export const setupTalkPage$ = command(
     const agentId = params?.id ?? null;
     L.info("resolveAgent talk:", agentId);
 
-    await resolveAgentById(get, set, signal, agentId);
+    await set(resolveAgentById$, agentId, signal);
 
     // Update title with resolved agent display name
     if (agentId) {

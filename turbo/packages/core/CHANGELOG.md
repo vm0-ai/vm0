@@ -1,5 +1,41 @@
 # Changelog
 
+## [8.111.0](https://github.com/vm0-ai/vm0/compare/core-v8.110.0...core-v8.111.0) (2026-03-25)
+
+
+### Features
+
+* add intervals-icu firewall config ([#6659](https://github.com/vm0-ai/vm0/issues/6659)) ([00b8772](https://github.com/vm0-ai/vm0/commit/00b87724ba0bb3cacfa8c3cb89a367e896f74358)), closes [#6361](https://github.com/vm0-ai/vm0/issues/6361)
+* add mailsac firewall config ([#6653](https://github.com/vm0-ai/vm0/issues/6653)) ([fadd4a7](https://github.com/vm0-ai/vm0/commit/fadd4a7f7bbf216513ae9f160682eb609abe5f23)), closes [#6370](https://github.com/vm0-ai/vm0/issues/6370)
+* add pdforge firewall config ([#6656](https://github.com/vm0-ai/vm0/issues/6656)) ([a8b0cac](https://github.com/vm0-ai/vm0/commit/a8b0cac98c4700a9b6d95951442b01baf2ecf9a1)), closes [#6384](https://github.com/vm0-ai/vm0/issues/6384)
+* add productlane firewall config ([#6661](https://github.com/vm0-ai/vm0/issues/6661)) ([11b4f84](https://github.com/vm0-ai/vm0/commit/11b4f84fe118f302eea0f0f1f0668cac3c4f5425)), closes [#6391](https://github.com/vm0-ai/vm0/issues/6391)
+* **cli:** add zero slack message send command ([#6652](https://github.com/vm0-ai/vm0/issues/6652)) ([da77c47](https://github.com/vm0-ai/vm0/commit/da77c47885aba80bad5d15ca3710d7f65524f57e))
+
+
+### Refactoring
+
+* remove global notification preferences ([#6548](https://github.com/vm0-ai/vm0/issues/6548)) ([1d500cd](https://github.com/vm0-ai/vm0/commit/1d500cdf0d0571c8a92d22b5cd8fdf27f44c649e))
+
+## [8.110.0](https://github.com/vm0-ai/vm0/compare/core-v8.109.0...core-v8.110.0) (2026-03-25)
+
+
+### Features
+
+* add cronlytic firewall config ([#6635](https://github.com/vm0-ai/vm0/issues/6635)) ([0933cea](https://github.com/vm0-ai/vm0/commit/0933cea2a3b98046f0cc5f063bda345c5c89a7dd))
+* add explorium firewall config ([#6640](https://github.com/vm0-ai/vm0/issues/6640)) ([c076731](https://github.com/vm0-ai/vm0/commit/c0767317bd9cc0e030f80f877173658923f3bc8a))
+* add pdfco firewall config ([#6644](https://github.com/vm0-ai/vm0/issues/6644)) ([484ebb4](https://github.com/vm0-ai/vm0/commit/484ebb4c1b4be739a1b21a05756eb2e3c899384d)), closes [#6383](https://github.com/vm0-ai/vm0/issues/6383)
+* add pushinator firewall config ([#6627](https://github.com/vm0-ai/vm0/issues/6627)) ([0e22fce](https://github.com/vm0-ai/vm0/commit/0e22fceffc8387e50567484c1da87dbb3846da25))
+* add revenuecat firewall config ([#6648](https://github.com/vm0-ai/vm0/issues/6648)) ([fa79a9b](https://github.com/vm0-ai/vm0/commit/fa79a9b65f61c6a2c7cdd96d80fbfb2ea5b3a16c)), closes [#6396](https://github.com/vm0-ai/vm0/issues/6396)
+* add scrapeninja firewall config ([#6651](https://github.com/vm0-ai/vm0/issues/6651)) ([4c7c96c](https://github.com/vm0-ai/vm0/commit/4c7c96cd79c013a5de70fe1fbae99ef4bd35d6a6)), closes [#6401](https://github.com/vm0-ai/vm0/issues/6401)
+* add similarweb firewall config ([#6641](https://github.com/vm0-ai/vm0/issues/6641)) ([efcc637](https://github.com/vm0-ai/vm0/commit/efcc6377a8019be166b79ead5350e6bee6f87f11)), closes [#6404](https://github.com/vm0-ai/vm0/issues/6404)
+* add v0 firewall config ([#6623](https://github.com/vm0-ai/vm0/issues/6623)) ([7494cdd](https://github.com/vm0-ai/vm0/commit/7494cdd23ea1f92ee50af9b062ccb322fdd67921))
+
+
+### Bug Fixes
+
+* **core:** align agent-run:write capability meta label with actual route usage ([#6615](https://github.com/vm0-ai/vm0/issues/6615)) ([b651a19](https://github.com/vm0-ai/vm0/commit/b651a194670d895a8682480c146a1f965aa2ba54))
+* validate uuid format in zero agent api path params ([#6629](https://github.com/vm0-ai/vm0/issues/6629)) ([cebaef4](https://github.com/vm0-ai/vm0/commit/cebaef4ddb7dddde3ba8e5113c6772aa2f134fa9))
+
 ## [8.109.0](https://github.com/vm0-ai/vm0/compare/core-v8.108.0...core-v8.109.0) (2026-03-25)
 
 

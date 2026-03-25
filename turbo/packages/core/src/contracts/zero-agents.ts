@@ -64,6 +64,7 @@ export const zeroAgentsMainContract = c.router({
       201: zeroAgentResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       422: apiErrorSchema,
     },
     summary: "Create zero agent",
@@ -75,6 +76,7 @@ export const zeroAgentsMainContract = c.router({
     responses: {
       200: z.array(zeroAgentResponseSchema),
       401: apiErrorSchema,
+      403: apiErrorSchema,
     },
     summary: "List zero agents",
   },
@@ -92,6 +94,7 @@ export const zeroAgentsByIdContract = c.router({
     responses: {
       200: zeroAgentResponseSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Get zero agent by id",
@@ -106,6 +109,7 @@ export const zeroAgentsByIdContract = c.router({
       200: zeroAgentResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
       422: apiErrorSchema,
     },
@@ -120,6 +124,7 @@ export const zeroAgentsByIdContract = c.router({
     responses: {
       200: zeroAgentResponseSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Update zero agent metadata",
@@ -133,6 +138,7 @@ export const zeroAgentsByIdContract = c.router({
     responses: {
       204: c.noBody(),
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Delete zero agent by id",
@@ -179,6 +185,7 @@ export const zeroAgentInstructionsContract = c.router({
     responses: {
       200: zeroAgentInstructionsResponseSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Get zero agent instructions",
@@ -192,6 +199,7 @@ export const zeroAgentInstructionsContract = c.router({
     responses: {
       200: zeroAgentResponseSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
       422: apiErrorSchema,
     },

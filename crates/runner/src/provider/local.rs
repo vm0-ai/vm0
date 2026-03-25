@@ -240,7 +240,6 @@ impl JobProvider for LocalProvider {
             debug_no_mock_claude: None,
             api_start_time: None,
             user_timezone: req.user_timezone,
-            agent_org_slug: None,
             memory_name: None,
             experimental_firewalls: None,
             disallowed_tools: None,

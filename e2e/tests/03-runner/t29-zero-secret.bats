@@ -29,8 +29,6 @@ teardown() {
     run $ZERO_CLI secret set "$TEST_SECRET_NAME" --body "test-secret-value"
     assert_success
     assert_output --partial "Secret \"$TEST_SECRET_NAME\" saved"
-    assert_output --partial "Use in vm0.yaml"
-    assert_output --partial "\${{ secrets.$TEST_SECRET_NAME }}"
 }
 
 @test "zero secret list shows created secret" {

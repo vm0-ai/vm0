@@ -33,10 +33,12 @@ import { devtoFirewall } from "./devto.generated";
 import { discordFirewall } from "./discord.generated";
 import { dropboxFirewall } from "./dropbox.generated";
 import { elevenlabsFirewall } from "./elevenlabs.generated";
+import { exploriumFirewall } from "./explorium.generated";
 import { falFirewall } from "./fal.generated";
 import { figmaFirewall } from "./figma.generated";
 import { firecrawlFirewall } from "./firecrawl.generated";
 import { firefliesFirewall } from "./fireflies.generated";
+import { garminConnectFirewall } from "./garmin-connect.generated";
 import { githubFirewall } from "./github.generated";
 import { gitlabFirewall } from "./gitlab.generated";
 import { gmailFirewall } from "./gmail.generated";
@@ -52,28 +54,40 @@ import { humeFirewall } from "./hume.generated";
 import { imgurFirewall } from "./imgur.generated";
 import { instantlyFirewall } from "./instantly.generated";
 import { intercomFirewall } from "./intercom.generated";
+import { intervalsIcuFirewall } from "./intervals-icu.generated";
 import { jiraFirewall } from "./jira.generated";
 import { jotformFirewall } from "./jotform.generated";
 import { larkFirewall } from "./lark.generated";
 import { lineFirewall } from "./line.generated";
 import { linearFirewall } from "./linear.generated";
 import { loopsFirewall } from "./loops.generated";
+import { mailsacFirewall } from "./mailsac.generated";
 import { mercuryFirewall } from "./mercury.generated";
 import { minimaxFirewall } from "./minimax.generated";
 import { mondayFirewall } from "./monday.generated";
 import { neonFirewall } from "./neon.generated";
 import { notionFirewall } from "./notion.generated";
 import { openaiFirewall } from "./openai.generated";
+import { pdf4meFirewall } from "./pdf4me.generated";
+import { pdfcoFirewall } from "./pdfco.generated";
+import { pdforgeFirewall } from "./pdforge.generated";
 import { perplexityFirewall } from "./perplexity.generated";
 import { plausibleFirewall } from "./plausible.generated";
+import { podchaserFirewall } from "./podchaser.generated";
 import { posthogFirewall } from "./posthog.generated";
+import { productlaneFirewall } from "./productlane.generated";
+import { pushinatorFirewall } from "./pushinator.generated";
 import { qiitaFirewall } from "./qiita.generated";
 import { redditFirewall } from "./reddit.generated";
+import { reporteiFirewall } from "./reportei.generated";
 import { resendFirewall } from "./resend.generated";
+import { revenuecatFirewall } from "./revenuecat.generated";
 import { runwayFirewall } from "./runway.generated";
+import { scrapeninjaFirewall } from "./scrapeninja.generated";
 import { sentryFirewall } from "./sentry.generated";
 import { serpapiFirewall } from "./serpapi.generated";
 import { shortioFirewall } from "./shortio.generated";
+import { similarwebFirewall } from "./similarweb.generated";
 import { slackFirewall } from "./slack.generated";
 import { stravaFirewall } from "./strava.generated";
 import { stripeFirewall } from "./stripe.generated";
@@ -82,6 +96,7 @@ import { supadataFirewall } from "./supadata.generated";
 import { tavilyFirewall } from "./tavily.generated";
 import { tldvFirewall } from "./tldv.generated";
 import { todoistFirewall } from "./todoist.generated";
+import { v0Firewall } from "./v0.generated";
 import { vercelFirewall } from "./vercel.generated";
 import { webflowFirewall } from "./webflow.generated";
 import { wixFirewall } from "./wix.generated";
@@ -119,10 +134,12 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   discord: discordFirewall,
   dropbox: dropboxFirewall,
   elevenlabs: elevenlabsFirewall,
+  explorium: exploriumFirewall,
   fal: falFirewall,
   figma: figmaFirewall,
   firecrawl: firecrawlFirewall,
   fireflies: firefliesFirewall,
+  "garmin-connect": garminConnectFirewall,
   github: githubFirewall,
   gitlab: gitlabFirewall,
   gmail: gmailFirewall,
@@ -138,28 +155,40 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   imgur: imgurFirewall,
   instantly: instantlyFirewall,
   intercom: intercomFirewall,
+  "intervals-icu": intervalsIcuFirewall,
   jira: jiraFirewall,
   jotform: jotformFirewall,
   lark: larkFirewall,
   line: lineFirewall,
   linear: linearFirewall,
   loops: loopsFirewall,
+  mailsac: mailsacFirewall,
   mercury: mercuryFirewall,
   minimax: minimaxFirewall,
   monday: mondayFirewall,
   neon: neonFirewall,
   notion: notionFirewall,
   openai: openaiFirewall,
+  pdf4me: pdf4meFirewall,
+  pdfco: pdfcoFirewall,
+  pdforge: pdforgeFirewall,
   perplexity: perplexityFirewall,
   plausible: plausibleFirewall,
+  podchaser: podchaserFirewall,
   posthog: posthogFirewall,
+  productlane: productlaneFirewall,
+  pushinator: pushinatorFirewall,
   qiita: qiitaFirewall,
   reddit: redditFirewall,
+  reportei: reporteiFirewall,
   resend: resendFirewall,
+  revenuecat: revenuecatFirewall,
   runway: runwayFirewall,
+  scrapeninja: scrapeninjaFirewall,
   sentry: sentryFirewall,
   serpapi: serpapiFirewall,
   shortio: shortioFirewall,
+  similarweb: similarwebFirewall,
   slack: slackFirewall,
   strava: stravaFirewall,
   stripe: stripeFirewall,
@@ -168,6 +197,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   tavily: tavilyFirewall,
   tldv: tldvFirewall,
   todoist: todoistFirewall,
+  v0: v0Firewall,
   vercel: vercelFirewall,
   webflow: webflowFirewall,
   wix: wixFirewall,

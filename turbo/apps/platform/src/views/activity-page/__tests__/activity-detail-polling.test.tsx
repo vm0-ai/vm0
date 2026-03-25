@@ -1,0 +1,123 @@
+import { describe, expect, it } from "vitest";
+import { screen, waitFor } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../mocks/server.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { setupPage } from "../../../__tests__/page-helper.ts";
+import type {
+  LogDetail,
+  AgentEventsResponse,
+} from "../../../signals/zero-page/log-types.ts";
+
+const context = testContext();
+
+function makeLogDetail(overrides: Partial<LogDetail>): LogDetail {
+  return {
+    id: "run_new",
+    sessionId: "session_new",
+    agentName: "agent-1",
+    displayName: "Agent One",
+    framework: "claude-code",
+    modelProvider: null,
+    triggerSource: "web",
+    status: "running",
+    prompt: "Hello",
+    appendSystemPrompt: null,
+    error: null,
+    createdAt: "2026-03-10T14:56:00Z",
+    startedAt: "2026-03-10T14:56:01Z",
+    completedAt: null,
+    artifact: { name: null, version: null },
+    ...overrides,
+  };
+}
+
+describe("activity detail polling with initially empty events", () => {
+  it("should pick up events that appear after the initial empty fetch", async () => {
+    let eventFetchCount = 0;
+
+    server.use(
+      http.get("*/api/zero/composes/list", () => {
+        return HttpResponse.json({ composes: [] });
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+      http.get("*/api/zero/logs/:id", () => {
+        return HttpResponse.json(
+          makeLogDetail({
+            // Stay "running" so polling continues
+            status: eventFetchCount < 3 ? "running" : "completed",
+          }),
+        );
+      }),
+      http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
+        eventFetchCount++;
+
+        // First 2 fetches return empty events (run just started)
+        if (eventFetchCount <= 2) {
+          return HttpResponse.json({
+            events: [],
+            hasMore: false,
+            framework: "claude-code",
+          } satisfies AgentEventsResponse);
+        }
+
+        // Subsequent fetches return actual events
+        return HttpResponse.json({
+          events: [
+            {
+              sequenceNumber: 0,
+              eventType: "assistant",
+              eventData: {
+                message: {
+                  content: [{ type: "text", text: "Polled response arrived" }],
+                },
+              },
+              createdAt: "2026-03-10T14:56:05Z",
+            },
+          ],
+          hasMore: false,
+          framework: "claude-code",
+        } satisfies AgentEventsResponse);
+      }),
+    );
+
+    // Navigate directly to a fresh run's detail page
+    await setupPage({ context, path: "/activity/run_new" });
+
+    // Wait for the detail heading to appear
+    await waitFor(
+      () => {
+        expect(
+          screen.getByRole("heading", { name: "Agent One" }),
+        ).toBeInTheDocument();
+      },
+      { timeout: 5000 },
+    );
+
+    // Initially no events should be shown
+    expect(
+      screen.queryByText("Polled response arrived"),
+    ).not.toBeInTheDocument();
+
+    // Wait for polling to pick up the events (poll interval is 3s by default)
+    await waitFor(
+      () => {
+        expect(screen.getByText("Polled response arrived")).toBeInTheDocument();
+      },
+      { timeout: 15_000 },
+    );
+
+    // Confirm the telemetry endpoint was called multiple times (re-fetched after empty)
+    expect(eventFetchCount).toBeGreaterThanOrEqual(3);
+
+    // Wait for polling to detect terminal status and stop cleanly
+    await waitFor(
+      () => {
+        expect(screen.getByText("Done")).toBeInTheDocument();
+      },
+      { timeout: 15_000 },
+    );
+  }, 30_000);
+});

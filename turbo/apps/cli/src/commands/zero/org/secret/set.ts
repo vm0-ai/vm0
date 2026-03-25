@@ -62,10 +62,6 @@ export const setCommand = new Command()
         }
 
         console.log(chalk.green(`✓ Org secret "${secret.name}" saved`));
-        console.log();
-        console.log("Use in vm0.yaml:");
-        console.log(chalk.cyan(`  environment:`));
-        console.log(chalk.cyan(`    ${name}: \${{ secrets.${name} }}`));
       },
     ),
   );

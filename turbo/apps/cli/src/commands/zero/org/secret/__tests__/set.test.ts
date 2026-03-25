@@ -52,7 +52,6 @@ describe("zero org secret set command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain('Org secret "MY_API_KEY" saved');
-      expect(logCalls).toContain("secrets.MY_API_KEY");
     });
 
     it("should set a secret with --body and --description", async () => {

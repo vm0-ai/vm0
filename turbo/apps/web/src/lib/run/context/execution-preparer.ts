@@ -174,7 +174,6 @@ export async function prepareForExecution(
     runnerGroup,
     profile,
     storageManifest,
-    agentOrgInfo.orgSlug,
   );
 
   const timings: PrepareTimings = {
@@ -217,7 +216,6 @@ function buildPreparedContext(
   runnerGroup: string | null,
   profile: string | null,
   storageManifest: StorageManifest,
-  agentOrgSlug: string | null,
 ): PreparedContext {
   const metadata = extractMetadata(context);
 
@@ -270,9 +268,6 @@ function buildPreparedContext(
 
     // Routing
     runnerGroup,
-
-    // Org slug for capabilities
-    agentOrgSlug,
 
     // Metadata
     ...metadata,

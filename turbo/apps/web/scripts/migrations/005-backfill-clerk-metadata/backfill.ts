@@ -249,8 +249,6 @@ export async function backfillOrgMembersMetadata(
                   userId,
                   timezone:
                     typeof meta.timezone === "string" ? meta.timezone : null,
-                  notifyEmail: meta.notify_email === true,
-                  notifySlack: meta.notify_slack !== false,
                   pinnedAgentIds: toStringArray(meta.pinned_agent_ids),
                   sendMode: parseSendMode(meta.send_mode),
                   onboardingDone: meta.onboarding_done === true,

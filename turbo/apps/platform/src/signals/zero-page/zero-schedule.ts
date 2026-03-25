@@ -1,6 +1,8 @@
 import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { fetch$ } from "../fetch.ts";
+import { createElement } from "react";
+import { Link } from "../../views/router/link.tsx";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
@@ -14,6 +16,11 @@ import {
 
 const L = logger("ZeroSchedule");
 
+function scheduleSaveFailure(message: string): never {
+  toast.error(message);
+  throw new Error(message);
+}
+
 // ---------------------------------------------------------------------------
 // Schedule response type (matches API schema)
 // ---------------------------------------------------------------------------
@@ -21,6 +28,7 @@ const L = logger("ZeroSchedule");
 interface ScheduleResponse {
   id: string;
   agentId: string;
+  agentName: string;
   orgSlug: string;
   name: string;
   triggerType: "cron" | "once" | "loop";
@@ -232,7 +240,7 @@ export const saveZeroSchedule$ = command(
     const status = await get(zeroOnboardingStatus$);
     const composeId = status.defaultAgentId;
     if (!composeId) {
-      throw new Error("No default agent configured");
+      scheduleSaveFailure("No default agent configured");
     }
 
     const fetchFn = get(fetch$);
@@ -264,7 +272,7 @@ export const saveZeroSchedule$ = command(
       if (
         isAtTimePast(params.date, String(params.hour), String(params.minute))
       ) {
-        throw new Error("Scheduled time must be in the future");
+        scheduleSaveFailure("Scheduled time must be in the future");
       }
       const atTime = buildAtTime(
         params.date,
@@ -285,7 +293,7 @@ export const saveZeroSchedule$ = command(
       };
       const timeOption = freqMap[params.freq];
       if (!timeOption) {
-        throw new Error(`Unknown schedule frequency: ${params.freq}`);
+        scheduleSaveFailure(`Unknown schedule frequency: ${params.freq}`);
       }
       const cronExpression = buildCronExpression({
         timeOption,
@@ -307,7 +315,7 @@ export const saveZeroSchedule$ = command(
       const errorData = (await response.json().catch(() => null)) as {
         error?: { message?: string };
       } | null;
-      throw new Error(
+      scheduleSaveFailure(
         errorData?.error?.message ?? `Save failed: ${response.statusText}`,
       );
     }
@@ -326,7 +334,7 @@ export const toggleZeroScheduleEnabled$ = command(
     const status = await get(zeroOnboardingStatus$);
     const composeId = status.defaultAgentId;
     if (!composeId) {
-      throw new Error("No default agent configured");
+      scheduleSaveFailure("No default agent configured");
     }
 
     const fetchFn = get(fetch$);
@@ -405,6 +413,9 @@ export interface OrgScheduleEntry {
   timezone: string;
   intervalSeconds: number | null;
   agentId: string;
+  agentName: string;
+  nextRunAt: string | null;
+  lastRunAt: string | null;
 }
 
 const internalAllSchedules$ = state<ScheduleResponse[]>([]);
@@ -433,6 +444,9 @@ export const allOrgScheduleEntries$ = computed((get) => {
         timezone: s.timezone,
         intervalSeconds: s.intervalSeconds,
         agentId: s.agentId,
+        agentName: s.agentName,
+        nextRunAt: s.nextRunAt,
+        lastRunAt: s.lastRunAt,
       }),
     );
 });
@@ -492,7 +506,7 @@ export const saveOrgSchedule$ = command(
       if (
         isAtTimePast(params.date, String(params.hour), String(params.minute))
       ) {
-        throw new Error("Scheduled time must be in the future");
+        scheduleSaveFailure("Scheduled time must be in the future");
       }
       const atTime = buildAtTime(
         params.date,
@@ -511,7 +525,7 @@ export const saveOrgSchedule$ = command(
       };
       const timeOption = freqMap[params.freq];
       if (!timeOption) {
-        throw new Error(`Unknown schedule frequency: ${params.freq}`);
+        scheduleSaveFailure(`Unknown schedule frequency: ${params.freq}`);
       }
       const cronExpression = buildCronExpression({
         timeOption,
@@ -533,7 +547,7 @@ export const saveOrgSchedule$ = command(
       const errorData = (await response.json().catch(() => null)) as {
         error?: { message?: string };
       } | null;
-      throw new Error(
+      scheduleSaveFailure(
         errorData?.error?.message ?? `Save failed: ${response.statusText}`,
       );
     }
@@ -593,5 +607,53 @@ export const deleteOrgSchedule$ = command(
 
     toast.success("Schedule deleted");
     await set(fetchAllOrgSchedules$);
+  },
+);
+
+/**
+ * Execute a schedule immediately (same pipeline as the cron trigger).
+ * Returns the created run ID.
+ */
+export const runScheduleNow$ = command(
+  async ({ get }, scheduleId: string): Promise<string> => {
+    const toastId = toast.loading("Starting run…");
+    const fetchFn = get(fetch$);
+    const response = await fetchFn("/api/zero/schedules/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scheduleId }),
+    });
+
+    if (!response.ok) {
+      const errorData = (await response.json().catch(() => null)) as {
+        error?: { message?: string };
+      } | null;
+      const message =
+        errorData?.error?.message ?? `Run failed: ${response.status}`;
+      toast.error(message, { id: toastId });
+      throw new Error(message);
+    }
+
+    const data = (await response.json()) as { runId: string };
+
+    toast.success(
+      createElement(
+        "span",
+        null,
+        "Run started. ",
+        createElement(
+          Link,
+          {
+            pathname: "/activity/:logId" as const,
+            options: { pathParams: { logId: data.runId } },
+            className: "underline",
+          },
+          "View activity",
+        ),
+      ),
+      { id: toastId },
+    );
+
+    return data.runId;
   },
 );

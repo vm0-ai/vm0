@@ -13,8 +13,6 @@ function createMockPreferences(
 ): UserPreferencesResponse {
   return {
     timezone: "UTC",
-    notifyEmail: false,
-    notifySlack: false,
     pinnedAgentIds: [],
     sendMode: "enter",
     ...overrides,
@@ -34,7 +32,7 @@ async function renderPreferencesPage() {
 }
 
 describe("zero preferences page - tab navigation", () => {
-  it("should show appearance tab by default and switch to notifications tab", async () => {
+  it("should show appearance tab by default and switch to time zone tab", async () => {
     mockPreferencesAPI();
     await renderPreferencesPage();
 
@@ -42,15 +40,14 @@ describe("zero preferences page - tab navigation", () => {
       expect(screen.getByText("Theme")).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByText("Notifications"));
+    fireEvent.click(screen.getByText("Time Zone"));
 
     await waitFor(() => {
-      expect(screen.getByText("Email Notifications")).toBeInTheDocument();
+      expect(screen.getByText("Time zone")).toBeInTheDocument();
     });
-    expect(screen.getByText("Slack Notifications")).toBeInTheDocument();
   });
 
-  it("should switch to time zone tab", async () => {
+  it("should switch back to appearance tab from time zone", async () => {
     mockPreferencesAPI();
     await renderPreferencesPage();
 
@@ -63,84 +60,12 @@ describe("zero preferences page - tab navigation", () => {
     await waitFor(() => {
       expect(screen.getByText("Time zone")).toBeInTheDocument();
     });
-  });
-
-  it("should switch back to appearance tab from notifications", async () => {
-    mockPreferencesAPI();
-    await renderPreferencesPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Notifications")).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByText("Notifications"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Email Notifications")).toBeInTheDocument();
-    });
 
     fireEvent.click(screen.getByText("Appearance"));
 
     await waitFor(() => {
       expect(screen.getByText("Theme")).toBeInTheDocument();
     });
-  });
-});
-
-describe("zero preferences page - notification toggles", () => {
-  it("should render accessible notification toggles", async () => {
-    mockPreferencesAPI();
-    await renderPreferencesPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Notifications")).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByText("Notifications"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByLabelText("Toggle email notifications"),
-      ).toBeInTheDocument();
-    });
-    expect(
-      screen.getByLabelText("Toggle Slack notifications"),
-    ).toBeInTheDocument();
-  });
-
-  it("should send update request when toggling email notification", async () => {
-    let capturedBody: Record<string, unknown> | null = null;
-
-    server.use(
-      http.get("*/api/zero/user-preferences", () => {
-        return HttpResponse.json(createMockPreferences());
-      }),
-      http.post("*/api/zero/user-preferences", async ({ request }) => {
-        capturedBody = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json(createMockPreferences({ notifyEmail: true }));
-      }),
-    );
-
-    await renderPreferencesPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Notifications")).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByText("Notifications"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByLabelText("Toggle email notifications"),
-      ).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByLabelText("Toggle email notifications"));
-
-    await waitFor(() => {
-      expect(capturedBody).toBeTruthy();
-    });
-    expect(capturedBody).toHaveProperty("notifyEmail", true);
   });
 });
 

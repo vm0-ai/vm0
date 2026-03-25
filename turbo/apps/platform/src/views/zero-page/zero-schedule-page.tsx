@@ -1,21 +1,6 @@
 import { useState } from "react";
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
-import {
-  addScheduleOpen$,
-  setAddScheduleOpen$,
-  editingScheduleId$,
-  setEditingScheduleId$,
-} from "../../signals/zero-page/schedule-card.ts";
-import {
-  IconPencil,
-  IconList,
-  IconLayoutGrid,
-  IconTrash,
-  IconPlus,
-  IconChevronLeft,
-  IconChevronRight,
-} from "@tabler/icons-react";
-import { LoadingSwitch } from "../components/loading-switch.tsx";
+import { IconList, IconLayoutGrid, IconPlus } from "@tabler/icons-react";
 import {
   Card,
   CardContent,
@@ -23,54 +8,55 @@ import {
   TabsList,
   TabsTrigger,
   Button,
-  cn,
+  Input,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@vm0/ui";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
-import { toast } from "@vm0/ui/components/ui/sonner";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@vm0/ui/components/ui/popover";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
 } from "@vm0/ui/components/ui/dialog";
-import {
-  getEntriesInCell,
-  buildCalendarTimeSlots,
-  WEEKDAY_LABELS,
-  parseScheduleTimeString,
-  type ScheduleEntry,
-} from "./zero-schedule-card";
+import { WEEKDAY_LABELS, type ScheduleEntry } from "./zero-schedule-card";
 import {
   ScheduleFormDialog,
   type ScheduleFormValues,
 } from "./schedule-dialog.tsx";
+import { ScheduleCalendarView } from "./schedule-calendar-view.tsx";
+import { ScheduleListView } from "./schedule-list-view.tsx";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import { agentsList$ } from "../../signals/zero-page/agents-list.ts";
-import { detach, throwIfAbort, Reason } from "../../signals/utils.ts";
+import { COMMON_TIMEZONES } from "../../signals/zero-page/cron.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import {
   allOrgScheduleEntries$,
   allOrgSchedulesLoaded$,
   saveOrgSchedule$,
   toggleOrgScheduleEnabled$,
   deleteOrgSchedule$,
+  runScheduleNow$,
   type OrgScheduleEntry,
 } from "../../signals/zero-page/zero-schedule.ts";
 import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
-import emptyScheduleImg from "./assets/empty-schedule.webp";
+import { navigateTo$ } from "../../signals/route.ts";
 
-type CombinedEntry = ScheduleEntry & {
+export type CombinedEntry = ScheduleEntry & {
   agentLabel: string;
+  agentName: string;
   agentId: string;
   timezone: string;
+  nextRunAt: string | null;
+  lastRunAt: string | null;
 };
 
-function buildCombinedSchedule(
+export function buildCombinedSchedule(
   entries: OrgScheduleEntry[],
   agentName: string,
   defaultComposeId: string | null,
@@ -90,333 +76,211 @@ function buildCombinedSchedule(
     agentLabel:
       e.agentId === defaultComposeId
         ? agentName
-        : (nameToDisplay.get(e.agentId) ?? "Unknown agent"),
+        : (nameToDisplay.get(e.agentName) ?? e.agentName),
+    agentName: e.agentName,
     agentId: e.agentId,
     timezone: e.timezone,
+    nextRunAt: e.nextRunAt,
+    lastRunAt: e.lastRunAt,
   }));
 }
 
-const AGENT_CELL_CLASSES = [
-  "bg-blue-700/15 border-blue-700/40 text-blue-800 dark:text-blue-200 dark:border-blue-600/40 dark:bg-blue-900/25",
-  "bg-emerald-700/15 border-emerald-700/40 text-emerald-800 dark:text-emerald-200 dark:border-emerald-600/40 dark:bg-emerald-900/25",
-  "bg-amber-700/15 border-amber-700/40 text-amber-800 dark:text-amber-200 dark:border-amber-600/40 dark:bg-amber-900/25",
-  "bg-violet-700/15 border-violet-700/40 text-violet-800 dark:text-violet-200 dark:border-violet-600/40 dark:bg-violet-900/25",
-  "bg-teal-700/15 border-teal-700/40 text-teal-800 dark:text-teal-200 dark:border-teal-600/40 dark:bg-teal-900/25",
+// ---------------------------------------------------------------------------
+// Edit fields
+// ---------------------------------------------------------------------------
+
+const SCHEDULE_FREQUENCY_OPTIONS = [
+  { value: "now", label: "Now" },
+  { value: "once", label: "Once" },
+  { value: "every_weekday", label: "Every weekday" },
+  { value: "every_day", label: "Every day" },
+  { value: "every_week", label: "Every week" },
+  { value: "every_month", label: "Every month" },
+  { value: "every_n_minutes", label: "Loop" },
 ] as const;
 
-function getAgentCellClasses(
-  agentLabel: string,
-  agentOrder: readonly string[],
-): string {
-  const i = agentOrder.indexOf(agentLabel);
-  return AGENT_CELL_CLASSES[i !== -1 ? i % AGENT_CELL_CLASSES.length : 0];
+const SCHEDULE_LOOP_MINUTES = [5, 15, 30, 60] as const;
+
+const HOUR_OPTIONS: readonly number[] = Array.from({ length: 24 }, (_, i) => i);
+
+const MINUTE_OPTIONS: readonly number[] = Array.from(
+  { length: 12 },
+  (_, i) => i * 5,
+);
+
+function getMinuteOptions(currentMinute?: number): readonly number[] {
+  if (currentMinute === undefined || MINUTE_OPTIONS.includes(currentMinute)) {
+    return MINUTE_OPTIONS;
+  }
+  return [...MINUTE_OPTIONS, currentMinute].sort((a, b) => a - b);
 }
 
-// ---------------------------------------------------------------------------
-// Calendar entry popover (hover to show, double-click to edit)
-// ---------------------------------------------------------------------------
-
-function CalendarEntryPopover({
-  entry,
-  cellKey,
-  agentOrder,
-  onEdit,
-  hoveredId,
-  setHoveredId,
-}: {
-  entry: CombinedEntry;
-  cellKey: string;
-  agentOrder: readonly string[];
-  onEdit: (entry: CombinedEntry) => void;
-  hoveredId: string | null;
-  setHoveredId: (id: string | null) => void;
-}) {
-  const popoverId = `${entry.id}-${cellKey}`;
-  const open = hoveredId === popoverId;
-  const setOpen = (v: boolean) => setHoveredId(v ? popoverId : null);
-
+function isCronFreq(f: string): boolean {
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          onMouseEnter={() => setHoveredId(popoverId)}
-          onMouseLeave={() => setHoveredId(null)}
-          onDoubleClick={() => onEdit(entry)}
-          className={cn(
-            "w-full min-h-0 rounded px-1.5 py-0.5 text-[11px] leading-tight line-clamp-2 break-words border text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            getAgentCellClasses(entry.agentLabel, agentOrder),
-          )}
-          aria-label={`${entry.agentLabel}: ${entry.description || entry.prompt}`}
-        >
-          {entry.description || entry.prompt}
-        </button>
-      </PopoverTrigger>
-      <PopoverContent
-        align="start"
-        sideOffset={0}
-        className="w-80 p-3 flex flex-col gap-3"
-        onMouseEnter={() => setOpen(true)}
-        onMouseLeave={() => setOpen(false)}
-      >
-        <div className="relative flex flex-col gap-1.5 pr-8">
-          <div className="absolute top-0 right-0">
-            <button
-              type="button"
-              onClick={() => onEdit(entry)}
-              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-              aria-label={`Edit ${entry.time}`}
-            >
-              <IconPencil size={14} stroke={1.5} />
-            </button>
-          </div>
-          <p className="text-xs text-muted-foreground font-medium">
-            {entry.agentLabel}
-          </p>
-          <p className="text-xs text-muted-foreground">{entry.time}</p>
-          {entry.description && (
-            <p className="text-sm font-medium text-foreground leading-snug">
-              {entry.description}
-            </p>
-          )}
-          <p className="text-sm text-foreground leading-snug">{entry.prompt}</p>
-        </div>
-      </PopoverContent>
-    </Popover>
+    f === "once" ||
+    f === "every_weekday" ||
+    f === "every_day" ||
+    f === "every_week" ||
+    f === "every_month"
   );
 }
 
-// ---------------------------------------------------------------------------
-// Calendar view
-// ---------------------------------------------------------------------------
-
-function ScheduleCalendarView({
-  combinedSchedule,
-  agentOrder,
-  onEdit,
+export function ScheduleEditFields({
+  freq,
+  setFreq,
+  loopMinutes,
+  setLoopMinutes,
+  date,
+  setDate,
+  hour,
+  setHour,
+  minute,
+  setMinute,
+  timezone,
+  setTimezone,
 }: {
-  combinedSchedule: CombinedEntry[];
-  agentOrder: readonly string[];
-  onEdit: (entry: CombinedEntry) => void;
+  freq: string;
+  setFreq: (v: string) => void;
+  loopMinutes: number;
+  setLoopMinutes: (v: number) => void;
+  date: string;
+  setDate: (v: string) => void;
+  hour: number;
+  setHour: (v: number) => void;
+  minute: number;
+  setMinute: (v: number) => void;
+  timezone: string;
+  setTimezone: (v: string) => void;
 }) {
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
-  const enabledEntries = combinedSchedule.filter((e) => e.enabled !== false);
-  const calendarSlots = buildCalendarTimeSlots(enabledEntries);
-  const [selectedDay, setSelectedDay] = useState(
-    new Date().getDay() === 0 ? 6 : new Date().getDay() - 1,
-  );
-
-  const loopEntries = enabledEntries.filter((e) =>
-    e.time.match(/Every \d+ (minutes?|seconds?)/),
-  );
-  const onceEntries = enabledEntries.filter((e) =>
-    e.time.startsWith("Once on"),
-  );
-  const monthlyEntries = enabledEntries.filter((e) =>
-    e.time.startsWith("Every month"),
-  );
-
-  const sections: { title: string; entries: CombinedEntry[] }[] = [
-    { title: "Loop", entries: loopEntries },
-    { title: "Monthly", entries: monthlyEntries },
-    { title: "Once", entries: onceEntries },
-  ];
-
   return (
-    <section className="flex flex-col gap-8">
+    <>
       <div className="flex flex-col gap-2">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Week view
-        </h3>
-        <div className="rounded-xl border border-border/70 bg-muted/20 overflow-hidden">
-          {/* Mobile: single-day view */}
-          <div className="md:hidden">
-            <div className="flex items-center justify-between bg-muted/50 px-3 py-2 border-b border-border/60">
-              <button
-                type="button"
-                onClick={() =>
-                  setSelectedDay(
-                    (selectedDay - 1 + WEEKDAY_LABELS.length) %
-                      WEEKDAY_LABELS.length,
-                  )
-                }
-                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-                aria-label="Previous day"
-              >
-                <IconChevronLeft size={16} stroke={1.5} />
-              </button>
-              <span className="text-sm font-medium text-muted-foreground">
-                {WEEKDAY_LABELS[selectedDay]}
-              </span>
-              <button
-                type="button"
-                onClick={() =>
-                  setSelectedDay((selectedDay + 1) % WEEKDAY_LABELS.length)
-                }
-                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-                aria-label="Next day"
-              >
-                <IconChevronRight size={16} stroke={1.5} />
-              </button>
-            </div>
-            {calendarSlots.map((timeLabel, timeIndex) => {
-              const cellEntries = getEntriesInCell(
-                enabledEntries,
-                selectedDay,
-                timeLabel,
-              ) as CombinedEntry[];
-              const isEmpty = cellEntries.length === 0;
-              const isLastRow = timeIndex === calendarSlots.length - 1;
-              return (
-                <div
-                  key={timeLabel}
-                  className={cn(
-                    "flex",
-                    !isLastRow && "border-b border-border/60",
-                  )}
-                >
-                  <div className="w-16 shrink-0 bg-muted/30 p-2 border-r border-border/60 text-muted-foreground text-xs flex items-center">
-                    {timeLabel}
-                  </div>
-                  <div
-                    className={cn(
-                      "flex-1 min-h-[52px] p-1.5 flex items-center justify-center",
-                      isEmpty && "bg-background/50",
-                    )}
-                  >
-                    {isEmpty ? (
-                      <span className="text-muted-foreground/40 text-xs">
-                        —
-                      </span>
-                    ) : (
-                      <div className="w-full min-h-[44px] rounded-lg p-1.5 flex flex-col gap-0.5 text-left">
-                        {cellEntries.map((entry) => (
-                          <CalendarEntryPopover
-                            key={entry.id}
-                            entry={entry}
-                            cellKey={`${selectedDay}-${timeLabel}`}
-                            agentOrder={agentOrder}
-                            onEdit={onEdit}
-                            hoveredId={hoveredId}
-                            setHoveredId={setHoveredId}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          {/* Desktop: full week grid */}
-          <div className="hidden md:block">
-            <div className="grid grid-cols-8 text-sm">
-              <div className="bg-muted/50 p-2 border-b border-r border-border/60 font-medium text-muted-foreground text-xs uppercase tracking-wider" />
-              {WEEKDAY_LABELS.map((d, dayIndex) => (
-                <div
-                  key={d}
-                  className={cn(
-                    "bg-muted/50 p-2 border-b border-border/60 font-medium text-muted-foreground text-center",
-                    dayIndex < WEEKDAY_LABELS.length - 1 &&
-                      "border-r border-border/60",
-                  )}
-                >
-                  {d}
-                </div>
-              ))}
-              {calendarSlots.map((timeLabel, timeIndex) => (
-                <div key={timeLabel} className="contents">
-                  <div
-                    className={cn(
-                      "bg-muted/30 p-2 border-r border-border/60 text-muted-foreground text-xs flex items-center",
-                      timeIndex < calendarSlots.length - 1 &&
-                        "border-b border-border/60",
-                    )}
-                  >
-                    {timeLabel}
-                  </div>
-                  {WEEKDAY_LABELS.map((_, dayIndex) => {
-                    const cellEntries = getEntriesInCell(
-                      enabledEntries,
-                      dayIndex,
-                      timeLabel,
-                    ) as CombinedEntry[];
-                    const isEmpty = cellEntries.length === 0;
-                    const isLastRow = timeIndex === calendarSlots.length - 1;
-                    const isLastCol = dayIndex === WEEKDAY_LABELS.length - 1;
-                    return (
-                      <div
-                        key={`${timeLabel}-${dayIndex}`}
-                        className={cn(
-                          "min-h-[52px] p-1.5 border-border/60 flex items-center justify-center",
-                          !isLastCol && "border-r border-border/60",
-                          !isLastRow && "border-b border-border/60",
-                          isEmpty && "bg-background/50",
-                        )}
-                      >
-                        {isEmpty ? (
-                          <span className="text-muted-foreground/40 text-xs">
-                            —
-                          </span>
-                        ) : (
-                          <div className="w-full h-full min-h-[44px] rounded-lg p-1.5 flex flex-col gap-0.5 text-left">
-                            {cellEntries.map((entry) => (
-                              <CalendarEntryPopover
-                                key={entry.id}
-                                entry={entry}
-                                cellKey={`${dayIndex}-${timeLabel}`}
-                                agentOrder={agentOrder}
-                                onEdit={onEdit}
-                                hoveredId={hoveredId}
-                                setHoveredId={setHoveredId}
-                              />
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+        <label
+          htmlFor="schedule-dialog-freq"
+          className="text-sm font-medium text-foreground"
+        >
+          Time
+        </label>
+        <Select value={freq} onValueChange={setFreq}>
+          <SelectTrigger id="schedule-dialog-freq" className="h-9 w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {SCHEDULE_FREQUENCY_OPTIONS.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
-      {sections.some((s) => s.entries.length > 0) && (
-        <div className="flex flex-col gap-8">
-          {sections.map((section) =>
-            section.entries.length > 0 ? (
-              <div key={section.title} className="flex flex-col gap-1.5">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  {section.title}
-                </h3>
-                <div className="flex flex-wrap gap-2">
-                  {section.entries.map((entry) => (
-                    <div
-                      key={entry.id}
-                      className="inline-flex items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-sm w-fit"
-                    >
-                      <span className="shrink-0 text-muted-foreground text-xs">
-                        {entry.agentLabel}
-                      </span>
-                      <span className="text-foreground">{entry.time}</span>
-                      <button
-                        type="button"
-                        onClick={() => onEdit(entry)}
-                        className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-                        aria-label={`Edit ${entry.time}`}
-                      >
-                        <IconPencil size={12} stroke={1.5} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null,
-          )}
+      {freq === "every_n_minutes" && (
+        <div className="flex flex-col gap-2">
+          <label
+            htmlFor="schedule-dialog-loop"
+            className="text-sm font-medium text-foreground"
+          >
+            Every
+          </label>
+          <Select
+            value={String(loopMinutes)}
+            onValueChange={(v) => setLoopMinutes(Number(v))}
+          >
+            <SelectTrigger id="schedule-dialog-loop" className="h-9 w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SCHEDULE_LOOP_MINUTES.map((m) => (
+                <SelectItem key={m} value={String(m)}>
+                  {m} minutes
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       )}
-    </section>
+      {freq === "once" && (
+        <div className="flex flex-col gap-2">
+          <label
+            htmlFor="schedule-dialog-date"
+            className="text-sm font-medium text-foreground"
+          >
+            Date
+          </label>
+          <Input
+            id="schedule-dialog-date"
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="h-9 w-full"
+          />
+        </div>
+      )}
+      {freq !== "now" && freq !== "every_n_minutes" && (
+        <div className="flex flex-col gap-2">
+          <label className="text-sm font-medium text-foreground">Time</label>
+          <div className="flex w-full min-w-0 items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <Select
+                value={String(hour)}
+                onValueChange={(v) => setHour(Number(v))}
+              >
+                <SelectTrigger className="h-9 w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {HOUR_OPTIONS.map((h) => (
+                    <SelectItem key={h} value={String(h)}>
+                      {h.toString().padStart(2, "0")}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <span className="shrink-0 text-muted-foreground">:</span>
+            <div className="min-w-0 flex-1">
+              <Select
+                value={String(minute)}
+                onValueChange={(v) => setMinute(Number(v))}
+              >
+                <SelectTrigger className="h-9 w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {getMinuteOptions(minute).map((m) => (
+                    <SelectItem key={m} value={String(m)}>
+                      {m.toString().padStart(2, "0")}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+      )}
+      {isCronFreq(freq) && (
+        <div className="flex flex-col gap-2">
+          <label
+            htmlFor="schedule-dialog-tz"
+            className="text-sm font-medium text-foreground"
+          >
+            Timezone
+          </label>
+          <Select value={timezone} onValueChange={setTimezone}>
+            <SelectTrigger id="schedule-dialog-tz" className="h-9 w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {COMMON_TIMEZONES.map((tz) => (
+                <SelectItem key={tz} value={tz}>
+                  {tz.replace(/_/g, " ")}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -429,20 +293,66 @@ const SKELETON_ROW_KEYS = ["r-0", "r-1", "r-2", "r-3"] as const;
 
 function ScheduleListSkeleton() {
   return (
-    <ul className="flex flex-col" role="list">
-      {SKELETON_LIST_KEYS.map((key) => (
-        <li
-          key={key}
-          className="flex items-center gap-3 py-2.5 border-b border-border/50 last:border-b-0 -mx-1 px-1"
-        >
-          <Skeleton className="h-5 w-9 rounded-full shrink-0" />
-          <Skeleton className="h-3.5 w-[100px] shrink-0" />
-          <Skeleton className="h-3.5 w-[120px] shrink-0" />
-          <Skeleton className="h-3.5 flex-1" />
-          <Skeleton className="h-6 w-6 rounded shrink-0" />
-        </li>
-      ))}
-    </ul>
+    <div className="w-full overflow-x-auto -mx-1">
+      <table className="w-full text-sm border-collapse">
+        <thead>
+          <tr className="border-b border-border/40 bg-card text-left text-sm text-muted-foreground">
+            <th
+              className="py-3 pr-2 w-[5rem] align-middle font-medium"
+              scope="col"
+            >
+              Agent
+            </th>
+            <th
+              className="py-3 pr-4 min-w-0 align-middle font-medium"
+              scope="col"
+            >
+              Instruction
+            </th>
+            <th
+              className="py-3 px-2 min-w-[6.5rem] max-w-[9rem] align-middle font-medium"
+              scope="col"
+            >
+              Schedule at
+            </th>
+            <th
+              className="py-3 px-3 w-16 text-center align-middle font-medium"
+              scope="col"
+            >
+              Status
+            </th>
+            <th className="w-10 py-3 pl-2 align-middle" scope="col">
+              <span className="sr-only">Actions</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {SKELETON_LIST_KEYS.map((key) => (
+            <tr key={key} className="border-b border-border/50 last:border-0">
+              <td className="py-2.5 pr-2 align-middle w-[5rem]">
+                <Skeleton className="h-4 w-14 rounded-md" />
+              </td>
+              <td className="py-2.5 pr-4 align-middle min-w-0 max-w-[1px]">
+                <Skeleton className="h-4 w-full max-w-md" />
+              </td>
+              <td className="py-2.5 px-2 align-middle min-w-[6.5rem] max-w-[9rem] overflow-hidden">
+                <Skeleton className="h-4 w-full max-w-[8rem] rounded-md" />
+              </td>
+              <td className="py-2.5 px-3 align-middle w-16">
+                <div className="flex justify-center">
+                  <Skeleton className="h-5 w-9 rounded-full" />
+                </div>
+              </td>
+              <td className="py-2.5 pl-2 align-middle text-right w-10">
+                <div className="flex justify-end">
+                  <Skeleton className="h-8 w-8 rounded-lg" />
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -485,123 +395,6 @@ function ScheduleCalendarSkeleton() {
 }
 
 // ---------------------------------------------------------------------------
-// List view
-// ---------------------------------------------------------------------------
-
-function ScheduleListView({
-  combinedSchedule,
-  onEdit,
-  onToggle,
-  onDelete,
-  onNew,
-}: {
-  combinedSchedule: CombinedEntry[];
-  onEdit: (entry: CombinedEntry) => void;
-  onToggle: (entry: CombinedEntry, enabled: boolean) => Promise<void>;
-  onDelete: (entry: CombinedEntry) => void;
-  onNew?: () => void;
-}) {
-  const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
-
-  if (combinedSchedule.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 gap-3">
-        <img
-          src={emptyScheduleImg}
-          alt="No schedules"
-          loading="lazy"
-          className="h-20 w-20 object-contain opacity-80"
-        />
-        <div className="text-center">
-          <p className="text-sm font-medium text-foreground">
-            Nothing on the calendar
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">
-            Set up a schedule and your agents will handle the rest.
-          </p>
-        </div>
-        {onNew && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="zero-btn-morandi mt-2 h-9 gap-2 rounded-lg border"
-            onClick={onNew}
-          >
-            <IconPlus size={14} stroke={2} />
-            Add schedule
-          </Button>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <ul className="flex flex-col" role="list">
-      {combinedSchedule.map((entry) => {
-        const toggling = togglingIds.has(entry.id);
-        return (
-          <li
-            key={entry.id}
-            className="flex items-center gap-3 py-2.5 border-b border-border/50 last:border-b-0 text-sm text-foreground hover:bg-muted/30 -mx-1 px-1 rounded transition-colors"
-          >
-            <LoadingSwitch
-              checked={entry.enabled !== false}
-              loading={toggling}
-              onCheckedChange={(checked) => {
-                const id = entry.id;
-                setTogglingIds((prev) => new Set([...prev, id]));
-                onToggle(entry, checked)
-                  .finally(() => {
-                    setTogglingIds((prev) => {
-                      const next = new Set(prev);
-                      next.delete(id);
-                      return next;
-                    });
-                  })
-                  .catch(() => {});
-              }}
-              ariaLabel={`${entry.enabled !== false ? "Disable" : "Enable"} ${entry.time}`}
-            />
-            <span className="w-[100px] sm:w-[140px] shrink-0 text-muted-foreground text-xs truncate">
-              {entry.agentLabel}
-            </span>
-            <span
-              className={cn(
-                "min-w-0 shrink-0",
-                entry.enabled === false && "text-muted-foreground",
-              )}
-            >
-              {entry.time}
-            </span>
-            <span className="min-w-0 flex-1 text-muted-foreground text-xs truncate">
-              {entry.description || entry.prompt}
-            </span>
-            <button
-              type="button"
-              onClick={() => onEdit(entry)}
-              className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring shrink-0"
-              aria-label={`Edit ${entry.time}`}
-            >
-              <IconPencil size={14} stroke={1.5} />
-            </button>
-            {entry.name !== undefined && (
-              <button
-                type="button"
-                onClick={() => onDelete(entry)}
-                className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-destructive focus:outline-none focus-visible:ring-2 focus-visible:ring-ring shrink-0"
-                aria-label={`Delete ${entry.time}`}
-              >
-                <IconTrash size={14} stroke={1.5} />
-              </button>
-            )}
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
 
@@ -631,20 +424,19 @@ export function ZeroSchedulePage() {
   const saveSchedule = useSet(saveOrgSchedule$);
   const toggleEnabled = useSet(toggleOrgScheduleEnabled$);
   const deleteSchedule = useSet(deleteOrgSchedule$);
+  const runScheduleNow = useSet(runScheduleNow$);
+  const navigate = useSet(navigateTo$);
 
   const [scheduleViewMode, setScheduleViewMode] = useState<"list" | "calendar">(
     "list",
   );
-  const createOpen = useGet(addScheduleOpen$);
-  const setCreateOpen = useSet(setAddScheduleOpen$);
-  const editingScheduleId = useGet(editingScheduleId$);
-  const setEditingId = useSet(setEditingScheduleId$);
   const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
+  const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
   const [pendingDelete, setPendingDelete] = useState<CombinedEntry | null>(
     null,
   );
-  const [deleting, setDeleting] = useState(false);
 
   const combinedSchedule = buildCombinedSchedule(
     entries,
@@ -653,20 +445,18 @@ export function ZeroSchedulePage() {
     nameToDisplay,
   );
 
-  const editingEntry =
-    combinedSchedule.find((e) => e.id === editingScheduleId) ?? null;
-
   const agentOrder = [
     ...new Set(combinedSchedule.map((e) => e.agentLabel)),
   ] as const;
 
-  const openEditSchedule = (entry: CombinedEntry) => {
-    setEditingId(entry.id);
+  const openScheduleDetail = (entry: CombinedEntry) => {
+    navigate("/schedule/:scheduleId", {
+      pathParams: { scheduleId: entry.id },
+    });
   };
 
   const handleCreateSave = (values: ScheduleFormValues) => {
     setSaving(true);
-    setSaveError(null);
     detach(
       saveSchedule({
         prompt: values.prompt.trim(),
@@ -681,53 +471,18 @@ export function ZeroSchedulePage() {
         notifyEmail: values.notifyEmail,
         notifySlack: values.notifySlack,
         slackChannelId: values.slackChannelId,
+        ...(values.freq === "every_week"
+          ? { dayOfWeek: values.dayOfWeek }
+          : {}),
+        ...(values.freq === "every_month"
+          ? { dayOfMonth: values.dayOfMonth }
+          : {}),
       })
         .then(() => {
           setCreateOpen(false);
         })
-        .catch((error: unknown) => {
-          throwIfAbort(error);
-          setSaveError(
-            error instanceof Error ? error.message : "Failed to save schedule",
-          );
-        })
-        .finally(() => {
-          setSaving(false);
-        }),
-      Reason.DomCallback,
-    );
-  };
-
-  const handleEditSave = (values: ScheduleFormValues) => {
-    if (!editingEntry) {
-      return;
-    }
-    setSaving(true);
-    setSaveError(null);
-    detach(
-      saveSchedule({
-        prompt: values.prompt.trim(),
-        description: values.description.trim() || undefined,
-        freq: values.freq,
-        date: values.date,
-        hour: values.hour,
-        minute: values.minute,
-        timezone: values.timezone,
-        intervalSeconds: values.loopMinutes * 60,
-        editName: editingEntry.name,
-        agentId: editingEntry.agentId,
-        notifyEmail: values.notifyEmail,
-        notifySlack: values.notifySlack,
-        slackChannelId: values.slackChannelId,
-      })
-        .then(() => {
-          setEditingId(null);
-        })
-        .catch((error: unknown) => {
-          throwIfAbort(error);
-          setSaveError(
-            error instanceof Error ? error.message : "Failed to save schedule",
-          );
+        .catch(() => {
+          /* Error surfaced via toast in saveOrgSchedule$ */
         })
         .finally(() => {
           setSaving(false);
@@ -740,43 +495,49 @@ export function ZeroSchedulePage() {
     if (entry.name === undefined) {
       return;
     }
-    await toggleEnabled({
-      name: entry.name,
-      enabled,
-      agentId: entry.agentId,
-    });
+    const id = entry.id;
+    setTogglingIds((prev) => new Set([...prev, id]));
+    try {
+      await toggleEnabled({
+        name: entry.name,
+        enabled,
+        agentId: entry.agentId,
+      });
+    } finally {
+      setTogglingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  };
+
+  const handleRunNow = async (entry: CombinedEntry) => {
+    const id = entry.id;
+    setRunningIds((prev) => new Set([...prev, id]));
+    try {
+      await runScheduleNow(entry.id);
+    } finally {
+      setRunningIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
   };
 
   const handleDelete = (entry: CombinedEntry) => {
-    if (entry.name === undefined) {
-      return;
-    }
     setPendingDelete(entry);
   };
 
   const confirmDelete = () => {
-    if (pendingDelete?.name === undefined) {
+    const entry = pendingDelete;
+    if (entry?.name === undefined) {
       return;
     }
-    setDeleting(true);
+    setPendingDelete(null);
     detach(
-      deleteSchedule({
-        name: pendingDelete.name,
-        agentId: pendingDelete.agentId,
-      }).then(
-        () => {
-          setPendingDelete(null);
-          setDeleting(false);
-        },
-        (error: unknown) => {
-          setDeleting(false);
-          const message =
-            error instanceof Error
-              ? error.message
-              : "Failed to delete schedule";
-          toast.error(message);
-        },
-      ),
+      deleteSchedule({ name: entry.name, agentId: entry.agentId }),
       Reason.DomCallback,
     );
   };
@@ -844,17 +605,27 @@ export function ZeroSchedulePage() {
                 )
               ) : scheduleViewMode === "list" ? (
                 <ScheduleListView
-                  combinedSchedule={combinedSchedule}
-                  onEdit={openEditSchedule}
-                  onToggle={handleToggle}
+                  entries={combinedSchedule}
+                  togglingIds={togglingIds}
+                  runningIds={runningIds}
+                  getAgentLabel={(e) => e.agentLabel}
+                  onEdit={openScheduleDetail}
+                  onToggle={(entry, enabled) => {
+                    handleToggle(entry, enabled).catch(() => {});
+                  }}
                   onDelete={handleDelete}
                   onNew={() => setCreateOpen(true)}
+                  onRunNow={(entry) => {
+                    handleRunNow(entry).catch(() => {});
+                  }}
+                  onOpenDetails={openScheduleDetail}
                 />
               ) : (
                 <ScheduleCalendarView
-                  combinedSchedule={combinedSchedule}
+                  entries={combinedSchedule}
                   agentOrder={agentOrder}
-                  onEdit={openEditSchedule}
+                  getAgentLabel={(e) => e.agentLabel}
+                  onEdit={openScheduleDetail}
                 />
               )}
             </CardContent>
@@ -862,43 +633,12 @@ export function ZeroSchedulePage() {
         </div>
       </main>
 
-      {editingEntry &&
-        (() => {
-          const parsed = parseScheduleTimeString(editingEntry.time);
-          return (
-            <ScheduleFormDialog
-              key={editingEntry.id}
-              open
-              mode="edit"
-              onClose={() => setEditingId(null)}
-              onSave={handleEditSave}
-              saving={saving}
-              saveError={saveError}
-              initialValues={{
-                prompt: editingEntry.prompt,
-                description: editingEntry.description ?? "",
-                freq: parsed.freq,
-                date: parsed.date,
-                hour: parsed.hour,
-                minute: parsed.minute,
-                timezone: editingEntry.timezone ?? parsed.timezone,
-                loopMinutes: parsed.loopMinutes,
-                dayOfWeek: parsed.dayOfWeek ?? "1",
-                dayOfMonth: parsed.dayOfMonth ?? "1",
-                notifyEmail: editingEntry.notifyEmail ?? false,
-                notifySlack: editingEntry.notifySlack ?? false,
-                slackChannelId: editingEntry.slackChannelId ?? null,
-              }}
-            />
-          );
-        })()}
       <ScheduleFormDialog
         open={createOpen}
-        mode="create"
         onClose={() => setCreateOpen(false)}
         onSave={handleCreateSave}
         saving={saving}
-        saveError={saveError}
+        mode="create"
         agents={agents}
         initialValues={{
           agentId: defaultComposeId ?? agents[0]?.id ?? "",
@@ -907,7 +647,7 @@ export function ZeroSchedulePage() {
       <Dialog
         open={pendingDelete !== null}
         onOpenChange={(open) => {
-          if (!deleting && !open) {
+          if (!open) {
             setPendingDelete(null);
           }
         }}
@@ -915,28 +655,20 @@ export function ZeroSchedulePage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete schedule?</DialogTitle>
-            <p className="text-sm text-muted-foreground mt-1">
+            <DialogDescription>
               This will permanently delete the schedule{" "}
               <span className="font-medium text-foreground">
                 {pendingDelete?.name}
               </span>
               . This action cannot be undone.
-            </p>
+            </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setPendingDelete(null)}
-              disabled={deleting}
-            >
+            <Button variant="outline" onClick={() => setPendingDelete(null)}>
               Cancel
             </Button>
-            <Button
-              variant="destructive"
-              onClick={confirmDelete}
-              disabled={deleting}
-            >
-              {deleting ? "Deleting..." : "Delete"}
+            <Button variant="destructive" onClick={confirmDelete}>
+              Delete
             </Button>
           </DialogFooter>
         </DialogContent>

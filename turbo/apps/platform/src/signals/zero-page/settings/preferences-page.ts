@@ -1,7 +1,7 @@
 import { command, computed, state } from "ccstate";
 import type { SendMode } from "@vm0/core";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import { updateNotificationPreference$ } from "./notification-settings.ts";
+import { updateUserPreference$ } from "./user-preferences.ts";
 import { sendMode$ } from "../../send-mode.ts";
 import { throwIfAbort } from "../../utils.ts";
 
@@ -34,7 +34,7 @@ export const updateSendMode$ = command(
   async ({ get, set }, value: SendMode) => {
     set(internalSendModeSaving$, value);
     try {
-      await set(updateNotificationPreference$, { sendMode: value });
+      await set(updateUserPreference$, { sendMode: value });
       // After the command completes the refetch has been triggered.
       // Await the refetched sendMode so the UI never flashes back to the old value.
       const fetched = await get(sendMode$);

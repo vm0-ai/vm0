@@ -34,6 +34,12 @@ const slackOrgState$ = state<SlackOrgState>({
 
 export const slackOrgData$ = computed((get) => get(slackOrgState$).data);
 
+/** True after the initial Slack org fetch has completed (success or error). */
+export const slackOrgInitialized$ = computed((get) => {
+  const s = get(slackOrgState$);
+  return s.data !== null || s.error !== null;
+});
+
 // ---------------------------------------------------------------------------
 // Uninstall dialog visibility — view-local state managed in signals layer
 // ---------------------------------------------------------------------------

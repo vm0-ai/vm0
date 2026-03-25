@@ -14,6 +14,7 @@ import { setupTeamDetailPage$ } from "./team-page/team-detail-page-setup.ts";
 import { setupWorksPage$ } from "./works-page/works-page-setup.ts";
 import { setupPreferencesPage$ } from "./preferences-page/preferences-page-setup.ts";
 import { setupSchedulePage$ } from "./schedule-page/schedule-page-setup.ts";
+import { setupScheduleDetailPage$ } from "./schedule-page/schedule-detail-page-setup.ts";
 import { setupTalkPage$ } from "./zero-page/talk-page-setup.ts";
 import { setupChatPage$ } from "./zero-page/chat-page-setup.ts";
 import { setupUsagePage$ } from "./usage-page/usage-page-setup.ts";
@@ -75,6 +76,10 @@ const ROUTE_CONFIG = [
   {
     path: "/preferences",
     setup: setupAuthPageWrapper(setupPreferencesPage$),
+  },
+  {
+    path: "/schedule/:scheduleId",
+    setup: setupAuthPageWrapper(setupScheduleDetailPage$),
   },
   {
     path: "/schedule",

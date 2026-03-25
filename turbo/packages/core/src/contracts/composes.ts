@@ -24,60 +24,6 @@ const composeVersionQuerySchema = z
 export const AGENT_NAME_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,62}[a-zA-Z0-9]$/;
 
 /**
- * Valid capability strings for sandbox token verification.
- * Format: {resource}:{action}
- *
- * Kept for backward compatibility with in-flight sandbox tokens.
- * New tokens are generated without capabilities.
- *
- * - agent:*       → Agent static resources (compose + volumes + storages)
- * - agent-run:*   → Run lifecycle operations
- * - schedule:*    → Schedule management
- * - artifact:*    → Legacy; kept so existing sandbox tokens remain verifiable
- * - integration-* → Third-party integrations
- */
-export const VALID_CAPABILITIES = [
-  "agent:read",
-  "agent:write",
-  "agent-run:read",
-  "agent-run:write",
-  "schedule:read",
-  "schedule:write",
-  "integration-slack:write",
-  "artifact:read",
-  "artifact:write",
-] as const;
-
-/** Inferred union type of all valid capability strings. */
-export type ValidCapability = (typeof VALID_CAPABILITIES)[number];
-
-/** Metadata for a single capability — group label and human-readable label. */
-export interface CapabilityMeta {
-  group: string;
-  label: string;
-}
-
-/**
- * Exhaustive mapping from every valid capability to its UI group and label.
- * Adding a new capability to VALID_CAPABILITIES without updating this record
- * will produce a TypeScript compile error.
- */
-export const CAPABILITY_META: Record<ValidCapability, CapabilityMeta> = {
-  "agent:read": { group: "Agent Resources", label: "Read agents & volumes" },
-  "agent:write": { group: "Agent Resources", label: "Write agents & volumes" },
-  "agent-run:read": { group: "Operations", label: "View agent runs" },
-  "agent-run:write": { group: "Operations", label: "Create & cancel runs" },
-  "schedule:read": { group: "Operations", label: "View schedules" },
-  "schedule:write": { group: "Operations", label: "Manage schedules" },
-  "integration-slack:write": {
-    group: "Integrations",
-    label: "Send Slack messages via org bot",
-  },
-  "artifact:read": { group: "Legacy", label: "Read artifacts (deprecated)" },
-  "artifact:write": { group: "Legacy", label: "Write artifacts (deprecated)" },
-};
-
-/**
  * Capabilities for the zero-layer capability system (ZERO_TOKEN).
  * These protect /api/zero/* routes only.
  */
@@ -94,8 +40,11 @@ export const ZERO_CAPABILITIES = [
 /** Inferred union type of all zero capability strings. */
 export type ZeroCapability = (typeof ZERO_CAPABILITIES)[number];
 
-/** Metadata for a single zero capability — reuses CapabilityMeta structure. */
-export type ZeroCapabilityMeta = CapabilityMeta;
+/** Metadata for a single zero capability. */
+export interface ZeroCapabilityMeta {
+  group: string;
+  label: string;
+}
 
 /**
  * Exhaustive mapping from every zero capability to its UI group and label.

@@ -38,8 +38,6 @@ import {
   zeroChatMessages$,
   zeroChatSending$,
   zeroChatInput$,
-  zeroSessionError$,
-  zeroSessionSwitching$,
   setZeroChatInput$,
   clearZeroChatInput$,
   sendZeroChatMessage$,
@@ -63,7 +61,7 @@ import {
   copiedMessageIdValue$,
   copyMessageContent$,
 } from "../../signals/zero-page/zero-session-chat-ui.ts";
-import zeroAvatarImg from "./assets/zero-avatar.webp";
+import zeroAvatarImg from "./assets/avatar_0.png";
 
 // ---------------------------------------------------------------------------
 // ZeroSessionChatPage — real conversation backed by agent runs
@@ -83,13 +81,20 @@ export function ZeroSessionChatPage({
   chatAgentName,
 }: ZeroSessionChatPageProps) {
   const agentNameLoadable = useLoadable(agentDisplayName$);
-  const defaultAgentId =
+  const defaultAgentName =
     agentNameLoadable.state === "hasData" ? agentNameLoadable.data : "Zero";
-  const agentName = chatAgentName ?? defaultAgentId;
-  const messages = useGet(zeroChatMessages$);
+  const agentName = chatAgentName ?? defaultAgentName;
+  const messagesLoadable = useLoadable(zeroChatMessages$);
+  const messages =
+    messagesLoadable.state === "hasData" ? messagesLoadable.data : [];
   const sending = useGet(zeroChatSending$);
-  const sessionError = useGet(zeroSessionError$);
-  const sessionSwitching = useGet(zeroSessionSwitching$);
+  const sessionError =
+    messagesLoadable.state === "hasError"
+      ? messagesLoadable.error instanceof Error
+        ? messagesLoadable.error.message
+        : "Failed to load chat"
+      : null;
+  const sessionSwitching = messagesLoadable.state === "loading";
   const input = useGet(zeroChatInput$);
   const setInput = useSet(setZeroChatInput$);
   const clearInput = useSet(clearZeroChatInput$);

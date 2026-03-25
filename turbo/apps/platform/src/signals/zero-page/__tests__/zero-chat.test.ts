@@ -14,15 +14,15 @@ import {
   zeroSessionListError$,
   zeroSessionError$,
   zeroChatThreadId$,
-  zeroSessionSwitching$,
   setZeroChatInput$,
   clearZeroChatInput$,
   fetchZeroSessionList$,
   switchZeroSession$,
   startNewZeroSession$,
   sendZeroChatMessage$,
-  syncUrlSession$,
   prepareSessionSwitch$,
+  loadSessionFromSnapshot$,
+  chatSessionSnapshot$,
   zeroChatQueuedMessage$,
   queueZeroChatMessage$,
   withdrawQueuedMessage$,
@@ -57,6 +57,12 @@ function useChatThreadHandlers() {
     }),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
+    }),
+    http.get("*/api/zero/chat-threads/:id", () => {
+      return HttpResponse.json({
+        chatMessages: [],
+        unsavedRuns: [],
+      });
     }),
   );
 }
@@ -177,12 +183,13 @@ describe("zero-chat signals", () => {
       );
 
       await setup();
-      await context.store.set(switchZeroSession$, "thread-abc");
+      context.store.set(switchZeroSession$, "thread-abc");
+      await context.store.set(loadSessionFromSnapshot$, context.signal);
 
       expect(context.store.get(zeroChatThreadId$)).toBe("thread-abc");
       expect(context.store.get(zeroCurrentSessionId$)).toBe("session-abc");
 
-      const messages = context.store.get(zeroChatMessages$);
+      const messages = await context.store.get(zeroChatMessages$);
       expect(messages).toHaveLength(2);
       expect(messages[0]?.role).toBe("user");
       expect(messages[0]?.content).toBe("Hi there");
@@ -211,15 +218,19 @@ describe("zero-chat signals", () => {
       );
 
       await setup();
-      await context.store.set(switchZeroSession$, "bad-thread");
+      context.store.set(switchZeroSession$, "bad-thread");
 
-      expect(context.store.get(zeroSessionError$)).toBe(
-        "Failed to load chat: Not Found",
+      // Snapshot returns null when both APIs fail (no throw, to avoid unhandled rejections)
+      const snapshot = await context.store.get(chatSessionSnapshot$);
+      expect(snapshot).toBeNull();
+      await expect(context.store.get(zeroChatMessages$)).resolves.toHaveLength(
+        0,
       );
     });
 
     it("should abort in-flight polling when switching threads", async () => {
       let pollCount = 0;
+      useChatThreadHandlers();
       server.use(
         http.post("*/api/zero/runs", () => {
           return HttpResponse.json({ runId: "run-old" });
@@ -261,7 +272,6 @@ describe("zero-chat signals", () => {
           });
         }),
       );
-      useChatThreadHandlers();
 
       await setup();
 
@@ -272,7 +282,8 @@ describe("zero-chat signals", () => {
       await delay(50);
       expect(pollCount).toBeGreaterThan(0);
 
-      await context.store.set(switchZeroSession$, "new-thread");
+      context.store.set(switchZeroSession$, "new-thread");
+      await context.store.set(loadSessionFromSnapshot$, context.signal);
       await sendPromise;
 
       const pollCountAfterAbort = pollCount;
@@ -280,7 +291,7 @@ describe("zero-chat signals", () => {
       expect(pollCount).toBe(pollCountAfterAbort);
 
       expect(context.store.get(zeroChatThreadId$)).toBe("new-thread");
-      const messages = context.store.get(zeroChatMessages$);
+      const messages = await context.store.get(zeroChatMessages$);
       expect(messages).toHaveLength(1);
       expect(messages[0]?.content).toBe("New thread msg");
     });
@@ -303,24 +314,16 @@ describe("zero-chat signals", () => {
       await setup();
 
       context.store.set(setZeroChatInput$, "draft");
-      await context.store.set(switchZeroSession$, "thread-1");
+      context.store.set(switchZeroSession$, "thread-1");
 
-      expect(context.store.get(zeroChatMessages$)).toHaveLength(0);
+      await expect(context.store.get(zeroChatMessages$)).resolves.toHaveLength(
+        0,
+      );
       expect(context.store.get(zeroChatSending$)).toBeFalsy();
     });
   });
 
   describe("prepareSessionSwitch$", () => {
-    it("should set sessionSwitching to true so skeleton shows immediately", async () => {
-      await setup();
-
-      expect(context.store.get(zeroSessionSwitching$)).toBeFalsy();
-
-      context.store.set(prepareSessionSwitch$);
-
-      expect(context.store.get(zeroSessionSwitching$)).toBeTruthy();
-    });
-
     it("should clear messages and session error", async () => {
       useChatThreadHandlers();
       server.use(
@@ -357,35 +360,16 @@ describe("zero-chat signals", () => {
       // Send a message to populate messages
       await context.store.set(sendZeroChatMessage$, "Hello");
       await delay(50);
-      expect(context.store.get(zeroChatMessages$).length).toBeGreaterThan(0);
+      expect(
+        (await context.store.get(zeroChatMessages$)).length,
+      ).toBeGreaterThan(0);
 
       context.store.set(prepareSessionSwitch$);
 
-      expect(context.store.get(zeroChatMessages$)).toHaveLength(0);
-      expect(context.store.get(zeroSessionError$)).toBeNull();
-    });
-
-    it("should be cleared after switchZeroSession$ completes", async () => {
-      server.use(
-        http.get("*/api/zero/chat-threads/:id", () => {
-          return HttpResponse.json({
-            id: "thread-1",
-            agentId: "mock-compose-id",
-            chatMessages: [],
-            latestSessionId: null,
-            createdAt: "2026-03-10T00:00:00Z",
-            updatedAt: "2026-03-10T00:00:00Z",
-          });
-        }),
+      await expect(context.store.get(zeroChatMessages$)).resolves.toHaveLength(
+        0,
       );
-
-      await setup();
-
-      context.store.set(prepareSessionSwitch$);
-      expect(context.store.get(zeroSessionSwitching$)).toBeTruthy();
-
-      await context.store.set(switchZeroSession$, "thread-1");
-      expect(context.store.get(zeroSessionSwitching$)).toBeFalsy();
+      expect(context.store.get(zeroSessionError$)).toBeNull();
     });
   });
 
@@ -396,7 +380,9 @@ describe("zero-chat signals", () => {
       context.store.set(setZeroChatInput$, "some input");
       context.store.set(startNewZeroSession$);
 
-      expect(context.store.get(zeroChatMessages$)).toHaveLength(0);
+      await expect(context.store.get(zeroChatMessages$)).resolves.toHaveLength(
+        0,
+      );
       expect(context.store.get(zeroCurrentSessionId$)).toBeNull();
       expect(context.store.get(zeroChatThreadId$)).toBeNull();
       expect(context.store.get(zeroChatSending$)).toBeFalsy();
@@ -448,8 +434,9 @@ describe("zero-chat signals", () => {
       expect(pollCount).toBe(pollCountAfterAbort);
 
       expect(context.store.get(zeroCurrentSessionId$)).toBeNull();
-      expect(context.store.get(zeroChatThreadId$)).toBeNull();
-      expect(context.store.get(zeroChatMessages$)).toHaveLength(0);
+      await expect(context.store.get(zeroChatMessages$)).resolves.toHaveLength(
+        0,
+      );
     });
   });
 
@@ -472,6 +459,12 @@ describe("zero-chat signals", () => {
         }),
         http.get("*/api/zero/chat-threads", () => {
           return HttpResponse.json({ threads: [] });
+        }),
+        http.get("*/api/zero/chat-threads/:id", () => {
+          return HttpResponse.json({
+            chatMessages: [],
+            unsavedRuns: [],
+          });
         }),
         http.post("*/api/zero/runs", async ({ request }) => {
           capturedRunBody = (await request.json()) as Record<string, string>;
@@ -515,7 +508,7 @@ describe("zero-chat signals", () => {
       expect(context.store.get(zeroChatSending$)).toBeFalsy();
       expect(context.store.get(zeroChatThreadId$)).toBe("thread-new");
 
-      const messages = context.store.get(zeroChatMessages$);
+      const messages = await context.store.get(zeroChatMessages$);
       expect(messages.length).toBeGreaterThanOrEqual(2);
       expect(messages[0]?.role).toBe("user");
       expect(messages[0]?.content).toBe("What can you do?");
@@ -536,7 +529,7 @@ describe("zero-chat signals", () => {
       await setup();
       await context.store.set(sendZeroChatMessage$, "Hello");
 
-      const messages = context.store.get(zeroChatMessages$);
+      const messages = await context.store.get(zeroChatMessages$);
       const lastMsg = messages[messages.length - 1];
       expect(lastMsg?.error).toBe("Some API error");
       expect(context.store.get(zeroChatSending$)).toBeFalsy();
@@ -562,7 +555,7 @@ describe("zero-chat signals", () => {
       await setup();
       await context.store.set(sendZeroChatMessage$, "Hello");
 
-      const messages = context.store.get(zeroChatMessages$);
+      const messages = await context.store.get(zeroChatMessages$);
       const lastMsg = messages[messages.length - 1];
       expect(lastMsg?.error).toBe(
         "Provider not compatible: This session was created with a different provider type.",
@@ -581,7 +574,7 @@ describe("zero-chat signals", () => {
       await setup();
       await context.store.set(sendZeroChatMessage$, "Hello");
 
-      const messages = context.store.get(zeroChatMessages$);
+      const messages = await context.store.get(zeroChatMessages$);
       const lastMsg = messages[messages.length - 1];
       expect(lastMsg?.error).toBe("Failed to start agent run");
       expect(context.store.get(zeroChatSending$)).toBeFalsy();
@@ -597,7 +590,7 @@ describe("zero-chat signals", () => {
       await setup();
       await context.store.set(sendZeroChatMessage$, "Hello");
 
-      const messages = context.store.get(zeroChatMessages$);
+      const messages = await context.store.get(zeroChatMessages$);
       const lastMsg = messages[messages.length - 1];
       expect(lastMsg?.error).toBe("Failed to create chat thread");
       expect(context.store.get(zeroChatSending$)).toBeFalsy();
@@ -616,7 +609,9 @@ describe("zero-chat signals", () => {
       await context.store.set(sendZeroChatMessage$, "   ");
 
       expect(runCalled).toBeFalsy();
-      expect(context.store.get(zeroChatMessages$)).toHaveLength(0);
+      await expect(context.store.get(zeroChatMessages$)).resolves.toHaveLength(
+        0,
+      );
     });
 
     it("should include sessionId when continuing a thread", async () => {
@@ -679,7 +674,8 @@ describe("zero-chat signals", () => {
       await setup();
 
       // Switch to an existing thread first
-      await context.store.set(switchZeroSession$, "thread-existing");
+      context.store.set(switchZeroSession$, "thread-existing");
+      await context.store.set(loadSessionFromSnapshot$, context.signal);
 
       // Now send a follow-up — should NOT create a new thread
       await context.store.set(sendZeroChatMessage$, "Follow up");
@@ -690,8 +686,8 @@ describe("zero-chat signals", () => {
     });
   });
 
-  describe("syncUrlSession$", () => {
-    it("should switch to the URL session when it differs from current", async () => {
+  describe("loadSessionFromSnapshot$", () => {
+    it("should load session data from URL on route setup", async () => {
       server.use(
         http.get("*/api/zero/chat-threads/:id", () => {
           return HttpResponse.json({
@@ -712,71 +708,35 @@ describe("zero-chat signals", () => {
         }),
       );
 
-      // Set up with the chat session path so zeroSessionId$ returns "url-thread"
+      // Route setup calls loadSessionFromSnapshot$ which reads chatSessionSnapshot$
       await setupPage({
         context,
         path: "/chat/url-thread",
         withoutRender: true,
       });
 
-      await context.store.set(syncUrlSession$);
-
       expect(context.store.get(zeroChatThreadId$)).toBe("url-thread");
       expect(context.store.get(zeroCurrentSessionId$)).toBe("url-session");
-      const messages = context.store.get(zeroChatMessages$);
+      const messages = await context.store.get(zeroChatMessages$);
       expect(messages).toHaveLength(1);
       expect(messages[0]?.content).toBe("From URL");
     });
 
-    it("should skip when no session ID in URL", async () => {
-      // Set up with /chat path (no session ID)
+    it("should return null for URL without session ID", async () => {
       await setupPage({
         context,
         path: "/chat",
         withoutRender: true,
       });
 
-      await context.store.set(syncUrlSession$);
-
       expect(context.store.get(zeroChatThreadId$)).toBeNull();
     });
 
-    it("should skip when URL session already matches current thread", async () => {
-      let switchCount = 0;
+    it("should skip load when messages are already present", async () => {
+      let loadCount = 0;
       server.use(
         http.get("*/api/zero/chat-threads/:id", () => {
-          switchCount++;
-          return HttpResponse.json({
-            id: "already-loaded",
-            title: null,
-            agentId: "mock-compose-id",
-            chatMessages: [],
-            latestSessionId: null,
-            createdAt: "2026-03-10T00:00:00Z",
-            updatedAt: "2026-03-10T00:00:00Z",
-          });
-        }),
-      );
-
-      // Set up with the chat session path
-      await setupPage({
-        context,
-        path: "/chat/already-loaded",
-        withoutRender: true,
-      });
-
-      // First sync should switch
-      await context.store.set(syncUrlSession$);
-      expect(switchCount).toBe(1);
-
-      // Second sync with same URL should skip
-      await context.store.set(syncUrlSession$);
-      expect(switchCount).toBe(1);
-    });
-
-    it("should reset sessionSwitching when thread is already loaded", async () => {
-      server.use(
-        http.get("*/api/zero/chat-threads/:id", () => {
+          loadCount++;
           return HttpResponse.json({
             id: "already-loaded",
             title: null,
@@ -784,7 +744,7 @@ describe("zero-chat signals", () => {
             chatMessages: [
               {
                 role: "user",
-                content: "Existing",
+                content: "Existing msg",
                 createdAt: "2026-03-10T00:00:00Z",
               },
             ],
@@ -795,23 +755,21 @@ describe("zero-chat signals", () => {
         }),
       );
 
+      // Route setup loads the thread
       await setupPage({
         context,
         path: "/chat/already-loaded",
         withoutRender: true,
       });
 
-      // First sync loads the thread
-      await context.store.set(syncUrlSession$);
-      expect(context.store.get(zeroChatThreadId$)).toBe("already-loaded");
+      await expect(context.store.get(zeroChatMessages$)).resolves.toHaveLength(
+        1,
+      );
+      const countAfterSetup = loadCount;
 
-      // Simulate prepareSessionSwitch$ being called (e.g. by route setup)
-      context.store.set(prepareSessionSwitch$);
-      expect(context.store.get(zeroSessionSwitching$)).toBeTruthy();
-
-      // Second sync detects thread matches — must reset switching
-      await context.store.set(syncUrlSession$);
-      expect(context.store.get(zeroSessionSwitching$)).toBeFalsy();
+      // Second call skips because messages are already present
+      await context.store.set(loadSessionFromSnapshot$, context.signal);
+      expect(loadCount).toBe(countAfterSetup);
     });
   });
 

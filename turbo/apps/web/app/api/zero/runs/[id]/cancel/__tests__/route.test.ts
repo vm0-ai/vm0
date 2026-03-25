@@ -92,7 +92,7 @@ describe("POST /api/zero/runs/:id/cancel", () => {
 
   it("should return 403 for sandbox token without agent-run:write capability", async () => {
     mockClerk({ userId: null });
-    const token = await generateSandboxToken("user-1", "run-1", ["agent:read"]);
+    const token = await generateSandboxToken("user-1", "run-1");
 
     const response = await POST(
       createTestRequest(

@@ -7,4 +7,5 @@ export {
   enableSchedule,
   disableSchedule,
   executeDueSchedules,
+  executeSchedule,
 } from "./schedule-service";

@@ -32,10 +32,12 @@ import { generate as generateDevto } from "./devto";
 import { generate as generateDiscord } from "./discord";
 import { generate as generateDropbox } from "./dropbox";
 import { generate as generateElevenlabs } from "./elevenlabs";
+import { generate as generateExplorium } from "./explorium";
 import { generate as generateFal } from "./fal";
 import { generate as generateFigma } from "./figma";
 import { generate as generateFirecrawl } from "./firecrawl";
 import { generate as generateFireflies } from "./fireflies";
+import { generate as generateGarminConnect } from "./garmin-connect";
 import { generate as generateGitHub } from "./github";
 import { generate as generateGitlab } from "./gitlab";
 import { generate as generateGranola } from "./granola";
@@ -46,28 +48,40 @@ import { generate as generateHume } from "./hume";
 import { generate as generateImgur } from "./imgur";
 import { generate as generateInstantly } from "./instantly";
 import { generate as generateIntercom } from "./intercom";
+import { generate as generateIntervalsIcu } from "./intervals-icu";
 import { generate as generateJira } from "./jira";
 import { generate as generateJotform } from "./jotform";
 import { generate as generateLark } from "./lark";
 import { generate as generateLine } from "./line";
 import { generate as generateLinear } from "./linear";
 import { generate as generateLoops } from "./loops";
+import { generate as generateMailsac } from "./mailsac";
 import { generate as generateMercury } from "./mercury";
 import { generate as generateMinimax } from "./minimax";
 import { generate as generateMonday } from "./monday";
 import { generate as generateNeon } from "./neon";
 import { generate as generateNotion } from "./notion";
 import { generate as generateOpenai } from "./openai";
+import { generate as generatePdf4me } from "./pdf4me";
+import { generate as generatePdfco } from "./pdfco";
+import { generate as generatePdforge } from "./pdforge";
 import { generate as generatePerplexity } from "./perplexity";
 import { generate as generatePlausible } from "./plausible";
+import { generate as generatePodchaser } from "./podchaser";
 import { generate as generatePosthog } from "./posthog";
+import { generate as generateProductlane } from "./productlane";
+import { generate as generatePushinator } from "./pushinator";
 import { generate as generateQiita } from "./qiita";
 import { generate as generateReddit } from "./reddit";
+import { generate as generateReportei } from "./reportei";
 import { generate as generateResend } from "./resend";
+import { generate as generateRevenuecat } from "./revenuecat";
 import { generate as generateRunway } from "./runway";
+import { generate as generateScrapeninja } from "./scrapeninja";
 import { generate as generateSentry } from "./sentry";
 import { generate as generateSerpapi } from "./serpapi";
 import { generate as generateShortio } from "./shortio";
+import { generate as generateSimilarweb } from "./similarweb";
 import { generate as generateSlack } from "./slack";
 import { generate as generateStrava } from "./strava";
 import { generate as generateStripe } from "./stripe";
@@ -76,6 +90,7 @@ import { generate as generateSupadata } from "./supadata";
 import { generate as generateTavily } from "./tavily";
 import { generate as generateTldv } from "./tldv";
 import { generate as generateTodoist } from "./todoist";
+import { generate as generateV0 } from "./v0";
 import { generate as generateVercel } from "./vercel";
 import { generate as generateWebflow } from "./webflow";
 import { generate as generateWix } from "./wix";
@@ -114,10 +129,12 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   discord: generateDiscord,
   dropbox: generateDropbox,
   elevenlabs: generateElevenlabs,
+  explorium: generateExplorium,
   fal: generateFal,
   figma: generateFigma,
   firecrawl: generateFirecrawl,
   fireflies: generateFireflies,
+  "garmin-connect": generateGarminConnect,
   github: generateGitHub,
   gitlab: generateGitlab,
   granola: generateGranola,
@@ -128,28 +145,40 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   imgur: generateImgur,
   instantly: generateInstantly,
   intercom: generateIntercom,
+  "intervals-icu": generateIntervalsIcu,
   jira: generateJira,
   jotform: generateJotform,
   lark: generateLark,
   line: generateLine,
   linear: generateLinear,
   loops: generateLoops,
+  mailsac: generateMailsac,
   mercury: generateMercury,
   minimax: generateMinimax,
   monday: generateMonday,
   neon: generateNeon,
   notion: generateNotion,
   openai: generateOpenai,
+  pdf4me: generatePdf4me,
+  pdfco: generatePdfco,
+  pdforge: generatePdforge,
   perplexity: generatePerplexity,
   plausible: generatePlausible,
+  podchaser: generatePodchaser,
   posthog: generatePosthog,
+  productlane: generateProductlane,
+  pushinator: generatePushinator,
   qiita: generateQiita,
   reddit: generateReddit,
+  reportei: generateReportei,
   resend: generateResend,
+  revenuecat: generateRevenuecat,
   runway: generateRunway,
+  scrapeninja: generateScrapeninja,
   sentry: generateSentry,
   serpapi: generateSerpapi,
   shortio: generateShortio,
+  similarweb: generateSimilarweb,
   slack: generateSlack,
   strava: generateStrava,
   stripe: generateStripe,
@@ -158,6 +187,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   tavily: generateTavily,
   tldv: generateTldv,
   todoist: generateTodoist,
+  v0: generateV0,
   vercel: generateVercel,
   webflow: generateWebflow,
   wix: generateWix,

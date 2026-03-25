@@ -1,4 +1,4 @@
-import { command, state, type Getter, type Setter } from "ccstate";
+import { command, state } from "ccstate";
 import { fetchAgentsList$, zeroSubagents$ } from "./zero-agents.ts";
 import { defaultAgentId$ } from "./zero-agent-name.ts";
 import { initZeroOnboarding$ } from "./zero-onboarding.ts";
@@ -42,35 +42,33 @@ export const loadInitialData$ = command(
  * Used by setupTalkPage$ to avoid duplicating
  * the lookup / pin / redirect logic.
  */
-export async function resolveAgentById(
-  get: Getter,
-  set: Setter,
-  signal: AbortSignal,
-  agentId: string | null,
-): Promise<void> {
-  if (agentId) {
-    const subagents = await get(zeroSubagents$);
-    const rawDefaultName = await get(defaultAgentId$);
-    signal.throwIfAborted();
+export const resolveAgentById$ = command(
+  async ({ get, set }, agentId: string | null, signal: AbortSignal) => {
+    if (agentId) {
+      const subagents = await get(zeroSubagents$);
+      signal.throwIfAborted();
+      const rawDefaultName = await get(defaultAgentId$);
+      signal.throwIfAborted();
 
-    if (agentId === rawDefaultName) {
-      set(switchActiveAgent$, null);
-    } else {
-      const agent = subagents.find((a) => a.id === agentId);
-      if (agent) {
-        set(switchActiveAgent$, agent.id);
-      } else {
-        // Unknown agent → redirect to default
+      if (agentId === rawDefaultName) {
         set(switchActiveAgent$, null);
-        if (rawDefaultName) {
-          set(navigateTo$, "/talk/:id", {
-            pathParams: { id: rawDefaultName },
-            replace: true,
-          });
+      } else {
+        const agent = subagents.find((a) => a.id === agentId);
+        if (agent) {
+          set(switchActiveAgent$, agent.id);
+        } else {
+          // Unknown agent → redirect to default
+          set(switchActiveAgent$, null);
+          if (rawDefaultName) {
+            set(navigateTo$, "/talk/:id", {
+              pathParams: { id: rawDefaultName },
+              replace: true,
+            });
+          }
         }
       }
+    } else {
+      set(switchActiveAgent$, null);
     }
-  } else {
-    set(switchActiveAgent$, null);
-  }
-}
+  },
+);

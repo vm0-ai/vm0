@@ -78,7 +78,7 @@ export const pathParams$ = computed((get) => {
 
 const resetRouteSignal$ = resetSignal();
 
-const loadRoute$ = command(async ({ get, set }, signal?: AbortSignal) => {
+const loadRoute$ = command(async ({ get, set }, signal: AbortSignal) => {
   const routeSignal = set(
     resetRouteSignal$,
     ...([signal].filter(Boolean) as AbortSignal[]),

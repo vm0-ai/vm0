@@ -114,6 +114,9 @@ export {
   deleteZeroComputerConnector,
 } from "./domains/zero-connectors";
 
+// Domain modules - Integrations Slack
+export { sendSlackMessage } from "./domains/integrations-slack";
+
 // Domain modules - Zero Schedules
 export {
   deployZeroSchedule,

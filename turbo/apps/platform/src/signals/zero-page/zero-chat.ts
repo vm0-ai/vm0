@@ -1,11 +1,4 @@
-import {
-  command,
-  computed,
-  state,
-  type Computed,
-  type Getter,
-  type Setter,
-} from "ccstate";
+import { command, computed, state, type Computed } from "ccstate";
 import { timeout } from "signal-timers";
 import type { AgentEvent, LogStatus } from "./log-types.ts";
 import { fetch$ } from "../fetch.ts";
@@ -204,8 +197,27 @@ export interface ZeroChatMessage {
 // State
 // ---------------------------------------------------------------------------
 
-const internalMessages$ = state<ZeroChatMessage[]>([]);
-export const zeroChatMessages$ = computed((get) => get(internalMessages$));
+/**
+ * Local interaction messages — user sends + assistant placeholders updated by polling.
+ * These are appended during the current send cycle and cleared on session switch.
+ */
+const internalLocalMessages$ = state<ZeroChatMessage[]>([]);
+
+/**
+ * All chat messages: server snapshot (from URL) + local interaction overlay.
+ * Async because server messages come from `chatSessionSnapshot$`.
+ */
+/**
+ * All chat messages: server snapshot (completed) + local (active interaction).
+ * Active run messages live in local state so polling can mutate them.
+ * No dedup needed — snapshot.messages excludes active runs.
+ */
+export const zeroChatMessages$ = computed(async (get) => {
+  const snapshot = await get(chatSessionSnapshot$);
+  const serverMessages = snapshot?.messages ?? [];
+  const localMessages = get(internalLocalMessages$);
+  return [...serverMessages, ...localMessages];
+});
 
 const internalSessionId$ = state<string | null>(null);
 export const zeroCurrentSessionId$ = computed((get) => get(internalSessionId$));
@@ -452,9 +464,8 @@ export const zeroChatThinkingMessage$ = computed(
   (get) => THINKING_MESSAGES[get(internalThinkingIndex$)]!,
 );
 
-// Chat thread ID (for URL routing — set before run starts)
-const internalChatThreadId$ = state<string | null>(null);
-export const zeroChatThreadId$ = computed((get) => get(internalChatThreadId$));
+/** Thread ID derived from the URL `/chat/:id`. */
+export const zeroChatThreadId$ = zeroSessionId$;
 
 // Session list state (now backed by chat threads)
 const internalSessionList$ = state<ChatThreadListItem[]>([]);
@@ -470,24 +481,155 @@ export const zeroSessionListError$ = computed((get) =>
   get(internalSessionListError$),
 );
 
-const internalSessionError$ = state<string | null>(null);
-export const zeroSessionError$ = computed((get) => get(internalSessionError$));
+// ---------------------------------------------------------------------------
+// Session snapshot — async computed derived from URL
+// ---------------------------------------------------------------------------
 
-const internalSessionSwitching$ = state(false);
-export const zeroSessionSwitching$ = computed((get) =>
-  get(internalSessionSwitching$),
+interface ChatSessionSnapshotData {
+  /** Completed/failed messages — immutable, rendered directly from snapshot. */
+  messages: ZeroChatMessage[];
+  /** Active run prompt + placeholder — copied to local state for mutable polling updates. */
+  activeRunMessages: ZeroChatMessage[];
+  latestSessionId: string | null;
+  agentComposeId?: string;
+  activeRunId: string | null;
+}
+
+const snapshotVersion$ = state(0);
+
+/**
+ * Async computed that fetches session data whenever the URL thread ID changes.
+ * Loading/error states are derived automatically via `useLoadable` in the view.
+ * Eliminates the need for manual `internalSessionSwitching$` / `internalSessionError$`.
+ */
+export const chatSessionSnapshot$ = computed(
+  async (get): Promise<ChatSessionSnapshotData | null> => {
+    get(snapshotVersion$);
+    const threadId = get(zeroSessionId$);
+    if (!threadId) {
+      return null;
+    }
+
+    const fetchFn = get(fetch$);
+
+    let res: Response;
+    let isLegacySession = false;
+    try {
+      res = await fetchFn(`/api/zero/chat-threads/${threadId}`);
+      if (!res.ok) {
+        res = await fetchFn(`/api/zero/sessions/${threadId}`);
+        isLegacySession = true;
+      }
+    } catch (error) {
+      throwIfAbort(error);
+      throw error;
+    }
+    if (!res.ok) {
+      L.warn("Failed to load chat:", res.statusText);
+      return null;
+    }
+
+    const data = (await res.json()) as {
+      agentComposeId?: string;
+      chatMessages?: {
+        role: "user" | "assistant";
+        content: string;
+        runId?: string;
+        error?: string;
+        summaries?: string[];
+        createdAt: string;
+      }[];
+      latestSessionId?: string | null;
+      unsavedRuns?: {
+        runId: string;
+        status: string;
+        prompt: string;
+        error: string | null;
+      }[];
+    };
+
+    const latestSessionId = isLegacySession
+      ? threadId
+      : (data.latestSessionId ?? null);
+
+    const messages: ZeroChatMessage[] = (data.chatMessages ?? []).map((m) => {
+      const summaries =
+        m.summaries && m.summaries.length > 0
+          ? m.summaries.map((s) =>
+              TOOL_LABELS[s] ? humanizeToolUse(s, undefined) : s,
+            )
+          : undefined;
+      return {
+        id: crypto.randomUUID(),
+        role: m.role,
+        content: m.content,
+        runId: m.runId,
+        ...(summaries && summaries.length > 0 ? { summaries } : {}),
+        ...(m.error ? { status: "failed" as const, error: m.error } : {}),
+      };
+    });
+
+    let activeRunId: string | null = null;
+    const activeRunMessages: ZeroChatMessage[] = [];
+    for (const run of data.unsavedRuns ?? []) {
+      const userMsg: ZeroChatMessage = {
+        id: crypto.randomUUID(),
+        role: "user",
+        content: run.prompt,
+      };
+
+      const isCancelled = run.status === "cancelled";
+      const isFailed =
+        run.status === "failed" || run.status === "timeout" || isCancelled;
+      if (isFailed) {
+        // Failed/cancelled runs are immutable — go to messages
+        messages.push(userMsg);
+        messages.push({
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: "",
+          runId: run.runId,
+          status: "failed",
+          error: isCancelled
+            ? "Run cancelled."
+            : (run.error ??
+              "Something went wrong. Check the activity logs for details."),
+        });
+      } else {
+        // Active run — goes to activeRunMessages (will be copied to local state)
+        activeRunMessages.push(userMsg);
+        activeRunMessages.push({
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: "",
+          runId: run.runId,
+        });
+        activeRunId = run.runId;
+      }
+    }
+
+    return {
+      messages,
+      activeRunMessages,
+      latestSessionId,
+      agentComposeId: data.agentComposeId,
+      activeRunId,
+    };
+  },
 );
 
 /**
- * Mark session as switching immediately so the UI shows a skeleton
- * instead of flashing "Send a message" while the page setup runs.
- * Called from setupChatSessionPage$ before heavy data loads when a session URL is detected.
+ * @deprecated Use `useLoadable(chatSessionSnapshot$)` in views instead.
+ * Kept for test backward compatibility — will be removed.
  */
 export const prepareSessionSwitch$ = command(({ set }) => {
-  set(internalSessionSwitching$, true);
-  set(internalMessages$, []);
-  set(internalSessionError$, null);
+  set(internalLocalMessages$, []);
 });
+
+/**
+ * @deprecated Derive from `useLoadable(chatSessionSnapshot$).state === "hasError"`.
+ */
+export const zeroSessionError$ = computed(() => null as string | null);
 
 // Chat input
 const internalChatInput$ = state("");
@@ -661,28 +803,26 @@ export const switchActiveAgent$ = command(({ set }, agentId: string | null) => {
   detach(set(fetchZeroSessionList$), Reason.DomCallback);
 });
 
-/** Resolve which agent to activate based on the thread's agentId. */
-async function syncAgentForThread(
-  get: Parameters<Parameters<typeof command>[0]>[0]["get"],
-  set: Parameters<Parameters<typeof command>[0]>[0]["set"],
-  agentId: string | undefined,
-) {
-  if (agentId) {
-    const currentAgentId = get(zeroChatAgentId$);
-    const status = await get(zeroOnboardingStatus$);
-    const isDefault = agentId === status.defaultAgentId;
-    const newAgentId = isDefault ? null : agentId;
-    if (newAgentId !== currentAgentId) {
-      set(switchActiveAgent$, newAgentId ?? null);
+/** Resolve which agent to activate based on the thread's agentComposeId. */
+const syncAgentForThread$ = command(
+  async ({ get, set }, agentComposeId: string | undefined) => {
+    if (agentComposeId) {
+      const currentAgentId = get(zeroChatAgentId$);
+      const status = await get(zeroOnboardingStatus$);
+      const isDefault = agentComposeId === status.defaultAgentId;
+      const newAgentId = isDefault ? null : agentComposeId;
+      if (newAgentId !== currentAgentId) {
+        set(switchActiveAgent$, newAgentId);
+      } else if (get(internalSessionList$).length === 0) {
+        detach(set(fetchZeroSessionList$), Reason.DomCallback);
+      }
+    } else if (get(zeroChatAgentId$) !== null) {
+      set(switchActiveAgent$, null);
     } else if (get(internalSessionList$).length === 0) {
       detach(set(fetchZeroSessionList$), Reason.DomCallback);
     }
-  } else if (get(zeroChatAgentId$) !== null) {
-    set(switchActiveAgent$, null);
-  } else if (get(internalSessionList$).length === 0) {
-    detach(set(fetchZeroSessionList$), Reason.DomCallback);
-  }
-}
+  },
+);
 
 // ---------------------------------------------------------------------------
 // startLoop$: independent polling entry point
@@ -753,160 +893,70 @@ const startLoop$ = command(
   },
 );
 
-export const switchZeroSession$ = command(
-  async ({ get, set }, threadId: string) => {
-    // Abort any in-flight send/polling from the previous session
-    set(resetSending$);
+/**
+ * Load session data from the snapshot computed and populate state.
+ * The snapshot auto-fetches when URL changes — this command reads the result,
+ * populates server messages, syncs agent, and resumes polling if needed.
+ */
+export const loadSessionFromSnapshot$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    // Skip if local messages are in-flight (e.g., navigating from /talk
+    // after sending a message — optimistic messages are already displayed).
+    if (get(internalLocalMessages$).length > 0) {
+      return;
+    }
 
-    // Set thread immediately so the UI switches without loading delay
-    set(internalChatThreadId$, threadId);
-    set(internalSessionId$, null);
-    set(internalMessages$, []);
-    set(internalActiveRunId$, null);
-    set(internalRunEvents$, []);
-    set(internalRunStatus$, null);
-    set(internalRunError$, null);
-    set(internalQueuePosition$, 0);
-    set(internalLoopPromise$, null);
-    set(internalSessionError$, null);
-    set(internalSessionSwitching$, true);
+    const snapshot = await get(chatSessionSnapshot$);
+    signal.throwIfAborted();
+    if (!snapshot) {
+      return;
+    }
 
-    try {
-      const fetchFn = get(fetch$);
+    if (snapshot.latestSessionId) {
+      set(internalSessionId$, snapshot.latestSessionId);
+    }
 
-      // Try chat-threads API first; fall back to legacy sessions API
-      L.debug("loading thread:", threadId);
-      let res = await fetchFn(`/api/zero/chat-threads/${threadId}`);
-      let isLegacySession = false;
-      if (!res.ok) {
-        res = await fetchFn(`/api/zero/sessions/${threadId}`);
-        isLegacySession = true;
-      }
-      if (!res.ok) {
-        L.warn("both APIs failed, status:", res.status);
-        set(internalSessionError$, `Failed to load chat: ${res.statusText}`);
-        return;
-      }
-      const data = (await res.json()) as {
-        agentId?: string;
-        chatMessages?: {
-          role: "user" | "assistant";
-          content: string;
-          runId?: string;
-          error?: string;
-          summaries?: string[];
-          createdAt: string;
-        }[];
-        latestSessionId?: string | null;
-        unsavedRuns?: {
-          runId: string;
-          status: string;
-          prompt: string;
-          error: string | null;
-        }[];
-      };
+    await set(syncAgentForThread$, snapshot.agentComposeId);
+    signal.throwIfAborted();
 
-      L.debug("loaded:", {
-        isLegacySession,
-        agentId: data.agentId,
-        latestSessionId: data.latestSessionId,
-        msgCount: data.chatMessages?.length,
-      });
-
-      if (isLegacySession) {
-        // Legacy session: the ID itself is the sessionId
-        set(internalSessionId$, threadId);
-      } else if (data.latestSessionId) {
-        set(internalSessionId$, data.latestSessionId);
-      }
-
-      // Switch agent if it changed, or fetch session list if empty (fresh load).
-      await syncAgentForThread(get, set, data.agentId);
-
-      const messages: ZeroChatMessage[] = (data.chatMessages ?? []).map((m) => {
-        const summaries =
-          m.summaries && m.summaries.length > 0
-            ? m.summaries.map((s) =>
-                TOOL_LABELS[s] ? humanizeToolUse(s, undefined) : s,
-              )
-            : undefined;
-        return {
-          id: crypto.randomUUID(),
-          role: m.role,
-          content: m.content,
-          runId: m.runId,
-          ...(summaries && summaries.length > 0 ? { summaries } : {}),
-          ...(m.error ? { status: "failed" as const, error: m.error } : {}),
-        };
-      });
-
-      // Append unsaved runs (active, failed, pending) not yet in chatMessages.
-      // These are in chronological order from the server.
-      let activeRunToResume: string | null = null;
-      for (const run of data.unsavedRuns ?? []) {
-        messages.push({
-          id: crypto.randomUUID(),
-          role: "user",
-          content: run.prompt,
-        });
-
-        const isCancelled = run.status === "cancelled";
-        const isFailed =
-          run.status === "failed" || run.status === "timeout" || isCancelled;
-        if (isFailed) {
-          messages.push({
-            id: crypto.randomUUID(),
-            role: "assistant",
-            content: "",
-            runId: run.runId,
-            status: "failed",
-            error: isCancelled
-              ? "Run cancelled."
-              : (run.error ??
-                "Something went wrong. Check the activity logs for details."),
-          });
-        } else {
-          // Active/pending/running — show placeholder for polling
-          messages.push({
-            id: crypto.randomUUID(),
-            role: "assistant",
-            content: "",
-            runId: run.runId,
-          });
-          activeRunToResume = run.runId;
-        }
-      }
-
-      set(internalMessages$, messages);
-
-      // Resume polling for the latest active run
-      if (activeRunToResume) {
-        const signal = set(resetSending$);
-        set(startLoop$, { runId: activeRunToResume, signal }).catch(
-          (error: unknown) => {
-            throwIfAbort(error);
-          },
-        );
-      }
-    } catch (error) {
-      throwIfAbort(error);
-      const msg =
-        error instanceof Error ? error.message : "Failed to load chat";
-      set(internalSessionError$, msg);
-      L.error("Failed to switch chat thread:", error);
-    } finally {
-      set(internalSessionSwitching$, false);
+    // Resume polling for active run: copy active run messages to local
+    // so polling can mutate the assistant placeholder (snapshot is immutable).
+    if (snapshot.activeRunId) {
+      set(internalLocalMessages$, snapshot.activeRunMessages);
+      const signal = set(resetSending$);
+      set(startLoop$, { runId: snapshot.activeRunId, signal }).catch(
+        (error: unknown) => {
+          throwIfAbort(error);
+        },
+      );
     }
   },
 );
+
+/**
+ * Switch to a different chat session. Resets interaction state and navigates.
+ * Session data loading is handled by `chatSessionSnapshot$` (async computed)
+ * which auto-fetches when the URL changes.
+ */
+export const switchZeroSession$ = command(({ set }, threadId: string) => {
+  set(resetSending$);
+  set(navigateToZeroSession$, threadId);
+  set(internalSessionId$, null);
+  set(internalLocalMessages$, []);
+  set(internalActiveRunId$, null);
+  set(internalRunEvents$, []);
+  set(internalRunStatus$, null);
+  set(internalRunError$, null);
+  set(internalQueuePosition$, 0);
+  set(internalLoopPromise$, null);
+});
 
 export const startNewZeroSession$ = command(({ set }) => {
   // Abort any in-flight send/polling from the previous session
   set(resetSending$);
 
-  set(internalMessages$, []);
+  set(internalLocalMessages$, []);
   set(internalSessionId$, null);
-  set(internalChatThreadId$, null);
   set(internalActiveRunId$, null);
   set(internalRunEvents$, []);
   set(internalRunStatus$, null);
@@ -925,13 +975,13 @@ export const zeroCreatingNewSession$ = computed((get) =>
 );
 
 export const createNewChatSession$ = command(
-  async ({ get, set }, agentId: string | null) => {
+  async ({ get, set }, agentComposeId: string | null) => {
     set(creatingNewSession$, true);
     try {
       set(startNewZeroSession$);
 
       const resolvedComposeId =
-        agentId ?? (await get(zeroOnboardingStatus$)).defaultAgentId;
+        agentComposeId ?? (await get(zeroOnboardingStatus$)).defaultAgentId;
       if (!resolvedComposeId) {
         toast.error("No agent available for new chat session");
         return;
@@ -939,8 +989,6 @@ export const createNewChatSession$ = command(
 
       const fetchFn = get(fetch$);
       const thread = await createChatThread(fetchFn, resolvedComposeId);
-
-      set(internalChatThreadId$, thread.id);
 
       const now = new Date().toISOString();
       set(internalSessionList$, (prev) => [
@@ -970,112 +1018,98 @@ export const createNewChatSession$ = command(
 // Commands: send message
 // ---------------------------------------------------------------------------
 
-function prepareMessages(
-  prompt: string,
-  get: (s: typeof internalAttachments$) => ZeroChatAttachment[],
-  set: (
-    s: typeof internalMessages$ | typeof internalAttachments$,
-    u:
-      | ZeroChatMessage[]
-      | ((prev: ZeroChatMessage[]) => ZeroChatMessage[])
-      | ZeroChatAttachment[],
-  ) => void,
-): { fullPrompt: string } {
-  const attachments = (
-    get(internalAttachments$) as ZeroChatAttachment[]
-  ).filter((a) => !a.uploading);
-  let fullPrompt = prompt.trim();
-  if (attachments.length > 0) {
-    const lines = attachments.map(
-      (a) =>
-        `[Attached file: ${a.filename}](${a.url})\nDownload with: curl -sL -o "${a.filename}" "${a.url}"`,
-    );
-    fullPrompt = `${fullPrompt}\n\n${lines.join("\n")}`;
-  }
+const prepareMessages$ = command(
+  ({ get, set }, prompt: string): { fullPrompt: string } => {
+    const attachments = get(internalAttachments$).filter((a) => !a.uploading);
+    let fullPrompt = prompt.trim();
+    if (attachments.length > 0) {
+      const lines = attachments.map(
+        (a) =>
+          `[Attached file: ${a.filename}](${a.url})\nDownload with: curl -sL -o "${a.filename}" "${a.url}"`,
+      );
+      fullPrompt = `${fullPrompt}\n\n${lines.join("\n")}`;
+    }
 
-  const userMessage: ZeroChatMessage = {
-    id: crypto.randomUUID(),
-    role: "user",
-    content: prompt.trim(),
-    attachments:
-      attachments.length > 0
-        ? attachments.map((a) => ({
-            filename: a.filename,
-            contentType: a.contentType,
-            size: a.size,
-            url: a.url,
-          }))
-        : undefined,
-  };
-  set(internalMessages$, (prev: ZeroChatMessage[]) => [...prev, userMessage]);
-  set(internalAttachments$, []);
+    const userMessage: ZeroChatMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: prompt.trim(),
+      attachments:
+        attachments.length > 0
+          ? attachments.map((a) => ({
+              filename: a.filename,
+              contentType: a.contentType,
+              size: a.size,
+              url: a.url,
+            }))
+          : undefined,
+    };
+    set(internalLocalMessages$, (prev) => [...prev, userMessage]);
+    set(internalAttachments$, []);
 
-  const placeholder: ZeroChatMessage = {
-    id: crypto.randomUUID(),
-    role: "assistant",
-    content: "",
-  };
-  set(internalMessages$, (prev: ZeroChatMessage[]) => [...prev, placeholder]);
+    const placeholder: ZeroChatMessage = {
+      id: crypto.randomUUID(),
+      role: "assistant",
+      content: "",
+    };
+    set(internalLocalMessages$, (prev) => [...prev, placeholder]);
 
-  return { fullPrompt };
-}
+    return { fullPrompt };
+  },
+);
 
 /**
  * Ensure a chat thread exists for the current conversation.
  * Creates one if needed and updates sidebar + URL. Returns the thread ID,
  * or null if creation failed (caller should abort).
  */
-async function ensureChatThread(
-  get: Getter,
-  set: Setter,
-  fetchFn: typeof fetch,
-  composeId: string,
-  prompt: string,
-): Promise<string | null> {
-  const threadId = get(internalChatThreadId$);
-  if (threadId) {
-    return threadId;
-  }
+const ensureChatThread$ = command(
+  async (
+    { get, set },
+    args: { composeId: string; prompt: string },
+  ): Promise<string | null> => {
+    const threadId = get(zeroSessionId$);
+    if (threadId) {
+      return threadId;
+    }
 
-  const title = prompt.trim().slice(0, 100);
-  let thread: { id: string; title: string | null };
-  try {
-    thread = await createChatThread(fetchFn, composeId, title);
-  } catch (error) {
-    throwIfAbort(error);
-    set(internalMessages$, (prev) => {
-      const updated = [...prev];
-      updated[updated.length - 1] = {
-        ...updated[updated.length - 1],
-        error: "Failed to create chat thread",
-      };
-      return updated;
-    });
-    return null;
-  }
+    const fetchFn = get(fetch$);
+    const title = args.prompt.trim().slice(0, 100);
+    let thread: { id: string; title: string | null };
+    try {
+      thread = await createChatThread(fetchFn, args.composeId, title);
+    } catch (error) {
+      throwIfAbort(error);
+      set(internalLocalMessages$, (prev) => {
+        const updated = [...prev];
+        updated[updated.length - 1] = {
+          ...updated[updated.length - 1],
+          error: "Failed to create chat thread",
+        };
+        return updated;
+      });
+      return null;
+    }
 
-  set(internalChatThreadId$, thread.id);
-
-  // Add the new thread to the session list so the sidebar updates immediately
-  const now = new Date().toISOString();
-  set(internalSessionList$, (prev) => [
-    {
-      id: thread.id,
-      title: thread.title ?? title,
-      preview: null,
-      agentId: composeId,
-      createdAt: now,
-      updatedAt: now,
-    },
-    ...prev,
-  ]);
-  // Navigate immediately so URL updates (only when not already on a session page)
-  if (!get(zeroSessionId$)) {
+    // Add the new thread to the session list so the sidebar updates immediately
+    const now = new Date().toISOString();
+    set(internalSessionList$, (prev) => [
+      {
+        id: thread.id,
+        title: thread.title ?? title,
+        preview: null,
+        agentId: args.composeId,
+        createdAt: now,
+        updatedAt: now,
+      },
+      ...prev,
+    ]);
+    // Navigate so zeroSessionId$ (URL) reflects the new thread
     set(navigateToZeroSession$, thread.id);
-  }
 
-  return thread.id;
-}
+    return thread.id;
+  },
+);
 
 export const sendZeroChatMessage$ = command(
   async (
@@ -1102,19 +1136,16 @@ export const sendZeroChatMessage$ = command(
         set(internalRunError$, null);
         set(internalQueuePosition$, 0);
 
-        const { fullPrompt } = prepareMessages(currentPrompt, get, set);
+        const { fullPrompt } = set(prepareMessages$, currentPrompt);
 
         try {
           const fetchFn = get(fetch$);
           const sessionId = get(internalSessionId$);
 
-          const threadId = await ensureChatThread(
-            get,
-            set,
-            fetchFn,
+          const threadId = await set(ensureChatThread$, {
             composeId,
-            currentPrompt,
-          );
+            prompt: currentPrompt,
+          });
           if (!threadId) {
             return;
           }
@@ -1145,7 +1176,7 @@ export const sendZeroChatMessage$ = command(
             L.error("Failed to refresh chat list:", error);
           });
 
-          set(internalMessages$, (prev) => {
+          set(internalLocalMessages$, (prev) => {
             const updated = [...prev];
             updated[updated.length - 1] = {
               ...updated[updated.length - 1],
@@ -1159,7 +1190,7 @@ export const sendZeroChatMessage$ = command(
         } catch (error) {
           throwIfAbort(error);
           L.error("Chat send error:", error);
-          set(internalMessages$, (prev) => {
+          set(internalLocalMessages$, (prev) => {
             const updated = [...prev];
             updated[updated.length - 1] = {
               ...updated[updated.length - 1],
@@ -1196,35 +1227,63 @@ export const sendZeroChatMessage$ = command(
 // On run complete: extract session, update message
 // ---------------------------------------------------------------------------
 
+/** Update an assistant message by runId in local messages. */
+const updateAssistantMessage$ = command(
+  (
+    { get, set },
+    args: { runId: string; updater: (msg: ZeroChatMessage) => ZeroChatMessage },
+  ) => {
+    const local = get(internalLocalMessages$);
+    const idx = local.findIndex(
+      (m) => m.role === "assistant" && m.runId === args.runId,
+    );
+    if (idx === -1) {
+      return;
+    }
+    set(internalLocalMessages$, (prev) => {
+      const updated = [...prev];
+      updated[idx] = args.updater(updated[idx]);
+      return updated;
+    });
+  },
+);
+
+/** Update the last assistant message in local messages. */
+const updateLastAssistantMessage$ = command(
+  ({ get, set }, updater: (msg: ZeroChatMessage) => ZeroChatMessage) => {
+    const local = get(internalLocalMessages$);
+    const last = local.length - 1;
+    if (last >= 0 && local[last].role === "assistant") {
+      set(internalLocalMessages$, (prev) => {
+        const updated = [...prev];
+        updated[last] = updater(updated[last]);
+        return updated;
+      });
+    }
+  },
+);
+
 const onZeroRunComplete$ = command(async ({ get, set }, runId: string) => {
   const runStatus = get(internalRunStatus$);
   const runError = get(internalRunError$);
-  const messages = get(internalMessages$);
   const isFailed =
     runStatus === "failed" ||
     runStatus === "timeout" ||
     runStatus === "cancelled";
 
-  const lastIdx = messages.length - 1;
-  if (lastIdx >= 0 && messages[lastIdx].role === "assistant") {
-    set(internalMessages$, (prev) => {
-      const updated = [...prev];
-      updated[lastIdx] = {
-        ...updated[lastIdx],
-        status: runStatus ?? undefined,
-        error: isFailed
-          ? (runError ??
-            (runStatus === "timeout"
-              ? "Run timed out"
-              : runStatus === "cancelled"
-                ? "Run cancelled."
-                : "Run failed"))
-          : undefined,
-        runId,
-      };
-      return updated;
-    });
-  }
+  set(updateLastAssistantMessage$, (msg) => ({
+    ...msg,
+    status: runStatus ?? undefined,
+    error: isFailed
+      ? (runError ??
+        (runStatus === "timeout"
+          ? "Run timed out"
+          : runStatus === "cancelled"
+            ? "Run cancelled."
+            : "Run failed"))
+      : undefined,
+    runId,
+  }));
 
   // If run failed/timeout/cancelled, no need to extract result or persist
   if (isFailed) {
@@ -1259,20 +1318,13 @@ const onZeroRunComplete$ = command(async ({ get, set }, runId: string) => {
     );
 
     if (resultContent || summaries.length > 0) {
-      set(internalMessages$, (prev) => {
-        const idx = prev.findIndex(
-          (m) => m.role === "assistant" && m.runId === runId,
-        );
-        if (idx === -1) {
-          return prev;
-        }
-        const updated = [...prev];
-        updated[idx] = {
-          ...updated[idx],
+      set(updateAssistantMessage$, {
+        runId,
+        updater: (msg) => ({
+          ...msg,
           ...(resultContent ? { content: resultContent } : {}),
           ...(summaries.length > 0 ? { summaries } : {}),
-        };
-        return updated;
+        }),
       });
     }
 
@@ -1302,23 +1354,6 @@ const onZeroRunComplete$ = command(async ({ get, set }, runId: string) => {
 // ---------------------------------------------------------------------------
 // Composite shell commands
 // ---------------------------------------------------------------------------
-
-/**
- * Sync URL session ID to the chat signal.
- * Called from setupChatSessionPage$ on each route entry for /chat/:sessionId routes.
- */
-export const syncUrlSession$ = command(async ({ get, set }) => {
-  const urlSessionId = get(zeroSessionId$);
-  if (!urlSessionId) {
-    return;
-  }
-  const currentThreadId = get(zeroChatThreadId$);
-  if (urlSessionId === currentThreadId) {
-    set(internalSessionSwitching$, false);
-    return;
-  }
-  await set(switchZeroSession$, urlSessionId);
-});
 
 // ---------------------------------------------------------------------------
 // Composer local UI state

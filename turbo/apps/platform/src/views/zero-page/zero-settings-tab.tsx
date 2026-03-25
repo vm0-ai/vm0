@@ -26,6 +26,7 @@ import {
 import { detach, Reason } from "../../signals/utils.ts";
 import { ZeroUnsavedBar } from "./zero-unsaved-bar.tsx";
 import type { Command } from "ccstate";
+import { InlineSettingsRow } from "./components/zero-inline-settings-row.tsx";
 
 interface ZeroSettingsTabProps {
   agentName: string;
@@ -104,31 +105,31 @@ export function ZeroSettingsTab({
   return (
     <>
       <div className="mx-auto max-w-[900px]">
-        <Card className="zero-card-white">
-          <CardContent className="py-5 flex flex-col gap-4">
-            <div className="flex flex-col gap-8">
-              <div className="flex flex-col gap-2">
-                <label
-                  htmlFor={inputId}
-                  className="text-sm font-medium text-foreground"
-                >
-                  Name
-                </label>
+        <Card className="zero-card overflow-hidden">
+          <CardContent className="p-4 sm:p-5">
+            <InlineSettingsRow
+              label="Name"
+              description="Shown in the team list and when this agent speaks."
+              wideControls
+            >
+              <div className="min-w-0 w-full">
                 <Input
                   id={inputId}
                   value={agentName}
                   onChange={(e) => setAgentName(e.target.value)}
                   placeholder="What should we call them?"
-                  className="h-9 zero-form-border"
+                  className="h-9 w-full zero-form-border"
+                  aria-label="Name"
                 />
               </div>
-              <div className="flex flex-col gap-2">
-                <label
-                  htmlFor={`${inputId}-description`}
-                  className="text-sm font-medium text-foreground"
-                >
-                  Description
-                </label>
+            </InlineSettingsRow>
+
+            <InlineSettingsRow
+              label="Description"
+              description="What this agent helps with—visible to teammates."
+              wideControls
+            >
+              <div className="min-w-0 w-full">
                 <textarea
                   id={`${inputId}-description`}
                   value={desc}
@@ -136,18 +137,23 @@ export function ZeroSettingsTab({
                   placeholder="What does this agent do?"
                   rows={3}
                   className="zero-form-border w-full rounded-lg bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:ring-[3px] focus:ring-primary/10 resize-y min-h-[72px]"
+                  aria-label="Description"
                 />
               </div>
+            </InlineSettingsRow>
+
+            <InlineSettingsRow
+              label="How they sound"
+              description="Voice style for replies. Preview updates when you change tone."
+              wideControls
+            >
               <div
-                className="flex flex-col gap-2"
+                className="min-w-0 w-full flex flex-col gap-3"
                 role="group"
                 aria-label={`How ${resolvedAgentName} sounds`}
               >
-                <span className="text-sm font-medium text-foreground">
-                  How they sound
-                </span>
                 <div
-                  className="flex flex-wrap gap-2"
+                  className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4"
                   role="group"
                   aria-label="Tone"
                 >
@@ -158,7 +164,7 @@ export function ZeroSettingsTab({
                       onClick={() => setTone(opt)}
                       style={{ borderWidth: "0.7px" }}
                       className={cn(
-                        "rounded-lg border px-4 py-2.5 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                        "w-full min-w-0 rounded-lg border px-3 py-2.5 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                         tone === opt
                           ? "border-primary/40 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/15"
                           : "zero-chip text-muted-foreground hover:text-foreground",
@@ -169,7 +175,7 @@ export function ZeroSettingsTab({
                   ))}
                 </div>
                 <div
-                  className="rounded-lg bg-muted/30 px-3 py-2"
+                  className="rounded-lg bg-muted/30 px-3 py-2 w-full"
                   style={{ border: "0.7px solid hsl(var(--gray-400))" }}
                   key={tone}
                 >
@@ -191,59 +197,65 @@ export function ZeroSettingsTab({
                   </div>
                 </div>
               </div>
-            </div>
+            </InlineSettingsRow>
           </CardContent>
         </Card>
 
         {!isDefaultAgent && onDelete && (
-          <Card className="zero-card-white mt-6 border-destructive/30">
-            <CardContent className="py-5 flex items-center justify-between gap-4">
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-foreground">
-                  Delete agent
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Permanently remove this agent and all its data. This action
-                  cannot be undone.
-                </p>
-              </div>
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    className="shrink-0 gap-1.5"
-                  >
-                    <IconTrash size={14} stroke={1.5} />
-                    Delete
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Delete {resolvedAgentName}?</DialogTitle>
-                    <DialogDescription>
-                      This will permanently delete the agent, its instructions,
-                      schedules, and all associated data. This action cannot be
-                      undone.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <DialogFooter>
-                    <DialogClose asChild>
-                      <Button variant="outline" size="sm">
-                        Cancel
+          <Card className="zero-card overflow-hidden border-destructive/20 mt-4">
+            <CardContent className="p-4 sm:p-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+                <div className="min-w-0 sm:max-w-[46%]">
+                  <h3 className="text-sm font-medium text-foreground">
+                    Danger zone
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-1 leading-snug">
+                    Permanently remove this agent and all its data. This action
+                    cannot be undone.
+                  </p>
+                </div>
+                <div className="flex w-full shrink-0 justify-end sm:w-auto">
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-9 gap-2 rounded-lg border-destructive/40 px-4 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      >
+                        <IconTrash size={14} stroke={1.5} />
+                        Delete agent
                       </Button>
-                    </DialogClose>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      disabled={deleting}
-                      onClick={() => detach(handleDelete(), Reason.DomCallback)}
-                    >
-                      {deleting ? "Deleting…" : "Delete agent"}
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Delete {resolvedAgentName}?</DialogTitle>
+                        <DialogDescription>
+                          This will permanently delete the agent, its
+                          instructions, schedules, and all associated data. This
+                          action cannot be undone.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <DialogFooter>
+                        <DialogClose asChild>
+                          <Button variant="outline" size="sm">
+                            Cancel
+                          </Button>
+                        </DialogClose>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          disabled={deleting}
+                          onClick={() =>
+                            detach(handleDelete(), Reason.DomCallback)
+                          }
+                        >
+                          {deleting ? "Deleting…" : "Delete agent"}
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                </div>
+              </div>
             </CardContent>
           </Card>
         )}

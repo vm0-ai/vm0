@@ -15,9 +15,35 @@ import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
 import { agentComposes } from "../../../../../src/db/schema/agent-compose";
 import { eq, and } from "drizzle-orm";
 import { buildComposeContent } from "../../../../../src/lib/zero/build-compose-content";
+import { isDefaultAgentCompose } from "../../../../../src/lib/zero/resolve-default-agent";
 import { logger } from "../../../../../src/lib/logger";
 
 const log = logger("api:zero-agents:id");
+
+type ForbiddenResponse = {
+  status: 403;
+  body: { error: { message: string; code: string } };
+};
+
+async function requireAdminForDefaultAgent(
+  orgId: string,
+  composeId: string,
+  memberRole: string,
+  label: string,
+): Promise<ForbiddenResponse | null> {
+  if (memberRole === "admin") return null;
+  const isDefault = await isDefaultAgentCompose(orgId, composeId);
+  if (!isDefault) return null;
+  return {
+    status: 403 as const,
+    body: {
+      error: {
+        message: `Only org admins can update the default agent's ${label}`,
+        code: "FORBIDDEN",
+      },
+    },
+  };
+}
 
 const router = tsr.router(zeroAgentsByIdContract, {
   get: async ({ params, headers }, { request }) => {
@@ -90,7 +116,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
     const { userId } = authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org, member } = await resolveOrg(authCtx, orgSlug);
 
     // Verify agent exists by compose ID
     const [existing] = await globalThis.services.db
@@ -115,6 +141,15 @@ const router = tsr.router(zeroAgentsByIdContract, {
         },
       };
     }
+
+    // Only admins can update the default agent
+    const forbidden = await requireAdminForDefaultAgent(
+      org.orgId,
+      existing.id,
+      member.role,
+      "configuration",
+    );
+    if (forbidden) return forbidden;
 
     // Build compose content from connectors
     const content = buildComposeContent(existing.name, body.connectors);
@@ -203,7 +238,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
     if (isAuthError(authCtx)) return authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org, member } = await resolveOrg(authCtx, orgSlug);
 
     // Look up compose by ID
     const [compose] = await globalThis.services.db
@@ -231,6 +266,15 @@ const router = tsr.router(zeroAgentsByIdContract, {
         },
       };
     }
+
+    // Only admins can update the default agent's profile
+    const forbidden = await requireAdminForDefaultAgent(
+      org.orgId,
+      compose.id,
+      member.role,
+      "profile",
+    );
+    if (forbidden) return forbidden;
 
     // Upsert metadata — only overwrite fields explicitly provided
     const now = new Date();
@@ -290,7 +334,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
     if (isAuthError(authCtx)) return authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org, member } = await resolveOrg(authCtx, orgSlug);
 
     // Find compose by ID
     const [compose] = await globalThis.services.db
@@ -315,6 +359,15 @@ const router = tsr.router(zeroAgentsByIdContract, {
         },
       };
     }
+
+    // Only admins can delete the default agent
+    const forbidden = await requireAdminForDefaultAgent(
+      org.orgId,
+      compose.id,
+      member.role,
+      "agent",
+    );
+    if (forbidden) return forbidden;
 
     // Delete compose and metadata atomically
     await globalThis.services.db.transaction(async (tx) => {
