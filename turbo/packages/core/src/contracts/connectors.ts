@@ -1380,6 +1380,7 @@ const CONNECTOR_TYPES_DEF = {
         "tweet.write",
         "tweet.moderate.write",
         "users.read",
+        "users.email",
         "follows.read",
         "follows.write",
         "like.read",
