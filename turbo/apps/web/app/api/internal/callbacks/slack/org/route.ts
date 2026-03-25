@@ -214,18 +214,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const payload = parsePayload(result.data.payload);
   if (!payload) {
-    // Temporary debug logging for CI investigation
-    const debugInfo = {
-      payloadType: typeof result.data.payload,
-      payloadKeys:
-        result.data.payload && typeof result.data.payload === "object"
-          ? Object.keys(result.data.payload as Record<string, unknown>)
-          : null,
-      payloadJson: JSON.stringify(result.data.payload),
-    };
-    log.error("parsePayload rejected data", debugInfo);
-    console.error("[CALLBACK_DEBUG]", JSON.stringify(debugInfo));
-    return errorResponse("Invalid or missing payload", 400);
+    return errorResponse(
+      `Invalid or missing payload: type=${typeof result.data.payload} keys=${result.data.payload && typeof result.data.payload === "object" ? Object.keys(result.data.payload as Record<string, unknown>).join(",") : "N/A"} json=${JSON.stringify(result.data.payload)?.slice(0, 200)}`,
+      400,
+    );
   }
 
   log.debug("Processing org Slack callback", {
