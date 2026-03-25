@@ -107,11 +107,16 @@ full_snapshot() {
 # Helper: click the form's "Continue" button (not "Continue with Google")
 # ---------------------------------------------------------------------------
 click_continue() {
-  local snap_i
+  # The page has two buttons whose text contains "Continue":
+  #   - "Continue with Google" (OAuth, appears first in DOM)
+  #   - "Continue" (form submit)
+  # Use snapshot to find the exact form submit button ref.
+  local snap_i ref
   snap_i=$(agent-browser snapshot -i 2>/dev/null || true)
-  local ref
   ref=$(echo "$snap_i" | grep -E 'button "Continue" \[ref=' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
   if [[ -n "$ref" ]]; then
+    agent-browser scrollintoview "$ref" 2>/dev/null || true
+    agent-browser wait 300
     agent-browser click "$ref"
   else
     agent-browser find text "Continue" click
