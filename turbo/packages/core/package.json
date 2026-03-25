@@ -25,7 +25,7 @@
   },
   "dependencies": {
     "@ts-rest/core": "3.53.0-rc.1",
-    "yaml": "^2.8.1",
+    "yaml": "^2.8.3",
     "zod": "^4.3.6"
   }
 }
