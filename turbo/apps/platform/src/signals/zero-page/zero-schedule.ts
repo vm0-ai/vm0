@@ -552,8 +552,14 @@ export const saveOrgSchedule$ = command(
       );
     }
 
+    const data = (await response.json()) as {
+      schedule: { id: string };
+    };
+
     toast.success(params.editName ? "Schedule updated" : "Schedule created");
     await set(fetchAllOrgSchedules$);
+
+    return data.schedule.id;
   },
 );
 

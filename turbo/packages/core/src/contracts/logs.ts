@@ -132,6 +132,7 @@ export const logsListContract = c.router({
       org: z.string().optional(),
       status: logStatusSchema.optional(),
       triggerSource: triggerSourceSchema.optional(),
+      scheduleId: z.string().uuid().optional(),
     }),
     responses: {
       200: logsListResponseSchema,

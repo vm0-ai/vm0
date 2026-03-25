@@ -716,25 +716,27 @@ function ScheduleFormDialogInner({
             />
           </div>
 
-          {/* Description */}
-          <div className="flex flex-col gap-2">
-            <label
-              htmlFor="schedule-dialog-description"
-              className="text-sm font-medium text-foreground"
-            >
-              Description
-              <span className="text-muted-foreground font-normal ml-1">
-                (optional)
-              </span>
-            </label>
-            <Input
-              id="schedule-dialog-description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Leave blank to auto-generate"
-              className="h-9"
-            />
-          </div>
+          {/* Description (edit mode only) */}
+          {mode === "edit" && (
+            <div className="flex flex-col gap-2">
+              <label
+                htmlFor="schedule-dialog-description"
+                className="text-sm font-medium text-foreground"
+              >
+                Description
+                <span className="text-muted-foreground font-normal ml-1">
+                  (optional)
+                </span>
+              </label>
+              <Input
+                id="schedule-dialog-description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Leave blank to auto-generate"
+                className="h-9"
+              />
+            </div>
+          )}
 
           <ScheduleTimingFields
             freq={freq}
@@ -755,16 +757,19 @@ function ScheduleFormDialogInner({
             setTimezone={setTimezone}
           />
 
-          <ScheduleNotificationFields
-            notifyEmail={notifyEmail}
-            setNotifyEmail={setNotifyEmail}
-            notifySlack={notifySlack}
-            setNotifySlack={setNotifySlack}
-            slackHasBot={slackHasBot}
-            slackChannels={slackChannels}
-            slackChannelId={slackChannelId}
-            setSlackChannelId={setSlackChannelId}
-          />
+          {/* Notifications (edit mode only) */}
+          {mode === "edit" && (
+            <ScheduleNotificationFields
+              notifyEmail={notifyEmail}
+              setNotifyEmail={setNotifyEmail}
+              notifySlack={notifySlack}
+              setNotifySlack={setNotifySlack}
+              slackHasBot={slackHasBot}
+              slackChannels={slackChannels}
+              slackChannelId={slackChannelId}
+              setSlackChannelId={setSlackChannelId}
+            />
+          )}
         </div>
 
         {saveError && <p className="text-sm text-destructive">{saveError}</p>}

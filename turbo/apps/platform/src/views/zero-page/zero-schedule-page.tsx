@@ -478,8 +478,11 @@ export function ZeroSchedulePage() {
           ? { dayOfMonth: values.dayOfMonth }
           : {}),
       })
-        .then(() => {
+        .then((scheduleId) => {
           setCreateOpen(false);
+          navigate("/schedule/:scheduleId", {
+            pathParams: { scheduleId },
+          });
         })
         .catch(() => {
           /* Error surfaced via toast in saveOrgSchedule$ */
