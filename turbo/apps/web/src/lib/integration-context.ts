@@ -28,19 +28,24 @@ export const DISALLOWED_CRON_TOOLS = [
 ] as const;
 
 /**
- * Build schedule guidance prompt that redirects agents from ephemeral cron
- * tools to the zero schedule CLI.
+ * Build Zero CLI guidance prompt so sandbox agents know how to use the CLI.
+ * Injected by createZeroRun() for all trigger paths.
  */
-export function buildScheduleGuidance(): string {
+export function buildZeroCliGuidance(): string {
   return [
-    "# Scheduling Tasks",
+    "# Zero CLI",
+    "You have access to the Zero CLI for managing platform resources.",
+    "Run commands with: npx -p @vm0/cli zero <command>",
+    "Tip: run `alias zero='npx -p @vm0/cli zero'` first, then use `zero <command>` for brevity.",
+    "Run `npx -p @vm0/cli zero --help` to see all available commands.",
+    "",
+    "## Scheduling Tasks",
     "Do NOT use /loop or cron tools (CronCreate, CronList, CronDelete) — they are not available.",
-    "For recurring or scheduled tasks, use the vm0 schedule CLI:",
-    "- Create: vm0 schedule setup $ZERO_AGENT_ID",
-    "- List: vm0 schedule list",
-    "- Delete: vm0 schedule delete $ZERO_AGENT_ID --name <schedule-name>",
-    "- Enable/Disable: vm0 schedule enable/disable $ZERO_AGENT_ID --name <schedule-name>",
-    'Alternative: use "npx @vm0/cli zero schedule" instead of "vm0 schedule".',
+    "For recurring or scheduled tasks, use the zero schedule CLI:",
+    "- Create: zero schedule setup $ZERO_AGENT_ID",
+    "- List: zero schedule list",
+    "- Delete: zero schedule delete $ZERO_AGENT_ID --name <schedule-name>",
+    "- Enable/Disable: zero schedule enable/disable $ZERO_AGENT_ID --name <schedule-name>",
     'Choose a short, descriptive schedule name based on the task (e.g., "deploy-check", "daily-report").',
   ].join("\n");
 }
