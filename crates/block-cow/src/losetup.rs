@@ -73,7 +73,7 @@ pub fn attach(file_path: &Path, read_only: bool) -> Result<LoopDevice> {
     }
     args.push(&file_str);
 
-    let stdout = command::run("losetup", &args)?;
+    let stdout = command::sudo("losetup", &args)?;
     let path = PathBuf::from(&stdout);
 
     // Loop devices are created by sudo losetup as root:disk 0660.
@@ -82,7 +82,7 @@ pub fn attach(file_path: &Path, read_only: bool) -> Result<LoopDevice> {
     let path_str = path.to_string_lossy();
     let uid = nix::unistd::getuid().as_raw();
     let gid = nix::unistd::getgid().as_raw();
-    if let Err(e) = command::run("chown", &[&format!("{uid}:{gid}"), &path_str]) {
+    if let Err(e) = command::sudo("chown", &[&format!("{uid}:{gid}"), &path_str]) {
         let _ = detach_by_path(&path);
         return Err(e);
     }
@@ -108,6 +108,6 @@ pub fn attach(file_path: &Path, read_only: bool) -> Result<LoopDevice> {
 /// Detach a loop device by path (low-level helper).
 fn detach_by_path(loop_device: &Path) -> Result<()> {
     let dev_str = loop_device.to_string_lossy();
-    command::run("losetup", &["--detach", &dev_str])?;
+    command::sudo("losetup", &["--detach", &dev_str])?;
     Ok(())
 }

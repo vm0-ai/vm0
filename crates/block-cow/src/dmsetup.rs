@@ -21,7 +21,7 @@ pub fn create_snapshot(
     chunk_size: u32,
 ) -> Result<PathBuf> {
     let table = format!("0 {sectors} snapshot {origin} {cow_device} P {chunk_size}");
-    command::run("dmsetup", &["create", name, "--table", &table])?;
+    command::sudo("dmsetup", &["create", name, "--table", &table])?;
     Ok(PathBuf::from(format!("{DM_DEV_PREFIX}{name}")))
 }
 
@@ -30,11 +30,11 @@ pub fn create_snapshot(
 /// Format: `<used_sectors>/<total_sectors> <metadata_sectors>`
 /// Useful for debugging COW usage after sandbox execution.
 pub fn status(name: &str) -> Result<String> {
-    command::run("dmsetup", &["status", name])
+    command::sudo("dmsetup", &["status", name])
 }
 
 /// Remove a device mapper target.
 pub fn remove(name: &str) -> Result<()> {
-    command::run("dmsetup", &["remove", name])?;
+    command::sudo("dmsetup", &["remove", name])?;
     Ok(())
 }

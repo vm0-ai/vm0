@@ -233,7 +233,7 @@ impl CowDevice {
         let gid = nix::unistd::getgid().as_raw();
         let device_str = device_path.to_string_lossy();
         if let Err(e) =
-            crate::command::run("chown", &[&format!("{uid}:{gid}"), device_str.as_ref()])
+            crate::command::sudo("chown", &[&format!("{uid}:{gid}"), device_str.as_ref()])
         {
             let _ = dmsetup::remove(&cow_name);
             let _ = cow_loop.detach();

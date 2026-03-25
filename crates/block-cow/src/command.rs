@@ -8,7 +8,7 @@ use crate::error::{BlockCowError, Result};
 /// All block-cow operations (`losetup`, `dmsetup`, `blockdev`) require root
 /// privileges. The runner process runs as a regular user and delegates
 /// privilege escalation to sudo.
-pub fn run(program: &str, args: &[&str]) -> Result<String> {
+pub fn sudo(program: &str, args: &[&str]) -> Result<String> {
     let mut sudo_args = vec![program];
     sudo_args.extend_from_slice(args);
 
