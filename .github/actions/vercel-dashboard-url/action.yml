@@ -41,10 +41,10 @@ runs:
             echo "url=$DASHBOARD_URL" >> "$GITHUB_OUTPUT"
             echo "Resolved dashboard URL: $DASHBOARD_URL"
           else
+            echo "::warning::Could not resolve Vercel dashboard URL from API response (missing team.slug, name, or id). Using deployment URL as fallback."
             echo "url=$DEPLOYMENT_URL" >> "$GITHUB_OUTPUT"
-            echo "Could not resolve dashboard URL, using deployment URL"
           fi
         else
+          echo "::warning::Vercel API call failed for deployment $HOSTNAME. Check VERCEL_TOKEN validity. Using deployment URL as fallback."
           echo "url=$DEPLOYMENT_URL" >> "$GITHUB_OUTPUT"
-          echo "Vercel API call failed, using deployment URL as fallback"
         fi
