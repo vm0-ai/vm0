@@ -6,6 +6,7 @@
 # - Claude Code CLI (@anthropic-ai/claude-code)
 # - GitHub CLI (gh)
 # - agent-browser (Chromium browser automation)
+# - Google Workspace CLI (@googleworkspace/cli)
 #
 # Build: docker build -t vm0-rootfs .
 # Export: See build-rootfs.sh
@@ -78,6 +79,10 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     && apt-get update \
     && apt-get install -y gh \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Google Workspace CLI for Google Workspace service access
+ARG GWS_CLI_VERSION=0.22.0
+RUN npm install -g @googleworkspace/cli@${GWS_CLI_VERSION}
 
 # Create 'user' account (UID 1000) matching E2B sandbox default
 # - Home directory at /home/user
