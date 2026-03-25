@@ -7,6 +7,7 @@ import {
   startDowngrade$,
 } from "../../../../signals/zero-page/billing.ts";
 import { Button, Dialog, DialogContent } from "@vm0/ui";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import planFreeImg from "./assets/plan-free.webp";
 import planProImg from "./assets/plan-pro.webp";
 import planTeamImg from "./assets/plan-team.webp";
@@ -253,7 +254,9 @@ export function OrgBillingTab() {
 
   const handleSelectTier = (tier: "pro" | "team") => {
     setPricingOpen(false);
-    checkout(tier).catch(() => {});
+    checkout(tier).catch(() => {
+      toast.error("Failed to start checkout. Please try again.");
+    });
   };
 
   return (
@@ -277,7 +280,11 @@ export function OrgBillingTab() {
                 className="shrink-0 rounded-lg h-8 text-xs gap-1.5"
                 style={cardBorder}
                 onClick={() => {
-                  downgrade().catch(() => {});
+                  downgrade().catch(() => {
+                    toast.error(
+                      "Failed to open billing portal. Please try again.",
+                    );
+                  });
                 }}
               >
                 Manage billing
@@ -312,7 +319,11 @@ export function OrgBillingTab() {
                   className="shrink-0 rounded-lg h-8 text-xs gap-1.5"
                   style={cardBorder}
                   onClick={() => {
-                    downgrade().catch(() => {});
+                    downgrade().catch(() => {
+                      toast.error(
+                        "Failed to open billing portal. Please try again.",
+                      );
+                    });
                   }}
                 >
                   Manage

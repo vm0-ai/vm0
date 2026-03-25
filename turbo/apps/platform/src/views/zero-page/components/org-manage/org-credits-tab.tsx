@@ -8,6 +8,7 @@ import {
   setMemberCreditCap$,
 } from "../../../../signals/zero-page/member-credit-caps.ts";
 import { Button, Input } from "@vm0/ui";
+import { toast } from "@vm0/ui/components/ui/sonner";
 
 const sectionCardStyle = {
   border: "0.7px solid hsl(var(--gray-400))",
@@ -33,12 +34,16 @@ function MemberCapEditor({
     if (parsed !== null && (Number.isNaN(parsed) || parsed <= 0)) {
       return;
     }
-    setCap({ userId, creditCap: parsed }).catch(() => {});
+    setCap({ userId, creditCap: parsed }).catch(() => {
+      toast.error("Failed to update credit cap. Please try again.");
+    });
     setEditing(false);
   };
 
   const handleClear = () => {
-    setCap({ userId, creditCap: null }).catch(() => {});
+    setCap({ userId, creditCap: null }).catch(() => {
+      toast.error("Failed to clear credit cap. Please try again.");
+    });
     setEditing(false);
   };
 
