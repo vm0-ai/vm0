@@ -74,12 +74,22 @@ export async function getApiUrl(): Promise<string> {
   return config.apiUrl ?? "https://www.vm0.ai";
 }
 
+interface ZeroTokenPayload {
+  userId: string;
+  runId: string;
+  orgId: string;
+  scope: string;
+  capabilities: string[];
+  iat: number;
+  exp: number;
+}
+
 /**
- * Decode orgId from ZERO_TOKEN JWT payload.
+ * Decode the ZERO_TOKEN JWT payload.
  * Only decodes — does NOT verify signature (server does that).
- * Returns undefined if token is missing, malformed, or not a zero token.
+ * Returns undefined if token is missing, malformed, or not a zero-scoped token.
  */
-function decodeOrgIdFromZeroToken(): string | undefined {
+export function decodeZeroTokenPayload(): ZeroTokenPayload | undefined {
   const token = process.env.ZERO_TOKEN;
   if (!token) return undefined;
 
@@ -93,10 +103,8 @@ function decodeOrgIdFromZeroToken(): string | undefined {
   try {
     const payload = JSON.parse(
       Buffer.from(parts[1]!, "base64url").toString(),
-    ) as Record<string, unknown>;
-    if (payload.scope === "zero" && typeof payload.orgId === "string") {
-      return payload.orgId;
-    }
+    ) as ZeroTokenPayload;
+    if (payload.scope === "zero") return payload;
   } catch {
     // Malformed token — fall through
   }
@@ -109,8 +117,8 @@ function decodeOrgIdFromZeroToken(): string | undefined {
  */
 export async function getActiveOrg(): Promise<string | undefined> {
   // Prefer orgId decoded from ZERO_TOKEN JWT (zero agent runs)
-  const zeroOrgId = decodeOrgIdFromZeroToken();
-  if (zeroOrgId) return zeroOrgId;
+  const zeroPayload = decodeZeroTokenPayload();
+  if (zeroPayload) return zeroPayload.orgId;
 
   // Fall back to VM0_ACTIVE_ORG env var (legacy)
   if (process.env.VM0_ACTIVE_ORG) {

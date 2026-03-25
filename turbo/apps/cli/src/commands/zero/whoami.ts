@@ -1,17 +1,12 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { getApiUrl, getActiveOrg, getToken } from "../../lib/api/config";
+import {
+  getApiUrl,
+  getActiveOrg,
+  getToken,
+  decodeZeroTokenPayload,
+} from "../../lib/api/config";
 import { withErrorHandler } from "../../lib/command";
-
-interface ZeroTokenPayload {
-  userId: string;
-  runId: string;
-  orgId: string;
-  scope: string;
-  capabilities: string[];
-  iat: number;
-  exp: number;
-}
 
 /**
  * Detect if running inside a zero sandbox (agent runtime).
@@ -22,31 +17,9 @@ function isInsideSandbox(): boolean {
   return !!process.env.ZERO_AGENT_ID;
 }
 
-function decodeZeroToken(): ZeroTokenPayload | undefined {
-  const token = process.env.ZERO_TOKEN;
-  if (!token) return undefined;
-
-  const prefix = "vm0_sandbox_";
-  if (!token.startsWith(prefix)) return undefined;
-  const jwt = token.slice(prefix.length);
-
-  const parts = jwt.split(".");
-  if (parts.length !== 3) return undefined;
-
-  try {
-    const payload = JSON.parse(
-      Buffer.from(parts[1]!, "base64url").toString(),
-    ) as ZeroTokenPayload;
-    if (payload.scope === "zero") return payload;
-  } catch {
-    // Malformed token
-  }
-  return undefined;
-}
-
 async function showSandboxInfo(): Promise<void> {
   const agentId = process.env.ZERO_AGENT_ID;
-  const payload = decodeZeroToken();
+  const payload = decodeZeroTokenPayload();
 
   // Agent section
   console.log(chalk.bold("Agent:"));
