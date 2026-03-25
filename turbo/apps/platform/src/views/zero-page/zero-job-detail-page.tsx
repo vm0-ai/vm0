@@ -260,9 +260,11 @@ function extractAgentFields(
 function JobConnectorsTab({
   agentId,
   agentDisplayName,
+  readOnly,
 }: {
   agentId: string;
   agentDisplayName: string;
+  readOnly?: boolean;
 }) {
   const addedConnectors = useGet(zeroJobAddedConnectors$);
   const connectorsDirty = useGet(zeroJobConnectorsDirty$);
@@ -288,6 +290,7 @@ function JobConnectorsTab({
       onRemoveConnector={removeConnector}
       onSaveConnectors={() => detach(saveConnectors(), Reason.DomCallback)}
       onDiscardConnectors={() => discardConnectors()}
+      readOnly={readOnly}
     />
   );
 }
@@ -504,7 +507,11 @@ export function ZeroJobDetailPage({
 
       <main className="shrink-0 px-4 sm:px-6 pt-4 pb-16">
         {activeTab === "connectors" && (
-          <JobConnectorsTab agentId={agentId} agentDisplayName={displayName} />
+          <JobConnectorsTab
+            agentId={agentId}
+            agentDisplayName={displayName}
+            readOnly={hideProfileAndInstructions}
+          />
         )}
 
         {activeTab === "schedule" && <JobScheduleTab agentId={displayName} />}

@@ -45,6 +45,8 @@ interface ZeroConnectorsTabProps {
   agentDisplayName?: string;
   firewallPolicies?: FirewallPolicies | null;
   onFirewallPoliciesChange?: (policies: FirewallPolicies | null) => void;
+  /** When true, hide agent-level mutations (add/remove/save). Connect/Disconnect still works. */
+  readOnly?: boolean;
 }
 
 export function ZeroConnectorsTab({
@@ -60,6 +62,7 @@ export function ZeroConnectorsTab({
   onRemoveConnector,
   onSaveConnectors,
   onDiscardConnectors,
+  readOnly,
 }: ZeroConnectorsTabProps) {
   const allTypesLoadable = useLastLoadable(allConnectorTypes$);
   const pollingType = useGet(pollingConnectorType$);
@@ -102,30 +105,32 @@ export function ZeroConnectorsTab({
   return (
     <div className="mx-auto max-w-[900px] flex flex-col gap-4">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {/* Add connector */}
-        <button
-          type="button"
-          onClick={() => setAddDialogOpen(true)}
-          className="flex flex-col rounded-[var(--zero-card-radius)] border border-dashed border-[hsl(var(--gray-400))] transition-colors hover:border-[hsl(var(--gray-400))] hover:bg-muted/30 group"
-        >
-          <div className="flex h-14 items-center gap-2.5 px-5">
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center">
-              <IconPlus
-                size={18}
-                stroke={2}
-                className="text-muted-foreground group-hover:text-foreground"
-              />
-            </span>
-            <span className="text-sm font-medium text-muted-foreground group-hover:text-foreground">
-              Add connector
-            </span>
-          </div>
-          <div className="flex h-11 items-center border-t border-dashed border-[hsl(var(--gray-400))] px-5 group-hover:border-[hsl(var(--gray-400))]">
-            <span className="text-xs text-muted-foreground/70">
-              Browse 100+ popular connectors
-            </span>
-          </div>
-        </button>
+        {/* Add connector — hidden for read-only members on the default agent */}
+        {!readOnly && (
+          <button
+            type="button"
+            onClick={() => setAddDialogOpen(true)}
+            className="flex flex-col rounded-[var(--zero-card-radius)] border border-dashed border-[hsl(var(--gray-400))] transition-colors hover:border-[hsl(var(--gray-400))] hover:bg-muted/30 group"
+          >
+            <div className="flex h-14 items-center gap-2.5 px-5">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+                <IconPlus
+                  size={18}
+                  stroke={2}
+                  className="text-muted-foreground group-hover:text-foreground"
+                />
+              </span>
+              <span className="text-sm font-medium text-muted-foreground group-hover:text-foreground">
+                Add connector
+              </span>
+            </div>
+            <div className="flex h-11 items-center border-t border-dashed border-[hsl(var(--gray-400))] px-5 group-hover:border-[hsl(var(--gray-400))]">
+              <span className="text-xs text-muted-foreground/70">
+                Browse 100+ popular connectors
+              </span>
+            </div>
+          </button>
+        )}
 
         {/* Skeleton cards while loading */}
         {addedConnectorsLoading && (
@@ -165,6 +170,7 @@ export function ZeroConnectorsTab({
                 pollingType={pollingType}
                 hasFirewall={hasFirewallConfig(name as ConnectorType)}
                 isAdmin={isAdmin}
+                readOnly={readOnly}
                 onConnect={() => {
                   const ct = connectorMap.get(name as ConnectorType);
                   if (
@@ -244,7 +250,7 @@ export function ZeroConnectorsTab({
         />
       )}
 
-      {(connectorsDirty || connectorsSaving) && (
+      {!readOnly && (connectorsDirty || connectorsSaving) && (
         <ZeroUnsavedBar
           onDiscard={onDiscardConnectors}
           onSave={onSaveConnectors}
