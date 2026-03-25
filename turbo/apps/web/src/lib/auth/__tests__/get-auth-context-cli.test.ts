@@ -3,10 +3,12 @@ import { auth } from "@clerk/nextjs/server";
 import { getAuthContext } from "../get-auth-context";
 import { generateCliToken } from "../sandbox-token";
 import {
+  clearOrgMembersCacheEntry,
   createTestCliToken,
   deleteTestCliToken,
   findTestCliToken,
 } from "../../../__tests__/api-test-helpers";
+import { mockClerk } from "../../../__tests__/clerk-mock";
 import { testContext, type UserContext } from "../../../__tests__/test-helpers";
 
 const context = testContext();
@@ -24,13 +26,13 @@ describe("getAuthContext with CLI JWT", () => {
   });
 
   it("should return auth context for valid CLI JWT", async () => {
-    const token = await createTestCliToken(user.userId);
+    const token = await createTestCliToken(user.userId, undefined, user.orgId);
 
     const result = await getAuthContext(`Bearer ${token}`);
 
     expect(result).not.toBeNull();
     expect(result?.userId).toBe(user.userId);
-    expect(result?.orgId).toBe("org_test_default");
+    expect(result?.orgId).toBe(user.orgId);
     expect(result?.capabilities).toBeUndefined();
     expect(result?.runId).toBeUndefined();
   });
@@ -99,5 +101,22 @@ describe("getAuthContext with CLI JWT", () => {
     const result = await getAuthContext(`Bearer ${token}`);
 
     expect(result).toBeNull();
+  });
+
+  it("should omit orgId when user is no longer an org member", async () => {
+    const token = await createTestCliToken(user.userId, undefined, user.orgId);
+
+    // Mock Clerk to return no memberships (user was removed from org)
+    mockClerk({ userId: user.userId, clerkOrgs: [] });
+
+    // Ensure no fresh cache entry exists
+    await clearOrgMembersCacheEntry(user.orgId, user.userId);
+
+    const result = await getAuthContext(`Bearer ${token}`);
+
+    expect(result).not.toBeNull();
+    expect(result?.userId).toBe(user.userId);
+    expect(result?.orgId).toBeUndefined();
+    expect(result?.orgRole).toBeUndefined();
   });
 });

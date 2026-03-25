@@ -51,15 +51,22 @@ export async function getAuthContext(
         const resolved = await resolveCliTokenFromDb(cliAuth);
         if (!resolved) return null;
         // Resolve org role so downstream admin checks work correctly
-        let orgRole: AuthContext["orgRole"];
         if (resolved.orgId) {
           const membership = await verifyMembershipCached(
             resolved.orgId,
             resolved.userId,
           );
-          orgRole = membership?.role;
+          if (!membership) {
+            // User no longer a member — omit orgId to force resolveOrg rejection
+            return { userId: resolved.userId };
+          }
+          return {
+            userId: resolved.userId,
+            orgId: resolved.orgId,
+            orgRole: membership.role,
+          };
         }
-        return { userId: resolved.userId, orgId: resolved.orgId, orgRole };
+        return { userId: resolved.userId, orgId: resolved.orgId };
       }
       return authenticateSandboxToken(token, options);
     }
