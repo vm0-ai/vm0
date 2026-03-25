@@ -328,15 +328,27 @@ export type ModelProviderType = keyof typeof MODEL_PROVIDER_TYPES;
 export type ModelProviderFramework = "claude-code";
 
 /**
- * Provider types hidden from user-facing selection UI.
+ * Providers hidden from user-facing selection UI.
  * These providers cannot support token replacement (firewall-based secret protection),
  * so new selection is blocked until a proper solution is implemented.
- * Existing configurations continue to work at runtime.
  */
-const HIDDEN_PROVIDER_TYPES: ReadonlySet<ModelProviderType> = new Set([
+const HIDDEN_PROVIDER_TYPES = new Set([
   "aws-bedrock",
   "azure-foundry",
-]);
+] as const);
+
+/** Union of hidden provider type literals. */
+type HiddenProviderType =
+  typeof HIDDEN_PROVIDER_TYPES extends ReadonlySet<infer T> ? T : never;
+
+/**
+ * Providers excluded from static firewall configs.
+ * = hidden providers (dynamic URLs / SigV4) + vm0 (meta-provider).
+ *
+ * Adding a new provider to MODEL_PROVIDER_TYPES without either adding it here
+ * or adding a firewall config entry will cause a compile error.
+ */
+type FirewallExcludedProvider = HiddenProviderType | "vm0";
 
 /**
  * Get provider types available for user selection.
@@ -381,8 +393,13 @@ function mpFirewall(
   };
 }
 
-export const MODEL_PROVIDER_FIREWALL_CONFIGS: Partial<
-  Record<ModelProviderType, ExpandedFirewallConfig>
+/**
+ * Every provider NOT in FirewallExcludedProvider must have an entry here.
+ * Adding a new provider without a firewall config will cause a type error.
+ */
+export const MODEL_PROVIDER_FIREWALL_CONFIGS: Record<
+  Exclude<ModelProviderType, FirewallExcludedProvider>,
+  ExpandedFirewallConfig
 > = {
   // Placeholder: sk-ant-api03-{93 word/hyphen chars}AA (108 chars total)
   // Source: Semgrep regex \Bsk-ant-api03-[\w\-]{93}AA\B
@@ -465,7 +482,11 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Partial<
 export function getModelProviderFirewall(
   type: ModelProviderType,
 ): ExpandedFirewallConfig | undefined {
-  return MODEL_PROVIDER_FIREWALL_CONFIGS[type];
+  return (
+    MODEL_PROVIDER_FIREWALL_CONFIGS as Partial<
+      Record<ModelProviderType, ExpandedFirewallConfig>
+    >
+  )[type];
 }
 
 export const modelProviderTypeSchema = z.enum([
