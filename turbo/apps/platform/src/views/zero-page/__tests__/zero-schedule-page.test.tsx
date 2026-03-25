@@ -707,7 +707,7 @@ describe("zero schedule page - schedule dialog fields", () => {
 
     // Dialog should stay open with error message
     await waitFor(() => {
-      expect(screen.getByText(/Schedule limit reached/)).toBeInTheDocument();
+      expect(screen.getByText(/Save failed \(400\)/)).toBeInTheDocument();
     });
     expect(
       screen.getByRole("heading", { name: "Add schedule" }),

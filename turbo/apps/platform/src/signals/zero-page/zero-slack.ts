@@ -1,27 +1,11 @@
 import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { delay } from "signal-timers";
-import { fetch$ } from "../fetch.ts";
-
-interface SlackOrgData {
-  isConnected: boolean;
-  isInstalled?: boolean;
-  workspaceName: string | null;
-  isAdmin: boolean;
-  installUrl?: string | null;
-  connectUrl?: string | null;
-  defaultAgentId: string | null;
-  agentOrgSlug: string | null;
-  environment: {
-    requiredSecrets: string[];
-    requiredVars: string[];
-    missingSecrets: string[];
-    missingVars: string[];
-  };
-}
+import { zeroIntegrationsSlackContract, type SlackOrgStatus } from "@vm0/core";
+import { zeroClient$ } from "../api-client.ts";
 
 interface SlackOrgState {
-  data: SlackOrgData | null;
+  data: SlackOrgStatus | null;
   loading: boolean;
   error: string | null;
 }
@@ -63,37 +47,30 @@ const fetchSlackOrg$ = command(async ({ get, set }) => {
     error: null,
   }));
 
-  const fetchFn = get(fetch$);
-  const response = await fetchFn("/api/zero/integrations/slack");
+  const client = get(zeroClient$)(zeroIntegrationsSlackContract);
+  const result = await client.getStatus();
 
-  if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as {
-      error?: { message?: string };
-    };
-    const errorMsg = body.error?.message ?? "Failed to fetch Slack status";
+  if (result.status !== 200) {
     set(slackOrgState$, (prev) => ({
       ...prev,
       loading: false,
-      error: errorMsg,
+      error: "Failed to fetch Slack status",
     }));
     return;
   }
 
-  const data = (await response.json()) as SlackOrgData;
   set(slackOrgState$, {
-    data,
+    data: result.body,
     loading: false,
     error: null,
   });
 });
 
 export const disconnectSlackOrg$ = command(async ({ get, set }) => {
-  const fetchFn = get(fetch$);
-  const response = await fetchFn("/api/zero/integrations/slack", {
-    method: "DELETE",
-  });
+  const client = get(zeroClient$)(zeroIntegrationsSlackContract);
+  const result = await client.disconnect();
 
-  if (!response.ok) {
+  if (result.status !== 200) {
     toast.error("Failed to disconnect Slack");
     return;
   }
@@ -103,13 +80,12 @@ export const disconnectSlackOrg$ = command(async ({ get, set }) => {
 });
 
 export const uninstallSlackOrg$ = command(async ({ get, set }) => {
-  const fetchFn = get(fetch$);
-  const response = await fetchFn(
-    "/api/zero/integrations/slack?action=uninstall",
-    { method: "DELETE" },
-  );
+  const client = get(zeroClient$)(zeroIntegrationsSlackContract);
+  const result = await client.disconnect({
+    query: { action: "uninstall" },
+  });
 
-  if (!response.ok) {
+  if (result.status !== 200) {
     toast.error("Failed to uninstall Slack");
     return;
   }
@@ -136,16 +112,16 @@ export const pollSlackConnection$ = command(
     while (!signal.aborted) {
       await delay(POLL_INTERVAL_MS, { signal });
 
-      const fetchFn = get(fetch$);
-      const res = await fetchFn("/api/zero/integrations/slack", { signal });
-      if (!res.ok) {
+      const client = get(zeroClient$)(zeroIntegrationsSlackContract);
+      const result = await client.getStatus();
+      signal.throwIfAborted();
+      if (result.status !== 200) {
         continue;
       }
 
-      const data = (await res.json()) as SlackOrgData;
-      set(slackOrgState$, { data, loading: false, error: null });
+      set(slackOrgState$, { data: result.body, loading: false, error: null });
 
-      if (data.isConnected) {
+      if (result.body.isConnected) {
         toast.success("Slack connected successfully");
         return;
       }

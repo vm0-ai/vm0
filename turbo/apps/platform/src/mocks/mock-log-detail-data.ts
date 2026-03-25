@@ -32,7 +32,7 @@ function nextToolId(): string {
 export const mockLogDetail: LogDetail = {
   id: "mock-run-001",
   sessionId: "mock-session-001",
-  agentName: "claude-code",
+  agentId: "claude-code",
   displayName: null,
   framework: "claude-code",
   modelProvider: null,

@@ -49,7 +49,6 @@ import { navigateTo$ } from "../../signals/route.ts";
 
 export type CombinedEntry = ScheduleEntry & {
   agentLabel: string;
-  agentName: string;
   agentId: string;
   timezone: string;
   nextRunAt: string | null;
@@ -76,8 +75,7 @@ export function buildCombinedSchedule(
     agentLabel:
       e.agentId === defaultComposeId
         ? agentName
-        : (nameToDisplay.get(e.agentName) ?? e.agentName),
-    agentName: e.agentName,
+        : (nameToDisplay.get(e.agentId) ?? e.agentId),
     agentId: e.agentId,
     timezone: e.timezone,
     nextRunAt: e.nextRunAt,

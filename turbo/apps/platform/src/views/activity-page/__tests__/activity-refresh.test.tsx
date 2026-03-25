@@ -10,7 +10,7 @@ const context = testContext();
 function makeLogsResponse(
   data: {
     id: string;
-    agentName: string;
+    agentId: string;
     displayName: string;
     status: string;
   }[],
@@ -57,7 +57,7 @@ describe("activity list refresh on navigation", () => {
           makeLogsResponse([
             {
               id: `run-${fetchCount}`,
-              agentName: "zero",
+              agentId: "zero",
               displayName: "Zero",
               status: "completed",
             },

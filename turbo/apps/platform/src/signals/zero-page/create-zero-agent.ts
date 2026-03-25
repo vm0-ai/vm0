@@ -1,4 +1,9 @@
-import type { ZeroAgentResponse } from "@vm0/core";
+import {
+  zeroAgentsMainContract,
+  zeroAgentInstructionsContract,
+  type ZeroAgentResponse,
+} from "@vm0/core";
+import type { ZeroClientFactory } from "../api-client.ts";
 import { SEED_INSTRUCTIONS } from "../../data/the-seed.ts";
 
 interface CreateZeroAgentParams {
@@ -14,50 +19,34 @@ interface CreateZeroAgentParams {
  * to keep the two flows in sync.
  */
 export async function createZeroAgent(
-  fetchFn: typeof fetch,
+  createClient: ZeroClientFactory,
   params: CreateZeroAgentParams,
 ): Promise<ZeroAgentResponse> {
   // Step 1: Create agent (compose)
-  const createResp = await fetchFn("/api/zero/agents", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+  const agentsClient = createClient(zeroAgentsMainContract);
+  const createResult = await agentsClient.create({
+    body: {
       connectors: params.connectors,
       displayName: params.displayName,
       sound: params.sound,
-    }),
+    },
   });
 
-  if (!createResp.ok) {
-    const errorData = (await createResp.json().catch(() => null)) as {
-      error?: { message?: string };
-    } | null;
-    throw new Error(
-      errorData?.error?.message ??
-        `Failed to create agent: ${createResp.statusText}`,
-    );
+  if (createResult.status !== 201) {
+    throw new Error(`Failed to create agent (${createResult.status})`);
   }
 
-  const agent = (await createResp.json()) as ZeroAgentResponse;
+  const agent = createResult.body;
 
   // Step 2: Upload seed instructions
-  const instrResp = await fetchFn(
-    `/api/zero/agents/${encodeURIComponent(agent.agentId)}/instructions`,
-    {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: SEED_INSTRUCTIONS }),
-    },
-  );
+  const instrClient = createClient(zeroAgentInstructionsContract);
+  const instrResult = await instrClient.update({
+    params: { id: agent.agentId },
+    body: { content: SEED_INSTRUCTIONS },
+  });
 
-  if (!instrResp.ok) {
-    const errorData = (await instrResp.json().catch(() => null)) as {
-      error?: { message?: string };
-    } | null;
-    throw new Error(
-      errorData?.error?.message ??
-        `Failed to upload instructions: ${instrResp.statusText}`,
-    );
+  if (instrResult.status !== 200) {
+    throw new Error(`Failed to upload instructions (${instrResult.status})`);
   }
 
   return agent;

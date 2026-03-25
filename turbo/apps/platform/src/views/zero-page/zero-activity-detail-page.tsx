@@ -257,7 +257,9 @@ export function ZeroActivityDetailPage() {
   // Detect stale detail from previous navigation (useLastLoadable keeps old data)
   const isStale = detail !== null && detail.id !== selectedLogId;
   const agentName =
-    detail && !isStale ? (detail.displayName ?? detail.agentName) : "Agent";
+    detail && !isStale
+      ? (detail.displayName ?? detail.agentId ?? "Agent")
+      : "Agent";
 
   const stepSearch = useGet(zeroActivityStepSearch$);
   const setStepSearch = useSet(setZeroActivityStepSearch$);

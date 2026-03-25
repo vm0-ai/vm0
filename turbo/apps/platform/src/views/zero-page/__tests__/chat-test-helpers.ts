@@ -113,7 +113,7 @@ export function mockChatLifecycle(options?: {
       HttpResponse.json({
         id: "run-test-1",
         sessionId: "session-1",
-        agentName: "zero",
+        agentId: "zero",
         displayName: null,
         framework: "claude-code",
         modelProvider: null,
