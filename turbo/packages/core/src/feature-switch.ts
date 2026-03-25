@@ -258,6 +258,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabledUserHashes: STAFF_USER_HASHES,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ConcurrentAddOn]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+  },
+  [FeatureSwitchKey.CreditAddOn]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+  },
 };
 
 interface ResolvedHashes {

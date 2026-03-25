@@ -203,7 +203,7 @@ export function OrgCreditsTab() {
               {isAdmin && <div className="text-right">Cap</div>}
             </div>
             {members.map((member, i) => (
-              <div key={member.userId}>
+              <div key={member.editMode$.toString()}>
                 {i === 0 && <div className="h-px bg-border/40 mx-5" />}
                 {i > 0 && <div className="h-px bg-border/40 mx-5" />}
                 <MemberRow member={member} isAdmin={isAdmin} />

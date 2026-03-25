@@ -50,7 +50,8 @@ function getErrorMessage(body: unknown): string | undefined {
 // ---------------------------------------------------------------------------
 
 const internalDialogOpen$ = state(false);
-const internalDialogLoading$ = state(false);
+const internalCheckoutLoading$ = state(false);
+const internalPortalLoading$ = state(false);
 const billingReload$ = state(0);
 
 // ---------------------------------------------------------------------------
@@ -58,8 +59,13 @@ const billingReload$ = state(0);
 // ---------------------------------------------------------------------------
 
 export const billingDialogOpen$ = computed((get) => get(internalDialogOpen$));
-export const billingDialogLoading$ = computed((get) =>
-  get(internalDialogLoading$),
+export const checkoutLoading$ = computed((get) =>
+  get(internalCheckoutLoading$),
+);
+export const portalLoading$ = computed((get) => get(internalPortalLoading$));
+/** @deprecated Use checkoutLoading$ or portalLoading$ instead */
+export const billingDialogLoading$ = computed(
+  (get) => get(internalCheckoutLoading$) || get(internalPortalLoading$),
 );
 
 /**
@@ -100,7 +106,7 @@ export const closeBillingDialog$ = command(({ set }) => {
 
 export const startCheckout$ = command(
   async ({ get, set }, tier: "pro" | "team") => {
-    set(internalDialogLoading$, true);
+    set(internalCheckoutLoading$, true);
 
     const currentUrl = window.location.href;
     const successUrl = new URL(currentUrl);
@@ -123,13 +129,13 @@ export const startCheckout$ = command(
       // Don't reset loading — page is navigating away
     } else {
       log.error("Checkout failed", getErrorMessage(result.body));
-      set(internalDialogLoading$, false);
+      set(internalCheckoutLoading$, false);
     }
   },
 );
 
 export const startDowngrade$ = command(async ({ get, set }) => {
-  set(internalDialogLoading$, true);
+  set(internalPortalLoading$, true);
 
   const createClient = get(zeroClient$);
   const client = createClient(zeroBillingPortalContract);
@@ -141,7 +147,7 @@ export const startDowngrade$ = command(async ({ get, set }) => {
     window.location.href = result.body.url;
   } else {
     log.error("Portal redirect failed", getErrorMessage(result.body));
-    set(internalDialogLoading$, false);
+    set(internalPortalLoading$, false);
   }
 });
 
@@ -154,13 +160,13 @@ export const saveAutoRecharge$ = command(
     { get, set },
     config: { enabled: boolean; threshold?: number; amount?: number },
   ) => {
-    set(internalDialogLoading$, true);
+    set(internalCheckoutLoading$, true);
 
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingAutoRechargeContract);
     const result = await client.update({ body: config });
 
-    set(internalDialogLoading$, false);
+    set(internalCheckoutLoading$, false);
 
     if (result.status !== 200) {
       const message = getErrorMessage(result.body);

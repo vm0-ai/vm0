@@ -37,4 +37,6 @@ export enum FeatureSwitchKey {
   DataExport = "dataExport",
   ShowSystemPrompt = "showSystemPrompt",
   Usage = "usage",
+  ConcurrentAddOn = "concurrentAddOn",
+  CreditAddOn = "creditAddOn",
 }

@@ -3,10 +3,12 @@ import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { IconExternalLink, IconCrown, IconLoader2 } from "@tabler/icons-react";
 import {
   billingStatusAsync$,
-  billingDialogLoading$,
+  checkoutLoading$,
+  portalLoading$,
   startCheckout$,
   startDowngrade$,
 } from "../../../../signals/zero-page/billing.ts";
+import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { Button, Dialog, DialogContent } from "@vm0/ui";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import planFreeImg from "./assets/plan-free.webp";
@@ -267,10 +269,19 @@ function PricingDialog({
 
 export function OrgBillingTab() {
   const billingLoadable = useLastLoadable(billingStatusAsync$);
-  const billingLoading = useGet(billingDialogLoading$);
+  const featuresLoadable = useLastLoadable(featureSwitch$);
+  const isCheckoutLoading = useGet(checkoutLoading$);
+  const isPortalLoading = useGet(portalLoading$);
   const checkout = useSet(startCheckout$);
   const downgrade = useSet(startDowngrade$);
   const [pricingOpen, setPricingOpen] = useState(false);
+
+  const concurrentAddOnEnabled =
+    featuresLoadable.state === "hasData" &&
+    !!featuresLoadable.data?.concurrentAddOn;
+  const creditAddOnEnabled =
+    featuresLoadable.state === "hasData" &&
+    !!featuresLoadable.data?.creditAddOn;
 
   if (billingLoadable.state === "loading") {
     return (
@@ -315,7 +326,7 @@ export function OrgBillingTab() {
                 size="sm"
                 className="shrink-0 rounded-lg h-8 text-xs gap-1.5"
                 style={cardBorder}
-                loading={billingLoading}
+                loading={isPortalLoading}
                 onClick={() => {
                   downgrade().catch(() => {
                     toast.error(
@@ -331,7 +342,7 @@ export function OrgBillingTab() {
               <LoadingButton
                 size="sm"
                 className="shrink-0 rounded-lg h-8 text-xs"
-                loading={billingLoading}
+                loading={isCheckoutLoading}
                 onClick={() => setPricingOpen(true)}
               >
                 Upgrade
@@ -356,7 +367,7 @@ export function OrgBillingTab() {
                   size="sm"
                   className="shrink-0 rounded-lg h-8 text-xs gap-1.5"
                   style={cardBorder}
-                  loading={billingLoading}
+                  loading={isPortalLoading}
                   onClick={() => {
                     downgrade().catch(() => {
                       toast.error(
@@ -374,79 +385,81 @@ export function OrgBillingTab() {
         </div>
       </section>
 
-      <section className="flex flex-col gap-3">
-        <h3 className="text-sm font-medium text-foreground">Add-ons</h3>
-        <div className="overflow-hidden rounded-xl bg-card" style={cardBorder}>
-          <div className="flex items-center justify-between gap-4 px-5 py-4">
-            <div className="flex flex-col gap-0.5 min-w-0">
-              <span className="text-sm font-medium text-foreground">
-                Active agent
-              </span>
-              <span className="text-[13px] text-muted-foreground">
-                1 concurrent agent · $20/mo, prorated for the current billing
-                cycle
-              </span>
-            </div>
-            {isPro ? (
-              <LoadingButton
-                size="sm"
-                className="shrink-0 rounded-lg h-8 text-xs"
-                loading={billingLoading}
-              >
-                Add
-              </LoadingButton>
-            ) : (
-              <LoadingButton
-                variant="outline"
-                size="sm"
-                className="shrink-0 rounded-lg h-8 text-xs"
-                style={cardBorder}
-                loading={billingLoading}
-                onClick={() => setPricingOpen(true)}
-              >
-                Upgrade
-              </LoadingButton>
+      {(concurrentAddOnEnabled || creditAddOnEnabled) && (
+        <section className="flex flex-col gap-3">
+          <h3 className="text-sm font-medium text-foreground">Add-ons</h3>
+          <div
+            className="overflow-hidden rounded-xl bg-card"
+            style={cardBorder}
+          >
+            {concurrentAddOnEnabled && (
+              <div className="flex items-center justify-between gap-4 px-5 py-4">
+                <div className="flex flex-col gap-0.5 min-w-0">
+                  <span className="text-sm font-medium text-foreground">
+                    Active agent
+                  </span>
+                  <span className="text-[13px] text-muted-foreground">
+                    1 concurrent agent · $20/mo, prorated for the current
+                    billing cycle
+                  </span>
+                </div>
+                {isPro ? (
+                  <Button size="sm" className="shrink-0 rounded-lg h-8 text-xs">
+                    Add
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 rounded-lg h-8 text-xs"
+                    style={cardBorder}
+                    onClick={() => setPricingOpen(true)}
+                  >
+                    Upgrade
+                  </Button>
+                )}
+              </div>
+            )}
+            {concurrentAddOnEnabled && creditAddOnEnabled && (
+              <div className="h-px bg-border/40 mx-5" />
+            )}
+            {creditAddOnEnabled && (
+              <div className="flex items-center justify-between gap-4 px-5 py-4">
+                <div className="flex flex-col gap-0.5 min-w-0">
+                  <span className="text-sm font-medium text-foreground">
+                    Credits
+                  </span>
+                  <span className="text-[13px] text-muted-foreground">
+                    1,000 credits · $20/mo, prorated for the current billing
+                    cycle
+                  </span>
+                </div>
+                {isPro ? (
+                  <Button size="sm" className="shrink-0 rounded-lg h-8 text-xs">
+                    Add
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 rounded-lg h-8 text-xs"
+                    style={cardBorder}
+                    onClick={() => setPricingOpen(true)}
+                  >
+                    Upgrade
+                  </Button>
+                )}
+              </div>
             )}
           </div>
-          <div className="h-px bg-border/40 mx-5" />
-          <div className="flex items-center justify-between gap-4 px-5 py-4">
-            <div className="flex flex-col gap-0.5 min-w-0">
-              <span className="text-sm font-medium text-foreground">
-                Credits
-              </span>
-              <span className="text-[13px] text-muted-foreground">
-                1,000 credits · $20/mo, prorated for the current billing cycle
-              </span>
-            </div>
-            {isPro ? (
-              <LoadingButton
-                size="sm"
-                className="shrink-0 rounded-lg h-8 text-xs"
-                loading={billingLoading}
-              >
-                Add
-              </LoadingButton>
-            ) : (
-              <LoadingButton
-                variant="outline"
-                size="sm"
-                className="shrink-0 rounded-lg h-8 text-xs"
-                style={cardBorder}
-                loading={billingLoading}
-                onClick={() => setPricingOpen(true)}
-              >
-                Upgrade
-              </LoadingButton>
-            )}
-          </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       <PricingDialog
         open={pricingOpen}
         onOpenChange={setPricingOpen}
         onSelectTier={handleSelectTier}
-        loading={billingLoading}
+        loading={isCheckoutLoading}
       />
     </div>
   );
