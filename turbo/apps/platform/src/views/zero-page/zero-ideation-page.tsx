@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useSet } from "ccstate-react";
+import { useGet, useSet } from "ccstate-react";
 import {
   IconArrowUpRight,
   IconMessageCircle,
@@ -10,6 +10,7 @@ import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { getCategories } from "./zero-ideation-data.ts";
 import { setChatPageInput$ } from "../../signals/zero-page/zero-chat-page.ts";
 import { navigateTo$ } from "../../signals/route.ts";
+import { zeroChatAgentId$ } from "../../signals/zero-page/zero-nav.ts";
 
 export { getRandomPrompts } from "./zero-ideation-data.ts";
 
@@ -19,6 +20,15 @@ export function ZeroIdeationPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const setInput = useSet(setChatPageInput$);
   const navigate = useSet(navigateTo$);
+  const chatAgentId = useGet(zeroChatAgentId$);
+
+  const navigateToChat = () => {
+    if (chatAgentId) {
+      navigate("/talk/:id", { pathParams: { id: chatAgentId } });
+    } else {
+      navigate("/");
+    }
+  };
 
   const baseCategories =
     activeTab === "all"
@@ -41,11 +51,11 @@ export function ZeroIdeationPage() {
 
   const handleSelectPrompt = (prompt: string) => {
     setInput(prompt);
-    navigate("/");
+    navigateToChat();
   };
 
   const handleBack = () => {
-    navigate("/");
+    navigateToChat();
   };
 
   return (

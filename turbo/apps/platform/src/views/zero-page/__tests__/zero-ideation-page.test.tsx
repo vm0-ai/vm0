@@ -6,6 +6,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { getCategories } from "../zero-ideation-data.ts";
 import { pathname } from "../../../signals/location.ts";
+import { setZeroChatAgent$ } from "../../../signals/zero-page/zero-nav.ts";
 
 const context = testContext();
 
@@ -13,6 +14,45 @@ function mockChatAPI() {
   server.use(
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
+    }),
+  );
+}
+
+function mockSubagent(agentId: string) {
+  server.use(
+    http.get("*/api/zero/composes/list", () => {
+      return HttpResponse.json({
+        composes: [
+          {
+            id: "mock-compose-id",
+            displayName: null,
+            headVersionId: "version_1",
+            updatedAt: "2024-01-01T00:00:00Z",
+          },
+          {
+            id: agentId,
+            displayName: "Test Subagent",
+            headVersionId: "version_2",
+            updatedAt: "2024-01-01T00:00:00Z",
+          },
+        ],
+      });
+    }),
+    http.get("*/api/zero/team", () => {
+      return HttpResponse.json([
+        {
+          id: "mock-compose-id",
+          displayName: null,
+          headVersionId: "version_1",
+          updatedAt: "2024-01-01T00:00:00Z",
+        },
+        {
+          id: agentId,
+          displayName: "Test Subagent",
+          headVersionId: "version_2",
+          updatedAt: "2024-01-01T00:00:00Z",
+        },
+      ]);
     }),
   );
 }
@@ -203,7 +243,7 @@ describe("ideation page - use case cards", () => {
 });
 
 describe("ideation page - navigation", () => {
-  it("should navigate to / when a use case card is clicked", async () => {
+  it("should navigate to chat when a use case card is clicked", async () => {
     await renderIdeationPage();
 
     await waitFor(() => {
@@ -219,7 +259,7 @@ describe("ideation page - navigation", () => {
     });
   });
 
-  it("should navigate to / when Chat breadcrumb is clicked", async () => {
+  it("should navigate to chat when Chat breadcrumb is clicked", async () => {
     await renderIdeationPage();
 
     const chatBreadcrumb = await waitFor(
@@ -232,6 +272,44 @@ describe("ideation page - navigation", () => {
 
     await waitFor(() => {
       expect(pathname()).not.toBe("/ideas");
+    });
+  });
+
+  it("should navigate to subagent when a use case card is clicked with agent context", async () => {
+    mockChatAPI();
+    mockSubagent("test-agent-123");
+    context.store.set(setZeroChatAgent$, "test-agent-123");
+    await setupPage({ context, path: "/ideas" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Daily standup report")).toBeInTheDocument();
+    });
+
+    await act(() => {
+      fireEvent.click(screen.getByText("Daily standup report"));
+    });
+
+    await waitFor(() => {
+      expect(pathname()).toBe("/talk/test-agent-123");
+    });
+  });
+
+  it("should navigate to subagent when Chat breadcrumb is clicked with agent context", async () => {
+    mockChatAPI();
+    mockSubagent("test-agent-123");
+    context.store.set(setZeroChatAgent$, "test-agent-123");
+    await setupPage({ context, path: "/ideas" });
+
+    const chatBreadcrumb = await waitFor(
+      () => screen.getByText("Chat").closest("button")!,
+    );
+
+    await act(() => {
+      fireEvent.click(chatBreadcrumb!);
+    });
+
+    await waitFor(() => {
+      expect(pathname()).toBe("/talk/test-agent-123");
     });
   });
 });
