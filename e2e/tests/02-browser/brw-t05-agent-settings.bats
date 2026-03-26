@@ -236,7 +236,7 @@ teardown_file() {
   for _i in $(seq 1 15); do
     local snap
     snap=$(full_snapshot)
-    if contains "$snap" "Write instructions for your agent\|instructions"; then
+    if contains "$snap" "Write instructions for your agent"; then
       editor_loaded=true
       break
     fi
