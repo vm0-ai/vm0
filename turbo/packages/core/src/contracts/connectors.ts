@@ -1622,7 +1622,7 @@ const CONNECTOR_TYPES_DEF = {
       "api-token": {
         label: "API Key",
         helpText:
-          "1. Log in to [Gamma](https://gamma.app) (requires Pro, Ultra, Teams, or Business plan)\n2. Go to **Settings and Members > API key** tab\n3. Click **Create API key**\n4. Copy the key (it is only shown once)",
+          "1. Log in to [Gamma](https://gamma.app)\n2. Go to [API Keys](https://gamma.app/settings/api-keys) (Settings > API Keys)\n3. Click **Create API key**\n4. Copy the key (it is only shown once)",
         secrets: {
           GAMMA_TOKEN: {
             label: "API Key",
