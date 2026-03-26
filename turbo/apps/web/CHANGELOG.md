@@ -1,5 +1,13 @@
 # Changelog
 
+## [12.160.2](https://github.com/vm0-ai/vm0/compare/web-v12.160.1...web-v12.160.2) (2026-03-26)
+
+
+### Bug Fixes
+
+* prevent agent from sending slack messages as user identity ([#6815](https://github.com/vm0-ai/vm0/issues/6815)) ([9e0d3d8](https://github.com/vm0-ai/vm0/commit/9e0d3d85f8dbbbb3da8383b52ac51af05a5d8cd4))
+* restrict billing ui and api access to org admins only ([#6811](https://github.com/vm0-ai/vm0/issues/6811)) ([f13d297](https://github.com/vm0-ai/vm0/commit/f13d2973cf817dd37b19f3473a467ac0fe849088))
+
 ## [12.160.1](https://github.com/vm0-ai/vm0/compare/web-v12.160.0...web-v12.160.1) (2026-03-25)
 
 
