@@ -240,6 +240,39 @@ sign_in_via_token() {
 }
 
 # ---------------------------------------------------------------------------
+# sign_in_via_token_on_app — Sign in via Clerk token on the platform app domain
+# Opens /sign-in-token, waits for auth redirect, dismisses cookie banner.
+# Requires APP_URL and SIGN_IN_TOKEN to be set.
+# ---------------------------------------------------------------------------
+sign_in_via_token_on_app() {
+  echo "# Signing in via token on platform app..." >&3
+  agent-browser open "${APP_URL}/sign-in-token?token=${SIGN_IN_TOKEN}" --ignore-https-errors
+  agent-browser wait 5000
+  step_screenshot "sign-in-token"
+
+  echo "# Waiting for auth redirect..." >&3
+  local auth_complete=false
+  for _i in $(seq 1 30); do
+    local current_url
+    current_url=$(agent-browser get url 2>/dev/null || true)
+    if url_is_on_app "$current_url" && [[ ! "$current_url" =~ sign-in-token ]]; then
+      auth_complete=true
+      break
+    fi
+    sleep 1
+  done
+  step_screenshot "after-auth-redirect"
+
+  if [[ "$auth_complete" != "true" ]]; then
+    echo "# Authentication redirect failed!" >&3
+    return 1
+  fi
+  echo "# Authentication complete!" >&3
+
+  dismiss_cookie_banner
+}
+
+# ---------------------------------------------------------------------------
 # url_is_on_app — Check if a URL's hostname matches the APP_URL hostname
 # Compares against the derived APP_URL rather than assuming "app." prefix,
 # so it works for all environments (app.vm7.ai, staging-app.vm6.ai, etc.)
