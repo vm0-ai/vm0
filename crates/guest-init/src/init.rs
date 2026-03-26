@@ -195,7 +195,10 @@ pub fn init_filesystem() -> Result<(), InitError> {
     // PATH goes in /etc/profile.d/ because Debian's /etc/profile overrides
     // PATH from /etc/environment, omitting sbin dirs for non-root users.
     // Scripts in /etc/profile.d/ run after /etc/profile, so our PATH wins.
-    if let Err(e) = fs::write("/etc/environment", "LANG=C.UTF-8\n") {
+    if let Err(e) = fs::write(
+        "/etc/environment",
+        "LANG=C.UTF-8\nNPM_CONFIG_UPDATE_NOTIFIER=false\n",
+    ) {
         eprintln!("[guest-init] Warning: failed to write /etc/environment: {e}");
     }
     if let Err(e) = fs::write(
