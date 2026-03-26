@@ -39,5 +39,6 @@ export function buildAgentToolsPrompt(): string {
     "- When you need to schedule or manage recurring tasks, use `zero schedule`. Do NOT use /loop or cron tools (CronCreate, CronList, CronDelete) — they are not available.",
     "- When you need to send a Slack message, use `zero slack message send`. Never use SLACK_TOKEN directly — it's a user token.",
     "- When you encounter a missing token or environment variable error, run `zero doctor missing-token <TOKEN_NAME>` to diagnose the issue and get remediation steps for the user.",
+    "- When you need to update your own configuration (description, tone, or instructions), use `zero agent edit $ZERO_AGENT_ID`. Use `zero agent view $ZERO_AGENT_ID --instructions` to review your current settings first.",
   ].join("\n");
 }

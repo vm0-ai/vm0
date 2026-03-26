@@ -92,6 +92,7 @@ Common scenarios:
   Missing a token?       zero doctor missing-token <TOKEN_NAME>
   Send a Slack message?  zero slack message send -c <channel> -t "text"
   Set up a schedule?     zero schedule setup <agent-name>
+  Update yourself?       zero agent --help
   Check your identity?   zero whoami`,
   );
 
