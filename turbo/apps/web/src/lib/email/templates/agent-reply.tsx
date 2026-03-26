@@ -29,7 +29,7 @@ export function AgentReplyEmail({
         <Container style={containerStyle}>
           <Text style={outputStyle}>{output}</Text>
           <Hr style={hrStyle} />
-          <Text style={signatureStyle}>Zero — {agentName}</Text>
+          <Text style={signatureStyle}>{agentName} from VM0</Text>
           <Text style={footerStyle}>
             <Link href={logsUrl} style={linkStyle}>
               Audit
