@@ -309,7 +309,6 @@ export function ZeroOnboarding({
   const onboardingError = useGet(zeroOnboardingError$);
   const clearOnboardingError = useSet(clearZeroOnboardingError$);
   const reloadBilling = useSet(reloadBillingStatus$);
-  const pageSignal = useGet(pageSignal$);
   const selectedConnectorType = useGet(selectedConnectorType$);
   const setSelected = useSet(setSelectedConnectorType$);
   const slackData = useGet(slackOrgData$);
@@ -365,11 +364,14 @@ export function ZeroOnboarding({
         reloadBilling();
         navigate("/");
         startNewSession();
+        // Use controller.signal instead of pageSignal: navigate("/") aborts
+        // the onboarding page signal via resetRouteSignal$, so pageSignal is
+        // already dead by the time sendMessage runs.
         detach(
           sendMessage(
             "Who are you and what can you do?",
             undefined,
-            pageSignal,
+            controller.signal,
           ),
           Reason.DomCallback,
         );
@@ -616,13 +618,21 @@ export function MemberWelcome({
   };
 
   const handleContinueWeb = () => {
+    const controller = new AbortController();
     detach(
       (async () => {
-        await completeMember(pageSignal);
+        await completeMember(controller.signal);
         navigate("/");
         startNewSession();
+        // Use controller.signal instead of pageSignal: navigate("/") aborts
+        // the onboarding page signal via resetRouteSignal$, so pageSignal is
+        // already dead by the time sendIntro runs.
         detach(
-          sendIntro("Who are you and what can you do?", undefined, pageSignal),
+          sendIntro(
+            "Who are you and what can you do?",
+            undefined,
+            controller.signal,
+          ),
           Reason.DomCallback,
         );
       })(),
