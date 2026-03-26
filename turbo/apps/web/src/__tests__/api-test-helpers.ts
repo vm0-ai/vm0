@@ -4699,3 +4699,25 @@ export async function insertTestSlackOrgPendingQuestionNoSession(params: {
     expiresAt: new Date(Date.now() + 3600000),
   });
 }
+
+/**
+ * Read the head compose version content for a compose record.
+ * Returns the resolved compose content stored in the version.
+ */
+export async function getTestComposeVersionContent(
+  composeId: string,
+): Promise<Record<string, unknown> | null> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select({
+      content: agentComposeVersions.content,
+    })
+    .from(agentComposeVersions)
+    .innerJoin(
+      agentComposes,
+      eq(agentComposes.headVersionId, agentComposeVersions.id),
+    )
+    .where(eq(agentComposes.id, composeId))
+    .limit(1);
+  return (row?.content as Record<string, unknown>) ?? null;
+}
