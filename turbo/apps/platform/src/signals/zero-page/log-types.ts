@@ -13,6 +13,7 @@ export const TRIGGER_SOURCE_LABELS: Readonly<Record<TriggerSource, string>> = {
   telegram: "Telegram",
   github: "GitHub",
   cli: "CLI",
+  agent: "Agent",
 };
 
 // List response - contains basic fields for list display

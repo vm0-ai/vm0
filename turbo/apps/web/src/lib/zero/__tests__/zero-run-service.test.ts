@@ -169,6 +169,7 @@ describe("createZeroRun()", () => {
       "slack",
       "email",
       "github",
+      "agent",
     ];
 
     for (const triggerSource of triggerSources) {

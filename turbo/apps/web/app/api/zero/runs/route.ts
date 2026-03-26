@@ -14,6 +14,7 @@ import { createZeroRun } from "../../../../src/lib/zero/zero-run-service";
 import { isApiError } from "../../../../src/lib/errors";
 import { isRunDispatchError } from "../../../../src/lib/run";
 import { zeroAgents } from "../../../../src/db/schema/zero-agent";
+import { agentSessions } from "../../../../src/db/schema/agent-session";
 
 /**
  * Translate createZeroRun() errors into API response format.
@@ -58,7 +59,30 @@ const router = tsr.router(zeroRunsMainContract, {
     if (isAuthError(authCtx)) return authCtx;
 
     try {
-      const agentId = body.agentId;
+      let agentId = body.agentId;
+
+      // Infer agentId from session when not provided directly
+      if (!agentId && body.sessionId) {
+        const [session] = await globalThis.services.db
+          .select({ agentComposeId: agentSessions.agentComposeId })
+          .from(agentSessions)
+          .where(eq(agentSessions.id, body.sessionId))
+          .limit(1);
+
+        if (!session) {
+          return {
+            status: 404 as const,
+            body: {
+              error: {
+                message: "Session not found",
+                code: "NOT_FOUND" as const,
+              },
+            },
+          };
+        }
+        agentId = session.agentComposeId;
+      }
+
       if (!agentId) {
         return {
           status: 400 as const,
@@ -94,7 +118,7 @@ const router = tsr.router(zeroRunsMainContract, {
         sessionId: body.sessionId,
         appendSystemPrompt: body.appendSystemPrompt,
         modelProvider: body.modelProvider,
-        triggerSource: "web",
+        triggerSource: authCtx.runId ? "agent" : "web",
       });
 
       return {
