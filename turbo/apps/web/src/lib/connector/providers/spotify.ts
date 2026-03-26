@@ -90,7 +90,6 @@ export async function exchangeSpotifyCode(
       refresh_token: z.string().nullable().optional(),
       expires_in: z.number().optional(),
       scope: z.string().optional(),
-      token_type: z.string().optional(),
       error: z.string().optional(),
       error_description: z.string().optional(),
     })
