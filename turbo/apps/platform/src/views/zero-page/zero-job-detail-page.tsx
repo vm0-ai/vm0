@@ -460,18 +460,27 @@ export function ZeroJobDetailPage({
       <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-6 pb-3">
         <div className="mx-auto max-w-[900px]">
           <div className="flex items-center gap-4">
-            <button
-              type="button"
-              onClick={cycleAvatar}
-              className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              aria-label="Switch avatar"
-            >
-              <img
-                src={currentAvatar}
-                alt={displayName}
-                className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
-              />
-            </button>
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={cycleAvatar}
+                    className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    aria-label="Switch avatar"
+                  >
+                    <img
+                      src={currentAvatar}
+                      alt={displayName}
+                      className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
+                    />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  <p className="text-xs">Switch avatar</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             <div className="min-w-0">
               <h1 className="text-xl font-semibold tracking-tight text-foreground">
                 {displayName}
