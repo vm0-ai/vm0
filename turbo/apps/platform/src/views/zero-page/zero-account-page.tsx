@@ -12,6 +12,7 @@ import {
 } from "@tabler/icons-react";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import { cn } from "@vm0/ui";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { TimezoneSettings } from "./components/settings/timezone-settings.tsx";
 import {
   themePreference$,
@@ -227,6 +228,7 @@ function AvatarSettings() {
       body: formData,
     });
     if (!res.ok) {
+      toast.error("Failed to upload avatar");
       return;
     }
     const data = (await res.json()) as { url: string };
