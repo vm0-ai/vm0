@@ -55,22 +55,13 @@ click_save_on_unsaved_bar() {
 }
 
 # ---------------------------------------------------------------------------
-# click_tab — Click a tab by its text label using interactive snapshot
-# More reliable than agent-browser find text ... click because it uses
-# ref-based clicking and waits for the tab text to appear first.
+# click_tab — Click a tab by its text label
+# Waits for the tab text to appear, then clicks it via text-based find.
 # ---------------------------------------------------------------------------
 click_tab() {
   local tab_text="$1"
   wait_for_text "$tab_text" 10
-
-  local snap_i ref
-  snap_i=$(agent-browser snapshot -i)
-  ref=$(echo "$snap_i" | grep -i "$tab_text" | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
-  if [[ -z "$ref" ]]; then
-    echo "# Failed to find tab ref for: $tab_text" >&3
-    return 1
-  fi
-  agent-browser click "$ref"
+  agent-browser find text "$tab_text" click
 }
 
 setup_file() {
@@ -148,16 +139,9 @@ teardown_file() {
   wait_for_text "$AGENT_NAME" 10
   step_screenshot "team-page"
 
-  # Click on the created agent card
+  # Click on the created agent card using text-based find
   echo "# Clicking on agent card: $AGENT_NAME..." >&3
-  local snap_i ref
-  snap_i=$(agent-browser snapshot -i)
-  ref=$(echo "$snap_i" | grep -i "$AGENT_NAME" | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
-  if [[ -z "$ref" ]]; then
-    echo "# Failed to find agent card ref for: $AGENT_NAME" >&3
-    return 1
-  fi
-  agent-browser click "$ref"
+  agent-browser find text "$AGENT_NAME" click
   agent-browser wait 3000
 
   # Wait for agent detail page to load with tabs
