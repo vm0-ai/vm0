@@ -22,13 +22,13 @@ import {
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
 import { zeroAgents } from "../../../../src/db/schema/zero-agent";
+import { zeroRuns } from "../../../../src/db/schema/zero-run";
 import { conversations } from "../../../../src/db/schema/conversation";
 import { getOrgData } from "../../../../src/lib/org/org-cache-service";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { isNotFound, isForbidden } from "../../../../src/lib/errors";
 import { logger } from "../../../../src/lib/logger";
-import { inferTriggerSource } from "../../../../src/lib/run/trigger-source";
 import {
   eq,
   and,
@@ -113,7 +113,7 @@ async function getTotalCount(
     conditions.push(eq(agentRuns.status, query.status));
   }
   if (query.triggerSource) {
-    conditions.push(eq(agentRuns.triggerSource, query.triggerSource));
+    conditions.push(eq(zeroRuns.triggerSource, query.triggerSource));
   }
   if (query.scheduleId) {
     conditions.push(eq(agentRuns.scheduleId, query.scheduleId));
@@ -122,6 +122,7 @@ async function getTotalCount(
   const [result] = await globalThis.services.db
     .select({ count: count() })
     .from(agentRuns)
+    .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
     .leftJoin(
       agentComposeVersions,
       eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
@@ -169,9 +170,10 @@ async function getAvailableFilters(
       .from(agentRuns)
       .where(and(...baseConditions)),
     db
-      .selectDistinct({ triggerSource: agentRuns.triggerSource })
+      .selectDistinct({ triggerSource: zeroRuns.triggerSource })
       .from(agentRuns)
-      .where(and(...baseConditions, isNotNull(agentRuns.triggerSource))),
+      .innerJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
+      .where(and(...baseConditions)),
     db
       .selectDistinct({ name: agentComposes.name })
       .from(agentRuns)
@@ -259,7 +261,7 @@ const router = tsr.router(logsListContract, {
       conditions.push(eq(agentRuns.status, query.status));
     }
     if (query.triggerSource) {
-      conditions.push(eq(agentRuns.triggerSource, query.triggerSource));
+      conditions.push(eq(zeroRuns.triggerSource, query.triggerSource));
     }
     if (query.scheduleId) {
       conditions.push(eq(agentRuns.scheduleId, query.scheduleId));
@@ -273,9 +275,7 @@ const router = tsr.router(logsListContract, {
         createdAt: agentRuns.createdAt,
         startedAt: agentRuns.startedAt,
         completedAt: agentRuns.completedAt,
-        triggerSource: agentRuns.triggerSource,
-        scheduleId: agentRuns.scheduleId,
-        continuedFromSessionId: agentRuns.continuedFromSessionId,
+        triggerSource: zeroRuns.triggerSource,
         composeId: agentComposes.id,
         composeName: agentComposes.name,
         orgId: agentComposes.orgId,
@@ -284,6 +284,7 @@ const router = tsr.router(logsListContract, {
         displayName: zeroAgents.displayName,
       })
       .from(agentRuns)
+      .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
       .leftJoin(
         agentComposeVersions,
         eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
@@ -344,7 +345,7 @@ const router = tsr.router(logsListContract, {
           displayName: run.displayName ?? null,
           orgSlug: run.orgId ? (slugMap.get(run.orgId) ?? null) : null,
           framework: extractFramework(run.composeContent),
-          triggerSource: inferTriggerSource(run),
+          triggerSource: (run.triggerSource ?? "cli") as TriggerSource,
           status: run.status as LogStatus,
           createdAt: run.createdAt.toISOString(),
           startedAt: run.startedAt?.toISOString() ?? null,

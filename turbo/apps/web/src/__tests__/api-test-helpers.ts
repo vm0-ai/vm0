@@ -20,6 +20,7 @@ import { randomBytes } from "crypto";
 import { cliTokens } from "../db/schema/cli-tokens";
 import { deviceCodes } from "../db/schema/device-codes";
 import { agentRuns } from "../db/schema/agent-run";
+import { zeroRuns } from "../db/schema/zero-run";
 import { runnerJobQueue } from "../db/schema/runner-job-queue";
 import { exportJobs } from "../db/schema/export-job";
 import { storages, storageVersions } from "../db/schema/storage";
@@ -710,13 +711,18 @@ async function createTestRunDirect(
       prompt: options?.prompt ?? "test prompt",
       continuedFromSessionId: options?.continuedFromSessionId,
       scheduleId: options?.scheduleId,
-      triggerSource: options?.triggerSource,
       ...(options?.createdAt ? { createdAt: options.createdAt } : {}),
       ...(options?.startedAt ? { startedAt: options.startedAt } : {}),
       ...(options?.completedAt ? { completedAt: options.completedAt } : {}),
       ...(options?.result ? { result: options.result } : {}),
     })
     .returning({ id: agentRuns.id });
+
+  await globalThis.services.db.insert(zeroRuns).values({
+    id: run!.id,
+    triggerSource: options?.triggerSource ?? "cli",
+  });
+
   return run!;
 }
 
@@ -2193,6 +2199,20 @@ export async function findTestRunRecord(
     .select()
     .from(agentRuns)
     .where(eq(agentRuns.id, runId))
+    .limit(1);
+  return row;
+}
+
+/**
+ * Look up zero_runs record by run ID for verification in tests.
+ */
+export async function findTestZeroRun(
+  runId: string,
+): Promise<typeof zeroRuns.$inferSelect | undefined> {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(zeroRuns)
+    .where(eq(zeroRuns.id, runId))
     .limit(1);
   return row;
 }

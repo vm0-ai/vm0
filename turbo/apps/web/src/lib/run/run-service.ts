@@ -2,6 +2,7 @@ import { eq, and, count, gt, or, sql } from "drizzle-orm";
 import { env } from "../../env";
 import { checkpoints } from "../../db/schema/checkpoint";
 import { agentRuns } from "../../db/schema/agent-run";
+import { zeroRuns } from "../../db/schema/zero-run";
 import { transitionRunStatus, dispatchTerminalSideEffects } from "./run-status";
 import {
   agentComposeVersions,
@@ -1200,7 +1201,6 @@ export async function createRun(
           continuedFromSessionId: params.sessionId ?? null,
           scheduleId: params.scheduleId ?? null,
           modelProvider: params.modelProvider ?? null,
-          triggerSource: params.triggerSource ?? "cli",
           lastHeartbeatAt: new Date(),
         })
         .returning();
@@ -1208,6 +1208,11 @@ export async function createRun(
       if (!newRun) {
         throw new Error("Failed to create run record");
       }
+
+      await tx.insert(zeroRuns).values({
+        id: newRun.id,
+        triggerSource: params.triggerSource ?? "cli",
+      });
 
       return newRun;
     });
