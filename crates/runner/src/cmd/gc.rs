@@ -53,7 +53,10 @@ pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
     let locks_removed = gc_orphaned_locks(&home, args.dry_run).await?;
     let (job_logs_removed, job_logs_freed) = gc_job_logs(&home, args.dry_run).await?;
     let versions_removed = gc_versions(&home, args.dry_run).await?;
-    let dm_removed = gc_block_cow(args.dry_run)?;
+    let dry_run = args.dry_run;
+    let dm_removed = tokio::task::spawn_blocking(move || gc_block_cow(dry_run))
+        .await
+        .map_err(|e| RunnerError::Internal(format!("gc_block_cow join: {e}")))??;
 
     let total = rootfs_freed + snapshot_freed + job_logs_freed;
     if total == 0

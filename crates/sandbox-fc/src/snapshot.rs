@@ -324,6 +324,9 @@ async fn run_snapshot_workflow(
             }
         }
         if let Some(e) = last_err {
+            // Prevent Drop from attempting teardown(true) which would try to
+            // delete the COW file we want to keep. GC will handle cleanup.
+            cow_device.abandon();
             return Err(SnapshotError::Setup(format!("destroy_keep_cow: {e}")));
         }
         tokio::fs::rename(&cow_file, &output.cow()).await?;

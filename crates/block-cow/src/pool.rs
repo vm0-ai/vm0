@@ -156,10 +156,14 @@ impl BaseImagePool {
         };
 
         if entry.refcount == 0 {
+            // Retry detach for a previously failed release (detach returned
+            // an error so the entry stayed in the map for cleanup).
             warn!(
                 base = %base_key.display(),
-                "base image pool: release called with refcount already 0"
+                "base image pool: retrying detach for stuck entry (refcount=0)"
             );
+            entry.loop_dev.detach()?;
+            self.entries.remove(&key);
             return Ok(());
         }
         entry.refcount -= 1;
@@ -170,7 +174,7 @@ impl BaseImagePool {
                 "base image pool: detaching loop (refcount=0)"
             );
             // Detach first — if it fails, the entry stays in the map
-            // so cleanup() can retry later.
+            // so cleanup() or a subsequent release() can retry later.
             entry.loop_dev.detach()?;
             self.entries.remove(&key);
         } else {
