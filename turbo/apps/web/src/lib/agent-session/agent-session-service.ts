@@ -192,38 +192,40 @@ export async function appendChatMessages(
   const now = new Date().toISOString();
   const withTimestamps = messages.map((m) => ({ ...m, createdAt: now }));
 
-  // Verify session ownership
-  const [session] = await globalThis.services.db
-    .select({ id: agentSessions.id })
-    .from(agentSessions)
-    .where(
-      and(eq(agentSessions.id, sessionId), eq(agentSessions.userId, userId)),
-    )
-    .limit(1);
+  await globalThis.services.db.transaction(async (tx) => {
+    // Verify session ownership
+    const [session] = await tx
+      .select({ id: agentSessions.id })
+      .from(agentSessions)
+      .where(
+        and(eq(agentSessions.id, sessionId), eq(agentSessions.userId, userId)),
+      )
+      .limit(1);
 
-  if (!session) {
-    throw notFound("Session not found or not owned by user");
-  }
+    if (!session) {
+      throw notFound("Session not found or not owned by user");
+    }
 
-  // Upsert messages into extension table
-  await globalThis.services.db
-    .insert(zeroAgentSessions)
-    .values({
-      id: sessionId,
-      chatMessages: sql`${JSON.stringify(withTimestamps)}::jsonb`,
-    })
-    .onConflictDoUpdate({
-      target: zeroAgentSessions.id,
-      set: {
-        chatMessages: sql`COALESCE(${zeroAgentSessions.chatMessages}, '[]'::jsonb) || ${JSON.stringify(withTimestamps)}::jsonb`,
-      },
-    });
+    // Upsert messages into extension table
+    await tx
+      .insert(zeroAgentSessions)
+      .values({
+        id: sessionId,
+        chatMessages: sql`${JSON.stringify(withTimestamps)}::jsonb`,
+      })
+      .onConflictDoUpdate({
+        target: zeroAgentSessions.id,
+        set: {
+          chatMessages: sql`COALESCE(${zeroAgentSessions.chatMessages}, '[]'::jsonb) || ${JSON.stringify(withTimestamps)}::jsonb`,
+        },
+      });
 
-  // Update session timestamp
-  await globalThis.services.db
-    .update(agentSessions)
-    .set({ updatedAt: new Date() })
-    .where(eq(agentSessions.id, sessionId));
+    // Update session timestamp
+    await tx
+      .update(agentSessions)
+      .set({ updatedAt: new Date() })
+      .where(eq(agentSessions.id, sessionId));
+  });
 }
 
 function mapToAgentSessionData(
