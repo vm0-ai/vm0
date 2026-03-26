@@ -31,14 +31,12 @@ describe("zero ask-user question command", () => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
-    vi.useFakeTimers({ shouldAdvanceTime: true });
   });
 
   afterEach(() => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
-    vi.useRealTimers();
   });
 
   describe("happy path", () => {
@@ -214,8 +212,6 @@ describe("zero ask-user question command", () => {
       );
     });
 
-    // NOTE: This test must run last because Commander's collectDesc accumulator
-    // mutates the shared default array, which leaks state to subsequent tests.
     it("should error when --desc is provided without matching --option", async () => {
       await expect(async () => {
         await questionCommand.parseAsync([

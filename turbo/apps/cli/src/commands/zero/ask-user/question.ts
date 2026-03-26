@@ -8,14 +8,19 @@ interface OptionItem {
   description?: string;
 }
 
-function collectOption(value: string, previous: OptionItem[]): OptionItem[] {
-  previous.push({ label: value });
-  return previous;
+function collectOption(
+  value: string,
+  previous: OptionItem[] | undefined,
+): OptionItem[] {
+  const list = previous ?? [];
+  list.push({ label: value });
+  return list;
 }
 
-function collectDesc(value: string, previous: string[]): string[] {
-  previous.push(value);
-  return previous;
+function collectDesc(value: string, previous: string[] | undefined): string[] {
+  const list = previous ?? [];
+  list.push(value);
+  return list;
 }
 
 export const questionCommand = new Command()
@@ -23,17 +28,11 @@ export const questionCommand = new Command()
   .description("Ask the user a question and wait for the answer")
   .argument("<question>", "The question to ask")
   .option("--header <text>", "Short label displayed as chip/tag (max 12 chars)")
-  .option(
-    "--option <label>",
-    "Add a choice option (repeatable)",
-    collectOption,
-    [] as OptionItem[],
-  )
+  .option("--option <label>", "Add a choice option (repeatable)", collectOption)
   .option(
     "--desc <text>",
     "Description for the preceding --option",
     collectDesc,
-    [] as string[],
   )
   .option("--multi-select", "Allow multiple selections")
   .option("--timeout <seconds>", "How long to wait for answer", "300")
@@ -43,19 +42,22 @@ export const questionCommand = new Command()
         question: string,
         options: {
           header?: string;
-          option: OptionItem[];
-          desc: string[];
+          option?: OptionItem[];
+          desc?: string[];
           multiSelect?: boolean;
           timeout: string;
         },
       ) => {
+        const optionItems = options.option ?? [];
+        const descItems = options.desc ?? [];
+
         // Pair --desc values with --option items
-        for (let i = 0; i < options.desc.length; i++) {
-          const opt = options.option[i];
+        for (let i = 0; i < descItems.length; i++) {
+          const opt = optionItems[i];
           if (!opt) {
             throw new Error("--desc must follow an --option flag");
           }
-          opt.description = options.desc[i];
+          opt.description = descItems[i];
         }
 
         const timeoutMs = parseInt(options.timeout, 10) * 1000;
@@ -67,7 +69,7 @@ export const questionCommand = new Command()
         const questionItem = {
           question,
           header: options.header,
-          options: options.option.length > 0 ? options.option : undefined,
+          options: optionItems.length > 0 ? optionItems : undefined,
           multiSelect: options.multiSelect,
         };
 
