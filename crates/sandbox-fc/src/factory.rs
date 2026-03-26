@@ -290,36 +290,41 @@ impl SandboxFactory for FirecrackerFactory {
         //
         // Failures must release the network namespace back to the pool
         // (netns has no Drop-based return), handled by the match below.
-        let cow_config = CowDeviceConfig {
-            cow_dir: sandbox_paths.workspace().join("cow"),
-            chunk_size: None,
-        };
+        let cow_file = sandbox_paths.workspace().join("cow.img");
         let base_loop = self.base_handle().loop_path.clone();
         let base_sectors = self.base_handle().sectors;
-        // CowDevice::create/restore call synchronous subprocess commands
-        // (losetup, dmsetup, blockdev). Use spawn_blocking to avoid stalling
-        // the tokio runtime when multiple sandboxes are created concurrently.
+        // Prepare the COW file: sparse-copy from snapshot or create empty.
+        // Then set up the dm-snapshot device via spawn_blocking (losetup,
+        // dmsetup are synchronous subprocesses).
         let cow_result = match &self.config.snapshot {
-            Some(snapshot) => {
-                let vm_cow = sandbox_paths.workspace().join("cow.img");
-                let r = sparse_copy(&snapshot.cow_path, &vm_cow).await;
-                match r {
-                    Ok(()) => tokio::task::spawn_blocking(move || {
-                        CowDevice::restore(&base_loop, base_sectors, &cow_config, vm_cow)
-                    })
-                    .await
-                    .map_err(|e| SandboxError::CreationFailed(format!("join: {e}")))?
-                    .map_err(|e| SandboxError::CreationFailed(format!("restore COW device: {e}"))),
-                    Err(e) => Err(e),
+            Some(snapshot) => sparse_copy(&snapshot.cow_path, &cow_file).await,
+            None => tokio::task::spawn_blocking({
+                let cow_file = cow_file.clone();
+                move || {
+                    block_cow::init_cow_file(&cow_file, base_sectors)
+                        .map_err(|e| SandboxError::CreationFailed(format!("init COW file: {e}")))
                 }
-            }
-            None => tokio::task::spawn_blocking(move || {
-                CowDevice::create(&base_loop, base_sectors, &cow_config)
             })
             .await
-            .map_err(|e| SandboxError::CreationFailed(format!("join: {e}")))?
-            .map_err(|e| SandboxError::CreationFailed(format!("create COW device: {e}"))),
+            .map_err(|e| SandboxError::CreationFailed(format!("join: {e}")))?,
         };
+        if let Err(e) = cow_result {
+            let mut netns_pool = self.netns_pool().lock().await;
+            if let Err(rel_err) = netns_pool.release(network).await {
+                warn!(error = %rel_err, "failed to release netns during rollback");
+            }
+            let _ = tokio::fs::remove_dir_all(sandbox_paths.workspace()).await;
+            let _ = tokio::fs::remove_dir_all(sock_paths.dir()).await;
+            return Err(e);
+        }
+
+        let cow_config = CowDeviceConfig { cow_file };
+        let cow_result = tokio::task::spawn_blocking(move || {
+            CowDevice::create(&base_loop, base_sectors, &cow_config)
+        })
+        .await
+        .map_err(|e| SandboxError::CreationFailed(format!("join: {e}")))?
+        .map_err(|e| SandboxError::CreationFailed(format!("create COW device: {e}")));
 
         let cow_device = match cow_result {
             Ok(d) => d,

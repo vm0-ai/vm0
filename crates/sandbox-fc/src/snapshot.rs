@@ -132,7 +132,6 @@ pub async fn create_snapshot(
     //    commands (losetup, blockdev, dmsetup) — use spawn_blocking.
     let base_pool = std::sync::Arc::new(std::sync::Mutex::new(BaseImagePool::new()));
     let rootfs_path = config.rootfs_path.clone();
-    let cow_dir = paths.workspace().join("cow");
     let pool_for_acquire = base_pool.clone();
     let base_handle = tokio::task::spawn_blocking(move || {
         let mut pool = pool_for_acquire.lock().unwrap_or_else(|e| e.into_inner());
@@ -142,18 +141,21 @@ pub async fn create_snapshot(
     .await
     .map_err(|e| SnapshotError::Setup(format!("join: {e}")))??;
 
-    let cow_config = CowDeviceConfig {
-        cow_dir,
-        chunk_size: None,
-    };
+    let cow_file = paths.workspace().join("cow.img");
     let base_loop = base_handle.loop_path.clone();
     let base_sectors = base_handle.sectors;
-    let cow_device = tokio::task::spawn_blocking(move || {
-        CowDevice::create(&base_loop, base_sectors, &cow_config)
+    let cow_device = tokio::task::spawn_blocking({
+        let cow_file = cow_file.clone();
+        move || {
+            block_cow::init_cow_file(&cow_file, base_sectors)
+                .map_err(|e| SnapshotError::Setup(format!("init COW file: {e}")))?;
+            let cow_config = CowDeviceConfig { cow_file };
+            CowDevice::create(&base_loop, base_sectors, &cow_config)
+                .map_err(|e| SnapshotError::Setup(format!("create COW device: {e}")))
+        }
     })
     .await
-    .map_err(|e| SnapshotError::Setup(format!("join: {e}")))?
-    .map_err(|e| SnapshotError::Setup(format!("create COW device: {e}")))?;
+    .map_err(|e| SnapshotError::Setup(format!("join: {e}")))??;
 
     info!(device = %cow_device.device_path().display(), "COW device created");
 
