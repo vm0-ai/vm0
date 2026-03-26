@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor, act } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import {
@@ -14,7 +14,7 @@ const context = testContext();
 describe("chat queue state", () => {
   it("should show queue position when run is queued", async () => {
     const ctrl = mockChatLifecycle();
-    // Set status to queued before the first poll
+
     ctrl.setRunStatus("queued");
     ctrl.setQueuePosition(3);
 
@@ -25,26 +25,18 @@ describe("chat queue state", () => {
       { timeout: 5000 },
     );
 
-    await act(() => {
-      sendMessageInUI(textarea, "Hello");
-    });
+    sendMessageInUI(textarea, "Hello");
 
-    await waitFor(
-      () => {
-        expect(screen.getByText(/In queue/)).toBeInTheDocument();
-      },
-      { timeout: 10_000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByText(/In queue/)).toBeInTheDocument();
+    });
 
     // Complete the run and wait for polling to stop
     ctrl.completeRun();
-    await waitFor(
-      () => {
-        expect(screen.getByLabelText("Send")).toBeInTheDocument();
-      },
-      { timeout: 10_000 },
-    );
-  }, 30_000);
+    await waitFor(() => {
+      expect(screen.getByLabelText("Send")).toBeInTheDocument();
+    });
+  });
 
   it("should transition from queue to running state", async () => {
     const ctrl = mockChatLifecycle();
@@ -55,40 +47,28 @@ describe("chat queue state", () => {
 
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-      { timeout: 5000 },
     );
 
-    await act(() => {
-      sendMessageInUI(textarea, "Hello");
-    });
+    sendMessageInUI(textarea, "Hello");
 
     // Wait for queue state
-    await waitFor(
-      () => {
-        expect(screen.getByText(/In queue/)).toBeInTheDocument();
-      },
-      { timeout: 10_000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByText(/In queue/)).toBeInTheDocument();
+    });
 
     // Transition to running with events
     ctrl.setRunStatus("running");
     ctrl.setEvents([makeToolUseEvent("Search")]);
 
-    await waitFor(
-      () => {
-        expect(screen.queryByText(/In queue/)).toBeNull();
-        expect(screen.getByText("Searching for info...")).toBeInTheDocument();
-      },
-      { timeout: 10_000 },
-    );
+    await waitFor(() => {
+      expect(screen.queryByText(/In queue/)).toBeNull();
+      expect(screen.getByText("Searching for info...")).toBeInTheDocument();
+    });
 
     // Complete the run and wait for polling to stop
     ctrl.completeRun();
-    await waitFor(
-      () => {
-        expect(screen.getByLabelText("Send")).toBeInTheDocument();
-      },
-      { timeout: 10_000 },
-    );
-  }, 30_000);
+    await waitFor(() => {
+      expect(screen.getByLabelText("Send")).toBeInTheDocument();
+    });
+  });
 });
