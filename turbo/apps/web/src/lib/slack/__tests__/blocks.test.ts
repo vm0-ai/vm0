@@ -177,6 +177,10 @@ describe("buildAgentResponseMessage", () => {
       'triggered by schedule "Send a greeting message daily at 9 AM"',
     );
 
+    // Should have: markdown, audit context, divider, attribution context
+    const dividerBlocks = blocks.filter((b) => b.type === "divider");
+    expect(dividerBlocks).toHaveLength(1);
+
     const contextBlocks = blocks.filter((b) => b.type === "context");
     expect(contextBlocks).toHaveLength(2);
 
@@ -186,11 +190,10 @@ describe("buildAgentResponseMessage", () => {
     expect(auditText).toContain("Audit");
     expect(auditText).not.toContain("triggered by");
 
-    // Second context: divider + attribution
+    // Second context: attribution (after divider)
     const attrText = (contextBlocks[1] as { elements: { text: string }[] })
       .elements[0]!.text;
-    expect(attrText).toContain("─────");
-    expect(attrText).toContain(
+    expect(attrText).toBe(
       'triggered by schedule "Send a greeting message daily at 9 AM"',
     );
   });

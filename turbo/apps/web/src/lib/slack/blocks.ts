@@ -444,12 +444,13 @@ export function buildAgentResponseMessage(
   }
 
   if (triggeredBy) {
+    blocks.push({ type: "divider" });
     blocks.push({
       type: "context",
       elements: [
         {
           type: "mrkdwn",
-          text: `─────\n${triggeredBy}`,
+          text: triggeredBy,
         },
       ],
     });
