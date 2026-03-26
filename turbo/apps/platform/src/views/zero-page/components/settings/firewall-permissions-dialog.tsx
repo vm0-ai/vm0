@@ -8,17 +8,15 @@ import {
   Button,
 } from "@vm0/ui";
 import {
-  builtinFirewalls,
+  getConnectorFirewall,
+  isFirewallConnectorType,
   CONNECTOR_TYPES,
   type ConnectorType,
   type FirewallConfig,
   type FirewallPolicies,
 } from "@vm0/core";
 import { ConnectorIcon } from "./connector-icons.tsx";
-import {
-  getFirewallRefs,
-  type PermissionPolicy,
-} from "../../../../signals/zero-page/settings/firewalls.ts";
+import type { PermissionPolicy } from "../../../../signals/zero-page/settings/firewalls.ts";
 import { IconCheck, IconBan } from "@tabler/icons-react";
 import { detach, Reason } from "../../../../signals/utils.ts";
 
@@ -136,18 +134,16 @@ export function FirewallPermissionsDrawer({
   onApply,
   onClose,
 }: FirewallPermissionsDrawerProps) {
-  const refs = getFirewallRefs(connectorType);
+  const ref = connectorType;
 
-  const [activeRef, setActiveRef] = useState(refs[0] ?? "");
+  const config = isFirewallConnectorType(ref)
+    ? getConnectorFirewall(ref)
+    : null;
 
-  // Build policies state from all refs
+  // Build policies state
   const [allPolicies, setAllPolicies] = useState(() => {
     const result: Record<string, Record<string, PermissionPolicy>> = {};
-    for (const ref of refs) {
-      const config = builtinFirewalls[ref];
-      if (!config) {
-        continue;
-      }
+    if (config) {
       const perms = extractPermissions(config);
       const refPolicies: Record<string, PermissionPolicy> = {};
       for (const p of perms) {
@@ -160,15 +156,13 @@ export function FirewallPermissionsDrawer({
 
   const [scrolled, setScrolled] = useState(false);
   const [saving, setSaving] = useState(false);
-
-  const config = builtinFirewalls[activeRef] ?? null;
   const permissions = config ? sortPermissions(extractPermissions(config)) : [];
-  const policies = allPolicies[activeRef] ?? {};
+  const policies = allPolicies[ref] ?? {};
 
   const handlePolicyChange = (name: string, policy: PermissionPolicy) => {
     setAllPolicies({
       ...allPolicies,
-      [activeRef]: { ...policies, [name]: policy },
+      [ref]: { ...policies, [name]: policy },
     });
   };
 
@@ -177,7 +171,7 @@ export function FirewallPermissionsDrawer({
     for (const p of permissions) {
       next[p.name] = policy;
     }
-    setAllPolicies({ ...allPolicies, [activeRef]: next });
+    setAllPolicies({ ...allPolicies, [ref]: next });
   };
 
   const handleApply = () => {
@@ -194,12 +188,7 @@ export function FirewallPermissionsDrawer({
     );
   };
 
-  const handleRefSwitch = (ref: string) => {
-    setActiveRef(ref);
-  };
-
   const connectorLabel = CONNECTOR_TYPES[connectorType]?.label ?? connectorType;
-  const hasMultipleRefs = refs.length > 1;
 
   return (
     <Sheet open onOpenChange={(open) => !open && onClose()}>
@@ -216,29 +205,10 @@ export function FirewallPermissionsDrawer({
           </div>
         </SheetHeader>
 
-        {hasMultipleRefs && (
-          <div className="flex gap-1 border-b border-border pb-2">
-            {refs.map((ref) => (
-              <button
-                key={ref}
-                type="button"
-                onClick={() => handleRefSwitch(ref)}
-                className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-                  activeRef === ref
-                    ? "bg-muted text-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {ref.charAt(0).toUpperCase() + ref.slice(1)}
-              </button>
-            ))}
-          </div>
-        )}
-
         {!config ? (
           <div className="flex flex-1 items-center justify-center">
             <p className="text-sm text-destructive">
-              No firewall config found for {activeRef}
+              No firewall config found for {ref}
             </p>
           </div>
         ) : (

@@ -12,7 +12,11 @@ interface MockedUser {
 
 let internalMockedUser: MockedUser | null = null;
 let internalMockedSession: { token: string } | null = null;
-let internalMockedOrganization: { id: string; name: string } | null = null;
+let internalMockedOrganization: {
+  id: string;
+  name: string;
+  reload: () => Promise<void>;
+} | null = null;
 let internalMockedInvitations: { id: string }[] = [];
 let internalMockedMemberships: { id: string }[] = [{ id: "org_default" }];
 
@@ -47,7 +51,9 @@ export function mockOrganization(options: {
   memberships?: { id: string }[];
   pendingInvitations?: { id: string }[];
 }) {
-  internalMockedOrganization = options.activeOrg ?? null;
+  internalMockedOrganization = options.activeOrg
+    ? { ...options.activeOrg, reload: () => Promise.resolve() }
+    : null;
   if (options.memberships) {
     internalMockedMemberships = options.memberships;
   }

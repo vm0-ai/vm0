@@ -20,6 +20,7 @@ import { randomBytes } from "crypto";
 import { cliTokens } from "../db/schema/cli-tokens";
 import { deviceCodes } from "../db/schema/device-codes";
 import { agentRuns } from "../db/schema/agent-run";
+import { zeroRuns } from "../db/schema/zero-run";
 import { runnerJobQueue } from "../db/schema/runner-job-queue";
 import { exportJobs } from "../db/schema/export-job";
 import { storages, storageVersions } from "../db/schema/storage";
@@ -710,13 +711,18 @@ async function createTestRunDirect(
       prompt: options?.prompt ?? "test prompt",
       continuedFromSessionId: options?.continuedFromSessionId,
       scheduleId: options?.scheduleId,
-      triggerSource: options?.triggerSource,
       ...(options?.createdAt ? { createdAt: options.createdAt } : {}),
       ...(options?.startedAt ? { startedAt: options.startedAt } : {}),
       ...(options?.completedAt ? { completedAt: options.completedAt } : {}),
       ...(options?.result ? { result: options.result } : {}),
     })
     .returning({ id: agentRuns.id });
+
+  await globalThis.services.db.insert(zeroRuns).values({
+    id: run!.id,
+    triggerSource: options?.triggerSource ?? "cli",
+  });
+
   return run!;
 }
 
@@ -1056,6 +1062,7 @@ export async function createTestSchedule(
     intervalSeconds?: number;
     timezone?: string;
     prompt?: string;
+    description?: string;
     appendSystemPrompt?: string;
   },
 ): Promise<ScheduleResponse> {
@@ -1077,6 +1084,7 @@ export async function createTestSchedule(
     cronExpression: hasTrigger ? options?.cronExpression : "0 0 * * *",
     atTime: options?.atTime,
     intervalSeconds: options?.intervalSeconds,
+    description: options?.description,
     appendSystemPrompt: options?.appendSystemPrompt,
   });
   return result.schedule;
@@ -2196,6 +2204,20 @@ export async function findTestRunRecord(
 }
 
 /**
+ * Look up zero_runs record by run ID for verification in tests.
+ */
+export async function findTestZeroRun(
+  runId: string,
+): Promise<typeof zeroRuns.$inferSelect | undefined> {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(zeroRuns)
+    .where(eq(zeroRuns.id, runId))
+    .limit(1);
+  return row;
+}
+
+/**
  * Look up agent run callback records by run ID for verification in tests.
  *
  * Direct DB read is required because no API endpoint exposes callback
@@ -2888,6 +2910,24 @@ export async function insertOrgCacheEntry(entry: {
 export async function deleteOrgCacheEntry(orgId: string): Promise<void> {
   await globalThis.services.db
     .delete(orgCache)
+    .where(eq(orgCache.orgId, orgId));
+}
+
+/**
+ * Set billing period cache on an org_cache row.
+ * Allows getOrgBillingPeriod() to return a known period without Stripe.
+ */
+export async function setOrgCacheBillingPeriod(
+  orgId: string,
+  period: { start: Date; end: Date },
+): Promise<void> {
+  await globalThis.services.db
+    .update(orgCache)
+    .set({
+      currentPeriodStart: period.start,
+      currentPeriodEnd: period.end,
+      billingCachedAt: new Date(),
+    })
     .where(eq(orgCache.orgId, orgId));
 }
 

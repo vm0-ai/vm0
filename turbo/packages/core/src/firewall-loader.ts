@@ -11,7 +11,7 @@ import {
   firewallConfigSchema,
   type FirewallConfig,
 } from "./contracts/firewalls";
-import { builtinFirewalls } from "./firewalls";
+import { getConnectorFirewall, isFirewallConnectorType } from "./firewalls";
 
 /** Minimal fetch function signature for dependency injection in tests */
 export type FetchFn = (url: string) => Promise<Response>;
@@ -52,9 +52,10 @@ export async function fetchFirewallConfig(
 ): Promise<FirewallConfig> {
   // Check builtin configs first (bare name only, not full URLs)
   const trimmed = ref.trim();
-  const builtin = !trimmed.includes("/")
-    ? builtinFirewalls[trimmed]
-    : undefined;
+  const builtin =
+    !trimmed.includes("/") && isFirewallConnectorType(trimmed)
+      ? getConnectorFirewall(trimmed)
+      : undefined;
   if (builtin) {
     return builtin;
   }

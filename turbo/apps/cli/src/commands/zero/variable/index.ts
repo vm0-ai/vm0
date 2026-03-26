@@ -5,7 +5,7 @@ import { deleteCommand } from "./delete";
 
 export const zeroVariableCommand = new Command()
   .name("variable")
-  .description("Manage variables")
+  .description("Read or write non-sensitive configuration values")
   .addCommand(listCommand)
   .addCommand(setCommand)
   .addCommand(deleteCommand);

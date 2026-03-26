@@ -10,6 +10,8 @@ import { reloadEnv } from "../../../../../../src/env";
 
 const stripeMocks = vi.hoisted<StripeMockFns>(() => ({
   subscriptionsRetrieve: vi.fn(),
+  subscriptionsUpdate: vi.fn(),
+  subscriptionsCancel: vi.fn(),
   invoicesRetrieve: vi.fn(),
   invoicesList: vi.fn(),
   customersCreate: vi.fn(),
@@ -21,7 +23,11 @@ const stripeMocks = vi.hoisted<StripeMockFns>(() => ({
 vi.mock("stripe", () => ({
   default: function MockStripe() {
     return {
-      subscriptions: { retrieve: stripeMocks.subscriptionsRetrieve },
+      subscriptions: {
+        retrieve: stripeMocks.subscriptionsRetrieve,
+        update: stripeMocks.subscriptionsUpdate,
+        cancel: stripeMocks.subscriptionsCancel,
+      },
       invoices: {
         retrieve: stripeMocks.invoicesRetrieve,
         list: stripeMocks.invoicesList,
@@ -41,6 +47,11 @@ import { POST } from "../route";
 const TEST_PRICE_PRO = "price_test_pro";
 const TEST_PRICE_TEAM = "price_test_team";
 
+const TEST_ZERO_PRICE = JSON.stringify({
+  pro: [TEST_PRICE_PRO],
+  team: [TEST_PRICE_TEAM],
+});
+
 const context = testContext();
 
 describe("POST /api/zero/billing/checkout", () => {
@@ -49,8 +60,7 @@ describe("POST /api/zero/billing/checkout", () => {
     await context.setupUser();
 
     vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fake");
-    vi.stubEnv("ZERO_PRO_PLAN_PRICE_ID", TEST_PRICE_PRO);
-    vi.stubEnv("ZERO_MAX_PLAN_PRICE_ID", TEST_PRICE_TEAM);
+    vi.stubEnv("ZERO_PRICE", TEST_ZERO_PRICE);
     reloadEnv();
 
     stripeMocks.checkoutSessionsCreate.mockReset();

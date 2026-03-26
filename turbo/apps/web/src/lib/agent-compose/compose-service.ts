@@ -111,29 +111,17 @@ export async function getComposeById(
 }
 
 /**
- * Delete a compose by ID. Verifies ownership, checks for active runs,
- * deletes cascade + S3 instructions storage.
+ * Delete compose by ID with full cleanup. Caller is responsible for auth.
+ * Checks for active runs, deletes cascade + S3 instructions storage.
  *
- * Throws notFound if compose doesn't exist or caller is not the owner.
  * Throws conflict if compose has running/pending runs.
  */
-export async function deleteCompose(
+export async function deleteComposeById(
   composeId: string,
-  userId: string,
+  composeName: string,
+  orgId: string,
 ): Promise<void> {
   const db = globalThis.services.db;
-
-  const [compose] = await db
-    .select()
-    .from(agentComposes)
-    .where(
-      and(eq(agentComposes.id, composeId), eq(agentComposes.userId, userId)),
-    )
-    .limit(1);
-
-  if (!compose) {
-    throw notFound("Agent not found");
-  }
 
   // Check for running/pending runs
   const runningRuns = await db
@@ -159,13 +147,13 @@ export async function deleteCompose(
   await db.delete(agentComposes).where(eq(agentComposes.id, composeId));
 
   // Clean up agent-instructions volume (DB + S3)
-  const storageName = getInstructionsStorageName(compose.name);
+  const storageName = getInstructionsStorageName(composeName);
   const [storage] = await db
     .select({ id: storages.id, s3Prefix: storages.s3Prefix })
     .from(storages)
     .where(
       and(
-        eq(storages.orgId, compose.orgId),
+        eq(storages.orgId, orgId),
         eq(storages.name, storageName),
         eq(storages.type, "volume"),
       ),
@@ -184,6 +172,37 @@ export async function deleteCompose(
       );
     }
   }
+}
+
+/**
+ * Delete a compose by ID. Verifies ownership, then delegates to deleteComposeById.
+ *
+ * Throws notFound if compose doesn't exist or caller is not the owner.
+ * Throws conflict if compose has running/pending runs.
+ */
+export async function deleteCompose(
+  composeId: string,
+  userId: string,
+): Promise<void> {
+  const db = globalThis.services.db;
+
+  const [compose] = await db
+    .select({
+      id: agentComposes.id,
+      name: agentComposes.name,
+      orgId: agentComposes.orgId,
+    })
+    .from(agentComposes)
+    .where(
+      and(eq(agentComposes.id, composeId), eq(agentComposes.userId, userId)),
+    )
+    .limit(1);
+
+  if (!compose) {
+    throw notFound("Agent not found");
+  }
+
+  await deleteComposeById(composeId, compose.name, compose.orgId);
 }
 
 /**

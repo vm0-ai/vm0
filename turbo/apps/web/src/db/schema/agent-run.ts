@@ -43,7 +43,6 @@ export const agentRuns = pgTable(
     error: text("error"),
     modelProvider: varchar("model_provider", { length: 100 }),
     selectedModel: varchar("selected_model", { length: 255 }),
-    triggerSource: varchar("trigger_source", { length: 20 }),
     orgId: text("org_id").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     startedAt: timestamp("started_at"),
@@ -71,5 +70,11 @@ export const agentRuns = pgTable(
     index("idx_agent_runs_schedule_created")
       .on(table.scheduleId, table.createdAt.desc())
       .where(sql`schedule_id IS NOT NULL`),
+    // Composite index for org+status queries (concurrency checks, queue listing)
+    index("idx_agent_runs_org_status_created").on(
+      table.orgId,
+      table.status,
+      table.createdAt.desc(),
+    ),
   ],
 );

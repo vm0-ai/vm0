@@ -17,11 +17,13 @@ import { cleanupOrgExternalServices } from "../org-external-cleanup";
 // --- Stripe mock (external dependency — allowed) ---
 
 const stripeMocks = vi.hoisted<
-  Pick<StripeMockFns, "subscriptionsRetrieve"> & {
-    subscriptionsCancel: ReturnType<typeof vi.fn>;
-  }
+  Pick<
+    StripeMockFns,
+    "subscriptionsRetrieve" | "subscriptionsUpdate" | "subscriptionsCancel"
+  >
 >(() => ({
   subscriptionsRetrieve: vi.fn(),
+  subscriptionsUpdate: vi.fn(),
   subscriptionsCancel: vi.fn(),
 }));
 

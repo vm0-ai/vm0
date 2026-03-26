@@ -21,13 +21,11 @@ import type { AskUserQuestion } from "../../../../../../src/lib/slack/blocks";
 import {
   extractAllRunOutputs,
   formatAskUserDenials,
-  buildDeepLinksFromFlags,
 } from "../../../../../../src/lib/run/extract-run-output";
 import {
   saveThreadSession,
   buildLogsUrl,
 } from "../../../../../../src/lib/slack-org/handlers/shared";
-import { getAppUrl } from "../../../../../../src/lib/url";
 import { env } from "../../../../../../src/env";
 import type { SlackOrgCallbackPayload } from "../../../../../../src/lib/callback/callback-payloads";
 import { logger } from "../../../../../../src/lib/logger";
@@ -282,7 +280,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .where(eq(zeroAgents.id, payload.agentId))
     .limit(1);
   const agentLabel = agentRow?.displayName ?? agentRow?.name ?? "your agent";
-  const agentName = agentRow?.name ?? "your agent";
 
   const allOutputs = await extractAllRunOutputs(runId, error);
   const lastOutput = allOutputs[allOutputs.length - 1]!;
@@ -299,13 +296,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const isLast = i === allOutputs.length - 1;
     const logsUrl = isLast ? buildLogsUrl(runId) : undefined;
-    const deepLinks = isLast
-      ? buildDeepLinksFromFlags(output, getAppUrl(), agentName)
-      : [];
 
     await postMessage(client, payload.channelId, responseText, {
       threadTs: payload.threadTs,
-      blocks: buildAgentResponseMessage(responseText, logsUrl, deepLinks),
+      blocks: buildAgentResponseMessage(responseText, logsUrl),
     });
   }
 

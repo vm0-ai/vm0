@@ -4,8 +4,7 @@ import {
   getConnectorEnvironmentMapping,
   getConnectorAuthMethods,
 } from "../connectors";
-import { getFirewallRefsForConnector } from "../firewalls";
-import { builtinFirewalls } from "../../firewalls";
+import { getConnectorFirewall, isFirewallConnectorType } from "../../firewalls";
 
 /**
  * Verify that every builtin firewall's placeholder secret names match
@@ -20,8 +19,7 @@ describe("firewall secret name consistency", () => {
   const connectorTypes = connectorTypeSchema.options;
 
   for (const connectorType of connectorTypes) {
-    const refs = getFirewallRefsForConnector(connectorType);
-    if (refs.length === 0) continue;
+    if (!isFirewallConnectorType(connectorType)) continue;
 
     it(`${connectorType} → firewall placeholder keys match connector secret names`, () => {
       // Collect env var names the connector exposes.
@@ -46,18 +44,13 @@ describe("firewall secret name consistency", () => {
         }
       }
 
-      // Check each firewall ref's placeholder keys
-      for (const ref of refs) {
-        const firewall = builtinFirewalls[ref];
-        expect(firewall, `builtin firewall "${ref}" not found`).toBeDefined();
-
-        const placeholderKeys = Object.keys(firewall!.placeholders ?? {});
-        for (const key of placeholderKeys) {
-          expect(
-            connectorSecretNames.has(key),
-            `firewall "${ref}" placeholder "${key}" not found in ${connectorType} connector secrets: [${[...connectorSecretNames].join(", ")}]`,
-          ).toBe(true);
-        }
+      const firewall = getConnectorFirewall(connectorType);
+      const placeholderKeys = Object.keys(firewall.placeholders ?? {});
+      for (const key of placeholderKeys) {
+        expect(
+          connectorSecretNames.has(key),
+          `firewall "${connectorType}" placeholder "${key}" not found in ${connectorType} connector secrets: [${[...connectorSecretNames].join(", ")}]`,
+        ).toBe(true);
       }
     });
   }

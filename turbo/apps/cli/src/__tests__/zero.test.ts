@@ -14,6 +14,7 @@ describe("zero CLI program", () => {
       "org",
       "agent",
       "connector",
+      "doctor",
       "preference",
       "schedule",
       "secret",
@@ -45,7 +46,7 @@ describe("zero CLI program", () => {
     }
   });
 
-  it("should have exactly 9 commands", () => {
-    expect(commandNames).toHaveLength(9);
+  it("should have exactly 10 commands", () => {
+    expect(commandNames).toHaveLength(10);
   });
 });

@@ -403,7 +403,7 @@ function DangerZoneSection({
       const result = await client.delete({ body: { slug: org.slug } });
       if (result.status === 200) {
         toast.success("Workspace deleted");
-        window.location.reload();
+        window.location.href = "/select-org";
       } else {
         toast.error(
           extractErrorMessage(result, `Failed to delete (${result.status})`),

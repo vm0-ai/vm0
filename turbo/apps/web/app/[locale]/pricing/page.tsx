@@ -14,7 +14,6 @@ function PricingCard({
   buttonText,
   buttonHref,
   buttonClassName,
-  badge,
 }: {
   title: string;
   price: string;
@@ -24,7 +23,6 @@ function PricingCard({
   buttonText: string;
   buttonHref: string;
   buttonClassName: string;
-  badge?: string;
 }) {
   const [isHovered, setIsHovered] = React.useState(false);
 
@@ -32,11 +30,6 @@ function PricingCard({
     <div
       style={{
         background: "var(--card-bg)",
-        backgroundImage: `
-          linear-gradient(rgba(237, 78, 1, 0.03) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(237, 78, 1, 0.03) 1px, transparent 1px)
-        `,
-        backgroundSize: "40px 40px",
         border: "1px solid var(--border-light)",
         borderRadius: "12px",
         padding: "40px 32px",
@@ -50,28 +43,6 @@ function PricingCard({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {badge && (
-        <div
-          style={{
-            position: "absolute",
-            top: "16px",
-            right: "16px",
-            padding: "4px 12px",
-            background:
-              "linear-gradient(135deg, #FF8C42 0%, #FFB74D 50%, #FFD54F 100%)",
-            borderRadius: "6px",
-            fontSize: "11px",
-            fontWeight: 700,
-            color: "#000000",
-            letterSpacing: "0.5px",
-            textTransform: "uppercase",
-            boxShadow:
-              "0 4px 20px rgba(255, 183, 77, 0.6), 0 0 30px rgba(255, 140, 66, 0.4)",
-          }}
-        >
-          {badge}
-        </div>
-      )}
       <h3
         style={{
           fontSize: "18px",
@@ -176,75 +147,6 @@ function PricingCard({
   );
 }
 
-function CustomPlanCard() {
-  const [isHovered, setIsHovered] = React.useState(false);
-
-  return (
-    <div
-      style={{
-        background: "var(--card-bg)",
-        backgroundImage: `
-          linear-gradient(rgba(237, 78, 1, 0.03) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(237, 78, 1, 0.03) 1px, transparent 1px)
-        `,
-        backgroundSize: "40px 40px",
-        border: "1px solid var(--border-light)",
-        borderRadius: "12px",
-        padding: "24px 32px",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        transition: "all 0.3s ease",
-        transform: isHovered ? "translateY(-2px)" : "translateY(0)",
-      }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
-      <div>
-        <h3
-          style={{
-            fontSize: "18px",
-            fontWeight: 600,
-            fontFamily: '"Fira Mono", monospace',
-            color: "#ed4e01",
-            marginBottom: "2px",
-            letterSpacing: "-0.2px",
-            textTransform: "uppercase",
-          }}
-        >
-          Custom plan
-        </h3>
-        <p
-          style={{
-            fontSize: "15px",
-            fontWeight: 300,
-            color: "var(--text-secondary)",
-            lineHeight: 1.5,
-            margin: 0,
-          }}
-        >
-          For large organizations with advanced customization and self-host
-          options
-        </p>
-      </div>
-      <a
-        href="https://calendar.app.google/csdygPrHHyNgxpTPA"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="btn-secondary-large"
-        style={{
-          textDecoration: "none",
-          fontSize: "15px",
-          fontWeight: 500,
-          padding: "8px 16px",
-        }}
-      >
-        Contact us
-      </a>
-    </div>
-  );
-}
-
 export default function PricingPage() {
   return (
     <>
@@ -255,11 +157,10 @@ export default function PricingPage() {
       <section className="hero-section" style={{ paddingBottom: "40px" }}>
         <div className="container">
           <div>
-            <h1 className="hero-title">Simple, simple pricing</h1>
+            <h1 className="hero-title">Pay for what you use, nothing more</h1>
             <p className="hero-description">
-              We&apos;re in early access, so we keep it straightforward. No
-              gotchas, no surprises. Start free and scale when you&apos;re
-              ready.
+              Start free with your AI teammate. Scale when you&apos;re ready, no
+              credit card required.
             </p>
           </div>
         </div>
@@ -268,60 +169,152 @@ export default function PricingPage() {
       {/* Pricing Cards */}
       <section className="section-spacing" style={{ paddingTop: 0 }}>
         <div className="container">
-          <div
-            style={{
-              marginBottom: "60px",
-            }}
-          >
-            {/* Custom Pricing Cards with Clerk integration */}
+          <div style={{ marginBottom: "60px" }}>
             <div
               style={{
                 marginBottom: "40px",
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(350px, 1fr))",
+                gridTemplateColumns: "repeat(3, 1fr)",
                 gap: "20px",
                 maxWidth: "1200px",
                 margin: "0 auto 40px",
               }}
             >
-              {/* Basic Plan */}
+              {/* Free Plan */}
               <PricingCard
-                title="Basic"
+                title="Free"
                 price="$0"
                 period="/month"
-                description="For exploration and demos. Get started with agent workflows and test capabilities."
+                description="Get started with your AI teammate for free."
                 features={[
-                  "100 agent runs/month",
-                  "3 total agents",
-                  "500 MB artifact storage",
+                  "10,000 starter credits",
+                  "1 concurrent run",
+                  "Unlimited total agents",
+                  "Bring your own LLM keys",
                   "Community support",
                 ]}
                 buttonText="Get started"
-                buttonHref="/sign-up?plan=basic"
+                buttonHref="/sign-up"
                 buttonClassName="btn-secondary-large"
               />
 
-              {/* Master Plan */}
+              {/* Pro Plan */}
               <PricingCard
-                title="Master"
-                price="$45"
+                title="Pro"
+                price="$40"
                 period="/month"
-                description="For diverse automation scenarios at scale. Build production workflows with advanced features."
+                description="More power and seamless collaboration for your team."
                 features={[
-                  "5000 agent runs/month",
-                  "50 total agents",
-                  "20 GB artifact storage",
-                  "Priority email support",
+                  "20,000 credits / month",
+                  "2 concurrent runs",
+                  "Unlimited total agents",
+                  "Bring your own LLM keys",
+                  "Credits rollover (1 month)",
+                  "Email support",
                 ]}
-                buttonText="Start free trial"
-                buttonHref="/sign-up?plan=master"
+                buttonText="Start with Pro"
+                buttonHref="/sign-up?plan=pro"
                 buttonClassName="btn-primary-large"
-                badge="1 Month Free"
+              />
+
+              {/* Team Plan */}
+              <PricingCard
+                title="Team"
+                price="$200"
+                period="/month"
+                description="Scale fast with zero friction and full flexibility."
+                features={[
+                  "120,000 credits / month",
+                  "5 concurrent runs",
+                  "Unlimited total agents",
+                  "Bring your own LLM keys",
+                  "Credits rollover (1 month)",
+                  "Priority support",
+                ]}
+                buttonText="Start with Team"
+                buttonHref="/sign-up?plan=team"
+                buttonClassName="btn-secondary-large"
               />
             </div>
+          </div>
 
-            {/* Enterprise Plan - Compact */}
-            <CustomPlanCard />
+          {/* Pay as you go */}
+          <div
+            style={{
+              background: "var(--card-bg)",
+              border: "1px solid var(--border-light)",
+              borderRadius: "12px",
+              padding: "40px",
+              marginTop: "20px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "40px",
+            }}
+          >
+            <div>
+              <h3
+                style={{
+                  fontSize: "24px",
+                  fontWeight: 400,
+                  color: "var(--text-primary)",
+                  marginBottom: "8px",
+                  letterSpacing: "-0.3px",
+                }}
+              >
+                Need more credits?
+              </h3>
+              <p
+                style={{
+                  fontSize: "15px",
+                  fontWeight: 300,
+                  color: "var(--text-secondary)",
+                  lineHeight: 1.6,
+                  margin: 0,
+                  maxWidth: "600px",
+                }}
+              >
+                Top up anytime at{" "}
+                <strong
+                  style={{ color: "var(--text-primary)", fontWeight: 500 }}
+                >
+                  1,000 credits per $1
+                </strong>
+                . Set up auto-recharge so your agents never stop — when your
+                balance drops below a threshold, credits are purchased
+                automatically.
+              </p>
+            </div>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: "4px",
+                flexShrink: 0,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: "36px",
+                  fontWeight: 300,
+                  color: "var(--text-primary)",
+                  letterSpacing: "-1px",
+                  lineHeight: 1,
+                }}
+              >
+                $1
+              </div>
+              <div
+                style={{
+                  fontSize: "13px",
+                  fontWeight: 300,
+                  color: "var(--text-muted)",
+                }}
+              >
+                per 1,000 credits
+              </div>
+            </div>
           </div>
 
           {/* Feature Comparison Table */}
@@ -374,7 +367,7 @@ export default function PricingPage() {
                         borderBottom: "1px solid var(--border-light)",
                       }}
                     >
-                      Basic
+                      Free
                     </th>
                     <th
                       style={{
@@ -387,115 +380,151 @@ export default function PricingPage() {
                         borderBottom: "1px solid var(--border-light)",
                       }}
                     >
-                      Master
+                      Pro
+                    </th>
+                    <th
+                      style={{
+                        textAlign: "center",
+                        padding: "24px 20px",
+                        background: "transparent",
+                        color: "var(--text-primary)",
+                        fontSize: "16px",
+                        fontWeight: 600,
+                        borderBottom: "1px solid var(--border-light)",
+                      }}
+                    >
+                      Team
                     </th>
                   </tr>
                 </thead>
                 <tbody>
-                  <TableSection title="Usage & Limits" />
-                  <TableRow2
-                    feature="Agent runs per month"
-                    description="Number of times you can execute vm0 run or vm0 cook each month"
-                    free="100"
-                    pro="5000"
+                  <TableSection title="Credits & Agents" />
+                  <TableRow
+                    feature="Credits per month"
+                    description="Credits consumed by AI model usage across all agents"
+                    free="10,000 starter"
+                    pro="20,000"
+                    team="120,000"
                   />
-                  <TableRow2
-                    feature="Total agents"
-                    description="Maximum number of agents you can create and manage"
-                    free="3"
-                    pro="50"
-                  />
-                  <TableRow2
+                  <TableRow
                     feature="Concurrent runs"
-                    description="Number of agents that can run simultaneously"
+                    description="Number of agents that can run concurrently"
                     free="1"
-                    pro="25"
+                    pro="2"
+                    team="5"
                   />
-                  <TableRow2
-                    feature="Session length"
-                    description="Maximum duration for a single agent execution session"
-                    free="1 hour"
-                    pro="2 hours"
-                  />
-
-                  <TableSection title="Storage & Data" />
-                  <TableRow2
-                    feature="Artifact storage"
-                    description="Storage space for generated files and outputs from agent runs"
-                    free="500 MB"
-                    pro="20 GB"
-                  />
-                  <TableRow2
-                    feature="Volume storage"
-                    description="Persistent storage for agent data and files across runs"
-                    free="1 GB"
-                    pro="5 GB"
-                  />
-                  <TableRow2
-                    feature="Log retention"
-                    description="How long execution logs and history are stored"
-                    free="3 days"
-                    pro="90 days"
-                  />
-                  <TableRow2
-                    feature="Checkpoint retention"
-                    description="Duration to keep saved agent execution checkpoints"
-                    free={false}
-                    pro="90 days"
-                  />
-
-                  <TableSection title="Automation" />
-                  <TableRow2
-                    feature="Scheduled agents"
-                    description="Number of agents that can run on a schedule automatically"
-                    free="1"
-                    pro="20"
-                  />
-                  <TableRow2
-                    feature="API keys"
-                    description="Number of API keys for programmatic access"
-                    free="1"
-                    pro="10"
-                  />
-                  <TableRow2
-                    feature="API rate limit"
-                    description="Maximum number of API requests allowed per time period"
-                    free="Standard"
+                  <TableRow
+                    feature="Total agents"
+                    description="Maximum number of agents you can create"
+                    free="Unlimited"
                     pro="Unlimited"
+                    team="Unlimited"
                   />
-
-                  <TableSection title="Features" />
-                  <TableRow2
-                    feature="Pre-built skills"
-                    description="Access to ready-to-use agent capabilities and integrations"
-                    free={true}
-                    pro={true}
+                  <TableRow
+                    feature="Credits rollover"
+                    description="Unused credits carry over to the next billing period"
+                    free={false}
+                    pro="1 month"
+                    team="1 month"
                   />
-                  <TableRow2
-                    feature="Resume from checkpoints"
-                    description="Continue agent execution from a saved state after interruption"
+                  <TableRow
+                    feature="Credit top-up"
+                    description="Purchase additional credits anytime at $1 per 1,000 credits"
                     free={false}
                     pro={true}
+                    team={true}
                   />
-                  <TableRow2
-                    feature="Bring your own model"
-                    description="Use your own model provider API keys and configurations"
+                  <TableRow
+                    feature="Auto-recharge"
+                    description="Automatically purchase credits when balance falls below a threshold"
+                    free={false}
+                    pro={true}
+                    team={true}
+                  />
+
+                  <TableSection title="Connectors & Integrations" />
+                  <TableRow
+                    feature="Connectors"
+                    description="Connect your tools like Slack, GitHub, Notion, and more"
+                    free="All connectors"
+                    pro="All connectors"
+                    team="All connectors"
+                  />
+                  <TableRow
+                    feature="Bring your own LLM"
+                    description="Use your own model provider API keys"
                     free={true}
                     pro={true}
+                    team={true}
+                  />
+
+                  <TableSection title="Security & Compliance" />
+                  <TableRow
+                    feature="Sandboxed execution"
+                    description="Firecracker microVMs with hardware-level KVM isolation"
+                    free={true}
+                    pro={true}
+                    team={true}
+                  />
+                  <TableRow
+                    feature="Full audit trail"
+                    description="HTTP/HTTPS logs with SHA-256 integrity per run"
+                    free={true}
+                    pro={true}
+                    team={true}
+                  />
+                  <TableRow
+                    feature="No credential exposure"
+                    description="Secrets injected at network layer, never visible to agent code"
+                    free={true}
+                    pro={true}
+                    team={true}
+                  />
+
+                  <TableSection title="Collaboration" />
+                  <TableRow
+                    feature="Team members"
+                    description="Number of people in your workspace"
+                    free="Unlimited"
+                    pro="Unlimited"
+                    team="Unlimited"
+                  />
+                  <TableRow
+                    feature="Per-member credit caps"
+                    description="Set spending limits for individual team members"
+                    free={false}
+                    pro={true}
+                    team={true}
+                  />
+                  <TableRow
+                    feature="Auto-recharge"
+                    description="Automatically purchase credits when balance falls below a threshold"
+                    free={false}
+                    pro={true}
+                    team={true}
                   />
 
                   <TableSection title="Support" />
-                  <TableRow2
+                  <TableRow
                     feature="Community support"
-                    description="Access to community forums, Discord, and documentation"
+                    description="Access to Discord community and documentation"
                     free={true}
                     pro={true}
+                    team={true}
                   />
-                  <TableRow2
-                    feature="Priority email support"
-                    description="Dedicated email support with guaranteed response time"
+                  <TableRow
+                    feature="Email support"
+                    description="Direct email support from the VM0 team"
                     free={false}
-                    pro="48h response"
+                    pro={true}
+                    team={true}
+                  />
+                  <TableRow
+                    feature="Priority support"
+                    description="Dedicated support with faster response times"
+                    free={false}
+                    pro={false}
+                    team={true}
                   />
                 </tbody>
               </table>
@@ -523,32 +552,32 @@ export default function PricingPage() {
               }}
             >
               <FAQItem
-                question="What happens when I reach my plan limit?"
-                answer="When you reach your plan limit, you'll be notified and can upgrade to continue. Your agent will stop immediately."
+                question="What are credits?"
+                answer="Credits are consumed when your agents use AI models. Different models consume credits at different rates. For example, a simple task might use a few credits, while a complex multi-step workflow uses more."
               />
               <FAQItem
                 question="Can I change plans at any time?"
                 answer="Yes! You can upgrade or downgrade your plan at any time. Changes take effect immediately, and we'll prorate charges accordingly."
               />
               <FAQItem
-                question="What counts as an agent run?"
-                answer="An agent run is counted each time you execute vm0 run or vm0 cook. Continuing from a checkpoint or session counts as a new run."
+                question="What happens when I run out of credits?"
+                answer="When your credits are depleted, your agents will stop running. You can purchase additional credits via auto-recharge, or upgrade to a higher plan for more monthly credits."
               />
               <FAQItem
-                question="How does the free month work for Master?"
-                answer="New Master subscribers get their first month completely free. No credit card required to start the trial. Cancel anytime before the trial ends."
+                question="Do unused credits roll over?"
+                answer="On the Free plan, starter credits don't expire but don't replenish. On Pro, unused credits roll over for 1 month. On Team, credits roll over for 1 month."
               />
               <FAQItem
-                question="Where to upgrade?"
-                answer="Log in to the Platform, navigate to the Billing section, and you can upgrade your plan from there."
+                question="Can I bring my own model provider?"
+                answer="Yes! All plans support bringing your own LLM API keys (OpenAI, Anthropic, etc.). When using your own keys, no VM0 credits are consumed for model usage."
+              />
+              <FAQItem
+                question="How secure is VM0?"
+                answer="Every agent run executes in an isolated Firecracker microVM with hardware-level KVM isolation. Credentials are injected at the network layer and never exposed to agent code. All HTTP/HTTPS traffic is logged with SHA-256 integrity."
               />
               <FAQItem
                 question="Do you offer annual billing or discounts?"
                 answer="Contact us to discuss volume pricing, annual billing discounts, and custom arrangements for your team."
-              />
-              <FAQItem
-                question="What happens to my agents if I downgrade?"
-                answer="You must manually delete or archive your agents before downgrading. Directly downgrading may affect your existing resources. The downgrade takes effect immediately, ending your current billing cycle and starting a new one."
               />
             </div>
           </div>
@@ -564,7 +593,7 @@ function TableSection({ title }: { title: string }) {
   return (
     <tr>
       <td
-        colSpan={3}
+        colSpan={4}
         style={{
           padding: "32px 20px 16px 20px",
           fontSize: "15px",
@@ -580,16 +609,18 @@ function TableSection({ title }: { title: string }) {
   );
 }
 
-function TableRow2({
+function TableRow({
   feature,
   description,
   free,
   pro,
+  team,
 }: {
   feature: string;
   description?: string;
   free: string | boolean;
   pro: string | boolean;
+  team: string | boolean;
 }) {
   const renderCell = (value: string | boolean) => {
     if (typeof value === "boolean") {
@@ -656,6 +687,16 @@ function TableRow2({
       >
         {renderCell(pro)}
       </td>
+      <td
+        style={{
+          padding: "16px 20px",
+          textAlign: "center",
+          color: "var(--text-secondary)",
+          borderBottom: "1px solid var(--border-light)",
+        }}
+      >
+        {renderCell(team)}
+      </td>
     </tr>
   );
 }
@@ -675,7 +716,7 @@ function FAQItem({ question, answer }: { question: string; answer: string }) {
       }}
       onClick={() => setIsExpanded(!isExpanded)}
       onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = "var(--border-lighter)";
+        e.currentTarget.style.borderColor = "var(--border-light)";
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.borderColor = "var(--border-light)";

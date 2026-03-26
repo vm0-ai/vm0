@@ -5,7 +5,8 @@ import {
 } from "../../../../src/lib/ts-rest-handler";
 import {
   zeroAgentFirewallPoliciesContract,
-  builtinFirewalls,
+  getConnectorFirewall,
+  isFirewallConnectorType,
   type FirewallPolicies,
 } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
@@ -22,10 +23,10 @@ const log = logger("api:zero:firewall-policies");
 
 function validatePolicies(policies: FirewallPolicies): string | null {
   for (const [ref, permissions] of Object.entries(policies)) {
-    const config = builtinFirewalls[ref];
-    if (!config) {
+    if (!isFirewallConnectorType(ref)) {
       return `Unknown firewall ref: ${ref}`;
     }
+    const config = getConnectorFirewall(ref);
 
     const validPermNames = new Set<string>();
     for (const api of config.apis) {

@@ -14,7 +14,7 @@ import { zeroOrgModelProviderCommand } from "./model-provider";
 
 export const zeroOrgCommand = new Command()
   .name("org")
-  .description("Manage your organization")
+  .description("Manage organization settings, members, and providers")
   .addCommand(statusCommand)
   .addCommand(setCommand)
   .addCommand(listCommand)

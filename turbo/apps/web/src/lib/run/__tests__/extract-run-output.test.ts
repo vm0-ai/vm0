@@ -15,8 +15,6 @@ import {
   extractAllRunOutputs,
   getAllRunOutputTexts,
   formatAskUserDenials,
-  buildDeepLinksFromFlags,
-  type RunOutput,
 } from "../extract-run-output";
 
 /**
@@ -54,7 +52,6 @@ describe("extractRunOutput", () => {
     expect(output).toEqual({
       result: null,
       askUserDenials: [],
-      connectorIssue: false,
       error: null,
     });
   });
@@ -77,30 +74,6 @@ describe("extractRunOutput", () => {
 
     expect(output.error).toBe("sandbox crashed");
     expect(output.result).toBeNull();
-  });
-
-  it("does not flag model provider issues (handled via error code)", async () => {
-    mockQuery.mockResolvedValue(
-      axiomResponse([
-        { eventData: { result: "model provider not configured" } },
-      ]),
-    );
-
-    const output = await extractRunOutput("run-1");
-
-    expect(output.connectorIssue).toBe(false);
-  });
-
-  it("detects connector issues in result text", async () => {
-    mockQuery.mockResolvedValue(
-      axiomResponse([
-        { eventData: { result: "missing variable for connector" } },
-      ]),
-    );
-
-    const output = await extractRunOutput("run-1");
-
-    expect(output.connectorIssue).toBe(true);
   });
 
   it("filters AskUserQuestion denials from permission_denials", async () => {
@@ -298,45 +271,5 @@ describe("formatAskUserDenials", () => {
     expect(result).toContain("Pick a color");
     expect(result).toContain("Red — Warm");
     expect(result).toContain("Blue");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// buildDeepLinksFromFlags
-// ---------------------------------------------------------------------------
-
-describe("buildDeepLinksFromFlags", () => {
-  const baseOutput: RunOutput = {
-    result: null,
-    askUserDenials: [],
-    connectorIssue: false,
-    error: null,
-  };
-
-  it("returns empty array when no issues", () => {
-    expect(buildDeepLinksFromFlags(baseOutput, "https://app.vm0.ai")).toEqual(
-      [],
-    );
-  });
-
-  it("returns connector link with agent name", () => {
-    const links = buildDeepLinksFromFlags(
-      { ...baseOutput, connectorIssue: true },
-      "https://app.vm0.ai",
-      "my-agent",
-    );
-
-    expect(links).toHaveLength(1);
-    expect(links[0]!.url).toContain("/team/my-agent?tab=connectors");
-  });
-
-  it("returns connector link without agent name", () => {
-    const links = buildDeepLinksFromFlags(
-      { ...baseOutput, connectorIssue: true },
-      "https://app.vm0.ai",
-    );
-
-    expect(links).toHaveLength(1);
-    expect(links[0]!.url).toBe("https://app.vm0.ai/team");
   });
 });

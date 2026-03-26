@@ -124,28 +124,39 @@ export async function evaluateMemberCaps(
       ),
     );
 
-  for (const member of cappedMembers) {
-    // Only evaluate members that are currently enabled
-    if (!member.creditEnabled) continue;
-    if (member.creditCap === null) continue;
+  // Filter to enabled members with caps set
+  const enabledCapped = cappedMembers.filter(
+    (m) => m.creditEnabled && m.creditCap !== null,
+  );
+  if (enabledCapped.length === 0) return;
 
-    const usage = await db
-      .select({
-        total: sql<number>`COALESCE(SUM(${creditUsage.creditsCharged}), 0)`,
-      })
-      .from(creditUsage)
-      .where(
-        and(
-          eq(creditUsage.orgId, orgId),
-          eq(creditUsage.userId, member.userId),
-          eq(creditUsage.status, "processed"),
-          gte(creditUsage.processedAt, billingPeriod.start),
+  // Batch: single aggregation query instead of N individual queries
+  const usageByUser = await db
+    .select({
+      userId: creditUsage.userId,
+      total: sql<number>`COALESCE(SUM(${creditUsage.creditsCharged}), 0)`,
+    })
+    .from(creditUsage)
+    .where(
+      and(
+        eq(creditUsage.orgId, orgId),
+        inArray(
+          creditUsage.userId,
+          enabledCapped.map((m) => m.userId),
         ),
-      );
+        eq(creditUsage.status, "processed"),
+        gte(creditUsage.processedAt, billingPeriod.start),
+      ),
+    )
+    .groupBy(creditUsage.userId);
 
-    const totalUsage = usage[0]?.total ?? 0;
+  const usageMap = new Map(usageByUser.map((u) => [u.userId, u.total]));
 
-    if (totalUsage >= member.creditCap) {
+  for (const member of enabledCapped) {
+    const totalUsage = usageMap.get(member.userId) ?? 0;
+    const cap = member.creditCap;
+
+    if (cap !== null && totalUsage >= cap) {
       await db
         .update(orgMembersMetadata)
         .set({ creditEnabled: false, updatedAt: new Date() })

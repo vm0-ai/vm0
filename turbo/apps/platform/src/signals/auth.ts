@@ -157,18 +157,6 @@ export const needsOrgSelection$ = computed(async (get) => {
     return false;
   }
 
-  // Check membership count (synchronous property on User)
-  if (user.organizationMemberships.length > 1) {
-    return true;
-  }
-
-  // Check pending invitations (async API call)
-  const invitations = await user.getOrganizationInvitations({
-    status: "pending",
-  });
-  if (invitations.total_count > 0) {
-    return true;
-  }
-
-  return false;
+  // No active organization — user must select or create one
+  return true;
 });

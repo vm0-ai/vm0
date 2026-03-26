@@ -8,6 +8,7 @@ import type {
 function isValidTab(tab: string): tab is ZeroNavId {
   return (
     tab === "chat" ||
+    tab === "ideas" ||
     tab === "schedule" ||
     tab === "team" ||
     tab === "activity" ||
@@ -80,6 +81,8 @@ export const setZeroActiveId$ = command(({ set }, id: ZeroNavId) => {
     set(navigateTo$, "/");
   } else if (id === "team") {
     set(navigateTo$, "/team");
+  } else if (id === "ideas") {
+    set(navigateTo$, "/ideas");
   } else {
     set(navigateTo$, "/:tab", { pathParams: { tab: id } });
   }

@@ -8,7 +8,6 @@ import type { skills } from "../../db/schema/skill";
  * These live server-side only so the frontend never sends stale seed skills.
  */
 export const SEED_SKILLS: readonly string[] = [
-  "vm0",
   "deep-dive",
   "account-reconciliation",
   "analysis-qa",

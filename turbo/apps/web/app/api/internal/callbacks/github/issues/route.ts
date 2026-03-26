@@ -12,10 +12,7 @@ import {
   postIssueComment,
   removeCommentReaction,
 } from "../../../../../../src/lib/github/api";
-import {
-  extractRunOutput,
-  buildDeepLinksFromFlags,
-} from "../../../../../../src/lib/run/extract-run-output";
+import { extractRunOutput } from "../../../../../../src/lib/run/extract-run-output";
 import { getAppUrl } from "../../../../../../src/lib/url";
 import { env } from "../../../../../../src/env";
 import type { GitHubIssuesCallbackPayload } from "../../../../../../src/lib/callback/callback-payloads";
@@ -139,17 +136,8 @@ function formatGitHubComment(opts: {
   output?: string;
   error?: string;
   triggerCommentBody?: string;
-  deepLinks: Array<{ emoji: string; label: string; url: string }>;
 }): string {
-  const {
-    status,
-    agentName,
-    runId,
-    output,
-    error,
-    triggerCommentBody,
-    deepLinks,
-  } = opts;
+  const { status, agentName, runId, output, error, triggerCommentBody } = opts;
   const appUrl = getAppUrl();
   const logsUrl = `${appUrl}/activity/${encodeURIComponent(runId)}`;
   const content =
@@ -169,13 +157,6 @@ function formatGitHubComment(opts: {
   }
 
   parts.push(`<sub>🤖 **${agentName}**</sub>`, "", content, "");
-  if (deepLinks.length > 0) {
-    const linkText = deepLinks
-      .map((link) => `${link.emoji} [${link.label}](${link.url})`)
-      .join(" · ");
-    parts.push(`<sub>${linkText}</sub>`, "");
-  }
-
   parts.push(`<sub>📋 [Audit](${logsUrl})</sub>`);
 
   return parts.join("\n");
@@ -250,13 +231,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // Query Axiom for the agent's output
   const resultData = await extractRunOutput(runId, error);
 
-  // Build deep links from structured flags
-  const deepLinks = buildDeepLinksFromFlags(
-    resultData,
-    getAppUrl(),
-    agent.name,
-  );
-
   // Format and post comment to GitHub issue
   const commentBody = formatGitHubComment({
     status,
@@ -265,7 +239,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     output: resultData.result ?? undefined,
     error,
     triggerCommentBody: payload.triggerCommentBody,
-    deepLinks,
   });
   const commentId = await postIssueComment(
     token,

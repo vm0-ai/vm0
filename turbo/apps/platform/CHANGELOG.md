@@ -1,5 +1,72 @@
 # Changelog
 
+## [0.153.1](https://github.com/vm0-ai/vm0/compare/app-v0.153.0...app-v0.153.1) (2026-03-26)
+
+
+### Bug Fixes
+
+* **platform:** always redirect to org selection when no active org ([#6880](https://github.com/vm0-ai/vm0/issues/6880)) ([d817f51](https://github.com/vm0-ai/vm0/commit/d817f51ba98b123926e7144a470b25ce557f8c04))
+
+## [0.153.0](https://github.com/vm0-ai/vm0/compare/app-v0.152.4...app-v0.153.0) (2026-03-26)
+
+
+### Features
+
+* **platform:** add dedicated /ideas route for ideas & use cases page ([#6829](https://github.com/vm0-ai/vm0/issues/6829)) ([32e85e2](https://github.com/vm0-ai/vm0/commit/32e85e2862e434017446994f038efa64a1db62f8))
+* **slack:** add schedule attribution footer to slack notifications ([#6865](https://github.com/vm0-ai/vm0/issues/6865)) ([bafe721](https://github.com/vm0-ai/vm0/commit/bafe721ce2c28b79c3169db212339755830cd460))
+
+
+### Bug Fixes
+
+* persist chat summaries with structured metadata for consistent display ([#6845](https://github.com/vm0-ai/vm0/issues/6845)) ([958b9f2](https://github.com/vm0-ai/vm0/commit/958b9f228420beb3a9576785b42ae45f3bac121e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.115.2
+
+## [0.152.4](https://github.com/vm0-ai/vm0/compare/app-v0.152.3...app-v0.152.4) (2026-03-26)
+
+
+### Bug Fixes
+
+* **platform:** use stable signal for onboarding intro message ([#6864](https://github.com/vm0-ai/vm0/issues/6864)) ([a44dfd5](https://github.com/vm0-ai/vm0/commit/a44dfd51f04b3dc5bb62de294dfdd95c082bc055))
+* preserve child content when rendering unknown html-like tags in markdown ([#6831](https://github.com/vm0-ai/vm0/issues/6831)) ([7399957](https://github.com/vm0-ai/vm0/commit/7399957b4410d515c706de63140519f967cc0296))
+
+
+### Refactoring
+
+* introduce firewall connector type and simplify firewall api ([#6863](https://github.com/vm0-ai/vm0/issues/6863)) ([cef659e](https://github.com/vm0-ai/vm0/commit/cef659ec12d0c6fb54d7a42a3a90a2f67dadb74a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.115.1
+
+## [0.152.3](https://github.com/vm0-ai/vm0/compare/app-v0.152.2...app-v0.152.3) (2026-03-26)
+
+
+### Bug Fixes
+
+* add z-index to sticky chat composer to prevent content overlap ([#6823](https://github.com/vm0-ai/vm0/issues/6823)) ([e9efe07](https://github.com/vm0-ai/vm0/commit/e9efe07b1f39ce5ef386f1beb3d77ceb8f8047af)), closes [#6219](https://github.com/vm0-ai/vm0/issues/6219)
+
+
+### Refactoring
+
+* merge jira and confluence firewalls into single atlassian firewall ([#6854](https://github.com/vm0-ai/vm0/issues/6854)) ([8752fe8](https://github.com/vm0-ai/vm0/commit/8752fe86fd5d5f59ab16b38373513b021a242b7e))
+* **platform:** resolve schedule agent label from server-side display name ([#6835](https://github.com/vm0-ai/vm0/issues/6835)) ([5b53481](https://github.com/vm0-ai/vm0/commit/5b534813d87103fe423ad9aef43cf32b84536f2e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.115.0
+
 ## [0.152.2](https://github.com/vm0-ai/vm0/compare/app-v0.152.1...app-v0.152.2) (2026-03-26)
 
 

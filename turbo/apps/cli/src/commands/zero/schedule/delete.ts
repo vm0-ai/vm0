@@ -11,7 +11,7 @@ export const deleteCommand = new Command()
   .name("delete")
   .alias("rm")
   .description("Delete a zero schedule")
-  .argument("<agent-name>", "Agent name")
+  .argument("<agent-id>", "Agent ID")
   .option(
     "-n, --name <schedule-name>",
     "Schedule name (required when agent has multiple schedules)",

@@ -8,8 +8,7 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../../src/lib/ts-rest-handler";
-import { logsByIdContract } from "@vm0/core";
-import { inferTriggerSource } from "../../../../../src/lib/run/trigger-source";
+import { logsByIdContract, type TriggerSource } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import {
@@ -17,6 +16,7 @@ import {
   agentComposeVersions,
 } from "../../../../../src/db/schema/agent-compose";
 import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
+import { zeroRuns } from "../../../../../src/db/schema/zero-run";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import { isNotFound, isForbidden } from "../../../../../src/lib/errors";
@@ -136,8 +136,10 @@ const router = tsr.router(logsByIdContract, {
         compose: agentComposes,
         composeVersion: agentComposeVersions,
         agentDisplayName: zeroAgents.displayName,
+        triggerSource: zeroRuns.triggerSource,
       })
       .from(agentRuns)
+      .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
       .leftJoin(
         agentComposeVersions,
         eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
@@ -160,7 +162,8 @@ const router = tsr.router(logsByIdContract, {
       return notFoundResponse();
     }
 
-    const { run, compose, composeVersion, agentDisplayName } = result;
+    const { run, compose, composeVersion, agentDisplayName, triggerSource } =
+      result;
 
     // Extract data from result
     const runResult = run.result as RunResult | null;
@@ -175,7 +178,7 @@ const router = tsr.router(logsByIdContract, {
         displayName: agentDisplayName ?? null,
         framework: extractFramework(composeContent),
         modelProvider: run.modelProvider ?? null,
-        triggerSource: inferTriggerSource(run),
+        triggerSource: (triggerSource ?? "cli") as TriggerSource,
         status: run.status as
           | "pending"
           | "running"

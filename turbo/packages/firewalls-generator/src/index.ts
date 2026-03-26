@@ -11,6 +11,7 @@ import { generate as generateAhrefs } from "./ahrefs";
 import { generate as generateAirtable } from "./airtable";
 import { generate as generateApify } from "./apify";
 import { generate as generateAsana } from "./asana";
+import { generate as generateAtlassian } from "./atlassian";
 import { generate as generateAxiom } from "./axiom";
 import { generate as generateBraveSearch } from "./brave-search";
 import { generate as generateBrevo } from "./brevo";
@@ -23,7 +24,6 @@ import { generate as generateCanva } from "./canva";
 import { generate as generateClickup } from "./clickup";
 import { generate as generateClose } from "./close";
 import { generate as generateCloudflare } from "./cloudflare";
-import { generate as generateConfluence } from "./confluence";
 import { generate as generateCronlytic } from "./cronlytic";
 import { generate as generateCustomerIo } from "./customer-io";
 import { generate as generateDeepseek } from "./deepseek";
@@ -50,7 +50,6 @@ import { generate as generateInstagram } from "./instagram";
 import { generate as generateInstantly } from "./instantly";
 import { generate as generateIntercom } from "./intercom";
 import { generate as generateIntervalsIcu } from "./intervals-icu";
-import { generate as generateJira } from "./jira";
 import { generate as generateJotform } from "./jotform";
 import { generate as generateLark } from "./lark";
 import { generate as generateLine } from "./line";
@@ -113,6 +112,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   airtable: generateAirtable,
   apify: generateApify,
   asana: generateAsana,
+  atlassian: generateAtlassian,
   axiom: generateAxiom,
   "brave-search": generateBraveSearch,
   brevo: generateBrevo,
@@ -125,7 +125,6 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   clickup: generateClickup,
   close: generateClose,
   cloudflare: generateCloudflare,
-  confluence: generateConfluence,
   cronlytic: generateCronlytic,
   "customer-io": generateCustomerIo,
   deel: generateDeel,
@@ -152,7 +151,6 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   instantly: generateInstantly,
   intercom: generateIntercom,
   "intervals-icu": generateIntervalsIcu,
-  jira: generateJira,
   jotform: generateJotform,
   lark: generateLark,
   line: generateLine,

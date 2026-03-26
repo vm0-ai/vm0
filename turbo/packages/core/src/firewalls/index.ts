@@ -7,11 +7,13 @@
  */
 
 import type { FirewallConfig } from "../contracts/firewalls";
+import type { ConnectorType } from "../contracts/connectors";
 import { agentmailFirewall } from "./agentmail.generated";
 import { ahrefsFirewall } from "./ahrefs.generated";
 import { airtableFirewall } from "./airtable.generated";
 import { apifyFirewall } from "./apify.generated";
 import { asanaFirewall } from "./asana.generated";
+import { atlassianFirewall } from "./atlassian.generated";
 import { axiomFirewall } from "./axiom.generated";
 import { braveSearchFirewall } from "./brave-search.generated";
 import { brevoFirewall } from "./brevo.generated";
@@ -24,7 +26,6 @@ import { canvaFirewall } from "./canva.generated";
 import { clickupFirewall } from "./clickup.generated";
 import { closeFirewall } from "./close.generated";
 import { cloudflareFirewall } from "./cloudflare.generated";
-import { confluenceFirewall } from "./confluence.generated";
 import { cronlyticFirewall } from "./cronlytic.generated";
 import { customerIoFirewall } from "./customer-io.generated";
 import { deepseekFirewall } from "./deepseek.generated";
@@ -56,7 +57,6 @@ import { instagramFirewall } from "./instagram.generated";
 import { instantlyFirewall } from "./instantly.generated";
 import { intercomFirewall } from "./intercom.generated";
 import { intervalsIcuFirewall } from "./intervals-icu.generated";
-import { jiraFirewall } from "./jira.generated";
 import { jotformFirewall } from "./jotform.generated";
 import { larkFirewall } from "./lark.generated";
 import { lineFirewall } from "./line.generated";
@@ -112,12 +112,13 @@ import { zapierFirewall } from "./zapier.generated";
 import { zapsignFirewall } from "./zapsign.generated";
 import { zeptomailFirewall } from "./zeptomail.generated";
 
-export const builtinFirewalls: Record<string, FirewallConfig> = {
+const CONNECTOR_FIREWALLS = {
   agentmail: agentmailFirewall,
   ahrefs: ahrefsFirewall,
   airtable: airtableFirewall,
   apify: apifyFirewall,
   asana: asanaFirewall,
+  atlassian: atlassianFirewall,
   axiom: axiomFirewall,
   "brave-search": braveSearchFirewall,
   brevo: brevoFirewall,
@@ -130,7 +131,6 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   clickup: clickupFirewall,
   close: closeFirewall,
   cloudflare: cloudflareFirewall,
-  confluence: confluenceFirewall,
   cronlytic: cronlyticFirewall,
   "customer-io": customerIoFirewall,
   deel: deelFirewall,
@@ -162,7 +162,6 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   instantly: instantlyFirewall,
   intercom: intercomFirewall,
   "intervals-icu": intervalsIcuFirewall,
-  jira: jiraFirewall,
   jotform: jotformFirewall,
   lark: larkFirewall,
   line: lineFirewall,
@@ -217,4 +216,80 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   zapier: zapierFirewall,
   zapsign: zapsignFirewall,
   zeptomail: zeptomailFirewall,
-};
+} as const satisfies Partial<Record<ConnectorType, FirewallConfig>>;
+
+/** Connector types that have a firewall config (subset of ConnectorType). */
+export type FirewallConnectorType = keyof typeof CONNECTOR_FIREWALLS;
+
+/**
+ * Connector types that do not have a firewall config.
+ *
+ * When adding a new ConnectorType, place it in either CONNECTOR_FIREWALLS
+ * or this union. The compile-time assertions below will fail if a
+ * ConnectorType is missing from both, or if a type is listed here
+ * that already has a firewall config.
+ */
+export type NonFirewallConnectorType =
+  // Dynamic base URL — user-specific, self-hosted, or regional domains
+  | "bitrix" // {domain}.bitrix24.com
+  | "chatwoot" // self-hosted
+  | "cloudinary" // account-specific subdomain
+  | "dify" // self-hosted
+  | "docusign" // region-specific
+  | "jira" // {domain}.atlassian.net (API token auth)
+  | "kommo" // {subdomain}.kommo.com
+  | "mailchimp" // datacenter-specific (usX.api.mailchimp.com)
+  | "make" // regional (eu1/eu2/us1/us2.make.com)
+  | "metabase" // self-hosted
+  | "minio" // self-hosted
+  | "qdrant" // self-hosted / custom cluster URL
+  | "salesforce" // instance-specific (*.my.salesforce.com)
+  | "twenty" // self-hosted
+  | "wrike" // regional ({datacenter}.wrike.com)
+  | "zendesk" // {subdomain}.zendesk.com
+  // Basic auth — proxy cannot do base64 encoding at runtime
+  | "htmlcsstoimage" // HTTP Basic Auth (user-id + api-key)
+  | "streak" // HTTP Basic Auth (API key as username)
+  // Webhook URL — token embedded in URL, not auth header
+  | "discord-webhook" // DISCORD_WEBHOOK_URL
+  | "slack-webhook" // SLACK_WEBHOOK_URL
+  // Other
+  | "computer" // not an API connector
+  | "jam"; // no public REST API
+
+/**
+ * Compile-time exhaustiveness checks.
+ *
+ * ValidateNonFirewall: ensures NonFirewallConnectorType only contains
+ * connectors that are NOT in FirewallConnectorType.
+ *
+ * ValidateExhaustive: ensures every ConnectorType is in either
+ * FirewallConnectorType or NonFirewallConnectorType.
+ */
+type ValidateNonFirewall<
+  T extends Exclude<
+    ConnectorType,
+    FirewallConnectorType
+  > = NonFirewallConnectorType,
+> = T;
+type ValidateExhaustive<
+  T extends never = Exclude<
+    ConnectorType,
+    FirewallConnectorType | NonFirewallConnectorType
+  >,
+> = T;
+export type ConnectorTypeCoverage = ValidateNonFirewall & ValidateExhaustive;
+
+/** Check if a connector type has a firewall config. */
+export function isFirewallConnectorType(
+  type: string,
+): type is FirewallConnectorType {
+  return type in CONNECTOR_FIREWALLS;
+}
+
+/** Get the firewall config for a connector type. */
+export function getConnectorFirewall(
+  type: FirewallConnectorType,
+): FirewallConfig {
+  return CONNECTOR_FIREWALLS[type];
+}

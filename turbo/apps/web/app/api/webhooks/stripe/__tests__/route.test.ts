@@ -20,6 +20,8 @@ import { reloadEnv } from "../../../../../src/env";
 // Mock stripe module (external dependency)
 const stripeMocks = vi.hoisted<StripeMockFns>(() => ({
   subscriptionsRetrieve: vi.fn(),
+  subscriptionsUpdate: vi.fn(),
+  subscriptionsCancel: vi.fn(),
   invoicesRetrieve: vi.fn(),
   invoicesList: vi.fn(),
   customersCreate: vi.fn(),
@@ -31,7 +33,11 @@ const stripeMocks = vi.hoisted<StripeMockFns>(() => ({
 vi.mock("stripe", () => ({
   default: function MockStripe() {
     return {
-      subscriptions: { retrieve: stripeMocks.subscriptionsRetrieve },
+      subscriptions: {
+        retrieve: stripeMocks.subscriptionsRetrieve,
+        update: stripeMocks.subscriptionsUpdate,
+        cancel: stripeMocks.subscriptionsCancel,
+      },
       invoices: {
         retrieve: stripeMocks.invoicesRetrieve,
         list: stripeMocks.invoicesList,
@@ -52,6 +58,12 @@ import { POST } from "../route";
 const TEST_WEBHOOK_SECRET = "whsec_test_secret";
 const TEST_PRICE_PRO = "price_test_pro";
 const TEST_PRICE_TEAM = "price_test_team";
+const TEST_PRICE_TEAM_LEGACY = "price_test_team_legacy";
+
+const TEST_ZERO_PRICE = JSON.stringify({
+  pro: [TEST_PRICE_PRO],
+  team: [TEST_PRICE_TEAM, TEST_PRICE_TEAM_LEGACY],
+});
 
 const context = testContext();
 
@@ -99,8 +111,7 @@ describe("POST /api/webhooks/stripe", () => {
 
     vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fake");
     vi.stubEnv("STRIPE_WEBHOOK_SECRET", TEST_WEBHOOK_SECRET);
-    vi.stubEnv("ZERO_PRO_PLAN_PRICE_ID", TEST_PRICE_PRO);
-    vi.stubEnv("ZERO_MAX_PLAN_PRICE_ID", TEST_PRICE_TEAM);
+    vi.stubEnv("ZERO_PRICE", TEST_ZERO_PRICE);
     reloadEnv();
 
     stripeMocks.constructEvent.mockReset();
@@ -435,6 +446,53 @@ describe("POST /api/webhooks/stripe", () => {
 
       const billing = await getOrgBillingFields(user.orgId);
       expect(billing?.subscriptionStatus).toBe("past_due");
+      expect(billing?.tier).toBe("team");
+    });
+
+    it("downgrades tier from team to pro when price changes", async () => {
+      const cusId = uniqueId("cus-downgrade");
+      const subId = uniqueId("sub-downgrade");
+
+      await updateOrgStripeFields(user.orgId, {
+        stripeCustomerId: cusId,
+        stripeSubscriptionId: subId,
+        subscriptionStatus: "active",
+        tier: "team",
+      });
+
+      const response = await sendWebhookEvent("customer.subscription.updated", {
+        id: subId,
+        status: "active",
+        items: { data: [{ price: { id: TEST_PRICE_PRO } }] },
+      });
+
+      expect(response.status).toBe(200);
+
+      const billing = await getOrgBillingFields(user.orgId);
+      expect(billing?.tier).toBe("pro");
+      expect(billing?.subscriptionStatus).toBe("active");
+    });
+
+    it("resolves legacy price ID to correct tier", async () => {
+      const cusId = uniqueId("cus-legacy");
+      const subId = uniqueId("sub-legacy");
+
+      await updateOrgStripeFields(user.orgId, {
+        stripeCustomerId: cusId,
+        stripeSubscriptionId: subId,
+        subscriptionStatus: "active",
+        tier: "pro",
+      });
+
+      const response = await sendWebhookEvent("customer.subscription.updated", {
+        id: subId,
+        status: "active",
+        items: { data: [{ price: { id: TEST_PRICE_TEAM_LEGACY } }] },
+      });
+
+      expect(response.status).toBe(200);
+
+      const billing = await getOrgBillingFields(user.orgId);
       expect(billing?.tier).toBe("team");
     });
   });

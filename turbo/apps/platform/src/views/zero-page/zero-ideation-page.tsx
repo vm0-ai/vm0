@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSet } from "ccstate-react";
 import {
   IconArrowUpRight,
   IconMessageCircle,
@@ -7,21 +8,17 @@ import {
 import { Card, CardContent, cn, Input } from "@vm0/ui";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { getCategories } from "./zero-ideation-data.ts";
+import { setChatPageInput$ } from "../../signals/zero-page/zero-chat-page.ts";
+import { navigateTo$ } from "../../signals/route.ts";
 
 export { getRandomPrompts } from "./zero-ideation-data.ts";
 
-interface ZeroIdeationPageProps {
-  onBack: () => void;
-  onSelectPrompt: (prompt: string) => void;
-}
-
-export function ZeroIdeationPage({
-  onBack,
-  onSelectPrompt,
-}: ZeroIdeationPageProps) {
+export function ZeroIdeationPage() {
   const categories = getCategories().slice(0, 5);
   const [activeTab, setActiveTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const setInput = useSet(setChatPageInput$);
+  const navigate = useSet(navigateTo$);
 
   const baseCategories =
     activeTab === "all"
@@ -42,12 +39,21 @@ export function ZeroIdeationPage({
           }))
           .filter((c) => c.cases.length > 0);
 
+  const handleSelectPrompt = (prompt: string) => {
+    setInput(prompt);
+    navigate("/");
+  };
+
+  const handleBack = () => {
+    navigate("/");
+  };
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <nav className="flex shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
         <button
           type="button"
-          onClick={onBack}
+          onClick={handleBack}
           className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
         >
           <IconMessageCircle size={14} stroke={1.5} className="shrink-0" />
@@ -142,7 +148,7 @@ export function ZeroIdeationPage({
                         <Card
                           key={useCase.title}
                           className="zero-card cursor-pointer hover:bg-muted/30 transition-colors"
-                          onClick={() => onSelectPrompt(useCase.prompt)}
+                          onClick={() => handleSelectPrompt(useCase.prompt)}
                         >
                           <CardContent className="p-4 group relative">
                             <IconArrowUpRight

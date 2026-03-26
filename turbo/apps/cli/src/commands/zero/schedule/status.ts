@@ -105,7 +105,7 @@ function printTimeSchedule(schedule: ScheduleResponse): void {
 export const statusCommand = new Command()
   .name("status")
   .description("Show detailed status of a zero schedule")
-  .argument("<agent-name>", "Agent name")
+  .argument("<agent-id>", "Agent ID")
   .option(
     "-n, --name <schedule-name>",
     "Schedule name (required when agent has multiple schedules)",

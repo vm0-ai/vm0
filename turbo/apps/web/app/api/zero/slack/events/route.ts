@@ -29,6 +29,7 @@ interface SlackAppMentionEvent {
   text: string;
   ts: string;
   channel: string;
+  channel_type?: string;
   event_ts: string;
   thread_ts?: string;
   files?: SlackFile[];
@@ -93,6 +94,7 @@ function handleEventCallback(payload: SlackEventCallback) {
       handleOrgMention({
         workspaceId: payload.team_id,
         channelId: event.channel,
+        channelType: event.channel_type,
         userId: event.user,
         messageText: event.text,
         messageTs: event.ts,

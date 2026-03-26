@@ -13,6 +13,7 @@ import {
   avg,
 } from "drizzle-orm";
 import { agentRuns } from "../../db/schema/agent-run";
+import { zeroRuns } from "../../db/schema/zero-run";
 import { transitionRunStatus } from "./run-status";
 import { agentRunQueue } from "../../db/schema/agent-run-queue";
 import { orgMetadata } from "../../db/schema/org-metadata";
@@ -35,10 +36,10 @@ import {
   checkRunConcurrencyLimit,
   getEffectiveConcurrencyLimit,
 } from "./run-service";
-import { inferTriggerSource } from "./trigger-source";
+
 import { getCachedUser } from "../auth/user-cache-service";
 import type { CreateRunParams, CreateRunResult } from "./run-service";
-import type { OrgTier, QueueResponse } from "@vm0/core";
+import type { OrgTier, QueueResponse, TriggerSource } from "@vm0/core";
 
 const log = logger("service:run-queue");
 
@@ -97,7 +98,6 @@ export async function enqueueRun(
         continuedFromSessionId: params.sessionId ?? null,
         scheduleId: params.scheduleId ?? null,
         modelProvider: params.modelProvider ?? null,
-        triggerSource: params.triggerSource ?? "cli",
         lastHeartbeatAt: new Date(),
       })
       .returning();
@@ -105,6 +105,11 @@ export async function enqueueRun(
     if (!inserted) {
       throw new Error("Failed to create queued run record");
     }
+
+    await tx.insert(zeroRuns).values({
+      id: inserted.id,
+      triggerSource: params.triggerSource ?? "cli",
+    });
 
     await tx.insert(agentRunQueue).values({
       runId: inserted.id,
@@ -488,11 +493,11 @@ export async function getRunQueueStatus(
       agentName: agentComposes.name,
       agentDisplayName: zeroAgents.displayName,
       prompt: agentRuns.prompt,
-      triggerSource: agentRuns.triggerSource,
-      scheduleId: agentRuns.scheduleId,
+      triggerSource: zeroRuns.triggerSource,
       continuedFromSessionId: agentRuns.continuedFromSessionId,
     })
     .from(agentRuns)
+    .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
     .leftJoin(
       agentComposeVersions,
       eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
@@ -587,7 +592,9 @@ export async function getRunQueueStatus(
           ? run.prompt.slice(0, PROMPT_TRUNCATE_LENGTH) + "..."
           : run.prompt
         : null,
-      triggerSource: isOwner ? inferTriggerSource(run) : null,
+      triggerSource: isOwner
+        ? ((run.triggerSource ?? "cli") as TriggerSource)
+        : null,
       sessionLink:
         isOwner && run.continuedFromSessionId
           ? `/chat/${run.continuedFromSessionId}`

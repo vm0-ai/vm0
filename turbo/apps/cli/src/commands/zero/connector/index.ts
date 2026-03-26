@@ -6,7 +6,7 @@ import { disconnectCommand } from "./disconnect";
 
 export const zeroConnectorCommand = new Command()
   .name("connector")
-  .description("Manage third-party service connections")
+  .description("Check or connect third-party services (GitHub, Slack, etc.)")
   .addCommand(listCommand)
   .addCommand(statusCommand)
   .addCommand(connectCommand)

@@ -258,29 +258,32 @@ export async function GET(request: NextRequest) {
         historicalTo,
       );
 
-      for (const row of computedRows) {
-        if (!cachedDates.has(row.date)) {
-          daily.push(row);
+      const uncachedRows = computedRows.filter(
+        (row) => !cachedDates.has(row.date),
+      );
+      daily.push(...uncachedRows);
 
-          // Cache for next time (fire-and-forget upsert)
-          await db
-            .insert(usageDaily)
-            .values({
+      // Batch cache for next time (single upsert instead of N)
+      if (uncachedRows.length > 0) {
+        await db
+          .insert(usageDaily)
+          .values(
+            uncachedRows.map((row) => ({
               userId,
               orgId: org.orgId,
               date: row.date,
               runCount: row.run_count,
               runTimeMs: row.run_time_ms,
-            })
-            .onConflictDoUpdate({
-              target: [usageDaily.userId, usageDaily.orgId, usageDaily.date],
-              set: {
-                runCount: row.run_count,
-                runTimeMs: row.run_time_ms,
-                updatedAt: new Date(),
-              },
-            });
-        }
+            })),
+          )
+          .onConflictDoUpdate({
+            target: [usageDaily.userId, usageDaily.orgId, usageDaily.date],
+            set: {
+              runCount: sql`excluded.run_count`,
+              runTimeMs: sql`excluded.run_time_ms`,
+              updatedAt: new Date(),
+            },
+          });
       }
     }
 

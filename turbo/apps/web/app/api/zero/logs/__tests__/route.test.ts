@@ -424,7 +424,7 @@ describe("GET /api/zero/logs", () => {
       expect(run.triggerSource).toBe("slack");
     });
 
-    it("should infer 'schedule' for old rows with scheduleId but no trigger_source", async () => {
+    it("should return 'schedule' for runs with triggerSource set to schedule", async () => {
       const schedule = await createTestSchedule(
         testComposeId,
         `sched-${randomUUID().slice(0, 8)}`,
@@ -433,6 +433,7 @@ describe("GET /api/zero/logs", () => {
       await createTestRunInDb(user.userId, testComposeId, {
         status: "completed",
         scheduleId: schedule.id,
+        triggerSource: "schedule",
         startedAt: new Date(),
         completedAt: new Date(),
       });
@@ -449,9 +450,10 @@ describe("GET /api/zero/logs", () => {
       expect(run.triggerSource).toBe("schedule");
     });
 
-    it("should infer 'web' for old rows with continuedFromSessionId but no trigger_source", async () => {
+    it("should return 'web' for runs with triggerSource set to web", async () => {
       await createTestRunInDb(user.userId, testComposeId, {
         status: "completed",
+        triggerSource: "web",
         continuedFromSessionId: randomUUID(),
         startedAt: new Date(),
         completedAt: new Date(),
@@ -469,7 +471,7 @@ describe("GET /api/zero/logs", () => {
       expect(run.triggerSource).toBe("web");
     });
 
-    it("should default to 'cli' for old rows with no trigger_source and no hints", async () => {
+    it("should default to 'cli' for runs without explicit triggerSource", async () => {
       await createTestRunInDb(user.userId, testComposeId, {
         status: "completed",
         startedAt: new Date(),
@@ -482,7 +484,6 @@ describe("GET /api/zero/logs", () => {
 
       expect(response.status).toBe(200);
       expect(data.data.length).toBeGreaterThan(0);
-      // Runs without trigger_source, scheduleId, or continuedFromSessionId default to 'cli'
       expect(data.data[0].triggerSource).toBe("cli");
     });
   });

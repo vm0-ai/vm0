@@ -7,7 +7,7 @@ import { slackOrgConnections } from "../../db/schema/slack-org-connection";
 import { slackOrgInstallations } from "../../db/schema/slack-org-installation";
 import { agentRuns } from "../../db/schema/agent-run";
 import { decryptSecretsMap } from "../crypto";
-import { getOrgData } from "../org/org-cache-service";
+import { getOrgData, batchGetOrgData } from "../org/org-cache-service";
 import { notFound, badRequest, schedulePast } from "../errors";
 import { logger } from "../logger";
 import { createZeroRun } from "../zero/zero-run-service";
@@ -554,12 +554,9 @@ export async function listSchedules(
     .where(inArray(agentComposes.id, agentIds));
   const agentMap = new Map(agentRows.map((r) => [r.id, r]));
 
-  // Load org slugs via org cache (by orgId from schedule records)
+  // Load org data in batch (2 DB queries instead of 2N)
   const uniqueClerkOrgIds = [...new Set(userSchedules.map((s) => s.orgId))];
-  const orgDataEntries = await Promise.all(
-    uniqueClerkOrgIds.map(async (id) => [id, await getOrgData(id)] as const),
-  );
-  const orgDataMap = new Map(orgDataEntries);
+  const orgDataMap = await batchGetOrgData(uniqueClerkOrgIds);
 
   return userSchedules
     .filter((schedule) => {

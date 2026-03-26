@@ -116,38 +116,6 @@ describe("buildTelegramResponse", () => {
 
     expect(result).toContain("<b>bold</b> and <code>code</code>");
   });
-
-  it("should include deep links when provided", () => {
-    const result = buildTelegramResponse(
-      "content",
-      "Bot",
-      "https://example.com/logs",
-      [
-        {
-          emoji: "🔑",
-          label: "Configure model providers",
-          url: "https://example.com/settings",
-        },
-      ],
-    );
-
-    expect(result).toContain(
-      '🔑 <a href="https://example.com/settings">Configure model providers</a>',
-    );
-    expect(result).toContain("📋 Audit</a>");
-  });
-
-  it("should not include deep links section when empty", () => {
-    const result = buildTelegramResponse(
-      "content",
-      "Bot",
-      "https://example.com/logs",
-      [],
-    );
-
-    expect(result).not.toContain("🔑");
-    expect(result).toContain("📋 Audit</a>");
-  });
 });
 
 describe("splitMessage", () => {

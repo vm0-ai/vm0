@@ -1,5 +1,43 @@
 # Changelog
 
+## [8.115.2](https://github.com/vm0-ai/vm0/compare/core-v8.115.1...core-v8.115.2) (2026-03-26)
+
+
+### Bug Fixes
+
+* persist chat summaries with structured metadata for consistent display ([#6845](https://github.com/vm0-ai/vm0/issues/6845)) ([958b9f2](https://github.com/vm0-ai/vm0/commit/958b9f228420beb3a9576785b42ae45f3bac121e))
+
+
+### Refactoring
+
+* add compile-time exhaustiveness check for connector firewall coverage ([#6875](https://github.com/vm0-ai/vm0/issues/6875)) ([97025e5](https://github.com/vm0-ai/vm0/commit/97025e5796b980286b756fb2a089aa2054b21684)), closes [#6442](https://github.com/vm0-ai/vm0/issues/6442)
+
+## [8.115.1](https://github.com/vm0-ai/vm0/compare/core-v8.115.0...core-v8.115.1) (2026-03-26)
+
+
+### Bug Fixes
+
+* add s3 cleanup and running-run guard to zero agent delete endpoint ([#6871](https://github.com/vm0-ai/vm0/issues/6871)) ([2920069](https://github.com/vm0-ai/vm0/commit/2920069adacb886cab7ad08b33830a8f473df98a)), closes [#6866](https://github.com/vm0-ai/vm0/issues/6866)
+
+
+### Refactoring
+
+* introduce firewall connector type and simplify firewall api ([#6863](https://github.com/vm0-ai/vm0/issues/6863)) ([cef659e](https://github.com/vm0-ai/vm0/commit/cef659ec12d0c6fb54d7a42a3a90a2f67dadb74a))
+
+## [8.115.0](https://github.com/vm0-ai/vm0/compare/core-v8.114.0...core-v8.115.0) (2026-03-26)
+
+
+### Features
+
+* add fine-grained firewall permissions for x (twitter) ([#6833](https://github.com/vm0-ai/vm0/issues/6833)) ([445678c](https://github.com/vm0-ai/vm0/commit/445678cdea705e4e59c0ebf7ec26b8e411004c97))
+
+
+### Refactoring
+
+* merge jira and confluence firewalls into single atlassian firewall ([#6854](https://github.com/vm0-ai/vm0/issues/6854)) ([8752fe8](https://github.com/vm0-ai/vm0/commit/8752fe86fd5d5f59ab16b38373513b021a242b7e))
+* **platform:** resolve schedule agent label from server-side display name ([#6835](https://github.com/vm0-ai/vm0/issues/6835)) ([5b53481](https://github.com/vm0-ai/vm0/commit/5b534813d87103fe423ad9aef43cf32b84536f2e))
+* remove hardcoded unrestricted permission from firewall generators ([#6840](https://github.com/vm0-ai/vm0/issues/6840)) ([917beb5](https://github.com/vm0-ai/vm0/commit/917beb545394f4c76300c9a0ad82f0da54f3dfdb)), closes [#6839](https://github.com/vm0-ai/vm0/issues/6839)
+
 ## [8.114.0](https://github.com/vm0-ai/vm0/compare/core-v8.113.0...core-v8.114.0) (2026-03-25)
 
 

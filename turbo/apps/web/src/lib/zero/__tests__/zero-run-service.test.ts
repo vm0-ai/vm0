@@ -11,6 +11,7 @@ import {
   createTestZeroAgent,
   getTestZeroAgentId,
   findTestRunRecord,
+  findTestZeroRun,
   findTestRunCallbacks,
   findTestRunnerJobEntry,
 } from "../../../__tests__/api-test-helpers";
@@ -171,12 +172,12 @@ describe("createZeroRun()", () => {
     ];
 
     for (const triggerSource of triggerSources) {
-      it(`should store triggerSource "${triggerSource}" on run record`, async () => {
+      it(`should store triggerSource "${triggerSource}" on zero_runs record`, async () => {
         const result = await createZeroRun(baseParams({ triggerSource }));
 
-        const run = await findTestRunRecord(result.runId);
-        expect(run).toBeDefined();
-        expect(run!.triggerSource).toBe(triggerSource);
+        const zeroRun = await findTestZeroRun(result.runId);
+        expect(zeroRun).toBeDefined();
+        expect(zeroRun!.triggerSource).toBe(triggerSource);
       });
     }
   });

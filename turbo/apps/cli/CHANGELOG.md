@@ -1,5 +1,50 @@
 # Changelog
 
+## [9.84.3](https://github.com/vm0-ai/vm0/compare/cli-v9.84.2...cli-v9.84.3) (2026-03-26)
+
+
+### Bug Fixes
+
+* **cli:** rename schedule help arg from agent-name to agent-id ([#6893](https://github.com/vm0-ai/vm0/issues/6893)) ([4652265](https://github.com/vm0-ai/vm0/commit/4652265f435de9bb6fa9c132bfe4112ea0c5449f))
+
+## [9.84.2](https://github.com/vm0-ai/vm0/compare/cli-v9.84.1...cli-v9.84.2) (2026-03-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.115.2
+
+## [9.84.1](https://github.com/vm0-ai/vm0/compare/cli-v9.84.0...cli-v9.84.1) (2026-03-26)
+
+
+### Refactoring
+
+* **cli:** add agent self-update guidance to zero --help and system prompt ([#6874](https://github.com/vm0-ai/vm0/issues/6874)) ([4cd38f1](https://github.com/vm0-ai/vm0/commit/4cd38f1a32ea2fcf6e1332f3d7a694807c2d4d39))
+* **cli:** optimize zero --help descriptions for agent consumption ([#6858](https://github.com/vm0-ai/vm0/issues/6858)) ([57eca30](https://github.com/vm0-ai/vm0/commit/57eca30668793addf66382be1479d0586741703c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.115.1
+
+## [9.84.0](https://github.com/vm0-ai/vm0/compare/cli-v9.83.3...cli-v9.84.0) (2026-03-26)
+
+
+### Features
+
+* add zero doctor missing-token command ([#6852](https://github.com/vm0-ai/vm0/issues/6852)) ([07af907](https://github.com/vm0-ai/vm0/commit/07af907ce9587270f7a1cb3159800c3c0cf7c07e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.115.0
+
 ## [9.83.3](https://github.com/vm0-ai/vm0/compare/cli-v9.83.2...cli-v9.83.3) (2026-03-25)
 
 

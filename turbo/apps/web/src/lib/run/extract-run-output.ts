@@ -1,5 +1,4 @@
 import { queryAxiom, getDatasetName, DATASETS } from "../axiom";
-import { detectIssueCategories, type DeepLink } from "../deep-links";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -22,8 +21,6 @@ export interface RunOutput {
   result: string | null;
   /** AskUserQuestion permission denials */
   askUserDenials: PermissionDenial[];
-  /** Whether connector/secret keywords were detected in the result */
-  connectorIssue: boolean;
   /** Run error message (if failed) */
   error: string | null;
 }
@@ -86,7 +83,6 @@ export async function extractRunOutput(
     return {
       result: null,
       askUserDenials: [],
-      connectorIssue: false,
       error: error ?? null,
     };
   }
@@ -112,7 +108,6 @@ export async function extractAllRunOutputs(
       {
         result: null,
         askUserDenials: [],
-        connectorIssue: false,
         error: error ?? null,
       },
     ];
@@ -130,15 +125,9 @@ function buildRunOutput(event: ResultEvent, error?: string | null): RunOutput {
     (d) => d.tool_name === "AskUserQuestion",
   );
 
-  const textToScan = result ?? error ?? "";
-  const categories = textToScan
-    ? detectIssueCategories(textToScan)
-    : new Set<never>();
-
   return {
     result,
     askUserDenials,
-    connectorIssue: categories.has("connector"),
     error: error ?? null,
   };
 }
@@ -168,32 +157,6 @@ export async function getAllRunOutputTexts(runId: string): Promise<string[]> {
   }
 
   return texts;
-}
-
-/**
- * Build deep links from structured RunOutput flags.
- *
- * Replaces raw text keyword scanning in downstream consumers.
- */
-export function buildDeepLinksFromFlags(
-  output: RunOutput,
-  appUrl: string,
-  agentId?: string,
-): DeepLink[] {
-  const links: DeepLink[] = [];
-
-  if (output.connectorIssue) {
-    const path = agentId
-      ? `/team/${encodeURIComponent(agentId)}?tab=connectors`
-      : "/team";
-    links.push({
-      emoji: "🔌",
-      label: "Configure connectors",
-      url: `${appUrl}${path}`,
-    });
-  }
-
-  return links;
 }
 
 /**
