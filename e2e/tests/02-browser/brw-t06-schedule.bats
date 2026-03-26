@@ -78,9 +78,18 @@ teardown_file() {
   step_screenshot "schedule-page"
   assert [ "$page_loaded" = "true" ]
 
-  # Click "Add schedule" button
+  # Click "Add schedule" button (use role locator; text inside button has an icon sibling)
+  # Retry because agents may still be loading (header button is disabled until agents load)
   echo "# Clicking Add schedule..." >&3
-  agent-browser find text "Add schedule" click
+  local btn_clicked=false
+  for _i in $(seq 1 15); do
+    if agent-browser find role button --name "Add schedule" click 2>/dev/null; then
+      btn_clicked=true
+      break
+    fi
+    sleep 1
+  done
+  assert [ "$btn_clicked" = "true" ]
   agent-browser wait 1000
 
   # Wait for dialog to appear
@@ -201,9 +210,17 @@ teardown_file() {
   done
   assert [ "$page_loaded" = "true" ]
 
-  # Click Calendar tab
+  # Click Calendar tab (use role locator; tab text has an icon sibling)
   echo "# Switching to Calendar view..." >&3
-  agent-browser find text "Calendar" click
+  local tab_clicked=false
+  for _i in $(seq 1 10); do
+    if agent-browser find role tab --name "Calendar" click 2>/dev/null; then
+      tab_clicked=true
+      break
+    fi
+    sleep 1
+  done
+  assert [ "$tab_clicked" = "true" ]
   agent-browser wait 2000
 
   # Wait for calendar to render
