@@ -62,13 +62,13 @@ teardown_file() {
   assert [ "$btn_clicked" = "true" ]
   agent-browser wait 1000
 
-  # Wait for dialog to appear
-  wait_for_text "Describe your task and instruction" 10
+  # Wait for dialog to appear (use dialog title; placeholder text may not appear in accessibility snapshot)
+  wait_for_text "Prompt" 10
   step_screenshot "add-schedule-dialog"
 
   # Fill the prompt textarea
   echo "# Filling schedule prompt: $SCHEDULE_PROMPT" >&3
-  agent-browser find placeholder "Describe your task and instruction" fill "$SCHEDULE_PROMPT"
+  agent-browser find label "Prompt" fill "$SCHEDULE_PROMPT"
   agent-browser wait 500
   step_screenshot "schedule-form-filled"
 
