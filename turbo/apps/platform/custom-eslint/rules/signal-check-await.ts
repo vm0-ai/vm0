@@ -125,6 +125,26 @@ export default createRule<[], MessageIds>({
       return false;
     }
 
+    function objectContainsSignal(node: TSESTree.ObjectExpression): boolean {
+      return node.properties.some((prop) => {
+        if (prop.type !== "Property") {
+          return false;
+        }
+        // { signal } or { signal: signal }
+        if (prop.key.type === "Identifier" && prop.key.name === "signal") {
+          if (prop.value.type === "Identifier") {
+            return prop.value.name === signalParamName;
+          }
+          return prop.key.name === signalParamName;
+        }
+        // Nested object: { fetchOptions: { signal } }
+        if (prop.value.type === "ObjectExpression") {
+          return objectContainsSignal(prop.value);
+        }
+        return false;
+      });
+    }
+
     function hasSignalInArguments(
       awaitExpr: TSESTree.AwaitExpression,
     ): boolean {
@@ -144,24 +164,9 @@ export default createRule<[], MessageIds>({
           return true;
         }
 
-        // Case 2: In object literal - someFunc({ signal })
+        // Case 2: In object literal (recursive) - someFunc({ signal }) or someFunc({ opts: { signal } })
         if (argNode.type === "ObjectExpression") {
-          return argNode.properties.some((prop) => {
-            // Property shorthand: { signal }
-            if (
-              prop.type === "Property" &&
-              prop.key.type === "Identifier" &&
-              prop.key.name === "signal"
-            ) {
-              // Check if the value is the signal parameter
-              if (prop.value.type === "Identifier") {
-                return prop.value.name === signalParamName;
-              }
-              // Shorthand: { signal } means key and value are same
-              return prop.key.name === signalParamName;
-            }
-            return false;
-          });
+          return objectContainsSignal(argNode);
         }
 
         return false;

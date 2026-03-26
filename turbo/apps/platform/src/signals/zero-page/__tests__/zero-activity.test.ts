@@ -8,7 +8,7 @@ import {
   zeroActivityHasPrev$,
   initZeroActivityAgentName$,
   setZeroActivityFilter$,
-  setZeroActivitySelectedLogId$,
+  setupActivityLogLoop$,
   zeroActivityDetail$,
   formatLogTime,
   formatDuration,
@@ -194,16 +194,17 @@ describe("zero-activity signals", () => {
         ),
       );
 
-      await setup();
-      context.store.set(setZeroActivitySelectedLogId$, "log-1");
+      await setupPage({
+        context,
+        path: "/activity/log-1",
+        withoutRender: true,
+      });
+      await context.store.set(setupActivityLogLoop$, context.signal);
 
       const detail = await context.store.get(zeroActivityDetail$);
       expect(detail).not.toBeNull();
       expect(detail?.prompt).toBe("Summarize today's activity");
       expect(detail?.status).toBe("completed");
-
-      // Clean up: deselect log to stop polling
-      context.store.set(setZeroActivitySelectedLogId$, null);
     });
   });
 

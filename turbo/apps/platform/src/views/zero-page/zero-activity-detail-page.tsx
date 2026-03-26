@@ -31,9 +31,9 @@ import {
   zeroActivityEvents$,
   zeroActivityStepSearch$,
   setZeroActivityStepSearch$,
-  zeroActivitySelectedLogId$,
   formatLogTime,
   formatDuration,
+  currentRunId$,
 } from "../../signals/activity-page/activity-signals.ts";
 import {
   groupEventsIntoMessages,
@@ -248,14 +248,14 @@ function ActivityHeaderCard({
 }
 
 export function ZeroActivityDetailPage() {
-  const selectedLogId = useGet(zeroActivitySelectedLogId$);
+  const currentRunId = useGet(currentRunId$);
   const detailLoadable = useLastLoadable(zeroActivityDetail$);
   const eventsLoadable = useLastLoadable(zeroActivityEvents$);
   // Resolve agent display name from the detail response
   const detail =
     detailLoadable.state === "hasData" ? detailLoadable.data : null;
   // Detect stale detail from previous navigation (useLastLoadable keeps old data)
-  const isStale = detail !== null && detail.id !== selectedLogId;
+  const isStale = detail !== null && detail.id !== currentRunId;
   const displayName =
     detail && !isStale
       ? (detail.displayName ?? detail.agentId ?? "Agent")

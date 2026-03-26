@@ -1,20 +1,11 @@
-import { command, computed, state, type Computed } from "ccstate";
-import type { AgentEvent, LogStatus } from "../zero-page/log-types.ts";
-import {
-  zeroComposesListContract,
-  logsByIdContract,
-  zeroRunAgentEventsContract,
-  type ComposeListItem,
-} from "@vm0/core";
-import { searchParams$, updateSearchParams$ } from "../route.ts";
+import { command, computed, state } from "ccstate";
+import type { AgentEvent } from "../zero-page/log-types.ts";
+import { zeroComposesListContract, type ComposeListItem } from "@vm0/core";
+import { pathParams$, searchParams$, updateSearchParams$ } from "../route.ts";
 import { createCursorPagination } from "../cursor-pagination.ts";
-import { throwIfAbort, detach, Reason } from "../utils.ts";
 import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { delay } from "signal-timers";
-
-const EVENTS_PAGE_LIMIT = 30;
-const MAX_POLL_INTERVAL = 30_000;
+import { createRunLoop } from "../zero-page/polling.ts";
 
 // ---------------------------------------------------------------------------
 // Filters — URL-derived
@@ -203,17 +194,13 @@ export const setZeroActivityFilter$ = command(
   },
 );
 
-// ---------------------------------------------------------------------------
-// Detail state — driven by URL sub-route
-// ---------------------------------------------------------------------------
-
-const internalPollingAbort$ = state<AbortController | null>(null);
-const lastSyncedLogId$ = state<string | null>(null);
-
-/** Currently selected log ID (readable). */
-export const zeroActivitySelectedLogId$ = computed((get) =>
-  get(lastSyncedLogId$),
-);
+export const currentRunId$ = computed((get) => {
+  const params = get(pathParams$);
+  if (params && typeof params === "object" && "logId" in params) {
+    return String(params.logId);
+  }
+  return null;
+});
 
 // ---------------------------------------------------------------------------
 // Detail step search — component-local filter for the detail view
@@ -232,197 +219,61 @@ export const setZeroActivityStepSearch$ = command(({ set }, value: string) => {
 });
 
 /**
+ * Active run loop for the currently selected log.
+ */
+const internalActiveRunLoop$ = state<ReturnType<typeof createRunLoop> | null>(
+  null,
+);
+
+/**
  * Set selected log ID directly — triggers detail fetch + event polling.
  */
-export const setZeroActivitySelectedLogId$ = command(
-  ({ get, set }, logId: string | null) => {
-    // Abort any running polling before changing log
-    const prev = get(internalPollingAbort$);
-    if (prev) {
-      prev.abort();
-    }
-    set(internalPollingAbort$, null);
-    set(pagedEvents$, []);
-    set(lastSyncedLogId$, logId);
+export const setupActivityLogLoop$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    signal.addEventListener("abort", () => {
+      set(internalActiveRunLoop$, null);
+    });
 
-    if (logId) {
-      const controller = new AbortController();
-      set(internalPollingAbort$, controller);
-      detach(
-        set(setupZeroActivityEventPolling$, controller.signal),
-        Reason.Daemon,
-      );
+    const runId = get(currentRunId$);
+    if (!runId) {
+      return;
     }
+
+    const run = createRunLoop(runId);
+    set(internalActiveRunLoop$, run);
+    await set(run.beginLoop$, signal);
   },
 );
 
 // ---------------------------------------------------------------------------
-// Log detail
+// Log detail — re-fetches when run status changes (polling drives updates)
 // ---------------------------------------------------------------------------
 
-const detailReloadTick$ = state(0);
-
 export const zeroActivityDetail$ = computed(async (get) => {
-  get(detailReloadTick$);
-  const logId = get(lastSyncedLogId$);
-  if (!logId) {
+  const run = get(internalActiveRunLoop$);
+  if (!run) {
     return null;
   }
 
-  const client = get(zeroClient$)(logsByIdContract);
-  const result = await client.getById({ params: { id: logId } });
-  if (result.status !== 200) {
-    throw new Error(`Failed to fetch log detail (${result.status})`);
-  }
-  return result.body;
+  return await get(run.detail$);
 });
 
 // ---------------------------------------------------------------------------
-// Event polling (reuses the same pattern as log-detail-signals.ts)
+// Events — flattened from run loop's paged events
 // ---------------------------------------------------------------------------
 
-function isTerminalStatus(status: LogStatus): boolean {
-  return (
-    status === "completed" ||
-    status === "failed" ||
-    status === "timeout" ||
-    status === "cancelled"
-  );
-}
-
-interface PageResult {
-  events: AgentEvent[];
-  hasMore: boolean;
-}
-
-function createEventPageComputed(
-  runId: string,
-  since?: string,
-): Computed<Promise<PageResult>> {
-  return computed(async (get) => {
-    const client = get(zeroClient$)(zeroRunAgentEventsContract);
-    const query: { limit: number; order: "asc"; since?: number } = {
-      limit: EVENTS_PAGE_LIMIT,
-      order: "asc",
-    };
-    if (since) {
-      query.since = new Date(since).getTime();
-    }
-    const result = await client.getAgentEvents({
-      params: { id: runId },
-      query,
-    });
-    if (result.status !== 200) {
-      throw new Error(`Failed to fetch agent events (${result.status})`);
-    }
-    const data = result.body;
-    return { events: data.events, hasMore: data.hasMore };
-  });
-}
-
-const pagedEvents$ = state<Computed<Promise<PageResult>>[]>([]);
-
 export const zeroActivityEvents$ = computed(async (get) => {
-  const pages = get(pagedEvents$);
+  const run = get(internalActiveRunLoop$);
+  if (!run) {
+    return [] as AgentEvent[];
+  }
+  const pages = await get(run.pagedEventsList$);
   if (pages.length === 0) {
     return [] as AgentEvent[];
   }
   const results = await Promise.all(pages.map((p) => get(p)));
   return results.flatMap((r) => r.events);
 });
-
-const pollInterval$ = state(3000);
-
-const pollNewEvents$ = command(
-  async ({ get, set }, runId: string, _signal: AbortSignal) => {
-    const pages = get(pagedEvents$);
-    if (pages.length === 0) {
-      return;
-    }
-
-    const lastPage = await get(pages[pages.length - 1]);
-    if (lastPage.events.length === 0) {
-      // No events yet — replace with a fresh computed so we re-fetch from the start.
-      set(pagedEvents$, [createEventPageComputed(runId)]);
-      return;
-    }
-
-    const lastEvent = lastPage.events[lastPage.events.length - 1];
-    const newPage = createEventPageComputed(runId, lastEvent.createdAt);
-    const newPageResult = await get(newPage);
-
-    if (newPageResult.events.length > 0) {
-      set(pagedEvents$, (prev) => [...prev, newPage]);
-    }
-  },
-);
-
-const setupZeroActivityEventPolling$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const logId = get(lastSyncedLogId$);
-    if (!logId) {
-      return;
-    }
-
-    // Phase 1: Eager initial load
-    const firstPage = createEventPageComputed(logId);
-    set(pagedEvents$, [firstPage]);
-
-    let keepLoading = true;
-    while (keepLoading && !signal.aborted) {
-      const pages = get(pagedEvents$);
-      const lastPage = await get(pages[pages.length - 1]);
-      signal.throwIfAborted();
-      if (lastPage.hasMore && lastPage.events.length > 0) {
-        const lastEvent = lastPage.events[lastPage.events.length - 1];
-        const nextPage = createEventPageComputed(logId, lastEvent.createdAt);
-        set(pagedEvents$, (prev) => [...prev, nextPage]);
-      } else {
-        keepLoading = false;
-      }
-    }
-
-    // Phase 2: Check if already terminal
-    try {
-      const detail = await get(zeroActivityDetail$);
-      signal.throwIfAborted();
-      if (detail && isTerminalStatus(detail.status)) {
-        return;
-      }
-    } catch (error) {
-      throwIfAbort(error);
-    }
-
-    // Phase 3: Polling loop
-    let errorCount = 0;
-    while (!signal.aborted) {
-      const baseInterval = get(pollInterval$);
-      const interval = Math.min(
-        baseInterval * 2 ** errorCount,
-        MAX_POLL_INTERVAL,
-      );
-
-      await delay(interval, { signal });
-      signal.throwIfAborted();
-
-      try {
-        set(detailReloadTick$, (x) => x + 1);
-        const currentDetail = await get(zeroActivityDetail$);
-        signal.throwIfAborted();
-        if (currentDetail && isTerminalStatus(currentDetail.status)) {
-          return;
-        }
-
-        await set(pollNewEvents$, logId, signal);
-        signal.throwIfAborted();
-        errorCount = 0;
-      } catch (error) {
-        throwIfAbort(error);
-        errorCount++;
-      }
-    }
-  },
-);
 
 // ---------------------------------------------------------------------------
 // Helpers for display conversion

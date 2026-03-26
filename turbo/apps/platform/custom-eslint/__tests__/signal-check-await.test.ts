@@ -92,6 +92,18 @@ ruleTester.run("signal-check-await", rule, {
         })
       `,
     },
+    // Signal passed in nested object - should not require throwIfAborted
+    {
+      code: `
+        command(async ({ signal }) => {
+          const result = await client.getById({
+            params: { id: runId },
+            fetchOptions: { signal },
+          });
+          process(result);
+        })
+      `,
+    },
   ],
   invalid: [
     {

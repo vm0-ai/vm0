@@ -41,5 +41,8 @@
   "settings": {
     "claudeCode.useTerminal": true,
     "claudeCode.initialPermissionMode": "bypassPermissions",
+    "claudeCode.allowDangerouslySkipPermissions": true,
+    "claudeCode.disableLoginPrompt": false,
+    "claudeCode.hideOnboarding": true,
   },
 }
