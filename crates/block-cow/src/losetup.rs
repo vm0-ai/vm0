@@ -50,10 +50,19 @@ impl LoopDevice {
         match detach_by_path(&self.path) {
             Ok(()) => Ok(()),
             Err(e) => {
-                // If the device no longer exists, it was already auto-detached
-                // by the kernel (GC's `losetup -d` sets LO_FLAGS_AUTOCLEAR on
-                // active devices; dropping the holder fd then triggers cleanup).
-                if !self.path.exists() { Ok(()) } else { Err(e) }
+                // The device may have been auto-detached by the kernel via
+                // LO_FLAGS_AUTOCLEAR (set by GC's `losetup -d`).  When the
+                // last reference is released, the kernel detaches the loop
+                // automatically.  Our subsequent `losetup --detach` then
+                // fails with ENXIO ("No such device or address") because the
+                // loop node exists but is no longer configured.  Checking
+                // `!self.path.exists()` does NOT work — `/dev/loopN` device
+                // nodes persist even after detach.
+                if is_already_detached(&e) {
+                    Ok(())
+                } else {
+                    Err(e)
+                }
             }
         }
     }
@@ -105,4 +114,18 @@ fn detach_by_path(loop_device: &Path) -> Result<()> {
     let dev_str = loop_device.to_string_lossy();
     command::sudo("losetup", &["--detach", &dev_str])?;
     Ok(())
+}
+
+/// Check if a losetup error indicates the device was already detached.
+///
+/// ENXIO ("No such device or address") means the `/dev/loopN` node exists
+/// but is not configured with a backing file — i.e. it was already detached
+/// (typically by AUTOCLEAR).
+fn is_already_detached(e: &crate::error::BlockCowError) -> bool {
+    match e {
+        crate::error::BlockCowError::CommandFailed { stderr, .. } => {
+            stderr.contains("No such device or address")
+        }
+        _ => false,
+    }
 }
