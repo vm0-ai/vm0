@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.163.2](https://github.com/vm0-ai/vm0/compare/web-v12.163.1...web-v12.163.2) (2026-03-26)
+
+
+### Refactoring
+
+* move chatMessages from agent_sessions to zero_agent_sessions extension table ([#6982](https://github.com/vm0-ai/vm0/issues/6982)) ([6c83665](https://github.com/vm0-ai/vm0/commit/6c83665317d0d2328dbb8cfc7a335e05e008ccc1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.118.1
+
 ## [12.163.1](https://github.com/vm0-ai/vm0/compare/web-v12.163.0...web-v12.163.1) (2026-03-26)
 
 

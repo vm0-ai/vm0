@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.118.1](https://github.com/vm0-ai/vm0/compare/core-v8.118.0...core-v8.118.1) (2026-03-26)
+
+
+### Refactoring
+
+* derive connector type schema from connector definitions ([#6992](https://github.com/vm0-ai/vm0/issues/6992)) ([c67375c](https://github.com/vm0-ai/vm0/commit/c67375c159c7f33ea9aaac86ac48d12728976d3d))
+
 ## [8.118.0](https://github.com/vm0-ai/vm0/compare/core-v8.117.0...core-v8.118.0) (2026-03-26)
 
 
