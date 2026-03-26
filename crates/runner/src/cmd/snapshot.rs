@@ -61,25 +61,6 @@ pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<(String, Option<Sn
         return Ok((snapshot_hash, Some(config)));
     }
 
-    // Clean up any partial output from a previous failed attempt.
-    // Umount any stale bind mount first — a previous failed run may have
-    // left a bind mount on cow-device-bind inside the work dir, causing
-    // remove_dir_all to fail with EBUSY.
-    // Best-effort: umount even if the file appears absent — a stale bind
-    // mount to a removed dm device makes exists() return false, but the
-    // mount point itself still blocks remove_dir_all.
-    let stale_bind = output.work_dir().join("cow-device-bind");
-    let _ = tokio::process::Command::new("sudo")
-        .args(["umount", &stale_bind.display().to_string()])
-        .output()
-        .await;
-    match tokio::fs::remove_dir_all(&output_dir).await {
-        Ok(()) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => return Err(e.into()),
-    }
-    tokio::fs::create_dir_all(&output_dir).await?;
-
     let rootfs_path = RootfsPaths::new(&paths, &args.rootfs_hash).rootfs();
     let rootfs_exists = tokio::fs::try_exists(&rootfs_path)
         .await

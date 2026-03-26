@@ -89,28 +89,21 @@ pub async fn create_snapshot(
 
     let output = SnapshotOutputPaths::new(config.output_dir.clone());
 
-    // 1. Clean and create work directory under output_dir.
-    //    Paths inside this directory get baked into the snapshot and are used
+    // 1. Clean stale output from a previous failed attempt and create work dir.
+    //    Paths inside work_dir get baked into the snapshot and are used
     //    as bind-mount targets during restore, so they must be deterministic.
-    //    Remove any stale work dir from a previous run (leftover sockets,
-    //    root-owned files from an accidental sudo invocation, etc.).
     //
-    //    Umount any stale bind mount first — a previous failed run may have
-    //    left a bind mount on cow-device-bind, causing rm -rf to fail with EBUSY.
+    //    A failed run may leave stale bind mounts (cow-device-bind) that
+    //    cause rm -rf to fail with EBUSY — umount them first.
     let work = output.work_dir();
-    if work.exists() {
-        let stale_bind = SandboxPaths::new(work.clone())
-            .cow_device_bind()
-            .display()
-            .to_string();
-        command::exec_ignore_errors("umount", &[stale_bind.as_str()], command::Privilege::Sudo)
-            .await;
+    let stale_bind = SandboxPaths::new(work.clone())
+        .cow_device_bind()
+        .display()
+        .to_string();
+    command::exec_ignore_errors("umount", &[stale_bind.as_str()], command::Privilege::Sudo).await;
 
-        let work_str = work.display().to_string();
-        command::exec("rm", &["-rf", &work_str], command::Privilege::Sudo)
-            .await
-            .map_err(|e| SnapshotError::Setup(format!("clean stale work dir: {e}")))?;
-    }
+    let output_str = config.output_dir.display().to_string();
+    command::exec_ignore_errors("rm", &["-rf", &output_str], command::Privilege::Sudo).await;
     tokio::fs::create_dir_all(&work).await?;
 
     // Socket directory under /run, keyed by config id so concurrent builds don't collide.
