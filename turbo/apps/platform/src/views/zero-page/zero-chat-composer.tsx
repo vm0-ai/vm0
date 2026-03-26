@@ -234,6 +234,9 @@ function ConnectorRow({
       >
         {item.label}
       </span>
+      {item.connected && (
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+      )}
       {action && (
         <button
           type="button"
@@ -310,11 +313,11 @@ function ConnectorsPopoverButton({
         {hasAgentConnectors && (
           <TooltipProvider delayDuration={400}>
             <div
-              className="max-h-[200px] overflow-y-auto py-1 pl-1"
+              className="max-h-[200px] overflow-y-auto py-1 px-1"
               style={{ scrollbarWidth: "thin" }}
             >
               <div className="px-2 pt-1 pb-1">
-                <span className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider">
+                <span className="block text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider truncate">
                   Connectors used by {displayName}
                 </span>
               </div>
@@ -371,7 +374,9 @@ function ConnectorsPopoverButton({
                 stroke={1.5}
                 className="shrink-0 text-muted-foreground"
               />
-              Manage connectors in {displayName}
+              <span className="truncate">
+                Manage connectors in {displayName}
+              </span>
             </button>
           )}
         </div>
