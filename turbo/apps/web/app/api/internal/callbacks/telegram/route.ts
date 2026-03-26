@@ -19,11 +19,7 @@ import {
   buildTelegramResponse,
   buildTelegramErrorResponse,
 } from "../../../../../src/lib/telegram/format";
-import {
-  extractRunOutput,
-  formatAskUserDenials,
-  type RunOutput,
-} from "../../../../../src/lib/run/extract-run-output";
+import { extractRunOutput } from "../../../../../src/lib/run/extract-run-output";
 import {
   saveTelegramThreadSession,
   storeTelegramMessage,
@@ -90,13 +86,9 @@ async function findNewSessionId(
  * Build a plain-text output string from the already-fetched RunOutput,
  * avoiding a redundant Axiom query.
  */
-function buildOutputText(output: RunOutput): string | undefined {
-  if (output.askUserDenials.length > 0) {
-    const formatted = formatAskUserDenials(output.askUserDenials);
-    if (formatted) {
-      return output.result ? `${output.result}\n\n${formatted}` : formatted;
-    }
-  }
+function buildOutputText(output: {
+  result: string | null;
+}): string | undefined {
   return output.result ?? undefined;
 }
 

@@ -72,9 +72,6 @@ function buildResponseText(
   if (status !== "completed") {
     return `Error: ${error ?? "Agent execution failed."}`;
   }
-  if (resultData && resultData.askUserDenials.length > 0) {
-    return resultData.result ?? "";
-  }
   return resultData?.result ?? "Task completed successfully.";
 }
 
