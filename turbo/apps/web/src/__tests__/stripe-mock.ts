@@ -13,6 +13,8 @@ import type { Mock } from "vitest";
  *
  * const stripeMocks = vi.hoisted<StripeMockFns>(() => ({
  *   subscriptionsRetrieve: vi.fn(),
+ *   subscriptionsUpdate: vi.fn(),
+ *   subscriptionsCancel: vi.fn(),
  *   invoicesRetrieve: vi.fn(),
  *   invoicesList: vi.fn(),
  *   customersCreate: vi.fn(),
@@ -24,7 +26,7 @@ import type { Mock } from "vitest";
  * vi.mock("stripe", () => ({
  *   default: function MockStripe() {
  *     return {
- *       subscriptions: { retrieve: stripeMocks.subscriptionsRetrieve },
+ *       subscriptions: { retrieve: stripeMocks.subscriptionsRetrieve, update: stripeMocks.subscriptionsUpdate, cancel: stripeMocks.subscriptionsCancel },
  *       invoices: { retrieve: stripeMocks.invoicesRetrieve, list: stripeMocks.invoicesList },
  *       customers: { create: stripeMocks.customersCreate },
  *       checkout: { sessions: { create: stripeMocks.checkoutSessionsCreate } },
@@ -37,6 +39,8 @@ import type { Mock } from "vitest";
  */
 export interface StripeMockFns {
   subscriptionsRetrieve: Mock;
+  subscriptionsUpdate: Mock;
+  subscriptionsCancel: Mock;
   invoicesRetrieve: Mock;
   invoicesList: Mock;
   customersCreate: Mock;

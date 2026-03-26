@@ -20,6 +20,8 @@ import { reloadEnv } from "../../../../../src/env";
 // Mock stripe module (external dependency)
 const stripeMocks = vi.hoisted<StripeMockFns>(() => ({
   subscriptionsRetrieve: vi.fn(),
+  subscriptionsUpdate: vi.fn(),
+  subscriptionsCancel: vi.fn(),
   invoicesRetrieve: vi.fn(),
   invoicesList: vi.fn(),
   customersCreate: vi.fn(),
@@ -31,7 +33,11 @@ const stripeMocks = vi.hoisted<StripeMockFns>(() => ({
 vi.mock("stripe", () => ({
   default: function MockStripe() {
     return {
-      subscriptions: { retrieve: stripeMocks.subscriptionsRetrieve },
+      subscriptions: {
+        retrieve: stripeMocks.subscriptionsRetrieve,
+        update: stripeMocks.subscriptionsUpdate,
+        cancel: stripeMocks.subscriptionsCancel,
+      },
       invoices: {
         retrieve: stripeMocks.invoicesRetrieve,
         list: stripeMocks.invoicesList,
@@ -436,6 +442,30 @@ describe("POST /api/webhooks/stripe", () => {
       const billing = await getOrgBillingFields(user.orgId);
       expect(billing?.subscriptionStatus).toBe("past_due");
       expect(billing?.tier).toBe("team");
+    });
+
+    it("downgrades tier from team to pro when price changes", async () => {
+      const cusId = uniqueId("cus-downgrade");
+      const subId = uniqueId("sub-downgrade");
+
+      await updateOrgStripeFields(user.orgId, {
+        stripeCustomerId: cusId,
+        stripeSubscriptionId: subId,
+        subscriptionStatus: "active",
+        tier: "team",
+      });
+
+      const response = await sendWebhookEvent("customer.subscription.updated", {
+        id: subId,
+        status: "active",
+        items: { data: [{ price: { id: TEST_PRICE_PRO } }] },
+      });
+
+      expect(response.status).toBe(200);
+
+      const billing = await getOrgBillingFields(user.orgId);
+      expect(billing?.tier).toBe("pro");
+      expect(billing?.subscriptionStatus).toBe("active");
     });
   });
 

@@ -18,7 +18,7 @@ import {
   billingStatusAsync$,
   closeBillingDialog$,
   startCheckout$,
-  startDowngrade$,
+  openDowngradeDialog$,
   saveAutoRecharge$,
   autoRechargeConfig$,
 } from "../../signals/zero-page/billing.ts";
@@ -375,7 +375,7 @@ export function BillingDialog() {
     statusLoadable.state === "hasData" ? statusLoadable.data : null;
   const close = useSet(closeBillingDialog$);
   const checkout = useSet(startCheckout$);
-  const downgrade = useSet(startDowngrade$);
+  const openDowngrade = useSet(openDowngradeDialog$);
   const selectedTier = useGet(selectedPlanTier$);
   const setSelectedTier = useSet(setSelectedPlanTier$);
 
@@ -390,7 +390,7 @@ export function BillingDialog() {
     if (isUpgrade && (selectedTier === "pro" || selectedTier === "team")) {
       detach(checkout(selectedTier, pageSignal), Reason.DomCallback);
     } else if (isDowngrade) {
-      detach(downgrade(pageSignal), Reason.DomCallback);
+      openDowngrade();
     }
   };
 
@@ -429,7 +429,7 @@ export function BillingDialog() {
                 ? "Redirecting..."
                 : isUpgrade
                   ? `Upgrade to ${selectedTier.charAt(0).toUpperCase() + selectedTier.slice(1)}`
-                  : "Manage subscription"}
+                  : "Downgrade"}
             </Button>
           </div>
         )}

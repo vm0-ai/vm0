@@ -53,6 +53,13 @@ export const apiBillingHandlers = [
     });
   }),
 
+  http.post("*/api/zero/billing/downgrade", () => {
+    return HttpResponse.json({
+      success: true,
+      effectiveDate: null,
+    });
+  }),
+
   http.get("*/api/zero/billing/auto-recharge", () => {
     return HttpResponse.json(mockBillingStatus.autoRecharge);
   }),

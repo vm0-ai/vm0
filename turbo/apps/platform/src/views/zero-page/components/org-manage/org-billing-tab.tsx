@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import {
   IconExternalLink,
@@ -14,9 +15,21 @@ import {
   startDowngrade$,
   billingDialogLoading$,
   apiTierToBillingTier,
+  openDowngradeDialog$,
+  closeDowngradeDialog$,
+  confirmDowngrade$,
+  downgradeDialogOpen$,
+  downgradeLoading$,
   type BillingTier,
 } from "../../../../signals/zero-page/billing.ts";
 import { Button } from "@vm0/ui";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@vm0/ui/components/ui/dialog";
 import planFreeImg from "./assets/plan-free.webp";
 import planProImg from "./assets/plan-pro.webp";
 import planTeamImg from "./assets/plan-team.webp";
@@ -236,14 +249,14 @@ function PricingPage({
   const pageSignal = useGet(pageSignal$);
   const loading = useGet(billingDialogLoading$);
   const checkout = useSet(startCheckout$);
-  const portal = useSet(startDowngrade$);
+  const openDowngrade = useSet(openDowngradeDialog$);
 
   const handlePlanAction = (planTier: BillingTier) => {
     if (planTier === currentTier) {
       return;
     }
     if (planTier === "free" || tierRank(planTier) < tierRank(currentTier)) {
-      detach(portal(pageSignal), Reason.DomCallback);
+      openDowngrade();
       return;
     }
     if (planTier !== "pro" && planTier !== "team") {
@@ -290,12 +303,99 @@ function formatTierLabel(tier: BillingTier): string {
   return tier.charAt(0).toUpperCase() + tier.slice(1);
 }
 
+function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
+  const pageSignal = useGet(pageSignal$);
+  const open = useGet(downgradeDialogOpen$);
+  const loading = useGet(downgradeLoading$);
+  const close = useSet(closeDowngradeDialog$);
+  const confirm = useSet(confirmDowngrade$);
+  const [selectedTarget, setSelectedTarget] = useState<"free" | "pro">("free");
+
+  const isTeam = currentTier === "team";
+
+  const handleConfirm = () => {
+    detach(confirm(selectedTarget, pageSignal), Reason.DomCallback);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && close()}>
+      <DialogContent className="sm:max-w-[440px]">
+        <DialogHeader>
+          <DialogTitle>Downgrade plan</DialogTitle>
+          <DialogDescription>
+            {isTeam
+              ? "Choose which plan to downgrade to."
+              : "Are you sure you want to downgrade to Free?"}
+          </DialogDescription>
+        </DialogHeader>
+
+        {isTeam && (
+          <div className="flex flex-col gap-2 mt-2">
+            <button
+              type="button"
+              onClick={() => setSelectedTarget("pro")}
+              className={`flex items-center justify-between rounded-lg border p-3 text-left transition-colors ${
+                selectedTarget === "pro"
+                  ? "border-primary ring-2 ring-primary/20"
+                  : "border-border hover:border-muted-foreground/30"
+              }`}
+            >
+              <div>
+                <span className="text-sm font-semibold text-foreground">
+                  Pro
+                </span>
+                <span className="ml-2 text-sm text-muted-foreground">
+                  $40/month
+                </span>
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedTarget("free")}
+              className={`flex items-center justify-between rounded-lg border p-3 text-left transition-colors ${
+                selectedTarget === "free"
+                  ? "border-primary ring-2 ring-primary/20"
+                  : "border-border hover:border-muted-foreground/30"
+              }`}
+            >
+              <div>
+                <span className="text-sm font-semibold text-foreground">
+                  Free
+                </span>
+                <span className="ml-2 text-sm text-muted-foreground">
+                  $0/month
+                </span>
+              </div>
+            </button>
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2 mt-4">
+          <Button variant="outline" onClick={() => close()} disabled={loading}>
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={handleConfirm}
+            disabled={loading}
+          >
+            {loading
+              ? "Downgrading..."
+              : `Downgrade to ${formatTierLabel(selectedTarget)}`}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function OrgBillingTab() {
   const pricingOpen = useGet(billingSubPage$);
   const setBillingSubPage = useSet(setBillingSubPage$);
   const setPricingOpen = (v: boolean) => setBillingSubPage(v);
   const pageSignal = useGet(pageSignal$);
   const reloadBilling = useSet(reloadBillingStatus$);
+  const openDowngrade = useSet(openDowngradeDialog$);
   const portal = useSet(startDowngrade$);
   const statusLoadable = useLoadable(billingStatusAsync$);
   const loading = useGet(billingDialogLoading$);
@@ -313,16 +413,19 @@ export function OrgBillingTab() {
       ? `Renews ${new Date(periodEnd).toLocaleDateString()}`
       : null;
 
-  const openPortal = () => {
-    detach(portal(pageSignal), Reason.DomCallback);
+  const handleDowngrade = () => {
+    openDowngrade();
   };
 
   if (pricingOpen) {
     return (
-      <PricingPage
-        currentTier={currentTier}
-        onBack={() => setPricingOpen(false)}
-      />
+      <>
+        <PricingPage
+          currentTier={currentTier}
+          onBack={() => setPricingOpen(false)}
+        />
+        <DowngradeConfirmDialog currentTier={currentTier} />
+      </>
     );
   }
 
@@ -396,7 +499,7 @@ export function OrgBillingTab() {
                       className="rounded-lg h-8 text-xs"
                       style={sectionCardStyle}
                       disabled={loading}
-                      onClick={openPortal}
+                      onClick={handleDowngrade}
                     >
                       Downgrade
                     </Button>
@@ -421,7 +524,9 @@ export function OrgBillingTab() {
                       className="shrink-0 rounded-lg h-8 text-xs gap-1.5"
                       style={sectionCardStyle}
                       disabled={loading}
-                      onClick={openPortal}
+                      onClick={() =>
+                        detach(portal(pageSignal), Reason.DomCallback)
+                      }
                     >
                       Manage
                       <IconExternalLink size={13} stroke={1.5} />
@@ -461,6 +566,8 @@ export function OrgBillingTab() {
           variant="settings"
         />
       )}
+
+      <DowngradeConfirmDialog currentTier={currentTier} />
     </div>
   );
 }

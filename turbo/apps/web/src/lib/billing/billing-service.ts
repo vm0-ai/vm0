@@ -377,6 +377,95 @@ export async function handleSubscriptionDeleted(
   });
 }
 
+// ---------------------------------------------------------------------------
+// Tier ranking for downgrade validation
+// ---------------------------------------------------------------------------
+
+const TIER_RANK: Record<OrgTier, number> = {
+  free: 0,
+  pro: 1,
+  team: 2,
+};
+
+/**
+ * Downgrade a subscription to a lower tier.
+ *
+ * - Team -> Pro: updates the subscription's price via Stripe API (immediate).
+ * - Paid -> Free: cancels the subscription at period end.
+ *
+ * Returns `{ success, effectiveDate }` where effectiveDate is non-null only
+ * for cancellations (the date access ends).
+ */
+export async function downgradeSubscription(
+  orgId: string,
+  targetTier: "free" | "pro",
+): Promise<{ success: boolean; effectiveDate: string | null }> {
+  const db = globalThis.services.db;
+
+  const [org] = await db
+    .select({
+      tier: orgMetadata.tier,
+      stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+      currentPeriodEnd: orgMetadata.currentPeriodEnd,
+    })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .limit(1);
+
+  if (!org?.stripeSubscriptionId) {
+    throw new Error("Org has no active subscription");
+  }
+
+  const currentTier = org.tier as OrgTier;
+  if (TIER_RANK[targetTier] >= TIER_RANK[currentTier]) {
+    throw new Error(
+      `Cannot downgrade from ${currentTier} to ${targetTier}: target tier is same or higher`,
+    );
+  }
+
+  const stripe = getStripe();
+
+  if (targetTier === "free") {
+    // Cancel at period end
+    await stripe.subscriptions.cancel(org.stripeSubscriptionId);
+    const effectiveDate = org.currentPeriodEnd
+      ? org.currentPeriodEnd.toISOString()
+      : null;
+    log.info("subscription cancellation initiated", {
+      orgId,
+      targetTier,
+      effectiveDate,
+    });
+    return { success: true, effectiveDate };
+  }
+
+  // Team -> Pro: update subscription price
+  const subscription = await stripe.subscriptions.retrieve(
+    org.stripeSubscriptionId,
+  );
+  const currentItem = subscription.items.data[0];
+  if (!currentItem) {
+    throw new Error("Subscription has no items");
+  }
+
+  const proPriceId = env().ZERO_PRO_PLAN_PRICE_ID;
+  if (!proPriceId) {
+    throw new Error("Pro plan price ID not configured");
+  }
+
+  await stripe.subscriptions.update(org.stripeSubscriptionId, {
+    items: [{ id: currentItem.id, price: proPriceId }],
+    proration_behavior: "always_invoice",
+  });
+
+  log.info("subscription downgraded", {
+    orgId,
+    from: currentTier,
+    to: targetTier,
+  });
+  return { success: true, effectiveDate: null };
+}
+
 /**
  * Create a Stripe Billing Portal session for managing subscriptions.
  * Returns the portal URL.
