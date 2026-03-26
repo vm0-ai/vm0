@@ -631,7 +631,11 @@ describe("POST /api/webhooks/agent/complete", () => {
         role: string;
         content: string;
         runId?: string;
-        summaries?: string[];
+        summaries?: Array<
+          | string
+          | { kind: "tool"; name: string }
+          | { kind: "text"; text: string }
+        >;
       };
       const chatMessages = (await getSessionChatMessages(
         checkpointData.agentSessionId,
@@ -641,8 +645,11 @@ describe("POST /api/webhooks/agent/complete", () => {
       const assistantMsg = chatMessages.find((m) => m.role === "assistant");
       expect(assistantMsg).toBeDefined();
       expect(assistantMsg!.content).toBe("Done. Created 3 files.");
-      // Last text event is skipped — only tool_use names are extracted
-      expect(assistantMsg!.summaries).toEqual(["Bash", "Read"]);
+      // Last text event is skipped — only tool_use entries are extracted
+      expect(assistantMsg!.summaries).toEqual([
+        { kind: "tool", name: "Bash" },
+        { kind: "tool", name: "Read" },
+      ]);
     });
 
     it("should extract text summaries when events have no tool_use", async () => {
@@ -717,7 +724,11 @@ describe("POST /api/webhooks/agent/complete", () => {
 
       type StoredMessage = {
         role: string;
-        summaries?: string[];
+        summaries?: Array<
+          | string
+          | { kind: "tool"; name: string }
+          | { kind: "text"; text: string }
+        >;
       };
       const chatMessages = (await getSessionChatMessages(
         checkpointData.agentSessionId,
@@ -726,7 +737,9 @@ describe("POST /api/webhooks/agent/complete", () => {
       const assistantMsg = chatMessages.find((m) => m.role === "assistant");
       expect(assistantMsg).toBeDefined();
       // First text event included, last text event skipped
-      expect(assistantMsg!.summaries).toEqual(["Let me check the logs first"]);
+      expect(assistantMsg!.summaries).toEqual([
+        { kind: "text", text: "Let me check the logs first" },
+      ]);
     });
 
     it("should truncate text summaries exceeding 80 characters", async () => {
@@ -802,7 +815,11 @@ describe("POST /api/webhooks/agent/complete", () => {
 
       type StoredMessage = {
         role: string;
-        summaries?: string[];
+        summaries?: Array<
+          | string
+          | { kind: "tool"; name: string }
+          | { kind: "text"; text: string }
+        >;
       };
       const chatMessages = (await getSessionChatMessages(
         checkpointData.agentSessionId,
@@ -811,8 +828,13 @@ describe("POST /api/webhooks/agent/complete", () => {
       const assistantMsg = chatMessages.find((m) => m.role === "assistant");
       expect(assistantMsg).toBeDefined();
       expect(assistantMsg!.summaries).toHaveLength(1);
-      expect(assistantMsg!.summaries![0]!.length).toBe(81); // 80 chars + "…"
-      expect(assistantMsg!.summaries![0]!.endsWith("…")).toBe(true);
+      const entry = assistantMsg!.summaries![0] as {
+        kind: "text";
+        text: string;
+      };
+      expect(entry.kind).toBe("text");
+      expect(entry.text.length).toBe(81); // 80 chars + "…"
+      expect(entry.text.endsWith("…")).toBe(true);
     });
 
     it("should not include summaries when Axiom returns no message events", async () => {
