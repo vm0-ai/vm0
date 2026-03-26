@@ -76,11 +76,11 @@ teardown_file() {
   echo "# Clicking Create..." >&3
   agent-browser find role button click --name "Create"
 
-  # Wait for navigation to detail page (schedule creation can take up to ~90s).
+  # Wait for navigation to detail page (schedule creation can take 60-120s on CI).
   # Use wait_for_text instead of URL polling — it is more reliable and
   # avoids per-iteration overhead from `agent-browser get url`.
   # "Email notifications" only appears on the schedule detail page, not the dialog.
-  wait_for_text "Email notifications" 105
+  wait_for_text "Email notifications" 160
   step_screenshot "after-create"
   echo "# Schedule created and navigated to detail page!" >&3
 }
