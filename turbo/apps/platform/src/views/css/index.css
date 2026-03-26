@@ -76,14 +76,6 @@
     0 8px 24px hsl(220 12% 20% / 0.02);
 }
 
-/* Floating nav card (About / Pricing / Sign in): stronger shadow for elevation */
-.zero-app .zero-float-card {
-  box-shadow:
-    0 2px 4px hsl(220 12% 20% / 0.04),
-    0 6px 16px hsl(220 12% 20% / 0.06),
-    0 16px 40px hsl(220 12% 20% / 0.05);
-}
-
 /* Search bar / text input (matches form inputs: white surface in light theme) */
 .zero-app .zero-search-input {
   background-color: hsl(var(--input));
