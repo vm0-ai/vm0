@@ -17,6 +17,7 @@ function buildCommands(): Command[] {
     new Command("agent"),
     new Command("connector"),
     new Command("preference"),
+    new Command("run"),
     new Command("schedule"),
     new Command("secret"),
     new Command("slack"),
@@ -123,6 +124,7 @@ describe("registerZeroCommands", () => {
       "org",
       "connector",
       "preference",
+      "run",
       "secret",
       "slack",
       "variable",
@@ -172,6 +174,31 @@ describe("registerZeroCommands", () => {
 
     expect(visibleCommandNames(prog)).toContain("slack");
     expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
+  it("should show run when agent-run:write capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["agent-run:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("run");
+    expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
+  it("should hide run when agent-run:write capability is missing", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["agent:read"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(hiddenCommandNames(prog)).toContain("run");
   });
 
   it("should hide agent when agent:read capability is missing", () => {

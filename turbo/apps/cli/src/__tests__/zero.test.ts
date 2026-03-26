@@ -16,6 +16,7 @@ describe("zero CLI program", () => {
       "connector",
       "doctor",
       "preference",
+      "run",
       "schedule",
       "secret",
       "slack",
@@ -32,7 +33,6 @@ describe("zero CLI program", () => {
     const excludedCommands = [
       "auth",
       "compose",
-      "run",
       "volume",
       "artifact",
       "memory",
@@ -47,7 +47,7 @@ describe("zero CLI program", () => {
     }
   });
 
-  it("should have exactly 11 commands", () => {
-    expect(commandNames).toHaveLength(11);
+  it("should have exactly 12 commands", () => {
+    expect(commandNames).toHaveLength(12);
   });
 });

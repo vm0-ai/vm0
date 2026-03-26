@@ -8,6 +8,7 @@ import { zeroAgentCommand } from "./commands/zero/agent";
 import { zeroConnectorCommand } from "./commands/zero/connector";
 import { zeroDoctorCommand } from "./commands/zero/doctor";
 import { zeroPreferenceCommand } from "./commands/zero/preference";
+import { zeroRunCommand } from "./commands/zero/run";
 import { zeroScheduleCommand } from "./commands/zero/schedule";
 import { zeroSecretCommand } from "./commands/zero/secret";
 import { zeroSlackCommand } from "./commands/zero/slack";
@@ -26,6 +27,7 @@ import {
  */
 const COMMAND_CAPABILITY_MAP: Record<string, string | null> = {
   agent: "agent:read",
+  run: "agent-run:write",
   schedule: "schedule:read",
   doctor: null,
   slack: "slack:write",
@@ -39,6 +41,7 @@ const DEFAULT_COMMANDS: Command[] = [
   zeroConnectorCommand,
   zeroDoctorCommand,
   zeroPreferenceCommand,
+  zeroRunCommand,
   zeroScheduleCommand,
   zeroSecretCommand,
   zeroSlackCommand,
@@ -93,6 +96,7 @@ program
     `
 Common scenarios:
   Missing a token?       zero doctor missing-token <TOKEN_NAME>
+  Delegate to teammate?  zero run <agent-id> "your task"
   Send a Slack message?  zero slack message send -c <channel> -t "text"
   Set up a schedule?     zero schedule setup <agent-name>
   Update yourself?       zero agent --help

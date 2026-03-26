@@ -129,6 +129,13 @@ export {
   resolveZeroScheduleByAgent,
 } from "./domains/zero-schedules";
 
+// Domain modules - Zero Runs
+export {
+  createZeroRun,
+  getZeroRun,
+  getZeroRunAgentEvents,
+} from "./domains/zero-runs";
+
 // Domain modules - Logs
 export {
   getSystemLog,
