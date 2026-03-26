@@ -569,7 +569,7 @@ export default function PricingPage() {
               />
               <FAQItem
                 question="Can I bring my own model provider?"
-                answer="Yes! All plans support bringing your own LLM API keys (OpenAI, Anthropic, etc.). When using your own keys, no VM0 credits are consumed for model usage."
+                answer="Yes! All plans support bringing your own LLM API keys (Anthropic, etc.). When using your own keys, no VM0 credits are consumed for model usage."
               />
               <FAQItem
                 question="How secure is VM0?"

@@ -90,7 +90,7 @@ const PLANS = [
       "5 active agents",
       "Unlimited total agents",
       "Bring your own LLM keys",
-      "Credits rollover (3 months)",
+      "Credits rollover (1 month)",
       "Priority support",
     ],
   },
