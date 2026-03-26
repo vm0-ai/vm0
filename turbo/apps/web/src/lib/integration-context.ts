@@ -9,11 +9,31 @@ type IntegrationPlatform = "Email" | "GitHub" | "Slack" | "Telegram";
  */
 export function buildIntegrationContext(
   platform: IntegrationPlatform,
-  options?: { botUserId?: string },
+  options?: {
+    botUserId?: string;
+    channelId?: string;
+    channelName?: string;
+    channelType?: "channel" | "dm" | "group_dm";
+  },
 ): string {
   let context = `# Current Integration\nYou are currently running inside: ${platform}`;
   if (options?.botUserId) {
     context += `\nYour bot user ID: ${options.botUserId}`;
+  }
+  if (options?.channelId) {
+    context += `\nChannel ID: ${options.channelId}`;
+  }
+  if (options?.channelName) {
+    context += `\nChannel name: #${options.channelName}`;
+  }
+  if (options?.channelType) {
+    const typeLabel =
+      options.channelType === "dm"
+        ? "Direct message"
+        : options.channelType === "group_dm"
+          ? "Group direct message"
+          : "Channel";
+    context += `\nChannel type: ${typeLabel}`;
   }
   return context;
 }

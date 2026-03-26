@@ -1,6 +1,10 @@
 import { decryptSecretValue } from "../../crypto/secrets-encryption";
 import { env } from "../../../env";
-import { createSlackClient, setThreadStatus } from "../../slack/client";
+import {
+  createSlackClient,
+  setThreadStatus,
+  fetchSlackChannelInfo,
+} from "../../slack/client";
 import {
   buildAgentResponseMessage,
   buildLoginPromptMessage,
@@ -111,7 +115,10 @@ export async function handleOrgMention(
   // 4. Show thinking indicator
   await setThreadStatus(client, context.channelId, threadTs, "is thinking...");
 
-  // 5. Enrich message content
+  // 5. Fetch channel info for agent context
+  const channelInfo = await fetchSlackChannelInfo(client, context.channelId);
+
+  // 6. Enrich message content
   const { prompt: messageContent, userContext } = await enrichMessageContent({
     messageContent: context.messageText,
     files: context.files,
@@ -180,6 +187,9 @@ export async function handleOrgMention(
     userContext,
     userId: connection.vm0UserId,
     botUserId,
+    channelId: context.channelId,
+    channelName: channelInfo?.name,
+    channelType: channelInfo?.type,
     callbackContext,
   });
 
