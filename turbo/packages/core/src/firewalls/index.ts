@@ -221,6 +221,65 @@ const CONNECTOR_FIREWALLS = {
 /** Connector types that have a firewall config (subset of ConnectorType). */
 export type FirewallConnectorType = keyof typeof CONNECTOR_FIREWALLS;
 
+/**
+ * Connector types that do not have a firewall config.
+ *
+ * When adding a new ConnectorType, place it in either CONNECTOR_FIREWALLS
+ * or this union. The compile-time assertions below will fail if a
+ * ConnectorType is missing from both, or if a type is listed here
+ * that already has a firewall config.
+ */
+export type NonFirewallConnectorType =
+  // Dynamic base URL — user-specific, self-hosted, or regional domains
+  | "bitrix" // {domain}.bitrix24.com
+  | "chatwoot" // self-hosted
+  | "cloudinary" // account-specific subdomain
+  | "dify" // self-hosted
+  | "docusign" // region-specific
+  | "jira" // {domain}.atlassian.net (API token auth)
+  | "kommo" // {subdomain}.kommo.com
+  | "mailchimp" // datacenter-specific (usX.api.mailchimp.com)
+  | "make" // regional (eu1/eu2/us1/us2.make.com)
+  | "metabase" // self-hosted
+  | "minio" // self-hosted
+  | "qdrant" // self-hosted / custom cluster URL
+  | "salesforce" // instance-specific (*.my.salesforce.com)
+  | "twenty" // self-hosted
+  | "wrike" // regional ({datacenter}.wrike.com)
+  | "zendesk" // {subdomain}.zendesk.com
+  // Basic auth — proxy cannot do base64 encoding at runtime
+  | "htmlcsstoimage" // HTTP Basic Auth (user-id + api-key)
+  | "streak" // HTTP Basic Auth (API key as username)
+  // Webhook URL — token embedded in URL, not auth header
+  | "discord-webhook" // DISCORD_WEBHOOK_URL
+  | "slack-webhook" // SLACK_WEBHOOK_URL
+  // Other
+  | "computer" // not an API connector
+  | "jam"; // no public REST API
+
+/**
+ * Compile-time exhaustiveness checks.
+ *
+ * ValidateNonFirewall: ensures NonFirewallConnectorType only contains
+ * connectors that are NOT in FirewallConnectorType.
+ *
+ * ValidateExhaustive: ensures every ConnectorType is in either
+ * FirewallConnectorType or NonFirewallConnectorType.
+ */
+type ValidateNonFirewall<
+  T extends Exclude<
+    ConnectorType,
+    FirewallConnectorType
+  > = NonFirewallConnectorType,
+> = T;
+type ValidateExhaustive<
+  T extends never = Exclude<
+    ConnectorType,
+    FirewallConnectorType | NonFirewallConnectorType
+  >,
+> = T;
+export type ConnectorTypeCoverage = ValidateNonFirewall & ValidateExhaustive;
+
 /** Check if a connector type has a firewall config. */
 export function isFirewallConnectorType(
   type: string,
