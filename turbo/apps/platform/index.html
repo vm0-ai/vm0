@@ -64,68 +64,14 @@
     <div id="root">
       <style>
         .sk {
-          display: flex;
           height: 100dvh;
           background: #fdfdfe;
-        }
-        .sk-side {
-          width: 300px;
-          flex-shrink: 0;
-          background: #fafbfc;
-          border-right: 0.7px solid #dce1e8;
-          padding: 16px;
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-        }
-        .sk-bar {
-          height: 32px;
-          border-radius: 8px;
-          background: #e7ebf0;
-          animation: sk-pulse 2s ease-in-out infinite;
-        }
-        .sk-content {
-          flex: 1;
-          background: #fdfdfe;
-        }
-        @keyframes sk-pulse {
-          0%,
-          100% {
-            opacity: 1;
-          }
-          50% {
-            opacity: 0.4;
-          }
         }
         [data-theme="dark"] .sk {
           background: #19191b;
         }
-        [data-theme="dark"] .sk-side {
-          background: hsl(240 5% 8%);
-          border-color: #292a2e;
-        }
-        [data-theme="dark"] .sk-bar {
-          background: #222325;
-        }
-        [data-theme="dark"] .sk-content {
-          background: #19191b;
-        }
-        @media (max-width: 767px) {
-          .sk-side {
-            display: none;
-          }
-        }
       </style>
-      <div class="sk">
-        <aside class="sk-side">
-          <div class="sk-bar"></div>
-          <div class="sk-bar" style="margin-top: 8px"></div>
-          <div class="sk-bar"></div>
-          <div class="sk-bar"></div>
-          <div class="sk-bar"></div>
-        </aside>
-        <div class="sk-content"></div>
-      </div>
+      <div class="sk"></div>
     </div>
     <script
       src="https://api.dashboard.instatus.com/widget?host=status.vm0.ai&code=02c0ef5a&locale=en"
