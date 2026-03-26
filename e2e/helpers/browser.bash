@@ -282,6 +282,34 @@ wait_for_text() {
 }
 
 # ---------------------------------------------------------------------------
+# url_is_on_app — Check if a URL's hostname starts with "app."
+# ---------------------------------------------------------------------------
+url_is_on_app() {
+  local url="$1"
+  local host
+  host=$(echo "$url" | sed -n 's|.*://\([^/:]*\).*|\1|p')
+  [[ "$host" == app.* ]]
+}
+
+# ---------------------------------------------------------------------------
+# wait_for_text_gone — Wait for text to disappear from page (case-insensitive)
+# Usage: wait_for_text_gone "some text" [timeout_secs]
+# ---------------------------------------------------------------------------
+wait_for_text_gone() {
+  local text="$1"
+  local timeout_secs="${2:-15}"
+  for _i in $(seq 1 "$timeout_secs"); do
+    local snap
+    snap=$(full_snapshot)
+    if ! contains "$snap" "$text"; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+# ---------------------------------------------------------------------------
 # browser_teardown — Kill agent-browser and any spawned browser processes
 # Call this in teardown_file() to prevent bats from hanging.
 # ---------------------------------------------------------------------------

@@ -13,7 +13,6 @@
 load '../../helpers/setup'
 load '../../helpers/browser'
 
-
 setup_file() {
   browser_setup
   create_clerk_sign_in_token

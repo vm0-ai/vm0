@@ -14,16 +14,6 @@ load '../../helpers/setup'
 load '../../helpers/browser'
 
 # ---------------------------------------------------------------------------
-# url_is_on_app — Check if a URL's hostname starts with "app."
-# ---------------------------------------------------------------------------
-url_is_on_app() {
-  local url="$1"
-  local host
-  host=$(echo "$url" | sed -n 's|.*://\([^/:]*\).*|\1|p')
-  [[ "$host" == app.* ]]
-}
-
-# ---------------------------------------------------------------------------
 # wait_for_unsaved_bar — Poll until "unsaved changes" text appears
 # ---------------------------------------------------------------------------
 wait_for_unsaved_bar() {
@@ -45,16 +35,10 @@ wait_for_unsaved_bar() {
 # ---------------------------------------------------------------------------
 wait_for_no_unsaved_bar() {
   local timeout_secs="${1:-20}"
-  for _i in $(seq 1 "$timeout_secs"); do
-    local snap
-    snap=$(full_snapshot)
-    if ! contains "$snap" "unsaved changes"; then
-      return 0
-    fi
-    sleep 1
-  done
-  echo "# Timed out waiting for unsaved bar to disappear" >&3
-  return 1
+  if ! wait_for_text_gone "unsaved changes" "$timeout_secs"; then
+    echo "# Timed out waiting for unsaved bar to disappear" >&3
+    return 1
+  fi
 }
 
 # ---------------------------------------------------------------------------
