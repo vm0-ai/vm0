@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.84.6](https://github.com/vm0-ai/vm0/compare/cli-v9.84.5...cli-v9.84.6) (2026-03-26)
+
+
+### Refactoring
+
+* remove vm0_secrets/vm0_vars from skill frontmatter and clean up dead code ([#6967](https://github.com/vm0-ai/vm0/issues/6967)) ([b446cdd](https://github.com/vm0-ai/vm0/commit/b446cdd12cd03d71f828726e1decb507af90447a)), closes [#6936](https://github.com/vm0-ai/vm0/issues/6936)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.118.0
+
 ## [9.84.5](https://github.com/vm0-ai/vm0/compare/cli-v9.84.4...cli-v9.84.5) (2026-03-26)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.29.2](https://github.com/vm0-ai/vm0/compare/docs-v2.29.1...docs-v2.29.2) (2026-03-26)
+
+
+### Refactoring
+
+* rename instagram secret to instagram_token ([#6959](https://github.com/vm0-ai/vm0/issues/6959)) ([07687e7](https://github.com/vm0-ai/vm0/commit/07687e7a1ab947201cba7f53da0a9221e8e2e1dc))
+
 ## [2.29.1](https://github.com/vm0-ai/vm0/compare/docs-v2.29.0...docs-v2.29.1) (2026-03-25)
 
 

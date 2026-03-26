@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.155.1](https://github.com/vm0-ai/vm0/compare/app-v0.155.0...app-v0.155.1) (2026-03-26)
+
+
+### Refactoring
+
+* simplify chat tests with configurable poll interval ([#6861](https://github.com/vm0-ai/vm0/issues/6861)) ([12f2d04](https://github.com/vm0-ai/vm0/commit/12f2d0418c211c9d3813e6e6b0927b5d9fa41f77))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.118.0
+
 ## [0.155.0](https://github.com/vm0-ai/vm0/compare/app-v0.154.0...app-v0.155.0) (2026-03-26)
 
 

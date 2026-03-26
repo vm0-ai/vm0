@@ -1,5 +1,30 @@
 # Changelog
 
+## [12.163.1](https://github.com/vm0-ai/vm0/compare/web-v12.163.0...web-v12.163.1) (2026-03-26)
+
+
+### Bug Fixes
+
+* expand firewall placeholders to cover raw oauth names and aliases ([#6956](https://github.com/vm0-ai/vm0/issues/6956)) ([6171494](https://github.com/vm0-ai/vm0/commit/617149476e1e75c05b0a8bcf31fa37993e103226)), closes [#6941](https://github.com/vm0-ai/vm0/issues/6941)
+
+
+### Documentation
+
+* update server-side-compose jsdoc to reflect current behavior ([#6981](https://github.com/vm0-ai/vm0/issues/6981)) ([1979bf2](https://github.com/vm0-ai/vm0/commit/1979bf2811f597c8a63fad955c11673aa0d54933))
+
+
+### Refactoring
+
+* remove vm0_secrets/vm0_vars from skill frontmatter and clean up dead code ([#6967](https://github.com/vm0-ai/vm0/issues/6967)) ([b446cdd](https://github.com/vm0-ai/vm0/commit/b446cdd12cd03d71f828726e1decb507af90447a)), closes [#6936](https://github.com/vm0-ai/vm0/issues/6936)
+* rename instagram secret to instagram_token ([#6959](https://github.com/vm0-ai/vm0/issues/6959)) ([07687e7](https://github.com/vm0-ai/vm0/commit/07687e7a1ab947201cba7f53da0a9221e8e2e1dc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.118.0
+
 ## [12.163.0](https://github.com/vm0-ai/vm0/compare/web-v12.162.0...web-v12.163.0) (2026-03-26)
 
 

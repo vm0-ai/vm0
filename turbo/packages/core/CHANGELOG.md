@@ -1,5 +1,23 @@
 # Changelog
 
+## [8.118.0](https://github.com/vm0-ai/vm0/compare/core-v8.117.0...core-v8.118.0) (2026-03-26)
+
+
+### Features
+
+* add fine-grained firewall permissions for sentry ([#6928](https://github.com/vm0-ai/vm0/issues/6928)) ([e16343d](https://github.com/vm0-ai/vm0/commit/e16343d16f38a69256d3d4d63302df154859689d)), closes [#6822](https://github.com/vm0-ai/vm0/issues/6822)
+
+
+### Bug Fixes
+
+* expand firewall placeholders to cover raw oauth names and aliases ([#6956](https://github.com/vm0-ai/vm0/issues/6956)) ([6171494](https://github.com/vm0-ai/vm0/commit/617149476e1e75c05b0a8bcf31fa37993e103226)), closes [#6941](https://github.com/vm0-ai/vm0/issues/6941)
+
+
+### Refactoring
+
+* remove vm0_secrets/vm0_vars from skill frontmatter and clean up dead code ([#6967](https://github.com/vm0-ai/vm0/issues/6967)) ([b446cdd](https://github.com/vm0-ai/vm0/commit/b446cdd12cd03d71f828726e1decb507af90447a)), closes [#6936](https://github.com/vm0-ai/vm0/issues/6936)
+* rename instagram secret to instagram_token ([#6959](https://github.com/vm0-ai/vm0/issues/6959)) ([07687e7](https://github.com/vm0-ai/vm0/commit/07687e7a1ab947201cba7f53da0a9221e8e2e1dc))
+
 ## [8.117.0](https://github.com/vm0-ai/vm0/compare/core-v8.116.0...core-v8.117.0) (2026-03-26)
 
 
