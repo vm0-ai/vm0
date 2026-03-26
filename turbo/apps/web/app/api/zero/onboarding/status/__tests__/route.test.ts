@@ -69,7 +69,7 @@ describe("GET /api/zero/onboarding/status", () => {
     expect(data.needsOnboarding).toBe(true);
   });
 
-  it("should return needsOnboarding=false when default agent is configured", async () => {
+  it("should return needsOnboarding=false when default agent is configured and onboarding completed", async () => {
     await context.setupUser();
 
     // Create a compose and set as default via API
@@ -86,7 +86,13 @@ describe("GET /api/zero/onboarding/status", () => {
     const setDefaultResponse = await setDefaultAgent(setDefaultRequest);
     expect(setDefaultResponse.status).toBe(200);
 
-    // Default agent is now stored in org table by setDefaultAgent route
+    // Mark personal onboarding as done
+    const completeRequest = createTestRequest(
+      "http://localhost:3000/api/zero/onboarding/complete",
+      { method: "POST" },
+    );
+    const completeResponse = await completeOnboarding(completeRequest);
+    expect(completeResponse.status).toBe(200);
 
     const request = createTestRequest(
       "http://localhost:3000/api/zero/onboarding/status",
@@ -129,7 +135,13 @@ describe("GET /api/zero/onboarding/status", () => {
     const setDefaultResponse = await setDefaultAgent(setDefaultRequest);
     expect(setDefaultResponse.status).toBe(200);
 
-    // Default agent is now stored in org table by setDefaultAgent route
+    // Mark personal onboarding as done
+    const completeRequest = createTestRequest(
+      "http://localhost:3000/api/zero/onboarding/complete",
+      { method: "POST" },
+    );
+    const completeResponse = await completeOnboarding(completeRequest);
+    expect(completeResponse.status).toBe(200);
 
     const request = createTestRequest(
       "http://localhost:3000/api/zero/onboarding/status",
@@ -149,7 +161,7 @@ describe("GET /api/zero/onboarding/status", () => {
     });
   });
 
-  it("should return needsOnboarding=false for admin with default agent but no model provider", async () => {
+  it("should return needsOnboarding=true for admin with default agent but onboarding not completed", async () => {
     await context.setupUser();
 
     // Create a compose and set as default via API (no model provider created)
@@ -166,8 +178,7 @@ describe("GET /api/zero/onboarding/status", () => {
     const setDefaultResponse = await setDefaultAgent(setDefaultRequest);
     expect(setDefaultResponse.status).toBe(200);
 
-    // Default agent is now stored in org table by setDefaultAgent route
-
+    // Without completing onboarding, needsOnboarding should still be true
     const request = createTestRequest(
       "http://localhost:3000/api/zero/onboarding/status",
     );
@@ -177,7 +188,7 @@ describe("GET /api/zero/onboarding/status", () => {
     expect(response.status).toBe(200);
     expect(data.hasOrg).toBe(true);
     expect(data.hasDefaultAgent).toBe(true);
-    expect(data.needsOnboarding).toBe(false);
+    expect(data.needsOnboarding).toBe(true);
   });
 
   it("should return needsOnboarding=true for non-admin member who has not completed onboarding", async () => {

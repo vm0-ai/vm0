@@ -119,6 +119,14 @@ describe("talk navigation", () => {
           defaultAgentSkills: [],
         });
       }),
+      // Org name update
+      http.put("*/api/zero/org", () => {
+        return HttpResponse.json({ success: true });
+      }),
+      // Model provider creation
+      http.post("*/api/zero/model-providers", () => {
+        return HttpResponse.json({ success: true }, { status: 201 });
+      }),
       // Agent creation
       http.post("*/api/zero/agents", () => {
         onboardingComplete = true;
@@ -138,6 +146,10 @@ describe("talk navigation", () => {
       http.put("*/api/zero/default-agent", () => {
         return HttpResponse.json({ success: true });
       }),
+      // Onboarding completion
+      http.post("*/api/zero/onboarding/complete", () => {
+        return HttpResponse.json({ success: true });
+      }),
     );
 
     // Mock chat APIs for the auto-intro message
@@ -145,41 +157,47 @@ describe("talk navigation", () => {
 
     await setupPage({ context, path: "/" });
 
-    // Step 1: Wait for welcome screen
+    // Step 1: Workspace name
     await waitFor(
       () => {
-        expect(
-          screen.getByText(/Meet Zero, your new teammate/),
-        ).toBeInTheDocument();
+        expect(screen.getByText(/Name your workspace/)).toBeInTheDocument();
       },
       { timeout: 5000 },
     );
 
-    // Click Next → step 3 (connectors)
+    // Fill name and advance
+    const input = screen.getByPlaceholderText("e.g. Acme Corp");
+    fireEvent.change(input, { target: { value: "Test Workspace" } });
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
 
+    // Step 2: Choose your tools → Next
     await waitFor(() => {
-      expect(screen.getByText("Add connector")).toBeInTheDocument();
+      expect(screen.getByText("Choose your tools")).toBeInTheDocument();
     });
-
-    // Click Next → step 4 (where to work)
     fireEvent.click(screen.getAllByRole("button", { name: "Next" })[0]!);
 
+    // Step 3: Connect your apps → Next
+    await waitFor(() => {
+      expect(screen.getByText("Connect your apps")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getAllByRole("button", { name: "Next" })[0]!);
+
+    // Step 4: Where to work
     await waitFor(() => {
       expect(
         screen.getByText(/Where would you like to work with/),
       ).toBeInTheDocument();
     });
 
-    // Click "Chat with Zero" which triggers:
+    // Click "Continue in web" which triggers:
     // 1. completeZeroOnboarding$ (create agent, set default)
     // 2. navigate("/") → setupChatPage$ redirects to /talk/zero
     // 3. sendZeroChatMessage$("Who are you and what can you do?")
     //    → ensureChatThread() → navigates to /chat/:threadId
-    const chatWithZeroButton = screen.getByRole("button", {
-      name: /Chat with Zero/,
+    const continueButton = screen.getByRole("button", {
+      name: /Continue in web/,
     });
-    fireEvent.click(chatWithZeroButton);
+    fireEvent.click(continueButton);
 
     // The final URL should be /chat/new-thread-id-123 after the auto-intro
     // message creates a thread and navigates

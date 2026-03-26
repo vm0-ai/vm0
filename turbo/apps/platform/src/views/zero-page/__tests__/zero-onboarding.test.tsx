@@ -27,17 +27,14 @@ async function renderOnboardingPage() {
   await setupPage({ context, path: "/" });
 }
 
-describe("zero onboarding - step 1: welcome", () => {
-  it("should render welcome dialog when onboarding is needed", async () => {
+describe("zero onboarding - step 1: workspace name", () => {
+  it("should render workspace name step when onboarding is needed", async () => {
     mockOnboardingNeeded();
     await renderOnboardingPage();
 
-    // Step 1 shows the welcome dialog with typewriter text
     await waitFor(
       () => {
-        expect(
-          screen.getByText(/Meet Zero, your new teammate/),
-        ).toBeInTheDocument();
+        expect(screen.getByText(/Name your workspace/)).toBeInTheDocument();
       },
       { timeout: 5000 },
     );
@@ -57,7 +54,7 @@ describe("zero onboarding - step 1: welcome", () => {
     );
   });
 
-  it("should advance to connector step when Next is clicked", async () => {
+  it("should advance to connector selection when Next is clicked", async () => {
     mockOnboardingNeeded();
     await renderOnboardingPage();
 
@@ -70,20 +67,24 @@ describe("zero onboarding - step 1: welcome", () => {
       { timeout: 5000 },
     );
 
+    // Fill in workspace name so Next is enabled
+    const input = screen.getByPlaceholderText("e.g. Acme Corp");
+    fireEvent.change(input, { target: { value: "Test Workspace" } });
+
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Add connector")).toBeInTheDocument();
+      expect(screen.getByText("Choose your tools")).toBeInTheDocument();
     });
   });
 });
 
-describe("zero onboarding - step 3: connectors", () => {
-  it("should show connector step with skip instruction", async () => {
+describe("zero onboarding - step 2: choose tools", () => {
+  it("should show connector selection with search", async () => {
     mockOnboardingNeeded();
     await renderOnboardingPage();
 
-    // Step 1 -> Next
+    // Step 1 -> fill name -> Next
     await waitFor(
       () => {
         expect(
@@ -92,15 +93,16 @@ describe("zero onboarding - step 3: connectors", () => {
       },
       { timeout: 5000 },
     );
+
+    const input = screen.getByPlaceholderText("e.g. Acme Corp");
+    fireEvent.change(input, { target: { value: "Test Workspace" } });
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
 
-    // Should reach step 3 (connectors)
+    // Should reach step 2 (choose tools)
     await waitFor(() => {
-      expect(screen.getByText("Add connector")).toBeInTheDocument();
+      expect(screen.getByText("Choose your tools")).toBeInTheDocument();
     });
-    expect(
-      screen.getByText(/You can skip and add more later/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Select the apps you use/)).toBeInTheDocument();
   });
 });
 
@@ -109,12 +111,9 @@ describe("zero onboarding - does not render when not needed", () => {
     // Default mock handler already returns needsOnboarding: false
     await renderOnboardingPage();
 
-    // Wait for page to load and verify onboarding dialog is NOT shown
+    // Wait for page to load and verify onboarding is NOT shown
     await waitFor(() => {
-      // The chat page tagline should be visible instead
-      expect(
-        screen.queryByText(/Meet Zero, your new teammate/),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/Name your workspace/)).not.toBeInTheDocument();
     });
   });
 });
@@ -140,101 +139,41 @@ function mockMemberOnboardingNeeded() {
 }
 
 describe("member welcome - step navigation", () => {
-  it("should render welcome dialog for non-admin member needing onboarding", async () => {
+  it("should skip to where-to-work step for member with no connectors", async () => {
     mockMemberOnboardingNeeded();
     await renderOnboardingPage();
 
+    // Member with no defaultAgentSkills goes straight to step 4 (where-to-work)
     await waitFor(
       () => {
         expect(
-          screen.getByText(/Meet .+, your new teammate/),
+          screen.getByText(/Where would you like to work with/),
         ).toBeInTheDocument();
       },
       { timeout: 5000 },
     );
-  });
-
-  it("should advance from welcome to where-to-work step when no connectors", async () => {
-    mockMemberOnboardingNeeded();
-    await renderOnboardingPage();
-
-    await waitFor(
-      () => {
-        expect(
-          screen.getByRole("button", { name: "Next" }),
-        ).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
-
-    // With no defaultAgentSkills, it should skip connectors and go to "where"
-    await waitFor(() => {
-      expect(
-        screen.getByText(/Where would you like to work with/),
-      ).toBeInTheDocument();
-    });
   });
 
   it("should show Slack and web options in where-to-work step", async () => {
     mockMemberOnboardingNeeded();
     await renderOnboardingPage();
 
+    // Member lands directly on step 4
     await waitFor(
       () => {
         expect(
-          screen.getByRole("button", { name: "Next" }),
+          screen.getByText(/Where would you like to work with/),
         ).toBeInTheDocument();
       },
       { timeout: 5000 },
     );
-
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Go to Slack" }),
-      ).toBeInTheDocument();
-    });
 
     expect(
-      screen.getByRole("button", { name: /Chat with/ }),
+      screen.getByRole("button", { name: /Add .+ to Slack/ }),
     ).toBeInTheDocument();
-  });
 
-  it("should navigate back from where-to-work to welcome", async () => {
-    mockMemberOnboardingNeeded();
-    await renderOnboardingPage();
-
-    // Advance to "where" step
-    await waitFor(
-      () => {
-        expect(
-          screen.getByRole("button", { name: "Next" }),
-        ).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText(/Where would you like to work with/),
-      ).toBeInTheDocument();
-    });
-
-    // Click Back
-    fireEvent.click(screen.getByRole("button", { name: "Back" }));
-
-    // Should be back at welcome
-    await waitFor(
-      () => {
-        expect(
-          screen.getByText(/Meet .+, your new teammate/),
-        ).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    expect(
+      screen.getByRole("button", { name: /Continue in web/ }),
+    ).toBeInTheDocument();
   });
 });

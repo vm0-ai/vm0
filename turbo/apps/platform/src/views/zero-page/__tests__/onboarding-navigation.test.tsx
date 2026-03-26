@@ -21,6 +21,14 @@ function mockOnboardingNeededAdmin() {
         defaultAgentSkills: [],
       });
     }),
+    // Mock org name update
+    http.put("*/api/zero/org", () => {
+      return HttpResponse.json({ success: true });
+    }),
+    // Mock model provider creation
+    http.post("*/api/zero/model-providers", () => {
+      return HttpResponse.json({ success: true }, { status: 201 });
+    }),
     // Mock the agent creation endpoint
     http.post("*/api/zero/agents", () => {
       return HttpResponse.json(
@@ -37,6 +45,10 @@ function mockOnboardingNeededAdmin() {
     }),
     // Mock setting default agent
     http.put("*/api/zero/default-agent", () => {
+      return HttpResponse.json({ success: true });
+    }),
+    // Mock onboarding completion
+    http.post("*/api/zero/onboarding/complete", () => {
       return HttpResponse.json({ success: true });
     }),
     // Mock chat threads for the home page
@@ -92,12 +104,10 @@ describe("onboarding navigation", () => {
       { timeout: 5000 },
     );
 
-    // Onboarding dialog should be rendered
+    // Onboarding step 1 should be rendered
     await waitFor(
       () => {
-        expect(
-          screen.getByText(/Meet Zero, your new teammate/),
-        ).toBeInTheDocument();
+        expect(screen.getByText(/Name your workspace/)).toBeInTheDocument();
       },
       { timeout: 5000 },
     );
@@ -108,26 +118,32 @@ describe("onboarding navigation", () => {
 
     await setupPage({ context, path: "/onboarding" });
 
-    // Step 1: Wait for welcome screen
+    // Step 1: Workspace name
     await waitFor(
       () => {
-        expect(
-          screen.getByText(/Meet Zero, your new teammate/),
-        ).toBeInTheDocument();
+        expect(screen.getByText(/Name your workspace/)).toBeInTheDocument();
       },
       { timeout: 5000 },
     );
 
-    // Click Next to go to step 3 (connectors)
+    // Fill name and advance
+    const input = screen.getByPlaceholderText("e.g. Acme Corp");
+    fireEvent.change(input, { target: { value: "Test Workspace" } });
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
 
+    // Step 2: Choose your tools → Next
     await waitFor(() => {
-      expect(screen.getByText("Add connector")).toBeInTheDocument();
+      expect(screen.getByText("Choose your tools")).toBeInTheDocument();
     });
-
-    // Click Next to go to step 4 (where to work)
     fireEvent.click(screen.getAllByRole("button", { name: "Next" })[0]!);
 
+    // Step 3: Connect your apps → Next
+    await waitFor(() => {
+      expect(screen.getByText("Connect your apps")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getAllByRole("button", { name: "Next" })[0]!);
+
+    // Step 4: Where to work
     await waitFor(() => {
       expect(
         screen.getByText(/Where would you like to work with/),
@@ -149,11 +165,11 @@ describe("onboarding navigation", () => {
       }),
     );
 
-    // Click "Chat with Zero" to trigger handleContinueWithWeb -> navigate("/")
-    const chatWithZeroButton = screen.getByRole("button", {
-      name: /Chat with Zero/,
+    // Click "Continue in web" to trigger handleContinueWithWeb -> navigate("/")
+    const continueButton = screen.getByRole("button", {
+      name: /Continue in web/,
     });
-    fireEvent.click(chatWithZeroButton);
+    fireEvent.click(continueButton);
 
     // Verify navigation to / (which then redirects to /talk/:name)
     await waitFor(
@@ -177,11 +193,11 @@ describe("onboarding navigation", () => {
       { timeout: 5000 },
     );
 
-    // Member welcome dialog should be rendered
+    // Member goes straight to step 4 (where-to-work) with no connectors
     await waitFor(
       () => {
         expect(
-          screen.getByText(/Meet .+, your new teammate/),
+          screen.getByText(/Where would you like to work with/),
         ).toBeInTheDocument();
       },
       { timeout: 5000 },
@@ -193,24 +209,15 @@ describe("onboarding navigation", () => {
 
     await setupPage({ context, path: "/onboarding" });
 
-    // Step 1: Wait for member welcome screen
+    // Member with no connectors goes straight to step 4 (where-to-work)
     await waitFor(
       () => {
         expect(
-          screen.getByText(/Meet .+, your new teammate/),
+          screen.getByText(/Where would you like to work with/),
         ).toBeInTheDocument();
       },
       { timeout: 5000 },
     );
-
-    // With no defaultAgentSkills, Next goes directly to "where" step
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText(/Where would you like to work with/),
-      ).toBeInTheDocument();
-    });
 
     // After completing onboarding, the API should report needsOnboarding: false
     server.use(
@@ -227,9 +234,9 @@ describe("onboarding navigation", () => {
       }),
     );
 
-    // Click "Chat with zero" to trigger handleContinueWeb -> navigate("/")
+    // Click "Continue in web" to trigger handleContinueWeb -> navigate("/")
     const chatButton = screen.getByRole("button", {
-      name: /Chat with zero/i,
+      name: /Continue in web/,
     });
     fireEvent.click(chatButton);
 
