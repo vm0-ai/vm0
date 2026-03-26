@@ -99,7 +99,9 @@ describe("buildAskUserQuestionBlocks", () => {
     }
   });
 
-  it("should handle question without options", () => {
+  it("should render submit-only card when question has no options (defensive)", () => {
+    // This scenario is prevented by schema validation, but the block builder
+    // should still handle it gracefully without crashing
     const questions: AskUserQuestion[] = [{ question: "Any thoughts?" }];
 
     const blocks = buildAskUserQuestionBlocks(questions, pendingId);

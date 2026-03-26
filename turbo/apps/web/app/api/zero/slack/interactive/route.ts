@@ -35,7 +35,7 @@ const askUserQuestionSchema = z.array(
           description: z.string().optional(),
         }),
       )
-      .optional(),
+      .min(1),
     multiSelect: z.boolean().optional(),
   }),
 );

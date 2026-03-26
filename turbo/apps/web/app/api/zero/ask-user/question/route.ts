@@ -56,6 +56,20 @@ const router = tsr.router(zeroAskUserQuestionContract, {
     });
     if (isAuthError(authCtx)) return authCtx;
 
+    // Validate that every question has at least one option
+    const invalidQuestion = body.questions.find((q) => q.options.length === 0);
+    if (invalidQuestion) {
+      return {
+        status: 400 as const,
+        body: {
+          error: {
+            message: "Each question must have at least one option",
+            code: "BAD_REQUEST",
+          },
+        },
+      };
+    }
+
     const { runId } = authCtx;
     if (!runId) {
       return {

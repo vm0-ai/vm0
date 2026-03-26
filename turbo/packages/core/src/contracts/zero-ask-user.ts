@@ -18,7 +18,7 @@ const askUserQuestionItemSchema = z.object({
         description: z.string().optional(),
       }),
     )
-    .optional(),
+    .min(1),
   multiSelect: z.boolean().optional(),
 });
 

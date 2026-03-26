@@ -118,6 +118,24 @@ describe("POST /api/zero/ask-user/question", () => {
     expect(pending!.answeredAt).toBeNull();
   });
 
+  it("returns 400 when questions have no options", async () => {
+    const { token } = await setupSlackContext(user);
+
+    const request = createTestRequest(QUESTION_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        questions: [{ question: "Any thoughts?" }],
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(400);
+  });
+
   it("returns 400 when no Slack callback exists for the run", async () => {
     // Create a run without a Slack callback
     const { composeId } = await createTestCompose(uniqueId("agent"));
