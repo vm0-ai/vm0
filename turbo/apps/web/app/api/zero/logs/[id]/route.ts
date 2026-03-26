@@ -130,7 +130,7 @@ function buildLogDetailBody(result: {
 
   return {
     id: run.id,
-    sessionId: (runResult as RunResult | null)?.agentSessionId ?? null,
+    sessionId: runResult?.agentSessionId ?? null,
     agentId: compose?.id ?? null,
     displayName: agentDisplayName ?? null,
     framework: extractFramework(composeContent),

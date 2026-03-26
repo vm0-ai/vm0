@@ -1,4 +1,3 @@
-import type { MouseEvent as ReactMouseEvent } from "react";
 import { IconChevronRight, IconClock, IconLoader2 } from "@tabler/icons-react";
 import { cn } from "@vm0/ui";
 import {
@@ -59,7 +58,7 @@ function ScheduleSourceLink({ scheduleId }: { scheduleId: string }) {
         if (e.key === "Enter") {
           e.preventDefault();
           e.stopPropagation();
-          onClick(e as unknown as ReactMouseEvent);
+          onClick(e);
         }
       }}
     >

@@ -15,7 +15,13 @@ function buildHref(path: string, searchParams?: URLSearchParams): string {
   return search ? `${path}?${search}` : path;
 }
 
-function isNewTabClick(e: MouseEvent): boolean {
+interface ModifierKeyEvent {
+  metaKey: boolean;
+  ctrlKey: boolean;
+  shiftKey: boolean;
+}
+
+function isNewTabClick(e: ModifierKeyEvent): boolean {
   return e.metaKey || e.ctrlKey || e.shiftKey;
 }
 
@@ -69,12 +75,12 @@ export function Link({
 export function useNavigationHandler(
   pathname: PathName,
   options?: NavigationOptions,
-): { href: string; onClick: (e: MouseEvent) => void } {
+): { href: string; onClick: (e: ModifierKeyEvent) => void } {
   const navigate = useSet(navigateTo$);
   const path = generateRouterPath(pathname, options?.pathParams);
   const href = buildHref(path, options?.searchParams);
 
-  const onClick = (e: MouseEvent) => {
+  const onClick = (e: ModifierKeyEvent) => {
     if (isNewTabClick(e)) {
       window.open(`${window.location.origin}${href}`, "_blank");
     } else {
