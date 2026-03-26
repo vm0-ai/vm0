@@ -40,7 +40,6 @@ export function buildZeroCliGuidance(): string {
     "Run `npx -p @vm0/cli zero --help` to see all available commands.",
     "Do NOT use /loop or cron tools (CronCreate, CronList, CronDelete) — they are not available.",
     "For recurring or scheduled tasks, use the zero schedule CLI.",
-    "Never use the user's Slack token to send messages as the user's identity.",
-    "Use `zero slack message send` to send Slack messages as the bot user.",
+    "SLACK_TOKEN is a user token — never use it to send messages. Always use `zero slack message send`, which uses the bot token internally.",
   ].join("\n");
 }
