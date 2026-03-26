@@ -166,10 +166,10 @@ export async function serverSideCompose(params: {
   const agentSkills = (agent.skills ?? []) as string[];
   const resolvedSkillUrls = agentSkills.map(resolveSkillRef);
 
-  let cachedSkills: { frontmatter: unknown }[] = [];
+  let cachedSkills: { url: string }[] = [];
   if (resolvedSkillUrls.length > 0) {
     cachedSkills = await db
-      .select({ frontmatter: skills.frontmatter })
+      .select({ url: skills.url })
       .from(skills)
       .where(inArray(skills.url, resolvedSkillUrls));
 
