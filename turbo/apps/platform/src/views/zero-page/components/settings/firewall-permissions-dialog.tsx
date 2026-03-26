@@ -16,7 +16,7 @@ import {
   type FirewallPolicies,
 } from "@vm0/core";
 import { ConnectorIcon } from "./connector-icons.tsx";
-import { type PermissionPolicy } from "../../../../signals/zero-page/settings/firewalls.ts";
+import type { PermissionPolicy } from "../../../../signals/zero-page/settings/firewalls.ts";
 import { IconCheck, IconBan } from "@tabler/icons-react";
 import { detach, Reason } from "../../../../signals/utils.ts";
 

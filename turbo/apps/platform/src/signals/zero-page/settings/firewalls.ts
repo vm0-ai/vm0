@@ -11,7 +11,9 @@ import { zeroClient$ } from "../../api-client.ts";
 
 /** Check if a connector's firewall has any permissions defined. */
 export function hasFirewallPermissions(type: ConnectorType): boolean {
-  if (!isFirewallConnectorType(type)) return false;
+  if (!isFirewallConnectorType(type)) {
+    return false;
+  }
   const config = getConnectorFirewall(type);
   return config.apis.some(
     (api) => api.permissions && api.permissions.length > 0,
