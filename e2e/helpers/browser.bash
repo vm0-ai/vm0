@@ -228,41 +228,33 @@ derive_app_url() {
 # ---------------------------------------------------------------------------
 # sign_in_via_token — Sign in via Clerk token and wait for redirect
 # Requires SIGN_IN_TOKEN to be set (call create_clerk_sign_in_token first).
+# Usage: sign_in_via_token [base_url]
+#   base_url — URL to sign in on (default: APP_URL, fallback: VM0_API_URL)
 # ---------------------------------------------------------------------------
 sign_in_via_token() {
-  agent-browser open "${VM0_API_URL}/sign-in-token?token=${SIGN_IN_TOKEN}" --ignore-https-errors
-  agent-browser wait 3000
+  local base_url="${1:-${APP_URL:-$VM0_API_URL}}"
+  agent-browser open "${base_url}/sign-in-token?token=${SIGN_IN_TOKEN}" --ignore-https-errors
+  agent-browser wait 5000
 
-  # Wait for redirect away from /sign-in-token
-  local redirect_complete=false
-  for _i in $(seq 1 20); do
+  # Wait for token auth to complete and redirect away from /sign-in-token
+  local auth_complete=false
+  for _i in $(seq 1 30); do
     local current_url
     current_url=$(agent-browser get url 2>/dev/null || true)
-    if [[ -n "$current_url" && ! "$current_url" =~ sign-in-token ]]; then
-      redirect_complete=true
+    if url_is_on_app "$current_url" && [[ ! "$current_url" =~ sign-in-token ]]; then
+      auth_complete=true
       break
     fi
     sleep 1
   done
 
-  if [[ "$redirect_complete" != "true" ]]; then
+  if [[ "$auth_complete" != "true" ]]; then
     echo "Failed to redirect after sign-in-token" >&2
     return 1
   fi
-}
 
-# ---------------------------------------------------------------------------
-# url_is_on_app — Check if a URL's hostname matches the APP_URL hostname
-# Compares against the derived APP_URL rather than assuming "app." prefix,
-# so it works for all environments (app.vm7.ai, staging-app.vm6.ai, etc.)
-# Requires APP_URL to be set (call derive_app_url first).
-# ---------------------------------------------------------------------------
-url_is_on_app() {
-  local url="$1"
-  local url_host app_host
-  url_host=$(echo "$url" | sed -n 's|.*://\([^/:]*\).*|\1|p')
-  app_host=$(echo "$APP_URL" | sed -n 's|.*://\([^/:]*\).*|\1|p')
-  [[ "$url_host" == "$app_host" ]]
+  # Dismiss cookie banner if present
+  dismiss_cookie_banner
 }
 
 # ---------------------------------------------------------------------------

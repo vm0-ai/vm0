@@ -30,32 +30,10 @@ teardown_file() {
 }
 
 @test "sign in via token on platform app" {
-  # Navigate to platform's /sign-in-token route — authenticates directly
-  # on the app domain, avoiding cross-domain session issues
   echo "# Signing in via token on platform app..." >&3
-  agent-browser open "${APP_URL}/sign-in-token?token=${SIGN_IN_TOKEN}" --ignore-https-errors
-  agent-browser wait 5000
-  step_screenshot "sign-in-token"
-
-  # Wait for token auth to complete and redirect away from /sign-in-token
-  echo "# Waiting for auth redirect..." >&3
-  local auth_complete=false
-  for _i in $(seq 1 30); do
-    local current_url
-    current_url=$(agent-browser get url 2>/dev/null || true)
-    if url_is_on_app "$current_url" && [[ ! "$current_url" =~ sign-in-token ]]; then
-      auth_complete=true
-      break
-    fi
-    sleep 1
-  done
-  step_screenshot "after-auth-redirect"
-
-  assert [ "$auth_complete" = "true" ]
+  sign_in_via_token "$APP_URL"
+  step_screenshot "after-sign-in"
   echo "# Authentication complete!" >&3
-
-  # Dismiss cookie banner if present
-  dismiss_cookie_banner
 }
 
 @test "detect and complete onboarding" {
