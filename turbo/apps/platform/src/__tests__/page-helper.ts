@@ -17,6 +17,7 @@ import { vi } from "vitest";
 import type { FeatureSwitchKey } from "@vm0/core";
 import { setFeatureSwitchLocalStorage$ } from "../signals/external/feature-switch";
 import { setDebugLoggerLocalStorage$ } from "../signals/bootstrap/loggers";
+import { setPollIntervalForTest$ } from "../signals/zero-page/polling";
 
 export async function setupPage(options: {
   context: TestContext;
@@ -27,6 +28,11 @@ export async function setupPage(options: {
   featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
   withoutRender?: boolean;
 }) {
+  // in tests we want to control the polling interval to make them faster and deterministic
+  // if a test requires a specific interval to run, it indicates that the test is tightly coupled with real-world time. This is a very bad code smell.
+  // So you should never try to modify this time interval here just to make a test pass. Instead, try your best to discover the underlying timing issues within the test.
+  options.context.store.set(setPollIntervalForTest$, 0);
+
   createPushStateMock(options.context.signal);
   pushState({}, "", options.path);
 

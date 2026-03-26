@@ -45,12 +45,9 @@ describe("chat session page wrapper navigation", () => {
     await setupPage({ context, path: "/chat/session-thread-1" });
 
     // Wait for chat messages to render
-    await waitFor(
-      () => {
-        expect(screen.getByText("Task is running.")).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByText("Task is running.")).toBeInTheDocument();
+    });
 
     // Click the schedule button in the session header
     const scheduledButton = screen.getByLabelText("Scheduled");
@@ -61,7 +58,7 @@ describe("chat session page wrapper navigation", () => {
       expect(pathname()).toBe("/team/mock-compose-id");
       expect(search()).toContain("tab=schedule");
     });
-  }, 15_000);
+  });
 
   it("should navigate to agent profile when clicking chat avatar", async () => {
     mockChatSessionAPIs();
@@ -69,12 +66,9 @@ describe("chat session page wrapper navigation", () => {
     await setupPage({ context, path: "/chat/session-thread-1" });
 
     // Wait for chat messages to render
-    await waitFor(
-      () => {
-        expect(screen.getByText("Task is running.")).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByText("Task is running.")).toBeInTheDocument();
+    });
 
     // Click the avatar button in the session header
     const avatarButton = screen.getByLabelText("View agent profile");
@@ -84,5 +78,5 @@ describe("chat session page wrapper navigation", () => {
     await waitFor(() => {
       expect(pathname()).toBe("/team/mock-compose-id");
     });
-  }, 15_000);
+  });
 });

@@ -1,4 +1,4 @@
-import { command, computed, type Computed } from "ccstate";
+import { command, computed, state, type Computed } from "ccstate";
 import type { AgentEvent, LogStatus } from "./log-types.ts";
 import { delay } from "signal-timers";
 import { zeroRunAgentEventsContract, logsByIdContract } from "@vm0/core";
@@ -8,6 +8,12 @@ import { zeroClient$ } from "../api-client.ts";
 const AGENT_EVENTS_PAGE_LIMIT = 30;
 const MAX_INTERVAL = 30_000;
 const BASE_POLL_INTERVAL = 3000;
+
+const internalPollInterval$ = state(BASE_POLL_INTERVAL);
+
+export const setPollIntervalForTest$ = command(({ set }, interval: number) => {
+  set(internalPollInterval$, interval);
+});
 
 // ---------------------------------------------------------------------------
 // Terminal status helper
@@ -161,7 +167,7 @@ export const setupPollingLoop$ = command(
 
     while (!signal.aborted) {
       const interval = Math.min(
-        BASE_POLL_INTERVAL * 2 ** errorCount,
+        get(internalPollInterval$) * 2 ** errorCount,
         MAX_INTERVAL,
       );
 

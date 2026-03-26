@@ -1,4 +1,10 @@
-import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
+import {
+  useGet,
+  useSet,
+  useLoadable,
+  useLastLoadable,
+  useResolved,
+} from "ccstate-react";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   IconAlertCircle,
@@ -81,9 +87,7 @@ export function ZeroSessionChatPage({
   onAvatarClick,
   chatAgentName,
 }: ZeroSessionChatPageProps) {
-  const displayNameLoadable = useLoadable(agentDisplayName$);
-  const defaultDisplayName =
-    displayNameLoadable.state === "hasData" ? displayNameLoadable.data : "Zero";
+  const defaultDisplayName = useResolved(agentDisplayName$) ?? "Zero";
   const displayName = chatAgentName ?? defaultDisplayName;
   const messagesLoadable = useLoadable(zeroChatMessages$);
   const messages =

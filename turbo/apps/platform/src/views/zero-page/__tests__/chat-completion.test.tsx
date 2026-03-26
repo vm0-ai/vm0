@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor, act } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import {
@@ -19,29 +19,20 @@ describe("chat completion", () => {
 
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-      { timeout: 5000 },
     );
 
-    await act(() => {
-      sendMessageInUI(textarea, "Hello");
+    sendMessageInUI(textarea, "Hello");
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
-
-    await waitFor(
-      () => {
-        expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
 
     ctrl.completeRun("Here is the **result**");
 
-    await waitFor(
-      () => {
-        expect(screen.getByText("result")).toBeInTheDocument();
-      },
-      { timeout: 10_000 },
-    );
-  }, 30_000);
+    await waitFor(() => {
+      expect(screen.getByText("result")).toBeInTheDocument();
+    });
+  });
 
   it("should restore Send button and remove Stop button after completion", async () => {
     const ctrl = mockChatLifecycle();
@@ -50,30 +41,21 @@ describe("chat completion", () => {
 
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-      { timeout: 5000 },
     );
 
-    await act(() => {
-      sendMessageInUI(textarea, "Hello");
+    sendMessageInUI(textarea, "Hello");
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
-
-    await waitFor(
-      () => {
-        expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
 
     ctrl.completeRun("Done");
 
-    await waitFor(
-      () => {
-        expect(screen.getByLabelText("Send")).toBeInTheDocument();
-        expect(screen.queryByLabelText("Stop")).toBeNull();
-      },
-      { timeout: 10_000 },
-    );
-  }, 30_000);
+    await waitFor(() => {
+      expect(screen.getByLabelText("Send")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Stop")).toBeNull();
+    });
+  });
 
   it("should collapse activity steps into expandable timeline", async () => {
     const ctrl = mockChatLifecycle();
@@ -82,21 +64,15 @@ describe("chat completion", () => {
 
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-      { timeout: 5000 },
     );
 
-    await act(() => {
-      sendMessageInUI(textarea, "Hello");
-    });
+    sendMessageInUI(textarea, "Hello");
 
     // Wait for running state
-    await waitFor(
-      () => {
-        const shimmer = document.querySelector(".zero-shimmer-text");
-        expect(shimmer).toBeInTheDocument();
-      },
-      { timeout: 10_000 },
-    );
+    await waitFor(() => {
+      const shimmer = document.querySelector(".zero-shimmer-text");
+      expect(shimmer).toBeInTheDocument();
+    });
 
     // Add two activity events
     ctrl.setEvents([
@@ -105,24 +81,18 @@ describe("chat completion", () => {
     ]);
 
     // Wait for activity steps to appear
-    await waitFor(
-      () => {
-        expect(screen.getByText("Running a command...")).toBeInTheDocument();
-      },
-      { timeout: 10_000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByText("Running a command...")).toBeInTheDocument();
+    });
 
     // Complete the run
     ctrl.completeRun("Done");
 
     // Wait for collapsed timeline
-    await waitFor(
-      () => {
-        expect(screen.getByText(/Took \d+ steps?/)).toBeInTheDocument();
-      },
-      { timeout: 10_000 },
-    );
-  }, 30_000);
+    await waitFor(() => {
+      expect(screen.getByText(/Took \d+ steps?/)).toBeInTheDocument();
+    });
+  });
 
   it("should update sidebar title after completion", async () => {
     const ctrl = mockChatLifecycle();
@@ -131,19 +101,13 @@ describe("chat completion", () => {
 
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-      { timeout: 5000 },
     );
 
-    await act(() => {
-      sendMessageInUI(textarea, "Hello");
+    sendMessageInUI(textarea, "Hello");
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
-
-    await waitFor(
-      () => {
-        expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
 
     // Set thread list so the sidebar shows a preview after completion
     ctrl.setThreadList([
@@ -160,18 +124,14 @@ describe("chat completion", () => {
     ctrl.completeRun("Done");
 
     // The sidebar renders session.preview as the visible text
-    await waitFor(
-      () => {
-        // Look for the sidebar preview text (not the user message bubble)
-        const links = document.querySelectorAll("a");
-        const sidebarLink = Array.from(links).find(
-          (a) =>
-            a.textContent === "Hello" &&
-            a.getAttribute("href")?.includes("chat"),
-        );
-        expect(sidebarLink).toBeTruthy();
-      },
-      { timeout: 10_000 },
-    );
-  }, 30_000);
+    await waitFor(() => {
+      // Look for the sidebar preview text (not the user message bubble)
+      const links = document.querySelectorAll("a");
+      const sidebarLink = Array.from(links).find(
+        (a) =>
+          a.textContent === "Hello" && a.getAttribute("href")?.includes("chat"),
+      );
+      expect(sidebarLink).toBeTruthy();
+    });
+  });
 });

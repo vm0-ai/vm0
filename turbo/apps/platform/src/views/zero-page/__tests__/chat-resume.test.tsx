@@ -45,24 +45,18 @@ describe("chat resume", () => {
     );
 
     // Active run should show thinking state
-    await waitFor(
-      () => {
-        const shimmer = document.querySelector(".zero-shimmer-text");
-        expect(shimmer).toBeInTheDocument();
-      },
-      { timeout: 10_000 },
-    );
+    await waitFor(() => {
+      const shimmer = document.querySelector(".zero-shimmer-text");
+      expect(shimmer).toBeInTheDocument();
+    });
 
     // Add events -- activity steps should appear
     ctrl.setEvents([makeToolUseEvent("Bash")]);
 
-    await waitFor(
-      () => {
-        expect(screen.getByText("Running a command...")).toBeInTheDocument();
-      },
-      { timeout: 10_000 },
-    );
-  }, 30_000);
+    await waitFor(() => {
+      expect(screen.getByText("Running a command...")).toBeInTheDocument();
+    });
+  });
 
   it("should allow input and Stop during resume", async () => {
     mockChatLifecycle({
@@ -87,21 +81,15 @@ describe("chat resume", () => {
     await setupPage({ context, path: "/chat/thread-resume-2" });
 
     // Wait for the page to load with history
-    await waitFor(
-      () => {
-        expect(screen.getByText("Active task")).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByText("Active task")).toBeInTheDocument();
+    });
 
     // Stop button should be visible during resume
-    await waitFor(
-      () => {
-        expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-      },
-      { timeout: 10_000 },
-    );
-  }, 30_000);
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+  });
 
   it("should show failure state for resumed run that fails", async () => {
     const ctrl = mockChatLifecycle({
@@ -126,24 +114,16 @@ describe("chat resume", () => {
     await setupPage({ context, path: "/chat/thread-resume-3" });
 
     // Wait for sending state
-    await waitFor(
-      () => {
-        expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-      },
-      { timeout: 10_000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
 
     // Fail the resumed run
     ctrl.failRun("Task failed unexpectedly");
 
     // The error message should appear in the assistant message
-    await waitFor(
-      () => {
-        expect(
-          screen.getByText(/Task failed unexpectedly/),
-        ).toBeInTheDocument();
-      },
-      { timeout: 10_000 },
-    );
-  }, 30_000);
+    await waitFor(() => {
+      expect(screen.getByText(/Task failed unexpectedly/)).toBeInTheDocument();
+    });
+  });
 });

@@ -2,6 +2,7 @@ import { fireEvent } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import type { AgentEvent } from "../../../signals/zero-page/log-types.ts";
+import { act } from "react";
 
 export const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
 
@@ -10,14 +11,16 @@ export function sendMessageInUI(
   text: string,
 ): void {
   fireEvent.change(textarea, { target: { value: text } });
-  textarea.dispatchEvent(
-    Object.assign(
-      new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
-      {
-        preventDefault: () => {},
-      },
-    ),
-  );
+  act(() => {
+    textarea.dispatchEvent(
+      Object.assign(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+        {
+          preventDefault: () => {},
+        },
+      ),
+    );
+  });
 }
 
 export function makeToolUseEvent(
