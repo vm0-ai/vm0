@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../../mocks/server.ts";
 import { mockLocation } from "../../../location.ts";
 import { testContext } from "../../../__tests__/test-helpers.ts";
 import { createPushStateMock } from "../../../../__tests__/page-helper.ts";
@@ -93,6 +95,28 @@ describe("checkSettingsParam$", () => {
     expect(store.get(orgManageDialogOpen$)).toBeFalsy();
     // The param should still be stripped
     expect(store.get(searchParams$).has("settings")).toBeFalsy();
+  });
+
+  it("should redirect non-admin to general tab for admin-only tabs", async () => {
+    const { store, signal } = context;
+    setupAuth(signal);
+    server.use(
+      http.get("*/api/zero/org", () => {
+        return HttpResponse.json({
+          id: "org_1",
+          slug: "user-12345678",
+          name: "User 12345678",
+          role: "member",
+        });
+      }),
+    );
+    createPushStateMock(signal);
+    mockLocation({ pathname: "/", search: "?settings=billing" }, signal);
+
+    await store.set(checkSettingsParam$, signal);
+
+    expect(store.get(orgManageDialogOpen$)).toBeTruthy();
+    expect(store.get(activeTab$)).toBe("general");
   });
 
   it("should preserve other search params when stripping settings", async () => {
