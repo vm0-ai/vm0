@@ -169,6 +169,35 @@ describe("buildAgentResponseMessage", () => {
     ) as MarkdownBlock;
     expect(markdownBlock.text).toBe(content);
   });
+
+  it("should append triggeredBy suffix to audit link when provided", () => {
+    const blocks = buildAgentResponseMessage(
+      "Response text",
+      "https://app.vm0.ai/activity/run-123",
+      "Daily report",
+    );
+
+    const contextBlocks = blocks.filter((b) => b.type === "context");
+    expect(contextBlocks).toHaveLength(1);
+    const text = (contextBlocks[0] as { elements: { text: string }[] })
+      .elements[0]!.text;
+    expect(text).toContain("Audit");
+    expect(text).toContain("triggered by Daily report");
+  });
+
+  it("should not append suffix when triggeredBy is undefined", () => {
+    const blocks = buildAgentResponseMessage(
+      "Response text",
+      "https://app.vm0.ai/activity/run-123",
+    );
+
+    const contextBlocks = blocks.filter((b) => b.type === "context");
+    expect(contextBlocks).toHaveLength(1);
+    const text = (contextBlocks[0] as { elements: { text: string }[] })
+      .elements[0]!.text;
+    expect(text).toContain("Audit");
+    expect(text).not.toContain("triggered by");
+  });
 });
 
 describe("buildAppHomeView", () => {

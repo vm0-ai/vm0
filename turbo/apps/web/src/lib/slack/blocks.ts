@@ -419,23 +419,26 @@ function buildMarkdownMessage(content: string): (Block | KnownBlock)[] {
  *
  * @param content - The agent's response content
  * @param logsUrl - Optional URL to the run logs
+ * @param triggeredBy - Optional trigger source suffix (e.g. 'schedule "Daily report"')
  * @returns Block Kit blocks with response content
  */
 export function buildAgentResponseMessage(
   content: string,
   logsUrl?: string,
+  triggeredBy?: string,
 ): (Block | KnownBlock)[] {
   const blocks: (Block | KnownBlock)[] = [...buildMarkdownMessage(content)];
 
-  // Add logs link at the end if provided
+  // Add logs link at the end if provided, with optional trigger source suffix
   // Emoji must be outside the link — Slack mobile doesn't render emoji inside <url|text>
   if (logsUrl) {
+    const suffix = triggeredBy ? `  · triggered by ${triggeredBy}` : "";
     blocks.push({
       type: "context",
       elements: [
         {
           type: "mrkdwn",
-          text: `:clipboard: <${logsUrl}|Audit>`,
+          text: `:clipboard: <${logsUrl}|Audit>${suffix}`,
         },
       ],
     });

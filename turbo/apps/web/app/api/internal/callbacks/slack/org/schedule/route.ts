@@ -20,6 +20,7 @@ import {
 } from "../../../../../../../src/lib/slack-org/handlers/shared";
 import { buildAgentResponseMessage } from "../../../../../../../src/lib/slack/blocks";
 import { zeroAgents } from "../../../../../../../src/db/schema/zero-agent";
+import { zeroAgentSchedules } from "../../../../../../../src/db/schema/zero-agent-schedule";
 import { env } from "../../../../../../../src/env";
 import type { SlackScheduleCallbackPayload } from "../../../../../../../src/lib/callback/callback-payloads";
 import { logger } from "../../../../../../../src/lib/logger";
@@ -71,6 +72,7 @@ async function postScheduleResults(
   displayName: string,
   outputs: RunOutput[],
   logsUrl: string,
+  scheduleDescription?: string,
 ): Promise<{ messageTs: string | undefined; dmChannelId: string | undefined }> {
   let messageTs: string | undefined;
   let dmChannelId: string | undefined;
@@ -84,9 +86,11 @@ async function postScheduleResults(
     const isLast = i === outputs.length - 1;
 
     const content = isFirst ? header + rawOutput : rawOutput;
+    const triggeredBy = isLast ? scheduleDescription : undefined;
     const blocks = buildAgentResponseMessage(
       content,
       isLast ? logsUrl : undefined,
+      triggeredBy,
     );
 
     const threadTs = messageTs;
@@ -197,6 +201,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .limit(1);
   const displayName = agentInfo?.displayName ?? agentInfo?.name ?? "your agent";
 
+  // Resolve schedule description for attribution footer
+  const [scheduleRow] = await globalThis.services.db
+    .select({ description: zeroAgentSchedules.description })
+    .from(zeroAgentSchedules)
+    .where(eq(zeroAgentSchedules.id, payload.scheduleId))
+    .limit(1);
+  const scheduleDescription = scheduleRow?.description ?? undefined;
+
   // Use configured channel if set, otherwise fall back to user DM
   const notifyChannel = targetChannelId ?? connection.slackUserId;
 
@@ -214,6 +226,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       displayName,
       allOutputs,
       logsUrl,
+      scheduleDescription,
     );
 
     // Create thread session so user can reply to continue (only for DM)
@@ -247,7 +260,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       notifyChannel,
       `Scheduled run for "${displayName}" failed`,
       {
-        blocks: buildAgentResponseMessage(failureContent, logsUrl),
+        blocks: buildAgentResponseMessage(
+          failureContent,
+          logsUrl,
+          scheduleDescription,
+        ),
       },
     );
   }
