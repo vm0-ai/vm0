@@ -96,22 +96,16 @@ export const questionCommand = new Command()
           }
 
           if (response.status === "expired") {
-            console.error(
-              chalk.red("✗ Question expired before user responded"),
-            );
-            process.exit(1);
+            throw new Error("Question expired before user responded");
           }
 
           await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
         }
 
         // Timeout reached
-        console.error(
-          chalk.red(
-            `✗ Timed out waiting for user response after ${options.timeout}s`,
-          ),
+        throw new Error(
+          `Timed out waiting for user response after ${options.timeout}s`,
         );
-        process.exit(1);
       },
     ),
   );
