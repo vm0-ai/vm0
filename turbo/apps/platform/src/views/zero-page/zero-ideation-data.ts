@@ -99,6 +99,20 @@ const categories: readonly Category[] = [
           "Set up a weekly Xero financial summary that pulls profit & loss and cash flow data and posts a formatted report to Slack",
         connectors: ["xero", "slack"],
       },
+      {
+        title: "Strava team fitness digest",
+        description: "Weekly team activity summary posted to Slack",
+        prompt:
+          "Set up a weekly Strava digest that summarizes team members' running and cycling activities and posts a leaderboard to Slack",
+        connectors: ["strava", "slack"],
+      },
+      {
+        title: "Streak pipeline report",
+        description: "Weekly CRM pipeline stats from Gmail in Slack",
+        prompt:
+          "Set up a weekly Streak pipeline report that summarizes deal stages, win rates, and upcoming follow-ups, then posts to Slack",
+        connectors: ["streak", "slack"],
+      },
     ],
   },
   {
@@ -226,6 +240,42 @@ const categories: readonly Category[] = [
         prompt:
           "Set up a workflow that watches Google Drive for new files, classifies them by content, and moves them into the right folders",
         connectors: ["google-drive"],
+      },
+      {
+        title: "tl;dv meeting recap",
+        description:
+          "Meeting recordings summarized in Notion with action items",
+        prompt:
+          "Set up a workflow that takes tl;dv meeting recordings, generates a summary with action items in Notion, and posts highlights to Slack",
+        connectors: ["tldv", "notion", "slack"],
+      },
+      {
+        title: "Granola notes to Notion",
+        description: "Granola meeting notes synced to a Notion database",
+        prompt:
+          "Set up a sync that takes meeting notes from Granola and organizes them in a Notion database grouped by project",
+        connectors: ["granola", "notion"],
+      },
+      {
+        title: "LINE message relay",
+        description: "Forward LINE messages to Slack and vice versa",
+        prompt:
+          "Set up a message relay between a LINE group and a Slack channel so messages flow both ways",
+        connectors: ["line", "slack"],
+      },
+      {
+        title: "Loops email campaign",
+        description: "Draft and send transactional emails via Loops",
+        prompt:
+          "Set up a workflow that drafts email campaigns from Notion content and sends them through Loops",
+        connectors: ["loops", "notion"],
+      },
+      {
+        title: "Brevo email nurture sequence",
+        description: "Automated email sequences from CRM events",
+        prompt:
+          "Set up a Brevo nurture sequence that sends onboarding emails when new contacts are added to a Notion database",
+        connectors: ["brevo", "notion", "slack"],
       },
     ],
   },
@@ -383,6 +433,41 @@ const categories: readonly Category[] = [
           "Set up an Airtable deal tracker that syncs deal records to Google Sheets and sends a Slack notification when a deal is marked as closed-won",
         connectors: ["airtable", "google-sheets", "slack"],
       },
+      {
+        title: "SerpAPI keyword tracker",
+        description: "Track keyword rankings weekly and log to Sheets",
+        prompt:
+          "Set up a weekly keyword ranking tracker using SerpAPI that monitors our target keywords and logs position changes to Google Sheets with a Slack summary",
+        connectors: ["serpapi", "google-sheets", "slack"],
+      },
+      {
+        title: "Perplexity deep research",
+        description: "AI-powered research summaries saved to Notion",
+        prompt:
+          "Use Perplexity to research a topic in depth, compile findings into a structured Notion page with sources and key insights",
+        connectors: ["perplexity", "notion"],
+      },
+      {
+        title: "Runway video from brief",
+        description: "Generate short videos from a creative brief",
+        prompt:
+          "Take a creative brief from Notion and generate a short promotional video using Runway, then notify the team on Slack when ready",
+        connectors: ["runway", "notion", "slack"],
+      },
+      {
+        title: "Fal AI image generation",
+        description: "Generate product images from descriptions in Notion",
+        prompt:
+          "Set up a workflow that takes product descriptions from Notion, generates marketing images using Fal, and saves them to Google Drive",
+        connectors: ["fal", "notion", "google-drive"],
+      },
+      {
+        title: "Cloudinary media optimizer",
+        description: "Optimize and transform images in bulk",
+        prompt:
+          "Set up a workflow that takes images from Google Drive, optimizes them with Cloudinary for web use, and logs the results in Notion",
+        connectors: ["cloudinary", "google-drive", "notion"],
+      },
     ],
   },
   {
@@ -494,6 +579,48 @@ const categories: readonly Category[] = [
         prompt:
           "Set up a workflow that processes PDF contracts, extracts key dates and terms into Notion, and sends Slack reminders before expiration dates",
         connectors: ["pdfco", "notion", "slack"],
+      },
+      {
+        title: "Zapier → VM0 migration",
+        description: "Recreate your Zapier workflows as VM0 agents",
+        prompt:
+          "Help me migrate my Zapier workflows to VM0. I have zaps for: new Slack message → Notion, Gmail → Google Sheets, and GitHub PR → Slack",
+        connectors: ["zapier", "slack", "notion"],
+      },
+      {
+        title: "Make scenario builder",
+        description: "Design multi-step Make scenarios from a description",
+        prompt:
+          "Design a Make scenario that watches a Gmail inbox for invoices, extracts amounts and dates, logs them to Google Sheets, and alerts on Slack",
+        connectors: ["make", "gmail", "google-sheets", "slack"],
+      },
+      {
+        title: "Tavily web research pipeline",
+        description: "Search the web and compile findings in Notion",
+        prompt:
+          "Use Tavily to research the latest trends in AI agents, compile a structured report in Notion with sources and key takeaways",
+        connectors: ["tavily", "notion"],
+      },
+      {
+        title: "Browserbase web testing",
+        description: "Automated browser tests for your web app",
+        prompt:
+          "Set up automated browser tests using Browserbase that check our landing page, login flow, and dashboard every day and report failures to Slack",
+        connectors: ["browserbase", "slack"],
+      },
+      {
+        title: "Chatwoot → Notion support log",
+        description: "Customer conversations logged and categorized in Notion",
+        prompt:
+          "Set up a workflow that takes Chatwoot customer conversations, categorizes them by topic, and creates structured entries in Notion",
+        connectors: ["chatwoot", "notion", "slack"],
+      },
+      {
+        title: "Bitrix24 lead nurture",
+        description: "New Bitrix leads get follow-up tasks and Slack pings",
+        prompt:
+          "Set up a lead nurture workflow that monitors Bitrix24 for new leads, creates follow-up tasks, and notifies sales on Slack",
+        connectors: ["bitrix", "slack"],
       },
     ],
   },
