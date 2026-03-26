@@ -1058,7 +1058,7 @@ jobs:
         needs.prepare.outputs.e2e-changed == 'true'
       ) &&
       needs.deploy-web.result == 'success' &&
-      (needs.deploy-app.result == 'success' || needs.deploy-app.result == 'skipped')
+      needs.deploy-app.result == 'success'
     steps:
       - uses: actions/checkout@v6
         with:
