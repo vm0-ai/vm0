@@ -20,7 +20,6 @@ interface RunAgentParams {
   userId: string;
   botUserId: string;
   channelId?: string;
-  channelName?: string;
   channelType?: "channel" | "dm" | "group_dm";
   callbackContext: SlackOrgCallbackPayload;
 }
@@ -56,7 +55,6 @@ export async function runAgentForSlackOrg(
     userId,
     botUserId,
     channelId,
-    channelName,
     channelType,
     callbackContext,
   } = params;
@@ -64,12 +62,7 @@ export async function runAgentForSlackOrg(
   try {
     // Build system prompt from context parts (agent identity is prepended by startRun)
     const contextParts = [
-      buildIntegrationContext("Slack", {
-        botUserId,
-        channelId,
-        channelName,
-        channelType,
-      }),
+      buildIntegrationContext("Slack", { botUserId, channelId, channelType }),
       threadContext,
       userContext,
     ].filter(Boolean);

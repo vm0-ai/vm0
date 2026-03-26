@@ -141,36 +141,6 @@ export async function fetchSlackUserInfoMap(
   return map;
 }
 
-interface SlackChannelInfo {
-  id: string;
-  name?: string;
-  type: "channel" | "dm" | "group_dm";
-}
-
-/**
- * Fetch basic Slack channel info (name, type).
- *
- * @param client - Slack WebClient
- * @param channelId - Slack channel ID
- * @returns Structured channel info, or undefined if lookup fails
- */
-export async function fetchSlackChannelInfo(
-  client: WebClient,
-  channelId: string,
-): Promise<SlackChannelInfo | undefined> {
-  const result = await client.conversations.info({ channel: channelId });
-  if (!result.ok || !result.channel) return undefined;
-
-  const ch = result.channel;
-  const type = ch.is_im ? "dm" : ch.is_mpim ? "group_dm" : "channel";
-
-  return {
-    id: channelId,
-    name: ch.name || undefined,
-    type,
-  };
-}
-
 /**
  * Exchange OAuth code for access token
  *

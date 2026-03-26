@@ -12,7 +12,6 @@ export function buildIntegrationContext(
   options?: {
     botUserId?: string;
     channelId?: string;
-    channelName?: string;
     channelType?: "channel" | "dm" | "group_dm";
   },
 ): string {
@@ -22,9 +21,6 @@ export function buildIntegrationContext(
   }
   if (options?.channelId) {
     context += `\nChannel ID: ${options.channelId}`;
-  }
-  if (options?.channelName) {
-    context += `\nChannel name: #${options.channelName}`;
   }
   if (options?.channelType) {
     const typeLabel =
