@@ -11,17 +11,19 @@
 #   E2E_ACCOUNT  — Test email address (auto-generated if empty)
 
 # ---------------------------------------------------------------------------
-# url_is_on_app — Check if a URL's hostname matches the APP_URL hostname
-# Compares against the derived APP_URL rather than assuming "app." prefix,
-# so it works for all environments (app.vm7.ai, staging-app.vm6.ai, etc.)
-# Requires APP_URL to be set in the calling context.
+# url_is_on_app — Check if a URL's hostname matches the expected app hostname
+# Usage: url_is_on_app <url> [check_url]
+#   check_url — URL to compare against (default: APP_URL from calling context)
+# Compares hostnames rather than assuming "app." prefix, so it works for all
+# environments (app.vm7.ai, staging-app.vm6.ai, etc.).
 # ---------------------------------------------------------------------------
 url_is_on_app() {
   local url="$1"
-  local url_host app_host
+  local check_url="${2:-$APP_URL}"
+  local url_host check_host
   url_host=$(echo "$url" | sed -n 's|.*://\([^/:]*\).*|\1|p')
-  app_host=$(echo "$APP_URL" | sed -n 's|.*://\([^/:]*\).*|\1|p')
-  [[ "$url_host" == "$app_host" ]]
+  check_host=$(echo "$check_url" | sed -n 's|.*://\([^/:]*\).*|\1|p')
+  [[ "$url_host" == "$check_host" ]]
 }
 
 # ---------------------------------------------------------------------------
@@ -241,7 +243,7 @@ sign_in_via_token() {
   for _i in $(seq 1 30); do
     local current_url
     current_url=$(agent-browser get url 2>/dev/null || true)
-    if url_is_on_app "$current_url" && [[ ! "$current_url" =~ sign-in-token ]]; then
+    if url_is_on_app "$current_url" "$base_url" && [[ ! "$current_url" =~ sign-in-token ]]; then
       auth_complete=true
       break
     fi

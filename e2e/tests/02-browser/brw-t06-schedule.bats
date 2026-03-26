@@ -45,18 +45,8 @@ teardown_file() {
   agent-browser wait 3000
 
   # Wait for schedule page to load
-  local page_loaded=false
-  for _i in $(seq 1 20); do
-    local snap
-    snap=$(full_snapshot)
-    if contains "$snap" "Scheduled tasks"; then
-      page_loaded=true
-      break
-    fi
-    sleep 1
-  done
+  wait_for_text "Scheduled tasks" 20
   step_screenshot "schedule-page"
-  assert [ "$page_loaded" = "true" ]
 
   # Click "Add schedule" button (use role locator; text inside button has an icon sibling)
   # Retry because agents may still be loading (header button is disabled until agents load)
@@ -73,18 +63,8 @@ teardown_file() {
   agent-browser wait 1000
 
   # Wait for dialog to appear
-  local dialog_ready=false
-  for _i in $(seq 1 10); do
-    local snap
-    snap=$(full_snapshot)
-    if contains "$snap" "Describe your task and instruction"; then
-      dialog_ready=true
-      break
-    fi
-    sleep 1
-  done
+  wait_for_text "Describe your task and instruction" 10
   step_screenshot "add-schedule-dialog"
-  assert [ "$dialog_ready" = "true" ]
 
   # Fill the prompt textarea
   echo "# Filling schedule prompt: $SCHEDULE_PROMPT" >&3
@@ -115,19 +95,8 @@ teardown_file() {
 @test "verify schedule detail page shows correct data" {
   echo "# Verifying detail page content..." >&3
 
-  local prompt_found=false
-  for _i in $(seq 1 20); do
-    local snap
-    snap=$(full_snapshot)
-    if contains "$snap" "$SCHEDULE_PROMPT"; then
-      prompt_found=true
-      break
-    fi
-    sleep 1
-  done
+  wait_for_text "$SCHEDULE_PROMPT" 20
   step_screenshot "detail-page"
-
-  assert [ "$prompt_found" = "true" ]
   echo "# Schedule prompt verified on detail page!" >&3
 }
 
@@ -139,18 +108,8 @@ teardown_file() {
   agent-browser wait 1000
 
   # Wait for the unsaved changes bar (Save button) to appear
-  local save_visible=false
-  for _i in $(seq 1 10); do
-    local snap
-    snap=$(full_snapshot)
-    if contains "$snap" "Save"; then
-      save_visible=true
-      break
-    fi
-    sleep 1
-  done
+  wait_for_text "Save" 10
   step_screenshot "unsaved-changes"
-  assert [ "$save_visible" = "true" ]
 
   # Click Save
   echo "# Saving changes..." >&3
@@ -178,17 +137,7 @@ teardown_file() {
   agent-browser wait 3000
 
   # Wait for schedule page
-  local page_loaded=false
-  for _i in $(seq 1 20); do
-    local snap
-    snap=$(full_snapshot)
-    if contains "$snap" "Scheduled tasks"; then
-      page_loaded=true
-      break
-    fi
-    sleep 1
-  done
-  assert [ "$page_loaded" = "true" ]
+  wait_for_text "Scheduled tasks" 20
 
   # Click Calendar tab (use role locator; tab text has an icon sibling)
   echo "# Switching to Calendar view..." >&3
@@ -204,32 +153,11 @@ teardown_file() {
   agent-browser wait 2000
 
   # Wait for calendar to render
-  local calendar_loaded=false
-  for _i in $(seq 1 15); do
-    local snap
-    snap=$(full_snapshot)
-    if contains "$snap" "Week view"; then
-      calendar_loaded=true
-      break
-    fi
-    sleep 1
-  done
+  wait_for_text "Week view" 15
   step_screenshot "calendar-view"
-  assert [ "$calendar_loaded" = "true" ]
 
   # Verify schedule appears in calendar
-  local schedule_in_calendar=false
-  for _i in $(seq 1 10); do
-    local snap
-    snap=$(full_snapshot)
-    if contains "$snap" "$SCHEDULE_PROMPT"; then
-      schedule_in_calendar=true
-      break
-    fi
-    sleep 1
-  done
+  wait_for_text "$SCHEDULE_PROMPT" 10
   step_screenshot "calendar-with-schedule"
-
-  assert [ "$schedule_in_calendar" = "true" ]
   echo "# Schedule verified in calendar view!" >&3
 }
