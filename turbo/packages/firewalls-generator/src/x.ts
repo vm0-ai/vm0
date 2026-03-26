@@ -1,26 +1,152 @@
 /**
- * Generate X (Twitter) firewall config.
+ * Generate X (Twitter) firewall config from the official OpenAPI spec.
  *
- * Data source: https://docs.x.com/fundamentals/authentication/oauth-2-0/bearer-tokens
+ * Data source: https://api.twitter.com/2/openapi.json
+ * (Official OpenAPI 3.0.0 spec from X.)
+ *
+ * Permission groups are derived from OAuth2 scopes defined in the spec's
+ * security requirements. Each endpoint declares which scopes it needs via
+ * the OAuth2UserToken security scheme — we use those directly as permission
+ * group names, matching the pattern used by the Slack generator.
+ *
+ * Endpoints that only support BearerToken (app-only auth, no user scopes)
+ * are grouped under "app-only".
  *
  * X API uses OAuth 2.0 Bearer tokens via Authorization header.
  * Bearer token format (gitleaks: twitter-bearer-token):
  *   22 'A' chars + 80-100 alphanumeric/percent chars (total ~102-122)
  */
 
-import { writeOutput } from "./codegen";
+import {
+  ALL_METHODS,
+  OPENAPI_PATH_KEYS,
+  fetchSpec,
+  logStats,
+  renderPermissions,
+  sortRules,
+  writeOutput,
+} from "./codegen";
+import type { OpenApiSpec, PermissionGroup } from "./codegen";
 
-const DOCS_URL =
-  "https://docs.x.com/fundamentals/authentication/oauth-2-0/bearer-tokens";
+const OPENAPI_URL = "https://api.twitter.com/2/openapi.json";
+
 // Format: A{22} + [a-zA-Z0-9%]{80-100} (gitleaks: twitter-bearer-token)
 // e.g. AAAAAAAAAAAAAAAAAAAAAA... + 80 alphanumeric chars
 const PLACEHOLDER_VALUE =
   "AAAAAAAAAAAAAAAAAAAAAAVm0PlaceHolder0000000000000000000000000000000000000000000000000000000000000000000000";
 
-function generateTypeScript(): string {
+// ── OpenAPI types ────────────────────────────────────────────────────────
+
+interface XOperation {
+  tags?: string[];
+  security?: Array<Record<string, string[]>>;
+}
+
+// ── Scope descriptions from OpenAPI spec ─────────────────────────────────
+
+function extractScopeDescriptions(spec: OpenApiSpec): Record<string, string> {
+  const schemes = spec.components?.securitySchemes ?? {};
+  const oauth = schemes["OAuth2UserToken"] as
+    | {
+        flows?: {
+          authorizationCode?: {
+            scopes?: Record<string, string>;
+          };
+        };
+      }
+    | undefined;
+  return oauth?.flows?.authorizationCode?.scopes ?? {};
+}
+
+// ── Grouping ─────────────────────────────────────────────────────────────
+
+/** Group name for endpoints that only support app-only (BearerToken) auth. */
+const APP_ONLY_GROUP = "app-only";
+
+function buildGroups(spec: OpenApiSpec): PermissionGroup[] {
+  const groups = new Map<string, Set<string>>();
+  if (!spec.paths) {
+    throw new Error("OpenAPI spec has no 'paths'");
+  }
+
+  for (const [apiPath, methods] of Object.entries(spec.paths)) {
+    for (const [methodLower, op] of Object.entries(methods)) {
+      if (typeof op !== "object" || op === null) continue;
+      if (!ALL_METHODS.has(methodLower)) {
+        if (OPENAPI_PATH_KEYS.has(methodLower) || methodLower.startsWith("x-"))
+          continue;
+        throw new Error(`Unexpected key '${methodLower}' on ${apiPath}`);
+      }
+
+      const operation: XOperation = op;
+      const security = operation.security ?? [];
+
+      // Collect OAuth2 scopes from security requirements
+      const oauthScopes = new Set<string>();
+      let hasBearerOnly = false;
+
+      for (const scheme of security) {
+        if ("OAuth2UserToken" in scheme) {
+          for (const scope of scheme["OAuth2UserToken"] ?? []) {
+            oauthScopes.add(scope);
+          }
+        }
+        if ("BearerToken" in scheme) {
+          hasBearerOnly = true;
+        }
+      }
+
+      // Skip endpoints with no auth at all
+      if (oauthScopes.size === 0 && !hasBearerOnly) continue;
+
+      const rule = `${methodLower.toUpperCase()} ${apiPath}`;
+
+      if (oauthScopes.size > 0) {
+        // Group by each OAuth scope
+        for (const scope of oauthScopes) {
+          let ruleSet = groups.get(scope);
+          if (!ruleSet) {
+            ruleSet = new Set();
+            groups.set(scope, ruleSet);
+          }
+          ruleSet.add(rule);
+        }
+      } else {
+        // BearerToken-only endpoint (app-only auth, no user scopes)
+        let ruleSet = groups.get(APP_ONLY_GROUP);
+        if (!ruleSet) {
+          ruleSet = new Set();
+          groups.set(APP_ONLY_GROUP, ruleSet);
+        }
+        ruleSet.add(rule);
+      }
+    }
+  }
+
+  const scopeDescriptions = extractScopeDescriptions(spec);
+
+  return [...groups.entries()]
+    .filter(([, ruleSet]) => ruleSet.size > 0)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, ruleSet]) => {
+      const description =
+        name === APP_ONLY_GROUP
+          ? "App-only endpoints (no user context required)"
+          : scopeDescriptions[name];
+      return {
+        name,
+        ...(description ? { description } : {}),
+        rules: sortRules([...ruleSet]),
+      };
+    });
+}
+
+// ── TypeScript generation ────────────────────────────────────────────────
+
+function generateTypeScript(permissions: PermissionGroup[]): string {
   const lines: string[] = [
-    "// Auto-generated from X (Twitter) API docs.",
-    `// Source: ${DOCS_URL}`,
+    "// Auto-generated from X (Twitter) official OpenAPI spec.",
+    `// Source: ${OPENAPI_URL}`,
     "// Regenerate: cd turbo && pnpm -F @vm0/firewalls-generator generate:x",
     "//",
     "// DO NOT EDIT THIS FILE MANUALLY.",
@@ -42,23 +168,29 @@ function generateTypeScript(): string {
     "        },",
     "      },",
     "      permissions: [",
-    "        {",
-    '          name: "unrestricted",',
-    '          description: "Allow all endpoints",',
-    '          rules: ["ANY /{path*}"],',
-    "        },",
-    "      ],",
-    "    },",
-    "  ],",
-    "};",
-    "",
   ];
+
+  lines.push(...renderPermissions(permissions));
+
+  lines.push("      ],");
+  lines.push("    },");
+  lines.push("  ],");
+  lines.push("};");
+  lines.push("");
 
   return lines.join("\n");
 }
 
+// ── Main ─────────────────────────────────────────────────────────────────
+
 export async function generate(): Promise<void> {
-  console.error("Generating X (Twitter) firewall config...");
-  const ts = generateTypeScript();
+  const res = await fetchSpec(OPENAPI_URL, "X (Twitter) OpenAPI spec");
+  const spec = (await res.json()) as OpenApiSpec;
+  console.error(`  Spec version: ${spec.info?.version ?? "unknown"}`);
+
+  const permissions = buildGroups(spec);
+  const ts = generateTypeScript(permissions);
+
+  logStats(permissions);
   writeOutput("x", ts, import.meta.dirname);
 }
