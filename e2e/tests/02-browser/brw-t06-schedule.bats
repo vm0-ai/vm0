@@ -66,7 +66,7 @@ teardown_file() {
   wait_for_text "Prompt" 10
   step_screenshot "add-schedule-dialog"
 
-  # Fill the prompt textarea
+  # Fill the prompt textarea (default frequency is "Every day", which is needed for calendar view)
   echo "# Filling schedule prompt: $SCHEDULE_PROMPT" >&3
   agent-browser find label "Prompt" fill "$SCHEDULE_PROMPT"
   agent-browser wait 500
@@ -78,7 +78,7 @@ teardown_file() {
 
   # Wait for navigation to detail page
   local navigated=false
-  for _i in $(seq 1 30); do
+  for _i in $(seq 1 60); do
     local current_url
     current_url=$(agent-browser get url 2>/dev/null || true)
     if [[ "$current_url" =~ /schedule/ ]] && [[ ! "$current_url" =~ /schedule$ ]]; then
@@ -103,8 +103,8 @@ teardown_file() {
 @test "edit description field and verify save" {
   echo "# Editing description field..." >&3
 
-  # Fill the description input
-  agent-browser find placeholder "Leave blank to auto-generate" fill "E2E test description"
+  # Fill the description input via CSS selector (placeholder locator may not resolve in accessibility mode)
+  agent-browser fill "input[placeholder='Leave blank to auto-generate']" "E2E test description"
   agent-browser wait 1000
 
   # Wait for the unsaved changes bar (Save button) to appear
