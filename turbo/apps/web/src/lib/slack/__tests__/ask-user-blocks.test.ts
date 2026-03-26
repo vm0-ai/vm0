@@ -160,12 +160,12 @@ describe("buildAskUserAnsweredBlocks", () => {
     answers.set(0, ["React"]);
     answers.set(1, ["TS", "JS"]);
 
-    const blocks = buildAskUserAnsweredBlocks(questions, answers, "my-agent");
+    const blocks = buildAskUserAnsweredBlocks(questions, answers);
 
     // Context header
     expect(blocks[0]).toMatchObject({
       type: "context",
-      elements: [{ type: "mrkdwn", text: expect.stringContaining("my-agent") }],
+      elements: [{ type: "mrkdwn", text: expect.stringContaining("Answered") }],
     });
 
     // First question answer
@@ -182,7 +182,7 @@ describe("buildAskUserAnsweredBlocks", () => {
     const questions: AskUserQuestion[] = [{ question: "Framework?" }];
     const answers = new Map<number, string[]>();
 
-    const blocks = buildAskUserAnsweredBlocks(questions, answers, "agent");
+    const blocks = buildAskUserAnsweredBlocks(questions, answers);
 
     const q1 = blocks[1] as SectionBlock;
     expect(q1.text?.text).toContain("_No selection_");
