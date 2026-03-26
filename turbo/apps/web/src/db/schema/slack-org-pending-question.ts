@@ -3,6 +3,7 @@ import {
   uuid,
   varchar,
   jsonb,
+  text,
   timestamp,
   index,
 } from "drizzle-orm/pg-core";
@@ -36,6 +37,7 @@ export const slackOrgPendingQuestions = pgTable(
       onDelete: "set null",
     }),
     questions: jsonb("questions").notNull(),
+    answer: text("answer"),
     answeredAt: timestamp("answered_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     expiresAt: timestamp("expires_at").notNull(),
