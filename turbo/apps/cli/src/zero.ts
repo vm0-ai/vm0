@@ -13,6 +13,7 @@ import { zeroSecretCommand } from "./commands/zero/secret";
 import { zeroSlackCommand } from "./commands/zero/slack";
 import { zeroVariableCommand } from "./commands/zero/variable";
 import { zeroWhoamiCommand } from "./commands/zero/whoami";
+import { zeroAskUserCommand } from "./commands/zero/ask-user";
 import {
   decodeZeroTokenPayload,
   type ZeroTokenPayload,
@@ -29,6 +30,7 @@ const COMMAND_CAPABILITY_MAP: Record<string, string | null> = {
   doctor: null,
   slack: "slack:write",
   whoami: null,
+  "ask-user": null,
 };
 
 const DEFAULT_COMMANDS: Command[] = [
@@ -42,6 +44,7 @@ const DEFAULT_COMMANDS: Command[] = [
   zeroSlackCommand,
   zeroVariableCommand,
   zeroWhoamiCommand,
+  zeroAskUserCommand,
 ];
 
 function shouldHideCommand(
