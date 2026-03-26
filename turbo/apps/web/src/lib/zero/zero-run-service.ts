@@ -3,7 +3,7 @@ import type { TriggerSource, FirewallPolicies } from "@vm0/core";
 import { startRun, type CreateRunResult } from "../run";
 import {
   DISALLOWED_CRON_TOOLS,
-  buildZeroCliGuidance,
+  buildAgentToolsPrompt,
 } from "../integration-context";
 import { formatAgentIdentityPrompt } from "../agent-identity";
 import type { CallbackPayload } from "../callback/callback-payloads";
@@ -61,20 +61,18 @@ export async function createZeroRun(
     firewallPolicies: null,
   };
 
-  // Inject agent identity into appendSystemPrompt
-  let { appendSystemPrompt } = params;
+  // Build agent system prompt: identity + tools first, then trigger context
+  const agentParts: string[] = [];
   if (agent.displayName || agent.description || agent.sound) {
-    const identity = formatAgentIdentityPrompt(agent);
-    appendSystemPrompt = appendSystemPrompt
-      ? `${identity}\n\n${appendSystemPrompt}`
-      : identity;
+    agentParts.push(formatAgentIdentityPrompt(agent));
   }
+  agentParts.push(buildAgentToolsPrompt());
 
-  // Append zero CLI guidance so all trigger paths know how to use the CLI
-  const zeroGuidance = buildZeroCliGuidance();
+  let { appendSystemPrompt } = params;
+  const agentPrompt = agentParts.join("\n\n");
   appendSystemPrompt = appendSystemPrompt
-    ? `${appendSystemPrompt}\n\n${zeroGuidance}`
-    : zeroGuidance;
+    ? `${agentPrompt}\n\n${appendSystemPrompt}`
+    : agentPrompt;
 
   return startRun({
     userId: params.userId,

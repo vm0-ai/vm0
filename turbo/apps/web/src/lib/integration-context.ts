@@ -28,18 +28,15 @@ export const DISALLOWED_CRON_TOOLS = [
 ] as const;
 
 /**
- * Build Zero CLI guidance prompt so sandbox agents know how to use the CLI.
+ * Build Agent Tools prompt so sandbox agents know how to use the Zero CLI.
  * Injected by createZeroRun() for all trigger paths.
  */
-export function buildZeroCliGuidance(): string {
+export function buildAgentToolsPrompt(): string {
   return [
-    "# Zero CLI",
-    "You have access to the Zero CLI for managing platform resources.",
-    "Run commands with: `npx -p @vm0/cli zero <command>`",
-    "Tip: run `alias zero='npx -p @vm0/cli zero'` first, then use `zero <command>` for brevity.",
-    "Run `npx -p @vm0/cli zero --help` to see all available commands.",
-    "Do NOT use /loop or cron tools (CronCreate, CronList, CronDelete) — they are not available.",
-    "For recurring or scheduled tasks, use the zero schedule CLI.",
-    "SLACK_TOKEN is a user token — never use it to send messages. Always use `zero slack message send`, which uses the bot token internally.",
+    "# Agent Tools",
+    "You have access to the Zero CLI for zero platform. Run commands with: `npx -p @vm0/cli zero <command>`",
+    "- Use `zero --help` to see all available commands.",
+    "- Use `zero schedule --help` for recurring or scheduled tasks. Do NOT use /loop or cron tools (CronCreate, CronList, CronDelete) — they are not available.",
+    "- Use `zero slack message send` to send messages as bot token. Never use SLACK_TOKEN to send messages — it's a user token.",
   ].join("\n");
 }

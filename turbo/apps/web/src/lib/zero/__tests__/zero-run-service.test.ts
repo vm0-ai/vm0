@@ -113,12 +113,12 @@ describe("createZeroRun()", () => {
       expect(run!.appendSystemPrompt).toMatch(/Bot[\s\S]*Custom instructions/);
     });
 
-    it("should inject zero CLI guidance even when no identity metadata exists", async () => {
+    it("should inject agent tools prompt even when no identity metadata exists", async () => {
       const result = await createZeroRun(baseParams());
 
       const run = await findTestRunRecord(result.runId);
       expect(run).toBeDefined();
-      expect(run!.appendSystemPrompt).toContain("Zero CLI");
+      expect(run!.appendSystemPrompt).toContain("# Agent Tools");
       expect(run!.appendSystemPrompt).not.toContain("# Agent Identity");
     });
 
