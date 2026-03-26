@@ -432,15 +432,24 @@ export function buildAgentResponseMessage(
   // Add logs link at the end if provided
   // Emoji must be outside the link — Slack mobile doesn't render emoji inside <url|text>
   if (logsUrl) {
-    const suffix = triggeredBy
-      ? `  · triggered by schedule "${triggeredBy}"`
-      : "";
     blocks.push({
       type: "context",
       elements: [
         {
           type: "mrkdwn",
-          text: `:clipboard: <${logsUrl}|Audit>${suffix}`,
+          text: `:clipboard: <${logsUrl}|Audit>`,
+        },
+      ],
+    });
+  }
+
+  if (triggeredBy) {
+    blocks.push({
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: `triggered by schedule "${triggeredBy}"`,
         },
       ],
     });

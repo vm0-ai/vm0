@@ -170,7 +170,7 @@ describe("buildAgentResponseMessage", () => {
     expect(markdownBlock.text).toBe(content);
   });
 
-  it("should append triggeredBy as dimmed suffix on audit line", () => {
+  it("should show triggeredBy as separate context block below audit", () => {
     const blocks = buildAgentResponseMessage(
       "Response text",
       "https://app.vm0.ai/activity/run-123",
@@ -178,16 +178,23 @@ describe("buildAgentResponseMessage", () => {
     );
 
     const contextBlocks = blocks.filter((b) => b.type === "context");
-    expect(contextBlocks).toHaveLength(1);
-    const text = (contextBlocks[0] as { elements: { text: string }[] })
+    expect(contextBlocks).toHaveLength(2);
+
+    // First context: audit link only
+    const auditText = (contextBlocks[0] as { elements: { text: string }[] })
       .elements[0]!.text;
-    expect(text).toContain("Audit");
-    expect(text).toContain(
-      '· triggered by schedule "Send a greeting message daily at 9 AM"',
+    expect(auditText).toContain("Audit");
+    expect(auditText).not.toContain("triggered by");
+
+    // Second context: attribution
+    const attrText = (contextBlocks[1] as { elements: { text: string }[] })
+      .elements[0]!.text;
+    expect(attrText).toBe(
+      'triggered by schedule "Send a greeting message daily at 9 AM"',
     );
   });
 
-  it("should not include triggeredBy suffix when not provided", () => {
+  it("should not add attribution block when triggeredBy is not provided", () => {
     const blocks = buildAgentResponseMessage(
       "Response text",
       "https://app.vm0.ai/activity/run-123",
@@ -195,10 +202,9 @@ describe("buildAgentResponseMessage", () => {
 
     const contextBlocks = blocks.filter((b) => b.type === "context");
     expect(contextBlocks).toHaveLength(1);
-    const text = (contextBlocks[0] as { elements: { text: string }[] })
-      .elements[0]!.text;
-    expect(text).toContain("Audit");
-    expect(text).not.toContain("triggered by");
+    expect(
+      (contextBlocks[0] as { elements: { text: string }[] }).elements[0]!.text,
+    ).toContain("Audit");
   });
 });
 
