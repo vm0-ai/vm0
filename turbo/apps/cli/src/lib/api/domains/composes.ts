@@ -6,7 +6,11 @@ import {
   agentComposeApiContentSchema,
 } from "@vm0/core";
 import type { z } from "zod";
-import { getClientConfig, handleError } from "../core/client-factory";
+import {
+  ApiRequestError,
+  getClientConfig,
+  handleError,
+} from "../core/client-factory";
 import type {
   GetComposeResponse,
   CreateComposeResponse,
@@ -50,8 +54,11 @@ export async function resolveCompose(
   if (UUID_PATTERN.test(identifier)) {
     try {
       return await getComposeById(identifier);
-    } catch {
-      return null;
+    } catch (error) {
+      if (error instanceof ApiRequestError && error.status === 404) {
+        return null;
+      }
+      throw error;
     }
   }
   return getComposeByName(identifier, org);
