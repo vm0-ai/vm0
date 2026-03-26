@@ -502,16 +502,22 @@ fn gc_block_cow(dry_run: bool) -> RunnerResult<u32> {
     // Pass 2: detach orphaned loop devices.
     //
     // Try to detach ALL loop devices whose backing files are under
-    // `~/.vm0-runner/`.  Active devices are protected by EBUSY:
+    // `~/.vm0-runner/`.  Since Linux v3.7, `losetup -d` on a busy
+    // device sets LO_FLAGS_AUTOCLEAR and returns success instead of
+    // EBUSY, so the call may "succeed" for active devices too.
+    // This is harmless — the device stays alive as long as any
+    // reference (holder fd or dm target) exists:
     //
-    // - Base loops held by a live runner's BaseLoopCache: the pool
-    //   keeps an open fd on the loop device, so `losetup -d` returns
-    //   EBUSY.  If the runner was killed (SIGKILL), the fd is closed
-    //   by the kernel and GC can reclaim the loop.
+    // - Base loops held by a live runner's BaseLoopCache: the cache
+    //   holds an fd, and any dm-snapshot targets also reference the
+    //   loop.  AUTOCLEAR defers actual detach until all are released.
+    //   If the runner was killed (SIGKILL), the kernel closes the fd
+    //   and GC can reclaim the loop.
     //
     // - COW loops referenced by an active dm-snapshot: the dm target
-    //   holds a reference, so `losetup -d` returns EBUSY.  Pass 1
-    //   removes orphaned dm targets first, freeing their COW loops.
+    //   holds a reference, keeping the loop alive despite AUTOCLEAR.
+    //   Pass 1 removes orphaned dm targets first, freeing their COW
+    //   loops so AUTOCLEAR can take effect.
     let runner_root = match crate::paths::HomePaths::new() {
         Ok(paths) => format!("{}/", paths.root().display()),
         Err(_) => return Ok(removed),
@@ -527,7 +533,6 @@ fn gc_block_cow(dry_run: bool) -> RunnerResult<u32> {
             info!(loop_dev, backing, "detached orphaned loop device");
             removed += 1;
         }
-        // EBUSY → still in use (holder fd or dm-snapshot reference), skip.
     }
 
     if removed > 0 {

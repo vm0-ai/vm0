@@ -6,10 +6,14 @@ use crate::error::Result;
 
 /// An attached loop device with a holder fd for GC protection.
 ///
-/// The holder fd keeps the kernel open count > 0, which causes
-/// `losetup -d` (used by GC) to return EBUSY while the device is
-/// in use.  When the runner process is killed (SIGKILL), the kernel
-/// closes the fd and GC can reclaim the loop.
+/// The holder fd keeps the kernel open count > 0, which prevents
+/// the loop device from being destroyed even if GC calls `losetup -d`.
+/// Since Linux v3.7, `losetup -d` on a busy device does not return
+/// EBUSY — it sets `LO_FLAGS_AUTOCLEAR` and returns success.  The
+/// device is then automatically destroyed when the last reference
+/// (fd or dm target) is released.  The holder fd thus delays that
+/// automatic destruction.  When the runner process is killed (SIGKILL),
+/// the kernel closes the fd and GC can reclaim the loop.
 ///
 /// # Lifecycle
 ///
@@ -21,7 +25,7 @@ use crate::error::Result;
 ///
 /// If dropped without calling [`detach`](Self::detach), the holder fd
 /// is closed (allowing GC to reclaim) but the loop device is NOT
-/// detached.  Callers must explicitly detach when done.
+/// explicitly detached.  Callers must explicitly detach when done.
 pub struct LoopDevice {
     /// The loop device path (e.g. `/dev/loop0`).
     path: PathBuf,
