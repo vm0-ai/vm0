@@ -118,17 +118,10 @@ teardown_file() {
   # Find the card link that contains the "Lead" badge text
   ref=$(echo "$snap_i" | grep -i "Lead" | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
   if [[ -z "$ref" ]]; then
-    echo "# Failed to find Lead agent card ref, trying display name click..." >&3
-    # Fallback: try clicking the agent display name
-    snap_i=$(agent-browser snapshot -i)
-    ref=$(echo "$snap_i" | grep -B5 -i "Lead" | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+    echo "# Failed to find Lead agent card ref" >&3
+    return 1
   fi
-  if [[ -n "$ref" ]]; then
-    agent-browser click "$ref"
-  else
-    # Last resort: click on "Agents" heading area card
-    agent-browser find text "Your primary AI assistant" click
-  fi
+  agent-browser click "$ref"
   agent-browser wait 3000
 
   # Wait for agent detail page to load with tabs

@@ -284,19 +284,6 @@ wait_for_text() {
 }
 
 # ---------------------------------------------------------------------------
-# url_is_on_app — Check if a URL's hostname matches the APP_URL hostname
-# Compares against the derived APP_URL rather than assuming "app." prefix,
-# so it works for all environments (app.vm7.ai, staging-app.vm6.ai, etc.)
-# ---------------------------------------------------------------------------
-url_is_on_app() {
-  local url="$1"
-  local url_host app_host
-  url_host=$(echo "$url" | sed -n 's|.*://\([^/:]*\).*|\1|p')
-  app_host=$(echo "$APP_URL" | sed -n 's|.*://\([^/:]*\).*|\1|p')
-  [[ "$url_host" == "$app_host" ]]
-}
-
-# ---------------------------------------------------------------------------
 # wait_for_text_gone — Wait for text to disappear from page (case-insensitive)
 # Usage: wait_for_text_gone "some text" [timeout_secs]
 # ---------------------------------------------------------------------------
