@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.153.1](https://github.com/vm0-ai/vm0/compare/app-v0.153.0...app-v0.153.1) (2026-03-26)
+
+
+### Bug Fixes
+
+* **platform:** always redirect to org selection when no active org ([#6880](https://github.com/vm0-ai/vm0/issues/6880)) ([d817f51](https://github.com/vm0-ai/vm0/commit/d817f51ba98b123926e7144a470b25ce557f8c04))
+
 ## [0.153.0](https://github.com/vm0-ai/vm0/compare/app-v0.152.4...app-v0.153.0) (2026-03-26)
 
 
