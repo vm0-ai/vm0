@@ -1613,6 +1613,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   gamma: {
     label: "Gamma",
+    environmentMapping: {
+      GAMMA_TOKEN: "$secrets.GAMMA_TOKEN",
+    },
     helpText:
       "Connect your Gamma account to generate presentations, documents, and websites with AI",
     authMethods: {
