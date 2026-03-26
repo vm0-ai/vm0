@@ -446,7 +446,7 @@ function formatAttachmentImage(attachment: SlackAttachment): string | null {
  * Resolve user mentions in text using the user info map.
  * Replaces `<@U12345>` with `@Name (U12345)` when user info is available.
  */
-function resolveUserMentions(
+export function resolveUserMentions(
   text: string,
   userInfoMap?: Map<string, SlackUserInfo>,
 ): string {
@@ -478,7 +478,8 @@ export function extractMentionedUserIds(messages: SlackMessage[]): string[] {
     // From plain text fallback
     if (msg.text) {
       for (const match of msg.text.matchAll(/<@(\w+)>/g)) {
-        ids.add(match[1]);
+        const userId = match[1];
+        if (userId) ids.add(userId);
       }
     }
   }

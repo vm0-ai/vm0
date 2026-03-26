@@ -19,6 +19,7 @@ import {
   formatContextForAgentWithImages,
   formatCurrentMessageFiles,
   extractMentionedUserIds,
+  resolveUserMentions,
   type SlackFile,
 } from "../../slack/context";
 import { validateAgentSession } from "../../run";
@@ -414,16 +415,13 @@ export async function enrichMessageContent(opts: {
     prompt = `${prompt}\n\n${filesText}`;
   }
 
-  // Resolve user mentions and current user info in parallel
+  // Resolve user mentions and current user info
   const mentionedIds = extractMentionedUserIds([{ text: opts.messageContent }]);
   const allIds = [opts.userId, ...mentionedIds];
   const userInfoMap = await fetchSlackUserInfoMap(opts.client, allIds);
 
   // Resolve mentions in prompt text
-  prompt = prompt.replace(/<@(\w+)>/g, (_match, userId: string) => {
-    const info = userInfoMap.get(userId);
-    return info?.name ? `@${info.name} (${userId})` : `<@${userId}>`;
-  });
+  prompt = resolveUserMentions(prompt, userInfoMap);
 
   // Build user context for system prompt
   const currentUser = userInfoMap.get(opts.userId);
