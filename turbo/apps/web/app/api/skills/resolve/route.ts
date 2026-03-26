@@ -56,12 +56,7 @@ const router = tsr.router(skillsResolveContract, {
       resolved[row.url] = {
         storageName: getSkillStorageName(row.fullPath),
         versionHash: row.versionHash,
-        frontmatter: {
-          name: fm.name,
-          description: fm.description,
-          vm0_secrets: fm.vm0_secrets,
-          vm0_vars: fm.vm0_vars,
-        },
+        frontmatter: fm,
       };
     }
 

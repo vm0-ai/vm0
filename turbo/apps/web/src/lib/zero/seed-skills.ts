@@ -60,8 +60,6 @@ export function buildSeedSkillValues(
       frontmatter: {
         name,
         description: `${name} skill`,
-        vm0_secrets: [] as string[],
-        vm0_vars: [] as string[],
       },
     };
   });

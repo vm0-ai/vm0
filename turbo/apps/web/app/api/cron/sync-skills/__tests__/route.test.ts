@@ -97,8 +97,6 @@ const MOCK_SKILLS = [
           "---",
           "name: slack",
           "description: Slack integration skill",
-          "vm0_secrets:",
-          "  - SLACK_TOKEN",
           "---",
           "",
           "# Slack Skill",
@@ -221,7 +219,6 @@ describe("GET /api/cron/sync-skills", () => {
       expect(slackSkill!.frontmatter).toEqual({
         name: "slack",
         description: "Slack integration skill",
-        vm0_secrets: ["SLACK_TOKEN"],
       });
 
       const githubSkill = await findTestSkillByUrl(
@@ -275,9 +272,9 @@ describe("GET /api/cron/sync-skills", () => {
               content: [
                 "---",
                 "name: bad-yaml",
-                "vm0_vars:",
-                "  - GOOD_VAR",
-                "- BAD_VAR",
+                "description:",
+                "  - not_a_string",
+                "- BAD_LINE",
                 "---",
                 "",
                 "# Bad YAML Skill",
@@ -326,9 +323,6 @@ describe("GET /api/cron/sync-skills", () => {
                 "---",
                 "name: slack",
                 "description: Updated slack skill",
-                "vm0_secrets:",
-                "  - SLACK_TOKEN",
-                "  - SLACK_WEBHOOK",
                 "---",
                 "",
                 "# Slack Skill v2",
@@ -363,7 +357,6 @@ describe("GET /api/cron/sync-skills", () => {
       expect(slackSkill!.frontmatter).toEqual({
         name: "slack",
         description: "Updated slack skill",
-        vm0_secrets: ["SLACK_TOKEN", "SLACK_WEBHOOK"],
       });
       expect(slackSkill!.commitSha).toBe(newCommitSha);
     });

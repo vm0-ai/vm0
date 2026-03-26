@@ -233,8 +233,6 @@ describe("Zero Agents API", () => {
         frontmatter: {
           name: "Slack",
           description: "Slack integration",
-          vm0_secrets: ["SLACK_BOT_TOKEN"],
-          vm0_vars: [],
         },
       });
 
@@ -258,8 +256,6 @@ describe("Zero Agents API", () => {
 
       // Connector-derived: slack environmentMapping → SLACK_TOKEN
       expect(agentEnv.SLACK_TOKEN).toBe("${{ secrets.SLACK_TOKEN }}");
-      // Skill frontmatter vm0_secrets should NOT be injected (removed mergeSkillVariables)
-      expect(agentEnv.SLACK_BOT_TOKEN).toBeUndefined();
       // Base env vars still present
       expect(agentEnv.ZERO_AGENT_ID).toBe("${{ vars.ZERO_AGENT_ID }}");
       expect(agentEnv.ZERO_TOKEN).toBe("${{ secrets.ZERO_TOKEN }}");
@@ -477,8 +473,6 @@ describe("Zero Agents API", () => {
         frontmatter: {
           name: "Slack",
           description: "Slack integration",
-          vm0_secrets: ["SLACK_BOT_TOKEN"],
-          vm0_vars: [],
         },
       });
 

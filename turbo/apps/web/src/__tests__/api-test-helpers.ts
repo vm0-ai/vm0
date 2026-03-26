@@ -3495,8 +3495,6 @@ export async function seedTestSkill(
       frontmatter: {
         name: "Slack",
         description: "Slack integration",
-        vm0_secrets: ["SLACK_BOT_TOKEN"],
-        vm0_vars: [],
       },
       ...overrides,
     })

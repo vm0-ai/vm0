@@ -92,9 +92,6 @@ describe("POST /api/skills/resolve", () => {
       );
       expect(data.resolved[skillUrl].versionHash).toBeDefined();
       expect(data.resolved[skillUrl].frontmatter.name).toBe("Slack");
-      expect(data.resolved[skillUrl].frontmatter.vm0_secrets).toEqual([
-        "SLACK_BOT_TOKEN",
-      ]);
       expect(data.unresolved).toEqual([]);
     });
 
