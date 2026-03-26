@@ -96,6 +96,42 @@ describe("zero schedule enable command", () => {
       expect(logCalls).toContain("Schedule");
       expect(logCalls).toContain("enabled");
     });
+
+    it("should enable a schedule when agent identifier is a UUID", async () => {
+      const testUuid = "550e8400-e29b-41d4-a716-446655440000";
+      const uuidCompose = { ...mockCompose, id: testUuid };
+      const uuidSchedule = { ...mockSchedule, agentId: testUuid };
+
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/composes/:id",
+          ({ params }) => {
+            if (params.id !== testUuid) {
+              return HttpResponse.json(
+                { error: { message: "Not found", code: "NOT_FOUND" } },
+                { status: 404 },
+              );
+            }
+            return HttpResponse.json(uuidCompose);
+          },
+        ),
+        http.get("http://localhost:3000/api/zero/schedules", () => {
+          return HttpResponse.json({ schedules: [uuidSchedule] });
+        }),
+        http.post(
+          "http://localhost:3000/api/zero/schedules/default/enable",
+          () => {
+            return HttpResponse.json(uuidSchedule);
+          },
+        ),
+      );
+
+      await enableCommand.parseAsync(["node", "cli", testUuid]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Schedule");
+      expect(logCalls).toContain("enabled");
+    });
   });
 
   describe("error handling", () => {

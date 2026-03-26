@@ -10,7 +10,7 @@ import type {
   ScheduleListResponse,
   DeployScheduleResponse,
 } from "@vm0/core";
-import { getComposeByName } from "./composes";
+import { resolveCompose } from "./composes";
 
 /**
  * Deploy zero schedule (create or update)
@@ -127,7 +127,7 @@ export async function disableZeroSchedule(params: {
 }
 
 /**
- * Resolve a zero schedule by agent name using the list API.
+ * Resolve a zero schedule by agent identifier (UUID or name) using the list API.
  * Searches across all user's schedules and finds by agentId.
  *
  * Returns the full ScheduleResponse so callers can access any field.
@@ -137,12 +137,12 @@ export async function disableZeroSchedule(params: {
  * @throws Error if agent has no schedule or disambiguation is needed
  */
 export async function resolveZeroScheduleByAgent(
-  agentName: string,
+  agentIdentifier: string,
   scheduleName?: string,
 ): Promise<ScheduleResponse> {
-  const compose = await getComposeByName(agentName);
+  const compose = await resolveCompose(agentIdentifier);
   if (!compose) {
-    throw new Error(`Agent not found: ${agentName}`);
+    throw new Error(`Agent not found: ${agentIdentifier}`);
   }
 
   const { schedules } = await listZeroSchedules();
@@ -150,7 +150,7 @@ export async function resolveZeroScheduleByAgent(
   const agentSchedules = schedules.filter((s) => s.agentId === compose.id);
 
   if (agentSchedules.length === 0) {
-    throw new Error(`No schedule found for agent "${agentName}"`);
+    throw new Error(`No schedule found for agent "${agentIdentifier}"`);
   }
 
   if (scheduleName) {
@@ -158,7 +158,7 @@ export async function resolveZeroScheduleByAgent(
     if (!match) {
       const available = agentSchedules.map((s) => s.name).join(", ");
       throw new Error(
-        `Schedule "${scheduleName}" not found for agent "${agentName}". Available schedules: ${available}`,
+        `Schedule "${scheduleName}" not found for agent "${agentIdentifier}". Available schedules: ${available}`,
       );
     }
     return match;
@@ -170,6 +170,6 @@ export async function resolveZeroScheduleByAgent(
 
   const available = agentSchedules.map((s) => s.name).join(", ");
   throw new Error(
-    `Agent "${agentName}" has multiple schedules. Use --name to specify which one: ${available}`,
+    `Agent "${agentIdentifier}" has multiple schedules. Use --name to specify which one: ${available}`,
   );
 }

@@ -35,6 +35,30 @@ export async function getComposeByName(
   handleError(result, `Compose not found: ${name}`);
 }
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Resolve an agent identifier to a compose.
+ * Accepts either a UUID (compose ID) or a human-readable compose name.
+ * UUID is tried first; if the identifier is not a UUID, falls back to name lookup.
+ */
+export async function resolveCompose(
+  identifier: string,
+  org?: string,
+): Promise<GetComposeResponse | null> {
+  if (UUID_PATTERN.test(identifier)) {
+    const config = await getClientConfig();
+    const client = initClient(composesByIdContract, config);
+    const result = await client.getById({ params: { id: identifier } });
+    if (result.status === 200) {
+      return result.body;
+    }
+    return null;
+  }
+  return getComposeByName(identifier, org);
+}
+
 export async function getComposeById(id: string): Promise<GetComposeResponse> {
   const config = await getClientConfig();
   const client = initClient(composesByIdContract, config);

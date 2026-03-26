@@ -164,6 +164,50 @@ describe("zero schedule setup command", () => {
       expect(logCalls).toContain("Schedule");
       expect(logCalls).toContain("created");
     });
+
+    it("should create schedule when agent identifier is a UUID", async () => {
+      const testUuid = "550e8400-e29b-41d4-a716-446655440000";
+      const uuidCompose = { ...mockCompose, id: testUuid, name: "uuid-agent" };
+
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/composes/:id",
+          ({ params }) => {
+            if (params.id !== testUuid) {
+              return HttpResponse.json(
+                { error: { message: "Not found", code: "NOT_FOUND" } },
+                { status: 404 },
+              );
+            }
+            return HttpResponse.json(uuidCompose);
+          },
+        ),
+        http.get("http://localhost:3000/api/zero/schedules", () => {
+          return HttpResponse.json({ schedules: [] });
+        }),
+        http.post("http://localhost:3000/api/zero/schedules", () => {
+          return HttpResponse.json(mockDeployResponse, { status: 201 });
+        }),
+      );
+
+      await setupCommand.parseAsync([
+        "node",
+        "cli",
+        testUuid,
+        "--frequency",
+        "daily",
+        "--time",
+        "09:00",
+        "--timezone",
+        "UTC",
+        "--prompt",
+        "run daily check",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Schedule");
+      expect(logCalls).toContain("created");
+    });
   });
 
   describe("error handling", () => {

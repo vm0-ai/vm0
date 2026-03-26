@@ -17,7 +17,7 @@ import {
   type ScheduleFrequency,
 } from "../../../lib/domain/schedule-utils";
 import {
-  getComposeByName,
+  resolveCompose,
   deployZeroSchedule,
   listZeroSchedules,
   enableZeroSchedule,
@@ -679,11 +679,11 @@ export const setupCommand = new Command()
   .option("--notify-slack", "Enable Slack notifications (default: true)")
   .option("--no-notify-slack", "Disable Slack notifications")
   .action(
-    withErrorHandler(async (agentName: string, options: SetupOptions) => {
-      // 1. Resolve agent name to compose ID
-      const compose = await getComposeByName(agentName);
+    withErrorHandler(async (agentIdentifier: string, options: SetupOptions) => {
+      // 1. Resolve agent identifier (UUID or name) to compose ID
+      const compose = await resolveCompose(agentIdentifier);
       if (!compose) {
-        throw new Error(`Agent not found: ${agentName}`);
+        throw new Error(`Agent not found: ${agentIdentifier}`);
       }
       const agentId = compose.id;
       const scheduleName = options.name || "default";
@@ -694,6 +694,7 @@ export const setupCommand = new Command()
         scheduleName,
       );
 
+      const agentName = compose.name;
       console.log(
         chalk.dim(
           existingSchedule
