@@ -35,9 +35,12 @@ VOLEOF
     $VM0_CLI artifact push >/dev/null 2>&1
     cd - >/dev/null
 
-    # Each vm0 run test gets its own unique variable name to avoid race conditions
-    export VAR_NAME_EXPAND="TEST_VAR_EXPAND_${UNIQUE_ID}"
-    export VAR_NAME_OVERRIDE="TEST_VAR_OVERRIDE_${UNIQUE_ID}"
+    # Each vm0 run test gets its own unique variable name to avoid race conditions.
+    # Variable names must contain only uppercase letters, numbers, and underscores,
+    # so replace the hyphen in UNIQUE_ID with an underscore.
+    local var_safe_id="${UNIQUE_ID//-/_}"
+    export VAR_NAME_EXPAND="TEST_VAR_EXPAND_${var_safe_id}"
+    export VAR_NAME_OVERRIDE="TEST_VAR_OVERRIDE_${var_safe_id}"
 
     # Create compose configs for both vm0 run tests
     export AGENT_EXPAND="e2e-var-expand-${UNIQUE_ID}"
