@@ -48,13 +48,11 @@ export async function resolveCompose(
   org?: string,
 ): Promise<GetComposeResponse | null> {
   if (UUID_PATTERN.test(identifier)) {
-    const config = await getClientConfig();
-    const client = initClient(composesByIdContract, config);
-    const result = await client.getById({ params: { id: identifier } });
-    if (result.status === 200) {
-      return result.body;
+    try {
+      return await getComposeById(identifier);
+    } catch {
+      return null;
     }
-    return null;
   }
   return getComposeByName(identifier, org);
 }
