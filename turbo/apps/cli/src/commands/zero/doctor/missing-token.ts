@@ -20,10 +20,21 @@ export const missingTokenCommand = new Command()
 
       const { label } = CONNECTOR_TYPES[connectorType];
 
-      const baseUrl = await getApiUrl();
+      const apiUrl = await getApiUrl();
+      const parsed = new URL(apiUrl);
+
+      // Transform API host to platform host: www.vm0.ai → app.vm0.ai
+      const parts = parsed.hostname.split(".");
+      if (parts[0] === "www" || parts[0] === "platform") {
+        parts[0] = "app";
+      } else if (parts[0] !== "app" && parts[0] !== "localhost") {
+        parts.unshift("app");
+      }
+      parsed.hostname = parts.join(".");
+
       const agentId = process.env.ZERO_AGENT_ID;
       const path = agentId ? `/team/${agentId}` : "/team";
-      const url = `${baseUrl}${path}?tab=connectors`;
+      const url = `${parsed.origin}${path}?tab=connectors`;
 
       console.log(`${tokenName} is provided by the ${label} connector.`);
       console.log(`Ask the user to connect it at: ${url}`);

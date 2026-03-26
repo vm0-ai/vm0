@@ -66,14 +66,26 @@ describe("zero doctor missing-token command", () => {
       expect(logCalls).toContain("https://app.vm0.ai/team?tab=connectors");
     });
 
-    it("should use custom VM0_API_URL", async () => {
+    it("should transform www.vm0.ai to app.vm0.ai", async () => {
+      vi.stubEnv("VM0_API_URL", "https://www.vm0.ai");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-1");
+
+      await missingTokenCommand.parseAsync(["node", "cli", "GH_TOKEN"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(
+        "https://app.vm0.ai/team/agent-1?tab=connectors",
+      );
+    });
+
+    it("should use custom VM0_API_URL with app prefix", async () => {
       vi.stubEnv("VM0_API_URL", "https://custom.example.com");
       vi.stubEnv("ZERO_AGENT_ID", "agent-1");
 
       await missingTokenCommand.parseAsync(["node", "cli", "GH_TOKEN"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("https://custom.example.com/team/agent-1");
+      expect(logCalls).toContain("https://app.custom.example.com/team/agent-1");
     });
   });
 
