@@ -69,6 +69,9 @@ describe("completeZeroOnboarding$", () => {
       http.put("*/api/zero/default-agent", () => {
         return HttpResponse.json({ ok: true });
       }),
+      http.post("*/api/zero/onboarding/complete", () => {
+        return HttpResponse.json({ success: true });
+      }),
     );
 
     await setupPage({ context, path: "/", withoutRender: true });
@@ -126,6 +129,9 @@ describe("completeZeroOnboarding$", () => {
       http.put("*/api/zero/default-agent", () => {
         return HttpResponse.json({ ok: true });
       }),
+      http.post("*/api/zero/onboarding/complete", () => {
+        return HttpResponse.json({ success: true });
+      }),
     );
 
     await setupPage({ context, path: "/", withoutRender: true });
@@ -176,6 +182,9 @@ describe("completeZeroOnboarding$", () => {
         defaultAgentBody = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json({ ok: true });
       }),
+      http.post("*/api/zero/onboarding/complete", () => {
+        return HttpResponse.json({ success: true });
+      }),
     );
 
     await setupPage({ context, path: "/", withoutRender: true });
@@ -220,6 +229,9 @@ describe("completeZeroOnboarding$", () => {
       }),
       http.put("*/api/zero/default-agent", () => {
         return HttpResponse.json({ ok: true });
+      }),
+      http.post("*/api/zero/onboarding/complete", () => {
+        return HttpResponse.json({ success: true });
       }),
     );
 
@@ -319,6 +331,9 @@ describe("completeZeroOnboarding$", () => {
       http.put("*/api/zero/default-agent", () => {
         return HttpResponse.json({ ok: true });
       }),
+      http.post("*/api/zero/onboarding/complete", () => {
+        return HttpResponse.json({ success: true });
+      }),
     );
 
     await context.store.set(completeZeroOnboarding$, context.signal);
@@ -370,6 +385,9 @@ describe("completeZeroOnboarding$ auto-init model provider", () => {
       }),
       http.put("*/api/zero/default-agent", () => {
         return HttpResponse.json({ ok: true });
+      }),
+      http.post("*/api/zero/onboarding/complete", () => {
+        return HttpResponse.json({ success: true });
       }),
     );
 
