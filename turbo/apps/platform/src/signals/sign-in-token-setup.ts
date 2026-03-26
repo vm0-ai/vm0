@@ -1,7 +1,6 @@
 import { command } from "ccstate";
 import { clerk$ } from "./auth.ts";
-import { searchParams$ } from "./route.ts";
-import { navigateTo$ } from "./route.ts";
+import { searchParams$, navigateTo$ } from "./route.ts";
 import { logger } from "./log.ts";
 
 const L = logger("SignInToken");
