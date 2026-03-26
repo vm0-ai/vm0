@@ -31,8 +31,12 @@ describe("firewall secret name consistency", () => {
       const hasMapping = Object.keys(mapping).length > 0;
 
       if (hasMapping) {
-        for (const envVar of Object.keys(mapping)) {
+        for (const [envVar, valueRef] of Object.entries(mapping)) {
           connectorSecretNames.add(envVar);
+          // Also allow the raw secret name (e.g. GITHUB_ACCESS_TOKEN)
+          if (valueRef.startsWith("$secrets.")) {
+            connectorSecretNames.add(valueRef.slice("$secrets.".length));
+          }
         }
       } else {
         // API-token path: use authMethods secrets directly

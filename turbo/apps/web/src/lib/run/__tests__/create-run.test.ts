@@ -1119,11 +1119,48 @@ describe("createRun()", () => {
       expect(result.runId).toBeDefined();
       expect(result.status).toBe("pending");
 
-      // Verify the runner job queue entry contains the injected secret
+      // GH_TOKEN is an alias for GITHUB_TOKEN — both are covered by the
+      // GitHub firewall placeholder, so the real token is replaced.
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
       expect(job!.executionContext.environment).toMatchObject({
-        GH_TOKEN: "ghp_oauth_test_456",
+        GH_TOKEN: "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",
+      });
+    });
+
+    it("should replace raw oauth secret name with placeholder when connector has firewall", async () => {
+      // GITHUB_ACCESS_TOKEN is the raw OAuth secret name — a compose
+      // referencing it directly must still get a placeholder, not the
+      // real token, because it maps to the same credential.
+      const compose = await createTestCompose(
+        uniqueId("oauth-raw-secret-agent"),
+        {
+          overrides: {
+            environment: {
+              ANTHROPIC_API_KEY: "test-api-key",
+              GITHUB_ACCESS_TOKEN: "${{ secrets.GITHUB_ACCESS_TOKEN }}",
+            },
+          },
+        },
+      );
+
+      await createTestConnector({
+        type: "github",
+        authMethod: "oauth",
+        accessToken: "ghp_raw_secret_test_999",
+      });
+
+      const result = await createRun(
+        baseParams({ agentComposeVersionId: compose.versionId }),
+      );
+
+      expect(result.runId).toBeDefined();
+
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job).toBeDefined();
+      // Raw secret name gets the same placeholder as the mapped env var
+      expect(job!.executionContext.environment).toMatchObject({
+        GITHUB_ACCESS_TOKEN: "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",
       });
     });
 

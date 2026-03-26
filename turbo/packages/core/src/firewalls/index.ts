@@ -8,6 +8,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 import type { ConnectorType } from "../contracts/connectors";
+import { getConnectorEnvironmentMapping } from "../contracts/connectors";
 import { agentmailFirewall } from "./agentmail.generated";
 import { ahrefsFirewall } from "./ahrefs.generated";
 import { airtableFirewall } from "./airtable.generated";
@@ -220,6 +221,59 @@ const CONNECTOR_FIREWALLS = {
   zeptomail: zeptomailFirewall,
 } as const satisfies Partial<Record<ConnectorType, FirewallConfig>>;
 
+/**
+ * Expand firewall placeholders to cover all secret names related to the
+ * connector.  For each existing placeholder key, find related names via
+ * environmentMapping (raw OAuth secret names and sibling aliases) and assign
+ * the same placeholder value.
+ */
+function expandPlaceholders(
+  firewall: FirewallConfig,
+  connectorType: ConnectorType,
+): FirewallConfig {
+  if (!firewall.placeholders) return firewall;
+
+  const mapping = getConnectorEnvironmentMapping(connectorType);
+  if (Object.keys(mapping).length === 0) return firewall;
+
+  const expanded: Record<string, string> = { ...firewall.placeholders };
+
+  for (const [key, placeholderValue] of Object.entries(firewall.placeholders)) {
+    // key is a mapped env var (e.g. GITHUB_TOKEN)
+    // → add the raw secret name and any sibling aliases
+    const valueRef = mapping[key];
+    if (valueRef?.startsWith("$secrets.")) {
+      const rawName = valueRef.slice("$secrets.".length);
+      if (!expanded[rawName]) {
+        expanded[rawName] = placeholderValue;
+      }
+      for (const [envVar, ref] of Object.entries(mapping)) {
+        if (ref === valueRef && !expanded[envVar]) {
+          expanded[envVar] = placeholderValue;
+        }
+      }
+    }
+
+    // key is a raw secret name → add all env vars that reference it
+    const rawRef = `$secrets.${key}`;
+    for (const [envVar, ref] of Object.entries(mapping)) {
+      if (ref === rawRef && !expanded[envVar]) {
+        expanded[envVar] = placeholderValue;
+      }
+    }
+  }
+
+  return { ...firewall, placeholders: expanded };
+}
+
+// Pre-compute expanded placeholders at module load time.
+const EXPANDED_CONNECTOR_FIREWALLS = Object.fromEntries(
+  Object.entries(CONNECTOR_FIREWALLS).map(([type, firewall]) => [
+    type,
+    expandPlaceholders(firewall, type as ConnectorType),
+  ]),
+) as typeof CONNECTOR_FIREWALLS;
+
 /** Connector types that have a firewall config (subset of ConnectorType). */
 export type FirewallConnectorType = keyof typeof CONNECTOR_FIREWALLS;
 
@@ -289,9 +343,9 @@ export function isFirewallConnectorType(
   return type in CONNECTOR_FIREWALLS;
 }
 
-/** Get the firewall config for a connector type. */
+/** Get the firewall config for a connector type (placeholders pre-expanded). */
 export function getConnectorFirewall(
   type: FirewallConnectorType,
 ): FirewallConfig {
-  return CONNECTOR_FIREWALLS[type];
+  return EXPANDED_CONNECTOR_FIREWALLS[type];
 }
