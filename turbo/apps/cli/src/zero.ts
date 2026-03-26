@@ -6,6 +6,7 @@ import { configureGlobalProxyFromEnv } from "./lib/network/proxy.js";
 import { zeroOrgCommand } from "./commands/zero/org";
 import { zeroAgentCommand } from "./commands/zero/agent";
 import { zeroConnectorCommand } from "./commands/zero/connector";
+import { zeroDoctorCommand } from "./commands/zero/doctor";
 import { zeroPreferenceCommand } from "./commands/zero/preference";
 import { zeroScheduleCommand } from "./commands/zero/schedule";
 import { zeroSecretCommand } from "./commands/zero/secret";
@@ -25,6 +26,7 @@ import {
 const COMMAND_CAPABILITY_MAP: Record<string, string | null> = {
   agent: "agent:read",
   schedule: "schedule:read",
+  doctor: null,
   slack: "slack:write",
   whoami: null,
 };
@@ -33,6 +35,7 @@ const DEFAULT_COMMANDS: Command[] = [
   zeroOrgCommand,
   zeroAgentCommand,
   zeroConnectorCommand,
+  zeroDoctorCommand,
   zeroPreferenceCommand,
   zeroScheduleCommand,
   zeroSecretCommand,
