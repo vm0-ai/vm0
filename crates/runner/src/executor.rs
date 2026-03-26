@@ -784,14 +784,18 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
     // are injected by the web API into `context.environment` directly.
 
     // Secret values (base64-encoded, comma-separated)
-    if let Some(secret_values) = &context.secret_values
-        && !secret_values.is_empty()
+    // Always include the sandbox token so it gets redacted in logs.
     {
         use base64::Engine as _;
-        let encoded: Vec<String> = secret_values
-            .iter()
-            .map(|s| base64::engine::general_purpose::STANDARD.encode(s))
-            .collect();
+        let mut encoded: Vec<String> =
+            vec![base64::engine::general_purpose::STANDARD.encode(&context.sandbox_token)];
+        if let Some(secret_values) = &context.secret_values {
+            encoded.extend(
+                secret_values
+                    .iter()
+                    .map(|s| base64::engine::general_purpose::STANDARD.encode(s)),
+            );
+        }
         env.insert("VM0_SECRET_VALUES".into(), encoded.join(","));
     }
 
@@ -918,11 +922,16 @@ mod tests {
 
         use base64::Engine as _;
         let parts: Vec<&str> = val.split(',').collect();
-        assert_eq!(parts.len(), 2);
+        // sandbox_token ("tok") + secret1 + secret2
+        assert_eq!(parts.len(), 3);
         let decoded0 = base64::engine::general_purpose::STANDARD
             .decode(parts[0])
             .unwrap();
-        assert_eq!(decoded0, b"secret1");
+        assert_eq!(decoded0, b"tok");
+        let decoded1 = base64::engine::general_purpose::STANDARD
+            .decode(parts[1])
+            .unwrap();
+        assert_eq!(decoded1, b"secret1");
     }
 
     #[test]
@@ -975,12 +984,18 @@ mod tests {
     }
 
     #[test]
-    fn build_env_json_empty_secrets_omitted() {
+    fn build_env_json_empty_secrets_still_has_sandbox_token() {
         let mut ctx = minimal_context();
         ctx.secret_values = Some(vec![]);
 
         let env = build_env_json(&ctx, "http://localhost");
-        assert!(!env.contains_key("VM0_SECRET_VALUES"));
+        // VM0_SECRET_VALUES always present because sandbox_token is included
+        let val = env.get("VM0_SECRET_VALUES").unwrap();
+        use base64::Engine as _;
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(val)
+            .unwrap();
+        assert_eq!(decoded, b"tok");
     }
 
     #[test]
