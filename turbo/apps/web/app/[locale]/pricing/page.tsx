@@ -147,69 +147,6 @@ function PricingCard({
   );
 }
 
-function CustomPlanCard() {
-  const [isHovered, setIsHovered] = React.useState(false);
-
-  return (
-    <div
-      style={{
-        background: "var(--card-bg)",
-        border: "1px solid var(--border-light)",
-        borderRadius: "12px",
-        padding: "24px 32px",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        transition: "all 0.3s ease",
-        transform: isHovered ? "translateY(-2px)" : "translateY(0)",
-      }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
-      <div>
-        <h3
-          style={{
-            fontSize: "18px",
-            fontWeight: 600,
-            fontFamily: '"Fira Mono", monospace',
-            color: "#ed4e01",
-            marginBottom: "2px",
-            letterSpacing: "-0.2px",
-            textTransform: "uppercase",
-          }}
-        >
-          Enterprise
-        </h3>
-        <p
-          style={{
-            fontSize: "15px",
-            fontWeight: 300,
-            color: "var(--text-secondary)",
-            lineHeight: 1.5,
-            margin: 0,
-          }}
-        >
-          Custom credits, dedicated support, SSO, and self-hosting options
-        </p>
-      </div>
-      <a
-        href="https://calendar.app.google/csdygPrHHyNgxpTPA"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="btn-secondary-large"
-        style={{
-          textDecoration: "none",
-          fontSize: "15px",
-          fontWeight: 500,
-          padding: "8px 16px",
-        }}
-      >
-        Contact us
-      </a>
-    </div>
-  );
-}
-
 export default function PricingPage() {
   return (
     <>
