@@ -3,6 +3,7 @@ import { chatThreads, chatThreadRuns } from "../../db/schema/chat-thread";
 import { agentRuns } from "../../db/schema/agent-run";
 import { agentSessions } from "../../db/schema/agent-session";
 import { notFound } from "../errors";
+import type { SummaryEntry } from "@vm0/core";
 
 /**
  * Create a new chat thread.
@@ -174,7 +175,7 @@ export async function getChatThreadMessages(
     content: string;
     runId?: string;
     error?: string;
-    summaries?: string[];
+    summaries?: SummaryEntry[];
     createdAt: string;
   }>;
   latestSessionId: string | null;
@@ -215,7 +216,7 @@ export async function getChatThreadMessages(
     role: "user" | "assistant";
     content: string;
     runId?: string;
-    summaries?: string[];
+    summaries?: SummaryEntry[];
     createdAt: string;
   };
   let messages: StoredMessage[] = [];

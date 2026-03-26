@@ -9,6 +9,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { agentComposes } from "./agent-compose";
 import { conversations } from "./conversation";
+import type { SummaryEntry } from "@vm0/core";
 
 /**
  * Stored chat message for server-side persistence.
@@ -18,7 +19,7 @@ export interface StoredChatMessage {
   role: "user" | "assistant";
   content: string;
   runId?: string;
-  summaries?: string[];
+  summaries?: SummaryEntry[];
   createdAt: string;
 }
 

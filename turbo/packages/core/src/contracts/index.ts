@@ -289,6 +289,8 @@ export {
   chatThreadRunsContract,
   chatThreadListItemSchema,
   chatThreadDetailSchema,
+  summaryEntrySchema,
+  type SummaryEntry,
   type ChatThreadsContract,
   type ChatThreadByIdContract,
   type ChatThreadRunsContract,

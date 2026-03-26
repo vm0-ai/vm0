@@ -13,12 +13,29 @@ const chatThreadListItemSchema = z.object({
   updatedAt: z.string(),
 });
 
+const toolSummaryEntrySchema = z.object({
+  kind: z.literal("tool"),
+  name: z.string(),
+  input: z.record(z.string(), z.unknown()).optional(),
+});
+
+const textSummaryEntrySchema = z.object({
+  kind: z.literal("text"),
+  text: z.string(),
+});
+
+const summaryEntrySchema = z.union([
+  z.string(),
+  toolSummaryEntrySchema,
+  textSummaryEntrySchema,
+]);
+
 const storedChatMessageSchema = z.object({
   role: z.enum(["user", "assistant"]),
   content: z.string(),
   runId: z.string().optional(),
   error: z.string().optional(),
-  summaries: z.array(z.string()).optional(),
+  summaries: z.array(summaryEntrySchema).optional(),
   createdAt: z.string(),
 });
 
@@ -120,7 +137,8 @@ export type ChatThreadsContract = typeof chatThreadsContract;
 export type ChatThreadByIdContract = typeof chatThreadByIdContract;
 export type ChatThreadRunsContract = typeof chatThreadRunsContract;
 
-export { chatThreadListItemSchema, chatThreadDetailSchema };
+export { chatThreadListItemSchema, chatThreadDetailSchema, summaryEntrySchema };
 
+export type SummaryEntry = z.infer<typeof summaryEntrySchema>;
 export type ChatThreadListItem = z.infer<typeof chatThreadListItemSchema>;
 export type ChatThreadDetail = z.infer<typeof chatThreadDetailSchema>;

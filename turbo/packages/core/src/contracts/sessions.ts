@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import { summaryEntrySchema } from "./chat-threads";
 
 const c = initContract();
 
@@ -11,7 +12,7 @@ const storedChatMessageSchema = z.object({
   role: z.enum(["user", "assistant"]),
   content: z.string(),
   runId: z.string().optional(),
-  summaries: z.array(z.string()).optional(),
+  summaries: z.array(summaryEntrySchema).optional(),
   createdAt: z.string(),
 });
 

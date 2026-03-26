@@ -8,7 +8,7 @@ import {
   agentComposeVersions,
 } from "../../db/schema/agent-compose";
 import { conversations } from "../../db/schema/conversation";
-import { extractAndGroupVariables } from "@vm0/core";
+import { extractAndGroupVariables, type SummaryEntry } from "@vm0/core";
 import { notFound, forbidden } from "../errors";
 import type {
   AgentSessionData,
@@ -179,7 +179,7 @@ export async function appendChatMessages(
     role: "user" | "assistant";
     content: string;
     runId?: string;
-    summaries?: string[];
+    summaries?: SummaryEntry[];
   }>,
 ): Promise<void> {
   const now = new Date().toISOString();

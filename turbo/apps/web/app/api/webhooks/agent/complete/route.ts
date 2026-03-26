@@ -34,6 +34,7 @@ import {
   DATASETS,
 } from "../../../../../src/lib/axiom";
 import { after } from "next/server";
+import type { SummaryEntry } from "@vm0/core";
 
 const log = logger("webhook:complete");
 
@@ -44,39 +45,53 @@ interface AxiomEventContent {
   input?: Record<string, unknown>;
 }
 
+function summarizeContentBlock(
+  block: AxiomEventContent,
+  skipText: boolean,
+): SummaryEntry | null {
+  if (block.type === "tool_use" && block.name) {
+    return {
+      kind: "tool",
+      name: block.name,
+      ...(block.input ? { input: block.input } : {}),
+    };
+  }
+  if (!skipText && block.type === "text" && block.text) {
+    const line = block.text.split("\n")[0] ?? "";
+    return {
+      kind: "text",
+      text: line.length > 80 ? line.slice(0, 80) + "…" : line,
+    };
+  }
+  return null;
+}
+
+function findLastTextEventIndex(
+  events: Array<{ eventData: { message?: { content?: AxiomEventContent[] } } }>,
+): number {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const content = events[i]?.eventData?.message?.content ?? [];
+    if (content.some((b) => b.type === "text" && b.text)) {
+      return i;
+    }
+  }
+  return -1;
+}
+
 function extractSummariesFromEvents(
   events: Array<{
     eventData: { message?: { content?: AxiomEventContent[] } };
   }>,
-): string[] {
-  let lastTextIdx = -1;
-  for (let i = events.length - 1; i >= 0; i--) {
-    const event = events[i];
-    if (!event) {
-      continue;
-    }
-    const content = event.eventData?.message?.content ?? [];
-    if (content.some((b) => b.type === "text" && b.text)) {
-      lastTextIdx = i;
-      break;
-    }
-  }
+): SummaryEntry[] {
+  const lastTextIdx = findLastTextEventIndex(events);
+  const summaries: SummaryEntry[] = [];
 
-  const summaries: string[] = [];
   for (let i = 0; i < events.length; i++) {
-    const event = events[i];
-    if (!event) {
-      continue;
-    }
-    const content = event.eventData?.message?.content ?? [];
+    const content = events[i]?.eventData?.message?.content ?? [];
     for (const block of content) {
-      if (block.type === "tool_use" && block.name) {
-        summaries.push(block.name);
-        break;
-      }
-      if (i !== lastTextIdx && block.type === "text" && block.text) {
-        const line = block.text.split("\n")[0] ?? "";
-        summaries.push(line.length > 80 ? line.slice(0, 80) + "…" : line);
+      const entry = summarizeContentBlock(block, i === lastTextIdx);
+      if (entry) {
+        summaries.push(entry);
         break;
       }
     }
@@ -84,11 +99,13 @@ function extractSummariesFromEvents(
   return summaries;
 }
 
-async function extractSummariesFromAxiom(runId: string): Promise<string[]> {
+async function extractSummariesFromAxiom(
+  runId: string,
+): Promise<SummaryEntry[]> {
   const dataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
   const apl = `['${dataset}']
 | where runId == "${runId}"
-| where eventType == "message"
+| where eventType == "assistant"
 | order by sequenceNumber asc
 | limit 200`;
 
@@ -120,7 +137,7 @@ async function persistChatMessages(
     role: "user" | "assistant";
     content: string;
     runId?: string;
-    summaries?: string[];
+    summaries?: SummaryEntry[];
   }> = [{ role: "user", content: prompt }];
 
   if (output.result) {

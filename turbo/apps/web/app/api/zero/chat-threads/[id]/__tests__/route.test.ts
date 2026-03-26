@@ -123,7 +123,11 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
         role: "assistant",
         content: "Here are the changed files.",
         runId,
-        summaries: ["Bash", "Read", "Grep"],
+        summaries: [
+          { kind: "tool", name: "Bash" },
+          { kind: "tool", name: "Read", input: { file_path: "src/index.ts" } },
+          { kind: "tool", name: "Grep" },
+        ],
       },
     ]);
 
@@ -156,7 +160,11 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
     expect(assistantMsg).toBeDefined();
     expect(assistantMsg.content).toBe("Here are the changed files.");
     expect(assistantMsg.runId).toBe(runId);
-    expect(assistantMsg.summaries).toEqual(["Bash", "Read", "Grep"]);
+    expect(assistantMsg.summaries).toEqual([
+      { kind: "tool", name: "Bash" },
+      { kind: "tool", name: "Read", input: { file_path: "src/index.ts" } },
+      { kind: "tool", name: "Grep" },
+    ]);
   });
 
   it("should not return thread owned by another user", async () => {
