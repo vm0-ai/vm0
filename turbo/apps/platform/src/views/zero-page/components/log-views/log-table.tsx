@@ -1,3 +1,4 @@
+import type { MouseEvent as ReactMouseEvent } from "react";
 import { IconChevronRight, IconClock, IconLoader2 } from "@tabler/icons-react";
 import { cn } from "@vm0/ui";
 import {
@@ -10,7 +11,7 @@ import {
   formatDuration,
 } from "../../../../signals/activity-page/activity-signals.ts";
 import { StatusBadge } from "./status-badge.tsx";
-import { Link } from "../../../router/link.tsx";
+import { Link, useNavigationHandler } from "../../../router/link.tsx";
 import emptyActivityImg from "../../assets/empty-activity.webp";
 
 export const STATUS_LABELS: Readonly<Record<LogStatus, string>> = {
@@ -34,6 +35,38 @@ const GRID_WITH_SOURCE =
 /** Without source column (schedule history) */
 const GRID_WITHOUT_SOURCE =
   "grid grid-cols-[1fr_1fr_8rem_5rem_2.5rem] gap-x-6 items-center";
+
+// ---------------------------------------------------------------------------
+// Schedule source link (avoids nested <a> inside row Link)
+// ---------------------------------------------------------------------------
+
+function ScheduleSourceLink({ scheduleId }: { scheduleId: string }) {
+  const { onClick } = useNavigationHandler("/schedule/:scheduleId", {
+    pathParams: { scheduleId },
+  });
+
+  return (
+    <span
+      role="link"
+      tabIndex={0}
+      className="text-muted-foreground underline decoration-muted-foreground/40 hover:text-foreground hover:decoration-foreground/40 transition-colors cursor-pointer"
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onClick(e);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          e.stopPropagation();
+          onClick(e as unknown as ReactMouseEvent);
+        }
+      }}
+    >
+      {TRIGGER_SOURCE_LABELS.schedule}
+    </span>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Row
@@ -63,9 +96,13 @@ function LogRow({
         </div>
         {showSource && (
           <div className="text-left text-sm text-muted-foreground">
-            {entry.triggerSource
-              ? TRIGGER_SOURCE_LABELS[entry.triggerSource]
-              : "\u2014"}
+            {entry.triggerSource === "schedule" && entry.scheduleId ? (
+              <ScheduleSourceLink scheduleId={entry.scheduleId} />
+            ) : entry.triggerSource ? (
+              TRIGGER_SOURCE_LABELS[entry.triggerSource]
+            ) : (
+              "\u2014"
+            )}
           </div>
         )}
         <div className="text-left">

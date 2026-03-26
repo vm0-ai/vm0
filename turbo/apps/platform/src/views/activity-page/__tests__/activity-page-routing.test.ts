@@ -36,6 +36,7 @@ function mockActivityAPIs() {
     framework: "claude-code",
     modelProvider: null,
     triggerSource: "web",
+    scheduleId: null,
     status: "completed",
     prompt: "Summarize today",
     appendSystemPrompt: null,

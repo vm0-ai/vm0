@@ -21,6 +21,7 @@ function mockActivityDetailAPI() {
     framework: "claude-code",
     modelProvider: null,
     triggerSource: "web",
+    scheduleId: null,
     status: "completed",
     prompt: "Hello, what can you do?",
     appendSystemPrompt: null,
@@ -92,6 +93,7 @@ describe("zeroActivityDetailPage", () => {
       framework: "claude-code",
       modelProvider: null,
       triggerSource: "web",
+      scheduleId: null,
       status: "completed",
       prompt: "Hello",
       appendSystemPrompt:

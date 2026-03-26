@@ -20,6 +20,7 @@ function makeLogDetail(overrides: Partial<LogDetail>): LogDetail {
     framework: "claude-code",
     modelProvider: null,
     triggerSource: "web",
+    scheduleId: null,
     status: "completed",
     prompt: "Hello",
     appendSystemPrompt: null,

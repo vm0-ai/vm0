@@ -24,6 +24,7 @@ export interface LogEntry {
   orgSlug: string | null;
   framework: string | null;
   triggerSource: TriggerSource | null;
+  scheduleId: string | null;
   status: LogStatus;
   createdAt: string;
   startedAt: string | null;
@@ -58,6 +59,7 @@ export interface LogDetail {
   framework: string | null;
   modelProvider: string | null;
   triggerSource: TriggerSource | null;
+  scheduleId: string | null;
   status: LogStatus;
   prompt: string;
   appendSystemPrompt: string | null;

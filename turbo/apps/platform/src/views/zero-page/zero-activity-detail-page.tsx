@@ -158,6 +158,7 @@ function ActivityHeaderCard({
     modelProvider?: string | null;
     framework?: string | null;
     error?: string | null;
+    scheduleId?: string | null;
   };
   duration: string | null | undefined;
   time: string;
@@ -186,9 +187,21 @@ function ActivityHeaderCard({
             <>
               <div className="flex items-center gap-1.5 pl-3 pr-3">
                 <span className="text-muted-foreground shrink-0">Source</span>
-                <span className="text-foreground whitespace-nowrap">
-                  {TRIGGER_SOURCE_LABELS[triggerSource]}
-                </span>
+                {triggerSource === "schedule" && detail.scheduleId ? (
+                  <Link
+                    pathname="/schedule/:scheduleId"
+                    options={{
+                      pathParams: { scheduleId: detail.scheduleId },
+                    }}
+                    className="text-foreground whitespace-nowrap underline decoration-foreground/40 hover:decoration-foreground transition-colors"
+                  >
+                    {TRIGGER_SOURCE_LABELS[triggerSource]}
+                  </Link>
+                ) : (
+                  <span className="text-foreground whitespace-nowrap">
+                    {TRIGGER_SOURCE_LABELS[triggerSource]}
+                  </span>
+                )}
               </div>
               <span
                 className="w-px h-3.5 shrink-0 bg-border self-center"
