@@ -170,11 +170,10 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
     const markdownBlock = firstCall.blocks.find((b) => b.type === "markdown");
     expect(markdownBlock).toBeDefined();
 
-    // Verify header is included in the markdown content
+    // Verify no header — content should be the raw output without a title prefix
     const markdownText = (markdownBlock as { type: "markdown"; text: string })
       .text;
-    expect(markdownText).toContain("Scheduled run for");
-    expect(markdownText).toContain("completed");
+    expect(markdownText).not.toContain("Scheduled run for");
 
     // Verify audit link is present as a context block
     const contextBlock = firstCall.blocks.find((b) => b.type === "context");
@@ -285,7 +284,7 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
     expect(markdownBlock).toBeDefined();
     const markdownText = (markdownBlock as { type: "markdown"; text: string })
       .text;
-    expect(markdownText).toContain("failed");
+    expect(markdownText).toContain("Failed");
     expect(markdownText).toContain("Agent crashed");
 
     // Verify audit link is present

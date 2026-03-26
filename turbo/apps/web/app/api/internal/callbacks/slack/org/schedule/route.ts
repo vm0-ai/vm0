@@ -77,29 +77,27 @@ async function postScheduleResults(
   let messageTs: string | undefined;
   let dmChannelId: string | undefined;
 
-  const header = `:white_check_mark: **Scheduled run for \`${displayName}\` completed**\n\n`;
-
   for (let i = 0; i < outputs.length; i++) {
     const output = outputs[i]!;
     const rawOutput = output.result ?? "Task completed successfully.";
     const isFirst = i === 0;
     const isLast = i === outputs.length - 1;
 
-    const content = isFirst ? header + rawOutput : rawOutput;
-    const triggeredBy = isLast ? scheduleDescription : undefined;
+    const attribution =
+      isLast && scheduleDescription
+        ? `\n\n------\ntriggered by schedule "${scheduleDescription}"`
+        : "";
+    const content = rawOutput + attribution;
     const blocks = buildAgentResponseMessage(
       content,
       isLast ? logsUrl : undefined,
-      triggeredBy,
     );
 
     const threadTs = messageTs;
     const result = await postMessage(
       client,
       dmChannelId ?? channel,
-      isFirst
-        ? `Scheduled run for "${displayName}" completed`
-        : rawOutput.slice(0, 2000),
+      rawOutput.slice(0, 2000),
       {
         ...(threadTs ? { threadTs } : {}),
         blocks,
@@ -113,6 +111,75 @@ async function postScheduleResults(
   }
 
   return { messageTs, dmChannelId };
+}
+
+/** Handle a completed schedule run: post results and save thread session. */
+async function handleScheduleCompleted(opts: {
+  runId: string;
+  client: ReturnType<typeof createSlackClient>;
+  notifyChannel: string;
+  displayName: string;
+  logsUrl: string;
+  scheduleDescription?: string;
+  connectionId: string;
+  isDm: boolean;
+}): Promise<void> {
+  const allOutputs = await extractAllRunOutputs(opts.runId);
+
+  const { messageTs, dmChannelId } = await postScheduleResults(
+    opts.client,
+    opts.notifyChannel,
+    opts.displayName,
+    allOutputs,
+    opts.logsUrl,
+    opts.scheduleDescription,
+  );
+
+  // Create thread session so user can reply to continue (only for DM)
+  if (opts.isDm) {
+    const [run] = await globalThis.services.db
+      .select({ result: agentRuns.result })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, opts.runId))
+      .limit(1);
+
+    const agentSessionId = extractAgentSessionId(run?.result);
+
+    if (messageTs && dmChannelId && agentSessionId) {
+      await saveThreadSession({
+        connectionId: opts.connectionId,
+        channelId: dmChannelId,
+        threadTs: messageTs,
+        existingSessionId: undefined,
+        newSessionId: agentSessionId,
+        messageTs,
+        runStatus: "completed",
+      });
+    }
+  }
+}
+
+/** Post a failure notification for a scheduled run. */
+async function postScheduleFailure(
+  client: ReturnType<typeof createSlackClient>,
+  channel: string,
+  displayName: string,
+  errMsg: string,
+  logsUrl: string,
+  scheduleDescription?: string,
+): Promise<void> {
+  const attribution = scheduleDescription
+    ? `\n\n------\ntriggered by schedule "${scheduleDescription}"`
+    : "";
+  const failureContent = `:x: **Failed**\n\n${errMsg}${attribution}`;
+  await postMessage(
+    client,
+    channel,
+    `Scheduled run for "${displayName}" failed`,
+    {
+      blocks: buildAgentResponseMessage(failureContent, logsUrl),
+    },
+  );
 }
 
 /**
@@ -218,54 +285,24 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   if (status === "completed") {
-    const allOutputs = await extractAllRunOutputs(runId);
-
-    const { messageTs, dmChannelId } = await postScheduleResults(
+    await handleScheduleCompleted({
+      runId,
       client,
       notifyChannel,
       displayName,
-      allOutputs,
       logsUrl,
       scheduleDescription,
-    );
-
-    // Create thread session so user can reply to continue (only for DM)
-    if (!targetChannelId) {
-      const [run] = await globalThis.services.db
-        .select({ result: agentRuns.result })
-        .from(agentRuns)
-        .where(eq(agentRuns.id, runId))
-        .limit(1);
-
-      const agentSessionId = extractAgentSessionId(run?.result);
-
-      if (messageTs && dmChannelId && agentSessionId) {
-        await saveThreadSession({
-          connectionId: connection.id,
-          channelId: dmChannelId,
-          threadTs: messageTs,
-          existingSessionId: undefined,
-          newSessionId: agentSessionId,
-          messageTs,
-          runStatus: "completed",
-        });
-      }
-    }
+      connectionId: connection.id,
+      isDm: !targetChannelId,
+    });
   } else {
-    // Failed run
-    const errMsg = error ?? "Unknown error";
-    const failureContent = `:x: **Scheduled run for \`${displayName}\` failed**\n\n${errMsg}`;
-    await postMessage(
+    await postScheduleFailure(
       client,
       notifyChannel,
-      `Scheduled run for "${displayName}" failed`,
-      {
-        blocks: buildAgentResponseMessage(
-          failureContent,
-          logsUrl,
-          scheduleDescription,
-        ),
-      },
+      displayName,
+      error ?? "Unknown error",
+      logsUrl,
+      scheduleDescription,
     );
   }
 
