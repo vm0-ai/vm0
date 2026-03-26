@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.7](https://github.com/vm0-ai/vm0/compare/guest-init-v0.14.6...guest-init-v0.14.7) (2026-03-26)
+
+
+### Bug Fixes
+
+* suppress npm upgrade notices in sandbox environment ([#6994](https://github.com/vm0-ai/vm0/issues/6994)) ([2338c2c](https://github.com/vm0-ai/vm0/commit/2338c2c34932f44103cf7b74a682bbe41671b1e5)), closes [#6970](https://github.com/vm0-ai/vm0/issues/6970)
+
 ## [0.14.6](https://github.com/vm0-ai/vm0/compare/guest-init-v0.14.5...guest-init-v0.14.6) (2026-03-20)
 
 ## [0.14.5](https://github.com/vm0-ai/vm0/compare/guest-init-v0.14.4...guest-init-v0.14.5) (2026-03-19)
