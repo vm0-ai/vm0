@@ -18,16 +18,10 @@ load '../../helpers/browser'
 # ---------------------------------------------------------------------------
 wait_for_unsaved_bar() {
   local timeout_secs="${1:-15}"
-  for _i in $(seq 1 "$timeout_secs"); do
-    local snap
-    snap=$(full_snapshot)
-    if contains "$snap" "unsaved changes"; then
-      return 0
-    fi
-    sleep 1
-  done
-  echo "# Timed out waiting for unsaved bar to appear" >&3
-  return 1
+  if ! wait_for_text "unsaved changes" "$timeout_secs"; then
+    echo "# Timed out waiting for unsaved bar to appear" >&3
+    return 1
+  fi
 }
 
 # ---------------------------------------------------------------------------
