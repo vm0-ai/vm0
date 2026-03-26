@@ -42,6 +42,7 @@ import { falHandler } from "./providers/fal-handler";
 import { figmaHandler } from "./providers/figma-handler";
 import { firefliesHandler } from "./providers/fireflies-handler";
 import { firecrawlHandler } from "./providers/firecrawl-handler";
+import { gammaHandler } from "./providers/gamma-handler";
 import { garminConnectHandler } from "./providers/garmin-connect-handler";
 import { gitlabHandler } from "./providers/gitlab-handler";
 import { granolaHandler } from "./providers/granola-handler";
@@ -173,6 +174,7 @@ export const PROVIDER_HANDLERS: Record<
   figma: figmaHandler,
   fireflies: firefliesHandler,
   firecrawl: firecrawlHandler,
+  gamma: gammaHandler,
   "garmin-connect": garminConnectHandler,
   gitlab: gitlabHandler,
   granola: granolaHandler,
