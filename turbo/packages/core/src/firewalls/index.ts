@@ -24,7 +24,7 @@ import { canvaFirewall } from "./canva.generated";
 import { clickupFirewall } from "./clickup.generated";
 import { closeFirewall } from "./close.generated";
 import { cloudflareFirewall } from "./cloudflare.generated";
-import { confluenceFirewall } from "./confluence.generated";
+import { atlassianFirewall } from "./atlassian.generated";
 import { cronlyticFirewall } from "./cronlytic.generated";
 import { customerIoFirewall } from "./customer-io.generated";
 import { deepseekFirewall } from "./deepseek.generated";
@@ -56,7 +56,6 @@ import { instagramFirewall } from "./instagram.generated";
 import { instantlyFirewall } from "./instantly.generated";
 import { intercomFirewall } from "./intercom.generated";
 import { intervalsIcuFirewall } from "./intervals-icu.generated";
-import { jiraFirewall } from "./jira.generated";
 import { jotformFirewall } from "./jotform.generated";
 import { larkFirewall } from "./lark.generated";
 import { lineFirewall } from "./line.generated";
@@ -130,7 +129,7 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   clickup: clickupFirewall,
   close: closeFirewall,
   cloudflare: cloudflareFirewall,
-  confluence: confluenceFirewall,
+  atlassian: atlassianFirewall,
   cronlytic: cronlyticFirewall,
   "customer-io": customerIoFirewall,
   deel: deelFirewall,
@@ -162,7 +161,6 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   instantly: instantlyFirewall,
   intercom: intercomFirewall,
   "intervals-icu": intervalsIcuFirewall,
-  jira: jiraFirewall,
   jotform: jotformFirewall,
   lark: larkFirewall,
   line: lineFirewall,

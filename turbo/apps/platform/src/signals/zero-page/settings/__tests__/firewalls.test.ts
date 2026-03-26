@@ -31,8 +31,8 @@ describe("getFirewallRefs", () => {
     expect(getFirewallRefs("slack")).toStrictEqual(["slack"]);
   });
 
-  it("should return multiple refs for atlassian", () => {
-    expect(getFirewallRefs("atlassian")).toStrictEqual(["jira", "confluence"]);
+  it("should return single ref for atlassian", () => {
+    expect(getFirewallRefs("atlassian")).toStrictEqual(["atlassian"]);
   });
 
   it("should return empty array for unknown connector", () => {

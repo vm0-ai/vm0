@@ -21,7 +21,7 @@ const FIREWALL_CONNECTOR_MAP: Readonly<
   "google-docs": ["google-docs"],
   "google-drive": ["google-drive"],
   "google-calendar": ["google-calendar"],
-  atlassian: ["jira", "confluence"],
+  atlassian: ["atlassian"],
 } as const;
 
 /** Check if a connector type has firewall config(s) available. */

@@ -97,7 +97,7 @@ const CONNECTOR_FIREWALL_REFS: Readonly<
   airtable: ["airtable"],
   apify: ["apify"],
   asana: ["asana"],
-  atlassian: ["jira", "confluence"],
+  atlassian: ["atlassian"],
   axiom: ["axiom"],
   "brave-search": ["brave-search"],
   brevo: ["brevo"],
