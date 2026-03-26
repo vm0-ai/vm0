@@ -6,6 +6,26 @@ import { EventRenderer } from "../../../lib/events/event-renderer";
 import type { PollResult, EventRenderingOptions } from "../../run/shared";
 
 /**
+ * Safely narrow GetRunResponse.result to RunResult.
+ * GetRunResponse.result has all fields optional (due to .passthrough()),
+ * but RunResult requires checkpointId, agentSessionId, conversationId.
+ * Extra fields (artifact, volumes, memory) are preserved at runtime via passthrough.
+ */
+function toRunResult(result: {
+  output?: string;
+  executionTimeMs?: number;
+  agentSessionId?: string;
+  checkpointId?: string;
+  conversationId?: string;
+}): RunResult | undefined {
+  const { checkpointId, agentSessionId, conversationId } = result;
+  if (!checkpointId || !agentSessionId || !conversationId) {
+    return undefined;
+  }
+  return { checkpointId, agentSessionId, conversationId };
+}
+
+/**
  * Poll for zero run events until run completes.
  * Uses dual-poll approach: telemetry endpoint for events, getById for status.
  */
@@ -51,7 +71,7 @@ export async function pollZeroEvents(
     if (runStatus === "completed") {
       complete = true;
       EventRenderer.renderRunCompleted(
-        runResponse.result as RunResult | undefined,
+        runResponse.result ? toRunResult(runResponse.result) : undefined,
       );
       result = {
         succeeded: true,
