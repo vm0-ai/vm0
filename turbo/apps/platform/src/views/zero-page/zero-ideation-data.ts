@@ -63,26 +63,12 @@ const categories: readonly Category[] = [
         connectors: ["sentry", "slack"],
       },
       {
-        title: "PostHog funnel report",
-        description: "Funnel numbers in Sheets and a weekly Slack recap",
-        prompt:
-          "Set up a weekly PostHog funnel report that pulls conversion data, logs it to Google Sheets, and posts a summary to Slack",
-        connectors: ["posthog", "google-sheets", "slack"],
-      },
-      {
         title: "Vercel deploy digest",
         description:
           "It links each deployment to its commit and alerts Slack when a deploy fails",
         prompt:
           "Set up a Vercel deploy digest that monitors deployments, links each to its GitHub commit, and sends Slack alerts on failures",
         connectors: ["vercel", "github", "slack"],
-      },
-      {
-        title: "Ahrefs SEO weekly",
-        description: "Rankings in Sheets with a weekly Slack summary",
-        prompt:
-          "Set up a weekly Ahrefs SEO report that tracks keyword rankings and backlink changes, logs data to Google Sheets, and posts a summary to Slack",
-        connectors: ["ahrefs", "google-sheets", "slack"],
       },
       {
         title: "Cloudflare traffic & security report",
@@ -161,13 +147,6 @@ const categories: readonly Category[] = [
           "Set up a workflow that mirrors GitLab issues to GitHub issues and notifies on Slack when new items are synced",
         connectors: ["gitlab", "github", "slack"],
       },
-      {
-        title: "Supabase health monitor",
-        description: "Alerts Slack when database health or pools look wrong",
-        prompt:
-          "Set up a Supabase health monitor that checks database metrics, connection pool usage, and sends Slack alerts for anomalies",
-        connectors: ["supabase", "slack"],
-      },
     ],
   },
   {
@@ -228,13 +207,6 @@ const categories: readonly Category[] = [
         connectors: ["calendly", "google-calendar", "slack"],
       },
       {
-        title: "Outlook inbox digest",
-        description: "Morning Outlook summary sorted by priority",
-        prompt:
-          "Set up a daily Outlook inbox digest that summarizes emails by priority and suggests actions, then posts to Slack",
-        connectors: ["outlook-mail", "slack"],
-      },
-      {
         title: "Todoist \u2192 Notion task sync",
         description: "Todoist tasks mirrored in Notion for the team",
         prompt:
@@ -254,13 +226,6 @@ const categories: readonly Category[] = [
         prompt:
           "Set up a workflow that watches Google Drive for new files, classifies them by content, and moves them into the right folders",
         connectors: ["google-drive"],
-      },
-      {
-        title: "Deel payroll notifier",
-        description: "Slack updates when payroll runs or contracts change",
-        prompt:
-          "Set up a Deel notifier that sends Slack messages when payroll is processed, new contracts are created, or invoices are due",
-        connectors: ["deel", "slack"],
       },
     ],
   },
@@ -334,14 +299,6 @@ const categories: readonly Category[] = [
         connectors: ["firecrawl", "notion", "slack"],
       },
       {
-        title: "Figma design handoff",
-        description:
-          "Figma updates become Linear issues for changed components",
-        prompt:
-          "Set up a design handoff workflow that watches a Figma file for updates and creates Linear issues for changed components, notifying the dev team on Slack",
-        connectors: ["figma", "linear", "slack"],
-      },
-      {
         title: "Dev.to auto-publisher",
         description: "Publishes Notion posts to Dev.to and links them on X",
         prompt:
@@ -354,13 +311,6 @@ const categories: readonly Category[] = [
         prompt:
           "Set up an Instagram tracker that logs post engagement metrics to Google Sheets and posts a weekly summary to Slack",
         connectors: ["instagram", "google-sheets", "slack"],
-      },
-      {
-        title: "Mailchimp campaign reporter",
-        description: "Campaign stats in Sheets with a Slack digest",
-        prompt:
-          "Set up a Mailchimp campaign report that pulls open rates, click rates, and unsubscribes after each send, logs to Google Sheets, and posts to Slack",
-        connectors: ["mailchimp", "google-sheets", "slack"],
       },
       {
         title: "SimilarWeb traffic comparison",
@@ -391,14 +341,6 @@ const categories: readonly Category[] = [
         connectors: ["gmail", "hubspot", "slack"],
       },
       {
-        title: "Stripe customer sync",
-        description:
-          "New Notion clients get Stripe customers and payment links",
-        prompt:
-          "Set up a Stripe sync that creates a Stripe customer and payment link whenever a new client is added to our Notion database",
-        connectors: ["stripe", "notion"],
-      },
-      {
         title: "Win/loss reporter",
         description: "Win and loss trends from the pipeline in Slack",
         prompt:
@@ -411,20 +353,6 @@ const categories: readonly Category[] = [
         prompt:
           "Set up a workflow that takes Intercom conversations, classifies them, and creates structured tasks in Notion",
         connectors: ["intercom", "notion"],
-      },
-      {
-        title: "DocuSign contract tracker",
-        description: "Signed contracts update Notion deals and ping the team",
-        prompt:
-          "Set up a contract tracker that monitors DocuSign for completed signatures, updates the deal page in Notion, and sends a Slack notification",
-        connectors: ["docusign", "notion", "slack"],
-      },
-      {
-        title: "Meta Ads spend tracker",
-        description: "Daily spend in Sheets with Slack alerts on budget caps",
-        prompt:
-          "Set up a daily Meta Ads tracker that logs spend and performance to Google Sheets and alerts on Slack when budget thresholds are reached",
-        connectors: ["meta-ads", "google-sheets", "slack"],
       },
       {
         title: "Salesforce pipeline digest",
@@ -477,21 +405,6 @@ const categories: readonly Category[] = [
         connectors: ["notion", "linear"],
       },
       {
-        title: "Notion + Resend email pipeline",
-        description: "Notion content sent as email through Resend",
-        prompt:
-          "Create a workflow that takes content from Notion, assembles it into an email template, and sends it via Resend",
-        connectors: ["notion", "resend"],
-      },
-      {
-        title: "Local file access via vm0-computer",
-        description:
-          "Connect to your local machine via connector and let agents read local files",
-        prompt:
-          "Connect to my local computer via vm0-computer connector and read files from my desktop",
-        connectors: ["computer"],
-      },
-      {
         title: "AgentMail inbox",
         description: "Create and manage inboxes with the AgentMail API",
         prompt:
@@ -534,21 +447,6 @@ const categories: readonly Category[] = [
         connectors: ["x", "notion", "slack"],
       },
       {
-        title: "Mercury cash flow monitor",
-        description: "Transactions in Sheets with alerts on unusual activity",
-        prompt:
-          "Set up a cash flow monitor that tracks Mercury bank transactions, logs them to Google Sheets, and sends Slack alerts for transactions above a threshold",
-        connectors: ["mercury", "google-sheets", "slack"],
-      },
-      {
-        title: "Webflow CMS publish monitor",
-        description:
-          "Track new Webflow CMS items and notify the team with a Slack post linking to the live page",
-        prompt:
-          "Set up a Webflow monitor that sends a Slack notification whenever a new CMS item is published, with a link to the live page",
-        connectors: ["webflow", "slack"],
-      },
-      {
         title: "Asana \u2192 Notion project sync",
         description: "Asana milestones and tasks mirrored in Notion",
         prompt:
@@ -577,25 +475,11 @@ const categories: readonly Category[] = [
         connectors: ["google-docs", "notion"],
       },
       {
-        title: "Dropbox \u2192 Google Drive sync",
-        description: "Dropbox folders mirrored to Drive with Slack pings",
-        prompt:
-          "Set up a sync that mirrors files from a Dropbox folder to Google Drive and notifies on Slack when new files are synced",
-        connectors: ["dropbox", "google-drive", "slack"],
-      },
-      {
         title: "Apify web scraper to Sheets",
         description: "Apify scrapes sites into structured Google Sheets rows",
         prompt:
           "Set up an Apify scraper that extracts product listings from a competitor website and saves them to Google Sheets daily",
         connectors: ["apify", "google-sheets", "slack"],
-      },
-      {
-        title: "Canva design tracker",
-        description: "New Canva assets logged in Notion with Slack pings",
-        prompt:
-          "Set up a Canva tracker that logs new team designs to a Notion asset library and notifies the marketing channel on Slack",
-        connectors: ["canva", "notion", "slack"],
       },
       {
         title: "Wrike project reporter",
@@ -610,13 +494,6 @@ const categories: readonly Category[] = [
         prompt:
           "Set up a workflow that processes PDF contracts, extracts key dates and terms into Notion, and sends Slack reminders before expiration dates",
         connectors: ["pdfco", "notion", "slack"],
-      },
-      {
-        title: "Deel payroll report",
-        description: "Payroll events in Sheets with monthly Slack summaries",
-        prompt:
-          "Set up a monthly Deel payroll report that logs all payroll events to Google Sheets and posts a summary to Slack",
-        connectors: ["deel", "google-sheets", "slack"],
       },
     ],
   },
