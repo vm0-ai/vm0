@@ -318,6 +318,78 @@ jobs:
           echo "Cleaned: $CLEANED"
           echo "Failures: $FAILED"
 
+  cleanup-clerk-test-users:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    steps:
+      - name: Find recently closed PRs
+        id: prs
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const since = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+            const { data: pulls } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'closed',
+              sort: 'updated',
+              direction: 'desc',
+              per_page: 100
+            });
+            const recent = pulls
+              .filter(pr => pr.closed_at && pr.closed_at >= since)
+              .map(pr => pr.number);
+            console.log(`Found ${recent.length} PRs closed since ${since}: ${recent.join(', ')}`);
+            core.setOutput('numbers', JSON.stringify(recent));
+            core.setOutput('has-prs', recent.length > 0 ? 'true' : 'false');
+
+      - name: Delete stale Clerk test users for closed PRs
+        if: steps.prs.outputs.has-prs == 'true'
+        env:
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          PR_NUMBERS: ${{ steps.prs.outputs.numbers }}
+          DRY_RUN: ${{ env.DRY_RUN }}
+        run: |
+          set -eu
+
+          DELETED=0
+          SKIPPED=0
+
+          for PR_NUMBER in $(echo "$PR_NUMBERS" | jq -r '.[]'); do
+            JOB_REF="pr-${PR_NUMBER}"
+            echo "--- Searching for test users matching ${JOB_REF}+clerk_test ---"
+
+            USERS=$(curl -sS -X GET "https://api.clerk.com/v1/users?query=${JOB_REF}%2Bclerk_test&limit=100" \
+              -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
+              -H "Content-Type: application/json")
+
+            echo "$USERS" | jq -c '.[]' 2>/dev/null | while read -r user; do
+              USER_ID=$(echo "$user" | jq -r '.id')
+              EMAIL=$(echo "$user" | jq -r '.email_addresses[0].email_address // "unknown"')
+
+              # Verify email actually matches this PR (Clerk query is fuzzy)
+              if [[ "$EMAIL" != "${JOB_REF}+clerk_test@"* ]]; then
+                echo "Skipping $USER_ID ($EMAIL) — does not match ${JOB_REF}"
+                continue
+              fi
+
+              if [ "$DRY_RUN" = "true" ]; then
+                echo "[DRY-RUN] Would delete $USER_ID ($EMAIL)"
+              else
+                echo "Deleting $USER_ID ($EMAIL)"
+                curl -sS -X DELETE "https://api.clerk.com/v1/users/${USER_ID}" \
+                  -H "Authorization: Bearer ${CLERK_SECRET_KEY}" || true
+              fi
+              DELETED=$((DELETED + 1))
+            done
+          done
+
+          echo ""
+          echo "=== Clerk Test User Cleanup Summary ==="
+          echo "Deleted: $DELETED"
+          echo "Skipped: $SKIPPED"
+
   cleanup-git-branches:
     runs-on: ubuntu-latest
     permissions:

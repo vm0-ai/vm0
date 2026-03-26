@@ -109,16 +109,21 @@ jobs:
           USERS=$(curl -sS -X GET "https://api.clerk.com/v1/users?query=${JOB_REF}%2Bclerk_test&limit=100" \
             -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
             -H "Content-Type: application/json")
-          USER_IDS=$(echo "$USERS" | jq -r '.[].id // empty' 2>/dev/null || true)
-          if [[ -z "$USER_IDS" ]]; then
-            echo "No test users found to clean up"
-          else
-            for uid in $USER_IDS; do
-              echo "Deleting user $uid"
-              curl -sS -X DELETE "https://api.clerk.com/v1/users/${uid}" \
-                -H "Authorization: Bearer ${CLERK_SECRET_KEY}" || true
-            done
-          fi
+
+          echo "$USERS" | jq -c '.[]' 2>/dev/null | while read -r user; do
+            USER_ID=$(echo "$user" | jq -r '.id')
+            EMAIL=$(echo "$user" | jq -r '.email_addresses[0].email_address // "unknown"')
+
+            # Verify email actually matches this PR (Clerk query is fuzzy)
+            if [[ "$EMAIL" != "${JOB_REF}+clerk_test@"* ]]; then
+              echo "Skipping $USER_ID ($EMAIL) — does not match ${JOB_REF}"
+              continue
+            fi
+
+            echo "Deleting $USER_ID ($EMAIL)"
+            curl -sS -X DELETE "https://api.clerk.com/v1/users/${USER_ID}" \
+              -H "Authorization: Bearer ${CLERK_SECRET_KEY}" || true
+          done
 
   cleanup-deployments:
     # Skip for release-please PRs (only version bumps and changelogs)
