@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.84.3](https://github.com/vm0-ai/vm0/compare/cli-v9.84.2...cli-v9.84.3) (2026-03-26)
+
+
+### Bug Fixes
+
+* **cli:** rename schedule help arg from agent-name to agent-id ([#6893](https://github.com/vm0-ai/vm0/issues/6893)) ([4652265](https://github.com/vm0-ai/vm0/commit/4652265f435de9bb6fa9c132bfe4112ea0c5449f))
+
 ## [9.84.2](https://github.com/vm0-ai/vm0/compare/cli-v9.84.1...cli-v9.84.2) (2026-03-26)
 
 

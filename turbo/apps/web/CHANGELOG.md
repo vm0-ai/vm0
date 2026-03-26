@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.161.1](https://github.com/vm0-ai/vm0/compare/web-v12.161.0...web-v12.161.1) (2026-03-26)
+
+
+### Refactoring
+
+* move trigger source from agent_runs to zero_runs table ([#6877](https://github.com/vm0-ai/vm0/issues/6877)) ([7dbfa0a](https://github.com/vm0-ai/vm0/commit/7dbfa0a57e1fdfa6558ae2e329977db967ba9f25))
+
 ## [12.161.0](https://github.com/vm0-ai/vm0/compare/web-v12.160.5...web-v12.161.0) (2026-03-26)
 
 
