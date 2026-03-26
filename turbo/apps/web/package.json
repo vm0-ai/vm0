@@ -10,7 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint && eslint . --max-warnings 0",
-    "check-types": "tsc --noEmit",
+    "check-types": "next typegen && tsc --noEmit",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:generate": "drizzle-kit generate",
     "db:dev-seed": "dotenv -e .env.local -- tsx scripts/dev-seed.ts",
