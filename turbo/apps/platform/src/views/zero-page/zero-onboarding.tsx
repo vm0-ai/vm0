@@ -1,4 +1,4 @@
-import { Component, useState } from "react";
+import { useState } from "react";
 import {
   useGet,
   useSet,
@@ -15,8 +15,10 @@ import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   zeroOnboardingStep$,
   zeroAgentName$,
+  zeroWorkspaceName$,
   zeroSaving$,
   setZeroStep$,
+  setZeroWorkspaceName$,
   completeZeroOnboarding$,
   dismissZeroOnboarding$,
   zeroSelectedConnectors$,
@@ -25,8 +27,6 @@ import {
   clearZeroOnboardingError$,
   completeMemberOnboarding$,
   zeroOnboardingStatus$,
-  memberWelcomeStep$,
-  setMemberWelcomeStep$,
 } from "../../signals/zero-page/zero-onboarding.ts";
 import {
   sendZeroChatMessage$,
@@ -51,7 +51,6 @@ import {
   IconSearch,
 } from "@tabler/icons-react";
 import { detach, Reason } from "../../signals/utils.ts";
-import { create as createConfetti } from "canvas-confetti";
 
 // ---------------------------------------------------------------------------
 // Progress bar
@@ -76,120 +75,6 @@ function ProgressBar({
       ))}
     </div>
   );
-}
-
-// ---------------------------------------------------------------------------
-// Welcome animation (typewriter + confetti)
-// ---------------------------------------------------------------------------
-
-class WelcomeAnimation extends Component<
-  { title: string; subtitle: string },
-  { displayed: string; showSubtitle: boolean; confettiFired: boolean }
-> {
-  private static readonly COLORS = [
-    "#26ccff",
-    "#fcff42",
-    "#ff5e7e",
-    "#88ff5a",
-    "#ffa62d",
-    "#ffdb4d",
-  ];
-  private timer: number | undefined;
-  private canvasRef: HTMLCanvasElement | null = null;
-  state = { displayed: "", showSubtitle: false, confettiFired: false };
-
-  componentDidMount() {
-    this.startTypewriter();
-  }
-
-  componentWillUnmount() {
-    if (this.timer !== undefined) {
-      window.clearInterval(this.timer);
-    }
-  }
-
-  private startTypewriter() {
-    let i = 0;
-    const { title } = this.props;
-    this.timer = window.setInterval(() => {
-      i++;
-      this.setState({ displayed: title.slice(0, i) });
-      if (i >= title.length) {
-        window.clearInterval(this.timer);
-        this.timer = undefined;
-        window.setTimeout(() => {
-          this.setState({ showSubtitle: true });
-          window.setTimeout(() => this.fireConfetti(), 400);
-        }, 600);
-      }
-    }, 40);
-  }
-
-  private fireConfetti() {
-    if (this.state.confettiFired || !this.canvasRef) {
-      return;
-    }
-    this.setState({ confettiFired: true });
-    const fire = createConfetti(this.canvasRef, { resize: true });
-    if (!fire) {
-      return;
-    }
-    const end = Date.now() + 800;
-    const frame = () => {
-      fire({
-        particleCount: 3,
-        angle: 60,
-        spread: 55,
-        origin: { x: 0, y: 0.5 },
-        colors: WelcomeAnimation.COLORS,
-      })?.catch(() => undefined);
-      fire({
-        particleCount: 3,
-        angle: 120,
-        spread: 55,
-        origin: { x: 1, y: 0.5 },
-        colors: WelcomeAnimation.COLORS,
-      })?.catch(() => undefined);
-      if (Date.now() < end) {
-        window.requestAnimationFrame(frame);
-      }
-    };
-    frame();
-  }
-
-  render() {
-    const { subtitle } = this.props;
-    const { displayed, showSubtitle } = this.state;
-    return (
-      <>
-        <canvas
-          ref={(el) => {
-            this.canvasRef = el;
-          }}
-          style={{
-            position: "fixed",
-            inset: 0,
-            width: "100%",
-            height: "100%",
-            pointerEvents: "none",
-            zIndex: 10,
-          }}
-        />
-        <h2 className="text-2xl font-semibold tracking-tight min-h-[2rem]">
-          {displayed}
-          {displayed.length < this.props.title.length && (
-            <span className="inline-block w-[2px] h-5 bg-foreground align-text-bottom animate-pulse ml-0.5" />
-          )}
-        </h2>
-        <p
-          className="text-sm text-muted-foreground leading-relaxed max-w-[420px] mt-3 transition-opacity duration-700"
-          style={{ opacity: showSubtitle ? 1 : 0 }}
-        >
-          {subtitle}
-        </p>
-      </>
-    );
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -905,7 +790,7 @@ function OnboardingPage({
 // Zero onboarding (admin flow) — full page
 // ---------------------------------------------------------------------------
 
-const ADMIN_STEPS = ["1", "3", "3c", "4"] as const;
+const ADMIN_STEPS = ["1", "2", "3", "4"] as const;
 
 function WorkspaceStep({
   zeroAvatarSrc,
@@ -914,7 +799,8 @@ function WorkspaceStep({
   zeroAvatarSrc: string;
   onNext: () => void;
 }) {
-  const [workspaceName, setWorkspaceName] = useState("");
+  const workspaceName = useGet(zeroWorkspaceName$);
+  const setWorkspaceName = useSet(setZeroWorkspaceName$);
 
   return (
     <OnboardingPage
@@ -957,18 +843,23 @@ function WorkspaceStep({
   );
 }
 
-/** Zero onboarding: creates org, model provider, and default agent. */
+/** Zero onboarding — used for both admin and member flows. */
 export function ZeroOnboarding({
   zeroAvatarSrc = zeroAvatarImg,
+  isAdmin,
+  displayName = "Zero",
 }: {
   zeroAvatarSrc?: string;
+  isAdmin: boolean;
+  displayName?: string;
 }) {
   const step = useGet(zeroOnboardingStep$);
   const setStep = useSet(setZeroStep$);
-  const name = useGet(zeroAgentName$);
+  const agentName = useGet(zeroAgentName$);
   const saving = useGet(zeroSaving$);
-  const selectedConnectors = useGet(zeroSelectedConnectors$);
+  const adminSelectedConnectors = useGet(zeroSelectedConnectors$);
   const completeOnboarding = useSet(completeZeroOnboarding$);
+  const completeMember = useSet(completeMemberOnboarding$);
   const dismissOnboarding = useSet(dismissZeroOnboarding$);
   const sendMessage = useSet(sendZeroChatMessage$);
   const startNewSession = useSet(startNewZeroSession$);
@@ -980,97 +871,176 @@ export function ZeroOnboarding({
   const setSelected = useSet(setSelectedConnectorType$);
   const slackData = useGet(slackOrgData$);
 
+  // Member: resolve org's configured connectors from default agent skills
+  const onboardingStatus = useLastResolved(zeroOnboardingStatus$);
+  const defaultAgentSkillUrls = onboardingStatus?.defaultAgentSkills ?? [];
+  const connectorTypesLoadable = useLastLoadable(allConnectorTypes$);
+  const allConnectorsList =
+    connectorTypesLoadable.state === "hasData"
+      ? connectorTypesLoadable.data
+      : [];
+  const connectorTypeSet = new Set(allConnectorsList.map((c) => c.type));
+
+  const memberConnectorTypes = isAdmin
+    ? []
+    : (Object.keys(CONNECTOR_TYPES) as ConnectorType[]).filter((type) => {
+        const isInAgent = defaultAgentSkillUrls.some((url) =>
+          url.endsWith(`/${type}`),
+        );
+        return isInAgent && connectorTypeSet.has(type);
+      });
+  const hasMemberConnectors = memberConnectorTypes.length > 0;
+
+  // Effective step: members skip steps 1 & 2, and step 3 when no connectors
+  const effectiveStep = isAdmin
+    ? step
+    : step === "1" || step === "2" || (step === "3" && !hasMemberConnectors)
+      ? hasMemberConnectors
+        ? "3"
+        : "4"
+      : step;
+
+  // Steps and progress — admin sees all 4, member sees only applicable steps
+  const visibleSteps = isAdmin
+    ? ADMIN_STEPS
+    : hasMemberConnectors
+      ? (["3", "4"] as const)
+      : (["4"] as const);
+  const currentStepIndex = (visibleSteps as readonly string[]).indexOf(
+    effectiveStep,
+  );
+
+  // Connectors shown in step 3 depend on role
+  const effectiveConnectors = isAdmin
+    ? adminSelectedConnectors
+    : memberConnectorTypes;
+
+  // Display name for WhereToWorkContent
+  const name = isAdmin ? agentName : displayName;
+
   const handleAddToSlack = () => {
     clearOnboardingError();
-    const controller = new AbortController();
-    detach(
-      (async () => {
-        const result = await completeOnboarding(controller.signal);
-        if (!result) return;
-        reloadBilling();
-        dismissOnboarding();
-        if (slackData?.isAdmin && slackData.installUrl) {
-          const url = new URL(slackData.installUrl, window.location.origin);
-          url.searchParams.set("_t", String(Date.now()));
-          window.open(url.toString(), "_blank");
-        }
-        navigate("/works");
-      })(),
-      Reason.DomCallback,
-    );
+    if (isAdmin) {
+      const controller = new AbortController();
+      detach(
+        (async () => {
+          const result = await completeOnboarding(controller.signal);
+          if (!result) return;
+          reloadBilling();
+          dismissOnboarding();
+          if (slackData?.isAdmin && slackData.installUrl) {
+            const url = new URL(slackData.installUrl, window.location.origin);
+            url.searchParams.set("_t", String(Date.now()));
+            window.open(url.toString(), "_blank");
+          }
+          navigate("/works");
+        })(),
+        Reason.DomCallback,
+      );
+    } else {
+      detach(
+        (async () => {
+          await completeMember(pageSignal);
+          navigate("/works");
+        })(),
+        Reason.DomCallback,
+      );
+    }
   };
 
   const handleContinueWithWeb = () => {
     clearOnboardingError();
     const controller = new AbortController();
-    detach(
-      (async () => {
-        const result = await completeOnboarding(controller.signal);
-        if (!result) return;
-        reloadBilling();
-        navigate("/");
-        startNewSession();
-        // Use controller.signal instead of pageSignal: navigate("/") aborts
-        // the onboarding page signal via resetRouteSignal$, so pageSignal is
-        // already dead by the time sendMessage runs.
-        detach(
-          sendMessage(
-            "Who are you and what can you do?",
-            undefined,
-            controller.signal,
-          ),
-          Reason.DomCallback,
-        );
-        dismissOnboarding();
-      })(),
-      Reason.DomCallback,
-    );
+    if (isAdmin) {
+      detach(
+        (async () => {
+          const result = await completeOnboarding(controller.signal);
+          if (!result) return;
+          reloadBilling();
+          navigate("/");
+          startNewSession();
+          // Use controller.signal instead of pageSignal: navigate("/") aborts
+          // the onboarding page signal via resetRouteSignal$, so pageSignal is
+          // already dead by the time sendMessage runs.
+          detach(
+            sendMessage(
+              "Who are you and what can you do?",
+              undefined,
+              controller.signal,
+            ),
+            Reason.DomCallback,
+          );
+          dismissOnboarding();
+        })(),
+        Reason.DomCallback,
+      );
+    } else {
+      detach(
+        (async () => {
+          await completeMember(controller.signal);
+          navigate("/");
+          startNewSession();
+          detach(
+            sendMessage(
+              "Who are you and what can you do?",
+              undefined,
+              controller.signal,
+            ),
+            Reason.DomCallback,
+          );
+        })(),
+        Reason.DomCallback,
+      );
+    }
   };
 
-  if (step === "done") {
+  if (effectiveStep === "done") {
     return null;
   }
 
   return (
     <>
-      {step === "1" && (
+      {/* Step 1: Workspace name (admin only) */}
+      {isAdmin && effectiveStep === "1" && (
         <WorkspaceStep
           zeroAvatarSrc={zeroAvatarSrc}
-          onNext={() => setStep("3")}
+          onNext={() => setStep("2")}
         />
       )}
 
-      {/* Step 2: Select connectors (pure toggle) */}
-      {step === "3" && (
+      {/* Step 2: Select connectors (admin only) */}
+      {isAdmin && effectiveStep === "2" && (
         <OnboardingPage
           currentStep={1}
-          totalSteps={ADMIN_STEPS.length}
+          totalSteps={visibleSteps.length}
           stepKey="connectors"
           zeroAvatarSrc={zeroAvatarSrc}
-          selectedConnectors={selectedConnectors}
+          selectedConnectors={adminSelectedConnectors}
           showBack
           showNext
           onBack={() => setStep("1")}
-          onNext={() => setStep("3c")}
+          onNext={() => setStep("3")}
         >
-          <SelectConnectorsContent selectedConnectors={selectedConnectors} />
+          <SelectConnectorsContent
+            selectedConnectors={adminSelectedConnectors}
+          />
         </OnboardingPage>
       )}
 
-      {/* Step 3: Connect selected apps */}
-      {step === "3c" && (
+      {/* Step 3: Connect apps */}
+      {effectiveStep === "3" && (
         <OnboardingPage
-          currentStep={2}
-          totalSteps={ADMIN_STEPS.length}
+          currentStep={currentStepIndex}
+          totalSteps={visibleSteps.length}
           stepKey="connectors"
           zeroAvatarSrc={zeroAvatarSrc}
-          selectedConnectors={selectedConnectors}
-          showBack
+          selectedConnectors={effectiveConnectors}
+          showBack={isAdmin}
           showNext
-          onBack={() => setStep("3")}
+          onBack={isAdmin ? () => setStep("2") : undefined}
           onNext={() => setStep("4")}
         >
-          <ConnectStepContent selectedConnectors={selectedConnectors} />
+          <ConnectStepContent selectedConnectors={effectiveConnectors} />
         </OnboardingPage>
       )}
 
@@ -1084,15 +1054,15 @@ export function ZeroOnboarding({
       )}
 
       {/* Step 4: Where to work */}
-      {step === "4" && (
+      {effectiveStep === "4" && (
         <OnboardingPage
-          currentStep={3}
-          totalSteps={ADMIN_STEPS.length}
+          currentStep={currentStepIndex}
+          totalSteps={visibleSteps.length}
           stepKey="where"
           zeroAvatarSrc={zeroAvatarSrc}
-          showBack
+          showBack={isAdmin || hasMemberConnectors}
           showNext={false}
-          onBack={() => setStep("3c")}
+          onBack={() => setStep("3")}
         >
           <WhereToWorkContent
             name={name}
@@ -1100,211 +1070,7 @@ export function ZeroOnboarding({
             onAddToSlack={handleAddToSlack}
             onContinueWeb={handleContinueWithWeb}
             saving={saving}
-            error={onboardingError}
-          />
-        </OnboardingPage>
-      )}
-    </>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Member welcome (full page)
-// ---------------------------------------------------------------------------
-
-export function MemberWelcome({
-  displayName = "Zero",
-  zeroAvatarSrc = zeroAvatarImg,
-}: {
-  displayName?: string;
-  zeroAvatarSrc?: string;
-}) {
-  const step = useGet(memberWelcomeStep$);
-  const setStep = useSet(setMemberWelcomeStep$);
-  const completeMember = useSet(completeMemberOnboarding$);
-  const navigate = useSet(navigateTo$);
-  const startNewSession = useSet(startNewZeroSession$);
-  const sendIntro = useSet(sendZeroChatMessage$);
-  const saving = useGet(zeroSaving$);
-  const selectedConnectorType = useGet(selectedConnectorType$);
-  const setSelected = useSet(setSelectedConnectorType$);
-  const connectConnectorFn = useSet(connectConnector$);
-  const pageSignal = useGet(pageSignal$);
-
-  const onboardingStatus = useLastResolved(zeroOnboardingStatus$);
-  const defaultAgentSkillUrls = onboardingStatus?.defaultAgentSkills ?? [];
-
-  const connectorTypesLoadable = useLastLoadable(allConnectorTypes$);
-  const allConnectors =
-    connectorTypesLoadable.state === "hasData"
-      ? connectorTypesLoadable.data
-      : [];
-  const connectorTypeSet = new Set(allConnectors.map((c) => c.type));
-  const connectedSet = new Set(
-    allConnectors.filter((c) => c.connected).map((c) => c.type),
-  );
-
-  const memberConnectors = (
-    Object.entries(CONNECTOR_TYPES) as [
-      ConnectorType,
-      (typeof CONNECTOR_TYPES)[ConnectorType],
-    ][]
-  ).filter(([type]) => {
-    const isInAgent = defaultAgentSkillUrls.some((url) =>
-      url.endsWith(`/${type}`),
-    );
-    return isInAgent && connectorTypeSet.has(type);
-  });
-
-  const hasConnectors = memberConnectors.length > 0;
-
-  const handleOpenSlack = () => {
-    detach(
-      (async () => {
-        await completeMember(pageSignal);
-        navigate("/works");
-      })(),
-      Reason.DomCallback,
-    );
-  };
-
-  const handleContinueWeb = () => {
-    const controller = new AbortController();
-    detach(
-      (async () => {
-        await completeMember(controller.signal);
-        navigate("/");
-        startNewSession();
-        // Use controller.signal instead of pageSignal: navigate("/") aborts
-        // the onboarding page signal via resetRouteSignal$, so pageSignal is
-        // already dead by the time sendIntro runs.
-        detach(
-          sendIntro(
-            "Who are you and what can you do?",
-            undefined,
-            controller.signal,
-          ),
-          Reason.DomCallback,
-        );
-      })(),
-      Reason.DomCallback,
-    );
-  };
-
-  const totalSteps = hasConnectors ? 3 : 2;
-
-  const stepToIndex = (s: string): number => {
-    if (s === "welcome") return 0;
-    if (s === "connectors") return 1;
-    if (s === "where") return hasConnectors ? 2 : 1;
-    return 0;
-  };
-
-  return (
-    <>
-      {step === "welcome" && (
-        <OnboardingPage
-          currentStep={0}
-          totalSteps={totalSteps}
-          stepKey="welcome"
-          zeroAvatarSrc={zeroAvatarSrc}
-          showBack={false}
-          showNext
-          onNext={() => setStep(hasConnectors ? "connectors" : "where")}
-        >
-          <WelcomeAnimation
-            title={`Meet ${displayName}, your new teammate!`}
-            subtitle={`Think of ${displayName} as a teammate in the office you can casually talk to, delegate tasks, and count on to get things done.`}
-          />
-        </OnboardingPage>
-      )}
-
-      {step === "connectors" && (
-        <OnboardingPage
-          currentStep={1}
-          totalSteps={totalSteps}
-          stepKey="connectors"
-          zeroAvatarSrc={zeroAvatarSrc}
-          showBack
-          showNext
-          onBack={() => setStep("welcome")}
-          onNext={() => setStep("where")}
-        >
-          <h2 className="text-2xl font-semibold tracking-tight">
-            Connect your tools
-          </h2>
-          <p className="text-sm text-muted-foreground leading-relaxed mt-2 mb-8 max-w-[480px]">
-            Your workspace uses these tools with {displayName}. Connect the ones
-            you use to get started.
-          </p>
-          {memberConnectors.length > 0 ? (
-            <div className="w-full grid grid-cols-3 gap-3">
-              {memberConnectors.map(([type, config]) => {
-                const isConnected = connectedSet.has(type);
-                return (
-                  <OnboardingConnectorCard
-                    key={type}
-                    type={type}
-                    label={config.label}
-                    isSelected={isConnected}
-                    isPolling={false}
-                    onClick={() => {
-                      if (!isConnected) {
-                        const connector = allConnectors.find(
-                          (c) => c.type === type,
-                        );
-                        if (
-                          connector?.availableAuthMethods.includes("api-token")
-                        ) {
-                          setSelected(type);
-                        } else {
-                          detach(
-                            (async () => {
-                              await connectConnectorFn(type, pageSignal);
-                            })(),
-                            Reason.DomCallback,
-                          );
-                        }
-                      }
-                    }}
-                  />
-                );
-              })}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              No connectors to set up — you&apos;re all set!
-            </p>
-          )}
-        </OnboardingPage>
-      )}
-
-      {selectedConnectorType && (
-        <ConnectModal
-          onClose={() => setSelected(null)}
-          onSuccess={() => {
-            /* connector list refreshes automatically */
-          }}
-        />
-      )}
-
-      {step === "where" && (
-        <OnboardingPage
-          currentStep={stepToIndex("where")}
-          totalSteps={totalSteps}
-          stepKey="where"
-          zeroAvatarSrc={zeroAvatarSrc}
-          showBack
-          showNext={false}
-          onBack={() => setStep(hasConnectors ? "connectors" : "welcome")}
-        >
-          <WhereToWorkContent
-            name={displayName}
-            zeroAvatarSrc={zeroAvatarSrc}
-            onAddToSlack={handleOpenSlack}
-            onContinueWeb={handleContinueWeb}
-            saving={saving}
-            error={null}
+            error={isAdmin ? onboardingError : null}
           />
         </OnboardingPage>
       )}

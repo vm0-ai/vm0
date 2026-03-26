@@ -147,9 +147,11 @@ const router = tsr.router(onboardingStatusContract, {
     let needsOnboarding: boolean;
     if (!hasOrg) {
       needsOnboarding = true;
-    } else if (isAdmin) {
-      needsOnboarding = !defaultAgent;
+    } else if (isAdmin && !defaultAgent) {
+      // Org needs initial setup — full admin onboarding
+      needsOnboarding = true;
     } else {
+      // Org is set up — check personal onboarding (applies to both admins and members)
       if (!resolvedOrgId) {
         throw new Error("resolvedOrgId is null despite hasOrg being true");
       }
