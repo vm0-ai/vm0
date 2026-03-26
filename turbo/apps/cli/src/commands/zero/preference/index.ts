@@ -103,7 +103,7 @@ async function interactiveSetup(prefs: {
  */
 export const zeroPreferenceCommand = new Command()
   .name("preference")
-  .description("View or update your preferences")
+  .description("View or update user preferences (timezone, notifications)")
   .option("--timezone <timezone>", "IANA timezone (e.g., America/New_York)")
   .action(
     withErrorHandler(async (opts: PreferenceOpts) => {

@@ -8,7 +8,7 @@ import { disableCommand } from "./disable";
 
 export const zeroScheduleCommand = new Command()
   .name("schedule")
-  .description("Manage zero agent schedules")
+  .description("Create or manage recurring scheduled tasks")
   .addCommand(setupCommand)
   .addCommand(listCommand)
   .addCommand(statusCommand)

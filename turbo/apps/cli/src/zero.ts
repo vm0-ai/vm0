@@ -81,8 +81,19 @@ declare const __CLI_VERSION__: string;
 
 program
   .name("zero")
-  .description("Zero CLI - Manage your zero platform")
-  .version(__CLI_VERSION__);
+  .description(
+    "Zero CLI — interact with the zero platform from inside the sandbox",
+  )
+  .version(__CLI_VERSION__)
+  .addHelpText(
+    "after",
+    `
+Common scenarios:
+  Missing a token?       zero doctor missing-token <TOKEN_NAME>
+  Send a Slack message?  zero slack message send -c <channel> -t "text"
+  Set up a schedule?     zero schedule setup <agent-name>
+  Check your identity?   zero whoami`,
+  );
 
 export { program };
 

@@ -3,5 +3,5 @@ import { zeroSlackMessageCommand } from "./message";
 
 export const zeroSlackCommand = new Command()
   .name("slack")
-  .description("Manage Slack integrations")
+  .description("Send messages to Slack channels as the bot")
   .addCommand(zeroSlackMessageCommand);
