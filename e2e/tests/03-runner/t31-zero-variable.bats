@@ -19,7 +19,7 @@ teardown() {
 @test "zero variable --help shows command description" {
     run $ZERO_CLI variable --help
     assert_success
-    assert_output --partial "Manage variables"
+    assert_output --partial "Read or write non-sensitive configuration values"
     assert_output --partial "list"
     assert_output --partial "set"
     assert_output --partial "delete"
