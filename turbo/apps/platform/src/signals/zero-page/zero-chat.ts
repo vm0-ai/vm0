@@ -966,13 +966,10 @@ export const loadSessionFromSnapshot$ = command(
     // so polling can mutate the assistant placeholder (snapshot is immutable).
     if (snapshot.activeRunId) {
       set(internalLocalMessages$, snapshot.activeRunMessages);
-      const resumeSignal = set(resetSending$);
-      set(startLoop$, { runId: snapshot.activeRunId }, resumeSignal).catch(
-        (error: unknown) => {
-          if (!isAbortError(error)) {
-            L.error("startLoop error during snapshot resume:", error);
-          }
-        },
+      const resumeSignal = set(resetSending$, signal);
+      detach(
+        set(startLoop$, { runId: snapshot.activeRunId }, resumeSignal),
+        Reason.Daemon,
       );
     }
   },

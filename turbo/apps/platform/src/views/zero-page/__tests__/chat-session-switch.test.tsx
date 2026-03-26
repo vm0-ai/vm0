@@ -97,12 +97,9 @@ describe("chat session switch", () => {
     // Start on a completed thread (no active polling)
     await setupPage({ context, path: "/chat/thread-completed" });
 
-    await waitFor(
-      () => {
-        expect(screen.getByText("All done!")).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByText("All done!")).toBeInTheDocument();
+    });
 
     // No Stop button should be present
     expect(screen.queryByLabelText("Stop")).toBeNull();
@@ -113,17 +110,14 @@ describe("chat session switch", () => {
     });
 
     // The running thread should show the thinking/shimmer state
-    await waitFor(
-      () => {
-        const shimmer = document.querySelector(".zero-shimmer-text");
-        expect(shimmer).toBeInTheDocument();
-      },
-      { timeout: 10_000 },
-    );
+    await waitFor(() => {
+      const shimmer = document.querySelector(".zero-shimmer-text");
+      expect(shimmer).toBeInTheDocument();
+    });
 
     // Stop button should appear for the active run
     expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-  }, 30_000);
+  });
 
   it("should load different messages when switching between completed sessions", async () => {
     server.use(
@@ -157,26 +151,18 @@ describe("chat session switch", () => {
 
     await setupPage({ context, path: "/chat/session-alpha" });
 
-    await waitFor(
-      () => {
-        expect(
-          screen.getByText("Answer for session-alpha"),
-        ).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByText("Answer for session-alpha")).toBeInTheDocument();
+    });
 
     // Switch to session-beta
     context.store.set(navigateTo$, "/chat/:sessionId", {
       pathParams: { sessionId: "session-beta" },
     });
 
-    await waitFor(
-      () => {
-        expect(screen.getByText("Answer for session-beta")).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByText("Answer for session-beta")).toBeInTheDocument();
+    });
 
     // Previous session content should be gone
     expect(screen.queryByText("Answer for session-alpha")).toBeNull();
@@ -186,16 +172,11 @@ describe("chat session switch", () => {
       pathParams: { sessionId: "session-gamma" },
     });
 
-    await waitFor(
-      () => {
-        expect(
-          screen.getByText("Answer for session-gamma"),
-        ).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByText("Answer for session-gamma")).toBeInTheDocument();
+    });
 
     // Only current session content visible
     expect(screen.queryByText("Answer for session-beta")).toBeNull();
-  }, 30_000);
+  });
 });
