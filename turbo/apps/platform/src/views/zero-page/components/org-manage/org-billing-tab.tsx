@@ -41,28 +41,6 @@ import {
   setBillingSubPage$,
 } from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
 
-function getPlanPrice(tier: string): string {
-  const plan = PLANS.find((p) => p.tier === tier);
-  return plan ? `${plan.price}${plan.period}` : "";
-}
-
-const proPlanPrice = getPlanPrice("pro");
-const freePlanPrice = getPlanPrice("free");
-
-const sectionCardStyle = {
-  border: "0.7px solid hsl(var(--gray-400))",
-} as const;
-
-function tierRank(t: BillingTier): number {
-  if (t === "free") {
-    return 0;
-  }
-  if (t === "pro") {
-    return 1;
-  }
-  return 2;
-}
-
 const PLANS = [
   {
     tier: "free" as const,
@@ -117,6 +95,28 @@ const PLANS = [
     ],
   },
 ] as const;
+
+function getPlanPrice(tier: string): string {
+  const plan = PLANS.find((p) => p.tier === tier);
+  return plan ? `${plan.price}${plan.period}` : "";
+}
+
+const proPlanPrice = getPlanPrice("pro");
+const freePlanPrice = getPlanPrice("free");
+
+const sectionCardStyle = {
+  border: "0.7px solid hsl(var(--gray-400))",
+} as const;
+
+function tierRank(t: BillingTier): number {
+  if (t === "free") {
+    return 0;
+  }
+  if (t === "pro") {
+    return 1;
+  }
+  return 2;
+}
 
 function planButtonLabel(
   plan: (typeof PLANS)[number],
