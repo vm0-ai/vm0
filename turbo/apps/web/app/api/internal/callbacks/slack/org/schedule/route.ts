@@ -83,14 +83,10 @@ async function postScheduleResults(
     const isFirst = i === 0;
     const isLast = i === outputs.length - 1;
 
-    const attribution =
-      isLast && scheduleDescription
-        ? `\n\n------\ntriggered by schedule "${scheduleDescription}"`
-        : "";
-    const content = rawOutput + attribution;
     const blocks = buildAgentResponseMessage(
-      content,
+      rawOutput,
       isLast ? logsUrl : undefined,
+      isLast ? scheduleDescription : undefined,
     );
 
     const threadTs = messageTs;
@@ -168,16 +164,17 @@ async function postScheduleFailure(
   logsUrl: string,
   scheduleDescription?: string,
 ): Promise<void> {
-  const attribution = scheduleDescription
-    ? `\n\n------\ntriggered by schedule "${scheduleDescription}"`
-    : "";
-  const failureContent = `:x: **Failed**\n\n${errMsg}${attribution}`;
+  const failureContent = `:x: **Failed**\n\n${errMsg}`;
   await postMessage(
     client,
     channel,
     `Scheduled run for "${displayName}" failed`,
     {
-      blocks: buildAgentResponseMessage(failureContent, logsUrl),
+      blocks: buildAgentResponseMessage(
+        failureContent,
+        logsUrl,
+        scheduleDescription,
+      ),
     },
   );
 }
