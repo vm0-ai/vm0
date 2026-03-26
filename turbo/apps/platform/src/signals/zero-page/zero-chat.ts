@@ -596,9 +596,7 @@ export const chatSessionSnapshot$ = computed(
             : (run.error ??
               "Something went wrong. Check the activity logs for details."),
         };
-        const insertIdx = messageTimestamps.findIndex(
-          (t) => t > run.createdAt,
-        );
+        const insertIdx = messageTimestamps.findIndex((t) => t > run.createdAt);
         if (insertIdx === -1) {
           messages.push(userMsg, assistantMsg);
           messageTimestamps.push(run.createdAt, run.createdAt);
