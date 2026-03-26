@@ -15,6 +15,18 @@ type RewriteArgs = Parameters<
  *    into visible `<svg>` text by rehype-sanitize.
  */
 const rehypeRewriteHandler = (() => {
+  /** Recursively extract text content from a hast subtree. */
+  const collectText = (n: unknown): string => {
+    const node = n as { type?: string; value?: string; children?: unknown[] };
+    if (node.type === "text" && typeof node.value === "string") {
+      return node.value;
+    }
+    if (Array.isArray(node.children)) {
+      return node.children.map(collectText).join("");
+    }
+    return "";
+  };
+
   const validHtmlTags: ReadonlySet<string> = new Set([
     "a",
     "abbr",
@@ -121,13 +133,16 @@ const rehypeRewriteHandler = (() => {
   return (...args: RewriteArgs) => {
     const [node, , parent] = args;
 
-    // Convert unknown HTML tags to plain text
+    // Convert unknown HTML tags to plain text, preserving child content
     if (
       node.type === "element" &&
       !validHtmlTags.has(node.tagName) &&
       parent?.type === "element"
     ) {
-      const text = `<${node.tagName}>`;
+      const inner = collectText(node);
+      const text = inner
+        ? `<${node.tagName}>${inner}</${node.tagName}>`
+        : `<${node.tagName}>`;
       Object.assign(node, {
         type: "text",
         value: text,
