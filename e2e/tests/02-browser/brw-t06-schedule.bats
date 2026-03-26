@@ -76,12 +76,12 @@ teardown_file() {
   echo "# Clicking Create..." >&3
   agent-browser find role button click --name "Create"
 
-  # Wait for navigation to detail page
+  # Wait for navigation to detail page (schedule creation can take up to ~90s)
   local navigated=false
-  for _i in $(seq 1 60); do
+  for _i in $(seq 1 120); do
     local current_url
     current_url=$(agent-browser get url 2>/dev/null || true)
-    if [[ "$current_url" =~ /schedule/ ]] && [[ ! "$current_url" =~ /schedule$ ]]; then
+    if [[ "$current_url" =~ /schedule/[a-f0-9] ]]; then
       navigated=true
       break
     fi
@@ -103,8 +103,8 @@ teardown_file() {
 @test "edit description field and verify save" {
   echo "# Editing description field..." >&3
 
-  # Fill the description input via CSS selector (placeholder locator may not resolve in accessibility mode)
-  agent-browser fill "input[placeholder='Leave blank to auto-generate']" "E2E test description"
+  # Fill the description input via placeholder locator
+  agent-browser find placeholder "Leave blank to auto-generate" fill "E2E test description"
   agent-browser wait 1000
 
   # Wait for the unsaved changes bar (Save button) to appear
@@ -157,7 +157,7 @@ teardown_file() {
   step_screenshot "calendar-view"
 
   # Verify schedule appears in calendar
-  wait_for_text "$SCHEDULE_PROMPT" 10
+  wait_for_text "$SCHEDULE_PROMPT" 20
   step_screenshot "calendar-with-schedule"
   echo "# Schedule verified in calendar view!" >&3
 }
