@@ -76,19 +76,12 @@ teardown_file() {
   echo "# Clicking Create..." >&3
   agent-browser find role button click --name "Create"
 
-  # Wait for navigation to detail page (schedule creation can take up to ~90s)
-  local navigated=false
-  for _i in $(seq 1 120); do
-    local current_url
-    current_url=$(agent-browser get url 2>/dev/null || true)
-    if [[ "$current_url" =~ /schedule/[a-f0-9] ]]; then
-      navigated=true
-      break
-    fi
-    sleep 1
-  done
+  # Wait for navigation to detail page (schedule creation can take up to ~90s).
+  # Use wait_for_text instead of URL polling — it is more reliable and
+  # avoids per-iteration overhead from `agent-browser get url`.
+  # "Email notifications" only appears on the schedule detail page, not the dialog.
+  wait_for_text "Email notifications" 105
   step_screenshot "after-create"
-  assert [ "$navigated" = "true" ]
   echo "# Schedule created and navigated to detail page!" >&3
 }
 
