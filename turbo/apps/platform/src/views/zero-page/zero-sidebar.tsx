@@ -764,7 +764,7 @@ function TalkToSection({
                         }}
                         className={`flex h-6 w-6 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible transition-opacity duration-150 ${
                           isPrimarySelected
-                            ? "text-sidebar-primary/80 hover:text-white hover:bg-white/20"
+                            ? "text-slate-500 hover:text-slate-900 hover:bg-slate-300"
                             : "text-sidebar-foreground/80 hover:text-foreground hover:bg-sidebar-foreground/10"
                         }`}
                         aria-label="Remove from list"

@@ -3,8 +3,6 @@ import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { IconList, IconLayoutGrid, IconPlus } from "@tabler/icons-react";
 import {
-  Card,
-  CardContent,
   Tabs,
   TabsList,
   TabsTrigger,
@@ -589,41 +587,39 @@ export function ZeroSchedulePage() {
 
       <main className="flex-1 overflow-auto px-4 sm:px-6 pt-4 pb-8">
         <div className="mx-auto max-w-[900px]">
-          <Card className="zero-card">
-            <CardContent className="py-5 flex flex-col gap-6">
-              {isInitialLoading ? (
-                scheduleViewMode === "calendar" ? (
-                  <ScheduleCalendarSkeleton />
-                ) : (
-                  <ScheduleListSkeleton />
-                )
-              ) : scheduleViewMode === "list" ? (
-                <ScheduleListView
-                  entries={combinedSchedule}
-                  togglingIds={togglingIds}
-                  runningIds={runningIds}
-                  getAgentLabel={(e) => e.agentLabel}
-                  onEdit={openScheduleDetail}
-                  onToggle={(entry, enabled) => {
-                    handleToggle(entry, enabled).catch(() => {});
-                  }}
-                  onDelete={handleDelete}
-                  onNew={() => setCreateOpen(true)}
-                  onRunNow={(entry) => {
-                    handleRunNow(entry).catch(() => {});
-                  }}
-                  onOpenDetails={openScheduleDetail}
-                />
+          <div className="zero-card overflow-hidden px-4 sm:px-7 pb-3">
+            {isInitialLoading ? (
+              scheduleViewMode === "calendar" ? (
+                <ScheduleCalendarSkeleton />
               ) : (
-                <ScheduleCalendarView
-                  entries={combinedSchedule}
-                  agentOrder={agentOrder}
-                  getAgentLabel={(e) => e.agentLabel}
-                  onEdit={openScheduleDetail}
-                />
-              )}
-            </CardContent>
-          </Card>
+                <ScheduleListSkeleton />
+              )
+            ) : scheduleViewMode === "list" ? (
+              <ScheduleListView
+                entries={combinedSchedule}
+                togglingIds={togglingIds}
+                runningIds={runningIds}
+                getAgentLabel={(e) => e.agentLabel}
+                onEdit={openScheduleDetail}
+                onToggle={(entry, enabled) => {
+                  handleToggle(entry, enabled).catch(() => {});
+                }}
+                onDelete={handleDelete}
+                onNew={() => setCreateOpen(true)}
+                onRunNow={(entry) => {
+                  handleRunNow(entry).catch(() => {});
+                }}
+                onOpenDetails={openScheduleDetail}
+              />
+            ) : (
+              <ScheduleCalendarView
+                entries={combinedSchedule}
+                agentOrder={agentOrder}
+                getAgentLabel={(e) => e.agentLabel}
+                onEdit={openScheduleDetail}
+              />
+            )}
+          </div>
         </div>
       </main>
 
