@@ -40,6 +40,7 @@ describe("GET /api/zero/user-preferences", () => {
     expect(data.timezone).toBeNull();
     expect(data.pinnedAgentIds).toEqual([]);
     expect(data.sendMode).toBe("enter");
+    expect(data.avatarUrl).toBeNull();
   });
 
   it("should return saved timezone after update", async () => {
@@ -394,5 +395,120 @@ describe("POST /api/zero/user-preferences", () => {
 
     expect(response.status).toBe(200);
     expect(data.sendMode).toBe("cmd-enter");
+  });
+
+  it("should update avatarUrl to a preset identifier", async () => {
+    const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: user.orgId });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/user-preferences",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ avatarUrl: "avatar_2" }),
+      },
+    );
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.avatarUrl).toBe("avatar_2");
+  });
+
+  it("should persist avatarUrl across GET after POST", async () => {
+    const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: user.orgId });
+
+    const postRequest = createTestRequest(
+      "http://localhost:3000/api/zero/user-preferences",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ avatarUrl: "avatar_3" }),
+      },
+    );
+    await POST(postRequest);
+
+    const getRequest = createTestRequest(
+      "http://localhost:3000/api/zero/user-preferences",
+    );
+    const response = await GET(getRequest);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.avatarUrl).toBe("avatar_3");
+  });
+
+  it("should clear avatarUrl when set to null", async () => {
+    const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: user.orgId });
+
+    // Set avatar first
+    const setRequest = createTestRequest(
+      "http://localhost:3000/api/zero/user-preferences",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ avatarUrl: "avatar_1" }),
+      },
+    );
+    await POST(setRequest);
+
+    // Clear avatar
+    const clearRequest = createTestRequest(
+      "http://localhost:3000/api/zero/user-preferences",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ avatarUrl: null }),
+      },
+    );
+    const clearResponse = await POST(clearRequest);
+    const clearData = await clearResponse.json();
+
+    expect(clearResponse.status).toBe(200);
+    expect(clearData.avatarUrl).toBeNull();
+
+    // Verify via GET
+    const getRequest = createTestRequest(
+      "http://localhost:3000/api/zero/user-preferences",
+    );
+    const getResponse = await GET(getRequest);
+    const getData = await getResponse.json();
+
+    expect(getData.avatarUrl).toBeNull();
+  });
+
+  it("should update avatarUrl without affecting other preferences", async () => {
+    const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: user.orgId });
+
+    // Set timezone first
+    const setupReq = createTestRequest(
+      "http://localhost:3000/api/zero/user-preferences",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ timezone: "America/New_York" }),
+      },
+    );
+    await POST(setupReq);
+
+    // Update only avatarUrl
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/user-preferences",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ avatarUrl: "avatar_0" }),
+      },
+    );
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.avatarUrl).toBe("avatar_0");
+    expect(data.timezone).toBe("America/New_York");
   });
 });

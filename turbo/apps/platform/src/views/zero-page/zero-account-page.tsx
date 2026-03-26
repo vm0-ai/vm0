@@ -7,6 +7,8 @@ import {
   IconPalette,
   IconKeyboard,
   IconLoader2,
+  IconUpload,
+  IconCheck,
 } from "@tabler/icons-react";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import { cn } from "@vm0/ui";
@@ -24,7 +26,13 @@ import {
   setPreferencesTab$,
   sendModeSaving$,
   updateSendMode$,
+  avatarSaving$,
+  updateAvatar$,
 } from "../../signals/zero-page/settings/preferences-page.ts";
+import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
+import { user$ } from "../../signals/auth.ts";
+import { ZERO_AVATARS } from "./zero-avatars.ts";
+import { fetch$ } from "../../signals/fetch.ts";
 
 function AppearanceSettings() {
   const THEME_OPTIONS = [
@@ -161,6 +169,177 @@ function SendModeSettings() {
   );
 }
 
+/** Resolve a preset avatar identifier to its bundled image source. */
+function getPresetAvatarSrc(id: string): string | undefined {
+  const index = Number(id.replace("avatar_", ""));
+  return ZERO_AVATARS[index];
+}
+
+function getPresetAvatars(): { id: string; src: string }[] {
+  return ZERO_AVATARS.map((src, i) => ({ id: `avatar_${i}`, src }));
+}
+
+function resolveAvatarSrc(avatarUrl: string | null): string | null {
+  if (!avatarUrl) {
+    return null;
+  }
+  const presetSrc = getPresetAvatarSrc(avatarUrl);
+  if (presetSrc) {
+    return presetSrc;
+  }
+  return avatarUrl;
+}
+
+function AvatarSettings() {
+  const pageSignal = useGet(pageSignal$);
+  const saving = useGet(avatarSaving$);
+  const saveAvatar = useSet(updateAvatar$);
+  const prefsLoadable = useLoadable(userPreferences$);
+  const userLoadable = useLoadable(user$);
+  const fetchFn = useGet(fetch$);
+
+  const currentAvatarUrl =
+    prefsLoadable.state === "hasData" ? prefsLoadable.data.avatarUrl : null;
+
+  const userName =
+    userLoadable.state === "hasData"
+      ? (userLoadable.data?.fullName ?? "User")
+      : "User";
+  const userInitial = userName.charAt(0).toUpperCase();
+
+  const resolvedSrc = resolveAvatarSrc(currentAvatarUrl);
+
+  const handleSelect = (avatarId: string) => {
+    if (saving) {
+      return;
+    }
+    detach(saveAvatar(avatarId, pageSignal), Reason.DomCallback);
+  };
+
+  const handleUpload = async (file: File) => {
+    if (saving) {
+      return;
+    }
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetchFn("/api/zero/uploads", {
+      method: "POST",
+      body: formData,
+    });
+    if (!res.ok) {
+      return;
+    }
+    const data = (await res.json()) as { url: string };
+    detach(saveAvatar(data.url, pageSignal), Reason.DomCallback);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      detach(handleUpload(file), Reason.DomCallback);
+    }
+    e.target.value = "";
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-muted-foreground">
+        Choose a profile avatar or upload your own.
+      </p>
+
+      {/* Current avatar preview */}
+      <div className="flex items-center gap-4">
+        <div className="h-16 w-16 shrink-0 rounded-xl overflow-hidden">
+          {resolvedSrc ? (
+            <img
+              src={resolvedSrc}
+              alt={userName}
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <div className="h-full w-full rounded-xl bg-orange-200/95 dark:bg-orange-300/80 flex items-center justify-center text-orange-900 dark:text-orange-950 text-xl font-medium">
+              {userInitial}
+            </div>
+          )}
+        </div>
+        <div className="flex flex-col gap-1">
+          <div className="text-sm font-medium text-foreground">{userName}</div>
+          <div className="text-sm text-muted-foreground">
+            {currentAvatarUrl ? "Custom avatar" : "Default avatar"}
+          </div>
+        </div>
+        {saving && (
+          <IconLoader2
+            size={16}
+            className="animate-spin text-muted-foreground"
+          />
+        )}
+      </div>
+
+      {/* Preset avatars + upload */}
+      <div className="flex flex-wrap gap-3">
+        {getPresetAvatars().map(({ id, src }) => {
+          const isSelected = currentAvatarUrl === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              disabled={saving}
+              onClick={() => handleSelect(id)}
+              className={cn(
+                "relative h-14 w-14 rounded-xl overflow-hidden ring-2 ring-offset-2 ring-offset-background transition-all duration-200 focus:outline-none focus-visible:ring-primary",
+                isSelected
+                  ? "ring-primary"
+                  : "ring-transparent hover:ring-muted-foreground/30",
+                saving && "opacity-60 cursor-not-allowed",
+              )}
+            >
+              <img src={src} alt={id} className="h-full w-full object-cover" />
+              {isSelected && (
+                <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
+                  <IconCheck size={18} className="text-primary" stroke={2.5} />
+                </div>
+              )}
+            </button>
+          );
+        })}
+
+        {/* Upload button */}
+        <label
+          className={cn(
+            "h-14 w-14 rounded-xl flex items-center justify-center transition-all duration-200 cursor-pointer focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2",
+            "zero-chip text-muted-foreground hover:text-foreground",
+            saving && "opacity-60 pointer-events-none",
+          )}
+          style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+        >
+          <IconUpload size={18} stroke={1.5} />
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/gif,image/webp"
+            className="hidden"
+            onChange={handleFileChange}
+          />
+        </label>
+      </div>
+
+      {/* Remove avatar */}
+      {currentAvatarUrl && (
+        <button
+          type="button"
+          disabled={saving}
+          onClick={() =>
+            detach(saveAvatar(null, pageSignal), Reason.DomCallback)
+          }
+          className="text-sm text-muted-foreground hover:text-foreground transition-colors w-fit"
+        >
+          Remove avatar
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function ZeroPreferencesPage() {
   const tab = useGet(preferencesTab$);
   const setTab = useSet(setPreferencesTab$);
@@ -173,7 +352,7 @@ export function ZeroPreferencesPage() {
             Preferences
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Manage your appearance and agent runtime preferences
+            Manage your profile, appearance and runtime preferences
           </p>
         </div>
       </header>
@@ -182,6 +361,12 @@ export function ZeroPreferencesPage() {
         <div className="mx-auto max-w-[900px] flex flex-col gap-8">
           <Tabs value={tab} onValueChange={(v) => setTab(v)}>
             <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
+              <TabsTrigger
+                value="profile"
+                className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+              >
+                Profile
+              </TabsTrigger>
               <TabsTrigger
                 value="appearance"
                 className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
@@ -197,6 +382,7 @@ export function ZeroPreferencesPage() {
             </TabsList>
 
             <div className="mt-4">
+              {tab === "profile" && <AvatarSettings />}
               {tab === "appearance" && (
                 <div className="flex flex-col gap-6">
                   <AppearanceSettings />

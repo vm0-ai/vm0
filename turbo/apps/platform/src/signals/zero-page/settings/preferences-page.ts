@@ -9,7 +9,7 @@ import { throwIfAbort } from "../../utils.ts";
 // Preferences tab state
 // ---------------------------------------------------------------------------
 
-const internalPreferencesTab$ = state("appearance");
+const internalPreferencesTab$ = state("profile");
 
 export const preferencesTab$ = computed((get) => get(internalPreferencesTab$));
 
@@ -61,3 +61,25 @@ export const timezoneSaving$ = computed((get) => get(internalTimezoneSaving$));
 export const setTimezoneSaving$ = command(({ set }, value: boolean) => {
   set(internalTimezoneSaving$, value);
 });
+
+// ---------------------------------------------------------------------------
+// Avatar saving state
+// ---------------------------------------------------------------------------
+
+const internalAvatarSaving$ = state(false);
+
+export const avatarSaving$ = computed((get) => get(internalAvatarSaving$));
+
+export const updateAvatar$ = command(
+  async ({ set }, value: string | null, signal: AbortSignal) => {
+    set(internalAvatarSaving$, true);
+    try {
+      await set(updateUserPreference$, { avatarUrl: value }, signal);
+    } catch (error) {
+      throwIfAbort(error);
+      toast.error("Failed to save avatar");
+    } finally {
+      set(internalAvatarSaving$, false);
+    }
+  },
+);

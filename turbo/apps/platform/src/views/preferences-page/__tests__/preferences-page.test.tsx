@@ -15,6 +15,7 @@ function createMockPreferences(
     timezone: "UTC",
     pinnedAgentIds: [],
     sendMode: "enter",
+    avatarUrl: null,
     ...overrides,
   };
 }
@@ -32,35 +33,42 @@ async function renderPreferencesPage() {
 }
 
 describe("zero preferences page - tab navigation", () => {
-  it("should show appearance tab by default and switch to time zone tab", async () => {
+  it("should show profile tab by default and switch to appearance tab", async () => {
     mockPreferencesAPI();
     await renderPreferencesPage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Choose a profile avatar or upload your own."),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("Appearance"));
 
     await waitFor(() => {
       expect(screen.getByText("Theme")).toBeInTheDocument();
     });
-
-    fireEvent.click(screen.getByText("Time Zone"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Time zone")).toBeInTheDocument();
-    });
   });
 
-  it("should switch back to appearance tab from time zone", async () => {
+  it("should switch between all tabs", async () => {
     mockPreferencesAPI();
     await renderPreferencesPage();
 
+    // Default: Profile tab
     await waitFor(() => {
-      expect(screen.getByText("Time Zone")).toBeInTheDocument();
+      expect(
+        screen.getByText("Choose a profile avatar or upload your own."),
+      ).toBeInTheDocument();
     });
 
+    // Switch to Time Zone
     fireEvent.click(screen.getByText("Time Zone"));
 
     await waitFor(() => {
       expect(screen.getByText("Time zone")).toBeInTheDocument();
     });
 
+    // Switch to Appearance
     fireEvent.click(screen.getByText("Appearance"));
 
     await waitFor(() => {
@@ -86,6 +94,9 @@ describe("zero preferences page - send mode interaction", () => {
     );
 
     await renderPreferencesPage();
+
+    // Navigate to Appearance tab where Send Mode settings live
+    fireEvent.click(await screen.findByText("Appearance"));
 
     await waitFor(() => {
       expect(screen.getByText("Send message with")).toBeInTheDocument();
@@ -113,11 +124,7 @@ describe("zero preferences page - timezone update", () => {
     mockPreferencesAPI(createMockPreferences({ timezone: "Asia/Tokyo" }));
     await renderPreferencesPage();
 
-    await waitFor(() => {
-      expect(screen.getByText("Time Zone")).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByText("Time Zone"));
+    fireEvent.click(await screen.findByText("Time Zone"));
 
     await waitFor(() => {
       expect(screen.getByText("Time zone")).toBeInTheDocument();
@@ -142,11 +149,7 @@ describe("zero preferences page - timezone update", () => {
 
     await renderPreferencesPage();
 
-    await waitFor(() => {
-      expect(screen.getByText("Time Zone")).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByText("Time Zone"));
+    fireEvent.click(await screen.findByText("Time Zone"));
 
     await waitFor(() => {
       expect(screen.getByText("Time zone")).toBeInTheDocument();

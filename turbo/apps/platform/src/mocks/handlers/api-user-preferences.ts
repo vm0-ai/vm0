@@ -11,6 +11,7 @@ let mockPreferences: UserPreferencesResponse = {
   timezone: null,
   pinnedAgentIds: [],
   sendMode: "enter",
+  avatarUrl: null,
 };
 
 export function resetMockUserPreferences(): void {
@@ -18,6 +19,7 @@ export function resetMockUserPreferences(): void {
     timezone: null,
     pinnedAgentIds: [],
     sendMode: "enter",
+    avatarUrl: null,
   };
 }
 
@@ -39,6 +41,9 @@ export const apiUserPreferencesHandlers = [
     }
     if (body.sendMode !== undefined) {
       mockPreferences.sendMode = body.sendMode;
+    }
+    if (body.avatarUrl !== undefined) {
+      mockPreferences.avatarUrl = body.avatarUrl;
     }
 
     return HttpResponse.json(mockPreferences);

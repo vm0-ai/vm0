@@ -22,6 +22,7 @@ interface UserPreferences {
   timezone: string | null;
   pinnedAgentIds: string[];
   sendMode: SendMode;
+  avatarUrl: string | null;
 }
 
 function parseSendMode(value: unknown): SendMode {
@@ -41,6 +42,7 @@ const DEFAULTS: UserPreferences = {
   timezone: null,
   pinnedAgentIds: [],
   sendMode: "enter",
+  avatarUrl: null,
 };
 
 /**
@@ -69,6 +71,7 @@ export async function getUserPreferences(
       timezone: row.timezone,
       pinnedAgentIds: toStringArray(row.pinnedAgentIds),
       sendMode: parseSendMode(row.sendMode),
+      avatarUrl: row.avatarUrl ?? null,
     };
   }
 
@@ -85,6 +88,7 @@ export async function updateUserPreferences(
     timezone?: string;
     pinnedAgentIds?: string[];
     sendMode?: SendMode;
+    avatarUrl?: string | null;
   },
 ): Promise<UserPreferences> {
   if (prefs.timezone !== undefined) {
@@ -103,6 +107,8 @@ export async function updateUserPreferences(
         ? prefs.pinnedAgentIds
         : existing.pinnedAgentIds,
     sendMode: prefs.sendMode !== undefined ? prefs.sendMode : existing.sendMode,
+    avatarUrl:
+      prefs.avatarUrl !== undefined ? prefs.avatarUrl : existing.avatarUrl,
   };
 
   const now = new Date();
@@ -114,6 +120,7 @@ export async function updateUserPreferences(
       timezone: merged.timezone,
       pinnedAgentIds: merged.pinnedAgentIds,
       sendMode: merged.sendMode,
+      avatarUrl: merged.avatarUrl,
       createdAt: now,
       updatedAt: now,
     })
@@ -125,6 +132,7 @@ export async function updateUserPreferences(
           pinnedAgentIds: prefs.pinnedAgentIds,
         }),
         ...(prefs.sendMode !== undefined && { sendMode: prefs.sendMode }),
+        ...(prefs.avatarUrl !== undefined && { avatarUrl: prefs.avatarUrl }),
         updatedAt: now,
       },
     });

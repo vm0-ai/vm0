@@ -1408,6 +1408,13 @@
       "when": 1774828800006,
       "tag": "0200_zero_runs_schedule_id",
       "breakpoints": true
+    },
+    {
+      "idx": 201,
+      "version": "7",
+      "when": 1774522593210,
+      "tag": "0201_add_avatar_url",
+      "breakpoints": true
     }
   ]
 }

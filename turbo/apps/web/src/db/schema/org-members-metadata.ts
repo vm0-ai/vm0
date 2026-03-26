@@ -23,6 +23,7 @@ export const orgMembersMetadata = pgTable(
     onboardingDone: boolean("onboarding_done").notNull().default(false),
     creditCap: bigint("credit_cap", { mode: "number" }),
     creditEnabled: boolean("credit_enabled").notNull().default(true),
+    avatarUrl: text("avatar_url"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

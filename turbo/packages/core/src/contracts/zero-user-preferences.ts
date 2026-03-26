@@ -14,6 +14,7 @@ export const userPreferencesResponseSchema = z.object({
   timezone: z.string().nullable(),
   pinnedAgentIds: z.array(z.string()),
   sendMode: sendModeSchema,
+  avatarUrl: z.string().nullable(),
 });
 
 export type UserPreferencesResponse = z.infer<
@@ -25,12 +26,14 @@ export const updateUserPreferencesRequestSchema = z
     timezone: z.string().min(1).optional(),
     pinnedAgentIds: z.array(z.string()).optional(),
     sendMode: sendModeSchema.optional(),
+    avatarUrl: z.string().nullable().optional(),
   })
   .refine(
     (data) =>
       data.timezone !== undefined ||
       data.pinnedAgentIds !== undefined ||
-      data.sendMode !== undefined,
+      data.sendMode !== undefined ||
+      data.avatarUrl !== undefined,
     {
       message: "At least one preference must be provided",
     },
