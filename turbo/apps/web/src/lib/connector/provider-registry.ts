@@ -42,6 +42,7 @@ import { falHandler } from "./providers/fal-handler";
 import { figmaHandler } from "./providers/figma-handler";
 import { firefliesHandler } from "./providers/fireflies-handler";
 import { firecrawlHandler } from "./providers/firecrawl-handler";
+import { gammaHandler } from "./providers/gamma-handler";
 import { garminConnectHandler } from "./providers/garmin-connect-handler";
 import { gitlabHandler } from "./providers/gitlab-handler";
 import { granolaHandler } from "./providers/granola-handler";
@@ -122,6 +123,7 @@ import { resendHandler } from "./providers/resend-handler";
 import { revenuecatHandler } from "./providers/revenuecat-handler";
 import { scrapeninjaHandler } from "./providers/scrapeninja-handler";
 import { similarwebHandler } from "./providers/similarweb-handler";
+import { spotifyHandler } from "./providers/spotify-handler";
 import { wrikeHandler } from "./providers/wrike-handler";
 import { xeroHandler } from "./providers/xero-handler";
 import { pdforgeHandler } from "./providers/pdforge-handler";
@@ -173,6 +175,7 @@ export const PROVIDER_HANDLERS: Record<
   figma: figmaHandler,
   fireflies: firefliesHandler,
   firecrawl: firecrawlHandler,
+  gamma: gammaHandler,
   "garmin-connect": garminConnectHandler,
   gitlab: gitlabHandler,
   granola: granolaHandler,
@@ -240,6 +243,7 @@ export const PROVIDER_HANDLERS: Record<
   revenuecat: revenuecatHandler,
   scrapeninja: scrapeninjaHandler,
   similarweb: similarwebHandler,
+  spotify: spotifyHandler,
   wrike: wrikeHandler,
   x: xHandler,
   xero: xeroHandler,

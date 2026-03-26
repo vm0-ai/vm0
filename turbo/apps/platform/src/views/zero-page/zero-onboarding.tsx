@@ -1,4 +1,4 @@
-import { Component } from "react";
+import { useState } from "react";
 import {
   useGet,
   useSet,
@@ -7,20 +7,18 @@ import {
 } from "ccstate-react";
 import slackIcon from "./components/settings/icons/slack.svg";
 import zeroAvatarImg from "./assets/avatar_0.png";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  Button,
-} from "@vm0/ui";
+import zeroAnimatedSrc from "./assets/zero-animated.webp";
+import slackPreviewImg from "./assets/Slack.png";
+import { Button, Input } from "@vm0/ui";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   zeroOnboardingStep$,
   zeroAgentName$,
+  zeroWorkspaceName$,
   zeroSaving$,
   setZeroStep$,
+  setZeroWorkspaceName$,
   completeZeroOnboarding$,
   dismissZeroOnboarding$,
   zeroSelectedConnectors$,
@@ -29,8 +27,6 @@ import {
   clearZeroOnboardingError$,
   completeMemberOnboarding$,
   zeroOnboardingStatus$,
-  memberWelcomeStep$,
-  setMemberWelcomeStep$,
 } from "../../signals/zero-page/zero-onboarding.ts";
 import {
   sendZeroChatMessage$,
@@ -48,119 +44,42 @@ import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { slackOrgData$ } from "../../signals/zero-page/zero-slack.ts";
 import { reloadBillingStatus$ } from "../../signals/zero-page/billing.ts";
-import { IconCircleCheck, IconLoader } from "@tabler/icons-react";
+import {
+  IconCircleCheck,
+  IconCircleCheckFilled,
+  IconLoader,
+  IconSearch,
+} from "@tabler/icons-react";
 import { detach, Reason } from "../../signals/utils.ts";
-import { create as createConfetti } from "canvas-confetti";
 
-class WelcomeAnimation extends Component<
-  { title: string; subtitle: string },
-  { displayed: string; showSubtitle: boolean; confettiFired: boolean }
-> {
-  private static readonly COLORS = [
-    "#26ccff",
-    "#fcff42",
-    "#ff5e7e",
-    "#88ff5a",
-    "#ffa62d",
-    "#ffdb4d",
-  ];
-  private timer: number | undefined;
-  private canvasRef: HTMLCanvasElement | null = null;
-  state = { displayed: "", showSubtitle: false, confettiFired: false };
+// ---------------------------------------------------------------------------
+// Progress bar
+// ---------------------------------------------------------------------------
 
-  componentDidMount() {
-    this.startTypewriter();
-  }
-
-  componentWillUnmount() {
-    if (this.timer !== undefined) {
-      window.clearInterval(this.timer);
-    }
-  }
-
-  private startTypewriter() {
-    let i = 0;
-    const { title } = this.props;
-    this.timer = window.setInterval(() => {
-      i++;
-      this.setState({ displayed: title.slice(0, i) });
-      if (i >= title.length) {
-        window.clearInterval(this.timer);
-        this.timer = undefined;
-        window.setTimeout(() => {
-          this.setState({ showSubtitle: true });
-          window.setTimeout(() => this.fireConfetti(), 400);
-        }, 600);
-      }
-    }, 40);
-  }
-
-  private fireConfetti() {
-    if (this.state.confettiFired || !this.canvasRef) {
-      return;
-    }
-    this.setState({ confettiFired: true });
-    const fire = createConfetti(this.canvasRef, { resize: true });
-    if (!fire) {
-      return;
-    }
-    const end = Date.now() + 800;
-    const frame = () => {
-      fire({
-        particleCount: 3,
-        angle: 60,
-        spread: 55,
-        origin: { x: 0, y: 0.5 },
-        colors: WelcomeAnimation.COLORS,
-      })?.catch(() => undefined);
-      fire({
-        particleCount: 3,
-        angle: 120,
-        spread: 55,
-        origin: { x: 1, y: 0.5 },
-        colors: WelcomeAnimation.COLORS,
-      })?.catch(() => undefined);
-      if (Date.now() < end) {
-        window.requestAnimationFrame(frame);
-      }
-    };
-    frame();
-  }
-
-  render() {
-    const { subtitle } = this.props;
-    const { displayed, showSubtitle } = this.state;
-    return (
-      <>
-        <canvas
-          ref={(el) => {
-            this.canvasRef = el;
-          }}
-          style={{
-            position: "absolute",
-            inset: 0,
-            width: "100%",
-            height: "100%",
-            pointerEvents: "none",
-            zIndex: 10,
-          }}
+function ProgressBar({
+  totalSteps,
+  currentStep,
+}: {
+  totalSteps: number;
+  currentStep: number;
+}) {
+  return (
+    <div className="flex items-center gap-1.5 w-full">
+      {Array.from({ length: totalSteps }, (_, i) => (
+        <div
+          key={i}
+          className={`h-1 flex-1 rounded-full transition-colors duration-300 ${
+            i <= currentStep ? "bg-foreground" : "bg-muted"
+          }`}
         />
-        <h2 className="text-xl font-semibold tracking-tight min-h-[1.75rem]">
-          {displayed}
-          {displayed.length < this.props.title.length && (
-            <span className="inline-block w-[2px] h-5 bg-foreground align-text-bottom animate-pulse ml-0.5" />
-          )}
-        </h2>
-        <p
-          className="text-sm text-muted-foreground leading-relaxed max-w-[380px] mt-3 transition-opacity duration-700"
-          style={{ opacity: showSubtitle ? 1 : 0 }}
-        >
-          {subtitle}
-        </p>
-      </>
-    );
-  }
+      ))}
+    </div>
+  );
 }
+
+// ---------------------------------------------------------------------------
+// Connector card
+// ---------------------------------------------------------------------------
 
 function OnboardingConnectorCard({
   type,
@@ -180,22 +99,21 @@ function OnboardingConnectorCard({
       type="button"
       onClick={onClick}
       disabled={isPolling}
-      className={`zero-card flex items-center gap-2 rounded-xl border px-3 py-2 min-w-0 transition-colors focus:outline-none ${
-        isSelected
-          ? "border-green-500/30 bg-green-500/5 cursor-pointer"
-          : isPolling
-            ? "border-yellow-500/30 bg-yellow-500/5"
-            : "border-border hover:bg-muted/50 cursor-pointer"
+      className={`flex items-center gap-3 rounded-xl px-4 py-3.5 transition-colors focus:outline-none ${
+        isPolling ? "bg-yellow-500/5" : "hover:bg-muted/30 cursor-pointer"
       }`}
+      style={{ border: "0.7px solid hsl(var(--gray-400))" }}
     >
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted/40 overflow-hidden">
         <ConnectorIcon type={type} size={20} />
       </span>
-      <span className="text-sm font-medium text-foreground whitespace-nowrap">
-        {label}
+      <span className="min-w-0 flex-1 text-left">
+        <span className="block text-sm font-medium text-foreground truncate">
+          {label}
+        </span>
       </span>
       {isSelected && (
-        <IconCircleCheck className="h-4 w-4 shrink-0 text-green-500" />
+        <IconCircleCheckFilled className="h-4 w-4 shrink-0 text-primary" />
       )}
       {isPolling && (
         <IconLoader className="h-4 w-4 shrink-0 text-yellow-500 animate-spin" />
@@ -204,11 +122,80 @@ function OnboardingConnectorCard({
   );
 }
 
-function OnboardingConnectorsStep({
-  name,
+// ---------------------------------------------------------------------------
+// Connectors step content
+// ---------------------------------------------------------------------------
+
+/** Step 2: Pure selection — just toggle connectors, no OAuth. */
+function SelectConnectorsContent({
   selectedConnectors,
 }: {
-  name: string;
+  selectedConnectors: string[];
+}) {
+  const toggleConnector = useSet(toggleZeroConnector$);
+  const [search, setSearch] = useState("");
+
+  const connectorEntries = Object.entries(CONNECTOR_TYPES) as [
+    ConnectorType,
+    (typeof CONNECTOR_TYPES)[ConnectorType],
+  ][];
+
+  const needle = search.trim().toLowerCase();
+  const filtered = needle
+    ? connectorEntries.filter(([, config]) =>
+        config.label.toLowerCase().includes(needle),
+      )
+    : connectorEntries;
+
+  const selectedSet = new Set(selectedConnectors);
+
+  return (
+    <>
+      <h2 className="text-2xl font-semibold tracking-tight">
+        Choose your tools
+      </h2>
+      <p className="text-sm text-muted-foreground leading-relaxed mt-2 mb-6">
+        Select the apps you use. You can add more later.
+      </p>
+      <div className="relative w-full mb-5">
+        <IconSearch
+          size={15}
+          stroke={1.5}
+          className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
+        />
+        <Input
+          type="text"
+          placeholder="Search connectors..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="h-9 w-full pl-9 rounded-lg"
+        />
+      </div>
+      <div className="w-full grid grid-cols-3 gap-3">
+        {filtered.map(([type, config]) => (
+          <OnboardingConnectorCard
+            key={type}
+            type={type}
+            label={config.label}
+            isSelected={selectedSet.has(type)}
+            isPolling={false}
+            onClick={() => toggleConnector(type)}
+          />
+        ))}
+        {filtered.length === 0 && (
+          <p className="col-span-3 text-sm text-muted-foreground py-4">
+            No connectors match your search.
+          </p>
+        )}
+      </div>
+    </>
+  );
+}
+
+/** Step 3: Connect selected connectors (placeholder UI). */
+function ConnectStepContent({
+  selectedConnectors,
+}: {
   selectedConnectors: string[];
 }) {
   const connectorTypesLoadable = useLastLoadable(allConnectorTypes$);
@@ -216,559 +203,893 @@ function OnboardingConnectorsStep({
   const connect = useSet(connectConnector$);
   const setSelectedConnector = useSet(setSelectedConnectorType$);
   const pageSignal = useGet(pageSignal$);
-  const toggleConnector = useSet(toggleZeroConnector$);
 
   const allConnectors =
     connectorTypesLoadable.state === "hasData"
       ? connectorTypesLoadable.data
       : [];
   const connectorMap = new Map(allConnectors.map((c) => [c.type, c]));
-  const selectedSet = new Set(selectedConnectors);
+  const connectedSet = new Set(
+    allConnectors.filter((c) => c.connected).map((c) => c.type),
+  );
 
-  const connectorEntries = Object.entries(CONNECTOR_TYPES) as [
-    ConnectorType,
-    (typeof CONNECTOR_TYPES)[ConnectorType],
-  ][];
+  const selectedEntries = (
+    Object.entries(CONNECTOR_TYPES) as [
+      ConnectorType,
+      (typeof CONNECTOR_TYPES)[ConnectorType],
+    ][]
+  ).filter(([type]) => selectedConnectors.includes(type));
 
-  const handleClick = (type: ConnectorType) => {
-    // Already selected → deselect (don't disconnect)
-    if (selectedSet.has(type)) {
-      toggleConnector(type);
-      return;
-    }
-
+  const handleConnect = (type: ConnectorType) => {
     const connector = connectorMap.get(type);
-
-    // Connector already connected → select immediately
     if (connector?.connected) {
-      toggleConnector(type);
       return;
     }
-
-    // Not connected → start connect flow, select on success
     if (connector?.availableAuthMethods.includes("api-token")) {
       setSelectedConnector(type);
     } else {
-      // OAuth flow: select skill after connect completes
-      detach(
-        (async () => {
-          await connect(type, pageSignal);
-          toggleConnector(type);
-        })(),
-        Reason.DomCallback,
-      );
+      detach(connect(type, pageSignal), Reason.DomCallback);
     }
   };
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center text-center px-8 pt-8">
-      <DialogHeader className="space-y-2">
-        <DialogTitle className="text-xl font-semibold tracking-tight">
-          Add connector
-        </DialogTitle>
-      </DialogHeader>
-      <p className="text-sm text-muted-foreground leading-relaxed mt-1 mb-6">
-        Add connectors so {name || "Zero"} can work with your tools. You can
-        skip and add more later.
+    <>
+      <h2 className="text-2xl font-semibold tracking-tight">
+        Connect your apps
+      </h2>
+      <p className="text-sm text-muted-foreground leading-relaxed mt-2 mb-6">
+        Authorize each app so Zero can work with it. You can always add more
+        later.
       </p>
-      <div className="w-full px-4 flex-1 min-h-0">
-        <div className="w-full flex flex-wrap justify-center gap-3 pb-4">
-          {connectorEntries.map(([type, config]) => (
-            <OnboardingConnectorCard
-              key={type}
-              type={type}
-              label={config.label}
-              isSelected={selectedSet.has(type)}
-              isPolling={pollingType === type}
-              onClick={() => handleClick(type)}
+      {selectedEntries.length === 0 ? (
+        <p className="text-sm text-muted-foreground py-8">
+          No connectors selected. You can go back to add some, or skip this
+          step.
+        </p>
+      ) : (
+        <div className="w-full flex flex-col gap-3">
+          {selectedEntries.map(([type, config]) => {
+            const isConnected = connectedSet.has(type);
+            const isPolling = pollingType === type;
+            return (
+              <div
+                key={type}
+                className="flex items-center gap-4 rounded-xl px-5 py-4"
+                style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted/40 overflow-hidden">
+                  <ConnectorIcon type={type} size={20} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium text-foreground">
+                    {config.label}
+                  </span>
+                  {"helpText" in config && config.helpText && (
+                    <span className="block text-xs text-muted-foreground mt-0.5 line-clamp-1">
+                      {(config.helpText as string)
+                        .replace(/^Connect your \w+ account to /, "")
+                        .replace(/^Connect /, "")}
+                    </span>
+                  )}
+                </div>
+                {isConnected ? (
+                  <span className="flex items-center gap-1.5 text-xs text-green-600 font-medium">
+                    <IconCircleCheck className="h-4 w-4" />
+                    Connected
+                  </span>
+                ) : isPolling ? (
+                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <IconLoader className="h-4 w-4 animate-spin" />
+                    Connecting...
+                  </span>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="rounded-lg text-xs h-8"
+                    onClick={() => handleConnect(type)}
+                  >
+                    Connect
+                  </Button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Where to work step content
+// ---------------------------------------------------------------------------
+
+function WhereToWorkContent({
+  name,
+  zeroAvatarSrc,
+  onAddToSlack,
+  onContinueWeb,
+  saving,
+  error,
+}: {
+  name: string;
+  zeroAvatarSrc: string;
+  onAddToSlack: () => void;
+  onContinueWeb: () => void;
+  saving: boolean;
+  error: string | null;
+}) {
+  return (
+    <>
+      <h2 className="text-2xl font-semibold tracking-tight">
+        Where would you like to work with {name || "Zero"}?
+      </h2>
+      <p className="text-sm text-muted-foreground leading-relaxed max-w-[420px] mt-2 mb-8">
+        Choose how you&apos;d like to interact with your agent.
+      </p>
+      {error && (
+        <div className="w-full mb-6 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          {error === "Build timed out"
+            ? "Setup is taking longer than expected. Please try again."
+            : error}
+        </div>
+      )}
+      <div className="flex flex-col gap-5 w-full">
+        <button
+          type="button"
+          onClick={onAddToSlack}
+          disabled={saving}
+          className="flex items-center gap-4 rounded-xl bg-card px-6 py-6 text-left transition-colors hover:bg-muted/30 disabled:opacity-50"
+          style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+        >
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted/40 overflow-hidden">
+            <img src={slackIcon} alt="" className="h-6 w-6" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <span className="block text-sm font-semibold text-foreground">
+              Add {name || "Zero"} to Slack
+            </span>
+            <p className="text-xs text-muted-foreground leading-relaxed mt-0.5">
+              Work with {name || "Zero"} in Slack where your team already
+              collaborates.
+            </p>
+          </div>
+        </button>
+        <button
+          type="button"
+          onClick={onContinueWeb}
+          disabled={saving}
+          className="flex items-center gap-4 rounded-xl bg-card px-6 py-6 text-left transition-colors hover:bg-muted/30 disabled:opacity-50"
+          style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+        >
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg overflow-hidden">
+            <img
+              src={zeroAvatarSrc}
+              alt=""
+              role="presentation"
+              className="h-10 w-10 rounded-lg object-cover object-top"
             />
-          ))}
+          </span>
+          <div className="min-w-0 flex-1">
+            <span className="block text-sm font-semibold text-foreground">
+              Continue in web
+            </span>
+            <p className="text-xs text-muted-foreground leading-relaxed mt-0.5">
+              Chat with {name || "Zero"} in your browser with full access to
+              workflows and settings.
+            </p>
+          </div>
+        </button>
+      </div>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Full-page layout wrapper
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Chat preview for workspace step
+// ---------------------------------------------------------------------------
+
+function ChatPreview() {
+  return (
+    <div className="w-full max-w-[360px] flex flex-col items-center">
+      {/* Header */}
+      <img
+        src={zeroAnimatedSrc}
+        alt=""
+        role="presentation"
+        className="h-24 w-24 object-contain mb-5"
+      />
+      <h3 className="text-lg font-semibold text-foreground text-center leading-snug">
+        AI that works alongside your team
+      </h3>
+      <p className="text-sm text-muted-foreground text-center leading-relaxed mt-2 mb-6 max-w-[300px]">
+        Zero lives in your workspace, works across your tools, and helps
+        everyone stay aligned.
+      </p>
+
+      {/* Mock chat — offset down */}
+      <div className="mt-10" />
+      <div className="zero-app w-full flex flex-col gap-5">
+        {/* User message */}
+        <div className="flex flex-col items-end pl-10">
+          <div className="zero-chat-bubble-user rounded-xl text-[13px] leading-relaxed">
+            <div className="px-4 py-3">
+              Draft a Q2 brief and share it with the team
+            </div>
+          </div>
+        </div>
+
+        {/* Zero reply */}
+        <div className="flex items-start gap-2.5 pr-10">
+          <img
+            src={zeroAvatarImg}
+            alt=""
+            className="h-6 w-6 shrink-0 object-contain mt-0.5"
+          />
+          <div className="text-[13px] text-foreground leading-relaxed">
+            Created in Notion and shared in #product. Sarah and James tagged for
+            review.
+          </div>
+        </div>
+
+        {/* User follow-up */}
+        <div className="flex flex-col items-end pl-10">
+          <div className="zero-chat-bubble-user rounded-xl text-[13px] leading-relaxed">
+            <div className="px-4 py-3">
+              Keep it updated weekly and notify the team
+            </div>
+          </div>
+        </div>
+
+        {/* Zero reply */}
+        <div className="flex items-start gap-2.5 pr-10">
+          <img
+            src={zeroAvatarImg}
+            alt=""
+            className="h-6 w-6 shrink-0 object-contain mt-0.5"
+          />
+          <div className="text-[13px] text-foreground leading-relaxed">
+            Done! I&apos;ll update every Friday and post a summary to #product.
+            🔄
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-/** Zero onboarding: creates org, model provider, and default agent. */
-export function ZeroOnboarding({
-  zeroAvatarSrc = zeroAvatarImg,
+// Step-specific illustration hints for the right panel
+type StepIllustration = {
+  title: string;
+  subtitle: string;
+  showSlackPreview?: boolean;
+};
+function getStepIllustration(stepKey: string): StepIllustration {
+  switch (stepKey) {
+    case "connectors": {
+      return {
+        title: "Your tools, automated",
+        subtitle:
+          "Zero works across your apps — managing tasks, syncing data, and handling workflows so you don't have to.",
+      };
+    }
+    case "where": {
+      return {
+        title: "Works where your team works",
+        subtitle:
+          "Zero also lives in Slack, connects your tools securely, and handles tasks so your team can focus on what matters.",
+        showSlackPreview: true,
+      };
+    }
+    default: {
+      return {
+        title: "AI that works alongside your team",
+        subtitle:
+          "Zero lives in your workspace, works across your tools, and helps everyone stay aligned.",
+      };
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Orbit illustration — selected connectors orbit around Zero
+// ---------------------------------------------------------------------------
+
+function OrbitIllustration({
+  selectedConnectors,
 }: {
-  zeroAvatarSrc?: string;
+  selectedConnectors: string[];
 }) {
-  const step = useGet(zeroOnboardingStep$);
-  const setStep = useSet(setZeroStep$);
-  const name = useGet(zeroAgentName$);
-  const saving = useGet(zeroSaving$);
-  const selectedConnectors = useGet(zeroSelectedConnectors$);
-  const toggleConnector = useSet(toggleZeroConnector$);
+  const entries = (
+    Object.entries(CONNECTOR_TYPES) as [
+      ConnectorType,
+      (typeof CONNECTOR_TYPES)[ConnectorType],
+    ][]
+  ).filter(([type]) => selectedConnectors.includes(type));
+
+  const innerRadius = 110;
+  const outerRadius = 175;
+  const inner = entries.slice(0, 6);
+  const outer = entries.slice(6, 14);
+
+  return (
+    <div className="relative w-[400px] h-[400px]">
+      {/* Spinning orbit rings */}
+      <div
+        className="absolute rounded-full border border-dashed border-foreground/8 animate-[spin_60s_linear_infinite]"
+        style={{
+          top: `calc(50% - ${innerRadius}px)`,
+          left: `calc(50% - ${innerRadius}px)`,
+          width: innerRadius * 2,
+          height: innerRadius * 2,
+        }}
+      />
+      {entries.length > 6 && (
+        <div
+          className="absolute rounded-full border border-dashed border-foreground/6 animate-[spin_90s_linear_infinite_reverse]"
+          style={{
+            top: `calc(50% - ${outerRadius}px)`,
+            left: `calc(50% - ${outerRadius}px)`,
+            width: outerRadius * 2,
+            height: outerRadius * 2,
+          }}
+        />
+      )}
+
+      {/* Zero animated avatar at center */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
+        <img
+          src={zeroAnimatedSrc}
+          alt=""
+          role="presentation"
+          className="h-20 w-20 object-contain"
+        />
+      </div>
+
+      {/* Inner orbit connectors */}
+      {inner.map(([type], i) => {
+        const angle =
+          (i / Math.max(inner.length, 1)) * Math.PI * 2 - Math.PI / 2;
+        const x = Math.cos(angle) * innerRadius;
+        const y = Math.sin(angle) * innerRadius;
+        return (
+          <div
+            key={type}
+            className="absolute z-10 flex h-11 w-11 items-center justify-center rounded-xl bg-background shadow-sm transition-all duration-500 ease-out"
+            style={{
+              border: "0.7px solid hsl(var(--gray-400))",
+              top: `calc(50% + ${y}px - 22px)`,
+              left: `calc(50% + ${x}px - 22px)`,
+            }}
+          >
+            <ConnectorIcon type={type} size={22} />
+          </div>
+        );
+      })}
+
+      {/* Outer orbit connectors */}
+      {outer.map(([type], i) => {
+        const angle =
+          (i / Math.max(outer.length, 1)) * Math.PI * 2 - Math.PI / 2 + 0.3;
+        const x = Math.cos(angle) * outerRadius;
+        const y = Math.sin(angle) * outerRadius;
+        return (
+          <div
+            key={type}
+            className="absolute z-10 flex h-10 w-10 items-center justify-center rounded-xl bg-background shadow-sm transition-all duration-500 ease-out"
+            style={{
+              border: "0.7px solid hsl(var(--gray-400))",
+              top: `calc(50% + ${y}px - 20px)`,
+              left: `calc(50% + ${x}px - 20px)`,
+            }}
+          >
+            <ConnectorIcon type={type} size={20} />
+          </div>
+        );
+      })}
+
+      {/* Empty state dots on orbit */}
+      {entries.length === 0 &&
+        Array.from({ length: 6 }, (_, i) => {
+          const angle = (i / 6) * Math.PI * 2 - Math.PI / 2;
+          const x = Math.cos(angle) * innerRadius;
+          const y = Math.sin(angle) * innerRadius;
+          return (
+            <div
+              key={i}
+              className="absolute h-3.5 w-3.5 rounded-full bg-foreground/10"
+              style={{
+                top: `calc(50% + ${y}px - 7px)`,
+                left: `calc(50% + ${x}px - 7px)`,
+              }}
+            />
+          );
+        })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Full-page layout wrapper
+// ---------------------------------------------------------------------------
+
+function OnboardingPage({
+  currentStep,
+  totalSteps,
+  stepKey,
+  onBack,
+  onNext,
+  showBack,
+  showNext,
+  nextDisabled,
+  zeroAvatarSrc: _,
+  selectedConnectors,
+  children,
+}: {
+  currentStep: number;
+  totalSteps: number;
+  stepKey: string;
+  onBack?: () => void;
+  onNext?: () => void;
+  showBack: boolean;
+  showNext: boolean;
+  nextDisabled?: boolean;
+  zeroAvatarSrc?: string;
+  selectedConnectors?: string[];
+  children: React.ReactNode;
+}) {
+  const illustration = getStepIllustration(stepKey);
+  const showOrbit = stepKey === "connectors" && selectedConnectors;
+  const showChat = stepKey === "workspace";
+
+  return (
+    <div className="zero-app flex h-dvh bg-muted/30 relative">
+      {/* VM0 logo — top left */}
+      <div className="absolute top-6 left-6 z-20 text-foreground">
+        <svg
+          width="80"
+          height="24"
+          viewBox="0 0 100 30"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M13.3915 0.0627979C13.2455 -0.0209506 13.0657 -0.020839 12.9198 0.0630906L1.0053 6.91543C0.692394 7.09539 0.690093 7.54442 1.00114 7.72755L12.9156 14.7423C13.0636 14.8295 13.2475 14.8296 13.3957 14.7426L25.3445 7.72785C25.6562 7.54485 25.6539 7.09497 25.3404 6.91514L13.3915 0.0627979Z"
+            fill="#ED4E01"
+          />
+          <path
+            d="M0.710495 8.33374L12.6479 15.2595C12.7944 15.3445 12.8846 15.5015 12.8846 15.6715L12.8843 29.5237C12.8843 29.8899 12.4897 30.1187 12.1741 29.9356L0.236691 23.0096C0.0902206 22.9246 -3.46036e-06 22.7676 0 22.5977L0.00028208 8.74568C0.000289537 8.37949 0.394855 8.15064 0.710495 8.33374Z"
+            fill="#ED4E01"
+          />
+          <path
+            d="M24.947 21.6772C24.947 21.9507 24.8017 22.2036 24.5655 22.3415L16.2103 27.219C15.6975 27.5184 15.0533 27.1485 15.0533 26.5547L15.0531 16.7842C15.0531 16.5107 15.1983 16.2578 15.4345 16.1199L23.7897 11.2425C24.3025 10.9431 24.9468 11.313 24.9468 11.9068L24.947 21.6772ZM13.6541 16.3426V29.5279C13.6541 29.8852 14.0308 30.1106 14.3391 29.9444L14.3538 29.9362L25.5769 23.3654C26.25 22.9808 26.3462 22.6924 26.3459 22.1188L26.3459 8.93378C26.3459 8.57084 25.9572 8.344 25.6462 8.52548L14.4231 15.0001C14.0385 15.2885 13.6539 15.577 13.6541 16.3426Z"
+            fill="#ED4E01"
+          />
+          <path
+            d="M25.9616 10.58L15.2113 28.4616L14.2308 27.8817L24.981 10.0001L25.9616 10.58Z"
+            fill="#ED4E01"
+          />
+          <path
+            d="M42.1865 25L34.3459 5H37.4651L43.7887 21.4575L50.1264 5H53.2315L45.3908 25H42.1865Z"
+            fill="currentColor"
+          />
+          <path
+            d="M66.9877 25L59.4023 10.3417V25H56.4957V5H59.6716L67.413 20.0628L75.1686 5H78.3304V25H75.438V10.3417L67.8526 25H66.9877Z"
+            fill="currentColor"
+          />
+          <path
+            d="M99.3459 22.1409C99.3459 22.5314 99.2703 22.9033 99.1191 23.2566C98.9678 23.6007 98.7599 23.9028 98.4952 24.1632C98.2305 24.4235 97.9186 24.6281 97.5594 24.7768C97.2097 24.9256 96.8363 25 96.4393 25H86.2735C85.8765 25 85.4984 24.9256 85.1392 24.7768C84.7894 24.6281 84.4822 24.4235 84.2176 24.1632C83.9529 23.9028 83.745 23.6007 83.5937 23.2566C83.4425 22.9033 83.3669 22.5314 83.3669 22.1409V7.85914C83.3669 7.46862 83.4425 7.10135 83.5937 6.75732C83.745 6.404 83.9529 6.10181 84.2176 5.85077C84.4822 5.59042 84.7894 5.38587 85.1392 5.2371C85.4984 5.07903 85.8765 5 86.2735 5H96.4393C96.8363 5 97.2097 5.07903 97.5594 5.2371C97.9186 5.38587 98.2305 5.59042 98.4952 5.85077C98.7599 6.10181 98.9678 6.404 99.1191 6.75732C99.2703 7.10135 99.3459 7.46862 99.3459 7.85914V22.1409ZM86.2735 7.85914V22.1409H96.4393V7.85914H86.2735Z"
+            fill="currentColor"
+          />
+          <path
+            d="M94.8994 6.79107L97.1494 8.06891L87.8973 23.8325L85.6473 22.5547L94.8994 6.79107Z"
+            fill="currentColor"
+          />
+        </svg>
+      </div>
+
+      {/* Left panel — brand / illustration */}
+      <div
+        className={`hidden lg:flex w-2/5 shrink-0 flex-col items-center p-10 relative overflow-hidden ${showChat ? "pt-[8%]" : "justify-center"}`}
+      >
+        {/* Decorative circles (non-orbit, non-chat steps) */}
+        {!showOrbit && !showChat && (
+          <div className="absolute inset-0 pointer-events-none" aria-hidden>
+            <div className="absolute top-[15%] left-[10%] h-48 w-48 rounded-full border border-border/20" />
+            <div className="absolute top-[25%] left-[20%] h-64 w-64 rounded-full border border-border/15" />
+            <div className="absolute bottom-[20%] right-[5%] h-40 w-40 rounded-full border border-border/20" />
+            <div className="absolute top-[60%] left-[5%] h-32 w-32 rounded-full border border-border/10" />
+          </div>
+        )}
+
+        <div className="relative z-10 flex flex-col items-center">
+          {showChat ? (
+            <ChatPreview />
+          ) : showOrbit && selectedConnectors ? (
+            <>
+              <OrbitIllustration selectedConnectors={selectedConnectors} />
+              <p className="text-sm text-muted-foreground text-center leading-relaxed mt-6 max-w-[300px]">
+                {selectedConnectors.length === 0
+                  ? "Pick your tools and Zero will handle the rest, securely."
+                  : `${selectedConnectors.length} app${selectedConnectors.length === 1 ? "" : "s"} selected. Zero will securely manage ${selectedConnectors.length === 1 ? "it" : "them"} for you so you don\u2019t have to.`}
+              </p>
+              <p className="text-[11px] text-muted-foreground/50 text-center mt-4">
+                Sandboxed VMs&ensp;|&ensp;No credential
+                exposure&ensp;|&ensp;Full audit trail&ensp;|&ensp;Open source
+              </p>
+            </>
+          ) : (
+            <>
+              <img
+                src={zeroAnimatedSrc}
+                alt=""
+                role="presentation"
+                className="h-24 w-24 object-contain mb-8"
+              />
+              <h3 className="text-xl font-semibold text-foreground text-center leading-snug">
+                {illustration.title}
+              </h3>
+              {illustration.subtitle && (
+                <p className="text-sm text-muted-foreground text-center leading-relaxed mt-3 max-w-[300px]">
+                  {illustration.subtitle}
+                </p>
+              )}
+              {illustration.showSlackPreview && (
+                <div className="mt-4 w-full flex justify-center">
+                  <img
+                    src={slackPreviewImg}
+                    alt="Zero working in Slack"
+                    className="w-full max-w-[380px]"
+                  />
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Right panel — form */}
+      <div className="flex flex-1 flex-col min-w-0 bg-background items-center">
+        <div className="flex flex-col w-full max-w-[750px] flex-1 min-h-0">
+          {/* Progress bar */}
+          <div className="shrink-0 px-10 pt-8 pb-4">
+            <ProgressBar totalSteps={totalSteps} currentStep={currentStep} />
+          </div>
+
+          {/* Content */}
+          <main className="flex-1 min-h-0 overflow-y-auto px-10 pt-[12%] pb-6 [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden">
+            {children}
+          </main>
+
+          {/* Footer */}
+          <div className="shrink-0 border-t border-border/40 flex items-center justify-between px-10 py-5">
+            <div>
+              {showBack && onBack && (
+                <Button
+                  variant="ghost"
+                  className="rounded-lg text-muted-foreground"
+                  onClick={onBack}
+                >
+                  Back
+                </Button>
+              )}
+            </div>
+            <div>
+              {showNext && onNext && (
+                <Button
+                  onClick={onNext}
+                  className="rounded-lg min-w-[100px]"
+                  disabled={nextDisabled}
+                >
+                  Next
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Zero onboarding (admin flow) — full page
+// ---------------------------------------------------------------------------
+
+const ADMIN_STEPS = ["1", "2", "3", "4"] as const;
+
+function WorkspaceStep({
+  zeroAvatarSrc,
+  onNext,
+}: {
+  zeroAvatarSrc: string;
+  onNext: () => void;
+}) {
+  const workspaceName = useGet(zeroWorkspaceName$);
+  const setWorkspaceName = useSet(setZeroWorkspaceName$);
+
+  return (
+    <OnboardingPage
+      currentStep={0}
+      totalSteps={ADMIN_STEPS.length}
+      stepKey="workspace"
+      zeroAvatarSrc={zeroAvatarSrc}
+      showBack={false}
+      showNext
+      onNext={onNext}
+      nextDisabled={!workspaceName.trim()}
+    >
+      <h2 className="text-2xl font-semibold tracking-tight">
+        Name your workspace
+      </h2>
+      <p className="text-sm text-muted-foreground leading-relaxed mt-2 mb-8">
+        This is where your team will collaborate with Zero and other AI agents.
+      </p>
+      <div className="w-full">
+        <label
+          htmlFor="workspace-name"
+          className="block text-sm font-medium text-foreground mb-2"
+        >
+          Workspace name
+        </label>
+        <Input
+          id="workspace-name"
+          type="text"
+          placeholder="e.g. Acme Corp"
+          value={workspaceName}
+          onChange={(e) => setWorkspaceName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && workspaceName.trim()) {
+              onNext();
+            }
+          }}
+          className="h-10 rounded-lg"
+          autoFocus
+        />
+      </div>
+    </OnboardingPage>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Onboarding step resolution helpers
+// ---------------------------------------------------------------------------
+
+function resolveEffectiveStep(
+  isAdmin: boolean,
+  step: string,
+  hasMemberConnectors: boolean,
+): string {
+  if (isAdmin) {
+    return step;
+  }
+  if (step === "1" || step === "2" || (step === "3" && !hasMemberConnectors)) {
+    return hasMemberConnectors ? "3" : "4";
+  }
+  return step;
+}
+
+function resolveVisibleSteps(
+  isAdmin: boolean,
+  hasMemberConnectors: boolean,
+): readonly string[] {
+  if (isAdmin) {
+    return ADMIN_STEPS;
+  }
+  return hasMemberConnectors ? ["3", "4"] : ["4"];
+}
+
+// ---------------------------------------------------------------------------
+// Onboarding completion handlers (hook)
+// ---------------------------------------------------------------------------
+
+function useOnboardingHandlers(isAdmin: boolean) {
   const completeOnboarding = useSet(completeZeroOnboarding$);
+  const completeMember = useSet(completeMemberOnboarding$);
   const dismissOnboarding = useSet(dismissZeroOnboarding$);
   const sendMessage = useSet(sendZeroChatMessage$);
   const startNewSession = useSet(startNewZeroSession$);
   const navigate = useSet(navigateTo$);
-  const onboardingError = useGet(zeroOnboardingError$);
   const clearOnboardingError = useSet(clearZeroOnboardingError$);
   const reloadBilling = useSet(reloadBillingStatus$);
-  const selectedConnectorType = useGet(selectedConnectorType$);
-  const setSelected = useSet(setSelectedConnectorType$);
   const slackData = useGet(slackOrgData$);
-
-  const handleStep1Next = () => {
-    setStep("3");
-  };
-
-  const handleStep3Next = () => {
-    setStep("4");
-  };
-
-  const handleStep3Back = () => {
-    setStep("1");
-  };
-
-  const handleStep4Back = () => {
-    setStep("3");
-  };
 
   const handleAddToSlack = () => {
     clearOnboardingError();
-    const controller = new AbortController();
-    detach(
-      (async () => {
-        const result = await completeOnboarding(controller.signal);
-        if (!result) {
-          return;
-        }
-        reloadBilling();
-        dismissOnboarding();
-        // Admin with install URL: open Slack OAuth install flow
-        if (slackData?.isAdmin && slackData.installUrl) {
-          const url = new URL(slackData.installUrl, window.location.origin);
-          url.searchParams.set("_t", String(Date.now()));
-          window.open(url.toString(), "_blank");
-        }
-        navigate("/works");
-      })(),
-      Reason.DomCallback,
-    );
+    if (isAdmin) {
+      const controller = new AbortController();
+      detach(
+        (async () => {
+          const result = await completeOnboarding(controller.signal);
+          if (!result) {
+            return;
+          }
+          reloadBilling();
+          dismissOnboarding();
+          if (slackData?.isAdmin && slackData.installUrl) {
+            const url = new URL(slackData.installUrl, window.location.origin);
+            url.searchParams.set("_t", String(Date.now()));
+            window.open(url.toString(), "_blank");
+          }
+          navigate("/works");
+        })(),
+        Reason.DomCallback,
+      );
+    } else {
+      const controller = new AbortController();
+      detach(
+        (async () => {
+          await completeMember(controller.signal);
+          navigate("/works");
+        })(),
+        Reason.DomCallback,
+      );
+    }
   };
 
   const handleContinueWithWeb = () => {
     clearOnboardingError();
     const controller = new AbortController();
-    detach(
-      (async () => {
-        const result = await completeOnboarding(controller.signal);
-        if (!result) {
-          return;
-        }
-        reloadBilling();
-        navigate("/");
-        startNewSession();
-        // Use controller.signal instead of pageSignal: navigate("/") aborts
-        // the onboarding page signal via resetRouteSignal$, so pageSignal is
-        // already dead by the time sendMessage runs.
-        detach(
-          sendMessage(
-            "Who are you and what can you do?",
-            undefined,
-            controller.signal,
-          ),
-          Reason.DomCallback,
-        );
-        dismissOnboarding();
-      })(),
-      Reason.DomCallback,
-    );
+    if (isAdmin) {
+      detach(
+        (async () => {
+          const result = await completeOnboarding(controller.signal);
+          if (!result) {
+            return;
+          }
+          reloadBilling();
+          navigate("/");
+          startNewSession();
+          // Use controller.signal instead of pageSignal: navigate("/") aborts
+          // the onboarding page signal via resetRouteSignal$, so pageSignal is
+          // already dead by the time sendMessage runs.
+          detach(
+            sendMessage(
+              "Who are you and what can you do?",
+              undefined,
+              controller.signal,
+            ),
+            Reason.DomCallback,
+          );
+          dismissOnboarding();
+        })(),
+        Reason.DomCallback,
+      );
+    } else {
+      detach(
+        (async () => {
+          await completeMember(controller.signal);
+          navigate("/");
+          startNewSession();
+          detach(
+            sendMessage(
+              "Who are you and what can you do?",
+              undefined,
+              controller.signal,
+            ),
+            Reason.DomCallback,
+          );
+        })(),
+        Reason.DomCallback,
+      );
+    }
   };
 
-  if (step === "done") {
-    return null;
-  }
-
-  const dialogBaseClass =
-    "zero-app sm:max-w-[720px] h-[min(500px,85dvh)] gap-0 p-0 flex flex-col rounded-xl border border-border bg-card shadow-lg";
-  const footerClass =
-    "zero-onboarding-footer shrink-0 border-t h-16 flex items-center gap-2 px-8";
-
-  return (
-    <>
-      {/* Step 1: Meet your new teammate */}
-      <Dialog open={step === "1"}>
-        <DialogContent
-          className={`${dialogBaseClass} zero-onboarding-dialog zero-onboarding-step1`}
-          onPointerDownOutside={(e) => e.preventDefault()}
-          onEscapeKeyDown={(e) => e.preventDefault()}
-          aria-describedby={undefined}
-          style={{ position: "fixed", overflow: "hidden" }}
-        >
-          <DialogTitle className="sr-only">
-            Meet Zero, your new teammate!
-          </DialogTitle>
-          <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center text-center px-8 py-8">
-            <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl mb-5">
-              <img
-                src={zeroAvatarSrc}
-                alt=""
-                role="presentation"
-                className="h-16 w-16 rounded-full object-cover object-top"
-              />
-            </div>
-            <WelcomeAnimation
-              title="Meet Zero, your new teammate!"
-              subtitle="Think of Zero as a teammate in the office you can casually talk to, delegate tasks, and count on to get things done."
-            />
-          </div>
-          <div className={`${footerClass} justify-end`}>
-            <Button
-              onClick={handleStep1Next}
-              className="rounded-lg min-w-[100px]"
-            >
-              Next
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Step 3: Add skills */}
-      <Dialog open={step === "3"}>
-        <DialogContent
-          className={`${dialogBaseClass} zero-onboarding-dialog`}
-          onPointerDownOutside={(e) => e.preventDefault()}
-          onEscapeKeyDown={(e) => e.preventDefault()}
-          aria-describedby={undefined}
-        >
-          <OnboardingConnectorsStep
-            name={name}
-            selectedConnectors={selectedConnectors}
-          />
-          <div className={`${footerClass} justify-between`}>
-            <Button
-              variant="ghost"
-              className="rounded-lg text-muted-foreground"
-              onClick={handleStep3Back}
-            >
-              Back
-            </Button>
-            <Button
-              onClick={handleStep3Next}
-              className="rounded-lg min-w-[100px]"
-            >
-              Next
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {selectedConnectorType && (
-        <ConnectModal
-          onClose={() => setSelected(null)}
-          onSuccess={() => toggleConnector(selectedConnectorType)}
-        />
-      )}
-
-      {/* Step 4: Where would you like to work with Zero? */}
-      <Dialog open={step === "4"}>
-        <DialogContent
-          className={`${dialogBaseClass} zero-onboarding-dialog`}
-          onPointerDownOutside={(e) => e.preventDefault()}
-          onEscapeKeyDown={(e) => e.preventDefault()}
-          aria-describedby={undefined}
-        >
-          <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center text-center px-8 py-8">
-            <DialogHeader className="space-y-2">
-              <DialogTitle className="text-xl font-semibold tracking-tight">
-                Where would you like to work with {name || "Zero"}?
-              </DialogTitle>
-            </DialogHeader>
-            <p className="text-sm text-muted-foreground leading-relaxed max-w-[400px] mt-1 mb-6">
-              Choose how you&apos;d like to interact with your agent.
-            </p>
-            {onboardingError && (
-              <div className="w-full max-w-[560px] mb-4 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-                {onboardingError === "Build timed out"
-                  ? "Setup is taking longer than expected. Please try again."
-                  : onboardingError}
-              </div>
-            )}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-[560px]">
-              <div className="zero-card flex flex-col items-center text-center rounded-xl border border-border p-5">
-                <span className="flex h-12 w-12 shrink-0 items-center justify-center mb-3 overflow-hidden">
-                  <img src={slackIcon} alt="" className="h-7 w-7" />
-                </span>
-                <span className="text-sm font-semibold text-foreground mb-1">
-                  Add {name || "Zero"} to Slack
-                </span>
-                <p className="text-xs text-muted-foreground leading-relaxed mb-4 flex-1">
-                  Work with {name || "Zero"} in your Slack workspace where your
-                  team already collaborates.
-                </p>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="w-full rounded-lg zero-btn-morandi"
-                  onClick={handleAddToSlack}
-                  disabled={saving}
-                >
-                  {saving ? "Saving\u2026" : "Add to Slack"}
-                </Button>
-              </div>
-              <div className="zero-card flex flex-col items-center text-center rounded-xl border border-border p-5">
-                <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full mb-3">
-                  <img
-                    src={zeroAvatarSrc}
-                    alt=""
-                    role="presentation"
-                    className="h-12 w-12 rounded-full object-cover object-top"
-                  />
-                </span>
-                <span className="text-sm font-semibold text-foreground mb-1">
-                  Continue in web
-                </span>
-                <p className="text-xs text-muted-foreground leading-relaxed mb-4 flex-1">
-                  Chat with {name || "Zero"} in your browser with full access to
-                  workflows and settings.
-                </p>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="w-full rounded-lg zero-btn-morandi"
-                  onClick={handleContinueWithWeb}
-                  disabled={saving}
-                >
-                  {saving ? "Saving\u2026" : `Chat with ${name || "Zero"}`}
-                </Button>
-              </div>
-            </div>
-          </div>
-          <div className={`${footerClass} justify-start`}>
-            <Button
-              variant="ghost"
-              className="rounded-lg text-muted-foreground"
-              onClick={handleStep4Back}
-              disabled={saving}
-            >
-              Back
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-    </>
-  );
+  return { handleAddToSlack, handleContinueWithWeb };
 }
 
-// ---------------------------------------------------------------------------
-// Member welcome (two-step onboarding for invited team members)
-// ---------------------------------------------------------------------------
-
-export function MemberWelcome({
-  displayName = "Zero",
+/** Zero onboarding — used for both admin and member flows. */
+export function ZeroOnboarding({
   zeroAvatarSrc = zeroAvatarImg,
+  isAdmin,
+  displayName = "Zero",
 }: {
-  displayName?: string;
   zeroAvatarSrc?: string;
+  isAdmin: boolean;
+  displayName?: string;
 }) {
-  const step = useGet(memberWelcomeStep$);
-  const setStep = useSet(setMemberWelcomeStep$);
-  const completeMember = useSet(completeMemberOnboarding$);
-  const navigate = useSet(navigateTo$);
-  const startNewSession = useSet(startNewZeroSession$);
-  const sendIntro = useSet(sendZeroChatMessage$);
+  const step = useGet(zeroOnboardingStep$);
+  const setStep = useSet(setZeroStep$);
+  const agentName = useGet(zeroAgentName$);
   const saving = useGet(zeroSaving$);
+  const adminSelectedConnectors = useGet(zeroSelectedConnectors$);
+  const onboardingError = useGet(zeroOnboardingError$);
   const selectedConnectorType = useGet(selectedConnectorType$);
   const setSelected = useSet(setSelectedConnectorType$);
-  const connectConnectorFn = useSet(connectConnector$);
-  const pageSignal = useGet(pageSignal$);
 
-  // Get the default agent's skills from onboarding status
+  const { handleAddToSlack, handleContinueWithWeb } =
+    useOnboardingHandlers(isAdmin);
+
+  // Member: resolve org's configured connectors from default agent skills
   const onboardingStatus = useLastResolved(zeroOnboardingStatus$);
   const defaultAgentSkillUrls = onboardingStatus?.defaultAgentSkills ?? [];
-
-  // Convert skill URLs to values and filter to only connectable skills
   const connectorTypesLoadable = useLastLoadable(allConnectorTypes$);
-  const allConnectors =
+  const allConnectorsList =
     connectorTypesLoadable.state === "hasData"
       ? connectorTypesLoadable.data
       : [];
-  const connectorTypeSet = new Set(allConnectors.map((c) => c.type));
-  const connectedSet = new Set(
-    allConnectors.filter((c) => c.connected).map((c) => c.type),
-  );
+  const connectorTypeSet = new Set(allConnectorsList.map((c) => c.type));
 
-  // Only show connectors that: (1) are in the default agent, (2) have a connector type
-  const memberConnectors = (
-    Object.entries(CONNECTOR_TYPES) as [
-      ConnectorType,
-      (typeof CONNECTOR_TYPES)[ConnectorType],
-    ][]
-  ).filter(([type]) => {
-    const isInAgent = defaultAgentSkillUrls.some((url) =>
-      url.endsWith(`/${type}`),
-    );
-    return isInAgent && connectorTypeSet.has(type);
-  });
-
-  const handleOpenSlack = () => {
-    detach(
-      (async () => {
-        await completeMember(pageSignal);
-        navigate("/works");
-      })(),
-      Reason.DomCallback,
-    );
-  };
-
-  const handleContinueWeb = () => {
-    const controller = new AbortController();
-    detach(
-      (async () => {
-        await completeMember(controller.signal);
-        navigate("/");
-        startNewSession();
-        // Use controller.signal instead of pageSignal: navigate("/") aborts
-        // the onboarding page signal via resetRouteSignal$, so pageSignal is
-        // already dead by the time sendIntro runs.
-        detach(
-          sendIntro(
-            "Who are you and what can you do?",
-            undefined,
-            controller.signal,
-          ),
-          Reason.DomCallback,
+  const memberConnectorTypes = isAdmin
+    ? []
+    : (Object.keys(CONNECTOR_TYPES) as ConnectorType[]).filter((type) => {
+        const isInAgent = defaultAgentSkillUrls.some((url) =>
+          url.endsWith(`/${type}`),
         );
-      })(),
-      Reason.DomCallback,
-    );
-  };
+        return isInAgent && connectorTypeSet.has(type);
+      });
+  const hasMemberConnectors = memberConnectorTypes.length > 0;
 
-  const dialogBaseClass =
-    "zero-app sm:max-w-[720px] h-[min(500px,85dvh)] gap-0 p-0 flex flex-col rounded-xl border border-border bg-card shadow-lg";
-  const footerClass =
-    "zero-onboarding-footer shrink-0 border-t h-16 flex items-center gap-2 px-8";
+  const effectiveStep = resolveEffectiveStep(
+    isAdmin,
+    step,
+    hasMemberConnectors,
+  );
+  const visibleSteps = resolveVisibleSteps(isAdmin, hasMemberConnectors);
+  const currentStepIndex = visibleSteps.indexOf(effectiveStep);
+
+  // Connectors shown in step 3 depend on role
+  const effectiveConnectors = isAdmin
+    ? adminSelectedConnectors
+    : memberConnectorTypes;
+
+  // Display name for WhereToWorkContent
+  const name = isAdmin ? agentName : displayName;
+
+  if (effectiveStep === "done") {
+    return null;
+  }
 
   return (
     <>
-      {/* Step 1: Welcome */}
-      <Dialog open={step === "welcome"}>
-        <DialogContent
-          className={`${dialogBaseClass} zero-onboarding-dialog`}
-          onPointerDownOutside={(e) => e.preventDefault()}
-          onEscapeKeyDown={(e) => e.preventDefault()}
-          aria-describedby={undefined}
-          style={{ position: "fixed", overflow: "hidden" }}
-        >
-          <DialogTitle className="sr-only">
-            Meet {displayName}, your new teammate!
-          </DialogTitle>
-          <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center text-center px-8 py-8">
-            <span className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full mb-5">
-              <img
-                src={zeroAvatarSrc}
-                alt=""
-                role="presentation"
-                className="h-16 w-16 rounded-full object-cover object-top"
-              />
-            </span>
-            <WelcomeAnimation
-              title={`Meet ${displayName}, your new teammate!`}
-              subtitle={`Think of ${displayName} as a teammate in the office you can casually talk to, delegate tasks, and count on to get things done.`}
-            />
-          </div>
-          <div className={`${footerClass} justify-end`}>
-            <Button
-              onClick={() => {
-                if (memberConnectors.length > 0) {
-                  setStep("connectors");
-                } else {
-                  setStep("where");
-                }
-              }}
-              className="rounded-lg min-w-[100px]"
-            >
-              Next
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Step 1: Workspace name (admin only) */}
+      {isAdmin && effectiveStep === "1" && (
+        <WorkspaceStep
+          zeroAvatarSrc={zeroAvatarSrc}
+          onNext={() => setStep("2")}
+        />
+      )}
 
-      {/* Step 2: Connect your tools */}
-      <Dialog open={step === "connectors"}>
-        <DialogContent
-          className={`${dialogBaseClass} zero-onboarding-dialog`}
-          onPointerDownOutside={(e) => e.preventDefault()}
-          onEscapeKeyDown={(e) => e.preventDefault()}
-          aria-describedby={undefined}
+      {/* Step 2: Select connectors (admin only) */}
+      {isAdmin && effectiveStep === "2" && (
+        <OnboardingPage
+          currentStep={1}
+          totalSteps={visibleSteps.length}
+          stepKey="connectors"
+          zeroAvatarSrc={zeroAvatarSrc}
+          selectedConnectors={adminSelectedConnectors}
+          showBack
+          showNext
+          onBack={() => setStep("1")}
+          onNext={() => setStep("3")}
         >
-          <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center text-center px-8 pt-8">
-            <DialogHeader className="space-y-2">
-              <DialogTitle className="text-xl font-semibold tracking-tight">
-                Connect your tools
-              </DialogTitle>
-            </DialogHeader>
-            <p className="text-sm text-muted-foreground leading-relaxed mt-1 mb-6">
-              Your workspace uses these tools with {displayName}. Connect the
-              ones you use to get started.
-            </p>
-            {memberConnectors.length > 0 ? (
-              <div className="w-full px-4 flex-1 min-h-0">
-                <div className="w-full flex flex-wrap justify-center gap-3 pb-4">
-                  {memberConnectors.map(([type, config]) => {
-                    const isConnected = connectedSet.has(type);
-                    return (
-                      <OnboardingConnectorCard
-                        key={type}
-                        type={type}
-                        label={config.label}
-                        isSelected={isConnected}
-                        isPolling={false}
-                        onClick={() => {
-                          if (!isConnected) {
-                            const connector = allConnectors.find(
-                              (c) => c.type === type,
-                            );
-                            if (
-                              connector?.availableAuthMethods.includes(
-                                "api-token",
-                              )
-                            ) {
-                              setSelected(type);
-                            } else {
-                              detach(
-                                (async () => {
-                                  await connectConnectorFn(type, pageSignal);
-                                })(),
-                                Reason.DomCallback,
-                              );
-                            }
-                          }
-                        }}
-                      />
-                    );
-                  })}
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                No connectors to set up — you&apos;re all set!
-              </p>
-            )}
-          </div>
-          <div className={`${footerClass} justify-between`}>
-            <Button
-              variant="ghost"
-              className="rounded-lg text-muted-foreground"
-              onClick={() => setStep("welcome")}
-            >
-              Back
-            </Button>
-            <Button
-              onClick={() => setStep("where")}
-              className="rounded-lg min-w-[100px]"
-            >
-              Next
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+          <SelectConnectorsContent
+            selectedConnectors={adminSelectedConnectors}
+          />
+        </OnboardingPage>
+      )}
+
+      {/* Step 3: Connect apps */}
+      {effectiveStep === "3" && (
+        <OnboardingPage
+          currentStep={currentStepIndex}
+          totalSteps={visibleSteps.length}
+          stepKey="connectors"
+          zeroAvatarSrc={zeroAvatarSrc}
+          selectedConnectors={effectiveConnectors}
+          showBack={isAdmin}
+          showNext
+          onBack={isAdmin ? () => setStep("2") : undefined}
+          onNext={() => setStep("4")}
+        >
+          <ConnectStepContent selectedConnectors={effectiveConnectors} />
+        </OnboardingPage>
+      )}
 
       {selectedConnectorType && (
         <ConnectModal
@@ -779,92 +1100,27 @@ export function MemberWelcome({
         />
       )}
 
-      {/* Step 3: Where to work */}
-      <Dialog open={step === "where"}>
-        <DialogContent
-          className={`${dialogBaseClass} zero-onboarding-dialog`}
-          onPointerDownOutside={(e) => e.preventDefault()}
-          onEscapeKeyDown={(e) => e.preventDefault()}
-          aria-describedby={undefined}
+      {/* Step 4: Where to work */}
+      {effectiveStep === "4" && (
+        <OnboardingPage
+          currentStep={currentStepIndex}
+          totalSteps={visibleSteps.length}
+          stepKey="where"
+          zeroAvatarSrc={zeroAvatarSrc}
+          showBack={isAdmin || hasMemberConnectors}
+          showNext={false}
+          onBack={() => setStep("3")}
         >
-          <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center text-center px-8 py-8">
-            <DialogHeader className="space-y-2">
-              <DialogTitle className="text-xl font-semibold tracking-tight">
-                Where would you like to work with {displayName}?
-              </DialogTitle>
-            </DialogHeader>
-            <p className="text-sm text-muted-foreground leading-relaxed max-w-[400px] mt-1 mb-6">
-              Your admin has already added {displayName} to your workspace. Pick
-              how you&apos;d like to get started.
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-[560px]">
-              <div className="zero-card flex flex-col items-center text-center rounded-xl border border-border p-5">
-                <span className="flex h-12 w-12 shrink-0 items-center justify-center mb-3 overflow-hidden">
-                  <img src={slackIcon} alt="" className="h-7 w-7" />
-                </span>
-                <span className="text-sm font-semibold text-foreground mb-1">
-                  Open in Slack
-                </span>
-                <p className="text-xs text-muted-foreground leading-relaxed mb-4 flex-1">
-                  {displayName} is already in your Slack workspace. Send a DM to
-                  start chatting.
-                </p>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="w-full rounded-lg zero-btn-morandi"
-                  onClick={handleOpenSlack}
-                  disabled={saving}
-                >
-                  {saving ? "Saving\u2026" : "Go to Slack"}
-                </Button>
-              </div>
-              <div className="zero-card flex flex-col items-center text-center rounded-xl border border-border p-5">
-                <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full mb-3">
-                  <img
-                    src={zeroAvatarSrc}
-                    alt=""
-                    role="presentation"
-                    className="h-12 w-12 rounded-full object-cover object-top"
-                  />
-                </span>
-                <span className="text-sm font-semibold text-foreground mb-1">
-                  Continue in web
-                </span>
-                <p className="text-xs text-muted-foreground leading-relaxed mb-4 flex-1">
-                  Chat with {displayName} right here with full access to
-                  workflows and settings.
-                </p>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="w-full rounded-lg zero-btn-morandi"
-                  onClick={handleContinueWeb}
-                  disabled={saving}
-                >
-                  {saving ? "Saving\u2026" : `Chat with ${displayName}`}
-                </Button>
-              </div>
-            </div>
-          </div>
-          <div className={`${footerClass} justify-start`}>
-            <Button
-              variant="ghost"
-              className="rounded-lg text-muted-foreground"
-              onClick={() => {
-                if (memberConnectors.length > 0) {
-                  setStep("connectors");
-                } else {
-                  setStep("welcome");
-                }
-              }}
-              disabled={saving}
-            >
-              Back
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+          <WhereToWorkContent
+            name={name}
+            zeroAvatarSrc={zeroAvatarSrc}
+            onAddToSlack={handleAddToSlack}
+            onContinueWeb={handleContinueWithWeb}
+            saving={saving}
+            error={isAdmin ? onboardingError : null}
+          />
+        </OnboardingPage>
+      )}
     </>
   );
 }

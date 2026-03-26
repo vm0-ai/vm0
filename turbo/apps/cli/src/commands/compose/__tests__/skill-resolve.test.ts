@@ -378,46 +378,4 @@ agents:
     expect(allLogs.some((log) => log.includes("Downloading"))).toBe(true);
     expect(allLogs.some((log) => log.includes("(cached)"))).toBe(false);
   });
-
-  it("resolved skill frontmatter feeds into secret detection", async () => {
-    await fs.writeFile(
-      path.join(tempDir, "vm0.yaml"),
-      `version: "1.0"
-agents:
-  my-agent:
-    framework: claude-code
-    skills:
-      - slack`,
-    );
-
-    server.use(
-      http.post("http://localhost:3000/api/skills/resolve", () => {
-        return HttpResponse.json({
-          resolved: {
-            [SLACK_URL]: {
-              storageName: "agent-skills@vm0-ai/vm0-skills/tree/main/slack",
-              versionHash: "c".repeat(64),
-              frontmatter: {
-                name: "Slack",
-                vm0_secrets: ["SLACK_BOT_TOKEN"],
-                vm0_vars: ["SLACK_CHANNEL"],
-              },
-            },
-          },
-          unresolved: [],
-        });
-      }),
-      ...composeCreationHandlers,
-    );
-
-    await composeCommand.parseAsync(["node", "cli", "vm0.yaml", "--yes"]);
-
-    const allLogs = mockConsoleLog.mock.calls
-      .map((call) => call[0])
-      .filter((log): log is string => typeof log === "string");
-
-    // Secret from resolved skill frontmatter should appear in output
-    expect(allLogs.some((log) => log.includes("SLACK_BOT_TOKEN"))).toBe(true);
-    expect(allLogs.some((log) => log.includes("SLACK_CHANNEL"))).toBe(true);
-  });
 });

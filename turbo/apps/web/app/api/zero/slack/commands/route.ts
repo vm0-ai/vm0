@@ -178,17 +178,17 @@ async function handleSettings(
 ): Promise<NextResponse> {
   const appUrl = getAppUrl();
   let agentLabel = "Agent";
-  let agentName: string | undefined;
+  let agentId: string | undefined;
   if (installation.orgId) {
     const composeId = await resolveDefaultComposeId(installation.orgId);
     if (composeId) {
       const agent = await getWorkspaceAgent(composeId);
       agentLabel = agent?.displayName ?? agent?.name ?? agentLabel;
-      agentName = agent?.name;
+      agentId = agent?.id;
     }
   }
-  const settingsPath = agentName
-    ? `/team/${encodeURIComponent(agentName)}?tab=connectors`
+  const settingsPath = agentId
+    ? `/team/${encodeURIComponent(agentId)}?tab=connectors`
     : "/team";
   return ephemeral([
     {

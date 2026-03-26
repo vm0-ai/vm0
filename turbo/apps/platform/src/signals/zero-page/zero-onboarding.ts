@@ -3,6 +3,7 @@ import {
   onboardingStatusContract,
   onboardingCompleteContract,
   orgDefaultAgentContract,
+  zeroOrgContract,
 } from "@vm0/core";
 import { clerk$ } from "../auth.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -35,22 +36,22 @@ export const zeroOnboardingStatus$ = computed(async (get) => {
 });
 
 /**
- * Whether the admin onboarding flow should be shown.
- * Only true for admins when org setup is incomplete (no model provider or agent).
+ * Whether the admin onboarding flow (full org setup) should be shown.
+ * Only true when org has no default agent yet — the first admin must set it up.
  */
 export const zeroNeedsOnboarding$ = computed(async (get) => {
   const status = await get(zeroOnboardingStatus$);
-  return status.isAdmin && status.needsOnboarding;
+  return status.needsOnboarding && !status.hasDefaultAgent;
 });
 
 /**
- * Whether a member (non-admin) needs to see the welcome screen.
- * True when: org is set up (has default agent), user is not admin,
- * and the API says needsOnboarding (Clerk membership metadata).
+ * Whether the personal onboarding flow (connect tools, choose where to work)
+ * should be shown. Applies to both members and invited admins joining an
+ * already-set-up org.
  */
 export const zeroNeedsMemberOnboarding$ = computed(async (get) => {
   const status = await get(zeroOnboardingStatus$);
-  return !status.isAdmin && status.needsOnboarding;
+  return status.needsOnboarding && status.hasDefaultAgent;
 });
 
 /**
@@ -72,31 +73,14 @@ export const completeMemberOnboarding$ = command(
 );
 
 // ---------------------------------------------------------------------------
-// Member welcome step state
-// ---------------------------------------------------------------------------
-
-type MemberWelcomeStep = "welcome" | "connectors" | "where";
-
-const internalMemberWelcomeStep$ = state<MemberWelcomeStep>("welcome");
-
-export const memberWelcomeStep$ = computed((get) =>
-  get(internalMemberWelcomeStep$),
-);
-
-export const setMemberWelcomeStep$ = command(
-  ({ set }, step: MemberWelcomeStep) => {
-    set(internalMemberWelcomeStep$, step);
-  },
-);
-
-// ---------------------------------------------------------------------------
 // Onboarding form state
 // ---------------------------------------------------------------------------
 
-type ZeroOnboardingStep = "1" | "3" | "4" | "done";
+type ZeroOnboardingStep = "1" | "2" | "3" | "4" | "done";
 
 const internalStep$ = state<ZeroOnboardingStep>("1");
 const internalAgentName$ = state("Zero");
+const internalWorkspaceName$ = state("");
 const internalSaving$ = state(false);
 const internalSelectedConnectors$ = state<string[]>([]);
 const internalOnboardingError$ = state<string | null>(null);
@@ -107,6 +91,9 @@ const internalOnboardingError$ = state<string | null>(null);
 
 export const zeroOnboardingStep$ = computed((get) => get(internalStep$));
 export const zeroAgentName$ = computed((get) => get(internalAgentName$));
+export const zeroWorkspaceName$ = computed((get) =>
+  get(internalWorkspaceName$),
+);
 export const zeroSaving$ = computed((get) => get(internalSaving$));
 export const zeroSelectedConnectors$ = computed((get) =>
   get(internalSelectedConnectors$),
@@ -130,6 +117,10 @@ export const setZeroStep$ = command(({ set }, step: ZeroOnboardingStep) => {
 
 export const setZeroAgentName$ = command(({ set }, name: string) => {
   set(internalAgentName$, name);
+});
+
+export const setZeroWorkspaceName$ = command(({ set }, name: string) => {
+  set(internalWorkspaceName$, name);
 });
 
 export const toggleZeroConnector$ = command(
@@ -160,8 +151,8 @@ export const initZeroOnboarding$ = command(
       return;
     }
 
-    // Always start from step 1 when onboarding is needed
-    set(internalStep$, "1");
+    // Full org setup starts at step 1; personal onboarding skips to step 3
+    set(internalStep$, status.hasDefaultAgent ? "3" : "1");
   },
 );
 
@@ -175,8 +166,23 @@ export const completeZeroOnboarding$ = command(
 
     try {
       const displayName = get(internalAgentName$);
+      const workspaceName = get(internalWorkspaceName$);
       const selectedConnectors = get(internalSelectedConnectors$);
       const createClient = get(zeroClient$);
+
+      // Update org name if provided
+      if (workspaceName.trim()) {
+        const orgClient = createClient(zeroOrgContract);
+        const orgResult = await orgClient.update({
+          body: { name: workspaceName.trim() },
+        });
+        signal.throwIfAborted();
+        if (orgResult.status !== 200) {
+          throw new Error(
+            `Failed to update workspace name: ${orgResult.status}`,
+          );
+        }
+      }
 
       // Auto-initialize vm0 model provider with default model
       await set(
@@ -207,6 +213,11 @@ export const completeZeroOnboarding$ = command(
       if (result.status !== 200) {
         throw new Error(`Failed to set default agent: ${result.status}`);
       }
+
+      // Mark personal onboarding as done so admin doesn't re-enter member flow
+      const completeClient = createClient(onboardingCompleteContract);
+      await completeClient.complete();
+      signal.throwIfAborted();
 
       L.debug("Zero onboarding completed", {
         agentId: agent.agentId,

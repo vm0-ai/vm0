@@ -1,5 +1,4 @@
 import {
-  type AnyPgColumn,
   pgTable,
   uuid,
   varchar,
@@ -10,7 +9,6 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { agentComposeVersions } from "./agent-compose";
-import { zeroAgentSchedules } from "./zero-agent-schedule";
 
 /**
  * Agent Runs table
@@ -27,11 +25,6 @@ export const agentRuns = pgTable(
     }).references(() => agentComposeVersions.id, { onDelete: "set null" }),
     resumedFromCheckpointId: uuid("resumed_from_checkpoint_id"),
     continuedFromSessionId: uuid("continued_from_session_id"),
-    // References zero_agent_schedules.id if this run was triggered by a schedule
-    scheduleId: uuid("schedule_id").references(
-      (): AnyPgColumn => zeroAgentSchedules.id,
-      { onDelete: "set null" },
-    ),
     status: varchar("status", { length: 20 }).notNull(),
     prompt: text("prompt").notNull(),
     appendSystemPrompt: text("append_system_prompt"),
@@ -66,10 +59,6 @@ export const agentRuns = pgTable(
     index("idx_agent_runs_running_heartbeat")
       .on(table.lastHeartbeatAt)
       .where(sql`status = 'running'`),
-    // Partial index for schedule history (only scheduled runs)
-    index("idx_agent_runs_schedule_created")
-      .on(table.scheduleId, table.createdAt.desc())
-      .where(sql`schedule_id IS NOT NULL`),
     // Composite index for org+status queries (concurrency checks, queue listing)
     index("idx_agent_runs_org_status_created").on(
       table.orgId,

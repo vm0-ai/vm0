@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.154.0](https://github.com/vm0-ai/vm0/compare/app-v0.153.1...app-v0.154.0) (2026-03-26)
+
+
+### Features
+
+* add gamma api connector and firewall ([#6882](https://github.com/vm0-ai/vm0/issues/6882)) ([9e349b6](https://github.com/vm0-ai/vm0/commit/9e349b67014f7600a5bc116d12a1e29fe4a54322))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.116.0
+
 ## [0.153.1](https://github.com/vm0-ai/vm0/compare/app-v0.153.0...app-v0.153.1) (2026-03-26)
 
 

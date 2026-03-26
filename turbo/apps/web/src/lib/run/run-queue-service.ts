@@ -96,7 +96,6 @@ export async function enqueueRun(
         secretNames: params.secrets ? Object.keys(params.secrets) : null,
         resumedFromCheckpointId: params.resumedFromCheckpointId ?? null,
         continuedFromSessionId: params.sessionId ?? null,
-        scheduleId: params.scheduleId ?? null,
         modelProvider: params.modelProvider ?? null,
         lastHeartbeatAt: new Date(),
       })
@@ -109,6 +108,7 @@ export async function enqueueRun(
     await tx.insert(zeroRuns).values({
       id: inserted.id,
       triggerSource: params.triggerSource ?? "cli",
+      scheduleId: params.scheduleId ?? null,
     });
 
     await tx.insert(agentRunQueue).values({

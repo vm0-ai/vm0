@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.162.0](https://github.com/vm0-ai/vm0/compare/web-v12.161.1...web-v12.162.0) (2026-03-26)
+
+
+### Features
+
+* add gamma api connector and firewall ([#6882](https://github.com/vm0-ai/vm0/issues/6882)) ([9e349b6](https://github.com/vm0-ai/vm0/commit/9e349b67014f7600a5bc116d12a1e29fe4a54322))
+
+
+### Bug Fixes
+
+* include api-token connectors in firewall resolution ([#6927](https://github.com/vm0-ai/vm0/issues/6927)) ([2198bc9](https://github.com/vm0-ai/vm0/commit/2198bc9e2b095174ea19b2b7d1b9211653d25eb5)), closes [#6926](https://github.com/vm0-ai/vm0/issues/6926)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.116.0
+
 ## [12.161.1](https://github.com/vm0-ai/vm0/compare/web-v12.161.0...web-v12.161.1) (2026-03-26)
 
 

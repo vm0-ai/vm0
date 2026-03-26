@@ -29,6 +29,7 @@ import {
   insertTestSlackOrgPendingQuestion,
   setDefaultAgentByComposeId,
   clearOrgMembersCacheEntry,
+  getTestComposeVersionContent,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { getInstructionsStorageName } from "@vm0/core";
 import {
@@ -224,7 +225,7 @@ describe("Zero Agents API", () => {
       expect(data.sound).toBe("professional");
     });
 
-    it("should create an agent with cached connectors", async () => {
+    it("should create an agent with cached connectors and inject connector env vars", async () => {
       await seedTestSkill({
         url: "https://github.com/vm0-ai/vm0-skills/tree/main/slack",
         name: "slack",
@@ -246,6 +247,22 @@ describe("Zero Agents API", () => {
       expect(response.status).toBe(201);
       const data = await response.json();
       expect(data.connectors).toStrictEqual(["slack"]);
+
+      // Verify compose environment contains connector-derived env vars
+      const content = await getTestComposeVersionContent(data.agentId);
+      const agents = content?.agents as Record<
+        string,
+        { environment: Record<string, string> }
+      >;
+      const agentEnv = Object.values(agents)[0]!.environment;
+
+      // Connector-derived: slack environmentMapping → SLACK_TOKEN
+      expect(agentEnv.SLACK_TOKEN).toBe("${{ secrets.SLACK_TOKEN }}");
+      // Skill frontmatter vm0_secrets should NOT be injected (removed mergeSkillVariables)
+      expect(agentEnv.SLACK_BOT_TOKEN).toBeUndefined();
+      // Base env vars still present
+      expect(agentEnv.ZERO_AGENT_ID).toBe("${{ vars.ZERO_AGENT_ID }}");
+      expect(agentEnv.ZERO_TOKEN).toBe("${{ secrets.ZERO_TOKEN }}");
     });
 
     it("should return 422 when connector skills are not cached", async () => {

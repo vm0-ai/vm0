@@ -4,7 +4,6 @@ import {
   AGENT_NAME_REGEX,
   isSupportedFramework,
   expandFirewallConfigs,
-  type SkillFrontmatter,
   type SupportedFramework,
 } from "@vm0/core";
 import type { AgentComposeYaml } from "../../types/agent-compose";
@@ -66,29 +65,6 @@ function extractAgentConfig(content: Record<string, unknown>): AgentConfig {
     framework,
     agent,
   };
-}
-
-/**
- * Merge skill variables from cached frontmatter into the environment.
- * Does not overwrite existing entries.
- */
-function mergeSkillVariables(
-  environment: Record<string, string>,
-  cachedSkills: { frontmatter: unknown }[],
-): void {
-  for (const skill of cachedSkills) {
-    const fm = skill.frontmatter as SkillFrontmatter | null;
-    for (const name of fm?.vm0_secrets ?? []) {
-      if (!(name in environment)) {
-        environment[name] = `\${{ secrets.${name} }}`;
-      }
-    }
-    for (const name of fm?.vm0_vars ?? []) {
-      if (!(name in environment)) {
-        environment[name] = `\${{ vars.${name} }}`;
-      }
-    }
-  }
 }
 
 /**
@@ -190,10 +166,10 @@ export async function serverSideCompose(params: {
   const agentSkills = (agent.skills ?? []) as string[];
   const resolvedSkillUrls = agentSkills.map(resolveSkillRef);
 
-  let cachedSkills: { frontmatter: unknown }[] = [];
+  let cachedSkills: { url: string }[] = [];
   if (resolvedSkillUrls.length > 0) {
     cachedSkills = await db
-      .select({ frontmatter: skills.frontmatter })
+      .select({ url: skills.url })
       .from(skills)
       .where(inArray(skills.url, resolvedSkillUrls));
 
@@ -205,11 +181,10 @@ export async function serverSideCompose(params: {
     }
   }
 
-  // 3. Merge skill variables from cached frontmatter
+  // 3. Use environment as-is (connector env vars already injected by buildComposeContent)
   const environment: Record<string, string> = {
     ...((agent.environment ?? {}) as Record<string, string>),
   };
-  mergeSkillVariables(environment, cachedSkills);
 
   // 4. Expand firewall configs (mutates in-place, so deep-clone first)
   const contentCopy = structuredClone(content);

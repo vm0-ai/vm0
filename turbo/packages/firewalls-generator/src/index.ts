@@ -37,6 +37,7 @@ import { generate as generateFal } from "./fal";
 import { generate as generateFigma } from "./figma";
 import { generate as generateFirecrawl } from "./firecrawl";
 import { generate as generateFireflies } from "./fireflies";
+import { generate as generateGamma } from "./gamma";
 import { generate as generateGarminConnect } from "./garmin-connect";
 import { generate as generateGitHub } from "./github";
 import { generate as generateGitlab } from "./gitlab";
@@ -87,6 +88,7 @@ import { generate as generateSerpapi } from "./serpapi";
 import { generate as generateShortio } from "./shortio";
 import { generate as generateSimilarweb } from "./similarweb";
 import { generate as generateSlack } from "./slack";
+import { generate as generateSpotify } from "./spotify";
 import { generate as generateStrava } from "./strava";
 import { generate as generateStripe } from "./stripe";
 import { generate as generateSupabase } from "./supabase";
@@ -138,6 +140,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   figma: generateFigma,
   firecrawl: generateFirecrawl,
   fireflies: generateFireflies,
+  gamma: generateGamma,
   "garmin-connect": generateGarminConnect,
   github: generateGitHub,
   gitlab: generateGitlab,
@@ -188,6 +191,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   shortio: generateShortio,
   similarweb: generateSimilarweb,
   slack: generateSlack,
+  spotify: generateSpotify,
   strava: generateStrava,
   stripe: generateStripe,
   supabase: generateSupabase,

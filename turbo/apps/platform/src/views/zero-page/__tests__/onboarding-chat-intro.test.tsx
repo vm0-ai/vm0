@@ -28,6 +28,12 @@ function mockAdminOnboardingWithChat() {
         defaultAgentSkills: [],
       });
     }),
+    http.put("*/api/zero/org", () => {
+      return HttpResponse.json({ success: true });
+    }),
+    http.post("*/api/zero/model-providers", () => {
+      return HttpResponse.json({ success: true }, { status: 201 });
+    }),
     http.post("*/api/zero/agents", () => {
       return HttpResponse.json(
         { name: "zero", agentId: "new-compose-id" },
@@ -38,6 +44,9 @@ function mockAdminOnboardingWithChat() {
       return HttpResponse.json({ success: true });
     }),
     http.put("*/api/zero/default-agent", () => {
+      return HttpResponse.json({ success: true });
+    }),
+    http.post("*/api/zero/onboarding/complete", () => {
       return HttpResponse.json({ success: true });
     }),
   );
@@ -58,7 +67,7 @@ function mockAdminOnboardingWithChat() {
   return {
     ctrl,
     wasRunCreated: () => runCreated,
-    /** Switch onboarding status to completed (call before clicking "Chat with Zero") */
+    /** Switch onboarding status to completed (call before clicking "Continue in web") */
     completeOnboarding: () => {
       server.use(
         http.get("*/api/zero/onboarding/status", () => {
@@ -134,35 +143,49 @@ function mockMemberOnboardingWithChat() {
 
 /** Walk through onboarding steps up to the "Where would you like to work" step. */
 async function walkToWhereStep(isMember: boolean) {
-  // Step 1: Welcome screen
-  await waitFor(
-    () => {
-      expect(
-        screen.getByText(
-          isMember
-            ? /Meet .+, your new teammate/
-            : /Meet Zero, your new teammate/,
-        ),
-      ).toBeInTheDocument();
-    },
-    { timeout: 5000 },
-  );
+  if (isMember) {
+    // Member with no connectors skips directly to step 4 (where-to-work)
+    await waitFor(
+      () => {
+        expect(
+          screen.getByText(/Where would you like to work with/),
+        ).toBeInTheDocument();
+      },
+      { timeout: 5000 },
+    );
+  } else {
+    // Admin: step 1 (workspace name) → step 2 (choose tools) → step 3 (connect) → step 4 (where)
+    await waitFor(
+      () => {
+        expect(screen.getByText(/Name your workspace/)).toBeInTheDocument();
+      },
+      { timeout: 5000 },
+    );
 
-  fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    // Fill workspace name and advance
+    const input = screen.getByPlaceholderText("e.g. Acme Corp");
+    fireEvent.change(input, { target: { value: "Test Workspace" } });
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
 
-  if (!isMember) {
-    // Admin: step 3 (connectors) → step 4 (where)
+    // Step 2: Choose your tools → Next
     await waitFor(() => {
-      expect(screen.getByText("Add connector")).toBeInTheDocument();
+      expect(screen.getByText("Choose your tools")).toBeInTheDocument();
     });
     fireEvent.click(screen.getAllByRole("button", { name: "Next" })[0]!);
-  }
 
-  await waitFor(() => {
-    expect(
-      screen.getByText(/Where would you like to work with/),
-    ).toBeInTheDocument();
-  });
+    // Step 3: Connect your apps → Next
+    await waitFor(() => {
+      expect(screen.getByText("Connect your apps")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getAllByRole("button", { name: "Next" })[0]!);
+
+    // Step 4: Where to work
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Where would you like to work with/),
+      ).toBeInTheDocument();
+    });
+  }
 }
 
 describe("onboarding auto-intro message", () => {
@@ -175,7 +198,7 @@ describe("onboarding auto-intro message", () => {
     // Switch onboarding status so post-navigate route doesn't redirect back
     mock.completeOnboarding();
 
-    fireEvent.click(screen.getByRole("button", { name: /Chat with Zero/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Continue in web/ }));
 
     // Verify navigation away from onboarding
     await waitFor(
@@ -221,7 +244,7 @@ describe("onboarding auto-intro message", () => {
 
     mock.completeOnboarding();
 
-    fireEvent.click(screen.getByRole("button", { name: /Chat with Zero/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Continue in web/ }));
 
     await waitFor(
       () => {
@@ -263,7 +286,7 @@ describe("onboarding auto-intro message", () => {
 
     mock.completeOnboarding();
 
-    fireEvent.click(screen.getByRole("button", { name: /Chat with Zero/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Continue in web/ }));
 
     // Wait for intro run to start
     await waitFor(

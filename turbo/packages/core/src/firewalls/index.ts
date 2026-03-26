@@ -39,6 +39,7 @@ import { falFirewall } from "./fal.generated";
 import { figmaFirewall } from "./figma.generated";
 import { firecrawlFirewall } from "./firecrawl.generated";
 import { firefliesFirewall } from "./fireflies.generated";
+import { gammaFirewall } from "./gamma.generated";
 import { garminConnectFirewall } from "./garmin-connect.generated";
 import { githubFirewall } from "./github.generated";
 import { gitlabFirewall } from "./gitlab.generated";
@@ -94,6 +95,7 @@ import { serpapiFirewall } from "./serpapi.generated";
 import { shortioFirewall } from "./shortio.generated";
 import { similarwebFirewall } from "./similarweb.generated";
 import { slackFirewall } from "./slack.generated";
+import { spotifyFirewall } from "./spotify.generated";
 import { stravaFirewall } from "./strava.generated";
 import { stripeFirewall } from "./stripe.generated";
 import { supabaseFirewall } from "./supabase.generated";
@@ -144,6 +146,7 @@ const CONNECTOR_FIREWALLS = {
   figma: figmaFirewall,
   firecrawl: firecrawlFirewall,
   fireflies: firefliesFirewall,
+  gamma: gammaFirewall,
   "garmin-connect": garminConnectFirewall,
   github: githubFirewall,
   gitlab: gitlabFirewall,
@@ -199,6 +202,7 @@ const CONNECTOR_FIREWALLS = {
   shortio: shortioFirewall,
   similarweb: similarwebFirewall,
   slack: slackFirewall,
+  spotify: spotifyFirewall,
   strava: stravaFirewall,
   stripe: stripeFirewall,
   supabase: supabaseFirewall,

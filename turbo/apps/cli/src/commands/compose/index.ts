@@ -210,162 +210,6 @@ async function uploadAssets(
   return skillResults;
 }
 
-interface SkillVariables {
-  newSecrets: Array<[string, string[]]>;
-  newVars: Array<[string, string[]]>;
-  trulyNewSecrets: string[];
-}
-
-/**
- * Collect secrets and vars from skill frontmatters.
- */
-async function collectSkillVariables(
-  skillResults: SkillUploadResult[],
-  environment: Record<string, string>,
-  agentName: string,
-  options: { json?: boolean },
-): Promise<SkillVariables> {
-  const skillSecrets = new Map<string, string[]>();
-  const skillVars = new Map<string, string[]>();
-
-  for (const result of skillResults) {
-    const { frontmatter, skillName } = result;
-    if (frontmatter.vm0_secrets) {
-      for (const secret of frontmatter.vm0_secrets) {
-        if (!skillSecrets.has(secret)) {
-          skillSecrets.set(secret, []);
-        }
-        skillSecrets.get(secret)!.push(skillName);
-      }
-    }
-    if (frontmatter.vm0_vars) {
-      for (const varName of frontmatter.vm0_vars) {
-        if (!skillVars.has(varName)) {
-          skillVars.set(varName, []);
-        }
-        skillVars.get(varName)!.push(skillName);
-      }
-    }
-  }
-
-  const newSecrets = [...skillSecrets.entries()].filter(
-    ([name]) => !(name in environment),
-  );
-  const newVars = [...skillVars.entries()].filter(
-    ([name]) => !(name in environment),
-  );
-
-  // In --json mode, skip HEAD comparison — trulyNewSecrets is only used for
-  // interactive display ("new" markers) and confirmation prompts, both skipped in --json.
-  let trulyNewSecrets: string[] = [];
-  if (!options.json) {
-    let headSecrets = new Set<string>();
-    const existingCompose = await getComposeByName(agentName);
-    if (existingCompose?.content) {
-      headSecrets = getSecretsFromComposeContent(existingCompose.content);
-    }
-    trulyNewSecrets = newSecrets
-      .map(([name]) => name)
-      .filter((name) => !headSecrets.has(name));
-  }
-
-  return { newSecrets, newVars, trulyNewSecrets };
-}
-
-/**
- * Display skill variables and confirm new secrets with user.
- * Returns false if user cancels, true otherwise.
- */
-async function displayAndConfirmVariables(
-  variables: SkillVariables,
-  options: { yes?: boolean; json?: boolean },
-): Promise<boolean> {
-  const { newSecrets, newVars, trulyNewSecrets } = variables;
-
-  if (newSecrets.length === 0 && newVars.length === 0) {
-    return true;
-  }
-
-  // In JSON mode, skip display but still check for new secrets
-  if (!options.json) {
-    console.log();
-    console.log(
-      chalk.bold("Skills require the following environment variables:"),
-    );
-    console.log();
-
-    if (newSecrets.length > 0) {
-      console.log(chalk.cyan("  Secrets:"));
-      for (const [name, skills] of newSecrets) {
-        const isNew = trulyNewSecrets.includes(name);
-        const newMarker = isNew ? chalk.yellow(" (new)") : "";
-        console.log(
-          `    ${name.padEnd(24)}${newMarker} <- ${skills.join(", ")}`,
-        );
-      }
-    }
-
-    if (newVars.length > 0) {
-      console.log(chalk.cyan("  Vars:"));
-      for (const [name, skills] of newVars) {
-        console.log(`    ${name.padEnd(24)} <- ${skills.join(", ")}`);
-      }
-    }
-
-    console.log();
-  }
-
-  if (trulyNewSecrets.length > 0 && !options.yes) {
-    if (!isInteractive()) {
-      throw new Error(`New secrets detected: ${trulyNewSecrets.join(", ")}`, {
-        cause: new Error(
-          "Use --yes flag to approve new secrets in non-interactive mode.",
-        ),
-      });
-    }
-
-    const confirmed = await promptConfirm(
-      `Approve ${trulyNewSecrets.length} new secret(s)?`,
-      true,
-    );
-    if (!confirmed) {
-      if (!options.json) {
-        console.log(chalk.yellow("Compose cancelled"));
-      }
-      return false;
-    }
-  }
-
-  return true;
-}
-
-/**
- * Merge skill variables into environment config.
- */
-function mergeSkillVariables(
-  agent: AgentConfig,
-  variables: SkillVariables,
-): void {
-  const { newSecrets, newVars } = variables;
-
-  if (newSecrets.length === 0 && newVars.length === 0) {
-    return;
-  }
-
-  const environment = agent.environment || {};
-
-  for (const [name] of newSecrets) {
-    environment[name] = `\${{ secrets.${name} }}`;
-  }
-  for (const [name] of newVars) {
-    environment[name] = `\${{ vars.${name} }}`;
-  }
-
-  if (Object.keys(environment).length > 0) {
-    agent.environment = environment;
-  }
-}
-
 /**
  * Derive the app URL from the API URL by replacing "www" with "app" in the hostname.
  */
@@ -448,25 +292,15 @@ interface ComposeResult {
 }
 
 /**
- * Finalize compose: confirm variables, merge into config, call API, and display result.
+ * Finalize compose: call API and display result.
  * Shared by both GitHub URL and local file flows.
  * Returns the compose result for JSON output mode.
  */
 async function finalizeCompose(
   config: unknown,
   agent: AgentConfig,
-  variables: SkillVariables,
   options: { yes?: boolean; autoUpdate?: boolean; json?: boolean },
 ): Promise<ComposeResult> {
-  // Display variables and confirm with user
-  const confirmed = await displayAndConfirmVariables(variables, options);
-  if (!confirmed) {
-    process.exit(0);
-  }
-
-  // Merge skill variables into environment
-  mergeSkillVariables(agent, variables);
-
   // Expand experimental_firewalls from names to full configs before sending to API
   await expandFirewallConfigs(config);
 
@@ -601,24 +435,10 @@ async function handleGitHubCompose(
     }
 
     // Upload instructions and skills
-    const skillResults = await uploadAssets(
-      agentName,
-      agent,
-      basePath,
-      options.json,
-    );
+    await uploadAssets(agentName, agent, basePath, options.json);
 
-    // Collect and process skill variables
-    const environment = agent.environment || {};
-    const variables = await collectSkillVariables(
-      skillResults,
-      environment,
-      agentName,
-      options,
-    );
-
-    // Finalize compose (confirm, merge, upload, display)
-    return await finalizeCompose(config, agent, variables, options);
+    // Finalize compose (upload, display)
+    return await finalizeCompose(config, agent, options);
   } finally {
     // Cleanup temp directory
     await rm(tempRoot, { recursive: true, force: true });
@@ -632,7 +452,7 @@ export const composeCommand = new Command()
     "[agent-yaml]",
     `Path to agent YAML file or GitHub tree URL (default: ${DEFAULT_CONFIG_FILE})`,
   )
-  .option("-y, --yes", "Skip confirmation prompts for skill requirements")
+  .option("-y, --yes", "Skip confirmation prompts")
   .option(
     "--experimental-shared-compose",
     "[deprecated] No longer required, kept for backward compatibility",
@@ -690,24 +510,10 @@ export const composeCommand = new Command()
               await loadAndValidateConfig(resolvedConfigFile);
 
             // 3. Upload instructions and skills
-            const skillResults = await uploadAssets(
-              agentName,
-              agent,
-              basePath,
-              options.json,
-            );
+            await uploadAssets(agentName, agent, basePath, options.json);
 
-            // 4. Collect and process skill variables
-            const environment = agent.environment || {};
-            const variables = await collectSkillVariables(
-              skillResults,
-              environment,
-              agentName,
-              options,
-            );
-
-            // 5. Finalize compose (confirm, merge, upload, display)
-            result = await finalizeCompose(config, agent, variables, options);
+            // 4. Finalize compose (upload, display)
+            result = await finalizeCompose(config, agent, options);
           }
 
           // Output JSON result if requested

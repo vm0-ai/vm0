@@ -6,6 +6,7 @@ import { zeroAgents } from "../../db/schema/zero-agent";
 import { slackOrgConnections } from "../../db/schema/slack-org-connection";
 import { slackOrgInstallations } from "../../db/schema/slack-org-installation";
 import { agentRuns } from "../../db/schema/agent-run";
+import { zeroRuns } from "../../db/schema/zero-run";
 import { decryptSecretsMap } from "../crypto";
 import { getOrgData, batchGetOrgData } from "../org/org-cache-service";
 import { notFound, badRequest, schedulePast } from "../errors";
@@ -623,7 +624,8 @@ export async function getScheduleRecentRuns(
       error: agentRuns.error,
     })
     .from(agentRuns)
-    .where(eq(agentRuns.scheduleId, schedule.id))
+    .innerJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
+    .where(eq(zeroRuns.scheduleId, schedule.id))
     .orderBy(desc(agentRuns.createdAt))
     .limit(limit);
 
