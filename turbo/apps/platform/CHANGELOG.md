@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.152.2](https://github.com/vm0-ai/vm0/compare/app-v0.152.1...app-v0.152.2) (2026-03-26)
+
+
+### Refactoring
+
+* **billing:** derive auto-recharge form state from server data ([#6809](https://github.com/vm0-ai/vm0/issues/6809)) ([419a39d](https://github.com/vm0-ai/vm0/commit/419a39d4b9e99a97515ecf515cb02dcd6e1fdc14))
+
 ## [0.152.1](https://github.com/vm0-ai/vm0/compare/app-v0.152.0...app-v0.152.1) (2026-03-25)
 
 
