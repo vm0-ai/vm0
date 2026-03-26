@@ -168,7 +168,7 @@ create_clerk_sign_in_token() {
 
   local email="e2e+clerk_test@vm0.ai"
 
-  local clerk_api_url="${CLERK_API_URL:-https://api.clerk.com}"
+  local clerk_api_url="https://api.clerk.com"
 
   # Resolve user ID from email
   local users_response
