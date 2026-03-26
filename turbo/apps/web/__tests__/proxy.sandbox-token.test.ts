@@ -128,15 +128,15 @@ describe("proxy middleware: sandbox token handling", () => {
     expect(capturedClerkRequest!.headers.get("authorization")).toBe(token);
   });
 
-  it("should pass legacy CLI tokens through to Clerk unchanged", async () => {
-    const token = "Bearer vm0_live_abc123def456";
+  it("should pass unknown token formats through to Clerk unchanged", async () => {
+    const token = "Bearer unknown_format_abc123";
     const request = new NextRequest("https://www.vm0.ai/api/runs", {
       headers: { authorization: token },
     });
 
     await middleware(request, createMockEvent());
 
-    // Legacy CLI tokens (vm0_live_) are not self-signed tokens and should pass through
+    // Unknown token formats are not self-signed tokens and should pass through
     expect(capturedClerkRequest).toBeDefined();
     expect(capturedClerkRequest!.headers.get("authorization")).toBe(token);
   });
