@@ -1,5 +1,27 @@
 # Changelog
 
+## [12.160.5](https://github.com/vm0-ai/vm0/compare/web-v12.160.4...web-v12.160.5) (2026-03-26)
+
+
+### Bug Fixes
+
+* add s3 cleanup and running-run guard to zero agent delete endpoint ([#6871](https://github.com/vm0-ai/vm0/issues/6871)) ([2920069](https://github.com/vm0-ai/vm0/commit/2920069adacb886cab7ad08b33830a8f473df98a)), closes [#6866](https://github.com/vm0-ai/vm0/issues/6866)
+* **web:** add next typegen to check-types script to prevent stale validator errors ([#6862](https://github.com/vm0-ai/vm0/issues/6862)) ([28b2320](https://github.com/vm0-ai/vm0/commit/28b232072096592e4f66ccdee0a821a78987fd44)), closes [#6848](https://github.com/vm0-ai/vm0/issues/6848)
+
+
+### Refactoring
+
+* **cli:** add agent self-update guidance to zero --help and system prompt ([#6874](https://github.com/vm0-ai/vm0/issues/6874)) ([4cd38f1](https://github.com/vm0-ai/vm0/commit/4cd38f1a32ea2fcf6e1332f3d7a694807c2d4d39))
+* introduce firewall connector type and simplify firewall api ([#6863](https://github.com/vm0-ai/vm0/issues/6863)) ([cef659e](https://github.com/vm0-ai/vm0/commit/cef659ec12d0c6fb54d7a42a3a90a2f67dadb74a))
+* remove vm0 skill from seed skills list ([#6867](https://github.com/vm0-ai/vm0/issues/6867)) ([85d74a7](https://github.com/vm0-ai/vm0/commit/85d74a7325a9852712978f2f95afce3e94c1cfd0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.115.1
+
 ## [12.160.4](https://github.com/vm0-ai/vm0/compare/web-v12.160.3...web-v12.160.4) (2026-03-26)
 
 

@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.84.1](https://github.com/vm0-ai/vm0/compare/cli-v9.84.0...cli-v9.84.1) (2026-03-26)
+
+
+### Refactoring
+
+* **cli:** add agent self-update guidance to zero --help and system prompt ([#6874](https://github.com/vm0-ai/vm0/issues/6874)) ([4cd38f1](https://github.com/vm0-ai/vm0/commit/4cd38f1a32ea2fcf6e1332f3d7a694807c2d4d39))
+* **cli:** optimize zero --help descriptions for agent consumption ([#6858](https://github.com/vm0-ai/vm0/issues/6858)) ([57eca30](https://github.com/vm0-ai/vm0/commit/57eca30668793addf66382be1479d0586741703c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.115.1
+
 ## [9.84.0](https://github.com/vm0-ai/vm0/compare/cli-v9.83.3...cli-v9.84.0) (2026-03-26)
 
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.115.1](https://github.com/vm0-ai/vm0/compare/core-v8.115.0...core-v8.115.1) (2026-03-26)
+
+
+### Bug Fixes
+
+* add s3 cleanup and running-run guard to zero agent delete endpoint ([#6871](https://github.com/vm0-ai/vm0/issues/6871)) ([2920069](https://github.com/vm0-ai/vm0/commit/2920069adacb886cab7ad08b33830a8f473df98a)), closes [#6866](https://github.com/vm0-ai/vm0/issues/6866)
+
+
+### Refactoring
+
+* introduce firewall connector type and simplify firewall api ([#6863](https://github.com/vm0-ai/vm0/issues/6863)) ([cef659e](https://github.com/vm0-ai/vm0/commit/cef659ec12d0c6fb54d7a42a3a90a2f67dadb74a))
+
 ## [8.115.0](https://github.com/vm0-ai/vm0/compare/core-v8.114.0...core-v8.115.0) (2026-03-26)
 
 

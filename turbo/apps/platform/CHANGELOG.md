@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.152.4](https://github.com/vm0-ai/vm0/compare/app-v0.152.3...app-v0.152.4) (2026-03-26)
+
+
+### Bug Fixes
+
+* **platform:** use stable signal for onboarding intro message ([#6864](https://github.com/vm0-ai/vm0/issues/6864)) ([a44dfd5](https://github.com/vm0-ai/vm0/commit/a44dfd51f04b3dc5bb62de294dfdd95c082bc055))
+* preserve child content when rendering unknown html-like tags in markdown ([#6831](https://github.com/vm0-ai/vm0/issues/6831)) ([7399957](https://github.com/vm0-ai/vm0/commit/7399957b4410d515c706de63140519f967cc0296))
+
+
+### Refactoring
+
+* introduce firewall connector type and simplify firewall api ([#6863](https://github.com/vm0-ai/vm0/issues/6863)) ([cef659e](https://github.com/vm0-ai/vm0/commit/cef659ec12d0c6fb54d7a42a3a90a2f67dadb74a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.115.1
+
 ## [0.152.3](https://github.com/vm0-ai/vm0/compare/app-v0.152.2...app-v0.152.3) (2026-03-26)
 
 
