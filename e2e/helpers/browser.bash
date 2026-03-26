@@ -168,10 +168,12 @@ create_clerk_sign_in_token() {
 
   local email="e2e+clerk_test@vm0.ai"
 
+  local clerk_api_url="${CLERK_API_URL:-https://api.clerk.com}"
+
   # Resolve user ID from email
   local users_response
   users_response=$(curl -sS -X GET \
-    "https://api.clerk.com/v1/users?email_address[]=${email}" \
+    "${clerk_api_url}/v1/users?email_address[]=${email}" \
     -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
     -H "Content-Type: application/json")
 
@@ -186,7 +188,7 @@ create_clerk_sign_in_token() {
   # Create sign-in token
   local token_response
   token_response=$(curl -sS -X POST \
-    "https://api.clerk.com/v1/sign_in_tokens" \
+    "${clerk_api_url}/v1/sign_in_tokens" \
     -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
     -H "Content-Type: application/json" \
     -d "{\"user_id\": \"${user_id}\", \"expires_in_seconds\": 300}")

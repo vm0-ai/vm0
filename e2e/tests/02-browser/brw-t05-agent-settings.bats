@@ -41,15 +41,14 @@ wait_for_no_unsaved_bar() {
 # ---------------------------------------------------------------------------
 click_save_on_unsaved_bar() {
   local snap_i ref
-  snap_i=$(agent-browser snapshot -i 2>/dev/null || true)
+  snap_i=$(agent-browser snapshot -i)
   # Find Save button near "unsaved changes" context
   ref=$(echo "$snap_i" | grep -A5 -i "unsaved changes" | grep -oE '\[ref=e[0-9]+\]' | tail -1 | sed 's/\[ref=/@/; s/\]//')
-  if [[ -n "$ref" ]]; then
-    agent-browser click "$ref"
-  else
-    # Fallback: click the last Save button on the page
-    agent-browser find text "Save" click
+  if [[ -z "$ref" ]]; then
+    echo "# Failed to find Save button ref near unsaved changes bar" >&3
+    return 1
   fi
+  agent-browser click "$ref"
 }
 
 setup_file() {
@@ -247,14 +246,13 @@ teardown_file() {
 
   # Click on the editor area to focus it using interactive snapshot
   local snap_i ref
-  snap_i=$(agent-browser snapshot -i 2>/dev/null || true)
+  snap_i=$(agent-browser snapshot -i)
   ref=$(echo "$snap_i" | grep -i "contenteditable\|tiptap\|ProseMirror\|Write instructions" | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
-  if [[ -n "$ref" ]]; then
-    agent-browser click "$ref"
-  else
-    # Fallback: try clicking by placeholder text
-    agent-browser find placeholder "Write instructions for your agent..." click 2>/dev/null || true
+  if [[ -z "$ref" ]]; then
+    echo "# Failed to find instructions editor element ref" >&3
+    return 1
   fi
+  agent-browser click "$ref"
   agent-browser wait 500
 
   # Type test content
