@@ -5,23 +5,9 @@ import {
   text,
   timestamp,
   index,
-  jsonb,
 } from "drizzle-orm/pg-core";
 import { agentComposes } from "./agent-compose";
 import { conversations } from "./conversation";
-import type { SummaryEntry } from "@vm0/core";
-
-/**
- * Stored chat message for server-side persistence.
- * Kept as JSONB array on agent_sessions for instant session loading.
- */
-export interface StoredChatMessage {
-  role: "user" | "assistant";
-  content: string;
-  runId?: string;
-  summaries?: SummaryEntry[];
-  createdAt: string;
-}
 
 /**
  * Agent Sessions table
@@ -42,9 +28,6 @@ export const agentSessions = pgTable(
     }),
     artifactName: varchar("artifact_name", { length: 255 }),
     memoryName: varchar("memory_name", { length: 255 }),
-    chatMessages: jsonb("chat_messages")
-      .$type<StoredChatMessage[]>()
-      .default([]),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

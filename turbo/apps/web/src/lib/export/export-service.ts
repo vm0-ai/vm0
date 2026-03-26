@@ -7,6 +7,7 @@ import {
   agentComposeVersions,
 } from "../../db/schema/agent-compose";
 import { agentSessions } from "../../db/schema/agent-session";
+import { zeroAgentSessions } from "../../db/schema/zero-agent-session";
 import { conversations } from "../../db/schema/conversation";
 import { storages, storageVersions } from "../../db/schema/storage";
 import {
@@ -132,11 +133,12 @@ async function collectConversations(
   const sessions = await db
     .select({
       id: agentSessions.id,
-      chatMessages: agentSessions.chatMessages,
+      chatMessages: zeroAgentSessions.chatMessages,
       conversationId: agentSessions.conversationId,
       agentComposeId: agentSessions.agentComposeId,
     })
     .from(agentSessions)
+    .leftJoin(zeroAgentSessions, eq(agentSessions.id, zeroAgentSessions.id))
     .where(eq(agentSessions.userId, userId));
 
   for (const session of sessions) {

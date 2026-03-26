@@ -2,6 +2,7 @@ import { eq, and, desc } from "drizzle-orm";
 import { chatThreads, chatThreadRuns } from "../../db/schema/chat-thread";
 import { agentRuns } from "../../db/schema/agent-run";
 import { agentSessions } from "../../db/schema/agent-session";
+import { zeroAgentSessions } from "../../db/schema/zero-agent-session";
 import { notFound } from "../errors";
 import type { SummaryEntry } from "@vm0/core";
 
@@ -223,8 +224,9 @@ export async function getChatThreadMessages(
 
   if (sessionId) {
     const [session] = await globalThis.services.db
-      .select({ chatMessages: agentSessions.chatMessages })
+      .select({ chatMessages: zeroAgentSessions.chatMessages })
       .from(agentSessions)
+      .leftJoin(zeroAgentSessions, eq(agentSessions.id, zeroAgentSessions.id))
       .where(
         and(eq(agentSessions.id, sessionId), eq(agentSessions.userId, userId)),
       )

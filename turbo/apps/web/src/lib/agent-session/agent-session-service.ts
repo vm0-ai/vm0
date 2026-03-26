@@ -1,8 +1,9 @@
 import { eq, and, isNull, desc, sql } from "drizzle-orm";
+import { agentSessions } from "../../db/schema/agent-session";
 import {
-  agentSessions,
+  zeroAgentSessions,
   type StoredChatMessage,
-} from "../../db/schema/agent-session";
+} from "../../db/schema/zero-agent-session";
 import {
   agentComposes,
   agentComposeVersions,
@@ -125,8 +126,14 @@ export async function listAgentSessions(
   }>
 > {
   const rows = await globalThis.services.db
-    .select()
+    .select({
+      id: agentSessions.id,
+      createdAt: agentSessions.createdAt,
+      updatedAt: agentSessions.updatedAt,
+      chatMessages: zeroAgentSessions.chatMessages,
+    })
     .from(agentSessions)
+    .leftJoin(zeroAgentSessions, eq(agentSessions.id, zeroAgentSessions.id))
     .where(
       and(
         eq(agentSessions.userId, userId),
@@ -156,9 +163,9 @@ export async function getSessionChatMessages(
   sessionId: string,
 ): Promise<StoredChatMessage[]> {
   const [row] = await globalThis.services.db
-    .select({ chatMessages: agentSessions.chatMessages })
-    .from(agentSessions)
-    .where(eq(agentSessions.id, sessionId))
+    .select({ chatMessages: zeroAgentSessions.chatMessages })
+    .from(zeroAgentSessions)
+    .where(eq(zeroAgentSessions.id, sessionId))
     .limit(1);
 
   if (!row) {
@@ -185,20 +192,38 @@ export async function appendChatMessages(
   const now = new Date().toISOString();
   const withTimestamps = messages.map((m) => ({ ...m, createdAt: now }));
 
-  const result = await globalThis.services.db
-    .update(agentSessions)
-    .set({
-      chatMessages: sql`COALESCE(${agentSessions.chatMessages}, '[]'::jsonb) || ${JSON.stringify(withTimestamps)}::jsonb`,
-      updatedAt: new Date(),
-    })
+  // Verify session ownership
+  const [session] = await globalThis.services.db
+    .select({ id: agentSessions.id })
+    .from(agentSessions)
     .where(
       and(eq(agentSessions.id, sessionId), eq(agentSessions.userId, userId)),
     )
-    .returning({ id: agentSessions.id });
+    .limit(1);
 
-  if (result.length === 0) {
+  if (!session) {
     throw notFound("Session not found or not owned by user");
   }
+
+  // Upsert messages into extension table
+  await globalThis.services.db
+    .insert(zeroAgentSessions)
+    .values({
+      id: sessionId,
+      chatMessages: sql`${JSON.stringify(withTimestamps)}::jsonb`,
+    })
+    .onConflictDoUpdate({
+      target: zeroAgentSessions.id,
+      set: {
+        chatMessages: sql`COALESCE(${zeroAgentSessions.chatMessages}, '[]'::jsonb) || ${JSON.stringify(withTimestamps)}::jsonb`,
+      },
+    });
+
+  // Update session timestamp
+  await globalThis.services.db
+    .update(agentSessions)
+    .set({ updatedAt: new Date() })
+    .where(eq(agentSessions.id, sessionId));
 }
 
 function mapToAgentSessionData(
@@ -231,15 +256,21 @@ export async function getSessionResponse(
 ): Promise<SessionResponse> {
   const db = globalThis.services.db;
 
-  const [session] = await db
-    .select()
+  const [result] = await db
+    .select({
+      session: agentSessions,
+      chatMessages: zeroAgentSessions.chatMessages,
+    })
     .from(agentSessions)
+    .leftJoin(zeroAgentSessions, eq(agentSessions.id, zeroAgentSessions.id))
     .where(eq(agentSessions.id, sessionId))
     .limit(1);
 
-  if (!session) {
+  if (!result) {
     throw notFound("Session not found");
   }
+
+  const session = result.session;
 
   if (session.userId !== userId) {
     throw forbidden("You do not have permission to access this session");
@@ -277,7 +308,7 @@ export async function getSessionResponse(
     conversationId: session.conversationId,
     artifactName: session.artifactName,
     secretNames,
-    chatMessages: session.chatMessages ?? [],
+    chatMessages: result.chatMessages ?? [],
     createdAt: session.createdAt.toISOString(),
     updatedAt: session.updatedAt.toISOString(),
   };

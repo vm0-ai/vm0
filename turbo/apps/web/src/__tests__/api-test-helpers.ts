@@ -100,10 +100,11 @@ import {
   decryptSecretValue,
 } from "../lib/crypto/secrets-encryption";
 import type { ConnectorType } from "@vm0/core";
+import { agentSessions } from "../db/schema/agent-session";
 import {
-  agentSessions,
+  zeroAgentSessions,
   type StoredChatMessage,
-} from "../db/schema/agent-session";
+} from "../db/schema/zero-agent-session";
 import {
   agentComposes,
   agentComposeVersions,
@@ -3429,8 +3430,11 @@ export async function insertTestAgentSessionWithMessages(
   if (!compose) throw new Error(`Compose ${agentComposeId} not found`);
   const [session] = await globalThis.services.db
     .insert(agentSessions)
-    .values({ userId, orgId: compose.orgId, agentComposeId, chatMessages })
+    .values({ userId, orgId: compose.orgId, agentComposeId })
     .returning({ id: agentSessions.id });
+  await globalThis.services.db
+    .insert(zeroAgentSessions)
+    .values({ id: session!.id, chatMessages });
   return session!;
 }
 
