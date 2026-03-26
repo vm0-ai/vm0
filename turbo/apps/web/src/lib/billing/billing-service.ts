@@ -53,10 +53,18 @@ const TIER_MONTHLY_CREDITS: Record<OrgTier, number> = {
 };
 
 function tierFromPriceId(priceId: string): OrgTier {
-  const e = env();
-  if (priceId === e.ZERO_PRO_PLAN_PRICE_ID) return "pro";
-  if (priceId === e.ZERO_MAX_PLAN_PRICE_ID) return "team";
+  const priceMap = env().ZERO_PRICE;
+  if (priceMap) {
+    for (const [tier, ids] of Object.entries(priceMap)) {
+      if (ids.includes(priceId)) return tier as OrgTier;
+    }
+  }
   throw new Error(`Unknown Stripe price ID: ${priceId}`);
+}
+
+/** Returns the active (first) price ID for a given tier. */
+export function activePriceId(tier: "pro" | "team"): string | undefined {
+  return env().ZERO_PRICE?.[tier]?.[0];
 }
 
 /**

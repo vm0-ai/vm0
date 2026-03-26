@@ -11,17 +11,16 @@ import {
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
-import { createCheckoutSession } from "../../../../../src/lib/billing/billing-service";
+import {
+  createCheckoutSession,
+  activePriceId,
+} from "../../../../../src/lib/billing/billing-service";
 
 const router = tsr.router(zeroBillingCheckoutContract, {
   create: async ({ body, headers }, { request }) => {
     initServices();
 
-    const {
-      STRIPE_SECRET_KEY,
-      ZERO_PRO_PLAN_PRICE_ID,
-      ZERO_MAX_PLAN_PRICE_ID,
-    } = env();
+    const { STRIPE_SECRET_KEY } = env();
 
     if (!STRIPE_SECRET_KEY) {
       return createErrorResponse(
@@ -42,8 +41,7 @@ const router = tsr.router(zeroBillingCheckoutContract, {
       );
     }
 
-    const priceId =
-      body.tier === "pro" ? ZERO_PRO_PLAN_PRICE_ID : ZERO_MAX_PLAN_PRICE_ID;
+    const priceId = activePriceId(body.tier);
     if (!priceId) {
       return createErrorResponse(
         "BAD_REQUEST",

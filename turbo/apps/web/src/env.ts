@@ -111,10 +111,15 @@ function initEnv() {
       // Stripe Billing (platform subscription billing — separate from the Stripe connector)
       STRIPE_SECRET_KEY: z.string().min(1).optional(),
       STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
-      ZERO_PRO_PLAN_PRICE_ID: z.string().min(1).optional(),
+      ZERO_PRICE: z
+        .string()
+        .optional()
+        .transform((val) => {
+          if (!val) return undefined;
+          return JSON.parse(val) as Record<string, string[]>;
+        }),
       // Clerk Webhooks
       CLERK_WEBHOOK_SIGNING_SECRET: z.string().min(1).optional(),
-      ZERO_MAX_PLAN_PRICE_ID: z.string().min(1).optional(),
       // Stripe OAuth (for connector)
       STRIPE_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       STRIPE_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
@@ -284,8 +289,7 @@ function initEnv() {
       POSTHOG_OAUTH_CLIENT_SECRET: process.env.POSTHOG_OAUTH_CLIENT_SECRET,
       STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
       STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
-      ZERO_PRO_PLAN_PRICE_ID: process.env.ZERO_PRO_PLAN_PRICE_ID,
-      ZERO_MAX_PLAN_PRICE_ID: process.env.ZERO_MAX_PLAN_PRICE_ID,
+      ZERO_PRICE: process.env.ZERO_PRICE,
       CLERK_WEBHOOK_SIGNING_SECRET: process.env.CLERK_WEBHOOK_SIGNING_SECRET,
       STRIPE_OAUTH_CLIENT_ID: process.env.STRIPE_OAUTH_CLIENT_ID,
       STRIPE_OAUTH_CLIENT_SECRET: process.env.STRIPE_OAUTH_CLIENT_SECRET,
