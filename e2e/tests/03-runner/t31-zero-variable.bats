@@ -35,6 +35,10 @@ VOLEOF
     $VM0_CLI artifact push >/dev/null 2>&1
     cd - >/dev/null
 
+    # Each vm0 run test gets its own unique variable name to avoid race conditions
+    export VAR_NAME_EXPAND="TEST_VAR_EXPAND_${UNIQUE_ID}"
+    export VAR_NAME_OVERRIDE="TEST_VAR_OVERRIDE_${UNIQUE_ID}"
+
     # Create compose configs for both vm0 run tests
     export AGENT_EXPAND="e2e-var-expand-${UNIQUE_ID}"
     export CONFIG_EXPAND="$TEST_DIR/expand.yaml"
@@ -46,7 +50,7 @@ agents:
     framework: claude-code
     working_dir: /home/user/workspace
     environment:
-      MY_VAR: "\${{ vars.TEST_VAR }}"
+      MY_VAR: "\${{ vars.${VAR_NAME_EXPAND} }}"
     volumes:
       - claude-files:/home/user/.claude
 volumes:
@@ -66,7 +70,7 @@ agents:
     framework: claude-code
     working_dir: /home/user/workspace
     environment:
-      MY_VAR: "\${{ vars.TEST_VAR }}"
+      MY_VAR: "\${{ vars.${VAR_NAME_OVERRIDE} }}"
     volumes:
       - claude-files:/home/user/.claude
 volumes:
@@ -88,8 +92,9 @@ teardown() {
 }
 
 teardown_file() {
-    # Clean up the variable used by vm0 run tests (single API call, once)
-    $ZERO_CLI variable delete -y "TEST_VAR" 2>/dev/null || true
+    # Clean up variables used by vm0 run tests (one API call each, once)
+    $ZERO_CLI variable delete -y "$VAR_NAME_EXPAND" 2>/dev/null || true
+    $ZERO_CLI variable delete -y "$VAR_NAME_OVERRIDE" 2>/dev/null || true
     # Clean up shared test directory
     if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
         rm -rf "$TEST_DIR"
@@ -187,8 +192,8 @@ teardown_file() {
 
     local var_value="var-value-${UNIQUE_ID}"
 
-    # Set a server-stored variable
-    $ZERO_CLI variable set "TEST_VAR" "$var_value"
+    # Set a server-stored variable (unique name per test to avoid races)
+    $ZERO_CLI variable set "$VAR_NAME_EXPAND" "$var_value"
 
     # Run agent that echoes the variable value
     echo "# Running agent that echoes variable value..."
@@ -213,13 +218,13 @@ teardown_file() {
     local server_value="server-value-${UNIQUE_ID}"
     local cli_value="cli-value-${UNIQUE_ID}"
 
-    # Set a server-stored variable
-    $ZERO_CLI variable set "TEST_VAR" "$server_value"
+    # Set a server-stored variable (unique name per test to avoid races)
+    $ZERO_CLI variable set "$VAR_NAME_OVERRIDE" "$server_value"
 
     # Run agent with CLI --vars to override server value
     echo "# Running agent with CLI var override..."
     run $VM0_CLI run "$AGENT_OVERRIDE" \
-        --vars "TEST_VAR=$cli_value" \
+        --vars "$VAR_NAME_OVERRIDE=$cli_value" \
         --artifact-name "$ARTIFACT_NAME" \
         "echo MY_VAR=\$MY_VAR"
 
