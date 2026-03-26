@@ -9,7 +9,7 @@ import { http, HttpResponse } from "msw";
 
 export const apiAgentsHandlers = [
   // GET /api/zero/team
-  http.get("/api/zero/team", () => {
+  http.get("*/api/zero/team", () => {
     return HttpResponse.json([
       {
         id: "mock-compose-id",
@@ -21,7 +21,7 @@ export const apiAgentsHandlers = [
   }),
 
   // GET /api/zero/composes/list
-  http.get("/api/zero/composes/list", () => {
+  http.get("*/api/zero/composes/list", () => {
     return HttpResponse.json({
       composes: [
         {
@@ -35,7 +35,7 @@ export const apiAgentsHandlers = [
   }),
 
   // GET /api/zero/composes/:id (kept for backwards compat with other tests)
-  http.get("/api/zero/composes/:id", ({ params }) => {
+  http.get("*/api/zero/composes/:id", ({ params }) => {
     // Skip if it matches a sub-route like "list"
     if (params.id === "list") {
       return;
@@ -55,7 +55,7 @@ export const apiAgentsHandlers = [
   }),
 
   // GET /api/zero/agents/:name
-  http.get("/api/zero/agents/:name", ({ params }) => {
+  http.get("*/api/zero/agents/:name", ({ params }) => {
     // Skip if it matches sub-routes like "instructions"
     if (
       params.name === "instructions" ||
@@ -75,7 +75,7 @@ export const apiAgentsHandlers = [
   }),
 
   // GET /api/zero/agents/:name/instructions
-  http.get("/api/zero/agents/:name/instructions", () => {
+  http.get("*/api/zero/agents/:name/instructions", () => {
     return HttpResponse.json({
       content: null,
       filename: null,
@@ -83,7 +83,12 @@ export const apiAgentsHandlers = [
   }),
 
   // GET /api/zero/schedules
-  http.get("/api/zero/schedules", () => {
+  http.get("*/api/zero/schedules", () => {
     return HttpResponse.json({ schedules: [] });
+  }),
+
+  // GET /api/zero/chat-threads
+  http.get("*/api/zero/chat-threads", () => {
+    return HttpResponse.json({ threads: [] });
   }),
 ];

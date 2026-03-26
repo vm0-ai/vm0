@@ -42,7 +42,7 @@ function handleSetSecret(body: {
 
 export const apiSecretsHandlers = [
   // POST /api/zero/secrets - Create or update a secret (zero proxy)
-  http.post("/api/zero/secrets", async ({ request }) => {
+  http.post("*/api/zero/secrets", async ({ request }) => {
     const body = (await request.json()) as {
       name: string;
       value: string;

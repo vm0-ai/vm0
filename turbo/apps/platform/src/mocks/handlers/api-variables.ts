@@ -44,7 +44,7 @@ function handleSetVariable(body: {
 
 export const apiVariablesHandlers = [
   // POST /api/zero/variables - Create or update a variable (zero proxy)
-  http.post("/api/zero/variables", async ({ request }) => {
+  http.post("*/api/zero/variables", async ({ request }) => {
     const body = (await request.json()) as {
       name: string;
       value: string;

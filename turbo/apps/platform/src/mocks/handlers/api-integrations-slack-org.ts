@@ -58,12 +58,12 @@ export function resetMockSlackOrgIntegration(): void {
 
 export const apiIntegrationsSlackOrgHandlers = [
   // GET /api/zero/integrations/slack
-  http.get("/api/zero/integrations/slack", () => {
+  http.get("*/api/zero/integrations/slack", () => {
     return HttpResponse.json(mockSlackOrgData);
   }),
 
   // DELETE /api/zero/integrations/slack
-  http.delete("/api/zero/integrations/slack", () => {
+  http.delete("*/api/zero/integrations/slack", () => {
     mockSlackOrgData = { ...mockSlackOrgData, isConnected: false };
     return HttpResponse.json({ ok: true });
   }),

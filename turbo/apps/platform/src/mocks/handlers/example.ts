@@ -26,7 +26,7 @@ const mockUsers: User[] = [
 
 export const exampleHandlers = [
   // GET /api/users - List all users
-  http.get("/api/users", () => {
+  http.get("*/api/users", () => {
     return HttpResponse.json(mockUsers);
   }),
 
@@ -46,7 +46,7 @@ export const exampleHandlers = [
   }),
 
   // POST /api/users - Create a new user
-  http.post("/api/users", async ({ request }) => {
+  http.post("*/api/users", async ({ request }) => {
     const body = (await request.json()) as { name: string; email: string };
     const newUser: User = {
       id: String(mockUsers.length + 1),

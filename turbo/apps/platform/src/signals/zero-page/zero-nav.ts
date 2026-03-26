@@ -71,23 +71,6 @@ export const zeroChatAgentId$ = computed((get): string | null => {
   return get(internalChatAgentId$);
 });
 
-/**
- * Navigate to a zero tab — updates the URL path to `/:tab`.
- * "chat" maps to `/` (the default, no suffix needed).
- * "team" maps to `/team` (dedicated route).
- */
-export const setZeroActiveId$ = command(({ set }, id: ZeroNavId) => {
-  if (id === "chat") {
-    set(navigateTo$, "/");
-  } else if (id === "team") {
-    set(navigateTo$, "/team");
-  } else if (id === "ideas") {
-    set(navigateTo$, "/ideas");
-  } else {
-    set(navigateTo$, "/:tab", { pathParams: { tab: id } });
-  }
-});
-
 const internalTalkAgentResolved$ = state(false);
 
 /**
@@ -164,7 +147,15 @@ export const initSidebarCollapsed$ = command(({ set }) => {
 
 /** Handle nav tab selection: navigate to tab and close about page. */
 export const handleZeroNavSelect$ = command(({ set }, id: ZeroNavId) => {
-  set(setZeroActiveId$, id);
+  if (id === "chat") {
+    set(navigateTo$, "/");
+  } else if (id === "team") {
+    set(navigateTo$, "/team");
+  } else if (id === "ideas") {
+    set(navigateTo$, "/ideas");
+  } else {
+    set(navigateTo$, "/:tab", { pathParams: { tab: id } });
+  }
   set(internalShowAboutPage$, false);
 });
 
@@ -175,7 +166,7 @@ export const handleZeroAccountAction$ = command(
       return;
     }
     if (action === "preferences") {
-      set(setZeroActiveId$, "preferences");
+      set(navigateTo$, "/:tab", { pathParams: { tab: "preferences" } });
     }
   },
 );

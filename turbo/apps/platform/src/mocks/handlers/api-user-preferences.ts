@@ -23,12 +23,12 @@ export function resetMockUserPreferences(): void {
 
 export const apiUserPreferencesHandlers = [
   // GET /api/zero/user-preferences
-  http.get("/api/zero/user-preferences", () => {
+  http.get("*/api/zero/user-preferences", () => {
     return HttpResponse.json(mockPreferences);
   }),
 
   // POST /api/zero/user-preferences
-  http.post("/api/zero/user-preferences", async ({ request }) => {
+  http.post("*/api/zero/user-preferences", async ({ request }) => {
     const body = (await request.json()) as Partial<UserPreferencesResponse>;
 
     if (body.timezone !== undefined) {

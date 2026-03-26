@@ -77,7 +77,7 @@ function createEventPageComputed(
 ): Computed<Promise<PagedRunEvents>> {
   return computed(async (get) => {
     const client = get(zeroClient$);
-    return fetchEvents(client, runId, since);
+    return await fetchEvents(client, runId, since);
   });
 }
 
@@ -279,7 +279,7 @@ function createRunPagedEvents(runId: string) {
       }
 
       const lastEvent = lastPage.events[lastPage.events.length - 1];
-      const nextPage$ = createEventPageComputed(runId, lastEvent.createdAt);
+      const nextPage$ = createEventPageComputed(runId, lastEvent?.createdAt);
       pagedEventsList.push(nextPage$);
     }
     return pagedEventsList;
@@ -300,8 +300,11 @@ const THINKING_MESSAGES = [
 ] as const;
 
 export function createRunLoop(runId: string) {
-  const { detail$: runDetail$, reload$: reloadRunStatus$ } =
-    createRunDetail(runId);
+  const {
+    detail$: runDetail$,
+    reload$: reloadRunStatus$,
+    finished$,
+  } = createRunDetail(runId);
 
   const { queuePosition$, reload$: reloadQueuePosition$ } =
     createQueuePosition(runId);
@@ -354,14 +357,18 @@ export function createRunLoop(runId: string) {
       const nextPage$ = createEventPageComputed(runId, since);
       set(internalLoopedPagedEvents$, (prev) => [...prev, nextPage$]);
 
-      const pagedEvents = await get(nextPage$);
-      signal.throwIfAborted();
-      if (!pagedEvents.hasMore) {
-        break;
-      }
       await delay(get(poolInterval$), { signal });
       set(reloadRunStatus$);
       set(reloadThinkingMessage$, (x) => x + 1);
+
+      const lastPage = await get(nextPage$);
+      signal.throwIfAborted();
+
+      const finished = await get(finished$);
+      signal.throwIfAborted();
+      if (finished && !lastPage.hasMore) {
+        break;
+      }
     }
   });
 

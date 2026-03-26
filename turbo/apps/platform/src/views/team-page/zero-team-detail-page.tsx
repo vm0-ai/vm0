@@ -7,8 +7,11 @@ import {
   cycleZeroAvatar$,
 } from "../../signals/zero-page/zero-nav.ts";
 import { ZERO_AVATARS } from "../zero-page/zero-avatars.ts";
+import { currentAgentId$ } from "../../signals/zero-page/agent.ts";
 
-export function ZeroTeamDetailPage({ agentId }: { agentId: string | null }) {
+export function ZeroTeamDetailPage() {
+  const agentId = useGet(currentAgentId$);
+
   const defaultAgentIdLoadable = useLastLoadable(defaultAgentId$);
   const defaultAgentId =
     defaultAgentIdLoadable.state === "hasData"

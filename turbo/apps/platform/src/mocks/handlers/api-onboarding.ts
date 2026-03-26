@@ -9,7 +9,7 @@ import { http, HttpResponse } from "msw";
 
 export const apiOnboardingHandlers = [
   // GET /api/zero/onboarding/status - Get onboarding status
-  http.get("/api/zero/onboarding/status", () => {
+  http.get("*/api/zero/onboarding/status", () => {
     return HttpResponse.json({
       needsOnboarding: false,
       isAdmin: true,

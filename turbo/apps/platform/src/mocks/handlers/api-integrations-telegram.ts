@@ -51,12 +51,12 @@ export function resetMockTelegramIntegration(): void {
 
 export const apiIntegrationsTelegramHandlers = [
   // GET /api/integrations/telegram
-  http.get("/api/integrations/telegram", () => {
+  http.get("*/api/integrations/telegram", () => {
     return HttpResponse.json(mockTelegramData);
   }),
 
   // PATCH /api/integrations/telegram
-  http.patch("/api/integrations/telegram", async ({ request }) => {
+  http.patch("*/api/integrations/telegram", async ({ request }) => {
     const body = (await request.json()) as { agentName?: string };
     if (body.agentName && mockTelegramData.agent) {
       mockTelegramData.agent.name = body.agentName;
@@ -65,7 +65,7 @@ export const apiIntegrationsTelegramHandlers = [
   }),
 
   // DELETE /api/integrations/telegram
-  http.delete("/api/integrations/telegram", () => {
+  http.delete("*/api/integrations/telegram", () => {
     return HttpResponse.json({ ok: true });
   }),
 
@@ -75,7 +75,7 @@ export const apiIntegrationsTelegramHandlers = [
   }),
 
   // POST /api/telegram/register
-  http.post("/api/telegram/register", () => {
+  http.post("*/api/telegram/register", () => {
     return HttpResponse.json({
       id: "installation_1",
       botUsername: "test_bot",

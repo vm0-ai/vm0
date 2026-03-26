@@ -22,7 +22,7 @@ export function resetMockOrgModelProviders(): void {
 
 export const apiOrgModelProvidersHandlers = [
   // GET /api/zero/model-providers - List all org model providers
-  http.get("/api/zero/model-providers", () => {
+  http.get("*/api/zero/model-providers", () => {
     const response: ModelProviderListResponse = {
       modelProviders: mockOrgModelProviders,
     };
@@ -30,7 +30,7 @@ export const apiOrgModelProvidersHandlers = [
   }),
 
   // POST /api/zero/model-providers - Create or update org model provider
-  http.post("/api/zero/model-providers", async ({ request }) => {
+  http.post("*/api/zero/model-providers", async ({ request }) => {
     const body = (await request.json()) as {
       type: ModelProviderResponse["type"];
       secret?: string;
@@ -75,7 +75,7 @@ export const apiOrgModelProvidersHandlers = [
   }),
 
   // POST /api/zero/model-providers/:type/default - Set default provider
-  http.post("/api/zero/model-providers/:type/default", ({ params }) => {
+  http.post("*/api/zero/model-providers/:type/default", ({ params }) => {
     const type = params.type as ModelProviderResponse["type"];
     const existing = mockOrgModelProviders.find((p) => p.type === type);
 
@@ -95,7 +95,7 @@ export const apiOrgModelProvidersHandlers = [
   }),
 
   // DELETE /api/zero/model-providers/:type - Delete org model provider
-  http.delete("/api/zero/model-providers/:type", ({ params }) => {
+  http.delete("*/api/zero/model-providers/:type", ({ params }) => {
     const type = params.type as ModelProviderResponse["type"];
     const existing = mockOrgModelProviders.find((p) => p.type === type);
 

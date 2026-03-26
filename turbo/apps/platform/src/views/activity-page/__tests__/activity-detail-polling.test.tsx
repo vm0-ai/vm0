@@ -87,37 +87,23 @@ describe("activity detail polling with initially empty events", () => {
     await setupPage({ context, path: "/activity/run_new" });
 
     // Wait for the detail heading to appear
-    await waitFor(
-      () => {
-        expect(
-          screen.getByRole("heading", { name: "Agent One" }),
-        ).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
-
-    // Initially no events should be shown
-    expect(
-      screen.queryByText("Polled response arrived"),
-    ).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Agent One" }),
+      ).toBeInTheDocument();
+    });
 
     // Wait for polling to pick up the events (poll interval is 3s by default)
-    await waitFor(
-      () => {
-        expect(screen.getByText("Polled response arrived")).toBeInTheDocument();
-      },
-      { timeout: 15_000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByText("Polled response arrived")).toBeInTheDocument();
+    });
 
     // Confirm the telemetry endpoint was called multiple times (re-fetched after empty)
     expect(eventFetchCount).toBeGreaterThanOrEqual(3);
 
     // Wait for polling to detect terminal status and stop cleanly
-    await waitFor(
-      () => {
-        expect(screen.getByText("Done")).toBeInTheDocument();
-      },
-      { timeout: 15_000 },
-    );
-  }, 30_000);
+    await waitFor(() => {
+      expect(screen.getByText("Done")).toBeInTheDocument();
+    });
+  });
 });

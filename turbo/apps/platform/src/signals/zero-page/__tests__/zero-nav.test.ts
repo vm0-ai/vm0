@@ -5,7 +5,6 @@ import { testContext } from "../../__tests__/test-helpers.ts";
 import { createPushStateMock } from "../../../__tests__/page-helper.ts";
 import {
   zeroActiveId$,
-  setZeroActiveId$,
   zeroTalkAgentId$,
   zeroChatAgentId$,
   setZeroChatAgent$,
@@ -92,43 +91,6 @@ describe("zero-nav", () => {
       mockLocation({ pathname: "/foo", search: "" }, context.signal);
       expect(context.store.get(zeroActiveId$)).not.toBe("chat");
       expect(context.store.get(zeroActiveId$)).toBe("not-found");
-    });
-  });
-
-  describe("setZeroActiveId$", () => {
-    async function setupNav() {
-      context.store.set(setRootSignal$, context.signal);
-      const pushStateMock = createPushStateMock(context.signal);
-      mockLocation({ pathname: "/", search: "" }, context.signal);
-      const noop$ = command(() => void 0);
-      await context.store.set(
-        initRoutes$,
-        [
-          { path: "/", setup: noop$ },
-          { path: "/schedule", setup: noop$ },
-          { path: "{/*path}", setup: noop$ },
-        ],
-        context.signal,
-      );
-      return pushStateMock;
-    }
-
-    it("should navigate to / for 'chat'", async () => {
-      const pushStateMock = await setupNav();
-
-      context.store.set(setZeroActiveId$, "chat");
-
-      expect(pushStateMock).toHaveBeenCalledWith({}, "", "/");
-      expect(context.store.get(zeroActiveId$)).toBe("chat");
-    });
-
-    it("should navigate to /schedule for 'schedule'", async () => {
-      const pushStateMock = await setupNav();
-
-      context.store.set(setZeroActiveId$, "schedule");
-
-      expect(pushStateMock).toHaveBeenCalledWith({}, "", "/schedule");
-      expect(context.store.get(zeroActiveId$)).toBe("schedule");
     });
   });
 
