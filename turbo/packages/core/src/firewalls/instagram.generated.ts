@@ -10,15 +10,14 @@ export const instagramFirewall: FirewallConfig = {
   name: "instagram",
   description: "Instagram Graph API",
   placeholders: {
-    INSTAGRAM_ACCESS_TOKEN:
-      "vm0placeholderInstagramAccessToken00000000000000000000a",
+    INSTAGRAM_TOKEN: "vm0placeholderInstagramAccessToken00000000000000000000a",
   },
   apis: [
     {
       base: "https://graph.instagram.com",
       auth: {
         headers: {
-          Authorization: "Bearer ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}",
+          Authorization: "Bearer ${{ secrets.INSTAGRAM_TOKEN }}",
         },
       },
       permissions: [],

@@ -9,5 +9,5 @@ export const instagramHandler: ProviderHandler = {
   },
   getClientId: () => undefined,
   getClientSecret: () => undefined,
-  getSecretName: () => "INSTAGRAM_ACCESS_TOKEN",
+  getSecretName: () => "INSTAGRAM_TOKEN",
 };

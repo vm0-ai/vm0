@@ -7,8 +7,6 @@ const c = initContract();
 export const skillFrontmatterSchema = z.object({
   name: z.string().optional(),
   description: z.string().optional(),
-  vm0_secrets: z.array(z.string()).optional(),
-  vm0_vars: z.array(z.string()).optional(),
 });
 
 const resolvedSkillSchema = z.object({

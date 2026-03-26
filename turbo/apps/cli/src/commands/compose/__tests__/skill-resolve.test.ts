@@ -72,28 +72,12 @@ vi.mock("child_process", async (importOriginal) => {
 import { spawn } from "child_process";
 const mockSpawn = vi.mocked(spawn);
 
-function createMockSkillDir(
-  destDir: string,
-  skillName: string,
-  frontmatter: { vm0_secrets?: string[]; vm0_vars?: string[] },
-): string {
+function createMockSkillDir(destDir: string, skillName: string): string {
   const skillDir = path.join(destDir, skillName);
   mkdirSync(skillDir, { recursive: true });
 
-  const frontmatterLines: string[] = [];
-  if (frontmatter.vm0_secrets?.length) {
-    frontmatterLines.push(
-      `vm0_secrets: [${frontmatter.vm0_secrets.map((s) => `"${s}"`).join(", ")}]`,
-    );
-  }
-  if (frontmatter.vm0_vars?.length) {
-    frontmatterLines.push(
-      `vm0_vars: [${frontmatter.vm0_vars.map((v) => `"${v}"`).join(", ")}]`,
-    );
-  }
-
   const skillMd = `---
-${frontmatterLines.join("\n")}
+name: ${skillName}
 ---
 
 # ${skillName}
@@ -211,7 +195,7 @@ agents:
             [SLACK_URL]: {
               storageName: "agent-skills@vm0-ai/vm0-skills/tree/main/slack",
               versionHash: "c".repeat(64),
-              frontmatter: { name: "Slack", vm0_secrets: ["SLACK_BOT_TOKEN"] },
+              frontmatter: { name: "Slack" },
             },
           },
           unresolved: [],
@@ -244,7 +228,7 @@ agents:
     );
 
     onGitCheckout = (cwd) => {
-      createMockSkillDir(cwd, "tool", {});
+      createMockSkillDir(cwd, "tool");
     };
 
     server.use(
@@ -281,7 +265,7 @@ agents:
     );
 
     onGitCheckout = (cwd) => {
-      createMockSkillDir(cwd, "tool", {});
+      createMockSkillDir(cwd, "tool");
     };
 
     server.use(
@@ -323,7 +307,7 @@ agents:
     );
 
     onGitCheckout = (cwd) => {
-      createMockSkillDir(cwd, "slack", {});
+      createMockSkillDir(cwd, "slack");
     };
 
     server.use(
@@ -357,7 +341,7 @@ agents:
     );
 
     onGitCheckout = (cwd) => {
-      createMockSkillDir(cwd, "slack", {});
+      createMockSkillDir(cwd, "slack");
     };
 
     server.use(

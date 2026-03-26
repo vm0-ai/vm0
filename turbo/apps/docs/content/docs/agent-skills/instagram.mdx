@@ -9,7 +9,7 @@ description: Instagram Graph API for media management
 
 | Name                            | Type   | Description                                      |
 | ------------------------------- | ------ | ------------------------------------------------ |
-| `INSTAGRAM_ACCESS_TOKEN`        | secret | Long-lived access token from Facebook Developers |
+| `INSTAGRAM_TOKEN`        | secret | Long-lived access token from Facebook Developers |
 | `INSTAGRAM_BUSINESS_ACCOUNT_ID` | var    | Instagram Business account ID                    |
 
 ## Configuration
@@ -29,7 +29,7 @@ agents:
 Store your secret on the platform (recommended, one-time setup):
 
 ```bash
-vm0 secret set INSTAGRAM_ACCESS_TOKEN --body "your-instagram-access-token"
+vm0 secret set INSTAGRAM_TOKEN --body "your-instagram-access-token"
 ```
 
 Then run your agent - secret is automatically loaded:
@@ -39,7 +39,7 @@ vm0 run my-agent "fetch recent Instagram posts"
 ```
 
 <Callout type="info">
-For CI/CD or temporary overrides, pass secrets at runtime: `--secrets INSTAGRAM_ACCESS_TOKEN=value`. See [Environment Variables](/docs/core-concept/environment-variable) for details.
+For CI/CD or temporary overrides, pass secrets at runtime: `--secrets INSTAGRAM_TOKEN=value`. See [Environment Variables](/docs/core-concept/environment-variable) for details.
 </Callout>
 
 ## Example Instructions

@@ -6,6 +6,7 @@ import {
   formatCurrentMessageFiles,
   extractMessageContent,
   extractTextFromBlocks,
+  extractMentionedUserIds,
 } from "../context";
 import { testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
@@ -1624,5 +1625,172 @@ describe("Feature: Format Current Message Files", () => {
       expect(result).toContain("URL: https://slack.com/files/bad.png");
       expect(result).not.toContain("Download: curl");
     });
+  });
+});
+
+describe("Feature: Resolve User Mentions In Context", () => {
+  it("should resolve user mention to name when user info available", () => {
+    const messages = [
+      { user: "U100", text: "Hey <@U200>, can you help?", ts: "1.0" },
+    ];
+    const userInfoMap = new Map([
+      ["U100", { id: "U100", name: "Alice" }],
+      ["U200", { id: "U200", name: "Bob", email: "bob@example.com" }],
+    ]);
+
+    const result = formatContextForAgent(
+      messages,
+      undefined,
+      "thread",
+      userInfoMap,
+    );
+
+    expect(result).toContain("@Bob (U200)");
+    expect(result).not.toContain("<@U200>");
+  });
+
+  it("should keep raw mention when user info not available", () => {
+    const messages = [{ user: "U100", text: "Hey <@U999>", ts: "1.0" }];
+    const userInfoMap = new Map([["U100", { id: "U100", name: "Alice" }]]);
+
+    const result = formatContextForAgent(
+      messages,
+      undefined,
+      "thread",
+      userInfoMap,
+    );
+
+    expect(result).toContain("<@U999>");
+  });
+
+  it("should resolve multiple mentions in one message", () => {
+    const messages = [
+      {
+        user: "U100",
+        text: "CC <@U200> and <@U300>",
+        ts: "1.0",
+      },
+    ];
+    const userInfoMap = new Map([
+      ["U100", { id: "U100", name: "Alice" }],
+      ["U200", { id: "U200", name: "Bob" }],
+      ["U300", { id: "U300", name: "Charlie" }],
+    ]);
+
+    const result = formatContextForAgent(
+      messages,
+      undefined,
+      "thread",
+      userInfoMap,
+    );
+
+    expect(result).toContain("@Bob (U200)");
+    expect(result).toContain("@Charlie (U300)");
+  });
+
+  it("should resolve mentions from rich_text blocks", () => {
+    const messages = [
+      {
+        user: "U100",
+        text: "fallback <@U200>",
+        ts: "1.0",
+        blocks: [
+          {
+            type: "rich_text",
+            elements: [
+              {
+                type: "rich_text_section",
+                elements: [
+                  { type: "text", text: "Hey " },
+                  { type: "user", user_id: "U200" },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    const userInfoMap = new Map([
+      ["U100", { id: "U100", name: "Alice" }],
+      ["U200", { id: "U200", name: "Bob" }],
+    ]);
+
+    const result = formatContextForAgent(
+      messages,
+      undefined,
+      "thread",
+      userInfoMap,
+    );
+
+    // rich_text produces <@U200> which then gets resolved
+    expect(result).toContain("@Bob (U200)");
+    expect(result).not.toContain("<@U200>");
+  });
+});
+
+describe("Feature: Extract Mentioned User IDs", () => {
+  it("should extract user IDs from rich_text blocks", () => {
+    const messages = [
+      {
+        blocks: [
+          {
+            type: "rich_text",
+            elements: [
+              {
+                type: "rich_text_section",
+                elements: [
+                  { type: "user", user_id: "U111" },
+                  { type: "text", text: " and " },
+                  { type: "user", user_id: "U222" },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ];
+
+    const ids = extractMentionedUserIds(messages);
+
+    expect(ids).toContain("U111");
+    expect(ids).toContain("U222");
+  });
+
+  it("should extract user IDs from plain text", () => {
+    const messages = [{ text: "Hey <@U333> and <@U444>" }];
+
+    const ids = extractMentionedUserIds(messages);
+
+    expect(ids).toContain("U333");
+    expect(ids).toContain("U444");
+  });
+
+  it("should deduplicate user IDs", () => {
+    const messages = [
+      { text: "<@U100> <@U100>" },
+      {
+        blocks: [
+          {
+            type: "rich_text",
+            elements: [
+              {
+                type: "rich_text_section",
+                elements: [{ type: "user", user_id: "U100" }],
+              },
+            ],
+          },
+        ],
+      },
+    ];
+
+    const ids = extractMentionedUserIds(messages);
+
+    expect(ids).toEqual(["U100"]);
+  });
+
+  it("should return empty array when no mentions", () => {
+    const messages = [{ text: "No mentions here" }];
+
+    expect(extractMentionedUserIds(messages)).toEqual([]);
   });
 });

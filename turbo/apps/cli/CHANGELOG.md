@@ -1,5 +1,24 @@
 # Changelog
 
+## [9.84.5](https://github.com/vm0-ai/vm0/compare/cli-v9.84.4...cli-v9.84.5) (2026-03-26)
+
+
+### Bug Fixes
+
+* **cli:** lazy-load ngrok to prevent glibc crash at startup ([#6945](https://github.com/vm0-ai/vm0/issues/6945)) ([3217bfd](https://github.com/vm0-ai/vm0/commit/3217bfd0cae726b4b8f7f507c398d723d015f85b))
+
+
+### Refactoring
+
+* remove skill frontmatter secret/var injection from cli compose ([#6938](https://github.com/vm0-ai/vm0/issues/6938)) ([a85ec2d](https://github.com/vm0-ai/vm0/commit/a85ec2d273ccd6fe3875f0658a23c22714322b95))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.117.0
+
 ## [9.84.4](https://github.com/vm0-ai/vm0/compare/cli-v9.84.3...cli-v9.84.4) (2026-03-26)
 
 
