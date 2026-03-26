@@ -27,6 +27,11 @@ setup_file() {
 }
 
 teardown_file() {
+  # Clean up the created agent to prevent orphan accumulation
+  if [[ -n "${AGENT_NAME:-}" ]]; then
+    $ZERO_CLI agent delete "$AGENT_NAME" --yes 2>/dev/null || true
+  fi
+
   browser_teardown
 }
 
