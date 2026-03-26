@@ -3,17 +3,7 @@ import { getZeroRunAgentEvents, getZeroRun } from "../../../lib/api";
 import type { RunResult } from "../../../lib/api";
 import { parseEvent } from "../../../lib/events/event-parser-factory";
 import { EventRenderer } from "../../../lib/events/event-renderer";
-
-interface PollResult {
-  succeeded: boolean;
-  runId: string;
-  sessionId?: string;
-  checkpointId?: string;
-}
-
-interface EventRenderingOptions {
-  verbose?: boolean;
-}
+import type { PollResult, EventRenderingOptions } from "../../run/shared";
 
 /**
  * Poll for zero run events until run completes.
