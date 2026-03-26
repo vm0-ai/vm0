@@ -38,7 +38,7 @@ describe("org selection after auth", () => {
     expect(context.store.get(pathname$)).toBe("/select-org");
   });
 
-  it("does not redirect when user has single org and no invitations", async () => {
+  it("redirects to /select-org when user has single org but no active org", async () => {
     mockOrganization({
       activeOrg: null,
       memberships: [{ id: "org_1" }],
@@ -51,8 +51,7 @@ describe("org selection after auth", () => {
       withoutRender: true,
     });
 
-    // Home redirects to /talk/:name, not /select-org
-    expect(context.store.get(pathname$)).not.toBe("/select-org");
+    expect(context.store.get(pathname$)).toBe("/select-org");
   });
 
   it("does not redirect when active org is already set", async () => {
@@ -87,7 +86,7 @@ describe("org selection after auth", () => {
     expect(context.store.get(pathname$)).toBe("/select-org");
   });
 
-  it("does not redirect when user has no orgs", async () => {
+  it("redirects to /select-org when user has no orgs", async () => {
     mockOrganization({
       activeOrg: null,
       memberships: [],
@@ -100,7 +99,6 @@ describe("org selection after auth", () => {
       withoutRender: true,
     });
 
-    // Should not redirect to /select-org (normal flow)
-    expect(context.store.get(pathname$)).not.toBe("/select-org");
+    expect(context.store.get(pathname$)).toBe("/select-org");
   });
 });
