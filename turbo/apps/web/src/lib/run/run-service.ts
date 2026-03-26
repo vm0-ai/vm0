@@ -1199,7 +1199,6 @@ export async function createRun(
           secretNames: params.secrets ? Object.keys(params.secrets) : null,
           resumedFromCheckpointId: params.resumedFromCheckpointId ?? null,
           continuedFromSessionId: params.sessionId ?? null,
-          scheduleId: params.scheduleId ?? null,
           modelProvider: params.modelProvider ?? null,
           lastHeartbeatAt: new Date(),
         })
@@ -1212,6 +1211,7 @@ export async function createRun(
       await tx.insert(zeroRuns).values({
         id: newRun.id,
         triggerSource: params.triggerSource ?? "cli",
+        scheduleId: params.scheduleId ?? null,
       });
 
       return newRun;

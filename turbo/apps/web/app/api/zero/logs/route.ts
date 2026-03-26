@@ -116,7 +116,7 @@ async function getTotalCount(
     conditions.push(eq(zeroRuns.triggerSource, query.triggerSource));
   }
   if (query.scheduleId) {
-    conditions.push(eq(agentRuns.scheduleId, query.scheduleId));
+    conditions.push(eq(zeroRuns.scheduleId, query.scheduleId));
   }
 
   const [result] = await globalThis.services.db
@@ -264,7 +264,7 @@ const router = tsr.router(logsListContract, {
       conditions.push(eq(zeroRuns.triggerSource, query.triggerSource));
     }
     if (query.scheduleId) {
-      conditions.push(eq(agentRuns.scheduleId, query.scheduleId));
+      conditions.push(eq(zeroRuns.scheduleId, query.scheduleId));
     }
 
     const runs = await globalThis.services.db

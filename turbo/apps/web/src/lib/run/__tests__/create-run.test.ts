@@ -15,6 +15,7 @@ import {
   createTestOrgModelProvider,
   insertStalePendingRun,
   findTestRunRecord,
+  findTestZeroRun,
   findTestRunCallbacks,
   findTestStorage,
   findTestRunnerJobEntry,
@@ -154,9 +155,9 @@ describe("createRun()", () => {
     it("should set null scheduleId when not provided", async () => {
       const result = await createRun(baseParams());
 
-      const run = await findTestRunRecord(result.runId);
+      const zeroRun = await findTestZeroRun(result.runId);
 
-      expect(run!.scheduleId).toBeNull();
+      expect(zeroRun!.scheduleId).toBeNull();
     });
   });
 

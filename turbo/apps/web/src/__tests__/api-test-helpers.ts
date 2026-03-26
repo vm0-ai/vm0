@@ -710,7 +710,6 @@ async function createTestRunDirect(
       status: options?.status ?? "running",
       prompt: options?.prompt ?? "test prompt",
       continuedFromSessionId: options?.continuedFromSessionId,
-      scheduleId: options?.scheduleId,
       ...(options?.createdAt ? { createdAt: options.createdAt } : {}),
       ...(options?.startedAt ? { startedAt: options.startedAt } : {}),
       ...(options?.completedAt ? { completedAt: options.completedAt } : {}),
@@ -721,6 +720,7 @@ async function createTestRunDirect(
   await globalThis.services.db.insert(zeroRuns).values({
     id: run!.id,
     triggerSource: options?.triggerSource ?? "cli",
+    scheduleId: options?.scheduleId ?? null,
   });
 
   return run!;
@@ -2073,9 +2073,9 @@ export async function linkRunToSchedule(
   scheduleId: string,
 ): Promise<void> {
   await globalThis.services.db
-    .update(agentRuns)
+    .update(zeroRuns)
     .set({ scheduleId })
-    .where(eq(agentRuns.id, runId));
+    .where(eq(zeroRuns.id, runId));
 }
 
 // ============================================================================
@@ -2189,7 +2189,7 @@ export async function findTestCallbacksByRunId(runId: string) {
  * Look up a full agent run record by ID for verification in tests.
  *
  * Direct DB read is required because the GET /api/agent/runs/:id endpoint
- * does not expose internal fields like `vars`, `secretNames`, `scheduleId`,
+ * does not expose internal fields like `vars`, `secretNames`,
  * or `lastHeartbeatAt` that integration tests need to verify.
  */
 export async function findTestRunRecord(

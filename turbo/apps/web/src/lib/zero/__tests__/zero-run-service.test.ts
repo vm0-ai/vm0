@@ -200,9 +200,9 @@ describe("createZeroRun()", () => {
         }),
       );
 
-      const run = await findTestRunRecord(result.runId);
-      expect(run).toBeDefined();
-      expect(run!.scheduleId).toBe(schedule.id);
+      const zeroRun = await findTestZeroRun(result.runId);
+      expect(zeroRun).toBeDefined();
+      expect(zeroRun!.scheduleId).toBe(schedule.id);
     });
 
     it("should propagate callbacks", async () => {
