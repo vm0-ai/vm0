@@ -1,11 +1,11 @@
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
-import { MODEL_PROVIDER_TYPES } from "@vm0/core";
 import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
 import {
   selectedModel$,
   setSelectedModel$,
   persistModelPreference$,
 } from "../../signals/zero-page/zero-model-preference.ts";
+import { getUILabel } from "./components/settings/provider-ui-config.ts";
 
 /**
  * Hook for managing model selection state.
@@ -18,21 +18,24 @@ export function useModelSelection() {
     modelProvidersLoadable.state === "hasData"
       ? (modelProvidersLoadable.data.modelProviders ?? [])
       : [];
-  const modelOptions = [
-    { value: "default", label: "Default" },
-    ...configuredProviders.map((p) => ({
-      value: p.type,
-      label: MODEL_PROVIDER_TYPES[p.type].label,
-    })),
-  ];
+  const modelOptions = configuredProviders.map((p) => ({
+    value: p.type,
+    label: getUILabel(p.type),
+  }));
 
-  const selectedModel = useGet(selectedModel$);
+  const defaultProvider = configuredProviders.find((p) => p.isDefault);
+  const rawSelected = useGet(selectedModel$);
+  const effectiveSelected =
+    rawSelected === "default" && defaultProvider
+      ? defaultProvider.type
+      : rawSelected;
+
   const setSelectedModel = useSet(setSelectedModel$);
   const persistSelection = useSet(persistModelPreference$);
 
   return {
     modelOptions,
-    selectedModel,
+    selectedModel: effectiveSelected,
     setSelectedModel,
     persistSelection,
   } as const;
