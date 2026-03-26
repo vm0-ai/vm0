@@ -238,6 +238,16 @@ sign_in_via_token() {
 }
 
 # ---------------------------------------------------------------------------
+# url_is_on_app — Check if a URL's hostname starts with "app."
+# ---------------------------------------------------------------------------
+url_is_on_app() {
+  local url="$1"
+  local host
+  host=$(echo "$url" | sed -n 's|.*://\([^/:]*\).*|\1|p')
+  [[ "$host" == app.* ]]
+}
+
+# ---------------------------------------------------------------------------
 # navigate_to_app_page — Navigate to a path on the platform app domain
 # Usage: navigate_to_app_page "/team"
 # ---------------------------------------------------------------------------
