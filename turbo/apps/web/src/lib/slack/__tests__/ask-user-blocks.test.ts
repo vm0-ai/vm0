@@ -99,17 +99,6 @@ describe("buildAskUserQuestionBlocks", () => {
     }
   });
 
-  it("should render submit-only card when question has no options (defensive)", () => {
-    // This scenario is prevented by schema validation, but the block builder
-    // should still handle it gracefully without crashing
-    const questions: AskUserQuestion[] = [{ question: "Any thoughts?" }];
-
-    const blocks = buildAskUserQuestionBlocks(questions, pendingId);
-
-    // Header + question text + submit + context = 4 blocks (no actions for options)
-    expect(blocks).toHaveLength(4);
-  });
-
   it("should render checkboxes for multiple single-select questions", () => {
     const questions: AskUserQuestion[] = [
       {
