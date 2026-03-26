@@ -23,17 +23,9 @@ interface DispatchResult {
 
 /**
  * Get the API base URL for internal callbacks
- * Priority: VM0_API_URL > VERCEL_URL > localhost fallback
  */
 export function getApiUrl(): string {
-  const { VM0_API_URL, VERCEL_URL } = env();
-  if (VM0_API_URL) {
-    return VM0_API_URL;
-  }
-  if (VERCEL_URL) {
-    return `https://${VERCEL_URL}`;
-  }
-  return "http://localhost:3000";
+  return env().VM0_API_URL ?? "http://localhost:3000";
 }
 
 /**

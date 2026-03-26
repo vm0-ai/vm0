@@ -33,7 +33,6 @@ function initEnv() {
       E2B_API_KEY: z.string().min(1).optional(),
       VM0_API_URL: z.url().optional(),
       VERCEL_ENV: z.enum(["production", "preview", "development"]).optional(),
-      VERCEL_URL: z.string().optional(),
       R2_ACCOUNT_ID: z.string().min(1),
       R2_ACCESS_KEY_ID: z.string().min(1),
       R2_SECRET_ACCESS_KEY: z.string().min(1),
@@ -221,9 +220,12 @@ function initEnv() {
       CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY,
 
       E2B_API_KEY: process.env.E2B_API_KEY,
-      VM0_API_URL: process.env.VM0_API_URL,
+      VM0_API_URL:
+        process.env.VM0_API_URL ??
+        (process.env.VERCEL_URL
+          ? `https://${process.env.VERCEL_URL}`
+          : undefined),
       VERCEL_ENV: process.env.VERCEL_ENV,
-      VERCEL_URL: process.env.VERCEL_URL,
       R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID,
       R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID,
       R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY,
