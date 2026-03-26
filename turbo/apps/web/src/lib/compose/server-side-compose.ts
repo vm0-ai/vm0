@@ -137,8 +137,9 @@ async function upsertComposeRecord(params: {
  * Attempt server-side compose for platform mode.
  *
  * Bypasses the E2B sandbox by resolving skills from the database cache,
- * merging skill variables, expanding firewall configs, uploading instructions,
- * and creating the compose record — all server-side.
+ * injecting connector env vars via buildComposeContent, expanding firewall
+ * configs, uploading instructions, and creating the compose record — all
+ * server-side.
  *
  * @returns Compose result if successful, or `null` if the server-side path
  *          is not possible (e.g., uncached skills) and the caller should
