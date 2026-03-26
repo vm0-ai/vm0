@@ -34,9 +34,10 @@ export const DISALLOWED_CRON_TOOLS = [
 export function buildAgentToolsPrompt(): string {
   return [
     "# Agent Tools",
-    "You have access to the Zero CLI for zero platform. Run commands with: `npx -p @vm0/cli zero <command>`",
-    "- Use `zero --help` to see all available commands.",
-    "- Use `zero schedule --help` for recurring or scheduled tasks. Do NOT use /loop or cron tools (CronCreate, CronList, CronDelete) — they are not available.",
-    "- Use `zero slack message send` to send messages as bot token. Never use SLACK_TOKEN to send messages — it's a user token.",
+    "You have access to the Zero CLI. Run commands with: `npx -p @vm0/cli zero <command>`",
+    "- When you need to discover available commands, run `zero --help`.",
+    "- When you need to schedule or manage recurring tasks, use `zero schedule`. Do NOT use /loop or cron tools (CronCreate, CronList, CronDelete) — they are not available.",
+    "- When you need to send a Slack message, use `zero slack message send`. Never use SLACK_TOKEN directly — it's a user token.",
+    "- When you encounter a missing token or environment variable error, run `zero doctor missing-token <TOKEN_NAME>` to diagnose the issue and get remediation steps for the user.",
   ].join("\n");
 }
