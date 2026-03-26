@@ -214,32 +214,6 @@ derive_app_url() {
 }
 
 # ---------------------------------------------------------------------------
-# sign_in_via_token — Sign in via Clerk token and wait for redirect
-# Requires SIGN_IN_TOKEN to be set (call create_clerk_sign_in_token first).
-# ---------------------------------------------------------------------------
-sign_in_via_token() {
-  agent-browser open "${VM0_API_URL}/sign-in-token?token=${SIGN_IN_TOKEN}" --ignore-https-errors
-  agent-browser wait 3000
-
-  # Wait for redirect away from /sign-in-token
-  local redirect_complete=false
-  for _i in $(seq 1 20); do
-    local current_url
-    current_url=$(agent-browser get url 2>/dev/null || true)
-    if [[ -n "$current_url" && ! "$current_url" =~ sign-in-token ]]; then
-      redirect_complete=true
-      break
-    fi
-    sleep 1
-  done
-
-  if [[ "$redirect_complete" != "true" ]]; then
-    echo "Failed to redirect after sign-in-token" >&2
-    return 1
-  fi
-}
-
-# ---------------------------------------------------------------------------
 # sign_in_via_token_on_app — Sign in via Clerk token on the platform app domain
 # Opens /sign-in-token, waits for auth redirect, dismisses cookie banner.
 # Requires APP_URL and SIGN_IN_TOKEN to be set.
