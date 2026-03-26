@@ -83,10 +83,14 @@ async function postScheduleResults(
     const isFirst = i === 0;
     const isLast = i === outputs.length - 1;
 
+    const triggeredBy =
+      isLast && scheduleDescription
+        ? `triggered by schedule "${scheduleDescription}"`
+        : undefined;
     const blocks = buildAgentResponseMessage(
       rawOutput,
       isLast ? logsUrl : undefined,
-      isLast ? scheduleDescription : undefined,
+      triggeredBy,
     );
 
     const threadTs = messageTs;
@@ -173,7 +177,9 @@ async function postScheduleFailure(
       blocks: buildAgentResponseMessage(
         failureContent,
         logsUrl,
-        scheduleDescription,
+        scheduleDescription
+          ? `triggered by schedule "${scheduleDescription}"`
+          : undefined,
       ),
     },
   );

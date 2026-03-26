@@ -170,11 +170,11 @@ describe("buildAgentResponseMessage", () => {
     expect(markdownBlock.text).toBe(content);
   });
 
-  it("should show triggeredBy as separate context block below audit", () => {
+  it("should show triggeredBy as separate context block below audit with divider", () => {
     const blocks = buildAgentResponseMessage(
       "Response text",
       "https://app.vm0.ai/activity/run-123",
-      "Send a greeting message daily at 9 AM",
+      'triggered by schedule "Send a greeting message daily at 9 AM"',
     );
 
     const contextBlocks = blocks.filter((b) => b.type === "context");
@@ -186,10 +186,11 @@ describe("buildAgentResponseMessage", () => {
     expect(auditText).toContain("Audit");
     expect(auditText).not.toContain("triggered by");
 
-    // Second context: attribution
+    // Second context: divider + attribution
     const attrText = (contextBlocks[1] as { elements: { text: string }[] })
       .elements[0]!.text;
-    expect(attrText).toBe(
+    expect(attrText).toContain("─────");
+    expect(attrText).toContain(
       'triggered by schedule "Send a greeting message daily at 9 AM"',
     );
   });

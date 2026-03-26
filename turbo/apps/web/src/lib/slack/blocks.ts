@@ -449,7 +449,7 @@ export function buildAgentResponseMessage(
       elements: [
         {
           type: "mrkdwn",
-          text: `triggered by schedule "${triggeredBy}"`,
+          text: `─────\n${triggeredBy}`,
         },
       ],
     });
