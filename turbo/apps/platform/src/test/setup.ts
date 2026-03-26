@@ -21,13 +21,12 @@ beforeAll(() => {
 });
 
 // Reset handlers after each test
-afterEach(() => {
+afterEach(async () => {
+  await clearAllDetached();
   server.resetHandlers();
 });
 
 // Close server after all tests
 afterAll(() => {
   server.close();
-
-  return clearAllDetached();
 });
