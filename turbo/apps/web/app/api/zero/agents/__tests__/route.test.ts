@@ -9,9 +9,13 @@ import {
 import {
   createTestRequest,
   createTestCliToken,
+  createTestCompose,
   createTestRun,
+  createTestRunInDb,
   createTestOrgModelProvider,
   createTestSandboxToken,
+  createTestVolume,
+  findTestStorageByName,
   seedTestSkill,
   seedSeedSkills,
   seedSeedSkillStorages,
@@ -26,6 +30,7 @@ import {
   setDefaultAgentByComposeId,
   clearOrgMembersCacheEntry,
 } from "../../../../../src/__tests__/api-test-helpers";
+import { getInstructionsStorageName } from "@vm0/core";
 import {
   testContext,
   type UserContext,
@@ -831,6 +836,65 @@ describe("Zero Agents API", () => {
         testOrgSlug,
       );
       expect(getResponse.status).toBe(404);
+    });
+
+    it("should clean up instructions storage when agent is deleted", async () => {
+      const agentName = `cleanup-${user.userId.slice(-8)}`;
+      const { composeId } = await createTestCompose(agentName);
+
+      // Create instructions volume for the agent
+      const instructionsName = getInstructionsStorageName(agentName);
+      await createTestVolume(instructionsName);
+
+      // Verify volume exists
+      const storageBefore = await findTestStorageByName(
+        user.orgId,
+        instructionsName,
+      );
+      expect(storageBefore).toBeDefined();
+
+      // Mock S3 listing
+      context.mocks.s3.listS3Objects.mockResolvedValueOnce([
+        {
+          key: `${storageBefore!.s3Prefix}/v1/archive.tar.gz`,
+          size: 1024,
+        },
+      ]);
+
+      // Delete agent via zero agents API
+      const response = await deleteAgent(composeId, testCliToken, testOrgSlug);
+      expect(response.status).toBe(204);
+
+      // Verify instructions storage cleaned up
+      const storageAfter = await findTestStorageByName(
+        user.orgId,
+        instructionsName,
+      );
+      expect(storageAfter).toBeUndefined();
+
+      // Verify S3 cleanup called
+      expect(context.mocks.s3.deleteS3Objects).toHaveBeenCalled();
+    });
+
+    it("should return 409 when agent has running runs", async () => {
+      const created = await (
+        await postAgent({ connectors: [] }, testCliToken, testOrgSlug)
+      ).json();
+
+      // Create a running run for this agent
+      await createTestRunInDb(user.userId, created.agentId, {
+        status: "running",
+      });
+
+      // Try to delete — should get 409
+      const response = await deleteAgent(
+        created.agentId,
+        testCliToken,
+        testOrgSlug,
+      );
+      expect(response.status).toBe(409);
+      const data = await response.json();
+      expect(data.error.code).toBe("CONFLICT");
     });
 
     it("should return 401 without auth", async () => {
