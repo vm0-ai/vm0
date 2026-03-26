@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.85.2](https://github.com/vm0-ai/vm0/compare/cli-v9.85.1...cli-v9.85.2) (2026-03-26)
+
+
+### Bug Fixes
+
+* require at least one option for ask-user question command ([#7022](https://github.com/vm0-ai/vm0/issues/7022)) ([4da712b](https://github.com/vm0-ai/vm0/commit/4da712b527355737faf3363f4513d28ef5735c74))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.118.3
+
 ## [9.85.1](https://github.com/vm0-ai/vm0/compare/cli-v9.85.0...cli-v9.85.1) (2026-03-26)
 
 

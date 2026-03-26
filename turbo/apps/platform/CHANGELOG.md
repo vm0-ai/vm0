@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.157.0](https://github.com/vm0-ai/vm0/compare/app-v0.156.1...app-v0.157.0) (2026-03-26)
+
+
+### Features
+
+* **web:** add use cases for public connectors missing from gallery ([#6987](https://github.com/vm0-ai/vm0/issues/6987)) ([afec884](https://github.com/vm0-ai/vm0/commit/afec8840a1b14fd1b2baf066ac999bdde7c7e9fe))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.118.3
+
 ## [0.156.1](https://github.com/vm0-ai/vm0/compare/app-v0.156.0...app-v0.156.1) (2026-03-26)
 
 
