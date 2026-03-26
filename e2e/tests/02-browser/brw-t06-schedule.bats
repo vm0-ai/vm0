@@ -53,7 +53,7 @@ teardown_file() {
   echo "# Clicking Add schedule..." >&3
   local btn_clicked=false
   for _i in $(seq 1 15); do
-    if agent-browser find role button --name "Add schedule" click 2>/dev/null; then
+    if agent-browser find role button click --name "Add schedule" 2>/dev/null; then
       btn_clicked=true
       break
     fi
@@ -74,7 +74,7 @@ teardown_file() {
 
   # Click Create button (use role locator for consistency)
   echo "# Clicking Create..." >&3
-  agent-browser find role button --name "Create" click
+  agent-browser find role button click --name "Create"
 
   # Wait for navigation to detail page
   local navigated=false
@@ -143,7 +143,7 @@ teardown_file() {
   echo "# Switching to Calendar view..." >&3
   local tab_clicked=false
   for _i in $(seq 1 10); do
-    if agent-browser find role tab --name "Calendar" click 2>/dev/null; then
+    if agent-browser find role tab click --name "Calendar" 2>/dev/null; then
       tab_clicked=true
       break
     fi
