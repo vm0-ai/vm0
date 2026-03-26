@@ -4719,3 +4719,44 @@ export async function getTestComposeVersionContent(
     .limit(1);
   return (row?.content as Record<string, unknown>) ?? null;
 }
+
+/**
+ * Update a pending question record to simulate a user answering.
+ */
+export async function updateTestPendingQuestionAnswer(
+  pendingId: string,
+  answer: string,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(slackOrgPendingQuestions)
+    .set({ answer, answeredAt: new Date() })
+    .where(eq(slackOrgPendingQuestions.id, pendingId));
+}
+
+/**
+ * Update a pending question record's expiration to simulate expiry.
+ */
+export async function updateTestPendingQuestionExpiry(
+  pendingId: string,
+  expiresAt: Date,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(slackOrgPendingQuestions)
+    .set({ expiresAt })
+    .where(eq(slackOrgPendingQuestions.id, pendingId));
+}
+
+/**
+ * Find a pending question record by ID.
+ */
+export async function findTestPendingQuestion(pendingId: string) {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select()
+    .from(slackOrgPendingQuestions)
+    .where(eq(slackOrgPendingQuestions.id, pendingId))
+    .limit(1);
+  return row;
+}
