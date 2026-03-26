@@ -4,24 +4,15 @@ import { initServices } from "../../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../../src/lib/callback";
 import { decryptSecretValue } from "../../../../../../src/lib/crypto/secrets-encryption";
 import { slackOrgInstallations } from "../../../../../../src/db/schema/slack-org-installation";
-import { slackOrgPendingQuestions } from "../../../../../../src/db/schema/slack-org-pending-question";
 import { agentSessions } from "../../../../../../src/db/schema/agent-session";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
-import { zeroAgents } from "../../../../../../src/db/schema/zero-agent";
 import {
   createSlackClient,
   postMessage,
   setThreadStatus,
 } from "../../../../../../src/lib/slack/client";
-import {
-  buildAgentResponseMessage,
-  buildAskUserQuestionBlocks,
-} from "../../../../../../src/lib/slack/blocks";
-import type { AskUserQuestion } from "../../../../../../src/lib/slack/blocks";
-import {
-  extractAllRunOutputs,
-  formatAskUserDenials,
-} from "../../../../../../src/lib/run/extract-run-output";
+import { buildAgentResponseMessage } from "../../../../../../src/lib/slack/blocks";
+import { extractAllRunOutputs } from "../../../../../../src/lib/run/extract-run-output";
 import {
   saveThreadSession,
   buildLogsUrl,
@@ -29,11 +20,7 @@ import {
 import { env } from "../../../../../../src/env";
 import type { SlackOrgCallbackPayload } from "../../../../../../src/lib/callback/callback-payloads";
 import { logger } from "../../../../../../src/lib/logger";
-import type { WebClient } from "@slack/web-api";
-import type {
-  PermissionDenial,
-  RunOutput,
-} from "../../../../../../src/lib/run/extract-run-output";
+import type { RunOutput } from "../../../../../../src/lib/run/extract-run-output";
 
 const log = logger("callback:slack-org");
 
@@ -75,68 +62,6 @@ async function findNewSessionId(
     .orderBy(desc(agentSessions.updatedAt))
     .limit(1);
   return newSession?.id;
-}
-
-/**
- * Post an interactive Block Kit card for askUserQuestion denials.
- */
-async function postAskUserInteractiveCard(
-  client: WebClient,
-  resultData: { askUserDenials: PermissionDenial[] },
-  payload: SlackOrgCallbackPayload,
-  runId: string,
-  resolvedSessionId: string | undefined,
-  agentLabel: string,
-): Promise<void> {
-  const allQuestions: AskUserQuestion[] = [];
-  for (const denial of resultData.askUserDenials) {
-    const questions = denial.tool_input?.questions;
-    if (questions) {
-      allQuestions.push(...questions);
-    }
-  }
-
-  if (allQuestions.length === 0) {
-    return;
-  }
-
-  const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
-  const [pending] = await globalThis.services.db
-    .insert(slackOrgPendingQuestions)
-    .values({
-      runId,
-      slackWorkspaceId: payload.workspaceId,
-      slackChannelId: payload.channelId,
-      slackThreadTs: payload.threadTs,
-      connectionId: payload.connectionId,
-      composeId: payload.agentId,
-      agentName: agentLabel,
-      sessionId: resolvedSessionId,
-      questions: allQuestions,
-      expiresAt,
-    })
-    .returning({ id: slackOrgPendingQuestions.id });
-
-  if (!pending) {
-    return;
-  }
-
-  const fallbackText = formatAskUserDenials(resultData.askUserDenials);
-  const cardBlocks = buildAskUserQuestionBlocks(allQuestions, pending.id);
-
-  const cardResult = await postMessage(
-    client,
-    payload.channelId,
-    fallbackText ?? "The agent needs your input.",
-    { threadTs: payload.threadTs, blocks: cardBlocks },
-  );
-
-  if (cardResult.ts) {
-    await globalThis.services.db
-      .update(slackOrgPendingQuestions)
-      .set({ slackMessageTs: cardResult.ts })
-      .where(eq(slackOrgPendingQuestions.id, pending.id));
-  }
 }
 
 function buildResponseText(
@@ -273,20 +198,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   );
   const client = createSlackClient(botToken);
 
-  // Resolve agent display name and slug from zeroAgents
-  const [agentRow] = await globalThis.services.db
-    .select({ displayName: zeroAgents.displayName, name: zeroAgents.name })
-    .from(zeroAgents)
-    .where(eq(zeroAgents.id, payload.agentId))
-    .limit(1);
-  const agentLabel = agentRow?.displayName ?? agentRow?.name ?? "your agent";
-
   const allOutputs = await extractAllRunOutputs(runId, error);
-  const lastOutput = allOutputs[allOutputs.length - 1]!;
-  const hasAskUserDenials = lastOutput.askUserDenials.length > 0;
 
-  // Resolve session before posting interactive card
-  const resolvedSessionId = await saveOrgThreadSession(payload, runId, status);
+  // Resolve session
+  await saveOrgThreadSession(payload, runId, status);
 
   // Post each result as a separate Slack reply (in order)
   for (let i = 0; i < allOutputs.length; i++) {
@@ -301,18 +216,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       threadTs: payload.threadTs,
       blocks: buildAgentResponseMessage(responseText, logsUrl),
     });
-  }
-
-  // Post interactive card for askUserQuestion denials
-  if (hasAskUserDenials) {
-    await postAskUserInteractiveCard(
-      client,
-      lastOutput,
-      payload,
-      runId,
-      resolvedSessionId,
-      agentLabel,
-    );
   }
 
   // Clear assistant thinking status
