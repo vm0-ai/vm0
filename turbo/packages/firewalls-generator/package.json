@@ -93,6 +93,7 @@
     "generate:shortio": "tsx src/index.ts shortio",
     "generate:similarweb": "tsx src/index.ts similarweb",
     "generate:slack": "tsx src/index.ts slack",
+    "generate:spotify": "tsx src/index.ts spotify",
     "generate:strava": "tsx src/index.ts strava",
     "generate:stripe": "tsx src/index.ts stripe",
     "generate:supabase": "tsx src/index.ts supabase",

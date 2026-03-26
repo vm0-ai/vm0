@@ -35,6 +35,7 @@ export enum FeatureSwitchKey {
   GitHubIntegration = "githubIntegration",
   TelegramIntegration = "telegramIntegration",
   DataExport = "dataExport",
+  SpotifyConnector = "spotifyConnector",
   ShowSystemPrompt = "showSystemPrompt",
   Usage = "usage",
   ConcurrentAddOn = "concurrentAddOn",
