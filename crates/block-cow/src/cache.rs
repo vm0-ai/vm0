@@ -17,7 +17,7 @@ struct BaseEntry {
     refcount: usize,
 }
 
-/// Handle returned by [`BaseImagePool::acquire`].
+/// Handle returned by [`BaseLoopCache::acquire`].
 ///
 /// Contains everything a [`CowDevice`](crate::CowDevice) needs from the
 /// base image without managing the loop device lifetime.
@@ -62,17 +62,17 @@ impl BaseHandle {
 /// pool.cleanup()
 ///   → detach ALL remaining loop devices (safety net on shutdown)
 /// ```
-pub struct BaseImagePool {
+pub struct BaseLoopCache {
     entries: HashMap<PathBuf, BaseEntry>,
 }
 
-impl Default for BaseImagePool {
+impl Default for BaseLoopCache {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl BaseImagePool {
+impl BaseLoopCache {
     /// Create an empty pool.
     pub fn new() -> Self {
         Self {
@@ -95,7 +95,7 @@ impl BaseImagePool {
                 base = %base_image.display(),
                 loop_dev = %entry.loop_dev.path().display(),
                 refcount = entry.refcount,
-                "base image pool: reusing existing loop"
+                "base loop cache: reusing existing loop"
             );
             return Ok(BaseHandle {
                 loop_path: entry.loop_dev.path().to_owned(),
@@ -118,7 +118,7 @@ impl BaseImagePool {
             base = %base_image.display(),
             loop_dev = %loop_dev.path().display(),
             sectors,
-            "base image pool: attached new loop"
+            "base loop cache: attached new loop"
         );
 
         let handle = BaseHandle {
@@ -149,7 +149,7 @@ impl BaseImagePool {
             None => {
                 warn!(
                     base = %base_key.display(),
-                    "base image pool: release called for unknown image"
+                    "base loop cache: release called for unknown image"
                 );
                 return Ok(());
             }
@@ -160,7 +160,7 @@ impl BaseImagePool {
             // an error so the entry stayed in the map for cleanup).
             warn!(
                 base = %base_key.display(),
-                "base image pool: retrying detach for stuck entry (refcount=0)"
+                "base loop cache: retrying detach for stuck entry (refcount=0)"
             );
             entry.loop_dev.detach()?;
             self.entries.remove(&key);
@@ -171,7 +171,7 @@ impl BaseImagePool {
             info!(
                 base = %base_key.display(),
                 loop_dev = %entry.loop_dev.path().display(),
-                "base image pool: detaching loop (refcount=0)"
+                "base loop cache: detaching loop (refcount=0)"
             );
             // Detach first — if it fails, the entry stays in the map
             // so cleanup() or a subsequent release() can retry later.
@@ -181,7 +181,7 @@ impl BaseImagePool {
             info!(
                 base = %base_key.display(),
                 refcount = entry.refcount,
-                "base image pool: released reference"
+                "base loop cache: released reference"
             );
         }
 
@@ -199,25 +199,25 @@ impl BaseImagePool {
                     base = %key.display(),
                     loop_dev = %entry.loop_dev.path().display(),
                     error = %e,
-                    "base image pool: cleanup failed to detach loop"
+                    "base loop cache: cleanup failed to detach loop"
                 );
             } else {
                 info!(
                     base = %key.display(),
                     loop_dev = %entry.loop_dev.path().display(),
-                    "base image pool: cleanup detached loop"
+                    "base loop cache: cleanup detached loop"
                 );
             }
         }
     }
 }
 
-impl Drop for BaseImagePool {
+impl Drop for BaseLoopCache {
     fn drop(&mut self) {
         if !self.entries.is_empty() {
             warn!(
                 count = self.entries.len(),
-                "BaseImagePool dropped with active entries — detaching loops"
+                "BaseLoopCache dropped with active entries — detaching loops"
             );
             self.cleanup();
         }

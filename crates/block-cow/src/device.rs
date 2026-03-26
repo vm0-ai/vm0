@@ -45,13 +45,13 @@ pub struct CowDeviceConfig {
 ///
 /// Orchestrates a COW loop device and device mapper to present a single
 /// writable block device where reads of unmodified blocks go to the shared
-/// base image (via [`BaseImagePool`](crate::BaseImagePool)) and writes are
+/// base image (via [`BaseLoopCache`](crate::BaseLoopCache)) and writes are
 /// captured in a per-VM sparse COW file.
 ///
 /// # Lifecycle
 ///
 /// ```text
-/// BaseImagePool::acquire(rootfs.ext4) → base_handle (shared loop device)
+/// BaseLoopCache::acquire(rootfs.ext4) → base_handle (shared loop device)
 ///
 /// // Fresh boot — caller creates empty sparse file:
 /// init_cow_file("cow.img", sectors)?;
@@ -68,7 +68,7 @@ pub struct CowDeviceConfig {
 ///   → losetup -d /dev/loop1
 ///   → rm cow.img
 ///
-/// BaseImagePool::release() → detaches base loop when refcount hits 0
+/// BaseLoopCache::release() → detaches base loop when refcount hits 0
 /// ```
 pub struct CowDevice {
     /// Unique identifier for this device (used in dm target names).
@@ -90,7 +90,7 @@ impl CowDevice {
     /// Create a COW device from an existing COW file.
     ///
     /// `base_loop` is the read-only loop device path from
-    /// [`BaseImagePool::acquire`](crate::BaseImagePool::acquire).
+    /// [`BaseLoopCache::acquire`](crate::BaseLoopCache::acquire).
     /// `sectors` is the base image size in 512-byte sectors.
     ///
     /// The COW file at `config.cow_file` must already exist — either
@@ -111,7 +111,7 @@ impl CowDevice {
         // 2. Create dm-snapshot target directly on the shared base loop device.
         //
         //    No dm-linear origin needed — the base loop is read-only and shared
-        //    across all COW devices via BaseImagePool.
+        //    across all COW devices via BaseLoopCache.
         //
         //    dm devices default to root:disk 0660.  The runner user must be in
         //    the `disk` group to open the device.

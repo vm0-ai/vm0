@@ -477,7 +477,7 @@ async fn gc_versions(home: &HomePaths, dry_run: bool) -> RunnerResult<Vec<String
 /// 2. Detach orphaned loop devices backing files under `~/.vm0-runner/`.
 ///    After pass 1 frees dm-snapshot references, previously-busy COW
 ///    loop devices become detachable.  Base loop devices held by a live
-///    runner's `BaseImagePool` are protected by a holder fd (EBUSY).
+///    runner's `BaseLoopCache` are protected by a holder fd (EBUSY).
 ///    Only loops from dead processes (where the kernel closed the fd)
 ///    are successfully detached.
 fn gc_block_cow(dry_run: bool) -> RunnerResult<u32> {
@@ -504,7 +504,7 @@ fn gc_block_cow(dry_run: bool) -> RunnerResult<u32> {
     // Try to detach ALL loop devices whose backing files are under
     // `~/.vm0-runner/`.  Active devices are protected by EBUSY:
     //
-    // - Base loops held by a live runner's BaseImagePool: the pool
+    // - Base loops held by a live runner's BaseLoopCache: the pool
     //   keeps an open fd on the loop device, so `losetup -d` returns
     //   EBUSY.  If the runner was killed (SIGKILL), the fd is closed
     //   by the kernel and GC can reclaim the loop.

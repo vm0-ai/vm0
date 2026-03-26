@@ -4,7 +4,7 @@ use std::time::Duration;
 use tokio::io::AsyncBufReadExt;
 use tracing::info;
 
-use block_cow::{BaseImagePool, CowDevice, CowDeviceConfig};
+use block_cow::{BaseLoopCache, CowDevice, CowDeviceConfig};
 
 use crate::api::{ApiClient, ApiError};
 use crate::command;
@@ -130,12 +130,13 @@ pub async fn create_snapshot(
     // 2. Acquire base image loop and create dm-snapshot COW device.
     //    Both acquire and CowDevice::create call synchronous subprocess
     //    commands (losetup, blockdev, dmsetup) — use spawn_blocking.
-    let base_pool = std::sync::Arc::new(std::sync::Mutex::new(BaseImagePool::new()));
+    let base_cache = std::sync::Arc::new(std::sync::Mutex::new(BaseLoopCache::new()));
     let rootfs_path = config.rootfs_path.clone();
-    let pool_for_acquire = base_pool.clone();
+    let pool_for_acquire = base_cache.clone();
     let base_handle = tokio::task::spawn_blocking(move || {
-        let mut pool = pool_for_acquire.lock().unwrap_or_else(|e| e.into_inner());
-        pool.acquire(&rootfs_path)
+        let mut cache = pool_for_acquire.lock().unwrap_or_else(|e| e.into_inner());
+        cache
+            .acquire(&rootfs_path)
             .map_err(|e| SnapshotError::Setup(format!("acquire base image: {e}")))
     })
     .await
@@ -183,7 +184,7 @@ pub async fn create_snapshot(
     // Release base image — detaches the loop device (pool of 1, so refcount → 0).
     let base_key = base_handle.base_key().to_owned();
     let _ = tokio::task::spawn_blocking(move || {
-        let mut pool = base_pool.lock().unwrap_or_else(|e| e.into_inner());
+        let mut pool = base_cache.lock().unwrap_or_else(|e| e.into_inner());
         if let Err(e) = pool.release(&base_key) {
             tracing::warn!(error = %e, "failed to release base image");
         }

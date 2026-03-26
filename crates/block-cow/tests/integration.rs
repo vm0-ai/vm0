@@ -14,7 +14,7 @@ use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::process::Command;
 
-use block_cow::{BaseImagePool, CowDevice, CowDeviceConfig, init_cow_file};
+use block_cow::{BaseLoopCache, CowDevice, CowDeviceConfig, init_cow_file};
 
 /// Skip the test early if not running as root.
 /// Must be a macro so `return` exits the calling test function.
@@ -42,7 +42,7 @@ struct TestSetup {
     // Drop order matters: pool must be dropped before _tmp so the base
     // loop device is detached before the temp directory (and base image
     // file inside it) is deleted.
-    pool: BaseImagePool,
+    pool: BaseLoopCache,
     _tmp: tempfile::TempDir,
     base_image: std::path::PathBuf,
 }
@@ -54,7 +54,7 @@ impl TestSetup {
         create_test_base_image(&base);
         Self {
             _tmp: tmp,
-            pool: BaseImagePool::new(),
+            pool: BaseLoopCache::new(),
             base_image: base,
         }
     }

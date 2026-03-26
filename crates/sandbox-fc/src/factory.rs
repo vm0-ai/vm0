@@ -3,7 +3,7 @@ use sandbox::{Sandbox, SandboxConfig, SandboxError, SandboxFactory};
 use sha2::{Digest, Sha256};
 use tracing::{info, warn};
 
-use block_cow::{BaseHandle, BaseImagePool, CowDevice, CowDeviceConfig};
+use block_cow::{BaseHandle, BaseLoopCache, CowDevice, CowDeviceConfig};
 
 use crate::config::FirecrackerConfig;
 
@@ -119,9 +119,9 @@ pub struct FirecrackerFactory {
     factory_paths: FactoryPaths,
     runtime_paths: RuntimePaths,
     netns_pool: Option<std::sync::Arc<tokio::sync::Mutex<NetnsPool>>>,
-    base_pool: std::sync::Arc<std::sync::Mutex<BaseImagePool>>,
+    base_cache: std::sync::Arc<std::sync::Mutex<BaseLoopCache>>,
     /// Handle to the shared base loop device for this factory's rootfs.
-    base_handle: Option<BaseHandle>,
+    base_loop: Option<BaseHandle>,
     started: bool,
 }
 
@@ -132,12 +132,12 @@ impl FirecrackerFactory {
     /// When `netns_pool` is provided, the factory shares it instead of
     /// creating a new one in `startup()` (used for multi-profile runners).
     ///
-    /// `base_pool` is shared across factories so that multiple profiles
+    /// `base_cache` is shared across factories so that multiple profiles
     /// using the same rootfs share a single read-only loop device.
     pub async fn new(
         config: FirecrackerConfig,
         netns_pool: Option<std::sync::Arc<tokio::sync::Mutex<NetnsPool>>>,
-        base_pool: std::sync::Arc<std::sync::Mutex<BaseImagePool>>,
+        base_cache: std::sync::Arc<std::sync::Mutex<BaseLoopCache>>,
     ) -> Result<Self, SandboxError> {
         let t = std::time::Instant::now();
         prerequisites::check_prerequisites(&prerequisites::PrerequisiteConfig {
@@ -160,8 +160,8 @@ impl FirecrackerFactory {
             factory_paths,
             runtime_paths,
             netns_pool,
-            base_pool,
-            base_handle: None,
+            base_cache,
+            base_loop: None,
             started: false,
         })
     }
@@ -181,8 +181,8 @@ impl FirecrackerFactory {
     /// # Panics
     /// Panics if called before `startup()` — this is a programming error.
     #[allow(clippy::expect_used)]
-    fn base_handle(&self) -> &BaseHandle {
-        self.base_handle.as_ref().expect("factory not started")
+    fn base_loop(&self) -> &BaseHandle {
+        self.base_loop.as_ref().expect("factory not started")
     }
 }
 
@@ -221,22 +221,22 @@ impl SandboxFactory for FirecrackerFactory {
         // Acquire a shared base loop device for this factory's rootfs.
         // Uses spawn_blocking because losetup/blockdev are synchronous.
         let rootfs = self.config.rootfs_path.clone();
-        let pool = self.base_pool.clone();
-        let base_handle = tokio::task::spawn_blocking(move || {
+        let pool = self.base_cache.clone();
+        let base_loop = tokio::task::spawn_blocking(move || {
             let mut pool = pool.lock().unwrap_or_else(|e| e.into_inner());
             pool.acquire(&rootfs)
-                .map_err(|e| SandboxError::CreationFailed(format!("base image pool: {e}")))
+                .map_err(|e| SandboxError::CreationFailed(format!("base loop cache: {e}")))
         })
         .await
         .map_err(|e| SandboxError::CreationFailed(format!("join: {e}")))??;
 
         info!(
-            loop_dev = %base_handle.loop_path.display(),
-            sectors = base_handle.sectors,
+            loop_dev = %base_loop.loop_path.display(),
+            sectors = base_loop.sectors,
             "base image acquired from pool"
         );
 
-        self.base_handle = Some(base_handle);
+        self.base_loop = Some(base_loop);
 
         self.started = true;
 
@@ -291,8 +291,8 @@ impl SandboxFactory for FirecrackerFactory {
         // Failures must release the network namespace back to the pool
         // (netns has no Drop-based return), handled by the match below.
         let cow_file = sandbox_paths.workspace().join("cow.img");
-        let base_loop = self.base_handle().loop_path.clone();
-        let base_sectors = self.base_handle().sectors;
+        let base_loop = self.base_loop().loop_path.clone();
+        let base_sectors = self.base_loop().sectors;
         // Prepare the COW file: sparse-copy from snapshot or create empty.
         // Then set up the dm-snapshot device via spawn_blocking (losetup,
         // dmsetup are synchronous subprocesses).
@@ -435,8 +435,8 @@ impl SandboxFactory for FirecrackerFactory {
 
     async fn shutdown(&mut self) {
         // Release the base image handle back to the shared pool.
-        if let Some(handle) = self.base_handle.take() {
-            let pool = self.base_pool.clone();
+        if let Some(handle) = self.base_loop.take() {
+            let pool = self.base_cache.clone();
             let base_key = handle.base_key().to_owned();
             // spawn_blocking because losetup -d is synchronous.
             let _ = tokio::task::spawn_blocking(move || {
