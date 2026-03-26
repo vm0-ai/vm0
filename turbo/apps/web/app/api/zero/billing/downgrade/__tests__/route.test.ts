@@ -71,8 +71,10 @@ describe("POST /api/zero/billing/downgrade", () => {
     user = await context.setupUser();
 
     vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fake");
-    vi.stubEnv("ZERO_PRO_PLAN_PRICE_ID", TEST_PRICE_PRO);
-    vi.stubEnv("ZERO_MAX_PLAN_PRICE_ID", TEST_PRICE_TEAM);
+    vi.stubEnv(
+      "ZERO_PRICE",
+      JSON.stringify({ pro: [TEST_PRICE_PRO], team: [TEST_PRICE_TEAM] }),
+    );
     reloadEnv();
 
     stripeMocks.subscriptionsRetrieve.mockReset();

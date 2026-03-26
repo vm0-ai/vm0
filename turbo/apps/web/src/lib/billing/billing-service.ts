@@ -458,7 +458,7 @@ export async function downgradeSubscription(
     throw new Error("Subscription has no items");
   }
 
-  const proPriceId = env().ZERO_PRO_PLAN_PRICE_ID;
+  const proPriceId = activePriceId("pro");
   if (!proPriceId) {
     throw new Error("Pro plan price ID not configured");
   }

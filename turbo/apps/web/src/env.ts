@@ -114,7 +114,9 @@ function initEnv() {
         .optional()
         .transform((val) => {
           if (!val) return undefined;
-          return JSON.parse(val) as Record<string, string[]>;
+          return z
+            .record(z.string(), z.array(z.string()))
+            .parse(JSON.parse(val));
         }),
       // Clerk Webhooks
       CLERK_WEBHOOK_SIGNING_SECRET: z.string().min(1).optional(),
