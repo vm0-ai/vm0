@@ -16,6 +16,8 @@ import { agentComposes } from "../../../../../src/db/schema/agent-compose";
 import { eq, and } from "drizzle-orm";
 import { buildComposeContent } from "../../../../../src/lib/zero/build-compose-content";
 import { isDefaultAgentCompose } from "../../../../../src/lib/zero/resolve-default-agent";
+import { deleteComposeById } from "../../../../../src/lib/agent-compose/compose-service";
+import { isConflict } from "../../../../../src/lib/errors";
 import { logger } from "../../../../../src/lib/logger";
 
 const log = logger("api:zero-agents:id");
@@ -324,12 +326,23 @@ const router = tsr.router(zeroAgentsByIdContract, {
     );
     if (forbidden) return forbidden;
 
-    // Delete compose and metadata atomically
-    // Deleting agent_composes cascades to zero_agents (FK cascade),
-    // which cascades to schedules and email_thread_sessions.
-    await globalThis.services.db.transaction(async (tx) => {
-      await tx.delete(agentComposes).where(eq(agentComposes.id, params.id));
-    });
+    // Delete compose with full cleanup (cascade + S3 instructions volume)
+    try {
+      await deleteComposeById(agent.id, agent.name, org.orgId);
+    } catch (error) {
+      if (isConflict(error)) {
+        return {
+          status: 409 as const,
+          body: {
+            error: {
+              message: error.message,
+              code: "CONFLICT",
+            },
+          },
+        };
+      }
+      throw error;
+    }
 
     log.info(`Deleted zero agent: ${agent.name}`);
 

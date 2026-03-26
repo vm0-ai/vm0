@@ -1,5 +1,3 @@
-import type { DeepLink } from "../deep-links";
-
 /** Maximum message length allowed by Telegram */
 const MAX_MESSAGE_LENGTH = 4096;
 
@@ -101,31 +99,18 @@ export function markdownToTelegramHtml(markdown: string): string {
  * Layout:
  * 1. Bot header: bold agent name
  * 2. Content: markdown converted to Telegram HTML
- * 3. Deep links (optional): configuration hints when keywords detected
- * 4. Footer: logs link, visually separated
+ * 3. Footer: logs link, visually separated
  */
 export function buildTelegramResponse(
   markdown: string,
   agentName: string,
   logsUrl: string,
-  deepLinks?: DeepLink[],
 ): string {
   const header = `🤖 <b>${escapeHtml(agentName)}</b>`;
   const content = markdownToTelegramHtml(markdown);
+  const footer = `<a href="${escapeHtml(logsUrl)}">📋 Audit</a>`;
 
-  const footerParts: string[] = [];
-  if (deepLinks && deepLinks.length > 0) {
-    const linkText = deepLinks
-      .map(
-        (link) =>
-          `${link.emoji} <a href="${escapeHtml(link.url)}">${escapeHtml(link.label)}</a>`,
-      )
-      .join("  ·  ");
-    footerParts.push(linkText);
-  }
-  footerParts.push(`<a href="${escapeHtml(logsUrl)}">📋 Audit</a>`);
-
-  return `${header}\n\n${content}\n\n${footerParts.join("\n")}`;
+  return `${header}\n\n${content}\n\n${footer}`;
 }
 
 /**

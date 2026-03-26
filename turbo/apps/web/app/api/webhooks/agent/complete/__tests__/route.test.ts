@@ -546,6 +546,366 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(chatMessages[0]!.role).toBe("user");
       expect(chatMessages[0]!.content).toBe("Test prompt");
     });
+
+    it("should persist summaries extracted from Axiom events", async () => {
+      // Create checkpoint (which creates a session)
+      const checkpointRequest = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "test-session-summaries",
+            cliAgentSessionHistory: JSON.stringify({ type: "test" }),
+            artifactSnapshot: {
+              artifactName: "test-artifact",
+              artifactVersion: "v1",
+            },
+          }),
+        },
+      );
+      const checkpointResponse = await checkpointWebhook(checkpointRequest);
+      expect(checkpointResponse.status).toBe(200);
+      const checkpointData = (await checkpointResponse.json()) as {
+        agentSessionId: string;
+      };
+
+      // First Axiom call: extractRunOutput — returns the result text
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+        { eventData: { result: "Done. Created 3 files." } },
+      ]);
+      // Second Axiom call: extractSummariesFromAxiom — returns message events
+      // with tool_use blocks and a final text block (which should be skipped)
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+        {
+          eventData: {
+            message: {
+              content: [{ type: "tool_use", name: "Bash" }],
+            },
+          },
+        },
+        {
+          eventData: {
+            message: {
+              content: [{ type: "tool_use", name: "Read" }],
+            },
+          },
+        },
+        {
+          eventData: {
+            message: {
+              content: [{ type: "text", text: "Done. Created 3 files." }],
+            },
+          },
+        },
+      ]);
+
+      // Complete the run
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            exitCode: 0,
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      await context.mocks.flushAfter();
+
+      // Verify summaries are persisted on the assistant message
+      type StoredMessage = {
+        role: string;
+        content: string;
+        runId?: string;
+        summaries?: Array<
+          | string
+          | { kind: "tool"; name: string }
+          | { kind: "text"; text: string }
+        >;
+      };
+      const chatMessages = (await getSessionChatMessages(
+        checkpointData.agentSessionId,
+      )) as StoredMessage[];
+      expect(chatMessages.length).toBeGreaterThanOrEqual(2);
+
+      const assistantMsg = chatMessages.find((m) => m.role === "assistant");
+      expect(assistantMsg).toBeDefined();
+      expect(assistantMsg!.content).toBe("Done. Created 3 files.");
+      // Last text event is skipped — only tool_use entries are extracted
+      expect(assistantMsg!.summaries).toEqual([
+        { kind: "tool", name: "Bash" },
+        { kind: "tool", name: "Read" },
+      ]);
+    });
+
+    it("should extract text summaries when events have no tool_use", async () => {
+      const checkpointRequest = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "test-session-text-summaries",
+            cliAgentSessionHistory: JSON.stringify({ type: "test" }),
+            artifactSnapshot: {
+              artifactName: "test-artifact",
+              artifactVersion: "v1",
+            },
+          }),
+        },
+      );
+      const checkpointResponse = await checkpointWebhook(checkpointRequest);
+      expect(checkpointResponse.status).toBe(200);
+      const checkpointData = (await checkpointResponse.json()) as {
+        agentSessionId: string;
+      };
+
+      // First Axiom call: extractRunOutput
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+        { eventData: { result: "Analysis complete." } },
+      ]);
+      // Second Axiom call: extractSummariesFromAxiom — text-only events
+      // Last text event should be skipped, earlier ones included
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+        {
+          eventData: {
+            message: {
+              content: [{ type: "text", text: "Let me check the logs first" }],
+            },
+          },
+        },
+        {
+          eventData: {
+            message: {
+              content: [{ type: "text", text: "Analysis complete." }],
+            },
+          },
+        },
+      ]);
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            exitCode: 0,
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      await context.mocks.flushAfter();
+
+      type StoredMessage = {
+        role: string;
+        summaries?: Array<
+          | string
+          | { kind: "tool"; name: string }
+          | { kind: "text"; text: string }
+        >;
+      };
+      const chatMessages = (await getSessionChatMessages(
+        checkpointData.agentSessionId,
+      )) as StoredMessage[];
+
+      const assistantMsg = chatMessages.find((m) => m.role === "assistant");
+      expect(assistantMsg).toBeDefined();
+      // First text event included, last text event skipped
+      expect(assistantMsg!.summaries).toEqual([
+        { kind: "text", text: "Let me check the logs first" },
+      ]);
+    });
+
+    it("should truncate text summaries exceeding 80 characters", async () => {
+      const checkpointRequest = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "test-session-truncate",
+            cliAgentSessionHistory: JSON.stringify({ type: "test" }),
+            artifactSnapshot: {
+              artifactName: "test-artifact",
+              artifactVersion: "v1",
+            },
+          }),
+        },
+      );
+      const checkpointResponse = await checkpointWebhook(checkpointRequest);
+      expect(checkpointResponse.status).toBe(200);
+      const checkpointData = (await checkpointResponse.json()) as {
+        agentSessionId: string;
+      };
+
+      const longText = "x".repeat(100);
+
+      // First Axiom call: extractRunOutput
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+        { eventData: { result: "Done." } },
+      ]);
+      // Second Axiom call: extractSummariesFromAxiom — one long text, then final text
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+        {
+          eventData: {
+            message: {
+              content: [{ type: "text", text: longText }],
+            },
+          },
+        },
+        {
+          eventData: {
+            message: {
+              content: [{ type: "text", text: "Done." }],
+            },
+          },
+        },
+      ]);
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            exitCode: 0,
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      await context.mocks.flushAfter();
+
+      type StoredMessage = {
+        role: string;
+        summaries?: Array<
+          | string
+          | { kind: "tool"; name: string }
+          | { kind: "text"; text: string }
+        >;
+      };
+      const chatMessages = (await getSessionChatMessages(
+        checkpointData.agentSessionId,
+      )) as StoredMessage[];
+
+      const assistantMsg = chatMessages.find((m) => m.role === "assistant");
+      expect(assistantMsg).toBeDefined();
+      expect(assistantMsg!.summaries).toHaveLength(1);
+      const entry = assistantMsg!.summaries![0] as {
+        kind: "text";
+        text: string;
+      };
+      expect(entry.kind).toBe("text");
+      expect(entry.text.length).toBe(81); // 80 chars + "…"
+      expect(entry.text.endsWith("…")).toBe(true);
+    });
+
+    it("should not include summaries when Axiom returns no message events", async () => {
+      const checkpointRequest = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "test-session-no-summaries",
+            cliAgentSessionHistory: JSON.stringify({ type: "test" }),
+            artifactSnapshot: {
+              artifactName: "test-artifact",
+              artifactVersion: "v1",
+            },
+          }),
+        },
+      );
+      const checkpointResponse = await checkpointWebhook(checkpointRequest);
+      expect(checkpointResponse.status).toBe(200);
+      const checkpointData = (await checkpointResponse.json()) as {
+        agentSessionId: string;
+      };
+
+      // First Axiom call: extractRunOutput — returns result
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+        { eventData: { result: "All good." } },
+      ]);
+      // Second Axiom call: extractSummariesFromAxiom — no events
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([]);
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            exitCode: 0,
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      await context.mocks.flushAfter();
+
+      type StoredMessage = {
+        role: string;
+        content: string;
+        summaries?: string[];
+      };
+      const chatMessages = (await getSessionChatMessages(
+        checkpointData.agentSessionId,
+      )) as StoredMessage[];
+
+      const assistantMsg = chatMessages.find((m) => m.role === "assistant");
+      expect(assistantMsg).toBeDefined();
+      expect(assistantMsg!.content).toBe("All good.");
+      // summaries should be undefined (not included when empty)
+      expect(assistantMsg!.summaries).toBeUndefined();
+    });
   });
 
   describe("Title Regeneration", () => {

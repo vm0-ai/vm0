@@ -1056,6 +1056,7 @@ export async function createTestSchedule(
     intervalSeconds?: number;
     timezone?: string;
     prompt?: string;
+    description?: string;
     appendSystemPrompt?: string;
   },
 ): Promise<ScheduleResponse> {
@@ -1077,6 +1078,7 @@ export async function createTestSchedule(
     cronExpression: hasTrigger ? options?.cronExpression : "0 0 * * *",
     atTime: options?.atTime,
     intervalSeconds: options?.intervalSeconds,
+    description: options?.description,
     appendSystemPrompt: options?.appendSystemPrompt,
   });
   return result.schedule;
@@ -2888,6 +2890,24 @@ export async function insertOrgCacheEntry(entry: {
 export async function deleteOrgCacheEntry(orgId: string): Promise<void> {
   await globalThis.services.db
     .delete(orgCache)
+    .where(eq(orgCache.orgId, orgId));
+}
+
+/**
+ * Set billing period cache on an org_cache row.
+ * Allows getOrgBillingPeriod() to return a known period without Stripe.
+ */
+export async function setOrgCacheBillingPeriod(
+  orgId: string,
+  period: { start: Date; end: Date },
+): Promise<void> {
+  await globalThis.services.db
+    .update(orgCache)
+    .set({
+      currentPeriodStart: period.start,
+      currentPeriodEnd: period.end,
+      billingCachedAt: new Date(),
+    })
     .where(eq(orgCache.orgId, orgId));
 }
 

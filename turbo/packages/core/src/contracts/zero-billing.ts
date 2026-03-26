@@ -184,6 +184,42 @@ export const zeroBillingInvoicesContract = c.router({
 
 export type ZeroBillingInvoicesContract = typeof zeroBillingInvoicesContract;
 
+// ---------------------------------------------------------------------------
+// Downgrade
+// ---------------------------------------------------------------------------
+
+const downgradeRequestSchema = z.object({
+  targetTier: z.enum(["free", "pro"]),
+});
+
+const downgradeResponseSchema = z.object({
+  success: z.boolean(),
+  effectiveDate: z.string().nullable(),
+});
+
+/**
+ * Zero contract for POST /api/zero/billing/downgrade
+ */
+export const zeroBillingDowngradeContract = c.router({
+  create: {
+    method: "POST",
+    path: "/api/zero/billing/downgrade",
+    headers: authHeadersSchema,
+    body: downgradeRequestSchema,
+    responses: {
+      200: downgradeResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Downgrade subscription to a lower tier",
+  },
+});
+
+export type ZeroBillingDowngradeContract = typeof zeroBillingDowngradeContract;
+
 // Inferred types from Zod schemas
 export type BillingStatusResponse = z.infer<typeof billingStatusResponseSchema>;
 export type AutoRechargeConfig = z.infer<typeof autoRechargeSchema>;
@@ -193,3 +229,4 @@ export type BillingInvoice = z.infer<typeof invoiceSchema>;
 export type BillingInvoicesResponse = z.infer<
   typeof billingInvoicesResponseSchema
 >;
+export type DowngradeResponse = z.infer<typeof downgradeResponseSchema>;

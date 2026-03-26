@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.48.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.48.0...runner-rs-v0.48.1) (2026-03-26)
+
+
+### Bug Fixes
+
+* redact sandbox token in logs via secret values list ([#6838](https://github.com/vm0-ai/vm0/issues/6838)) ([56e0c1f](https://github.com/vm0-ai/vm0/commit/56e0c1f319c391dabac9088e7bccc3ff467ec33f))
+
 ## [0.48.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.47.0...runner-rs-v0.48.0) (2026-03-25)
 
 

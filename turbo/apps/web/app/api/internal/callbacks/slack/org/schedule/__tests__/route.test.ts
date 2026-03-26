@@ -170,11 +170,10 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
     const markdownBlock = firstCall.blocks.find((b) => b.type === "markdown");
     expect(markdownBlock).toBeDefined();
 
-    // Verify header is included in the markdown content
+    // Verify no header — content should be the raw output without a title prefix
     const markdownText = (markdownBlock as { type: "markdown"; text: string })
       .text;
-    expect(markdownText).toContain("Scheduled run for");
-    expect(markdownText).toContain("completed");
+    expect(markdownText).not.toContain("Scheduled run for");
 
     // Verify audit link is present as a context block
     const contextBlock = firstCall.blocks.find((b) => b.type === "context");
@@ -285,7 +284,7 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
     expect(markdownBlock).toBeDefined();
     const markdownText = (markdownBlock as { type: "markdown"; text: string })
       .text;
-    expect(markdownText).toContain("failed");
+    expect(markdownText).toContain("Failed");
     expect(markdownText).toContain("Agent crashed");
 
     // Verify audit link is present
@@ -297,14 +296,17 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
     });
   });
 
-  it("includes deep links when failure error contains connector keywords", async () => {
+  it("includes schedule attribution footer in completed notification", async () => {
     await setupSlackOrg(user);
     mockClerk({ userId: user.userId });
 
     const { composeId } = await createTestCompose(uniqueId("sched-agent"));
-    const schedule = await createTestSchedule(composeId, uniqueId("sched"));
+    const schedule = await createTestSchedule(composeId, uniqueId("sched"), {
+      description: "Daily standup summary",
+    });
     const { runId } = await createTestRun(composeId, "Test prompt");
     await linkRunToSchedule(runId, schedule.id);
+    await completeTestRun(user.userId, runId);
 
     const payload: OrgScheduleCallbackPayload = {
       scheduleId: schedule.id,
@@ -312,7 +314,7 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
       agentName: "sched-agent",
       userId: user.userId,
       orgId: user.orgId,
-      slackChannelId: "C-DEEP-LINK",
+      slackChannelId: "C-ATTR-CHANNEL",
     };
 
     const { secret } = await createTestCallback({
@@ -322,12 +324,65 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
     });
 
     const request = createCallbackRequest(
-      {
-        runId,
-        status: "failed",
-        error: "MCP server connection failed: connector timeout",
-        payload,
-      },
+      { runId, status: "completed", payload },
+      secret,
+    );
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+
+    const mockClient = new WebClient();
+    const postMessageMock = mockClient.chat.postMessage as ReturnType<
+      typeof import("vitest").vi.fn
+    >;
+    expect(postMessageMock).toHaveBeenCalled();
+
+    const firstCall = postMessageMock.mock.calls[0]![0] as {
+      blocks: (Block | KnownBlock)[];
+    };
+
+    // Should have a divider followed by an attribution context block
+    const dividerBlocks = firstCall.blocks.filter((b) => b.type === "divider");
+    expect(dividerBlocks).toHaveLength(1);
+
+    const contextBlocks = firstCall.blocks.filter((b) => b.type === "context");
+    // audit context + attribution context
+    expect(contextBlocks).toHaveLength(2);
+
+    const attrText = (contextBlocks[1] as { elements: { text: string }[] })
+      .elements[0]!.text;
+    expect(attrText).toContain("triggered by schedule");
+    expect(attrText).toContain("Daily standup summary");
+  });
+
+  it("includes schedule attribution footer in failure notification", async () => {
+    await setupSlackOrg(user);
+    mockClerk({ userId: user.userId });
+
+    const { composeId } = await createTestCompose(uniqueId("sched-agent"));
+    const schedule = await createTestSchedule(composeId, uniqueId("sched"), {
+      description: "Nightly report",
+    });
+    const { runId } = await createTestRun(composeId, "Test prompt");
+    await linkRunToSchedule(runId, schedule.id);
+
+    const payload: OrgScheduleCallbackPayload = {
+      scheduleId: schedule.id,
+      agentId: composeId,
+      agentName: "sched-agent",
+      userId: user.userId,
+      orgId: user.orgId,
+      slackChannelId: "C-ATTR-FAIL",
+    };
+
+    const { secret } = await createTestCallback({
+      runId,
+      url: "http://localhost/api/internal/callbacks/slack/org/schedule",
+      payload: { ...payload },
+    });
+
+    const request = createCallbackRequest(
+      { runId, status: "failed", error: "Timeout", payload },
       secret,
     );
     const response = await POST(request);
@@ -344,22 +399,54 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
       blocks: (Block | KnownBlock)[];
     };
 
-    // Should have 3 blocks: markdown, deep link context, audit context
     const contextBlocks = call.blocks.filter((b) => b.type === "context");
-    expect(contextBlocks.length).toBe(2);
+    expect(contextBlocks).toHaveLength(2);
 
-    // First context block should be the connector deep link
-    const deepLinkBlock = contextBlocks[0] as {
-      type: "context";
-      elements: Array<{ type: string; text: string }>;
+    const attrText = (contextBlocks[1] as { elements: { text: string }[] })
+      .elements[0]!.text;
+    expect(attrText).toContain("triggered by schedule");
+    expect(attrText).toContain("Nightly report");
+  });
+
+  it("skips notification for progress heartbeat", async () => {
+    await setupSlackOrg(user);
+    mockClerk({ userId: user.userId });
+
+    const { composeId } = await createTestCompose(uniqueId("sched-agent"));
+    const schedule = await createTestSchedule(composeId, uniqueId("sched"));
+    const { runId } = await createTestRun(composeId, "Test prompt");
+    await linkRunToSchedule(runId, schedule.id);
+
+    const payload: OrgScheduleCallbackPayload = {
+      scheduleId: schedule.id,
+      agentId: composeId,
+      agentName: "sched-agent",
+      userId: user.userId,
+      orgId: user.orgId,
     };
-    expect(deepLinkBlock.elements[0]!.text).toContain("Configure connectors");
 
-    // Second context block should be the audit link
-    expect(contextBlocks[1]).toMatchObject({
-      type: "context",
-      elements: [{ type: "mrkdwn", text: expect.stringContaining("Audit") }],
+    const { secret } = await createTestCallback({
+      runId,
+      url: "http://localhost/api/internal/callbacks/slack/org/schedule",
+      payload: { ...payload },
     });
+
+    const request = createCallbackRequest(
+      { runId, status: "progress", payload },
+      secret,
+    );
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.skipped).toBe(true);
+
+    // Verify no Slack messages were sent
+    const mockClient = new WebClient();
+    const postMessageMock = mockClient.chat.postMessage as ReturnType<
+      typeof import("vitest").vi.fn
+    >;
+    expect(postMessageMock).not.toHaveBeenCalled();
   });
 
   it("does not send notification to wrong org's Slack when user has connections in multiple orgs", async () => {

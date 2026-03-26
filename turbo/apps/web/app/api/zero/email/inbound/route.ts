@@ -32,14 +32,16 @@ interface WebhookEvent {
  */
 async function handleBounce(event: WebhookEvent): Promise<Response> {
   const recipients = event.data?.to ?? [];
-  for (const addr of recipients) {
+  if (recipients.length > 0) {
     await globalThis.services.db
       .insert(emailSuppressions)
-      .values({
-        emailAddress: addr,
-        reason: "bounced",
-        resendEmailId: event.data?.email_id ?? null,
-      })
+      .values(
+        recipients.map((addr) => ({
+          emailAddress: addr,
+          reason: "bounced",
+          resendEmailId: event.data?.email_id ?? null,
+        })),
+      )
       .onConflictDoNothing();
   }
   log.debug("Processed email.bounced event", { recipients });
@@ -51,16 +53,21 @@ async function handleBounce(event: WebhookEvent): Promise<Response> {
  */
 async function handleComplaint(event: WebhookEvent): Promise<Response> {
   const recipients = event.data?.to ?? [];
-  for (const addr of recipients) {
+  // Batch insert suppressions
+  if (recipients.length > 0) {
     await globalThis.services.db
       .insert(emailSuppressions)
-      .values({
-        emailAddress: addr,
-        reason: "complained",
-        resendEmailId: event.data?.email_id ?? null,
-      })
+      .values(
+        recipients.map((addr) => ({
+          emailAddress: addr,
+          reason: "complained",
+          resendEmailId: event.data?.email_id ?? null,
+        })),
+      )
       .onConflictDoNothing();
-
+  }
+  // Unsubscribe users individually (requires per-user lookup)
+  for (const addr of recipients) {
     const userId = await getCachedUserIdByEmail(addr);
     if (userId) {
       await unsubscribeUser(userId);

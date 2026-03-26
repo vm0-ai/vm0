@@ -1387,6 +1387,13 @@
       "when": 1774828800003,
       "tag": "0197_fk_schedules_email_org_to_composes",
       "breakpoints": true
+    },
+    {
+      "idx": 198,
+      "version": "7",
+      "when": 1774828800004,
+      "tag": "0198_add_performance_indexes",
+      "breakpoints": true
     }
   ]
 }

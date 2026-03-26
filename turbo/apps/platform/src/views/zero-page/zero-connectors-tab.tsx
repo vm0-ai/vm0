@@ -24,7 +24,7 @@ import {
 import { ScopeReviewModal } from "./components/settings/scope-review-modal.tsx";
 import { FirewallPermissionsDrawer } from "./components/settings/firewall-permissions-dialog.tsx";
 import {
-  hasFirewallConfig,
+  hasFirewallPermissions,
   saveFirewallPolicies$,
 } from "../../signals/zero-page/settings/firewalls.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
@@ -168,7 +168,9 @@ export function ZeroConnectorsTab({
                 label={connectorMap.get(name as ConnectorType)?.label ?? name}
                 connector={effectiveConnector}
                 pollingType={pollingType}
-                hasFirewall={hasFirewallConfig(name as ConnectorType)}
+                hasFirewallPermissions={hasFirewallPermissions(
+                  name as ConnectorType,
+                )}
                 isAdmin={isAdmin}
                 readOnly={readOnly}
                 onConnect={() => {

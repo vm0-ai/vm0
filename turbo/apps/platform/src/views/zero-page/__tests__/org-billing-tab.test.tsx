@@ -331,3 +331,242 @@ describe("org billing tab - auto-recharge section", () => {
     });
   });
 });
+
+describe("org billing tab - downgrade flow", () => {
+  it("should show Downgrade button for paid tier (pro)", async () => {
+    mockAPIs();
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Pro plan")).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByRole("button", { name: /Downgrade/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("should show Downgrade button for team tier", async () => {
+    mockAPIs();
+    setMockBillingStatus({
+      tier: "team",
+      credits: 120_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Team plan")).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByRole("button", { name: /Downgrade/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("should not show Downgrade button for free tier", async () => {
+    mockAPIs();
+    setMockBillingStatus({ tier: "free", credits: 10_000 });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Free plan")).toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByRole("button", { name: /Downgrade/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("should open downgrade dialog on Downgrade button click for pro user", async () => {
+    mockAPIs();
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Pro plan")).toBeInTheDocument();
+    });
+
+    await act(() => {
+      fireEvent.click(screen.getByRole("button", { name: /Downgrade/i }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Downgrade plan")).toBeInTheDocument();
+    });
+
+    // Pro user should see "Downgrade to Free?" confirmation
+    expect(
+      screen.getByText("Are you sure you want to downgrade to Free?"),
+    ).toBeInTheDocument();
+  });
+
+  it("should open downgrade dialog with plan selection for team user", async () => {
+    mockAPIs();
+    setMockBillingStatus({
+      tier: "team",
+      credits: 120_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Team plan")).toBeInTheDocument();
+    });
+
+    await act(() => {
+      fireEvent.click(screen.getByRole("button", { name: /Downgrade/i }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Downgrade plan")).toBeInTheDocument();
+    });
+
+    // Team user should see plan selection options
+    expect(
+      screen.getByText("Choose which plan to downgrade to."),
+    ).toBeInTheDocument();
+  });
+
+  it("should call downgrade API with correct targetTier on confirm", async () => {
+    let capturedBody: unknown = null;
+    server.use(
+      http.post("*/api/zero/billing/downgrade", async ({ request }) => {
+        capturedBody = await request.json();
+        return HttpResponse.json({ success: true, effectiveDate: null });
+      }),
+    );
+
+    mockAPIs();
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Pro plan")).toBeInTheDocument();
+    });
+
+    await act(() => {
+      fireEvent.click(screen.getByRole("button", { name: /Downgrade/i }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Downgrade plan")).toBeInTheDocument();
+    });
+
+    await act(() => {
+      fireEvent.click(
+        screen.getByRole("button", { name: /Downgrade to Free/i }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(capturedBody).toStrictEqual({ targetTier: "free" });
+    });
+  });
+
+  it("should close dialog on cancel without calling API", async () => {
+    let apiCalled = false;
+    server.use(
+      http.post("*/api/zero/billing/downgrade", () => {
+        apiCalled = true;
+        return HttpResponse.json({ success: true, effectiveDate: null });
+      }),
+    );
+
+    mockAPIs();
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Pro plan")).toBeInTheDocument();
+    });
+
+    await act(() => {
+      fireEvent.click(screen.getByRole("button", { name: /Downgrade/i }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Downgrade plan")).toBeInTheDocument();
+    });
+
+    await act(() => {
+      fireEvent.click(screen.getByRole("button", { name: /Cancel/i }));
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("Downgrade plan")).not.toBeInTheDocument();
+    });
+
+    expect(apiCalled).toBeFalsy();
+  });
+
+  it("should route pricing page downgrade through dialog", async () => {
+    mockAPIs();
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Pro plan")).toBeInTheDocument();
+    });
+
+    // Navigate to pricing page
+    await act(() => {
+      fireEvent.click(screen.getByText("Compare all plans"));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Compare plans")).toBeInTheDocument();
+    });
+
+    // Click "Manage subscription" (the downgrade button on pricing page for free tier)
+    const manageButtons = screen.getAllByRole("button", {
+      name: /Manage subscription/i,
+    });
+    expect(manageButtons.length).toBeGreaterThanOrEqual(1);
+
+    await act(() => {
+      fireEvent.click(manageButtons[0]!);
+    });
+
+    // Should open downgrade dialog instead of redirecting to Stripe
+    await waitFor(() => {
+      expect(screen.getByText("Downgrade plan")).toBeInTheDocument();
+    });
+  });
+});

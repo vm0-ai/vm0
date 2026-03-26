@@ -1,5 +1,45 @@
 # Changelog
 
+## [12.160.5](https://github.com/vm0-ai/vm0/compare/web-v12.160.4...web-v12.160.5) (2026-03-26)
+
+
+### Bug Fixes
+
+* add s3 cleanup and running-run guard to zero agent delete endpoint ([#6871](https://github.com/vm0-ai/vm0/issues/6871)) ([2920069](https://github.com/vm0-ai/vm0/commit/2920069adacb886cab7ad08b33830a8f473df98a)), closes [#6866](https://github.com/vm0-ai/vm0/issues/6866)
+* **web:** add next typegen to check-types script to prevent stale validator errors ([#6862](https://github.com/vm0-ai/vm0/issues/6862)) ([28b2320](https://github.com/vm0-ai/vm0/commit/28b232072096592e4f66ccdee0a821a78987fd44)), closes [#6848](https://github.com/vm0-ai/vm0/issues/6848)
+
+
+### Refactoring
+
+* **cli:** add agent self-update guidance to zero --help and system prompt ([#6874](https://github.com/vm0-ai/vm0/issues/6874)) ([4cd38f1](https://github.com/vm0-ai/vm0/commit/4cd38f1a32ea2fcf6e1332f3d7a694807c2d4d39))
+* introduce firewall connector type and simplify firewall api ([#6863](https://github.com/vm0-ai/vm0/issues/6863)) ([cef659e](https://github.com/vm0-ai/vm0/commit/cef659ec12d0c6fb54d7a42a3a90a2f67dadb74a))
+* remove vm0 skill from seed skills list ([#6867](https://github.com/vm0-ai/vm0/issues/6867)) ([85d74a7](https://github.com/vm0-ai/vm0/commit/85d74a7325a9852712978f2f95afce3e94c1cfd0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.115.1
+
+## [12.160.4](https://github.com/vm0-ai/vm0/compare/web-v12.160.3...web-v12.160.4) (2026-03-26)
+
+
+### Refactoring
+
+* consolidate api base url resolution to vm0_api_url ([#6857](https://github.com/vm0-ai/vm0/issues/6857)) ([be4a1bf](https://github.com/vm0-ai/vm0/commit/be4a1bf528facdff83b7f874b9d68de36afcbe36))
+* **platform:** resolve schedule agent label from server-side display name ([#6835](https://github.com/vm0-ai/vm0/issues/6835)) ([5b53481](https://github.com/vm0-ai/vm0/commit/5b534813d87103fe423ad9aef43cf32b84536f2e))
+* remove deep-links module and all usages across callback handlers ([#6859](https://github.com/vm0-ai/vm0/issues/6859)) ([444f12a](https://github.com/vm0-ai/vm0/commit/444f12a203218ba704fb77e843d684a49fa65034))
+* restructure agent system prompt with agent tools section ([#6844](https://github.com/vm0-ai/vm0/issues/6844)) ([d73d8f2](https://github.com/vm0-ai/vm0/commit/d73d8f2bd2f001229dcee591e7244aebcd76752a))
+* rewrite agent tools prompt to use situational when-do pattern ([#6850](https://github.com/vm0-ai/vm0/issues/6850)) ([942c991](https://github.com/vm0-ai/vm0/commit/942c9917b55d6e8a04b40594afcb6f6902aae621))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.115.0
+
 ## [12.160.3](https://github.com/vm0-ai/vm0/compare/web-v12.160.2...web-v12.160.3) (2026-03-26)
 
 

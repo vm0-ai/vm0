@@ -71,5 +71,11 @@ export const agentRuns = pgTable(
     index("idx_agent_runs_schedule_created")
       .on(table.scheduleId, table.createdAt.desc())
       .where(sql`schedule_id IS NOT NULL`),
+    // Composite index for org+status queries (concurrency checks, queue listing)
+    index("idx_agent_runs_org_status_created").on(
+      table.orgId,
+      table.status,
+      table.createdAt.desc(),
+    ),
   ],
 );

@@ -283,10 +283,10 @@ function ScheduleNotificationSettings({
         />
       </InlineSettingsRow>
 
-      {notifySlack && slackHasBot && slackChannelsList.length > 0 && (
+      {notifySlack && slackHasBot && (
         <InlineSettingsRow
           label="Slack channel"
-          description="Choose where to send run completion notifications."
+          description="Choose where to send run completion notifications. Only channels the app has been invited to will appear."
         >
           <div className={SCHEDULE_DETAIL_CONTROL_WIDTH}>
             <Select

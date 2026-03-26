@@ -60,5 +60,11 @@ export const creditUsage = pgTable(
       table.orgId,
       table.createdAt.desc(),
     ),
+    index("idx_credit_usage_org_user_status_processed").on(
+      table.orgId,
+      table.userId,
+      table.status,
+      table.processedAt,
+    ),
   ],
 );

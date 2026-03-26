@@ -20,8 +20,8 @@ import {
   type ModelProviderType,
   type ModelProviderFramework,
   type FirewallPolicies,
-  builtinFirewalls,
-  getFirewallRefsForConnector,
+  getConnectorFirewall,
+  isFirewallConnectorType,
 } from "@vm0/core";
 import { agentComposeVersions } from "../../db/schema/agent-compose";
 import type { AgentComposeYaml } from "../../types/agent-compose";
@@ -783,19 +783,15 @@ async function resolveSecretsAndEnvironment(
   // Model provider env vars are passed as additionalEnvironment so they go through
   // the same servicePlaceholders logic (secret-derived values use ${{ secrets.X }} templates).
   // Build connector firewall configs for placeholder injection.
-  // builtinFirewalls configs carry `placeholders` (custom placeholder values),
+  // connectorFirewalls configs carry `placeholders` (custom placeholder values),
   // which expandEnvironmentFromCompose needs to replace secrets with placeholders.
-  const connectorFirewallConfigs = connectorResult.connectorTypes.flatMap(
-    (type) =>
-      getFirewallRefsForConnector(type)
-        .map((ref) => {
-          const config = builtinFirewalls[ref];
-          return config ? { ...config, ref } : undefined;
-        })
-        .filter(
-          (config): config is ExpandedFirewallConfig => config !== undefined,
-        ),
-  );
+  const connectorFirewallConfigs: ExpandedFirewallConfig[] =
+    connectorResult.connectorTypes
+      .filter(isFirewallConnectorType)
+      .map((type) => ({
+        ...getConnectorFirewall(type),
+        ref: type,
+      }));
 
   const { environment } = expandEnvironmentFromCompose(
     agentCompose,

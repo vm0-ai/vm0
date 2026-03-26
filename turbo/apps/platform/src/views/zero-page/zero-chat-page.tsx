@@ -22,8 +22,9 @@ import {
   setChatPageInput$,
   chatPageTaglineIndex$,
 } from "../../signals/zero-page/zero-chat-page.ts";
-import { ZeroIdeationPage, getRandomPrompts } from "./zero-ideation-page.tsx";
+import { getRandomPrompts } from "./zero-ideation-page.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
+import { navigateTo$ } from "../../signals/route.ts";
 import zeroAvatarImg from "./assets/avatar_0.png";
 
 function getTagline(
@@ -157,8 +158,8 @@ export function ZeroChatPage({
   const setInput = useSet(setChatPageInput$);
   const taglineIndex = useGet(chatPageTaglineIndex$);
   const tagline = getTagline(displayName, userName, taglineIndex);
-  const [showIdeation, setShowIdeation] = useState(false);
   const [suggestedPrompts] = useState(() => getRandomPrompts(2));
+  const navigate = useSet(navigateTo$);
 
   // Pin pill
   const currentChatAgentId = useGet(zeroChatAgentId$);
@@ -182,18 +183,6 @@ export function ZeroChatPage({
     setInput("");
     onSendMessage?.(text, opts);
   };
-
-  if (showIdeation) {
-    return (
-      <ZeroIdeationPage
-        onBack={() => setShowIdeation(false)}
-        onSelectPrompt={(prompt) => {
-          setInput(prompt);
-          setShowIdeation(false);
-        }}
-      />
-    );
-  }
 
   // Landing page: full content (title, triggers, composer, actions, prompts)
   return (
@@ -296,7 +285,7 @@ export function ZeroChatPage({
             <button
               type="button"
               className="zero-card cursor-pointer p-4 text-left flex flex-col relative group hover:bg-muted/30 transition-colors"
-              onClick={() => setShowIdeation(true)}
+              onClick={() => navigate("/ideas")}
             >
               <IconArrowUpRight
                 size={14}

@@ -5,6 +5,7 @@ import {
   zeroBillingPortalContract,
   zeroBillingAutoRechargeContract,
   zeroBillingInvoicesContract,
+  zeroBillingDowngradeContract,
   type BillingStatusResponse,
 } from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
@@ -48,6 +49,9 @@ const internalDialogOpen$ = state(false);
 const internalCheckoutLoading$ = state(false);
 const internalPortalLoading$ = state(false);
 const billingReload$ = state(0);
+const internalDowngradeDialogOpen$ = state(false);
+const internalDowngradeLoading$ = state(false);
+const internalDowngradeError$ = state<string | null>(null);
 
 // ---------------------------------------------------------------------------
 // Selectors
@@ -55,8 +59,18 @@ const billingReload$ = state(0);
 
 export const billingDialogOpen$ = computed((get) => get(internalDialogOpen$));
 export const billingDialogLoading$ = computed(
-  (get) => get(internalCheckoutLoading$) || get(internalPortalLoading$),
+  (get) =>
+    get(internalCheckoutLoading$) ||
+    get(internalPortalLoading$) ||
+    get(internalDowngradeLoading$),
 );
+export const downgradeDialogOpen$ = computed((get) =>
+  get(internalDowngradeDialogOpen$),
+);
+export const downgradeLoading$ = computed((get) =>
+  get(internalDowngradeLoading$),
+);
+export const downgradeError$ = computed((get) => get(internalDowngradeError$));
 
 /**
  * Async computed signal that fetches billing status on first access.
@@ -131,6 +145,45 @@ export const startDowngrade$ = command(
     } else {
       log.error("Portal redirect failed", getErrorMessage(result.body));
       set(internalPortalLoading$, false);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Downgrade dialog commands
+// ---------------------------------------------------------------------------
+
+export const openDowngradeDialog$ = command(({ set }) => {
+  set(internalDowngradeError$, null);
+  set(internalDowngradeDialogOpen$, true);
+});
+
+export const closeDowngradeDialog$ = command(({ set }) => {
+  set(internalDowngradeDialogOpen$, false);
+});
+
+export const confirmDowngrade$ = command(
+  async ({ get, set }, targetTier: "free" | "pro", _signal: AbortSignal) => {
+    set(internalDowngradeLoading$, true);
+    set(internalDowngradeError$, null);
+
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingDowngradeContract);
+    const result = await client.create({
+      body: { targetTier },
+    });
+
+    set(internalDowngradeLoading$, false);
+
+    if (result.status === 200) {
+      set(internalDowngradeDialogOpen$, false);
+      // Reload billing status to reflect the change
+      set(billingReload$, (x) => x + 1);
+    } else {
+      const message =
+        getErrorMessage(result.body) ?? "Failed to downgrade plan";
+      log.error("Downgrade failed", message);
+      set(internalDowngradeError$, message);
     }
   },
 );

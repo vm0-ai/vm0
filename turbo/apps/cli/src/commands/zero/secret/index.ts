@@ -5,7 +5,7 @@ import { deleteCommand } from "./delete";
 
 export const zeroSecretCommand = new Command()
   .name("secret")
-  .description("Manage secrets")
+  .description("Read or write secrets (API keys, tokens)")
   .addCommand(listCommand)
   .addCommand(setCommand)
   .addCommand(deleteCommand);

@@ -289,6 +289,8 @@ export {
   chatThreadRunsContract,
   chatThreadListItemSchema,
   chatThreadDetailSchema,
+  summaryEntrySchema,
+  type SummaryEntry,
   type ChatThreadsContract,
   type ChatThreadByIdContract,
   type ChatThreadRunsContract,
@@ -402,7 +404,6 @@ export {
   type ExperimentalFirewalls,
   type FirewallPolicyValue,
   type FirewallPolicies,
-  getFirewallRefsForConnector,
 } from "./firewalls";
 
 export {
@@ -588,11 +589,13 @@ export {
   zeroBillingPortalContract,
   zeroBillingAutoRechargeContract,
   zeroBillingInvoicesContract,
+  zeroBillingDowngradeContract,
   type ZeroBillingStatusContract,
   type ZeroBillingCheckoutContract,
   type ZeroBillingPortalContract,
   type ZeroBillingAutoRechargeContract,
   type ZeroBillingInvoicesContract,
+  type ZeroBillingDowngradeContract,
   // Inferred types
   type BillingStatusResponse,
   type AutoRechargeConfig,
@@ -600,6 +603,7 @@ export {
   type PortalResponse,
   type BillingInvoice,
   type BillingInvoicesResponse,
+  type DowngradeResponse,
 } from "./zero-billing";
 export {
   zeroUsageMembersContract,

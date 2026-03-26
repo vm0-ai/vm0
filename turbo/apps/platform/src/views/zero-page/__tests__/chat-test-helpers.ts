@@ -2,6 +2,7 @@ import { fireEvent } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import type { AgentEvent } from "../../../signals/zero-page/log-types.ts";
+import type { SummaryEntry } from "@vm0/core";
 
 export const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
 
@@ -61,7 +62,7 @@ export function mockChatLifecycle(options?: {
     content: string;
     runId?: string;
     error?: string;
-    summaries?: string[];
+    summaries?: SummaryEntry[];
     createdAt: string;
   }[];
   unsavedRuns?: {

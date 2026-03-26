@@ -140,6 +140,7 @@ export const zeroAgentsByIdContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      409: apiErrorSchema,
     },
     summary: "Delete zero agent by id",
   },

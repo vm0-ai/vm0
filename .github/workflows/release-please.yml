@@ -270,6 +270,7 @@ jobs:
           deployment-env: web
           environment-variables: |
             DATABASE_URL=${{ steps.get-db-url.outputs.database-url }}
+            VM0_API_URL=${{ vars.VM0_API_URL }}
             BLOG_BASE_URL=https://www.vm0.ai
             STRAPI_URL=${{ vars.STRAPI_URL }}
             CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}

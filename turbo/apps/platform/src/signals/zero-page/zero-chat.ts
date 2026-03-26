@@ -30,6 +30,7 @@ import {
   chatThreadRunsContract,
   zeroSessionsByIdContract,
   type ChatThreadListItem,
+  type SummaryEntry,
 } from "@vm0/core";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 
@@ -531,7 +532,7 @@ export const chatSessionSnapshot$ = computed(
       content: string;
       runId?: string;
       error?: string;
-      summaries?: string[];
+      summaries?: SummaryEntry[];
       createdAt: string;
     }[] = [];
     let latestSessionId: string | null = null;
@@ -573,9 +574,15 @@ export const chatSessionSnapshot$ = computed(
     const messages: ZeroChatMessage[] = chatMessages.map((m) => {
       const summaries =
         m.summaries && m.summaries.length > 0
-          ? m.summaries.map((s) =>
-              TOOL_LABELS[s] ? humanizeToolUse(s, undefined) : s,
-            )
+          ? m.summaries.map((s) => {
+              if (typeof s === "string") {
+                return TOOL_LABELS[s] ? humanizeToolUse(s, undefined) : s;
+              }
+              if (s.kind === "tool") {
+                return humanizeToolUse(s.name, s.input);
+              }
+              return s.text;
+            })
           : undefined;
       return {
         id: crypto.randomUUID(),

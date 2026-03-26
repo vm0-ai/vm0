@@ -11,4 +11,4 @@ export * from "./feature-switch";
 export * from "./skill-frontmatter";
 export * from "./instructions-frontmatter";
 export * from "./firewall-loader";
-export { builtinFirewalls } from "./firewalls";
+export * from "./firewalls";
