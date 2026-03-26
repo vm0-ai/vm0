@@ -17,6 +17,8 @@ import { evaluateMemberCaps } from "../member-credit-cap-service";
 // evaluateMemberCaps -> getOrgBillingPeriod may call Stripe
 const stripeMocks = vi.hoisted<StripeMockFns>(() => ({
   subscriptionsRetrieve: vi.fn(),
+  subscriptionsUpdate: vi.fn(),
+  subscriptionsCancel: vi.fn(),
   invoicesRetrieve: vi.fn(),
   invoicesList: vi.fn(),
   customersCreate: vi.fn(),
@@ -28,7 +30,11 @@ const stripeMocks = vi.hoisted<StripeMockFns>(() => ({
 vi.mock("stripe", () => ({
   default: function MockStripe() {
     return {
-      subscriptions: { retrieve: stripeMocks.subscriptionsRetrieve },
+      subscriptions: {
+        retrieve: stripeMocks.subscriptionsRetrieve,
+        update: stripeMocks.subscriptionsUpdate,
+        cancel: stripeMocks.subscriptionsCancel,
+      },
       invoices: {
         retrieve: stripeMocks.invoicesRetrieve,
         list: stripeMocks.invoicesList,
