@@ -11,8 +11,8 @@ const DM_DEV_PREFIX: &str = "/dev/mapper/";
 /// `chunk_size` is in 512-byte sectors (e.g. 8 = 4KB chunks).
 /// Returns the path to the created snapshot device.
 ///
-/// The device is created with default ownership (root:disk 0660).
-/// Callers must `chown` after creation if non-root access is needed.
+/// The device is created as `root:disk 0660`; the runner user must be
+/// in the `disk` group to open it.
 pub fn create_snapshot(
     name: &str,
     origin: &str,

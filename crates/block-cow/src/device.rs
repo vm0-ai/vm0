@@ -203,11 +203,8 @@ impl CowDevice {
         //    No dm-linear origin needed — the base loop is read-only and shared
         //    across all COW devices via BaseImagePool.
         //
-        //    dm devices default to root:disk 0660. We chown to the current user
-        //    after creation so Firecracker (running as that user) can open the
-        //    device via bind mount.  Note: dmsetup's --uid/--gid flags are NOT
-        //    reliable — udev rules re-apply default ownership (root:disk) after
-        //    device creation, racing with the flag-set values.
+        //    dm devices default to root:disk 0660.  The runner user must be in
+        //    the `disk` group to open the device.
         let base_loop_str = base_loop.to_string_lossy();
         let cow_loop_str = cow_loop.path().to_string_lossy().into_owned();
         let device_path = match dmsetup::create_snapshot(
@@ -226,22 +223,6 @@ impl CowDevice {
                 return Err(e);
             }
         };
-
-        // chown the device to the current user.  Must happen after dmsetup
-        // create (not via --uid/--gid) because udev rules reset ownership.
-        let uid = nix::unistd::getuid().as_raw();
-        let gid = nix::unistd::getgid().as_raw();
-        let device_str = device_path.to_string_lossy();
-        if let Err(e) =
-            crate::command::sudo("chown", &[&format!("{uid}:{gid}"), device_str.as_ref()])
-        {
-            let _ = dmsetup::remove(&cow_name);
-            let _ = cow_loop.detach();
-            if created_cow {
-                let _ = fs::remove_file(&cow_file);
-            }
-            return Err(e);
-        }
 
         // Hold the dm device open so its open count stays > 0.
         // This prevents concurrent GC from removing the target via
