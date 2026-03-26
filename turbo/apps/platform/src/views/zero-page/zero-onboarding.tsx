@@ -222,7 +222,9 @@ function ConnectStepContent({
 
   const handleConnect = (type: ConnectorType) => {
     const connector = connectorMap.get(type);
-    if (connector?.connected) return;
+    if (connector?.connected) {
+      return;
+    }
     if (connector?.availableAuthMethods.includes("api-token")) {
       setSelectedConnector(type);
     } else {
@@ -462,27 +464,37 @@ function ChatPreview() {
 }
 
 // Step-specific illustration hints for the right panel
-const STEP_ILLUSTRATIONS: Record<
-  string,
-  { title: string; subtitle: string; showSlackPreview?: boolean }
-> = {
-  workspace: {
-    title: "AI that works alongside your team",
-    subtitle:
-      "Zero lives in your workspace, works across your tools, and helps everyone stay aligned.",
-  },
-  connectors: {
-    title: "Your tools, automated",
-    subtitle:
-      "Zero works across your apps — managing tasks, syncing data, and handling workflows so you don't have to.",
-  },
-  where: {
-    title: "Works where your team works",
-    subtitle:
-      "Zero also lives in Slack, connects your tools securely, and handles tasks so your team can focus on what matters.",
-    showSlackPreview: true,
-  },
+type StepIllustration = {
+  title: string;
+  subtitle: string;
+  showSlackPreview?: boolean;
 };
+function getStepIllustration(stepKey: string): StepIllustration {
+  switch (stepKey) {
+    case "connectors": {
+      return {
+        title: "Your tools, automated",
+        subtitle:
+          "Zero works across your apps — managing tasks, syncing data, and handling workflows so you don't have to.",
+      };
+    }
+    case "where": {
+      return {
+        title: "Works where your team works",
+        subtitle:
+          "Zero also lives in Slack, connects your tools securely, and handles tasks so your team can focus on what matters.",
+        showSlackPreview: true,
+      };
+    }
+    default: {
+      return {
+        title: "AI that works alongside your team",
+        subtitle:
+          "Zero lives in your workspace, works across your tools, and helps everyone stay aligned.",
+      };
+    }
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Orbit illustration — selected connectors orbit around Zero
@@ -631,8 +643,7 @@ function OnboardingPage({
   selectedConnectors?: string[];
   children: React.ReactNode;
 }) {
-  const illustration =
-    STEP_ILLUSTRATIONS[stepKey] ?? STEP_ILLUSTRATIONS.workspace;
+  const illustration = getStepIllustration(stepKey);
   const showOrbit = stepKey === "connectors" && selectedConnectors;
   const showChat = stepKey === "workspace";
 
@@ -833,7 +844,9 @@ function WorkspaceStep({
           value={workspaceName}
           onChange={(e) => setWorkspaceName(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && workspaceName.trim()) onNext();
+            if (e.key === "Enter" && workspaceName.trim()) {
+              onNext();
+            }
           }}
           className="h-10 rounded-lg"
           autoFocus
@@ -843,80 +856,48 @@ function WorkspaceStep({
   );
 }
 
-/** Zero onboarding — used for both admin and member flows. */
-export function ZeroOnboarding({
-  zeroAvatarSrc = zeroAvatarImg,
-  isAdmin,
-  displayName = "Zero",
-}: {
-  zeroAvatarSrc?: string;
-  isAdmin: boolean;
-  displayName?: string;
-}) {
-  const step = useGet(zeroOnboardingStep$);
-  const setStep = useSet(setZeroStep$);
-  const agentName = useGet(zeroAgentName$);
-  const saving = useGet(zeroSaving$);
-  const adminSelectedConnectors = useGet(zeroSelectedConnectors$);
+// ---------------------------------------------------------------------------
+// Onboarding step resolution helpers
+// ---------------------------------------------------------------------------
+
+function resolveEffectiveStep(
+  isAdmin: boolean,
+  step: string,
+  hasMemberConnectors: boolean,
+): string {
+  if (isAdmin) {
+    return step;
+  }
+  if (step === "1" || step === "2" || (step === "3" && !hasMemberConnectors)) {
+    return hasMemberConnectors ? "3" : "4";
+  }
+  return step;
+}
+
+function resolveVisibleSteps(
+  isAdmin: boolean,
+  hasMemberConnectors: boolean,
+): readonly string[] {
+  if (isAdmin) {
+    return ADMIN_STEPS;
+  }
+  return hasMemberConnectors ? ["3", "4"] : ["4"];
+}
+
+// ---------------------------------------------------------------------------
+// Onboarding completion handlers (hook)
+// ---------------------------------------------------------------------------
+
+function useOnboardingHandlers(isAdmin: boolean) {
   const completeOnboarding = useSet(completeZeroOnboarding$);
   const completeMember = useSet(completeMemberOnboarding$);
   const dismissOnboarding = useSet(dismissZeroOnboarding$);
   const sendMessage = useSet(sendZeroChatMessage$);
   const startNewSession = useSet(startNewZeroSession$);
   const navigate = useSet(navigateTo$);
-  const onboardingError = useGet(zeroOnboardingError$);
   const clearOnboardingError = useSet(clearZeroOnboardingError$);
   const reloadBilling = useSet(reloadBillingStatus$);
-  const selectedConnectorType = useGet(selectedConnectorType$);
-  const setSelected = useSet(setSelectedConnectorType$);
   const slackData = useGet(slackOrgData$);
-
-  // Member: resolve org's configured connectors from default agent skills
-  const onboardingStatus = useLastResolved(zeroOnboardingStatus$);
-  const defaultAgentSkillUrls = onboardingStatus?.defaultAgentSkills ?? [];
-  const connectorTypesLoadable = useLastLoadable(allConnectorTypes$);
-  const allConnectorsList =
-    connectorTypesLoadable.state === "hasData"
-      ? connectorTypesLoadable.data
-      : [];
-  const connectorTypeSet = new Set(allConnectorsList.map((c) => c.type));
-
-  const memberConnectorTypes = isAdmin
-    ? []
-    : (Object.keys(CONNECTOR_TYPES) as ConnectorType[]).filter((type) => {
-        const isInAgent = defaultAgentSkillUrls.some((url) =>
-          url.endsWith(`/${type}`),
-        );
-        return isInAgent && connectorTypeSet.has(type);
-      });
-  const hasMemberConnectors = memberConnectorTypes.length > 0;
-
-  // Effective step: members skip steps 1 & 2, and step 3 when no connectors
-  const effectiveStep = isAdmin
-    ? step
-    : step === "1" || step === "2" || (step === "3" && !hasMemberConnectors)
-      ? hasMemberConnectors
-        ? "3"
-        : "4"
-      : step;
-
-  // Steps and progress — admin sees all 4, member sees only applicable steps
-  const visibleSteps = isAdmin
-    ? ADMIN_STEPS
-    : hasMemberConnectors
-      ? (["3", "4"] as const)
-      : (["4"] as const);
-  const currentStepIndex = (visibleSteps as readonly string[]).indexOf(
-    effectiveStep,
-  );
-
-  // Connectors shown in step 3 depend on role
-  const effectiveConnectors = isAdmin
-    ? adminSelectedConnectors
-    : memberConnectorTypes;
-
-  // Display name for WhereToWorkContent
-  const name = isAdmin ? agentName : displayName;
 
   const handleAddToSlack = () => {
     clearOnboardingError();
@@ -925,7 +906,9 @@ export function ZeroOnboarding({
       detach(
         (async () => {
           const result = await completeOnboarding(controller.signal);
-          if (!result) return;
+          if (!result) {
+            return;
+          }
           reloadBilling();
           dismissOnboarding();
           if (slackData?.isAdmin && slackData.installUrl) {
@@ -938,9 +921,10 @@ export function ZeroOnboarding({
         Reason.DomCallback,
       );
     } else {
+      const controller = new AbortController();
       detach(
         (async () => {
-          await completeMember(pageSignal);
+          await completeMember(controller.signal);
           navigate("/works");
         })(),
         Reason.DomCallback,
@@ -955,7 +939,9 @@ export function ZeroOnboarding({
       detach(
         (async () => {
           const result = await completeOnboarding(controller.signal);
-          if (!result) return;
+          if (!result) {
+            return;
+          }
           reloadBilling();
           navigate("/");
           startNewSession();
@@ -993,6 +979,67 @@ export function ZeroOnboarding({
       );
     }
   };
+
+  return { handleAddToSlack, handleContinueWithWeb };
+}
+
+/** Zero onboarding — used for both admin and member flows. */
+export function ZeroOnboarding({
+  zeroAvatarSrc = zeroAvatarImg,
+  isAdmin,
+  displayName = "Zero",
+}: {
+  zeroAvatarSrc?: string;
+  isAdmin: boolean;
+  displayName?: string;
+}) {
+  const step = useGet(zeroOnboardingStep$);
+  const setStep = useSet(setZeroStep$);
+  const agentName = useGet(zeroAgentName$);
+  const saving = useGet(zeroSaving$);
+  const adminSelectedConnectors = useGet(zeroSelectedConnectors$);
+  const onboardingError = useGet(zeroOnboardingError$);
+  const selectedConnectorType = useGet(selectedConnectorType$);
+  const setSelected = useSet(setSelectedConnectorType$);
+
+  const { handleAddToSlack, handleContinueWithWeb } =
+    useOnboardingHandlers(isAdmin);
+
+  // Member: resolve org's configured connectors from default agent skills
+  const onboardingStatus = useLastResolved(zeroOnboardingStatus$);
+  const defaultAgentSkillUrls = onboardingStatus?.defaultAgentSkills ?? [];
+  const connectorTypesLoadable = useLastLoadable(allConnectorTypes$);
+  const allConnectorsList =
+    connectorTypesLoadable.state === "hasData"
+      ? connectorTypesLoadable.data
+      : [];
+  const connectorTypeSet = new Set(allConnectorsList.map((c) => c.type));
+
+  const memberConnectorTypes = isAdmin
+    ? []
+    : (Object.keys(CONNECTOR_TYPES) as ConnectorType[]).filter((type) => {
+        const isInAgent = defaultAgentSkillUrls.some((url) =>
+          url.endsWith(`/${type}`),
+        );
+        return isInAgent && connectorTypeSet.has(type);
+      });
+  const hasMemberConnectors = memberConnectorTypes.length > 0;
+
+  const effectiveStep = resolveEffectiveStep(
+    isAdmin,
+    step,
+    hasMemberConnectors,
+  );
+  const visibleSteps = resolveVisibleSteps(isAdmin, hasMemberConnectors);
+  const currentStepIndex = visibleSteps.indexOf(effectiveStep);
+
+  // Connectors shown in step 3 depend on role
+  const effectiveConnectors = isAdmin
+    ? adminSelectedConnectors
+    : memberConnectorTypes;
+
+  // Display name for WhereToWorkContent
+  const name = isAdmin ? agentName : displayName;
 
   if (effectiveStep === "done") {
     return null;
