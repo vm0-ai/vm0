@@ -38,23 +38,13 @@ const PLACEHOLDER_VALUE =
 // ── OpenAPI types ────────────────────────────────────────────────────────
 
 interface XOperation {
-  tags?: string[];
   security?: Array<Record<string, string[]>>;
 }
 
 // ── Scope descriptions from OpenAPI spec ─────────────────────────────────
 
 function extractScopeDescriptions(spec: OpenApiSpec): Record<string, string> {
-  const schemes = spec.components?.securitySchemes ?? {};
-  const oauth = schemes["OAuth2UserToken"] as
-    | {
-        flows?: {
-          authorizationCode?: {
-            scopes?: Record<string, string>;
-          };
-        };
-      }
-    | undefined;
+  const oauth = spec.components?.securitySchemes?.["OAuth2UserToken"];
   return oauth?.flows?.authorizationCode?.scopes ?? {};
 }
 
