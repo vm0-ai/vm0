@@ -3,6 +3,9 @@ import {
   hasRequiredScopes,
   getConnectorManagedSecretNames,
   getConnectorTypeForSecretName,
+  getConnectorEnvironmentMapping,
+  getConnectorProvidedSecretNames,
+  connectorTypeSchema,
 } from "../connectors";
 
 describe("hasRequiredScopes", () => {
@@ -66,6 +69,70 @@ describe("getConnectorManagedSecretNames", () => {
     const managed = getConnectorManagedSecretNames(["github", "atlassian"]);
     expect(managed.has("GH_TOKEN")).toBe(true);
     expect(managed.has("ATLASSIAN_TOKEN")).toBe(true);
+  });
+});
+
+describe("getConnectorEnvironmentMapping", () => {
+  it("returns non-empty mapping for all connector types", () => {
+    for (const type of connectorTypeSchema.options) {
+      const mapping = getConnectorEnvironmentMapping(type);
+      expect(
+        Object.keys(mapping).length,
+        `${type} has empty environmentMapping`,
+      ).toBeGreaterThan(0);
+    }
+  });
+
+  it("returns correct mapping for API-token-only connector", () => {
+    expect(getConnectorEnvironmentMapping("axiom")).toEqual({
+      AXIOM_TOKEN: "$secrets.AXIOM_TOKEN",
+    });
+  });
+
+  it("returns correct mapping for API-token connector with variables", () => {
+    expect(getConnectorEnvironmentMapping("jira")).toEqual({
+      JIRA_API_TOKEN: "$secrets.JIRA_API_TOKEN",
+      JIRA_DOMAIN: "$vars.JIRA_DOMAIN",
+      JIRA_EMAIL: "$vars.JIRA_EMAIL",
+    });
+  });
+
+  it("returns correct mapping for hybrid connector", () => {
+    expect(getConnectorEnvironmentMapping("ahrefs")).toEqual({
+      AHREFS_TOKEN: "$secrets.AHREFS_ACCESS_TOKEN",
+    });
+  });
+
+  it("returns correct mapping for OAuth-only connector", () => {
+    expect(getConnectorEnvironmentMapping("github")).toEqual({
+      GH_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",
+      GITHUB_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",
+    });
+  });
+
+  it("all mapping values use $secrets. or $vars. prefix", () => {
+    for (const type of connectorTypeSchema.options) {
+      const mapping = getConnectorEnvironmentMapping(type);
+      for (const [key, value] of Object.entries(mapping)) {
+        expect(
+          value.startsWith("$secrets.") || value.startsWith("$vars."),
+          `${type}.environmentMapping["${key}"] = "${value}" — must start with $secrets. or $vars.`,
+        ).toBe(true);
+      }
+    }
+  });
+});
+
+describe("getConnectorProvidedSecretNames", () => {
+  it("returns env var names for API-token-only connector", () => {
+    const names = getConnectorProvidedSecretNames(["axiom"]);
+    expect(names.has("AXIOM_TOKEN")).toBe(true);
+  });
+
+  it("returns env var names for OAuth connector", () => {
+    const names = getConnectorProvidedSecretNames(["github"]);
+    expect(names.has("GH_TOKEN")).toBe(true);
+    expect(names.has("GITHUB_TOKEN")).toBe(true);
   });
 });
 

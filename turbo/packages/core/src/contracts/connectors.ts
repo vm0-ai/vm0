@@ -52,6 +52,8 @@ export interface ConnectorConfig {
   /** Non-OAuth environment mapping (e.g. computer connector bridge credentials). */
   readonly bridgeMapping?: Record<string, string>;
   readonly oauth?: ConnectorOAuthConfig;
+  /** Top-level environment mapping declaring which env vars this connector provides. */
+  readonly environmentMapping?: Record<string, string>;
 }
 
 /**
@@ -61,6 +63,9 @@ export interface ConnectorConfig {
 const CONNECTOR_TYPES_DEF = {
   axiom: {
     label: "Axiom",
+    environmentMapping: {
+      AXIOM_TOKEN: "$secrets.AXIOM_TOKEN",
+    },
     helpText:
       "Connect your Axiom account to query logs, manage datasets, and access observability data",
     authMethods: {
@@ -81,6 +86,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   ahrefs: {
     label: "Ahrefs",
+    environmentMapping: {
+      AHREFS_TOKEN: "$secrets.AHREFS_ACCESS_TOKEN",
+    },
     featureFlag: FeatureSwitchKey.AhrefsConnector,
     helpText:
       "Connect your Ahrefs account to access SEO data, backlink analysis, and keyword research",
@@ -122,6 +130,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   agentmail: {
     label: "AgentMail",
+    environmentMapping: {
+      AGENTMAIL_TOKEN: "$secrets.AGENTMAIL_TOKEN",
+    },
     helpText:
       "Connect your AgentMail account to create email inboxes for AI agents, send and receive emails, manage threads, drafts, and webhooks",
     authMethods: {
@@ -142,6 +153,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   airtable: {
     label: "Airtable",
+    environmentMapping: {
+      AIRTABLE_TOKEN: "$secrets.AIRTABLE_ACCESS_TOKEN",
+    },
     helpText:
       "Connect your Airtable account to access bases, tables, and records",
     authMethods: {
@@ -180,6 +194,10 @@ const CONNECTOR_TYPES_DEF = {
   },
   github: {
     label: "GitHub",
+    environmentMapping: {
+      GH_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",
+      GITHUB_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",
+    },
     helpText:
       "Connect your GitHub account to access repositories and GitHub features",
     authMethods: {
@@ -207,6 +225,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   notion: {
     label: "Notion",
+    environmentMapping: {
+      NOTION_TOKEN: "$secrets.NOTION_ACCESS_TOKEN",
+    },
     helpText: "Connect your Notion workspace to access pages and databases",
     authMethods: {
       oauth: {
@@ -236,6 +257,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   gmail: {
     label: "Gmail",
+    environmentMapping: {
+      GMAIL_TOKEN: "$secrets.GMAIL_ACCESS_TOKEN",
+    },
     helpText: "Connect your Gmail account to send and read emails",
     authMethods: {
       oauth: {
@@ -265,6 +289,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   "google-sheets": {
     label: "Google Sheets",
+    environmentMapping: {
+      GOOGLE_SHEETS_TOKEN: "$secrets.GOOGLE_SHEETS_ACCESS_TOKEN",
+    },
     helpText: "Connect your Google account to access and manage spreadsheets",
     authMethods: {
       oauth: {
@@ -297,6 +324,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   "google-docs": {
     label: "Google Docs",
+    environmentMapping: {
+      GOOGLE_DOCS_TOKEN: "$secrets.GOOGLE_DOCS_ACCESS_TOKEN",
+    },
     helpText: "Connect your Google account to access and manage documents",
     authMethods: {
       oauth: {
@@ -329,6 +359,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   "google-drive": {
     label: "Google Drive",
+    environmentMapping: {
+      GOOGLE_DRIVE_TOKEN: "$secrets.GOOGLE_DRIVE_ACCESS_TOKEN",
+    },
     helpText: "Connect your Google account to access and manage files in Drive",
     authMethods: {
       oauth: {
@@ -361,6 +394,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   "google-calendar": {
     label: "Google Calendar",
+    environmentMapping: {
+      GOOGLE_CALENDAR_TOKEN: "$secrets.GOOGLE_CALENDAR_ACCESS_TOKEN",
+    },
     helpText:
       "Connect your Google account to access and manage calendar events",
     authMethods: {
@@ -394,6 +430,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   close: {
     label: "Close",
+    environmentMapping: {
+      CLOSE_TOKEN: "$secrets.CLOSE_ACCESS_TOKEN",
+    },
     featureFlag: FeatureSwitchKey.CloseConnector,
     helpText:
       "Connect your Close account to manage leads, contacts, and opportunities",
@@ -425,6 +464,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   "hugging-face": {
     label: "Hugging Face",
+    environmentMapping: {
+      HUGGING_FACE_TOKEN: "$secrets.HUGGING_FACE_TOKEN",
+    },
     helpText:
       "Connect your Hugging Face account to access models, datasets, and inference APIs",
     authMethods: {
@@ -445,6 +487,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   hume: {
     label: "Hume",
+    environmentMapping: {
+      HUME_TOKEN: "$secrets.HUME_TOKEN",
+    },
     helpText:
       "Connect your Hume account to access emotion AI, speech-to-speech, and expressive text-to-speech APIs",
     authMethods: {
@@ -464,6 +509,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   heygen: {
     label: "HeyGen",
+    environmentMapping: {
+      HEYGEN_TOKEN: "$secrets.HEYGEN_TOKEN",
+    },
     helpText:
       "Connect your HeyGen account to create AI-generated videos, manage avatars, and automate video production",
     authMethods: {
@@ -482,6 +530,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   hubspot: {
     label: "HubSpot",
+    environmentMapping: {
+      HUBSPOT_TOKEN: "$secrets.HUBSPOT_ACCESS_TOKEN",
+    },
     helpText:
       "Connect your HubSpot account to manage contacts, companies, deals, and tickets",
     authMethods: {
@@ -525,6 +576,11 @@ const CONNECTOR_TYPES_DEF = {
   },
   computer: {
     label: "Computer",
+    environmentMapping: {
+      COMPUTER_CONNECTOR_BRIDGE_TOKEN:
+        "$secrets.COMPUTER_CONNECTOR_BRIDGE_TOKEN",
+      COMPUTER_CONNECTOR_DOMAIN: "$secrets.COMPUTER_CONNECTOR_DOMAIN",
+    },
     featureFlag: FeatureSwitchKey.ComputerConnector,
     helpText:
       "Expose local services to remote sandboxes via authenticated ngrok tunnels",
@@ -557,6 +613,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   slack: {
     label: "Slack",
+    environmentMapping: {
+      SLACK_TOKEN: "$secrets.SLACK_ACCESS_TOKEN",
+    },
     helpText: "Connect your Slack account to send messages and read channels",
     authMethods: {
       oauth: {
@@ -623,6 +682,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   docusign: {
     label: "DocuSign",
+    environmentMapping: {
+      DOCUSIGN_TOKEN: "$secrets.DOCUSIGN_ACCESS_TOKEN",
+    },
     featureFlag: FeatureSwitchKey.DocuSignConnector,
     helpText:
       "Connect your DocuSign account to send and manage electronic signatures",
@@ -654,6 +716,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   dropbox: {
     label: "Dropbox",
+    environmentMapping: {
+      DROPBOX_TOKEN: "$secrets.DROPBOX_ACCESS_TOKEN",
+    },
     featureFlag: FeatureSwitchKey.DropboxConnector,
     helpText: "Connect your Dropbox account to access and manage files",
     authMethods: {
@@ -698,6 +763,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   linear: {
     label: "Linear",
+    environmentMapping: {
+      LINEAR_TOKEN: "$secrets.LINEAR_ACCESS_TOKEN",
+    },
     helpText: "Connect your Linear account to manage issues and projects",
     authMethods: {
       oauth: {
@@ -733,6 +801,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   intercom: {
     label: "Intercom",
+    environmentMapping: {
+      INTERCOM_TOKEN: "$secrets.INTERCOM_TOKEN",
+    },
     helpText:
       "Connect your Intercom account to manage customer conversations, contacts, messages, and support tickets",
     authMethods: {
@@ -750,6 +821,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   instantly: {
     label: "Instantly",
+    environmentMapping: {
+      INSTANTLY_API_KEY: "$secrets.INSTANTLY_API_KEY",
+    },
     helpText:
       "Connect your Instantly account to manage email campaigns, leads, and outreach sequences",
     authMethods: {
@@ -768,6 +842,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   jam: {
     label: "Jam",
+    environmentMapping: {
+      JAM_TOKEN: "$secrets.JAM_TOKEN",
+    },
     helpText:
       "Connect your Jam account to capture bugs, manage reports, and access debugging telemetry",
     authMethods: {
@@ -786,6 +863,11 @@ const CONNECTOR_TYPES_DEF = {
   },
   jira: {
     label: "Jira",
+    environmentMapping: {
+      JIRA_API_TOKEN: "$secrets.JIRA_API_TOKEN",
+      JIRA_DOMAIN: "$vars.JIRA_DOMAIN",
+      JIRA_EMAIL: "$vars.JIRA_EMAIL",
+    },
     helpText:
       "Connect your Jira account to manage projects, issues, sprints, and workflows",
     authMethods: {
@@ -815,6 +897,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   jotform: {
     label: "Jotform",
+    environmentMapping: {
+      JOTFORM_TOKEN: "$secrets.JOTFORM_TOKEN",
+    },
     helpText:
       "Connect your Jotform account to manage forms, submissions, and automate form workflows",
     authMethods: {
@@ -834,6 +919,10 @@ const CONNECTOR_TYPES_DEF = {
   },
   kommo: {
     label: "Kommo",
+    environmentMapping: {
+      KOMMO_API_KEY: "$secrets.KOMMO_API_KEY",
+      KOMMO_SUBDOMAIN: "$vars.KOMMO_SUBDOMAIN",
+    },
     helpText:
       "Connect your Kommo account to manage leads, contacts, and sales pipelines",
     authMethods: {
@@ -857,6 +946,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   line: {
     label: "LINE",
+    environmentMapping: {
+      LINE_TOKEN: "$secrets.LINE_TOKEN",
+    },
     helpText:
       "Connect your LINE account to send messages, manage channels, and access the LINE Messaging API",
     authMethods: {
@@ -876,6 +968,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   loops: {
     label: "Loops",
+    environmentMapping: {
+      LOOPS_TOKEN: "$secrets.LOOPS_TOKEN",
+    },
     helpText:
       "Connect your Loops account to send behavioral and transactional emails for your SaaS product",
     authMethods: {
@@ -896,6 +991,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   make: {
     label: "Make",
+    environmentMapping: {
+      MAKE_TOKEN: "$secrets.MAKE_TOKEN",
+    },
     helpText:
       "Connect your Make account to manage scenarios, organizations, and automation workflows",
     authMethods: {
@@ -913,6 +1011,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   metabase: {
     label: "Metabase",
+    environmentMapping: {
+      METABASE_TOKEN: "$secrets.METABASE_TOKEN",
+    },
     helpText:
       "Connect your Metabase instance to query data, manage dashboards, and automate analytics workflows",
     authMethods: {
@@ -932,6 +1033,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   deel: {
     label: "Deel",
+    environmentMapping: {
+      DEEL_TOKEN: "$secrets.DEEL_ACCESS_TOKEN",
+    },
     featureFlag: FeatureSwitchKey.DeelConnector,
     helpText:
       "Connect your Deel account to access HR, payroll, and contractor data",
@@ -981,6 +1085,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   deepseek: {
     label: "DeepSeek",
+    environmentMapping: {
+      DEEPSEEK_TOKEN: "$secrets.DEEPSEEK_TOKEN",
+    },
     helpText:
       "Connect your DeepSeek account to use DeepSeek AI models for chat completions, code generation, and reasoning tasks",
     authMethods: {
@@ -999,6 +1106,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   clickup: {
     label: "ClickUp",
+    environmentMapping: {
+      CLICKUP_TOKEN: "$secrets.CLICKUP_TOKEN",
+    },
     helpText:
       "Connect your ClickUp account to manage tasks, projects, and team workflows",
     authMethods: {
@@ -1017,6 +1127,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   cloudflare: {
     label: "Cloudflare",
+    environmentMapping: {
+      CLOUDFLARE_TOKEN: "$secrets.CLOUDFLARE_TOKEN",
+    },
     helpText:
       "Connect your Cloudflare account to manage DNS, zones, workers, and other Cloudflare services",
     authMethods: {
@@ -1036,6 +1149,11 @@ const CONNECTOR_TYPES_DEF = {
   },
   cloudinary: {
     label: "Cloudinary",
+    environmentMapping: {
+      CLOUDINARY_TOKEN: "$secrets.CLOUDINARY_TOKEN",
+      CLOUDINARY_API_SECRET: "$secrets.CLOUDINARY_API_SECRET",
+      CLOUDINARY_CLOUD_NAME: "$vars.CLOUDINARY_CLOUD_NAME",
+    },
     helpText:
       "Connect your Cloudinary account to manage images, videos, and media assets with CDN delivery and transformations",
     authMethods: {
@@ -1065,6 +1183,10 @@ const CONNECTOR_TYPES_DEF = {
   },
   cronlytic: {
     label: "Cronlytic",
+    environmentMapping: {
+      CRONLYTIC_API_KEY: "$secrets.CRONLYTIC_API_KEY",
+      CRONLYTIC_USER_ID: "$vars.CRONLYTIC_USER_ID",
+    },
     helpText:
       "Connect your Cronlytic account to monitor cron jobs and scheduled tasks",
     authMethods: {
@@ -1087,6 +1209,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   "customer-io": {
     label: "Customer.io",
+    environmentMapping: {
+      CUSTOMERIO_APP_TOKEN: "$secrets.CUSTOMERIO_APP_TOKEN",
+    },
     helpText:
       "Connect your Customer.io account to send behavioral emails, SMS, and push notifications triggered by user events",
     authMethods: {
@@ -1104,6 +1229,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   dify: {
     label: "Dify",
+    environmentMapping: {
+      DIFY_TOKEN: "$secrets.DIFY_TOKEN",
+    },
     helpText:
       "Connect your Dify account to build and manage AI-powered workflows, chatbots, and agentic applications",
     authMethods: {
@@ -1122,6 +1250,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   figma: {
     label: "Figma",
+    environmentMapping: {
+      FIGMA_TOKEN: "$secrets.FIGMA_ACCESS_TOKEN",
+    },
     featureFlag: FeatureSwitchKey.FigmaConnector,
     helpText: "Connect your Figma account to access design files and projects",
     authMethods: {
@@ -1172,6 +1303,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   mercury: {
     label: "Mercury",
+    environmentMapping: {
+      MERCURY_TOKEN: "$secrets.MERCURY_ACCESS_TOKEN",
+    },
     featureFlag: FeatureSwitchKey.MercuryConnector,
     helpText:
       "Connect your Mercury account to access banking and financial data",
@@ -1215,6 +1349,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   minimax: {
     label: "MiniMax",
+    environmentMapping: {
+      MINIMAX_TOKEN: "$secrets.MINIMAX_TOKEN",
+    },
     helpText:
       "Connect your MiniMax account to access AI model APIs for text, voice, and video generation",
     authMethods: {
@@ -1233,6 +1370,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   reportei: {
     label: "Reportei",
+    environmentMapping: {
+      REPORTEI_TOKEN: "$secrets.REPORTEI_TOKEN",
+    },
     helpText:
       "Connect your Reportei account to generate and manage marketing reports with automated analytics",
     authMethods: {
@@ -1251,6 +1391,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   serpapi: {
     label: "SerpApi",
+    environmentMapping: {
+      SERPAPI_TOKEN: "$secrets.SERPAPI_TOKEN",
+    },
     helpText:
       "Connect your SerpApi account to search Google, Bing, YouTube and other search engines programmatically",
     authMethods: {
@@ -1269,6 +1412,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   salesforce: {
     label: "Salesforce",
+    environmentMapping: {
+      SALESFORCE_TOKEN: "$secrets.SALESFORCE_TOKEN",
+    },
     helpText:
       "Connect your Salesforce account to manage CRM data, contacts, leads, and sales workflows",
     authMethods: {
@@ -1287,6 +1433,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   reddit: {
     label: "Reddit",
+    environmentMapping: {
+      REDDIT_TOKEN: "$secrets.REDDIT_ACCESS_TOKEN",
+    },
     featureFlag: FeatureSwitchKey.RedditConnector,
     helpText:
       "Connect your Reddit account to access Reddit discussions and content",
@@ -1318,6 +1467,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   strava: {
     label: "Strava",
+    environmentMapping: {
+      STRAVA_TOKEN: "$secrets.STRAVA_ACCESS_TOKEN",
+    },
     helpText:
       "Connect your Strava account to access activities and athlete data",
     authMethods: {
@@ -1353,6 +1505,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   x: {
     label: "X",
+    environmentMapping: {
+      X_TOKEN: "$secrets.X_ACCESS_TOKEN",
+    },
     helpText:
       "Connect your X (Twitter) account to read tweets, timelines, and search",
     authMethods: {
@@ -1407,6 +1562,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   neon: {
     label: "Neon",
+    environmentMapping: {
+      NEON_TOKEN: "$secrets.NEON_ACCESS_TOKEN",
+    },
     featureFlag: FeatureSwitchKey.NeonConnector,
     helpText:
       "Connect your Neon account to manage serverless Postgres databases and projects",
@@ -1455,6 +1613,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   "garmin-connect": {
     label: "Garmin Connect",
+    environmentMapping: {
+      GARMIN_CONNECT_TOKEN: "$secrets.GARMIN_CONNECT_ACCESS_TOKEN",
+    },
     featureFlag: FeatureSwitchKey.GarminConnectConnector,
     helpText:
       "Connect your Garmin Connect account to access wellness and activity data",
@@ -1486,6 +1647,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   vercel: {
     label: "Vercel",
+    environmentMapping: {
+      VERCEL_TOKEN: "$secrets.VERCEL_ACCESS_TOKEN",
+    },
     helpText:
       "Connect your Vercel account to manage deployments, projects, and domains",
     authMethods: {
@@ -1511,6 +1675,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   sentry: {
     label: "Sentry",
+    environmentMapping: {
+      SENTRY_TOKEN: "$secrets.SENTRY_ACCESS_TOKEN",
+    },
     helpText:
       "Connect your Sentry account to access error tracking and project data",
     authMethods: {
@@ -1548,6 +1715,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   posthog: {
     label: "PostHog",
+    environmentMapping: {
+      POSTHOG_TOKEN: "$secrets.POSTHOG_ACCESS_TOKEN",
+    },
     featureFlag: FeatureSwitchKey.PosthogConnector,
     helpText:
       "Connect your PostHog account to access product analytics, feature flags, and experiments",
@@ -1614,6 +1784,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   productlane: {
     label: "Productlane",
+    environmentMapping: {
+      PRODUCTLANE_TOKEN: "$secrets.PRODUCTLANE_TOKEN",
+    },
     helpText:
       "Connect your Productlane account to manage feedback, insights, changelogs, and customer data",
     authMethods: {
@@ -1632,6 +1805,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   "intervals-icu": {
     label: "Intervals.icu",
+    environmentMapping: {
+      INTERVALS_ICU_TOKEN: "$secrets.INTERVALS_ICU_ACCESS_TOKEN",
+    },
     featureFlag: FeatureSwitchKey.IntervalsIcuConnector,
     helpText:
       "Connect your Intervals.icu account to access training, activity, wellness, and calendar data",
@@ -1668,6 +1844,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   monday: {
     label: "Monday.com",
+    environmentMapping: {
+      MONDAY_TOKEN: "$secrets.MONDAY_ACCESS_TOKEN",
+    },
     helpText:
       "Connect your Monday.com account to manage boards, items, and workflows",
     authMethods: {
@@ -1713,6 +1892,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   calendly: {
     label: "Calendly",
+    environmentMapping: {
+      CALENDLY_TOKEN: "$secrets.CALENDLY_TOKEN",
+    },
     helpText:
       "Connect your Calendly account to access scheduling data, event types, and invitee information",
     authMethods: {
@@ -1733,6 +1915,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   canva: {
     label: "Canva",
+    environmentMapping: {
+      CANVA_TOKEN: "$secrets.CANVA_ACCESS_TOKEN",
+    },
     featureFlag: FeatureSwitchKey.CanvaConnector,
     helpText:
       "Connect your Canva account to access designs, assets, and projects",
@@ -1777,6 +1962,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   "cal-com": {
     label: "Cal.com",
+    environmentMapping: {
+      CALCOM_TOKEN: "$secrets.CALCOM_TOKEN",
+    },
     helpText:
       "Connect your Cal.com account to manage scheduling, bookings, and calendar events",
     authMethods: {
@@ -1797,6 +1985,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   xero: {
     label: "Xero",
+    environmentMapping: {
+      XERO_TOKEN: "$secrets.XERO_ACCESS_TOKEN",
+    },
     helpText:
       "Connect your Xero account to access accounting data, invoices, and contacts",
     authMethods: {
@@ -1850,6 +2041,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   supabase: {
     label: "Supabase",
+    environmentMapping: {
+      SUPABASE_TOKEN: "$secrets.SUPABASE_ACCESS_TOKEN",
+    },
     featureFlag: FeatureSwitchKey.SupabaseConnector,
     helpText:
       "Connect your Supabase account to manage projects, databases, and APIs",
@@ -1904,6 +2098,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   todoist: {
     label: "Todoist",
+    environmentMapping: {
+      TODOIST_TOKEN: "$secrets.TODOIST_ACCESS_TOKEN",
+    },
     helpText:
       "Connect your Todoist account to manage tasks, projects, labels, and comments",
     authMethods: {
@@ -1930,6 +2127,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   webflow: {
     label: "Webflow",
+    environmentMapping: {
+      WEBFLOW_TOKEN: "$secrets.WEBFLOW_ACCESS_TOKEN",
+    },
     featureFlag: FeatureSwitchKey.WebflowConnector,
     helpText:
       "Connect your Webflow account to manage sites, pages, CMS collections, and ecommerce",
@@ -1983,6 +2183,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   wrike: {
     label: "Wrike",
+    environmentMapping: {
+      WRIKE_TOKEN: "$secrets.WRIKE_TOKEN",
+    },
     helpText:
       "Connect your Wrike account to manage projects, tasks, folders, and workflows",
     authMethods: {
@@ -2000,6 +2203,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   "outlook-mail": {
     label: "Outlook Mail",
+    environmentMapping: {
+      OUTLOOK_MAIL_TOKEN: "$secrets.OUTLOOK_MAIL_ACCESS_TOKEN",
+    },
     featureFlag: FeatureSwitchKey.OutlookMailConnector,
     helpText: "Connect your Microsoft Outlook account to send and read emails",
     authMethods: {
@@ -2031,6 +2237,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   "outlook-calendar": {
     label: "Outlook Calendar",
+    environmentMapping: {
+      OUTLOOK_CALENDAR_TOKEN: "$secrets.OUTLOOK_CALENDAR_ACCESS_TOKEN",
+    },
     featureFlag: FeatureSwitchKey.OutlookCalendarConnector,
     helpText:
       "Connect your Microsoft account to access and manage Outlook calendar events",
@@ -2063,6 +2272,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   asana: {
     label: "Asana",
+    environmentMapping: {
+      ASANA_TOKEN: "$secrets.ASANA_ACCESS_TOKEN",
+    },
     helpText:
       "Connect your Asana account to manage tasks, projects, portfolios, goals, and team workflows",
     authMethods: {
@@ -2093,6 +2305,11 @@ const CONNECTOR_TYPES_DEF = {
   },
   atlassian: {
     label: "Atlassian (Jira/Confluence)",
+    environmentMapping: {
+      ATLASSIAN_TOKEN: "$secrets.ATLASSIAN_TOKEN",
+      ATLASSIAN_EMAIL: "$vars.ATLASSIAN_EMAIL",
+      ATLASSIAN_DOMAIN: "$vars.ATLASSIAN_DOMAIN",
+    },
     helpText:
       "Connect your Atlassian account to manage Jira issues, Confluence pages, and other Atlassian products",
     authMethods: {
@@ -2129,6 +2346,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   "meta-ads": {
     label: "Meta Ads",
+    environmentMapping: {
+      META_ADS_TOKEN: "$secrets.META_ADS_ACCESS_TOKEN",
+    },
     featureFlag: FeatureSwitchKey.MetaAdsConnector,
     helpText:
       "Connect your Meta Ads Manager account to manage ad campaigns, audiences, and insights",
@@ -2156,6 +2376,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   stripe: {
     label: "Stripe",
+    environmentMapping: {
+      STRIPE_TOKEN: "$secrets.STRIPE_ACCESS_TOKEN",
+    },
     featureFlag: FeatureSwitchKey.StripeConnector,
     helpText:
       "Connect your Stripe account to manage payments, customers, and subscriptions",
@@ -2187,6 +2410,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   openai: {
     label: "OpenAI",
+    environmentMapping: {
+      OPENAI_TOKEN: "$secrets.OPENAI_TOKEN",
+    },
     helpText:
       "Connect your OpenAI account to access GPT models, embeddings, image generation, and other AI capabilities",
     authMethods: {
@@ -2205,6 +2431,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   similarweb: {
     label: "SimilarWeb",
+    environmentMapping: {
+      SIMILARWEB_TOKEN: "$secrets.SIMILARWEB_TOKEN",
+    },
     helpText:
       "Connect your SimilarWeb account to access website traffic analytics, competitive intelligence, and market insights",
     authMethods: {
@@ -2223,6 +2452,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   perplexity: {
     label: "Perplexity",
+    environmentMapping: {
+      PERPLEXITY_TOKEN: "$secrets.PERPLEXITY_TOKEN",
+    },
     helpText:
       "Connect your Perplexity account to access AI-powered search and research capabilities via the Sonar API",
     authMethods: {
@@ -2241,6 +2473,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   plausible: {
     label: "Plausible",
+    environmentMapping: {
+      PLAUSIBLE_TOKEN: "$secrets.PLAUSIBLE_TOKEN",
+    },
     helpText:
       "Connect your Plausible Analytics account to access website traffic analytics, visitor stats, and site management",
     authMethods: {
@@ -2261,6 +2496,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   mailchimp: {
     label: "Mailchimp",
+    environmentMapping: {
+      MAILCHIMP_TOKEN: "$secrets.MAILCHIMP_ACCESS_TOKEN",
+    },
     featureFlag: FeatureSwitchKey.MailchimpConnector,
     helpText:
       "Connect your Mailchimp account to manage audiences, campaigns, templates, and automations",
@@ -2288,6 +2526,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   chatwoot: {
     label: "Chatwoot",
+    environmentMapping: {
+      CHATWOOT_TOKEN: "$secrets.CHATWOOT_TOKEN",
+    },
     helpText:
       "Connect your Chatwoot account to manage conversations, contacts, and customer support workflows",
     authMethods: {
@@ -2306,6 +2547,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   resend: {
     label: "Resend",
+    environmentMapping: {
+      RESEND_TOKEN: "$secrets.RESEND_TOKEN",
+    },
     featureFlag: FeatureSwitchKey.ResendConnector,
     helpText:
       "Connect your Resend account to send transactional emails, manage domains, audiences, and contacts",
@@ -2325,6 +2569,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   revenuecat: {
     label: "RevenueCat",
+    environmentMapping: {
+      REVENUECAT_TOKEN: "$secrets.REVENUECAT_TOKEN",
+    },
     helpText:
       "Connect your RevenueCat account to manage in-app subscriptions, purchases, and customer data",
     authMethods: {
@@ -2343,6 +2590,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   pdf4me: {
     label: "PDF4me",
+    environmentMapping: {
+      PDF4ME_TOKEN: "$secrets.PDF4ME_TOKEN",
+    },
     helpText:
       "Connect your PDF4me account to convert, merge, split, compress, and manipulate PDF documents",
     authMethods: {
@@ -2361,6 +2611,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   apify: {
     label: "Apify",
+    environmentMapping: {
+      APIFY_TOKEN: "$secrets.APIFY_TOKEN",
+    },
     helpText:
       "Connect your Apify account to run web scraping actors, manage datasets, and automate browser tasks",
     authMethods: {
@@ -2381,6 +2634,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   bitrix: {
     label: "Bitrix24",
+    environmentMapping: {
+      BITRIX_WEBHOOK_URL: "$secrets.BITRIX_WEBHOOK_URL",
+    },
     helpText:
       "Connect your Bitrix24 account to manage CRM, tasks, and workflows",
     authMethods: {
@@ -2399,6 +2655,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   brevo: {
     label: "Brevo",
+    environmentMapping: {
+      BREVO_TOKEN: "$secrets.BREVO_TOKEN",
+    },
     helpText:
       "Connect your Brevo account to manage email campaigns, transactional emails, and CRM contacts",
     authMethods: {
@@ -2419,6 +2678,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   "brave-search": {
     label: "Brave Search",
+    environmentMapping: {
+      BRAVE_API_KEY: "$secrets.BRAVE_API_KEY",
+    },
     helpText:
       "Connect your Brave Search account to perform privacy-focused web, image, video, and news searches",
     authMethods: {
@@ -2437,6 +2699,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   "bright-data": {
     label: "Bright Data",
+    environmentMapping: {
+      BRIGHTDATA_TOKEN: "$secrets.BRIGHTDATA_TOKEN",
+    },
     helpText:
       "Connect your Bright Data account to scrape websites, manage proxies, and access web data",
     authMethods: {
@@ -2456,6 +2721,10 @@ const CONNECTOR_TYPES_DEF = {
   },
   browserbase: {
     label: "Browserbase",
+    environmentMapping: {
+      BROWSERBASE_TOKEN: "$secrets.BROWSERBASE_TOKEN",
+      BROWSERBASE_PROJECT_ID: "$vars.BROWSERBASE_PROJECT_ID",
+    },
     helpText:
       "Connect your Browserbase account to create browser sessions, persist contexts, and automate cloud browsers",
     authMethods: {
@@ -2478,6 +2747,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   browserless: {
     label: "Browserless",
+    environmentMapping: {
+      BROWSERLESS_TOKEN: "$secrets.BROWSERLESS_TOKEN",
+    },
     helpText:
       "Connect your Browserless account to take screenshots, generate PDFs, scrape pages, and automate headless browsers",
     authMethods: {
@@ -2495,6 +2767,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   fireflies: {
     label: "Fireflies",
+    environmentMapping: {
+      FIREFLIES_TOKEN: "$secrets.FIREFLIES_TOKEN",
+    },
     helpText:
       "Connect your Fireflies.ai account to transcribe and analyze meetings",
     authMethods: {
@@ -2512,6 +2787,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   firecrawl: {
     label: "Firecrawl",
+    environmentMapping: {
+      FIRECRAWL_TOKEN: "$secrets.FIRECRAWL_TOKEN",
+    },
     helpText:
       "Connect your Firecrawl account to scrape webpages, crawl websites, and extract structured data",
     authMethods: {
@@ -2532,6 +2810,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   scrapeninja: {
     label: "ScrapeNinja",
+    environmentMapping: {
+      SCRAPENINJA_TOKEN: "$secrets.SCRAPENINJA_TOKEN",
+    },
     helpText:
       "Connect your ScrapeNinja account to scrape web pages with Chrome TLS fingerprint and JS rendering",
     authMethods: {
@@ -2549,6 +2830,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   pdfco: {
     label: "PDF.co",
+    environmentMapping: {
+      PDFCO_TOKEN: "$secrets.PDFCO_TOKEN",
+    },
     helpText:
       "Connect your PDF.co account to convert, merge, split, and extract data from PDF documents via API",
     authMethods: {
@@ -2567,6 +2851,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   elevenlabs: {
     label: "ElevenLabs",
+    environmentMapping: {
+      ELEVENLABS_TOKEN: "$secrets.ELEVENLABS_TOKEN",
+    },
     helpText:
       "Connect your ElevenLabs account to generate speech, clone voices, manage audio projects, and access sound effects",
     authMethods: {
@@ -2585,6 +2872,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   explorium: {
     label: "Explorium",
+    environmentMapping: {
+      EXPLORIUM_TOKEN: "$secrets.EXPLORIUM_TOKEN",
+    },
     helpText:
       "Connect your Explorium account to access business data enrichment, prospect discovery, and AI-powered data insights",
     authMethods: {
@@ -2603,6 +2893,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   devto: {
     label: "Dev.to",
+    environmentMapping: {
+      DEVTO_TOKEN: "$secrets.DEVTO_TOKEN",
+    },
     helpText:
       "Connect your Dev.to account to publish articles, manage posts, and interact with the developer community",
     authMethods: {
@@ -2621,6 +2914,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   fal: {
     label: "fal.ai",
+    environmentMapping: {
+      FAL_TOKEN: "$secrets.FAL_TOKEN",
+    },
     helpText:
       "Connect your fal.ai account to run AI models for image generation, video generation, and other AI tasks",
     authMethods: {
@@ -2639,6 +2935,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   granola: {
     label: "Granola",
+    environmentMapping: {
+      GRANOLA_TOKEN: "$secrets.GRANOLA_TOKEN",
+    },
     helpText:
       "Connect your Granola account to access meeting notes, transcripts, summaries, and calendar event details",
     authMethods: {
@@ -2657,6 +2956,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   podchaser: {
     label: "Podchaser",
+    environmentMapping: {
+      PODCHASER_TOKEN: "$secrets.PODCHASER_TOKEN",
+    },
     helpText:
       "Connect your Podchaser account to search podcasts, episodes, creators, and access podcast industry data",
     authMethods: {
@@ -2675,6 +2977,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   pushinator: {
     label: "Pushinator",
+    environmentMapping: {
+      PUSHINATOR_TOKEN: "$secrets.PUSHINATOR_TOKEN",
+    },
     helpText:
       "Connect your Pushinator account to send push notifications to mobile devices",
     authMethods: {
@@ -2693,6 +2998,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   qdrant: {
     label: "Qdrant",
+    environmentMapping: {
+      QDRANT_TOKEN: "$secrets.QDRANT_TOKEN",
+    },
     helpText:
       "Connect your Qdrant account to store, search, and manage vector embeddings",
     authMethods: {
@@ -2713,6 +3021,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   qiita: {
     label: "Qiita",
+    environmentMapping: {
+      QIITA_TOKEN: "$secrets.QIITA_TOKEN",
+    },
     helpText:
       "Connect your Qiita account to search, read, and publish technical articles",
     authMethods: {
@@ -2731,6 +3042,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   zeptomail: {
     label: "ZeptoMail",
+    environmentMapping: {
+      ZEPTOMAIL_TOKEN: "$secrets.ZEPTOMAIL_TOKEN",
+    },
     helpText:
       "Connect your ZeptoMail account to send transactional emails via Zoho's email delivery service",
     authMethods: {
@@ -2749,6 +3063,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   runway: {
     label: "Runway",
+    environmentMapping: {
+      RUNWAY_TOKEN: "$secrets.RUNWAY_TOKEN",
+    },
     helpText:
       "Connect your Runway account to generate AI videos from images, text, or video inputs",
     authMethods: {
@@ -2767,6 +3084,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   shortio: {
     label: "Short.io",
+    environmentMapping: {
+      SHORTIO_TOKEN: "$secrets.SHORTIO_TOKEN",
+    },
     helpText:
       "Connect your Short.io account to create and manage short links and track click analytics",
     authMethods: {
@@ -2785,6 +3105,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   streak: {
     label: "Streak",
+    environmentMapping: {
+      STREAK_TOKEN: "$secrets.STREAK_TOKEN",
+    },
     helpText:
       "Connect your Streak account to manage CRM pipelines, contacts, and deals inside Gmail",
     authMethods: {
@@ -2803,6 +3126,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   supadata: {
     label: "Supadata",
+    environmentMapping: {
+      SUPADATA_TOKEN: "$secrets.SUPADATA_TOKEN",
+    },
     helpText:
       "Connect your Supadata account to extract YouTube transcripts, channel data, and video metadata",
     authMethods: {
@@ -2821,6 +3147,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   tavily: {
     label: "Tavily",
+    environmentMapping: {
+      TAVILY_TOKEN: "$secrets.TAVILY_TOKEN",
+    },
     helpText:
       "Connect your Tavily account to perform AI-optimized web searches and content extraction",
     authMethods: {
@@ -2839,6 +3168,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   tldv: {
     label: "tl;dv",
+    environmentMapping: {
+      TLDV_TOKEN: "$secrets.TLDV_TOKEN",
+    },
     helpText:
       "Connect your tl;dv account to access meeting recordings, transcripts, and AI-generated notes",
     authMethods: {
@@ -2857,6 +3189,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   twenty: {
     label: "Twenty",
+    environmentMapping: {
+      TWENTY_TOKEN: "$secrets.TWENTY_TOKEN",
+    },
     helpText:
       "Connect your Twenty CRM account to manage contacts, companies, and deals",
     authMethods: {
@@ -2875,6 +3210,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   youtube: {
     label: "YouTube",
+    environmentMapping: {
+      YOUTUBE_TOKEN: "$secrets.YOUTUBE_TOKEN",
+    },
     helpText:
       "Connect your YouTube account to search videos, get channel info, and fetch comments via the Data API",
     authMethods: {
@@ -2895,6 +3233,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   zapier: {
     label: "Zapier",
+    environmentMapping: {
+      ZAPIER_TOKEN: "$secrets.ZAPIER_TOKEN",
+    },
     helpText:
       "Connect your Zapier account to trigger zaps and use AI Actions (NLA) to automate workflows",
     authMethods: {
@@ -2913,6 +3254,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   zapsign: {
     label: "ZapSign",
+    environmentMapping: {
+      ZAPSIGN_TOKEN: "$secrets.ZAPSIGN_TOKEN",
+    },
     helpText:
       "Connect your ZapSign account to create documents for electronic signature and track signing status",
     authMethods: {
@@ -2931,6 +3275,11 @@ const CONNECTOR_TYPES_DEF = {
   },
   zendesk: {
     label: "Zendesk",
+    environmentMapping: {
+      ZENDESK_API_TOKEN: "$secrets.ZENDESK_API_TOKEN",
+      ZENDESK_EMAIL: "$vars.ZENDESK_EMAIL",
+      ZENDESK_SUBDOMAIN: "$vars.ZENDESK_SUBDOMAIN",
+    },
     helpText:
       "Connect your Zendesk account to manage support tickets, users, organizations, and automate customer support workflows",
     authMethods: {
@@ -2966,6 +3315,10 @@ const CONNECTOR_TYPES_DEF = {
   },
   htmlcsstoimage: {
     label: "HTML/CSS to Image",
+    environmentMapping: {
+      HCTI_API_KEY: "$secrets.HCTI_API_KEY",
+      HCTI_USER_ID: "$vars.HCTI_USER_ID",
+    },
     helpText:
       "Connect your HTML/CSS to Image account to generate images from HTML and CSS",
     authMethods: {
@@ -2988,6 +3341,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   imgur: {
     label: "Imgur",
+    environmentMapping: {
+      IMGUR_CLIENT_ID: "$secrets.IMGUR_CLIENT_ID",
+    },
     helpText: "Connect your Imgur account to upload, manage, and share images",
     authMethods: {
       "api-token": {
@@ -3005,6 +3361,10 @@ const CONNECTOR_TYPES_DEF = {
   },
   instagram: {
     label: "Instagram",
+    environmentMapping: {
+      INSTAGRAM_ACCESS_TOKEN: "$secrets.INSTAGRAM_ACCESS_TOKEN",
+      INSTAGRAM_BUSINESS_ACCOUNT_ID: "$vars.INSTAGRAM_BUSINESS_ACCOUNT_ID",
+    },
     helpText:
       "Connect your Instagram Business account to manage posts, stories, and insights",
     authMethods: {
@@ -3027,6 +3387,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   "prisma-postgres": {
     label: "Prisma Postgres",
+    environmentMapping: {
+      PRISMA_POSTGRES_TOKEN: "$secrets.PRISMA_POSTGRES_TOKEN",
+    },
     helpText:
       "Connect your Prisma Postgres database to manage schemas, run queries, and access data through Prisma's serverless database platform",
     authMethods: {
@@ -3045,6 +3408,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   discord: {
     label: "Discord",
+    environmentMapping: {
+      DISCORD_BOT_TOKEN: "$secrets.DISCORD_BOT_TOKEN",
+    },
     helpText:
       "Connect your Discord bot to manage servers, channels, messages, and automate interactions",
     authMethods: {
@@ -3063,6 +3429,10 @@ const CONNECTOR_TYPES_DEF = {
   },
   lark: {
     label: "Lark",
+    environmentMapping: {
+      LARK_TOKEN: "$secrets.LARK_TOKEN",
+      LARK_APP_ID: "$vars.LARK_APP_ID",
+    },
     helpText:
       "Connect your Lark (Feishu) app to manage messages, documents, calendars, and workflows",
     authMethods: {
@@ -3086,6 +3456,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   mailsac: {
     label: "Mailsac",
+    environmentMapping: {
+      MAILSAC_TOKEN: "$secrets.MAILSAC_TOKEN",
+    },
     helpText:
       "Connect your Mailsac account to manage disposable email inboxes for testing",
     authMethods: {
@@ -3104,6 +3477,11 @@ const CONNECTOR_TYPES_DEF = {
   },
   minio: {
     label: "MinIO",
+    environmentMapping: {
+      MINIO_TOKEN: "$secrets.MINIO_TOKEN",
+      MINIO_SECRET_TOKEN: "$secrets.MINIO_SECRET_TOKEN",
+      MINIO_ENDPOINT: "$vars.MINIO_ENDPOINT",
+    },
     helpText:
       "Connect your MinIO instance to manage S3-compatible object storage buckets and objects",
     authMethods: {
@@ -3133,6 +3511,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   pdforge: {
     label: "PDForge",
+    environmentMapping: {
+      PDFORGE_API_KEY: "$secrets.PDFORGE_API_KEY",
+    },
     helpText:
       "Connect your PDForge account to generate PDF documents from templates",
     authMethods: {
@@ -3151,6 +3532,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   "discord-webhook": {
     label: "Discord Webhook",
+    environmentMapping: {
+      DISCORD_WEBHOOK_URL: "$secrets.DISCORD_WEBHOOK_URL",
+    },
     helpText: "Connect a Discord webhook to send messages to channels",
     authMethods: {
       "api-token": {
@@ -3168,6 +3552,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   "slack-webhook": {
     label: "Slack Webhook",
+    environmentMapping: {
+      SLACK_WEBHOOK_URL: "$secrets.SLACK_WEBHOOK_URL",
+    },
     helpText: "Connect a Slack incoming webhook to send messages to channels",
     authMethods: {
       "api-token": {
@@ -3185,6 +3572,10 @@ const CONNECTOR_TYPES_DEF = {
   },
   gitlab: {
     label: "GitLab",
+    environmentMapping: {
+      GITLAB_TOKEN: "$secrets.GITLAB_TOKEN",
+      GITLAB_HOST: "$vars.GITLAB_HOST",
+    },
     helpText:
       "Connect your GitLab account to manage repositories, issues, merge requests, and CI/CD pipelines",
     authMethods: {
@@ -3208,6 +3599,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   wix: {
     label: "Wix",
+    environmentMapping: {
+      WIX_TOKEN: "$secrets.WIX_TOKEN",
+    },
     helpText:
       "Connect your Wix account to manage sites, collections, and content",
     authMethods: {
@@ -3226,6 +3620,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   v0: {
     label: "v0",
+    environmentMapping: {
+      V0_TOKEN: "$secrets.V0_TOKEN",
+    },
     helpText:
       "Connect your v0 account to generate UI components, chat completions, and iterate on React and Next.js code with the v0 Platform API",
     authMethods: {
@@ -3421,14 +3818,19 @@ export function getConnectorSecretNames(
 /**
  * Get environment mapping for a connector type.
  *
- * For OAuth connectors, reads from `oauth.environmentMapping`.
- * For special connectors (e.g. computer), reads from `bridgeMapping`.
+ * Reads from top-level `environmentMapping` first, then falls back to
+ * `oauth.environmentMapping` and `bridgeMapping` for backward compatibility.
  */
 export function getConnectorEnvironmentMapping(
   type: ConnectorType,
 ): Record<string, string> {
   const config = CONNECTOR_TYPES[type];
-  return config.oauth?.environmentMapping ?? config.bridgeMapping ?? {};
+  return (
+    config.environmentMapping ??
+    config.oauth?.environmentMapping ??
+    config.bridgeMapping ??
+    {}
+  );
 }
 
 /**
