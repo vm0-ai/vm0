@@ -353,5 +353,32 @@ describe("POST /api/zero/slack/commands", () => {
       expect(data.response_type).toBe("ephemeral");
       expect(JSON.stringify(data.blocks)).toContain("Settings");
     });
+
+    it("uses agent UUID in settings URL when agent is configured", async () => {
+      const workspaceId = uniqueId("T-ws");
+      const slackUserId = uniqueId("U-slack");
+      await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
+      await seedTestSlackOrgConnection({
+        slackUserId,
+        slackWorkspaceId: workspaceId,
+        vm0UserId: user.userId,
+      });
+      const compose = await createTestCompose(uniqueId("agent"));
+      await updateOrgDefaultAgent(user.orgId, compose.agentId);
+
+      const body = buildCommandBody({
+        team_id: workspaceId,
+        user_id: slackUserId,
+        text: "settings",
+      });
+      const request = createCommandRequest(body);
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      const blocksJson = JSON.stringify(data.blocks);
+      // URL must contain the agent UUID, not the name slug
+      expect(blocksJson).toContain(`/team/${compose.agentId}?tab=connectors`);
+    });
   });
 });
