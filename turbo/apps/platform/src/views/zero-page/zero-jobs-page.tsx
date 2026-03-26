@@ -32,7 +32,7 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 import { useAgentAvatar, AGENT_AVATARS } from "./zero-sidebar.tsx";
-import emptyChatImg from "./assets/empty-chat.webp";
+
 import { ZERO_AVATARS } from "./zero-avatars.ts";
 
 export function ZeroJobsPage() {
@@ -115,7 +115,7 @@ export function ZeroJobsPage() {
                       <h2 className="text-base font-semibold tracking-tight text-foreground truncate">
                         {displayName}
                       </h2>
-                      <span className="zero-pill inline-flex items-center gap-1.5 rounded-lg border px-2 py-0.5 text-xs font-medium">
+                      <span className="zero-pill inline-flex items-center gap-1.5 rounded-lg border px-1.5 py-1 text-xs font-medium">
                         <IconCrown
                           size={12}
                           stroke={1.8}
@@ -145,7 +145,7 @@ export function ZeroJobsPage() {
                     <h2 className="text-base font-semibold tracking-tight text-foreground truncate">
                       {displayName}
                     </h2>
-                    <span className="zero-pill inline-flex items-center gap-1.5 rounded-lg border px-2 py-0.5 text-xs font-medium">
+                    <span className="zero-pill inline-flex items-center gap-1.5 rounded-lg border px-1.5 py-1 text-xs font-medium">
                       <IconCrown
                         size={12}
                         stroke={1.8}
@@ -197,28 +197,7 @@ export function ZeroJobsPage() {
           )}
 
           {!loading && !error && agents && agents.length === 0 && (
-            <>
-              <CreateTeammateButton onClick={() => setDialogOpen(true)} />
-              <Card className="zero-card">
-                <CardContent className="flex flex-col items-center justify-center px-6 py-12 gap-3">
-                  <img
-                    src={emptyChatImg}
-                    alt="No teammates"
-                    loading="lazy"
-                    className="h-20 w-20 object-contain opacity-80"
-                  />
-                  <div className="text-center">
-                    <p className="text-sm font-medium text-foreground">
-                      Just {displayName} for now
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Ask {displayName} to create a teammate and they&apos;ll
-                      show up here.
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            </>
+            <CreateTeammateButton onClick={() => setDialogOpen(true)} />
           )}
 
           {agents && agents.length > 0 && (
@@ -273,7 +252,7 @@ function CreateTeammateButton({ onClick }: { onClick: () => void }) {
       </div>
       <div className="border-t border-dashed border-[hsl(var(--gray-400))] px-4 py-2.5">
         <span className="text-xs text-muted-foreground">
-          Create a new subagent
+          Add a specialized agent to your team
         </span>
       </div>
     </button>
