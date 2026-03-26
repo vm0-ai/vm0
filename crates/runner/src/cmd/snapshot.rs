@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use clap::Args;
 use sha2::{Digest, Sha256};
 
@@ -30,7 +32,27 @@ pub struct SnapshotArgs {
 
 /// Create a snapshot and return the complete snapshot path information.
 pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<(String, Option<SnapshotConfig>)> {
-    let snapshot_hash = compute_snapshot_hash(&args);
+    let paths = HomePaths::new()?;
+    let rootfs_path = RootfsPaths::new(&paths, &args.rootfs_hash).rootfs();
+
+    let rootfs_exists = tokio::fs::try_exists(&rootfs_path)
+        .await
+        .map_err(|e| RunnerError::Internal(format!("check rootfs: {e}")))?;
+    if !rootfs_exists {
+        return Err(RunnerError::Config(format!(
+            "rootfs not found at {}; run `build` or `rootfs` first",
+            rootfs_path.display()
+        )));
+    }
+
+    // Hash the actual rootfs content so the snapshot is invalidated when the
+    // rootfs is rebuilt with different content (even if the input hash is the
+    // same).  This prevents stale snapshots whose dm-snapshot COW data is
+    // tied to the sector layout of a previous rootfs build.
+    let rootfs_content_hash = hash_file(&rootfs_path).await?;
+    tracing::info!(rootfs_content_hash, "rootfs content hash computed");
+
+    let snapshot_hash = compute_snapshot_hash(&args, &rootfs_content_hash);
     tracing::info!("snapshot hash: {snapshot_hash}");
     // Machine-readable output — do not change format without updating consumers
     println!("snapshot_hash={snapshot_hash}");
@@ -39,7 +61,6 @@ pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<(String, Option<Sn
         return Ok((snapshot_hash, None));
     }
 
-    let paths = HomePaths::new()?;
     let output_dir = paths.snapshots_dir().join(&snapshot_hash);
     let output = SnapshotOutputPaths::new(output_dir.clone());
 
@@ -68,17 +89,6 @@ pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<(String, Option<Sn
         Err(e) => return Err(e.into()),
     }
     tokio::fs::create_dir_all(&output_dir).await?;
-
-    let rootfs_path = RootfsPaths::new(&paths, &args.rootfs_hash).rootfs();
-    let rootfs_exists = tokio::fs::try_exists(&rootfs_path)
-        .await
-        .map_err(|e| RunnerError::Internal(format!("check rootfs: {e}")))?;
-    if !rootfs_exists {
-        return Err(RunnerError::Config(format!(
-            "rootfs not found at {}; run `build` or `rootfs` first",
-            rootfs_path.display()
-        )));
-    }
 
     let create_config = sandbox_fc::SnapshotCreateConfig {
         id: snapshot_hash.clone(),
@@ -130,12 +140,17 @@ async fn is_snapshot_complete(output: &SnapshotOutputPaths) -> RunnerResult<bool
 ///
 /// Inputs:
 ///   - `sandbox_fc::config_hash()` — boot args, guest network config
-///   - `rootfs_hash` — rootfs content (from `rootfs`)
+///   - `rootfs_hash` — rootfs input hash (from `rootfs`)
+///   - `rootfs_content_hash` — SHA-256 of the actual rootfs.ext4 file
 ///   - `FIRECRACKER_VERSION` / `KERNEL_VERSION` — binary versions
 ///   - `vcpu` / `memory_mb` — VM resource settings
 ///
+/// The `rootfs_content_hash` ensures the snapshot is invalidated when the
+/// rootfs is rebuilt with different content, even if the input hash hasn't
+/// changed (e.g. due to non-deterministic package installs).
+///
 /// **Changing this function invalidates all cached snapshots.**
-pub(crate) fn compute_snapshot_hash(args: &SnapshotArgs) -> String {
+pub(crate) fn compute_snapshot_hash(args: &SnapshotArgs, rootfs_content_hash: &str) -> String {
     let fc_config = sandbox_fc::config_hash();
     let mut hasher = Sha256::new();
     // Cache version seed — bump SNAPSHOT_CACHE_VERSION to force invalidation.
@@ -145,6 +160,8 @@ pub(crate) fn compute_snapshot_hash(args: &SnapshotArgs) -> String {
     hasher.update(fc_config.as_bytes());
     hasher.update(b"rootfs:");
     hasher.update(args.rootfs_hash.as_bytes());
+    hasher.update(b"rootfs_content:");
+    hasher.update(rootfs_content_hash.as_bytes());
     hasher.update(b"firecracker:");
     hasher.update(FIRECRACKER_VERSION.as_bytes());
     hasher.update(b"kernel:");
@@ -154,6 +171,35 @@ pub(crate) fn compute_snapshot_hash(args: &SnapshotArgs) -> String {
     hasher.update(b"memory_mb:");
     hasher.update(args.memory_mb.to_le_bytes());
     format!("{:x}", hasher.finalize())
+}
+
+/// Compute the SHA-256 hash of a file.
+///
+/// Uses a single `spawn_blocking` with synchronous IO rather than
+/// `tokio::fs::File` — the latter dispatches each read as a separate
+/// `spawn_blocking` task, adding significant scheduling overhead for
+/// large files (~3 GiB rootfs).
+async fn hash_file(path: &Path) -> RunnerResult<String> {
+    let path = path.to_owned();
+    tokio::task::spawn_blocking(move || {
+        use std::io::Read;
+        let mut file = std::fs::File::open(&path)
+            .map_err(|e| RunnerError::Internal(format!("open {}: {e}", path.display())))?;
+        let mut hasher = Sha256::new();
+        let mut buf = vec![0u8; 256 * 1024];
+        loop {
+            let n = file
+                .read(&mut buf)
+                .map_err(|e| RunnerError::Internal(format!("read {}: {e}", path.display())))?;
+            if n == 0 {
+                break;
+            }
+            hasher.update(buf.get(..n).unwrap_or(&buf));
+        }
+        Ok(format!("{:x}", hasher.finalize()))
+    })
+    .await
+    .map_err(|e| RunnerError::Internal(format!("hash_file join: {e}")))?
 }
 
 /// Return `(logical, disk)` as human-readable strings (e.g. "65.2 MiB").
@@ -194,6 +240,8 @@ fn human_bytes(bytes: u64) -> String {
 mod tests {
     use super::*;
 
+    const FAKE_CONTENT_HASH: &str = "deadbeef";
+
     #[test]
     fn snapshot_hash_is_stable() {
         let args = SnapshotArgs {
@@ -202,12 +250,12 @@ mod tests {
             memory_mb: 2048,
             dry_run: false,
         };
-        let hash = compute_snapshot_hash(&args);
+        let hash = compute_snapshot_hash(&args, FAKE_CONTENT_HASH);
 
         // Changing this assertion means ALL existing cached snapshots are
         // invalidated.  Only update deliberately.
         assert_eq!(
-            hash, "c3a6b6de68a3432cf445929376de33f7dfe854493ad91cd42d2b6bdc6d6adca6",
+            hash, "c9efa3993d726643706218f627a8d66bc50e027237c471dc3c5cc99c3bad9160",
             "snapshot hash changed — this invalidates all cached snapshots"
         );
     }
@@ -237,11 +285,39 @@ mod tests {
             ..base.clone()
         };
 
-        let base_hash = compute_snapshot_hash(&base);
-        assert_ne!(base_hash, compute_snapshot_hash(&different_rootfs));
-        assert_ne!(base_hash, compute_snapshot_hash(&different_vcpu));
-        assert_ne!(base_hash, compute_snapshot_hash(&different_memory));
+        let base_hash = compute_snapshot_hash(&base, FAKE_CONTENT_HASH);
+        assert_ne!(
+            base_hash,
+            compute_snapshot_hash(&different_rootfs, FAKE_CONTENT_HASH)
+        );
+        assert_ne!(
+            base_hash,
+            compute_snapshot_hash(&different_vcpu, FAKE_CONTENT_HASH)
+        );
+        assert_ne!(
+            base_hash,
+            compute_snapshot_hash(&different_memory, FAKE_CONTENT_HASH)
+        );
         // dry_run is not a build input — it must not change the hash.
-        assert_eq!(base_hash, compute_snapshot_hash(&different_dry_run));
+        assert_eq!(
+            base_hash,
+            compute_snapshot_hash(&different_dry_run, FAKE_CONTENT_HASH)
+        );
+    }
+
+    #[test]
+    fn different_rootfs_content_produces_different_hash() {
+        let args = SnapshotArgs {
+            rootfs_hash: "abc123".into(),
+            vcpu: 2,
+            memory_mb: 2048,
+            dry_run: false,
+        };
+        let hash_a = compute_snapshot_hash(&args, "content_hash_a");
+        let hash_b = compute_snapshot_hash(&args, "content_hash_b");
+        assert_ne!(
+            hash_a, hash_b,
+            "different rootfs content should produce different snapshot hash"
+        );
     }
 }
