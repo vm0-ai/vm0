@@ -1,10 +1,13 @@
 #!/usr/bin/env bats
 # brw-t05-agent-settings.bats — Verify agent settings editing (connector, profile, instructions)
 #
-# Tests the agent settings pages: navigates to the default agent's settings,
+# Tests the agent settings pages: creates a new agent, navigates to its settings,
 # adds a Firecrawl connector, edits the profile description, and edits
 # instructions. Each edit verifies the unsaved bar appears and that saving
 # succeeds (unsaved bar disappears).
+#
+# Note: Uses a newly-created agent (not the default "Lead" agent) because
+# non-admin users cannot access Profile/Instructions tabs on the default agent.
 #
 # Required env vars:
 #   VM0_API_URL        — Target web app URL (e.g., https://www.vm7.ai:8443)
@@ -51,6 +54,25 @@ click_save_on_unsaved_bar() {
   agent-browser click "$ref"
 }
 
+# ---------------------------------------------------------------------------
+# click_tab — Click a tab by its text label using interactive snapshot
+# More reliable than agent-browser find text ... click because it uses
+# ref-based clicking and waits for the tab text to appear first.
+# ---------------------------------------------------------------------------
+click_tab() {
+  local tab_text="$1"
+  wait_for_text "$tab_text" 10
+
+  local snap_i ref
+  snap_i=$(agent-browser snapshot -i)
+  ref=$(echo "$snap_i" | grep -i "$tab_text" | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+  if [[ -z "$ref" ]]; then
+    echo "# Failed to find tab ref for: $tab_text" >&3
+    return 1
+  fi
+  agent-browser click "$ref"
+}
+
 setup_file() {
   browser_setup
   create_clerk_sign_in_token
@@ -58,12 +80,21 @@ setup_file() {
   APP_URL="$(derive_app_url)"
   export APP_URL
 
+  AGENT_NAME="E2E-Settings-$(date +%s)-$RANDOM"
+  export AGENT_NAME
+
   echo "# Agent settings editing flow via agent-browser" >&3
   echo "#   Web URL: $VM0_API_URL" >&3
   echo "#   App URL: $APP_URL" >&3
+  echo "#   Agent name: $AGENT_NAME" >&3
 }
 
 teardown_file() {
+  # Clean up the created agent to prevent orphan accumulation
+  if [[ -n "${AGENT_NAME:-}" ]]; then
+    $ZERO_CLI agent delete "$AGENT_NAME" --yes 2>/dev/null || true
+  fi
+
   browser_teardown
 }
 
@@ -92,53 +123,71 @@ teardown_file() {
   dismiss_cookie_banner
 }
 
-@test "navigate to team page and open agent settings" {
+@test "create agent for settings testing" {
   echo "# Navigating to team page..." >&3
   agent-browser open "${APP_URL}/team" --ignore-https-errors
   agent-browser wait 3000
 
   # Wait for team page to load
-  local page_loaded=false
-  for _i in $(seq 1 20); do
-    local snap
-    snap=$(full_snapshot)
-    if contains "$snap" "Lead"; then
-      page_loaded=true
-      break
-    fi
-    sleep 1
-  done
+  wait_for_text "Lead" 20
   step_screenshot "team-page"
-  assert [ "$page_loaded" = "true" ]
 
-  # Click on the default agent card (has "Lead" badge)
-  echo "# Clicking on default agent card..." >&3
+  # Click Create teammate
+  echo "# Clicking Create teammate..." >&3
+  agent-browser find text "Create teammate" click
+  agent-browser wait 1000
+
+  # Wait for dialog
+  wait_for_text "Create a new teammate" 10
+  step_screenshot "create-dialog"
+
+  # Fill agent name
+  echo "# Filling agent name: $AGENT_NAME" >&3
+  agent-browser find placeholder "e.g. Research Assistant" fill "$AGENT_NAME"
+  agent-browser wait 500
+
+  # Click Create button in dialog
+  local snap_i create_ref
+  snap_i=$(agent-browser snapshot -i 2>/dev/null || true)
+  create_ref=$(echo "$snap_i" | grep -E 'button "Create"' | grep -v 'teammate' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+  if [[ -n "$create_ref" ]]; then
+    agent-browser click "$create_ref"
+  else
+    agent-browser find text "Create" click
+  fi
+
+  # Wait for agent creation
+  wait_for_text "$AGENT_NAME" 30
+  step_screenshot "agent-created"
+  echo "# Agent created: $AGENT_NAME" >&3
+}
+
+@test "navigate to agent settings and verify tabs" {
+  echo "# Navigating to team page..." >&3
+  agent-browser open "${APP_URL}/team" --ignore-https-errors
+  agent-browser wait 3000
+
+  # Wait for team page and find the new agent
+  wait_for_text "$AGENT_NAME" 20
+  step_screenshot "team-page"
+
+  # Click on the created agent card
+  echo "# Clicking on agent card: $AGENT_NAME..." >&3
   local snap_i ref
   snap_i=$(agent-browser snapshot -i)
-  # Find the card link that contains the "Lead" badge text
-  ref=$(echo "$snap_i" | grep -i "Lead" | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+  ref=$(echo "$snap_i" | grep -i "$AGENT_NAME" | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
   if [[ -z "$ref" ]]; then
-    echo "# Failed to find Lead agent card ref" >&3
+    echo "# Failed to find agent card ref for: $AGENT_NAME" >&3
     return 1
   fi
   agent-browser click "$ref"
   agent-browser wait 3000
 
   # Wait for agent detail page to load with tabs
-  local detail_loaded=false
-  for _i in $(seq 1 20); do
-    local snap
-    snap=$(full_snapshot)
-    if contains "$snap" "Connectors"; then
-      detail_loaded=true
-      break
-    fi
-    sleep 1
-  done
+  wait_for_text "Connectors" 20
   step_screenshot "agent-detail"
-  assert [ "$detail_loaded" = "true" ]
 
-  # Verify all tabs are visible
+  # Verify all tabs are visible (non-default agent shows all tabs)
   local snap
   snap=$(full_snapshot)
   contains "$snap" "Connectors"
@@ -148,9 +197,9 @@ teardown_file() {
 }
 
 @test "connector: add firecrawl and save" {
-  # Ensure we are on the Connectors tab
+  # Click Connectors tab using ref-based approach
   echo "# Testing connector: add Firecrawl..." >&3
-  agent-browser find text "Connectors" click
+  click_tab "Connectors"
   agent-browser wait 1000
   step_screenshot "connector-before"
 
@@ -201,7 +250,7 @@ teardown_file() {
 
 @test "profile: edit description and save" {
   echo "# Testing profile: edit description..." >&3
-  agent-browser find text "Profile" click
+  click_tab "Profile"
   agent-browser wait 2000
 
   # Wait for profile form to load
@@ -235,7 +284,7 @@ teardown_file() {
 
 @test "instructions: edit and save" {
   echo "# Testing instructions: edit text..." >&3
-  agent-browser find text "Instructions" click
+  click_tab "Instructions"
   agent-browser wait 2000
 
   # Wait for instructions editor to load
