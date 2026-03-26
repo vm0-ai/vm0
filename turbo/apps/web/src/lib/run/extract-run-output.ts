@@ -4,7 +4,7 @@ import { queryAxiom, getDatasetName, DATASETS } from "../axiom";
 // Types
 // ---------------------------------------------------------------------------
 
-export interface PermissionDenial {
+interface PermissionDenial {
   tool_name: string;
   tool_input?: {
     questions?: Array<{

@@ -14,16 +14,12 @@ import { decryptSecretValue } from "../../../../../src/lib/crypto/secrets-encryp
 import {
   createSlackClient,
   updateMessage,
-  setThreadStatus,
 } from "../../../../../src/lib/slack/client";
 import {
   buildAskUserAnsweredBlocks,
   buildErrorMessage,
 } from "../../../../../src/lib/slack/blocks";
 import type { AskUserQuestion } from "../../../../../src/lib/slack/blocks";
-import { runAgentForSlackOrg } from "../../../../../src/lib/slack-org/handlers/run-agent";
-import type { SlackOrgCallbackPayload } from "../../../../../src/lib/callback/callback-payloads";
-import { getWorkspaceAgent } from "../../../../../src/lib/slack-org/handlers/shared";
 import { refreshOrgAppHome } from "../../../../../src/lib/slack-org/handlers/app-home";
 import { disconnect } from "../../../../../src/lib/slack-org/connect-service";
 import { logger } from "../../../../../src/lib/logger";
@@ -460,7 +456,8 @@ async function handleAskUserSubmit(
 }
 
 /**
- * Shared post-submit logic: update the card, set thinking status, dispatch run.
+ * Shared post-submit logic: update the card and write the answer to DB.
+ * The running agent picks up the answer via polling (GET /api/zero/ask-user/answer).
  */
 async function finishSubmit(
   payload: SlackInteractivePayload,
@@ -495,17 +492,9 @@ async function finishSubmit(
   );
   const client = createSlackClient(botToken);
 
-  // Resolve display name for user-visible blocks
-  const agentInfo = await getWorkspaceAgent(claimed.composeId);
-  const agentLabel = agentInfo?.displayName ?? claimed.agentName;
-
   // Replace interactive card with answered summary
   if (claimed.slackMessageTs) {
-    const answeredBlocks = buildAskUserAnsweredBlocks(
-      questions,
-      answers,
-      agentLabel,
-    );
+    const answeredBlocks = buildAskUserAnsweredBlocks(questions, answers);
     await updateMessage(
       client,
       claimed.slackChannelId,
@@ -515,74 +504,13 @@ async function finishSubmit(
     );
   }
 
-  // Set thinking status
-  try {
-    await setThreadStatus(
-      client,
-      claimed.slackChannelId,
-      claimed.slackThreadTs,
-      "is thinking...",
-    );
-  } catch (err) {
-    log.debug("Failed to set thread status", { error: err });
-  }
+  // Write answer to DB for CLI polling
+  await globalThis.services.db
+    .update(slackOrgPendingQuestions)
+    .set({ answer: answerPrompt })
+    .where(eq(slackOrgPendingQuestions.id, pendingId));
 
-  // Look up connection to get userId for the run
-  const [connection] = await globalThis.services.db
-    .select()
-    .from(slackOrgConnections)
-    .where(eq(slackOrgConnections.id, claimed.connectionId))
-    .limit(1);
-
-  if (!connection) {
-    log.error("Connection not found for pending question", { pendingId });
-    await updateCardWithError(
-      claimed.slackChannelId,
-      claimed.slackMessageTs,
-      claimed.slackWorkspaceId,
-      "Your Zero account connection was not found. Please reconnect your account.",
-    );
-    return;
-  }
-
-  // Dispatch new agent run with the user's answer
-  const callbackContext: SlackOrgCallbackPayload = {
-    workspaceId: claimed.slackWorkspaceId,
-    channelId: claimed.slackChannelId,
-    threadTs: claimed.slackThreadTs,
-    messageTs: claimed.slackThreadTs,
-    connectionId: claimed.connectionId,
-    agentId: claimed.composeId,
-    existingSessionId: claimed.sessionId ?? undefined,
-  };
-
-  if (!agentInfo) {
-    log.error("Zero agent not found for compose", {
-      composeId: claimed.composeId,
-    });
-    await updateCardWithError(
-      claimed.slackChannelId,
-      claimed.slackMessageTs,
-      claimed.slackWorkspaceId,
-      "The agent could not be found. Please contact your org admin.",
-    );
-    return;
-  }
-
-  await runAgentForSlackOrg({
-    composeId: claimed.composeId,
-    agentId: agentInfo.agentId,
-    agentName: claimed.agentName,
-    sessionId: claimed.sessionId ?? undefined,
-    prompt: answerPrompt,
-    threadContext: "",
-    userContext: "",
-    userId: connection.vm0UserId,
-    botUserId: installation.botUserId,
-    callbackContext,
-  });
-
-  log.debug("askUserQuestion answer dispatched", {
+  log.debug("askUserQuestion answer persisted", {
     pendingId,
     answerPrompt,
   });

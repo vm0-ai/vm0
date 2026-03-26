@@ -612,7 +612,6 @@ export function buildAskUserQuestionBlocks(
 export function buildAskUserAnsweredBlocks(
   questions: AskUserQuestion[],
   answers: Map<number, string[]>,
-  agentName: string,
 ): (Block | KnownBlock)[] {
   const blocks: (Block | KnownBlock)[] = [
     {
@@ -620,7 +619,7 @@ export function buildAskUserAnsweredBlocks(
       elements: [
         {
           type: "mrkdwn",
-          text: `:white_check_mark: *Answered — ${agentName} is continuing...*`,
+          text: `:white_check_mark: *Answered*`,
         },
       ],
     },

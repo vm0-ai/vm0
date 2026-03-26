@@ -142,7 +142,7 @@ describe("POST /api/zero/slack/interactive", () => {
   });
 
   describe("ask_user_submit", () => {
-    it("claims pending question and dispatches run", async () => {
+    it("claims pending question and writes answer to DB", async () => {
       const workspaceId = uniqueId("T-ws");
       const slackUserId = uniqueId("U-slack");
       const channelId = uniqueId("C-ch");
@@ -326,7 +326,7 @@ describe("POST /api/zero/slack/interactive", () => {
   });
 
   describe("direct_pick", () => {
-    it("claims pending question and dispatches run for single-select", async () => {
+    it("claims pending question and writes answer for single-select", async () => {
       const workspaceId = uniqueId("T-ws");
       const slackUserId = uniqueId("U-slack");
       const channelId = uniqueId("C-ch");
