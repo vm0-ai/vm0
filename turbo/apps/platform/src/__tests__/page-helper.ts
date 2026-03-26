@@ -3,7 +3,7 @@ import { act, render } from "@testing-library/react";
 import type { Store } from "ccstate";
 import { StoreProvider } from "ccstate-react";
 import type { TestContext } from "../signals/__tests__/test-helpers";
-import { clearMockedAuth, mockUser } from "./mock-auth";
+import { clearMockedAuth, mockOrganization, mockUser } from "./mock-auth";
 import { bootstrap$ } from "../signals/bootstrap";
 import { setupRouter } from "../views/main";
 import {
@@ -23,6 +23,10 @@ export async function setupPage(options: {
   path: string;
   user?: { id: string; fullName: string; email?: string } | null;
   session?: { token: string } | null;
+  org?: {
+    activeOrg?: { id: string; name: string } | null;
+    memberships?: { id: string }[];
+  };
   debugLoggers?: string[];
   featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
   withoutRender?: boolean;
@@ -55,6 +59,18 @@ export async function setupPage(options: {
       token: "test-token",
     },
   );
+
+  // Default active org so needsOrgSelection$ doesn't redirect to /select-org.
+  // Tests that explicitly configure org state before calling setupPage can pass
+  // `org` to override this default (or call mockOrganization() before setupPage).
+  if (options.org) {
+    mockOrganization(options.org);
+  } else {
+    mockOrganization({
+      activeOrg: { id: "org_default", name: "Default Org" },
+      memberships: [{ id: "org_default" }],
+    });
+  }
   options.context.signal.addEventListener("abort", () => {
     clearMockedAuth();
   });
