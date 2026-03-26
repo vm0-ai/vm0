@@ -20,13 +20,7 @@ export const reporteiFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.REPORTEI_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all Reportei API endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

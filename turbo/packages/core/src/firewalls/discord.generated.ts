@@ -21,13 +21,7 @@ export const discordFirewall: FirewallConfig = {
           Authorization: "Bot ${{ secrets.DISCORD_BOT_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

@@ -21,13 +21,7 @@ export const garminConnectFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.GARMIN_CONNECT_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all Garmin Connect API endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

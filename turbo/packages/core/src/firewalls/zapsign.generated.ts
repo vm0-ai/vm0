@@ -20,13 +20,7 @@ export const zapsignFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.ZAPSIGN_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

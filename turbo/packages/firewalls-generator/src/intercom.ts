@@ -6,7 +6,6 @@
  * Intercom is a customer messaging platform.
  * Uses Bearer token authentication.
  * Token format: base64 string with "dG9rOi" prefix (base64 of "tok:"), ~60-80 chars.
- * Only unrestricted permissions for now.
  */
 
 import { writeOutput } from "./codegen";
@@ -41,13 +40,7 @@ function generateTypeScript(): string {
     '          Authorization: "Bearer ${{ secrets.INTERCOM_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [",
-    "        {",
-    '          name: "unrestricted",',
-    '          description: "Allow all endpoints",',
-    '          rules: ["ANY /{path*}"],',
-    "        },",
-    "      ],",
+    "      permissions: [],",
     "    },",
     "  ],",
     "};",

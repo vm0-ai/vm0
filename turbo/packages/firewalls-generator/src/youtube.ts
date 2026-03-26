@@ -5,7 +5,6 @@
  *
  * YouTube Data API v3 uses Google Cloud API keys.
  * Auth via query parameter (key=), not header, but we use header for proxy.
- * Only unrestricted permissions for now.
  */
 
 import { writeOutput } from "./codegen";
@@ -39,13 +38,7 @@ function generateTypeScript(): string {
     '          "X-Goog-Api-Key": "${{ secrets.YOUTUBE_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [",
-    "        {",
-    '          name: "unrestricted",',
-    '          description: "Allow all endpoints",',
-    '          rules: ["ANY /{path*}"],',
-    "        },",
-    "      ],",
+    "      permissions: [],",
     "    },",
     "  ],",
     "};",

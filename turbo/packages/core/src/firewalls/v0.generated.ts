@@ -20,13 +20,7 @@ export const v0Firewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.V0_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all v0 API endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

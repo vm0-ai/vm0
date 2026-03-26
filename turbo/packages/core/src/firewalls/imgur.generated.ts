@@ -20,13 +20,7 @@ export const imgurFirewall: FirewallConfig = {
           Authorization: "Client-ID ${{ secrets.IMGUR_CLIENT_ID }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

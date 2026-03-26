@@ -20,13 +20,7 @@ export const plausibleFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.PLAUSIBLE_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

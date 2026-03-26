@@ -7,7 +7,6 @@
  * Uses custom APIKEY header authentication.
  * Three base URLs: api.jotform.com, eu-api.jotform.com, hipaa-api.jotform.com.
  * Token format: opaque string, no known prefix.
- * Only unrestricted permissions for now.
  */
 
 import { writeOutput } from "./codegen";
@@ -32,13 +31,7 @@ function generateTypeScript(): string {
           APIKEY: "$\{{ secrets.JOTFORM_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     }`,
   );
 

@@ -182,13 +182,6 @@ function generateTypeScript(permissions: PermissionGroup[]): string {
   lines.push("      },");
   lines.push("      permissions: [");
   lines.push("        {");
-  lines.push('          name: "unrestricted",');
-  lines.push('          description: "Allow all endpoints",');
-  lines.push("          rules: [");
-  lines.push('            "ANY /{path*}",');
-  lines.push("          ],");
-  lines.push("        },");
-  lines.push("        {");
   lines.push('          name: "files:read",');
   lines.push('          description: "Download files from Slack",');
   lines.push("          rules: [");

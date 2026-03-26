@@ -6,7 +6,6 @@
  * Apify is a web scraping and automation platform.
  * Uses Bearer token authentication.
  * Token format: opaque string, prefix "apify_api_" observed but not documented.
- * Only unrestricted permissions for now.
  */
 
 import { writeOutput } from "./codegen";
@@ -39,13 +38,7 @@ function generateTypeScript(): string {
     '          Authorization: "Bearer ${{ secrets.APIFY_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [",
-    "        {",
-    '          name: "unrestricted",',
-    '          description: "Allow all endpoints",',
-    '          rules: ["ANY /{path*}"],',
-    "        },",
-    "      ],",
+    "      permissions: [],",
     "    },",
     "  ],",
     "};",

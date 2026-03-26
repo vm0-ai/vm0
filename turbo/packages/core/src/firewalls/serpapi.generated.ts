@@ -20,13 +20,7 @@ export const serpapiFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.SERPAPI_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

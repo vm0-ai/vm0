@@ -20,13 +20,7 @@ export const zapierFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.ZAPIER_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

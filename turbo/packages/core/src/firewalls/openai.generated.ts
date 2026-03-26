@@ -21,13 +21,7 @@ export const openaiFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.OPENAI_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

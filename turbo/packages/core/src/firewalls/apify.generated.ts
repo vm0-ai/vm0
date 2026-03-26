@@ -20,13 +20,7 @@ export const apifyFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.APIFY_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

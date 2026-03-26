@@ -20,13 +20,7 @@ export const larkFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.LARK_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all Lark API endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
     {
       base: "https://open.feishu.cn",
@@ -35,13 +29,7 @@ export const larkFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.LARK_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all Feishu API endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

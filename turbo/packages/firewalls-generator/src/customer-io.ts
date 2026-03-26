@@ -7,7 +7,6 @@
  * Uses Bearer token authentication with App API Key.
  * App API only — Track API uses Basic auth (site_id:api_key), not supported.
  * Token format: opaque string, no known prefix.
- * Only unrestricted permissions for now.
  */
 
 import { writeOutput } from "./codegen";
@@ -41,13 +40,7 @@ function generateTypeScript(): string {
     '          Authorization: "Bearer ${{ secrets.CUSTOMERIO_APP_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [",
-    "        {",
-    '          name: "unrestricted",',
-    '          description: "Allow all endpoints",',
-    '          rules: ["ANY /{path*}"],',
-    "        },",
-    "      ],",
+    "      permissions: [],",
     "    },",
     "  ],",
     "};",

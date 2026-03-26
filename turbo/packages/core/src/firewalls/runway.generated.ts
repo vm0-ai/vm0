@@ -20,13 +20,7 @@ export const runwayFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.RUNWAY_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

@@ -20,13 +20,7 @@ export const mailsacFirewall: FirewallConfig = {
           "Mailsac-Key": "${{ secrets.MAILSAC_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all Mailsac API endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

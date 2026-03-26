@@ -20,13 +20,7 @@ export const devtoFirewall: FirewallConfig = {
           "api-key": "${{ secrets.DEVTO_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

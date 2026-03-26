@@ -5,7 +5,6 @@
  *
  * HeyGen is an AI video generation platform.
  * Uses custom "X-Api-Key" header (not Bearer).
- * Only unrestricted permissions for now.
  */
 
 import { writeOutput } from "./codegen";
@@ -38,13 +37,7 @@ function generateTypeScript(): string {
     '          "X-Api-Key": "${{ secrets.HEYGEN_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [",
-    "        {",
-    '          name: "unrestricted",',
-    '          description: "Allow all endpoints",',
-    '          rules: ["ANY /{path*}"],',
-    "        },",
-    "      ],",
+    "      permissions: [],",
     "    },",
     "  ],",
     "};",

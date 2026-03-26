@@ -21,13 +21,7 @@ export const dropboxFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.DROPBOX_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
     {
       base: "https://content.dropboxapi.com",
@@ -36,13 +30,7 @@ export const dropboxFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.DROPBOX_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

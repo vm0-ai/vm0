@@ -6,7 +6,6 @@
  * Strava is a fitness tracking platform.
  * Uses Bearer token authentication (OAuth).
  * Token format: OAuth access token, opaque string, expires in 6 hours.
- * Only unrestricted permissions for now.
  */
 
 import { writeOutput } from "./codegen";
@@ -40,13 +39,7 @@ function generateTypeScript(): string {
     '          Authorization: "Bearer ${{ secrets.STRAVA_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [",
-    "        {",
-    '          name: "unrestricted",',
-    '          description: "Allow all endpoints",',
-    '          rules: ["ANY /{path*}"],',
-    "        },",
-    "      ],",
+    "      permissions: [],",
     "    },",
     "  ],",
     "};",

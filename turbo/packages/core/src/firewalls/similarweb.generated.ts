@@ -20,13 +20,7 @@ export const similarwebFirewall: FirewallConfig = {
           "api-key": "${{ secrets.SIMILARWEB_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all SimilarWeb API endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

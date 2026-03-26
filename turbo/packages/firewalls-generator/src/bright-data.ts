@@ -6,7 +6,6 @@
  * Bright Data is a web scraping and data collection platform.
  * Uses Bearer token authentication.
  * Token format: 64-character hex string, no prefix.
- * Only unrestricted permissions for now.
  */
 
 import { writeOutput } from "./codegen";
@@ -40,13 +39,7 @@ function generateTypeScript(): string {
     '          Authorization: "Bearer ${{ secrets.BRIGHTDATA_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [",
-    "        {",
-    '          name: "unrestricted",',
-    '          description: "Allow all endpoints",',
-    '          rules: ["ANY /{path*}"],',
-    "        },",
-    "      ],",
+    "      permissions: [],",
     "    },",
     "  ],",
     "};",

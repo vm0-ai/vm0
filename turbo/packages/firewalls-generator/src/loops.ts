@@ -6,7 +6,6 @@
  * Loops is an email marketing platform for SaaS.
  * Uses Bearer token authentication.
  * Token format: 32-char hex string.
- * Only unrestricted permissions for now.
  */
 
 import { writeOutput } from "./codegen";
@@ -40,13 +39,7 @@ function generateTypeScript(): string {
     '          Authorization: "Bearer ${{ secrets.LOOPS_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [",
-    "        {",
-    '          name: "unrestricted",',
-    '          description: "Allow all endpoints",',
-    '          rules: ["ANY /{path*}"],',
-    "        },",
-    "      ],",
+    "      permissions: [],",
     "    },",
     "  ],",
     "};",

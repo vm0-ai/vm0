@@ -20,13 +20,7 @@ export const elevenlabsFirewall: FirewallConfig = {
           "xi-api-key": "${{ secrets.ELEVENLABS_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

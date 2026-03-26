@@ -20,13 +20,7 @@ export const pdforgeFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.PDFORGE_API_KEY }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all PDForge API endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

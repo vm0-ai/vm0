@@ -20,13 +20,7 @@ export const granolaFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.GRANOLA_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all Granola API endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

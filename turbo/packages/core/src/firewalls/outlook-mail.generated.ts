@@ -20,13 +20,7 @@ export const outlookMailFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.OUTLOOK_MAIL_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all Microsoft Graph API endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

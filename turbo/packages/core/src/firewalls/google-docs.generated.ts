@@ -23,11 +23,6 @@ export const googleDocsFirewall: FirewallConfig = {
       },
       permissions: [
         {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-        {
           name: "documents",
           description:
             "See, edit, create, and delete all your Google Docs documents",

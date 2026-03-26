@@ -21,13 +21,7 @@ export const customerIoFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.CUSTOMERIO_APP_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

@@ -92,21 +92,11 @@ export function escapeString(s: string): string {
 // ── TypeScript rendering ─────────────────────────────────────────────────
 
 /**
- * Render permission entries (unrestricted catch-all + all groups) as
- * indented TypeScript source lines for embedding in an `apis[].permissions`
- * array.
+ * Render permission entries as indented TypeScript source lines for
+ * embedding in an `apis[].permissions` array.
  */
 export function renderPermissions(permissions: PermissionGroup[]): string[] {
   const lines: string[] = [];
-
-  // Catch-all: allows all endpoints
-  lines.push("        {");
-  lines.push('          name: "unrestricted",');
-  lines.push('          description: "Allow all endpoints",');
-  lines.push("          rules: [");
-  lines.push('            "ANY /{path*}",');
-  lines.push("          ],");
-  lines.push("        },");
 
   for (const perm of permissions) {
     lines.push("        {");

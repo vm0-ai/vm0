@@ -20,13 +20,7 @@ export const agentmailFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.AGENTMAIL_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

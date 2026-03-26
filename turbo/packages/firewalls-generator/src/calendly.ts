@@ -6,7 +6,6 @@
  * Calendly is a scheduling automation platform.
  * Uses Bearer token authentication.
  * Token format: opaque string, no known prefix.
- * Only unrestricted permissions for now.
  */
 
 import { writeOutput } from "./codegen";
@@ -40,13 +39,7 @@ function generateTypeScript(): string {
     '          Authorization: "Bearer ${{ secrets.CALENDLY_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [",
-    "        {",
-    '          name: "unrestricted",',
-    '          description: "Allow all endpoints",',
-    '          rules: ["ANY /{path*}"],',
-    "        },",
-    "      ],",
+    "      permissions: [],",
     "    },",
     "  ],",
     "};",

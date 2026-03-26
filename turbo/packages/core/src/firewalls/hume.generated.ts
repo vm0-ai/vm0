@@ -21,13 +21,7 @@ export const humeFirewall: FirewallConfig = {
           "X-Hume-Api-Key": "${{ secrets.HUME_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

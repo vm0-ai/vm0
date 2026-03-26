@@ -20,13 +20,7 @@ export const pdfcoFirewall: FirewallConfig = {
           "x-api-key": "${{ secrets.PDFCO_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all PDF.co API endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

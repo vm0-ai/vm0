@@ -20,13 +20,7 @@ export const qiitaFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.QIITA_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all Qiita API endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

@@ -21,13 +21,7 @@ export const intercomFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.INTERCOM_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

@@ -4,7 +4,6 @@
  * Data source: https://docs.zapsign.com.br/english/authentication/autenticacao
  *
  * ZapSign is an electronic signature platform.
- * Only unrestricted permissions for now.
  */
 
 import { writeOutput } from "./codegen";
@@ -38,13 +37,7 @@ function generateTypeScript(): string {
     '          Authorization: "Bearer ${{ secrets.ZAPSIGN_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [",
-    "        {",
-    '          name: "unrestricted",',
-    '          description: "Allow all endpoints",',
-    '          rules: ["ANY /{path*}"],',
-    "        },",
-    "      ],",
+    "      permissions: [],",
     "    },",
     "  ],",
     "};",

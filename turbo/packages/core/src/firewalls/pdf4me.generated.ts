@@ -20,13 +20,7 @@ export const pdf4meFirewall: FirewallConfig = {
           Authorization: "${{ secrets.PDF4ME_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all PDF4me API endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

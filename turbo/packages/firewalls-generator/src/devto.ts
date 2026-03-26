@@ -5,7 +5,6 @@
  *
  * DEV.to (Forem) is a community platform for developers.
  * Uses custom "api-key" header (not Bearer).
- * Only unrestricted permissions for now.
  */
 
 import { writeOutput } from "./codegen";
@@ -38,13 +37,7 @@ function generateTypeScript(): string {
     '          "api-key": "${{ secrets.DEVTO_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [",
-    "        {",
-    '          name: "unrestricted",',
-    '          description: "Allow all endpoints",',
-    '          rules: ["ANY /{path*}"],',
-    "        },",
-    "      ],",
+    "      permissions: [],",
     "    },",
     "  ],",
     "};",

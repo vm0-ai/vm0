@@ -21,13 +21,7 @@ export const jotformFirewall: FirewallConfig = {
           APIKEY: "${{ secrets.JOTFORM_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
     {
       base: "https://eu-api.jotform.com",
@@ -36,13 +30,7 @@ export const jotformFirewall: FirewallConfig = {
           APIKEY: "${{ secrets.JOTFORM_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
     {
       base: "https://hipaa-api.jotform.com",
@@ -51,13 +39,7 @@ export const jotformFirewall: FirewallConfig = {
           APIKEY: "${{ secrets.JOTFORM_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

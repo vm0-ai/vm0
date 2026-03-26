@@ -7,7 +7,6 @@
  * Uses Client-ID authentication (not Bearer).
  * Auth header: Authorization: Client-ID <client_id>
  * Token format: opaque string, no known prefix.
- * Only unrestricted permissions for now.
  */
 
 import { writeOutput } from "./codegen";
@@ -40,13 +39,7 @@ function generateTypeScript(): string {
     '          Authorization: "Client-ID ${{ secrets.IMGUR_CLIENT_ID }}",',
     "        },",
     "      },",
-    "      permissions: [",
-    "        {",
-    '          name: "unrestricted",',
-    '          description: "Allow all endpoints",',
-    '          rules: ["ANY /{path*}"],',
-    "        },",
-    "      ],",
+    "      permissions: [],",
     "    },",
     "  ],",
     "};",

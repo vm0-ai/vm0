@@ -22,11 +22,6 @@ export const notionFirewall: FirewallConfig = {
       },
       permissions: [
         {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-        {
           name: "insert_comments",
           description: "Create comments",
           rules: ["POST /v1/comments"],

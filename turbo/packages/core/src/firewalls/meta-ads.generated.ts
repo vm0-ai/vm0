@@ -20,13 +20,7 @@ export const metaAdsFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.META_ADS_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all Meta Ads API endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

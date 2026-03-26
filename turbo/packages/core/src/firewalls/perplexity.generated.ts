@@ -20,13 +20,7 @@ export const perplexityFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.PERPLEXITY_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

@@ -4,7 +4,6 @@
  * Data source: https://developers.asana.com/docs/authentication
  *
  * Asana is a project management platform.
- * Only unrestricted permissions for now.
  */
 
 import { writeOutput } from "./codegen";
@@ -37,13 +36,7 @@ function generateTypeScript(): string {
     '          Authorization: "Bearer ${{ secrets.ASANA_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [",
-    "        {",
-    '          name: "unrestricted",',
-    '          description: "Allow all endpoints",',
-    '          rules: ["ANY /{path*}"],',
-    "        },",
-    "      ],",
+    "      permissions: [],",
     "    },",
     "  ],",
     "};",

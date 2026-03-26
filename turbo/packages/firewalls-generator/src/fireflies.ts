@@ -5,7 +5,6 @@
  *
  * Fireflies.ai is a meeting transcription and note-taking platform.
  * Uses Bearer token authentication over GraphQL.
- * Only unrestricted permissions for now.
  */
 
 import { writeOutput } from "./codegen";
@@ -38,13 +37,7 @@ function generateTypeScript(): string {
     '          Authorization: "Bearer ${{ secrets.FIREFLIES_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [",
-    "        {",
-    '          name: "unrestricted",',
-    '          description: "Allow all endpoints",',
-    '          rules: ["ANY /{path*}"],',
-    "        },",
-    "      ],",
+    "      permissions: [],",
     "    },",
     "  ],",
     "};",

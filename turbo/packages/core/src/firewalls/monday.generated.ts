@@ -21,13 +21,7 @@ export const mondayFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.MONDAY_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

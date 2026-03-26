@@ -7,7 +7,6 @@
  * Uses Bearer token authentication.
  * Token format: hf_ prefix + alphanumeric, ~37 chars total.
  * Covers both the Hub API and the Inference API.
- * Only unrestricted permissions for now.
  */
 
 import { writeOutput } from "./codegen";
@@ -40,13 +39,7 @@ function generateTypeScript(): string {
     '          Authorization: "Bearer ${{ secrets.HUGGING_FACE_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [",
-    "        {",
-    '          name: "unrestricted",',
-    '          description: "Allow all endpoints",',
-    '          rules: ["ANY /{path*}"],',
-    "        },",
-    "      ],",
+    "      permissions: [],",
     "    },",
     "    {",
     '      base: "https://api-inference.huggingface.co",',
@@ -55,13 +48,7 @@ function generateTypeScript(): string {
     '          Authorization: "Bearer ${{ secrets.HUGGING_FACE_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [",
-    "        {",
-    '          name: "unrestricted",',
-    '          description: "Allow all endpoints",',
-    '          rules: ["ANY /{path*}"],',
-    "        },",
-    "      ],",
+    "      permissions: [],",
     "    },",
     "    {",
     '      base: "https://router.huggingface.co",',
@@ -70,13 +57,7 @@ function generateTypeScript(): string {
     '          Authorization: "Bearer ${{ secrets.HUGGING_FACE_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [",
-    "        {",
-    '          name: "unrestricted",',
-    '          description: "Allow all endpoints",',
-    '          rules: ["ANY /{path*}"],',
-    "        },",
-    "      ],",
+    "      permissions: [],",
     "    },",
     "  ],",
     "};",

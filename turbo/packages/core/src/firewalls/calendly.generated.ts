@@ -21,13 +21,7 @@ export const calendlyFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.CALENDLY_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

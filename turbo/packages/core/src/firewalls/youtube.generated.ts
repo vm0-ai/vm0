@@ -20,13 +20,7 @@ export const youtubeFirewall: FirewallConfig = {
           "X-Goog-Api-Key": "${{ secrets.YOUTUBE_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

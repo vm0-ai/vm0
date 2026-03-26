@@ -20,13 +20,7 @@ export const scrapeninjaFirewall: FirewallConfig = {
           "X-RapidAPI-Key": "${{ secrets.SCRAPENINJA_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all ScrapeNinja API endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

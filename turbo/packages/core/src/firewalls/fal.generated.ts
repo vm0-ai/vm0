@@ -20,13 +20,7 @@ export const falFirewall: FirewallConfig = {
           Authorization: "Key ${{ secrets.FAL_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
     {
       base: "https://queue.fal.run",
@@ -35,13 +29,7 @@ export const falFirewall: FirewallConfig = {
           Authorization: "Key ${{ secrets.FAL_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
     {
       base: "https://api.fal.ai",
@@ -50,13 +38,7 @@ export const falFirewall: FirewallConfig = {
           Authorization: "Key ${{ secrets.FAL_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

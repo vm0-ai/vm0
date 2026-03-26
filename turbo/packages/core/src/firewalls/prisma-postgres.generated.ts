@@ -21,13 +21,7 @@ export const prismaPostgresFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.PRISMA_POSTGRES_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all Prisma Postgres API endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

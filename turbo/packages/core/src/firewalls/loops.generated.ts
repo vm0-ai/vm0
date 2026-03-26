@@ -20,13 +20,7 @@ export const loopsFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.LOOPS_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

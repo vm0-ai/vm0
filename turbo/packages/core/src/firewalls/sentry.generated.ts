@@ -20,13 +20,7 @@ export const sentryFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.SENTRY_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

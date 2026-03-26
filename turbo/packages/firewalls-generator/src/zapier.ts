@@ -4,7 +4,6 @@
  * Data source: https://nla.zapier.com/docs/authentication/
  *
  * Zapier NLA (Natural Language Actions) enables AI-powered workflow automation.
- * Only unrestricted permissions for now.
  */
 
 import { writeOutput } from "./codegen";
@@ -37,13 +36,7 @@ function generateTypeScript(): string {
     '          Authorization: "Bearer ${{ secrets.ZAPIER_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [",
-    "        {",
-    '          name: "unrestricted",',
-    '          description: "Allow all endpoints",',
-    '          rules: ["ANY /{path*}"],',
-    "        },",
-    "      ],",
+    "      permissions: [],",
     "    },",
     "  ],",
     "};",

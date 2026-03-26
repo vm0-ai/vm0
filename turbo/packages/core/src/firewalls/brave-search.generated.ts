@@ -20,13 +20,7 @@ export const braveSearchFirewall: FirewallConfig = {
           "X-Subscription-Token": "${{ secrets.BRAVE_API_KEY }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

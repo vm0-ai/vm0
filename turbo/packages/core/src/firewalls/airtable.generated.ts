@@ -21,13 +21,7 @@ export const airtableFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.AIRTABLE_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

@@ -23,11 +23,6 @@ export const gmailFirewall: FirewallConfig = {
       },
       permissions: [
         {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-        {
           name: "gmail",
           description:
             "Read, compose, send, and permanently delete all your email from Gmail",
@@ -365,11 +360,6 @@ export const gmailFirewall: FirewallConfig = {
       },
       permissions: [
         {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-        {
           name: "gmail",
           description:
             "Read, compose, send, and permanently delete all your email from Gmail",
@@ -438,11 +428,6 @@ export const gmailFirewall: FirewallConfig = {
         },
       },
       permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
         {
           name: "gmail",
           description:

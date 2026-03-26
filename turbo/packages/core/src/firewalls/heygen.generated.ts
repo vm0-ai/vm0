@@ -20,13 +20,7 @@ export const heygenFirewall: FirewallConfig = {
           "X-Api-Key": "${{ secrets.HEYGEN_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

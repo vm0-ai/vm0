@@ -181,13 +181,6 @@ function generateTypeScript(permissions: PermissionGroup[]): string {
   lines.push("      },");
   lines.push("      permissions: [");
   lines.push("        {");
-  lines.push('          name: "unrestricted",');
-  lines.push('          description: "Allow all endpoints",');
-  lines.push("          rules: [");
-  lines.push('            "ANY /{path*}",');
-  lines.push("          ],");
-  lines.push("        },");
-  lines.push("        {");
   lines.push('          name: "contents:write",');
   lines.push('          description: "Upload release assets",');
   lines.push("          rules: [");

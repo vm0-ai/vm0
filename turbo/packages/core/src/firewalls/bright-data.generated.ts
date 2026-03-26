@@ -21,13 +21,7 @@ export const brightDataFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.BRIGHTDATA_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

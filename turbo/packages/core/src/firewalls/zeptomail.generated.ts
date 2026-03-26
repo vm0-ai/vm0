@@ -20,13 +20,7 @@ export const zeptomailFirewall: FirewallConfig = {
           Authorization: "Zoho-enczapikey ${{ secrets.ZEPTOMAIL_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

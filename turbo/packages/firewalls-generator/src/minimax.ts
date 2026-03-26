@@ -6,7 +6,6 @@
  * MiniMax is an AI model provider.
  * Uses Bearer token authentication.
  * Token format: opaque API key string.
- * Only unrestricted permissions for now.
  */
 
 import { writeOutput } from "./codegen";
@@ -41,13 +40,7 @@ function generateTypeScript(): string {
     '          Authorization: "Bearer ${{ secrets.MINIMAX_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [",
-    "        {",
-    '          name: "unrestricted",',
-    '          description: "Allow all endpoints",',
-    '          rules: ["ANY /{path*}"],',
-    "        },",
-    "      ],",
+    "      permissions: [],",
     "    },",
     "  ],",
     "};",

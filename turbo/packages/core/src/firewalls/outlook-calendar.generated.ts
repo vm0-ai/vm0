@@ -21,13 +21,7 @@ export const outlookCalendarFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.OUTLOOK_CALENDAR_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all Microsoft Graph API endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

@@ -21,13 +21,7 @@ export const instagramFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all Instagram Graph API endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

@@ -22,13 +22,7 @@ export const cronlyticFirewall: FirewallConfig = {
           "x-user-id": "${{ secrets.CRONLYTIC_USER_ID }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all Cronlytic API endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

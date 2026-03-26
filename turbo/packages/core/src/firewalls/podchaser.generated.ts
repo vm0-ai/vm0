@@ -20,13 +20,7 @@ export const podchaserFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.PODCHASER_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all Podchaser API endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

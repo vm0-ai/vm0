@@ -4,7 +4,6 @@
  * Data source: https://docs.agentmail.to/api-reference
  *
  * AgentMail is an email infrastructure platform for AI agents.
- * Only unrestricted permissions for now.
  */
 
 import { writeOutput } from "./codegen";
@@ -37,13 +36,7 @@ function generateTypeScript(): string {
     '          Authorization: "Bearer ${{ secrets.AGENTMAIL_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [",
-    "        {",
-    '          name: "unrestricted",',
-    '          description: "Allow all endpoints",',
-    '          rules: ["ANY /{path*}"],',
-    "        },",
-    "      ],",
+    "      permissions: [],",
     "    },",
     "  ],",
     "};",

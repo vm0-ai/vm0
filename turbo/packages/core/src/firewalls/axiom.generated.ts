@@ -20,13 +20,7 @@ export const axiomFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.AXIOM_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

@@ -20,13 +20,7 @@ export const ahrefsFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.AHREFS_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

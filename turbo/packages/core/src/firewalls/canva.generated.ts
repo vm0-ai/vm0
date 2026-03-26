@@ -20,13 +20,7 @@ export const canvaFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.CANVA_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all Canva Connect API endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

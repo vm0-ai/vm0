@@ -20,13 +20,7 @@ export const posthogFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.POSTHOG_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
     {
       base: "https://eu.posthog.com",
@@ -35,13 +29,7 @@ export const posthogFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.POSTHOG_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

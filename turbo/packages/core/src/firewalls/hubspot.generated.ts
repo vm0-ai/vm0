@@ -20,13 +20,7 @@ export const hubspotFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.HUBSPOT_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

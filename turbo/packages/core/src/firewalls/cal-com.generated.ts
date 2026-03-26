@@ -20,13 +20,7 @@ export const calComFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.CALCOM_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

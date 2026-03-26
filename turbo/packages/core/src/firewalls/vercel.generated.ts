@@ -23,11 +23,6 @@ export const vercelFirewall: FirewallConfig = {
       },
       permissions: [
         {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-        {
           name: "access-groups:read",
           rules: [
             "GET /v1/access-groups",

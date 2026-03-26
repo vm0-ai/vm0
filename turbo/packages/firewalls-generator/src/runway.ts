@@ -5,7 +5,6 @@
  *
  * Runway is an AI-powered creative platform for video generation.
  * Uses Bearer token authentication.
- * Only unrestricted permissions for now.
  */
 
 import { writeOutput } from "./codegen";
@@ -38,13 +37,7 @@ function generateTypeScript(): string {
     '          Authorization: "Bearer ${{ secrets.RUNWAY_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [",
-    "        {",
-    '          name: "unrestricted",',
-    '          description: "Allow all endpoints",',
-    '          rules: ["ANY /{path*}"],',
-    "        },",
-    "      ],",
+    "      permissions: [],",
     "    },",
     "  ],",
     "};",

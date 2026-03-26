@@ -20,13 +20,7 @@ export const tavilyFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.TAVILY_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

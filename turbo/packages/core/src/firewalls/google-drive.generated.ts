@@ -24,11 +24,6 @@ export const googleDriveFirewall: FirewallConfig = {
       },
       permissions: [
         {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-        {
           name: "drive",
           description:
             "See, edit, create, and delete all of your Google Drive files",
@@ -640,11 +635,6 @@ export const googleDriveFirewall: FirewallConfig = {
       },
       permissions: [
         {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-        {
           name: "drive",
           description:
             "See, edit, create, and delete all of your Google Drive files",
@@ -702,11 +692,6 @@ export const googleDriveFirewall: FirewallConfig = {
         },
       },
       permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
         {
           name: "drive",
           description:

@@ -20,13 +20,7 @@ export const firefliesFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.FIREFLIES_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

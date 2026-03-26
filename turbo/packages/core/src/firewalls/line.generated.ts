@@ -20,13 +20,7 @@ export const lineFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.LINE_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all LINE API endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

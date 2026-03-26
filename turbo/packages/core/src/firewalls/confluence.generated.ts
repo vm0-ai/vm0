@@ -23,11 +23,6 @@ export const confluenceFirewall: FirewallConfig = {
       },
       permissions: [
         {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-        {
           name: "manage:confluence-configuration",
           description: "Manage global settings.",
           rules: [

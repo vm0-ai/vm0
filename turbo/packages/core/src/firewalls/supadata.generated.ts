@@ -20,13 +20,7 @@ export const supadataFirewall: FirewallConfig = {
           "x-api-key": "${{ secrets.SUPADATA_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all Supadata API endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

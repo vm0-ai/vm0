@@ -20,13 +20,7 @@ export const firecrawlFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.FIRECRAWL_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

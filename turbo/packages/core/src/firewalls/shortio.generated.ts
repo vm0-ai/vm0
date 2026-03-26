@@ -20,13 +20,7 @@ export const shortioFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.SHORTIO_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

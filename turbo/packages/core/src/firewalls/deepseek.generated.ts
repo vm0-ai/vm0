@@ -20,13 +20,7 @@ export const deepseekFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.DEEPSEEK_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

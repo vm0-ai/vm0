@@ -4,7 +4,6 @@
  * Data source: https://axiom.co/docs/reference/tokens
  *
  * Axiom is an observability platform for logs and metrics.
- * Only unrestricted permissions for now.
  */
 
 import { writeOutput } from "./codegen";
@@ -37,13 +36,7 @@ function generateTypeScript(): string {
     '          Authorization: "Bearer ${{ secrets.AXIOM_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [",
-    "        {",
-    '          name: "unrestricted",',
-    '          description: "Allow all endpoints",',
-    '          rules: ["ANY /{path*}"],',
-    "        },",
-    "      ],",
+    "      permissions: [],",
     "    },",
     "  ],",
     "};",

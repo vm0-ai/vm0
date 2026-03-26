@@ -6,7 +6,6 @@
  * ClickUp is a project management and productivity platform.
  * Personal API tokens use bare Authorization header (no Bearer prefix).
  * Token format: pk_{numericId}_{alphanumeric} (~45 chars).
- * Only unrestricted permissions for now.
  */
 
 import { writeOutput } from "./codegen";
@@ -40,13 +39,7 @@ function generateTypeScript(): string {
     '          Authorization: "${{ secrets.CLICKUP_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [",
-    "        {",
-    '          name: "unrestricted",',
-    '          description: "Allow all endpoints",',
-    '          rules: ["ANY /{path*}"],',
-    "        },",
-    "      ],",
+    "      permissions: [],",
     "    },",
     "  ],",
     "};",

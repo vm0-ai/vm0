@@ -20,13 +20,7 @@ export const deelFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.DEEL_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all Deel API endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

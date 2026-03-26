@@ -21,13 +21,7 @@ export const redditFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.REDDIT_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

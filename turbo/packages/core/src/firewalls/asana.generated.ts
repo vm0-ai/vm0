@@ -20,13 +20,7 @@ export const asanaFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.ASANA_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

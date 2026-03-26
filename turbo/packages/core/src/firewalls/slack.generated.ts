@@ -22,11 +22,6 @@ export const slackFirewall: FirewallConfig = {
       },
       permissions: [
         {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-        {
           name: "admin",
           rules: [
             "POST /admin.audit.anomaly.allow.getItem",
@@ -819,11 +814,6 @@ export const slackFirewall: FirewallConfig = {
         },
       },
       permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
         {
           name: "files:read",
           description: "Download files from Slack",

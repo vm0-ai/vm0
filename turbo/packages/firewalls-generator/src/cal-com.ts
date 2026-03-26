@@ -6,7 +6,6 @@
  * Cal.com is a scheduling and calendar platform.
  * Uses Bearer token authentication.
  * Token format: prefixed with "cal_live_".
- * Only unrestricted permissions for now.
  */
 
 import { writeOutput } from "./codegen";
@@ -39,13 +38,7 @@ function generateTypeScript(): string {
     '          Authorization: "Bearer ${{ secrets.CALCOM_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [",
-    "        {",
-    '          name: "unrestricted",',
-    '          description: "Allow all endpoints",',
-    '          rules: ["ANY /{path*}"],',
-    "        },",
-    "      ],",
+    "      permissions: [],",
     "    },",
     "  ],",
     "};",

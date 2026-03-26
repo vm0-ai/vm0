@@ -7,7 +7,6 @@
  * Uses Bearer token authentication (OAuth).
  * Two base URLs: api.dropboxapi.com (API) and content.dropboxapi.com (file content).
  * Token format: OAuth access token, opaque string.
- * Only unrestricted permissions for now.
  */
 
 import { writeOutput } from "./codegen";
@@ -41,13 +40,7 @@ function generateTypeScript(): string {
     '          Authorization: "Bearer ${{ secrets.DROPBOX_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [",
-    "        {",
-    '          name: "unrestricted",',
-    '          description: "Allow all endpoints",',
-    '          rules: ["ANY /{path*}"],',
-    "        },",
-    "      ],",
+    "      permissions: [],",
     "    },",
     "    {",
     '      base: "https://content.dropboxapi.com",',
@@ -56,13 +49,7 @@ function generateTypeScript(): string {
     '          Authorization: "Bearer ${{ secrets.DROPBOX_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [",
-    "        {",
-    '          name: "unrestricted",',
-    '          description: "Allow all endpoints",',
-    '          rules: ["ANY /{path*}"],',
-    "        },",
-    "      ],",
+    "      permissions: [],",
     "    },",
     "  ],",
     "};",

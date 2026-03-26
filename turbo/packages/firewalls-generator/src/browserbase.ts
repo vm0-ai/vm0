@@ -6,7 +6,6 @@
  * Browserbase is a cloud browser automation platform.
  * Uses custom X-BB-API-Key header authentication.
  * Token format: opaque string, no known prefix.
- * Only unrestricted permissions for now.
  */
 
 import { writeOutput } from "./codegen";
@@ -39,13 +38,7 @@ function generateTypeScript(): string {
     '          "X-BB-API-Key": "${{ secrets.BROWSERBASE_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [",
-    "        {",
-    '          name: "unrestricted",',
-    '          description: "Allow all endpoints",',
-    '          rules: ["ANY /{path*}"],',
-    "        },",
-    "      ],",
+    "      permissions: [],",
     "    },",
     "  ],",
     "};",

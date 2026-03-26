@@ -20,13 +20,7 @@ export const browserlessFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.BROWSERLESS_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
     {
       base: "https://production-lon.browserless.io",
@@ -35,13 +29,7 @@ export const browserlessFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.BROWSERLESS_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
     {
       base: "https://production-ams.browserless.io",
@@ -50,13 +38,7 @@ export const browserlessFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.BROWSERLESS_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

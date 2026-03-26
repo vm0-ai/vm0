@@ -21,13 +21,7 @@ export const brevoFirewall: FirewallConfig = {
           "api-key": "${{ secrets.BREVO_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

@@ -6,7 +6,6 @@
  * Hume AI is an emotion AI platform.
  * Uses custom X-Hume-Api-Key header authentication.
  * Token format: opaque API key string.
- * Only unrestricted permissions for now.
  */
 
 import { writeOutput } from "./codegen";
@@ -40,13 +39,7 @@ function generateTypeScript(): string {
     '          "X-Hume-Api-Key": "${{ secrets.HUME_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [",
-    "        {",
-    '          name: "unrestricted",',
-    '          description: "Allow all endpoints",',
-    '          rules: ["ANY /{path*}"],',
-    "        },",
-    "      ],",
+    "      permissions: [],",
     "    },",
     "  ],",
     "};",

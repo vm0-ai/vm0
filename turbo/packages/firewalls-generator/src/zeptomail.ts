@@ -5,7 +5,6 @@
  *
  * ZeptoMail is Zoho's transactional email delivery service.
  * Uses Zoho-enczapikey authorization (not Bearer).
- * Only unrestricted permissions for now.
  */
 
 import { writeOutput } from "./codegen";
@@ -38,13 +37,7 @@ function generateTypeScript(): string {
     '          Authorization: "Zoho-enczapikey ${{ secrets.ZEPTOMAIL_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [",
-    "        {",
-    '          name: "unrestricted",',
-    '          description: "Allow all endpoints",',
-    '          rules: ["ANY /{path*}"],',
-    "        },",
-    "      ],",
+    "      permissions: [],",
     "    },",
     "  ],",
     "};",

@@ -20,13 +20,7 @@ export const xeroFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.XERO_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all Xero API endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

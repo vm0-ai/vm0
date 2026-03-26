@@ -20,13 +20,7 @@ export const browserbaseFirewall: FirewallConfig = {
           "X-BB-API-Key": "${{ secrets.BROWSERBASE_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

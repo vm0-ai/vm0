@@ -20,13 +20,7 @@ export const todoistFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.TODOIST_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

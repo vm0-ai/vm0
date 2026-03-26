@@ -20,13 +20,7 @@ export const pushinatorFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.PUSHINATOR_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all Pushinator API endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

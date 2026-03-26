@@ -22,11 +22,6 @@ export const figmaFirewall: FirewallConfig = {
       },
       permissions: [
         {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-        {
           name: "current_user:read",
           description: "Read your name, email, and profile image.",
           rules: ["GET /v1/me"],

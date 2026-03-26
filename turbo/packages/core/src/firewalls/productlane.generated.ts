@@ -20,13 +20,7 @@ export const productlaneFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.PRODUCTLANE_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all Productlane API endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

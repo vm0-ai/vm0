@@ -20,13 +20,7 @@ export const cloudflareFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.CLOUDFLARE_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

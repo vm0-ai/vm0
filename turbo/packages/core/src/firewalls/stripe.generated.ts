@@ -20,13 +20,7 @@ export const stripeFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.STRIPE_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

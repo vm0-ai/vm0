@@ -20,13 +20,7 @@ export const gitlabFirewall: FirewallConfig = {
           "PRIVATE-TOKEN": "${{ secrets.GITLAB_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

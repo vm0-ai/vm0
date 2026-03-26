@@ -20,13 +20,7 @@ export const revenuecatFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.REVENUECAT_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all RevenueCat API endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

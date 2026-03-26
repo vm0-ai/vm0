@@ -23,11 +23,6 @@ export const googleCalendarFirewall: FirewallConfig = {
       },
       permissions: [
         {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-        {
           name: "calendar",
           description:
             "See, edit, share, and permanently delete all the calendars you can access using Google Calendar",

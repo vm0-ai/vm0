@@ -21,13 +21,7 @@ export const intervalsIcuFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.INTERVALS_ICU_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all Intervals.icu API endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

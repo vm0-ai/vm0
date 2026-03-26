@@ -20,13 +20,7 @@ export const closeFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.CLOSE_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

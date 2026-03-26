@@ -6,7 +6,6 @@
  * Brevo (formerly Sendinblue) is an email marketing and CRM platform.
  * Uses custom "api-key" header (not Bearer).
  * Token format: xkeysib- prefix + hex string, ~70 chars total.
- * Only unrestricted permissions for now.
  */
 
 import { writeOutput } from "./codegen";
@@ -40,13 +39,7 @@ function generateTypeScript(): string {
     '          "api-key": "${{ secrets.BREVO_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [",
-    "        {",
-    '          name: "unrestricted",',
-    '          description: "Allow all endpoints",',
-    '          rules: ["ANY /{path*}"],',
-    "        },",
-    "      ],",
+    "      permissions: [],",
     "    },",
     "  ],",
     "};",

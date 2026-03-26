@@ -20,13 +20,7 @@ export const tldvFirewall: FirewallConfig = {
           "x-api-key": "${{ secrets.TLDV_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all tl;dv API endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

@@ -4,7 +4,6 @@
  * Data source: https://docs.ahrefs.com/docs/api/reference/introduction
  *
  * Ahrefs is an SEO toolset for backlink analysis and keyword research.
- * Only unrestricted permissions for now.
  */
 
 import { writeOutput } from "./codegen";
@@ -37,13 +36,7 @@ function generateTypeScript(): string {
     '          Authorization: "Bearer ${{ secrets.AHREFS_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [",
-    "        {",
-    '          name: "unrestricted",',
-    '          description: "Allow all endpoints",',
-    '          rules: ["ANY /{path*}"],',
-    "        },",
-    "      ],",
+    "      permissions: [],",
     "    },",
     "  ],",
     "};",

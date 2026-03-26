@@ -20,13 +20,7 @@ export const wixFirewall: FirewallConfig = {
           Authorization: "${{ secrets.WIX_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all Wix API endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

@@ -20,13 +20,7 @@ export const mercuryFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.MERCURY_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all Mercury API endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

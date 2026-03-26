@@ -7,7 +7,6 @@
  * Uses Bearer token authentication.
  * Token format: UUID v4 (e.g., 094632bb-e326-4c63-b953-82b55700b14c).
  * Three regional base URLs: production-sfo, production-lon, production-ams.
- * Only unrestricted permissions for now.
  */
 
 import { writeOutput } from "./codegen";
@@ -27,13 +26,7 @@ function generateTypeScript(): string {
           Authorization: "Bearer $\{{ secrets.BROWSERLESS_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     }`,
   );
 

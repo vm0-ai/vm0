@@ -20,13 +20,7 @@ export const supabaseFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.SUPABASE_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

@@ -20,13 +20,7 @@ export const linearFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.LINEAR_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

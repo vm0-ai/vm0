@@ -4,7 +4,6 @@
  * Data source: https://airtable.com/developers/web/api/authentication
  *
  * Airtable is a cloud collaboration platform.
- * Only unrestricted permissions for now.
  */
 
 import { writeOutput } from "./codegen";
@@ -39,13 +38,7 @@ function generateTypeScript(): string {
     '          Authorization: "Bearer ${{ secrets.AIRTABLE_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [",
-    "        {",
-    '          name: "unrestricted",',
-    '          description: "Allow all endpoints",',
-    '          rules: ["ANY /{path*}"],',
-    "        },",
-    "      ],",
+    "      permissions: [],",
     "    },",
     "  ],",
     "};",

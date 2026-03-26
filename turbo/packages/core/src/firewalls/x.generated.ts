@@ -23,11 +23,6 @@ export const xFirewall: FirewallConfig = {
       },
       permissions: [
         {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-        {
           name: "app-only",
           description: "App-only endpoints (no user context required)",
           rules: [

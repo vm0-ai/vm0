@@ -21,13 +21,7 @@ export const webflowFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.WEBFLOW_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

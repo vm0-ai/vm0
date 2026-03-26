@@ -20,13 +20,7 @@ export const instantlyFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.INSTANTLY_API_KEY }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all Instantly API endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

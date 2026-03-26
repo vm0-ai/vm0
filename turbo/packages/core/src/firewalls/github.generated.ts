@@ -23,11 +23,6 @@ export const githubFirewall: FirewallConfig = {
       },
       permissions: [
         {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-        {
           name: "enterprise_teams:read",
           description: "Enterprise teams",
           rules: [
@@ -1724,11 +1719,6 @@ export const githubFirewall: FirewallConfig = {
         },
       },
       permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
         {
           name: "contents:write",
           description: "Upload release assets",

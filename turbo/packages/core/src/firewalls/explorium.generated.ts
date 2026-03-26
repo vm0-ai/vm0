@@ -20,13 +20,7 @@ export const exploriumFirewall: FirewallConfig = {
           api_key: "${{ secrets.EXPLORIUM_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all Explorium API endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

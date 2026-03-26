@@ -20,13 +20,7 @@ export const neonFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.NEON_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

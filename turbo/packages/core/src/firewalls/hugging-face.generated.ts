@@ -20,13 +20,7 @@ export const huggingFaceFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.HUGGING_FACE_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
     {
       base: "https://api-inference.huggingface.co",
@@ -35,13 +29,7 @@ export const huggingFaceFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.HUGGING_FACE_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
     {
       base: "https://router.huggingface.co",
@@ -50,13 +38,7 @@ export const huggingFaceFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.HUGGING_FACE_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };
