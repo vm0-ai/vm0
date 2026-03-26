@@ -427,7 +427,9 @@ export async function downgradeSubscription(
 
   if (targetTier === "free") {
     // Cancel at period end
-    await stripe.subscriptions.cancel(org.stripeSubscriptionId);
+    await stripe.subscriptions.update(org.stripeSubscriptionId, {
+      cancel_at_period_end: true,
+    });
     const effectiveDate = org.currentPeriodEnd
       ? org.currentPeriodEnd.toISOString()
       : null;

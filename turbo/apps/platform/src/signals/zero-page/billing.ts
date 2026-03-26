@@ -51,6 +51,7 @@ const internalPortalLoading$ = state(false);
 const billingReload$ = state(0);
 const internalDowngradeDialogOpen$ = state(false);
 const internalDowngradeLoading$ = state(false);
+const internalDowngradeError$ = state<string | null>(null);
 
 // ---------------------------------------------------------------------------
 // Selectors
@@ -69,6 +70,7 @@ export const downgradeDialogOpen$ = computed((get) =>
 export const downgradeLoading$ = computed((get) =>
   get(internalDowngradeLoading$),
 );
+export const downgradeError$ = computed((get) => get(internalDowngradeError$));
 
 /**
  * Async computed signal that fetches billing status on first access.
@@ -152,6 +154,7 @@ export const startDowngrade$ = command(
 // ---------------------------------------------------------------------------
 
 export const openDowngradeDialog$ = command(({ set }) => {
+  set(internalDowngradeError$, null);
   set(internalDowngradeDialogOpen$, true);
 });
 
@@ -162,6 +165,7 @@ export const closeDowngradeDialog$ = command(({ set }) => {
 export const confirmDowngrade$ = command(
   async ({ get, set }, targetTier: "free" | "pro", _signal: AbortSignal) => {
     set(internalDowngradeLoading$, true);
+    set(internalDowngradeError$, null);
 
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingDowngradeContract);
@@ -176,7 +180,10 @@ export const confirmDowngrade$ = command(
       // Reload billing status to reflect the change
       set(billingReload$, (x) => x + 1);
     } else {
-      log.error("Downgrade failed", getErrorMessage(result.body));
+      const message =
+        getErrorMessage(result.body) ?? "Failed to downgrade plan";
+      log.error("Downgrade failed", message);
+      set(internalDowngradeError$, message);
     }
   },
 );

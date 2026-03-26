@@ -20,6 +20,7 @@ import {
   confirmDowngrade$,
   downgradeDialogOpen$,
   downgradeLoading$,
+  downgradeError$,
   type BillingTier,
 } from "../../../../signals/zero-page/billing.ts";
 import { Button } from "@vm0/ui";
@@ -34,11 +35,19 @@ import planFreeImg from "./assets/plan-free.webp";
 import planProImg from "./assets/plan-pro.webp";
 import planTeamImg from "./assets/plan-team.webp";
 import { detach, Reason } from "../../../../signals/utils.ts";
-import { AutoRechargeSection } from "../../billing-dialog.tsx";
+import { AutoRechargeSection, PLANS } from "../../billing-dialog.tsx";
 import {
   billingSubPage$,
   setBillingSubPage$,
 } from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
+
+function getPlanPrice(tier: string): string {
+  const plan = PLANS.find((p) => p.tier === tier);
+  return plan ? `${plan.price}${plan.period}` : "";
+}
+
+const proPlanPrice = getPlanPrice("pro");
+const freePlanPrice = getPlanPrice("free");
 
 const sectionCardStyle = {
   border: "0.7px solid hsl(var(--gray-400))",
@@ -307,6 +316,7 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
   const pageSignal = useGet(pageSignal$);
   const open = useGet(downgradeDialogOpen$);
   const loading = useGet(downgradeLoading$);
+  const error = useGet(downgradeError$);
   const close = useSet(closeDowngradeDialog$);
   const confirm = useSet(confirmDowngrade$);
   const [selectedTarget, setSelectedTarget] = useState<"free" | "pro">("free");
@@ -345,7 +355,7 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
                   Pro
                 </span>
                 <span className="ml-2 text-sm text-muted-foreground">
-                  $40/month
+                  {proPlanPrice}
                 </span>
               </div>
             </button>
@@ -363,12 +373,14 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
                   Free
                 </span>
                 <span className="ml-2 text-sm text-muted-foreground">
-                  $0/month
+                  {freePlanPrice}
                 </span>
               </div>
             </button>
           </div>
         )}
+
+        {error && <p className="text-sm text-destructive mt-2">{error}</p>}
 
         <div className="flex justify-end gap-2 mt-4">
           <Button variant="outline" onClick={() => close()} disabled={loading}>

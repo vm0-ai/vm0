@@ -170,7 +170,7 @@ describe("POST /api/zero/billing/downgrade", () => {
     });
   });
 
-  it("downgrades pro to free via subscription cancel", async () => {
+  it("downgrades pro to free via cancel at period end", async () => {
     const subId = uniqueId("sub-pro-free");
     const periodEnd = new Date(Date.now() + 30 * 86400 * 1000);
     await updateOrgStripeFields(user.orgId, {
@@ -180,7 +180,7 @@ describe("POST /api/zero/billing/downgrade", () => {
       currentPeriodEnd: periodEnd,
     });
 
-    stripeMocks.subscriptionsCancel.mockResolvedValue({ id: subId });
+    stripeMocks.subscriptionsUpdate.mockResolvedValue({ id: subId });
 
     const request = createDowngradeRequest({ targetTier: "free" });
     const response = await POST(request);
@@ -190,10 +190,12 @@ describe("POST /api/zero/billing/downgrade", () => {
     expect(data.success).toBe(true);
     expect(data.effectiveDate).toBe(periodEnd.toISOString());
 
-    expect(stripeMocks.subscriptionsCancel).toHaveBeenCalledWith(subId);
+    expect(stripeMocks.subscriptionsUpdate).toHaveBeenCalledWith(subId, {
+      cancel_at_period_end: true,
+    });
   });
 
-  it("downgrades team to free via subscription cancel", async () => {
+  it("downgrades team to free via cancel at period end", async () => {
     const subId = uniqueId("sub-team-free");
     const periodEnd = new Date(Date.now() + 30 * 86400 * 1000);
     await updateOrgStripeFields(user.orgId, {
@@ -203,7 +205,7 @@ describe("POST /api/zero/billing/downgrade", () => {
       currentPeriodEnd: periodEnd,
     });
 
-    stripeMocks.subscriptionsCancel.mockResolvedValue({ id: subId });
+    stripeMocks.subscriptionsUpdate.mockResolvedValue({ id: subId });
 
     const request = createDowngradeRequest({ targetTier: "free" });
     const response = await POST(request);
@@ -213,6 +215,8 @@ describe("POST /api/zero/billing/downgrade", () => {
     expect(data.success).toBe(true);
     expect(data.effectiveDate).toBe(periodEnd.toISOString());
 
-    expect(stripeMocks.subscriptionsCancel).toHaveBeenCalledWith(subId);
+    expect(stripeMocks.subscriptionsUpdate).toHaveBeenCalledWith(subId, {
+      cancel_at_period_end: true,
+    });
   });
 });
