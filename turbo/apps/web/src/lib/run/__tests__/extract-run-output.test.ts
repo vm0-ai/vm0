@@ -14,7 +14,6 @@ import {
   extractRunOutput,
   extractAllRunOutputs,
   getAllRunOutputTexts,
-  formatAskUserDenials,
 } from "../extract-run-output";
 
 /**
@@ -51,7 +50,6 @@ describe("extractRunOutput", () => {
 
     expect(output).toEqual({
       result: null,
-      askUserDenials: [],
       error: null,
     });
   });
@@ -74,30 +72,6 @@ describe("extractRunOutput", () => {
 
     expect(output.error).toBe("sandbox crashed");
     expect(output.result).toBeNull();
-  });
-
-  it("filters AskUserQuestion denials from permission_denials", async () => {
-    mockQuery.mockResolvedValue(
-      axiomResponse([
-        {
-          eventData: {
-            result: "done",
-            permission_denials: [
-              {
-                tool_name: "AskUserQuestion",
-                tool_input: { questions: [{ question: "Pick one" }] },
-              },
-              { tool_name: "Bash" },
-            ],
-          },
-        },
-      ]),
-    );
-
-    const output = await extractRunOutput("run-1");
-
-    expect(output.askUserDenials).toHaveLength(1);
-    expect(output.askUserDenials[0]!.tool_name).toBe("AskUserQuestion");
   });
 });
 
@@ -184,92 +158,5 @@ describe("getAllRunOutputTexts", () => {
     const texts = await getAllRunOutputTexts("run-1");
 
     expect(texts).toEqual(["first result", "second result"]);
-  });
-
-  it("skips events without result but includes those with denials only", async () => {
-    mockQuery.mockResolvedValue(
-      axiomResponse([
-        { eventData: { result: "ok" } },
-        {
-          eventData: {
-            permission_denials: [
-              {
-                tool_name: "AskUserQuestion",
-                tool_input: { questions: [{ question: "Choose color" }] },
-              },
-            ],
-          },
-        },
-      ]),
-    );
-
-    const texts = await getAllRunOutputTexts("run-1");
-
-    expect(texts).toHaveLength(2);
-    expect(texts[0]).toBe("ok");
-    expect(texts[1]).toContain("Choose color");
-  });
-
-  it("appends formatted denials to result text", async () => {
-    mockQuery.mockResolvedValue(
-      axiomResponse([
-        {
-          eventData: {
-            result: "Need input",
-            permission_denials: [
-              {
-                tool_name: "AskUserQuestion",
-                tool_input: { questions: [{ question: "Yes or no?" }] },
-              },
-            ],
-          },
-        },
-      ]),
-    );
-
-    const texts = await getAllRunOutputTexts("run-1");
-
-    expect(texts).toHaveLength(1);
-    expect(texts[0]).toContain("Need input");
-    expect(texts[0]).toContain("Yes or no?");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// formatAskUserDenials
-// ---------------------------------------------------------------------------
-
-describe("formatAskUserDenials", () => {
-  it("returns undefined for empty denials", () => {
-    expect(formatAskUserDenials([])).toBeUndefined();
-  });
-
-  it("returns undefined when denials have no questions", () => {
-    expect(
-      formatAskUserDenials([{ tool_name: "AskUserQuestion" }]),
-    ).toBeUndefined();
-  });
-
-  it("formats question with options", () => {
-    const result = formatAskUserDenials([
-      {
-        tool_name: "AskUserQuestion",
-        tool_input: {
-          questions: [
-            {
-              question: "Pick a color",
-              options: [
-                { label: "Red", description: "Warm" },
-                { label: "Blue" },
-              ],
-            },
-          ],
-        },
-      },
-    ]);
-
-    expect(result).toContain("Pick a color");
-    expect(result).toContain("Red — Warm");
-    expect(result).toContain("Blue");
   });
 });
