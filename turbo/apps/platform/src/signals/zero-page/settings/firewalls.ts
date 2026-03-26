@@ -1,37 +1,21 @@
 import { command } from "ccstate";
 import {
   zeroAgentFirewallPoliciesContract,
+  isFirewallConnectorType,
+  getConnectorFirewall,
   type ConnectorType,
   type FirewallPolicies,
   type FirewallPolicyValue,
 } from "@vm0/core";
 import { zeroClient$ } from "../../api-client.ts";
 
-/**
- * Maps platform connector types to their firewall ref name(s) in builtinFirewalls.
- * Only includes connectors that have builtin firewall configs available.
- */
-const FIREWALL_CONNECTOR_MAP: Readonly<
-  Partial<Record<ConnectorType, readonly string[]>>
-> = {
-  github: ["github"],
-  slack: ["slack"],
-  gmail: ["gmail"],
-  "google-sheets": ["google-sheets"],
-  "google-docs": ["google-docs"],
-  "google-drive": ["google-drive"],
-  "google-calendar": ["google-calendar"],
-  atlassian: ["atlassian"],
-} as const;
-
-/** Check if a connector type has firewall config(s) available. */
-export function hasFirewallConfig(type: ConnectorType): boolean {
-  return type in FIREWALL_CONNECTOR_MAP;
-}
-
-/** Get the firewall ref names for a connector type. */
-export function getFirewallRefs(type: ConnectorType): string[] {
-  return [...(FIREWALL_CONNECTOR_MAP[type] ?? [])];
+/** Check if a connector's firewall has any permissions defined. */
+export function hasFirewallPermissions(type: ConnectorType): boolean {
+  if (!isFirewallConnectorType(type)) return false;
+  const config = getConnectorFirewall(type);
+  return config.apis.some(
+    (api) => api.permissions && api.permissions.length > 0,
+  );
 }
 
 // ---------------------------------------------------------------------------

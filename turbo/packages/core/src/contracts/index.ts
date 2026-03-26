@@ -402,7 +402,6 @@ export {
   type ExperimentalFirewalls,
   type FirewallPolicyValue,
   type FirewallPolicies,
-  getFirewallRefsForConnector,
 } from "./firewalls";
 
 export {

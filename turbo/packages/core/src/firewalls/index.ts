@@ -7,6 +7,7 @@
  */
 
 import type { FirewallConfig } from "../contracts/firewalls";
+import type { ConnectorType } from "../contracts/connectors";
 import { agentmailFirewall } from "./agentmail.generated";
 import { ahrefsFirewall } from "./ahrefs.generated";
 import { airtableFirewall } from "./airtable.generated";
@@ -111,7 +112,7 @@ import { zapierFirewall } from "./zapier.generated";
 import { zapsignFirewall } from "./zapsign.generated";
 import { zeptomailFirewall } from "./zeptomail.generated";
 
-export const builtinFirewalls: Record<string, FirewallConfig> = {
+const CONNECTOR_FIREWALLS = {
   agentmail: agentmailFirewall,
   ahrefs: ahrefsFirewall,
   airtable: airtableFirewall,
@@ -215,4 +216,21 @@ export const builtinFirewalls: Record<string, FirewallConfig> = {
   zapier: zapierFirewall,
   zapsign: zapsignFirewall,
   zeptomail: zeptomailFirewall,
-};
+} as const satisfies Partial<Record<ConnectorType, FirewallConfig>>;
+
+/** Connector types that have a firewall config (subset of ConnectorType). */
+export type FirewallConnectorType = keyof typeof CONNECTOR_FIREWALLS;
+
+/** Check if a connector type has a firewall config. */
+export function isFirewallConnectorType(
+  type: string,
+): type is FirewallConnectorType {
+  return type in CONNECTOR_FIREWALLS;
+}
+
+/** Get the firewall config for a connector type. */
+export function getConnectorFirewall(
+  type: FirewallConnectorType,
+): FirewallConfig {
+  return CONNECTOR_FIREWALLS[type];
+}

@@ -16,7 +16,7 @@ interface ZeroConnectorCardProps {
   label: string;
   connector: ConnectorTypeWithStatus | null;
   pollingType: ConnectorType | null;
-  hasFirewall: boolean;
+  hasFirewallPermissions: boolean;
   isAdmin?: boolean;
   /** When true, hide agent-level mutations (remove connector). Connect/Disconnect still works. */
   readOnly?: boolean;
@@ -111,7 +111,7 @@ function ConnectionStatus({
 
 function CardDropdownMenu({
   connector,
-  hasFirewall,
+  hasFirewallPermissions,
   isAdmin,
   readOnly,
   onDisconnect,
@@ -119,7 +119,7 @@ function CardDropdownMenu({
   onManagePermissions,
 }: {
   connector: ConnectorTypeWithStatus | null;
-  hasFirewall: boolean;
+  hasFirewallPermissions: boolean;
   isAdmin?: boolean;
   readOnly?: boolean;
   onDisconnect: () => void;
@@ -144,7 +144,7 @@ function CardDropdownMenu({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">
-        {hasFirewall && connector?.connected && isAdmin && (
+        {hasFirewallPermissions && connector?.connected && isAdmin && (
           <>
             <DropdownMenuItem onClick={onManagePermissions}>
               Permissions
@@ -171,7 +171,7 @@ export function ZeroConnectorCard({
   label,
   connector,
   pollingType,
-  hasFirewall,
+  hasFirewallPermissions,
   isAdmin,
   readOnly,
   onConnect,
@@ -215,7 +215,7 @@ export function ZeroConnectorCard({
         </div>
         <CardDropdownMenu
           connector={connector}
-          hasFirewall={hasFirewall}
+          hasFirewallPermissions={hasFirewallPermissions}
           isAdmin={isAdmin}
           readOnly={readOnly}
           onDisconnect={onDisconnect}

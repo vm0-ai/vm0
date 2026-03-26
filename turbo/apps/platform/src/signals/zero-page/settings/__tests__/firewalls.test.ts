@@ -3,40 +3,25 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server.ts";
 import { testContext } from "../../../__tests__/test-helpers.ts";
 import { setupPage } from "../../../../__tests__/page-helper.ts";
-import {
-  hasFirewallConfig,
-  getFirewallRefs,
-  saveFirewallPolicies$,
-} from "../firewalls.ts";
+import { hasFirewallPermissions, saveFirewallPolicies$ } from "../firewalls.ts";
 
 const context = testContext();
 
-describe("hasFirewallConfig", () => {
-  it("should return true for connectors with firewall configs", () => {
-    expect(hasFirewallConfig("github")).toBeTruthy();
-    expect(hasFirewallConfig("slack")).toBeTruthy();
-    expect(hasFirewallConfig("gmail")).toBeTruthy();
-    expect(hasFirewallConfig("atlassian")).toBeTruthy();
+describe("hasFirewallPermissions", () => {
+  it("should return true for connectors with firewall permissions", () => {
+    expect(hasFirewallPermissions("github")).toBeTruthy();
+    expect(hasFirewallPermissions("slack")).toBeTruthy();
+    expect(hasFirewallPermissions("atlassian")).toBeTruthy();
+    expect(hasFirewallPermissions("x")).toBeTruthy();
   });
 
-  it("should return false for connectors without firewall configs", () => {
-    expect(hasFirewallConfig("notion" as never)).toBeFalsy();
-    expect(hasFirewallConfig("unknown" as never)).toBeFalsy();
-  });
-});
-
-describe("getFirewallRefs", () => {
-  it("should return single ref for simple connectors", () => {
-    expect(getFirewallRefs("github")).toStrictEqual(["github"]);
-    expect(getFirewallRefs("slack")).toStrictEqual(["slack"]);
+  it("should return false for connectors without firewall permissions", () => {
+    expect(hasFirewallPermissions("unknown" as never)).toBeFalsy();
   });
 
-  it("should return single ref for atlassian", () => {
-    expect(getFirewallRefs("atlassian")).toStrictEqual(["atlassian"]);
-  });
-
-  it("should return empty array for unknown connector", () => {
-    expect(getFirewallRefs("unknown" as never)).toStrictEqual([]);
+  it("should return false for connectors with firewall but no permissions", () => {
+    // stripe has a firewall config but no permissions defined
+    expect(hasFirewallPermissions("stripe")).toBeFalsy();
   });
 });
 
