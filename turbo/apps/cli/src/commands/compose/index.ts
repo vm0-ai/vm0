@@ -292,7 +292,7 @@ interface ComposeResult {
 }
 
 /**
- * Finalize compose: confirm variables, merge into config, call API, and display result.
+ * Finalize compose: call API and display result.
  * Shared by both GitHub URL and local file flows.
  * Returns the compose result for JSON output mode.
  */
