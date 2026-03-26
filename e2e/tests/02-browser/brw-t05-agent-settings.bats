@@ -142,12 +142,10 @@ teardown_file() {
 }
 
 @test "navigate to agent settings and verify tabs" {
-  echo "# Navigating to team page..." >&3
-  agent-browser open "${APP_URL}/team" --ignore-https-errors
-  agent-browser wait 3000
-
-  # Wait for team page and find the new agent
-  wait_for_text "$AGENT_NAME" 20
+  # After agent creation, the browser is still on the team page.
+  # The agent should already be visible — no need to re-navigate.
+  echo "# Waiting for agent on team page..." >&3
+  wait_for_text "$AGENT_NAME" 10
   step_screenshot "team-page"
 
   # Click on the created agent card
