@@ -7,7 +7,6 @@ import {
   buildHelpMessage,
   buildSuccessMessage,
   buildAgentResponseMessage,
-  detectDeepLinks,
 } from "../blocks";
 
 describe("buildErrorMessage", () => {
@@ -150,33 +149,6 @@ describe("buildAgentResponseMessage", () => {
     });
   });
 
-  it("should include deep link context blocks when provided", () => {
-    const deepLinks = [
-      {
-        emoji: "\u{1F511}",
-        label: "Configure providers",
-        url: "https://app.vm0.ai/settings",
-      },
-    ];
-    const blocks = buildAgentResponseMessage(
-      "Response text",
-      undefined,
-      deepLinks,
-    );
-
-    const contextBlock = blocks.find((b) => b.type === "context");
-    expect(contextBlock).toBeDefined();
-    expect(contextBlock).toMatchObject({
-      type: "context",
-      elements: [
-        {
-          type: "mrkdwn",
-          text: expect.stringContaining("Configure providers"),
-        },
-      ],
-    });
-  });
-
   it("should truncate content exceeding 12000 characters", () => {
     const longContent = "x".repeat(13000);
     const blocks = buildAgentResponseMessage(longContent);
@@ -196,89 +168,6 @@ describe("buildAgentResponseMessage", () => {
       (b) => b.type === "markdown",
     ) as MarkdownBlock;
     expect(markdownBlock.text).toBe(content);
-  });
-});
-
-describe("detectDeepLinks", () => {
-  const appUrl = "https://app.vm0.ai";
-
-  it("should return empty array when no keywords match", () => {
-    const links = detectDeepLinks("Hello, everything is working fine!", appUrl);
-    expect(links).toEqual([]);
-  });
-
-  it("should not detect provider-related keywords (handled via error code)", () => {
-    const links = detectDeepLinks(
-      "The model provider is not configured",
-      appUrl,
-    );
-    expect(links).toEqual([]);
-  });
-
-  it("should route connector links to team page with agent name", () => {
-    const links = detectDeepLinks(
-      "Error: missing variable DATABASE_URL",
-      appUrl,
-      "my-agent",
-    );
-    expect(links).toHaveLength(1);
-    expect(links[0]).toEqual({
-      emoji: "\u{1F50C}",
-      label: "Configure connectors",
-      url: `${appUrl}/team/my-agent?tab=connectors`,
-    });
-  });
-
-  it("should route connector links to generic team page without agent name", () => {
-    const links = detectDeepLinks("The MCP server connection failed", appUrl);
-    expect(links).toHaveLength(1);
-    expect(links[0]).toEqual({
-      emoji: "\u{1F50C}",
-      label: "Configure connectors",
-      url: `${appUrl}/team`,
-    });
-  });
-
-  it("should match case-insensitively", () => {
-    const links = detectDeepLinks(
-      "API_KEY is not configured",
-      appUrl,
-      "test-agent",
-    );
-    expect(links).toHaveLength(1);
-    expect(links[0]?.label).toBe("Configure connectors");
-  });
-
-  it("should deduplicate by path", () => {
-    const links = detectDeepLinks(
-      "The api key is missing and the secret is not configured and the apikey is invalid",
-      appUrl,
-      "my-agent",
-    );
-    expect(links).toHaveLength(1);
-    expect(links[0]?.url).toBe(`${appUrl}/team/my-agent?tab=connectors`);
-  });
-
-  it("should only return connector link when both provider and connector keywords present", () => {
-    const links = detectDeepLinks(
-      "The model provider is missing. Also the api key is not set and the MCP server is down.",
-      appUrl,
-      "my-agent",
-    );
-    expect(links).toHaveLength(1);
-    expect(links[0]?.url).toBe(`${appUrl}/team/my-agent?tab=connectors`);
-  });
-
-  it("should encode special characters in agent name", () => {
-    const links = detectDeepLinks(
-      "connector not found",
-      appUrl,
-      "agent with spaces",
-    );
-    expect(links).toHaveLength(1);
-    expect(links[0]?.url).toBe(
-      `${appUrl}/team/agent%20with%20spaces?tab=connectors`,
-    );
   });
 });
 

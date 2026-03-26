@@ -9,7 +9,6 @@ import type {
   Option,
 } from "@slack/web-api";
 import { getAppUrl } from "../url";
-import type { DeepLink } from "../deep-links";
 
 /**
  * Build the App Home tab view
@@ -415,42 +414,18 @@ function buildMarkdownMessage(content: string): (Block | KnownBlock)[] {
   return [block];
 }
 
-// ---------------------------------------------------------------------------
-// Keyword detection for deep links (re-exported from shared module)
-// ---------------------------------------------------------------------------
-
-export { detectDeepLinks } from "../deep-links";
-
 /**
  * Build an agent response message with optional logs link
  *
  * @param content - The agent's response content
  * @param logsUrl - Optional URL to the run logs
- * @param deepLinks - Optional deep links to append for configuration help
  * @returns Block Kit blocks with response content
  */
 export function buildAgentResponseMessage(
   content: string,
   logsUrl?: string,
-  deepLinks?: DeepLink[],
 ): (Block | KnownBlock)[] {
   const blocks: (Block | KnownBlock)[] = [...buildMarkdownMessage(content)];
-
-  // Add deep links if any keywords matched
-  if (deepLinks && deepLinks.length > 0) {
-    const linkText = deepLinks
-      .map((link) => `${link.emoji} <${link.url}|${link.label}>`)
-      .join("  \u00b7  ");
-    blocks.push({
-      type: "context",
-      elements: [
-        {
-          type: "mrkdwn",
-          text: linkText,
-        },
-      ],
-    });
-  }
 
   // Add logs link at the end if provided
   // Emoji must be outside the link — Slack mobile doesn't render emoji inside <url|text>

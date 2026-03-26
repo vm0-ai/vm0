@@ -12,18 +12,13 @@ import {
 } from "../../../../../../../src/lib/slack/client";
 import {
   extractAllRunOutputs,
-  buildDeepLinksFromFlags,
   type RunOutput,
 } from "../../../../../../../src/lib/run/extract-run-output";
 import {
   saveThreadSession,
   buildLogsUrl,
 } from "../../../../../../../src/lib/slack-org/handlers/shared";
-import {
-  buildAgentResponseMessage,
-  detectDeepLinks,
-} from "../../../../../../../src/lib/slack/blocks";
-import { getAppUrl } from "../../../../../../../src/lib/url";
+import { buildAgentResponseMessage } from "../../../../../../../src/lib/slack/blocks";
 import { zeroAgents } from "../../../../../../../src/db/schema/zero-agent";
 import { env } from "../../../../../../../src/env";
 import type { SlackScheduleCallbackPayload } from "../../../../../../../src/lib/callback/callback-payloads";
@@ -68,7 +63,7 @@ function extractAgentSessionId(result: unknown): string | undefined {
  * Post all result texts as a threaded Slack conversation.
  *
  * The first message includes the header; subsequent results are threaded replies.
- * Only the last message includes the audit link and deep links.
+ * Only the last message includes the audit link.
  */
 async function postScheduleResults(
   client: ReturnType<typeof createSlackClient>,
@@ -76,7 +71,6 @@ async function postScheduleResults(
   displayName: string,
   outputs: RunOutput[],
   logsUrl: string,
-  agentName: string,
 ): Promise<{ messageTs: string | undefined; dmChannelId: string | undefined }> {
   let messageTs: string | undefined;
   let dmChannelId: string | undefined;
@@ -90,13 +84,9 @@ async function postScheduleResults(
     const isLast = i === outputs.length - 1;
 
     const content = isFirst ? header + rawOutput : rawOutput;
-    const deepLinks = isLast
-      ? buildDeepLinksFromFlags(output, getAppUrl(), agentName)
-      : [];
     const blocks = buildAgentResponseMessage(
       content,
       isLast ? logsUrl : undefined,
-      deepLinks,
     );
 
     const threadTs = messageTs;
@@ -206,7 +196,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .where(eq(zeroAgents.id, payload.agentId))
     .limit(1);
   const displayName = agentInfo?.displayName ?? agentInfo?.name ?? "your agent";
-  const agentName = agentInfo?.name ?? "your agent";
 
   // Use configured channel if set, otherwise fall back to user DM
   const notifyChannel = targetChannelId ?? connection.slackUserId;
@@ -225,7 +214,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       displayName,
       allOutputs,
       logsUrl,
-      agentName,
     );
 
     // Create thread session so user can reply to continue (only for DM)
@@ -254,13 +242,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // Failed run
     const errMsg = error ?? "Unknown error";
     const failureContent = `:x: **Scheduled run for \`${displayName}\` failed**\n\n${errMsg}`;
-    const deepLinks = detectDeepLinks(errMsg, getAppUrl(), agentName);
     await postMessage(
       client,
       notifyChannel,
       `Scheduled run for "${displayName}" failed`,
       {
-        blocks: buildAgentResponseMessage(failureContent, logsUrl, deepLinks),
+        blocks: buildAgentResponseMessage(failureContent, logsUrl),
       },
     );
   }

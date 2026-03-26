@@ -19,10 +19,8 @@ import {
   buildTelegramResponse,
   buildTelegramErrorResponse,
 } from "../../../../../src/lib/telegram/format";
-import { getAppUrl } from "../../../../../src/lib/url";
 import {
   extractRunOutput,
-  buildDeepLinksFromFlags,
   formatAskUserDenials,
   type RunOutput,
 } from "../../../../../src/lib/run/extract-run-output";
@@ -170,17 +168,7 @@ async function handleCompletion(ctx: CompletionContext): Promise<void> {
   let responseText: string | undefined;
   if (status === "completed") {
     responseText = buildOutputText(runOutput) ?? "Task completed successfully.";
-    const deepLinks = buildDeepLinksFromFlags(
-      runOutput,
-      getAppUrl(),
-      agent.name,
-    );
-    htmlOutput = buildTelegramResponse(
-      responseText,
-      agent.label,
-      logsUrl,
-      deepLinks,
-    );
+    htmlOutput = buildTelegramResponse(responseText, agent.label, logsUrl);
   } else {
     const errorDetail =
       error ?? "The agent encountered an error during execution.";
