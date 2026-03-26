@@ -39,7 +39,7 @@ fn create_test_base_image(path: &Path) {
 }
 
 struct TestSetup {
-    // Drop order matters: pool must be dropped before _tmp so the base
+    // Drop order matters: cache must be dropped before _tmp so the base
     // loop device is detached before the temp directory (and base image
     // file inside it) is deleted.
     pool: BaseLoopCache,
@@ -247,4 +247,77 @@ fn pool_shared_loop_device() {
     // Release both — loop should be detached after second release.
     setup.pool.release(handle1.base_key()).expect("release 1");
     setup.pool.release(handle2.base_key()).expect("release 2");
+}
+
+#[test]
+fn init_cow_file_creates_sparse_file() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let cow = tmp.path().join("cow.img");
+    let sectors: u64 = 64 * 1024 * 1024 / 512; // 64 MiB
+
+    init_cow_file(&cow, sectors).expect("init");
+
+    let meta = fs::metadata(&cow).expect("metadata");
+    assert_eq!(meta.len(), 64 * 1024 * 1024);
+    // Sparse: actual blocks should be near zero.
+    assert!(meta.blocks() * 512 < 4096, "file should be sparse");
+}
+
+#[test]
+fn init_cow_file_creates_parent_dirs() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let cow = tmp.path().join("a").join("b").join("cow.img");
+
+    init_cow_file(&cow, 1024).expect("init");
+    assert!(cow.exists());
+}
+
+#[test]
+fn init_cow_file_overflow_returns_error() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let cow = tmp.path().join("overflow.img");
+
+    let result = init_cow_file(&cow, u64::MAX);
+    assert!(result.is_err(), "should fail on sector overflow");
+}
+
+#[test]
+#[ignore]
+fn create_fails_with_missing_cow_file() {
+    require_root!();
+
+    let mut setup = TestSetup::new();
+    let handle = setup.pool.acquire(&setup.base_image).expect("acquire");
+    let config = CowDeviceConfig {
+        cow_file: setup._tmp.path().join("nonexistent.img"),
+    };
+
+    let result = CowDevice::create(&handle.loop_path, handle.sectors, &config);
+    assert!(result.is_err(), "should fail when COW file does not exist");
+}
+
+#[test]
+#[ignore]
+fn abandon_prevents_cow_file_deletion_on_drop() {
+    require_root!();
+
+    let mut setup = TestSetup::new();
+    let handle = setup.pool.acquire(&setup.base_image).expect("acquire");
+    let config = setup.cow_config("cow.img");
+    init_cow_file(&config.cow_file, handle.sectors).expect("init");
+    let cow_file = config.cow_file.clone();
+
+    {
+        let mut device =
+            CowDevice::create(&handle.loop_path, handle.sectors, &config).expect("create");
+        device.abandon();
+        // device is dropped here — should NOT delete cow_file
+    }
+
+    assert!(
+        cow_file.exists(),
+        "COW file should survive after abandon + drop"
+    );
+    // Clean up manually.
+    let _ = fs::remove_file(&cow_file);
 }
