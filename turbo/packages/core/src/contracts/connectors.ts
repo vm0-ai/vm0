@@ -3385,7 +3385,7 @@ const CONNECTOR_TYPES_DEF = {
   instagram: {
     label: "Instagram",
     environmentMapping: {
-      INSTAGRAM_ACCESS_TOKEN: "$secrets.INSTAGRAM_ACCESS_TOKEN",
+      INSTAGRAM_TOKEN: "$secrets.INSTAGRAM_TOKEN",
       INSTAGRAM_BUSINESS_ACCOUNT_ID: "$vars.INSTAGRAM_BUSINESS_ACCOUNT_ID",
     },
     helpText:
@@ -3394,7 +3394,7 @@ const CONNECTOR_TYPES_DEF = {
       "api-token": {
         label: "API Token",
         secrets: {
-          INSTAGRAM_ACCESS_TOKEN: {
+          INSTAGRAM_TOKEN: {
             label: "Access Token",
             required: true,
           },
