@@ -1,4 +1,10 @@
-import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
+import {
+  useGet,
+  useSet,
+  useLoadable,
+  useLastLoadable,
+  useLastResolved,
+} from "ccstate-react";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   IconFileText,
@@ -66,7 +72,7 @@ import { navigateTo$ } from "../../signals/route.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { AGENT_AVATARS, useAgentAvatar } from "./zero-sidebar.tsx";
 import { setAgentAvatar$ } from "../../signals/zero-page/zero-agent-avatars.ts";
-import { agentsList$ } from "../../signals/zero-page/agents-list.ts";
+import { agents$ } from "../../signals/zero-page/agents-list.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { ZeroNoPermissionIllustration } from "./components/zero-no-permission-illustration.tsx";
 
@@ -392,7 +398,7 @@ export function ZeroJobDetailPage({
 }: ZeroJobDetailPageProps) {
   const detail = useGet(zeroJobDetail$);
   const error = useGet(zeroJobDetailError$);
-  const agents = useGet(agentsList$);
+  const agents = useLastResolved(agents$) ?? [];
   const listItem = agents.find((a) => a.id === agentId);
 
   const { description, displayName, sound } = extractAgentFields(

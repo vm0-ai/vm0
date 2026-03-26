@@ -3,7 +3,6 @@ import { createElement } from "react";
 import { ZeroScheduleDetailPageWrapper } from "../../views/schedule-page/zero-schedule-detail-page-wrapper.tsx";
 import { updatePage$ } from "../react-router.ts";
 import { pathParams$ } from "../route.ts";
-import { fetchAgentsList$ } from "../zero-page/zero-agents.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
 import { switchActiveAgent$ } from "../zero-page/zero-chat.ts";
 import { fetchAllOrgSchedules$ } from "../zero-page/zero-schedule.ts";
@@ -32,7 +31,6 @@ export const setupScheduleDetailPage$ = command(
 
     detach(set(fetchAllOrgSchedules$, signal), Reason.Entrance);
     await Promise.all([
-      set(fetchAgentsList$, signal),
       set(initZeroOnboarding$, signal),
       set(initSlackOrg$, signal),
       set(fetchSlackChannels$, signal),

@@ -9,17 +9,12 @@ import {
   zeroNeedsOnboarding$,
   zeroNeedsMemberOnboarding$,
 } from "../zero-page/zero-onboarding.ts";
-import { fetchAgentsList$ } from "../zero-page/zero-agents.ts";
-
 export const setupOnboardingPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(updatePage$, createElement(OnboardingPage));
     set(updateDocumentTitle$, "Onboarding");
 
-    await Promise.all([
-      set(initZeroOnboarding$, signal),
-      set(fetchAgentsList$, signal),
-    ]);
+    await set(initZeroOnboarding$, signal);
     signal.throwIfAborted();
 
     // If onboarding is not needed, redirect to home

@@ -3,7 +3,6 @@ import { createElement } from "react";
 import { ZeroActivityDetailPageWrapper } from "../../views/activity-page/zero-activity-detail-page-wrapper.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
-import { fetchAgentsList$ } from "../zero-page/zero-agents.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
 import { switchActiveAgent$ } from "../zero-page/zero-chat.ts";
@@ -20,7 +19,6 @@ export const setupActivityDetailPage$ = command(
     }
 
     await Promise.all([
-      set(fetchAgentsList$, signal),
       set(switchActiveAgent$, null, signal),
       set(setupActivityLogLoop$, signal),
     ]);

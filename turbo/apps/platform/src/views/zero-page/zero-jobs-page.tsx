@@ -19,8 +19,6 @@ import {
 } from "@vm0/ui";
 import {
   zeroSubagents$,
-  agentsLoading$,
-  agentsError$,
   createSubagent$,
 } from "../../signals/zero-page/zero-agents.ts";
 import {
@@ -42,9 +40,15 @@ export function ZeroJobsPage() {
   const rawNameLoadable = useLoadable(defaultAgentId$);
   const rawAgentName =
     rawNameLoadable.state === "hasData" ? rawNameLoadable.data : null;
+  const agentsLoadable = useLoadable(zeroSubagents$);
   const agents = useLastResolved(zeroSubagents$);
-  const loading = useGet(agentsLoading$);
-  const error = useGet(agentsError$);
+  const loading = agentsLoadable.state === "loading";
+  const error =
+    agentsLoadable.state === "hasError"
+      ? agentsLoadable.error instanceof Error
+        ? agentsLoadable.error.message
+        : "Unknown error"
+      : null;
   const avatarIndex = useGet(zeroAvatarIndex$);
   const zeroAvatarSrc = ZERO_AVATARS[avatarIndex] ?? ZERO_AVATARS[0];
   const [dialogOpen, setDialogOpen] = useState(false);

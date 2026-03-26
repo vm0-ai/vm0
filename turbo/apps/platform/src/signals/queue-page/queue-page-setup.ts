@@ -4,7 +4,6 @@ import { ZeroQueuePage } from "../../views/queue-page/zero-queue-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { detach, Reason } from "../utils.ts";
-import { fetchAgentsList$ } from "../zero-page/zero-agents.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
 import { switchActiveAgent$ } from "../zero-page/zero-chat.ts";
@@ -13,10 +12,7 @@ import { startQueuePolling$ } from "./queue-signals.ts";
 export const setupQueuePage$ = command(async ({ set }, signal: AbortSignal) => {
   set(updatePage$, createElement(ZeroQueuePage));
   set(updateDocumentTitle$, "Queue");
-  await Promise.all([
-    set(fetchAgentsList$, signal),
-    set(initZeroOnboarding$, signal),
-  ]);
+  await set(initZeroOnboarding$, signal);
   signal.throwIfAborted();
 
   if (await set(onboardGuard$, signal)) {

@@ -4,7 +4,6 @@ import { ZeroWorksPageWrapper } from "../../views/works-page/zero-works-page-wra
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { detach, Reason } from "../utils.ts";
-import { fetchAgentsList$ } from "../zero-page/zero-agents.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
 import { switchActiveAgent$ } from "../zero-page/zero-chat.ts";
@@ -17,7 +16,6 @@ export const setupWorksPage$ = command(async ({ set }, signal: AbortSignal) => {
   set(updatePage$, createElement(ZeroWorksPageWrapper));
   set(updateDocumentTitle$, "Works");
   await Promise.all([
-    set(fetchAgentsList$, signal),
     set(initZeroOnboarding$, signal),
     set(initSlackOrg$, signal),
   ]);

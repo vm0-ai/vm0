@@ -32,7 +32,7 @@ import {
 } from "./schedule-dialog.tsx";
 import { ScheduleCalendarView } from "./schedule-calendar-view.tsx";
 import { ScheduleListView } from "./schedule-list-view.tsx";
-import { agentsList$ } from "../../signals/zero-page/agents-list.ts";
+import { agents$ } from "../../signals/zero-page/agents-list.ts";
 import { COMMON_TIMEZONES } from "../../signals/zero-page/cron.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
@@ -401,7 +401,7 @@ export function ZeroSchedulePage() {
   const entries: OrgScheduleEntry[] =
     entriesLoadable.state === "hasData" ? entriesLoadable.data : [];
 
-  const agentsLoadable = useLoadable(agentsList$);
+  const agentsLoadable = useLoadable(agents$);
   const agents = agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
   const loaded = useGet(allOrgSchedulesLoaded$);
   const isInitialLoading = !loaded;

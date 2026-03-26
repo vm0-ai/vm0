@@ -33,7 +33,7 @@ import { Switch } from "@vm0/ui/components/ui/switch";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
 import { Link } from "../router/link.tsx";
 import { navigateTo$, pathParams$ } from "../../signals/route.ts";
-import { agentsList$ } from "../../signals/zero-page/agents-list.ts";
+import { agents$ } from "../../signals/zero-page/agents-list.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   allOrgScheduleEntries$,
@@ -973,7 +973,7 @@ export function ZeroScheduleDetailPage() {
   const entries: OrgScheduleEntry[] =
     entriesLoadable.state === "hasData" ? entriesLoadable.data : [];
 
-  const agentsLoadable = useLoadable(agentsList$);
+  const agentsLoadable = useLoadable(agents$);
   const agents = agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
 
   const loaded = useGet(allOrgSchedulesLoaded$);

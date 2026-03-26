@@ -4,8 +4,7 @@ import { ZeroTeamDetailPage } from "../../views/team-page/zero-team-detail-page.
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { pathParams$ } from "../route.ts";
-import { agentsList$ } from "../zero-page/agents-list.ts";
-import { fetchAgentsList$ } from "../zero-page/zero-agents.ts";
+import { agents$ } from "../zero-page/agents-list.ts";
 import { fetchZeroJobData$ } from "../zero-page/zero-job-detail.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
@@ -14,12 +13,12 @@ import { initSlackOrg$ } from "../zero-page/zero-slack.ts";
 
 export const setupTeamDetailPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
+    set(updatePage$, createElement(ZeroTeamDetailPage));
+
     const params = get(pathParams$) as { id?: string } | undefined;
     const agentId = params?.id ?? null;
-    set(updatePage$, createElement(ZeroTeamDetailPage, { agentId }));
     set(updateDocumentTitle$, "Team");
     await Promise.all([
-      set(fetchAgentsList$, signal),
       set(initZeroOnboarding$, signal),
       set(initSlackOrg$, signal),
       agentId ? set(fetchZeroJobData$, agentId, signal) : Promise.resolve(),
@@ -32,7 +31,9 @@ export const setupTeamDetailPage$ = command(
 
     // Update title with agent display name
     if (agentId) {
-      const agents = get(agentsList$);
+      const agents = await get(agents$);
+      signal.throwIfAborted();
+
       const agent = agents.find((a) => a.id === agentId);
       const displayName = agent?.displayName ?? "Agent";
       set(updateDocumentTitle$, displayName);

@@ -1,5 +1,5 @@
 import { command, state } from "ccstate";
-import { fetchAgentsList$, zeroSubagents$ } from "./zero-agents.ts";
+import { zeroSubagents$ } from "./zero-agents.ts";
 import { defaultAgentId$ } from "./zero-agent-name.ts";
 import { initZeroOnboarding$ } from "./zero-onboarding.ts";
 import { initSlackOrg$ } from "./zero-slack.ts";
@@ -21,7 +21,6 @@ export const loadInitialData$ = command(
       return;
     }
     await Promise.all([
-      set(fetchAgentsList$, signal),
       set(initZeroOnboarding$, signal),
       set(initSlackOrg$, signal),
     ]);

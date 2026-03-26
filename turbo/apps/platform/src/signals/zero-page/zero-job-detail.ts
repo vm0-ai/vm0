@@ -20,7 +20,7 @@ import {
   type ScheduleBody,
   type CronTimeOption,
 } from "./cron.ts";
-import { fetchAgentsList$ } from "./zero-agents.ts";
+import { reloadAgents$ } from "./agents-list.ts";
 import { reloadZeroCompose$ } from "./zero-connectors.ts";
 import type { ScheduleEntry } from "../../views/zero-page/zero-schedule-card.tsx";
 
@@ -307,7 +307,7 @@ export const zeroJobUpdateSettings$ = command(
       }
 
       await set(fetchZeroJobDetail$, signal);
-      await set(fetchAgentsList$, signal);
+      set(reloadAgents$);
       toast.success("Profile saved");
     } catch (error) {
       throwIfAbort(error);
@@ -793,7 +793,7 @@ export const deleteZeroJobAgent$ = command(
     }
 
     toast.success("Agent deleted");
-    await set(fetchAgentsList$, signal);
+    set(reloadAgents$);
   },
 );
 
