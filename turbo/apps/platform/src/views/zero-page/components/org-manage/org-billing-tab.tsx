@@ -35,7 +35,7 @@ import planFreeImg from "./assets/plan-free.webp";
 import planProImg from "./assets/plan-pro.webp";
 import planTeamImg from "./assets/plan-team.webp";
 import { detach, Reason } from "../../../../signals/utils.ts";
-import { AutoRechargeSection, PLANS } from "../../billing-dialog.tsx";
+import { AutoRechargeSection } from "../../billing-dialog.tsx";
 import {
   billingSubPage$,
   setBillingSubPage$,

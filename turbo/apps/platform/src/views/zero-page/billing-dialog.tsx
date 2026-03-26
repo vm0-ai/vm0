@@ -27,7 +27,7 @@ import {
   setSelectedPlanTier$,
 } from "../../signals/zero-page/billing-dialog-state.ts";
 
-export const PLANS = [
+const PLANS = [
   {
     tier: "free" as const,
     name: "Free",
