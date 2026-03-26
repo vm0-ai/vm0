@@ -3,5 +3,5 @@ import { missingTokenCommand } from "./missing-token";
 
 export const zeroDoctorCommand = new Command()
   .name("doctor")
-  .description("Diagnostic tools for troubleshooting agent issues")
+  .description("Diagnose runtime issues (missing tokens, connectors)")
   .addCommand(missingTokenCommand);
