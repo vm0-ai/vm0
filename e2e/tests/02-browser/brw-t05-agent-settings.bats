@@ -111,9 +111,24 @@ teardown_file() {
   step_screenshot "team-page"
   assert [ "$page_loaded" = "true" ]
 
-  # Click on the default agent (has "Lead" badge)
-  echo "# Clicking on default agent..." >&3
-  agent-browser find text "Lead" click
+  # Click on the default agent card (has "Lead" badge)
+  echo "# Clicking on default agent card..." >&3
+  local snap_i ref
+  snap_i=$(agent-browser snapshot -i)
+  # Find the card link that contains the "Lead" badge text
+  ref=$(echo "$snap_i" | grep -i "Lead" | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+  if [[ -z "$ref" ]]; then
+    echo "# Failed to find Lead agent card ref, trying display name click..." >&3
+    # Fallback: try clicking the agent display name
+    snap_i=$(agent-browser snapshot -i)
+    ref=$(echo "$snap_i" | grep -B5 -i "Lead" | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+  fi
+  if [[ -n "$ref" ]]; then
+    agent-browser click "$ref"
+  else
+    # Last resort: click on "Agents" heading area card
+    agent-browser find text "Your primary AI assistant" click
+  fi
   agent-browser wait 3000
 
   # Wait for agent detail page to load with tabs
