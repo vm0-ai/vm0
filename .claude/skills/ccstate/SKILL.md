@@ -103,6 +103,165 @@ const ROUTE_CONFIG = [
 
 **Never manually set pageSignal$ in setup commands** - the wrapper does it for you.
 
+## Reactive Async Computed vs Imperative Fetch Commands
+
+Prefer reactive `computed(async ...)` over imperative fetch-and-store commands.
+
+### Anti-pattern: Imperative fetch command with manual state
+
+```typescript
+// ❌ Requires explicit calls from every page setup, manual loading/error tracking
+const agentsState$ = state({ agents: [], loading: false, error: null });
+export const agentsList$ = computed((get) => get(agentsState$).agents);
+export const agentsLoading$ = computed((get) => get(agentsState$).loading);
+
+export const fetchAgentsList$ = command(async ({ get, set }, signal) => {
+  set(agentsState$, (prev) => ({ ...prev, loading: true }));
+  try {
+    const result = await get(zeroClient$)(contract).list();
+    set(agentsState$, { agents: result.body, loading: false, error: null });
+  } catch (error) {
+    set(agentsState$, (prev) => ({ ...prev, loading: false, error: error.message }));
+  }
+});
+```
+
+### Preferred: Reactive async computed
+
+```typescript
+// ✅ Auto-fetches on first access, invalidates via counter bump
+const internalReload$ = state(0);
+export const agents$ = computed(async (get) => {
+  get(internalReload$);
+  const result = get(zeroClient$)(contract).list();
+  if (result.status !== 200) throw new Error(`Failed (${result.status})`);
+  return result.body;
+});
+export const reloadAgents$ = command(({ set }) => {
+  set(internalReload$, (prev) => prev + 1);
+});
+```
+
+**Benefits:**
+- No manual loading/error state — consumers use `useLoadable()` or `useLastResolved()` from ccstate-react
+- No explicit fetch calls in page setups — data loads lazily when first accessed
+- Invalidation via `reloadAgents$` is a simple counter bump
+- Fewer files touched, fewer places to forget the fetch call
+
+**Consumer patterns in views:**
+```typescript
+// Loading/error from loadable state
+const agentsLoadable = useLoadable(agents$);
+const loading = agentsLoadable.state === "loading";
+const error = agentsLoadable.state === "hasError" ? agentsLoadable.error.message : null;
+
+// Last resolved value (keeps showing old data while reloading)
+const agents = useLastResolved(agents$) ?? [];
+```
+
+## AbortSignal Lifecycle and Ownership
+
+**Every AbortSignal must have a clear owner that will abort it.** Orphaned signals cause polling loops that never stop and promises that leak past test boundaries.
+
+### Signal hierarchy
+
+```
+rootSignal$ (app lifecycle)
+  └── routeSignal (per-route, aborted on navigation)
+      └── pageSignal$ (exposed to components)
+          └── resetSignal() (per-operation, e.g. send/polling)
+```
+
+### `resetSignal()` must inherit from a parent
+
+`resetSignal()` creates an independent `AbortController`. If you don't pass parent signals, the returned signal is orphaned:
+
+```typescript
+// ❌ Orphaned signal — only aborted when resetSending$ is called again
+const signal = set(resetSending$);
+
+// ✅ Inherits from page signal — aborted on navigation OR reset
+const signal = set(resetSending$, pageSignal);
+```
+
+**How `resetSignal` works:**
+```typescript
+// From utils.ts
+return command(({ get, set }, ...signals: AbortSignal[]) => {
+  get(controller$)?.abort();                          // abort previous
+  const controller = new AbortController();
+  set(controller$, controller);
+  return AbortSignal.any([controller.signal, ...signals]);  // combine with parents
+});
+```
+
+If `...signals` is empty, the returned signal only responds to the next `resetSending$` call. It won't abort on page navigation or test teardown.
+
+### Common mistake: floating polling loop
+
+```typescript
+// ❌ resumeSignal has no parent — loop runs forever if resetSending$ isn't called
+const resumeSignal = set(resetSending$);
+set(startLoop$, { runId }, resumeSignal);
+
+// ✅ Pass the page/route signal so loop stops on navigation
+const resumeSignal = set(resetSending$, signal);
+set(startLoop$, { runId }, resumeSignal);
+```
+
+## Detach, Floating Promises, and Test Cleanup
+
+### `detach()` tracks promises for cleanup
+
+```typescript
+detach(someAsyncWork(), Reason.DomCallback);
+```
+
+- `clearAllDetached()` in `afterEach` awaits all tracked promises
+- Without `detach`, a fire-and-forget promise is a **floating promise** — invisible to cleanup
+
+### Floating promises are dangerous
+
+```typescript
+// ❌ Floating promise — escapes all cleanup, causes DOMException on teardown
+set(startLoop$, { runId }, signal).catch((e) => { ... });
+
+// ✅ Tracked by detach — clearAllDetached will await it
+detach(set(startLoop$, { runId }, signal), Reason.Daemon);
+```
+
+But don't use `detach` to paper over orphaned signals. Fix the signal chain first.
+
+### Test cleanup order matters
+
+```typescript
+// ✅ Correct: abort detached promises BEFORE removing MSW handlers
+afterEach(async () => {
+  await clearAllDetached();      // 1. abort & await all detached promises
+  server.resetHandlers();         // 2. then remove mock handlers
+});
+
+// ❌ Wrong: promises try to fetch after handlers are gone → ECONNREFUSED / 401
+afterEach(() => {
+  server.resetHandlers();         // handlers gone
+  // detached promises still running, hit real network
+});
+```
+
+## MSW Handler URL Matching
+
+Default MSW handlers must use wildcard prefix `*/` to match absolute URLs:
+
+```typescript
+// ❌ Won't match http://localhost:3000/api/zero/team
+http.get("/api/zero/team", () => { ... });
+
+// ✅ Matches any origin
+http.get("*/api/zero/team", () => { ... });
+```
+
+This is required because `VITE_API_URL=http://localhost:3000` and ts-rest clients construct absolute URLs. MSW relative paths only match the pathname portion when the request uses relative URLs, but happy-dom's fetch sends absolute URLs.
+
 ## Removing `ccstate-react/experimental` from Views
 
 The ESLint rule `ccstate/no-use-ccstate-in-views` bans all imports from `ccstate-react/experimental` in `views/` files. Many files suppress this with `/* eslint-disable ccstate/no-use-ccstate-in-views */`. This section documents how to eliminate each experimental hook.
