@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.160.3](https://github.com/vm0-ai/vm0/compare/web-v12.160.2...web-v12.160.3) (2026-03-26)
+
+
+### Bug Fixes
+
+* clarify slack token type in agent context ([#6819](https://github.com/vm0-ai/vm0/issues/6819)) ([3cd2bb3](https://github.com/vm0-ai/vm0/commit/3cd2bb300b3fc4c7e4eb52128d79260f2302888c))
+
 ## [12.160.2](https://github.com/vm0-ai/vm0/compare/web-v12.160.1...web-v12.160.2) (2026-03-26)
 
 
