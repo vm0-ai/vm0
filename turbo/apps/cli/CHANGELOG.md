@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.84.0](https://github.com/vm0-ai/vm0/compare/cli-v9.83.3...cli-v9.84.0) (2026-03-26)
+
+
+### Features
+
+* add zero doctor missing-token command ([#6852](https://github.com/vm0-ai/vm0/issues/6852)) ([07af907](https://github.com/vm0-ai/vm0/commit/07af907ce9587270f7a1cb3159800c3c0cf7c07e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.115.0
+
 ## [9.83.3](https://github.com/vm0-ai/vm0/compare/cli-v9.83.2...cli-v9.83.3) (2026-03-25)
 
 

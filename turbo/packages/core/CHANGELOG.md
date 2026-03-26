@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.115.0](https://github.com/vm0-ai/vm0/compare/core-v8.114.0...core-v8.115.0) (2026-03-26)
+
+
+### Features
+
+* add fine-grained firewall permissions for x (twitter) ([#6833](https://github.com/vm0-ai/vm0/issues/6833)) ([445678c](https://github.com/vm0-ai/vm0/commit/445678cdea705e4e59c0ebf7ec26b8e411004c97))
+
+
+### Refactoring
+
+* merge jira and confluence firewalls into single atlassian firewall ([#6854](https://github.com/vm0-ai/vm0/issues/6854)) ([8752fe8](https://github.com/vm0-ai/vm0/commit/8752fe86fd5d5f59ab16b38373513b021a242b7e))
+* **platform:** resolve schedule agent label from server-side display name ([#6835](https://github.com/vm0-ai/vm0/issues/6835)) ([5b53481](https://github.com/vm0-ai/vm0/commit/5b534813d87103fe423ad9aef43cf32b84536f2e))
+* remove hardcoded unrestricted permission from firewall generators ([#6840](https://github.com/vm0-ai/vm0/issues/6840)) ([917beb5](https://github.com/vm0-ai/vm0/commit/917beb545394f4c76300c9a0ad82f0da54f3dfdb)), closes [#6839](https://github.com/vm0-ai/vm0/issues/6839)
+
 ## [8.114.0](https://github.com/vm0-ai/vm0/compare/core-v8.113.0...core-v8.114.0) (2026-03-25)
 
 

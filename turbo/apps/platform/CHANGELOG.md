@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.152.3](https://github.com/vm0-ai/vm0/compare/app-v0.152.2...app-v0.152.3) (2026-03-26)
+
+
+### Bug Fixes
+
+* add z-index to sticky chat composer to prevent content overlap ([#6823](https://github.com/vm0-ai/vm0/issues/6823)) ([e9efe07](https://github.com/vm0-ai/vm0/commit/e9efe07b1f39ce5ef386f1beb3d77ceb8f8047af)), closes [#6219](https://github.com/vm0-ai/vm0/issues/6219)
+
+
+### Refactoring
+
+* merge jira and confluence firewalls into single atlassian firewall ([#6854](https://github.com/vm0-ai/vm0/issues/6854)) ([8752fe8](https://github.com/vm0-ai/vm0/commit/8752fe86fd5d5f59ab16b38373513b021a242b7e))
+* **platform:** resolve schedule agent label from server-side display name ([#6835](https://github.com/vm0-ai/vm0/issues/6835)) ([5b53481](https://github.com/vm0-ai/vm0/commit/5b534813d87103fe423ad9aef43cf32b84536f2e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.115.0
+
 ## [0.152.2](https://github.com/vm0-ai/vm0/compare/app-v0.152.1...app-v0.152.2) (2026-03-26)
 
 

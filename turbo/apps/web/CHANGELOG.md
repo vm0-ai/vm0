@@ -1,5 +1,23 @@
 # Changelog
 
+## [12.160.4](https://github.com/vm0-ai/vm0/compare/web-v12.160.3...web-v12.160.4) (2026-03-26)
+
+
+### Refactoring
+
+* consolidate api base url resolution to vm0_api_url ([#6857](https://github.com/vm0-ai/vm0/issues/6857)) ([be4a1bf](https://github.com/vm0-ai/vm0/commit/be4a1bf528facdff83b7f874b9d68de36afcbe36))
+* **platform:** resolve schedule agent label from server-side display name ([#6835](https://github.com/vm0-ai/vm0/issues/6835)) ([5b53481](https://github.com/vm0-ai/vm0/commit/5b534813d87103fe423ad9aef43cf32b84536f2e))
+* remove deep-links module and all usages across callback handlers ([#6859](https://github.com/vm0-ai/vm0/issues/6859)) ([444f12a](https://github.com/vm0-ai/vm0/commit/444f12a203218ba704fb77e843d684a49fa65034))
+* restructure agent system prompt with agent tools section ([#6844](https://github.com/vm0-ai/vm0/issues/6844)) ([d73d8f2](https://github.com/vm0-ai/vm0/commit/d73d8f2bd2f001229dcee591e7244aebcd76752a))
+* rewrite agent tools prompt to use situational when-do pattern ([#6850](https://github.com/vm0-ai/vm0/issues/6850)) ([942c991](https://github.com/vm0-ai/vm0/commit/942c9917b55d6e8a04b40594afcb6f6902aae621))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.115.0
+
 ## [12.160.3](https://github.com/vm0-ai/vm0/compare/web-v12.160.2...web-v12.160.3) (2026-03-26)
 
 
