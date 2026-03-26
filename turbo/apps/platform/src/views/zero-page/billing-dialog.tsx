@@ -143,22 +143,21 @@ export function AutoRechargeSection({
   const dollarAmount =
     amountParsed > 0 ? (amountParsed / CREDITS_PER_DOLLAR).toFixed(2) : "0.00";
 
+  const thresholdId = `org-auto-recharge-threshold-${variant}`;
+  const amountId = `org-auto-recharge-amount-${variant}`;
+
   const readInputNumbers = () => {
-    const thresholdEl = document.getElementById(
-      "org-auto-recharge-threshold",
-    ) as HTMLInputElement | null;
-    const amountEl = document.getElementById(
-      "org-auto-recharge-amount",
-    ) as HTMLInputElement | null;
-    const tVal = Number(thresholdEl?.value);
-    const aVal = Number(amountEl?.value);
+    const thresholdEl = document.getElementById(thresholdId);
+    const amountEl = document.getElementById(amountId);
+    const tRaw =
+      thresholdEl instanceof HTMLInputElement ? thresholdEl.value : "";
+    const aRaw = amountEl instanceof HTMLInputElement ? amountEl.value : "";
+    const tVal = Number(tRaw);
+    const aVal = Number(aRaw);
     return {
       threshold:
-        Number.isFinite(tVal) && thresholdEl?.value !== ""
-          ? tVal
-          : Number(threshold),
-      amount:
-        Number.isFinite(aVal) && amountEl?.value !== "" ? aVal : amountNum,
+        tRaw !== "" && Number.isFinite(tVal) ? tVal : Number(threshold),
+      amount: aRaw !== "" && Number.isFinite(aVal) ? aVal : amountNum,
     };
   };
 
@@ -240,7 +239,7 @@ export function AutoRechargeSection({
                 </div>
                 <Input
                   key={`threshold-${threshold}`}
-                  id="org-auto-recharge-threshold"
+                  id={thresholdId}
                   type="number"
                   min={1}
                   defaultValue={threshold}
@@ -263,7 +262,7 @@ export function AutoRechargeSection({
                 <div className="relative w-[200px] shrink-0">
                   <Input
                     key={`amount-${amount}`}
-                    id="org-auto-recharge-amount"
+                    id={amountId}
                     type="number"
                     min={CREDITS_PER_DOLLAR}
                     step={CREDITS_PER_DOLLAR}
@@ -321,7 +320,7 @@ export function AutoRechargeSection({
             </span>
             <input
               key={`dialog-threshold-${threshold}`}
-              id="org-auto-recharge-threshold"
+              id={thresholdId}
               type="number"
               min={1}
               defaultValue={threshold}
@@ -337,7 +336,7 @@ export function AutoRechargeSection({
             <div className="flex items-center gap-2">
               <input
                 key={`dialog-amount-${amount}`}
-                id="org-auto-recharge-amount"
+                id={amountId}
                 type="number"
                 min={CREDITS_PER_DOLLAR}
                 step={CREDITS_PER_DOLLAR}
@@ -358,7 +357,7 @@ export function AutoRechargeSection({
           size="sm"
           variant="outline"
           disabled={loading}
-          onClick={() => saveCurrent()}
+          onClick={() => persistIfValid()}
         >
           {loading ? "Saving..." : "Save"}
         </Button>
