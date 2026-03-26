@@ -89,7 +89,7 @@ describe("zero jobs page - team list", () => {
     expect(screen.getByText("agent-3")).toBeInTheDocument();
   });
 
-  it("should show empty state when no sub-agents exist", async () => {
+  it("should show create teammate button when no sub-agents exist", async () => {
     mockTeamAPI([
       {
         id: "mock-compose-id",
@@ -102,26 +102,8 @@ describe("zero jobs page - team list", () => {
     await renderTeamPage();
 
     await waitFor(() => {
-      expect(screen.getByText("Just Zero for now")).toBeInTheDocument();
+      expect(screen.getByText("Create teammate")).toBeInTheDocument();
     });
-  });
-
-  it("should show create teammate button in empty state", async () => {
-    mockTeamAPI([
-      {
-        id: "mock-compose-id",
-        displayName: null,
-        description: null,
-        headVersionId: "version_1",
-        updatedAt: "2024-01-01T00:00:00Z",
-      },
-    ]);
-    await renderTeamPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Just Zero for now")).toBeInTheDocument();
-    });
-    expect(screen.getByText("Create teammate")).toBeInTheDocument();
   });
 
   it("should show create teammate button when sub-agents exist", async () => {
