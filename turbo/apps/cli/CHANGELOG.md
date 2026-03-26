@@ -1,5 +1,17 @@
 # Changelog
 
+## [9.85.0](https://github.com/vm0-ai/vm0/compare/cli-v9.84.7...cli-v9.85.0) (2026-03-26)
+
+
+### Features
+
+* **cli:** add zero ask-user question command ([#6993](https://github.com/vm0-ai/vm0/issues/6993)) ([4dcf718](https://github.com/vm0-ai/vm0/commit/4dcf71877a4ed4b25cf3341b91c925fa0d9e89de))
+
+
+### Bug Fixes
+
+* **cli:** resolve schedule commands agent lookup by uuid ([#7004](https://github.com/vm0-ai/vm0/issues/7004)) ([36296ef](https://github.com/vm0-ai/vm0/commit/36296efb7671f2a3d5d482b1dea5c77b7c763aa6))
+
 ## [9.84.7](https://github.com/vm0-ai/vm0/compare/cli-v9.84.6...cli-v9.84.7) (2026-03-26)
 
 

@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.156.0](https://github.com/vm0-ai/vm0/compare/app-v0.155.2...app-v0.156.0) (2026-03-26)
+
+
+### Features
+
+* add e2e browser test for onboarding-to-chat flow ([#7001](https://github.com/vm0-ai/vm0/issues/7001)) ([f55b15c](https://github.com/vm0-ai/vm0/commit/f55b15c2be966fc41a3b1372bece2e80f197d46a))
+* **web:** redesign global loading screen with avatar and typewriter text ([#6972](https://github.com/vm0-ai/vm0/issues/6972)) ([01cadce](https://github.com/vm0-ai/vm0/commit/01cadce939c467e4c1293d665f7fabd7600812ba))
+
+
+### Bug Fixes
+
+* **web:** align schedule page spacing with logs and fix sidebar x button color ([#6989](https://github.com/vm0-ai/vm0/issues/6989)) ([bd6373d](https://github.com/vm0-ai/vm0/commit/bd6373d166c1e52d39e6b1ab593dc6b032a2a185))
+* **web:** remove red dot indicator from connector trigger icons ([#6975](https://github.com/vm0-ai/vm0/issues/6975)) ([9adcb03](https://github.com/vm0-ai/vm0/commit/9adcb030c70386ffee058371208f5df9321a2f64))
+
+
+### Refactoring
+
+* **web:** remove use cases referencing experimental connectors ([#6980](https://github.com/vm0-ai/vm0/issues/6980)) ([73bb0df](https://github.com/vm0-ai/vm0/commit/73bb0df7ebd8b8414dba8db43682f022b2d50acf))
+
 ## [0.155.2](https://github.com/vm0-ai/vm0/compare/app-v0.155.1...app-v0.155.2) (2026-03-26)
 
 

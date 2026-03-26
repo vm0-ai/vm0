@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.163.3](https://github.com/vm0-ai/vm0/compare/web-v12.163.2...web-v12.163.3) (2026-03-26)
+
+
+### Refactoring
+
+* switch ask-user flow to blocking cli command ([#7008](https://github.com/vm0-ai/vm0/issues/7008)) ([a195392](https://github.com/vm0-ai/vm0/commit/a195392ca8ab0cfa61d78c1cf04255b5ffbddb2e))
+
 ## [12.163.2](https://github.com/vm0-ai/vm0/compare/web-v12.163.1...web-v12.163.2) (2026-03-26)
 
 
