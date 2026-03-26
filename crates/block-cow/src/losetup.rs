@@ -41,7 +41,7 @@ impl LoopDevice {
 
     /// Detach the loop device.
     ///
-    /// Drops the holder fd first (so we don't EBUSY ourselves), then
+    /// Drops the holder fd first (so we don't hold a reference), then
     /// calls `losetup --detach`.  If the device is already gone (e.g.
     /// because GC's `losetup -d` set `LO_FLAGS_AUTOCLEAR` and dropping
     /// the holder fd triggered kernel auto-detach), the error is ignored.

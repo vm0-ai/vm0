@@ -476,10 +476,11 @@ async fn gc_versions(home: &HomePaths, dry_run: bool) -> RunnerResult<Vec<String
 /// 1. Remove orphaned `cow-*` dm-snapshot targets (`dmsetup remove`).
 /// 2. Detach orphaned loop devices backing files under `~/.vm0-runner/`.
 ///    After pass 1 frees dm-snapshot references, previously-busy COW
-///    loop devices become detachable.  Base loop devices held by a live
-///    runner's `BaseLoopCache` are protected by a holder fd (EBUSY).
-///    Only loops from dead processes (where the kernel closed the fd)
-///    are successfully detached.
+///    loop devices become detachable.  Since Linux v3.7, `losetup -d`
+///    sets AUTOCLEAR instead of returning EBUSY, but the device stays
+///    alive while references (holder fds or dm targets) exist.  Only
+///    loops from dead processes (where the kernel closed all fds and
+///    dm targets are removed) are actually reclaimed.
 fn gc_block_cow(dry_run: bool) -> RunnerResult<u32> {
     let mut removed: u32 = 0;
 

@@ -233,7 +233,7 @@ impl SandboxFactory for FirecrackerFactory {
         info!(
             loop_dev = %base_loop.loop_path.display(),
             sectors = base_loop.sectors,
-            "base image acquired from pool"
+            "base image acquired from cache"
         );
 
         self.base_loop = Some(base_loop);
@@ -434,7 +434,7 @@ impl SandboxFactory for FirecrackerFactory {
     }
 
     async fn shutdown(&mut self) {
-        // Release the base image handle back to the shared pool.
+        // Release the base image handle back to the shared cache.
         if let Some(handle) = self.base_loop.take() {
             let pool = self.base_cache.clone();
             let base_key = handle.base_key().to_owned();

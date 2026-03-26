@@ -62,7 +62,7 @@ pub enum SnapshotError {
 ///
 /// This is the Rust equivalent of the TS `commands/snapshot.ts` workflow:
 ///  1. Create work directory
-///  2. Acquire base image loop from pool, create dm-snapshot COW device
+///  2. Acquire base image loop from cache, create dm-snapshot COW device
 ///  3. Create network namespace
 ///  4. Spawn Firecracker with `--api-sock`
 ///  5. Wait for API socket ready

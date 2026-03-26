@@ -26,18 +26,18 @@ pub struct BaseHandle {
     pub loop_path: PathBuf,
     /// Size of the base image in 512-byte sectors.
     pub sectors: u64,
-    /// Key for releasing back to the pool (canonical base image path).
+    /// Key for releasing back to the cache (canonical base image path).
     base_key: PathBuf,
 }
 
 impl BaseHandle {
-    /// The canonical base image path (used for pool release).
+    /// The canonical base image path (used for cache release).
     pub fn base_key(&self) -> &Path {
         &self.base_key
     }
 }
 
-/// Pool of shared read-only loop devices for base images.
+/// Cache of shared read-only loop devices for base images.
 ///
 /// Multiple [`CowDevice`](crate::CowDevice)s backed by the same base image
 /// share a single read-only loop device, reducing kernel resource usage by
@@ -52,14 +52,14 @@ impl BaseHandle {
 /// # Lifecycle
 ///
 /// ```text
-/// pool.acquire("/path/to/rootfs.ext4")
+/// cache.acquire("/path/to/rootfs.ext4")
 ///   → first call: losetup --find --show --read-only
 ///   → subsequent: refcount++ and return existing loop path
 ///
-/// pool.release("/path/to/rootfs.ext4")
+/// cache.release("/path/to/rootfs.ext4")
 ///   → refcount-- ; if 0: losetup -d
 ///
-/// pool.cleanup()
+/// cache.cleanup()
 ///   → detach ALL remaining loop devices (safety net on shutdown)
 /// ```
 pub struct BaseLoopCache {
@@ -73,7 +73,7 @@ impl Default for BaseLoopCache {
 }
 
 impl BaseLoopCache {
-    /// Create an empty pool.
+    /// Create an empty cache.
     pub fn new() -> Self {
         Self {
             entries: HashMap::new(),
@@ -86,7 +86,7 @@ impl BaseLoopCache {
     /// Otherwise, attaches a new read-only loop device.
     pub fn acquire(&mut self, base_image: &Path) -> Result<BaseHandle> {
         // Canonicalize so the same file accessed via different paths
-        // (symlinks, relative paths) maps to a single pool entry.
+        // (symlinks, relative paths) maps to a single cache entry.
         let key = std::fs::canonicalize(base_image)?;
 
         if let Some(entry) = self.entries.get_mut(&key) {

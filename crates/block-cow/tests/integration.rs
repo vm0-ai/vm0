@@ -42,7 +42,7 @@ struct TestSetup {
     // Drop order matters: cache must be dropped before _tmp so the base
     // loop device is detached before the temp directory (and base image
     // file inside it) is deleted.
-    pool: BaseLoopCache,
+    cache: BaseLoopCache,
     _tmp: tempfile::TempDir,
     base_image: std::path::PathBuf,
 }
@@ -54,7 +54,7 @@ impl TestSetup {
         create_test_base_image(&base);
         Self {
             _tmp: tmp,
-            pool: BaseLoopCache::new(),
+            cache: BaseLoopCache::new(),
             base_image: base,
         }
     }
@@ -72,7 +72,7 @@ fn create_and_destroy() {
     require_root!();
 
     let mut setup = TestSetup::new();
-    let handle = setup.pool.acquire(&setup.base_image).expect("acquire");
+    let handle = setup.cache.acquire(&setup.base_image).expect("acquire");
     let config = setup.cow_config("cow.img");
     init_cow_file(&config.cow_file, handle.sectors).expect("init");
 
@@ -95,7 +95,7 @@ fn destroy_keep_cow_preserves_file() {
     require_root!();
 
     let mut setup = TestSetup::new();
-    let handle = setup.pool.acquire(&setup.base_image).expect("acquire");
+    let handle = setup.cache.acquire(&setup.base_image).expect("acquire");
     let config = setup.cow_config("cow.img");
     init_cow_file(&config.cow_file, handle.sectors).expect("init");
 
@@ -115,7 +115,7 @@ fn cow_file_is_sparse() {
     require_root!();
 
     let mut setup = TestSetup::new();
-    let handle = setup.pool.acquire(&setup.base_image).expect("acquire");
+    let handle = setup.cache.acquire(&setup.base_image).expect("acquire");
     let config = setup.cow_config("cow.img");
     init_cow_file(&config.cow_file, handle.sectors).expect("init");
 
@@ -145,7 +145,7 @@ fn multiple_devices_from_same_base() {
     require_root!();
 
     let mut setup = TestSetup::new();
-    let handle = setup.pool.acquire(&setup.base_image).expect("acquire");
+    let handle = setup.cache.acquire(&setup.base_image).expect("acquire");
     let config1 = setup.cow_config("cow1.img");
     let config2 = setup.cow_config("cow2.img");
     init_cow_file(&config1.cow_file, handle.sectors).expect("init 1");
@@ -170,7 +170,7 @@ fn restore_from_existing_cow() {
     require_root!();
 
     let mut setup = TestSetup::new();
-    let handle = setup.pool.acquire(&setup.base_image).expect("acquire");
+    let handle = setup.cache.acquire(&setup.base_image).expect("acquire");
     let config = setup.cow_config("cow.img");
     init_cow_file(&config.cow_file, handle.sectors).expect("init");
 
@@ -215,7 +215,7 @@ fn device_path_format() {
     require_root!();
 
     let mut setup = TestSetup::new();
-    let handle = setup.pool.acquire(&setup.base_image).expect("acquire");
+    let handle = setup.cache.acquire(&setup.base_image).expect("acquire");
     let config = setup.cow_config("cow.img");
     init_cow_file(&config.cow_file, handle.sectors).expect("init");
 
@@ -238,15 +238,15 @@ fn pool_shared_loop_device() {
     let mut setup = TestSetup::new();
 
     // Two acquires for the same image should return the same loop device.
-    let handle1 = setup.pool.acquire(&setup.base_image).expect("acquire 1");
-    let handle2 = setup.pool.acquire(&setup.base_image).expect("acquire 2");
+    let handle1 = setup.cache.acquire(&setup.base_image).expect("acquire 1");
+    let handle2 = setup.cache.acquire(&setup.base_image).expect("acquire 2");
 
     assert_eq!(handle1.loop_path, handle2.loop_path);
     assert_eq!(handle1.sectors, handle2.sectors);
 
     // Release both — loop should be detached after second release.
-    setup.pool.release(handle1.base_key()).expect("release 1");
-    setup.pool.release(handle2.base_key()).expect("release 2");
+    setup.cache.release(handle1.base_key()).expect("release 1");
+    setup.cache.release(handle2.base_key()).expect("release 2");
 }
 
 #[test]
@@ -287,7 +287,7 @@ fn create_fails_with_missing_cow_file() {
     require_root!();
 
     let mut setup = TestSetup::new();
-    let handle = setup.pool.acquire(&setup.base_image).expect("acquire");
+    let handle = setup.cache.acquire(&setup.base_image).expect("acquire");
     let config = CowDeviceConfig {
         cow_file: setup._tmp.path().join("nonexistent.img"),
     };
@@ -302,7 +302,7 @@ fn abandon_prevents_cow_file_deletion_on_drop() {
     require_root!();
 
     let mut setup = TestSetup::new();
-    let handle = setup.pool.acquire(&setup.base_image).expect("acquire");
+    let handle = setup.cache.acquire(&setup.base_image).expect("acquire");
     let config = setup.cow_config("cow.img");
     init_cow_file(&config.cow_file, handle.sectors).expect("init");
     let cow_file = config.cow_file.clone();
