@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.153.0](https://github.com/vm0-ai/vm0/compare/app-v0.152.4...app-v0.153.0) (2026-03-26)
+
+
+### Features
+
+* **platform:** add dedicated /ideas route for ideas & use cases page ([#6829](https://github.com/vm0-ai/vm0/issues/6829)) ([32e85e2](https://github.com/vm0-ai/vm0/commit/32e85e2862e434017446994f038efa64a1db62f8))
+* **slack:** add schedule attribution footer to slack notifications ([#6865](https://github.com/vm0-ai/vm0/issues/6865)) ([bafe721](https://github.com/vm0-ai/vm0/commit/bafe721ce2c28b79c3169db212339755830cd460))
+
+
+### Bug Fixes
+
+* persist chat summaries with structured metadata for consistent display ([#6845](https://github.com/vm0-ai/vm0/issues/6845)) ([958b9f2](https://github.com/vm0-ai/vm0/commit/958b9f228420beb3a9576785b42ae45f3bac121e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.115.2
+
 ## [0.152.4](https://github.com/vm0-ai/vm0/compare/app-v0.152.3...app-v0.152.4) (2026-03-26)
 
 

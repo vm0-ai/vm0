@@ -1,5 +1,25 @@
 # Changelog
 
+## [12.161.0](https://github.com/vm0-ai/vm0/compare/web-v12.160.5...web-v12.161.0) (2026-03-26)
+
+
+### Features
+
+* **slack:** add schedule attribution footer to slack notifications ([#6865](https://github.com/vm0-ai/vm0/issues/6865)) ([bafe721](https://github.com/vm0-ai/vm0/commit/bafe721ce2c28b79c3169db212339755830cd460))
+
+
+### Bug Fixes
+
+* optimize api latency with batch queries and missing indexes ([#6834](https://github.com/vm0-ai/vm0/issues/6834)) ([c3941f6](https://github.com/vm0-ai/vm0/commit/c3941f63111451b4c9c01a30143081b9ee4584d0))
+* persist chat summaries with structured metadata for consistent display ([#6845](https://github.com/vm0-ai/vm0/issues/6845)) ([958b9f2](https://github.com/vm0-ai/vm0/commit/958b9f228420beb3a9576785b42ae45f3bac121e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.115.2
+
 ## [12.160.5](https://github.com/vm0-ai/vm0/compare/web-v12.160.4...web-v12.160.5) (2026-03-26)
 
 

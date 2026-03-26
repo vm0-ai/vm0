@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.115.2](https://github.com/vm0-ai/vm0/compare/core-v8.115.1...core-v8.115.2) (2026-03-26)
+
+
+### Bug Fixes
+
+* persist chat summaries with structured metadata for consistent display ([#6845](https://github.com/vm0-ai/vm0/issues/6845)) ([958b9f2](https://github.com/vm0-ai/vm0/commit/958b9f228420beb3a9576785b42ae45f3bac121e))
+
+
+### Refactoring
+
+* add compile-time exhaustiveness check for connector firewall coverage ([#6875](https://github.com/vm0-ai/vm0/issues/6875)) ([97025e5](https://github.com/vm0-ai/vm0/commit/97025e5796b980286b756fb2a089aa2054b21684)), closes [#6442](https://github.com/vm0-ai/vm0/issues/6442)
+
 ## [8.115.1](https://github.com/vm0-ai/vm0/compare/core-v8.115.0...core-v8.115.1) (2026-03-26)
 
 
