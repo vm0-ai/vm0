@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { mockLocation } from "../../../location.ts";
 import { testContext } from "../../../__tests__/test-helpers.ts";
 import { createPushStateMock } from "../../../../__tests__/page-helper.ts";
+import { mockUser, clearMockedAuth } from "../../../../__tests__/mock-auth.ts";
 import {
   checkSettingsParam$,
   orgManageDialogOpen$,
@@ -11,9 +12,20 @@ import { searchParams$ } from "../../../route.ts";
 
 const context = testContext();
 
+function setupAuth(signal: AbortSignal) {
+  mockUser(
+    { id: "test-user-123", fullName: "Test User" },
+    { token: "test-token" },
+  );
+  signal.addEventListener("abort", () => {
+    clearMockedAuth();
+  });
+}
+
 describe("checkSettingsParam$", () => {
   it("should open dialog on providers tab when ?settings=providers is present", async () => {
     const { store, signal } = context;
+    setupAuth(signal);
     createPushStateMock(signal);
     mockLocation({ pathname: "/", search: "?settings=providers" }, signal);
 
@@ -27,6 +39,7 @@ describe("checkSettingsParam$", () => {
 
   it("should open dialog on billing tab when ?settings=billing is present", async () => {
     const { store, signal } = context;
+    setupAuth(signal);
     createPushStateMock(signal);
     mockLocation({ pathname: "/", search: "?settings=billing" }, signal);
 
@@ -38,6 +51,7 @@ describe("checkSettingsParam$", () => {
 
   it("should open dialog on usage tab when ?settings=usage is present", async () => {
     const { store, signal } = context;
+    setupAuth(signal);
     createPushStateMock(signal);
     mockLocation({ pathname: "/", search: "?settings=usage" }, signal);
 
@@ -49,6 +63,7 @@ describe("checkSettingsParam$", () => {
 
   it("should map legacy ?settings=credits to usage tab", async () => {
     const { store, signal } = context;
+    setupAuth(signal);
     createPushStateMock(signal);
     mockLocation({ pathname: "/", search: "?settings=credits" }, signal);
 
@@ -82,6 +97,7 @@ describe("checkSettingsParam$", () => {
 
   it("should preserve other search params when stripping settings", async () => {
     const { store, signal } = context;
+    setupAuth(signal);
     createPushStateMock(signal);
     mockLocation(
       { pathname: "/", search: "?settings=providers&other=keep" },
