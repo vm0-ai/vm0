@@ -14,13 +14,16 @@ load '../../helpers/setup'
 load '../../helpers/browser'
 
 # ---------------------------------------------------------------------------
-# url_is_on_app — Check if a URL's hostname starts with "app."
+# url_is_on_app — Check if a URL's hostname matches the APP_URL hostname
+# Compares against the derived APP_URL rather than assuming "app." prefix,
+# so it works for all environments (app.vm7.ai, staging-app.vm6.ai, etc.)
 # ---------------------------------------------------------------------------
 url_is_on_app() {
   local url="$1"
-  local host
-  host=$(echo "$url" | sed -n 's|.*://\([^/:]*\).*|\1|p')
-  [[ "$host" == app.* ]]
+  local url_host app_host
+  url_host=$(echo "$url" | sed -n 's|.*://\([^/:]*\).*|\1|p')
+  app_host=$(echo "$APP_URL" | sed -n 's|.*://\([^/:]*\).*|\1|p')
+  [[ "$url_host" == "$app_host" ]]
 }
 
 setup_file() {
