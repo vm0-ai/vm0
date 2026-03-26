@@ -148,13 +148,13 @@ teardown_file() {
 
   # Click Create button in dialog
   local snap_i create_ref
-  snap_i=$(agent-browser snapshot -i 2>/dev/null || true)
+  snap_i=$(agent-browser snapshot -i)
   create_ref=$(echo "$snap_i" | grep -E 'button "Create"' | grep -v 'teammate' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
-  if [[ -n "$create_ref" ]]; then
-    agent-browser click "$create_ref"
-  else
-    agent-browser find text "Create" click
+  if [[ -z "$create_ref" ]]; then
+    echo "# Failed to find Create button ref in interactive snapshot" >&3
+    return 1
   fi
+  agent-browser click "$create_ref"
 
   # Wait for agent creation
   wait_for_text "$AGENT_NAME" 30
