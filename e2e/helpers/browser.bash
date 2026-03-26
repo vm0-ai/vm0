@@ -238,6 +238,18 @@ sign_in_via_token() {
 }
 
 # ---------------------------------------------------------------------------
+# navigate_to_app_page — Navigate to a path on the platform app domain
+# Usage: navigate_to_app_page "/team"
+# ---------------------------------------------------------------------------
+navigate_to_app_page() {
+  local path="$1"
+  local app_url
+  app_url="$(derive_app_url)"
+  agent-browser open "${app_url}${path}" --ignore-https-errors
+  agent-browser wait 3000
+}
+
+# ---------------------------------------------------------------------------
 # wait_for_text — Wait for text to appear on page (case-insensitive)
 # Usage: wait_for_text "some text" [timeout_secs]
 # ---------------------------------------------------------------------------
