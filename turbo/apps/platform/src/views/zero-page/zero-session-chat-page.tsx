@@ -28,6 +28,7 @@ import {
   TooltipTrigger,
 } from "@vm0/ui";
 import { RUN_ERROR_GUIDANCE } from "@vm0/core";
+import { setQueueDrawerOpen$ } from "../../signals/queue-page/queue-signals.ts";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
 import { FileAttachmentChip, ImageLightbox } from "./zero-attachment-chips.tsx";
@@ -491,6 +492,8 @@ function RunActivityLineView({
   queuePosition: number;
   thinkingMsg: string;
 }) {
+  const openQueue = useSet(setQueueDrawerOpen$);
+
   if (isQueued) {
     return (
       <div className="flex items-center gap-2 min-w-0">
@@ -500,12 +503,13 @@ function RunActivityLineView({
         />
         <p className="text-muted-foreground text-xs truncate">
           {queueLabel(queuePosition)}{" "}
-          <Link
-            pathname="/queue"
+          <button
+            type="button"
+            onClick={() => openQueue(true)}
             className="underline hover:text-foreground transition-colors"
           >
             View queue
-          </Link>
+          </button>
         </p>
       </div>
     );

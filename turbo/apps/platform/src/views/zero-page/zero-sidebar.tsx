@@ -25,7 +25,6 @@ import {
   IconEdit,
   IconLayoutSidebarLeftCollapse,
   IconDatabaseExport,
-  IconStack2,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey, type ChatThreadListItem } from "@vm0/core";
 import {
@@ -43,7 +42,6 @@ import {
   TooltipTrigger,
 } from "@vm0/ui";
 import slackIcon from "./components/settings/icons/slack.svg";
-import { setQueueDrawerOpen$ } from "../../signals/queue-page/queue-signals.ts";
 import { clerk$, user$ } from "../../signals/auth.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
@@ -432,20 +430,6 @@ function AccountDropdown({
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
-  );
-}
-
-function QueueNavButton() {
-  const setOpen = useSet(setQueueDrawerOpen$);
-  return (
-    <button
-      type="button"
-      onClick={() => setOpen(true)}
-      className="flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 text-sidebar-foreground hover:bg-sidebar-accent"
-    >
-      <IconStack2 size={16} className="shrink-0" />
-      <span className="truncate">Run queue</span>
-    </button>
   );
 }
 
@@ -1213,7 +1197,6 @@ export function ZeroSidebar() {
                   <span className="truncate">{label}</span>
                 </Link>
               ))}
-              <QueueNavButton />
             </div>
           </div>
 
