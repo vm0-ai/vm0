@@ -2,22 +2,37 @@
 
 load '../../helpers/setup'
 
-setup() {
-    # Create unique volume for this test
-    create_test_volume "e2e-vol-t12"
+# ============================================================================
+# File-level setup: create volume, compose config, and artifact ONCE.
+# ============================================================================
 
+setup_file() {
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
-    export SECRET_VALUE="secret-value-${UNIQUE_ID}"
-    export VAR_VALUE="var-value-${UNIQUE_ID}"
-    export ARTIFACT_NAME="e2e-env-test-${UNIQUE_ID}"
-    export AGENT_NAME="vm0-env-expansion-${UNIQUE_ID}"
-    export TEST_ARTIFACT_DIR="$(mktemp -d)"
-    export TEST_ENV_DIR="$(mktemp -d)"
-    export TEST_CONFIG="$TEST_ARTIFACT_DIR/vm0-env-expansion.yaml"
-}
+    export TEST_DIR="$(mktemp -d)"
 
-# Helper to create config dynamically
-create_env_expansion_config() {
+    # Create volume once
+    export VOLUME_NAME="e2e-vol-t12-${UNIQUE_ID}"
+    mkdir -p "$TEST_DIR/$VOLUME_NAME"
+    cd "$TEST_DIR/$VOLUME_NAME"
+    cat > CLAUDE.md << 'VOLEOF'
+This is a test file for the volume.
+VOLEOF
+    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
+    $VM0_CLI volume push >/dev/null
+    cd - >/dev/null
+
+    # Create artifact once
+    export ARTIFACT_NAME="e2e-env-test-${UNIQUE_ID}"
+    mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
+    cd "$TEST_DIR/$ARTIFACT_NAME"
+    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null 2>&1
+    echo "test content" > test.txt
+    $VM0_CLI artifact push >/dev/null 2>&1
+    cd - >/dev/null
+
+    # Create compose config once
+    export AGENT_NAME="vm0-env-expansion-${UNIQUE_ID}"
+    export TEST_CONFIG="$TEST_DIR/vm0-env-expansion.yaml"
     cat > "$TEST_CONFIG" <<EOF
 version: "1.0"
 
@@ -37,57 +52,38 @@ volumes:
     name: $VOLUME_NAME
     version: latest
 EOF
+    $VM0_CLI compose "$TEST_CONFIG" >/dev/null
 }
 
-teardown() {
-    # Clean up temporary directories
-    if [ -n "$TEST_ARTIFACT_DIR" ] && [ -d "$TEST_ARTIFACT_DIR" ]; then
-        rm -rf "$TEST_ARTIFACT_DIR"
+teardown_file() {
+    # Clean up shared test directory
+    if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
+        rm -rf "$TEST_DIR"
     fi
-    if [ -n "$TEST_ENV_DIR" ] && [ -d "$TEST_ENV_DIR" ]; then
-        rm -rf "$TEST_ENV_DIR"
-    fi
-    # Clean up test volume
-    cleanup_test_volume
-}
-
-# Helper to create artifact for tests
-setup_artifact() {
-    # Create config dynamically (each test needs its own due to parallel execution)
-    create_env_expansion_config
-    mkdir -p "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    cd "$TEST_ARTIFACT_DIR/$ARTIFACT_NAME"
-    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null 2>&1
-    echo "test content" > test.txt
-    $VM0_CLI artifact push >/dev/null 2>&1
 }
 
 # Environment variable expansion tests with --secrets flag
 
 @test "vm0 run expands vars and secrets via --secrets flag" {
-    echo "# Step 1: Create and push artifact"
-    setup_artifact
+    local secret_value="secret-value-${UNIQUE_ID}"
+    local var_value="var-value-${UNIQUE_ID}"
 
-    echo "# Step 2: Build the compose"
-    run $VM0_CLI compose "$TEST_CONFIG"
-    assert_success
-
-    echo "# Step 3: Run with --vars and --secrets flags"
+    echo "# Running with --vars and --secrets flags"
     run $VM0_CLI run "$AGENT_NAME" \
-        --vars "testVar=${VAR_VALUE}" \
-        --secrets "TEST_SECRET=${SECRET_VALUE}" \
+        --vars "testVar=${var_value}" \
+        --secrets "TEST_SECRET=${secret_value}" \
         --artifact-name "$ARTIFACT_NAME" \
         --verbose \
         "echo VAR=\$TEST_VAR && echo SECRET=\$TEST_SECRET"
     assert_success
 
-    echo "# Step 4: Verify vars are expanded"
-    assert_output --partial "VAR=${VAR_VALUE}"
+    echo "# Verify vars are expanded"
+    assert_output --partial "VAR=${var_value}"
 
-    echo "# Step 5: Verify secrets are masked in output"
+    echo "# Verify secrets are masked in output"
     # The secret value should be replaced with *** for security
     assert_output --partial "SECRET=***"
-    refute_output --partial "SECRET=${SECRET_VALUE}"
+    refute_output --partial "SECRET=${secret_value}"
 }
 
 # Note: The following tests have been moved to Route Integration tests

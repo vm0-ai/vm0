@@ -6,14 +6,94 @@ load '../../helpers/setup'
 # Validation tests (help text, name validation, error handling) are in unit tests:
 # turbo/apps/cli/src/commands/zero/secret/__tests__/*.test.ts
 
+# ============================================================================
+# File-level setup: create volume, compose config, and artifact ONCE for all
+# heavy (vm0 run) tests. Lightweight CRUD tests don't need these resources.
+# ============================================================================
+
+setup_file() {
+    export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
+    export TEST_DIR="$(mktemp -d)"
+
+    # Create volume once for all vm0 run tests
+    export VOLUME_NAME="e2e-vol-secret-${UNIQUE_ID}"
+    mkdir -p "$TEST_DIR/$VOLUME_NAME"
+    cd "$TEST_DIR/$VOLUME_NAME"
+    cat > CLAUDE.md << 'VOLEOF'
+This is a test file for the volume.
+VOLEOF
+    $VM0_CLI volume init --name "$VOLUME_NAME" >/dev/null
+    $VM0_CLI volume push >/dev/null
+    cd - >/dev/null
+
+    # Create artifact once
+    export ARTIFACT_NAME="e2e-secret-art-${UNIQUE_ID}"
+    mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
+    cd "$TEST_DIR/$ARTIFACT_NAME"
+    $VM0_CLI artifact init --name "$ARTIFACT_NAME" >/dev/null 2>&1
+    echo "test content" > test.txt
+    $VM0_CLI artifact push >/dev/null 2>&1
+    cd - >/dev/null
+
+    # Create compose config for single-secret masking test
+    export AGENT_MASK="e2e-secret-mask-${UNIQUE_ID}"
+    export CONFIG_MASK="$TEST_DIR/mask.yaml"
+    cat > "$CONFIG_MASK" <<EOF
+version: "1.0"
+agents:
+  ${AGENT_MASK}:
+    description: "E2E test agent for secret masking"
+    framework: claude-code
+    working_dir: /home/user/workspace
+    environment:
+      MY_SECRET: "\${{ secrets.MY_SECRET }}"
+    volumes:
+      - claude-files:/home/user/.claude
+volumes:
+  claude-files:
+    name: $VOLUME_NAME
+    version: latest
+EOF
+    $VM0_CLI compose "$CONFIG_MASK" >/dev/null
+
+    # Create compose config for multi-secret masking test
+    export AGENT_MULTI="e2e-secret-multi-${UNIQUE_ID}"
+    export CONFIG_MULTI="$TEST_DIR/multi.yaml"
+    cat > "$CONFIG_MULTI" <<EOF
+version: "1.0"
+agents:
+  ${AGENT_MULTI}:
+    description: "E2E test agent for multiple secrets"
+    framework: claude-code
+    working_dir: /home/user/workspace
+    environment:
+      API_KEY: "\${{ secrets.API_KEY }}"
+      CLI_SECRET: "\${{ secrets.CLI_SECRET }}"
+    volumes:
+      - claude-files:/home/user/.claude
+volumes:
+  claude-files:
+    name: $VOLUME_NAME
+    version: latest
+EOF
+    $VM0_CLI compose "$CONFIG_MULTI" >/dev/null
+}
+
 # Generate unique secret name for each test run to avoid conflicts
 setup() {
     export TEST_SECRET_NAME="E2E_TEST_SECRET_$(date +%s%3N)_$RANDOM"
 }
 
 teardown() {
-    # Clean up test secret if it exists
-    $ZERO_CLI secret delete -y "$TEST_SECRET_NAME" 2>/dev/null || true
+    # Filesystem-only cleanup — no API calls during per-test teardown
+    :
+}
+
+teardown_file() {
+    # Clean up shared test directory
+    if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
+        rm -rf "$TEST_DIR"
+    fi
 }
 
 @test "zero secret --help shows command description" {
@@ -29,6 +109,9 @@ teardown() {
     run $ZERO_CLI secret set "$TEST_SECRET_NAME" --body "test-secret-value"
     assert_success
     assert_output --partial "Secret \"$TEST_SECRET_NAME\" saved"
+
+    # Clean up inline since teardown no longer does API calls
+    $ZERO_CLI secret delete -y "$TEST_SECRET_NAME" 2>/dev/null || true
 }
 
 @test "zero secret list shows created secret" {
@@ -41,6 +124,8 @@ teardown() {
     assert_output --partial "$TEST_SECRET_NAME"
     assert_output --partial "E2E test"
     assert_output --partial "secret(s)"
+
+    $ZERO_CLI secret delete -y "$TEST_SECRET_NAME" 2>/dev/null || true
 }
 
 @test "zero secret ls works as alias for list" {
@@ -51,6 +136,8 @@ teardown() {
     run $ZERO_CLI secret ls
     assert_success
     assert_output --partial "$TEST_SECRET_NAME"
+
+    $ZERO_CLI secret delete -y "$TEST_SECRET_NAME" 2>/dev/null || true
 }
 
 @test "zero secret set updates existing secret" {
@@ -65,6 +152,8 @@ teardown() {
     # Verify description was updated
     run $ZERO_CLI secret list
     assert_output --partial "Updated"
+
+    $ZERO_CLI secret delete -y "$TEST_SECRET_NAME" 2>/dev/null || true
 }
 
 @test "zero secret delete removes secret" {
@@ -84,7 +173,8 @@ teardown() {
 
 # ============================================================================
 # Secret Masking Tests
-# These tests verify that secret values are masked in agent output
+# These tests verify that secret values are masked in agent output.
+# Heavy setup (volume, compose, artifact) is shared via setup_file().
 # ============================================================================
 
 @test "vm0 run masks secret values in output" {
@@ -92,51 +182,13 @@ teardown() {
         skip "VM0_API_URL not set"
     fi
 
-    # Create unique identifiers for this test
-    local unique_id="$(date +%s%3N)-$RANDOM"
-    local secret_value="secret-${unique_id}"
-    local artifact_name="e2e-secret-mask-${unique_id}"
-    local agent_name="e2e-secret-mask-${unique_id}"
-    local test_artifact_dir="$(mktemp -d)"
-    local test_config="$(mktemp --suffix=.yaml)"
+    local secret_value="secret-${UNIQUE_ID}"
 
-    # Create test volume
-    create_test_volume "e2e-vol-secret-mask"
-
-    # Step 1: Create config that uses a secret
-    cat > "$test_config" <<EOF
-version: "1.0"
-agents:
-  ${agent_name}:
-    description: "E2E test agent for secret masking"
-    framework: claude-code
-    working_dir: /home/user/workspace
-    environment:
-      MY_SECRET: "\${{ secrets.MY_SECRET }}"
-    volumes:
-      - claude-files:/home/user/.claude
-volumes:
-  claude-files:
-    name: $VOLUME_NAME
-    version: latest
-EOF
-
-    # Step 2: Create artifact
-    mkdir -p "$test_artifact_dir/$artifact_name"
-    cd "$test_artifact_dir/$artifact_name"
-    $VM0_CLI artifact init --name "$artifact_name" >/dev/null 2>&1
-    echo "test content" > test.txt
-    $VM0_CLI artifact push >/dev/null 2>&1
-
-    # Step 3: Build the compose
-    run $VM0_CLI compose "$test_config"
-    assert_success
-
-    # Step 4: Run agent with secret provided via CLI
+    # Run agent with secret provided via CLI
     echo "# Running agent that echoes secret value..."
-    run $VM0_CLI run "$agent_name" \
+    run $VM0_CLI run "$AGENT_MASK" \
         --secrets "MY_SECRET=${secret_value}" \
-        --artifact-name "$artifact_name" \
+        --artifact-name "$ARTIFACT_NAME" \
         "echo SECRET=\$MY_SECRET"
 
     echo "# Output:"
@@ -147,11 +199,6 @@ EOF
     # Verify secret value is masked
     assert_output --partial "SECRET=***"
     refute_output --partial "SECRET=${secret_value}"
-
-    # Cleanup
-    rm -rf "$test_artifact_dir"
-    rm -f "$test_config"
-    cleanup_test_volume
 }
 
 @test "vm0 run masks multiple CLI secrets in output" {
@@ -159,54 +206,15 @@ EOF
         skip "VM0_API_URL not set"
     fi
 
-    # Create unique identifiers for this test
-    local unique_id="$(date +%s%3N)-$RANDOM"
-    local secret1_value="secret1-${unique_id}"
-    local secret2_value="secret2-${unique_id}"
-    local artifact_name="e2e-secret-multi-${unique_id}"
-    local agent_name="e2e-secret-multi-${unique_id}"
-    local test_artifact_dir="$(mktemp -d)"
-    local test_config="$(mktemp --suffix=.yaml)"
+    local secret1_value="secret1-${UNIQUE_ID}"
+    local secret2_value="secret2-${UNIQUE_ID}"
 
-    # Create test volume
-    create_test_volume "e2e-vol-secret-multi"
-
-    # Step 1: Create config that uses multiple secrets
-    cat > "$test_config" <<EOF
-version: "1.0"
-agents:
-  ${agent_name}:
-    description: "E2E test agent for multiple secrets"
-    framework: claude-code
-    working_dir: /home/user/workspace
-    environment:
-      API_KEY: "\${{ secrets.API_KEY }}"
-      CLI_SECRET: "\${{ secrets.CLI_SECRET }}"
-    volumes:
-      - claude-files:/home/user/.claude
-volumes:
-  claude-files:
-    name: $VOLUME_NAME
-    version: latest
-EOF
-
-    # Step 2: Create artifact
-    mkdir -p "$test_artifact_dir/$artifact_name"
-    cd "$test_artifact_dir/$artifact_name"
-    $VM0_CLI artifact init --name "$artifact_name" >/dev/null 2>&1
-    echo "test content" > test.txt
-    $VM0_CLI artifact push >/dev/null 2>&1
-
-    # Step 3: Build the compose
-    run $VM0_CLI compose "$test_config"
-    assert_success
-
-    # Step 4: Run agent with multiple CLI secrets
+    # Run agent with multiple CLI secrets
     echo "# Running agent with multiple CLI secrets..."
-    run $VM0_CLI run "$agent_name" \
+    run $VM0_CLI run "$AGENT_MULTI" \
         --secrets "API_KEY=${secret1_value}" \
         --secrets "CLI_SECRET=${secret2_value}" \
-        --artifact-name "$artifact_name" \
+        --artifact-name "$ARTIFACT_NAME" \
         "echo API_KEY=\$API_KEY && echo CLI_SECRET=\$CLI_SECRET"
 
     echo "# Output:"
@@ -221,9 +229,4 @@ EOF
     # Neither actual value should appear
     refute_output --partial "${secret1_value}"
     refute_output --partial "${secret2_value}"
-
-    # Cleanup
-    rm -rf "$test_artifact_dir"
-    rm -f "$test_config"
-    cleanup_test_volume
 }
