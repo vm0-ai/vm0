@@ -30,7 +30,10 @@ teardown_file() {
 }
 
 @test "sign in via token on platform app" {
-  sign_in_via_token_on_app
+  echo "# Signing in via token on platform app..." >&3
+  sign_in_via_token "$APP_URL"
+  step_screenshot "after-sign-in"
+  echo "# Authentication complete!" >&3
 }
 
 @test "detect and complete onboarding" {

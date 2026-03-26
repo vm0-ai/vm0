@@ -1,5 +1,40 @@
 # Changelog
 
+## [9.85.2](https://github.com/vm0-ai/vm0/compare/cli-v9.85.1...cli-v9.85.2) (2026-03-26)
+
+
+### Bug Fixes
+
+* require at least one option for ask-user question command ([#7022](https://github.com/vm0-ai/vm0/issues/7022)) ([4da712b](https://github.com/vm0-ai/vm0/commit/4da712b527355737faf3363f4513d28ef5735c74))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.118.3
+
+## [9.85.1](https://github.com/vm0-ai/vm0/compare/cli-v9.85.0...cli-v9.85.1) (2026-03-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.118.2
+
+## [9.85.0](https://github.com/vm0-ai/vm0/compare/cli-v9.84.7...cli-v9.85.0) (2026-03-26)
+
+
+### Features
+
+* **cli:** add zero ask-user question command ([#6993](https://github.com/vm0-ai/vm0/issues/6993)) ([4dcf718](https://github.com/vm0-ai/vm0/commit/4dcf71877a4ed4b25cf3341b91c925fa0d9e89de))
+
+
+### Bug Fixes
+
+* **cli:** resolve schedule commands agent lookup by uuid ([#7004](https://github.com/vm0-ai/vm0/issues/7004)) ([36296ef](https://github.com/vm0-ai/vm0/commit/36296efb7671f2a3d5d482b1dea5c77b7c763aa6))
+
 ## [9.84.7](https://github.com/vm0-ai/vm0/compare/cli-v9.84.6...cli-v9.84.7) (2026-03-26)
 
 

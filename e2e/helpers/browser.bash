@@ -11,6 +11,22 @@
 #   E2E_ACCOUNT  — Test email address (auto-generated if empty)
 
 # ---------------------------------------------------------------------------
+# url_is_on_app — Check if a URL's hostname matches the expected app hostname
+# Usage: url_is_on_app <url> [check_url]
+#   check_url — URL to compare against (default: APP_URL from calling context)
+# Compares hostnames rather than assuming "app." prefix, so it works for all
+# environments (app.vm7.ai, staging-app.vm6.ai, etc.).
+# ---------------------------------------------------------------------------
+url_is_on_app() {
+  local url="$1"
+  local check_url="${2:-$APP_URL}"
+  local url_host check_host
+  url_host=$(echo "$url" | sed -n 's|.*://\([^/:]*\).*|\1|p')
+  check_host=$(echo "$check_url" | sed -n 's|.*://\([^/:]*\).*|\1|p')
+  [[ "$url_host" == "$check_host" ]]
+}
+
+# ---------------------------------------------------------------------------
 # browser_setup — Validate environment, initialize shared state
 # Call this in setup_file() before any browser interactions.
 # ---------------------------------------------------------------------------
@@ -214,22 +230,22 @@ derive_app_url() {
 }
 
 # ---------------------------------------------------------------------------
-# sign_in_via_token_on_app — Sign in via Clerk token on the platform app domain
-# Opens /sign-in-token, waits for auth redirect, dismisses cookie banner.
-# Requires APP_URL and SIGN_IN_TOKEN to be set.
+# sign_in_via_token — Sign in via Clerk token and wait for redirect
+# Requires SIGN_IN_TOKEN to be set (call create_clerk_sign_in_token first).
+# Usage: sign_in_via_token [base_url]
+#   base_url — URL to sign in on (default: APP_URL, fallback: VM0_API_URL)
 # ---------------------------------------------------------------------------
-sign_in_via_token_on_app() {
-  echo "# Signing in via token on platform app..." >&3
-  agent-browser open "${APP_URL}/sign-in-token?token=${SIGN_IN_TOKEN}" --ignore-https-errors
+sign_in_via_token() {
+  local base_url="${1:-${APP_URL:-$VM0_API_URL}}"
+  agent-browser open "${base_url}/sign-in-token?token=${SIGN_IN_TOKEN}" --ignore-https-errors
   agent-browser wait 5000
-  step_screenshot "sign-in-token"
 
-  echo "# Waiting for auth redirect..." >&3
+  # Wait for token auth to complete and redirect away from /sign-in-token
   local auth_complete=false
   for _i in $(seq 1 30); do
     local current_url
     current_url=$(agent-browser get url 2>/dev/null || true)
-    if url_is_on_app "$current_url" && [[ ! "$current_url" =~ sign-in-token ]]; then
+    if url_is_on_app "$current_url" "$base_url" && [[ ! "$current_url" =~ sign-in-token ]]; then
       auth_complete=true
       break
     fi
@@ -238,26 +254,12 @@ sign_in_via_token_on_app() {
   step_screenshot "after-auth-redirect"
 
   if [[ "$auth_complete" != "true" ]]; then
-    echo "# Authentication redirect failed!" >&3
+    echo "Failed to redirect after sign-in-token" >&2
     return 1
   fi
-  echo "# Authentication complete!" >&3
 
+  # Dismiss cookie banner if present
   dismiss_cookie_banner
-}
-
-# ---------------------------------------------------------------------------
-# url_is_on_app — Check if a URL's hostname matches the APP_URL hostname
-# Compares against the derived APP_URL rather than assuming "app." prefix,
-# so it works for all environments (app.vm7.ai, staging-app.vm6.ai, etc.)
-# Requires APP_URL to be set (call derive_app_url first).
-# ---------------------------------------------------------------------------
-url_is_on_app() {
-  local url="$1"
-  local url_host app_host
-  url_host=$(echo "$url" | sed -n 's|.*://\([^/:]*\).*|\1|p')
-  app_host=$(echo "$APP_URL" | sed -n 's|.*://\([^/:]*\).*|\1|p')
-  [[ "$url_host" == "$app_host" ]]
 }
 
 # ---------------------------------------------------------------------------

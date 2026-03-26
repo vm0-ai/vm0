@@ -60,6 +60,12 @@ export const questionCommand = new Command()
           opt.description = descItems[i];
         }
 
+        if (optionItems.length === 0) {
+          throw new Error(
+            'At least one --option is required. Example: zero ask-user question "Pick one" --option "Yes" --option "No"',
+          );
+        }
+
         const timeoutMs = parseInt(options.timeout, 10) * 1000;
         if (isNaN(timeoutMs) || timeoutMs <= 0) {
           throw new Error("--timeout must be a positive number of seconds");
@@ -69,7 +75,7 @@ export const questionCommand = new Command()
         const questionItem = {
           question,
           header: options.header,
-          options: optionItems.length > 0 ? optionItems : undefined,
+          options: optionItems,
           multiSelect: options.multiSelect,
         };
 

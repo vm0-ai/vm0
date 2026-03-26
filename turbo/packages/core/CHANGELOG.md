@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.118.3](https://github.com/vm0-ai/vm0/compare/core-v8.118.2...core-v8.118.3) (2026-03-26)
+
+
+### Bug Fixes
+
+* require at least one option for ask-user question command ([#7022](https://github.com/vm0-ai/vm0/issues/7022)) ([4da712b](https://github.com/vm0-ai/vm0/commit/4da712b527355737faf3363f4513d28ef5735c74))
+
+## [8.118.2](https://github.com/vm0-ai/vm0/compare/core-v8.118.1...core-v8.118.2) (2026-03-26)
+
+
+### Bug Fixes
+
+* update gamma connector help text with correct API key URL ([#7016](https://github.com/vm0-ai/vm0/issues/7016)) ([eb1773d](https://github.com/vm0-ai/vm0/commit/eb1773d57a2fe06b5c11f165f2495a05debd6389)), closes [#7015](https://github.com/vm0-ai/vm0/issues/7015)
+
 ## [8.118.1](https://github.com/vm0-ai/vm0/compare/core-v8.118.0...core-v8.118.1) (2026-03-26)
 
 

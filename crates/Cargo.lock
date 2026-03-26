@@ -685,7 +685,7 @@ dependencies = [
 
 [[package]]
 name = "guest-init"
-version = "0.14.6"
+version = "0.14.7"
 dependencies = [
  "libc",
  "nix",
@@ -1558,7 +1558,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.48.1"
+version = "0.48.2"
 dependencies = [
  "ably-subscriber",
  "async-trait",

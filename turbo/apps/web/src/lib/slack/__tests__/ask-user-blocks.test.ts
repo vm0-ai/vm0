@@ -99,15 +99,6 @@ describe("buildAskUserQuestionBlocks", () => {
     }
   });
 
-  it("should handle question without options", () => {
-    const questions: AskUserQuestion[] = [{ question: "Any thoughts?" }];
-
-    const blocks = buildAskUserQuestionBlocks(questions, pendingId);
-
-    // Header + question text + submit + context = 4 blocks (no actions for options)
-    expect(blocks).toHaveLength(4);
-  });
-
   it("should render checkboxes for multiple single-select questions", () => {
     const questions: AskUserQuestion[] = [
       {

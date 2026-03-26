@@ -57,6 +57,10 @@ describe("zero ask-user question command", () => {
         "node",
         "cli",
         "Do you approve?",
+        "--option",
+        "Yes",
+        "--option",
+        "No",
         "--timeout",
         "5",
       ]);
@@ -134,6 +138,10 @@ describe("zero ask-user question command", () => {
         "node",
         "cli",
         "Are you done?",
+        "--option",
+        "Yes",
+        "--option",
+        "No",
         "--timeout",
         "10",
       ]);
@@ -159,6 +167,8 @@ describe("zero ask-user question command", () => {
           "node",
           "cli",
           "Will you respond?",
+          "--option",
+          "Yes",
           "--timeout",
           "5",
         ]);
@@ -184,6 +194,8 @@ describe("zero ask-user question command", () => {
           "node",
           "cli",
           "Will you respond?",
+          "--option",
+          "Yes",
           "--timeout",
           "2",
         ]);
@@ -194,12 +206,30 @@ describe("zero ask-user question command", () => {
       );
     });
 
+    it("should error when no --option flags provided", async () => {
+      await expect(async () => {
+        await questionCommand.parseAsync([
+          "node",
+          "cli",
+          "Pick one",
+          "--timeout",
+          "5",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("At least one --option is required"),
+      );
+    });
+
     it("should error when --timeout is not a positive number", async () => {
       await expect(async () => {
         await questionCommand.parseAsync([
           "node",
           "cli",
           "Pick one",
+          "--option",
+          "Yes",
           "--timeout",
           "0",
         ]);
@@ -243,6 +273,8 @@ describe("zero ask-user question command", () => {
           "node",
           "cli",
           "Any question",
+          "--option",
+          "OK",
           "--timeout",
           "5",
         ]);
