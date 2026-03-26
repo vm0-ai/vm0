@@ -234,7 +234,7 @@ export function ZeroSessionChatPage({
         </main>
 
         {/* Composer — sticky inside the scroll container so it aligns with messages */}
-        <footer className="relative sticky bottom-0 shrink-0 px-4 sm:px-6 pt-3 pb-8 bg-[hsl(var(--background))]">
+        <footer className="relative sticky bottom-0 z-10 shrink-0 px-4 sm:px-6 pt-3 pb-8 bg-[hsl(var(--background))]">
           <div className="pointer-events-none absolute inset-x-0 -top-5 h-5 bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
           <div className="mx-auto max-w-[900px]">
             <ZeroChatComposer
