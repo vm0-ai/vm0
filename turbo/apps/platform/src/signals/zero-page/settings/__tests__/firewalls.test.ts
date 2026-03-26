@@ -11,6 +11,7 @@ describe("hasFirewallPermissions", () => {
   it("should return true for connectors with firewall permissions", () => {
     expect(hasFirewallPermissions("github")).toBeTruthy();
     expect(hasFirewallPermissions("slack")).toBeTruthy();
+    expect(hasFirewallPermissions("gmail")).toBeTruthy();
     expect(hasFirewallPermissions("atlassian")).toBeTruthy();
     expect(hasFirewallPermissions("x")).toBeTruthy();
   });
