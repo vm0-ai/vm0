@@ -1,5 +1,31 @@
 # Changelog
 
+## [12.163.0](https://github.com/vm0-ai/vm0/compare/web-v12.162.0...web-v12.163.0) (2026-03-26)
+
+
+### Features
+
+* add spotify oauth connector with firewall rules ([#6947](https://github.com/vm0-ai/vm0/issues/6947)) ([353f1eb](https://github.com/vm0-ai/vm0/commit/353f1eba5771ecb559bce41b718cf651a5f07611))
+* redesign onboarding as full-page split layout with 4-step flow ([#6683](https://github.com/vm0-ai/vm0/issues/6683)) ([e50ec07](https://github.com/vm0-ai/vm0/commit/e50ec079bbc9489407502a8f207c0a29635e3083))
+
+
+### Bug Fixes
+
+* use agent id instead of name in slack /settings command url ([#6953](https://github.com/vm0-ai/vm0/issues/6953)) ([23fd8e6](https://github.com/vm0-ai/vm0/commit/23fd8e6d6c1c7b8a4244343ec3a49c8a26d32605)), closes [#6951](https://github.com/vm0-ai/vm0/issues/6951) [#6795](https://github.com/vm0-ai/vm0/issues/6795)
+
+
+### Refactoring
+
+* derive compose env vars from connector environment mapping ([#6950](https://github.com/vm0-ai/vm0/issues/6950)) ([443e712](https://github.com/vm0-ai/vm0/commit/443e712885734d256a3724cbdb8c3bf6c889ff28))
+* move scheduleId from agent_runs to zero_runs table ([#6944](https://github.com/vm0-ai/vm0/issues/6944)) ([f2604cb](https://github.com/vm0-ai/vm0/commit/f2604cbbbe7f6b0b67efede3278f8ae9763c999d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.117.0
+
 ## [12.162.0](https://github.com/vm0-ai/vm0/compare/web-v12.161.1...web-v12.162.0) (2026-03-26)
 
 

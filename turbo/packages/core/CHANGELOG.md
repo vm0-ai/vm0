@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.117.0](https://github.com/vm0-ai/vm0/compare/core-v8.116.0...core-v8.117.0) (2026-03-26)
+
+
+### Features
+
+* add spotify oauth connector with firewall rules ([#6947](https://github.com/vm0-ai/vm0/issues/6947)) ([353f1eb](https://github.com/vm0-ai/vm0/commit/353f1eba5771ecb559bce41b718cf651a5f07611))
+
+
+### Refactoring
+
+* add top-level environment mapping to all connector types ([#6939](https://github.com/vm0-ai/vm0/issues/6939)) ([71265f9](https://github.com/vm0-ai/vm0/commit/71265f9dc7807e163b33ed91e6b7b323febff50e))
+
 ## [8.116.0](https://github.com/vm0-ai/vm0/compare/core-v8.115.2...core-v8.116.0) (2026-03-26)
 
 

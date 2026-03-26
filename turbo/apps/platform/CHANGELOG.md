@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.155.0](https://github.com/vm0-ai/vm0/compare/app-v0.154.0...app-v0.155.0) (2026-03-26)
+
+
+### Features
+
+* add spotify oauth connector with firewall rules ([#6947](https://github.com/vm0-ai/vm0/issues/6947)) ([353f1eb](https://github.com/vm0-ai/vm0/commit/353f1eba5771ecb559bce41b718cf651a5f07611))
+* redesign onboarding as full-page split layout with 4-step flow ([#6683](https://github.com/vm0-ai/vm0/issues/6683)) ([e50ec07](https://github.com/vm0-ai/vm0/commit/e50ec079bbc9489407502a8f207c0a29635e3083))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.117.0
+
 ## [0.154.0](https://github.com/vm0-ai/vm0/compare/app-v0.153.1...app-v0.154.0) (2026-03-26)
 
 
