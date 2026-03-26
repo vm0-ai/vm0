@@ -139,9 +139,18 @@ teardown_file() {
   wait_for_text "$AGENT_NAME" 10
   step_screenshot "team-page"
 
-  # Click on the created agent card using text-based find
+  # Click on the created agent card using interactive snapshot to find the ref
   echo "# Clicking on agent card: $AGENT_NAME..." >&3
-  agent-browser find text "$AGENT_NAME" click
+  local snap_i agent_ref
+  snap_i=$(agent-browser snapshot -i)
+  agent_ref=$(echo "$snap_i" | grep -F "$AGENT_NAME" | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+  if [[ -z "$agent_ref" ]]; then
+    echo "# Failed to find agent card ref for $AGENT_NAME in interactive snapshot" >&3
+    echo "# Snapshot excerpt:" >&3
+    echo "$snap_i" | grep -i "agent\|$AGENT_NAME" | head -5 >&3 2>/dev/null || true
+    return 1
+  fi
+  agent-browser click "$agent_ref"
   agent-browser wait 3000
 
   # Wait for agent detail page to load with tabs
