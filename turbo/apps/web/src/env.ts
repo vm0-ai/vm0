@@ -55,7 +55,6 @@ function initEnv() {
       SLACK_CLIENT_SECRET: z.string().min(1).optional(),
       SLACK_SIGNING_SECRET: z.string().min(1).optional(),
       VM0_DEFAULT_AGENT: z.string().min(1).optional(), // Default agent for new integrations (format: "org/name")
-      VM0_TUNNEL_URL: z.url().optional(), // Tunnel URL for local development webhooks
       // Ahrefs OAuth (for connector)
       AHREFS_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       AHREFS_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
@@ -247,7 +246,6 @@ function initEnv() {
       SLACK_CLIENT_SECRET: process.env.SLACK_CLIENT_SECRET,
       SLACK_SIGNING_SECRET: process.env.SLACK_SIGNING_SECRET,
       VM0_DEFAULT_AGENT: process.env.VM0_DEFAULT_AGENT,
-      VM0_TUNNEL_URL: process.env.VM0_TUNNEL_URL,
       AHREFS_OAUTH_CLIENT_ID: process.env.AHREFS_OAUTH_CLIENT_ID,
       AHREFS_OAUTH_CLIENT_SECRET: process.env.AHREFS_OAUTH_CLIENT_SECRET,
       AIRTABLE_OAUTH_CLIENT_ID: process.env.AIRTABLE_OAUTH_CLIENT_ID,
