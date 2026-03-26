@@ -12,16 +12,6 @@
 load '../../helpers/setup'
 load '../../helpers/browser'
 
-# ---------------------------------------------------------------------------
-# url_is_on_app — Check if a URL's hostname starts with "app."
-# ---------------------------------------------------------------------------
-url_is_on_app() {
-  local url="$1"
-  local host
-  host=$(echo "$url" | sed -n 's|.*://\([^/:]*\).*|\1|p')
-  [[ "$host" == app.* ]]
-}
-
 setup_file() {
   browser_setup
   create_clerk_sign_in_token

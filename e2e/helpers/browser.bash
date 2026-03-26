@@ -11,6 +11,16 @@
 #   E2E_ACCOUNT  — Test email address (auto-generated if empty)
 
 # ---------------------------------------------------------------------------
+# url_is_on_app — Check if a URL's hostname starts with "app."
+# ---------------------------------------------------------------------------
+url_is_on_app() {
+  local url="$1"
+  local host
+  host=$(echo "$url" | sed -n 's|.*://\([^/:]*\).*|\1|p')
+  [[ "$host" == app.* ]]
+}
+
+# ---------------------------------------------------------------------------
 # browser_setup — Validate environment, initialize shared state
 # Call this in setup_file() before any browser interactions.
 # ---------------------------------------------------------------------------
