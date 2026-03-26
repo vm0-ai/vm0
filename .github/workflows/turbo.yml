@@ -986,8 +986,16 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260324
     needs: [prepare]
-    # Deploy if job-ref is set (PR or main), not a release-please commit, and platform changed
-    if: "${{ (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) && needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.platform-changed == 'true' }}"
+    # Deploy if job-ref is set (PR or main), not a release-please commit, and platform/e2e/ci changed
+    if: >-
+      ${{
+        (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
+        needs.prepare.outputs.job-ref != '' && (
+          needs.prepare.outputs.platform-changed == 'true' ||
+          needs.prepare.outputs.e2e-changed == 'true' ||
+          needs.prepare.outputs.ci-changed == 'true'
+        )
+      }}
     permissions:
       contents: read
       pull-requests: write
@@ -1039,15 +1047,18 @@ jobs:
     concurrency:
       group: cli-e2e-02-browser-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
-    needs: [prepare, deploy-web]
+    needs: [prepare, deploy-web, deploy-app]
     if: |
+      always() &&
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
         needs.prepare.outputs.ci-changed == 'true' ||
         needs.prepare.outputs.e2e-changed == 'true'
-      )
+      ) &&
+      needs.deploy-web.result == 'success' &&
+      (needs.deploy-app.result == 'success' || needs.deploy-app.result == 'skipped')
     steps:
       - uses: actions/checkout@v6
         with:
