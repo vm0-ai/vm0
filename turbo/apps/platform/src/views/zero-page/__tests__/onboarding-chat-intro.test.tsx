@@ -188,7 +188,7 @@ describe("onboarding auto-intro message", () => {
     // Verify the agent run was actually created (intro message was sent)
     await waitFor(
       () => {
-        expect(mock.wasRunCreated()).toBe(true);
+        expect(mock.wasRunCreated()).toBeTruthy();
       },
       { timeout: 10_000 },
     );
@@ -232,7 +232,7 @@ describe("onboarding auto-intro message", () => {
 
     await waitFor(
       () => {
-        expect(mock.wasRunCreated()).toBe(true);
+        expect(mock.wasRunCreated()).toBeTruthy();
       },
       { timeout: 10_000 },
     );
@@ -268,7 +268,7 @@ describe("onboarding auto-intro message", () => {
     // Wait for intro run to start
     await waitFor(
       () => {
-        expect(mock.wasRunCreated()).toBe(true);
+        expect(mock.wasRunCreated()).toBeTruthy();
       },
       { timeout: 10_000 },
     );
