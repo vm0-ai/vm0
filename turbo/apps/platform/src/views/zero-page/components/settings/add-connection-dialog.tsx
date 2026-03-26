@@ -652,7 +652,23 @@ function ZeroAddConnectionDialog({
 
   const notConnected = baseFiltered?.filter((item) => !item.connected);
   const connected = baseFiltered?.filter((item) => item.connected);
-  const filteredTypes = tab === "connected" ? connected : notConnected;
+
+  // Auto-switch tab when search matches exist only on the other tab
+  const effectiveTab = (() => {
+    if (!search.trim()) {
+      return tab;
+    }
+    const hasNotConnected = (notConnected?.length ?? 0) > 0;
+    const hasConnected = (connected?.length ?? 0) > 0;
+    if (hasNotConnected && !hasConnected) {
+      return "not-connected";
+    }
+    if (hasConnected && !hasNotConnected) {
+      return "connected";
+    }
+    return tab;
+  })();
+  const filteredTypes = effectiveTab === "connected" ? connected : notConnected;
 
   const notConnectedCount =
     connectorTypes
@@ -697,7 +713,7 @@ function ZeroAddConnectionDialog({
             />
           </div>
           <Tabs
-            value={tab}
+            value={effectiveTab}
             onValueChange={(v) => setTab(v as "not-connected" | "connected")}
           >
             <TabsList className="w-fit">

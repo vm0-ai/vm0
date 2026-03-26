@@ -135,6 +135,64 @@ describe("zero add connection dialog", () => {
     expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
   });
 
+  it("auto-switches to connected tab when search matches only connected connectors", async () => {
+    // Hume is connected — "hume" is a unique label with no other connector matching
+    mockConnectors([
+      makeConnector({
+        type: "hume",
+        authMethod: "api-token",
+      }),
+    ]);
+    await renderTeamPage([]);
+
+    await openAddConnectorDialog();
+
+    // Default tab is "Not connected"
+    await waitFor(() => {
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+    });
+    // Hume should not be visible on "Not connected" tab
+    expect(screen.queryByText("Hume")).not.toBeInTheDocument();
+
+    // Search for "hume" — only exists in Connected tab
+    const searchInput = screen.getByPlaceholderText("Search...");
+    fireEvent.change(searchInput, { target: { value: "hume" } });
+
+    // Should auto-switch to Connected tab and show Hume
+    await waitFor(() => {
+      expect(screen.getByText("Hume")).toBeInTheDocument();
+    });
+  });
+
+  it("stays on current tab when search matches both tabs", async () => {
+    // Slack is connected; "slack" also matches "Slack Webhook" (not connected)
+    mockConnectors([
+      makeConnector({
+        type: "slack",
+        authMethod: "oauth",
+        oauthScopes: ["channels:read"],
+      }),
+    ]);
+    await renderTeamPage([]);
+
+    await openAddConnectorDialog();
+
+    await waitFor(() => {
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+    });
+
+    // Search "slack" matches both "Slack" (connected) and "Slack Webhook" (not connected)
+    const searchInput = screen.getByPlaceholderText("Search...");
+    fireEvent.change(searchInput, { target: { value: "slack" } });
+
+    // Should stay on "Not connected" tab — Slack Webhook is shown (not connected)
+    await waitFor(() => {
+      expect(screen.getByText("Slack Webhook")).toBeInTheDocument();
+    });
+    // Connected "Slack" should not be visible (still on not-connected tab)
+    expect(screen.queryByText(/^Slack$/)).not.toBeInTheDocument();
+  });
+
   it("resets search when dialog is closed and reopened", async () => {
     mockConnectors([]);
     await renderTeamPage([]);
