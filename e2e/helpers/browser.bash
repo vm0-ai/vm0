@@ -263,6 +263,17 @@ sign_in_via_token() {
 }
 
 # ---------------------------------------------------------------------------
+# sign_in_via_token_on_app — Sign in via Clerk token on the platform app domain
+# Opens /sign-in-token, waits for auth redirect, dismisses cookie banner.
+# Requires APP_URL and SIGN_IN_TOKEN to be set.
+# ---------------------------------------------------------------------------
+sign_in_via_token_on_app() {
+  echo "# Signing in via token on platform app..." >&3
+  sign_in_via_token "$APP_URL"
+  echo "# Authentication complete!" >&3
+}
+
+# ---------------------------------------------------------------------------
 # navigate_to_app_page — Navigate to a path on the platform app domain
 # Usage: navigate_to_app_page "/team"
 # ---------------------------------------------------------------------------
