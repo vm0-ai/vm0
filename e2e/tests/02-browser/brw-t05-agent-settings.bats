@@ -133,24 +133,25 @@ teardown_file() {
 }
 
 @test "navigate to agent settings and verify tabs" {
-  # After agent creation, the browser is still on the team page.
-  # The agent should already be visible — no need to re-navigate.
-  echo "# Waiting for agent on team page..." >&3
-  wait_for_text "$AGENT_NAME" 10
+  # Navigate to /team fresh to clear any leftover dialog state from agent creation
+  echo "# Navigating to team page..." >&3
+  navigate_to_app_page "/team"
+  wait_for_text "$AGENT_NAME" 20
   step_screenshot "team-page"
 
-  # Click on the created agent card using interactive snapshot to find the ref
+  # Click on the created agent card using link-based approach
   echo "# Clicking on agent card: $AGENT_NAME..." >&3
   local snap_i agent_ref
   snap_i=$(agent-browser snapshot -i)
-  agent_ref=$(echo "$snap_i" | grep -F "$AGENT_NAME" | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+  # Find a link element (not a textbox) containing the agent name
+  agent_ref=$(echo "$snap_i" | grep -F "$AGENT_NAME" | grep -v 'textbox\|disabled' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
   if [[ -z "$agent_ref" ]]; then
-    echo "# Failed to find agent card ref for $AGENT_NAME in interactive snapshot" >&3
-    echo "# Snapshot excerpt:" >&3
-    echo "$snap_i" | grep -i "agent\|$AGENT_NAME" | head -5 >&3 2>/dev/null || true
-    return 1
+    # Fallback: use text-based find which targets visible clickable elements
+    echo "# Using text-based find as fallback..." >&3
+    agent-browser find text "$AGENT_NAME" click
+  else
+    agent-browser click "$agent_ref"
   fi
-  agent-browser click "$agent_ref"
   agent-browser wait 3000
 
   # Wait for agent detail page to load with tabs
