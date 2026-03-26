@@ -1056,6 +1056,7 @@ export async function createTestSchedule(
     intervalSeconds?: number;
     timezone?: string;
     prompt?: string;
+    description?: string;
     appendSystemPrompt?: string;
   },
 ): Promise<ScheduleResponse> {
@@ -1077,6 +1078,7 @@ export async function createTestSchedule(
     cronExpression: hasTrigger ? options?.cronExpression : "0 0 * * *",
     atTime: options?.atTime,
     intervalSeconds: options?.intervalSeconds,
+    description: options?.description,
     appendSystemPrompt: options?.appendSystemPrompt,
   });
   return result.schedule;

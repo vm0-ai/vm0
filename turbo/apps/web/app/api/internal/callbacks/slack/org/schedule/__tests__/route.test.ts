@@ -296,6 +296,159 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
     });
   });
 
+  it("includes schedule attribution footer in completed notification", async () => {
+    await setupSlackOrg(user);
+    mockClerk({ userId: user.userId });
+
+    const { composeId } = await createTestCompose(uniqueId("sched-agent"));
+    const schedule = await createTestSchedule(composeId, uniqueId("sched"), {
+      description: "Daily standup summary",
+    });
+    const { runId } = await createTestRun(composeId, "Test prompt");
+    await linkRunToSchedule(runId, schedule.id);
+    await completeTestRun(user.userId, runId);
+
+    const payload: OrgScheduleCallbackPayload = {
+      scheduleId: schedule.id,
+      agentId: composeId,
+      agentName: "sched-agent",
+      userId: user.userId,
+      orgId: user.orgId,
+      slackChannelId: "C-ATTR-CHANNEL",
+    };
+
+    const { secret } = await createTestCallback({
+      runId,
+      url: "http://localhost/api/internal/callbacks/slack/org/schedule",
+      payload: { ...payload },
+    });
+
+    const request = createCallbackRequest(
+      { runId, status: "completed", payload },
+      secret,
+    );
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+
+    const mockClient = new WebClient();
+    const postMessageMock = mockClient.chat.postMessage as ReturnType<
+      typeof import("vitest").vi.fn
+    >;
+    expect(postMessageMock).toHaveBeenCalled();
+
+    const firstCall = postMessageMock.mock.calls[0]![0] as {
+      blocks: (Block | KnownBlock)[];
+    };
+
+    // Should have a divider followed by an attribution context block
+    const dividerBlocks = firstCall.blocks.filter((b) => b.type === "divider");
+    expect(dividerBlocks).toHaveLength(1);
+
+    const contextBlocks = firstCall.blocks.filter((b) => b.type === "context");
+    // audit context + attribution context
+    expect(contextBlocks).toHaveLength(2);
+
+    const attrText = (contextBlocks[1] as { elements: { text: string }[] })
+      .elements[0]!.text;
+    expect(attrText).toContain("triggered by schedule");
+    expect(attrText).toContain("Daily standup summary");
+  });
+
+  it("includes schedule attribution footer in failure notification", async () => {
+    await setupSlackOrg(user);
+    mockClerk({ userId: user.userId });
+
+    const { composeId } = await createTestCompose(uniqueId("sched-agent"));
+    const schedule = await createTestSchedule(composeId, uniqueId("sched"), {
+      description: "Nightly report",
+    });
+    const { runId } = await createTestRun(composeId, "Test prompt");
+    await linkRunToSchedule(runId, schedule.id);
+
+    const payload: OrgScheduleCallbackPayload = {
+      scheduleId: schedule.id,
+      agentId: composeId,
+      agentName: "sched-agent",
+      userId: user.userId,
+      orgId: user.orgId,
+      slackChannelId: "C-ATTR-FAIL",
+    };
+
+    const { secret } = await createTestCallback({
+      runId,
+      url: "http://localhost/api/internal/callbacks/slack/org/schedule",
+      payload: { ...payload },
+    });
+
+    const request = createCallbackRequest(
+      { runId, status: "failed", error: "Timeout", payload },
+      secret,
+    );
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+
+    const mockClient = new WebClient();
+    const postMessageMock = mockClient.chat.postMessage as ReturnType<
+      typeof import("vitest").vi.fn
+    >;
+    expect(postMessageMock).toHaveBeenCalledOnce();
+
+    const call = postMessageMock.mock.calls[0]![0] as {
+      blocks: (Block | KnownBlock)[];
+    };
+
+    const contextBlocks = call.blocks.filter((b) => b.type === "context");
+    expect(contextBlocks).toHaveLength(2);
+
+    const attrText = (contextBlocks[1] as { elements: { text: string }[] })
+      .elements[0]!.text;
+    expect(attrText).toContain("triggered by schedule");
+    expect(attrText).toContain("Nightly report");
+  });
+
+  it("skips notification for progress heartbeat", async () => {
+    await setupSlackOrg(user);
+    mockClerk({ userId: user.userId });
+
+    const { composeId } = await createTestCompose(uniqueId("sched-agent"));
+    const schedule = await createTestSchedule(composeId, uniqueId("sched"));
+    const { runId } = await createTestRun(composeId, "Test prompt");
+    await linkRunToSchedule(runId, schedule.id);
+
+    const payload: OrgScheduleCallbackPayload = {
+      scheduleId: schedule.id,
+      agentId: composeId,
+      agentName: "sched-agent",
+      userId: user.userId,
+      orgId: user.orgId,
+    };
+
+    const { secret } = await createTestCallback({
+      runId,
+      url: "http://localhost/api/internal/callbacks/slack/org/schedule",
+      payload: { ...payload },
+    });
+
+    const request = createCallbackRequest(
+      { runId, status: "progress", payload },
+      secret,
+    );
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.skipped).toBe(true);
+
+    // Verify no Slack messages were sent
+    const mockClient = new WebClient();
+    const postMessageMock = mockClient.chat.postMessage as ReturnType<
+      typeof import("vitest").vi.fn
+    >;
+    expect(postMessageMock).not.toHaveBeenCalled();
+  });
+
   it("does not send notification to wrong org's Slack when user has connections in multiple orgs", async () => {
     // Setup: user has Slack connected in org A (their default org)
     await setupSlackOrg(user);
