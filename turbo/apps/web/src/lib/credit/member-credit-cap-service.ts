@@ -154,8 +154,9 @@ export async function evaluateMemberCaps(
 
   for (const member of enabledCapped) {
     const totalUsage = usageMap.get(member.userId) ?? 0;
+    const cap = member.creditCap;
 
-    if (totalUsage >= member.creditCap!) {
+    if (cap !== null && totalUsage >= cap) {
       await db
         .update(orgMembersMetadata)
         .set({ creditEnabled: false, updatedAt: new Date() })
