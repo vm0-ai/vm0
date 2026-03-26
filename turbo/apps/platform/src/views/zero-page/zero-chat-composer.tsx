@@ -165,39 +165,21 @@ function ConnectorTriggerIcons({
   connectors: ComposerConnectorItem[];
 }) {
   const connected = connectors.filter((c) => c.connected).slice(0, 3);
-  const hasDisconnected = connectors.some((c) => !c.connected);
   if (connected.length === 0) {
-    return (
-      <span className="relative">
-        <IconPlug size={18} stroke={1.5} />
-        {hasDisconnected && (
-          <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500" />
-        )}
-      </span>
-    );
+    return <IconPlug size={18} stroke={1.5} />;
   }
   return (
     <span className="flex items-center -space-x-1.5">
-      {connected.map((c, i) => {
-        const isLast = i === connected.length - 1;
-        const showDisconnectDot = hasDisconnected && isLast;
-        return (
+      {connected.map((c) => (
+        <span key={c.type} className="relative shrink-0">
           <span
-            key={c.type}
-            className={cn("relative shrink-0", showDisconnectDot && "z-10")}
+            className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-background"
+            style={{ border: "0.7px solid hsl(var(--gray-400))" }}
           >
-            <span
-              className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-background"
-              style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-            >
-              <ConnectorIcon type={c.type as ConnectorType} size={16} />
-            </span>
-            {showDisconnectDot && (
-              <span className="pointer-events-none absolute right-0 top-0 z-10 h-2 w-2 rounded-full bg-red-500" />
-            )}
+            <ConnectorIcon type={c.type as ConnectorType} size={16} />
           </span>
-        );
-      })}
+        </span>
+      ))}
     </span>
   );
 }
