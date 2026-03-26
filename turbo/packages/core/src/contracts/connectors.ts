@@ -1611,6 +1611,26 @@ const CONNECTOR_TYPES_DEF = {
       },
     } as ConnectorOAuthConfig,
   },
+  gamma: {
+    label: "Gamma",
+    helpText:
+      "Connect your Gamma account to generate presentations, documents, and websites with AI",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Log in to [Gamma](https://gamma.app) (requires Pro, Ultra, Teams, or Business plan)\n2. Go to **Settings and Members > API key** tab\n3. Click **Create API key**\n4. Copy the key (it is only shown once)",
+        secrets: {
+          GAMMA_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "sk-gamma-...",
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "api-token",
+  },
   "garmin-connect": {
     label: "Garmin Connect",
     environmentMapping: {
@@ -3691,6 +3711,7 @@ export const connectorTypeSchema = z.enum([
   "reddit",
   "strava",
   "neon",
+  "gamma",
   "garmin-connect",
   "x",
   "vercel",

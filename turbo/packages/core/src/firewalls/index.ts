@@ -39,6 +39,7 @@ import { falFirewall } from "./fal.generated";
 import { figmaFirewall } from "./figma.generated";
 import { firecrawlFirewall } from "./firecrawl.generated";
 import { firefliesFirewall } from "./fireflies.generated";
+import { gammaFirewall } from "./gamma.generated";
 import { garminConnectFirewall } from "./garmin-connect.generated";
 import { githubFirewall } from "./github.generated";
 import { gitlabFirewall } from "./gitlab.generated";
@@ -144,6 +145,7 @@ const CONNECTOR_FIREWALLS = {
   figma: figmaFirewall,
   firecrawl: firecrawlFirewall,
   fireflies: firefliesFirewall,
+  gamma: gammaFirewall,
   "garmin-connect": garminConnectFirewall,
   github: githubFirewall,
   gitlab: gitlabFirewall,
