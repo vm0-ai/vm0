@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import type { TriggerSource, FirewallPolicies } from "@vm0/core";
 import { startRun, type CreateRunResult } from "../run";
 import {
-  DISALLOWED_CRON_TOOLS,
+  DISALLOWED_TOOLS,
   buildAgentToolsPrompt,
 } from "../integration-context";
 import { formatAgentIdentityPrompt } from "../agent-identity";
@@ -86,7 +86,7 @@ export async function createZeroRun(
     scheduleId: params.scheduleId,
     memoryName: "memory",
     artifactName: "artifact",
-    disallowedTools: [...DISALLOWED_CRON_TOOLS],
+    disallowedTools: [...DISALLOWED_TOOLS],
     vars: { ZERO_AGENT_ID: params.agentId },
     firewallPolicies: agent.firewallPolicies ?? undefined,
     injectZeroToken: true,

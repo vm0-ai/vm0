@@ -35,12 +35,15 @@ export function buildIntegrationContext(
 }
 
 /**
- * Cron tools to disallow when schedule guidance is active.
+ * Tools to disallow for all zero agent runs.
+ * - Cron tools: agents use `zero schedule` instead.
+ * - AskUserQuestion: agents use `zero ask-user question` instead.
  */
-export const DISALLOWED_CRON_TOOLS = [
+export const DISALLOWED_TOOLS = [
   "CronCreate",
   "CronList",
   "CronDelete",
+  "AskUserQuestion",
 ] as const;
 
 /**
