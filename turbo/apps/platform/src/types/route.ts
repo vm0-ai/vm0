@@ -17,5 +17,6 @@ export type RoutePath =
   | "/works"
   | "/ideas"
   | "/onboarding"
+  | "/sign-in-token"
   | "/__internal-connector-logos"
   | `/projects/${string}`;

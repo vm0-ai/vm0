@@ -22,6 +22,7 @@ import { setupChatSessionPage$ } from "./zero-page/chat-session-page-setup.ts";
 import { setupInternalConnectorLogos$ } from "./internal-connector-logos-setup.ts";
 import { setupOnboardingPage$ } from "./onboarding-page/onboarding-page-setup.ts";
 import { setupIdeationPage$ } from "./zero-page/ideation-page-setup.ts";
+import { setupSignInTokenPage$ } from "./sign-in-token-setup.ts";
 
 /**
  * Catch-all fallback — redirects unknown paths to /.
@@ -97,6 +98,10 @@ const ROUTE_CONFIG = [
   {
     path: "/onboarding",
     setup: setupAuthPageWrapper(setupOnboardingPage$),
+  },
+  {
+    path: "/sign-in-token",
+    setup: setupSignInTokenPage$,
   },
   {
     path: "/__internal-connector-logos",

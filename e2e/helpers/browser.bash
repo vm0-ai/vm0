@@ -203,6 +203,59 @@ create_clerk_sign_in_token() {
 }
 
 # ---------------------------------------------------------------------------
+# derive_app_url — Derive platform app URL from VM0_API_URL
+# Local:  https://www.vm7.ai:8443  → https://app.vm7.ai:8443
+# CI:     https://pr-123-www.vm0-dev.com → https://pr-123-app.vm0-dev.com
+# ---------------------------------------------------------------------------
+derive_app_url() {
+  echo "${VM0_API_URL/www./app.}"
+}
+
+# ---------------------------------------------------------------------------
+# sign_in_via_token — Sign in via Clerk token and wait for redirect
+# Requires SIGN_IN_TOKEN to be set (call create_clerk_sign_in_token first).
+# ---------------------------------------------------------------------------
+sign_in_via_token() {
+  agent-browser open "${VM0_API_URL}/sign-in-token?token=${SIGN_IN_TOKEN}" --ignore-https-errors
+  agent-browser wait 3000
+
+  # Wait for redirect away from /sign-in-token
+  local redirect_complete=false
+  for _i in $(seq 1 20); do
+    local current_url
+    current_url=$(agent-browser get url 2>/dev/null || true)
+    if [[ -n "$current_url" && ! "$current_url" =~ sign-in-token ]]; then
+      redirect_complete=true
+      break
+    fi
+    sleep 1
+  done
+
+  if [[ "$redirect_complete" != "true" ]]; then
+    echo "Failed to redirect after sign-in-token" >&2
+    return 1
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# wait_for_text — Wait for text to appear on page (case-insensitive)
+# Usage: wait_for_text "some text" [timeout_secs]
+# ---------------------------------------------------------------------------
+wait_for_text() {
+  local text="$1"
+  local timeout_secs="${2:-15}"
+  for _i in $(seq 1 "$timeout_secs"); do
+    local snap
+    snap=$(full_snapshot)
+    if contains "$snap" "$text"; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+# ---------------------------------------------------------------------------
 # browser_teardown — Kill agent-browser and any spawned browser processes
 # Call this in teardown_file() to prevent bats from hanging.
 # ---------------------------------------------------------------------------
