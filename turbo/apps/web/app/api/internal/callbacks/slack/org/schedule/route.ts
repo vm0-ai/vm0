@@ -63,13 +63,12 @@ function extractAgentSessionId(result: unknown): string | undefined {
 /**
  * Post all result texts as a threaded Slack conversation.
  *
- * The first message includes the header; subsequent results are threaded replies.
- * Only the last message includes the audit link.
+ * The first message is sent to the channel; subsequent results are threaded replies.
+ * Only the last message includes the audit link and optional attribution footer.
  */
 async function postScheduleResults(
   client: ReturnType<typeof createSlackClient>,
   channel: string,
-  displayName: string,
   outputs: RunOutput[],
   logsUrl: string,
   scheduleDescription?: string,
@@ -118,7 +117,6 @@ async function handleScheduleCompleted(opts: {
   runId: string;
   client: ReturnType<typeof createSlackClient>;
   notifyChannel: string;
-  displayName: string;
   logsUrl: string;
   scheduleDescription?: string;
   connectionId: string;
@@ -129,7 +127,6 @@ async function handleScheduleCompleted(opts: {
   const { messageTs, dmChannelId } = await postScheduleResults(
     opts.client,
     opts.notifyChannel,
-    opts.displayName,
     allOutputs,
     opts.logsUrl,
     opts.scheduleDescription,
@@ -292,7 +289,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       runId,
       client,
       notifyChannel,
-      displayName,
       logsUrl,
       scheduleDescription,
       connectionId: connection.id,

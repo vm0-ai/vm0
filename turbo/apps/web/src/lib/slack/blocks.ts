@@ -419,7 +419,7 @@ function buildMarkdownMessage(content: string): (Block | KnownBlock)[] {
  *
  * @param content - The agent's response content
  * @param logsUrl - Optional URL to the run logs
- * @param triggeredBy - Optional schedule description shown as dimmed suffix on audit line
+ * @param triggeredBy - Optional attribution text shown as a separate context block below a divider
  * @returns Block Kit blocks with response content
  */
 export function buildAgentResponseMessage(
