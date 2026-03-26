@@ -153,7 +153,7 @@
   font-size: 22px;
   font-weight: 500;
   line-height: 28px;
-  border-radius: 4px;
+  border-radius: 12px;
   border: none;
   cursor: pointer;
   transition: all 0.2s;
@@ -171,13 +171,13 @@
 }
 
 .btn-secondary-large {
-  background: var(--accent-color-light);
-  color: var(--accent-color);
-  border: 1px solid var(--accent-color);
+  background: rgba(0, 0, 0, 0.02);
+  color: var(--text-primary);
+  border: 1px solid rgba(0, 0, 0, 0.12);
 }
 
 .btn-secondary-large:hover {
-  background: rgba(237, 78, 1, 0.15);
+  background: rgba(0, 0, 0, 0.05);
 }
 
 .btn-primary-large:active,

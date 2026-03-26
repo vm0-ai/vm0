@@ -72,6 +72,9 @@ export default function Navbar() {
             className="nav-center nav-desktop"
             style={{ display: "flex", gap: "32px" }}
           >
+            <Link href="/pricing" className="nav-link">
+              Pricing
+            </Link>
             <Link href="/security" className="nav-link">
               Security
             </Link>
