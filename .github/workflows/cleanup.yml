@@ -110,7 +110,7 @@ jobs:
             -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
             -H "Content-Type: application/json")
 
-          echo "$USERS" | jq -c '.[]' 2>/dev/null | while read -r user; do
+          while read -r user; do
             USER_ID=$(echo "$user" | jq -r '.id')
             EMAIL=$(echo "$user" | jq -r '.email_addresses[0].email_address // "unknown"')
 
@@ -121,9 +121,11 @@ jobs:
             fi
 
             echo "Deleting $USER_ID ($EMAIL)"
-            curl -sS -X DELETE "https://api.clerk.com/v1/users/${USER_ID}" \
-              -H "Authorization: Bearer ${CLERK_SECRET_KEY}" || true
-          done
+            if ! curl -sS -X DELETE "https://api.clerk.com/v1/users/${USER_ID}" \
+              -H "Authorization: Bearer ${CLERK_SECRET_KEY}"; then
+              echo "::warning::Failed to delete user $USER_ID ($EMAIL)"
+            fi
+          done < <(echo "$USERS" | jq -c '.[]' 2>/dev/null)
 
   cleanup-deployments:
     # Skip for release-please PRs (only version bumps and changelogs)
