@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { clerkClient } from "@clerk/nextjs/server";
 import { orgCache } from "../../db/schema/org-cache";
 import { orgMetadata } from "../../db/schema/org-metadata";
@@ -82,6 +82,96 @@ export async function getOrgData(orgId: string): Promise<OrgData> {
   log.debug("org cache refreshed", { orgId, slug, tier });
 
   return { orgId, slug, name, tier };
+}
+
+/**
+ * Batch-fetch org data for multiple org IDs.
+ * Performs 2 DB queries (org_cache + org_metadata) instead of 2N,
+ * then falls back to individual Clerk API calls only for cache misses.
+ */
+export async function batchGetOrgData(
+  orgIds: string[],
+): Promise<Map<string, OrgData>> {
+  if (orgIds.length === 0) return new Map();
+
+  const db = globalThis.services.db;
+
+  // Batch query: all cached org slugs/names
+  const cachedRows = await db
+    .select()
+    .from(orgCache)
+    .where(inArray(orgCache.orgId, orgIds));
+
+  const cacheMap = new Map(cachedRows.map((r) => [r.orgId, r]));
+
+  // Batch query: all org tiers
+  const tierRows = await db
+    .select({ orgId: orgMetadata.orgId, tier: orgMetadata.tier })
+    .from(orgMetadata)
+    .where(inArray(orgMetadata.orgId, orgIds));
+
+  const tierMap = new Map(tierRows.map((r) => [r.orgId, r.tier]));
+
+  const result = new Map<string, OrgData>();
+
+  // Identify cache hits vs misses
+  const missingIds: string[] = [];
+  for (const orgId of orgIds) {
+    const cached = cacheMap.get(orgId);
+    if (cached && Date.now() - cached.cachedAt.getTime() < CACHE_TTL_MS) {
+      result.set(orgId, {
+        orgId,
+        slug: cached.slug,
+        name: cached.name,
+        tier: tierMap.get(orgId) ?? "free",
+      });
+    } else {
+      missingIds.push(orgId);
+    }
+  }
+
+  // Fetch cache misses from Clerk individually (no batch API available)
+  if (missingIds.length > 0) {
+    const client = await clerkClient();
+    const now = new Date();
+
+    await Promise.all(
+      missingIds.map(async (orgId) => {
+        const clerkOrg = await client.organizations.getOrganization({
+          organizationId: orgId,
+        });
+
+        if (!clerkOrg.slug) {
+          throw new Error(
+            `Clerk organization ${orgId} has no slug — cannot cache`,
+          );
+        }
+
+        // Upsert cache
+        await db
+          .insert(orgCache)
+          .values({
+            orgId,
+            slug: clerkOrg.slug,
+            name: clerkOrg.name,
+            cachedAt: now,
+          })
+          .onConflictDoUpdate({
+            target: orgCache.orgId,
+            set: { slug: clerkOrg.slug, name: clerkOrg.name, cachedAt: now },
+          });
+
+        result.set(orgId, {
+          orgId,
+          slug: clerkOrg.slug,
+          name: clerkOrg.name,
+          tier: tierMap.get(orgId) ?? "free",
+        });
+      }),
+    );
+  }
+
+  return result;
 }
 
 /**

@@ -99,5 +99,7 @@ export const zeroAgentSchedules = pgTable(
     index("idx_zero_agent_schedules_next_run")
       .on(table.nextRunAt)
       .where(sql`enabled = true`),
+    // Index for user schedule listing (listSchedules filters by userId + optional orgId)
+    index("idx_zero_agent_schedules_user_org").on(table.userId, table.orgId),
   ],
 );
