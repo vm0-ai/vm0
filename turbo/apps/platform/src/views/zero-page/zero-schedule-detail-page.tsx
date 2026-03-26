@@ -32,9 +32,7 @@ import { Switch } from "@vm0/ui/components/ui/switch";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
 import { Link } from "../router/link.tsx";
 import { navigateTo$, pathParams$ } from "../../signals/route.ts";
-import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import { agentsList$ } from "../../signals/zero-page/agents-list.ts";
-import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   allOrgScheduleEntries$,
@@ -967,25 +965,12 @@ export function ZeroScheduleDetailPage() {
       ? String(params.scheduleId)
       : null;
 
-  const displayNameLoadable = useLoadable(agentDisplayName$);
-  const displayName =
-    displayNameLoadable.state === "hasData" ? displayNameLoadable.data : "Zero";
-
-  const statusLoadable = useLoadable(zeroOnboardingStatus$);
-  const defaultComposeId =
-    statusLoadable.state === "hasData"
-      ? statusLoadable.data.defaultAgentId
-      : null;
-
   const entriesLoadable = useLastLoadable(allOrgScheduleEntries$);
   const entries: OrgScheduleEntry[] =
     entriesLoadable.state === "hasData" ? entriesLoadable.data : [];
 
   const agentsLoadable = useLoadable(agentsList$);
   const agents = agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
-  const nameToDisplay = new Map(
-    agents.filter((a) => a.displayName).map((a) => [a.id, a.displayName!]),
-  );
 
   const loaded = useGet(allOrgSchedulesLoaded$);
   const slackReady = useGet(slackOrgInitialized$);
@@ -999,12 +984,7 @@ export function ZeroScheduleDetailPage() {
   const [saving, setSaving] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [running, setRunning] = useState(false);
-  const combinedSchedule = buildCombinedSchedule(
-    entries,
-    displayName,
-    defaultComposeId,
-    nameToDisplay,
-  );
+  const combinedSchedule = buildCombinedSchedule(entries);
 
   if (!scheduleId) {
     return <ScheduleNotFound />;

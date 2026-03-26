@@ -12,7 +12,7 @@ function createMockSchedules() {
     {
       id: "sched-1",
       agentId: "mock-compose-id",
-      agentName: "zero",
+      displayName: "Zero",
       orgSlug: "test",
       name: "morning-briefing",
       triggerType: "cron",
@@ -33,7 +33,7 @@ function createMockSchedules() {
     {
       id: "sched-2",
       agentId: "mock-compose-id",
-      agentName: "zero",
+      displayName: "Zero",
       orgSlug: "test",
       name: "check-inbox",
       triggerType: "loop",
@@ -54,7 +54,7 @@ function createMockSchedules() {
     {
       id: "sched-disabled",
       agentId: "mock-compose-id",
-      agentName: "zero",
+      displayName: "Zero",
       orgSlug: "test",
       name: "disabled-schedule",
       triggerType: "cron",
@@ -135,6 +135,7 @@ describe("zero schedule page - agent labels", () => {
             {
               ...createMockSchedules()[0],
               agentId: "sub-agent-id",
+              displayName: "Research Agent",
             },
           ],
         });
@@ -145,7 +146,7 @@ describe("zero schedule page - agent labels", () => {
     );
     await renderSchedulePage();
 
-    // The agent column should show "Research Agent" (resolved from displayName by id)
+    // The agent column should show "Research Agent" (from schedule displayName)
     await waitFor(() => {
       expect(screen.getByText("Research Agent")).toBeInTheDocument();
     });
@@ -179,6 +180,7 @@ describe("zero schedule page - agent labels", () => {
             {
               ...createMockSchedules()[0],
               agentId: "no-name-agent",
+              displayName: null,
             },
           ],
         });

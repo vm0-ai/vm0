@@ -2,6 +2,7 @@ import { eq, and, lte, inArray, desc } from "drizzle-orm";
 import { Cron } from "croner";
 import { zeroAgentSchedules } from "../../db/schema/zero-agent-schedule";
 import { agentComposes } from "../../db/schema/agent-compose";
+import { zeroAgents } from "../../db/schema/zero-agent";
 import { slackOrgConnections } from "../../db/schema/slack-org-connection";
 import { slackOrgInstallations } from "../../db/schema/slack-org-installation";
 import { agentRuns } from "../../db/schema/agent-run";
@@ -26,7 +27,7 @@ const log = logger("service:schedule");
 export interface ScheduleResponse {
   id: string;
   agentId: string;
-  agentName: string;
+  displayName: string | null;
   orgSlug: string;
   userId: string;
   name: string;
@@ -120,7 +121,7 @@ function calculateNextRun(
  */
 function toResponse(
   schedule: typeof zeroAgentSchedules.$inferSelect,
-  agentName: string,
+  displayName: string | null,
   orgSlug: string,
 ): ScheduleResponse {
   // Extract secret names from encrypted secrets (values are never returned)
@@ -138,7 +139,7 @@ function toResponse(
   return {
     id: schedule.id,
     agentId: schedule.agentId,
-    agentName,
+    displayName,
     orgSlug,
     userId: schedule.userId,
     name: schedule.name,
@@ -186,12 +187,17 @@ async function verifyScheduleOwnership(
   name: string,
 ): Promise<{
   schedule: typeof zeroAgentSchedules.$inferSelect;
-  agentName: string;
+  displayName: string | null;
   orgSlug: string;
 }> {
   const [agent] = await globalThis.services.db
-    .select({ id: agentComposes.id, name: agentComposes.name })
+    .select({
+      id: agentComposes.id,
+      name: agentComposes.name,
+      displayName: zeroAgents.displayName,
+    })
     .from(agentComposes)
+    .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
     .where(eq(agentComposes.id, agentId))
     .limit(1);
 
@@ -217,7 +223,7 @@ async function verifyScheduleOwnership(
     throw notFound(`Schedule '${name}' not found`);
   }
 
-  return { schedule, agentName: agent.name, orgSlug };
+  return { schedule, displayName: agent.displayName ?? null, orgSlug };
 }
 
 /**
@@ -408,8 +414,13 @@ export async function deploySchedule(
   log.debug(`Deploying schedule ${request.name} for agent ${request.agentId}`);
 
   const [agent] = await globalThis.services.db
-    .select({ id: agentComposes.id, name: agentComposes.name })
+    .select({
+      id: agentComposes.id,
+      name: agentComposes.name,
+      displayName: zeroAgents.displayName,
+    })
     .from(agentComposes)
+    .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
     .where(eq(agentComposes.id, request.agentId))
     .limit(1);
 
@@ -474,6 +485,7 @@ export async function deploySchedule(
     .limit(1);
 
   const { triggerType, nextRunAt } = resolveTrigger(request);
+  const displayName = agent.displayName ?? null;
 
   if (existing) {
     const updated = await updateExistingSchedule(
@@ -484,7 +496,7 @@ export async function deploySchedule(
     );
     log.debug(`Updated schedule ${request.name} (${existing.id})`);
     return {
-      schedule: toResponse(updated, agent.name, orgSlug),
+      schedule: toResponse(updated, displayName, orgSlug),
       created: false,
     };
   }
@@ -499,7 +511,7 @@ export async function deploySchedule(
   );
   log.debug(`Created schedule ${request.name} (${created.id})`);
   return {
-    schedule: toResponse(created, agent.name, orgSlug),
+    schedule: toResponse(created, displayName, orgSlug),
     created: true,
   };
 }
@@ -530,11 +542,15 @@ export async function listSchedules(
     return [];
   }
 
-  // Load agent compose data for all schedules
+  // Load agent compose data (with displayName) for all schedules
   const agentIds = [...new Set(userSchedules.map((s) => s.agentId))];
   const agentRows = await globalThis.services.db
-    .select({ id: agentComposes.id, name: agentComposes.name })
+    .select({
+      id: agentComposes.id,
+      displayName: zeroAgents.displayName,
+    })
     .from(agentComposes)
+    .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
     .where(inArray(agentComposes.id, agentIds));
   const agentMap = new Map(agentRows.map((r) => [r.id, r]));
 
@@ -554,7 +570,7 @@ export async function listSchedules(
     .map((schedule) => {
       const agent = agentMap.get(schedule.agentId)!;
       const orgSlug = orgDataMap.get(schedule.orgId)?.slug ?? "";
-      return toResponse(schedule, agent.name, orgSlug);
+      return toResponse(schedule, agent.displayName ?? null, orgSlug);
     });
 }
 
@@ -569,14 +585,14 @@ export async function getScheduleByName(
 ): Promise<ScheduleResponse> {
   log.debug(`Getting schedule ${name} for agent ${agentId}`);
 
-  const { schedule, agentName, orgSlug } = await verifyScheduleOwnership(
+  const { schedule, displayName, orgSlug } = await verifyScheduleOwnership(
     userId,
     orgId,
     agentId,
     name,
   );
 
-  return toResponse(schedule, agentName, orgSlug);
+  return toResponse(schedule, displayName, orgSlug);
 }
 
 /**
@@ -659,7 +675,7 @@ export async function enableSchedule(
 ): Promise<ScheduleResponse> {
   log.debug(`Enabling schedule ${name} for agent ${agentId}`);
 
-  const { schedule, agentName, orgSlug } = await verifyScheduleOwnership(
+  const { schedule, displayName, orgSlug } = await verifyScheduleOwnership(
     userId,
     orgId,
     agentId,
@@ -703,7 +719,7 @@ export async function enableSchedule(
 
   log.debug(`Enabled schedule ${name}`);
 
-  return toResponse(updated, agentName, orgSlug);
+  return toResponse(updated, displayName, orgSlug);
 }
 
 /**
@@ -717,7 +733,7 @@ export async function disableSchedule(
 ): Promise<ScheduleResponse> {
   log.debug(`Disabling schedule ${name} for agent ${agentId}`);
 
-  const { schedule, agentName, orgSlug } = await verifyScheduleOwnership(
+  const { schedule, displayName, orgSlug } = await verifyScheduleOwnership(
     userId,
     orgId,
     agentId,
@@ -740,7 +756,7 @@ export async function disableSchedule(
 
   log.debug(`Disabled schedule ${name}`);
 
-  return toResponse(updated, agentName, orgSlug);
+  return toResponse(updated, displayName, orgSlug);
 }
 
 /**

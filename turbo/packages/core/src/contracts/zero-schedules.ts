@@ -10,6 +10,7 @@ const c = initContract();
 export const scheduleResponseSchema = z.object({
   id: z.string().uuid(),
   agentId: z.string().uuid(),
+  displayName: z.string().nullable(),
   orgSlug: z.string(),
   userId: z.string(),
   name: z.string(),
