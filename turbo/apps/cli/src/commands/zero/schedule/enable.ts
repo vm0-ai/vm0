@@ -9,7 +9,7 @@ import { withErrorHandler } from "../../../lib/command";
 export const enableCommand = new Command()
   .name("enable")
   .description("Enable a zero schedule")
-  .argument("<agent-name>", "Agent name")
+  .argument("<agent-id>", "Agent ID")
   .option(
     "-n, --name <schedule-name>",
     "Schedule name (required when agent has multiple schedules)",

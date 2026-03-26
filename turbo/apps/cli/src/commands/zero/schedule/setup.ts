@@ -664,7 +664,7 @@ async function handleScheduleEnabling(params: {
 export const setupCommand = new Command()
   .name("setup")
   .description("Create or edit a schedule for a zero agent")
-  .argument("<agent-name>", "Agent name to configure schedule for")
+  .argument("<agent-id>", "Agent ID")
   .option("-n, --name <schedule-name>", 'Schedule name (default: "default")')
   .option("-f, --frequency <type>", "Frequency: daily|weekly|monthly|once|loop")
   .option("-t, --time <HH:MM>", "Time to run (24-hour format)")
