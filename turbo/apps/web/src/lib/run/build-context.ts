@@ -22,6 +22,7 @@ import {
   type FirewallPolicies,
   getConnectorFirewall,
   isFirewallConnectorType,
+  deriveApiTokenConnectedTypes,
 } from "@vm0/core";
 import { agentComposeVersions } from "../../db/schema/agent-compose";
 import type { AgentComposeYaml } from "../../types/agent-compose";
@@ -44,6 +45,8 @@ import { getOrgDefaultModelProvider } from "../model-provider/model-provider-ser
 import { getVm0ApiKey } from "../vm0-key/vm0-key-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { connectors } from "../../db/schema/connector";
+import { secrets as secretsTable } from "../../db/schema/secret";
+import { variables as variablesTable } from "../../db/schema/variable";
 import { PROVIDER_HANDLERS } from "../connector/provider-registry";
 import { refreshConnectorAccessToken } from "../connector/connector-service";
 
@@ -428,18 +431,46 @@ async function resolveConnectorSecrets(
   orgId: string,
   userId: string,
 ): Promise<ConnectorSecretResult> {
-  // Query connected connectors (need type for environmentMapping, authMethod for refresh filter)
-  const userConnectors = await globalThis.services.db
-    .select({ type: connectors.type, authMethod: connectors.authMethod })
-    .from(connectors)
-    .where(and(eq(connectors.orgId, orgId), eq(connectors.userId, userId)));
+  const db = globalThis.services.db;
+
+  // Query OAuth connectors, user secrets, and user variables in parallel.
+  // User secrets/variables are needed to derive api-token connector types
+  // (these don't have DB records in the connectors table).
+  const [userConnectors, userSecretRows, userVariableRows] = await Promise.all([
+    db
+      .select({ type: connectors.type, authMethod: connectors.authMethod })
+      .from(connectors)
+      .where(and(eq(connectors.orgId, orgId), eq(connectors.userId, userId))),
+    db
+      .select({ name: secretsTable.name })
+      .from(secretsTable)
+      .where(
+        and(
+          eq(secretsTable.orgId, orgId),
+          eq(secretsTable.userId, userId),
+          eq(secretsTable.type, "user"),
+        ),
+      ),
+    db
+      .select({ name: variablesTable.name })
+      .from(variablesTable)
+      .where(
+        and(eq(variablesTable.orgId, orgId), eq(variablesTable.userId, userId)),
+      ),
+  ]);
+
+  // Derive api-token connector types from user secrets/variables
+  const derivedApiTokenTypes = deriveApiTokenConnectedTypes(
+    new Set(userSecretRows.map((r) => r.name)),
+    new Set(userVariableRows.map((r) => r.name)),
+  );
 
   if (userConnectors.length === 0) {
     return {
       connectorSecrets: undefined,
       injectedEnvVars: undefined,
       secretConnectorMap: undefined,
-      connectorTypes: [],
+      connectorTypes: derivedApiTokenTypes,
     };
   }
 
@@ -449,11 +480,11 @@ async function resolveConnectorSecrets(
       connectorSecrets: undefined,
       injectedEnvVars: undefined,
       secretConnectorMap: undefined,
-      connectorTypes: [],
+      connectorTypes: derivedApiTokenTypes,
     };
   }
 
-  // Parse connector types upfront
+  // Parse connector types upfront (OAuth connectors from DB)
   const validConnectors = userConnectors
     .map((c) => {
       const parsed = connectorTypeSchema.safeParse(c.type);
@@ -534,7 +565,12 @@ async function resolveConnectorSecrets(
       Object.keys(secretConnectorMap).length > 0
         ? secretConnectorMap
         : undefined,
-    connectorTypes: validConnectors.map((c) => c.type),
+    connectorTypes: [
+      ...new Set([
+        ...validConnectors.map((c) => c.type),
+        ...derivedApiTokenTypes,
+      ]),
+    ],
   };
 }
 

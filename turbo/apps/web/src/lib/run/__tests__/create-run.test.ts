@@ -1046,11 +1046,12 @@ describe("createRun()", () => {
       expect(result.runId).toBeDefined();
       expect(result.status).toBe("pending");
 
-      // Verify the runner job queue entry contains the injected secret
+      // Figma has a firewall config, so the real token is replaced by a placeholder
+      // (the proxy resolves the real secret at runtime)
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
       expect(job!.executionContext.environment).toMatchObject({
-        FIGMA_TOKEN: "figd_test_secret_123",
+        FIGMA_TOKEN: "figd_Vm0PlaceHolder00000000000000000000000000",
       });
     });
 
@@ -1084,11 +1085,12 @@ describe("createRun()", () => {
       expect(result.runId).toBeDefined();
       expect(result.status).toBe("pending");
 
-      // Verify the runner job queue entry contains the injected secret
+      // Productlane has a firewall config, so the real token is replaced by a placeholder
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
       expect(job!.executionContext.environment).toMatchObject({
-        PRODUCTLANE_TOKEN: "pl_test_secret_789",
+        PRODUCTLANE_TOKEN:
+          "vm0placeholderProductlaneToken0000000000000000000000a",
       });
     });
 
@@ -1155,6 +1157,41 @@ describe("createRun()", () => {
       expect(job!.executionContext.environment).toMatchObject({
         LINEAR_TOKEN: "lin_api_Vm0PlaceHolder00000000000000000000000000",
       });
+    });
+
+    it("should build firewall for api-token connector", async () => {
+      const compose = await createTestCompose(
+        uniqueId("figma-firewall-agent"),
+        {
+          overrides: {
+            environment: {
+              ANTHROPIC_API_KEY: "test-api-key",
+              FIGMA_TOKEN: "${{ secrets.FIGMA_TOKEN }}",
+            },
+          },
+        },
+      );
+
+      await createTestConnector({
+        type: "figma",
+        authMethod: "api-token",
+        secretName: "FIGMA_TOKEN",
+        accessToken: "figd_test_secret_123",
+      });
+
+      const result = await createRun(
+        baseParams({ agentComposeVersionId: compose.versionId }),
+      );
+
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job).toBeDefined();
+
+      // Verify firewall is constructed for the api-token connector
+      const firewalls = job!.executionContext.experimentalFirewalls;
+      expect(firewalls).toBeDefined();
+      const figmaFirewall = firewalls!.find((fw) => fw.name === "figma");
+      expect(figmaFirewall).toBeDefined();
+      expect(figmaFirewall!.apis[0]!.base).toBe("https://api.figma.com");
     });
 
     it("should leave Linear token template unresolved when connector not connected", async () => {
