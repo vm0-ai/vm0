@@ -196,19 +196,28 @@ export function ZeroChatPage({
         <div className="mx-auto w-full max-w-[900px] flex flex-col items-stretch gap-8 -mt-24">
           <div className="flex items-center gap-4 w-full">
             <div className="relative shrink-0">
-              <button
-                type="button"
-                aria-label="View agent profile"
-                className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent cursor-pointer"
-                onClick={onAvatarClick}
-              >
-                <img
-                  src={zeroAvatarSrc}
-                  alt=""
-                  role="presentation"
-                  className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
-                />
-              </button>
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label="View agent profile"
+                      className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent cursor-pointer"
+                      onClick={onAvatarClick}
+                    >
+                      <img
+                        src={zeroAvatarSrc}
+                        alt=""
+                        role="presentation"
+                        className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
+                      />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p className="text-xs">View agent profile</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
               {showPinPill && (
                 <TooltipProvider delayDuration={200}>
                   <Tooltip>

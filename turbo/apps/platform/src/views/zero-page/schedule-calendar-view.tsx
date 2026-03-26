@@ -4,7 +4,13 @@ import {
   IconChevronRight,
   IconPencil,
 } from "@tabler/icons-react";
-import { cn } from "@vm0/ui";
+import {
+  cn,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@vm0/ui";
 import {
   Popover,
   PopoverContent,
@@ -162,32 +168,52 @@ export function ScheduleCalendarView<T extends ScheduleEntry>({
           {/* Mobile: single-day view */}
           <div className="md:hidden">
             <div className="flex items-center justify-between bg-muted/50 px-3 py-2 border-b border-border/60">
-              <button
-                type="button"
-                onClick={() =>
-                  setSelectedDay(
-                    (selectedDay - 1 + WEEKDAY_LABELS.length) %
-                      WEEKDAY_LABELS.length,
-                  )
-                }
-                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-                aria-label="Previous day"
-              >
-                <IconChevronLeft size={16} stroke={1.5} />
-              </button>
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSelectedDay(
+                          (selectedDay - 1 + WEEKDAY_LABELS.length) %
+                            WEEKDAY_LABELS.length,
+                        )
+                      }
+                      className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                      aria-label="Previous day"
+                    >
+                      <IconChevronLeft size={16} stroke={1.5} />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p className="text-xs">Previous day</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
               <span className="text-sm font-medium text-muted-foreground">
                 {WEEKDAY_LABELS[selectedDay]}
               </span>
-              <button
-                type="button"
-                onClick={() =>
-                  setSelectedDay((selectedDay + 1) % WEEKDAY_LABELS.length)
-                }
-                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-                aria-label="Next day"
-              >
-                <IconChevronRight size={16} stroke={1.5} />
-              </button>
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSelectedDay(
+                          (selectedDay + 1) % WEEKDAY_LABELS.length,
+                        )
+                      }
+                      className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                      aria-label="Next day"
+                    >
+                      <IconChevronRight size={16} stroke={1.5} />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p className="text-xs">Next day</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
             {calendarSlots.map((timeLabel, timeIndex) => {
               const cellEntries = getEntriesInCell(

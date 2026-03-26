@@ -226,6 +226,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabledUserHashes: STAFF_USER_HASHES,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.SpotifyConnector]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.GitHubIntegration]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,

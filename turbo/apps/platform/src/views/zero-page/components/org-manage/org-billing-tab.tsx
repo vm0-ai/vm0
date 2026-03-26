@@ -23,7 +23,13 @@ import {
   downgradeError$,
   type BillingTier,
 } from "../../../../signals/zero-page/billing.ts";
-import { Button } from "@vm0/ui";
+import {
+  Button,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@vm0/ui";
 import {
   Dialog,
   DialogContent,
@@ -277,14 +283,23 @@ function PricingPage({
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={onBack}
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-          aria-label="Back"
-        >
-          <IconArrowLeft size={16} stroke={1.8} />
-        </button>
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={onBack}
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                aria-label="Back"
+              >
+                <IconArrowLeft size={16} stroke={1.8} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p className="text-xs">Back</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
         <div>
           <h3 className="text-sm font-medium text-foreground">Compare plans</h3>
           <p className="text-[13px] text-muted-foreground">

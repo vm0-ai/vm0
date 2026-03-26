@@ -9,7 +9,6 @@ import { resolveDefaultAgentComposeId } from "../../agent-compose/resolve-defaul
 import { ensureStorageExists } from "../../storage/storage-service";
 import {
   createSlackClient,
-  fetchSlackUserInfo,
   fetchSlackUserInfoMap,
   formatSenderBlock,
 } from "../../slack/client";
@@ -19,6 +18,8 @@ import {
   formatContextForAgent,
   formatContextForAgentWithImages,
   formatCurrentMessageFiles,
+  extractMentionedUserIds,
+  resolveUserMentions,
   type SlackFile,
 } from "../../slack/context";
 import { validateAgentSession } from "../../run";
@@ -241,33 +242,60 @@ export async function fetchConversationContexts(
   botToken: string,
   lastProcessedMessageTs?: string,
   currentMessageTs?: string,
+  existingSessionId?: string,
 ): Promise<{ routingContext: string; executionContext: string }> {
   const imageSessionId = `${channelId}-${threadTs ?? "channel"}`;
   const contextType = threadTs ? "thread" : "channel";
+
+  // First session in a thread (no existing session) — fetch channel messages
+  // around the thread start so the agent has background context.
+  const isFirstThreadSession = Boolean(threadTs && !existingSessionId);
 
   // Fetch all messages once (single Slack API call)
   const allMessages = threadTs
     ? await fetchThreadContext(client, channelId, threadTs)
     : await fetchChannelContext(client, channelId, 10);
 
+  // For first thread mention, fetch the 10 channel messages before the thread
+  const channelMessages = isFirstThreadSession
+    ? await fetchChannelContext(client, channelId, 10, threadTs)
+    : [];
+
   // Exclude the current message (it's already sent as the prompt)
   const contextMessages = currentMessageTs
     ? allMessages.filter((m) => m.ts !== currentMessageTs)
     : allMessages;
 
-  // Resolve user info for all unique user IDs in context messages
-  const userIds = allMessages.flatMap((m) =>
+  // Resolve user info for all senders and mentioned users
+  const allContextMessages = [...channelMessages, ...allMessages];
+  const senderIds = allContextMessages.flatMap((m) =>
     m.user && !m.bot_id ? [m.user] : [],
   );
+  const mentionedIds = extractMentionedUserIds(allContextMessages);
+  const userIds = [...senderIds, ...mentionedIds];
   const userInfoMap = await fetchSlackUserInfoMap(client, userIds);
 
+  // Format channel context prefix (for first thread mention only, text-only)
+  const channelContextPrefix =
+    channelMessages.length > 0
+      ? formatContextForAgent(
+          channelMessages,
+          botUserId,
+          "channel",
+          userInfoMap,
+        )
+      : "";
+
   // Text-only full context for routing (no image uploads needed)
-  const routingContext = formatContextForAgent(
+  const threadRoutingContext = formatContextForAgent(
     contextMessages,
     botUserId,
     contextType,
     userInfoMap,
   );
+  const routingContext = channelContextPrefix
+    ? `${channelContextPrefix}\n\n${threadRoutingContext}`
+    : threadRoutingContext;
 
   // Filter to only new messages for execution context
   const executionMessages = lastProcessedMessageTs
@@ -275,7 +303,7 @@ export async function fetchConversationContexts(
     : contextMessages;
 
   // Format execution context with images (only uploads images for new messages)
-  const executionContext =
+  const threadExecContext =
     executionMessages.length > 0
       ? await formatContextForAgentWithImages(
           executionMessages,
@@ -286,6 +314,9 @@ export async function fetchConversationContexts(
           userInfoMap,
         )
       : "";
+  const executionContext = channelContextPrefix
+    ? `${channelContextPrefix}\n\n${threadExecContext}`
+    : threadExecContext;
 
   return { routingContext, executionContext };
 }
@@ -384,12 +415,19 @@ export async function enrichMessageContent(opts: {
     prompt = `${prompt}\n\n${filesText}`;
   }
 
+  // Resolve user mentions and current user info
+  const mentionedIds = extractMentionedUserIds([{ text: opts.messageContent }]);
+  const allIds = [opts.userId, ...mentionedIds];
+  const userInfoMap = await fetchSlackUserInfoMap(opts.client, allIds);
+
+  // Resolve mentions in prompt text
+  prompt = resolveUserMentions(prompt, userInfoMap);
+
   // Build user context for system prompt
-  let userContext = "";
-  const userInfo = await fetchSlackUserInfo(opts.client, opts.userId);
-  if (userInfo) {
-    userContext = `# Current User\n${formatSenderBlock(userInfo)}`;
-  }
+  const currentUser = userInfoMap.get(opts.userId);
+  const userContext = currentUser
+    ? `# Current User\n${formatSenderBlock(currentUser)}`
+    : "";
 
   return { prompt, userContext };
 }

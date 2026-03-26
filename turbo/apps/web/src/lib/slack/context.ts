@@ -126,10 +126,12 @@ export async function fetchChannelContext(
   client: WebClient,
   channel: string,
   limit = 10,
+  latest?: string,
 ): Promise<SlackMessage[]> {
   const result = await client.conversations.history({
     channel,
     limit,
+    ...(latest && { latest }),
   });
 
   // Reverse to get chronological order (oldest first)
@@ -441,6 +443,50 @@ function formatAttachmentImage(attachment: SlackAttachment): string | null {
 }
 
 /**
+ * Resolve user mentions in text using the user info map.
+ * Replaces `<@U12345>` with `@Name (U12345)` when user info is available.
+ */
+export function resolveUserMentions(
+  text: string,
+  userInfoMap?: Map<string, SlackUserInfo>,
+): string {
+  if (!userInfoMap || userInfoMap.size === 0) return text;
+  return text.replace(/<@(\w+)>/g, (_match, userId: string) => {
+    const info = userInfoMap.get(userId);
+    return info?.name ? `@${info.name} (${userId})` : `<@${userId}>`;
+  });
+}
+
+/**
+ * Extract all user IDs mentioned in messages (from rich_text blocks and plain text).
+ */
+export function extractMentionedUserIds(messages: SlackMessage[]): string[] {
+  const ids = new Set<string>();
+  for (const msg of messages) {
+    // From rich_text blocks
+    if (msg.blocks) {
+      for (const block of msg.blocks) {
+        for (const section of block.elements ?? []) {
+          for (const el of section.elements ?? []) {
+            if (el.type === "user" && el.user_id) {
+              ids.add(el.user_id);
+            }
+          }
+        }
+      }
+    }
+    // From plain text fallback
+    if (msg.text) {
+      for (const match of msg.text.matchAll(/<@(\w+)>/g)) {
+        const userId = match[1];
+        if (userId) ids.add(userId);
+      }
+    }
+  }
+  return [...ids];
+}
+
+/**
  * Format a single message with structured metadata
  */
 function formatMessageWithMetadata(
@@ -452,7 +498,8 @@ function formatMessageWithMetadata(
   const senderId = msg.bot_id ? "BOT" : (msg.user ?? "unknown");
   const userInfo = userInfoMap?.get(senderId);
   const senderBlock = formatSenderBlock(userInfo ?? { id: senderId });
-  const text = extractTextFromBlocks(msg.blocks) ?? msg.text ?? "";
+  const rawText = extractTextFromBlocks(msg.blocks) ?? msg.text ?? "";
+  const text = resolveUserMentions(rawText, userInfoMap);
 
   const parts: string[] = [
     "---",

@@ -542,24 +542,42 @@ function RecentChatSection({
             Chats with {agentLabel}
           </span>
           <div className="flex items-center gap-0.5">
-            <button
-              type="button"
-              onClick={() => setSearchOpen(true)}
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
-              aria-label="Search chats"
-            >
-              <IconSearch size={15} stroke={2.5} />
-            </button>
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => setSearchOpen(true)}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+                    aria-label="Search chats"
+                  >
+                    <IconSearch size={15} stroke={2.5} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  <p className="text-xs">Search chats</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             {handleNewChat && (
-              <button
-                type="button"
-                onClick={handleNewChat}
-                disabled={newChatDisabled}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors disabled:opacity-50 disabled:pointer-events-none"
-                aria-label={`New chat with ${agentLabel}`}
-              >
-                <IconPlus size={15} stroke={2.5} />
-              </button>
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={handleNewChat}
+                      disabled={newChatDisabled}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors disabled:opacity-50 disabled:pointer-events-none"
+                      aria-label={`New chat with ${agentLabel}`}
+                    >
+                      <IconPlus size={15} stroke={2.5} />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p className="text-xs">New chat</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             )}
           </div>
         </div>
@@ -939,14 +957,26 @@ export function ZeroSidebar() {
         <aside className="zero-nav box-border flex h-full w-16 shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar px-2 transition-all duration-300">
           {/* Expand — same row pattern as every nav icon (centered in content column) */}
           <div className="flex w-full shrink-0 justify-center pt-3 pb-1">
-            <button
-              type="button"
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
-              onClick={onCollapse}
-              aria-label="Expand sidebar"
-            >
-              <IconLayoutSidebarLeftCollapse size={18} className="rotate-180" />
-            </button>
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                    onClick={onCollapse}
+                    aria-label="Expand sidebar"
+                  >
+                    <IconLayoutSidebarLeftCollapse
+                      size={18}
+                      className="rotate-180"
+                    />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  <p className="text-xs">Expand sidebar</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
 
           {/* Icon-only nav: one centered column; inline-flex links never stretch */}
@@ -1016,14 +1046,23 @@ export function ZeroSidebar() {
             <div className="min-w-0 flex-1">
               <ClerkOrgSwitcher />
             </div>
-            <button
-              type="button"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
-              onClick={onCollapse}
-              aria-label="Collapse sidebar"
-            >
-              <IconLayoutSidebarLeftCollapse size={18} />
-            </button>
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+                    onClick={onCollapse}
+                    aria-label="Collapse sidebar"
+                  >
+                    <IconLayoutSidebarLeftCollapse size={18} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  <p className="text-xs">Collapse sidebar</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </div>
 

@@ -116,6 +116,7 @@ const CONNECTOR_ICON_COLORFUL = {
   similarweb: true,
   slack: true,
   "slack-webhook": true,
+  spotify: true,
   strava: true,
   streak: true,
   stripe: true,

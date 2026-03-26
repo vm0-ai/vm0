@@ -145,19 +145,28 @@ export function ZeroSessionChatPage({
       <header className="shrink-0 bg-transparent px-4 sm:px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="relative shrink-0">
-            <button
-              type="button"
-              onClick={onAvatarClick}
-              className="h-8 w-8 shrink-0 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              aria-label="View agent profile"
-            >
-              <img
-                src={zeroAvatarSrc}
-                alt=""
-                role="presentation"
-                className="h-8 w-8 rounded-full object-cover object-top"
-              />
-            </button>
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={onAvatarClick}
+                    className="h-8 w-8 shrink-0 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    aria-label="View agent profile"
+                  >
+                    <img
+                      src={zeroAvatarSrc}
+                      alt=""
+                      role="presentation"
+                      className="h-8 w-8 rounded-full object-cover object-top"
+                    />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  <p className="text-xs">View agent profile</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             {showPinPill && (
               <TooltipProvider delayDuration={200}>
                 <Tooltip>
@@ -181,22 +190,40 @@ export function ZeroSessionChatPage({
           <span className="font-semibold text-foreground">{displayName}</span>
         </div>
         <div className="flex items-center gap-0.5">
-          <Link
-            pathname="/team"
-            className="inline-flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent"
-            aria-label="Sub-agents"
-          >
-            <IconUsers size={18} stroke={1.5} />
-          </Link>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-muted-foreground hover:text-foreground"
-            onClick={onNavigateToSchedule}
-            aria-label="Scheduled"
-          >
-            <IconCalendar size={18} stroke={1.5} />
-          </Button>
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Link
+                  pathname="/team"
+                  className="inline-flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent"
+                  aria-label="Sub-agents"
+                >
+                  <IconUsers size={18} stroke={1.5} />
+                </Link>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p className="text-xs">Agents</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                  onClick={onNavigateToSchedule}
+                  aria-label="Scheduled"
+                >
+                  <IconCalendar size={18} stroke={1.5} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p className="text-xs">Schedule</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
       </header>
 

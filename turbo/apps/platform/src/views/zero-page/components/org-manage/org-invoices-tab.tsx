@@ -1,6 +1,12 @@
 import { useLastLoadable } from "ccstate-react";
 import { IconCircleCheck, IconDownload } from "@tabler/icons-react";
-import { cn } from "@vm0/ui";
+import {
+  cn,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@vm0/ui";
 import { invoicesAsync$ } from "../../../../signals/zero-page/billing.ts";
 
 const cardBorder = { border: "0.7px solid hsl(var(--gray-400))" } as const;
@@ -85,15 +91,24 @@ export function OrgInvoicesTab() {
               </div>
               <div className="flex justify-end">
                 {inv.hostedInvoiceUrl ? (
-                  <a
-                    href={inv.hostedInvoiceUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-                    aria-label="Download invoice"
-                  >
-                    <IconDownload size={14} stroke={1.5} />
-                  </a>
+                  <TooltipProvider delayDuration={200}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <a
+                          href={inv.hostedInvoiceUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                          aria-label="Download invoice"
+                        >
+                          <IconDownload size={14} stroke={1.5} />
+                        </a>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">
+                        <p className="text-xs">Download invoice</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 ) : (
                   <span className="flex h-7 w-7 items-center justify-center text-muted-foreground/30">
                     <IconDownload size={14} stroke={1.5} />

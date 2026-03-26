@@ -3573,6 +3573,57 @@ const CONNECTOR_TYPES_DEF = {
     } as Record<string, ConnectorAuthMethodConfig>,
     defaultAuthMethod: "api-token",
   },
+  spotify: {
+    label: "Spotify",
+    featureFlag: FeatureSwitchKey.SpotifyConnector,
+    helpText:
+      "Connect your Spotify account to manage playlists, control playback, and access music data",
+    authMethods: {
+      oauth: {
+        label: "OAuth (Recommended)",
+        helpText: "Sign in with Spotify to grant access.",
+        secrets: {
+          SPOTIFY_ACCESS_TOKEN: {
+            label: "Access Token",
+            required: true,
+          },
+          SPOTIFY_REFRESH_TOKEN: {
+            label: "Refresh Token",
+            required: true,
+          },
+        },
+      },
+    } as Record<string, ConnectorAuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    oauth: {
+      authorizationUrl: "https://accounts.spotify.com/authorize",
+      tokenUrl: "https://accounts.spotify.com/api/token",
+      scopes: [
+        "ugc-image-upload",
+        "user-read-playback-state",
+        "user-modify-playback-state",
+        "user-read-currently-playing",
+        "app-remote-control",
+        "streaming",
+        "playlist-read-private",
+        "playlist-read-collaborative",
+        "playlist-modify-private",
+        "playlist-modify-public",
+        "user-follow-modify",
+        "user-follow-read",
+        "user-read-playback-position",
+        "user-top-read",
+        "user-read-recently-played",
+        "user-library-modify",
+        "user-library-read",
+        "user-read-email",
+        "user-read-private",
+      ],
+      environmentMapping: {
+        SPOTIFY_TOKEN: "$secrets.SPOTIFY_ACCESS_TOKEN",
+      },
+    } as ConnectorOAuthConfig,
+  },
   "slack-webhook": {
     label: "Slack Webhook",
     environmentMapping: {
@@ -3791,6 +3842,7 @@ export const connectorTypeSchema = z.enum([
   "minio",
   "pdforge",
   "slack-webhook",
+  "spotify",
   "wix",
   "cal-com",
   "v0",

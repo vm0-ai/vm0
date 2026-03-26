@@ -158,6 +158,7 @@ export async function handleOrgMention(
     botToken,
     lastProcessedMessageTs,
     context.messageTs,
+    existingSessionId,
   );
 
   // 8. Dispatch agent run

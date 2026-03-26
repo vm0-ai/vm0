@@ -95,6 +95,7 @@ import { serpapiFirewall } from "./serpapi.generated";
 import { shortioFirewall } from "./shortio.generated";
 import { similarwebFirewall } from "./similarweb.generated";
 import { slackFirewall } from "./slack.generated";
+import { spotifyFirewall } from "./spotify.generated";
 import { stravaFirewall } from "./strava.generated";
 import { stripeFirewall } from "./stripe.generated";
 import { supabaseFirewall } from "./supabase.generated";
@@ -201,6 +202,7 @@ const CONNECTOR_FIREWALLS = {
   shortio: shortioFirewall,
   similarweb: similarwebFirewall,
   slack: slackFirewall,
+  spotify: spotifyFirewall,
   strava: stravaFirewall,
   stripe: stripeFirewall,
   supabase: supabaseFirewall,
