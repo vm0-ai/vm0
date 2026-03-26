@@ -1055,6 +1055,7 @@ jobs:
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
       - name: Upload auth screenshots
         if: always()
         uses: actions/upload-artifact@v7

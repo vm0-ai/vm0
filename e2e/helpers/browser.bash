@@ -157,6 +157,52 @@ generate_password() {
 }
 
 # ---------------------------------------------------------------------------
+# create_clerk_sign_in_token — Create a Clerk sign-in token for e2e test user
+# Requires CLERK_SECRET_KEY. Exports SIGN_IN_TOKEN on success.
+# ---------------------------------------------------------------------------
+create_clerk_sign_in_token() {
+  if [[ -z "${CLERK_SECRET_KEY:-}" ]]; then
+    echo "CLERK_SECRET_KEY is required but not set" >&2
+    return 1
+  fi
+
+  local email="e2e+clerk_test@vm0.ai"
+
+  # Resolve user ID from email
+  local users_response
+  users_response=$(curl -sS -X GET \
+    "https://api.clerk.com/v1/users?email_address[]=${email}" \
+    -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
+    -H "Content-Type: application/json")
+
+  local user_id
+  user_id=$(echo "$users_response" | jq -e -r '.[0].id' 2>/dev/null)
+  if [[ -z "$user_id" || "$user_id" == "null" ]]; then
+    echo "Failed to resolve user ID for ${email}" >&2
+    echo "API response: ${users_response}" >&2
+    return 1
+  fi
+
+  # Create sign-in token
+  local token_response
+  token_response=$(curl -sS -X POST \
+    "https://api.clerk.com/v1/sign_in_tokens" \
+    -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
+    -H "Content-Type: application/json" \
+    -d "{\"user_id\": \"${user_id}\", \"expires_in_seconds\": 300}")
+
+  local token
+  token=$(echo "$token_response" | jq -e -r '.token' 2>/dev/null)
+  if [[ -z "$token" || "$token" == "null" ]]; then
+    echo "Failed to create sign-in token" >&2
+    echo "API response: ${token_response}" >&2
+    return 1
+  fi
+
+  export SIGN_IN_TOKEN="$token"
+}
+
+# ---------------------------------------------------------------------------
 # browser_teardown — Kill agent-browser and any spawned browser processes
 # Call this in teardown_file() to prevent bats from hanging.
 # ---------------------------------------------------------------------------
