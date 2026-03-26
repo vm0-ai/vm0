@@ -11,6 +11,7 @@ import {
 } from "../../signals/zero-page/zero-nav.ts";
 import { ZeroAboutPage } from "./zero-about-page.tsx";
 import { AppSkeleton } from "./app-skeleton.tsx";
+import { QueueDrawer } from "../queue-page/queue-drawer.tsx";
 
 function SidebarLayoutSkeleton() {
   const userLoadable = useLoadable(user$);
@@ -24,6 +25,10 @@ function SidebarLayoutSkeleton() {
 }
 
 export function SidebarLayout({ children }: { children: ReactNode }) {
+  const userLoadable = useLoadable(user$);
+  const isLoggedIn =
+    userLoadable.state === "hasData" && userLoadable.data !== undefined;
+
   const showAboutPage = useGet(zeroShowAboutPage$);
   const setShowAboutPage = useSet(setZeroShowAboutPage$);
 
@@ -47,6 +52,7 @@ export function SidebarLayout({ children }: { children: ReactNode }) {
           children
         )}
       </div>
+      {isLoggedIn && <QueueDrawer />}
     </div>
   );
 }

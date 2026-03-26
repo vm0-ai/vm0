@@ -19,6 +19,20 @@ const internalQueueData$ = state<QueueData | null>(null);
 
 export const queueData$ = computed((get) => get(internalQueueData$));
 
+// ---------------------------------------------------------------------------
+// Drawer open/close state
+// ---------------------------------------------------------------------------
+
+const internalQueueDrawerOpen$ = state(false);
+
+export const queueDrawerOpen$ = computed((get) =>
+  get(internalQueueDrawerOpen$),
+);
+
+export const setQueueDrawerOpen$ = command(({ set }, open: boolean) => {
+  set(internalQueueDrawerOpen$, open);
+});
+
 const fetchQueueData$ = command(async ({ get, set }, _signal: AbortSignal) => {
   const client = get(zeroClient$)(zeroRunsQueueContract);
   const result = await client.getQueue();
