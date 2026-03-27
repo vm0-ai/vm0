@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { pathname$, navigateTo$, pathParams$ } from "../route.ts";
+import { pathname$, detachedNavigateTo$, pathParams$ } from "../route.ts";
 import type {
   ZeroNavId,
   ZeroAccountAction,
@@ -91,7 +91,7 @@ export const setZeroChatAgent$ = command(({ set }, agentId: string | null) => {
  */
 export const navigateToZeroSession$ = command(
   ({ set }, chatThreadId: string) => {
-    set(navigateTo$, "/chat/:chatThreadId", { pathParams: { chatThreadId } });
+    set(detachedNavigateTo$, "/chat/:chatThreadId", { pathParams: { chatThreadId } });
   },
 );
 
@@ -138,11 +138,11 @@ export const initSidebarCollapsed$ = command(({ set }) => {
 /** Handle nav tab selection: navigate to tab and close about page. */
 export const handleZeroNavSelect$ = command(({ set }, id: ZeroNavId) => {
   if (id === "chat") {
-    set(navigateTo$, "/");
+    set(detachedNavigateTo$, "/");
   } else if (id === "team") {
-    set(navigateTo$, "/team");
+    set(detachedNavigateTo$, "/team");
   } else {
-    set(navigateTo$, "/:tab", { pathParams: { tab: id } });
+    set(detachedNavigateTo$, "/:tab", { pathParams: { tab: id } });
   }
   set(internalShowAboutPage$, false);
 });
@@ -154,7 +154,7 @@ export const handleZeroAccountAction$ = command(
       return;
     }
     if (action === "preferences") {
-      set(navigateTo$, "/:tab", { pathParams: { tab: "preferences" } });
+      set(detachedNavigateTo$, "/:tab", { pathParams: { tab: "preferences" } });
     }
   },
 );

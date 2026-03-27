@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { navigateTo$ } from "../route.ts";
+import { detachedNavigateTo$ } from "../route.ts";
 import {
   zeroNeedsOnboarding$,
   zeroNeedsMemberOnboarding$,
@@ -17,7 +17,7 @@ export const onboardGuard$ = command(
     const needsMemberOnboarding = await get(zeroNeedsMemberOnboarding$);
     signal.throwIfAborted();
     if (needsOnboarding || needsMemberOnboarding) {
-      set(navigateTo$, "/onboarding", { replace: true });
+      set(detachedNavigateTo$, "/onboarding", { replace: true });
       return true;
     }
     return false;

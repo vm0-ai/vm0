@@ -8,7 +8,7 @@ import {
   agentDisplayName$,
   defaultAgentId$,
 } from "../../signals/zero-page/zero-agent-name.ts";
-import { navigateTo$ } from "../../signals/route.ts";
+import { detachedNavigateTo$ } from "../../signals/route.ts";
 
 export function ZeroChatSessionPageWrapper() {
   const currentChatAgentId = useGet(zeroChatAgentId$);
@@ -36,7 +36,7 @@ export function ZeroChatSessionPageWrapper() {
     ? (selectedSubagent.displayName ?? selectedSubagent.id)
     : agentDisplayName;
 
-  const navigateTo = useSet(navigateTo$);
+  const navigateTo = useSet(detachedNavigateTo$);
 
   const handleNavigateToSchedule = () => {
     if (resolvedAgentId) {

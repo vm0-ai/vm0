@@ -8,7 +8,7 @@ import {
   agentDisplayName$,
   defaultAgentId$,
 } from "../../signals/zero-page/zero-agent-name.ts";
-import { navigateTo$ } from "../../signals/route.ts";
+import { detachedNavigateTo$ } from "../../signals/route.ts";
 import {
   resetTalkSendSignal$,
   sendZeroChatMessage$,
@@ -42,7 +42,7 @@ export function ZeroTalkPage() {
     ? (selectedSubagent.displayName ?? selectedSubagent.id)
     : agentDisplayName;
 
-  const navigateTo = useSet(navigateTo$);
+  const navigateTo = useSet(detachedNavigateTo$);
   const sendMessage = useSet(sendZeroChatMessage$);
   const startNewSession = useSet(startNewZeroSession$);
   const resetTalkSendSignal = useSet(resetTalkSendSignal$);

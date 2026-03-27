@@ -4,7 +4,7 @@ import { defaultAgentId$ } from "./zero-agent-name.ts";
 import { initSlackOrg$ } from "./zero-slack.ts";
 import { initSidebarCollapsed$ } from "./zero-nav.ts";
 import { switchActiveAgent$ } from "./zero-chat.ts";
-import { navigateTo$ } from "../route.ts";
+import { detachedNavigateTo$ } from "../route.ts";
 
 /** Tracks whether the initial heavy data (agents, onboarding, slack) has loaded. */
 const initialDataLoaded$ = state(false);
@@ -55,7 +55,7 @@ export const resolveAgentById$ = command(
           // Unknown agent → redirect to default
           await set(switchActiveAgent$, null, signal);
           if (rawDefaultName) {
-            set(navigateTo$, "/talk/:agentId", {
+            set(detachedNavigateTo$, "/talk/:agentId", {
               pathParams: { agentId: rawDefaultName },
               replace: true,
             });

@@ -27,7 +27,7 @@ import {
 } from "../../signals/zero-page/zero-chat-page.ts";
 import { getRandomPrompts } from "./zero-ideation-page.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
-import { navigateTo$ } from "../../signals/route.ts";
+import { detachedNavigateTo$ } from "../../signals/route.ts";
 import zeroAvatarImg from "./assets/avatar_0.png";
 
 function getTagline(
@@ -162,7 +162,7 @@ export function ZeroChatPage({
   const taglineIndex = useGet(chatPageTaglineIndex$);
   const tagline = getTagline(displayName, userName, taglineIndex);
   const [suggestedPrompts] = useState(() => getRandomPrompts(2));
-  const navigate = useSet(navigateTo$);
+  const navigate = useSet(detachedNavigateTo$);
 
   // Agent ID from URL for ideas navigation
   const talkAgentId = useGet(zeroTalkAgentId$);

@@ -27,6 +27,7 @@ import {
   removeZeroAttachment$,
   cancelZeroAttachmentUpload$,
 } from "../zero-chat.ts";
+import { navigate$, detachedNavigateTo$ } from "../../route.ts";
 
 const context = testContext();
 
@@ -258,7 +259,13 @@ describe("zero-chat signals", () => {
       await delay(50);
       expect(pollCount).toBeGreaterThan(0);
 
-      context.store.set(switchZeroSession$, "new-thread");
+      await context.store.set(
+        navigate$,
+        "/chat/new-thread",
+        {},
+        context.signal,
+      );
+
       await context.store.set(loadSessionFromSnapshot$, context.signal);
       await sendPromise;
 

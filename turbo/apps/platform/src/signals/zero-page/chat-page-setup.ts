@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { navigateTo$, searchParams$ } from "../route.ts";
+import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import { checkSettingsParam$ } from "./settings/org-manage-dialog.ts";
 import { logger } from "../log.ts";
 import { defaultAgentId$ } from "./zero-agent-name.ts";
@@ -25,7 +25,7 @@ export const setupChatPage$ = command(
       L.info("redirecting to /talk/", rawName);
       const params = get(searchParams$);
       const prompt = params.get("prompt");
-      set(navigateTo$, "/talk/:agentId", {
+      set(detachedNavigateTo$, "/talk/:agentId", {
         pathParams: { agentId: rawName },
         searchParams: prompt ? new URLSearchParams({ prompt }) : undefined,
         replace: true,

@@ -38,7 +38,7 @@ import {
 import { Switch } from "@vm0/ui/components/ui/switch";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
 import { Link } from "../router/link.tsx";
-import { navigateTo$, pathParams$ } from "../../signals/route.ts";
+import { detachedNavigateTo$, pathParams$ } from "../../signals/route.ts";
 import { agents$ } from "../../signals/zero-page/agents-list.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
@@ -1029,7 +1029,7 @@ export function ZeroScheduleDetailPage() {
   const toggleEnabled = useSet(toggleOrgScheduleEnabled$);
   const deleteSchedule = useSet(deleteOrgSchedule$);
   const runScheduleNow = useSet(runScheduleNow$);
-  const navigate = useSet(navigateTo$);
+  const navigate = useSet(detachedNavigateTo$);
   const pageSignal = useGet(pageSignal$);
 
   const [saving, setSaving] = useState(false);

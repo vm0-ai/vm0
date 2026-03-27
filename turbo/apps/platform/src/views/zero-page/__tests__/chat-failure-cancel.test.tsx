@@ -36,7 +36,7 @@ describe("chat failure and cancel", () => {
   });
 
   it("should send cancel request when Stop button is clicked", async () => {
-    mockChatLifecycle();
+    const ctrl = mockChatLifecycle();
 
     await setupPage({ context, path: "/talk/mock-compose-id" });
 
@@ -51,8 +51,9 @@ describe("chat failure and cancel", () => {
     });
 
     fireEvent.click(screen.getByLabelText("Stop"));
+    ctrl.cancelRun();
 
-    // After clicking Stop, the sending state ends and Send button returns
+    // After server confirms cancellation, sending state ends and Send button returns
     await waitFor(() => {
       expect(screen.getByLabelText("Send")).toBeInTheDocument();
       expect(screen.queryByLabelText("Stop")).toBeNull();

@@ -32,7 +32,7 @@ import {
   sendZeroChatMessage$,
   startNewZeroSession$,
 } from "../../signals/zero-page/zero-chat.ts";
-import { navigateTo$ } from "../../signals/route.ts";
+import { detachedNavigateTo$ } from "../../signals/route.ts";
 import {
   allConnectorTypes$,
   connectConnector$,
@@ -897,7 +897,7 @@ function useOnboardingHandlers(isAdmin: boolean) {
   const dismissOnboarding = useSet(dismissZeroOnboarding$);
   const sendMessage = useSet(sendZeroChatMessage$);
   const startNewSession = useSet(startNewZeroSession$);
-  const navigate = useSet(navigateTo$);
+  const navigate = useSet(detachedNavigateTo$);
   const clearOnboardingError = useSet(clearZeroOnboardingError$);
   const reloadBilling = useSet(reloadBillingStatus$);
   const slackData = useGet(slackOrgData$);

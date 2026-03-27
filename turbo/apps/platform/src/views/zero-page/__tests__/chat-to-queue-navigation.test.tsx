@@ -4,7 +4,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
-import { navigateTo$ } from "../../../signals/route.ts";
+import { detachedNavigateTo$ } from "../../../signals/route.ts";
 
 const context = testContext();
 
@@ -74,7 +74,7 @@ describe("chat to queue navigation", () => {
 
     // Navigate to /queue using navigateTo$ (same as Link component)
     act(() => {
-      context.store.set(navigateTo$, "/queue");
+      context.store.set(detachedNavigateTo$, "/queue");
     });
 
     // The queue page should fully initialize and show queue data

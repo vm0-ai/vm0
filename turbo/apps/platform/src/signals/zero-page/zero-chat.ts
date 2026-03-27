@@ -1,5 +1,5 @@
 import { command, computed, state, type Computed } from "ccstate";
-import { timeout } from "signal-timers";
+import { delay, timeout } from "signal-timers";
 import type { AgentEvent, LogStatus } from "./log-types.ts";
 import { fetch$ } from "../fetch.ts";
 import { throwIfAbort, resetSignal, detach, Reason } from "../utils.ts";
@@ -187,10 +187,6 @@ export const cancelActiveRun$ = command(
       return;
     }
 
-    // Abort the send phase; the loop (on pageSignal) continues and discovers
-    // the `cancelled` status on the next poll (~3s).
-    set(resetSending$);
-
     await set(activeMsg.runLoop.cancel$, signal);
   },
 );
@@ -331,12 +327,6 @@ function summarizeEvent(event: AgentEvent, skipText: boolean): string | null {
   }
   return null;
 }
-
-// ---------------------------------------------------------------------------
-// Cancellation via resetSignal (replaces manual pollingAbortController$)
-// ---------------------------------------------------------------------------
-
-const resetSending$ = resetSignal();
 
 /**
  * Signal for talk-page sends that must survive page navigation.
@@ -813,7 +803,7 @@ const fetchZeroSessionList$ = command(({ set }) => {
 export const switchActiveAgent$ = command(
   ({ set }, agentId: string | null, _signal?: AbortSignal) => {
     set(setZeroChatAgent$, agentId);
-    set(fetchZeroSessionList$);
+    set(reloadChatThreadList$, (n) => n + 1);
   },
 );
 
@@ -872,7 +862,6 @@ export const loadSessionFromSnapshot$ = command(
     if (snapshot.activeRunMessages.length > 0) {
       set(internalLocalMessages$, snapshot.activeRunMessages);
 
-      const resumeSignal = set(resetSending$, signal);
       const loopPromise = (async () => {
         await Promise.all(
           snapshot.activeRunMessages
@@ -881,7 +870,7 @@ export const loadSessionFromSnapshot$ = command(
                 m.role === "assistant" && !!m.beginLoop$,
             )
             .map(async (message) => {
-              await set(message.beginLoop$!, resumeSignal);
+              await set(message.beginLoop$!, signal);
             }),
         );
       })();
@@ -897,7 +886,6 @@ export const loadSessionFromSnapshot$ = command(
  * which auto-fetches when the URL changes.
  */
 export const switchZeroSession$ = command(({ set }, threadId: string) => {
-  set(resetSending$);
   set(navigateToZeroSession$, threadId);
   set(internalSessionId$, null);
   set(internalLocalMessages$, []);
@@ -905,7 +893,6 @@ export const switchZeroSession$ = command(({ set }, threadId: string) => {
 
 export const startNewZeroSession$ = command(({ set }) => {
   // Abort any in-flight send/polling from the previous session
-  set(resetSending$);
   set(resetTalkSendSignal$);
 
   set(internalLocalMessages$, []);
@@ -939,7 +926,7 @@ export const createNewChatSession$ = command(
       const createClient = get(zeroClient$);
       const thread = await createChatThread(createClient, resolvedComposeId);
 
-      set(fetchZeroSessionList$);
+      set(reloadChatThreadList$, (n) => n + 1);
       set(navigateToZeroSession$, thread.id);
     } catch (error) {
       throwIfAbort(error);
@@ -1009,7 +996,7 @@ const ensureChatThread$ = command(
     const thread = await createChatThread(createClient, args.composeId, title);
 
     // Add the new thread to the session list so the sidebar updates immediately
-    set(fetchZeroSessionList$);
+    set(reloadChatThreadList$, (n) => n + 1);
     // Navigate so zeroSessionId$ (URL) reflects the new thread
     set(navigateToZeroSession$, thread.id);
 
@@ -1066,16 +1053,30 @@ const submitAndPollRun$ = command(
     signal.throwIfAborted();
 
     // Refresh sidebar after run is associated (has preview now)
-    set(fetchZeroSessionList$);
+    set(reloadChatThreadList$, (n) => n + 1);
 
     // Create reactive assistant message with its own runLoop
     const { assistantMessage } = createActiveRunMessage(runId, args.prompt);
     set(internalLocalMessages$, (prev) => [...prev, assistantMessage]);
 
-    await set(assistantMessage.beginLoop$!, signal);
+    const runLoop = assistantMessage.runLoop;
+    if (!runLoop) {
+      return;
+    }
 
-    // Run complete — extract session ID for conversation continuity
-    await set(onZeroRunComplete$, runId, signal);
+    await set(runLoop.beginLoop$, signal);
+
+    const client = get(zeroClient$)(zeroRunsByIdContract);
+    const result = await client.getById({ params: { id: runId } });
+    signal.throwIfAborted();
+    if (result.status === 200 && result.body.result?.agentSessionId) {
+      set(internalSessionId$, result.body.result.agentSessionId);
+    }
+
+    // Refresh session list (messages are persisted server-side via webhook)
+    set(reloadChatThreadList$, (n) => n + 1);
+    await delay(1000, { signal });
+    set(reloadChatThreadList$, (n) => n + 1);
   },
 );
 
@@ -1092,7 +1093,6 @@ export const sendZeroChatMessage$ = command(
       return;
     }
 
-    const sendSignal = set(resetSending$, signal);
     let currentPrompt = prompt;
     let currentOptions = options;
 
@@ -1110,7 +1110,7 @@ export const sendZeroChatMessage$ = command(
               fullPrompt,
               modelProvider: currentOptions?.modelProvider,
             },
-            sendSignal,
+            signal,
           );
         } catch (error) {
           throwIfAbort(error);
@@ -1191,38 +1191,6 @@ export const sendZeroChatMessage$ = command(
         };
         return updated;
       });
-    }
-  },
-);
-
-// ---------------------------------------------------------------------------
-// On run complete: extract session, update message
-// ---------------------------------------------------------------------------
-
-const onZeroRunComplete$ = command(
-  async ({ get, set }, runId: string, signal: AbortSignal) => {
-    try {
-      const client = get(zeroClient$)(zeroRunsByIdContract);
-      const result = await client.getById({ params: { id: runId } });
-      signal.throwIfAborted();
-      if (result.status === 200) {
-        // Store sessionId for conversation continuity (used by next message)
-        if (result.body.result?.agentSessionId) {
-          set(internalSessionId$, result.body.result.agentSessionId);
-        }
-      }
-
-      // Refresh session list (messages are persisted server-side via webhook)
-      set(fetchZeroSessionList$);
-
-      // Refresh again after a short delay so the AI-generated title (produced by
-      // the webhook's after() callback via OpenRouter) has time to land in the DB.
-      timeout(() => {
-        set(fetchZeroSessionList$);
-      }, 1000);
-    } catch (error) {
-      throwIfAbort(error);
-      L.error("Failed to fetch run result:", error);
     }
   },
 );

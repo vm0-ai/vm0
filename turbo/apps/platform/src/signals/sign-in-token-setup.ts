@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { clerk$ } from "./auth.ts";
-import { searchParams$, navigateTo$ } from "./route.ts";
+import { searchParams$, detachedNavigateTo$ } from "./route.ts";
 import { logger } from "./log.ts";
 
 const L = logger("SignInToken");
@@ -20,7 +20,7 @@ export const setupSignInTokenPage$ = command(
 
     if (!token) {
       L.error("Missing token parameter");
-      set(navigateTo$, "/", { replace: true });
+      set(detachedNavigateTo$, "/", { replace: true });
       return;
     }
 
@@ -29,7 +29,7 @@ export const setupSignInTokenPage$ = command(
 
     if (!clerk.client) {
       L.error("Clerk client not available");
-      set(navigateTo$, "/", { replace: true });
+      set(detachedNavigateTo$, "/", { replace: true });
       return;
     }
 
@@ -41,7 +41,7 @@ export const setupSignInTokenPage$ = command(
 
     if (result.status !== "complete" || !result.createdSessionId) {
       L.error("Unexpected sign-in status:", result.status);
-      set(navigateTo$, "/", { replace: true });
+      set(detachedNavigateTo$, "/", { replace: true });
       return;
     }
 
@@ -49,6 +49,6 @@ export const setupSignInTokenPage$ = command(
     signal.throwIfAborted();
 
     L.debug("Token sign-in complete, redirecting to /");
-    set(navigateTo$, "/", { replace: true });
+    set(detachedNavigateTo$, "/", { replace: true });
   },
 );

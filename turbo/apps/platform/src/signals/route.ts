@@ -147,7 +147,7 @@ export const navigate$ = command(
   },
 );
 
-export const navigateTo$ = command(
+export const detachedNavigateTo$ = command(
   (
     { set, get },
     pathname: Parameters<typeof generateRouterPath>[0],
@@ -223,7 +223,7 @@ export const setupAuthPageWrapper = (
 
       if (needsSelection) {
         L.debug("redirect to /select-org because org selection is needed");
-        set(navigateTo$, "/select-org");
+        set(detachedNavigateTo$, "/select-org");
         return;
       }
     }

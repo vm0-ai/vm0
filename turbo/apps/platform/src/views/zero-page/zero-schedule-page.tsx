@@ -43,7 +43,7 @@ import {
   type OrgScheduleEntry,
 } from "../../signals/zero-page/zero-schedule.ts";
 import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
-import { navigateTo$ } from "../../signals/route.ts";
+import { detachedNavigateTo$ } from "../../signals/route.ts";
 
 export type CombinedEntry = ScheduleEntry & {
   agentLabel: string;
@@ -409,7 +409,7 @@ export function ZeroSchedulePage() {
   const deleteSchedule = useSet(deleteOrgSchedule$);
   const runScheduleNow = useSet(runScheduleNow$);
   const pageSignal = useGet(pageSignal$);
-  const navigate = useSet(navigateTo$);
+  const navigate = useSet(detachedNavigateTo$);
 
   const [scheduleViewMode, setScheduleViewMode] = useState<"list" | "calendar">(
     "list",

@@ -3,7 +3,7 @@ import { createElement } from "react";
 import { OnboardingPage } from "../../views/onboarding-page/onboarding-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
-import { navigateTo$ } from "../route.ts";
+import { detachedNavigateTo$ } from "../route.ts";
 import {
   resetOnboardingStep$,
   zeroNeedsOnboarding$,
@@ -24,7 +24,7 @@ export const setupOnboardingPage$ = command(
     signal.throwIfAborted();
 
     if (!needsOnboarding && !needsMemberOnboarding) {
-      set(navigateTo$, "/", { replace: true });
+      set(detachedNavigateTo$, "/", { replace: true });
     }
   },
 );

@@ -1,7 +1,11 @@
 import { command } from "ccstate";
 import { setupClerk$ } from "./auth.ts";
 import { setRootSignal$ } from "./root-signal.ts";
-import { initRoutes$, navigateTo$, setupAuthPageWrapper } from "./route.ts";
+import {
+  initRoutes$,
+  detachedNavigateTo$,
+  setupAuthPageWrapper,
+} from "./route.ts";
 import { setupGlobalMethod$ } from "./bootstrap/global-method.ts";
 import { setupLoggers$ } from "./bootstrap/loggers.ts";
 import { setupSelectOrgPage$ } from "./select-org/select-org-page.ts";
@@ -31,7 +35,7 @@ import { setupSignInTokenPage$ } from "./sign-in-token-setup.ts";
  * sign-in round-trip before the redirect.
  */
 const setupNotFoundRedirect$ = command(({ set }) => {
-  set(navigateTo$, "/");
+  set(detachedNavigateTo$, "/");
 });
 
 const ROUTE_CONFIG = [
