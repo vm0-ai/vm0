@@ -104,18 +104,6 @@ export type ZeroOrgInviteContract = typeof zeroOrgInviteContract;
  * Zero contract for /api/zero/org/membership-requests
  */
 export const zeroOrgMembershipRequestsContract = c.router({
-  list: {
-    method: "GET",
-    path: "/api/zero/org/membership-requests",
-    headers: authHeadersSchema,
-    responses: {
-      200: orgMessageResponseSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "List pending membership requests (zero proxy)",
-  },
   accept: {
     method: "POST",
     path: "/api/zero/org/membership-requests",

@@ -57,10 +57,7 @@ export function OrgDomainsTab() {
       return;
     }
     const msg =
-      result.status === 400 ||
-      result.status === 401 ||
-      result.status === 403 ||
-      result.status === 500
+      result.status === 401 || result.status === 403 || result.status === 500
         ? result.body.error.message
         : undefined;
     toast.error(msg ?? `Failed to add domain (${result.status})`);
@@ -76,10 +73,7 @@ export function OrgDomainsTab() {
       return;
     }
     const msg =
-      result.status === 400 ||
-      result.status === 401 ||
-      result.status === 403 ||
-      result.status === 500
+      result.status === 401 || result.status === 403 || result.status === 500
         ? result.body.error.message
         : undefined;
     toast.error(msg ?? `Failed to remove domain (${result.status})`);

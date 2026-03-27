@@ -22,21 +22,27 @@ interface MembershipRequestData {
   created_at: number;
 }
 
-async function getClerkSecretKey(): Promise<string> {
+function getClerkSecretKey(): string {
   return globalThis.services.env.CLERK_SECRET_KEY;
 }
 
 async function fetchMembershipRequests(
   orgId: string,
 ): Promise<MembershipRequestData[]> {
-  const secretKey = await getClerkSecretKey();
+  const secretKey = getClerkSecretKey();
   const res = await fetch(
     `https://api.clerk.com/v1/organizations/${orgId}/membership_requests?status=pending`,
     {
       headers: { Authorization: `Bearer ${secretKey}` },
     },
   );
-  if (!res.ok) return [];
+  if (!res.ok) {
+    log.debug("Failed to fetch membership requests", {
+      orgId,
+      status: res.status,
+    });
+    return [];
+  }
   const body = (await res.json()) as { data: MembershipRequestData[] };
   return body.data ?? [];
 }
@@ -297,7 +303,7 @@ export async function acceptMembershipRequest(
     throw forbidden("Only admins can accept membership requests");
   }
 
-  const secretKey = await getClerkSecretKey();
+  const secretKey = getClerkSecretKey();
   const res = await fetch(
     `https://api.clerk.com/v1/organizations/${orgId}/membership_requests/${requestId}/accept`,
     {
@@ -327,7 +333,7 @@ export async function rejectMembershipRequest(
     throw forbidden("Only admins can reject membership requests");
   }
 
-  const secretKey = await getClerkSecretKey();
+  const secretKey = getClerkSecretKey();
   const res = await fetch(
     `https://api.clerk.com/v1/organizations/${orgId}/membership_requests/${requestId}/reject`,
     {

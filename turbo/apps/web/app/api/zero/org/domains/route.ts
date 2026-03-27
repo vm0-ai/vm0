@@ -15,11 +15,7 @@ import {
   addOrgDomain,
   removeOrgDomain,
 } from "../../../../../src/lib/org/org-member-service";
-import {
-  isBadRequest,
-  isForbidden,
-  isNotFound,
-} from "../../../../../src/lib/errors";
+import { isForbidden } from "../../../../../src/lib/errors";
 
 const router = tsr.router(zeroOrgDomainsContract, {
   list: async ({ headers }, { request }) => {
@@ -56,9 +52,6 @@ const router = tsr.router(zeroOrgDomainsContract, {
         body: { message: `Domain ${body.name} added` },
       };
     } catch (error) {
-      if (isBadRequest(error)) {
-        return createErrorResponse("BAD_REQUEST", "Invalid request");
-      }
       if (isForbidden(error)) {
         return createErrorResponse("FORBIDDEN", "Access denied");
       }
@@ -81,14 +74,8 @@ const router = tsr.router(zeroOrgDomainsContract, {
         body: { message: "Domain removed" },
       };
     } catch (error) {
-      if (isBadRequest(error)) {
-        return createErrorResponse("BAD_REQUEST", "Invalid request");
-      }
       if (isForbidden(error)) {
         return createErrorResponse("FORBIDDEN", "Access denied");
-      }
-      if (isNotFound(error)) {
-        return createErrorResponse("NOT_FOUND", "Resource not found");
       }
       throw error;
     }

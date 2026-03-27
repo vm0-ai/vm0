@@ -17,35 +17,9 @@ import {
   acceptMembershipRequest,
   rejectMembershipRequest,
 } from "../../../../../src/lib/org/org-member-service";
-import {
-  isBadRequest,
-  isForbidden,
-  isNotFound,
-} from "../../../../../src/lib/errors";
+import { isBadRequest, isForbidden } from "../../../../../src/lib/errors";
 
 const router = tsr.router(zeroOrgMembershipRequestsContract, {
-  list: async ({ headers }, { request }) => {
-    initServices();
-
-    const authCtx = await requireAuth(headers.authorization);
-    if (isAuthError(authCtx)) return authCtx;
-
-    try {
-      const orgSlug = new URL(request.url).searchParams.get("org");
-      await resolveOrg(authCtx, orgSlug);
-      // Membership requests are already returned in the members endpoint
-      return {
-        status: 200 as const,
-        body: { message: "Use GET /api/zero/org/members for full data" },
-      };
-    } catch (error) {
-      if (isForbidden(error)) {
-        return createErrorResponse("FORBIDDEN", "Access denied");
-      }
-      throw error;
-    }
-  },
-
   accept: async ({ headers, body }, { request }) => {
     initServices();
 
@@ -66,9 +40,6 @@ const router = tsr.router(zeroOrgMembershipRequestsContract, {
       }
       if (isForbidden(error)) {
         return createErrorResponse("FORBIDDEN", "Access denied");
-      }
-      if (isNotFound(error)) {
-        return createErrorResponse("NOT_FOUND", "Resource not found");
       }
       throw error;
     }
@@ -95,9 +66,6 @@ const router = tsr.router(zeroOrgMembershipRequestsContract, {
       if (isForbidden(error)) {
         return createErrorResponse("FORBIDDEN", "Access denied");
       }
-      if (isNotFound(error)) {
-        return createErrorResponse("NOT_FOUND", "Resource not found");
-      }
       throw error;
     }
   },
@@ -107,4 +75,4 @@ const handler = createHandler(zeroOrgMembershipRequestsContract, router, {
   errorHandler: createSafeErrorHandler("zero-org-membership-requests"),
 });
 
-export { handler as GET, handler as POST, handler as DELETE };
+export { handler as POST, handler as DELETE };
