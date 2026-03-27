@@ -186,10 +186,9 @@ teardown_file() {
 }
 
 @test "connector: add firecrawl and save" {
-  # Click Connectors tab using ref-based approach
+  # Connectors tab is already selected by default after navigating to agent settings
   echo "# Testing connector: add Firecrawl..." >&3
-  click_tab "Connectors"
-  agent-browser wait 1000
+  wait_for_text "Add connector" 10
   step_screenshot "connector-before"
 
   # Click "Add connector"
@@ -276,29 +275,27 @@ teardown_file() {
   click_tab "Instructions"
   agent-browser wait 2000
 
-  # Wait for instructions editor to load
-  local editor_loaded=false
-  for _i in $(seq 1 15); do
-    local snap
-    snap=$(full_snapshot)
-    if contains "$snap" "Write instructions for your agent"; then
-      editor_loaded=true
+  # Wait for instructions editor to load (Tiptap renders a textbox element).
+  # The placeholder "Write instructions for your agent..." is CSS-only
+  # (data-placeholder + ::before) and does not appear in accessibility snapshots.
+  local editor_ref=""
+  for _i in $(seq 1 20); do
+    local snap_i
+    snap_i=$(agent-browser snapshot -i)
+    editor_ref=$(echo "$snap_i" | grep -E 'textbox|paragraph.*ProseMirror' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+    if [[ -n "$editor_ref" ]]; then
       break
     fi
     sleep 1
   done
   step_screenshot "instructions-before"
-  assert [ "$editor_loaded" = "true" ]
-
-  # Click on the editor area to focus it using interactive snapshot
-  local snap_i ref
-  snap_i=$(agent-browser snapshot -i)
-  ref=$(echo "$snap_i" | grep -i "contenteditable\|tiptap\|ProseMirror\|Write instructions" | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
-  if [[ -z "$ref" ]]; then
+  if [[ -z "$editor_ref" ]]; then
     echo "# Failed to find instructions editor element ref" >&3
     return 1
   fi
-  agent-browser click "$ref"
+
+  # Click on the editor area to focus it
+  agent-browser click "$editor_ref"
   agent-browser wait 500
 
   # Type test content
