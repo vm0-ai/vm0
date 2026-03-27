@@ -22,6 +22,7 @@ import { setupChatSessionPage$ } from "./zero-page/chat-session-page-setup.ts";
 import { setupInternalConnectorLogos$ } from "./internal-connector-logos-setup.ts";
 import { setupOnboardingPage$ } from "./onboarding-page/onboarding-page-setup.ts";
 import { setupIdeationPage$ } from "./zero-page/ideation-page-setup.ts";
+import { setupConnectorsPage$ } from "./connectors-page/connectors-page-setup.ts";
 import { setupSignInTokenPage$ } from "./sign-in-token-setup.ts";
 
 /**
@@ -94,6 +95,14 @@ const ROUTE_CONFIG = [
   {
     path: "/usage",
     setup: setupAuthPageWrapper(setupUsagePage$),
+  },
+  {
+    path: "/ideas",
+    setup: setupAuthPageWrapper(setupIdeationPage$),
+  },
+  {
+    path: "/connectors",
+    setup: setupAuthPageWrapper(setupConnectorsPage$),
   },
   {
     path: "/onboarding",

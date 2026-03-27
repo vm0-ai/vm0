@@ -47,16 +47,6 @@ export function ZeroTalkPage() {
   const startNewSession = useSet(startNewZeroSession$);
   const resetTalkSendSignal = useSet(resetTalkSendSignal$);
 
-  const handleNavigateToMeet = (tab?: string) => {
-    if (resolvedAgentId) {
-      const searchParams = tab ? new URLSearchParams({ tab }) : undefined;
-      navigateTo("/team/:agentId", {
-        pathParams: { agentId: resolvedAgentId },
-        searchParams,
-      });
-    }
-  };
-
   const handleChatAvatarClick = () => {
     if (resolvedAgentId) {
       navigateTo("/team/:agentId", {
@@ -82,7 +72,6 @@ export function ZeroTalkPage() {
     <SidebarLayout>
       <ZeroChatPage
         onSendMessage={handleSendMessage}
-        onNavigateToMeet={handleNavigateToMeet}
         zeroAvatarSrc={chatAvatarSrc}
         chatAgentName={chatAgentName}
         onAvatarClick={handleChatAvatarClick}

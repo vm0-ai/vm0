@@ -14,7 +14,7 @@ const L = logger("ZeroConnectors");
 // Agent name resolution
 // ---------------------------------------------------------------------------
 
-const zeroAgentId$ = computed(async (get) => {
+export const zeroAgentId$ = computed(async (get) => {
   const agentId = get(zeroTalkAgentId$);
   if (agentId !== null) {
     return agentId;
@@ -75,6 +75,18 @@ export const addZeroConnector$ = command(
       set(internalAddedConnectors$, await get(seededConnectors$));
     }
     set(internalAddedConnectors$, (prev) => [...(prev ?? []), name]);
+  },
+);
+
+/** Remove a connector (local only, no compose job). */
+export const removeZeroConnector$ = command(
+  async ({ get, set }, name: string, _signal: AbortSignal) => {
+    if (get(internalAddedConnectors$) === null) {
+      set(internalAddedConnectors$, await get(seededConnectors$));
+    }
+    set(internalAddedConnectors$, (prev) =>
+      (prev ?? []).filter((n) => n !== name),
+    );
   },
 );
 

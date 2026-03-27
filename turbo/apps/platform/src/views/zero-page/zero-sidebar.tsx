@@ -25,6 +25,7 @@ import {
   IconEdit,
   IconLayoutSidebarLeftCollapse,
   IconDatabaseExport,
+  IconPlug,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey, type ChatThreadListItem } from "@vm0/core";
 import {
@@ -115,12 +116,14 @@ export type ZeroNavId =
   | "works"
   | "usage"
   | "preferences"
+  | "connectors"
   | "queue"
   | "not-found";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 const MANAGE_NAV = [
   { id: "team", label: "Agents", icon: IconUsers as NavIcon },
+  { id: "connectors", label: "Connectors", icon: IconPlug as NavIcon },
   { id: "schedule", label: "Scheduled", icon: IconCalendar as NavIcon },
   { id: "activity", label: "Activity logs", icon: IconChartLine as NavIcon },
 ] as const;
@@ -992,10 +995,12 @@ export function ZeroSidebar() {
                             ? "/"
                             : id === "team"
                               ? "/team"
-                              : "/:tab"
+                              : id === "connectors"
+                                ? "/connectors"
+                                : "/:tab"
                         }
                         options={
-                          id === "chat" || id === "team"
+                          id === "chat" || id === "team" || id === "connectors"
                             ? undefined
                             : { pathParams: { tab: id } }
                         }
@@ -1078,9 +1083,17 @@ export function ZeroSidebar() {
               {manageNav.map(({ id, label, icon: Icon }) => (
                 <Link
                   key={id}
-                  pathname={id === "team" ? "/team" : "/:tab"}
+                  pathname={
+                    id === "team"
+                      ? "/team"
+                      : id === "connectors"
+                        ? "/connectors"
+                        : "/:tab"
+                  }
                   options={
-                    id === "team" ? undefined : { pathParams: { tab: id } }
+                    id === "team" || id === "connectors"
+                      ? undefined
+                      : { pathParams: { tab: id } }
                   }
                   onClick={(e) => {
                     if (e.metaKey || e.ctrlKey || e.shiftKey) {

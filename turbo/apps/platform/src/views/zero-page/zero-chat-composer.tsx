@@ -1,7 +1,8 @@
-import { useState, type ChangeEvent } from "react";
+import type { ChangeEvent } from "react";
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import {
   IconArrowUp,
+  IconArrowUpRight,
   IconPaperclip,
   IconPlayerStop,
   IconPlug,
@@ -21,6 +22,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Switch,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -50,7 +52,6 @@ import {
 } from "./components/settings/add-connection-dialog.tsx";
 import {
   allConnectorTypes$,
-  connectConnector$,
   selectedConnectorType$,
   setSelectedConnectorType$,
   justConnectedTypes$,
@@ -60,8 +61,11 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   zeroAddedConnectors$,
   addZeroConnector$,
+  removeZeroConnector$,
   saveZeroConnectors$,
+  zeroAgentId$,
 } from "../../signals/zero-page/zero-connectors.ts";
+import { navigateTo$ } from "../../signals/route.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 
 // ---------------------------------------------------------------------------
@@ -80,8 +84,6 @@ interface ZeroChatComposerProps {
   /** Withdraw the queued message back into the input for editing. */
   onWithdraw?: () => void;
   displayName: string;
-  /** Navigate to connectors management page. */
-  onManageConnectors?: () => void;
   className?: string;
   /** Auto-focus the textarea when mounted. */
   autoFocus?: boolean;
@@ -137,24 +139,6 @@ function resolveConnectorLabel(
   return connectorMap.get(type as ConnectorType)?.label ?? type;
 }
 
-function startConnectorFlow(
-  type: string,
-  connectorMap: Map<ConnectorType, { availableAuthMethods: string[] }>,
-  setSelectedType: (t: ConnectorType | null) => void,
-  connect: (t: ConnectorType, signal: AbortSignal) => Promise<boolean>,
-  signal: AbortSignal,
-) {
-  const ct = connectorMap.get(type as ConnectorType);
-  if (!ct) {
-    return;
-  }
-  if (ct.availableAuthMethods.includes("api-token")) {
-    setSelectedType(type as ConnectorType);
-  } else {
-    detach(connect(type as ConnectorType, signal), Reason.DomCallback);
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Connector sub-components
 // ---------------------------------------------------------------------------
@@ -184,90 +168,25 @@ function ConnectorTriggerIcons({
   );
 }
 
-function ConnectorRow({
-  item,
-  action,
-  tooltip,
-}: {
-  item: ComposerConnectorItem;
-  action?: { label: string; onClick: () => void };
-  tooltip?: string;
-}) {
-  const [hoverTooltipOpen, setHoverTooltipOpen] = useState(false);
-
-  const row = (
-    <div
-      className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 transition-colors"
-      {...(tooltip
-        ? {
-            onPointerEnter: () => setHoverTooltipOpen(true),
-            onPointerLeave: () => setHoverTooltipOpen(false),
-          }
-        : {})}
-    >
-      <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-        <ConnectorIcon type={item.type as ConnectorType} size={16} />
-      </span>
-      <span
-        className={cn(
-          "text-sm flex-1 truncate",
-          item.connected ? "text-foreground" : "text-muted-foreground",
-        )}
-      >
-        {item.label}
-      </span>
-      {action && (
-        <button
-          type="button"
-          className="shrink-0 rounded-md border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-          onClick={(e) => {
-            e.stopPropagation();
-            action.onClick();
-          }}
-        >
-          {action.label}
-        </button>
-      )}
-    </div>
-  );
-
-  if (!tooltip) {
-    return row;
-  }
-
-  return (
-    <Tooltip
-      delayDuration={0}
-      disableHoverableContent
-      open={hoverTooltipOpen}
-      onOpenChange={(next) => {
-        if (!next) {
-          setHoverTooltipOpen(false);
-        }
-      }}
-    >
-      <TooltipTrigger asChild>{row}</TooltipTrigger>
-      <TooltipContent side="right" className="max-w-[200px] text-xs">
-        {tooltip}
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
 function ConnectorsPopoverButton({
   agentConnectors,
+  allOrgConnectors,
+  addedSet,
+  onToggleConnector,
   onOpenAddDialog,
-  onConnect,
-  onManageConnectors,
-  displayName,
+  onNavigateToAuthorization,
 }: {
   agentConnectors: ComposerConnectorItem[];
+  allOrgConnectors: { type: string; label: string; connected: boolean }[];
+  addedSet: Set<string>;
+  onToggleConnector: (type: string, enabled: boolean) => void;
   onOpenAddDialog: () => void;
-  onConnect: (type: string) => void;
-  onManageConnectors?: () => void;
-  displayName: string;
+  onNavigateToAuthorization?: () => void;
 }) {
-  const hasAgentConnectors = agentConnectors.length > 0;
+  const orgConnected = allOrgConnectors.filter((c) => c.connected);
+  const hasOrgConnected = orgConnected.length > 0;
+  const visibleConnected = orgConnected.slice(0, 20);
+  const hasMore = orgConnected.length > 20 && !!onNavigateToAuthorization;
   return (
     <Popover>
       <TooltipProvider delayDuration={300}>
@@ -288,48 +207,60 @@ function ConnectorsPopoverButton({
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
-      <PopoverContent side="top" align="start" className="w-64 p-0 rounded-lg">
-        {hasAgentConnectors && (
-          <TooltipProvider delayDuration={400}>
-            <div
-              className="max-h-[200px] overflow-y-auto py-1 pl-1"
-              style={{ scrollbarWidth: "thin" }}
-            >
-              <div className="px-2 pt-1 pb-1">
-                <span className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider">
-                  Connectors used by {displayName}
-                </span>
-              </div>
-              <div className="flex flex-col">
-                {agentConnectors.map((item) => (
-                  <ConnectorRow
-                    key={item.type}
-                    item={item}
-                    action={
-                      item.connected
-                        ? undefined
-                        : {
-                            label: "Connect",
-                            onClick: () => onConnect(item.type),
-                          }
-                    }
-                    tooltip={
-                      item.connected
-                        ? undefined
-                        : "This connector is used by the agent but not connected. Click Connect to set it up, or go to Manage connectors for bulk setup."
-                    }
+      <PopoverContent side="top" align="start" className="w-72 p-0 rounded-lg">
+        {hasOrgConnected ? (
+          <div
+            className="max-h-[240px] overflow-y-auto py-1"
+            style={{ scrollbarWidth: "thin" }}
+          >
+            <div className="flex flex-col">
+              {visibleConnected.map((c) => {
+                const granted = addedSet.has(c.type);
+                return (
+                  <label
+                    key={c.type}
+                    className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-accent transition-colors"
+                  >
+                    <ConnectorIcon type={c.type as ConnectorType} size={18} />
+                    <span className="flex-1 min-w-0 text-sm text-foreground truncate">
+                      {c.label}
+                    </span>
+                    <Switch
+                      size="sm"
+                      checked={granted}
+                      onCheckedChange={(checked) =>
+                        onToggleConnector(c.type, checked)
+                      }
+                    />
+                  </label>
+                );
+              })}
+              {hasMore && (
+                <button
+                  type="button"
+                  className="flex items-center gap-2.5 px-3 py-2 hover:bg-accent transition-colors text-left"
+                  onClick={onNavigateToAuthorization}
+                >
+                  <IconArrowUpRight
+                    size={18}
+                    stroke={1.5}
+                    className="shrink-0 text-muted-foreground"
                   />
-                ))}
-              </div>
+                  <span className="flex-1 min-w-0 text-sm text-foreground truncate">
+                    View all {orgConnected.length}
+                  </span>
+                </button>
+              )}
             </div>
-          </TooltipProvider>
+          </div>
+        ) : (
+          <div className="px-3 py-3">
+            <p className="text-xs text-muted-foreground">
+              No connected services yet.
+            </p>
+          </div>
         )}
-        <div
-          className={cn(
-            "p-1 flex flex-col",
-            hasAgentConnectors && "border-t border-border/50",
-          )}
-        >
+        <div className="p-1 border-t border-border/50">
           <button
             type="button"
             className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md text-sm text-foreground hover:bg-accent transition-colors"
@@ -340,22 +271,8 @@ function ConnectorsPopoverButton({
               stroke={1.5}
               className="shrink-0 text-muted-foreground"
             />
-            Add connector
+            Browse more connectors
           </button>
-          {onManageConnectors && (
-            <button
-              type="button"
-              className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md text-sm text-foreground hover:bg-accent transition-colors"
-              onClick={onManageConnectors}
-            >
-              <IconPlug
-                size={18}
-                stroke={1.5}
-                className="shrink-0 text-muted-foreground"
-              />
-              Manage connectors in {displayName}
-            </button>
-          )}
         </div>
       </PopoverContent>
     </Popover>
@@ -375,7 +292,6 @@ export function ZeroChatComposer({
   queuedMessage,
   onWithdraw,
   displayName,
-  onManageConnectors,
   className,
   autoFocus,
 }: ZeroChatComposerProps) {
@@ -397,10 +313,15 @@ export function ZeroChatComposer({
   const { modelOptions, selectedModel, setSelectedModel, persistSelection } =
     useModelSelection();
 
+  // Navigation
+  const navigateTo = useSet(navigateTo$);
+  const agentIdLoadable = useLastLoadable(zeroAgentId$);
+  const resolvedAgentId =
+    agentIdLoadable.state === "hasData" ? agentIdLoadable.data : null;
+
   // Connectors
   const allTypesLoadable = useLastLoadable(allConnectorTypes$);
   const addedConnectorsLoadable = useLastLoadable(zeroAddedConnectors$);
-  const connectConnector = useSet(connectConnector$);
   const pageSignal = useGet(pageSignal$);
   const selectedConnType = useGet(selectedConnectorType$);
   const setSelectedConnType = useSet(setSelectedConnectorType$);
@@ -420,6 +341,10 @@ export function ZeroChatComposer({
       ? addedConnectorsLoadable.data
       : [];
   const addedSet = new Set(addedConnectors);
+  const connectedTypes = new Set(
+    allConnectors.filter((c) => c.connected).map((c) => c.type),
+  );
+  const dialogExcludeTypes = new Set([...addedSet, ...connectedTypes]);
 
   const agentConnectors: ComposerConnectorItem[] = addedConnectors
     .filter((name) => connectorMap.has(name as ConnectorType))
@@ -443,14 +368,34 @@ export function ZeroChatComposer({
     );
   };
 
-  const handleConnectConnector = (type: string) =>
-    startConnectorFlow(
-      type,
-      connectorMap,
-      setSelectedConnType,
-      connectConnector,
-      pageSignal,
-    );
+  const removeConnector = useSet(removeZeroConnector$);
+  const handleToggleConnector = (type: string, enabled: boolean) => {
+    if (enabled) {
+      detach(
+        (async () => {
+          await addConnector(type, pageSignal);
+          try {
+            await saveConnectors(pageSignal);
+          } catch (error) {
+            throwIfAbort(error);
+          }
+        })(),
+        Reason.DomCallback,
+      );
+    } else {
+      detach(
+        (async () => {
+          await removeConnector(type, pageSignal);
+          try {
+            await saveConnectors(pageSignal);
+          } catch (error) {
+            throwIfAbort(error);
+          }
+        })(),
+        Reason.DomCallback,
+      );
+    }
+  };
 
   // Send (or queue if agent is busy — parent decides)
   const handleSend = () => {
@@ -575,10 +520,18 @@ export function ZeroChatComposer({
                 </button>
                 <ConnectorsPopoverButton
                   agentConnectors={agentConnectors}
+                  allOrgConnectors={allConnectors}
+                  addedSet={addedSet}
+                  onToggleConnector={handleToggleConnector}
                   onOpenAddDialog={() => setAddDialogOpen(true)}
-                  onConnect={handleConnectConnector}
-                  onManageConnectors={onManageConnectors}
-                  displayName={displayName}
+                  onNavigateToAuthorization={
+                    resolvedAgentId
+                      ? () =>
+                          navigateTo("/team/:id", {
+                            pathParams: { id: resolvedAgentId },
+                          })
+                      : undefined
+                  }
                 />
               </div>
               <div className="flex items-center gap-2">
@@ -629,7 +582,7 @@ export function ZeroChatComposer({
         open={addDialogOpen}
         onOpenChange={setAddDialogOpen}
         variant="zero"
-        excludeTypes={addedSet}
+        excludeTypes={dialogExcludeTypes}
         onConnectSuccess={handleConnectSuccess}
         onAdd={handleConnectSuccess}
         displayName={displayName}
