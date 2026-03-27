@@ -40,15 +40,17 @@ wait_for_no_unsaved_bar() {
 
 # ---------------------------------------------------------------------------
 # click_save_on_unsaved_bar — Click the Save button on the unsaved bar
-# Uses interactive snapshot to find the correct Save button ref
+# The unsaved bar's Save button appears as a top-level button in the
+# interactive snapshot (outside the main page element).
 # ---------------------------------------------------------------------------
 click_save_on_unsaved_bar() {
   local snap_i ref
   snap_i=$(agent-browser snapshot -i)
-  # Find Save button near "unsaved changes" context
-  ref=$(echo "$snap_i" | grep -A5 -i "unsaved changes" | grep -oE '\[ref=e[0-9]+\]' | tail -1 | sed 's/\[ref=/@/; s/\]//')
+  # The unsaved bar Save button is a top-level button "Save" (not nested inside
+  # the main page generic element). Match the first top-level Save button.
+  ref=$(echo "$snap_i" | grep -E '^- button "Save"' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
   if [[ -z "$ref" ]]; then
-    echo "# Failed to find Save button ref near unsaved changes bar" >&3
+    echo "# Failed to find Save button ref on unsaved bar" >&3
     return 1
   fi
   agent-browser click "$ref"
@@ -56,12 +58,20 @@ click_save_on_unsaved_bar() {
 
 # ---------------------------------------------------------------------------
 # click_tab — Click a tab by its text label
-# Waits for the tab text to appear, then clicks it via text-based find.
+# Uses interactive snapshot to find the tab ref, since agent-browser find text
+# does not match tab role elements.
 # ---------------------------------------------------------------------------
 click_tab() {
   local tab_text="$1"
   wait_for_text "$tab_text" 10
-  agent-browser find text "$tab_text" click
+  local snap_i ref
+  snap_i=$(agent-browser snapshot -i)
+  ref=$(echo "$snap_i" | grep -E "tab \"${tab_text}\"" | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+  if [[ -z "$ref" ]]; then
+    echo "# Failed to find tab ref for '${tab_text}'" >&3
+    return 1
+  fi
+  agent-browser click "$ref"
 }
 
 setup_file() {
