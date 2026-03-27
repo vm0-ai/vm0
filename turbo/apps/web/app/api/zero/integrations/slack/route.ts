@@ -334,9 +334,8 @@ function buildScopeFields(
   orgId: string,
   userId: string,
 ): { scopeMismatch: boolean; reinstallUrl: string | null } {
-  const stored: string[] | null = storedBotScopes
-    ? JSON.parse(storedBotScopes)
-    : null;
+  const parsed: unknown = storedBotScopes ? JSON.parse(storedBotScopes) : null;
+  const stored: string[] | null = Array.isArray(parsed) ? parsed : null;
   const scopeMismatch = !hasAllBotScopes(stored);
 
   let reinstallUrl: string | null = null;

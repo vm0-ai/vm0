@@ -188,7 +188,7 @@ export async function exchangeOAuthCode(
     teamId: result.team.id ?? "",
     teamName: result.team.name ?? "",
     authedUserId: result.authed_user?.id ?? "",
-    scope: (result.scope as string | undefined) ?? "",
+    scope: typeof result.scope === "string" ? result.scope : "",
   };
 }
 

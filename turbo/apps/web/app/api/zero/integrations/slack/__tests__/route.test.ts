@@ -271,16 +271,24 @@ describe("/api/zero/integrations/slack", () => {
       // Verify App Home was published (views.publish called)
       expect(mockClient.views.publish).toHaveBeenCalled();
 
-      // Verify the view shows "not installed" state
+      // Verify the view shows "not installed" state by checking for the
+      // "Open Zero Settings" action button (only present when isInstalled=false)
       const publishCall = mockClient.views.publish.mock.calls[0]?.[0] as
         | Record<string, unknown>
         | undefined;
       expect(publishCall).toBeDefined();
       const view = publishCall!.view as {
-        blocks: Array<{ text?: { text?: string } }>;
+        blocks: Array<{
+          type?: string;
+          elements?: Array<{ action_id?: string }>;
+        }>;
       };
-      const blockTexts = view.blocks.map((b) => b.text?.text ?? "").join(" ");
-      expect(blockTexts).toContain("not installed");
+      const hasSettingsAction = view.blocks.some(
+        (b) =>
+          b.type === "actions" &&
+          b.elements?.some((e) => e.action_id === "home_open_settings"),
+      );
+      expect(hasSettingsAction).toBe(true);
 
       // Verify installation was deleted after publishing
       const installation = await findTestSlackOrgInstallation(workspaceId);

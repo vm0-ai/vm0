@@ -24,6 +24,7 @@ function mockOAuthSuccess(overrides?: {
   teamId?: string;
   teamName?: string;
   authedUserId?: string;
+  scope?: string;
 }) {
   const mockClient = vi.mocked(new WebClient(), true);
   mockClient.oauth.v2.access.mockResolvedValueOnce({
@@ -35,6 +36,7 @@ function mockOAuthSuccess(overrides?: {
       name: overrides?.teamName ?? "Test Workspace",
     },
     authed_user: { id: overrides?.authedUserId ?? "U-installer" },
+    scope: overrides?.scope ?? undefined,
   } as never);
   return mockClient;
 }
@@ -438,5 +440,119 @@ describe("/api/zero/slack/oauth/callback", () => {
       workspaceId,
     );
     expect(connections).toHaveLength(1);
+  });
+
+  it("should persist botScopes on first install", async () => {
+    const adminUserId = uniqueId("admin");
+    const orgId = uniqueId("org");
+    const workspaceId = uniqueId("ws");
+
+    mockClerk({
+      userId: adminUserId,
+      clerkOrgs: [{ id: orgId, slug: orgId, name: orgId }],
+    });
+    await createTestOrg(orgId);
+
+    mockOAuthSuccess({
+      teamId: workspaceId,
+      authedUserId: "U-slack-admin",
+      scope: "chat:write,channels:read,users:read",
+    });
+
+    const state = JSON.stringify({ orgId, vm0UserId: adminUserId });
+    const request = createTestRequest(
+      `http://localhost:3000/api/zero/slack/oauth/callback?code=valid-code&state=${encodeURIComponent(state)}`,
+    );
+    await GET(request);
+
+    const installation = await findTestSlackOrgInstallation(workspaceId);
+    expect(installation).toBeDefined();
+    expect(installation!.botScopes).toBe(
+      JSON.stringify(["chat:write", "channels:read", "users:read"]),
+    );
+  });
+
+  it("should persist botScopes on re-install", async () => {
+    const adminUserId = uniqueId("admin");
+    const orgId = uniqueId("org");
+    const workspaceId = uniqueId("ws");
+
+    mockClerk({
+      userId: adminUserId,
+      clerkOrgs: [{ id: orgId, slug: orgId, name: orgId }],
+    });
+    await createTestOrg(orgId);
+
+    // First install with partial scopes
+    mockOAuthSuccess({
+      teamId: workspaceId,
+      authedUserId: "U-slack-admin",
+      scope: "chat:write",
+    });
+
+    const state = JSON.stringify({ orgId, vm0UserId: adminUserId });
+    const firstRequest = createTestRequest(
+      `http://localhost:3000/api/zero/slack/oauth/callback?code=first-code&state=${encodeURIComponent(state)}`,
+    );
+    await GET(firstRequest);
+
+    // Re-install with expanded scopes
+    mockOAuthSuccess({
+      teamId: workspaceId,
+      authedUserId: "U-slack-admin",
+      scope: "chat:write,channels:read,users:read",
+    });
+
+    const reinstateState = JSON.stringify({
+      orgId,
+      vm0UserId: adminUserId,
+      reinstall: true,
+    });
+    const secondRequest = createTestRequest(
+      `http://localhost:3000/api/zero/slack/oauth/callback?code=second-code&state=${encodeURIComponent(reinstateState)}`,
+    );
+    await GET(secondRequest);
+
+    const installation = await findTestSlackOrgInstallation(workspaceId);
+    expect(installation).toBeDefined();
+    expect(installation!.botScopes).toBe(
+      JSON.stringify(["chat:write", "channels:read", "users:read"]),
+    );
+  });
+
+  it("should redirect to /?tab=works&updated=1 when reinstall flag is set", async () => {
+    const adminUserId = uniqueId("admin");
+    const orgId = uniqueId("org");
+    const workspaceId = uniqueId("ws");
+
+    mockClerk({
+      userId: adminUserId,
+      clerkOrgs: [{ id: orgId, slug: orgId, name: orgId }],
+    });
+    await createTestOrg(orgId);
+
+    // First install to create an existing record (makes isReinstall=true)
+    mockOAuthSuccess({ teamId: workspaceId, authedUserId: "U-admin" });
+    const state = JSON.stringify({ orgId, vm0UserId: adminUserId });
+    const firstRequest = createTestRequest(
+      `http://localhost:3000/api/zero/slack/oauth/callback?code=first-code&state=${encodeURIComponent(state)}`,
+    );
+    await GET(firstRequest);
+
+    // Re-install with reinstall flag in state
+    mockOAuthSuccess({ teamId: workspaceId, authedUserId: "U-admin" });
+    const reinstallState = JSON.stringify({
+      orgId,
+      vm0UserId: adminUserId,
+      reinstall: true,
+    });
+    const secondRequest = createTestRequest(
+      `http://localhost:3000/api/zero/slack/oauth/callback?code=second-code&state=${encodeURIComponent(reinstallState)}`,
+    );
+    const response = await GET(secondRequest);
+
+    expect(response.status).toBe(307);
+    const location = response.headers.get("Location");
+    expect(location).toContain("/?tab=works&updated=1");
   });
 });
