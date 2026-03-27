@@ -47,8 +47,23 @@ teardown_file() {
 }
 
 @test "navigate to team page and verify lead agent" {
-  echo "# Navigating to /team page..." >&3
-  navigate_to_app_page "/team"
+  echo "# Navigating to /team page via sidebar Agents link (SPA navigation)..." >&3
+  # Prefer clicking the sidebar Agents link for client-side (SPA) navigation.
+  # Full-page navigation (agent-browser open /team) can produce an empty
+  # accessibility snapshot under parallel CI load; SPA navigation avoids this.
+  local nav_ok=false
+  for _i in $(seq 1 10); do
+    if agent-browser find role link click --name "Agents" 2>/dev/null; then
+      nav_ok=true
+      break
+    fi
+    sleep 1
+  done
+  if [[ "$nav_ok" != "true" ]]; then
+    echo "# Sidebar link not found, falling back to navigate_to_app_page..." >&3
+    navigate_to_app_page "/team"
+  fi
+  agent-browser wait 2000
   step_screenshot "team-page-initial"
 
   # Wait for Lead badge — workspace setup may still be in progress after onboarding.
@@ -56,7 +71,7 @@ teardown_file() {
   echo "# Waiting for Lead agent badge..." >&3
   local lead_found=false
   for _attempt in 1 2 3; do
-    if wait_for_text "Lead" 30; then
+    if wait_for_text "Lead" 40; then
       lead_found=true
       break
     fi

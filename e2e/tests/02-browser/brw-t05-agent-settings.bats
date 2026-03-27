@@ -206,17 +206,16 @@ teardown_file() {
   wait_for_text "Connectors" 40
   step_screenshot "agent-detail"
 
-  # Verify all tabs are visible (non-default agent shows all tabs)
-  local snap
-  snap=$(full_snapshot)
-  contains "$snap" "Connectors"
-  contains "$snap" "Profile"
-  contains "$snap" "Instructions"
+  # Verify all tabs are visible (non-default agent shows all tabs).
+  # Use wait_for_text instead of a single full_snapshot to handle transient
+  # re-renders between the wait_for_text above and the assertions below.
+  wait_for_text "Profile" 10
+  wait_for_text "Instructions" 10
 
   # Wait for Connectors tab content to fully load (the "Add connector" button
   # loads async after the tab labels appear). Save URL so later tests can
   # navigate back if needed.
-  wait_for_text "Add connector" 30
+  wait_for_text "Add connector" 45
   AGENT_SETTINGS_URL=$(agent-browser get url 2>/dev/null || true)
   export AGENT_SETTINGS_URL
   echo "# Agent settings page loaded with all tabs (URL: $AGENT_SETTINGS_URL)" >&3

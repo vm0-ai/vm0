@@ -42,9 +42,23 @@ teardown_file() {
 }
 
 @test "navigate to schedule page and open creation dialog" {
-  echo "# Navigating to schedule page..." >&3
-  agent-browser open "${APP_URL}/schedule" --ignore-https-errors
-  agent-browser wait 3000
+  echo "# Navigating to schedule page via sidebar Scheduled link (SPA navigation)..." >&3
+  # Prefer sidebar SPA navigation to avoid full-page reload issues under parallel CI load.
+  local nav_ok=false
+  for _i in $(seq 1 10); do
+    if agent-browser find role link click --name "Scheduled" 2>/dev/null; then
+      nav_ok=true
+      break
+    fi
+    sleep 1
+  done
+  if [[ "$nav_ok" != "true" ]]; then
+    echo "# Sidebar link not found, falling back to direct navigation..." >&3
+    agent-browser open "${APP_URL}/schedule" --ignore-https-errors
+    agent-browser wait 3000
+  else
+    agent-browser wait 2000
+  fi
 
   # Wait for schedule page to load. Under parallel CI load snapshots can be
   # slow (~2-3s each), so use a reload-based retry to stay within test timeout.
@@ -59,21 +73,21 @@ teardown_file() {
     agent-browser wait 5000
   done
   assert [ "$schedule_found" = "true" ]
+
+  # Wait for any global loading overlay to clear before clicking buttons.
+  # The page may show "Loading your workspace..." while the org data loads;
+  # buttons underneath the overlay cannot be clicked until it disappears.
+  wait_for_text_gone "Loading your workspace" 30 || true
   step_screenshot "schedule-page"
 
-  # Click "Add schedule" button — use ref-based approach for reliability
-  # (role/name find can miss buttons with composite content like icons)
+  # Click "Add schedule" — try role-based find first (more reliable under load),
+  # then fall back to interactive snapshot ref-based click.
   echo "# Clicking Add schedule..." >&3
   local btn_clicked=false
-  for _i in $(seq 1 15); do
-    local snap_i btn_ref
-    snap_i=$(agent-browser snapshot -i 2>/dev/null || true)
-    btn_ref=$(echo "$snap_i" | grep -Ei '"Add schedule"' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
-    if [[ -n "$btn_ref" ]]; then
-      if agent-browser click "$btn_ref" 2>/dev/null; then
-        btn_clicked=true
-        break
-      fi
+  for _i in $(seq 1 20); do
+    if agent-browser find role button click --name "Add schedule" 2>/dev/null; then
+      btn_clicked=true
+      break
     fi
     sleep 1
   done

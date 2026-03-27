@@ -43,18 +43,22 @@ url_is_on_app() {
 }
 
 # ---------------------------------------------------------------------------
-# stagger_parallel — Delay startup based on BATS_JOB_SLOT (0, 1, 2, …).
+# stagger_parallel — Delay startup based on BATS_TEST_FILE_NUMBER (1, 2, 3, …).
 # Call at the very start of setup_file() in each parallel test file to
 # serialize Clerk token creation and sign-in across parallel workers.
 # Without staggering, all workers create sign-in tokens simultaneously for
 # the same Clerk account; Clerk appears to invalidate earlier tokens when
 # a newer one is created, so only the last-created token succeeds.
+#
+# BATS sets BATS_TEST_FILE_NUMBER (1-based) via GNU parallel's {#} placeholder.
 # ---------------------------------------------------------------------------
 stagger_parallel() {
-  local slot="${BATS_JOB_SLOT:-0}"
+  # BATS_TEST_FILE_NUMBER is set by bats-exec-file (1-based job number from GNU parallel).
+  local file_num="${BATS_TEST_FILE_NUMBER:-1}"
+  local slot=$(( file_num - 1 ))
   if [[ "$slot" -gt 0 ]]; then
     local delay=$(( slot * 25 ))
-    echo "# Job slot ${slot}: staggering startup by ${delay}s to avoid Clerk token conflicts..." >&3
+    echo "# Job slot ${slot} (file #${file_num}): staggering startup by ${delay}s to avoid Clerk token conflicts..." >&3
     sleep "$delay"
   fi
 }
