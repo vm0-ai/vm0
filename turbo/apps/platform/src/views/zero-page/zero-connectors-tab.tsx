@@ -138,7 +138,7 @@ export function ZeroConnectorsTab({
             {Array.from({ length: 3 }, (_, i) => (
               <div
                 key={i}
-                className="flex flex-col rounded-[var(--zero-card-radius)] border border-border/50 bg-card animate-pulse"
+                className="flex flex-col rounded-xl zero-border bg-card animate-pulse"
               >
                 <div className="flex h-14 items-center gap-2.5 px-5">
                   <span className="h-5 w-5 shrink-0 rounded-lg bg-muted/50" />

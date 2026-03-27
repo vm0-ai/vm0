@@ -167,10 +167,7 @@ function ConnectorTriggerIcons({
     <span className="flex items-center -space-x-1.5">
       {connected.map((c) => (
         <span key={c.type} className="relative shrink-0">
-          <span
-            className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-background"
-            style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-          >
+          <span className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-background zero-border">
             <ConnectorIcon type={c.type as ConnectorType} size={16} />
           </span>
         </span>
@@ -286,10 +283,7 @@ function ConnectorsPopoverButton({
       <PopoverContent side="top" align="start" className="w-64 p-0 rounded-lg">
         {hasAgentConnectors && (
           <TooltipProvider delayDuration={400}>
-            <div
-              className="max-h-[200px] overflow-y-auto py-1 pl-1"
-              style={{ scrollbarWidth: "thin" }}
-            >
+            <div className="max-h-[200px] overflow-y-auto py-1 pl-1">
               <div className="px-2 pt-1 pb-1">
                 <span className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider">
                   Connectors used by {displayName}
