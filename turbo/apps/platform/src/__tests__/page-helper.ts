@@ -1,6 +1,6 @@
 import { createElement, type ReactNode } from "react";
 import { act, render } from "@testing-library/react";
-import type { Store } from "ccstate";
+import { command, type Store } from "ccstate";
 import { StoreProvider } from "ccstate-react";
 import type { TestContext } from "../signals/__tests__/test-helpers";
 import { clearMockedAuth, mockOrganization, mockUser } from "./mock-auth";
@@ -13,6 +13,7 @@ import {
   setPathname,
   setSearch,
 } from "../signals/location";
+import { updateSearchParams$ } from "../signals/route";
 import { vi } from "vitest";
 import type { FeatureSwitchKey } from "@vm0/core";
 import { setFeatureSwitchLocalStorage$ } from "../signals/external/feature-switch";
@@ -108,6 +109,16 @@ export async function setupPage(options: {
     });
   }
 }
+
+/**
+ * Test helper: updates the pathname and triggers pathname$ recomputation
+ * without re-running route setup. Use this in signal unit tests to simulate
+ * a URL change that stays within the same route lifecycle.
+ */
+export const updateTestPathname$ = command(({ set }, newPathname: string) => {
+  setPathname(newPathname);
+  set(updateSearchParams$, new URLSearchParams());
+});
 
 // Helper to create a pushState mock that updates mockLocation
 export function createPushStateMock(signal: AbortSignal) {

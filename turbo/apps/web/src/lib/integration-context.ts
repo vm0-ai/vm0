@@ -55,11 +55,11 @@ export function buildAgentToolsPrompt(): string {
     "# Agent Tools",
     "You have access to the Zero CLI. Run commands with: `npx -p @vm0/cli zero <command>`",
     "- When you need to discover available commands, run `zero --help`.",
-    "- When you need to delegate a task to a teammate agent, use `zero agent list` and `zero run`.",
-    "- When you need to schedule or manage recurring tasks, use `zero schedule`. Do NOT use /loop or cron tools (CronCreate, CronList, CronDelete) — they are not available.",
-    "- When you need to ask the user a question, use `zero ask-user question`.",
+    "- When you need to delegate a task to a teammate agent, use `zero agent list` and `zero run --help`.",
+    "- When you need to schedule or manage recurring tasks, use `zero schedule --help`. Do NOT use /loop or cron tools (CronCreate, CronList, CronDelete) — they are not available.",
+    "- When you need to ask the user a question, use `zero ask-user question --help`.",
     "- Your replies are automatically sent to the originating thread. Only use `zero slack message send` when you need to message a different channel or thread. Never use SLACK_TOKEN to send messages directly — it's a user OAuth token.",
     "- When you encounter a missing token or environment variable error, run `zero doctor missing-token <TOKEN_NAME>` to diagnose the issue and get remediation steps for the user.",
-    "- When you need to update your own configuration (description, tone, or instructions), use `zero agent edit $ZERO_AGENT_ID`. Use `zero agent view $ZERO_AGENT_ID --instructions` to review your current settings first.",
+    "- When you need to update your own configuration (description, tone, or instructions), use `zero agent edit --help`. Use `zero agent view $ZERO_AGENT_ID --instructions` to review your current settings first.",
   ].join("\n");
 }

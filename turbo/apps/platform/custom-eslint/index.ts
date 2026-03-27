@@ -33,7 +33,6 @@ import setupPageRender from "./rules/setup-page-render.ts";
 import noSideEffectInRender from "./rules/no-side-effect-in-render.ts";
 import noUseCCStateInViews from "./rules/no-use-ccstate-in-views.ts";
 import noNonZeroApi from "./rules/no-non-zero-api.ts";
-import noUpdatePathname from "./rules/no-update-pathname.ts";
 import commandAsyncSignal from "./rules/command-async-signal.ts";
 import noGetterSetterParams from "./rules/no-getter-setter-params.ts";
 
@@ -57,7 +56,6 @@ const plugin = {
     "no-side-effect-in-render": noSideEffectInRender,
     "no-use-ccstate-in-views": noUseCCStateInViews,
     "no-non-zero-api": noNonZeroApi,
-    "no-update-pathname": noUpdatePathname,
     "command-async-signal": commandAsyncSignal,
     "no-getter-setter-params": noGetterSetterParams,
   },
