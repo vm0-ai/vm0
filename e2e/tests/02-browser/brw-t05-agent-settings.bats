@@ -195,70 +195,45 @@ teardown_file() {
 }
 
 @test "navigate to agent settings and verify tabs" {
-  # The agent creation test can run for 60-90 seconds. Fully restart the daemon
-  # (kill process + remove socket) to recover from any unresponsive state.
-  # Create a fresh sign-in token — the one created in setup_file was consumed
-  # by the earlier "sign in via token on platform app" test and cannot be reused.
-  restart_browser_daemon
-  create_clerk_sign_in_token
-  sign_in_via_token_on_app
-
-  echo "# Navigating to team page..." >&3
+  # Reuse the browser session from test 9 (daemon is still running, session
+  # is authenticated). Restarting daemon + sign-in here would consume ~40s of
+  # the 180s BATS timeout before we even reach the agent settings page.
+  # Test 9 ends with the browser on /team with the agent visible, so a simple
+  # navigate_to_app_page is sufficient.
+  echo "# Navigating to agent settings for: $AGENT_NAME..." >&3
   navigate_to_app_page "/team"
-  # Wait for any global loading overlay to clear before checking for agent name.
-  wait_for_text_gone "Loading your workspace" 30 || true
-  wait_for_text "$AGENT_NAME" 40
+  wait_for_text_gone "Loading your workspace" 15 || true
+  wait_for_text "$AGENT_NAME" 30
   step_screenshot "team-page"
 
-  # Click on the created agent card — retry waiting for the card to appear
-  # in the interactive snapshot (the name may appear briefly in a toast
-  # before the card is rendered, so we can't just wait_for_text once)
-  echo "# Waiting for agent card to be clickable: $AGENT_NAME..." >&3
+  # Click the agent card — it should be immediately clickable since we just
+  # verified the name is visible. Use role-based find (agent card is a link).
+  echo "# Clicking agent card: $AGENT_NAME..." >&3
   local agent_clicked=false
-  for _i in $(seq 1 30); do
-    local snap_i agent_ref
-    snap_i=$(agent-browser snapshot -i 2>/dev/null || true)
-    agent_ref=$(echo "$snap_i" | grep -F "$AGENT_NAME" | grep -v 'textbox\|disabled' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
-    if [[ -n "$agent_ref" ]]; then
-      agent-browser scrollintoview "$agent_ref" 2>/dev/null || true
-      sleep 0.3
-      if agent-browser click "$agent_ref" 2>/dev/null; then
-        agent_clicked=true
-        break
-      fi
+  for _i in $(seq 1 15); do
+    if agent-browser find role link click --name "$AGENT_NAME" 2>/dev/null; then
+      agent_clicked=true
+      break
     fi
     sleep 1
   done
   if [[ "$agent_clicked" != "true" ]]; then
-    echo "# Ref-based click failed, trying role-based find..." >&3
-    agent-browser find role link click --name "$AGENT_NAME" 2>/dev/null || \
-      agent-browser find text "$AGENT_NAME" click
+    echo "# Role-based link click failed, trying text find..." >&3
+    agent-browser find text "$AGENT_NAME" click
   fi
-  sleep 3
+  sleep 2
 
-  # Wait for agent detail page to load with tabs
-  wait_for_text "Connectors" 40
-  step_screenshot "agent-detail"
-
-  # Save the URL immediately after confirming we're on the agent settings page.
-  # Subsequent tests navigate back here using this URL.
+  # Save URL immediately — before waiting for content, so tests 11-13 can
+  # navigate back here even if this test hits its time limit.
   AGENT_SETTINGS_URL=$(agent-browser get url 2>/dev/null || true)
   export AGENT_SETTINGS_URL
   echo "# Agent settings URL captured: $AGENT_SETTINGS_URL" >&3
+  step_screenshot "agent-detail"
 
-  # Wait for Connectors tab content to fully load (the "Add connector" button
-  # loads async after the tab labels appear).
-  # Note: Profile/Instructions tab visibility is verified in tests 12 and 13
-  # (which click those tabs directly). Checking them here is redundant and
-  # can flake under load when the onboarding signal hasn't resolved yet.
-  if ! wait_for_text "Add connector" 90; then
-    echo "# Add connector not found after 90s, reloading page..." >&3
-    if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
-      agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
-      sleep 5
-    fi
-    wait_for_text "Add connector" 60
-  fi
+  # Wait for Connectors tab content — "Add connector" implies the full page
+  # loaded (tab labels + default Connectors tab content). No separate
+  # "wait for Connectors" label needed; waiting for "Add connector" is enough.
+  wait_for_text "Add connector" 60
   echo "# Agent settings page loaded with all tabs" >&3
 }
 
