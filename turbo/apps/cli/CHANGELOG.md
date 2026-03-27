@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.86.0](https://github.com/vm0-ai/vm0/compare/cli-v9.85.2...cli-v9.86.0) (2026-03-27)
+
+
+### Features
+
+* add zero run and zero run continue commands ([#6988](https://github.com/vm0-ai/vm0/issues/6988)) ([5c56992](https://github.com/vm0-ai/vm0/commit/5c56992a68f2c09e3b33e9dad196fd701dba0a3e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.119.0
+
 ## [9.85.2](https://github.com/vm0-ai/vm0/compare/cli-v9.85.1...cli-v9.85.2) (2026-03-26)
 
 

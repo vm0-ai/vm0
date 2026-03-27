@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.119.0](https://github.com/vm0-ai/vm0/compare/core-v8.118.3...core-v8.119.0) (2026-03-27)
+
+
+### Features
+
+* add agent trigger source, sessionId inference, and agent tools prompt for zero run ([#6991](https://github.com/vm0-ai/vm0/issues/6991)) ([514c71b](https://github.com/vm0-ai/vm0/commit/514c71b3feb53a18d02e0b46f989f0a4e2bf8151))
+
 ## [8.118.3](https://github.com/vm0-ai/vm0/compare/core-v8.118.2...core-v8.118.3) (2026-03-26)
 
 

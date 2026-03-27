@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.158.0](https://github.com/vm0-ai/vm0/compare/app-v0.157.0...app-v0.158.0) (2026-03-27)
+
+
+### Features
+
+* add agent trigger source, sessionId inference, and agent tools prompt for zero run ([#6991](https://github.com/vm0-ai/vm0/issues/6991)) ([514c71b](https://github.com/vm0-ai/vm0/commit/514c71b3feb53a18d02e0b46f989f0a4e2bf8151))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.119.0
+
 ## [0.157.0](https://github.com/vm0-ai/vm0/compare/app-v0.156.1...app-v0.157.0) (2026-03-26)
 
 

@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.164.0](https://github.com/vm0-ai/vm0/compare/web-v12.163.5...web-v12.164.0) (2026-03-27)
+
+
+### Features
+
+* add agent trigger source, sessionId inference, and agent tools prompt for zero run ([#6991](https://github.com/vm0-ai/vm0/issues/6991)) ([514c71b](https://github.com/vm0-ai/vm0/commit/514c71b3feb53a18d02e0b46f989f0a4e2bf8151))
+
+
+### Bug Fixes
+
+* replace 'Zero — agentName' with 'agentName from VM0' in email signatures ([#7024](https://github.com/vm0-ai/vm0/issues/7024)) ([5241c36](https://github.com/vm0-ai/vm0/commit/5241c368ea430adbb727b066a7765157aa55e0d6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.119.0
+
 ## [12.163.5](https://github.com/vm0-ai/vm0/compare/web-v12.163.4...web-v12.163.5) (2026-03-26)
 
 
