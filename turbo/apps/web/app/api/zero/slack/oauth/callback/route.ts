@@ -241,7 +241,16 @@ async function handleInstallCallback(params: {
 
   // Platform install flow: verify admin and create connection
   if (state.orgId && state.vm0UserId) {
-    return handlePlatformInstall(oauthResult, state, appUrl, isReinstall);
+    return handlePlatformInstall(
+      oauthResult,
+      {
+        orgId: state.orgId,
+        vm0UserId: state.vm0UserId,
+        reinstall: state.reinstall,
+      },
+      appUrl,
+      isReinstall,
+    );
   }
 
   // Slack flow: redirect to success page
@@ -255,12 +264,11 @@ async function handleInstallCallback(params: {
  */
 async function handlePlatformInstall(
   oauthResult: { authedUserId: string; teamId: string; teamName: string },
-  state: OAuthState,
+  platformState: { orgId: string; vm0UserId: string; reinstall: boolean },
   appUrl: string,
   isReinstall: boolean,
 ): Promise<NextResponse> {
-  const orgId = state.orgId!;
-  const vm0UserId = state.vm0UserId!;
+  const { orgId, vm0UserId } = platformState;
   const db = globalThis.services.db;
 
   // Verify user is org admin
@@ -299,8 +307,10 @@ async function handlePlatformInstall(
     );
   }
 
-  // Reinstall flow: redirect back to Works page with "updated" flag
-  if (isReinstall && state.reinstall) {
+  // Reinstall flow: redirect back to Works page with "updated" flag.
+  // isReinstall means the workspace already existed in DB;
+  // platformState.reinstall means the user explicitly triggered a scope-refresh reinstall.
+  if (isReinstall && platformState.reinstall) {
     return NextResponse.redirect(`${appUrl}/?tab=works&updated=1`);
   }
 
