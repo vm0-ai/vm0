@@ -25,12 +25,10 @@ import {
   agentDisplayName$,
   defaultAgentId$,
 } from "../../signals/zero-page/zero-agent-name.ts";
-import { zeroAvatarIndex$ } from "../../signals/zero-page/zero-nav.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
-import { useAgentAvatar, AGENT_AVATARS } from "./zero-sidebar.tsx";
-
+import { useAgentAvatar } from "./zero-sidebar.tsx";
 import { ZERO_AVATARS } from "./zero-avatars.ts";
 
 export function ZeroJobsPage() {
@@ -49,8 +47,7 @@ export function ZeroJobsPage() {
         ? agentsLoadable.error.message
         : "Unknown error"
       : null;
-  const avatarIndex = useGet(zeroAvatarIndex$);
-  const zeroAvatarSrc = ZERO_AVATARS[avatarIndex] ?? ZERO_AVATARS[0];
+  const zeroAvatarSrc = useAgentAvatar(rawAgentName ?? "");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
@@ -284,7 +281,7 @@ function CreateTeammateDialog({
         <div className="flex flex-col items-center h-[min(360px,80dvh)]">
           <DialogHeader className="px-6 pt-8 pb-4 flex flex-col items-center text-center">
             <img
-              src={AGENT_AVATARS[0]}
+              src={ZERO_AVATARS[0]}
               alt="New teammate"
               className="h-16 w-16 rounded-full object-cover object-top mb-3"
             />
