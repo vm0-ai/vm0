@@ -208,8 +208,9 @@ describe("/api/cli/auth/test-token", () => {
       expect(data.org_slug).toBe("test-token-org");
     });
 
-    it("returns 500 when test user is not found", async () => {
+    it("generates token with synthetic user id when test user is not found in Clerk", async () => {
       mockGetUserList.mockResolvedValue({ data: [] });
+      mockGetOrganizationMembershipList.mockResolvedValue({ data: [] });
 
       const request = createTestRequest(
         "http://localhost:3000/api/cli/auth/test-token",
@@ -219,8 +220,10 @@ describe("/api/cli/auth/test-token", () => {
       const response = await POST(request);
       const data = await response.json();
 
-      expect(response.status).toBe(500);
-      expect(data.error).toBe("Test user not found");
+      expect(response.status).toBe(200);
+      expect(data.access_token).toMatch(/^vm0_pat_/);
+      expect(data.user_id).toBe("user_e2e_serial");
+      expect(data.org_slug).toBe("test-org");
     });
 
     it("calls Clerk with correct email address", async () => {

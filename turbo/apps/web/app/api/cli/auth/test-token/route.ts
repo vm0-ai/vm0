@@ -53,18 +53,27 @@ function isTestTokenAllowed(request: Request): boolean {
  * entries with a sentinel orgId.
  */
 async function ensureTestOrg(userId: string): Promise<{ slug: string }> {
-  // Query Clerk API directly for user's org memberships
+  // Query Clerk API directly for user's org memberships.
+  // If userId is a synthetic fallback ID (user not in Clerk), catch the error and
+  // proceed directly to sentinel org creation.
   const client = await clerkClient();
-  const memberships = await client.users.getOrganizationMembershipList({
-    userId,
-  });
+  type MembershipItem = Awaited<
+    ReturnType<typeof client.users.getOrganizationMembershipList>
+  >["data"][number];
+  let membershipItems: MembershipItem[] = [];
+  try {
+    const result = await client.users.getOrganizationMembershipList({ userId });
+    membershipItems = result.data;
+  } catch {
+    // userId not found in Clerk — fall through to sentinel org
+  }
 
   // Use a far-future cachedAt so org_cache TTL checks never expire these
   // entries and trigger a Clerk API refresh (sentinel orgs don't exist in Clerk).
   const farFuture = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
 
   // Find first org with a matching org_cache entry
-  for (const membership of memberships.data) {
+  for (const membership of membershipItems) {
     const orgId = membership.organization.id;
     try {
       const orgData = await getOrgData(orgId);
@@ -140,10 +149,9 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  const userId = await resolveTestUserId(variant);
-  if (!userId) {
-    return NextResponse.json({ error: "Test user not found" }, { status: 500 });
-  }
+  // If the Clerk test user doesn't exist (e.g., fresh preview environment),
+  // fall back to a stable synthetic user ID so the token is still generated.
+  const userId = (await resolveTestUserId(variant)) ?? `user_e2e_${variant}`;
 
   // Auto-create org if user doesn't have one (creates real Clerk org or sentinel)
   const { slug: orgSlug } = await ensureTestOrg(userId);
