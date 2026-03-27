@@ -239,8 +239,8 @@ export function ZeroChatPage({
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Link
-                        pathname="/team/:id"
-                        options={{ pathParams: { id: avatarAgentId } }}
+                        pathname="/team/:agentId"
+                        options={{ pathParams: { agentId: avatarAgentId } }}
                         aria-label="View agent profile"
                         className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent cursor-pointer"
                       >
