@@ -35,14 +35,11 @@ describe("chat resume", () => {
     await setupPage({ context, path: "/chat/thread-resume" });
 
     // History messages should be visible
-    await waitFor(
-      () => {
-        expect(screen.getByText("First message")).toBeInTheDocument();
-        expect(screen.getByText("First reply")).toBeInTheDocument();
-        expect(screen.getByText("Follow up question")).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByText("First message")).toBeInTheDocument();
+      expect(screen.getByText("First reply")).toBeInTheDocument();
+      expect(screen.getByText("Follow up question")).toBeInTheDocument();
+    });
 
     // Active run should show thinking state
     await waitFor(() => {

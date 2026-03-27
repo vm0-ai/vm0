@@ -82,9 +82,8 @@ function mockAPIsWithSubagents({
 }
 
 async function openChatListDialog() {
-  const openButton = await waitFor(
-    () => screen.getByLabelText("Open a conversation"),
-    { timeout: 5000 },
+  const openButton = await waitFor(() =>
+    screen.getByLabelText("Open a conversation"),
   );
   await act(() => {
     fireEvent.click(openButton);
@@ -102,13 +101,10 @@ describe("chatListDialog", () => {
     await openChatListDialog();
 
     // Wait for the "Pinned" section label to appear, then find the chat button
-    await waitFor(
-      () => {
-        const dialog = screen.getByRole("dialog");
-        expect(within(dialog).getByText("Pinned")).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      const dialog = screen.getByRole("dialog");
+      expect(within(dialog).getByText("Pinned")).toBeInTheDocument();
+    });
 
     // The pinned agent's onChat button contains the agent name text
     const dialog = screen.getByRole("dialog");
@@ -120,12 +116,9 @@ describe("chatListDialog", () => {
     });
 
     // Should navigate to /chat/:threadId
-    await waitFor(
-      () => {
-        expect(pathname()).toBe("/chat/new-thread-from-dialog");
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(pathname()).toBe("/chat/new-thread-from-dialog");
+    });
   }, 15_000);
 
   it("should navigate to chat when clicking an unpinned agent", async () => {
@@ -143,12 +136,9 @@ describe("chatListDialog", () => {
       fireEvent.click(unpinnedAgentButton);
     });
 
-    await waitFor(
-      () => {
-        expect(pathname()).toBe("/chat/new-thread-from-dialog");
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(pathname()).toBe("/chat/new-thread-from-dialog");
+    });
   }, 15_000);
 
   it("should render unpinned agent avatars without reduced opacity", async () => {
@@ -185,11 +175,8 @@ describe("chatListDialog", () => {
       fireEvent.click(leadButton);
     });
 
-    await waitFor(
-      () => {
-        expect(pathname()).toBe("/chat/new-thread-from-dialog");
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(pathname()).toBe("/chat/new-thread-from-dialog");
+    });
   }, 15_000);
 });

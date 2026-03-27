@@ -32,40 +32,27 @@ describe("zero onboarding - step 1: workspace name", () => {
     mockOnboardingNeeded();
     await renderOnboardingPage();
 
-    await waitFor(
-      () => {
-        expect(screen.getByText(/Name your workspace/)).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByText(/Name your workspace/)).toBeInTheDocument();
+    });
   });
 
   it("should show Next button in step 1", async () => {
     mockOnboardingNeeded();
     await renderOnboardingPage();
 
-    await waitFor(
-      () => {
-        expect(
-          screen.getByRole("button", { name: "Next" }),
-        ).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Next" })).toBeInTheDocument();
+    });
   });
 
   it("should advance to connector selection when Next is clicked", async () => {
     mockOnboardingNeeded();
     await renderOnboardingPage();
 
-    await waitFor(
-      () => {
-        expect(
-          screen.getByRole("button", { name: "Next" }),
-        ).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Next" })).toBeInTheDocument();
+    });
 
     // Fill in workspace name so Next is enabled
     const input = screen.getByPlaceholderText("e.g. Acme Corp");
@@ -85,14 +72,9 @@ describe("zero onboarding - step 2: choose tools", () => {
     await renderOnboardingPage();
 
     // Step 1 -> fill name -> Next
-    await waitFor(
-      () => {
-        expect(
-          screen.getByRole("button", { name: "Next" }),
-        ).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Next" })).toBeInTheDocument();
+    });
 
     const input = screen.getByPlaceholderText("e.g. Acme Corp");
     fireEvent.change(input, { target: { value: "Test Workspace" } });
@@ -144,14 +126,11 @@ describe("member welcome - step navigation", () => {
     await renderOnboardingPage();
 
     // Member with no defaultAgentSkills goes straight to step 4 (where-to-work)
-    await waitFor(
-      () => {
-        expect(
-          screen.getByText(/Where would you like to work with/),
-        ).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Where would you like to work with/),
+      ).toBeInTheDocument();
+    });
   });
 
   it("should show Slack and web options in where-to-work step", async () => {
@@ -159,14 +138,11 @@ describe("member welcome - step navigation", () => {
     await renderOnboardingPage();
 
     // Member lands directly on step 4
-    await waitFor(
-      () => {
-        expect(
-          screen.getByText(/Where would you like to work with/),
-        ).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Where would you like to work with/),
+      ).toBeInTheDocument();
+    });
 
     expect(
       screen.getByRole("button", { name: /Add .+ to Slack/ }),

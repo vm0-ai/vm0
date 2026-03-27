@@ -99,12 +99,9 @@ describe("activity page routing", () => {
     });
 
     // Wait for the list to render with the activity row
-    await waitFor(
-      () => {
-        expect(screen.getByText("Test Agent")).toBeInTheDocument();
-      },
-      { timeout: 3000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByText("Test Agent")).toBeInTheDocument();
+    });
 
     // Click the activity row — this navigates to /activity/log-1
     const row = screen.getByText("Test Agent").closest("a");
@@ -112,14 +109,11 @@ describe("activity page routing", () => {
     fireEvent.click(row!);
 
     // The detail page should render with the agent name heading
-    await waitFor(
-      () => {
-        expect(
-          screen.getByRole("heading", { name: "Test Agent" }),
-        ).toBeInTheDocument();
-      },
-      { timeout: 3000 },
-    );
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Test Agent" }),
+      ).toBeInTheDocument();
+    });
 
     // Verify detail content loaded (duration)
     expect(screen.getByText("3.0s")).toBeInTheDocument();
@@ -134,26 +128,20 @@ describe("activity page routing", () => {
     });
 
     // Wait for list
-    await waitFor(
-      () => {
-        expect(screen.getByText("Test Agent")).toBeInTheDocument();
-      },
-      { timeout: 3000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByText("Test Agent")).toBeInTheDocument();
+    });
 
     // Navigate to detail
     const row = screen.getByText("Test Agent").closest("a");
     fireEvent.click(row!);
 
     // Wait for detail
-    await waitFor(
-      () => {
-        expect(
-          screen.getByRole("heading", { name: "Test Agent" }),
-        ).toBeInTheDocument();
-      },
-      { timeout: 3000 },
-    );
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Test Agent" }),
+      ).toBeInTheDocument();
+    });
 
     // Click the "Activity" breadcrumb to go back
     const breadcrumb = screen.getByText("Activity").closest("a");
@@ -161,13 +149,10 @@ describe("activity page routing", () => {
     fireEvent.click(breadcrumb!);
 
     // Should be back on the list page with the "Activity" heading
-    await waitFor(
-      () => {
-        expect(
-          screen.getByRole("heading", { name: "Activity" }),
-        ).toBeInTheDocument();
-      },
-      { timeout: 3000 },
-    );
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Activity" }),
+      ).toBeInTheDocument();
+    });
   }, 10_000);
 });

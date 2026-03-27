@@ -19,7 +19,6 @@ describe("chat sending state", () => {
 
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-      { timeout: 5000 },
     );
 
     sendMessageInUI(textarea, "Hello");

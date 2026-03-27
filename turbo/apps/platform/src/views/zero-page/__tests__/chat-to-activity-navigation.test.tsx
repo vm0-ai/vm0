@@ -106,14 +106,11 @@ describe("chat to activity navigation", () => {
     });
 
     // Wait for chat messages to render
-    await waitFor(
-      () => {
-        expect(
-          screen.getByText("Task completed successfully."),
-        ).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(
+        screen.getByText("Task completed successfully."),
+      ).toBeInTheDocument();
+    });
 
     // Find and click the "View run logs" link that navigates to /activity/run_activity_1
     const activityLink = screen.getByLabelText("View run logs");
@@ -121,14 +118,11 @@ describe("chat to activity navigation", () => {
     fireEvent.click(activityLink);
 
     // The activity detail page should fully initialize and show the agent name heading
-    await waitFor(
-      () => {
-        expect(
-          screen.getByRole("heading", { name: "Test Agent" }),
-        ).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Test Agent" }),
+      ).toBeInTheDocument();
+    });
 
     // Verify the detail content loaded (duration: 4.0s)
     expect(screen.getByText("4.0s")).toBeInTheDocument();

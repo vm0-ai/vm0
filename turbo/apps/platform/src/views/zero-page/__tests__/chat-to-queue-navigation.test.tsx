@@ -68,12 +68,9 @@ describe("chat to queue navigation", () => {
     await setupPage({ context, path: "/chat/thread-1" });
 
     // Wait for chat to render
-    await waitFor(
-      () => {
-        expect(screen.getByText("Hi there!")).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByText("Hi there!")).toBeInTheDocument();
+    });
 
     // Navigate to /queue using navigateTo$ (same as Link component)
     act(() => {
@@ -81,11 +78,8 @@ describe("chat to queue navigation", () => {
     });
 
     // The queue page should fully initialize and show queue data
-    await waitFor(
-      () => {
-        expect(screen.getByText("Queue Agent")).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByText("Queue Agent")).toBeInTheDocument();
+    });
   }, 15_000);
 });

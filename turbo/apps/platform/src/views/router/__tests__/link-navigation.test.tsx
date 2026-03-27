@@ -40,12 +40,9 @@ describe("link component new-tab behavior", () => {
 
     await setupPage({ context, path: "/queue" });
 
-    await waitFor(
-      () => {
-        expect(screen.getByText("Link Agent")).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByText("Link Agent")).toBeInTheDocument();
+    });
 
     // The "View logs" link is a Link component — ctrl+click should open new tab
     const viewLogsLink = screen.getByText("View logs");

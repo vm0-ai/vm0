@@ -71,15 +71,12 @@ describe("activity list refresh on navigation", () => {
     await setupPage({ context, path: "/activity" });
 
     // Wait for the activity heading and list data to render
-    await waitFor(
-      () => {
-        expect(
-          screen.getByRole("heading", { name: "Activity" }),
-        ).toBeInTheDocument();
-        expect(screen.getAllByText("Zero").length).toBeGreaterThanOrEqual(1);
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Activity" }),
+      ).toBeInTheDocument();
+      expect(screen.getAllByText("Zero").length).toBeGreaterThanOrEqual(1);
+    });
 
     const initialFetchCount = fetchCount;
 
@@ -89,14 +86,11 @@ describe("activity list refresh on navigation", () => {
     fireEvent.click(teamLink!);
 
     // Wait for team page to render
-    await waitFor(
-      () => {
-        expect(
-          screen.queryByRole("heading", { name: "Activity" }),
-        ).not.toBeInTheDocument();
-      },
-      { timeout: 3000 },
-    );
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("heading", { name: "Activity" }),
+      ).not.toBeInTheDocument();
+    });
 
     // Navigate back to activity page
     const activityLink = screen.getByText("Activity logs").closest("a");
@@ -104,22 +98,16 @@ describe("activity list refresh on navigation", () => {
     fireEvent.click(activityLink!);
 
     // Wait for the list to render again
-    await waitFor(
-      () => {
-        expect(
-          screen.getByRole("heading", { name: "Activity" }),
-        ).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Activity" }),
+      ).toBeInTheDocument();
+    });
 
     // Wait for data to be fetched again
-    await waitFor(
-      () => {
-        expect(screen.getAllByText("Zero").length).toBeGreaterThanOrEqual(1);
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(screen.getAllByText("Zero").length).toBeGreaterThanOrEqual(1);
+    });
 
     // Verify that a new fetch was triggered after re-navigation
     expect(fetchCount).toBeGreaterThan(initialFetchCount);
