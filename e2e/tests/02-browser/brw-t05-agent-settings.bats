@@ -46,13 +46,20 @@ wait_for_no_unsaved_bar() {
 click_save_on_unsaved_bar() {
   local snap_i ref
   snap_i=$(agent-browser snapshot -i)
+  echo "# Unsaved bar snapshot (Save buttons):" >&3
+  echo "$snap_i" | grep -i 'save\|discard\|unsaved' >&3 || true
   # The unsaved bar Save button is a top-level button "Save" (not nested inside
   # the main page generic element). Match the first top-level Save button.
   ref=$(echo "$snap_i" | grep -E '^- button "Save"' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
   if [[ -z "$ref" ]]; then
+    # Fallback: look for any Save button (may be slightly indented)
+    ref=$(echo "$snap_i" | grep -E 'button "Save"' | grep -oE '\[ref=e[0-9]+\]' | tail -1 | sed 's/\[ref=/@/; s/\]//')
+  fi
+  if [[ -z "$ref" ]]; then
     echo "# Failed to find Save button ref on unsaved bar" >&3
     return 1
   fi
+  echo "# Clicking Save button: $ref" >&3
   agent-browser click "$ref"
 }
 
@@ -239,7 +246,8 @@ teardown_file() {
 
   # Click Save on the unsaved bar
   click_save_on_unsaved_bar
-  agent-browser wait 2000
+  agent-browser wait 3000
+  step_screenshot "connector-after-save-click"
 
   # Wait for unsaved bar to disappear
   wait_for_no_unsaved_bar 20
