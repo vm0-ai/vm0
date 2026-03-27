@@ -166,8 +166,12 @@ teardown_file() {
   done
 
   if [[ "$needs_onboarding" != "true" ]]; then
-    echo "# Skipping onboarding: user already onboarded" >&3
-    skip "User already onboarded"
+    echo "# Skipping onboarding steps: navigating directly to chat page" >&3
+    # Ensure the browser is on the chat page before subsequent tests depend on it
+    agent-browser open "$APP_URL" --ignore-https-errors
+    agent-browser wait 5000
+    step_screenshot "onboarding-skipped"
+    return 0
   fi
 
   # Step 1: Name workspace
