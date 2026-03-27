@@ -4,16 +4,12 @@ import { ZeroPreferencesPageWrapper } from "../../views/preferences-page/zero-pr
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
-import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
 import { switchActiveAgent$ } from "../zero-page/zero-chat.ts";
 
 export const setupPreferencesPage$ = command(
   async ({ set }, signal: AbortSignal) => {
     set(updatePage$, createElement(ZeroPreferencesPageWrapper));
     set(updateDocumentTitle$, "Preferences");
-    await set(initZeroOnboarding$, signal);
-    signal.throwIfAborted();
-
     if (await set(onboardGuard$, signal)) {
       return;
     }

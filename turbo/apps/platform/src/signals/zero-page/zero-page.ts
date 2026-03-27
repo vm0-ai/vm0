@@ -1,7 +1,6 @@
 import { command, state } from "ccstate";
 import { zeroSubagents$ } from "./zero-agents.ts";
 import { defaultAgentId$ } from "./zero-agent-name.ts";
-import { initZeroOnboarding$ } from "./zero-onboarding.ts";
 import { initSlackOrg$ } from "./zero-slack.ts";
 import { initSidebarCollapsed$ } from "./zero-nav.ts";
 import { switchActiveAgent$ } from "./zero-chat.ts";
@@ -20,10 +19,7 @@ export const loadInitialData$ = command(
     if (get(initialDataLoaded$)) {
       return;
     }
-    await Promise.all([
-      set(initZeroOnboarding$, signal),
-      set(initSlackOrg$, signal),
-    ]);
+    await set(initSlackOrg$, signal);
     signal.throwIfAborted();
     set(initialDataLoaded$, true);
     set(initSidebarCollapsed$);

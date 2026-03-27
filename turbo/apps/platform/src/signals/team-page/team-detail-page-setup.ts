@@ -7,7 +7,6 @@ import { pathParams$ } from "../route.ts";
 import { agents$ } from "../zero-page/agents-list.ts";
 import { fetchZeroJobData$ } from "../zero-page/zero-job-detail.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
-import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
 import { switchActiveAgent$ } from "../zero-page/zero-chat.ts";
 import { initSlackOrg$ } from "../zero-page/zero-slack.ts";
 
@@ -19,7 +18,6 @@ export const setupTeamDetailPage$ = command(
     const agentId = params?.agentId ?? null;
     set(updateDocumentTitle$, "Team");
     await Promise.all([
-      set(initZeroOnboarding$, signal),
       set(initSlackOrg$, signal),
       agentId ? set(fetchZeroJobData$, agentId, signal) : Promise.resolve(),
     ]);

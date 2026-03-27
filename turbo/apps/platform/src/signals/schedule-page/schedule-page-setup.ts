@@ -4,7 +4,6 @@ import { ZeroSchedulePageWrapper } from "../../views/schedule-page/zero-schedule
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
-import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
 import { switchActiveAgent$ } from "../zero-page/zero-chat.ts";
 import { fetchAllOrgSchedules$ } from "../zero-page/zero-schedule.ts";
 import { initSlackOrg$ } from "../zero-page/zero-slack.ts";
@@ -15,10 +14,7 @@ export const setupSchedulePage$ = command(
     set(updatePage$, createElement(ZeroSchedulePageWrapper));
     set(updateDocumentTitle$, "Schedule");
     detach(set(fetchAllOrgSchedules$, signal), Reason.Entrance);
-    await Promise.all([
-      set(initZeroOnboarding$, signal),
-      set(initSlackOrg$, signal),
-    ]);
+    await set(initSlackOrg$, signal);
     signal.throwIfAborted();
 
     if (await set(onboardGuard$, signal)) {
