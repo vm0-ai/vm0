@@ -1,5 +1,5 @@
 import { createElement, type ReactNode } from "react";
-import { act, render } from "@testing-library/react";
+import { render } from "@testing-library/react";
 import { command, type Store } from "ccstate";
 import { StoreProvider } from "ccstate-react";
 import type { TestContext } from "../signals/__tests__/test-helpers";
@@ -89,24 +89,25 @@ export async function setupPage(options: {
       options.context.signal,
     );
   } else {
-    // Bootstrap the app (like main.ts does)
-    await act(async () => {
-      await options.context.store.set(
-        bootstrap$,
-        () => {
-          setupRouter(
-            createTestStoreProvider(options.context.store),
-            (element) => {
-              const { unmount } = render(element);
-              options.context.signal.addEventListener("abort", () => {
-                unmount();
-              });
-            },
-          );
-        },
-        options.context.signal,
-      );
-    });
+    // Bootstrap the app (like main.ts does).
+    // Note: intentionally not wrapped in act() — background polling loops with
+    // 0ms interval would cause act() to hang indefinitely waiting for them to
+    // settle. React "not wrapped in act" warnings are suppressed in setup.ts.
+    await options.context.store.set(
+      bootstrap$,
+      () => {
+        setupRouter(
+          createTestStoreProvider(options.context.store),
+          (element) => {
+            const { unmount } = render(element);
+            options.context.signal.addEventListener("abort", () => {
+              unmount();
+            });
+          },
+        );
+      },
+      options.context.signal,
+    );
   }
 }
 

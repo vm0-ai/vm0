@@ -1,8 +1,8 @@
 import { command, computed, state, type Computed } from "ccstate";
-import { delay, timeout } from "signal-timers";
+import { delay } from "signal-timers";
 import type { AgentEvent, LogStatus } from "./log-types.ts";
 import { fetch$ } from "../fetch.ts";
-import { throwIfAbort, resetSignal, detach, Reason } from "../utils.ts";
+import { throwIfAbort, resetSignal } from "../utils.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { logger } from "../log.ts";
 import { createRunLoop, type PagedRunEvents } from "./polling.ts";
@@ -862,20 +862,16 @@ export const loadSessionFromSnapshot$ = command(
     if (snapshot.activeRunMessages.length > 0) {
       set(internalLocalMessages$, snapshot.activeRunMessages);
 
-      const loopPromise = (async () => {
-        await Promise.all(
-          snapshot.activeRunMessages
-            .filter(
-              (m): m is AssistantChatMessage =>
-                m.role === "assistant" && !!m.beginLoop$,
-            )
-            .map(async (message) => {
-              await set(message.beginLoop$!, signal);
-            }),
-        );
-      })();
-
-      detach(loopPromise, Reason.Daemon);
+      await Promise.all(
+        snapshot.activeRunMessages
+          .filter(
+            (m): m is AssistantChatMessage =>
+              m.role === "assistant" && !!m.beginLoop$,
+          )
+          .map(async (message) => {
+            await set(message.beginLoop$!, signal);
+          }),
+      );
     }
   },
 );
@@ -1097,7 +1093,6 @@ export const sendZeroChatMessage$ = command(
     let currentOptions = options;
 
     try {
-      // While loop replaces recursive detach() for queued messages
       while (true) {
         const { fullPrompt } = set(prepareUserMessage$, currentPrompt);
 

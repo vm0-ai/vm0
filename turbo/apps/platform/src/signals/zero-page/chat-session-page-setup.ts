@@ -8,6 +8,7 @@ import { zeroSessionId$ } from "./zero-nav.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
 import { loadInitialData$ } from "./zero-page.ts";
 import { syncModelPreference$ } from "./zero-model-preference.ts";
+import { detach, Reason } from "../utils.ts";
 
 export const setupChatSessionPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -21,11 +22,6 @@ export const setupChatSessionPage$ = command(
       return;
     }
 
-    // chatSessionSnapshot$ auto-fetches from URL. loadSessionFromSnapshot$
-    // awaits it, populates server messages, syncs agent, resumes polling.
-    await set(loadSessionFromSnapshot$, signal);
-    signal.throwIfAborted();
-
     // Update title with session preview
     const sessionId = get(zeroSessionId$);
     if (sessionId) {
@@ -37,5 +33,9 @@ export const setupChatSessionPage$ = command(
     }
 
     set(syncModelPreference$);
+
+    // chatSessionSnapshot$ auto-fetches from URL. loadSessionFromSnapshot$
+    // awaits it, populates server messages, syncs agent, resumes polling.
+    detach(set(loadSessionFromSnapshot$, signal), Reason.Entrance);
   },
 );

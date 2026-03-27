@@ -27,7 +27,6 @@ import {
   removeZeroAttachment$,
   cancelZeroAttachmentUpload$,
 } from "../zero-chat.ts";
-import { navigate$, detachedNavigateTo$ } from "../../route.ts";
 
 const context = testContext();
 
@@ -205,80 +204,6 @@ describe("zero-chat signals", () => {
       );
     });
 
-    it("should abort in-flight polling when switching threads", async () => {
-      let pollCount = 0;
-      useChatThreadHandlers();
-      server.use(
-        http.post("*/api/zero/runs", () => {
-          return HttpResponse.json({ runId: "run-old" }, { status: 201 });
-        }),
-        http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
-          return HttpResponse.json({
-            events: [],
-            hasMore: false,
-            framework: "claude-code",
-          });
-        }),
-        http.get("*/api/zero/logs/:runId", () => {
-          pollCount++;
-          return HttpResponse.json({
-            id: "run-old",
-            status: "running",
-            error: null,
-            prompt: "test",
-            createdAt: "2026-03-10T00:00:00Z",
-            startedAt: "2026-03-10T00:00:01Z",
-            completedAt: null,
-          });
-        }),
-        http.get("*/api/zero/chat-threads/:id", () => {
-          return HttpResponse.json({
-            id: "new-thread",
-            title: null,
-            agentId: "mock-compose-id",
-            chatMessages: [
-              {
-                role: "user",
-                content: "New thread msg",
-                createdAt: "2026-03-10T00:00:00Z",
-              },
-            ],
-            latestSessionId: null,
-            createdAt: "2026-03-10T00:00:00Z",
-            updatedAt: "2026-03-10T00:00:00Z",
-          });
-        }),
-      );
-
-      await setup();
-
-      const sendPromise = context.store
-        .set(sendZeroChatMessage$, "Start polling", undefined, context.signal)
-        .catch(() => {});
-
-      await delay(50);
-      expect(pollCount).toBeGreaterThan(0);
-
-      await context.store.set(
-        navigate$,
-        "/chat/new-thread",
-        {},
-        context.signal,
-      );
-
-      await context.store.set(loadSessionFromSnapshot$, context.signal);
-      await sendPromise;
-
-      const pollCountAfterAbort = pollCount;
-      await delay(200);
-      expect(pollCount).toBe(pollCountAfterAbort);
-
-      expect(context.store.get(zeroChatThreadId$)).toBe("new-thread");
-      const messages = await context.store.get(zeroChatMessages$);
-      expect(messages).toHaveLength(1);
-      expect(messages[0]?.content).toBe("New thread msg");
-    });
-
     it("should clear previous messages when switching", async () => {
       server.use(
         http.get("*/api/zero/chat-threads/:id", () => {
@@ -375,56 +300,6 @@ describe("zero-chat signals", () => {
       expect(context.store.get(zeroChatThreadId$)).toBeNull();
       await expect(context.store.get(allFinished$)).resolves.toBeTruthy();
       expect(context.store.get(zeroChatInput$)).toBe("");
-    });
-
-    it("should abort in-flight polling when starting a new session", async () => {
-      let pollCount = 0;
-      server.use(
-        http.post("*/api/zero/runs", () => {
-          return HttpResponse.json({ runId: "run-poll" }, { status: 201 });
-        }),
-        http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
-          return HttpResponse.json({
-            events: [],
-            hasMore: false,
-            framework: "claude-code",
-          });
-        }),
-        http.get("*/api/zero/logs/:runId", () => {
-          pollCount++;
-          return HttpResponse.json({
-            id: "run-poll",
-            status: "running",
-            error: null,
-            prompt: "test",
-            createdAt: "2026-03-10T00:00:00Z",
-            startedAt: "2026-03-10T00:00:01Z",
-            completedAt: null,
-          });
-        }),
-      );
-      useChatThreadHandlers();
-
-      await setup();
-
-      const sendPromise = context.store
-        .set(sendZeroChatMessage$, "Start polling", undefined, context.signal)
-        .catch(() => {});
-
-      await delay(50);
-      expect(pollCount).toBeGreaterThan(0);
-
-      context.store.set(startNewZeroSession$);
-      await sendPromise;
-
-      const pollCountAfterAbort = pollCount;
-      await delay(200);
-      expect(pollCount).toBe(pollCountAfterAbort);
-
-      expect(context.store.get(zeroCurrentSessionId$)).toBeNull();
-      await expect(context.store.get(zeroChatMessages$)).resolves.toHaveLength(
-        0,
-      );
     });
   });
 

@@ -20,7 +20,7 @@ import { setupPreferencesPage$ } from "./preferences-page/preferences-page-setup
 import { setupSchedulePage$ } from "./schedule-page/schedule-page-setup.ts";
 import { setupScheduleDetailPage$ } from "./schedule-page/schedule-detail-page-setup.ts";
 import { setupTalkPage$ } from "./zero-page/talk-page-setup.ts";
-import { setupChatPage$ } from "./zero-page/chat-page-setup.ts";
+import { setupHomePage$ } from "./zero-page/home-page-setup.ts";
 import { setupUsagePage$ } from "./usage-page/usage-page-setup.ts";
 import { setupChatSessionPage$ } from "./zero-page/chat-session-page-setup.ts";
 import { setupInternalConnectorLogos$ } from "./internal-connector-logos-setup.ts";
@@ -113,7 +113,7 @@ const ROUTE_CONFIG = [
   },
   {
     path: "/",
-    setup: setupAuthPageWrapper(setupChatPage$),
+    setup: setupAuthPageWrapper(setupHomePage$),
   },
   {
     // Catch-all: redirect unknown paths to /
