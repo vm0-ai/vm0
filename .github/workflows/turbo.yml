@@ -1690,15 +1690,20 @@ jobs:
         run: mkdir -p ~/.vm0 && cp /tmp/e2e-token-runner.json ~/.vm0/config.json
       - name: Bootstrap test account
         run: |
-          # Set org slug to "e2e-runner". If the slug is taken globally (another
-          # org owns it in the shared DB), fall back: check if this account already
-          # has any org configured and proceed with model-provider setup regardless.
-          if ! zero org set "e2e-runner" --force; then
-            echo "Warning: 'e2e-runner' slug unavailable; checking existing org status..."
-            if ! zero org status; then
-              echo "No org configured and slug is taken — trying unique fallback slug"
-              zero org set "e2e-runner-${{ needs.prepare.outputs.job-ref }}" --force
-            fi
+          # Try to set org slug to "e2e-runner".
+          # On a fresh Neon branch (no existing org): use create (no --force).
+          # On a branch inheriting parent DB (org already exists): use --force to update.
+          # If both fail (e.g. slug globally taken or 403 env restriction): check if
+          # account already has any org and proceed. As a last resort, create a unique slug.
+          if zero org set "e2e-runner"; then
+            echo "Org 'e2e-runner' created."
+          elif zero org set "e2e-runner" --force; then
+            echo "Org updated to 'e2e-runner'."
+          elif zero org status; then
+            echo "Warning: could not set slug to 'e2e-runner', proceeding with existing org."
+          else
+            echo "No org configured — creating with unique fallback slug"
+            zero org set "e2e-runner-${{ needs.prepare.outputs.job-ref }}"
           fi
           zero org model-provider setup --type "claude-code-oauth-token" --secret "mock-oauth-token-for-e2e"
         env:
