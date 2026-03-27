@@ -156,34 +156,26 @@ teardown_file() {
   wait_for_text "Create a new teammate" 30
   step_screenshot "create-dialog"
 
+  # Capture the Create button ref BEFORE fill — refs can become stale if fill
+  # triggers a React re-render that re-creates DOM nodes. Taking the snapshot
+  # before fill ensures the ref is valid when we click it.
+  echo "# Capturing Create button ref before fill..." >&3
+  local snap_i create_ref
+  snap_i=$(agent-browser snapshot -i 2>/dev/null || true)
+  create_ref=$(echo "$snap_i" | grep -E 'button "Create"' | grep -v 'teammate' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+
   # Fill agent name
   echo "# Filling agent name: $AGENT_NAME" >&3
   agent-browser find placeholder "e.g. Research Assistant" fill "$AGENT_NAME"
   sleep 0.5
 
-  # Click Create button in dialog — use role-based find as primary (snapshot refs
-  # can become stale after fill triggers React re-render). Fall back to snapshot
-  # ref only if role-based find fails after retries.
+  # Click Create button using pre-fill ref (stable across re-renders)
   echo "# Clicking Create button in dialog..." >&3
-  local create_clicked=false
-  for _i in $(seq 1 10); do
-    if agent-browser find role button click --name "Create" 2>/dev/null; then
-      create_clicked=true
-      break
-    fi
-    sleep 1
-  done
-  if [[ "$create_clicked" != "true" ]]; then
-    echo "# Role-based find failed, trying snapshot ref..." >&3
-    local snap_i create_ref
-    snap_i=$(agent-browser snapshot -i 2>/dev/null || true)
-    create_ref=$(echo "$snap_i" | grep -E 'button "Create"' | grep -v 'teammate' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
-    if [[ -n "$create_ref" ]]; then
-      agent-browser click "$create_ref"
-    else
-      echo "# Create button not found — failing test" >&3
-      return 1
-    fi
+  if [[ -n "$create_ref" ]]; then
+    agent-browser click "$create_ref"
+  else
+    echo "# Create button ref not found, trying text-based click..." >&3
+    agent-browser find text "Create" click
   fi
 
   # Wait for dialog to close, then navigate to /team to verify the agent.
