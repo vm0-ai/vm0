@@ -250,6 +250,26 @@ create_clerk_user_and_token() {
 
   export CLERK_USER_ID="$user_id"
 
+  # Create a Clerk organization for the user so they have exactly one org on
+  # sign-in. Clerk auto-activates the org when the user has only one, which
+  # avoids the "Select an Organization" blocker in the E2E flow.
+  local org_response
+  org_response=$(curl -sS -X POST \
+    "https://api.clerk.com/v1/organizations" \
+    -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
+    -H "Content-Type: application/json" \
+    -d "{\"name\": \"E2E Org\", \"created_by\": \"${user_id}\"}")
+
+  local org_id
+  org_id=$(echo "$org_response" | jq -r '.id // empty' 2>/dev/null)
+  if [[ -z "$org_id" ]]; then
+    echo "Failed to create Clerk org for user ${user_id}" >&2
+    echo "API response: ${org_response}" >&2
+    return 1
+  fi
+
+  export CLERK_ORG_ID="$org_id"
+
   # Create sign-in token
   local token_response
   token_response=$(curl -sS -X POST \

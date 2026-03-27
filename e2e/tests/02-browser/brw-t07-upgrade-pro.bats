@@ -140,20 +140,10 @@ teardown_file() {
   local snap
   local needs_onboarding=false
 
-  local org_created=false
-  for _i in $(seq 1 20); do
+  # The test user was created with a Clerk org via API, so Clerk auto-activates
+  # the org on sign-in. We only need to wait for the app's onboarding wizard.
+  for _i in $(seq 1 30); do
     snap=$(full_snapshot)
-    # Handle Clerk "Create Organization" page (appears for fresh users)
-    # Only attempt org creation once to avoid retry loops if the page lingers
-    if [[ "$org_created" != "true" ]] && contains "$snap" "Select an Organization\|Create Organization"; then
-      echo "# Creating Clerk organization..." >&3
-      agent-browser find placeholder "Organization name" fill "E2E Pro Test"
-      agent-browser wait 500
-      agent-browser find text "Create organization" click
-      org_created=true
-      agent-browser wait 8000
-      snap=$(full_snapshot)
-    fi
     if contains "$snap" "Name your workspace\|Choose your tools\|Connect your apps\|Where would you like to work"; then
       needs_onboarding=true
       break
@@ -165,28 +155,8 @@ teardown_file() {
     sleep 1
   done
 
-  # After org creation the app redirects to onboarding, but the redirect may not
-  # have completed within the detection loop above. If we created an org but did
-  # not yet see the onboarding wizard, give the app extra time and check again.
-  if [[ "$org_created" == "true" && "$needs_onboarding" != "true" ]]; then
-    echo "# Org was just created — waiting for onboarding redirect..." >&3
-    for _i in $(seq 1 60); do
-      snap=$(full_snapshot)
-      if contains "$snap" "Name your workspace\|Choose your tools\|Connect your apps\|Where would you like to work"; then
-        needs_onboarding=true
-        break
-      fi
-      if contains "$snap" "Ask me to automate workflows\|Ideas.*use cases\|Browse use cases"; then
-        echo "# Already onboarded (post-org-creation check)" >&3
-        break
-      fi
-      sleep 1
-    done
-  fi
-
   if [[ "$needs_onboarding" != "true" ]]; then
     echo "# Skipping onboarding steps: navigating directly to chat page" >&3
-    # Ensure the browser is on the chat page before subsequent tests depend on it
     agent-browser open "$APP_URL" --ignore-https-errors
     agent-browser wait 5000
     step_screenshot "onboarding-skipped"
@@ -236,49 +206,9 @@ teardown_file() {
 @test "verify chat page with Get Pro button" {
   echo "# Waiting for chat page..." >&3
 
-  # Give the page additional time to fully load after navigation in the previous test
   agent-browser wait 5000
 
-  # If the platform redirected to the onboarding wizard (fresh user), complete it first.
-  # This can happen when org creation in the previous test succeeds but the onboarding
-  # page was not yet ready during the detection loop.
   local snap
-  snap=$(full_snapshot)
-  if contains "$snap" "Name your workspace\|Choose your tools\|Connect your apps\|Where would you like to work"; then
-    echo "# Onboarding wizard detected in test 16 — completing it now..." >&3
-
-    if contains "$snap" "Name your workspace"; then
-      echo "# Onboarding step 1: naming workspace..." >&3
-      agent-browser find placeholder "e.g. Acme Corp" fill "Pro Upgrade Test"
-      agent-browser wait 500
-      agent-browser find text "Next" click
-      agent-browser wait 2000
-      snap=$(full_snapshot)
-    fi
-
-    if contains "$snap" "Choose your tools"; then
-      echo "# Onboarding step 2: choosing tools (skip)..." >&3
-      agent-browser find text "Next" click
-      agent-browser wait 2000
-      snap=$(full_snapshot)
-    fi
-
-    if contains "$snap" "Connect your apps"; then
-      echo "# Onboarding step 3: connect apps (skip)..." >&3
-      agent-browser find text "Next" click
-      agent-browser wait 2000
-      snap=$(full_snapshot)
-    fi
-
-    if contains "$snap" "Where would you like to work\|Continue in web"; then
-      echo "# Onboarding step 4: continue in web..." >&3
-      agent-browser find text "Continue in web" click
-      agent-browser wait 8000
-    fi
-
-    echo "# Onboarding complete (from test 16), waiting for chat page..." >&3
-  fi
-
   local chat_loaded=false
   local onboarding_completed_in_loop=false
   for _i in $(seq 1 90); do
