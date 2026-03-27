@@ -64,7 +64,8 @@ export async function deductFromExpiresRecords(
         gt(creditExpiresRecord.remaining, 0),
       ),
     )
-    .orderBy(asc(creditExpiresRecord.expiresAt));
+    .orderBy(asc(creditExpiresRecord.expiresAt))
+    .for("update");
 
   let left = amount;
   for (const record of records) {
@@ -98,7 +99,8 @@ export async function expireCredits(tx: Tx, orgId: string): Promise<number> {
         lte(creditExpiresRecord.expiresAt, new Date()),
         gt(creditExpiresRecord.remaining, 0),
       ),
-    );
+    )
+    .for("update");
 
   if (expired.length === 0) return 0;
 

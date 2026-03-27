@@ -336,25 +336,26 @@ export async function handleInvoicePaid(invoice: InvoiceInput): Promise<void> {
         amount: credits,
         expiresAt,
       });
-
-      // Also update currentPeriodEnd on org_metadata for consistency
-      await tx
-        .update(orgMetadata)
-        .set({
-          lastProcessedInvoiceId: invoice.id,
-          currentPeriodEnd: periodEndDate,
-          updatedAt: new Date(),
-        })
-        .where(eq(orgMetadata.orgId, org.orgId));
     } else {
-      await tx
-        .update(orgMetadata)
-        .set({
-          lastProcessedInvoiceId: invoice.id,
-          updatedAt: new Date(),
-        })
-        .where(eq(orgMetadata.orgId, org.orgId));
+      log.warn(
+        "invoice.paid missing period_end — skipping expiry record creation",
+        {
+          invoiceId: invoice.id,
+          orgId: org.orgId,
+        },
+      );
     }
+
+    await tx
+      .update(orgMetadata)
+      .set({
+        lastProcessedInvoiceId: invoice.id,
+        ...(periodEndUnix
+          ? { currentPeriodEnd: new Date(periodEndUnix * 1000) }
+          : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(orgMetadata.orgId, org.orgId));
   });
 
   // Reset member credit cap flags for the new billing period
