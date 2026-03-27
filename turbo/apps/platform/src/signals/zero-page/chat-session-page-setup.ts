@@ -3,7 +3,11 @@ import { createElement } from "react";
 import { ZeroChatSessionPageWrapper } from "../../views/zero-page/zero-chat-session-page-wrapper.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
-import { loadSessionFromSnapshot$, zeroSessionList$ } from "./zero-chat.ts";
+import {
+  loadSessionFromSnapshot$,
+  resetLocalMessages$,
+  zeroSessionList$,
+} from "./zero-chat.ts";
 import { chatThreadId$ } from "./zero-nav.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
 import { loadInitialData$ } from "./zero-page.ts";
@@ -21,6 +25,8 @@ export const setupChatSessionPage$ = command(
     if (await set(onboardGuard$, signal)) {
       return;
     }
+
+    set(resetLocalMessages$);
 
     // Update title with session preview
     const sessionId = get(chatThreadId$);

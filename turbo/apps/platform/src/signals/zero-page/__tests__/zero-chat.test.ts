@@ -8,12 +8,10 @@ import {
   zeroChatMessages$,
   allFinished$,
   zeroChatInput$,
-  zeroCurrentSessionId$,
   zeroSessionList$,
   zeroSessionListLoading$,
   zeroSessionListError$,
   zeroSessionError$,
-  chatThreadId$,
   setZeroChatInput$,
   clearZeroChatInput$,
   switchZeroSession$,
@@ -27,6 +25,7 @@ import {
   removeZeroAttachment$,
   cancelZeroAttachmentUpload$,
 } from "../zero-chat.ts";
+import { chatThreadId$ } from "../zero-nav.ts";
 
 const context = testContext();
 
@@ -163,7 +162,6 @@ describe("zero-chat signals", () => {
       await context.store.set(loadSessionFromSnapshot$, context.signal);
 
       expect(context.store.get(chatThreadId$)).toBe("thread-abc");
-      expect(context.store.get(zeroCurrentSessionId$)).toBe("session-abc");
 
       const messages = await context.store.get(zeroChatMessages$);
       expect(messages).toHaveLength(2);
@@ -296,7 +294,6 @@ describe("zero-chat signals", () => {
       await expect(context.store.get(zeroChatMessages$)).resolves.toHaveLength(
         0,
       );
-      expect(context.store.get(zeroCurrentSessionId$)).toBeNull();
       expect(context.store.get(chatThreadId$)).toBeNull();
       await expect(context.store.get(allFinished$)).resolves.toBeTruthy();
       expect(context.store.get(zeroChatInput$)).toBe("");
@@ -620,7 +617,6 @@ describe("zero-chat signals", () => {
       });
 
       expect(context.store.get(chatThreadId$)).toBe("url-thread");
-      expect(context.store.get(zeroCurrentSessionId$)).toBe("url-session");
       const messages = await context.store.get(zeroChatMessages$);
       expect(messages).toHaveLength(1);
       expect(messages[0]?.content).toBe("From URL");

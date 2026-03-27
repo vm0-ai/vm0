@@ -8,10 +8,10 @@ import { logger } from "../log.ts";
 import { createRunLoop, type PagedRunEvents } from "./polling.ts";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
 import {
-  navigateToZeroSession$,
+  navigateToChat$,
   zeroChatAgentId$,
   setZeroChatAgent$,
-  zeroSessionId$,
+  chatThreadId$,
 } from "./zero-nav.ts";
 import {
   RUN_ERROR_GUIDANCE,
@@ -144,6 +144,10 @@ export interface AssistantChatMessage {
 export type ZeroChatMessage = UserChatMessage | AssistantChatMessage;
 
 const internalLocalMessages$ = state<ZeroChatMessage[]>([]);
+
+export const resetLocalMessages$ = command(({ set }) => {
+  set(internalLocalMessages$, []);
+});
 
 export const zeroChatMessages$ = computed(async (get) => {
   const snapshot = await get(chatSessionSnapshot$);
@@ -345,7 +349,7 @@ export const resetTalkSendSignal$ = resetSignal();
 // ---------------------------------------------------------------------------
 
 /** Thread ID derived from the URL `/chat/:id`. */
-export const zeroChatThreadId$ = zeroSessionId$;
+export const zeroChatThreadId$ = chatThreadId$;
 
 // Chat thread list — reload + computed pattern
 const reloadChatThreadList$ = state(0);
@@ -544,7 +548,7 @@ interface ChatSessionSnapshotData {
  */
 const currentChatThread$ = computed(
   async (get): Promise<ChatThreadData | null> => {
-    const threadId = get(zeroSessionId$);
+    const threadId = get(chatThreadId$);
     if (!threadId) {
       return null;
     }
@@ -621,7 +625,7 @@ const currentChatSessionId$ = computed(async (get) => {
     return null;
   }
 
-  return thread.isLegacySession ? get(zeroSessionId$) : thread.latestSessionId;
+  return thread.isLegacySession ? get(chatThreadId$) : thread.latestSessionId;
 });
 
 /**
@@ -878,7 +882,7 @@ export const loadSessionFromSnapshot$ = command(
  * which auto-fetches when the URL changes.
  */
 export const switchZeroSession$ = command(({ set }, threadId: string) => {
-  set(navigateToZeroSession$, threadId);
+  set(navigateToChat$, threadId);
   set(internalSessionId$, null);
   set(internalLocalMessages$, []);
 });
@@ -919,7 +923,7 @@ export const createNewChatSession$ = command(
       const thread = await createChatThread(createClient, resolvedComposeId);
 
       set(reloadChatThreadList$, (n) => n + 1);
-      set(navigateToZeroSession$, thread.id);
+      set(navigateToChat$, thread.id);
     } catch (error) {
       throwIfAbort(error);
       L.error("Failed to create new chat session:", error);
@@ -978,7 +982,7 @@ const ensureChatThread$ = command(
     args: { composeId: string; prompt: string },
     _signal: AbortSignal,
   ): Promise<string | null> => {
-    const threadId = get(zeroSessionId$);
+    const threadId = get(chatThreadId$);
     if (threadId) {
       return threadId;
     }
@@ -989,8 +993,8 @@ const ensureChatThread$ = command(
 
     // Add the new thread to the session list so the sidebar updates immediately
     set(reloadChatThreadList$, (n) => n + 1);
-    // Navigate so zeroSessionId$ (URL) reflects the new thread
-    set(navigateToZeroSession$, thread.id);
+    // Navigate so chatThreadId$ (URL) reflects the new thread
+    set(navigateToChat$, thread.id);
 
     return thread.id;
   },

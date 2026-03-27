@@ -52,7 +52,7 @@ import {
   setZeroSidebarCollapsed$,
   handleZeroNavSelect$,
   handleZeroAccountAction$,
-  navigateToZeroSession$,
+  navigateToChat$,
 } from "../../signals/zero-page/zero-nav.ts";
 import {
   agentDisplayName$,
@@ -888,8 +888,8 @@ export function ZeroSidebar() {
   const setSidebarCollapsed = useSet(setZeroSidebarCollapsed$);
   const onCollapse = () => setSidebarCollapsed(!collapsed);
   const onSelect = useSet(handleZeroNavSelect$);
-  const navigateToSession = useSet(navigateToZeroSession$);
-  const onRecentSelect = (id: string) => navigateToSession(id);
+  const navigateToChat = useSet(navigateToChat$);
+  const onRecentSelect = (chatThreadId: string) => navigateToChat(chatThreadId);
   const selectedRecentId = useGet(chatThreadId$);
   const onAccountAction = useSet(handleZeroAccountAction$);
   const recentSessionsLoadable = useLastLoadable(zeroSessionList$);

@@ -89,11 +89,11 @@ export const setZeroChatAgent$ = command(({ set }, agentId: string | null) => {
  * `loadInitialData$` guards heavy work behind `initialDataLoaded$`, so
  * re-entry from an already-loaded zero page is cheap.
  */
-export const navigateToZeroSession$ = command(
-  ({ set }, chatThreadId: string) => {
-    set(detachedNavigateTo$, "/chat/:chatThreadId", { pathParams: { chatThreadId } });
-  },
-);
+export const navigateToChat$ = command(({ set }, chatThreadId: string) => {
+  set(detachedNavigateTo$, "/chat/:chatThreadId", {
+    pathParams: { chatThreadId },
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Shell UI state — about page, sidebar
