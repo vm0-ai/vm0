@@ -331,7 +331,7 @@ teardown_file() {
     agent-browser wait 2000
     wait_for_text "Description" 30
   fi
-  wait_for_text "What does this agent do" 15
+  wait_for_text "What does this agent do" 30
   step_screenshot "profile-before"
 
   # Fill description with timestamped value

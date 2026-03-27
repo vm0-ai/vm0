@@ -82,13 +82,13 @@ teardown_file() {
 
   # Wait for the "Add schedule" button to appear before clicking (the button
   # may load async after the overlay clears).
-  wait_for_text "Add schedule" 30 || true
+  wait_for_text "Add schedule" 15 || true
 
   # Click "Add schedule" — try role-based find first (more reliable under load),
   # then fall back to text-based find.
   echo "# Clicking Add schedule..." >&3
   local btn_clicked=false
-  for _i in $(seq 1 30); do
+  for _i in $(seq 1 20); do
     if agent-browser find role button click --name "Add schedule" 2>/dev/null; then
       btn_clicked=true
       break
