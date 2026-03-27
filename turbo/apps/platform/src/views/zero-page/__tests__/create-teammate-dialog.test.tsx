@@ -99,7 +99,7 @@ describe("create teammate dialog - avatar", () => {
       dialog.querySelector<HTMLInputElement>('input[type="file"]');
     const file = new File(["img"], "avatar.png", { type: "image/png" });
 
-    await act(async () => {
+    await act(() => {
       fireEvent.change(fileInput!, { target: { files: [file] } });
     });
 
@@ -131,7 +131,7 @@ describe("create teammate dialog - avatar", () => {
       dialog.querySelector<HTMLInputElement>('input[type="file"]');
     const file = new File(["img"], "avatar.png", { type: "image/png" });
 
-    await act(async () => {
+    await act(() => {
       fireEvent.change(fileInput!, { target: { files: [file] } });
     });
 
@@ -252,7 +252,7 @@ describe("create teammate dialog - avatar", () => {
       dialog.querySelector<HTMLInputElement>('input[type="file"]');
     const file = new File(["img"], "avatar.png", { type: "image/png" });
 
-    await act(async () => {
+    await act(() => {
       fireEvent.change(fileInput!, { target: { files: [file] } });
     });
 
