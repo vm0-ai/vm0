@@ -62,15 +62,20 @@ click_save_on_unsaved_bar() {
 
 # ---------------------------------------------------------------------------
 # click_tab — Click a tab by its text label
-# Uses interactive snapshot to find the tab ref, since agent-browser find text
-# does not match tab role elements.
+# Tries role-based find first (most reliable), then falls back to interactive
+# snapshot parsing which can have quote/format variations across environments.
 # ---------------------------------------------------------------------------
 click_tab() {
   local tab_text="$1"
   wait_for_text "$tab_text" 10
+  # Try role-based find first — avoids snapshot quote/format brittle matching
+  if agent-browser find role tab click --name "$tab_text" 2>/dev/null; then
+    return 0
+  fi
+  # Fallback: parse interactive snapshot with flexible matching
   local snap_i ref
   snap_i=$(agent-browser snapshot -i)
-  ref=$(echo "$snap_i" | grep -E "tab \"${tab_text}\"" | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+  ref=$(echo "$snap_i" | grep -iE "tab.*\"${tab_text}\"" | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
   if [[ -z "$ref" ]]; then
     echo "# Failed to find tab ref for '${tab_text}'" >&3
     return 1
@@ -366,8 +371,16 @@ teardown_file() {
     agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
     agent-browser wait 3000
   fi
-  # Wait for agent settings page to fully load before clicking tab
-  wait_for_text "Connectors" 30
+  # Wait for agent settings page to fully load before clicking tab.
+  # Retry with a reload in case prior test left the daemon in a bad state.
+  if ! wait_for_text "Connectors" 30; then
+    echo "# Connectors not found, reloading agent settings page..." >&3
+    if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
+      agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
+      agent-browser wait 5000
+    fi
+    wait_for_text "Connectors" 30
+  fi
   click_tab "Instructions"
   agent-browser wait 2000
 
