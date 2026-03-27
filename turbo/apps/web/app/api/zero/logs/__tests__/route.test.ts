@@ -448,6 +448,27 @@ describe("GET /api/zero/logs", () => {
       );
       expect(run).toBeDefined();
       expect(run.triggerSource).toBe("schedule");
+      expect(run.scheduleId).toBe(schedule.id);
+    });
+
+    it("should return null scheduleId for non-schedule runs", async () => {
+      await createTestRunInDb(user.userId, testComposeId, {
+        status: "completed",
+        triggerSource: "web",
+        startedAt: new Date(),
+        completedAt: new Date(),
+      });
+
+      const request = createTestRequest("http://localhost:3000/api/zero/logs");
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      const run = data.data.find(
+        (r: { triggerSource: string }) => r.triggerSource === "web",
+      );
+      expect(run).toBeDefined();
+      expect(run.scheduleId).toBeNull();
     });
 
     it("should return 'web' for runs with triggerSource set to web", async () => {
