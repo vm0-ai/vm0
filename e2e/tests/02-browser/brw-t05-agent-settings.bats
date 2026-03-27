@@ -117,11 +117,9 @@ teardown_file() {
 }
 
 @test "create agent for settings testing" {
-  # The sign-in navigation can leave the daemon unresponsive. Restart with a
-  # fresh token to ensure a clean state before navigating to the team page.
-  echo "# Restarting browser daemon for clean state..." >&3
-  agent-browser close 2>/dev/null || true
-  sleep 2
+  # The sign-in navigation can leave the daemon unresponsive. Fully restart the
+  # daemon (kill process + remove socket) to guarantee a clean state.
+  restart_browser_daemon
   create_clerk_sign_in_token
   sign_in_via_token_on_app
 
@@ -182,13 +180,11 @@ teardown_file() {
 }
 
 @test "navigate to agent settings and verify tabs" {
-  # The agent creation test can run for 60-90 seconds. Restart the browser
-  # daemon to recover from any unresponsive state before navigating.
-  echo "# Restarting browser daemon for clean state..." >&3
-  agent-browser close 2>/dev/null || true
-  sleep 2
+  # The agent creation test can run for 60-90 seconds. Fully restart the daemon
+  # (kill process + remove socket) to recover from any unresponsive state.
   # Create a fresh sign-in token — the one created in setup_file was consumed
   # by the earlier "sign in via token on platform app" test and cannot be reused.
+  restart_browser_daemon
   create_clerk_sign_in_token
   sign_in_via_token_on_app
 

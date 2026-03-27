@@ -141,8 +141,7 @@ teardown_file() {
   # Unconditionally restart to ensure a clean state. Then wait for the workspace
   # to fully initialize after sign-in before navigating to /schedule.
   echo "# Restarting browser daemon after schedule creation..." >&3
-  agent-browser close 2>/dev/null || true
-  sleep 2
+  restart_browser_daemon
   create_clerk_sign_in_token
   sign_in_via_token_on_app
   # Wait for workspace initialization after fresh sign-in (avoids long overlay
@@ -151,7 +150,9 @@ teardown_file() {
 
   echo "# Verifying schedule list page loads..." >&3
   agent-browser open "${APP_URL}/schedule" --ignore-https-errors
-  agent-browser wait 3000
+  # Use shell sleep instead of agent-browser wait — daemon can crash under
+  # parallel CI load when routing a simple delay through IPC.
+  sleep 3
 
   # Wait for any remaining loading overlay to clear.
   wait_for_text_gone "Loading your workspace" 30 || true

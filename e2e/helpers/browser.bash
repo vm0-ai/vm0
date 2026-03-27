@@ -313,8 +313,10 @@ derive_app_url() {
 sign_in_via_token() {
   local base_url="${1:-${APP_URL:-$VM0_API_URL}}"
   agent-browser open "${base_url}/sign-in-token?token=${SIGN_IN_TOKEN}" --ignore-https-errors
-  # Allow extra time for first-run Chrome initialisation (cold start in CI)
-  agent-browser wait 10000
+  # Allow extra time for first-run Chrome initialisation (cold start in CI).
+  # Use shell sleep instead of agent-browser wait to avoid daemon IPC during
+  # Chrome startup, which can crash the daemon under parallel CI load.
+  sleep 10
 
   # Wait for token auth to complete and redirect away from /sign-in-token
   local auth_complete=false
@@ -352,11 +354,23 @@ sign_in_via_token() {
 sign_in_via_token_on_app() {
   echo "# Pre-loading www. domain to initialise Clerk JS for satellite sync..." >&3
   agent-browser open "${VM0_API_URL}" --ignore-https-errors
-  agent-browser wait 5000
+  # Use shell sleep instead of agent-browser wait to avoid daemon IPC during
+  # page load — Chrome can crash the daemon under parallel CI load, and routing
+  # a simple delay through the daemon adds an unnecessary failure point.
+  sleep 5
   dismiss_cookie_banner
 
   echo "# Signing in via token on platform app (satellite) domain..." >&3
-  sign_in_via_token "$APP_URL"
+  if ! sign_in_via_token "$APP_URL"; then
+    # Daemon may have crashed during sign-in — restart and retry once.
+    echo "# sign_in_via_token failed, restarting daemon and retrying..." >&3
+    restart_browser_daemon
+    create_clerk_sign_in_token
+    agent-browser open "${VM0_API_URL}" --ignore-https-errors
+    sleep 5
+    dismiss_cookie_banner
+    sign_in_via_token "$APP_URL"
+  fi
   echo "# Authentication complete!" >&3
 }
 
@@ -406,6 +420,31 @@ wait_for_text_gone() {
     sleep 1
   done
   return 1
+}
+
+# ---------------------------------------------------------------------------
+# restart_browser_daemon — Fully stop the daemon process and clean up its socket
+# so the next agent-browser command starts a completely fresh daemon.
+#
+# agent-browser close only closes the browser tab; the daemon process stays
+# alive. If the daemon later crashes or is in a shutdown state, the socket
+# file may still exist, causing the next command to fail with "Connection
+# refused". This function kills the daemon PID and removes the socket to
+# guarantee a clean start.
+# ---------------------------------------------------------------------------
+restart_browser_daemon() {
+  echo "# Restarting browser daemon (full process restart)..." >&3 2>/dev/null || true
+  agent-browser close 2>/dev/null || true
+  sleep 1
+  if [[ -n "${AGENT_BROWSER_ISOLATED_HOME:-}" ]]; then
+    local pid_file="${AGENT_BROWSER_ISOLATED_HOME}/.agent-browser/default.pid"
+    local sock_file="${AGENT_BROWSER_ISOLATED_HOME}/.agent-browser/default.sock"
+    if [[ -f "$pid_file" ]]; then
+      kill "$(cat "$pid_file" 2>/dev/null)" 2>/dev/null || true
+    fi
+    rm -f "$sock_file" "$pid_file" 2>/dev/null || true
+  fi
+  sleep 3
 }
 
 # ---------------------------------------------------------------------------
