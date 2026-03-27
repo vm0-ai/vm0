@@ -21,6 +21,12 @@ export function resetMockUserPreferences(): void {
   };
 }
 
+export function setMockUserPreferences(
+  overrides: Partial<UserPreferencesResponse>,
+): void {
+  mockPreferences = { ...mockPreferences, ...overrides };
+}
+
 export const apiUserPreferencesHandlers = [
   // GET /api/zero/user-preferences
   http.get("*/api/zero/user-preferences", () => {

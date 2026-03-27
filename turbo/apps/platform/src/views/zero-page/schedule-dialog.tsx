@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useLoadable } from "ccstate-react";
+import { useLastResolved, useLoadable } from "ccstate-react";
 import { createPortal } from "react-dom";
 import { IconX } from "@tabler/icons-react";
 import {
@@ -25,6 +25,7 @@ import {
 } from "../../signals/zero-page/cron.ts";
 import { slackOrgData$ } from "../../signals/zero-page/zero-slack.ts";
 import { slackChannels$ } from "../../signals/zero-page/slack-channels.ts";
+import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
 
 // ---------------------------------------------------------------------------
 // Constants (moved from zero-schedule-card.tsx)
@@ -517,6 +518,7 @@ function ScheduleNotificationFields({
 function buildDefaults(
   agents: ScheduleFormDialogProps["agents"],
   initialValues: Partial<ScheduleFormValues> | undefined,
+  preferredTimezone: string | null | undefined,
 ): ScheduleFormValues {
   const defaults: ScheduleFormValues = {
     prompt: "",
@@ -526,7 +528,8 @@ function buildDefaults(
     date: new Date().toISOString().slice(0, 10),
     hour: 9,
     minute: 0,
-    timezone: new Intl.DateTimeFormat().resolvedOptions().timeZone,
+    timezone:
+      preferredTimezone ?? new Intl.DateTimeFormat().resolvedOptions().timeZone,
     loopMinutes: 15,
     dayOfWeek: "1",
     dayOfMonth: "1",
@@ -583,7 +586,10 @@ function ScheduleFormDialogInner({
   initialValues,
   agents,
   saveError,
-}: Omit<ScheduleFormDialogProps, "open">) {
+  preferredTimezone,
+}: Omit<ScheduleFormDialogProps, "open"> & {
+  preferredTimezone: string | null | undefined;
+}) {
   const slackData = useLoadable(slackOrgData$);
   const slackHasBot =
     slackData.state === "hasData" && slackData.data?.isConnected === true;
@@ -593,7 +599,7 @@ function ScheduleFormDialogInner({
   const slackChannels: SlackChannelOption[] =
     slackChannelsLoadable.state === "hasData" ? slackChannelsLoadable.data : [];
 
-  const init = buildDefaults(agents, initialValues);
+  const init = buildDefaults(agents, initialValues, preferredTimezone);
 
   const [prompt, setPrompt] = useState(init.prompt);
   const [description, setDescription] = useState(init.description);
@@ -815,9 +821,16 @@ function ScheduleFormDialogInner({
 // ---------------------------------------------------------------------------
 
 export function ScheduleFormDialog({ open, ...rest }: ScheduleFormDialogProps) {
+  const preferences = useLastResolved(userPreferences$);
+
   return (
     <Dialog open={open} onOpenChange={() => {}}>
-      {open && <ScheduleFormDialogInner {...rest} />}
+      {open && (
+        <ScheduleFormDialogInner
+          {...rest}
+          preferredTimezone={preferences?.timezone}
+        />
+      )}
     </Dialog>
   );
 }
