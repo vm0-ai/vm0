@@ -17,7 +17,7 @@ export const setupWorksPage$ = command(async ({ set }, signal: AbortSignal) => {
   set(updateDocumentTitle$, "Works");
   await Promise.all([
     set(initZeroOnboarding$, signal),
-    set(handleSlackUrlParams$, signal),
+    set(handleSlackUrlParams$),
   ]);
   signal.throwIfAborted();
   detach(set(pollSlackConnection$, signal), Reason.Entrance);

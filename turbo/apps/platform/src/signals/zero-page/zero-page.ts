@@ -21,7 +21,7 @@ export const loadInitialData$ = command(
       return;
     }
     await set(initZeroOnboarding$, signal);
-    await set(handleSlackUrlParams$, signal);
+    set(handleSlackUrlParams$);
     signal.throwIfAborted();
     set(initialDataLoaded$, true);
     set(initSidebarCollapsed$);

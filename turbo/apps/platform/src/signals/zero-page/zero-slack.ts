@@ -111,7 +111,7 @@ export const pollSlackConnection$ = command(
   },
 );
 
-export const handleSlackUrlParams$ = command((_ctx, _signal: AbortSignal) => {
+export const handleSlackUrlParams$ = command(() => {
   const params = new URLSearchParams(window.location.search);
   if (params.get("installed") === "1") {
     toast.success("Slack installed successfully");
