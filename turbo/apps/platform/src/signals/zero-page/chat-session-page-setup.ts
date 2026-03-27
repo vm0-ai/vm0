@@ -4,7 +4,7 @@ import { ZeroChatSessionPageWrapper } from "../../views/zero-page/zero-chat-sess
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { loadSessionFromSnapshot$, zeroSessionList$ } from "./zero-chat.ts";
-import { zeroSessionId$ } from "./zero-nav.ts";
+import { chatThreadId$ } from "./zero-nav.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
 import { loadInitialData$ } from "./zero-page.ts";
 import { syncModelPreference$ } from "./zero-model-preference.ts";
@@ -23,7 +23,7 @@ export const setupChatSessionPage$ = command(
     }
 
     // Update title with session preview
-    const sessionId = get(zeroSessionId$);
+    const sessionId = get(chatThreadId$);
     if (sessionId) {
       const sessions = await get(zeroSessionList$);
       signal.throwIfAborted();

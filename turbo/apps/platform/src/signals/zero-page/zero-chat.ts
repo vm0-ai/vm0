@@ -817,10 +817,10 @@ const syncAgentForThread$ = command(
       const isDefault = agentComposeId === status.defaultAgentId;
       const newAgentId = isDefault ? null : agentComposeId;
       if (newAgentId !== currentAgentId) {
-        await set(switchActiveAgent$, newAgentId, signal);
+        set(switchActiveAgent$, newAgentId, signal);
       }
     } else if (get(zeroChatAgentId$) !== null) {
-      await set(switchActiveAgent$, null, signal);
+      set(switchActiveAgent$, null, signal);
     }
   },
 );

@@ -46,7 +46,7 @@ import { clerk$, user$ } from "../../signals/auth.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   zeroActiveId$,
-  zeroSessionId$,
+  chatThreadId$,
   zeroChatAgentId$,
   zeroSidebarCollapsed$,
   setZeroSidebarCollapsed$,
@@ -890,7 +890,7 @@ export function ZeroSidebar() {
   const onSelect = useSet(handleZeroNavSelect$);
   const navigateToSession = useSet(navigateToZeroSession$);
   const onRecentSelect = (id: string) => navigateToSession(id);
-  const selectedRecentId = useGet(zeroSessionId$);
+  const selectedRecentId = useGet(chatThreadId$);
   const onAccountAction = useSet(handleZeroAccountAction$);
   const recentSessionsLoadable = useLastLoadable(zeroSessionList$);
   const recentSessions =

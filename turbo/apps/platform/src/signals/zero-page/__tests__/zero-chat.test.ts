@@ -13,7 +13,7 @@ import {
   zeroSessionListLoading$,
   zeroSessionListError$,
   zeroSessionError$,
-  zeroChatThreadId$,
+  chatThreadId$,
   setZeroChatInput$,
   clearZeroChatInput$,
   switchZeroSession$,
@@ -162,7 +162,7 @@ describe("zero-chat signals", () => {
       context.store.set(switchZeroSession$, "thread-abc");
       await context.store.set(loadSessionFromSnapshot$, context.signal);
 
-      expect(context.store.get(zeroChatThreadId$)).toBe("thread-abc");
+      expect(context.store.get(chatThreadId$)).toBe("thread-abc");
       expect(context.store.get(zeroCurrentSessionId$)).toBe("session-abc");
 
       const messages = await context.store.get(zeroChatMessages$);
@@ -297,7 +297,7 @@ describe("zero-chat signals", () => {
         0,
       );
       expect(context.store.get(zeroCurrentSessionId$)).toBeNull();
-      expect(context.store.get(zeroChatThreadId$)).toBeNull();
+      expect(context.store.get(chatThreadId$)).toBeNull();
       await expect(context.store.get(allFinished$)).resolves.toBeTruthy();
       expect(context.store.get(zeroChatInput$)).toBe("");
     });
@@ -374,7 +374,7 @@ describe("zero-chat signals", () => {
       expect(capturedRunBody!.prompt).toBe("What can you do?");
 
       await expect(context.store.get(allFinished$)).resolves.toBeTruthy();
-      expect(context.store.get(zeroChatThreadId$)).toBe("thread-new");
+      expect(context.store.get(chatThreadId$)).toBe("thread-new");
 
       const messages = await context.store.get(zeroChatMessages$);
       expect(messages.length).toBeGreaterThanOrEqual(2);
@@ -619,7 +619,7 @@ describe("zero-chat signals", () => {
         withoutRender: true,
       });
 
-      expect(context.store.get(zeroChatThreadId$)).toBe("url-thread");
+      expect(context.store.get(chatThreadId$)).toBe("url-thread");
       expect(context.store.get(zeroCurrentSessionId$)).toBe("url-session");
       const messages = await context.store.get(zeroChatMessages$);
       expect(messages).toHaveLength(1);
@@ -633,7 +633,7 @@ describe("zero-chat signals", () => {
         withoutRender: true,
       });
 
-      expect(context.store.get(zeroChatThreadId$)).toBeNull();
+      expect(context.store.get(chatThreadId$)).toBeNull();
     });
 
     it("should skip load when messages are already present", async () => {

@@ -40,7 +40,7 @@ export const zeroActiveId$ = computed((get): ZeroNavId => {
  * Chat thread ID extracted from `/chat/:chatThreadId`.
  * Returns null when on `/`, `/chat`, or `/talk/:agentId`.
  */
-export const zeroSessionId$ = computed((get): string | null => {
+export const chatThreadId$ = computed((get): string | null => {
   const params = get(pathParams$);
   const chatThreadId = params?.chatThreadId;
   return typeof chatThreadId === "string" ? chatThreadId : null;
