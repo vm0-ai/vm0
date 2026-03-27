@@ -323,36 +323,31 @@ export async function handleInvoicePaid(invoice: InvoiceInput): Promise<void> {
     await grantOrgCredits(tx, org.orgId, credits);
 
     // Calculate expires_at: currentPeriodEnd + 1 month
-    // Use invoice.period_end if available, otherwise fall back to subscription retrieval
+    // invoice.period_end is required to create the expiry record correctly.
+    // If it is missing, throw so the webhook fails and Stripe retries, alerting operators.
     const periodEndUnix = invoice.period_end;
-    if (periodEndUnix) {
-      const periodEndDate = new Date(periodEndUnix * 1000);
-      const expiresAt = new Date(periodEndDate);
-      expiresAt.setMonth(expiresAt.getMonth() + 1);
-
-      await createExpiresRecord(tx, org.orgId, {
-        source: "subscription_renewal",
-        stripeInvoiceId: invoice.id,
-        amount: credits,
-        expiresAt,
-      });
-    } else {
-      log.warn(
-        "invoice.paid missing period_end — skipping expiry record creation",
-        {
-          invoiceId: invoice.id,
-          orgId: org.orgId,
-        },
+    if (!periodEndUnix) {
+      throw new Error(
+        `invoice.paid missing period_end — cannot create expiry record (invoiceId=${invoice.id}, orgId=${org.orgId})`,
       );
     }
+
+    const periodEndDate = new Date(periodEndUnix * 1000);
+    const expiresAt = new Date(periodEndDate);
+    expiresAt.setMonth(expiresAt.getMonth() + 1);
+
+    await createExpiresRecord(tx, org.orgId, {
+      source: "subscription_renewal",
+      stripeInvoiceId: invoice.id,
+      amount: credits,
+      expiresAt,
+    });
 
     await tx
       .update(orgMetadata)
       .set({
         lastProcessedInvoiceId: invoice.id,
-        ...(periodEndUnix
-          ? { currentPeriodEnd: new Date(periodEndUnix * 1000) }
-          : {}),
+        currentPeriodEnd: new Date(periodEndUnix * 1000),
         updatedAt: new Date(),
       })
       .where(eq(orgMetadata.orgId, org.orgId));
