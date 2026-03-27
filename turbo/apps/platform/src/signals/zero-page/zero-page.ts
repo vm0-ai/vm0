@@ -59,8 +59,8 @@ export const resolveAgentById$ = command(
           // Unknown agent → redirect to default
           await set(switchActiveAgent$, null, signal);
           if (rawDefaultName) {
-            set(navigateTo$, "/talk/:id", {
-              pathParams: { id: rawDefaultName },
+            set(navigateTo$, "/talk/:agentId", {
+              pathParams: { agentId: rawDefaultName },
               replace: true,
             });
           }

@@ -25,7 +25,7 @@ export function ZeroIdeationPage() {
 
   const navigateToChat = () => {
     if (agentId) {
-      navigate("/talk/:id", { pathParams: { id: agentId } });
+      navigate("/talk/:agentId", { pathParams: { agentId: agentId } });
     } else {
       navigate("/");
     }

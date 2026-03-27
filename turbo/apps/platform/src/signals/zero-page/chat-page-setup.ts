@@ -25,8 +25,8 @@ export const setupChatPage$ = command(
       L.info("redirecting to /talk/", rawName);
       const params = get(searchParams$);
       const prompt = params.get("prompt");
-      set(navigateTo$, "/talk/:id", {
-        pathParams: { id: rawName },
+      set(navigateTo$, "/talk/:agentId", {
+        pathParams: { agentId: rawName },
         searchParams: prompt ? new URLSearchParams({ prompt }) : undefined,
         replace: true,
       });

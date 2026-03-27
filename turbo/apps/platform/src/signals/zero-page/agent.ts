@@ -5,8 +5,8 @@ import { zeroAgentsByIdContract } from "@vm0/core";
 
 export const currentAgentId$ = computed((get) => {
   const params = get(pathParams$);
-  const id = params?.id;
-  return typeof id === "string" ? id : null;
+  const agentId = params?.agentId;
+  return typeof agentId === "string" ? agentId : null;
 });
 
 const currentAgent$ = computed(async (get) => {

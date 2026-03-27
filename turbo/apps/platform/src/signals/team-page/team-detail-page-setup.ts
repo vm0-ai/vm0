@@ -15,8 +15,8 @@ export const setupTeamDetailPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(updatePage$, createElement(ZeroTeamDetailPage));
 
-    const params = get(pathParams$) as { id?: string } | undefined;
-    const agentId = params?.id ?? null;
+    const params = get(pathParams$) as { agentId?: string } | undefined;
+    const agentId = params?.agentId ?? null;
     set(updateDocumentTitle$, "Team");
     await Promise.all([
       set(initZeroOnboarding$, signal),

@@ -50,8 +50,8 @@ export function ZeroTalkPage() {
   const handleNavigateToMeet = (tab?: string) => {
     if (resolvedAgentId) {
       const searchParams = tab ? new URLSearchParams({ tab }) : undefined;
-      navigateTo("/team/:id", {
-        pathParams: { id: resolvedAgentId },
+      navigateTo("/team/:agentId", {
+        pathParams: { agentId: resolvedAgentId },
         searchParams,
       });
     }
@@ -59,8 +59,8 @@ export function ZeroTalkPage() {
 
   const handleChatAvatarClick = () => {
     if (resolvedAgentId) {
-      navigateTo("/team/:id", {
-        pathParams: { id: resolvedAgentId },
+      navigateTo("/team/:agentId", {
+        pathParams: { agentId: resolvedAgentId },
       });
     }
   };
@@ -71,7 +71,7 @@ export function ZeroTalkPage() {
   ) => {
     startNewSession();
     // Use a dedicated reset signal instead of pageSignal because the send
-    // flow navigates from /talk/ to /chat/:sessionId, which would abort the
+    // flow navigates from /talk/ to /chat/:chatThreadId, which would abort the
     // page signal.  resetTalkSendSignal$ is reset by startNewZeroSession$
     // above, so each send gets a fresh signal and previous sends are aborted.
     const talkSignal = resetTalkSendSignal();

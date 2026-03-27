@@ -162,8 +162,8 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
             <CardContent className="px-6 py-6 text-center space-y-3">
               <p className="text-sm text-destructive">{error}</p>
               <Link
-                pathname="/team/:id"
-                options={{ pathParams: { id: agentId } }}
+                pathname="/team/:agentId"
+                options={{ pathParams: { agentId: agentId } }}
                 className="zero-btn-morandi inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-accent"
               >
                 Retry
@@ -475,8 +475,8 @@ export function ZeroJobDetailPage({ agentId }: ZeroJobDetailPageProps) {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Link
-                    pathname="/talk/:id"
-                    options={{ pathParams: { id: agentId } }}
+                    pathname="/talk/:agentId"
+                    options={{ pathParams: { agentId: agentId } }}
                     className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg px-4 transition-colors inline-flex items-center justify-center border text-sm font-medium hover:bg-accent"
                   >
                     <IconMessageCircle size={14} stroke={1.5} />

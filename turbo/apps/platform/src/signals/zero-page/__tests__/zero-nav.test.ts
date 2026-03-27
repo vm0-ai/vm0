@@ -103,26 +103,39 @@ describe("zero-nav", () => {
   });
 
   describe("zeroTalkAgentId$", () => {
-    it("should return null for /", () => {
-      mockLocation({ pathname: "/", search: "" }, context.signal);
+    async function setupRoutes(pathname: string) {
+      context.store.set(setRootSignal$, context.signal);
+      createPushStateMock(context.signal);
+      mockLocation({ pathname, search: "" }, context.signal);
+      const noop$ = command(() => void 0);
+      await context.store.set(
+        initRoutes$,
+        [
+          { path: "/", setup: noop$ },
+          { path: "/talk/:agentId", setup: noop$ },
+          { path: "{/*path}", setup: noop$ },
+        ],
+        context.signal,
+      );
+    }
+
+    it("should return null for /", async () => {
+      await setupRoutes("/");
       expect(context.store.get(zeroTalkAgentId$)).toBeNull();
     });
 
-    it("should return null for /chat", () => {
-      mockLocation({ pathname: "/chat", search: "" }, context.signal);
+    it("should return null for /chat", async () => {
+      await setupRoutes("/chat");
       expect(context.store.get(zeroTalkAgentId$)).toBeNull();
     });
 
-    it("should extract agent name from /talk/:name", () => {
-      mockLocation({ pathname: "/talk/my-agent", search: "" }, context.signal);
+    it("should extract agent name from /talk/:name", async () => {
+      await setupRoutes("/talk/my-agent");
       expect(context.store.get(zeroTalkAgentId$)).toBe("my-agent");
     });
 
-    it("should decode URI-encoded agent names", () => {
-      mockLocation(
-        { pathname: "/talk/agent%20with%20spaces", search: "" },
-        context.signal,
-      );
+    it("should decode URI-encoded agent names", async () => {
+      await setupRoutes("/talk/agent%20with%20spaces");
       expect(context.store.get(zeroTalkAgentId$)).toBe("agent with spaces");
     });
   });

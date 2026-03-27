@@ -58,7 +58,7 @@ function mockChatAPIs() {
 }
 
 describe("talk navigation", () => {
-  it("should navigate from /talk/:name to /chat/:sessionId after sending a message", async () => {
+  it("should navigate from /talk/:name to /chat/:chatThreadId after sending a message", async () => {
     mockChatAPIs();
 
     await setupPage({ context, path: "/talk/mock-compose-id" });
@@ -92,7 +92,7 @@ describe("talk navigation", () => {
     );
   }, 15_000);
 
-  it("should navigate to /chat/:sessionId after completing onboarding and sending auto-intro", async () => {
+  it("should navigate to /chat/:chatThreadId after completing onboarding and sending auto-intro", async () => {
     // Track onboarding status: starts as needing onboarding, then completes
     let onboardingComplete = false;
 

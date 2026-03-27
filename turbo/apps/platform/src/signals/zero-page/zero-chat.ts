@@ -440,7 +440,7 @@ const resetSending$ = resetSignal();
 /**
  * Signal for talk-page sends that must survive page navigation.
  *
- * The talk page navigates from `/talk/` to `/chat/:sessionId` on send,
+ * The talk page navigates from `/talk/` to `/chat/:chatThreadId` on send,
  * which aborts the page-level signal.  This dedicated signal lets the
  * talk page pass a cancellable AbortSignal without coupling to the page
  * lifecycle.  It is reset each time `startNewZeroSession$` fires (which

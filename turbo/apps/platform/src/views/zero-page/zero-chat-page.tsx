@@ -302,8 +302,8 @@ export function ZeroChatPage({
               className="zero-card cursor-pointer p-4 text-left flex flex-col relative group hover:bg-muted/30 transition-colors"
               onClick={() => {
                 if (talkAgentId) {
-                  navigate("/talk/:id/ideas", {
-                    pathParams: { id: talkAgentId },
+                  navigate("/talk/:agentId/ideas", {
+                    pathParams: { agentId: talkAgentId },
                   });
                 }
               }}

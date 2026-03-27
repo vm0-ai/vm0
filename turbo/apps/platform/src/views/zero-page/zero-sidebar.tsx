@@ -606,8 +606,8 @@ function RecentChatSection({
             filteredSessions.map((session) => (
               <Link
                 key={session.id}
-                pathname="/chat/:sessionId"
-                options={{ pathParams: { sessionId: session.id } }}
+                pathname="/chat/:chatThreadId"
+                options={{ pathParams: { chatThreadId: session.id } }}
                 onClick={(e) => {
                   if (e.metaKey || e.ctrlKey || e.shiftKey) {
                     return;
@@ -698,10 +698,10 @@ function TalkToSection({
             selectedAgentIdFromChat === null;
           return (
             <Link
-              pathname={defaultAgentRawName ? "/talk/:id" : "/"}
+              pathname={defaultAgentRawName ? "/talk/:agentId" : "/"}
               options={
                 defaultAgentRawName
-                  ? { pathParams: { id: defaultAgentRawName } }
+                  ? { pathParams: { agentId: defaultAgentRawName } }
                   : undefined
               }
               className={`flex w-full h-8 shrink-0 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
@@ -731,8 +731,8 @@ function TalkToSection({
           return (
             <div key={agent.id} className="group relative">
               <Link
-                pathname="/talk/:id"
-                options={{ pathParams: { id: agent.id } }}
+                pathname="/talk/:agentId"
+                options={{ pathParams: { agentId: agent.id } }}
                 className={`flex w-full h-8 shrink-0 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
                   isPrimarySelected
                     ? "bg-slate-200 text-slate-900 font-medium"

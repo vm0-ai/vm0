@@ -662,8 +662,8 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
           <Tooltip>
             <TooltipTrigger asChild>
               <Link
-                pathname="/activity/:logId"
-                options={{ pathParams: { logId: message.runId } }}
+                pathname="/activity/:runId"
+                options={{ pathParams: { runId: message.runId } }}
                 className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
                 aria-label="View run logs"
               >

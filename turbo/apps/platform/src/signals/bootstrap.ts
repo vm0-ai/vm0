@@ -40,19 +40,19 @@ const ROUTE_CONFIG = [
     setup: setupAuthPageWrapper(setupSelectOrgPage$),
   },
   {
-    path: "/chat/:sessionId",
+    path: "/chat/:chatThreadId",
     setup: setupAuthPageWrapper(setupChatSessionPage$),
   },
   {
-    path: "/talk/:id/ideas",
+    path: "/talk/:agentId/ideas",
     setup: setupAuthPageWrapper(setupIdeationPage$),
   },
   {
-    path: "/talk/:id",
+    path: "/talk/:agentId",
     setup: setupAuthPageWrapper(setupTalkPage$),
   },
   {
-    path: "/team/:id",
+    path: "/team/:agentId",
     setup: setupAuthPageWrapper(setupTeamDetailPage$),
   },
   {
@@ -68,7 +68,7 @@ const ROUTE_CONFIG = [
     setup: setupAuthPageWrapper(setupQueuePage$),
   },
   {
-    path: "/activity/:logId",
+    path: "/activity/:runId",
     setup: setupAuthPageWrapper(setupActivityDetailPage$),
   },
   {

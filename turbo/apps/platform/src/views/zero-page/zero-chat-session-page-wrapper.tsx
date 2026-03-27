@@ -40,8 +40,8 @@ export function ZeroChatSessionPageWrapper() {
 
   const handleNavigateToSchedule = () => {
     if (resolvedAgentId) {
-      navigateTo("/team/:id", {
-        pathParams: { id: resolvedAgentId },
+      navigateTo("/team/:agentId", {
+        pathParams: { agentId: resolvedAgentId },
         searchParams: new URLSearchParams({ tab: "schedule" }),
       });
     }
@@ -49,8 +49,8 @@ export function ZeroChatSessionPageWrapper() {
 
   const handleChatAvatarClick = () => {
     if (resolvedAgentId) {
-      navigateTo("/team/:id", {
-        pathParams: { id: resolvedAgentId },
+      navigateTo("/team/:agentId", {
+        pathParams: { agentId: resolvedAgentId },
       });
     }
   };
