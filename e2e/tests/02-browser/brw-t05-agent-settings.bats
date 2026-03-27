@@ -216,10 +216,22 @@ teardown_file() {
   agent-browser find placeholder "fc-xxxxxxxx" fill "fc-e2etest12345"
   agent-browser wait 500
 
-  # Click Save in the modal
+  # Click Save in the API token modal
   agent-browser find text "Save" click
   agent-browser wait 3000
   step_screenshot "connector-after-modal-save"
+
+  # Close the Add Connector dialog (it stays open after adding the connector).
+  # The unsaved bar portal is behind the dialog overlay and can't be clicked
+  # until the dialog is closed.
+  local snap_i close_ref
+  snap_i=$(agent-browser snapshot -i)
+  close_ref=$(echo "$snap_i" | grep -E '^- button "Close"' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+  if [[ -n "$close_ref" ]]; then
+    echo "# Closing add connector dialog..." >&3
+    agent-browser click "$close_ref"
+    agent-browser wait 1000
+  fi
 
   # Wait for unsaved bar to appear (connector added to list)
   wait_for_unsaved_bar 15
