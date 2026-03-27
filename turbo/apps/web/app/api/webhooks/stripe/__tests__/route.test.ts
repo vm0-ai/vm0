@@ -237,6 +237,7 @@ describe("POST /api/webhooks/stripe", () => {
       const cusId = uniqueId("cus-inv-pro");
       const subId = uniqueId("sub-inv-pro");
       const invId = uniqueId("inv-pro");
+      const periodEnd = Math.floor(Date.now() / 1000) + 30 * 86400;
 
       await updateOrgStripeFields(user.orgId, {
         stripeCustomerId: cusId,
@@ -253,6 +254,7 @@ describe("POST /api/webhooks/stripe", () => {
       const response = await sendWebhookEvent("invoice.paid", {
         id: invId,
         customer: cusId,
+        period_end: periodEnd,
         parent: { subscription_details: { subscription: subId } },
       });
 
@@ -269,6 +271,7 @@ describe("POST /api/webhooks/stripe", () => {
       const cusId = uniqueId("cus-inv-team");
       const subId = uniqueId("sub-inv-team");
       const invId = uniqueId("inv-team");
+      const periodEnd = Math.floor(Date.now() / 1000) + 30 * 86400;
 
       await updateOrgStripeFields(user.orgId, {
         stripeCustomerId: cusId,
@@ -285,6 +288,7 @@ describe("POST /api/webhooks/stripe", () => {
       const response = await sendWebhookEvent("invoice.paid", {
         id: invId,
         customer: cusId,
+        period_end: periodEnd,
         parent: { subscription_details: { subscription: subId } },
       });
 
@@ -300,6 +304,7 @@ describe("POST /api/webhooks/stripe", () => {
       const cusId = uniqueId("cus-rollover");
       const subId = uniqueId("sub-rollover");
       const invId = uniqueId("inv-rollover");
+      const periodEnd = Math.floor(Date.now() / 1000) + 30 * 86400;
 
       await updateOrgStripeFields(user.orgId, {
         stripeCustomerId: cusId,
@@ -316,6 +321,7 @@ describe("POST /api/webhooks/stripe", () => {
       await sendWebhookEvent("invoice.paid", {
         id: invId,
         customer: cusId,
+        period_end: periodEnd,
         parent: { subscription_details: { subscription: subId } },
       });
 
@@ -394,6 +400,7 @@ describe("POST /api/webhooks/stripe", () => {
       const cusId = uniqueId("cus-reset");
       const subId = uniqueId("sub-reset");
       const invId = uniqueId("inv-reset");
+      const periodEnd = Math.floor(Date.now() / 1000) + 30 * 86400;
 
       await updateOrgStripeFields(user.orgId, {
         stripeCustomerId: cusId,
@@ -416,6 +423,7 @@ describe("POST /api/webhooks/stripe", () => {
       const response = await sendWebhookEvent("invoice.paid", {
         id: invId,
         customer: cusId,
+        period_end: periodEnd,
         parent: { subscription_details: { subscription: subId } },
       });
 
@@ -672,6 +680,43 @@ describe("POST /api/webhooks/stripe", () => {
 
       const records = await findCreditExpiresRecords(user.orgId);
       expect(records).toHaveLength(1);
+    });
+
+    it("throws and rolls back transaction when period_end is missing", async () => {
+      const cusId = uniqueId("cus-no-period-end");
+      const subId = uniqueId("sub-no-period-end");
+      const invId = uniqueId("inv-no-period-end");
+
+      await updateOrgStripeFields(user.orgId, {
+        stripeCustomerId: cusId,
+        stripeSubscriptionId: subId,
+      });
+
+      stripeMocks.subscriptionsRetrieve.mockResolvedValue({
+        id: subId,
+        items: { data: [{ price: { id: TEST_PRICE_PRO } }] },
+      });
+
+      const creditsBefore = await getOrgCredits(user.orgId);
+
+      // Send invoice.paid without period_end — handler throws because
+      // period_end is required to create the expiry record
+      await expect(
+        sendWebhookEvent("invoice.paid", {
+          id: invId,
+          customer: cusId,
+          parent: { subscription_details: { subscription: subId } },
+          // period_end intentionally omitted
+        }),
+      ).rejects.toThrow("missing period_end");
+
+      // Credits must NOT have changed (transaction rolled back)
+      const creditsAfter = await getOrgCredits(user.orgId);
+      expect(creditsAfter).toBe(creditsBefore);
+
+      // No expires record should have been created
+      const records = await findCreditExpiresRecords(user.orgId);
+      expect(records).toHaveLength(0);
     });
 
     it("auto-recharge does NOT create expires record", async () => {

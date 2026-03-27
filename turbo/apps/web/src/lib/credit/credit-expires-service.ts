@@ -1,5 +1,6 @@
 import { eq, and, gt, lte, asc, sql } from "drizzle-orm";
 import { creditExpiresRecord } from "../../db/schema/credit-expires-record";
+import { orgMetadata } from "../../db/schema/org-metadata";
 import { logger } from "../logger";
 
 const log = logger("service:credit-expires");
@@ -116,9 +117,13 @@ export async function expireCredits(tx: Tx, orgId: string): Promise<number> {
 
   // Deduct expired amount from org balance
   if (totalExpired > 0) {
-    await tx.execute(
-      sql`UPDATE org_metadata SET credits = GREATEST(credits - ${totalExpired}, 0), updated_at = now() WHERE org_id = ${orgId}`,
-    );
+    await tx
+      .update(orgMetadata)
+      .set({
+        credits: sql`GREATEST(${orgMetadata.credits} - ${totalExpired}, 0)`,
+        updatedAt: new Date(),
+      })
+      .where(eq(orgMetadata.orgId, orgId));
   }
 
   log.info("expired credits settled", { orgId, totalExpired });
