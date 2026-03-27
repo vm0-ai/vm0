@@ -48,6 +48,7 @@
       "glob": ">=10.5.0",
       "tar": ">=7.5.7",
       "@isaacs/brace-expansion": ">=5.0.1",
+      "brace-expansion": ">=5.0.5",
       "axios": ">=1.13.5",
       "dompurify": ">=3.3.2",
       "js-yaml": ">=4.1.1",
