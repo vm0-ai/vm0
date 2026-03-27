@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { navigateTo$ } from "../route.ts";
+import { navigateTo$, searchParams$ } from "../route.ts";
 import { checkSettingsParam$ } from "./settings/org-manage-dialog.ts";
 import { logger } from "../log.ts";
 import { defaultAgentId$ } from "./zero-agent-name.ts";
@@ -18,13 +18,16 @@ export const setupChatPage$ = command(
 
     await set(checkSettingsParam$, signal);
 
-    // Redirect bare / to /talk/:defaultAgent
+    // Redirect bare / to /talk/:defaultAgent, forwarding ?prompt= if present
     const rawName = await get(defaultAgentId$);
     signal.throwIfAborted();
     if (rawName) {
       L.info("redirecting to /talk/", rawName);
+      const params = get(searchParams$);
+      const prompt = params.get("prompt");
       set(navigateTo$, "/talk/:id", {
         pathParams: { id: rawName },
+        searchParams: prompt ? new URLSearchParams({ prompt }) : undefined,
         replace: true,
       });
     }
