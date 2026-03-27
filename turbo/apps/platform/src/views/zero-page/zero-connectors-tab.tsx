@@ -152,7 +152,7 @@ export function ZeroConnectorsTab({
           </>
         )}
 
-        {/* Connector cards — sorted with connected first, then by name */}
+        {/* Connector cards — sorted with connected first */}
         {addedConnectors
           .filter((name) => connectorMap.has(name as ConnectorType))
           .sort((a, b) => {
