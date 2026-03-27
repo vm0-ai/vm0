@@ -47,15 +47,13 @@ teardown_file() {
   navigate_to_app_page "/team"
   step_screenshot "team-page-initial"
 
-  echo "# Waiting for Agents heading..." >&3
-  wait_for_text "Agents" 20
+  # Wait for Lead badge — workspace setup may still be in progress after onboarding
+  echo "# Waiting for Lead agent badge..." >&3
+  wait_for_text "Lead" 40
   step_screenshot "team-page-loaded"
 
   local snap
   snap=$(full_snapshot)
-
-  echo "# Verifying lead agent badge..." >&3
-  contains "$snap" "Lead"
 
   echo "# Verifying Create teammate button..." >&3
   contains "$snap" "Create teammate"

@@ -292,11 +292,12 @@ derive_app_url() {
 sign_in_via_token() {
   local base_url="${1:-${APP_URL:-$VM0_API_URL}}"
   agent-browser open "${base_url}/sign-in-token?token=${SIGN_IN_TOKEN}" --ignore-https-errors
-  agent-browser wait 5000
+  # Allow extra time for first-run Chrome initialisation (cold start in CI)
+  agent-browser wait 10000
 
   # Wait for token auth to complete and redirect away from /sign-in-token
   local auth_complete=false
-  for _i in $(seq 1 30); do
+  for _i in $(seq 1 60); do
     local current_url
     current_url=$(agent-browser get url 2>/dev/null || true)
     if url_is_on_app "$current_url" "$base_url" && [[ ! "$current_url" =~ sign-in-token ]]; then
