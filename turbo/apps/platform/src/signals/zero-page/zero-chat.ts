@@ -312,6 +312,12 @@ export const resetTalkSendSignal$ = resetSignal();
 // Chat thread list — reload + computed pattern
 const reloadChatThreadList$ = state(0);
 
+export const fetchZeroSessionList$ = command(
+  ({ set }, _signal: AbortSignal) => {
+    set(reloadChatThreadList$, (n) => n + 1);
+  },
+);
+
 const chatThreadListResponse$ = computed(async (get) => {
   get(reloadChatThreadList$);
   const chatAgentId = get(zeroChatAgentId$);
