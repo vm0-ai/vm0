@@ -206,13 +206,25 @@ teardown_file() {
   contains "$snap" "Connectors"
   contains "$snap" "Profile"
   contains "$snap" "Instructions"
-  echo "# Agent settings page loaded with all tabs" >&3
+
+  # Wait for Connectors tab content to fully load (the "Add connector" button
+  # loads async after the tab labels appear). Save URL so later tests can
+  # navigate back if needed.
+  wait_for_text "Add connector" 30
+  AGENT_SETTINGS_URL=$(agent-browser get url 2>/dev/null || true)
+  export AGENT_SETTINGS_URL
+  echo "# Agent settings page loaded with all tabs (URL: $AGENT_SETTINGS_URL)" >&3
 }
 
 @test "connector: add firecrawl via dialog" {
-  # Connectors tab is already selected by default after navigating to agent settings
+  # Connectors tab is already selected by default after navigating to agent settings.
+  # Navigate back to ensure we start from a clean page state.
   echo "# Testing connector: add Firecrawl..." >&3
-  wait_for_text "Add connector" 10
+  if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
+    agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
+    agent-browser wait 2000
+  fi
+  wait_for_text "Add connector" 20
   step_screenshot "connector-before"
 
   # Click "Add connector"
@@ -275,6 +287,11 @@ teardown_file() {
 
 @test "profile: edit description and save" {
   echo "# Testing profile: edit description..." >&3
+  # Navigate back to agent settings to ensure page is in known state
+  if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
+    agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
+    agent-browser wait 2000
+  fi
   click_tab "Profile"
   agent-browser wait 2000
 
@@ -309,6 +326,11 @@ teardown_file() {
 
 @test "instructions: edit and save" {
   echo "# Testing instructions: edit text..." >&3
+  # Navigate back to agent settings to ensure page is in known state
+  if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
+    agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
+    agent-browser wait 2000
+  fi
   click_tab "Instructions"
   agent-browser wait 2000
 

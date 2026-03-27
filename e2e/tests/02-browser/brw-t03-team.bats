@@ -51,9 +51,19 @@ teardown_file() {
   navigate_to_app_page "/team"
   step_screenshot "team-page-initial"
 
-  # Wait for Lead badge — workspace setup may still be in progress after onboarding
+  # Wait for Lead badge — workspace setup may still be in progress after onboarding.
+  # Retry with page reload in case of stale cache or slow workspace initialization.
   echo "# Waiting for Lead agent badge..." >&3
-  wait_for_text "Lead" 40
+  local lead_found=false
+  for _attempt in 1 2 3; do
+    if wait_for_text "Lead" 30; then
+      lead_found=true
+      break
+    fi
+    echo "# Attempt ${_attempt}: Lead not found, reloading /team..." >&3
+    navigate_to_app_page "/team"
+  done
+  assert [ "$lead_found" = "true" ]
   step_screenshot "team-page-loaded"
 
   local snap

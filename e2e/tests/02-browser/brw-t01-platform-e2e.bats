@@ -329,6 +329,25 @@ teardown_file() {
   url_is_on_app "$final_url"
   [[ ! "$final_url" =~ sign-in ]]
   [[ ! "$final_url" =~ onboarding ]]
+
+  # Wait for workspace to be fully ready: navigate to /team and poll for the
+  # Lead agent badge. Workspace initialization is async after onboarding; the
+  # chat page may appear before the Lead agent is created. Parallel tests
+  # (brw-t03, brw-t04) must not start until this is confirmed ready.
+  echo "# Waiting for workspace to be fully ready (Lead on /team)..." >&3
+  navigate_to_app_page "/team"
+  local workspace_ready=false
+  for _attempt in 1 2 3; do
+    if wait_for_text "Lead" 30; then
+      workspace_ready=true
+      break
+    fi
+    echo "# Attempt ${_attempt}: Lead not found yet, reloading /team..." >&3
+    navigate_to_app_page "/team"
+  done
+  step_screenshot "team-page-workspace-ready"
+  assert [ "$workspace_ready" = "true" ]
+  echo "# Workspace ready — Lead agent confirmed on /team" >&3
 }
 
 # Team page and schedule page tests are in separate files (brw-t03-team.bats,
