@@ -911,10 +911,16 @@ jobs:
       # Step 6: Generate test tokens for E2E tests (one per test user)
       - name: Generate E2E test tokens
         run: |
-          for variant in serial runner; do
-            e2e/scripts/generate-test-token.sh "$variant"
-            cp ~/.vm0/config.json "/tmp/e2e-token-${variant}.json"
-          done
+          # serial token is required — failure stops the job
+          e2e/scripts/generate-test-token.sh "serial"
+          cp ~/.vm0/config.json "/tmp/e2e-token-serial.json"
+          # runner token is optional — only needed for runner E2E tests which
+          # are skipped on PRs; skip gracefully if the runner test user is absent
+          if e2e/scripts/generate-test-token.sh "runner"; then
+            cp ~/.vm0/config.json "/tmp/e2e-token-runner.json"
+          else
+            echo "Warning: runner token generation failed — runner E2E tests will be skipped"
+          fi
         env:
           VM0_API_URL: ${{ steps.alias.outputs.url || steps.deploy.outputs.url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
@@ -927,6 +933,7 @@ jobs:
             /tmp/e2e-token-serial.json
             /tmp/e2e-token-runner.json
           retention-days: 1
+          if-no-files-found: warn
 
   # Deploy docs application
   deploy-docs:
