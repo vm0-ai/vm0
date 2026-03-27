@@ -158,7 +158,7 @@ teardown_file() {
 
   # Wait for dialog to close before checking the team page list
   wait_for_text_gone "Create a new teammate" 30
-  wait_for_text "$AGENT_NAME" 10
+  wait_for_text "$AGENT_NAME" 40
   step_screenshot "agent-created"
   echo "# Agent created: $AGENT_NAME" >&3
 }
@@ -173,6 +173,8 @@ teardown_file() {
 
   echo "# Navigating to team page..." >&3
   navigate_to_app_page "/team"
+  # Wait for any global loading overlay to clear before checking for agent name.
+  wait_for_text_gone "Loading your workspace" 30 || true
   wait_for_text "$AGENT_NAME" 40
   step_screenshot "team-page"
 

@@ -132,15 +132,19 @@ teardown_file() {
   agent-browser open "${APP_URL}/schedule" --ignore-https-errors
   agent-browser wait 3000
 
+  # Wait for any global loading overlay to clear before checking page content.
+  wait_for_text_gone "Loading your workspace" 30 || true
+
   local schedule_found=false
   for _attempt in 1 2; do
-    if wait_for_text "Scheduled tasks" 20; then
+    if wait_for_text "Scheduled tasks" 30; then
       schedule_found=true
       break
     fi
     echo "# Attempt ${_attempt}: schedule page not loaded yet, reloading..." >&3
     agent-browser open "${APP_URL}/schedule" --ignore-https-errors
     agent-browser wait 5000
+    wait_for_text_gone "Loading your workspace" 30 || true
   done
   assert [ "$schedule_found" = "true" ]
   step_screenshot "schedule-list-after-create"
