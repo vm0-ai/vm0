@@ -260,48 +260,6 @@ export const zeroChatQueuePosition$ = computed((get) =>
   get(internalQueuePosition$),
 );
 
-// ---------------------------------------------------------------------------
-// Queued message — allows the user to queue a follow-up while agent is busy
-// ---------------------------------------------------------------------------
-
-interface QueuedMessage {
-  text: string;
-  modelProvider?: string;
-}
-
-const internalQueuedMessage$ = state<QueuedMessage | null>(null);
-export const zeroChatQueuedMessage$ = computed((get) =>
-  get(internalQueuedMessage$),
-);
-
-/** Queue a message to be sent automatically once the current run completes. */
-export const queueZeroChatMessage$ = command(
-  ({ get, set }, text: string, options?: { modelProvider?: string }) => {
-    // Only queue when there's an active loop (agent is busy)
-    if (!get(internalLoopPromise$)) {
-      return;
-    }
-    if (get(internalQueuedMessage$)) {
-      return;
-    }
-    set(internalQueuedMessage$, {
-      text,
-      modelProvider: options?.modelProvider,
-    });
-    set(internalChatInput$, "");
-  },
-);
-
-/** Withdraw the queued message back into the input box for editing. */
-export const withdrawQueuedMessage$ = command(({ get, set }) => {
-  const queued = get(internalQueuedMessage$);
-  if (!queued) {
-    return;
-  }
-  set(internalChatInput$, queued.text);
-  set(internalQueuedMessage$, null);
-});
-
 /** Latest event summaries for the active run (for display while thinking). */
 export const zeroChatRunSummaries$ = computed(async (get) => {
   const pages = get(internalRunEvents$);
@@ -1171,108 +1129,83 @@ export const sendZeroChatMessage$ = command(
 
     const sendSignal = set(resetSending$);
     const combinedSignal = AbortSignal.any([signal, sendSignal]);
-    let currentPrompt = prompt;
-    let currentOptions = options;
+
+    set(internalRunEvents$, []);
+    set(internalRunStatus$, null);
+    set(internalRunError$, null);
+    set(internalQueuePosition$, 0);
+
+    const { fullPrompt } = set(prepareMessages$, prompt);
 
     try {
-      // While loop replaces recursive detach() for queued messages
-      while (true) {
-        set(internalRunEvents$, []);
-        set(internalRunStatus$, null);
-        set(internalRunError$, null);
-        set(internalQueuePosition$, 0);
+      const createClient = get(zeroClient$);
+      const sessionId = get(internalSessionId$);
 
-        const { fullPrompt } = set(prepareMessages$, currentPrompt);
+      const threadId = await set(
+        ensureChatThread$,
+        {
+          composeId,
+          prompt,
+        },
+        combinedSignal,
+      );
+      signal.throwIfAborted();
+      if (!threadId) {
+        return;
+      }
 
-        try {
-          const createClient = get(zeroClient$);
-          const sessionId = get(internalSessionId$);
+      combinedSignal.throwIfAborted();
 
-          const threadId = await set(
-            ensureChatThread$,
-            {
-              composeId,
-              prompt: currentPrompt,
-            },
-            combinedSignal,
-          );
-          signal.throwIfAborted();
-          if (!threadId) {
-            return;
-          }
-
-          combinedSignal.throwIfAborted();
-
-          const modelProvider =
-            currentOptions?.modelProvider &&
-            currentOptions.modelProvider !== "default"
-              ? currentOptions.modelProvider
-              : undefined;
-          const runId = await startAgentRun(
-            createClient,
-            composeId,
-            fullPrompt,
-            sessionId,
-            modelProvider,
-          );
-          signal.throwIfAborted();
-
-          combinedSignal.throwIfAborted();
-
-          // Associate run to thread (must complete before polling so refresh works)
-          await addRunToThread(createClient, threadId, runId);
-          signal.throwIfAborted();
-
-          // Refresh sidebar after run is associated (has preview now)
-          set(fetchZeroSessionList$, combinedSignal).catch((error: unknown) => {
-            if (!isAbortError(error)) {
-              L.error("Failed to refresh chat list:", error);
-            }
-          });
-
-          set(internalLocalMessages$, (prev) => {
-            const updated = [...prev];
-            updated[updated.length - 1] = {
-              ...updated[updated.length - 1],
-              runId,
-            };
-            return updated;
-          });
-
-          // Loop phase: poll until terminal
-          await set(startLoop$, { runId }, combinedSignal);
-        } catch (error) {
-          throwIfAbort(error);
-          L.error("Chat send error:", error);
-          set(internalLocalMessages$, (prev) => {
-            const updated = [...prev];
-            updated[updated.length - 1] = {
-              ...updated[updated.length - 1],
-              error: error instanceof Error ? error.message : "Unknown error",
-            };
-            return updated;
-          });
-          return;
-        }
-
-        // Check for pending (queued) message
-        const pending = get(internalQueuedMessage$);
-        if (!pending) {
-          break;
-        }
-        currentPrompt = pending.text;
-        currentOptions = pending.modelProvider
-          ? { modelProvider: pending.modelProvider }
+      const modelProvider =
+        options?.modelProvider && options.modelProvider !== "default"
+          ? options.modelProvider
           : undefined;
-        set(internalQueuedMessage$, null);
-      }
-    } finally {
-      // Auto-withdraw pending message back to input on abort/error
-      const pending = get(internalQueuedMessage$);
-      if (pending) {
-        set(internalChatInput$, pending.text);
-        set(internalQueuedMessage$, null);
-      }
+      const runId = await startAgentRun(
+        createClient,
+        composeId,
+        fullPrompt,
+        sessionId,
+        modelProvider,
+      );
+      signal.throwIfAborted();
+
+      combinedSignal.throwIfAborted();
+
+      // Associate run to thread (must complete before polling so refresh works)
+      await addRunToThread(createClient, threadId, runId);
+      signal.throwIfAborted();
+
+      // Refresh sidebar after run is associated (has preview now)
+      set(fetchZeroSessionList$, combinedSignal).catch((error: unknown) => {
+        if (!isAbortError(error)) {
+          L.error("Failed to refresh chat list:", error);
+        }
+      });
+
+      set(internalLocalMessages$, (prev) => {
+        const updated = [...prev];
+        updated[updated.length - 1] = {
+          ...updated[updated.length - 1],
+          runId,
+        };
+        return updated;
+      });
+
+      // Loop phase: poll until terminal
+      await set(startLoop$, { runId }, combinedSignal);
+    } catch (error) {
+      // Errors are stored in message state to display inline in the chat thread
+      // rather than propagating — this is intentional UX for non-abort errors.
+      throwIfAbort(error);
+      L.error("Chat send error:", error);
+      set(internalLocalMessages$, (prev) => {
+        const updated = [...prev];
+        updated[updated.length - 1] = {
+          ...updated[updated.length - 1],
+          error: error instanceof Error ? error.message : "Unknown error",
+        };
+        return updated;
+      });
     }
   },
 );

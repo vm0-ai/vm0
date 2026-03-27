@@ -5,7 +5,7 @@ import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
-import { switchActiveAgent$ } from "../zero-page/zero-chat.ts";
+import { fetchZeroSessionList$ } from "../zero-page/zero-chat.ts";
 import { setupActivityLogLoop$ } from "./activity-signals.ts";
 
 export const setupActivityDetailPage$ = command(
@@ -19,8 +19,8 @@ export const setupActivityDetailPage$ = command(
     }
 
     await Promise.all([
-      set(switchActiveAgent$, null, signal),
       set(setupActivityLogLoop$, signal),
+      set(fetchZeroSessionList$, signal),
     ]);
     signal.throwIfAborted();
   },

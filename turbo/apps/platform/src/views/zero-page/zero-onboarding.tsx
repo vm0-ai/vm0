@@ -863,9 +863,12 @@ function WorkspaceStep({
 
 function resolveEffectiveStep(
   isAdmin: boolean,
-  step: string,
+  step: string | undefined,
   hasMemberConnectors: boolean,
-): string {
+): string | undefined {
+  if (!step || step === "done") {
+    return undefined;
+  }
   if (isAdmin) {
     return step;
   }
@@ -996,7 +999,7 @@ export function ZeroOnboarding({
   isAdmin: boolean;
   displayName?: string;
 }) {
-  const step = useGet(zeroOnboardingStep$);
+  const step = useLastResolved(zeroOnboardingStep$);
   const setStep = useSet(setZeroStep$);
   const agentName = useGet(zeroAgentName$);
   const saving = useGet(zeroSaving$);
@@ -1033,6 +1036,11 @@ export function ZeroOnboarding({
     step,
     hasMemberConnectors,
   );
+
+  if (!effectiveStep) {
+    return null;
+  }
+
   const visibleSteps = resolveVisibleSteps(isAdmin, hasMemberConnectors);
   const currentStepIndex = visibleSteps.indexOf(effectiveStep);
 
@@ -1043,10 +1051,6 @@ export function ZeroOnboarding({
 
   // Display name for WhereToWorkContent
   const name = isAdmin ? agentName : displayName;
-
-  if (effectiveStep === "done") {
-    return null;
-  }
 
   return (
     <>

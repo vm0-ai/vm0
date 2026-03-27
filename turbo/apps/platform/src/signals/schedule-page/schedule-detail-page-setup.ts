@@ -4,7 +4,7 @@ import { ZeroScheduleDetailPageWrapper } from "../../views/schedule-page/zero-sc
 import { updatePage$ } from "../react-router.ts";
 import { pathParams$ } from "../route.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
-import { switchActiveAgent$ } from "../zero-page/zero-chat.ts";
+import { fetchZeroSessionList$ } from "../zero-page/zero-chat.ts";
 import { fetchAllOrgSchedules$ } from "../zero-page/zero-schedule.ts";
 import { fetchSlackChannels$ } from "../zero-page/slack-channels.ts";
 import { Reason, detach } from "../utils.ts";
@@ -34,6 +34,7 @@ export const setupScheduleDetailPage$ = command(
       set(fetchSlackChannels$, signal),
     ]);
     signal.throwIfAborted();
-    await set(switchActiveAgent$, null, signal);
+
+    await set(fetchZeroSessionList$, signal);
   },
 );

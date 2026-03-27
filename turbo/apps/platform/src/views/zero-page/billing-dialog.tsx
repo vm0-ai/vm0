@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -133,11 +134,14 @@ export function AutoRechargeSection({
       ? configLoadable.data
       : { enabled: false, threshold: "", amount: "" };
 
+  const [pendingEnabled, setPendingEnabled] = useState<boolean | null>(null);
+
   if (currentTier === "free") {
     return null;
   }
 
   const { enabled, threshold, amount } = config;
+  const displayEnabled = pendingEnabled !== null ? pendingEnabled : enabled;
   const amountNum = Number(amount);
   const amountParsed = Number.isFinite(amountNum) ? amountNum : 0;
   const dollarAmount =
@@ -181,8 +185,11 @@ export function AutoRechargeSection({
 
   const persistIfValid = () => {
     const { threshold: t, amount: a } = readInputNumbers();
-    if (!loading && (!enabled || (t > 0 && a >= CREDITS_PER_DOLLAR))) {
-      saveCurrent({ threshold: t, amount: a });
+    if (!loading && (!displayEnabled || (t > 0 && a >= CREDITS_PER_DOLLAR))) {
+      if (displayEnabled) {
+        setPendingEnabled(null);
+      }
+      saveCurrent({ enabled: displayEnabled, threshold: t, amount: a });
     }
   };
 
@@ -207,9 +214,10 @@ export function AutoRechargeSection({
               </p>
             </div>
             <Switch
-              checked={enabled}
+              checked={displayEnabled}
               onCheckedChange={(v) => {
                 if (!v) {
+                  setPendingEnabled(null);
                   saveCurrent({ enabled: false });
                   return;
                 }
@@ -217,6 +225,8 @@ export function AutoRechargeSection({
                 const a = amountNum;
                 if (!loading && t > 0 && a >= CREDITS_PER_DOLLAR) {
                   saveCurrent({ enabled: true, threshold: t, amount: a });
+                } else {
+                  setPendingEnabled(true);
                 }
               }}
               disabled={loading}
@@ -224,7 +234,7 @@ export function AutoRechargeSection({
               aria-label="Enable auto-recharge"
             />
           </div>
-          {enabled && (
+          {displayEnabled && (
             <>
               <div className="h-px bg-border/40 mx-5" />
               <div className="flex items-center justify-between gap-4 px-5 py-4">

@@ -1,10 +1,11 @@
 import { command, state } from "ccstate";
-import { zeroSubagents$ } from "./zero-agents.ts";
-import { defaultAgentId$ } from "./zero-agent-name.ts";
-import { initZeroOnboarding$ } from "./zero-onboarding.ts";
-import { initSidebarCollapsed$ } from "./zero-nav.ts";
-import { switchActiveAgent$ } from "./zero-chat.ts";
 import { navigateTo$ } from "../route.ts";
+import { defaultAgentId$ } from "./zero-agent-name.ts";
+import { zeroSubagents$ } from "./zero-agents.ts";
+import { switchActiveAgent$ } from "./zero-chat.ts";
+import { initSidebarCollapsed$ } from "./zero-nav.ts";
+import { initZeroOnboarding$ } from "./zero-onboarding.ts";
+import { initSlackOrg$ } from "./zero-slack.ts";
 
 /** Tracks whether the initial heavy data (agents, onboarding, slack) has loaded. */
 const initialDataLoaded$ = state(false);
@@ -20,6 +21,7 @@ export const loadInitialData$ = command(
       return;
     }
     await set(initZeroOnboarding$, signal);
+    await set(initSlackOrg$, signal);
     signal.throwIfAborted();
     set(initialDataLoaded$, true);
     set(initSidebarCollapsed$);

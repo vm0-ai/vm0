@@ -6,8 +6,6 @@ import {
   IconPlayerStop,
   IconPlug,
   IconPlus,
-  IconClock,
-  IconArrowBackUp,
 } from "@tabler/icons-react";
 import {
   Button,
@@ -75,10 +73,6 @@ interface ZeroChatComposerProps {
   sending?: boolean;
   /** Cancel the active run. When provided, a stop button replaces the send button while sending. */
   onCancel?: () => void;
-  /** Message queued for delivery after the current run completes. */
-  queuedMessage?: { text: string } | null;
-  /** Withdraw the queued message back into the input for editing. */
-  onWithdraw?: () => void;
   displayName: string;
   /** Navigate to connectors management page. */
   onManageConnectors?: () => void;
@@ -372,8 +366,6 @@ export function ZeroChatComposer({
   onSend,
   sending,
   onCancel,
-  queuedMessage,
-  onWithdraw,
   displayName,
   onManageConnectors,
   className,
@@ -452,10 +444,9 @@ export function ZeroChatComposer({
       pageSignal,
     );
 
-  // Send (or queue if agent is busy — parent decides)
   const handleSend = () => {
     const trimmed = input.trim();
-    if (!trimmed || !!queuedMessage) {
+    if (!trimmed) {
       return;
     }
     persistSelection();
@@ -518,51 +509,26 @@ export function ZeroChatComposer({
                 }}
               />
             )}
-            {queuedMessage ? (
-              <div className="flex items-start gap-3 px-5 pt-4 pb-2 min-h-[88px]">
-                <IconClock
-                  size={16}
-                  className="text-muted-foreground shrink-0 mt-0.5"
-                />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-muted-foreground mb-1">
-                    Will send when the agent finishes
-                  </p>
-                  <p className="text-sm text-foreground line-clamp-3 break-words">
-                    {queuedMessage.text}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={onWithdraw}
-                  className="shrink-0 inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                >
-                  <IconArrowBackUp size={14} />
-                  Withdraw
-                </button>
-              </div>
-            ) : (
-              <textarea
-                ref={(el) => {
-                  if (el && autoFocus) {
-                    el.focus();
-                  }
-                }}
-                className="w-full resize-none bg-transparent px-5 pt-4 pb-2 text-sm text-foreground placeholder:text-muted-foreground border-0 min-h-[88px] focus:outline-none focus:ring-0"
-                rows={3}
-                placeholder={
-                  sending
-                    ? "Type your next message\u2026"
-                    : "Ask me to automate workflows, manage tasks..."
+            <textarea
+              ref={(el) => {
+                if (el && autoFocus) {
+                  el.focus();
                 }
-                value={input}
-                onChange={(e) => onInputChange(e.target.value)}
-                onKeyDown={handleKeyDown}
-                onCompositionStart={onCompositionStart}
-                onCompositionEnd={onCompositionEnd}
-                onPaste={handlePaste}
-              />
-            )}
+              }}
+              className="w-full resize-none bg-transparent px-5 pt-4 pb-2 text-sm text-foreground placeholder:text-muted-foreground border-0 min-h-[88px] focus:outline-none focus:ring-0"
+              rows={3}
+              placeholder={
+                sending
+                  ? "Type your next message\u2026"
+                  : "Ask me to automate workflows, manage tasks..."
+              }
+              value={input}
+              onChange={(e) => onInputChange(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onCompositionStart={onCompositionStart}
+              onCompositionEnd={onCompositionEnd}
+              onPaste={handlePaste}
+            />
             <div className="flex items-center justify-between gap-2 px-4 py-3">
               <div className="flex items-center gap-1 text-muted-foreground">
                 <button
@@ -609,17 +575,15 @@ export function ZeroChatComposer({
                     <IconPlayerStop size={16} />
                   </Button>
                 )}
-                {!queuedMessage && (
-                  <Button
-                    size="sm"
-                    className="rounded-lg h-9 w-9 p-0 shrink-0"
-                    onClick={handleSend}
-                    disabled={!input.trim()}
-                    aria-label={sending ? "Queue message" : "Send"}
-                  >
-                    <IconArrowUp size={16} stroke={2} />
-                  </Button>
-                )}
+                <Button
+                  size="sm"
+                  className="rounded-lg h-9 w-9 p-0 shrink-0"
+                  onClick={handleSend}
+                  disabled={!input.trim() || !!sending}
+                  aria-label="Send"
+                >
+                  <IconArrowUp size={16} stroke={2} />
+                </Button>
               </div>
             </div>
           </div>

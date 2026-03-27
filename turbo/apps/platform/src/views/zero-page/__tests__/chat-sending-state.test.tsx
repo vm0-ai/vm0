@@ -64,8 +64,9 @@ describe("chat sending state", () => {
       { timeout: 5000 },
     );
 
-    // While sending, the Send button label changes to "Queue message"
-    expect(screen.queryByLabelText("Send")).toBeNull();
+    // While sending, the Send button is present but disabled
+    const sendButton = screen.getByLabelText("Send");
+    expect(sendButton).toBeDisabled();
 
     ctrl.completeRun("Done");
 

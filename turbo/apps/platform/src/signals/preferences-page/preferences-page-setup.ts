@@ -5,7 +5,7 @@ import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
-import { switchActiveAgent$ } from "../zero-page/zero-chat.ts";
+import { fetchZeroSessionList$ } from "../zero-page/zero-chat.ts";
 
 export const setupPreferencesPage$ = command(
   async ({ set }, signal: AbortSignal) => {
@@ -18,6 +18,6 @@ export const setupPreferencesPage$ = command(
       return;
     }
 
-    await set(switchActiveAgent$, null, signal);
+    await set(fetchZeroSessionList$, signal);
   },
 );
