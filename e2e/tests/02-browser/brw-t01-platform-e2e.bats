@@ -1,27 +1,28 @@
 #!/usr/bin/env bats
-# brw-t03-platform-flows.bats — Platform flows after sign-in (serial, shared session)
+# brw-t01-platform-e2e.bats — Full platform E2E flow with a single test account
 #
 # All tests share a single browser session and run serially:
-#   1. Sign in via Clerk token
-#   2. Complete onboarding (if needed)
-#   3. Verify chat page
-#   4. Navigate to team page and verify agents
-#   5. Create a new agent
-#   6. Navigate to schedule page and create a schedule
-#
-# This avoids re-authentication between flows, which would trigger onboarding
-# again on a fresh session.
+#   1. Sign up a new test account via Clerk
+#   2. Sign out, then sign in with the same account
+#   3. Sign out, then sign in via Clerk token (API-based auth)
+#   4. Complete onboarding (if needed)
+#   5. Verify chat page
+#   6. Navigate to team page and verify agents
+#   7. Create a new agent
+#   8. Navigate to schedule page and create a schedule
 #
 # Required env vars:
 #   VM0_API_URL        — Target web app URL (e.g., https://www.vm7.ai:8443)
 #   CLERK_SECRET_KEY   — Clerk Backend API key (for creating sign-in tokens)
+#
+# Optional env vars:
+#   E2E_ACCOUNT        — Test email (auto-generated if empty)
 
 load '../../helpers/setup'
 load '../../helpers/browser'
 
 setup_file() {
   browser_setup
-  create_clerk_sign_in_token
 
   APP_URL="$(derive_app_url)"
   export APP_URL
@@ -32,9 +33,14 @@ setup_file() {
   SCHEDULE_PROMPT="E2E schedule $(date +%s)-$RANDOM"
   export SCHEDULE_PROMPT
 
-  echo "# Platform flows (shared session) via agent-browser" >&3
+  # Generate a password for sign-up
+  SIGNUP_PASSWORD="$(generate_password)"
+  export SIGNUP_PASSWORD
+
+  echo "# Platform E2E (single account, shared session)" >&3
   echo "#   Web URL: $VM0_API_URL" >&3
   echo "#   App URL: $APP_URL" >&3
+  echo "#   Email: $E2E_ACCOUNT" >&3
   echo "#   Agent name: $AGENT_NAME" >&3
   echo "#   Schedule prompt: $SCHEDULE_PROMPT" >&3
 }
@@ -49,15 +55,185 @@ teardown_file() {
 }
 
 # ===========================================================================
-# Phase 1: Sign in and onboarding
+# Phase 1: Sign up
 # ===========================================================================
 
-@test "sign in via token on platform app" {
-  echo "# Signing in via token on platform app..." >&3
-  sign_in_via_token "$APP_URL"
-  step_screenshot "after-sign-in"
-  echo "# Authentication complete!" >&3
+@test "sign up a new test account" {
+  echo "# Navigating to $VM0_API_URL/sign-up" >&3
+  agent-browser open "$VM0_API_URL/sign-up" --ignore-https-errors
+  agent-browser wait 3000
+  step_screenshot "sign-up-page"
+
+  # Dismiss cookie consent banner early
+  dismiss_cookie_banner
+
+  # Wait for Clerk sign-up form
+  echo "# Waiting for Clerk sign-up form..." >&3
+  local form_appeared=false
+  for _i in $(seq 1 10); do
+    local snap
+    snap=$(agent-browser snapshot -i 2>/dev/null || true)
+    if contains "$snap" "email address"; then
+      form_appeared=true
+      break
+    fi
+    sleep 3
+  done
+  step_screenshot "sign-up-form"
+  assert [ "$form_appeared" = "true" ]
+
+  # Fill sign-up form
+  echo "# Filling sign-up form with $E2E_ACCOUNT" >&3
+  agent-browser find label "Email address" fill "$E2E_ACCOUNT"
+  agent-browser wait 500
+  agent-browser find label "Password" fill "$SIGNUP_PASSWORD"
+  agent-browser wait 500
+  click_continue
+  agent-browser wait 5000
+  step_screenshot "after-sign-up-continue"
+
+  # Handle OTP verification if prompted
+  local snap
+  snap=$(full_snapshot)
+  if contains "$snap" "verify your email\|verification code"; then
+    enter_otp "$OTP"
+    step_screenshot "after-sign-up-otp"
+  fi
+
+  # Wait for sign-up to complete
+  for _i in $(seq 1 30); do
+    snap=$(full_snapshot)
+    if ! contains "$snap" "sign.up\|Create your account\|verification code"; then
+      break
+    fi
+    sleep 1
+  done
+
+  snap=$(full_snapshot)
+  assert [ "$(contains "$snap" "sign.up\|Create your account" && echo "stuck" || echo "ok")" = "ok" ]
+  echo "# Sign-up successful!" >&3
 }
+
+# ===========================================================================
+# Phase 2: Sign out and sign in
+# ===========================================================================
+
+@test "sign out and sign in with same account" {
+  # Close browser session to clear auth state
+  echo "# Closing browser to clear session..." >&3
+  agent-browser close 2>/dev/null || true
+  sleep 1
+
+  # Re-open sign-in page
+  echo "# Navigating to $VM0_API_URL/sign-in" >&3
+  agent-browser open "$VM0_API_URL/sign-in" --ignore-https-errors
+  agent-browser wait 3000
+  step_screenshot "sign-in-page"
+
+  dismiss_cookie_banner
+
+  # Check if already signed in (redirected away from /sign-in)
+  local current_url
+  current_url=$(agent-browser get url 2>/dev/null || true)
+  if [[ -n "$current_url" && ! "$current_url" =~ sign-in ]]; then
+    echo "# Already signed in (redirected to $current_url)" >&3
+    return 0
+  fi
+
+  # Wait for Clerk sign-in form
+  echo "# Waiting for Clerk sign-in form..." >&3
+  local form_appeared=false
+  for _i in $(seq 1 10); do
+    local snap
+    snap=$(agent-browser snapshot -i 2>/dev/null || true)
+    if contains "$snap" "email address"; then
+      form_appeared=true
+      break
+    fi
+    sleep 3
+  done
+  assert [ "$form_appeared" = "true" ]
+
+  # Enter email and click Continue
+  echo "# Entering email: $E2E_ACCOUNT" >&3
+  agent-browser find label "Email address" fill "$E2E_ACCOUNT"
+  agent-browser wait 500
+  click_continue
+  agent-browser wait 5000
+  step_screenshot "after-email-continue"
+
+  local snap
+  snap=$(full_snapshot)
+
+  # Handle password or OTP-based sign-in
+  if contains "$snap" "password"; then
+    echo "# Password screen detected - looking for email code option" >&3
+    if agent-browser find text "Use another method" click 2>/dev/null \
+        || agent-browser find text "use another method" click 2>/dev/null; then
+      agent-browser wait 3000
+      step_screenshot "after-alt-method-click"
+      if agent-browser find text "Email code" click 2>/dev/null \
+          || agent-browser find text "email code" click 2>/dev/null; then
+        agent-browser wait 3000
+      fi
+    elif agent-browser find text "Forgot password" click 2>/dev/null \
+        || agent-browser find text "forgot password" click 2>/dev/null; then
+      agent-browser wait 3000
+    fi
+  fi
+
+  # Wait for OTP screen, then enter code
+  if ! wait_for_otp_screen 10; then
+    step_screenshot "otp-screen-not-detected"
+  fi
+
+  enter_otp "$OTP"
+  step_screenshot "after-sign-in-otp"
+
+  # Wait for sign-in to complete
+  for _i in $(seq 1 30); do
+    snap=$(full_snapshot)
+    if ! contains "$snap" "sign.in\|password\|verification code"; then
+      break
+    fi
+    sleep 1
+  done
+
+  snap=$(full_snapshot)
+  assert [ "$(contains "$snap" "sign.in\|password" && echo "stuck" || echo "ok")" = "ok" ]
+  echo "# Sign-in successful!" >&3
+}
+
+# ===========================================================================
+# Phase 3: Token-based sign in
+# ===========================================================================
+
+@test "sign out and sign in via Clerk token" {
+  # Create sign-in token for the test account (now exists after sign-up)
+  echo "# Creating sign-in token for $E2E_ACCOUNT..." >&3
+  create_clerk_sign_in_token "$E2E_ACCOUNT"
+
+  # Close browser session to clear auth state
+  echo "# Closing browser to clear session..." >&3
+  agent-browser close 2>/dev/null || true
+  sleep 1
+
+  echo "# Signing in via token..." >&3
+  sign_in_via_token "$APP_URL"
+  step_screenshot "after-token-sign-in"
+
+  # Verify signed-in state on app domain
+  local current_url
+  current_url=$(agent-browser get url 2>/dev/null || true)
+  echo "# Current URL: $current_url" >&3
+  url_is_on_app "$current_url"
+  [[ ! "$current_url" =~ sign-in-token ]]
+  echo "# Token sign-in successful!" >&3
+}
+
+# ===========================================================================
+# Phase 4: Onboarding and chat
+# ===========================================================================
 
 @test "detect and complete onboarding" {
   # Wait for platform content to load
@@ -161,7 +337,7 @@ teardown_file() {
 }
 
 # ===========================================================================
-# Phase 2: Team page — agent listing and creation
+# Phase 5: Team page — agent listing and creation
 # ===========================================================================
 
 @test "navigate to team page and verify zero agent" {
@@ -246,7 +422,7 @@ teardown_file() {
 }
 
 # ===========================================================================
-# Phase 3: Schedule page — creation and verification
+# Phase 6: Schedule page — creation and verification
 # ===========================================================================
 
 @test "navigate to schedule page and open creation dialog" {
