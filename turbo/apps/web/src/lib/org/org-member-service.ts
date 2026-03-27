@@ -574,7 +574,18 @@ export async function deleteOrg(
  * List domains for an org.
  * Requires admin role.
  */
-export async function getOrgDomains(orgId: string, role: OrgRole) {
+export async function getOrgDomains(
+  orgId: string,
+  role: OrgRole,
+): Promise<{
+  domains: Array<{
+    id: string;
+    name: string;
+    enrollmentMode: string;
+    verification: { status: string; strategy: string };
+    createdAt: string;
+  }>;
+}> {
   if (role !== "admin") {
     throw forbidden("Only admins can manage domains");
   }
