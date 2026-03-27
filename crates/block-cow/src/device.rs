@@ -234,11 +234,13 @@ impl CowDevice {
     // Internal helpers
     // -----------------------------------------------------------------------
 
+    /// Best-effort deferred teardown.
+    ///
+    /// Unlike [`teardown`], this does NOT require `active == true`.
+    /// It can clean up abandoned devices where the dm target and loop
+    /// device were leaked.  All steps are best-effort; only the
+    /// `dmsetup remove --force` result is propagated.
     fn teardown_deferred(&mut self, delete_cow_file: bool) -> Result<()> {
-        if !self.active {
-            return Err(BlockCowError::NotActive(self.id.clone()));
-        }
-
         let cow_name = format!("cow-{}", self.id);
 
         // Drop our dm holder fd so we don't contribute to the open count.

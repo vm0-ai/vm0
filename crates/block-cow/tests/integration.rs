@@ -307,48 +307,13 @@ fn abandon_prevents_cow_file_deletion_on_drop() {
     init_cow_file(&config.cow_file, handle.sectors).expect("init");
     let cow_file = config.cow_file.clone();
 
-    let dm_name;
-    let cow_loop_dev;
-    {
-        let mut device =
-            CowDevice::create(&handle.loop_path, handle.sectors, &config).expect("create");
-        // Save cleanup info before abandon — after drop we lose access.
-        dm_name = device
-            .device_path()
-            .file_name()
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_string();
-        // Parse cow loop device from dm table: "0 <sectors> snapshot <origin> <cow_loop> P <chunk>"
-        let table = Command::new("sudo")
-            .args(["dmsetup", "table", &dm_name])
-            .output()
-            .expect("dmsetup table");
-        cow_loop_dev = String::from_utf8_lossy(&table.stdout)
-            .split_whitespace()
-            .nth(4)
-            .unwrap_or("")
-            .to_string();
+    let mut device = CowDevice::create(&handle.loop_path, handle.sectors, &config).expect("create");
+    device.abandon();
 
-        device.abandon();
-        // device is dropped here — should NOT delete cow_file
-    }
+    // abandon() sets active=false — verify the cow file was NOT deleted.
+    assert!(cow_file.exists(), "COW file should survive after abandon");
 
-    assert!(
-        cow_file.exists(),
-        "COW file should survive after abandon + drop"
-    );
-
-    // Clean up the abandoned dm target and loop device.
-    // After drop, holder fds are closed so dmsetup remove succeeds.
-    let _ = Command::new("sudo")
-        .args(["dmsetup", "remove", &dm_name])
-        .status();
-    if !cow_loop_dev.is_empty() {
-        let _ = Command::new("sudo")
-            .args(["losetup", "-d", &cow_loop_dev])
-            .status();
-    }
-    let _ = fs::remove_file(&cow_file);
+    // destroy_deferred works on abandoned devices (no active check) and
+    // properly cleans up the dm target and cow loop via --force + AUTOCLEAR.
+    device.destroy_deferred().expect("deferred cleanup");
 }
