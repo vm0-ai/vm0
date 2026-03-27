@@ -20,6 +20,7 @@ export const setupTeamDetailPage$ = command(
     set(updateDocumentTitle$, "Team");
     await Promise.all([
       set(initZeroOnboarding$, signal),
+      set(initSlackOrg$, signal),
       agentId ? set(fetchZeroJobData$, agentId, signal) : Promise.resolve(),
     ]);
     signal.throwIfAborted();
