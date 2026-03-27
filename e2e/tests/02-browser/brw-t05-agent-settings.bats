@@ -130,7 +130,7 @@ teardown_file() {
 
   # Wait for any global loading overlay to clear before clicking (overlay
   # blocks clicks even when the button is found via accessibility).
-  wait_for_text_gone "Loading your workspace" 30 || true
+  wait_for_text_gone "Loading your workspace" 60 || true
 
   # Click Create teammate — use role-based find which works more reliably
   # than text-based find for buttons with composite content

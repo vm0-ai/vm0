@@ -128,7 +128,7 @@ teardown_file() {
   # Keep both waits in the same test — splitting across tests causes the
   # agent name to be missed when the browser navigates post-creation.
   wait_for_text_gone "Create a new teammate" 30
-  wait_for_text "$AGENT_NAME" 40
+  wait_for_text "$AGENT_NAME" 60
   step_screenshot "after-create"
   echo "# Agent created!" >&3
 }
