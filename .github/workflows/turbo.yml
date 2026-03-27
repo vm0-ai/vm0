@@ -1075,7 +1075,7 @@ jobs:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          E2E_ACCOUNT: ${{ needs.prepare.outputs.job-ref }}+clerk_test@vm0-e2e.local
+          E2E_ACCOUNT: ${{ needs.prepare.outputs.job-ref }}+clerk_test@vm0-e2e.ai
       - name: Upload auth screenshots
         if: always()
         uses: actions/upload-artifact@v7
