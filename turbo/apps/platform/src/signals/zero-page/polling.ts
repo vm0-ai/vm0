@@ -316,7 +316,11 @@ export function createRunLoop(runId: string) {
   const pagedEventsList$ = computed(async (get) => {
     const initial = await get(initialRunPagedEvents$);
     const looped = get(internalLoopedPagedEvents$);
-    return [...initial, ...looped];
+    const all = [...initial, ...looped];
+    console.log(
+      `[pagedEventsList$] initial=${initial.length} looped=${looped.length} total=${all.length}`,
+    );
+    return all;
   });
 
   const reloadThinkingMessage$ = state(0);
@@ -329,7 +333,9 @@ export function createRunLoop(runId: string) {
   });
 
   const beginLoop$ = command(async ({ set, get }, signal: AbortSignal) => {
+    console.log(`[beginLoop$] starting for runId=${runId}`);
     let status = (await get(runDetail$)).status;
+    console.log(`[beginLoop$] initial status=${status}`);
     signal.throwIfAborted();
 
     while (status === "pending") {
@@ -344,6 +350,12 @@ export function createRunLoop(runId: string) {
     signal.throwIfAborted();
 
     while (true) {
+      // First, we need to check the "finish" status. If it has finished,
+      // we still need to pull the chat data from the page one last time.
+      // This ensures that the final set of data is successfully included.
+      const finished = await get(finished$);
+      signal.throwIfAborted();
+
       const loopedPagedEvents = get(internalLoopedPagedEvents$);
       const lastPagedEventsLists =
         loopedPagedEvents.length > 0 ? loopedPagedEvents : initialPagedEvents;
@@ -362,9 +374,6 @@ export function createRunLoop(runId: string) {
       set(reloadThinkingMessage$, (x) => x + 1);
 
       const lastPage = await get(nextPage$);
-      signal.throwIfAborted();
-
-      const finished = await get(finished$);
       signal.throwIfAborted();
       if (finished && !lastPage.hasMore) {
         break;
