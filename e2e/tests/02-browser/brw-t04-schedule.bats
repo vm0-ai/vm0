@@ -69,8 +69,17 @@ teardown_file() {
   assert [ "$btn_clicked" = "true" ]
   agent-browser wait 1000
 
-  # Wait for dialog to appear
-  wait_for_text "Prompt" 10
+  # Wait for dialog to appear — verify by finding the Prompt textarea label
+  # (more specific than text search which could match existing schedule prompts)
+  local dialog_open=false
+  for _i in $(seq 1 15); do
+    if agent-browser find label "Prompt" 2>/dev/null; then
+      dialog_open=true
+      break
+    fi
+    sleep 1
+  done
+  assert [ "$dialog_open" = "true" ]
   step_screenshot "add-schedule-dialog"
   echo "# Creation dialog opened!" >&3
 }

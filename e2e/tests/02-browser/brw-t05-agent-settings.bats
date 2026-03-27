@@ -170,18 +170,27 @@ teardown_file() {
   wait_for_text "$AGENT_NAME" 40
   step_screenshot "team-page"
 
-  # Click on the created agent card using link-based approach
+  # Click on the created agent card — retry with role-based find
   echo "# Clicking on agent card: $AGENT_NAME..." >&3
-  local snap_i agent_ref
-  snap_i=$(agent-browser snapshot -i)
-  # Find a link element (not a textbox) containing the agent name
-  agent_ref=$(echo "$snap_i" | grep -F "$AGENT_NAME" | grep -v 'textbox\|disabled' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
-  if [[ -z "$agent_ref" ]]; then
-    # Fallback: use text-based find which targets visible clickable elements
-    echo "# Using text-based find as fallback..." >&3
-    agent-browser find text "$AGENT_NAME" click
-  else
-    agent-browser click "$agent_ref"
+  local agent_clicked=false
+  for _i in $(seq 1 15); do
+    if agent-browser find role link click --name "$AGENT_NAME" 2>/dev/null; then
+      agent_clicked=true
+      break
+    fi
+    sleep 1
+  done
+  if [[ "$agent_clicked" != "true" ]]; then
+    echo "# Role-based find failed, trying ref from interactive snapshot..." >&3
+    local snap_i agent_ref
+    snap_i=$(agent-browser snapshot -i)
+    agent_ref=$(echo "$snap_i" | grep -F "$AGENT_NAME" | grep -v 'textbox\|disabled' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+    if [[ -n "$agent_ref" ]]; then
+      agent-browser click "$agent_ref"
+    else
+      echo "# No ref found, falling back to find text..." >&3
+      agent-browser find text "$AGENT_NAME" click
+    fi
   fi
   agent-browser wait 3000
 
