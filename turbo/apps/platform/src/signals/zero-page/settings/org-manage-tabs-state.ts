@@ -9,6 +9,7 @@ export type OrgManageTab =
   | "general"
   | "providers"
   | "members"
+  | "domains"
   | "billing"
   | "usage"
   | "invoices";

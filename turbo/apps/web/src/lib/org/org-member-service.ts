@@ -12,6 +12,36 @@ import { orgMembersMetadata } from "../../db/schema/org-members-metadata";
 const log = logger("service:org-member");
 
 /**
+ * Membership request data shape from Clerk REST API.
+ * The backend SDK doesn't expose membership request methods yet,
+ * so we call the REST API directly.
+ */
+interface MembershipRequestData {
+  id: string;
+  public_user_data?: { user_id?: string };
+  created_at: number;
+}
+
+async function getClerkSecretKey(): Promise<string> {
+  return globalThis.services.env.CLERK_SECRET_KEY;
+}
+
+async function fetchMembershipRequests(
+  orgId: string,
+): Promise<MembershipRequestData[]> {
+  const secretKey = await getClerkSecretKey();
+  const res = await fetch(
+    `https://api.clerk.com/v1/organizations/${orgId}/membership_requests?status=pending`,
+    {
+      headers: { Authorization: `Bearer ${secretKey}` },
+    },
+  );
+  if (!res.ok) return [];
+  const body = (await res.json()) as { data: MembershipRequestData[] };
+  return body.data ?? [];
+}
+
+/**
  * Require a user to be a member of an org, or throw 403.
  * Verifies membership via Clerk API using the org ID directly.
  */
@@ -124,21 +154,84 @@ export async function getOrgMembers(
     ? mapClerkRole(callerMembership.role)
     : "member";
 
-  // Only expose pending invitations to admins
+  // Only expose pending invitations and membership requests to admins
   const pendingInvitations =
     callerRole === "admin"
       ? invitations.data.map((inv) => ({
+          id: inv.id,
           email: inv.emailAddress,
           role: mapClerkRole(inv.role),
           createdAt: new Date(inv.createdAt).toISOString(),
         }))
       : [];
 
+  // Fetch membership requests (only for admins)
+  let membershipRequests: Array<{
+    id: string;
+    userId: string;
+    email: string;
+    firstName: string | null;
+    lastName: string | null;
+    imageUrl: string;
+    createdAt: string;
+  }> = [];
+
+  if (callerRole === "admin") {
+    const requestsData = await fetchMembershipRequests(orgId);
+
+    if (requestsData.length > 0) {
+      const requestUserIds = requestsData
+        .map((r: MembershipRequestData) => r.public_user_data?.user_id)
+        .filter((id: string | undefined): id is string => Boolean(id));
+
+      const requestUserMap = new Map<
+        string,
+        {
+          email: string;
+          firstName: string | null;
+          lastName: string | null;
+          imageUrl: string;
+        }
+      >();
+      if (requestUserIds.length > 0) {
+        const requestUsers = await client.users.getUserList({
+          userId: requestUserIds,
+        });
+        for (const user of requestUsers.data) {
+          const primaryEmail = user.emailAddresses.find(
+            (e) => e.id === user.primaryEmailAddressId,
+          );
+          requestUserMap.set(user.id, {
+            email: primaryEmail?.emailAddress ?? "",
+            firstName: user.firstName,
+            lastName: user.lastName,
+            imageUrl: user.imageUrl,
+          });
+        }
+      }
+
+      membershipRequests = requestsData.map((req: MembershipRequestData) => {
+        const uid = req.public_user_data?.user_id ?? "";
+        const profile = requestUserMap.get(uid);
+        return {
+          id: req.id,
+          userId: uid,
+          email: profile?.email ?? "",
+          firstName: profile?.firstName ?? null,
+          lastName: profile?.lastName ?? null,
+          imageUrl: profile?.imageUrl ?? "",
+          createdAt: new Date(req.created_at).toISOString(),
+        };
+      });
+    }
+  }
+
   return {
     slug: orgSlug,
     role: callerRole,
     members,
     pendingInvitations,
+    membershipRequests,
     createdAt: createdAt.toISOString(),
   };
 }
@@ -166,6 +259,88 @@ export async function inviteMember(
   });
 
   log.debug("Invitation sent", { orgId, email });
+}
+
+/**
+ * Revoke a pending invitation.
+ * Requires admin role.
+ */
+export async function revokeInvitation(
+  orgId: string,
+  role: OrgRole,
+  invitationId: string,
+) {
+  if (role !== "admin") {
+    throw forbidden("Only admins can revoke invitations");
+  }
+
+  const client = await clerkClient();
+  await client.organizations.revokeOrganizationInvitation({
+    organizationId: orgId,
+    invitationId,
+  });
+
+  log.debug("Invitation revoked", { orgId, invitationId });
+}
+
+/**
+ * Accept a membership request.
+ * Requires admin role.
+ * Uses Clerk REST API directly since the backend SDK doesn't expose this method.
+ */
+export async function acceptMembershipRequest(
+  orgId: string,
+  role: OrgRole,
+  requestId: string,
+) {
+  if (role !== "admin") {
+    throw forbidden("Only admins can accept membership requests");
+  }
+
+  const secretKey = await getClerkSecretKey();
+  const res = await fetch(
+    `https://api.clerk.com/v1/organizations/${orgId}/membership_requests/${requestId}/accept`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${secretKey}` },
+    },
+  );
+
+  if (!res.ok) {
+    throw badRequest("Failed to accept membership request");
+  }
+
+  log.debug("Membership request accepted", { orgId, requestId });
+}
+
+/**
+ * Reject a membership request.
+ * Requires admin role.
+ * Uses Clerk REST API directly since the backend SDK doesn't expose this method.
+ */
+export async function rejectMembershipRequest(
+  orgId: string,
+  role: OrgRole,
+  requestId: string,
+) {
+  if (role !== "admin") {
+    throw forbidden("Only admins can reject membership requests");
+  }
+
+  const secretKey = await getClerkSecretKey();
+  const res = await fetch(
+    `https://api.clerk.com/v1/organizations/${orgId}/membership_requests/${requestId}/reject`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${secretKey}` },
+    },
+  );
+
+  if (!res.ok) {
+    throw badRequest("Failed to reject membership request");
+  }
+
+  log.debug("Membership request rejected", { orgId, requestId });
 }
 
 /**
@@ -387,6 +562,78 @@ export async function deleteOrg(
   await client.organizations.deleteOrganization(orgId);
 
   log.debug("Organization deleted", { orgId, callerUserId });
+}
+
+/**
+ * List domains for an org.
+ * Requires admin role.
+ */
+export async function getOrgDomains(orgId: string, role: OrgRole) {
+  if (role !== "admin") {
+    throw forbidden("Only admins can manage domains");
+  }
+
+  const client = await clerkClient();
+  const domains = await client.organizations.getOrganizationDomainList({
+    organizationId: orgId,
+  });
+
+  return {
+    domains: domains.data.map((d) => ({
+      id: d.id,
+      name: d.name,
+      enrollmentMode: d.enrollmentMode,
+      verification: d.verification
+        ? { status: d.verification.status, strategy: d.verification.strategy }
+        : { status: "unverified", strategy: "email_code" },
+      createdAt: new Date(d.createdAt).toISOString(),
+    })),
+  };
+}
+
+/**
+ * Add a domain to an org.
+ * Requires admin role.
+ */
+export async function addOrgDomain(
+  orgId: string,
+  role: OrgRole,
+  domainName: string,
+) {
+  if (role !== "admin") {
+    throw forbidden("Only admins can add domains");
+  }
+
+  const client = await clerkClient();
+  await client.organizations.createOrganizationDomain({
+    organizationId: orgId,
+    name: domainName,
+    enrollmentMode: "manual_invitation",
+  });
+
+  log.debug("Domain added", { orgId, domainName });
+}
+
+/**
+ * Remove a domain from an org.
+ * Requires admin role.
+ */
+export async function removeOrgDomain(
+  orgId: string,
+  role: OrgRole,
+  domainId: string,
+) {
+  if (role !== "admin") {
+    throw forbidden("Only admins can remove domains");
+  }
+
+  const client = await clerkClient();
+  await client.organizations.deleteOrganizationDomain({
+    organizationId: orgId,
+    domainId,
+  });
+
+  log.debug("Domain removed", { orgId, domainId });
 }
 
 /**
