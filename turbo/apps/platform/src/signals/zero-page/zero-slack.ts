@@ -6,6 +6,15 @@ import { zeroClient$ } from "../api-client.ts";
 
 const slackReload$ = state(0);
 
+const POLL_INTERVAL_MS = 3000;
+const slackPollInterval$ = state(POLL_INTERVAL_MS);
+
+export const setSlackPollIntervalForTest$ = command(
+  ({ set }, interval: number) => {
+    set(slackPollInterval$, interval);
+  },
+);
+
 const reloadSlackOrg$ = command(({ set }) => {
   set(slackReload$, (x) => x + 1);
 });
@@ -70,7 +79,6 @@ export const uninstallSlackOrg$ = command(
   },
 );
 
-const POLL_INTERVAL_MS = 3000;
 const MAX_POLL_ATTEMPTS = 100;
 
 /**
@@ -89,7 +97,7 @@ export const pollSlackConnection$ = command(
 
     let attempts = 0;
     while (!signal.aborted && attempts < MAX_POLL_ATTEMPTS) {
-      await delay(POLL_INTERVAL_MS, { signal });
+      await delay(get(slackPollInterval$), { signal });
       attempts++;
 
       set(reloadSlackOrg$);
