@@ -14,6 +14,9 @@ export const apiAgentsHandlers = [
       {
         id: "mock-compose-id",
         displayName: null,
+        description: null,
+        sound: null,
+        avatarUrl: null,
         headVersionId: "version_1",
         updatedAt: "2024-01-01T00:00:00Z",
       },
@@ -70,6 +73,7 @@ export const apiAgentsHandlers = [
       description: null,
       displayName: null,
       sound: null,
+      avatarUrl: null,
       connectors: [],
     });
   }),

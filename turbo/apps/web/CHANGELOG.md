@@ -1,5 +1,29 @@
 # Changelog
 
+## [12.165.0](https://github.com/vm0-ai/vm0/compare/web-v12.164.1...web-v12.165.0) (2026-03-27)
+
+
+### Features
+
+* update og images with zero branding ([#7048](https://github.com/vm0-ai/vm0/issues/7048)) ([f31e98d](https://github.com/vm0-ai/vm0/commit/f31e98d5d26a270d1a887164a95adf5802004935))
+
+
+### Bug Fixes
+
+* display cancelled subscription status in billing settings ([#7045](https://github.com/vm0-ai/vm0/issues/7045)) ([c946bec](https://github.com/vm0-ai/vm0/commit/c946beca8d8498fe971bc750e3a5aaba40dd8953)), closes [#7038](https://github.com/vm0-ai/vm0/issues/7038)
+
+
+### Refactoring
+
+* **web:** extract api-token connector type derivation into shared function ([#7018](https://github.com/vm0-ai/vm0/issues/7018)) ([be6b90d](https://github.com/vm0-ai/vm0/commit/be6b90d2bf586b8131ed4431ba81fbd082d26d99))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.119.2
+
 ## [12.164.1](https://github.com/vm0-ai/vm0/compare/web-v12.164.0...web-v12.164.1) (2026-03-27)
 
 

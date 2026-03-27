@@ -88,6 +88,28 @@ describe("generateChatTitle", () => {
     );
   });
 
+  it.each([
+    ["**Bold** and `code` title", "Bold and code title"],
+    ["## Chat Title Here", "Chat Title Here"],
+    ["*Italic* setup guide", "Italic setup guide"],
+    ["__underscored__ text", "underscored text"],
+    ["[Click here](https://example.com) for help", "Click here for help"],
+    ["# **Bold Heading** with `code`", "Bold Heading with code"],
+    ["Plain text without markdown", "Plain text without markdown"],
+  ])("should strip markdown from %j → %j", async (raw, expected) => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    reloadEnv();
+
+    const handler = http.post(OPENROUTER_URL, () => {
+      return HttpResponse.json(openRouterResponse(raw));
+    });
+    server.use(handler.handler);
+
+    const { generateChatTitle } = await import("../lightweight-model");
+
+    expect(await generateChatTitle("msg")).toBe(expected);
+  });
+
   it("should throw on HTTP error", async () => {
     vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     reloadEnv();
@@ -155,5 +177,30 @@ describe("generateScheduleDescription", () => {
 
     expect(result).toBe("Runs daily backup for production database");
     expect(handler.mocked).toHaveBeenCalledTimes(1);
+  });
+
+  it("should strip markdown from schedule descriptions", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    reloadEnv();
+
+    const handler = http.post(OPENROUTER_URL, () => {
+      return HttpResponse.json(
+        openRouterResponse("**Daily** `backup` for [prod](https://db.io)"),
+      );
+    });
+    server.use(handler.handler);
+
+    const { generateScheduleDescription } = await import(
+      "../lightweight-model"
+    );
+
+    const result = await generateScheduleDescription(
+      "BackupBot",
+      "Daily Backup",
+      "Every day at 2am",
+      "Back up the production database",
+    );
+
+    expect(result).toBe("Daily backup for prod");
   });
 });

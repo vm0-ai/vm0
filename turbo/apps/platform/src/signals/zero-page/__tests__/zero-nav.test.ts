@@ -8,8 +8,6 @@ import {
   zeroTalkAgentId$,
   zeroChatAgentId$,
   setZeroChatAgent$,
-  zeroAvatarIndex$,
-  cycleZeroAvatar$,
   zeroShowAboutPage$,
   setZeroShowAboutPage$,
   zeroSidebarCollapsed$,
@@ -139,24 +137,6 @@ describe("zero-nav", () => {
       context.store.set(setZeroChatAgent$, "agent-123");
       context.store.set(setZeroChatAgent$, null);
       expect(context.store.get(zeroChatAgentId$)).toBeNull();
-    });
-  });
-
-  describe("zeroAvatarIndex$ and cycleZeroAvatar$", () => {
-    it("should default to 0", () => {
-      expect(context.store.get(zeroAvatarIndex$)).toBe(0);
-    });
-
-    it("should advance to the next index", () => {
-      context.store.set(cycleZeroAvatar$, 5);
-      expect(context.store.get(zeroAvatarIndex$)).toBe(1);
-    });
-
-    it("should wrap around when reaching the end", () => {
-      context.store.set(cycleZeroAvatar$, 3);
-      context.store.set(cycleZeroAvatar$, 3);
-      context.store.set(cycleZeroAvatar$, 3);
-      expect(context.store.get(zeroAvatarIndex$)).toBe(0);
     });
   });
 

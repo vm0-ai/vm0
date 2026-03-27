@@ -94,19 +94,8 @@ export const navigateToZeroSession$ = command(({ set }, sessionId: string) => {
 });
 
 // ---------------------------------------------------------------------------
-// Shell UI state — avatar, about page, sidebar
+// Shell UI state — about page, sidebar
 // ---------------------------------------------------------------------------
-
-const internalAvatarIndex$ = state(0);
-
-/** Current avatar index for the Zero agent avatar cycle. */
-export const zeroAvatarIndex$ = computed((get) => get(internalAvatarIndex$));
-
-/** Advance the avatar to the next image in the cycle. */
-export const cycleZeroAvatar$ = command(({ get, set }, avatarCount: number) => {
-  const current = get(internalAvatarIndex$);
-  set(internalAvatarIndex$, (current + 1) % avatarCount);
-});
 
 const internalShowAboutPage$ = state(false);
 

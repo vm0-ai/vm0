@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useGet, useSet } from "ccstate-react";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   Button,
   Card,
@@ -16,7 +17,7 @@ import {
   Input,
   cn,
 } from "@vm0/ui";
-import { IconTrash } from "@tabler/icons-react";
+import { IconTrash, IconUpload, IconCheck } from "@tabler/icons-react";
 import {
   type Tone,
   TONE_OPTIONS,
@@ -24,19 +25,31 @@ import {
   TONE_HINT,
   TONE_SAMPLES,
 } from "./zero-tone-constants.ts";
-import { detach, Reason } from "../../signals/utils.ts";
+import { detach, Reason, throwIfAbort } from "../../signals/utils.ts";
 import { ZeroUnsavedBar } from "./zero-unsaved-bar.tsx";
 import type { Command } from "ccstate";
 import { InlineSettingsRow } from "./components/zero-inline-settings-row.tsx";
+import { ZERO_AVATARS } from "./zero-avatars.ts";
+import { fetch$ } from "../../signals/fetch.ts";
+import { AVATAR_PRESET_PREFIX } from "./avatar-utils.ts";
 
 interface ZeroSettingsTabProps {
   displayName: string;
   description: string;
   sound: Tone;
+  avatarUrl: string | null;
   saving: boolean;
   updateSettings$: Command<
     Promise<void>,
-    [{ displayName: string; sound: string; description: string }, AbortSignal]
+    [
+      {
+        displayName: string;
+        sound: string;
+        description: string;
+        avatarUrl?: string | null;
+      },
+      AbortSignal,
+    ]
   >;
   inputId?: string;
   /** Whether this is the default agent (cannot be deleted). */
@@ -49,6 +62,7 @@ export function ZeroSettingsTab({
   displayName: resolvedAgentName,
   description: initialDescription,
   sound: initialSound,
+  avatarUrl: initialAvatarUrl,
   saving,
   updateSettings$,
   inputId = "zero-agent-name",
@@ -58,26 +72,61 @@ export function ZeroSettingsTab({
   const [agentName, setAgentName] = useState(resolvedAgentName);
   const [desc, setDesc] = useState(initialDescription);
   const [tone, setTone] = useState<Tone>(initialSound);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(initialAvatarUrl);
+  const [customAvatarUrl, setCustomAvatarUrl] = useState<string | null>(
+    initialAvatarUrl && !initialAvatarUrl.startsWith(AVATAR_PRESET_PREFIX)
+      ? initialAvatarUrl
+      : null,
+  );
+  const [uploading, setUploading] = useState(false);
+  const [fileInputEl, setFileInputEl] = useState<HTMLInputElement | null>(null);
   const [savedSettings, setSavedSettings] = useState({
     name: resolvedAgentName,
     description: initialDescription,
     tone: initialSound,
+    avatarUrl: initialAvatarUrl,
   });
   const [deleting, setDeleting] = useState(false);
 
   const isSettingsDirty =
     agentName !== savedSettings.name ||
     desc !== savedSettings.description ||
-    tone !== savedSettings.tone;
+    tone !== savedSettings.tone ||
+    avatarUrl !== savedSettings.avatarUrl;
 
   const handleResetSettings = () => {
     setAgentName(savedSettings.name);
     setDesc(savedSettings.description);
     setTone(savedSettings.tone);
+    setAvatarUrl(savedSettings.avatarUrl);
   };
 
   const triggerUpdateSettings = useSet(updateSettings$);
   const pageSignal = useGet(pageSignal$);
+  const fetchFn = useGet(fetch$);
+
+  const handleUploadAvatar = async (file: File) => {
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetchFn("/api/zero/uploads", {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) {
+        throw new Error(`Upload failed (${res.status})`);
+      }
+      const data: { url: string } = await res.json();
+      setCustomAvatarUrl(data.url);
+      setAvatarUrl(data.url);
+    } catch (error) {
+      throwIfAbort(error);
+      toast.error("Failed to upload avatar");
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const handleSaveSettings = async () => {
     await triggerUpdateSettings(
@@ -85,6 +134,7 @@ export function ZeroSettingsTab({
         displayName: agentName,
         description: desc,
         sound: tone,
+        avatarUrl,
       },
       pageSignal,
     );
@@ -92,6 +142,7 @@ export function ZeroSettingsTab({
       name: agentName,
       description: desc,
       tone,
+      avatarUrl,
     });
   };
 
@@ -112,6 +163,112 @@ export function ZeroSettingsTab({
       <div className="mx-auto max-w-[900px]">
         <Card className="zero-card overflow-hidden">
           <CardContent className="p-4 sm:p-5">
+            <InlineSettingsRow
+              label="Avatar"
+              description="Pick a preset or upload a custom image."
+              wideControls
+            >
+              <div className="min-w-0 w-full">
+                <div
+                  className="flex flex-wrap gap-2"
+                  role="radiogroup"
+                  aria-label="Avatar"
+                >
+                  {ZERO_AVATARS.map((src, idx) => {
+                    const presetValue = `${AVATAR_PRESET_PREFIX}${idx}`;
+                    const isSelected = avatarUrl === presetValue;
+                    return (
+                      <button
+                        key={presetValue}
+                        type="button"
+                        role="radio"
+                        aria-checked={isSelected}
+                        aria-label={`Avatar ${idx + 1}`}
+                        onClick={() => setAvatarUrl(presetValue)}
+                        className={cn(
+                          "relative h-12 w-12 shrink-0 rounded-full overflow-hidden border-2 transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                          isSelected
+                            ? "border-primary ring-2 ring-primary/20"
+                            : "border-transparent hover:border-muted-foreground/30",
+                        )}
+                      >
+                        <img
+                          src={src}
+                          alt={`Avatar ${idx + 1}`}
+                          className="h-full w-full object-cover object-top"
+                        />
+                        {isSelected && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-primary/20">
+                            <IconCheck
+                              size={16}
+                              stroke={2.5}
+                              className="text-primary"
+                            />
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                  {customAvatarUrl &&
+                    (() => {
+                      const isSelected = avatarUrl === customAvatarUrl;
+                      return (
+                        <button
+                          type="button"
+                          role="radio"
+                          aria-checked={isSelected}
+                          aria-label="Custom avatar"
+                          onClick={() => setAvatarUrl(customAvatarUrl)}
+                          className={cn(
+                            "relative h-12 w-12 shrink-0 rounded-full overflow-hidden border-2 transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                            isSelected
+                              ? "border-primary ring-2 ring-primary/20"
+                              : "border-transparent hover:border-muted-foreground/30",
+                          )}
+                        >
+                          <img
+                            src={customAvatarUrl}
+                            alt="Custom avatar"
+                            className="h-full w-full object-cover object-top"
+                          />
+                          {isSelected && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-primary/20">
+                              <IconCheck
+                                size={16}
+                                stroke={2.5}
+                                className="text-primary"
+                              />
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })()}
+                  <button
+                    type="button"
+                    onClick={() => fileInputEl?.click()}
+                    disabled={uploading}
+                    className="h-12 w-12 shrink-0 rounded-full border-2 border-dashed border-muted-foreground/30 flex items-center justify-center text-muted-foreground hover:border-muted-foreground/50 hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    aria-label="Upload custom avatar"
+                  >
+                    <IconUpload size={16} stroke={1.5} />
+                  </button>
+                  <input
+                    ref={setFileInputEl}
+                    type="file"
+                    accept="image/png,image/jpeg,image/gif,image/webp"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        detach(handleUploadAvatar(file), Reason.DomCallback);
+                      }
+                      e.target.value = "";
+                    }}
+                  />
+                </div>
+              </div>
+            </InlineSettingsRow>
+
             <InlineSettingsRow
               label="Name"
               description="Shown in the team list and when this agent speaks."

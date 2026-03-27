@@ -9,6 +9,7 @@ const teamComposeItemSchema = z.object({
   displayName: z.string().nullable(),
   description: z.string().nullable(),
   sound: z.string().nullable(),
+  avatarUrl: z.string().nullable(),
   headVersionId: z.string().nullable(),
   updatedAt: z.string(),
 });

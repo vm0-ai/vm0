@@ -1,0 +1,1 @@
+ALTER TABLE "zero_agents" ADD COLUMN "avatar_url" varchar(1024);

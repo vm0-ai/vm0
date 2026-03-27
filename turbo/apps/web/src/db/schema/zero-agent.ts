@@ -27,6 +27,7 @@ export const zeroAgents = pgTable(
     displayName: varchar("display_name", { length: 256 }),
     description: text("description"),
     sound: varchar("sound", { length: 64 }),
+    avatarUrl: varchar("avatar_url", { length: 1024 }),
     firewallPolicies: jsonb("firewall_policies").$type<FirewallPolicies>(),
     connectors: jsonb("connectors").$type<string[]>().notNull().default([]),
     createdAt: timestamp("created_at").defaultNow().notNull(),

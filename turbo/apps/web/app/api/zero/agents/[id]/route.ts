@@ -27,6 +27,21 @@ type ForbiddenResponse = {
   body: { error: { message: string; code: string } };
 };
 
+function agentResponseBody(
+  agent: typeof zeroAgents.$inferSelect | undefined,
+  fallback: { id: string; connectors?: string[] },
+) {
+  return {
+    agentId: fallback.id,
+    description: agent?.description ?? null,
+    displayName: agent?.displayName ?? null,
+    sound: agent?.sound ?? null,
+    avatarUrl: agent?.avatarUrl ?? null,
+    connectors: fallback.connectors ?? agent?.connectors ?? [],
+    firewallPolicies: agent?.firewallPolicies ?? null,
+  };
+}
+
 async function requireAdminForDefaultAgent(
   orgId: string,
   composeId: string,
@@ -80,14 +95,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
 
     return {
       status: 200 as const,
-      body: {
-        agentId: agent.id,
-        description: agent.description ?? null,
-        displayName: agent.displayName ?? null,
-        sound: agent.sound ?? null,
-        connectors: agent.connectors,
-        firewallPolicies: agent.firewallPolicies ?? null,
-      },
+      body: agentResponseBody(agent, { id: agent.id }),
     };
   },
 
@@ -171,6 +179,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
         displayName: body.displayName ?? null,
         description: body.description ?? null,
         sound: body.sound ?? null,
+        avatarUrl: body.avatarUrl ?? null,
         connectors: body.connectors,
       })
       .onConflictDoUpdate({
@@ -185,6 +194,9 @@ const router = tsr.router(zeroAgentsByIdContract, {
             description: body.description,
           }),
           ...(body.sound !== undefined && { sound: body.sound }),
+          ...(body.avatarUrl !== undefined && {
+            avatarUrl: body.avatarUrl,
+          }),
         },
       });
 
@@ -199,14 +211,10 @@ const router = tsr.router(zeroAgentsByIdContract, {
 
     return {
       status: 200 as const,
-      body: {
-        agentId: params.id,
-        description: agent?.description ?? null,
-        displayName: agent?.displayName ?? null,
-        sound: agent?.sound ?? null,
+      body: agentResponseBody(agent, {
+        id: params.id,
         connectors: body.connectors,
-        firewallPolicies: agent?.firewallPolicies ?? null,
-      },
+      }),
     };
   },
 
@@ -262,6 +270,9 @@ const router = tsr.router(zeroAgentsByIdContract, {
           description: body.description,
         }),
         ...(body.sound !== undefined && { sound: body.sound }),
+        ...(body.avatarUrl !== undefined && {
+          avatarUrl: body.avatarUrl,
+        }),
       })
       .where(eq(zeroAgents.id, params.id));
 
@@ -276,14 +287,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
 
     return {
       status: 200 as const,
-      body: {
-        agentId: params.id,
-        description: agent?.description ?? null,
-        displayName: agent?.displayName ?? null,
-        sound: agent?.sound ?? null,
-        connectors: agent?.connectors ?? [],
-        firewallPolicies: agent?.firewallPolicies ?? null,
-      },
+      body: agentResponseBody(agent, { id: params.id }),
     };
   },
 

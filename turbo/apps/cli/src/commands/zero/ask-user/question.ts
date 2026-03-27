@@ -36,6 +36,28 @@ export const questionCommand = new Command()
   )
   .option("--multi-select", "Allow multiple selections")
   .option("--timeout <seconds>", "How long to wait for answer", "300")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  Yes/No confirmation:
+    zero ask-user question "Deploy to production?" --option "Yes" --option "No"
+
+  Options with descriptions:
+    zero ask-user question "Pick a strategy" \\
+      --header "Strategy" \\
+      --option "Fast" --desc "Quick but risky" \\
+      --option "Safe" --desc "Slow but reliable"
+
+  Multi-select:
+    zero ask-user question "Which services to restart?" \\
+      --multi-select \\
+      --option "API" --option "Worker" --option "Scheduler"
+
+Notes:
+  - At least one --option is required
+  - --desc must immediately follow its --option`,
+  )
   .action(
     withErrorHandler(
       async (

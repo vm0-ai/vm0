@@ -3,6 +3,7 @@ export interface AgentDetail {
   description: string | null;
   displayName: string | null;
   sound: string | null;
+  avatarUrl: string | null;
   connectors: string[];
 }
 

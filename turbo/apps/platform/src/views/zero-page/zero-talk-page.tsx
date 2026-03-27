@@ -2,10 +2,7 @@ import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import { SidebarLayout } from "./sidebar-layout.tsx";
 import { ZeroChatPage } from "./zero-chat-page.tsx";
 import { useAgentAvatar } from "./zero-sidebar.tsx";
-import {
-  zeroChatAgentId$,
-  zeroAvatarIndex$,
-} from "../../signals/zero-page/zero-nav.ts";
+import { zeroChatAgentId$ } from "../../signals/zero-page/zero-nav.ts";
 import { zeroSubagents$ } from "../../signals/zero-page/zero-agents.ts";
 import {
   agentDisplayName$,
@@ -18,12 +15,8 @@ import {
   startNewZeroSession$,
 } from "../../signals/zero-page/zero-chat.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { ZERO_AVATARS } from "./zero-avatars.ts";
 
 export function ZeroTalkPage() {
-  const avatarIndex = useGet(zeroAvatarIndex$);
-  const zeroAvatarSrc = ZERO_AVATARS[avatarIndex] ?? ZERO_AVATARS[0];
-
   const currentChatAgentId = useGet(zeroChatAgentId$);
   const subagentsLoadable = useLastLoadable(zeroSubagents$);
   const subagents =
@@ -31,8 +24,14 @@ export function ZeroTalkPage() {
   const selectedSubagent = currentChatAgentId
     ? subagents.find((a) => a.id === currentChatAgentId)
     : null;
-  const subagentAvatarSrc = useAgentAvatar(selectedSubagent?.id ?? "");
-  const chatAvatarSrc = selectedSubagent ? subagentAvatarSrc : zeroAvatarSrc;
+
+  const defaultAgentIdLoadable = useLastLoadable(defaultAgentId$);
+  const defaultRawName =
+    defaultAgentIdLoadable.state === "hasData"
+      ? defaultAgentIdLoadable.data
+      : null;
+  const resolvedAgentId = selectedSubagent?.id ?? defaultRawName;
+  const chatAvatarSrc = useAgentAvatar(resolvedAgentId ?? "");
 
   const agentDisplayNameLoadable = useLastLoadable(agentDisplayName$);
   const agentDisplayName =
@@ -42,13 +41,6 @@ export function ZeroTalkPage() {
   const chatAgentName = selectedSubagent
     ? (selectedSubagent.displayName ?? selectedSubagent.id)
     : agentDisplayName;
-
-  const defaultAgentIdLoadable = useLastLoadable(defaultAgentId$);
-  const defaultRawName =
-    defaultAgentIdLoadable.state === "hasData"
-      ? defaultAgentIdLoadable.data
-      : null;
-  const resolvedAgentId = selectedSubagent?.id ?? defaultRawName;
 
   const navigateTo = useSet(navigateTo$);
   const sendMessage = useSet(sendZeroChatMessage$);

@@ -71,6 +71,7 @@ const router = tsr.router(zeroAgentsMainContract, {
         displayName: body.displayName ?? null,
         description: body.description ?? null,
         sound: body.sound ?? null,
+        avatarUrl: body.avatarUrl ?? null,
         connectors: body.connectors,
       })
       .onConflictDoUpdate({
@@ -79,6 +80,7 @@ const router = tsr.router(zeroAgentsMainContract, {
           displayName: body.displayName ?? null,
           description: body.description ?? null,
           sound: body.sound ?? null,
+          avatarUrl: body.avatarUrl ?? null,
           connectors: body.connectors,
           updatedAt: new Date(),
         },
@@ -93,6 +95,7 @@ const router = tsr.router(zeroAgentsMainContract, {
         description: body.description ?? null,
         displayName: body.displayName ?? null,
         sound: body.sound ?? null,
+        avatarUrl: body.avatarUrl ?? null,
         connectors: body.connectors,
         firewallPolicies: null,
       },
@@ -116,6 +119,7 @@ const router = tsr.router(zeroAgentsMainContract, {
         displayName: zeroAgents.displayName,
         description: zeroAgents.description,
         sound: zeroAgents.sound,
+        avatarUrl: zeroAgents.avatarUrl,
         connectors: zeroAgents.connectors,
         firewallPolicies: zeroAgents.firewallPolicies,
       })
@@ -130,6 +134,7 @@ const router = tsr.router(zeroAgentsMainContract, {
         displayName: row.displayName ?? null,
         description: row.description ?? null,
         sound: row.sound ?? null,
+        avatarUrl: row.avatarUrl ?? null,
         connectors: row.connectors,
         firewallPolicies: row.firewallPolicies ?? null,
       })),

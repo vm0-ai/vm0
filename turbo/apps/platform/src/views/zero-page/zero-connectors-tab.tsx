@@ -152,9 +152,19 @@ export function ZeroConnectorsTab({
           </>
         )}
 
-        {/* Connector cards — only show connectors that have a matching connector type */}
+        {/* Connector cards — sorted with connected first */}
         {addedConnectors
           .filter((name) => connectorMap.has(name as ConnectorType))
+          .sort((a, b) => {
+            const aConnected =
+              connectorMap.get(a as ConnectorType)?.connected ?? false;
+            const bConnected =
+              connectorMap.get(b as ConnectorType)?.connected ?? false;
+            if (aConnected === bConnected) {
+              return 0;
+            }
+            return aConnected ? -1 : 1;
+          })
           .map((name) => {
             const connector = connectorMap.get(name as ConnectorType) ?? null;
             const effectiveConnector =

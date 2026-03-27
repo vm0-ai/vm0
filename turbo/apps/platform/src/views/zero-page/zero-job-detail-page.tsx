@@ -70,8 +70,8 @@ import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.t
 import { Link } from "../router/link.tsx";
 import { navigateTo$ } from "../../signals/route.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { AGENT_AVATARS, useAgentAvatar } from "./zero-sidebar.tsx";
-import { setAgentAvatar$ } from "../../signals/zero-page/zero-agent-avatars.ts";
+import { useAgentAvatar } from "./zero-sidebar.tsx";
+import { resolveAvatarUrl } from "./avatar-utils.ts";
 import { agents$ } from "../../signals/zero-page/agents-list.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { ZeroNoPermissionIllustration } from "./components/zero-no-permission-illustration.tsx";
@@ -82,10 +82,6 @@ import { ZeroNoPermissionIllustration } from "./components/zero-no-permission-il
 
 interface ZeroJobDetailPageProps {
   agentId: string;
-  /** When set, this is the default agent — use this avatar instead of agent avatar. */
-  zeroAvatarSrc?: string;
-  /** Cycle the default agent's avatar. */
-  onCycleAvatar?: () => void;
 }
 
 function Breadcrumb({ currentName }: { currentName?: string }) {
@@ -246,12 +242,14 @@ function extractAgentFields(
     displayName?: string | null;
     description?: string | null;
     sound?: string | null;
+    avatarUrl?: string | null;
   },
 ) {
   return {
     description: listItem?.description ?? detail?.description ?? "",
     framework: null,
     sound: listItem?.sound ?? detail?.sound ?? "professional",
+    avatarUrl: listItem?.avatarUrl ?? detail?.avatarUrl ?? null,
     displayName:
       listItem?.displayName ??
       detail?.displayName ??
@@ -391,17 +389,13 @@ function JobInstructionsTab() {
 // Main page
 // ---------------------------------------------------------------------------
 
-export function ZeroJobDetailPage({
-  agentId,
-  zeroAvatarSrc,
-  onCycleAvatar,
-}: ZeroJobDetailPageProps) {
+export function ZeroJobDetailPage({ agentId }: ZeroJobDetailPageProps) {
   const detail = useGet(zeroJobDetail$);
   const error = useGet(zeroJobDetailError$);
   const agents = useLastResolved(agents$) ?? [];
   const listItem = agents.find((a) => a.id === agentId);
 
-  const { description, displayName, sound } = extractAgentFields(
+  const { description, displayName, sound, avatarUrl } = extractAgentFields(
     detail,
     agentId,
     listItem,
@@ -439,18 +433,8 @@ export function ZeroJobDetailPage({
   const activeTab = resolveVisibleTab(rawTab, hideProfileAndInstructions);
 
   const agentAvatar = useAgentAvatar(agentId);
-  const setAgentAvatarCmd = useSet(setAgentAvatar$);
-  // Default agent uses the shared zero avatar; sub-agents use their own override.
-  const currentAvatar = zeroAvatarSrc ?? agentAvatar;
-  const cycleAvatar =
-    onCycleAvatar ??
-    (() => {
-      const idx = AGENT_AVATARS.indexOf(
-        agentAvatar as (typeof AGENT_AVATARS)[number],
-      );
-      const next = AGENT_AVATARS[(idx + 1) % AGENT_AVATARS.length];
-      setAgentAvatarCmd(agentId, next);
-    });
+  const resolvedDbAvatar = resolveAvatarUrl(avatarUrl);
+  const currentAvatar = resolvedDbAvatar ?? agentAvatar;
 
   if (!detail && !error) {
     return <DetailSkeleton />;
@@ -466,27 +450,11 @@ export function ZeroJobDetailPage({
       <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-6 pb-3">
         <div className="mx-auto max-w-[900px]">
           <div className="flex items-center gap-4">
-            <TooltipProvider delayDuration={200}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={cycleAvatar}
-                    className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                    aria-label="Switch avatar"
-                  >
-                    <img
-                      src={currentAvatar}
-                      alt={displayName}
-                      className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
-                    />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  <p className="text-xs">Switch avatar</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <img
+              src={currentAvatar}
+              alt={displayName}
+              className="h-14 w-14 shrink-0 rounded-full object-cover object-top sm:h-16 sm:w-16"
+            />
             <div className="min-w-0">
               <h1 className="text-xl font-semibold tracking-tight text-foreground">
                 {displayName}
@@ -542,10 +510,11 @@ export function ZeroJobDetailPage({
 
         {activeTab === "profile" && (
           <ZeroSettingsTab
-            key={`${displayName}\0${description}\0${resolvedSound}`}
+            key={`${displayName}\0${description}\0${resolvedSound}\0${avatarUrl}`}
             displayName={displayName}
             description={description ?? ""}
             sound={resolvedSound}
+            avatarUrl={avatarUrl}
             saving={saving}
             updateSettings$={zeroJobUpdateSettings$}
             inputId="job-agent-name"

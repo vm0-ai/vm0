@@ -52,7 +52,6 @@ import {
   setZeroSidebarCollapsed$,
   handleZeroNavSelect$,
   handleZeroAccountAction$,
-  zeroAvatarIndex$,
   navigateToZeroSession$,
 } from "../../signals/zero-page/zero-nav.ts";
 import {
@@ -82,8 +81,11 @@ import {
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { VM0ClerkProvider } from "../clerk/clerk-provider.tsx";
 import { ClerkOrgSwitcher } from "./clerk-org-switcher.tsx";
-import { AgentAvatarImg, type SubagentInfo } from "./zero-sidebar-shared.tsx";
-import { ZERO_AVATARS } from "./zero-avatars.ts";
+import {
+  AgentAvatarImg,
+  useAgentAvatar,
+  type SubagentInfo,
+} from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { apiBaseForNavigation$ } from "../../signals/fetch.ts";
@@ -103,7 +105,7 @@ import {
 } from "./zero-sidebar-dialogs.tsx";
 
 // Re-export shared types/components for backward compatibility
-export { AGENT_AVATARS, useAgentAvatar } from "./zero-sidebar-shared.tsx";
+export { useAgentAvatar } from "./zero-sidebar-shared.tsx";
 
 export type ZeroNavId =
   | "chat"
@@ -874,8 +876,7 @@ export function ZeroSidebar() {
     defaultAgentIdLoadable.state === "hasData"
       ? defaultAgentIdLoadable.data
       : null;
-  const avatarIndex = useGet(zeroAvatarIndex$);
-  const zeroAvatarSrc = ZERO_AVATARS[avatarIndex] ?? ZERO_AVATARS[0];
+  const zeroAvatarSrc = useAgentAvatar(defaultAgentRawName ?? "");
   const subagentsLoadable = useLastLoadable(zeroSubagents$);
   const subagents: SubagentInfo[] =
     subagentsLoadable.state === "hasData"

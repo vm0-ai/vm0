@@ -13,6 +13,7 @@ export const zeroAgentResponseSchema = z.object({
   description: z.string().nullable(),
   displayName: z.string().nullable(),
   sound: z.string().nullable(),
+  avatarUrl: z.string().nullable(),
   connectors: z.array(z.string()),
   firewallPolicies: firewallPoliciesSchema.nullable(),
 });
@@ -24,6 +25,7 @@ export const zeroAgentRequestSchema = z.object({
   description: z.string().optional(),
   displayName: z.string().optional(),
   sound: z.string().optional(),
+  avatarUrl: z.string().optional(),
   connectors: z.array(z.string()),
 });
 
@@ -34,6 +36,7 @@ export const zeroAgentMetadataRequestSchema = z.object({
   displayName: z.string().optional(),
   description: z.string().optional(),
   sound: z.string().optional(),
+  avatarUrl: z.string().nullable().optional(),
 });
 
 /**

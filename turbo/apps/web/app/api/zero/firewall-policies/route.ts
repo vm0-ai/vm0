@@ -131,6 +131,7 @@ const router = tsr.router(zeroAgentFirewallPoliciesContract, {
         description: agent?.description ?? null,
         displayName: agent?.displayName ?? null,
         sound: agent?.sound ?? null,
+        avatarUrl: agent?.avatarUrl ?? null,
         connectors: agent?.connectors ?? [],
         firewallPolicies: agent?.firewallPolicies ?? null,
       },

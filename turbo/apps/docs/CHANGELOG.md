@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.30.0](https://github.com/vm0-ai/vm0/compare/docs-v2.29.2...docs-v2.30.0) (2026-03-27)
+
+
+### Features
+
+* update og images with zero branding ([#7048](https://github.com/vm0-ai/vm0/issues/7048)) ([f31e98d](https://github.com/vm0-ai/vm0/commit/f31e98d5d26a270d1a887164a95adf5802004935))
+
 ## [2.29.2](https://github.com/vm0-ai/vm0/compare/docs-v2.29.1...docs-v2.29.2) (2026-03-26)
 
 

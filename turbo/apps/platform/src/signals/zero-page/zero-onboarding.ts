@@ -200,6 +200,7 @@ export const completeZeroOnboarding$ = command(
         connectors: selectedConnectors,
         displayName,
         sound: "professional",
+        avatarUrl: "preset:0",
       });
       signal.throwIfAborted();
 

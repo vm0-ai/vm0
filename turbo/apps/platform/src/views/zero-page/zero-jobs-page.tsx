@@ -5,6 +5,8 @@ import {
   IconCrown,
   IconLoader2,
   IconPlus,
+  IconTrash,
+  IconUpload,
   IconUsers,
 } from "@tabler/icons-react";
 import {
@@ -25,13 +27,17 @@ import {
   agentDisplayName$,
   defaultAgentId$,
 } from "../../signals/zero-page/zero-agent-name.ts";
-import { zeroAvatarIndex$ } from "../../signals/zero-page/zero-nav.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import { detach, Reason } from "../../signals/utils.ts";
+import { detach, Reason, throwIfAbort } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
-import { useAgentAvatar, AGENT_AVATARS } from "./zero-sidebar.tsx";
-
+import { useAgentAvatar } from "./zero-sidebar.tsx";
 import { ZERO_AVATARS } from "./zero-avatars.ts";
+import {
+  AVATAR_PRESET_PREFIX,
+  randomPresetAvatar,
+  resolveAvatarUrl,
+} from "./avatar-utils.ts";
+import { fetch$ } from "../../signals/fetch.ts";
 
 export function ZeroJobsPage() {
   const displayNameLoadable = useLoadable(agentDisplayName$);
@@ -49,22 +55,21 @@ export function ZeroJobsPage() {
         ? agentsLoadable.error.message
         : "Unknown error"
       : null;
-  const avatarIndex = useGet(zeroAvatarIndex$);
-  const zeroAvatarSrc = ZERO_AVATARS[avatarIndex] ?? ZERO_AVATARS[0];
+  const zeroAvatarSrc = useAgentAvatar(rawAgentName ?? "");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
   const createSubagent = useSet(createSubagent$);
   const pageSignal = useGet(pageSignal$);
 
-  const handleCreateTeammate = () => {
+  const handleCreateTeammate = (avatarUrl: string) => {
     const trimmed = newName.trim();
     if (!trimmed || creating) {
       return;
     }
     setCreating(true);
     detach(
-      createSubagent(trimmed, pageSignal).then(
+      createSubagent(trimmed, avatarUrl, pageSignal).then(
         () => {
           setDialogOpen(false);
           setNewName("");
@@ -275,70 +280,161 @@ function CreateTeammateDialog({
   onOpenChange: (open: boolean) => void;
   newName: string;
   onNameChange: (name: string) => void;
-  onConfirm: () => void;
+  onConfirm: (avatarUrl: string) => void;
   creating: boolean;
 }) {
   return (
     <Dialog open={open} onOpenChange={creating ? undefined : onOpenChange}>
-      <DialogContent className="sm:max-w-[480px] p-0 gap-0">
-        <div className="flex flex-col items-center h-[min(360px,80dvh)]">
-          <DialogHeader className="px-6 pt-8 pb-4 flex flex-col items-center text-center">
-            <img
-              src={AGENT_AVATARS[0]}
-              alt="New teammate"
-              className="h-16 w-16 rounded-full object-cover object-top mb-3"
-            />
-            <DialogTitle className="text-base font-semibold">
-              Create a new teammate
-            </DialogTitle>
-            <p className="text-sm text-muted-foreground mt-1">
-              Name your sub-agent to get started.
-            </p>
-          </DialogHeader>
-
-          <div className="flex-1 flex items-center justify-center px-6">
-            <Input
-              value={newName}
-              onChange={(e) => onNameChange(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && newName.trim() && !creating) {
-                  onConfirm();
-                }
-              }}
-              placeholder="e.g. Research Assistant"
-              className="max-w-[280px] text-center"
-              autoFocus
-              disabled={creating}
-            />
-          </div>
-
-          <div className="px-6 pb-6 pt-4 flex justify-end gap-2 w-full">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onOpenChange(false)}
-              disabled={creating}
-            >
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              onClick={onConfirm}
-              disabled={!newName.trim() || creating}
-            >
-              {creating ? (
-                <span className="inline-flex items-center gap-1.5">
-                  <IconLoader2 size={14} className="animate-spin" />
-                  Creating...
-                </span>
-              ) : (
-                "Create"
-              )}
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
+      {/* Render content only when open so inner state resets each time */}
+      {open && (
+        <CreateTeammateDialogContent
+          newName={newName}
+          onNameChange={onNameChange}
+          onConfirm={onConfirm}
+          onCancel={() => onOpenChange(false)}
+          creating={creating}
+        />
+      )}
     </Dialog>
+  );
+}
+
+function CreateTeammateDialogContent({
+  newName,
+  onNameChange,
+  onConfirm,
+  onCancel,
+  creating,
+}: {
+  newName: string;
+  onNameChange: (name: string) => void;
+  onConfirm: (avatarUrl: string) => void;
+  onCancel: () => void;
+  creating: boolean;
+}) {
+  const [avatarUrl, setAvatarUrl] = useState(randomPresetAvatar);
+  const [uploading, setUploading] = useState(false);
+  const [fileInputEl, setFileInputEl] = useState<HTMLInputElement | null>(null);
+  const fetchFn = useGet(fetch$);
+
+  const handleUpload = async (file: File) => {
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetchFn("/api/zero/uploads", {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) {
+        throw new Error(`Upload failed (${res.status})`);
+      }
+      const data: { url: string } = await res.json();
+      setAvatarUrl(data.url);
+    } catch (error) {
+      throwIfAbort(error);
+      toast.error("Failed to upload avatar");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const isCustom = !avatarUrl.startsWith(AVATAR_PRESET_PREFIX);
+  const displaySrc = resolveAvatarUrl(avatarUrl) ?? ZERO_AVATARS[0];
+
+  return (
+    <DialogContent className="sm:max-w-[480px] p-0 gap-0">
+      <div className="flex flex-col items-center h-[min(360px,80dvh)]">
+        <DialogHeader className="px-6 pt-8 pb-4 flex flex-col items-center text-center">
+          <div className="relative group mb-3">
+            <img
+              src={displaySrc}
+              alt="New teammate"
+              className="h-16 w-16 rounded-full object-cover object-top"
+            />
+            <button
+              type="button"
+              onClick={() =>
+                isCustom
+                  ? setAvatarUrl(randomPresetAvatar())
+                  : fileInputEl?.click()
+              }
+              disabled={uploading}
+              className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+              aria-label={isCustom ? "Remove custom avatar" : "Upload avatar"}
+            >
+              {uploading ? (
+                <IconLoader2 size={18} className="text-white animate-spin" />
+              ) : isCustom ? (
+                <IconTrash size={18} className="text-white" />
+              ) : (
+                <IconUpload size={18} className="text-white" />
+              )}
+            </button>
+            <input
+              ref={setFileInputEl}
+              type="file"
+              accept="image/png,image/jpeg,image/gif,image/webp"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  detach(handleUpload(file), Reason.DomCallback);
+                }
+                e.target.value = "";
+              }}
+            />
+          </div>
+          <DialogTitle className="text-base font-semibold">
+            Create a new teammate
+          </DialogTitle>
+          <p className="text-sm text-muted-foreground mt-1">
+            Name your sub-agent to get started.
+          </p>
+        </DialogHeader>
+
+        <div className="flex-1 flex items-center justify-center px-6">
+          <Input
+            value={newName}
+            onChange={(e) => onNameChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && newName.trim() && !creating) {
+                onConfirm(avatarUrl);
+              }
+            }}
+            placeholder="e.g. Research Assistant"
+            className="max-w-[280px] text-center"
+            autoFocus
+            disabled={creating}
+          />
+        </div>
+
+        <div className="px-6 pb-6 pt-4 flex justify-end gap-2 w-full">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onCancel}
+            disabled={creating}
+          >
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => onConfirm(avatarUrl)}
+            disabled={!newName.trim() || creating}
+          >
+            {creating ? (
+              <span className="inline-flex items-center gap-1.5">
+                <IconLoader2 size={14} className="animate-spin" />
+                Creating...
+              </span>
+            ) : (
+              "Create"
+            )}
+          </Button>
+        </div>
+      </div>
+    </DialogContent>
   );
 }
 
