@@ -220,9 +220,48 @@ teardown_file() {
   # Give the page additional time to fully load after navigation in the previous test
   agent-browser wait 5000
 
+  # If the platform redirected to the onboarding wizard (fresh user), complete it first.
+  # This can happen when org creation in the previous test succeeds but the onboarding
+  # page was not yet ready during the detection loop.
+  local snap
+  snap=$(full_snapshot)
+  if contains "$snap" "Name your workspace\|Choose your tools\|Connect your apps\|Where would you like to work"; then
+    echo "# Onboarding wizard detected in test 16 — completing it now..." >&3
+
+    if contains "$snap" "Name your workspace"; then
+      echo "# Onboarding step 1: naming workspace..." >&3
+      agent-browser find placeholder "e.g. Acme Corp" fill "Pro Upgrade Test"
+      agent-browser wait 500
+      agent-browser find text "Next" click
+      agent-browser wait 2000
+      snap=$(full_snapshot)
+    fi
+
+    if contains "$snap" "Choose your tools"; then
+      echo "# Onboarding step 2: choosing tools (skip)..." >&3
+      agent-browser find text "Next" click
+      agent-browser wait 2000
+      snap=$(full_snapshot)
+    fi
+
+    if contains "$snap" "Connect your apps"; then
+      echo "# Onboarding step 3: connect apps (skip)..." >&3
+      agent-browser find text "Next" click
+      agent-browser wait 2000
+      snap=$(full_snapshot)
+    fi
+
+    if contains "$snap" "Where would you like to work\|Continue in web"; then
+      echo "# Onboarding step 4: continue in web..." >&3
+      agent-browser find text "Continue in web" click
+      agent-browser wait 8000
+    fi
+
+    echo "# Onboarding complete (from test 16), waiting for chat page..." >&3
+  fi
+
   local chat_loaded=false
   for _i in $(seq 1 60); do
-    local snap
     snap=$(full_snapshot)
     if contains "$snap" "Ask me to automate workflows"; then
       chat_loaded=true
