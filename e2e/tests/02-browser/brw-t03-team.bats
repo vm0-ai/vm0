@@ -62,8 +62,18 @@ teardown_file() {
 }
 
 @test "create new agent via dialog" {
-  echo "# Clicking Create teammate..." >&3
-  agent-browser find text "Create teammate" click
+  # Retry clicking Create teammate — the button may briefly be unclickable
+  # while the team page finishes loading async data after session sync
+  echo "# Clicking Create teammate (with retry)..." >&3
+  local btn_clicked=false
+  for _i in $(seq 1 20); do
+    if agent-browser find text "Create teammate" click 2>/dev/null; then
+      btn_clicked=true
+      break
+    fi
+    sleep 1
+  done
+  assert [ "$btn_clicked" = "true" ]
   agent-browser wait 1000
   step_screenshot "create-dialog-opened"
 

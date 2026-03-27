@@ -42,8 +42,8 @@ teardown_file() {
   agent-browser open "${APP_URL}/schedule" --ignore-https-errors
   agent-browser wait 3000
 
-  # Wait for schedule page to load
-  wait_for_text "Scheduled tasks" 20
+  # Wait for schedule page to load (longer timeout for cold-start browser)
+  wait_for_text "Scheduled tasks" 40
   step_screenshot "schedule-page"
 
   # Click "Add schedule" button (retry because agents may still be loading)
