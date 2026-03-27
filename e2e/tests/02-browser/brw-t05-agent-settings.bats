@@ -316,8 +316,8 @@ teardown_file() {
 
   # Wait for profile form to load — wait specifically for the description
   # placeholder to appear (the form content loads async after the tab switch).
-  wait_for_text "Description" 15
-  wait_for_text "What does this agent do" 15
+  wait_for_text "Description" 30
+  wait_for_text "What does this agent do" 30
   step_screenshot "profile-before"
 
   # Fill description with timestamped value
