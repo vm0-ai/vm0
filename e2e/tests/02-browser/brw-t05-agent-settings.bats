@@ -112,6 +112,14 @@ teardown_file() {
 }
 
 @test "create agent for settings testing" {
+  # The sign-in navigation can leave the daemon unresponsive. Restart with a
+  # fresh token to ensure a clean state before navigating to the team page.
+  echo "# Restarting browser daemon for clean state..." >&3
+  agent-browser close 2>/dev/null || true
+  sleep 2
+  create_clerk_sign_in_token
+  sign_in_via_token_on_app
+
   echo "# Navigating to team page..." >&3
   agent-browser open "${APP_URL}/team" --ignore-https-errors
   agent-browser wait 3000
