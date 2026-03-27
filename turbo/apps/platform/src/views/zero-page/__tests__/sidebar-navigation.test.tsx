@@ -197,8 +197,24 @@ describe("sidebar new chat navigation", () => {
   it("should show new chat entry in sidebar and focus textarea after creating new chat", async () => {
     mockSubagentAPIs();
 
-    // Override GET chat-threads/:id to return empty messages so autoFocus kicks in
+    // Override list and detail endpoints to include the newly created thread.
+    // fetchZeroSessionList$ is always called after navigation so the list must
+    // include the new thread (preview: null) for "New chat" to appear in the sidebar.
     server.use(
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({
+          threads: [
+            {
+              id: "new-thread-id",
+              title: null,
+              preview: null,
+              agentId: "mock-compose-id",
+              createdAt: "2026-03-10T00:00:00Z",
+              updatedAt: "2026-03-10T00:00:00Z",
+            },
+          ],
+        });
+      }),
       http.get("*/api/zero/chat-threads/:id", () => {
         return HttpResponse.json({
           id: "new-thread-id",
