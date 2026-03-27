@@ -42,18 +42,10 @@ export const org$ = computed(async (get) => {
 });
 
 /**
- * Whether the current user has an org.
- */
-export const hasOrg$ = computed(async (get) => {
-  const org = await get(org$);
-  return org !== undefined;
-});
-
-/**
  * Current user's role in their org.
  * Defaults to "member" if org is not available.
  */
-export const orgRole$ = computed(async (get) => {
+const orgRole$ = computed(async (get) => {
   const org = await get(org$);
   return org?.role ?? "member";
 });
