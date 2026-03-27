@@ -95,17 +95,16 @@ describe("chat message lifecycle", () => {
     sendMessageInUI(textarea, "Hello");
 
     await waitFor(() => {
-      expect(
-        screen.getByText(/different model provider/),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/different model provider/)).toBeInTheDocument();
     });
   });
 
   it("should display generic error when error body is unparseable", async () => {
     mockChatLifecycle();
     server.use(
-      http.post("*/api/zero/runs", () =>
-        new HttpResponse("Bad Gateway", { status: 502 }),
+      http.post(
+        "*/api/zero/runs",
+        () => new HttpResponse("Bad Gateway", { status: 502 }),
       ),
     );
 
@@ -125,8 +124,9 @@ describe("chat message lifecycle", () => {
   it("should display error when thread creation fails", async () => {
     mockChatLifecycle();
     server.use(
-      http.post("*/api/zero/chat-threads", () =>
-        new HttpResponse(null, { status: 500 }),
+      http.post(
+        "*/api/zero/chat-threads",
+        () => new HttpResponse(null, { status: 500 }),
       ),
     );
 
