@@ -6,9 +6,11 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { getCategories } from "../zero-ideation-data.ts";
 import { pathname } from "../../../signals/location.ts";
-import { setZeroChatAgent$ } from "../../../signals/zero-page/zero-nav.ts";
 
 const context = testContext();
+
+const AGENT_ID = "mock-compose-id";
+const IDEAS_PATH = `/talk/${AGENT_ID}/ideas`;
 
 function mockChatAPI() {
   server.use(
@@ -18,52 +20,13 @@ function mockChatAPI() {
   );
 }
 
-function mockSubagent(agentId: string) {
-  server.use(
-    http.get("*/api/zero/composes/list", () => {
-      return HttpResponse.json({
-        composes: [
-          {
-            id: "mock-compose-id",
-            displayName: null,
-            headVersionId: "version_1",
-            updatedAt: "2024-01-01T00:00:00Z",
-          },
-          {
-            id: agentId,
-            displayName: "Test Subagent",
-            headVersionId: "version_2",
-            updatedAt: "2024-01-01T00:00:00Z",
-          },
-        ],
-      });
-    }),
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: "mock-compose-id",
-          displayName: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-        {
-          id: agentId,
-          displayName: "Test Subagent",
-          headVersionId: "version_2",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-      ]);
-    }),
-  );
-}
-
 async function renderIdeationPage() {
   mockChatAPI();
-  await setupPage({ context, path: "/ideas" });
+  await setupPage({ context, path: IDEAS_PATH });
 }
 
 describe("ideation page - direct route rendering", () => {
-  it("should render the ideation page when navigating to /ideas", async () => {
+  it("should render the ideation page when navigating to /talk/:id/ideas", async () => {
     await renderIdeationPage();
 
     await waitFor(() => {
@@ -93,7 +56,8 @@ describe("ideation page - direct route rendering", () => {
     });
 
     // Breadcrumb text (non-heading) should also be present
-    const breadcrumbNav = screen.getByRole("navigation");
+    const chatButton = screen.getByText("Chat").closest("button")!;
+    const breadcrumbNav = chatButton.closest("nav")!;
     expect(breadcrumbNav).toHaveTextContent("Ideas & Use Cases");
   });
 });
@@ -242,8 +206,23 @@ describe("ideation page - use case cards", () => {
   });
 });
 
+describe("ideation page - sidebar layout", () => {
+  it("should render within sidebar layout", async () => {
+    await renderIdeationPage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Ideas & Use Cases" }),
+      ).toBeInTheDocument();
+    });
+
+    // SidebarLayout renders .zero-app wrapper
+    expect(document.querySelector(".zero-app")).toBeInTheDocument();
+  });
+});
+
 describe("ideation page - navigation", () => {
-  it("should navigate to chat when a use case card is clicked", async () => {
+  it("should navigate to /talk/:id when a use case card is clicked", async () => {
     await renderIdeationPage();
 
     await waitFor(() => {
@@ -255,11 +234,11 @@ describe("ideation page - navigation", () => {
     });
 
     await waitFor(() => {
-      expect(pathname()).not.toBe("/ideas");
+      expect(pathname()).toBe(`/talk/${AGENT_ID}`);
     });
   });
 
-  it("should navigate to chat when Chat breadcrumb is clicked", async () => {
+  it("should navigate to /talk/:id when Chat breadcrumb is clicked", async () => {
     await renderIdeationPage();
 
     const chatBreadcrumb = await waitFor(
@@ -271,45 +250,53 @@ describe("ideation page - navigation", () => {
     });
 
     await waitFor(() => {
-      expect(pathname()).not.toBe("/ideas");
+      expect(pathname()).toBe(`/talk/${AGENT_ID}`);
     });
   });
 
-  it("should navigate to subagent when a use case card is clicked with agent context", async () => {
+  it("should preserve agent ID from URL across navigation", async () => {
+    const customAgentId = "custom-agent-42";
     mockChatAPI();
-    mockSubagent("test-agent-123");
-    context.store.set(setZeroChatAgent$, "test-agent-123");
-    await setupPage({ context, path: "/ideas" });
-
-    await waitFor(() => {
-      expect(screen.getByText("Daily standup report")).toBeInTheDocument();
-    });
-
-    await act(() => {
-      fireEvent.click(screen.getByText("Daily standup report"));
-    });
-
-    await waitFor(() => {
-      expect(pathname()).toBe("/talk/test-agent-123");
-    });
-  });
-
-  it("should navigate to subagent when Chat breadcrumb is clicked with agent context", async () => {
-    mockChatAPI();
-    mockSubagent("test-agent-123");
-    context.store.set(setZeroChatAgent$, "test-agent-123");
-    await setupPage({ context, path: "/ideas" });
-
-    const chatBreadcrumb = await waitFor(
-      () => screen.getByText("Chat").closest("button")!,
+    server.use(
+      http.get("*/api/zero/composes/list", () => {
+        return HttpResponse.json({
+          composes: [
+            {
+              id: customAgentId,
+              displayName: "Custom Agent",
+              headVersionId: "v1",
+              updatedAt: "2024-01-01T00:00:00Z",
+            },
+          ],
+        });
+      }),
+      http.get("*/api/zero/team", () => {
+        return HttpResponse.json([
+          {
+            id: customAgentId,
+            displayName: "Custom Agent",
+            headVersionId: "v1",
+            updatedAt: "2024-01-01T00:00:00Z",
+          },
+        ]);
+      }),
     );
+    await setupPage({ context, path: `/talk/${customAgentId}/ideas` });
 
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Ideas & Use Cases" }),
+      ).toBeInTheDocument();
+    });
+
+    // Navigate back via breadcrumb — should go to the same agent's chat
+    const chatBreadcrumb = screen.getByText("Chat").closest("button")!;
     await act(() => {
-      fireEvent.click(chatBreadcrumb!);
+      fireEvent.click(chatBreadcrumb);
     });
 
     await waitFor(() => {
-      expect(pathname()).toBe("/talk/test-agent-123");
+      expect(pathname()).toBe(`/talk/${customAgentId}`);
     });
   });
 });

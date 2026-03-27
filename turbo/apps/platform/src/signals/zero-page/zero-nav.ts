@@ -8,7 +8,6 @@ import type {
 function isValidTab(tab: string): tab is ZeroNavId {
   return (
     tab === "chat" ||
-    tab === "ideas" ||
     tab === "schedule" ||
     tab === "team" ||
     tab === "activity" ||

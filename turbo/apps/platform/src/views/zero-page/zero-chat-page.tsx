@@ -10,7 +10,10 @@ import {
   TooltipTrigger,
 } from "@vm0/ui";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
-import { zeroChatAgentId$ } from "../../signals/zero-page/zero-nav.ts";
+import {
+  zeroChatAgentId$,
+  zeroTalkAgentId$,
+} from "../../signals/zero-page/zero-nav.ts";
 import {
   pinnedAgentIds$,
   updatePinnedAgentIds$,
@@ -161,6 +164,9 @@ export function ZeroChatPage({
   const [suggestedPrompts] = useState(() => getRandomPrompts(2));
   const navigate = useSet(navigateTo$);
 
+  // Agent ID from URL for ideas navigation
+  const talkAgentId = useGet(zeroTalkAgentId$);
+
   // Pin pill
   const currentChatAgentId = useGet(zeroChatAgentId$);
   const pinnedLoadable = useLastLoadable(pinnedAgentIds$);
@@ -294,7 +300,13 @@ export function ZeroChatPage({
             <button
               type="button"
               className="zero-card cursor-pointer p-4 text-left flex flex-col relative group hover:bg-muted/30 transition-colors"
-              onClick={() => navigate("/ideas")}
+              onClick={() => {
+                if (talkAgentId) {
+                  navigate("/talk/:id/ideas", {
+                    pathParams: { id: talkAgentId },
+                  });
+                }
+              }}
             >
               <IconArrowUpRight
                 size={14}
