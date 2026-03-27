@@ -173,7 +173,7 @@ function AvailableConnectorCard({
 }) {
   return (
     <div
-      className="flex flex-col rounded-[var(--zero-card-radius)] bg-card"
+      className="rounded-[var(--zero-card-radius)] bg-card overflow-hidden"
       style={{ border: "0.7px solid hsl(var(--gray-400))" }}
     >
       <div className="flex items-center gap-2.5 px-5 pt-4 pb-1">
@@ -208,19 +208,11 @@ function AvailableConnectorCard({
           </button>
         )}
       </div>
-      {connector.helpText && (
-        <p
-          className="px-5 pb-4 pt-1 text-xs text-muted-foreground overflow-hidden break-words"
-          style={{
-            display: "-webkit-box",
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: "vertical",
-          }}
-        >
-          {connector.helpText}
-        </p>
-      )}
-      {!connector.helpText && <div className="pb-3" />}
+      <div className="px-5 pb-4 pt-1">
+        <div className="text-xs text-muted-foreground line-clamp-2">
+          {connector.helpText ?? ""}
+        </div>
+      </div>
     </div>
   );
 }
