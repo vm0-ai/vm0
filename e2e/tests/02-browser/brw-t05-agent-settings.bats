@@ -322,10 +322,16 @@ teardown_file() {
   click_tab "Profile"
   agent-browser wait 2000
 
-  # Wait for profile form to load — wait specifically for the description
-  # placeholder to appear (the form content loads async after the tab switch).
-  wait_for_text "Description" 30
-  wait_for_text "What does this agent do" 30
+  # Wait for profile form to load. The form content (Description field and
+  # its placeholder) loads async after the tab switch. Retry tab click if
+  # the content does not appear in time.
+  if ! wait_for_text "Description" 15; then
+    echo "# Profile content not loaded, retrying tab click..." >&3
+    click_tab "Profile"
+    agent-browser wait 2000
+    wait_for_text "Description" 30
+  fi
+  wait_for_text "What does this agent do" 15
   step_screenshot "profile-before"
 
   # Fill description with timestamped value
