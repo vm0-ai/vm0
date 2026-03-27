@@ -11,6 +11,22 @@
 #   E2E_ACCOUNT  — Test email address (auto-generated if empty)
 
 # ---------------------------------------------------------------------------
+# agent-browser — Wrapper that uses an isolated HOME when set.
+# When AGENT_BROWSER_ISOLATED_HOME is exported (set by browser_setup), every
+# agent-browser invocation runs with HOME pointing to a per-test temp dir so
+# that parallel test files each own a separate daemon socket
+# (~/<isolated_home>/.agent-browser/default.sock) and do not conflict.
+# Falls back to the real command when AGENT_BROWSER_ISOLATED_HOME is unset.
+# ---------------------------------------------------------------------------
+agent-browser() {
+  if [[ -n "${AGENT_BROWSER_ISOLATED_HOME:-}" ]]; then
+    HOME="$AGENT_BROWSER_ISOLATED_HOME" command agent-browser "$@"
+  else
+    command agent-browser "$@"
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # url_is_on_app — Check if a URL's hostname matches the expected app hostname
 # Usage: url_is_on_app <url> [check_url]
 #   check_url — URL to compare against (default: APP_URL from calling context)
@@ -47,6 +63,11 @@ browser_setup() {
 
   export OTP="424242"
   export STEP_NUM=0
+
+  # Create an isolated HOME for agent-browser so that parallel test files each
+  # own a separate daemon socket and do not conflict with each other.
+  AGENT_BROWSER_ISOLATED_HOME="$(mktemp -d)"
+  export AGENT_BROWSER_ISOLATED_HOME
 
   if [[ -z "${E2E_ACCOUNT:-}" ]]; then
     E2E_ACCOUNT="$(generate_test_email)"
@@ -362,7 +383,19 @@ browser_teardown() {
   # Close browser gracefully first
   agent-browser close 2>/dev/null || true
 
-  # Kill any remaining agent-browser or chromium processes
-  pkill -f 'agent-browser' 2>/dev/null || true
-  pkill -f '[c]hrom(e|ium)' 2>/dev/null || true
+  if [[ -n "${AGENT_BROWSER_ISOLATED_HOME:-}" ]]; then
+    # Isolated mode (parallel tests): kill only this test's daemon by PID so
+    # we don't interfere with other concurrently-running test files.
+    local pid_file="${AGENT_BROWSER_ISOLATED_HOME}/.agent-browser/default.pid"
+    if [[ -f "$pid_file" ]]; then
+      local pid
+      pid=$(cat "$pid_file" 2>/dev/null || true)
+      [[ -n "$pid" ]] && kill "$pid" 2>/dev/null || true
+    fi
+    rm -rf "$AGENT_BROWSER_ISOLATED_HOME"
+  else
+    # Non-isolated mode (single sequential run): broad cleanup is safe.
+    pkill -f 'agent-browser' 2>/dev/null || true
+    pkill -f '[c]hrom(e|ium)' 2>/dev/null || true
+  fi
 }
