@@ -376,6 +376,42 @@ async function renderTeamPageAsMember(connectors: string[]) {
   await setupPage({ context, path: "/team/zero" });
 }
 
+describe("connector sorting: connected first", () => {
+  it("renders connected connectors before unconnected ones", async () => {
+    // Only github is connected; slack and axiom are not
+    mockConnectors([
+      makeConnector({
+        type: "github",
+        externalUsername: "testuser",
+        oauthScopes: ["repo", "project"],
+      }),
+    ]);
+
+    // Agent has connectors in order: slack, github, axiom
+    // After sorting, github (connected) should appear first
+    await renderTeamPage(["slack", "github", "axiom"]);
+
+    // Wait for all connector cards to render
+    await waitFor(() => {
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+      expect(screen.getByText("Slack")).toBeInTheDocument();
+      expect(screen.getByText("Axiom")).toBeInTheDocument();
+    });
+
+    // Verify order: GitHub (connected) should appear before Slack and Axiom (unconnected)
+    const allCardLabels = screen
+      .getAllByText(/^(GitHub|Slack|Axiom)$/)
+      .map((el) => el.textContent);
+
+    expect(allCardLabels.indexOf("GitHub")).toBeLessThan(
+      allCardLabels.indexOf("Slack"),
+    );
+    expect(allCardLabels.indexOf("GitHub")).toBeLessThan(
+      allCardLabels.indexOf("Axiom"),
+    );
+  });
+});
+
 describe("zero connector card readOnly behavior (member on default agent)", () => {
   it("hides the Add connector button when readOnly", async () => {
     mockConnectors([

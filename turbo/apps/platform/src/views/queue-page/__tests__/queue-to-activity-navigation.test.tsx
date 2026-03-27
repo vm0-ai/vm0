@@ -55,6 +55,7 @@ function mockActivityDetailAPIs(runId: string) {
     framework: "claude-code",
     modelProvider: null,
     triggerSource: "web",
+    scheduleId: null,
     status: "completed",
     prompt: "Run the task",
     appendSystemPrompt: null,

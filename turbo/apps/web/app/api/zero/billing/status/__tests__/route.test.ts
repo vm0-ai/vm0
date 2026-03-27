@@ -103,7 +103,31 @@ describe("GET /api/zero/billing/status", () => {
     expect(data.credits).toBe(10_000);
     expect(data.subscriptionStatus).toBe("active");
     expect(data.currentPeriodEnd).toBe(periodEnd.toISOString());
+    expect(data.cancelAtPeriodEnd).toBe(false);
     expect(data.hasSubscription).toBe(true);
+  });
+
+  it("returns cancelAtPeriodEnd true when set", async () => {
+    const { orgId } = await context.setupUser({ prefix: "cancel-user" });
+    const periodEnd = new Date("2026-04-20T00:00:00Z");
+
+    await updateOrgStripeFields(orgId, {
+      stripeCustomerId: uniqueId("cus-cancel"),
+      stripeSubscriptionId: uniqueId("sub-cancel"),
+      subscriptionStatus: "active",
+      currentPeriodEnd: periodEnd,
+      cancelAtPeriodEnd: true,
+      tier: "pro",
+    });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/billing/status",
+    );
+    const response = await GET(request);
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.cancelAtPeriodEnd).toBe(true);
   });
 
   it("returns 200 for non-admin member", async () => {

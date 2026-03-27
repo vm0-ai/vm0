@@ -332,6 +332,116 @@ describe("org billing tab - auto-recharge section", () => {
   });
 });
 
+describe("org billing tab - cancellation pending", () => {
+  const futureDate = new Date(Date.now() + 30 * 86_400 * 1000).toISOString();
+
+  it("should show cancellation notice when subscription is pending cancellation", async () => {
+    mockAPIs();
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      currentPeriodEnd: futureDate,
+      cancelAtPeriodEnd: true,
+      hasSubscription: true,
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/has been cancelled and will end on/),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("should show 'Ends on' instead of 'Renews' when cancelling", async () => {
+    mockAPIs();
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      currentPeriodEnd: futureDate,
+      cancelAtPeriodEnd: true,
+      hasSubscription: true,
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText(/Ends on/)).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText(/Renews/)).not.toBeInTheDocument();
+  });
+
+  it("should hide Downgrade button when cancellation is pending", async () => {
+    mockAPIs();
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      currentPeriodEnd: futureDate,
+      cancelAtPeriodEnd: true,
+      hasSubscription: true,
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Pro plan")).toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByRole("button", { name: /Downgrade/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("should show Manage button when cancellation is pending", async () => {
+    mockAPIs();
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      currentPeriodEnd: futureDate,
+      cancelAtPeriodEnd: true,
+      hasSubscription: true,
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Pro plan")).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole("button", { name: /Manage/i })).toBeInTheDocument();
+  });
+
+  it("should show normal state when cancelAtPeriodEnd is false", async () => {
+    mockAPIs();
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      currentPeriodEnd: futureDate,
+      cancelAtPeriodEnd: false,
+      hasSubscription: true,
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText(/Renews/)).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByRole("button", { name: /Downgrade/i }),
+    ).toBeInTheDocument();
+
+    expect(screen.queryByText(/has been cancelled/)).not.toBeInTheDocument();
+  });
+});
+
 describe("org billing tab - downgrade flow", () => {
   it("should show Downgrade button for paid tier (pro)", async () => {
     mockAPIs();

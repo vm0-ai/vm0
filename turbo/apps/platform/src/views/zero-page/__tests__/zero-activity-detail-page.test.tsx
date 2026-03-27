@@ -21,6 +21,7 @@ function mockActivityDetailAPI() {
     framework: "claude-code",
     modelProvider: null,
     triggerSource: "web",
+    scheduleId: null,
     status: "completed",
     prompt: "Hello, what can you do?",
     appendSystemPrompt: null,
@@ -83,6 +84,139 @@ describe("zeroActivityDetailPage", () => {
     expect(screen.getByText("9.0s")).toBeInTheDocument();
   }, 10_000);
 
+  it("should render schedule source as a clickable link when scheduleId is present", async () => {
+    const logDetail: LogDetail = {
+      id: "run_sched",
+      sessionId: "session_sched",
+      agentId: "test-agent",
+      displayName: "Scheduled Agent",
+      framework: "claude-code",
+      modelProvider: null,
+      triggerSource: "schedule",
+      scheduleId: "sched-abc-123",
+      status: "completed",
+      prompt: "Scheduled run",
+      appendSystemPrompt: null,
+      error: null,
+      createdAt: "2026-03-10T14:56:00Z",
+      startedAt: "2026-03-10T14:56:01Z",
+      completedAt: "2026-03-10T14:56:10Z",
+      artifact: { name: null, version: null },
+    };
+
+    server.use(
+      http.get("*/api/zero/logs/:id", () => {
+        return HttpResponse.json(logDetail);
+      }),
+      http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
+        return HttpResponse.json({
+          events: [],
+          hasMore: false,
+          framework: "claude-code",
+        });
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/activity/run_sched",
+    });
+
+    await waitFor(
+      () => {
+        expect(
+          screen.getByRole("heading", { name: "Scheduled Agent" }),
+        ).toBeInTheDocument();
+      },
+      { timeout: 3000 },
+    );
+
+    // "Schedule" label should be rendered as a link pointing to the schedule page
+    const scheduleLink = screen.getByRole("link", { name: "Schedule" });
+    expect(scheduleLink).toBeInTheDocument();
+    expect(scheduleLink.getAttribute("href")).toBe("/schedule/sched-abc-123");
+  }, 10_000);
+
+  it("should render schedule source as plain text when scheduleId is null", async () => {
+    const logDetail: LogDetail = {
+      id: "run_sched_no_id",
+      sessionId: "session_sched_no_id",
+      agentId: "test-agent",
+      displayName: "Scheduled Agent No ID",
+      framework: "claude-code",
+      modelProvider: null,
+      triggerSource: "schedule",
+      scheduleId: null,
+      status: "completed",
+      prompt: "Scheduled run without ID",
+      appendSystemPrompt: null,
+      error: null,
+      createdAt: "2026-03-10T14:56:00Z",
+      startedAt: "2026-03-10T14:56:01Z",
+      completedAt: "2026-03-10T14:56:10Z",
+      artifact: { name: null, version: null },
+    };
+
+    server.use(
+      http.get("*/api/zero/logs/:id", () => {
+        return HttpResponse.json(logDetail);
+      }),
+      http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
+        return HttpResponse.json({
+          events: [],
+          hasMore: false,
+          framework: "claude-code",
+        });
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/activity/run_sched_no_id",
+    });
+
+    await waitFor(
+      () => {
+        expect(
+          screen.getByRole("heading", { name: "Scheduled Agent No ID" }),
+        ).toBeInTheDocument();
+      },
+      { timeout: 3000 },
+    );
+
+    // "Schedule" should be plain text, not a link
+    expect(screen.getByText("Schedule")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Schedule" })).toBeNull();
+  }, 10_000);
+
+  it("should render non-schedule source as plain text", async () => {
+    mockActivityDetailAPI();
+
+    await setupPage({
+      context,
+      path: "/activity/run_1",
+    });
+
+    await waitFor(
+      () => {
+        expect(
+          screen.getByRole("heading", { name: "Test Agent" }),
+        ).toBeInTheDocument();
+      },
+      { timeout: 3000 },
+    );
+
+    // "Web" source should be plain text, not a link
+    expect(screen.getByText("Web")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Web" })).toBeNull();
+  }, 10_000);
+
   it("should not truncate system prompt containing unknown HTML-like tags", async () => {
     const logDetail: LogDetail = {
       id: "run_html_tag",
@@ -92,6 +226,7 @@ describe("zeroActivityDetailPage", () => {
       framework: "claude-code",
       modelProvider: null,
       triggerSource: "web",
+      scheduleId: null,
       status: "completed",
       prompt: "Hello",
       appendSystemPrompt:

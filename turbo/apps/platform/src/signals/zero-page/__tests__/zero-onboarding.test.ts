@@ -345,6 +345,59 @@ describe("completeZeroOnboarding$", () => {
   });
 });
 
+describe("completeZeroOnboarding$ avatar", () => {
+  it("should send preset:0 as avatarUrl for the lead agent", async () => {
+    let capturedPayload: Record<string, unknown> | null = null;
+
+    server.use(
+      http.post("*/api/zero/model-providers", () => {
+        return HttpResponse.json(
+          { provider: { id: "mp-1", type: "vm0" }, created: true },
+          { status: 201 },
+        );
+      }),
+      http.post("*/api/zero/agents", async ({ request }) => {
+        capturedPayload = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(
+          {
+            name: "test-agent-uuid",
+            agentId: "new-compose-id",
+            description: null,
+            displayName: null,
+            sound: null,
+            avatarUrl: capturedPayload.avatarUrl ?? null,
+            connectors: [],
+          },
+          { status: 201 },
+        );
+      }),
+      http.put("*/api/zero/agents/new-compose-id/instructions", () => {
+        return HttpResponse.json({
+          name: "test-agent-uuid",
+          agentId: "new-compose-id",
+          description: null,
+          displayName: null,
+          sound: null,
+          connectors: [],
+        });
+      }),
+      http.put("*/api/zero/default-agent", () => {
+        return HttpResponse.json({ ok: true });
+      }),
+      http.post("*/api/zero/onboarding/complete", () => {
+        return HttpResponse.json({ success: true });
+      }),
+    );
+
+    await setupPage({ context, path: "/", withoutRender: true });
+
+    await context.store.set(completeZeroOnboarding$, context.signal);
+
+    expect(capturedPayload).toBeTruthy();
+    expect(capturedPayload!.avatarUrl).toBe("preset:0");
+  });
+});
+
 describe("completeZeroOnboarding$ auto-init model provider", () => {
   it("should auto-create vm0 model provider with claude-sonnet-4.6 before creating agent", async () => {
     let capturedProviderBody: Record<string, unknown> | null = null;

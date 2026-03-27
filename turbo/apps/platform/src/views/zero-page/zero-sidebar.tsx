@@ -109,7 +109,6 @@ export { useAgentAvatar } from "./zero-sidebar-shared.tsx";
 
 export type ZeroNavId =
   | "chat"
-  | "ideas"
   | "schedule"
   | "team"
   | "activity"

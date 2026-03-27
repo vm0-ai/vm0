@@ -19,6 +19,7 @@ const billingStatusResponseSchema = z.object({
   credits: z.number(),
   subscriptionStatus: z.string().nullable(),
   currentPeriodEnd: z.string().nullable(),
+  cancelAtPeriodEnd: z.boolean(),
   hasSubscription: z.boolean(),
   autoRecharge: autoRechargeSchema,
 });

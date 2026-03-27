@@ -197,6 +197,7 @@ describe("POST /api/webhooks/stripe", () => {
       expect(billing?.stripeSubscriptionId).toBe(subId);
       expect(billing?.subscriptionStatus).toBe("active");
       expect(billing?.currentPeriodEnd).toBeInstanceOf(Date);
+      expect(billing?.cancelAtPeriodEnd).toBe(false);
     });
 
     it("is idempotent — skips if subscription already stored", async () => {
@@ -439,6 +440,7 @@ describe("POST /api/webhooks/stripe", () => {
       const response = await sendWebhookEvent("customer.subscription.updated", {
         id: subId,
         status: "past_due",
+        cancel_at_period_end: false,
         items: { data: [{ price: { id: TEST_PRICE_TEAM } }] },
       });
 
@@ -463,6 +465,7 @@ describe("POST /api/webhooks/stripe", () => {
       const response = await sendWebhookEvent("customer.subscription.updated", {
         id: subId,
         status: "active",
+        cancel_at_period_end: false,
         items: { data: [{ price: { id: TEST_PRICE_PRO } }] },
       });
 
@@ -487,6 +490,7 @@ describe("POST /api/webhooks/stripe", () => {
       const response = await sendWebhookEvent("customer.subscription.updated", {
         id: subId,
         status: "active",
+        cancel_at_period_end: false,
         items: { data: [{ price: { id: TEST_PRICE_TEAM_LEGACY } }] },
       });
 
@@ -494,6 +498,55 @@ describe("POST /api/webhooks/stripe", () => {
 
       const billing = await getOrgBillingFields(user.orgId);
       expect(billing?.tier).toBe("team");
+    });
+
+    it("syncs cancelAtPeriodEnd true from subscription.updated", async () => {
+      const cusId = uniqueId("cus-cancel-sync");
+      const subId = uniqueId("sub-cancel-sync");
+
+      await updateOrgStripeFields(user.orgId, {
+        stripeCustomerId: cusId,
+        stripeSubscriptionId: subId,
+        subscriptionStatus: "active",
+        tier: "pro",
+      });
+
+      const response = await sendWebhookEvent("customer.subscription.updated", {
+        id: subId,
+        status: "active",
+        cancel_at_period_end: true,
+        items: { data: [{ price: { id: TEST_PRICE_PRO } }] },
+      });
+
+      expect(response.status).toBe(200);
+
+      const billing = await getOrgBillingFields(user.orgId);
+      expect(billing?.cancelAtPeriodEnd).toBe(true);
+    });
+
+    it("clears cancelAtPeriodEnd when subscription is uncancelled", async () => {
+      const cusId = uniqueId("cus-uncancel");
+      const subId = uniqueId("sub-uncancel");
+
+      await updateOrgStripeFields(user.orgId, {
+        stripeCustomerId: cusId,
+        stripeSubscriptionId: subId,
+        subscriptionStatus: "active",
+        cancelAtPeriodEnd: true,
+        tier: "pro",
+      });
+
+      const response = await sendWebhookEvent("customer.subscription.updated", {
+        id: subId,
+        status: "active",
+        cancel_at_period_end: false,
+        items: { data: [{ price: { id: TEST_PRICE_PRO } }] },
+      });
+
+      expect(response.status).toBe(200);
+
+      const billing = await getOrgBillingFields(user.orgId);
+      expect(billing?.cancelAtPeriodEnd).toBe(false);
     });
   });
 
@@ -506,6 +559,7 @@ describe("POST /api/webhooks/stripe", () => {
         stripeCustomerId: cusId,
         stripeSubscriptionId: subId,
         subscriptionStatus: "active",
+        cancelAtPeriodEnd: true,
         tier: "team",
       });
 
@@ -519,6 +573,7 @@ describe("POST /api/webhooks/stripe", () => {
       expect(billing?.tier).toBe("free");
       expect(billing?.subscriptionStatus).toBe("canceled");
       expect(billing?.stripeSubscriptionId).toBeNull();
+      expect(billing?.cancelAtPeriodEnd).toBe(false);
     });
   });
 });

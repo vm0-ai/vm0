@@ -5,15 +5,13 @@ import {
 } from "@vm0/core";
 import type { ZeroClientFactory } from "../api-client.ts";
 import { SEED_INSTRUCTIONS } from "../../data/the-seed.ts";
-import { AVATAR_PRESET_PREFIX } from "../../views/zero-page/avatar-utils.ts";
-
-/** Number of preset avatars available (avatar_0 through avatar_4). */
-const PRESET_AVATAR_COUNT = 5;
+import { randomPresetAvatar } from "../../views/zero-page/avatar-utils.ts";
 
 interface CreateZeroAgentParams {
   connectors: string[];
   displayName: string;
   sound?: string;
+  avatarUrl?: string;
 }
 
 /**
@@ -26,8 +24,8 @@ export async function createZeroAgent(
   createClient: ZeroClientFactory,
   params: CreateZeroAgentParams,
 ): Promise<ZeroAgentResponse> {
-  // Pick a random preset avatar for the new agent
-  const avatarUrl = `${AVATAR_PRESET_PREFIX}${Math.floor(Math.random() * PRESET_AVATAR_COUNT)}`;
+  // Use provided avatar or pick a random preset
+  const avatarUrl = params.avatarUrl ?? randomPresetAvatar();
 
   // Step 1: Create agent (compose)
   const agentsClient = createClient(zeroAgentsMainContract);

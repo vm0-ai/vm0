@@ -44,6 +44,10 @@ const ROUTE_CONFIG = [
     setup: setupAuthPageWrapper(setupChatSessionPage$),
   },
   {
+    path: "/talk/:id/ideas",
+    setup: setupAuthPageWrapper(setupIdeationPage$),
+  },
+  {
     path: "/talk/:id",
     setup: setupAuthPageWrapper(setupTalkPage$),
   },
@@ -90,10 +94,6 @@ const ROUTE_CONFIG = [
   {
     path: "/usage",
     setup: setupAuthPageWrapper(setupUsagePage$),
-  },
-  {
-    path: "/ideas",
-    setup: setupAuthPageWrapper(setupIdeationPage$),
   },
   {
     path: "/onboarding",

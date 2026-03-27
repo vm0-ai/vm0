@@ -1,5 +1,5 @@
 {
-  "id": "0203_add_cancel_at_period_end",
+  "id": "0204_round_bushwacker",
   "prevId": "2279c54d-4a7c-41e8-b9da-d312776b95d1",
   "version": "7",
   "dialect": "postgresql",
@@ -5976,6 +5976,12 @@
         "firewall_policies": {
           "name": "firewall_policies",
           "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "avatar_url": {
+          "name": "avatar_url",
+          "type": "varchar(1024)",
           "primaryKey": false,
           "notNull": false
         },

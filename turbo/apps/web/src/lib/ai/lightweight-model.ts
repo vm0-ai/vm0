@@ -58,7 +58,26 @@ async function generateText(messages: ChatMessage[]): Promise<string | null> {
     throw new Error("OpenRouter returned empty content");
   }
 
-  return content;
+  return stripMarkdown(content);
+}
+
+/**
+ * Strip common markdown syntax so generated text is always plain text.
+ * Handles bold/italic markers, heading prefixes, inline code, and link syntax.
+ */
+function stripMarkdown(text: string): string {
+  return (
+    text
+      // Bold/italic: **text**, __text__, *text*, _text_
+      .replace(/(\*{1,3}|_{1,3})(.+?)\1/g, "$2")
+      // Headings: # text
+      .replace(/^#{1,6}\s+/gm, "")
+      // Inline code: `text`
+      .replace(/`([^`]+)`/g, "$1")
+      // Links: [text](url)
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+      .trim()
+  );
 }
 
 /**
@@ -77,7 +96,7 @@ export async function generateChatTitle(
     {
       role: "system",
       content:
-        "Generate a short, descriptive title (max 60 chars) for a chat conversation based on the messages below. Return only the title, no quotes or extra text.",
+        "Generate a short, descriptive title (max 60 chars) for a chat conversation based on the messages below. Return only the title as plain text — no markdown, no quotes, no special formatting.",
     },
     { role: "user", content: userMessage },
   ];
@@ -102,7 +121,7 @@ export async function generateScheduleDescription(
     {
       role: "system",
       content:
-        "Write a one-sentence summary (max 120 chars) for a scheduled task. No quotes or punctuation at end. Return only the summary.",
+        "Write a one-sentence summary (max 120 chars) for a scheduled task as plain text — no markdown, no quotes, no special formatting. Return only the summary.",
     },
     {
       role: "user",

@@ -106,6 +106,54 @@ function notFoundResponse() {
   };
 }
 
+/**
+ * Build the response body from a query result row.
+ */
+function buildLogDetailBody(result: {
+  run: typeof agentRuns.$inferSelect;
+  compose: typeof agentComposes.$inferSelect | null;
+  composeVersion: typeof agentComposeVersions.$inferSelect | null;
+  agentDisplayName: string | null;
+  triggerSource: string | null;
+  scheduleId: string | null;
+}) {
+  const {
+    run,
+    compose,
+    composeVersion,
+    agentDisplayName,
+    triggerSource,
+    scheduleId,
+  } = result;
+  const runResult = run.result as RunResult | null;
+  const composeContent = composeVersion?.content as ComposeContent | null;
+
+  return {
+    id: run.id,
+    sessionId: runResult?.agentSessionId ?? null,
+    agentId: compose?.id ?? null,
+    displayName: agentDisplayName ?? null,
+    framework: extractFramework(composeContent),
+    modelProvider: run.modelProvider ?? null,
+    triggerSource: (triggerSource ?? "cli") as TriggerSource,
+    scheduleId: scheduleId ?? null,
+    status: run.status as
+      | "pending"
+      | "running"
+      | "completed"
+      | "failed"
+      | "timeout"
+      | "cancelled",
+    prompt: run.prompt,
+    appendSystemPrompt: run.appendSystemPrompt ?? null,
+    error: run.error ?? null,
+    createdAt: run.createdAt.toISOString(),
+    startedAt: run.startedAt?.toISOString() ?? null,
+    completedAt: run.completedAt?.toISOString() ?? null,
+    artifact: extractArtifact(runResult),
+  };
+}
+
 const router = tsr.router(logsByIdContract, {
   getById: async ({ params, headers }, { request }) => {
     initServices();
@@ -137,6 +185,7 @@ const router = tsr.router(logsByIdContract, {
         composeVersion: agentComposeVersions,
         agentDisplayName: zeroAgents.displayName,
         triggerSource: zeroRuns.triggerSource,
+        scheduleId: zeroRuns.scheduleId,
       })
       .from(agentRuns)
       .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
@@ -162,39 +211,7 @@ const router = tsr.router(logsByIdContract, {
       return notFoundResponse();
     }
 
-    const { run, compose, composeVersion, agentDisplayName, triggerSource } =
-      result;
-
-    // Extract data from result
-    const runResult = run.result as RunResult | null;
-    const composeContent = composeVersion?.content as ComposeContent | null;
-
-    return {
-      status: 200 as const,
-      body: {
-        id: run.id,
-        sessionId: runResult?.agentSessionId ?? null,
-        agentId: compose?.id ?? null,
-        displayName: agentDisplayName ?? null,
-        framework: extractFramework(composeContent),
-        modelProvider: run.modelProvider ?? null,
-        triggerSource: (triggerSource ?? "cli") as TriggerSource,
-        status: run.status as
-          | "pending"
-          | "running"
-          | "completed"
-          | "failed"
-          | "timeout"
-          | "cancelled",
-        prompt: run.prompt,
-        appendSystemPrompt: run.appendSystemPrompt ?? null,
-        error: run.error ?? null,
-        createdAt: run.createdAt.toISOString(),
-        startedAt: run.startedAt?.toISOString() ?? null,
-        completedAt: run.completedAt?.toISOString() ?? null,
-        artifact: extractArtifact(runResult),
-      },
-    };
+    return { status: 200 as const, body: buildLogDetailBody(result) };
   },
 });
 

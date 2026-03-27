@@ -351,7 +351,7 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
 
     const attrText = (contextBlocks[1] as { elements: { text: string }[] })
       .elements[0]!.text;
-    expect(attrText).toContain("triggered by schedule");
+    expect(attrText).toContain("Triggered by schedule");
     expect(attrText).toContain("Daily standup summary");
   });
 
@@ -404,7 +404,7 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
 
     const attrText = (contextBlocks[1] as { elements: { text: string }[] })
       .elements[0]!.text;
-    expect(attrText).toContain("triggered by schedule");
+    expect(attrText).toContain("Triggered by schedule");
     expect(attrText).toContain("Nightly report");
   });
 

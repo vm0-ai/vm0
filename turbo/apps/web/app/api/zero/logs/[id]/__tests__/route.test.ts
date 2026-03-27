@@ -5,6 +5,8 @@ import {
   createTestCompose,
   createTestZeroAgent,
   createTestRun,
+  createTestRunInDb,
+  createTestSchedule,
   completeTestRun,
   failTestRun,
   createOrphanTestRun,
@@ -202,6 +204,47 @@ describe("GET /api/zero/logs/[id]", () => {
     expect(response.status).toBe(200);
     expect(data.status).toBe("failed");
     expect(data.error).toBeDefined();
+  });
+
+  it("should return scheduleId when run was triggered by a schedule", async () => {
+    const schedule = await createTestSchedule(
+      testComposeId,
+      `sched-detail-${randomUUID().slice(0, 8)}`,
+    );
+
+    const { runId } = await createTestRunInDb(user.userId, testComposeId, {
+      status: "completed",
+      scheduleId: schedule.id,
+      triggerSource: "schedule",
+      startedAt: new Date(),
+      completedAt: new Date(),
+    });
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/zero/logs/${runId}`,
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.id).toBe(runId);
+    expect(data.scheduleId).toBe(schedule.id);
+    expect(data.triggerSource).toBe("schedule");
+  });
+
+  it("should return null scheduleId for non-schedule runs", async () => {
+    const { runId } = await createTestRun(testComposeId, "Test prompt");
+    await completeTestRun(user.userId, runId);
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/zero/logs/${runId}`,
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.id).toBe(runId);
+    expect(data.scheduleId).toBeNull();
   });
 
   it("should return run details when compose version has been deleted", async () => {

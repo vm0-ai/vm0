@@ -11,7 +11,7 @@ import { mkdtemp, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import * as tar from "tar";
-import { eq } from "drizzle-orm";
+import { eq, inArray, like } from "drizzle-orm";
 import {
   SYSTEM_ORG_ID,
   VOLUME_ORG_USER_ID,
@@ -20,6 +20,7 @@ import {
   DEFAULT_SKILLS_REPO,
   DEFAULT_SKILLS_BRANCH,
   parseSkillFrontmatter,
+  resolveSkillRef,
   type SkillFrontmatter,
 } from "@vm0/core";
 import { fetchHeadCommitSha } from "./git-refs";
@@ -28,11 +29,12 @@ import {
   computeSystemSkillHash,
   type FileEntryWithHash,
 } from "../storage/content-hash";
-import { putS3Object } from "../s3/s3-client";
+import { putS3Object, listS3Objects, deleteS3Objects } from "../s3/s3-client";
 import { skills } from "../../db/schema/skill";
 import { storages, storageVersions } from "../../db/schema/storage";
 import { env } from "../../env";
 import { logger } from "../logger";
+import { SEED_SKILLS } from "../zero/seed-skills";
 
 const log = logger("skills:sync");
 
@@ -44,6 +46,8 @@ interface SyncResult {
   skipped: number;
   /** Skills that failed to sync (e.g. bad frontmatter) */
   failed: number;
+  /** Skills removed because they no longer exist in source repo */
+  removed: number;
   /** Total skills found in tarball */
   total: number;
 }
@@ -69,7 +73,14 @@ export async function syncSkills(): Promise<SyncResult> {
     .limit(1);
 
   if (existing?.commitSha === headSha) {
-    return { commitSha: headSha, synced: 0, skipped: 0, failed: 0, total: 0 };
+    return {
+      commitSha: headSha,
+      synced: 0,
+      skipped: 0,
+      failed: 0,
+      removed: 0,
+      total: 0,
+    };
   }
 
   // 3. Download and extract tarball
@@ -108,11 +119,18 @@ export async function syncSkills(): Promise<SyncResult> {
     }
   }
 
+  // 5. Remove orphaned skills (in DB but no longer in tarball)
+  const removed = await removeOrphanedSkills(db, extractedSkills);
+
+  // 6. Validate SEED_SKILLS against tarball
+  validateSeedSkills(extractedSkills);
+
   log.info("Sync completed", {
     commitSha: headSha,
     synced,
     skipped,
     failed,
+    removed,
     total: extractedSkills.length,
   });
 
@@ -121,6 +139,7 @@ export async function syncSkills(): Promise<SyncResult> {
     synced,
     skipped,
     failed,
+    removed,
     total: extractedSkills.length,
   };
 }
@@ -137,7 +156,7 @@ async function syncSingleSkill(
   commitSha: string,
 ): Promise<boolean> {
   const { skillName, files } = extracted;
-  const skillUrl = `https://github.com/${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}/tree/${DEFAULT_SKILLS_BRANCH}/${skillName}`;
+  const skillUrl = buildSkillUrl(skillName);
   const fullPath = `${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}/tree/${DEFAULT_SKILLS_BRANCH}/${skillName}`;
   const storageName = getSkillStorageName(fullPath);
 
@@ -284,6 +303,103 @@ async function syncSingleSkill(
     versionHash: versionHash.slice(0, 8),
   });
   return true;
+}
+
+/**
+ * Build the canonical URL for an official skill.
+ */
+function buildSkillUrl(skillName: string): string {
+  return `https://github.com/${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}/tree/${DEFAULT_SKILLS_BRANCH}/${skillName}`;
+}
+
+/**
+ * Remove skills from the database that no longer exist in the source repository.
+ *
+ * Deletion order: skills → storages (cascades to storageVersions) → S3 objects.
+ * S3 cleanup is best-effort — errors are logged but do not block the sync.
+ *
+ * @returns Number of orphaned skills removed
+ */
+async function removeOrphanedSkills(
+  db: typeof globalThis.services.db,
+  extractedSkills: ExtractedSkill[],
+): Promise<number> {
+  const tarballUrls = new Set(
+    extractedSkills.map((e) => buildSkillUrl(e.skillName)),
+  );
+
+  // Find all official skills in DB
+  const urlPrefix = `https://github.com/${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}/tree/${DEFAULT_SKILLS_BRANCH}/`;
+  const existingSkills = await db
+    .select({ id: skills.id, url: skills.url, storageId: skills.storageId })
+    .from(skills)
+    .where(like(skills.url, `${urlPrefix}%`));
+
+  const orphans = existingSkills.filter((s) => !tarballUrls.has(s.url));
+  if (orphans.length === 0) return 0;
+
+  const orphanIds = orphans.map((o) => o.id);
+  const orphanStorageIds = orphans
+    .map((o) => o.storageId)
+    .filter((id): id is string => id !== null);
+
+  // Get S3 prefixes before deleting DB records
+  let orphanStorages: { id: string; s3Prefix: string }[] = [];
+  if (orphanStorageIds.length > 0) {
+    orphanStorages = await db
+      .select({ id: storages.id, s3Prefix: storages.s3Prefix })
+      .from(storages)
+      .where(inArray(storages.id, orphanStorageIds));
+  }
+
+  // Delete skills first (FK to storages is ON DELETE NO ACTION)
+  await db.delete(skills).where(inArray(skills.id, orphanIds));
+
+  // Delete storages (cascades to storageVersions)
+  if (orphanStorageIds.length > 0) {
+    await db.delete(storages).where(inArray(storages.id, orphanStorageIds));
+  }
+
+  // Best-effort S3 cleanup
+  const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
+  for (const storage of orphanStorages) {
+    try {
+      const objects = await listS3Objects(bucketName, storage.s3Prefix);
+      if (objects.length > 0) {
+        await deleteS3Objects(
+          bucketName,
+          objects.map((o) => o.key),
+        );
+      }
+    } catch (error) {
+      log.warn("Failed to clean up S3 objects for removed skill", {
+        s3Prefix: storage.s3Prefix,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  log.info("Removed orphaned skills", {
+    removed: orphans.length,
+    skillUrls: orphans.map((o) => o.url),
+  });
+
+  return orphans.length;
+}
+
+/**
+ * Validate that all SEED_SKILLS entries exist in the current tarball.
+ * Emits log.error for any seed skills that reference deleted skills.
+ */
+function validateSeedSkills(extractedSkills: ExtractedSkill[]): void {
+  const tarballNames = new Set(extractedSkills.map((e) => e.skillName));
+  const missingSkills = SEED_SKILLS.filter((name) => !tarballNames.has(name));
+
+  if (missingSkills.length > 0) {
+    log.error("SEED_SKILLS references skills not found in repository", {
+      missingSkills: missingSkills.map((name) => resolveSkillRef(name)),
+    });
+  }
 }
 
 /**

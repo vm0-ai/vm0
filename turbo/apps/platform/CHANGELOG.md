@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.159.0](https://github.com/vm0-ai/vm0/compare/app-v0.158.1...app-v0.159.0) (2026-03-27)
+
+
+### Features
+
+* preserve agent context when navigating from ideas to chat ([#6969](https://github.com/vm0-ai/vm0/issues/6969)) ([acf8d32](https://github.com/vm0-ai/vm0/commit/acf8d325dfe6a2bedf566a1ea208ad3cc5abc4b5))
+
+
+### Bug Fixes
+
+* display cancelled subscription status in billing settings ([#7045](https://github.com/vm0-ai/vm0/issues/7045)) ([c946bec](https://github.com/vm0-ai/vm0/commit/c946beca8d8498fe971bc750e3a5aaba40dd8953)), closes [#7038](https://github.com/vm0-ai/vm0/issues/7038)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.119.2
+
+## [0.158.1](https://github.com/vm0-ai/vm0/compare/app-v0.158.0...app-v0.158.1) (2026-03-27)
+
+
+### Bug Fixes
+
+* add schedule quick link in activity log ([#6974](https://github.com/vm0-ai/vm0/issues/6974)) ([839cab3](https://github.com/vm0-ai/vm0/commit/839cab31b58acc22affe39e70ba748eec3c1ee52))
+
+
+### Refactoring
+
+* **platform:** remove guest navbar from sidebar layout ([#6965](https://github.com/vm0-ai/vm0/issues/6965)) ([a59f17f](https://github.com/vm0-ai/vm0/commit/a59f17f3fe53cd33b1f348caf25178536e21a994))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.119.1
+
 ## [0.158.0](https://github.com/vm0-ai/vm0/compare/app-v0.157.0...app-v0.158.0) (2026-03-27)
 
 
