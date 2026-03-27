@@ -691,18 +691,15 @@ jobs:
             if neonctl branches list --project-id "$NEON_PROJECT_ID" --output json | jq -e ".[] | select(.name == \"$BRANCH_NAME\")" > /dev/null 2>&1; then
               echo "Branch $BRANCH_NAME already exists, resetting..."
               RESET_OUTPUT=$(neonctl branches reset "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --parent 2>&1) || RESET_FAILED=true
-              # Force delete+recreate if reset failed OR produced DB corruption errors.
-              # DropErrorMsgNonExistent in reset output indicates Postgres schema drift
-              # that leaves the branch in a bad state even though neonctl reports "ready".
-              if [[ "${RESET_FAILED:-}" == "true" ]] || echo "$RESET_OUTPUT" | grep -q "DropErrorMsgNonExistent"; then
-                echo "Reset failed or produced errors, deleting and recreating branch..."
-                neonctl branches delete "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" || true
-                sleep 5
-                neonctl branches create --name "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID"
-              fi
 
+              # Wait for reset to reach ready state and capture list output for error detection.
+              # DropErrorMsgNonExistent can appear in branches list JSON (branch error field)
+              # indicating Postgres schema drift — the branch reports "ready" but is corrupt.
+              ALL_OUTPUT="$RESET_OUTPUT"
               for i in {1..30}; do
-                CURRENT_STATE=$(neonctl branches list --project-id "$NEON_PROJECT_ID" --output json | jq -r ".[] | select(.name == \"$BRANCH_NAME\") | .current_state")
+                LIST_OUTPUT=$(neonctl branches list --project-id "$NEON_PROJECT_ID" --output json 2>&1)
+                ALL_OUTPUT="$ALL_OUTPUT $LIST_OUTPUT"
+                CURRENT_STATE=$(echo "$LIST_OUTPUT" | jq -r ".[] | select(.name == \"$BRANCH_NAME\") | .current_state")
                 if [ "$CURRENT_STATE" = "ready" ]; then
                   echo "Branch reset complete"
                   break
@@ -710,6 +707,23 @@ jobs:
                 echo "Branch state: $CURRENT_STATE (attempt $i/30)"
                 sleep 2
               done
+
+              # Force delete+recreate if reset failed OR any output had DB corruption errors.
+              if [[ "${RESET_FAILED:-}" == "true" ]] || echo "$ALL_OUTPUT" | grep -q "DropErrorMsgNonExistent"; then
+                echo "Reset failed or produced DB errors, deleting and recreating branch..."
+                neonctl branches delete "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" || true
+                sleep 5
+                neonctl branches create --name "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID"
+                for i in {1..30}; do
+                  CURRENT_STATE=$(neonctl branches list --project-id "$NEON_PROJECT_ID" --output json | jq -r ".[] | select(.name == \"$BRANCH_NAME\") | .current_state")
+                  if [ "$CURRENT_STATE" = "ready" ]; then
+                    echo "Fresh branch ready"
+                    break
+                  fi
+                  echo "Branch state: $CURRENT_STATE (attempt $i/30)"
+                  sleep 2
+                done
+              fi
             else
               echo "Creating branch $BRANCH_NAME"
               neonctl branches create --name "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID"
