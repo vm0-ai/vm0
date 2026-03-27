@@ -72,6 +72,7 @@ export const uninstallSlackOrg$ = command(
 );
 
 const POLL_INTERVAL_MS = 3000;
+const MAX_POLL_ATTEMPTS = 100;
 
 /**
  * Poll Slack connection status until connected or aborted.
@@ -92,8 +93,10 @@ export const pollSlackConnection$ = command(
       // treat fetch error as not-connected, proceed with polling
     }
 
-    while (!signal.aborted) {
+    let attempts = 0;
+    while (!signal.aborted && attempts < MAX_POLL_ATTEMPTS) {
       await delay(POLL_INTERVAL_MS, { signal });
+      attempts++;
 
       set(reloadSlackOrg$);
       try {
