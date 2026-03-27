@@ -1066,29 +1066,44 @@ jobs:
           node-version: 22
       - name: Install E2E dependencies
         run: npm install -g agent-browser@0.22.0
-      - name: Run browser E2E tests
+      - name: Generate E2E account email
+        id: e2e-account
         run: |
-          BATS_TEST_TIMEOUT=180 ./e2e/test/libs/bats/bin/bats -T ./e2e/tests/02-browser/*.bats
+          RAND=$(head -c 4 /dev/urandom | od -An -tx1 | tr -d ' \n' | head -c 8)
+          echo "email=${{ needs.prepare.outputs.job-ref }}+clerk_test@${RAND}.ai" >> "$GITHUB_OUTPUT"
+      - name: Run auth and onboarding (serial)
+        run: |
+          BATS_TEST_TIMEOUT=180 ./e2e/test/libs/bats/bin/bats -T \
+            ./e2e/tests/02-browser/brw-t01-platform-e2e.bats
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          E2E_ACCOUNT: ${{ needs.prepare.outputs.job-ref }}+clerk_test@vm0-e2e.ai
+          E2E_ACCOUNT: ${{ steps.e2e-account.outputs.email }}
+      - name: Run functional tests in parallel
+        run: |
+          BATS_TEST_TIMEOUT=180 ./e2e/test/libs/bats/bin/bats -T --jobs 3 \
+            ./e2e/tests/02-browser/brw-t03-team.bats \
+            ./e2e/tests/02-browser/brw-t04-schedule.bats \
+            ./e2e/tests/02-browser/brw-t05-agent-settings.bats
+        env:
+          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          E2E_ACCOUNT: ${{ steps.e2e-account.outputs.email }}
       - name: Cleanup test accounts
         if: always()
         env:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+          E2E_ACCOUNT: ${{ steps.e2e-account.outputs.email }}
         run: |
-          echo "Cleaning up Clerk test accounts..."
-          # List users whose email contains the JOB_REF prefix (created by brw-t01-auth sign-up)
+          echo "Cleaning up Clerk test account: ${E2E_ACCOUNT}..."
           users=$(curl -sS -X GET \
-            "https://api.clerk.com/v1/users?query=${JOB_REF}%2Bclerk_test&limit=100" \
+            "https://api.clerk.com/v1/users?email_address[]=${E2E_ACCOUNT}&limit=10" \
             -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
             -H "Content-Type: application/json")
 
-          # Extract user IDs, skipping the persistent e2e test account
-          ids=$(echo "$users" | jq -r '.[] | select(.email_addresses[]?.email_address != "e2e+clerk_test@vm0.ai") | .id' 2>/dev/null || true)
+          ids=$(echo "$users" | jq -r '.[].id' 2>/dev/null || true)
 
           if [ -z "$ids" ]; then
             echo "No test accounts to clean up"
