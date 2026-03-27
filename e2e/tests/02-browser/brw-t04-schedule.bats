@@ -50,13 +50,19 @@ teardown_file() {
   wait_for_text "Scheduled tasks" 40
   step_screenshot "schedule-page"
 
-  # Click "Add schedule" button (retry because agents may still be loading)
+  # Click "Add schedule" button — use ref-based approach for reliability
+  # (role/name find can miss buttons with composite content like icons)
   echo "# Clicking Add schedule..." >&3
   local btn_clicked=false
   for _i in $(seq 1 15); do
-    if agent-browser find role button click --name "Add schedule" 2>/dev/null; then
-      btn_clicked=true
-      break
+    local snap_i btn_ref
+    snap_i=$(agent-browser snapshot -i 2>/dev/null || true)
+    btn_ref=$(echo "$snap_i" | grep -Ei '"Add schedule"' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+    if [[ -n "$btn_ref" ]]; then
+      if agent-browser click "$btn_ref" 2>/dev/null; then
+        btn_clicked=true
+        break
+      fi
     fi
     sleep 1
   done

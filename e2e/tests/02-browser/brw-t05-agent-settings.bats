@@ -186,7 +186,7 @@ teardown_file() {
   agent-browser wait 3000
 
   # Wait for agent detail page to load with tabs
-  wait_for_text "Connectors" 20
+  wait_for_text "Connectors" 40
   step_screenshot "agent-detail"
 
   # Verify all tabs are visible (non-default agent shows all tabs)

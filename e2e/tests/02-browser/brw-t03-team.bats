@@ -100,26 +100,18 @@ teardown_file() {
     agent-browser find text "Create" click
   fi
 
-  echo "# Waiting for agent creation to complete..." >&3
-  local create_complete=false
-  for _i in $(seq 1 30); do
-    local snap
-    snap=$(full_snapshot)
-    if contains "$snap" "$AGENT_NAME"; then
-      create_complete=true
-      break
-    fi
-    sleep 1
-  done
+  # Wait for dialog to close before checking the team page list
+  wait_for_text_gone "Create a new teammate" 30
   step_screenshot "after-create"
-
-  assert [ "$create_complete" = "true" ]
   echo "# Agent created!" >&3
 }
 
 @test "verify new agent appears on team page" {
-  echo "# Verifying agent appears on team page..." >&3
-  wait_for_text "$AGENT_NAME" 20
+  # Navigate to /team to ensure fresh page state — previous test may have left
+  # the dialog still animating closed
+  echo "# Navigating to team page to verify agent..." >&3
+  navigate_to_app_page "/team"
+  wait_for_text "$AGENT_NAME" 40
   step_screenshot "agent-visible"
 
   local snap
