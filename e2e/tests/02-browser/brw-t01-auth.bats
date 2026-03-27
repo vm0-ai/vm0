@@ -15,6 +15,7 @@ load '../../helpers/browser'
 # ---------------------------------------------------------------------------
 setup_file() {
   browser_setup
+  delete_e2e_account_if_exists
 
   echo "# Browser auth verification via agent-browser" >&3
   echo "#   URL:   $VM0_API_URL" >&3

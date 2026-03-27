@@ -221,6 +221,39 @@ create_clerk_sign_in_token() {
 }
 
 # ---------------------------------------------------------------------------
+# delete_e2e_account_if_exists — Delete the E2E_ACCOUNT from Clerk if it exists
+# Call this before sign-up to ensure a clean test state.
+# Requires CLERK_SECRET_KEY and E2E_ACCOUNT to be set.
+# ---------------------------------------------------------------------------
+delete_e2e_account_if_exists() {
+  if [[ -z "${CLERK_SECRET_KEY:-}" ]]; then
+    echo "CLERK_SECRET_KEY is required but not set" >&2
+    return 1
+  fi
+
+  local clerk_api_url="https://api.clerk.com"
+
+  local users_response
+  users_response=$(curl -sS -X GET \
+    "${clerk_api_url}/v1/users?email_address[]=${E2E_ACCOUNT}" \
+    -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
+    -H "Content-Type: application/json")
+
+  local user_id
+  user_id=$(echo "$users_response" | jq -r '.[0].id // empty' 2>/dev/null)
+  if [[ -z "$user_id" ]]; then
+    echo "# E2E account does not exist, nothing to delete" >&3
+    return 0
+  fi
+
+  echo "# Deleting existing E2E account: ${E2E_ACCOUNT} (${user_id})" >&3
+  curl -sS -X DELETE \
+    "${clerk_api_url}/v1/users/${user_id}" \
+    -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
+    -H "Content-Type: application/json" > /dev/null
+}
+
+# ---------------------------------------------------------------------------
 # derive_app_url — Derive platform app URL from VM0_API_URL
 # Local:  https://www.vm7.ai:8443  → https://app.vm7.ai:8443
 # CI:     https://pr-123-www.vm0-dev.com → https://pr-123-app.vm0-dev.com
