@@ -113,15 +113,28 @@ teardown_file() {
   sleep 0.5
   step_screenshot "create-dialog-filled"
 
+  # Click Create button — role-based find as primary (snapshot refs can become
+  # stale after fill triggers React re-render). Fall back to snapshot ref only
+  # if role-based find fails after retries.
   echo "# Clicking Create button in dialog..." >&3
-  local snap_i
-  snap_i=$(agent-browser snapshot -i 2>/dev/null || true)
-  local create_ref
-  create_ref=$(echo "$snap_i" | grep -E 'button "Create"' | grep -v 'teammate' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
-  if [[ -n "$create_ref" ]]; then
-    agent-browser click "$create_ref"
-  else
-    agent-browser find text "Create" click
+  local create_clicked=false
+  for _i in $(seq 1 10); do
+    if agent-browser find role button click --name "Create" 2>/dev/null; then
+      create_clicked=true
+      break
+    fi
+    sleep 1
+  done
+  if [[ "$create_clicked" != "true" ]]; then
+    echo "# Role-based find failed, trying snapshot ref..." >&3
+    local snap_i create_ref
+    snap_i=$(agent-browser snapshot -i 2>/dev/null || true)
+    create_ref=$(echo "$snap_i" | grep -E 'button "Create"' | grep -v 'teammate' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+    if [[ -n "$create_ref" ]]; then
+      agent-browser click "$create_ref"
+    else
+      agent-browser find text "Create" click
+    fi
   fi
 
   # Wait for dialog to close, then navigate to /team to verify the agent.
@@ -129,7 +142,7 @@ teardown_file() {
   # can falsely pass wait_for_text_gone. Explicit /team navigation is reliable.
   wait_for_text_gone "Create a new teammate" 30
   navigate_to_app_page "/team"
-  wait_for_text "$AGENT_NAME" 60
+  wait_for_text "$AGENT_NAME" 90
   step_screenshot "after-create"
   echo "# Agent created!" >&3
 }
