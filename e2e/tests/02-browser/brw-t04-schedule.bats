@@ -84,11 +84,12 @@ teardown_file() {
   # may load async after the overlay clears).
   wait_for_text "Add schedule" 15 || true
 
-  # Click "Add schedule" — try role-based find first (more reliable under load),
-  # then fall back to text-based find.
+  # Click "Add schedule" — the button is disabled until agents finish loading
+  # (disabled={agents.length === 0}). Retry for up to 60s to give agents time
+  # to load, especially in fresh workspaces under parallel CI load.
   echo "# Clicking Add schedule..." >&3
   local btn_clicked=false
-  for _i in $(seq 1 20); do
+  for _i in $(seq 1 60); do
     if agent-browser find role button click --name "Add schedule" 2>/dev/null; then
       btn_clicked=true
       break

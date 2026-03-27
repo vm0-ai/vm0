@@ -67,7 +67,7 @@ click_save_on_unsaved_bar() {
 # ---------------------------------------------------------------------------
 click_tab() {
   local tab_text="$1"
-  wait_for_text "$tab_text" 10
+  wait_for_text "$tab_text" 30
   # Try role-based find first — avoids snapshot quote/format brittle matching
   if agent-browser find role tab click --name "$tab_text" 2>/dev/null; then
     return 0
