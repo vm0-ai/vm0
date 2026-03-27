@@ -14,6 +14,10 @@ load '../../helpers/setup'
 load '../../helpers/browser'
 
 setup_file() {
+  # Stagger startup so sign-in tokens are not created simultaneously for the
+  # same Clerk account across parallel workers (which would invalidate earlier tokens).
+  stagger_parallel
+
   browser_setup
   create_clerk_sign_in_token
 
