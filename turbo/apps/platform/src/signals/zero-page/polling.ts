@@ -226,7 +226,7 @@ export function createRunLoop(runId: string) {
     }
   });
 
-  const cancelRun$ = command(async ({ get }, signal: AbortSignal) => {
+  const cancel$ = command(async ({ get }, signal: AbortSignal) => {
     const client = get(zeroClient$)(zeroRunsCancelContract);
     await client.cancel({
       params: { id: runId },
@@ -237,7 +237,7 @@ export function createRunLoop(runId: string) {
   return {
     pagedEventsList$,
     beginLoop$,
-    cancelRun$,
+    cancel$,
     detail$: runDetail$,
     queuePosition$,
     thinkingMessage$,

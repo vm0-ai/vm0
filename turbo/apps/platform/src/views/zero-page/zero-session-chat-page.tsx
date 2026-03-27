@@ -49,6 +49,8 @@ import {
   clearZeroChatInput$,
   sendZeroChatMessage$,
   type ZeroChatMessage,
+  type UserChatMessage,
+  type AssistantChatMessage,
   cancelActiveRun$,
   zeroChatQueuedMessage$,
   queueZeroChatMessage$,
@@ -350,7 +352,7 @@ function isImageFilename(filename: string): boolean {
   return /\.(png|jpe?g|gif|webp|svg)$/i.test(filename);
 }
 
-function UserMessage({ message }: { message: ZeroChatMessage }) {
+function UserMessage({ message }: { message: UserChatMessage }) {
   const { cleanContent, parsed } = parseInlineAttachments(message.content);
   // Preserve user-entered line breaks: CommonMark collapses single newlines
   // into spaces, so convert each \n to a hard line break (two trailing spaces + \n).
@@ -437,7 +439,7 @@ function deduplicateSummaries(summaries: string[]): string[] {
 }
 
 /** Live run activity rendered from a message's own runLoop signals. */
-function MessageRunActivityLine({ message }: { message: ZeroChatMessage }) {
+function MessageRunActivityLine({ message }: { message: AssistantChatMessage }) {
   const summariesLoadable = useLastLoadable(message.summaries$!);
   const rawSummaries =
     summariesLoadable.state === "hasData" ? summariesLoadable.data : [];
@@ -635,7 +637,7 @@ function CollapsibleTimeline({
 }
 
 interface AssistantMessageProps {
-  message: ZeroChatMessage;
+  message: AssistantChatMessage;
   zeroAvatarSrc: string;
 }
 
@@ -673,7 +675,7 @@ function ReactiveAssistantMessage({
     detail?.status === "cancelled";
 
   // Build an enriched message with reactive content for the static renderer
-  const enrichedMessage: ZeroChatMessage = {
+  const enrichedMessage: AssistantChatMessage = {
     ...message,
     content,
     summaries: summaries.length > 0 ? summaries : message.summaries,

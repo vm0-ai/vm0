@@ -116,15 +116,21 @@ interface ZeroChatMessageAttachment {
   url: string;
 }
 
-export interface ZeroChatMessage {
+export interface UserChatMessage {
   id: string;
-  role: "user" | "assistant";
+  role: "user";
+  content: string;
+  attachments?: ZeroChatMessageAttachment[];
+}
+
+export interface AssistantChatMessage {
+  id: string;
+  role: "assistant";
   content: string;
   legacyRunId?: string;
   status?: LogStatus;
   error?: string;
   cancelled?: boolean;
-  attachments?: ZeroChatMessageAttachment[];
   summaries?: string[];
   runLoop?: ReturnType<typeof createRunLoop>;
   /** Reactive result content derived from runLoop events. */
@@ -135,25 +141,10 @@ export interface ZeroChatMessage {
   beginLoop$?: ReturnType<typeof createRunLoop>["beginLoop$"];
 }
 
-// ---------------------------------------------------------------------------
-// State
-// ---------------------------------------------------------------------------
+export type ZeroChatMessage = UserChatMessage | AssistantChatMessage;
 
-/**
- * Local interaction messages — user sends + assistant placeholders updated by polling.
- * These are appended during the current send cycle and cleared on session switch.
- */
 const internalLocalMessages$ = state<ZeroChatMessage[]>([]);
 
-/**
- * All chat messages: server snapshot (from URL) + local interaction overlay.
- * Async because server messages come from `chatSessionSnapshot$`.
- */
-/**
- * All chat messages: server snapshot (completed) + local (active interaction).
- * Active run messages live in local state so polling can mutate them.
- * No dedup needed — snapshot.messages excludes active runs.
- */
 export const zeroChatMessages$ = computed(async (get) => {
   const snapshot = await get(chatSessionSnapshot$);
   const serverMessages = snapshot?.messages ?? [];
@@ -164,7 +155,6 @@ export const zeroChatMessages$ = computed(async (get) => {
 const internalSessionId$ = state<string | null>(null);
 export const zeroCurrentSessionId$ = computed((get) => get(internalSessionId$));
 
-
 /** Whether the agent is currently busy (derived from loop promise). */
 export const zeroChatSending$ = computed(
   (get) => get(internalLoopPromise$) !== null,
@@ -172,10 +162,12 @@ export const zeroChatSending$ = computed(
 
 /** Cancel the currently active run. */
 export const cancelActiveRun$ = command(
-  async ({ get, set }, _signal: AbortSignal) => {
+  async ({ get, set }, signal: AbortSignal) => {
     // Find the active assistant message with a runLoop
     const local = get(internalLocalMessages$);
-    const activeMsg = [...local].reverse().find((m) => m.runLoop);
+    const activeMsg = [...local]
+      .reverse()
+      .find((m): m is AssistantChatMessage => m.role === "assistant" && !!m.runLoop);
     if (!activeMsg?.runLoop) {
       return;
     }
@@ -184,10 +176,9 @@ export const cancelActiveRun$ = command(
     // the `cancelled` status on the next poll (~3s).
     set(resetSending$);
 
-    await set(activeMsg.runLoop.cancelRun$, _signal);
+    await set(activeMsg.runLoop.cancel$, signal);
   },
 );
-
 
 // ---------------------------------------------------------------------------
 // Queued message — allows the user to queue a follow-up while agent is busy
@@ -230,7 +221,6 @@ export const withdrawQueuedMessage$ = command(({ get, set }) => {
   set(internalChatInput$, queued.text);
   set(internalQueuedMessage$, null);
 });
-
 
 interface EventContent {
   type: string;
@@ -355,7 +345,6 @@ export const resetTalkSendSignal$ = resetSignal();
 
 const internalLoopPromise$ = state<Promise<void> | null>(null);
 
-
 /** Thread ID derived from the URL `/chat/:id`. */
 export const zeroChatThreadId$ = zeroSessionId$;
 
@@ -377,7 +366,6 @@ const chatThreadListResponse$ = computed(async (get) => {
   }
   return result.body.threads;
 });
-
 
 // Backward-compatible aliases (will be removed)
 export const zeroSessionList$ = computed(async (get) => {
@@ -463,7 +451,7 @@ function extractSummaries(events: AgentEvent[]): string[] {
 function createActiveRunMessage(
   runId: string,
   prompt: string,
-): { userMessage: ZeroChatMessage; assistantMessage: ZeroChatMessage } {
+): { userMessage: UserChatMessage; assistantMessage: AssistantChatMessage } {
   const runLoop = createRunLoop(runId);
 
   const result$ = computed(async (get) => {
@@ -875,15 +863,14 @@ export const loadSessionFromSnapshot$ = command(
     if (snapshot.activeRunMessages.length > 0) {
       set(internalLocalMessages$, snapshot.activeRunMessages);
 
-
       const resumeSignal = set(resetSending$, signal);
       const loopPromise = (async () => {
         await Promise.all(
-          snapshot.activeRunMessages.map(async (message) => {
-            if (message.beginLoop$) {
-              await set(message.beginLoop$, resumeSignal);
-            }
-          }),
+          snapshot.activeRunMessages
+            .filter((m): m is AssistantChatMessage => m.role === "assistant" && !!m.beginLoop$)
+            .map(async (message) => {
+              await set(message.beginLoop$!, resumeSignal);
+            }),
         );
       })();
 
@@ -893,7 +880,6 @@ export const loadSessionFromSnapshot$ = command(
           if (get(internalLoopPromise$) === loopPromise) {
             set(internalLoopPromise$, null);
           }
-
         }),
         Reason.Daemon,
       );
@@ -980,7 +966,7 @@ const prepareUserMessage$ = command(
       fullPrompt = `${fullPrompt}\n\n${lines.join("\n")}`;
     }
 
-    const userMessage: ZeroChatMessage = {
+    const userMessage: UserChatMessage = {
       id: crypto.randomUUID(),
       role: "user",
       content: prompt.trim(),
@@ -1140,12 +1126,22 @@ export const sendZeroChatMessage$ = command(
         } catch (error) {
           throwIfAbort(error);
           L.error("Chat send error:", error);
+          const errorMsg =
+            error instanceof Error ? error.message : "Unknown error";
           set(internalLocalMessages$, (prev) => {
             const updated = [...prev];
-            updated[updated.length - 1] = {
-              ...updated[updated.length - 1],
-              error: error instanceof Error ? error.message : "Unknown error",
-            };
+            const last = updated[updated.length - 1];
+            if (last && last.role === "assistant") {
+              updated[updated.length - 1] = { ...last, error: errorMsg };
+            } else {
+              // Error before assistant message was created — add one
+              updated.push({
+                id: crypto.randomUUID(),
+                role: "assistant",
+                content: "",
+                error: errorMsg,
+              });
+            }
             return updated;
           });
           return;
@@ -1216,8 +1212,6 @@ export const sendZeroChatMessage$ = command(
 
 const onZeroRunComplete$ = command(
   async ({ get, set }, runId: string, signal: AbortSignal) => {
-  
-
     try {
       const client = get(zeroClient$)(zeroRunsByIdContract);
       const result = await client.getById({ params: { id: runId } });
