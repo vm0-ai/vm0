@@ -7,6 +7,7 @@ import {
 } from "../../../../../../src/__tests__/test-helpers";
 import {
   createTestCompose,
+  createTestRunInDb,
   createTestSlackOrgInstallation,
   seedTestSlackOrgConnection,
   seedTestSlackOrgPendingQuestion,
@@ -396,6 +397,143 @@ describe("POST /api/zero/slack/interactive", () => {
 
       const response = await POST(request);
       expect(response.status).toBe(200);
+    });
+  });
+
+  describe("audit_run", () => {
+    it("sends ephemeral message with run details for authorized user", async () => {
+      const workspaceId = uniqueId("T-ws");
+      const slackUserId = uniqueId("U-slack");
+      const channelId = uniqueId("C-ch");
+
+      await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
+      await seedTestSlackOrgConnection({
+        slackUserId,
+        slackWorkspaceId: workspaceId,
+        vm0UserId: user.userId,
+      });
+
+      const compose = await createTestCompose(uniqueId("agent"));
+      const { runId } = await createTestRunInDb(
+        user.userId,
+        compose.composeId,
+        {
+          status: "completed",
+          prompt: "Summarize the document",
+        },
+      );
+
+      const request = createInteractiveRequest({
+        type: "block_actions",
+        user: { id: slackUserId, username: "testuser", team_id: workspaceId },
+        team: { id: workspaceId, domain: "test" },
+        channel: { id: channelId },
+        actions: [{ action_id: "audit_run", value: runId }],
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const { WebClient } = await import("@slack/web-api");
+      const mockClient = new WebClient();
+      await vi.waitFor(() => {
+        expect(mockClient.chat.postEphemeral).toHaveBeenCalledWith(
+          expect.objectContaining({
+            channel: channelId,
+            user: slackUserId,
+            text: expect.stringContaining(runId),
+          }),
+        );
+      });
+    });
+
+    it("sends no-permission ephemeral when user has no connection", async () => {
+      const workspaceId = uniqueId("T-ws");
+      const slackUserId = uniqueId("U-slack");
+      const channelId = uniqueId("C-ch");
+
+      await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
+
+      const compose = await createTestCompose(uniqueId("agent"));
+      const { runId } = await createTestRunInDb(
+        user.userId,
+        compose.composeId,
+        {
+          status: "completed",
+          prompt: "test",
+        },
+      );
+
+      const request = createInteractiveRequest({
+        type: "block_actions",
+        user: { id: slackUserId, username: "testuser", team_id: workspaceId },
+        team: { id: workspaceId, domain: "test" },
+        channel: { id: channelId },
+        actions: [{ action_id: "audit_run", value: runId }],
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const { WebClient } = await import("@slack/web-api");
+      const mockClient = new WebClient();
+      await vi.waitFor(() => {
+        expect(mockClient.chat.postEphemeral).toHaveBeenCalledWith(
+          expect.objectContaining({
+            channel: channelId,
+            user: slackUserId,
+            text: expect.stringContaining("permission"),
+          }),
+        );
+      });
+    });
+
+    it("sends no-permission ephemeral when run belongs to a different user", async () => {
+      const workspaceId = uniqueId("T-ws");
+      const slackUserId = uniqueId("U-slack");
+      const channelId = uniqueId("C-ch");
+
+      await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
+      // Connect a different VM0 user than the run owner
+      const otherUser = await context.setupUser({ prefix: "other-user" });
+      await seedTestSlackOrgConnection({
+        slackUserId,
+        slackWorkspaceId: workspaceId,
+        vm0UserId: otherUser.userId,
+      });
+
+      const compose = await createTestCompose(uniqueId("agent"));
+      const { runId } = await createTestRunInDb(
+        user.userId,
+        compose.composeId,
+        {
+          status: "completed",
+          prompt: "test",
+        },
+      );
+
+      const request = createInteractiveRequest({
+        type: "block_actions",
+        user: { id: slackUserId, username: "testuser", team_id: workspaceId },
+        team: { id: workspaceId, domain: "test" },
+        channel: { id: channelId },
+        actions: [{ action_id: "audit_run", value: runId }],
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const { WebClient } = await import("@slack/web-api");
+      const mockClient = new WebClient();
+      await vi.waitFor(() => {
+        expect(mockClient.chat.postEphemeral).toHaveBeenCalledWith(
+          expect.objectContaining({
+            channel: channelId,
+            user: slackUserId,
+            text: expect.stringContaining("permission"),
+          }),
+        );
+      });
     });
   });
 });
