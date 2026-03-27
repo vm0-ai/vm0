@@ -19,6 +19,12 @@ import {
   Card,
   CardContent,
   cn,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
   Input,
   Select,
   SelectContent,
@@ -401,6 +407,7 @@ function ScheduleSettingsForm({
   const [loopMinutes, setLoopMinutes] = useState(initial.loopMinutes);
   const [agentId, setAgentId] = useState(initial.agentId);
   const [description, setDescription] = useState(initial.description);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [notifyEmail, setNotifyEmail] = useState(initial.notifyEmail);
   const [notifySlack, setNotifySlack] = useState(initial.notifySlack);
   const [slackChannelId, setSlackChannelId] = useState(initial.slackChannelId);
@@ -582,7 +589,7 @@ function ScheduleSettingsForm({
                   variant="outline"
                   size="sm"
                   className="h-9 gap-2 rounded-lg border-destructive/40 px-4 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  onClick={onDelete}
+                  onClick={() => setShowDeleteConfirm(true)}
                 >
                   <IconTrash size={14} stroke={1.5} />
                   Delete schedule
@@ -600,6 +607,45 @@ function ScheduleSettingsForm({
           saving={saving}
         />
       )}
+
+      <Dialog
+        open={showDeleteConfirm}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShowDeleteConfirm(false);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete schedule?</DialogTitle>
+            <DialogDescription>
+              This will permanently delete the schedule{" "}
+              <span className="font-medium text-foreground">
+                {entry.description ?? entry.prompt}
+              </span>
+              . This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowDeleteConfirm(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setShowDeleteConfirm(false);
+                onDelete();
+              }}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

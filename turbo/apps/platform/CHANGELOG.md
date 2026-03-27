@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.158.1](https://github.com/vm0-ai/vm0/compare/app-v0.158.0...app-v0.158.1) (2026-03-27)
+
+
+### Bug Fixes
+
+* add schedule quick link in activity log ([#6974](https://github.com/vm0-ai/vm0/issues/6974)) ([839cab3](https://github.com/vm0-ai/vm0/commit/839cab31b58acc22affe39e70ba748eec3c1ee52))
+
+
+### Refactoring
+
+* **platform:** remove guest navbar from sidebar layout ([#6965](https://github.com/vm0-ai/vm0/issues/6965)) ([a59f17f](https://github.com/vm0-ai/vm0/commit/a59f17f3fe53cd33b1f348caf25178536e21a994))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.119.1
+
 ## [0.158.0](https://github.com/vm0-ai/vm0/compare/app-v0.157.0...app-v0.158.0) (2026-03-27)
 
 

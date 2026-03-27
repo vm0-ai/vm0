@@ -21,6 +21,7 @@ import {
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { reloadEnv } from "../../../../../src/env";
 import { server } from "../../../../../src/mocks/server";
+import { logger } from "../../../../../src/lib/logger";
 
 const context = testContext();
 const cronSecret = "test-cron-secret";
@@ -359,6 +360,119 @@ describe("GET /api/cron/sync-skills", () => {
         description: "Updated slack skill",
       });
       expect(slackSkill!.commitSha).toBe(newCommitSha);
+    });
+  });
+
+  describe("Orphan removal", () => {
+    it("should remove skills deleted from source repo", async () => {
+      // First sync: both slack and github exist
+      const tarball1 = createMockTarball(MOCK_SKILLS);
+      setupMswHandlers(TEST_COMMIT_SHA, tarball1);
+
+      await GET(cronRequest(cronSecret));
+
+      // Verify both skills exist
+      const allSkillsBefore = await findAllTestSkills();
+      expect(allSkillsBefore).toHaveLength(2);
+      const allStoragesBefore = await findTestSystemStorages();
+      expect(allStoragesBefore).toHaveLength(2);
+
+      // Mock listS3Objects to return objects for cleanup
+      context.mocks.s3.listS3Objects.mockResolvedValue([
+        { key: "mock/archive.tar.gz", size: 100 },
+        { key: "mock/manifest.json", size: 50 },
+      ]);
+
+      // Second sync: only slack remains (github removed)
+      const newCommitSha = "b".repeat(40);
+      const tarball2 = createMockTarball([MOCK_SKILLS[0]!]);
+      setupMswHandlers(newCommitSha, tarball2);
+
+      const response = await GET(cronRequest(cronSecret));
+      const data = await response.json();
+
+      expect(data.removed).toBe(1);
+      expect(data.synced).toBe(0); // slack unchanged
+      expect(data.skipped).toBe(1); // slack skipped (same hash)
+
+      // Verify github skill is gone
+      const githubSkill = await findTestSkillByUrl(
+        "https://github.com/vm0-ai/vm0-skills/tree/main/github",
+      );
+      expect(githubSkill).toBeNull();
+
+      // Verify slack still exists
+      const slackSkill = await findTestSkillByUrl(
+        "https://github.com/vm0-ai/vm0-skills/tree/main/slack",
+      );
+      expect(slackSkill).not.toBeNull();
+
+      // Verify only 1 skill and 1 storage remain
+      const allSkillsAfter = await findAllTestSkills();
+      expect(allSkillsAfter).toHaveLength(1);
+      const allStoragesAfter = await findTestSystemStorages();
+      expect(allStoragesAfter).toHaveLength(1);
+
+      // Verify S3 cleanup was called
+      expect(context.mocks.s3.listS3Objects).toHaveBeenCalled();
+      expect(context.mocks.s3.deleteS3Objects).toHaveBeenCalledWith(
+        expect.any(String),
+        ["mock/archive.tar.gz", "mock/manifest.json"],
+      );
+    });
+
+    it("should handle S3 cleanup failure gracefully", async () => {
+      // First sync: both skills
+      const tarball1 = createMockTarball(MOCK_SKILLS);
+      setupMswHandlers(TEST_COMMIT_SHA, tarball1);
+      await GET(cronRequest(cronSecret));
+
+      // Make S3 list throw
+      context.mocks.s3.listS3Objects.mockRejectedValue(
+        new Error("S3 connection failed"),
+      );
+
+      // Second sync: github removed
+      const newCommitSha = "b".repeat(40);
+      const tarball2 = createMockTarball([MOCK_SKILLS[0]!]);
+      setupMswHandlers(newCommitSha, tarball2);
+
+      const response = await GET(cronRequest(cronSecret));
+      const data = await response.json();
+
+      // DB cleanup should still succeed despite S3 failure
+      expect(data.removed).toBe(1);
+
+      const allSkills = await findAllTestSkills();
+      expect(allSkills).toHaveLength(1);
+
+      const allStorages = await findTestSystemStorages();
+      expect(allStorages).toHaveLength(1);
+    });
+  });
+
+  describe("SEED_SKILLS validation", () => {
+    it("should emit log.error when SEED_SKILLS references missing skill", async () => {
+      const syncLogger = logger("skills:sync");
+      const errorSpy = vi.spyOn(syncLogger, "error");
+
+      // Sync with skills that don't include all SEED_SKILLS entries
+      // (SEED_SKILLS has 30+ entries, but tarball only has slack + github)
+      const tarball = createMockTarball(MOCK_SKILLS);
+      setupMswHandlers(TEST_COMMIT_SHA, tarball);
+
+      await GET(cronRequest(cronSecret));
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        "SEED_SKILLS references skills not found in repository",
+        expect.objectContaining({
+          missingSkills: expect.arrayContaining([
+            expect.stringContaining("vm0-ai/vm0-skills"),
+          ]),
+        }),
+      );
+
+      errorSpy.mockRestore();
     });
   });
 });

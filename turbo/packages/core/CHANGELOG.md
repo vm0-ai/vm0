@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.119.1](https://github.com/vm0-ai/vm0/compare/core-v8.119.0...core-v8.119.1) (2026-03-27)
+
+
+### Bug Fixes
+
+* add schedule quick link in activity log ([#6974](https://github.com/vm0-ai/vm0/issues/6974)) ([839cab3](https://github.com/vm0-ai/vm0/commit/839cab31b58acc22affe39e70ba748eec3c1ee52))
+
 ## [8.119.0](https://github.com/vm0-ai/vm0/compare/core-v8.118.3...core-v8.119.0) (2026-03-27)
 
 

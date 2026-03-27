@@ -22,6 +22,7 @@ function makeLogsResponse(
       orgSlug: "test",
       framework: "claude-code",
       triggerSource: "web",
+      scheduleId: null,
       createdAt: "2026-03-10T14:56:00Z",
       startedAt: "2026-03-10T14:56:01Z",
       completedAt: "2026-03-10T14:56:10Z",

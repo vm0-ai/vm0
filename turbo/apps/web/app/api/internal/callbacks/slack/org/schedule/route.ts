@@ -85,7 +85,7 @@ async function postScheduleResults(
 
     const triggeredBy =
       isLast && scheduleDescription
-        ? `triggered by schedule "${scheduleDescription}"`
+        ? `Triggered by schedule "${scheduleDescription}"`
         : undefined;
     const blocks = buildAgentResponseMessage(
       rawOutput,
@@ -179,7 +179,7 @@ async function postScheduleFailure(
         failureContent,
         logsUrl,
         scheduleDescription
-          ? `triggered by schedule "${scheduleDescription}"`
+          ? `Triggered by schedule "${scheduleDescription}"`
           : undefined,
         runId,
       ),

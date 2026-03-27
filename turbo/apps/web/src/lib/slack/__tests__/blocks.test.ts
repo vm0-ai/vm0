@@ -196,7 +196,7 @@ describe("buildAgentResponseMessage", () => {
     const blocks = buildAgentResponseMessage(
       "Response text",
       "https://app.vm0.ai/activity/run-123",
-      'triggered by schedule "Send a greeting message daily at 9 AM"',
+      'Triggered by schedule "Send a greeting message daily at 9 AM"',
     );
 
     // Should have: markdown, dashboard context, divider, attribution context
@@ -216,7 +216,7 @@ describe("buildAgentResponseMessage", () => {
     const attrText = (contextBlocks[1] as { elements: { text: string }[] })
       .elements[0]!.text;
     expect(attrText).toBe(
-      'triggered by schedule "Send a greeting message daily at 9 AM"',
+      'Triggered by schedule "Send a greeting message daily at 9 AM"',
     );
   });
 

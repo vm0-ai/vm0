@@ -1,5 +1,26 @@
 # Changelog
 
+## [12.164.1](https://github.com/vm0-ai/vm0/compare/web-v12.164.0...web-v12.164.1) (2026-03-27)
+
+
+### Bug Fixes
+
+* add schedule quick link in activity log ([#6974](https://github.com/vm0-ai/vm0/issues/6974)) ([839cab3](https://github.com/vm0-ai/vm0/commit/839cab31b58acc22affe39e70ba748eec3c1ee52))
+* capitalize initial letter in slack schedule attribution footer ([#6966](https://github.com/vm0-ai/vm0/issues/6966)) ([43c5c03](https://github.com/vm0-ai/vm0/commit/43c5c035568d13672304f4c97a172a0ffb8ae162))
+* remove stale skills from database when deleted from source repo ([#7032](https://github.com/vm0-ai/vm0/issues/7032)) ([ed92922](https://github.com/vm0-ai/vm0/commit/ed9292206446481fec9f2a49fe023a7015fcc1c9))
+
+
+### Refactoring
+
+* **web:** simplify agent tools prompt ([#7034](https://github.com/vm0-ai/vm0/issues/7034)) ([647e925](https://github.com/vm0-ai/vm0/commit/647e9259c3f1944ada543461ac363412ff46564a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.119.1
+
 ## [12.164.0](https://github.com/vm0-ai/vm0/compare/web-v12.163.5...web-v12.164.0) (2026-03-27)
 
 
