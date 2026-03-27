@@ -690,9 +690,14 @@ jobs:
 
             if neonctl branches list --project-id "$NEON_PROJECT_ID" --output json | jq -e ".[] | select(.name == \"$BRANCH_NAME\")" > /dev/null 2>&1; then
               echo "Branch $BRANCH_NAME already exists, resetting..."
-              if ! neonctl branches reset "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --parent; then
-                echo "Reset failed, deleting and recreating branch..."
-                neonctl branches delete "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID"
+              RESET_OUTPUT=$(neonctl branches reset "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --parent 2>&1) || RESET_FAILED=true
+              # Force delete+recreate if reset failed OR produced DB corruption errors.
+              # DropErrorMsgNonExistent in reset output indicates Postgres schema drift
+              # that leaves the branch in a bad state even though neonctl reports "ready".
+              if [[ "${RESET_FAILED:-}" == "true" ]] || echo "$RESET_OUTPUT" | grep -q "DropErrorMsgNonExistent"; then
+                echo "Reset failed or produced errors, deleting and recreating branch..."
+                neonctl branches delete "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" || true
+                sleep 5
                 neonctl branches create --name "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID"
               fi
 
