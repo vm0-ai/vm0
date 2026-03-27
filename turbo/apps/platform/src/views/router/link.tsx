@@ -15,13 +15,7 @@ function buildHref(path: string, searchParams?: URLSearchParams): string {
   return search ? `${path}?${search}` : path;
 }
 
-interface ModifierKeyEvent {
-  metaKey: boolean;
-  ctrlKey: boolean;
-  shiftKey: boolean;
-}
-
-function isNewTabClick(e: ModifierKeyEvent): boolean {
+function isNewTabClick(e: MouseEvent<HTMLAnchorElement>): boolean {
   return e.metaKey || e.ctrlKey || e.shiftKey;
 }
 
@@ -66,27 +60,4 @@ export function Link({
       {children}
     </a>
   );
-}
-
-// ---------------------------------------------------------------------------
-// useNavigationHandler hook (for table rows where <a> is invalid)
-// ---------------------------------------------------------------------------
-
-export function useNavigationHandler(
-  pathname: PathName,
-  options?: NavigationOptions,
-): { href: string; onClick: (e: ModifierKeyEvent) => void } {
-  const navigate = useSet(navigateTo$);
-  const path = generateRouterPath(pathname, options?.pathParams);
-  const href = buildHref(path, options?.searchParams);
-
-  const onClick = (e: ModifierKeyEvent) => {
-    if (isNewTabClick(e)) {
-      window.open(`${window.location.origin}${href}`, "_blank");
-    } else {
-      navigate(pathname, options);
-    }
-  };
-
-  return { href, onClick };
 }
