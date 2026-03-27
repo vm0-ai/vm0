@@ -117,7 +117,7 @@ export async function expireCredits(tx: Tx, orgId: string): Promise<number> {
   // Deduct expired amount from org balance
   if (totalExpired > 0) {
     await tx.execute(
-      sql`UPDATE org_metadata SET credits = credits - ${totalExpired}, updated_at = now() WHERE org_id = ${orgId}`,
+      sql`UPDATE org_metadata SET credits = GREATEST(credits - ${totalExpired}, 0), updated_at = now() WHERE org_id = ${orgId}`,
     );
   }
 
