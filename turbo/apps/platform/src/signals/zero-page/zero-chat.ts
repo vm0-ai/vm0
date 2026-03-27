@@ -166,17 +166,11 @@ const internalSessionId$ = state<string | null>(null);
 export const zeroCurrentSessionId$ = computed((get) => get(internalSessionId$));
 
 const internalActiveRunId$ = state<string | null>(null);
-const internalRunStatus$ = state<LogStatus | null>(null);
-const internalRunError$ = state<string | null>(null);
-const internalRunEvents$ = state<Computed<Promise<PagedRunEvents>>[]>([]);
 
 /** Whether the agent is currently busy (derived from loop promise). */
 export const zeroChatSending$ = computed(
   (get) => get(internalLoopPromise$) !== null,
 );
-
-/** Current run status (queued, pending, running, etc.) */
-export const zeroChatRunStatus$ = computed((get) => get(internalRunStatus$));
 
 /** Cancel the currently active run. */
 export const cancelActiveRun$ = command(
@@ -195,21 +189,49 @@ export const cancelActiveRun$ = command(
   },
 );
 
-/** Queue position for the active run (0 = not queued). */
-const internalQueuePosition$ = state(0);
-export const zeroChatQueuePosition$ = computed((get) =>
-  get(internalQueuePosition$),
+
+// ---------------------------------------------------------------------------
+// Queued message — allows the user to queue a follow-up while agent is busy
+// ---------------------------------------------------------------------------
+
+interface QueuedMessage {
+  text: string;
+  modelProvider?: string;
+}
+
+const internalQueuedMessage$ = state<QueuedMessage | null>(null);
+export const zeroChatQueuedMessage$ = computed((get) =>
+  get(internalQueuedMessage$),
 );
 
-/** Latest event summaries for the active run (for display while thinking). */
-export const zeroChatRunSummaries$ = computed(async (get) => {
-  const pages = get(internalRunEvents$);
-  if (pages.length === 0) {
-    return [];
+/** Queue a message to be sent automatically once the current run completes. */
+export const queueZeroChatMessage$ = command(
+  ({ get, set }, text: string, options?: { modelProvider?: string }) => {
+    // Only queue when there's an active loop (agent is busy)
+    if (!get(internalLoopPromise$)) {
+      return;
+    }
+    if (get(internalQueuedMessage$)) {
+      return;
+    }
+    set(internalQueuedMessage$, {
+      text,
+      modelProvider: options?.modelProvider,
+    });
+    set(internalChatInput$, "");
+  },
+);
+
+/** Withdraw the queued message back into the input box for editing. */
+export const withdrawQueuedMessage$ = command(({ get, set }) => {
+  const queued = get(internalQueuedMessage$);
+  if (!queued) {
+    return;
   }
-  const events = await collectAllEvents(pages, get);
-  return extractSummaries(events);
+  set(internalChatInput$, queued.text);
+  set(internalQueuedMessage$, null);
 });
+
 
 interface EventContent {
   type: string;
@@ -334,30 +356,6 @@ export const resetTalkSendSignal$ = resetSignal();
 
 const internalLoopPromise$ = state<Promise<void> | null>(null);
 
-// ---------------------------------------------------------------------------
-// Thinking messages (cycled during polling loop)
-// ---------------------------------------------------------------------------
-
-const THINKING_MESSAGES = [
-  "On it, grab a coffee",
-  "Thinking hard...",
-  "Cooking up something good...",
-  "Give me a sec...",
-  "Working my magic...",
-  "Hang tight...",
-  "Let me figure this out...",
-  "Brewing ideas...",
-  "Crunching the numbers...",
-  "Just a moment...",
-] as const;
-
-const internalThinkingIndex$ = state(
-  Math.floor(Math.random() * THINKING_MESSAGES.length),
-);
-
-export const zeroChatThinkingMessage$ = computed(
-  (get) => THINKING_MESSAGES[get(internalThinkingIndex$)]!,
-);
 
 /** Thread ID derived from the URL `/chat/:id`. */
 export const zeroChatThreadId$ = zeroSessionId$;
@@ -915,10 +913,6 @@ export const switchZeroSession$ = command(({ set }, threadId: string) => {
   set(internalSessionId$, null);
   set(internalLocalMessages$, []);
   set(internalActiveRunId$, null);
-  set(internalRunEvents$, []);
-  set(internalRunStatus$, null);
-  set(internalRunError$, null);
-  set(internalQueuePosition$, 0);
   set(internalLoopPromise$, null);
 });
 
@@ -930,9 +924,6 @@ export const startNewZeroSession$ = command(({ set }) => {
   set(internalLocalMessages$, []);
   set(internalSessionId$, null);
   set(internalActiveRunId$, null);
-  set(internalRunEvents$, []);
-  set(internalRunStatus$, null);
-  set(internalRunError$, null);
   set(internalLoopPromise$, null);
   set(internalChatInput$, "");
 });

@@ -49,11 +49,10 @@ import {
   clearZeroChatInput$,
   sendZeroChatMessage$,
   type ZeroChatMessage,
-  zeroChatRunSummaries$,
-  zeroChatRunStatus$,
-  zeroChatQueuePosition$,
   cancelActiveRun$,
-  zeroChatThinkingMessage$,
+  zeroChatQueuedMessage$,
+  queueZeroChatMessage$,
+  withdrawQueuedMessage$,
 } from "../../signals/zero-page/zero-chat.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { Link } from "../router/link.tsx";
@@ -461,23 +460,6 @@ function MessageRunActivityLine({ message }: { message: ZeroChatMessage }) {
 }
 
 /** Live run activity rendered from global signals (legacy path). */
-function GlobalRunActivityLine() {
-  const summariesLoadable = useLastLoadable(zeroChatRunSummaries$);
-  const rawSummaries =
-    summariesLoadable.state === "hasData" ? summariesLoadable.data : [];
-  const runStatus = useGet(zeroChatRunStatus$);
-  const queuePosition = useGet(zeroChatQueuePosition$);
-  const isQueued = runStatus === "queued";
-  const thinkingMsg = useGet(zeroChatThinkingMessage$);
-  return (
-    <RunActivityLineView
-      summaries={rawSummaries}
-      isQueued={isQueued}
-      queuePosition={queuePosition}
-      thinkingMsg={thinkingMsg}
-    />
-  );
-}
 
 function RunActivityLineView({
   summaries: rawSummaries,
@@ -902,7 +884,15 @@ function StaticAssistantMessage({
       <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 items-start">
         {avatar}
         <div className="zero-chat-bubble-assistant rounded-xl py-4 text-sm leading-relaxed min-w-0 overflow-hidden">
-          {renderActivityLine ?? <GlobalRunActivityLine />}
+          {renderActivityLine ?? (
+            <div className="flex items-center gap-2 min-w-0">
+              <IconLoader2
+                size={14}
+                className="animate-spin text-foreground/50 shrink-0"
+              />
+              <p className="zero-shimmer-text text-xs truncate">Thinking...</p>
+            </div>
+          )}
         </div>
       </div>
       {logButton}

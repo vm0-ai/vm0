@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor, act } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import {
@@ -114,11 +114,8 @@ describe("chat sending state", () => {
 
     // Complete the run and wait for polling to stop
     ctrl.completeRun();
-    await waitFor(
-      () => {
-        expect(screen.getByLabelText("Send")).toBeInTheDocument();
-      },
-      { timeout: 10_000 },
-    );
-  }, 30_000);
+    await waitFor(() => {
+      expect(screen.getByLabelText("Send")).toBeInTheDocument();
+    });
+  });
 });
