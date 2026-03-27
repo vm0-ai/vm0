@@ -156,26 +156,24 @@ teardown_file() {
   wait_for_text "Create a new teammate" 30
   step_screenshot "create-dialog"
 
-  # Capture the Create button ref BEFORE fill — refs can become stale if fill
-  # triggers a React re-render that re-creates DOM nodes. Taking the snapshot
-  # before fill ensures the ref is valid when we click it.
-  echo "# Capturing Create button ref before fill..." >&3
-  local snap_i create_ref
-  snap_i=$(agent-browser snapshot -i 2>/dev/null || true)
-  create_ref=$(echo "$snap_i" | grep -E 'button "Create"' | grep -v 'teammate' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
-
   # Fill agent name
   echo "# Filling agent name: $AGENT_NAME" >&3
   agent-browser find placeholder "e.g. Research Assistant" fill "$AGENT_NAME"
   sleep 0.5
+  # Take screenshot first to let React settle after fill before snapshotting
+  # (same pattern as brw-t03 which uses the same dialog and is reliable).
+  step_screenshot "create-dialog-filled"
 
-  # Click Create button using pre-fill ref (stable across re-renders)
+  # Click Create button via snapshot ref
   echo "# Clicking Create button in dialog..." >&3
+  local snap_i create_ref
+  snap_i=$(agent-browser snapshot -i 2>/dev/null || true)
+  create_ref=$(echo "$snap_i" | grep -E 'button "Create"' | grep -v 'teammate' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
   if [[ -n "$create_ref" ]]; then
     agent-browser click "$create_ref"
   else
-    echo "# Create button ref not found, trying text-based click..." >&3
-    agent-browser find text "Create" click
+    echo "# Create button ref not found in snapshot, trying role-based click..." >&3
+    agent-browser find role button click --name "Create"
   fi
 
   # Wait for dialog to close, then navigate to /team to verify the agent.
