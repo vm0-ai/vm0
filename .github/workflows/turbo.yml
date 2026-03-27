@@ -690,7 +690,11 @@ jobs:
 
             if neonctl branches list --project-id "$NEON_PROJECT_ID" --output json | jq -e ".[] | select(.name == \"$BRANCH_NAME\")" > /dev/null 2>&1; then
               echo "Branch $BRANCH_NAME already exists, resetting..."
-              neonctl branches reset "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --parent
+              if ! neonctl branches reset "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --parent; then
+                echo "Reset failed, deleting and recreating branch..."
+                neonctl branches delete "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID"
+                neonctl branches create --name "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID"
+              fi
 
               for i in {1..30}; do
                 CURRENT_STATE=$(neonctl branches list --project-id "$NEON_PROJECT_ID" --output json | jq -r ".[] | select(.name == \"$BRANCH_NAME\") | .current_state")
