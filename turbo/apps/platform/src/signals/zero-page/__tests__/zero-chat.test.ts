@@ -522,7 +522,9 @@ describe("zero-chat signals", () => {
 
       const messages = await context.store.get(zeroChatMessages$);
       const lastMsg = messages[messages.length - 1];
-      expect(lastMsg?.role === "assistant" ? lastMsg.error : undefined).toBe("Some API error");
+      expect(lastMsg?.role === "assistant" ? lastMsg.error : undefined).toBe(
+        "Some API error",
+      );
       expect(context.store.get(zeroChatSending$)).toBeFalsy();
     });
 
@@ -577,7 +579,9 @@ describe("zero-chat signals", () => {
 
       const messages = await context.store.get(zeroChatMessages$);
       const lastMsg = messages[messages.length - 1];
-      expect(lastMsg?.role === "assistant" ? lastMsg.error : undefined).toBe("Failed to start agent run (502)");
+      expect(lastMsg?.role === "assistant" ? lastMsg.error : undefined).toBe(
+        "Failed to start agent run (502)",
+      );
       expect(context.store.get(zeroChatSending$)).toBeFalsy();
     });
 
@@ -598,7 +602,9 @@ describe("zero-chat signals", () => {
 
       const messages = await context.store.get(zeroChatMessages$);
       const lastMsg = messages[messages.length - 1];
-      expect(lastMsg?.role === "assistant" ? lastMsg.error : undefined).toBe("Failed to create chat thread");
+      expect(lastMsg?.role === "assistant" ? lastMsg.error : undefined).toBe(
+        "Failed to create chat thread",
+      );
       expect(context.store.get(zeroChatSending$)).toBeFalsy();
     });
 

@@ -167,7 +167,9 @@ export const cancelActiveRun$ = command(
     const local = get(internalLocalMessages$);
     const activeMsg = [...local]
       .reverse()
-      .find((m): m is AssistantChatMessage => m.role === "assistant" && !!m.runLoop);
+      .find(
+        (m): m is AssistantChatMessage => m.role === "assistant" && !!m.runLoop,
+      );
     if (!activeMsg?.runLoop) {
       return;
     }
@@ -867,7 +869,10 @@ export const loadSessionFromSnapshot$ = command(
       const loopPromise = (async () => {
         await Promise.all(
           snapshot.activeRunMessages
-            .filter((m): m is AssistantChatMessage => m.role === "assistant" && !!m.beginLoop$)
+            .filter(
+              (m): m is AssistantChatMessage =>
+                m.role === "assistant" && !!m.beginLoop$,
+            )
             .map(async (message) => {
               await set(message.beginLoop$!, resumeSignal);
             }),

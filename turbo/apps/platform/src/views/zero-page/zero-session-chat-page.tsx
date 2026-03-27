@@ -439,7 +439,11 @@ function deduplicateSummaries(summaries: string[]): string[] {
 }
 
 /** Live run activity rendered from a message's own runLoop signals. */
-function MessageRunActivityLine({ message }: { message: AssistantChatMessage }) {
+function MessageRunActivityLine({
+  message,
+}: {
+  message: AssistantChatMessage;
+}) {
   const summariesLoadable = useLastLoadable(message.summaries$!);
   const rawSummaries =
     summariesLoadable.state === "hasData" ? summariesLoadable.data : [];
@@ -693,7 +697,9 @@ function ReactiveAssistantMessage({
     <StaticAssistantMessage
       message={enrichedMessage}
       zeroAvatarSrc={zeroAvatarSrc}
-      renderActivityLine={!isFailed ? <MessageRunActivityLine message={message} /> : undefined}
+      renderActivityLine={
+        !isFailed ? <MessageRunActivityLine message={message} /> : undefined
+      }
     />
   );
 }
