@@ -8,7 +8,7 @@ import {
   setZeroAgentName$,
   setZeroStep$,
   toggleZeroConnector$,
-  zeroUserStep$,
+  zeroOnboardingStep$,
   zeroOnboardingError$,
   zeroSaving$,
 } from "../zero-onboarding.ts";
@@ -271,7 +271,7 @@ describe("completeZeroOnboarding$", () => {
       "Failed to create agent (500)",
     );
     expect(context.store.get(zeroSaving$)).toBeFalsy();
-    expect(context.store.get(zeroUserStep$)).toBe("4");
+    await expect(context.store.get(zeroOnboardingStep$)).resolves.toBe("4");
   });
 
   it("should clear error state on successful retry", async () => {
@@ -341,7 +341,7 @@ describe("completeZeroOnboarding$", () => {
     expect(context.store.get(zeroOnboardingError$)).toBeNull();
     // Step is no longer auto-set to "done" by completeZeroOnboarding$;
     // callers use dismissZeroOnboarding$ to dismiss the dialog.
-    expect(context.store.get(zeroUserStep$)).toBe("4");
+    await expect(context.store.get(zeroOnboardingStep$)).resolves.toBe("4");
   });
 });
 

@@ -81,9 +81,6 @@ type ZeroOnboardingStep = "1" | "2" | "3" | "4" | "done";
 /** User-driven step override; null means derive from initialOnboardingStep$. */
 const userStep$ = state<ZeroOnboardingStep | null>(null);
 
-/** Read-only view of the current user-driven step override. */
-export const zeroUserStep$ = computed((get) => get(userStep$));
-
 const initialOnboardingStep$ = computed(async (get) => {
   const status = await get(zeroOnboardingStatus$);
   if (!status.needsOnboarding) {
