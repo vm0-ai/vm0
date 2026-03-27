@@ -120,6 +120,10 @@ teardown_file() {
   wait_for_text "Lead" 40
   step_screenshot "team-page"
 
+  # Wait for any global loading overlay to clear before clicking (overlay
+  # blocks clicks even when the button is found via accessibility).
+  wait_for_text_gone "Loading your workspace" 30 || true
+
   # Click Create teammate — use role-based find which works more reliably
   # than text-based find for buttons with composite content
   echo "# Clicking Create teammate..." >&3
@@ -169,6 +173,9 @@ teardown_file() {
   echo "# Restarting browser daemon for clean state..." >&3
   agent-browser close 2>/dev/null || true
   sleep 2
+  # Create a fresh sign-in token — the one created in setup_file was consumed
+  # by the earlier "sign in via token on platform app" test and cannot be reused.
+  create_clerk_sign_in_token
   sign_in_via_token_on_app
 
   echo "# Navigating to team page..." >&3
