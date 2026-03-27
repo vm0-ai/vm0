@@ -302,22 +302,10 @@ teardown_file() {
   fi
   step_screenshot "instructions-before"
 
-  # Find and click the editor area (Tiptap contenteditable div).
-  # It may appear as textbox, paragraph, or generic element in the snapshot.
-  local snap_i editor_ref
-  snap_i=$(agent-browser snapshot -i)
-  editor_ref=$(echo "$snap_i" | grep -E 'textbox' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
-  if [[ -z "$editor_ref" ]]; then
-    # Fallback: look for a paragraph element near the editor area
-    editor_ref=$(echo "$snap_i" | grep -E 'paragraph' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
-  fi
-  if [[ -z "$editor_ref" ]]; then
-    echo "# Failed to find instructions editor element ref" >&3
-    echo "# Interactive snapshot:" >&3
-    echo "$snap_i" | head -20 >&3
-    return 1
-  fi
-  agent-browser click "$editor_ref"
+  # Click the Tiptap editor area (contenteditable div with ProseMirror class).
+  # The editor doesn't reliably map to a textbox role in the accessibility tree,
+  # so we use a CSS selector to find and click it directly.
+  agent-browser find first ".ProseMirror" click
   agent-browser wait 500
 
   # Type test content
