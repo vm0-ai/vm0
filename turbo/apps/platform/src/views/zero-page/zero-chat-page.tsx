@@ -234,10 +234,10 @@ export function ZeroChatPage({
         <div className="mx-auto w-full max-w-[900px] flex flex-col items-stretch gap-8 -mt-24">
           <div className="flex items-center gap-4 w-full">
             <div className="relative shrink-0">
-              <TooltipProvider delayDuration={200}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    {avatarAgentId ? (
+              {avatarAgentId ? (
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
                       <Link
                         pathname="/team/:id"
                         options={{ pathParams: { id: avatarAgentId } }}
@@ -251,25 +251,22 @@ export function ZeroChatPage({
                           className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
                         />
                       </Link>
-                    ) : (
-                      <div
-                        aria-label="View agent profile"
-                        className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl"
-                      >
-                        <img
-                          src={zeroAvatarSrc}
-                          alt=""
-                          role="presentation"
-                          className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
-                        />
-                      </div>
-                    )}
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    <p className="text-xs">View agent profile</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      <p className="text-xs">View agent profile</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ) : (
+                <div className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl">
+                  <img
+                    src={zeroAvatarSrc}
+                    alt=""
+                    role="presentation"
+                    className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
+                  />
+                </div>
+              )}
               {showPinPill && (
                 <TooltipProvider delayDuration={200}>
                   <Tooltip>

@@ -140,10 +140,10 @@ export function ZeroSessionChatPage({
       <header className="shrink-0 bg-transparent px-4 sm:px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="relative shrink-0">
-            <TooltipProvider delayDuration={200}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  {avatarAgentId ? (
+            {avatarAgentId ? (
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
                     <Link
                       pathname="/team/:id"
                       options={{ pathParams: { id: avatarAgentId } }}
@@ -157,25 +157,22 @@ export function ZeroSessionChatPage({
                         className="h-8 w-8 rounded-full object-cover object-top"
                       />
                     </Link>
-                  ) : (
-                    <div
-                      aria-label="View agent profile"
-                      className="h-8 w-8 shrink-0 overflow-hidden rounded-xl"
-                    >
-                      <img
-                        src={zeroAvatarSrc}
-                        alt=""
-                        role="presentation"
-                        className="h-8 w-8 rounded-full object-cover object-top"
-                      />
-                    </div>
-                  )}
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  <p className="text-xs">View agent profile</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p className="text-xs">View agent profile</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              <div className="h-8 w-8 shrink-0 overflow-hidden rounded-xl">
+                <img
+                  src={zeroAvatarSrc}
+                  alt=""
+                  role="presentation"
+                  className="h-8 w-8 rounded-full object-cover object-top"
+                />
+              </div>
+            )}
             {showPinPill && (
               <TooltipProvider delayDuration={200}>
                 <Tooltip>
