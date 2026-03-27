@@ -27,6 +27,5 @@ Examples:
 
 Notes:
   - setup is idempotent — re-running it with the same agent updates the existing schedule
-  - Schedules are created disabled by default; use --enable or enable separately
-  - Use "zero preference --timezone" to set your default timezone first`,
+  - Schedules are created disabled by default; use --enable or enable separately`,
   );

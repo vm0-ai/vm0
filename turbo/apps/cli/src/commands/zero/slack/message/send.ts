@@ -17,12 +17,10 @@ export const sendCommand = new Command()
 Examples:
   Simple message:        zero slack message send -c C01234 -t "Hello!"
   Reply in thread:       zero slack message send -c C01234 --thread 1234567890.123456 -t "reply"
-  Pipe from stdin:       echo "report" | zero slack message send -c C01234
   Rich blocks:           zero slack message send -c C01234 --blocks '[{"type":"section","text":{"type":"mrkdwn","text":"*Bold*"}}]'
 
 Notes:
-  - Either --text or --blocks is required; both can be used together
-  - When --text is omitted, stdin is read automatically if piped`,
+  - Either --text or --blocks is required; both can be used together`,
   )
   .action(
     withErrorHandler(

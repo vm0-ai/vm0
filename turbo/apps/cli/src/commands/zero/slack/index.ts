@@ -10,6 +10,5 @@ export const zeroSlackCommand = new Command()
     `
 Examples:
   Send a message:        zero slack message send -c <channel-id> -t "Hello!"
-  Reply in a thread:     zero slack message send -c <channel-id> --thread <ts> -t "reply"
-  Pipe content:          echo "report" | zero slack message send -c <channel-id>`,
+  Reply in a thread:     zero slack message send -c <channel-id> --thread <ts> -t "reply"`,
   );
