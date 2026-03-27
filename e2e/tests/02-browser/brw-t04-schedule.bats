@@ -80,17 +80,27 @@ teardown_file() {
   wait_for_text_gone "Loading your workspace" 30 || true
   step_screenshot "schedule-page"
 
+  # Wait for the "Add schedule" button to appear before clicking (the button
+  # may load async after the overlay clears).
+  wait_for_text "Add schedule" 30 || true
+
   # Click "Add schedule" — try role-based find first (more reliable under load),
-  # then fall back to interactive snapshot ref-based click.
+  # then fall back to text-based find.
   echo "# Clicking Add schedule..." >&3
   local btn_clicked=false
-  for _i in $(seq 1 20); do
+  for _i in $(seq 1 30); do
     if agent-browser find role button click --name "Add schedule" 2>/dev/null; then
       btn_clicked=true
       break
     fi
     sleep 1
   done
+  if [[ "$btn_clicked" != "true" ]]; then
+    # Fallback: try text-based find in case the accessible name differs
+    if agent-browser find text "Add schedule" click 2>/dev/null; then
+      btn_clicked=true
+    fi
+  fi
   assert [ "$btn_clicked" = "true" ]
   agent-browser wait 1000
 
