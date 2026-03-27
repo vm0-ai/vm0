@@ -299,17 +299,13 @@ teardown_file() {
   # The editor doesn't reliably map to a textbox role in the accessibility tree,
   # so we use a CSS selector to find and click it directly.
   agent-browser find first ".ProseMirror" click
-  agent-browser wait 500
+  agent-browser wait 1000
 
-  # Type test content
-  local test_chars="E2E test instructions"
-  for char in $(echo "$test_chars" | grep -o .); do
-    if [[ "$char" == " " ]]; then
-      agent-browser press "Space"
-    else
-      agent-browser press "$char"
-    fi
-  done
+  # Move to end of document and press Enter to add a newline.
+  # This is more reliable than typing characters one-by-one and ensures
+  # ProseMirror registers the change and triggers the unsaved state.
+  agent-browser press "Control+End"
+  agent-browser press "Enter"
   agent-browser wait 1000
 
   # Wait for unsaved bar
