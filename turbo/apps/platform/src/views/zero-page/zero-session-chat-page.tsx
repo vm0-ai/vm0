@@ -53,9 +53,6 @@ import {
   zeroChatRunStatus$,
   zeroChatQueuePosition$,
   cancelActiveRun$,
-  zeroChatQueuedMessage$,
-  queueZeroChatMessage$,
-  withdrawQueuedMessage$,
   zeroChatThinkingMessage$,
 } from "../../signals/zero-page/zero-chat.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
@@ -105,9 +102,6 @@ export function ZeroSessionChatPage({
   const clearInput = useSet(clearZeroChatInput$);
   const send = useSet(sendZeroChatMessage$);
   const cancelRun = useSet(cancelActiveRun$);
-  const queuedMessage = useGet(zeroChatQueuedMessage$);
-  const queueMessage = useSet(queueZeroChatMessage$);
-  const withdraw = useSet(withdrawQueuedMessage$);
   const pageSignal = useGet(pageSignal$);
 
   // Pin pill
@@ -135,12 +129,8 @@ export function ZeroSessionChatPage({
   };
 
   const handleSend = (text: string, opts?: { modelProvider: string }) => {
-    if (sending) {
-      queueMessage(text, opts);
-    } else {
-      clearInput();
-      detach(send(text, opts, pageSignal), Reason.DomCallback);
-    }
+    clearInput();
+    detach(send(text, opts, pageSignal), Reason.DomCallback);
   };
 
   return (
@@ -275,8 +265,6 @@ export function ZeroSessionChatPage({
               onSend={handleSend}
               sending={sending}
               onCancel={() => void cancelRun(pageSignal)}
-              queuedMessage={queuedMessage}
-              onWithdraw={withdraw}
               displayName={displayName}
               autoFocus={messages.length === 0}
             />
