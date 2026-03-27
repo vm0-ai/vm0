@@ -583,12 +583,15 @@ async function handleAuditRun(
     )
     .limit(1);
 
-  if (!connection) {
-    await client.chat.postEphemeral({
+  const postNoPermission = () =>
+    client.chat.postEphemeral({
       channel: channelId,
       user: slackUserId,
       text: "You don't have permission to view this audit information.",
     });
+
+  if (!connection) {
+    await postNoPermission();
     return;
   }
 
@@ -606,11 +609,7 @@ async function handleAuditRun(
     .limit(1);
 
   if (!run) {
-    await client.chat.postEphemeral({
-      channel: channelId,
-      user: slackUserId,
-      text: "You don't have permission to view this audit information.",
-    });
+    await postNoPermission();
     return;
   }
 
