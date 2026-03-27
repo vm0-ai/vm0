@@ -69,8 +69,21 @@ teardown_file() {
   local snap
   snap=$(full_snapshot)
 
+  # Verify Create teammate button via interactive snapshot (the button has
+  # composite content with an icon, so it does not appear in the text snapshot
+  # used by wait_for_text — use the interactive snapshot instead).
   echo "# Verifying Create teammate button..." >&3
-  wait_for_text "Create teammate" 20
+  local btn_found=false
+  for _i in $(seq 1 30); do
+    local snap_i
+    snap_i=$(agent-browser snapshot -i 2>/dev/null || true)
+    if echo "$snap_i" | grep -qi 'Create teammate'; then
+      btn_found=true
+      break
+    fi
+    sleep 1
+  done
+  assert [ "$btn_found" = "true" ]
 
   echo "# Team page verified!" >&3
 }

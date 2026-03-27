@@ -164,7 +164,13 @@ teardown_file() {
 }
 
 @test "navigate to agent settings and verify tabs" {
-  # Navigate to /team fresh to clear any leftover dialog state from agent creation
+  # The agent creation test can run for 60-90 seconds. Restart the browser
+  # daemon to recover from any unresponsive state before navigating.
+  echo "# Restarting browser daemon for clean state..." >&3
+  agent-browser close 2>/dev/null || true
+  sleep 2
+  sign_in_via_token_on_app
+
   echo "# Navigating to team page..." >&3
   navigate_to_app_page "/team"
   wait_for_text "$AGENT_NAME" 40

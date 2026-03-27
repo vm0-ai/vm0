@@ -223,7 +223,7 @@ describe("/api/cli/auth/test-token", () => {
       expect(response.status).toBe(200);
       expect(data.access_token).toMatch(/^vm0_pat_/);
       expect(data.user_id).toBe("user_e2e_serial");
-      expect(data.org_slug).toBe("test-org");
+      expect(data.org_slug).toBe("test-org-serial");
     });
 
     it("calls Clerk with correct email address", async () => {

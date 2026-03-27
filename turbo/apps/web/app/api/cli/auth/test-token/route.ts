@@ -102,7 +102,14 @@ async function ensureTestOrg(userId: string): Promise<{ slug: string }> {
 
   // User has no Clerk org — use sentinel orgId with org_cache + membership cache
   const sentinelOrgId = `org_test_${userId}`;
-  const slug = "test-org";
+  // Derive a per-user slug so that different test variants (serial, runner, …)
+  // each get a unique entry in org_cache. A shared slug causes getOrgBySlug to
+  // return a non-deterministic row when two variants share the same slug, which
+  // can give the runner variant the serial variant's orgId and break auth.
+  const slugSuffix = userId.startsWith("user_e2e_")
+    ? userId.slice("user_e2e_".length)
+    : userId;
+  const slug = `test-org-${slugSuffix}`;
   await globalThis.services.db
     .insert(orgCache)
     .values({
@@ -110,7 +117,10 @@ async function ensureTestOrg(userId: string): Promise<{ slug: string }> {
       slug,
       cachedAt: farFuture,
     })
-    .onConflictDoNothing();
+    .onConflictDoUpdate({
+      target: orgCache.orgId,
+      set: { slug, cachedAt: farFuture },
+    });
   await globalThis.services.db
     .insert(orgMetadata)
     .values({ orgId: sentinelOrgId })
