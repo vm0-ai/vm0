@@ -113,8 +113,9 @@ export const handleSlackUrlParams$ = command((_ctx, _signal: AbortSignal) => {
     toast.success("Slack connected successfully");
     window.history.replaceState({}, "", window.location.pathname);
   }
-  if (params.get("error")) {
-    toast.error(params.get("error")!);
+  const error = params.get("error");
+  if (error) {
+    toast.error(error);
     window.history.replaceState({}, "", window.location.pathname);
   }
 });
