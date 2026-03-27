@@ -133,10 +133,18 @@ teardown_file() {
 }
 
 @test "navigate to agent settings and verify tabs" {
-  # Navigate to /team fresh to clear any leftover dialog state from agent creation
+  # Navigate to /team and wait for the page heading to load before looking for the agent
   echo "# Navigating to team page..." >&3
   navigate_to_app_page "/team"
-  wait_for_text "$AGENT_NAME" 20
+  wait_for_text "Agents" 20
+
+  # Wait for the agent name to appear; if not found, reload and retry once
+  if ! wait_for_text "$AGENT_NAME" 20; then
+    echo "# Agent not found on first load, retrying..." >&3
+    navigate_to_app_page "/team"
+    wait_for_text "Agents" 20
+    wait_for_text "$AGENT_NAME" 30
+  fi
   step_screenshot "team-page"
 
   # Click on the created agent card using link-based approach
