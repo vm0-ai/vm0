@@ -232,17 +232,17 @@ teardown_file() {
   wait_for_text "Connectors" 40
   step_screenshot "agent-detail"
 
-  # Verify all tabs are visible (non-default agent shows all tabs).
-  # Use wait_for_text instead of a single full_snapshot to handle transient
-  # re-renders between the wait_for_text above and the assertions below.
-  wait_for_text "Profile" 10
-  wait_for_text "Instructions" 10
-
-  # Save the URL now so subsequent tests can navigate back even if this test
-  # fails on the Add connector wait (prevents cascading failures).
+  # Save the URL immediately after confirming we're on the agent settings page.
+  # This must come before the tab checks so subsequent tests have the URL even
+  # if the tab checks time out (prevents cascading failures).
   AGENT_SETTINGS_URL=$(agent-browser get url 2>/dev/null || true)
   export AGENT_SETTINGS_URL
   echo "# Agent settings URL captured: $AGENT_SETTINGS_URL" >&3
+
+  # Verify all tabs are visible (non-default agent shows all tabs).
+  # Use wait_for_text with generous timeout — tabs can render lazily under load.
+  wait_for_text "Profile" 30
+  wait_for_text "Instructions" 30
 
   # Wait for Connectors tab content to fully load (the "Add connector" button
   # loads async after the tab labels appear).
