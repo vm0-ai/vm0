@@ -61,6 +61,7 @@ export async function GET() {
       displayName: zeroAgents.displayName,
       description: zeroAgents.description,
       sound: zeroAgents.sound,
+      avatarUrl: zeroAgents.avatarUrl,
     })
     .from(agentComposes)
     .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
@@ -73,6 +74,7 @@ export async function GET() {
       displayName: c.displayName ?? null,
       description: c.description ?? null,
       sound: c.sound ?? null,
+      avatarUrl: c.avatarUrl ?? null,
       headVersionId: c.headVersionId,
       updatedAt: c.updatedAt.toISOString(),
     })),

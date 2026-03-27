@@ -1,5 +1,7 @@
-import { useGet } from "ccstate-react";
+import { useGet, useLastResolved } from "ccstate-react";
 import { agentAvatarOverrides$ } from "../../signals/zero-page/zero-agent-avatars.ts";
+import { agents$ } from "../../signals/zero-page/agents-list.ts";
+import { resolveAvatarUrl } from "./avatar-utils.ts";
 import avatar1Img from "./assets/avatar_1.png";
 import avatar2Img from "./assets/avatar_2.png";
 import avatar3Img from "./assets/avatar_3.png";
@@ -21,14 +23,21 @@ function getAgentAvatar(id: string): string {
 }
 
 /**
- * Reactive hook that returns the agent avatar, respecting any user override.
+ * Reactive hook that returns the agent avatar.
+ * Priority: DB-persisted avatarUrl > localStorage override > hash-based default.
  */
 export function useAgentAvatar(id: string): string {
+  const agents = useLastResolved(agents$) ?? [];
   const overrides = useGet(agentAvatarOverrides$);
+  const agent = agents.find((a) => a.id === id);
+  const dbAvatar = resolveAvatarUrl(agent?.avatarUrl);
+  if (dbAvatar) {
+    return dbAvatar;
+  }
   return overrides[id] ?? getAgentAvatar(id);
 }
 
-/** Reactive avatar image that respects user overrides. */
+/** Reactive avatar image that respects DB-persisted and user overrides. */
 export function AgentAvatarImg({
   name,
   alt,

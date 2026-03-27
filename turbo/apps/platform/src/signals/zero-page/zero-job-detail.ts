@@ -279,6 +279,7 @@ interface ZeroJobSettingsUpdate {
   displayName?: string;
   description?: string;
   sound?: string;
+  avatarUrl?: string | null;
 }
 
 export const zeroJobUpdateSettings$ = command(

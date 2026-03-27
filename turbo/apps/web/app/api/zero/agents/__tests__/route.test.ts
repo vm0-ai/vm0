@@ -750,6 +750,93 @@ describe("Zero Agents API", () => {
     });
   });
 
+  describe("avatarUrl CRUD", () => {
+    it("should set avatarUrl via PATCH and persist it", async () => {
+      const created = await (
+        await postAgent(
+          { connectors: [], displayName: "AvatarBot" },
+          testCliToken,
+          testOrgSlug,
+        )
+      ).json();
+
+      const patchRes = await patchAgent(
+        created.agentId,
+        { avatarUrl: "preset:2" },
+        testCliToken,
+        testOrgSlug,
+      );
+      expect(patchRes.status).toBe(200);
+      const patched = await patchRes.json();
+      expect(patched.avatarUrl).toBe("preset:2");
+
+      // Verify GET returns the same value
+      const getRes = await getAgent(created.agentId, testCliToken, testOrgSlug);
+      expect(getRes.status).toBe(200);
+      const fetched = await getRes.json();
+      expect(fetched.avatarUrl).toBe("preset:2");
+    });
+
+    it("should clear avatarUrl by setting null", async () => {
+      const created = await (
+        await postAgent(
+          { connectors: [], displayName: "ClearBot" },
+          testCliToken,
+          testOrgSlug,
+        )
+      ).json();
+
+      // Set avatar first
+      await patchAgent(
+        created.agentId,
+        { avatarUrl: "https://example.com/avatar.png" },
+        testCliToken,
+        testOrgSlug,
+      );
+
+      // Clear it
+      const clearRes = await patchAgent(
+        created.agentId,
+        { avatarUrl: null },
+        testCliToken,
+        testOrgSlug,
+      );
+      expect(clearRes.status).toBe(200);
+      const cleared = await clearRes.json();
+      expect(cleared.avatarUrl).toBeNull();
+    });
+
+    it("should preserve avatarUrl on unrelated partial update", async () => {
+      const created = await (
+        await postAgent(
+          { connectors: [], displayName: "KeepBot" },
+          testCliToken,
+          testOrgSlug,
+        )
+      ).json();
+
+      // Set avatar
+      await patchAgent(
+        created.agentId,
+        { avatarUrl: "preset:4" },
+        testCliToken,
+        testOrgSlug,
+      );
+
+      // Update only displayName — avatarUrl should be preserved
+      const patchRes = await patchAgent(
+        created.agentId,
+        { displayName: "Renamed" },
+        testCliToken,
+        testOrgSlug,
+      );
+      expect(patchRes.status).toBe(200);
+      const patched = await patchRes.json();
+      expect(patched.displayName).toBe("Renamed");
+      expect(patched.avatarUrl).toBe("preset:4");
+    });
+  });
+
   describe("DELETE /api/zero/agents/:name", () => {
     it("should delete an agent and return 204", async () => {
       const created = await (

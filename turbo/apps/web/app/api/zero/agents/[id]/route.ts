@@ -85,6 +85,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
         description: agent.description ?? null,
         displayName: agent.displayName ?? null,
         sound: agent.sound ?? null,
+        avatarUrl: agent.avatarUrl ?? null,
         connectors: agent.connectors,
         firewallPolicies: agent.firewallPolicies ?? null,
       },
@@ -171,6 +172,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
         displayName: body.displayName ?? null,
         description: body.description ?? null,
         sound: body.sound ?? null,
+        avatarUrl: body.avatarUrl ?? null,
         connectors: body.connectors,
       })
       .onConflictDoUpdate({
@@ -185,6 +187,9 @@ const router = tsr.router(zeroAgentsByIdContract, {
             description: body.description,
           }),
           ...(body.sound !== undefined && { sound: body.sound }),
+          ...(body.avatarUrl !== undefined && {
+            avatarUrl: body.avatarUrl,
+          }),
         },
       });
 
@@ -204,6 +209,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
         description: agent?.description ?? null,
         displayName: agent?.displayName ?? null,
         sound: agent?.sound ?? null,
+        avatarUrl: agent?.avatarUrl ?? null,
         connectors: body.connectors,
         firewallPolicies: agent?.firewallPolicies ?? null,
       },
@@ -262,6 +268,9 @@ const router = tsr.router(zeroAgentsByIdContract, {
           description: body.description,
         }),
         ...(body.sound !== undefined && { sound: body.sound }),
+        ...(body.avatarUrl !== undefined && {
+          avatarUrl: body.avatarUrl,
+        }),
       })
       .where(eq(zeroAgents.id, params.id));
 
@@ -281,6 +290,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
         description: agent?.description ?? null,
         displayName: agent?.displayName ?? null,
         sound: agent?.sound ?? null,
+        avatarUrl: agent?.avatarUrl ?? null,
         connectors: agent?.connectors ?? [],
         firewallPolicies: agent?.firewallPolicies ?? null,
       },

@@ -70,6 +70,7 @@ export const apiAgentsHandlers = [
       description: null,
       displayName: null,
       sound: null,
+      avatarUrl: null,
       connectors: [],
     });
   }),

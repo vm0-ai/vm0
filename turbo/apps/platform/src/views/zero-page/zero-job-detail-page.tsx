@@ -72,6 +72,7 @@ import { navigateTo$ } from "../../signals/route.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { AGENT_AVATARS, useAgentAvatar } from "./zero-sidebar.tsx";
 import { setAgentAvatar$ } from "../../signals/zero-page/zero-agent-avatars.ts";
+import { resolveAvatarUrl } from "./avatar-utils.ts";
 import { agents$ } from "../../signals/zero-page/agents-list.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { ZeroNoPermissionIllustration } from "./components/zero-no-permission-illustration.tsx";
@@ -246,12 +247,14 @@ function extractAgentFields(
     displayName?: string | null;
     description?: string | null;
     sound?: string | null;
+    avatarUrl?: string | null;
   },
 ) {
   return {
     description: listItem?.description ?? detail?.description ?? "",
     framework: null,
     sound: listItem?.sound ?? detail?.sound ?? "professional",
+    avatarUrl: listItem?.avatarUrl ?? detail?.avatarUrl ?? null,
     displayName:
       listItem?.displayName ??
       detail?.displayName ??
@@ -401,7 +404,7 @@ export function ZeroJobDetailPage({
   const agents = useLastResolved(agents$) ?? [];
   const listItem = agents.find((a) => a.id === agentId);
 
-  const { description, displayName, sound } = extractAgentFields(
+  const { description, displayName, sound, avatarUrl } = extractAgentFields(
     detail,
     agentId,
     listItem,
@@ -440,8 +443,9 @@ export function ZeroJobDetailPage({
 
   const agentAvatar = useAgentAvatar(agentId);
   const setAgentAvatarCmd = useSet(setAgentAvatar$);
-  // Default agent uses the shared zero avatar; sub-agents use their own override.
-  const currentAvatar = zeroAvatarSrc ?? agentAvatar;
+  // Prefer DB-persisted avatar, then default agent avatar, then localStorage override.
+  const resolvedDbAvatar = resolveAvatarUrl(avatarUrl);
+  const currentAvatar = resolvedDbAvatar ?? zeroAvatarSrc ?? agentAvatar;
   const cycleAvatar =
     onCycleAvatar ??
     (() => {
@@ -542,10 +546,11 @@ export function ZeroJobDetailPage({
 
         {activeTab === "profile" && (
           <ZeroSettingsTab
-            key={`${displayName}\0${description}\0${resolvedSound}`}
+            key={`${displayName}\0${description}\0${resolvedSound}\0${avatarUrl}`}
             displayName={displayName}
             description={description ?? ""}
             sound={resolvedSound}
+            avatarUrl={avatarUrl}
             saving={saving}
             updateSettings$={zeroJobUpdateSettings$}
             inputId="job-agent-name"
