@@ -12,7 +12,10 @@ type Tx = Parameters<
 
 /**
  * Insert a new credit expires record.
- * Uses ON CONFLICT DO NOTHING on (org_id, stripe_invoice_id) for idempotency.
+ * Uses ON CONFLICT DO NOTHING for idempotency — relies on the partial unique index
+ * uq_credit_expires_invoice on (org_id, stripe_invoice_id) where stripe_invoice_id IS NOT NULL.
+ * No explicit target is specified because PostgreSQL cannot use partial indexes as
+ * conflict targets via column notation; the unconditional DO NOTHING form works instead.
  */
 export async function createExpiresRecord(
   tx: Tx,
@@ -34,9 +37,7 @@ export async function createExpiresRecord(
       remaining: params.amount,
       expiresAt: params.expiresAt,
     })
-    .onConflictDoNothing({
-      target: [creditExpiresRecord.orgId, creditExpiresRecord.stripeInvoiceId],
-    });
+    .onConflictDoNothing();
 }
 
 /**
