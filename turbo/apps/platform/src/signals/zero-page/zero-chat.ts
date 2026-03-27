@@ -194,44 +194,6 @@ export const cancelActiveRun$ = command(
   },
 );
 
-// ---------------------------------------------------------------------------
-// Queued message — allows the user to queue a follow-up while agent is busy
-// ---------------------------------------------------------------------------
-
-interface QueuedMessage {
-  text: string;
-  modelProvider?: string;
-}
-
-const internalQueuedMessage$ = state<QueuedMessage | null>(null);
-export const zeroChatQueuedMessage$ = computed((get) =>
-  get(internalQueuedMessage$),
-);
-
-/** Queue a message to be sent automatically once the current run completes. */
-export const queueZeroChatMessage$ = command(
-  ({ get, set }, text: string, options?: { modelProvider?: string }) => {
-    if (get(internalQueuedMessage$)) {
-      return;
-    }
-    set(internalQueuedMessage$, {
-      text,
-      modelProvider: options?.modelProvider,
-    });
-    set(internalChatInput$, "");
-  },
-);
-
-/** Withdraw the queued message back into the input box for editing. */
-export const withdrawQueuedMessage$ = command(({ get, set }) => {
-  const queued = get(internalQueuedMessage$);
-  if (!queued) {
-    return;
-  }
-  set(internalChatInput$, queued.text);
-  set(internalQueuedMessage$, null);
-});
-
 interface EventContent {
   type: string;
   text?: string;
@@ -1085,101 +1047,37 @@ export const sendZeroChatMessage$ = command(
       return;
     }
 
-    let currentPrompt = prompt;
-    let currentOptions = options;
+    const { fullPrompt } = set(prepareUserMessage$, prompt);
 
     try {
-      while (true) {
-        const { fullPrompt } = set(prepareUserMessage$, currentPrompt);
-
-        try {
-          await set(
-            submitAndPollRun$,
-            {
-              composeId,
-              prompt: currentPrompt,
-              fullPrompt,
-              modelProvider: currentOptions?.modelProvider,
-            },
-            signal,
-          );
-        } catch (error) {
-          throwIfAbort(error);
-          L.error("Chat send error:", error);
-          const errorMsg =
-            error instanceof Error ? error.message : "Unknown error";
-          set(internalLocalMessages$, (prev) => {
-            const updated = [...prev];
-            const last = updated[updated.length - 1];
-            if (last && last.role === "assistant") {
-              updated[updated.length - 1] = { ...last, error: errorMsg };
-            } else {
-              // Error before assistant message was created — add one
-              updated.push({
-                id: crypto.randomUUID(),
-                role: "assistant",
-                content: "",
-                error: errorMsg,
-              });
-            }
-            return updated;
-          });
-          return;
-        }
-
-        // Check for pending (queued) message
-        const pending = get(internalQueuedMessage$);
-        if (!pending) {
-          break;
-        }
-        currentPrompt = pending.text;
-        currentOptions = pending.modelProvider
-          ? { modelProvider: pending.modelProvider }
-          : undefined;
-      const runId = await startAgentRun(
-        createClient,
-        composeId,
-        fullPrompt,
-        sessionId,
-        modelProvider,
+      await set(
+        submitAndPollRun$,
+        {
+          composeId,
+          prompt,
+          fullPrompt,
+          modelProvider: options?.modelProvider,
+        },
+        signal,
       );
-      signal.throwIfAborted();
-
-      combinedSignal.throwIfAborted();
-
-      // Associate run to thread (must complete before polling so refresh works)
-      await addRunToThread(createClient, threadId, runId);
-      signal.throwIfAborted();
-
-      // Refresh sidebar after run is associated (has preview now)
-      set(fetchZeroSessionList$, combinedSignal).catch((error: unknown) => {
-        if (!isAbortError(error)) {
-          L.error("Failed to refresh chat list:", error);
-        }
-      });
-
-      set(internalLocalMessages$, (prev) => {
-        const updated = [...prev];
-        updated[updated.length - 1] = {
-          ...updated[updated.length - 1],
-          runId,
-        };
-        return updated;
-      });
-
-      // Loop phase: poll until terminal
-      await set(startLoop$, { runId }, combinedSignal);
     } catch (error) {
-      // Errors are stored in message state to display inline in the chat thread
-      // rather than propagating — this is intentional UX for non-abort errors.
       throwIfAbort(error);
       L.error("Chat send error:", error);
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
       set(internalLocalMessages$, (prev) => {
         const updated = [...prev];
-        updated[updated.length - 1] = {
-          ...updated[updated.length - 1],
-          error: error instanceof Error ? error.message : "Unknown error",
-        };
+        const last = updated[updated.length - 1];
+        if (last && last.role === "assistant") {
+          updated[updated.length - 1] = { ...last, error: errorMsg };
+        } else {
+          // Error before assistant message was created — add one
+          updated.push({
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: "",
+            error: errorMsg,
+          });
+        }
         return updated;
       });
     }

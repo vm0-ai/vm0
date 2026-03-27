@@ -52,9 +52,6 @@ import {
   type UserChatMessage,
   type AssistantChatMessage,
   cancelActiveRun$,
-  zeroChatQueuedMessage$,
-  queueZeroChatMessage$,
-  withdrawQueuedMessage$,
 } from "../../signals/zero-page/zero-chat.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { Link } from "../router/link.tsx";
