@@ -128,14 +128,7 @@ teardown_file() {
   # Creation may redirect to agent settings; empty snapshots (daemon crash)
   # can falsely pass wait_for_text_gone. Explicit /team navigation is reliable.
   wait_for_text_gone "Create a new teammate" 30
-  # Navigate to /team to find the new agent. If daemon crashed, restart it.
-  if ! navigate_to_app_page "/team" 2>/dev/null; then
-    echo "# Navigation failed after creation, restarting daemon..." >&3
-    restart_browser_daemon
-    create_clerk_sign_in_token
-    sign_in_via_token_on_app
-    navigate_to_app_page "/team"
-  fi
+  navigate_to_app_page "/team"
   wait_for_text "$AGENT_NAME" 60
   step_screenshot "after-create"
   echo "# Agent created!" >&3

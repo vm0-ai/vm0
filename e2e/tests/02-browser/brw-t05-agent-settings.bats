@@ -133,7 +133,7 @@ teardown_file() {
 
   # Wait for any global loading overlay to clear before clicking (overlay
   # blocks clicks even when the button is found via accessibility).
-  wait_for_text_gone "Loading your workspace" 60 || true
+  wait_for_text_gone "Loading your workspace" 30 || true
 
   # Click Create teammate — use role-based find which works more reliably
   # than text-based find for buttons with composite content
@@ -176,13 +176,7 @@ teardown_file() {
   # Creation may redirect to agent settings; empty snapshots (daemon crash)
   # can falsely pass wait_for_text_gone. Explicit /team navigation is reliable.
   wait_for_text_gone "Create a new teammate" 30
-  if ! navigate_to_app_page "/team" 2>/dev/null; then
-    echo "# Navigation failed after creation, restarting daemon..." >&3
-    restart_browser_daemon
-    create_clerk_sign_in_token
-    sign_in_via_token_on_app
-    navigate_to_app_page "/team"
-  fi
+  navigate_to_app_page "/team"
   wait_for_text "$AGENT_NAME" 60
   step_screenshot "agent-created"
   echo "# Agent created: $AGENT_NAME" >&3

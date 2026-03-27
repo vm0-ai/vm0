@@ -382,7 +382,10 @@ navigate_to_app_page() {
   local path="$1"
   local app_url
   app_url="$(derive_app_url)"
-  agent-browser open "${app_url}${path}" --ignore-https-errors
+  # || true: agent-browser may exit non-zero for warnings (e.g., --ignore-https-errors
+  # is silently ignored when the daemon is already running) even when the navigation
+  # itself succeeds. Always return 0 so callers with `if !` do not fire false recovery.
+  agent-browser open "${app_url}${path}" --ignore-https-errors 2>/dev/null || true
   sleep 3
 }
 
