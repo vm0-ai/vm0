@@ -81,17 +81,14 @@ teardown_file() {
   done
   assert [ "$dialog_open" = "true" ]
   step_screenshot "add-schedule-dialog"
-  echo "# Creation dialog opened!" >&3
-}
 
-@test "fill and submit schedule creation form" {
-  # Fill the prompt textarea
+  # Fill and submit the form in the same test — dialog state does not persist
+  # reliably across BATS test boundaries.
   echo "# Filling schedule prompt: $SCHEDULE_PROMPT" >&3
   agent-browser find label "Prompt" fill "$SCHEDULE_PROMPT"
   agent-browser wait 500
   step_screenshot "schedule-form-filled"
 
-  # Click Create button
   echo "# Clicking Create..." >&3
   agent-browser find role button click --name "Create"
 
@@ -101,10 +98,10 @@ teardown_file() {
   # by waiting briefly and taking a screenshot for debugging.
   agent-browser wait 5000
   step_screenshot "after-create-click"
-  echo "# Create button clicked, schedule creation initiated!" >&3
+  echo "# Schedule creation form submitted!" >&3
 }
 
-@test "verify schedule list page still loads after creation" {
+@test "verify schedule list page loads" {
   # After form submission, verify the schedule list page is still functional.
   echo "# Verifying schedule list page loads..." >&3
   agent-browser open "${APP_URL}/schedule" --ignore-https-errors

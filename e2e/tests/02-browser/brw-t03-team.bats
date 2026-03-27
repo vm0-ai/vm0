@@ -100,18 +100,20 @@ teardown_file() {
     agent-browser find text "Create" click
   fi
 
-  # Wait for dialog to close before checking the team page list
+  # Wait for dialog to close, then immediately verify agent appears.
+  # Keep both waits in the same test — splitting across tests causes the
+  # agent name to be missed when the browser navigates post-creation.
   wait_for_text_gone "Create a new teammate" 30
+  wait_for_text "$AGENT_NAME" 40
   step_screenshot "after-create"
   echo "# Agent created!" >&3
 }
 
 @test "verify new agent appears on team page" {
-  # After dialog closes, browser stays on /team with the new agent in the list.
-  # Do NOT re-navigate — a fresh page load may serve a cached agent list that
-  # does not include the just-created agent, causing a spurious timeout.
+  # Agent was verified in the create test; confirm the current page still
+  # shows it (lightweight: just poll once and take a screenshot).
   echo "# Verifying agent appears on team page..." >&3
-  wait_for_text "$AGENT_NAME" 40
+  wait_for_text "$AGENT_NAME" 20
   step_screenshot "agent-visible"
 
   local snap
