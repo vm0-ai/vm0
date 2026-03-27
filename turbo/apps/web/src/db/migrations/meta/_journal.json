@@ -1450,6 +1450,13 @@
       "when": 1774828800012,
       "tag": "0206_fix_credit_expires_null_invoice_index",
       "breakpoints": true
+    },
+    {
+      "idx": 207,
+      "version": "7",
+      "when": 1774828800013,
+      "tag": "0207_slack_org_bot_scopes",
+      "breakpoints": true
     }
   ]
 }
