@@ -170,13 +170,13 @@ teardown_file() {
   # not yet see the onboarding wizard, give the app extra time and check again.
   if [[ "$org_created" == "true" && "$needs_onboarding" != "true" ]]; then
     echo "# Org was just created — waiting for onboarding redirect..." >&3
-    for _i in $(seq 1 20); do
+    for _i in $(seq 1 60); do
       snap=$(full_snapshot)
       if contains "$snap" "Name your workspace\|Choose your tools\|Connect your apps\|Where would you like to work"; then
         needs_onboarding=true
         break
       fi
-      if contains "$snap" "Ask me to automate workflows"; then
+      if contains "$snap" "Ask me to automate workflows\|Ideas.*use cases\|Browse use cases"; then
         echo "# Already onboarded (post-org-creation check)" >&3
         break
       fi
@@ -280,7 +280,8 @@ teardown_file() {
   fi
 
   local chat_loaded=false
-  for _i in $(seq 1 60); do
+  local onboarding_completed_in_loop=false
+  for _i in $(seq 1 90); do
     snap=$(full_snapshot)
     if contains "$snap" "Ask me to automate workflows"; then
       chat_loaded=true
@@ -289,6 +290,34 @@ teardown_file() {
     if contains "$snap" "Ideas.*use cases\|Browse use cases"; then
       chat_loaded=true
       break
+    fi
+    # Handle onboarding wizard appearing mid-loop (post-org-creation redirect can be slow)
+    if [[ "$onboarding_completed_in_loop" != "true" ]] && contains "$snap" "Name your workspace\|Choose your tools\|Connect your apps\|Where would you like to work"; then
+      echo "# Onboarding wizard detected in chat polling loop — completing it..." >&3
+      if contains "$snap" "Name your workspace"; then
+        agent-browser find placeholder "e.g. Acme Corp" fill "Pro Upgrade Test"
+        agent-browser wait 500
+        agent-browser find text "Next" click
+        agent-browser wait 2000
+        snap=$(full_snapshot)
+      fi
+      if contains "$snap" "Choose your tools"; then
+        agent-browser find text "Next" click
+        agent-browser wait 2000
+        snap=$(full_snapshot)
+      fi
+      if contains "$snap" "Connect your apps"; then
+        agent-browser find text "Next" click
+        agent-browser wait 2000
+        snap=$(full_snapshot)
+      fi
+      if contains "$snap" "Where would you like to work\|Continue in web"; then
+        agent-browser find text "Continue in web" click
+        agent-browser wait 8000
+      fi
+      onboarding_completed_in_loop=true
+      echo "# Onboarding completed in loop, continuing to wait for chat page..." >&3
+      continue
     fi
     sleep 1
   done
