@@ -200,6 +200,23 @@ impl CowDevice {
         self.teardown(false)
     }
 
+    /// Schedule deferred removal: remove dm target, detach COW loop, delete COW file.
+    ///
+    /// Uses `dmsetup remove --force` (`DM_DEFERRED_REMOVE`) so the kernel
+    /// removes the target when all openers release their file descriptors.
+    /// Use as a last resort after [`destroy`] retries are exhausted.
+    pub fn destroy_deferred(&mut self) -> Result<()> {
+        self.teardown_deferred(true)
+    }
+
+    /// Schedule deferred removal but keep the COW file for snapshot preservation.
+    ///
+    /// Uses `dmsetup remove --force` (`DM_DEFERRED_REMOVE`).
+    /// Use as a last resort after [`destroy_keep_cow`] retries are exhausted.
+    pub fn destroy_deferred_keep_cow(&mut self) -> Result<()> {
+        self.teardown_deferred(false)
+    }
+
     /// Mark the device as inactive without performing cleanup.
     ///
     /// Use this after exhausting retries on [`destroy`] — the caller has
@@ -216,6 +233,39 @@ impl CowDevice {
     // -----------------------------------------------------------------------
     // Internal helpers
     // -----------------------------------------------------------------------
+
+    fn teardown_deferred(&mut self, delete_cow_file: bool) -> Result<()> {
+        if !self.active {
+            return Err(BlockCowError::NotActive(self.id.clone()));
+        }
+
+        let cow_name = format!("cow-{}", self.id);
+
+        // Drop our dm holder fd so we don't contribute to the open count.
+        self._device_holder = None;
+        dmsetup::remove_deferred(&cow_name)?;
+
+        // Past the point of no return — the kernel will remove the target
+        // when the last opener (Firecracker) releases its fd.
+        self.active = false;
+
+        // Best-effort: `losetup -d` on a busy loop device sets AUTOCLEAR
+        // and returns success.  The kernel auto-detaches the loop when dm
+        // releases its reference.
+        let _ = self.cow_loop.detach();
+
+        if delete_cow_file {
+            let _ = fs::remove_file(&self.cow_file);
+        }
+
+        info!(
+            id = self.id,
+            keep_cow = !delete_cow_file,
+            "COW device scheduled for deferred removal"
+        );
+
+        Ok(())
+    }
 
     fn teardown(&mut self, delete_cow_file: bool) -> Result<()> {
         if !self.active {
@@ -286,7 +336,10 @@ impl Drop for CowDevice {
                 "CowDevice dropped without calling destroy() — attempting best-effort cleanup"
             );
             if let Err(e) = self.teardown(true) {
-                warn!(id = self.id, error = %e, "best-effort teardown in Drop failed");
+                warn!(id = self.id, error = %e, "best-effort teardown failed, trying deferred removal");
+                if let Err(e) = self.teardown_deferred(true) {
+                    warn!(id = self.id, error = %e, "deferred removal also failed");
+                }
             }
         }
     }

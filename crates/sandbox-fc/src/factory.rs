@@ -399,9 +399,18 @@ impl SandboxFactory for FirecrackerFactory {
                     if attempt + 1 < DESTROY_RETRIES {
                         tokio::time::sleep(DESTROY_RETRY_DELAY).await;
                     } else {
-                        warn!(id = %sandbox_id, error = %e, "failed to destroy COW device after retries — skipping workspace cleanup");
-                        // Suppress the redundant Drop warning — GC will handle cleanup.
-                        sandbox.cow_device.abandon();
+                        // Last resort: schedule deferred removal. The kernel
+                        // removes the target when Firecracker releases the fd.
+                        warn!(id = %sandbox_id, error = %e, "destroy failed after retries, trying deferred removal");
+                        match sandbox.cow_device.destroy_deferred() {
+                            Ok(()) => {
+                                cow_destroyed = true;
+                            }
+                            Err(e) => {
+                                warn!(id = %sandbox_id, error = %e, "deferred removal also failed — relying on GC");
+                                sandbox.cow_device.abandon();
+                            }
+                        }
                     }
                 }
             }

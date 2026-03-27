@@ -38,3 +38,14 @@ pub fn remove(name: &str) -> Result<()> {
     command::sudo("dmsetup", &["remove", name])?;
     Ok(())
 }
+
+/// Schedule a device mapper target for deferred removal.
+///
+/// Uses `dmsetup remove --force` which sets `DM_DEFERRED_REMOVE`.
+/// The kernel removes the target automatically when all openers release
+/// their file descriptors.  Returns success immediately even if the
+/// device is currently busy.
+pub fn remove_deferred(name: &str) -> Result<()> {
+    command::sudo("dmsetup", &["remove", "--force", name])?;
+    Ok(())
+}

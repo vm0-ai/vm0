@@ -319,11 +319,13 @@ async fn run_snapshot_workflow(
                 }
             }
         }
-        if let Some(e) = last_err {
-            // Prevent Drop from attempting teardown(true) which would try to
-            // delete the COW file we want to keep. GC will handle cleanup.
-            cow_device.abandon();
-            return Err(SnapshotError::Setup(format!("destroy_keep_cow: {e}")));
+        if last_err.is_some() {
+            // Last resort: schedule deferred removal. The kernel removes the
+            // target when Firecracker releases the fd.
+            if let Err(e) = cow_device.destroy_deferred_keep_cow() {
+                cow_device.abandon();
+                return Err(SnapshotError::Setup(format!("destroy_keep_cow: {e}")));
+            }
         }
         tokio::fs::rename(&cow_file, &output.cow()).await?;
     } else {
