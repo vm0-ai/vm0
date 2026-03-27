@@ -137,8 +137,8 @@ teardown_file() {
   fi
   agent-browser wait 1000
 
-  # Wait for dialog
-  wait_for_text "Create a new teammate" 10
+  # Wait for dialog (allow extra time since parallel CI load can slow rendering)
+  wait_for_text "Create a new teammate" 30
   step_screenshot "create-dialog"
 
   # Fill agent name

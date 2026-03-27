@@ -148,9 +148,9 @@ teardown_file() {
   assert [ "$agent_found" = "true" ]
   step_screenshot "agent-visible"
 
-  local snap
-  snap=$(full_snapshot)
-  contains "$snap" "$AGENT_NAME"
+  # wait_for_text already verified the agent name is visible; no need for a
+  # second snapshot here since the agent name may appear in a toast that
+  # disappears before a fresh full_snapshot completes.
 
   local final_url
   final_url=$(agent-browser get url 2>/dev/null || true)
