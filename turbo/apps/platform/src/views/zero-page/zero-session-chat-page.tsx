@@ -168,7 +168,7 @@ export function ZeroSessionChatPage({
                     <button
                       type="button"
                       onClick={handlePin}
-                      className="absolute -top-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full border-[0.7px] border-[hsl(var(--gray-400))] bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground hover:shadow-md cursor-pointer"
+                      className="absolute -top-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full zero-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground hover:shadow-md cursor-pointer"
                       aria-label="Pin to sidebar"
                     >
                       <IconPin size={10} stroke={2} />
@@ -488,13 +488,7 @@ function RunActivityLine() {
           className="absolute left-[5.5px] top-[6px] bottom-[6px] pointer-events-none"
           aria-hidden
         >
-          <div
-            className="w-px h-full bg-border/60"
-            style={{
-              backgroundImage:
-                "repeating-linear-gradient(to bottom, transparent, transparent 2px, hsl(var(--border) / 0.6) 2px, hsl(var(--border) / 0.6) 5px)",
-            }}
-          />
+          <div className="w-px h-full bg-border/60 zero-dashed-line" />
         </div>
       )}
       {items.map((summary, idx) => {
@@ -578,13 +572,7 @@ function CollapsibleTimeline({
               className="absolute left-[5.5px] top-[6px] bottom-[6px] pointer-events-none"
               aria-hidden
             >
-              <div
-                className="w-px h-full"
-                style={{
-                  backgroundImage:
-                    "repeating-linear-gradient(to bottom, transparent, transparent 2px, hsl(var(--border) / 0.6) 2px, hsl(var(--border) / 0.6) 5px)",
-                }}
-              />
+              <div className="w-px h-full zero-dashed-line" />
             </div>
           )}
           {items.map((summary, idx) => (

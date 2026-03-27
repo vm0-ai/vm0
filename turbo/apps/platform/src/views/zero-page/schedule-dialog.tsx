@@ -140,8 +140,7 @@ function ConfirmCloseOverlay({
 }) {
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center"
-      style={{ pointerEvents: "auto" }}
+      className="fixed inset-0 z-[100] flex items-center justify-center pointer-events-auto"
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="confirm-close-title"
@@ -718,7 +717,7 @@ function ScheduleFormDialogInner({
               onChange={(e) => setPrompt(e.target.value)}
               placeholder="Describe your task and instruction"
               rows={5}
-              className="w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 resize-y min-h-[120px]"
+              className="w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 resize-y min-h-[120px]"
             />
           </div>
 

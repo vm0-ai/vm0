@@ -16,16 +16,6 @@ import {
 import { setMemberCreditCap$ } from "../../../../signals/zero-page/member-credit-caps.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 
-const sectionCardStyle = {
-  border: "0.7px solid hsl(var(--gray-400))",
-} as const;
-
-const cardBoxStyle = {
-  ...sectionCardStyle,
-  borderRadius: "0.75rem",
-  backgroundColor: "hsl(var(--card))",
-} as const;
-
 // ---------------------------------------------------------------------------
 // Credit balance bar (moved from billing tab)
 // ---------------------------------------------------------------------------
@@ -264,13 +254,13 @@ function InlineCapInput({
 
 function LoadingSkeleton() {
   return (
-    <div className="flex flex-col" style={cardBoxStyle}>
+    <div className="flex flex-col rounded-xl bg-card zero-border">
       <div className="flex items-center gap-3 px-5 py-4">
         <span className="h-7 w-7 shrink-0 rounded-lg bg-muted/50 animate-pulse" />
         <span className="h-4 w-32 rounded bg-muted/50 animate-pulse" />
         <span className="ml-auto h-4 w-16 rounded bg-muted/30 animate-pulse" />
       </div>
-      <div className="h-px bg-border/40 mx-5" />
+      <div className="h-0 zero-border-t mx-5" />
       <div className="flex items-center gap-3 px-5 py-4">
         <span className="h-7 w-7 shrink-0 rounded-lg bg-muted/50 animate-pulse" />
         <span className="h-4 w-40 rounded bg-muted/40 animate-pulse" />
@@ -336,10 +326,7 @@ export function OrgUsageTab() {
       {/* Credit balance */}
       <section className="flex flex-col gap-3">
         <h3 className="text-sm font-medium text-foreground">Credit balance</h3>
-        <div
-          className="overflow-hidden rounded-xl bg-card"
-          style={sectionCardStyle}
-        >
+        <div className="overflow-hidden rounded-xl bg-card zero-border">
           {billingLoading && !billing ? (
             <div className="px-5 py-4 space-y-2">
               <div className="h-4 w-48 rounded bg-muted/50 animate-pulse" />
@@ -381,25 +368,16 @@ export function OrgUsageTab() {
         {usageLoading && !usageData ? (
           <LoadingSkeleton />
         ) : usageError ? (
-          <div
-            className="rounded-xl bg-card px-5 py-8 text-center text-sm text-muted-foreground"
-            style={sectionCardStyle}
-          >
+          <div className="rounded-xl bg-card px-5 py-8 text-center text-sm text-muted-foreground zero-border">
             Failed to load usage. Please try again later.
           </div>
         ) : !period ? (
-          <div
-            className="rounded-xl bg-card px-5 py-8 text-center text-sm text-muted-foreground"
-            style={sectionCardStyle}
-          >
+          <div className="rounded-xl bg-card px-5 py-8 text-center text-sm text-muted-foreground zero-border">
             No active billing period. Credit usage by member is available on
             paid plans.
           </div>
         ) : members.length === 0 ? (
-          <div
-            className="flex flex-col items-center gap-2 rounded-xl bg-card px-5 py-10 text-center"
-            style={sectionCardStyle}
-          >
+          <div className="flex flex-col items-center gap-2 rounded-xl bg-card px-5 py-10 text-center zero-border">
             <IconUsers
               size={20}
               stroke={1.5}
@@ -410,10 +388,7 @@ export function OrgUsageTab() {
             </p>
           </div>
         ) : (
-          <div
-            className="overflow-hidden rounded-xl bg-card"
-            style={sectionCardStyle}
-          >
+          <div className="overflow-hidden rounded-xl bg-card zero-border">
             {/* Header */}
             <div className="grid grid-cols-[1fr_7rem_6rem_5.5rem] gap-x-4 items-center px-5 py-2.5 text-[13px] font-medium text-foreground">
               <span>Member</span>
@@ -433,7 +408,7 @@ export function OrgUsageTab() {
 
               return (
                 <div key={member.userId}>
-                  <div className="h-px bg-border/40 mx-5" />
+                  <div className="h-0 zero-border-t mx-5" />
                   <div className="grid grid-cols-[1fr_7rem_6rem_5.5rem] gap-x-4 items-center px-5 py-3">
                     <div className="flex items-center gap-3 min-w-0">
                       <MemberAvatar

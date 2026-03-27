@@ -100,10 +100,9 @@ function OnboardingConnectorCard({
       type="button"
       onClick={onClick}
       disabled={isPolling}
-      className={`flex items-center gap-3 rounded-xl px-4 py-3.5 transition-colors focus:outline-none ${
+      className={`flex items-center gap-3 rounded-xl px-4 py-3.5 transition-colors focus:outline-none zero-border ${
         isPolling ? "bg-yellow-500/5" : "hover:bg-muted/30 cursor-pointer"
       }`}
-      style={{ border: "0.7px solid hsl(var(--gray-400))" }}
     >
       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted/40 overflow-hidden">
         <ConnectorIcon type={type} size={20} />
@@ -255,8 +254,7 @@ function ConnectStepContent({
             return (
               <div
                 key={type}
-                className="flex items-center gap-4 rounded-xl px-5 py-4"
-                style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+                className="flex items-center gap-4 rounded-xl px-5 py-4 zero-border"
               >
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted/40 overflow-hidden">
                   <ConnectorIcon type={type} size={20} />
@@ -341,8 +339,7 @@ function WhereToWorkContent({
           type="button"
           onClick={onAddToSlack}
           disabled={saving}
-          className="flex items-center gap-4 rounded-xl bg-card px-6 py-6 text-left transition-colors hover:bg-muted/30 disabled:opacity-50"
-          style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+          className="flex items-center gap-4 rounded-xl bg-card px-6 py-6 text-left transition-colors hover:bg-muted/30 disabled:opacity-50 zero-border"
         >
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted/40 overflow-hidden">
             <img src={slackIcon} alt="" className="h-6 w-6" />
@@ -361,8 +358,7 @@ function WhereToWorkContent({
           type="button"
           onClick={onContinueWeb}
           disabled={saving}
-          className="flex items-center gap-4 rounded-xl bg-card px-6 py-6 text-left transition-colors hover:bg-muted/30 disabled:opacity-50"
-          style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+          className="flex items-center gap-4 rounded-xl bg-card px-6 py-6 text-left transition-colors hover:bg-muted/30 disabled:opacity-50 zero-border"
         >
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg overflow-hidden">
             <img
@@ -561,9 +557,8 @@ function OrbitIllustration({
         return (
           <div
             key={type}
-            className="absolute z-10 flex h-11 w-11 items-center justify-center rounded-xl bg-background shadow-sm transition-all duration-500 ease-out"
+            className="absolute z-10 flex h-11 w-11 items-center justify-center rounded-xl bg-background shadow-sm transition-all duration-500 ease-out zero-border"
             style={{
-              border: "0.7px solid hsl(var(--gray-400))",
               top: `calc(50% + ${y}px - 22px)`,
               left: `calc(50% + ${x}px - 22px)`,
             }}
@@ -582,9 +577,8 @@ function OrbitIllustration({
         return (
           <div
             key={type}
-            className="absolute z-10 flex h-10 w-10 items-center justify-center rounded-xl bg-background shadow-sm transition-all duration-500 ease-out"
+            className="absolute z-10 flex h-10 w-10 items-center justify-center rounded-xl bg-background shadow-sm transition-all duration-500 ease-out zero-border"
             style={{
-              border: "0.7px solid hsl(var(--gray-400))",
               top: `calc(50% + ${y}px - 20px)`,
               left: `calc(50% + ${x}px - 20px)`,
             }}

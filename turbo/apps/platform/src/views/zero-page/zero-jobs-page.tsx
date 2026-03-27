@@ -245,7 +245,7 @@ function CreateTeammateButton({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="flex flex-col rounded-[var(--zero-card-radius)] border border-dashed border-[hsl(var(--gray-400))] transition-colors hover:border-[hsl(var(--gray-400))] hover:bg-muted/30 group cursor-pointer text-left"
+      className="flex flex-col rounded-xl border border-dashed border-[hsl(var(--gray-400))] transition-colors hover:border-[hsl(var(--gray-400))] hover:bg-muted/30 group cursor-pointer text-left"
     >
       <div className="flex items-center gap-3 px-4 py-3.5">
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors">

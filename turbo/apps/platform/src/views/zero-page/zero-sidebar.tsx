@@ -290,8 +290,7 @@ function AccountDropdown({
         side="top"
         align="start"
         sideOffset={8}
-        className="w-[240px] rounded-lg"
-        style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+        className="w-[240px]"
       >
         {/* Current account header */}
         {current && (
@@ -314,10 +313,7 @@ function AccountDropdown({
                 </div>
               </div>
             </div>
-            <DropdownMenuSeparator
-              className="h-0 bg-transparent"
-              style={{ borderTop: "0.7px solid hsl(var(--gray-400))" }}
-            />
+            <DropdownMenuSeparator />
           </>
         )}
 
@@ -333,10 +329,7 @@ function AccountDropdown({
           />
           <span>Preferences</span>
         </DropdownMenuItem>
-        <DropdownMenuSeparator
-          className="h-0 bg-transparent"
-          style={{ borderTop: "0.7px solid hsl(var(--gray-400))" }}
-        />
+        <DropdownMenuSeparator />
 
         {/* Account management group */}
         {hasOthers ? (
@@ -354,10 +347,7 @@ function AccountDropdown({
                 className="text-muted-foreground"
               />
             </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent
-              className="w-[220px] rounded-lg"
-              style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-            >
+            <DropdownMenuSubContent className="w-[220px]">
               {others.map((account) => (
                 <DropdownMenuItem
                   key={account.sessionId}
@@ -379,10 +369,7 @@ function AccountDropdown({
                   </div>
                 </DropdownMenuItem>
               ))}
-              <DropdownMenuSeparator
-                className="h-0 bg-transparent"
-                style={{ borderTop: "0.7px solid hsl(var(--gray-400))" }}
-              />
+              <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={handleAddAccount}
                 className="gap-3 px-3 py-2.5 rounded-lg"
@@ -503,8 +490,7 @@ function RecentChatSection({
     <div className="mt-4 flex flex-col min-h-0 flex-1">
       {searchOpen ? (
         <div
-          className="shrink-0 flex h-8 items-center gap-2 rounded-lg bg-sidebar-accent/60 pl-2 pr-2"
-          style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+          className="shrink-0 flex h-8 items-center gap-2 rounded-lg bg-sidebar-accent/60 pl-2 pr-2 zero-border"
           onBlur={(e) => {
             if (!e.currentTarget.contains(e.relatedTarget)) {
               setSearchOpen(false);
@@ -842,13 +828,7 @@ function SidebarUpgradeCard() {
     <button
       type="button"
       onClick={handleClick}
-      className="flex w-full items-center gap-3 rounded-lg p-2.5 text-left transition-colors hover:bg-muted/30"
-      style={{
-        border: "0.7px solid hsl(var(--gray-300))",
-        backgroundColor: "hsl(var(--card))",
-        boxShadow:
-          "0 1px 2px hsl(220 12% 20% / 0.04), 0 4px 12px hsl(220 12% 20% / 0.03)",
-      }}
+      className="flex w-full items-center gap-3 rounded-lg p-2.5 text-left transition-colors hover:bg-muted/30 zero-card shadow-[0_1px_2px_hsl(220_12%_20%/0.04),0_4px_12px_hsl(220_12%_20%/0.03)]"
     >
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium text-foreground">Get {next.label}</p>
