@@ -295,17 +295,18 @@ teardown_file() {
   fi
   step_screenshot "instructions-before"
 
-  # Click the Tiptap editor area (contenteditable div with ProseMirror class).
-  # The editor doesn't reliably map to a textbox role in the accessibility tree,
-  # so we use a CSS selector to find and click it directly.
-  agent-browser find first ".ProseMirror" click
-  agent-browser wait 1000
-
-  # Move to end of document and press Enter to add a newline.
-  # This is more reliable than typing characters one-by-one and ensures
-  # ProseMirror registers the change and triggers the unsaved state.
-  agent-browser press "Control+End"
-  agent-browser press "Enter"
+  # Find the editor via interactive snapshot and fill it using its ref.
+  # Keyboard press after CSS click doesn't reliably trigger ProseMirror's
+  # change detection. Using fill on the editable ref is more robust.
+  local snap_i editor_ref
+  snap_i=$(agent-browser snapshot -i)
+  editor_ref=$(echo "$snap_i" | grep 'editable.*contenteditable' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+  if [[ -z "$editor_ref" ]]; then
+    echo "# Instructions editor ref not found in interactive snapshot" >&3
+    step_screenshot "instructions-no-editor"
+    return 1
+  fi
+  agent-browser fill "$editor_ref" "E2E test instructions $(date +%s)"
   agent-browser wait 1000
 
   # Wait for unsaved bar
