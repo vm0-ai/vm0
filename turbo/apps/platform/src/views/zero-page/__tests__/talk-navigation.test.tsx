@@ -197,5 +197,5 @@ describe("talk navigation", () => {
     await waitFor(() => {
       expect(pathname()).toBe("/chat/new-thread-id-123");
     });
-  }, 30_000);
+  });
 });

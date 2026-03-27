@@ -216,7 +216,7 @@ describe("onboarding auto-intro message", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Send")).toBeInTheDocument();
     });
-  }, 30_000);
+  });
 
   it("should send intro message after member completes onboarding via web", async () => {
     const mock = mockMemberOnboardingWithChat();
@@ -246,7 +246,7 @@ describe("onboarding auto-intro message", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Send")).toBeInTheDocument();
     });
-  }, 30_000);
+  });
 
   it("should allow follow-up messages after onboarding intro completes", async () => {
     const mock = mockMemberOnboardingWithChat();
@@ -277,5 +277,5 @@ describe("onboarding auto-intro message", () => {
 
     // Verify the textarea is interactive (user can type a follow-up)
     expect(textarea).not.toBeDisabled();
-  }, 30_000);
+  });
 });

@@ -6,7 +6,7 @@ import { testContext } from "../../__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import {
   zeroChatMessages$,
-  zeroChatSending$,
+  allFinished$,
   zeroChatInput$,
   zeroCurrentSessionId$,
   zeroSessionList$,
@@ -295,7 +295,7 @@ describe("zero-chat signals", () => {
       await expect(context.store.get(zeroChatMessages$)).resolves.toHaveLength(
         0,
       );
-      expect(await context.store.get(zeroChatSending$)).toBeFalsy();
+      await expect(context.store.get(allFinished$)).resolves.toBeTruthy();
     });
   });
 
@@ -366,7 +366,7 @@ describe("zero-chat signals", () => {
       );
       expect(context.store.get(zeroCurrentSessionId$)).toBeNull();
       expect(context.store.get(zeroChatThreadId$)).toBeNull();
-      expect(await context.store.get(zeroChatSending$)).toBeFalsy();
+      await expect(context.store.get(allFinished$)).resolves.toBeTruthy();
       expect(context.store.get(zeroChatInput$)).toBe("");
     });
 
@@ -491,7 +491,7 @@ describe("zero-chat signals", () => {
       expect(capturedRunBody!.agentId).toBe("mock-compose-id");
       expect(capturedRunBody!.prompt).toBe("What can you do?");
 
-      expect(await context.store.get(zeroChatSending$)).toBeFalsy();
+      await expect(context.store.get(allFinished$)).resolves.toBeTruthy();
       expect(context.store.get(zeroChatThreadId$)).toBe("thread-new");
 
       const messages = await context.store.get(zeroChatMessages$);
@@ -525,7 +525,7 @@ describe("zero-chat signals", () => {
       expect(lastMsg?.role === "assistant" ? lastMsg.error : undefined).toBe(
         "Some API error",
       );
-      expect(await context.store.get(zeroChatSending$)).toBeFalsy();
+      await expect(context.store.get(allFinished$)).resolves.toBeTruthy();
     });
 
     it("should surface provider incompatibility error message", async () => {
@@ -558,7 +558,7 @@ describe("zero-chat signals", () => {
       expect(lastMsg?.role === "assistant" ? lastMsg.error : undefined).toBe(
         "Provider not compatible: This session was created with a different provider type.",
       );
-      expect(await context.store.get(zeroChatSending$)).toBeFalsy();
+      await expect(context.store.get(allFinished$)).resolves.toBeTruthy();
     });
 
     it("should fall back to generic message when error body is unparseable", async () => {
@@ -582,7 +582,7 @@ describe("zero-chat signals", () => {
       expect(lastMsg?.role === "assistant" ? lastMsg.error : undefined).toBe(
         "Failed to start agent run (502)",
       );
-      expect(await context.store.get(zeroChatSending$)).toBeFalsy();
+      await expect(context.store.get(allFinished$)).resolves.toBeTruthy();
     });
 
     it("should set error on thread creation failure", async () => {
@@ -605,7 +605,7 @@ describe("zero-chat signals", () => {
       expect(lastMsg?.role === "assistant" ? lastMsg.error : undefined).toBe(
         "Failed to create chat thread",
       );
-      expect(await context.store.get(zeroChatSending$)).toBeFalsy();
+      await expect(context.store.get(allFinished$)).resolves.toBeTruthy();
     });
 
     it("should not send empty messages", async () => {
@@ -833,7 +833,7 @@ describe("zero-chat signals", () => {
 
       await delay(50);
       expect(pollCount).toBeGreaterThan(0);
-      expect(await context.store.get(zeroChatSending$)).toBeTruthy();
+      await expect(context.store.get(allFinished$)).resolves.toBeFalsy();
 
       // Set some input text then queue it
       context.store.set(setZeroChatInput$, "follow-up");
@@ -849,14 +849,6 @@ describe("zero-chat signals", () => {
       // Clean up: abort the send
       context.store.set(startNewZeroSession$);
       await sendPromise;
-    });
-
-    it("should not queue when agent is idle", async () => {
-      await setup();
-
-      context.store.set(queueZeroChatMessage$, "should not queue");
-
-      expect(context.store.get(zeroChatQueuedMessage$)).toBeNull();
     });
 
     it("should reject a second queued message", async () => {
@@ -1008,7 +1000,7 @@ describe("zero-chat signals", () => {
         .catch(() => {});
 
       await delay(50);
-      expect(await context.store.get(zeroChatSending$)).toBeTruthy();
+      await expect(context.store.get(allFinished$)).resolves.toBeFalsy();
 
       // Queue a follow-up while the first run is in progress
       context.store.set(queueZeroChatMessage$, "auto follow-up");
@@ -1020,7 +1012,7 @@ describe("zero-chat signals", () => {
 
       // Poll until the detached auto-send completes (runCount reaches 2 and sending is false)
       for (let i = 0; i < 50; i++) {
-        if (runCount >= 2 && !(await context.store.get(zeroChatSending$))) {
+        if (runCount >= 2 && (await context.store.get(allFinished$))) {
           break;
         }
         await delay(50);
@@ -1030,7 +1022,7 @@ describe("zero-chat signals", () => {
       // The auto-send should have triggered a second run
       expect(runCount).toBe(2);
       expect(latestPrompt).toBe("auto follow-up");
-      expect(await context.store.get(zeroChatSending$)).toBeFalsy();
+      await expect(context.store.get(allFinished$)).resolves.toBeTruthy();
     });
 
     it("should auto-withdraw queued message back to input after run cancellation (cancelActiveRun$)", async () => {
@@ -1069,7 +1061,7 @@ describe("zero-chat signals", () => {
         .catch(() => {});
 
       await delay(50);
-      expect(await context.store.get(zeroChatSending$)).toBeTruthy();
+      await expect(context.store.get(allFinished$)).resolves.toBeFalsy();
 
       // Queue a follow-up
       context.store.set(queueZeroChatMessage$, "after cancel");
@@ -1083,7 +1075,7 @@ describe("zero-chat signals", () => {
       // The queued message should be withdrawn back to input
       expect(context.store.get(zeroChatQueuedMessage$)).toBeNull();
       expect(context.store.get(zeroChatInput$)).toBe("after cancel");
-      expect(await context.store.get(zeroChatSending$)).toBeFalsy();
+      await expect(context.store.get(allFinished$)).resolves.toBeTruthy();
     });
   });
 

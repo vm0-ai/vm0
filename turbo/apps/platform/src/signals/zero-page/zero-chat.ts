@@ -155,28 +155,22 @@ export const zeroChatMessages$ = computed(async (get) => {
 const internalSessionId$ = state<string | null>(null);
 export const zeroCurrentSessionId$ = computed((get) => get(internalSessionId$));
 
-const allFinished$ = computed(async (get) => {
+/** Whether all runs have finished (no in-flight runs). */
+export const allFinished$ = computed(async (get) => {
   const messages = await get(zeroChatMessages$);
-  const hasUnfinishedRun = (
+  return (
     await Promise.all(
       messages.map(async (message) => {
         if (message.role !== "assistant") {
-          return false;
+          return true;
         }
         if (!message.runLoop) {
-          return false;
+          return true;
         }
-
-        return (await get(message.runLoop.finished$)) !== true;
+        return (await get(message.runLoop.finished$)) === true;
       }),
     )
-  ).every((pending) => !pending);
-  return !hasUnfinishedRun;
-});
-
-/** Whether the agent is currently busy (any run still in-flight). */
-export const zeroChatSending$ = computed(async (get) => {
-  return !(await get(allFinished$));
+  ).every(Boolean);
 });
 
 /** Cancel the currently active run. */

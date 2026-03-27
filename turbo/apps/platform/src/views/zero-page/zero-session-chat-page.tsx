@@ -43,7 +43,7 @@ import {
 } from "../../signals/zero-page/zero-pinned-agents.ts";
 import {
   zeroChatMessages$,
-  zeroChatSending$,
+  allFinished$,
   zeroChatInput$,
   setZeroChatInput$,
   clearZeroChatInput$,
@@ -90,9 +90,9 @@ export function ZeroSessionChatPage({
   const messagesLoadable = useLoadable(zeroChatMessages$);
   const messages =
     messagesLoadable.state === "hasData" ? messagesLoadable.data : [];
-  const sendingLoadable = useLastLoadable(zeroChatSending$);
+  const allFinishedLoadable = useLastLoadable(allFinished$);
   const sending =
-    sendingLoadable.state === "hasData" ? sendingLoadable.data : false;
+    allFinishedLoadable.state === "hasData" ? !allFinishedLoadable.data : false;
   const sessionError =
     messagesLoadable.state === "hasError"
       ? messagesLoadable.error instanceof Error
