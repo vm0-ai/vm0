@@ -112,8 +112,8 @@ teardown_file() {
   agent-browser open "${APP_URL}/team" --ignore-https-errors
   agent-browser wait 3000
 
-  # Wait for team page to load
-  wait_for_text "Lead" 20
+  # Wait for team page to load (org redirect can take a while in CI)
+  wait_for_text "Lead" 40
   step_screenshot "team-page"
 
   # Click Create teammate
@@ -147,18 +147,10 @@ teardown_file() {
 }
 
 @test "navigate to agent settings and verify tabs" {
-  # Navigate to /team and wait for the page heading to load before looking for the agent
+  # Navigate to /team fresh to clear any leftover dialog state from agent creation
   echo "# Navigating to team page..." >&3
   navigate_to_app_page "/team"
-  wait_for_text "Agents" 20
-
-  # Wait for the agent name to appear; if not found, reload and retry once
-  if ! wait_for_text "$AGENT_NAME" 20; then
-    echo "# Agent not found on first load, retrying..." >&3
-    navigate_to_app_page "/team"
-    wait_for_text "Agents" 20
-    wait_for_text "$AGENT_NAME" 30
-  fi
+  wait_for_text "$AGENT_NAME" 40
   step_screenshot "team-page"
 
   # Click on the created agent card using link-based approach

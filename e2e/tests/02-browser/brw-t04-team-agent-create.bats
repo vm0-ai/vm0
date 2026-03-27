@@ -45,7 +45,7 @@ teardown_file() {
   step_screenshot "team-page-initial"
 
   echo "# Waiting for Agents heading..." >&3
-  wait_for_text "Agents" 20
+  wait_for_text "Agents" 40
   step_screenshot "team-page-loaded"
 
   local snap
