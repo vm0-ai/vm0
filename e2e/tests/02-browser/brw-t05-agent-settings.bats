@@ -233,19 +233,16 @@ teardown_file() {
   step_screenshot "agent-detail"
 
   # Save the URL immediately after confirming we're on the agent settings page.
-  # This must come before the tab checks so subsequent tests have the URL even
-  # if the tab checks time out (prevents cascading failures).
+  # Subsequent tests navigate back here using this URL.
   AGENT_SETTINGS_URL=$(agent-browser get url 2>/dev/null || true)
   export AGENT_SETTINGS_URL
   echo "# Agent settings URL captured: $AGENT_SETTINGS_URL" >&3
 
-  # Verify all tabs are visible (non-default agent shows all tabs).
-  # Use wait_for_text with generous timeout — tabs can render lazily under load.
-  wait_for_text "Profile" 30
-  wait_for_text "Instructions" 30
-
   # Wait for Connectors tab content to fully load (the "Add connector" button
   # loads async after the tab labels appear).
+  # Note: Profile/Instructions tab visibility is verified in tests 12 and 13
+  # (which click those tabs directly). Checking them here is redundant and
+  # can flake under load when the onboarding signal hasn't resolved yet.
   if ! wait_for_text "Add connector" 90; then
     echo "# Add connector not found after 90s, reloading page..." >&3
     if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
