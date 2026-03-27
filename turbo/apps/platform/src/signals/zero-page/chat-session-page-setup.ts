@@ -30,6 +30,7 @@ export const setupChatSessionPage$ = command(
     const sessionId = get(zeroSessionId$);
     if (sessionId) {
       const sessions = await get(zeroSessionList$);
+      signal.throwIfAborted();
       const session = sessions.find((s: { id: string }) => s.id === sessionId);
       const sessionTitle = session?.preview ?? "New chat";
       set(updateDocumentTitle$, sessionTitle);

@@ -316,11 +316,7 @@ export function createRunLoop(runId: string) {
   const pagedEventsList$ = computed(async (get) => {
     const initial = await get(initialRunPagedEvents$);
     const looped = get(internalLoopedPagedEvents$);
-    const all = [...initial, ...looped];
-    console.log(
-      `[pagedEventsList$] initial=${initial.length} looped=${looped.length} total=${all.length}`,
-    );
-    return all;
+    return [...initial, ...looped];
   });
 
   const reloadThinkingMessage$ = state(0);
@@ -333,9 +329,7 @@ export function createRunLoop(runId: string) {
   });
 
   const beginLoop$ = command(async ({ set, get }, signal: AbortSignal) => {
-    console.log(`[beginLoop$] starting for runId=${runId}`);
     let status = (await get(runDetail$)).status;
-    console.log(`[beginLoop$] initial status=${status}`);
     signal.throwIfAborted();
 
     while (status === "pending") {

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { delay } from "signal-timers";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
@@ -16,7 +16,6 @@ import {
   zeroChatThreadId$,
   setZeroChatInput$,
   clearZeroChatInput$,
-  fetchZeroSessionList$,
   switchZeroSession$,
   startNewZeroSession$,
   sendZeroChatMessage$,

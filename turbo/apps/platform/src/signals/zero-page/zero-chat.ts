@@ -473,9 +473,7 @@ function createActiveRunMessage(
   const result$ = computed(async (get) => {
     const pages = await get(runLoop.pagedEventsList$);
     const events = await collectAllEvents(pages, get);
-    const result = extractResult(events);
-    console.log(`[result$] pages=${pages.length} events=${events.length} result="${result.slice(0, 50)}"`);
-    return result;
+    return extractResult(events);
   });
 
   const summaries$ = computed(async (get) => {

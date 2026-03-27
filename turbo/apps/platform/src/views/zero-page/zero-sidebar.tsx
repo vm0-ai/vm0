@@ -894,7 +894,9 @@ export function ZeroSidebar() {
   const onAccountAction = useSet(handleZeroAccountAction$);
   const recentSessionsLoadable = useLastLoadable(zeroSessionList$);
   const recentSessions =
-    recentSessionsLoadable.state === "hasData" ? recentSessionsLoadable.data : [];
+    recentSessionsLoadable.state === "hasData"
+      ? recentSessionsLoadable.data
+      : [];
   const recentSessionsLoading = recentSessionsLoadable.state === "loading";
   const recentSessionsError =
     recentSessionsLoadable.state === "hasError"

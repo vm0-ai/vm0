@@ -490,7 +490,6 @@ function RunActivityLineView({
   queuePosition: number;
   thinkingMsg: string;
 }) {
-
   if (isQueued) {
     return (
       <div className="flex items-center gap-2 min-w-0">
@@ -679,8 +678,7 @@ function ReactiveAssistantMessage({
   zeroAvatarSrc,
 }: AssistantMessageProps) {
   const resultLoadable = useLastLoadable(message.result$!);
-  const content =
-    resultLoadable.state === "hasData" ? resultLoadable.data : "";
+  const content = resultLoadable.state === "hasData" ? resultLoadable.data : "";
   const summariesLoadable = useLastLoadable(message.summaries$!);
   const summaries =
     summariesLoadable.state === "hasData" ? summariesLoadable.data : [];
@@ -695,9 +693,7 @@ function ReactiveAssistantMessage({
     <StaticAssistantMessage
       message={enrichedMessage}
       zeroAvatarSrc={zeroAvatarSrc}
-      renderActivityLine={
-        <MessageRunActivityLine message={message} />
-      }
+      renderActivityLine={<MessageRunActivityLine message={message} />}
     />
   );
 }
