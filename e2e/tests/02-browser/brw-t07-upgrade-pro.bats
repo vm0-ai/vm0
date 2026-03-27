@@ -165,6 +165,25 @@ teardown_file() {
     sleep 1
   done
 
+  # After org creation the app redirects to onboarding, but the redirect may not
+  # have completed within the detection loop above. If we created an org but did
+  # not yet see the onboarding wizard, give the app extra time and check again.
+  if [[ "$org_created" == "true" && "$needs_onboarding" != "true" ]]; then
+    echo "# Org was just created — waiting for onboarding redirect..." >&3
+    for _i in $(seq 1 20); do
+      snap=$(full_snapshot)
+      if contains "$snap" "Name your workspace\|Choose your tools\|Connect your apps\|Where would you like to work"; then
+        needs_onboarding=true
+        break
+      fi
+      if contains "$snap" "Ask me to automate workflows"; then
+        echo "# Already onboarded (post-org-creation check)" >&3
+        break
+      fi
+      sleep 1
+    done
+  fi
+
   if [[ "$needs_onboarding" != "true" ]]; then
     echo "# Skipping onboarding steps: navigating directly to chat page" >&3
     # Ensure the browser is on the chat page before subsequent tests depend on it
