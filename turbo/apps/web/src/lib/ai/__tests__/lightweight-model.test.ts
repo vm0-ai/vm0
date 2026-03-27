@@ -88,6 +88,38 @@ describe("generateChatTitle", () => {
     );
   });
 
+  it("should strip markdown formatting from returned content", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    reloadEnv();
+
+    const handler = http.post(OPENROUTER_URL, () => {
+      return HttpResponse.json(openRouterResponse("**Bold** and `code` title"));
+    });
+    server.use(handler.handler);
+
+    const { generateChatTitle } = await import("../lightweight-model");
+
+    const result = await generateChatTitle("Some message");
+
+    expect(result).toBe("Bold and code title");
+  });
+
+  it("should strip heading markers from returned content", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    reloadEnv();
+
+    const handler = http.post(OPENROUTER_URL, () => {
+      return HttpResponse.json(openRouterResponse("## Chat Title Here"));
+    });
+    server.use(handler.handler);
+
+    const { generateChatTitle } = await import("../lightweight-model");
+
+    const result = await generateChatTitle("Some message");
+
+    expect(result).toBe("Chat Title Here");
+  });
+
   it("should throw on HTTP error", async () => {
     vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     reloadEnv();
