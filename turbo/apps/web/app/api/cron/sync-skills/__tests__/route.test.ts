@@ -379,16 +379,8 @@ describe("GET /api/cron/sync-skills", () => {
 
       // Mock listS3Objects to return objects for cleanup
       context.mocks.s3.listS3Objects.mockResolvedValue([
-        {
-          key: "mock/archive.tar.gz",
-          size: 100,
-          lastModified: new Date(),
-        },
-        {
-          key: "mock/manifest.json",
-          size: 50,
-          lastModified: new Date(),
-        },
+        { key: "mock/archive.tar.gz", size: 100 },
+        { key: "mock/manifest.json", size: 50 },
       ]);
 
       // Second sync: only slack remains (github removed)
