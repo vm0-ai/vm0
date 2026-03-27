@@ -46,8 +46,19 @@ teardown_file() {
   agent-browser open "${APP_URL}/schedule" --ignore-https-errors
   agent-browser wait 3000
 
-  # Wait for schedule page to load (longer timeout for cold-start browser)
-  wait_for_text "Scheduled tasks" 40
+  # Wait for schedule page to load. Under parallel CI load snapshots can be
+  # slow (~2-3s each), so use a reload-based retry to stay within test timeout.
+  local schedule_found=false
+  for _attempt in 1 2; do
+    if wait_for_text "Scheduled tasks" 20; then
+      schedule_found=true
+      break
+    fi
+    echo "# Attempt ${_attempt}: schedule page not loaded yet, reloading..." >&3
+    agent-browser open "${APP_URL}/schedule" --ignore-https-errors
+    agent-browser wait 5000
+  done
+  assert [ "$schedule_found" = "true" ]
   step_screenshot "schedule-page"
 
   # Click "Add schedule" button — use ref-based approach for reliability
@@ -107,7 +118,17 @@ teardown_file() {
   agent-browser open "${APP_URL}/schedule" --ignore-https-errors
   agent-browser wait 3000
 
-  wait_for_text "Scheduled tasks" 40
+  local schedule_found=false
+  for _attempt in 1 2; do
+    if wait_for_text "Scheduled tasks" 20; then
+      schedule_found=true
+      break
+    fi
+    echo "# Attempt ${_attempt}: schedule page not loaded yet, reloading..." >&3
+    agent-browser open "${APP_URL}/schedule" --ignore-https-errors
+    agent-browser wait 5000
+  done
+  assert [ "$schedule_found" = "true" ]
   step_screenshot "schedule-list-after-create"
 
   # Check if the new schedule already appeared (it may or may not have finished)

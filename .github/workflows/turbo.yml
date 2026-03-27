@@ -1690,7 +1690,16 @@ jobs:
         run: mkdir -p ~/.vm0 && cp /tmp/e2e-token-runner.json ~/.vm0/config.json
       - name: Bootstrap test account
         run: |
-          zero org set "e2e-runner" --force
+          # Set org slug to "e2e-runner". If the slug is taken globally (another
+          # org owns it in the shared DB), fall back: check if this account already
+          # has any org configured and proceed with model-provider setup regardless.
+          if ! zero org set "e2e-runner" --force; then
+            echo "Warning: 'e2e-runner' slug unavailable; checking existing org status..."
+            if ! zero org status; then
+              echo "No org configured and slug is taken — trying unique fallback slug"
+              zero org set "e2e-runner-${{ needs.prepare.outputs.job-ref }}" --force
+            fi
+          fi
           zero org model-provider setup --type "claude-code-oauth-token" --secret "mock-oauth-token-for-e2e"
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}

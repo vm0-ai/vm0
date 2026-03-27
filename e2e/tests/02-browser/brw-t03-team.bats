@@ -120,10 +120,19 @@ teardown_file() {
 }
 
 @test "verify new agent appears on team page" {
-  # Agent was verified in the create test; confirm the current page still
-  # shows it (lightweight: just poll once and take a screenshot).
+  # After creation the app may navigate to the agent settings page or show a
+  # toast that disappears. Navigate explicitly to /team to get a stable list.
   echo "# Verifying agent appears on team page..." >&3
-  wait_for_text "$AGENT_NAME" 20
+  local agent_found=false
+  for _attempt in 1 2 3; do
+    navigate_to_app_page "/team"
+    if wait_for_text "$AGENT_NAME" 20; then
+      agent_found=true
+      break
+    fi
+    echo "# Attempt ${_attempt}: agent not found on /team, retrying..." >&3
+  done
+  assert [ "$agent_found" = "true" ]
   step_screenshot "agent-visible"
 
   local snap

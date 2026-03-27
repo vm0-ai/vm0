@@ -222,9 +222,11 @@ teardown_file() {
   echo "# Testing connector: add Firecrawl..." >&3
   if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
     agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
-    agent-browser wait 2000
+    agent-browser wait 3000
   fi
-  wait_for_text "Add connector" 20
+  # Wait for agent settings page to fully load (tab labels + Connectors content)
+  wait_for_text "Connectors" 30
+  wait_for_text "Add connector" 30
   step_screenshot "connector-before"
 
   # Click "Add connector"
@@ -290,8 +292,10 @@ teardown_file() {
   # Navigate back to agent settings to ensure page is in known state
   if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
     agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
-    agent-browser wait 2000
+    agent-browser wait 3000
   fi
+  # Wait for agent settings page to fully load before clicking tab
+  wait_for_text "Connectors" 30
   click_tab "Profile"
   agent-browser wait 2000
 
@@ -329,8 +333,10 @@ teardown_file() {
   # Navigate back to agent settings to ensure page is in known state
   if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
     agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
-    agent-browser wait 2000
+    agent-browser wait 3000
   fi
+  # Wait for agent settings page to fully load before clicking tab
+  wait_for_text "Connectors" 30
   click_tab "Instructions"
   agent-browser wait 2000
 
