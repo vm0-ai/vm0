@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.86.3](https://github.com/vm0-ai/vm0/compare/cli-v9.86.2...cli-v9.86.3) (2026-03-27)
+
+
+### Documentation
+
+* **cli:** add after-help usage examples to ask-user question command ([#7052](https://github.com/vm0-ai/vm0/issues/7052)) ([e9e3df2](https://github.com/vm0-ai/vm0/commit/e9e3df278cb14c05481b174db516aa7d6fe1088c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.120.0
+
 ## [9.86.2](https://github.com/vm0-ai/vm0/compare/cli-v9.86.1...cli-v9.86.2) (2026-03-27)
 
 

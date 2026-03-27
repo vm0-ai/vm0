@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.166.0](https://github.com/vm0-ai/vm0/compare/web-v12.165.0...web-v12.166.0) (2026-03-27)
+
+
+### Features
+
+* add persistent agent avatar with picker ui ([#7035](https://github.com/vm0-ai/vm0/issues/7035)) ([91e09d2](https://github.com/vm0-ai/vm0/commit/91e09d2310d978964c8b7f51b07f65d5700dc072))
+
+
+### Bug Fixes
+
+* strip markdown from auto-generated chat titles and descriptions ([#7037](https://github.com/vm0-ai/vm0/issues/7037)) ([deb0847](https://github.com/vm0-ai/vm0/commit/deb0847de08774b9e7484fc4425e5ca0477c97f5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.120.0
+
 ## [12.165.0](https://github.com/vm0-ai/vm0/compare/web-v12.164.1...web-v12.165.0) (2026-03-27)
 
 

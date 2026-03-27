@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.160.0](https://github.com/vm0-ai/vm0/compare/app-v0.159.0...app-v0.160.0) (2026-03-27)
+
+
+### Features
+
+* add persistent agent avatar with picker ui ([#7035](https://github.com/vm0-ai/vm0/issues/7035)) ([91e09d2](https://github.com/vm0-ai/vm0/commit/91e09d2310d978964c8b7f51b07f65d5700dc072))
+* **platform:** sort connected connectors before unconnected ones ([#7039](https://github.com/vm0-ai/vm0/issues/7039)) ([a5d2a4b](https://github.com/vm0-ai/vm0/commit/a5d2a4b10a6755453e6bc466d93a40a2d715db95))
+* **platform:** support ?prompt= query param to pre-fill chat input ([#7040](https://github.com/vm0-ai/vm0/issues/7040)) ([4c5c9da](https://github.com/vm0-ai/vm0/commit/4c5c9da74b152f239fe0c9fcd60f6c071d50310a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.120.0
+
 ## [0.159.0](https://github.com/vm0-ai/vm0/compare/app-v0.158.1...app-v0.159.0) (2026-03-27)
 
 

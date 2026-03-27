@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.120.0](https://github.com/vm0-ai/vm0/compare/core-v8.119.2...core-v8.120.0) (2026-03-27)
+
+
+### Features
+
+* add persistent agent avatar with picker ui ([#7035](https://github.com/vm0-ai/vm0/issues/7035)) ([91e09d2](https://github.com/vm0-ai/vm0/commit/91e09d2310d978964c8b7f51b07f65d5700dc072))
+
 ## [8.119.2](https://github.com/vm0-ai/vm0/compare/core-v8.119.1...core-v8.119.2) (2026-03-27)
 
 
