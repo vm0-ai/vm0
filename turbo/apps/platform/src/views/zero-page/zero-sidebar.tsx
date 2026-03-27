@@ -59,6 +59,7 @@ import {
   defaultAgentId$,
 } from "../../signals/zero-page/zero-agent-name.ts";
 import { zeroSubagents$ } from "../../signals/zero-page/zero-agents.ts";
+import { reloadAgents$ } from "../../signals/zero-page/agents-list.ts";
 import {
   zeroSessionList$,
   createNewChatSession$,
@@ -665,6 +666,7 @@ function TalkToSection({
 }) {
   const [chatListOpen, setChatListOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const reloadAgents = useSet(reloadAgents$);
 
   return (
     <div className="shrink-0">
@@ -690,6 +692,7 @@ function TalkToSection({
                 onClick={(e) => {
                   e.stopPropagation();
                   setChatListOpen(true);
+                  reloadAgents();
                 }}
                 className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
                 aria-label="Open a conversation"

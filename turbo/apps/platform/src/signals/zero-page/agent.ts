@@ -22,8 +22,3 @@ const currentAgent$ = computed(async (get) => {
 
   return resp.status === 200 ? resp.body : null;
 });
-
-export const currentAgentDisplayName$ = computed(async (get) => {
-  const agent = await get(currentAgent$);
-  return agent?.displayName;
-});

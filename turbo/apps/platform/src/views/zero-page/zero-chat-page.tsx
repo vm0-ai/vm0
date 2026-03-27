@@ -35,6 +35,7 @@ import {
 import { getRandomPrompts } from "./zero-ideation-page.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
+import { Link } from "../router/link.tsx";
 import zeroAvatarImg from "./assets/avatar_0.png";
 
 function getTagline(
@@ -147,8 +148,8 @@ interface ZeroChatPageProps {
   zeroAvatarSrc?: string;
   /** Override agent name when chatting with a sub-agent. */
   chatAgentName?: string;
-  /** Navigate to agent team detail page when avatar is clicked. */
-  onAvatarClick?: () => void;
+  /** Agent ID used to build the avatar link to the team detail page. */
+  avatarAgentId?: string;
 }
 
 export function ZeroChatPage({
@@ -156,7 +157,7 @@ export function ZeroChatPage({
   onSendMessage,
   zeroAvatarSrc = zeroAvatarImg,
   chatAgentName,
-  onAvatarClick,
+  avatarAgentId,
 }: ZeroChatPageProps) {
   const displayNameLoadable = useLoadable(agentDisplayName$);
   const defaultDisplayName =
@@ -236,11 +237,15 @@ export function ZeroChatPage({
               <TooltipProvider delayDuration={200}>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <button
-                      type="button"
+                    <Link
+                      pathname="/team/:id"
+                      options={
+                        avatarAgentId
+                          ? { pathParams: { id: avatarAgentId } }
+                          : undefined
+                      }
                       aria-label="View agent profile"
                       className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent cursor-pointer"
-                      onClick={onAvatarClick}
                     >
                       <img
                         src={zeroAvatarSrc}
@@ -248,7 +253,7 @@ export function ZeroChatPage({
                         role="presentation"
                         className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
                       />
-                    </button>
+                    </Link>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">
                     <p className="text-xs">View agent profile</p>

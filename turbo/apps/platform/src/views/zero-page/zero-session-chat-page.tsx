@@ -72,14 +72,15 @@ import zeroAvatarImg from "./assets/avatar_0.png";
 interface ZeroSessionChatPageProps {
   zeroAvatarSrc?: string;
   onNavigateToSchedule?: () => void;
-  onAvatarClick?: () => void;
+  /** Agent ID used to build the avatar link to the team detail page. */
+  avatarAgentId?: string;
   chatAgentName?: string;
 }
 
 export function ZeroSessionChatPage({
   zeroAvatarSrc = zeroAvatarImg,
   onNavigateToSchedule,
-  onAvatarClick,
+  avatarAgentId,
   chatAgentName,
 }: ZeroSessionChatPageProps) {
   const defaultDisplayName = useResolved(agentDisplayName$) ?? "Zero";
@@ -142,9 +143,13 @@ export function ZeroSessionChatPage({
             <TooltipProvider delayDuration={200}>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={onAvatarClick}
+                  <Link
+                    pathname="/team/:id"
+                    options={
+                      avatarAgentId
+                        ? { pathParams: { id: avatarAgentId } }
+                        : undefined
+                    }
                     className="h-8 w-8 shrink-0 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                     aria-label="View agent profile"
                   >
@@ -154,7 +159,7 @@ export function ZeroSessionChatPage({
                       role="presentation"
                       className="h-8 w-8 rounded-full object-cover object-top"
                     />
-                  </button>
+                  </Link>
                 </TooltipTrigger>
                 <TooltipContent side="bottom">
                   <p className="text-xs">View agent profile</p>

@@ -47,21 +47,13 @@ export function ZeroChatSessionPageWrapper() {
     }
   };
 
-  const handleChatAvatarClick = () => {
-    if (resolvedAgentId) {
-      navigateTo("/team/:agentId", {
-        pathParams: { agentId: resolvedAgentId },
-      });
-    }
-  };
-
   return (
     <SidebarLayout>
       <ZeroSessionChatPage
         zeroAvatarSrc={chatAvatarSrc}
         chatAgentName={chatAgentName}
         onNavigateToSchedule={handleNavigateToSchedule}
-        onAvatarClick={handleChatAvatarClick}
+        avatarAgentId={resolvedAgentId ?? undefined}
       />
     </SidebarLayout>
   );

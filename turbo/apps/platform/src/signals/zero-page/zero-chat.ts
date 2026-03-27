@@ -761,8 +761,8 @@ export const cancelZeroAttachmentUpload$ = command(
 
 /**
  * Single entry point for changing the active agent.
- * Sets the agent identity AND refreshes the session list atomically.
- * All callers that need to change the active agent should use this.
+ * Sets the agent identity immediately and kicks off a background session list
+ * refresh so the caller is not blocked waiting for the network request.
  */
 export const switchActiveAgent$ = command(
   ({ set }, agentId: string | null, _signal?: AbortSignal) => {
@@ -786,9 +786,14 @@ const syncAgentForThread$ = command(
       const newAgentId = isDefault ? null : agentComposeId;
       if (newAgentId !== currentAgentId) {
         set(switchActiveAgent$, newAgentId, signal);
+      } else {
+        // Same agent — refresh list in background to pick up any new/updated threads.
+        set(reloadChatThreadList$, (n) => n + 1);
       }
     } else if (get(zeroChatAgentId$) !== null) {
       set(switchActiveAgent$, null, signal);
+    } else {
+      set(reloadChatThreadList$, (n) => n + 1);
     }
   },
 );

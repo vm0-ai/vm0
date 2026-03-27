@@ -57,14 +57,6 @@ export function ZeroTalkPage() {
     }
   };
 
-  const handleChatAvatarClick = () => {
-    if (resolvedAgentId) {
-      navigateTo("/team/:agentId", {
-        pathParams: { agentId: resolvedAgentId },
-      });
-    }
-  };
-
   const handleSendMessage = (
     message: string,
     options?: { modelProvider?: string },
@@ -85,7 +77,7 @@ export function ZeroTalkPage() {
         onNavigateToMeet={handleNavigateToMeet}
         zeroAvatarSrc={chatAvatarSrc}
         chatAgentName={chatAgentName}
-        onAvatarClick={handleChatAvatarClick}
+        avatarAgentId={resolvedAgentId ?? undefined}
       />
     </SidebarLayout>
   );
