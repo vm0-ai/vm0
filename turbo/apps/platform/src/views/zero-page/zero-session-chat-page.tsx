@@ -143,23 +143,33 @@ export function ZeroSessionChatPage({
             <TooltipProvider delayDuration={200}>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Link
-                    pathname="/team/:id"
-                    options={
-                      avatarAgentId
-                        ? { pathParams: { id: avatarAgentId } }
-                        : undefined
-                    }
-                    className="h-8 w-8 shrink-0 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                    aria-label="View agent profile"
-                  >
-                    <img
-                      src={zeroAvatarSrc}
-                      alt=""
-                      role="presentation"
-                      className="h-8 w-8 rounded-full object-cover object-top"
-                    />
-                  </Link>
+                  {avatarAgentId ? (
+                    <Link
+                      pathname="/team/:id"
+                      options={{ pathParams: { id: avatarAgentId } }}
+                      className="h-8 w-8 shrink-0 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      aria-label="View agent profile"
+                    >
+                      <img
+                        src={zeroAvatarSrc}
+                        alt=""
+                        role="presentation"
+                        className="h-8 w-8 rounded-full object-cover object-top"
+                      />
+                    </Link>
+                  ) : (
+                    <div
+                      aria-label="View agent profile"
+                      className="h-8 w-8 shrink-0 overflow-hidden rounded-xl"
+                    >
+                      <img
+                        src={zeroAvatarSrc}
+                        alt=""
+                        role="presentation"
+                        className="h-8 w-8 rounded-full object-cover object-top"
+                      />
+                    </div>
+                  )}
                 </TooltipTrigger>
                 <TooltipContent side="bottom">
                   <p className="text-xs">View agent profile</p>
