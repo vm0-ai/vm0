@@ -190,19 +190,18 @@ describe("GET /api/zero/billing/status", () => {
   });
 
   it("returns defaults when org row does not exist", async () => {
-    const newOrgId = uniqueId("org-nonexistent");
+    const newOrgId = uniqueId("org-norow");
+    const newSlug = `billing-norow-${Date.now()}`;
     mockClerk({
       userId: uniqueId("user"),
       orgId: newOrgId,
-      orgSlug: "nonexistent-org",
+      orgSlug: newSlug,
       orgRole: "org:admin",
-      clerkOrgs: [
-        { id: newOrgId, slug: "nonexistent-org", name: "Nonexistent" },
-      ],
+      clerkOrgs: [{ id: newOrgId, slug: newSlug, name: "NoRow" }],
     });
 
     const request = createTestRequest(
-      "http://localhost:3000/api/zero/billing/status?org=nonexistent-org",
+      `http://localhost:3000/api/zero/billing/status?org=${newSlug}`,
     );
     const response = await GET(request);
 
