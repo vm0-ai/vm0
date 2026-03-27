@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   createTestRequest,
   updateOrgStripeFields,
+  getOrgBillingFields,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -195,6 +196,10 @@ describe("POST /api/zero/billing/downgrade", () => {
     expect(stripeMocks.subscriptionsUpdate).toHaveBeenCalledWith(subId, {
       cancel_at_period_end: true,
     });
+
+    // Verify cancelAtPeriodEnd is set in DB
+    const billing = await getOrgBillingFields(user.orgId);
+    expect(billing?.cancelAtPeriodEnd).toBe(true);
   });
 
   it("downgrades team to free via cancel at period end", async () => {

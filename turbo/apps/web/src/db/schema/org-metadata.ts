@@ -32,6 +32,7 @@ export const orgMetadata = pgTable(
     stripeSubscriptionId: text("stripe_subscription_id"),
     subscriptionStatus: varchar("subscription_status", { length: 20 }),
     currentPeriodEnd: timestamp("current_period_end"),
+    cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
     lastProcessedInvoiceId: text("last_processed_invoice_id"),
     // Auto-recharge configuration
     autoRechargeEnabled: boolean("auto_recharge_enabled")

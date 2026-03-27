@@ -4128,6 +4128,7 @@ export async function updateOrgStripeFields(
     stripeSubscriptionId?: string | null;
     subscriptionStatus?: string | null;
     currentPeriodEnd?: Date | null;
+    cancelAtPeriodEnd?: boolean;
     lastProcessedInvoiceId?: string | null;
     tier?: string;
   },
@@ -4150,6 +4151,7 @@ export async function getOrgBillingFields(orgId: string) {
       stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
       subscriptionStatus: orgMetadata.subscriptionStatus,
       currentPeriodEnd: orgMetadata.currentPeriodEnd,
+      cancelAtPeriodEnd: orgMetadata.cancelAtPeriodEnd,
       lastProcessedInvoiceId: orgMetadata.lastProcessedInvoiceId,
     })
     .from(orgMetadata)

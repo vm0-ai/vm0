@@ -38,6 +38,7 @@ interface InvoiceInput {
 interface SubscriptionInput {
   id: string;
   status: string;
+  cancel_at_period_end: boolean;
   items: { data: Array<{ price: { id: string } }> };
 }
 
@@ -210,6 +211,7 @@ export async function handleCheckoutCompleted(
       tier,
       stripeSubscriptionId: subscriptionId,
       subscriptionStatus: subscription.status,
+      cancelAtPeriodEnd: false,
       ...(periodEnd ? { currentPeriodEnd: periodEnd } : {}),
       updatedAt: new Date(),
     })
@@ -351,6 +353,7 @@ export async function handleSubscriptionUpdated(
     .update(orgMetadata)
     .set({
       subscriptionStatus: subscription.status,
+      cancelAtPeriodEnd: subscription.cancel_at_period_end,
       updatedAt: new Date(),
       ...(tier ? { tier } : {}),
     })
@@ -376,6 +379,7 @@ export async function handleSubscriptionDeleted(
       tier: "free",
       subscriptionStatus: "canceled",
       stripeSubscriptionId: null,
+      cancelAtPeriodEnd: false,
       updatedAt: new Date(),
     })
     .where(eq(orgMetadata.stripeSubscriptionId, subscription.id));
@@ -438,6 +442,10 @@ export async function downgradeSubscription(
     await stripe.subscriptions.update(org.stripeSubscriptionId, {
       cancel_at_period_end: true,
     });
+    await db
+      .update(orgMetadata)
+      .set({ cancelAtPeriodEnd: true, updatedAt: new Date() })
+      .where(eq(orgMetadata.orgId, orgId));
     const effectiveDate = org.currentPeriodEnd
       ? org.currentPeriodEnd.toISOString()
       : null;
@@ -639,6 +647,7 @@ export async function getBillingStatus(orgId: string): Promise<{
   credits: number;
   subscriptionStatus: string | null;
   currentPeriodEnd: Date | null;
+  cancelAtPeriodEnd: boolean;
   hasSubscription: boolean;
   autoRecharge: {
     enabled: boolean;
@@ -653,6 +662,7 @@ export async function getBillingStatus(orgId: string): Promise<{
       credits: orgMetadata.credits,
       subscriptionStatus: orgMetadata.subscriptionStatus,
       currentPeriodEnd: orgMetadata.currentPeriodEnd,
+      cancelAtPeriodEnd: orgMetadata.cancelAtPeriodEnd,
       stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
       autoRechargeEnabled: orgMetadata.autoRechargeEnabled,
       autoRechargeThreshold: orgMetadata.autoRechargeThreshold,
@@ -667,6 +677,7 @@ export async function getBillingStatus(orgId: string): Promise<{
     credits: org?.credits ?? 0,
     subscriptionStatus: org?.subscriptionStatus ?? null,
     currentPeriodEnd: org?.currentPeriodEnd ?? null,
+    cancelAtPeriodEnd: org?.cancelAtPeriodEnd ?? false,
     hasSubscription: !!org?.stripeSubscriptionId,
     autoRecharge: {
       enabled: org?.autoRechargeEnabled ?? false,

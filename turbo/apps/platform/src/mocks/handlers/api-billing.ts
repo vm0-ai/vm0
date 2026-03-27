@@ -12,6 +12,7 @@ let mockBillingStatus: BillingStatus = {
   credits: 10_000,
   subscriptionStatus: null,
   currentPeriodEnd: null,
+  cancelAtPeriodEnd: false,
   hasSubscription: false,
   autoRecharge: { enabled: false, threshold: null, amount: null },
 };
@@ -26,6 +27,7 @@ export function resetMockBilling(): void {
     credits: 10_000,
     subscriptionStatus: null,
     currentPeriodEnd: null,
+    cancelAtPeriodEnd: false,
     hasSubscription: false,
     autoRecharge: { enabled: false, threshold: null, amount: null },
   };

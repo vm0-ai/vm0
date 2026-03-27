@@ -416,6 +416,53 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
   );
 }
 
+function PlanActionButtons({
+  isPaid,
+  isCancelling,
+  currentTier,
+  loading,
+  onUpgrade,
+  onDowngrade,
+}: {
+  isPaid: boolean;
+  isCancelling: boolean;
+  currentTier: BillingTier;
+  loading: boolean;
+  onUpgrade: () => void;
+  onDowngrade: () => void;
+}) {
+  const showUpgrade =
+    (isPaid && currentTier !== "team" && !isCancelling) || !isPaid;
+  const showDowngrade = isPaid && !isCancelling;
+
+  return (
+    <div className="flex items-center gap-2 shrink-0">
+      {showUpgrade && (
+        <Button
+          size="sm"
+          className="rounded-lg h-8 text-xs"
+          disabled={loading}
+          onClick={onUpgrade}
+        >
+          Upgrade
+        </Button>
+      )}
+      {showDowngrade && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="rounded-lg h-8 text-xs"
+          style={sectionCardStyle}
+          disabled={loading}
+          onClick={onDowngrade}
+        >
+          Downgrade
+        </Button>
+      )}
+    </div>
+  );
+}
+
 export function OrgBillingTab() {
   const pricingOpen = useGet(billingSubPage$);
   const setBillingSubPage = useSet(setBillingSubPage$);
@@ -434,10 +481,13 @@ export function OrgBillingTab() {
 
   const currentTier = apiTierToBillingTier(status?.tier);
   const isPaid = currentTier !== "free";
+  const isCancelling = status?.cancelAtPeriodEnd === true;
   const periodEnd = status?.currentPeriodEnd;
   const periodLabel =
     periodEnd !== undefined && periodEnd !== null && periodEnd !== ""
-      ? `Renews ${new Date(periodEnd).toLocaleDateString()}`
+      ? isCancelling
+        ? `Ends on ${new Date(periodEnd).toLocaleDateString()}`
+        : `Renews ${new Date(periodEnd).toLocaleDateString()}`
       : null;
 
   const handleDowngrade = () => {
@@ -498,41 +548,27 @@ export function OrgBillingTab() {
                     {periodLabel ?? "No active subscription"}
                   </p>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  {isPaid && currentTier !== "team" && (
-                    <Button
-                      size="sm"
-                      className="rounded-lg h-8 text-xs"
-                      disabled={loading}
-                      onClick={() => setPricingOpen(true)}
-                    >
-                      Upgrade
-                    </Button>
-                  )}
-                  {!isPaid && (
-                    <Button
-                      size="sm"
-                      className="rounded-lg h-8 text-xs"
-                      disabled={loading}
-                      onClick={() => setPricingOpen(true)}
-                    >
-                      Upgrade
-                    </Button>
-                  )}
-                  {isPaid && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="rounded-lg h-8 text-xs"
-                      style={sectionCardStyle}
-                      disabled={loading}
-                      onClick={handleDowngrade}
-                    >
-                      Downgrade
-                    </Button>
-                  )}
-                </div>
+                <PlanActionButtons
+                  isPaid={isPaid}
+                  isCancelling={isCancelling}
+                  currentTier={currentTier}
+                  loading={loading}
+                  onUpgrade={() => setPricingOpen(true)}
+                  onDowngrade={handleDowngrade}
+                />
               </div>
+              {isCancelling && periodEnd && (
+                <>
+                  <div className="h-px bg-border/40 mx-5" />
+                  <div className="px-5 py-3">
+                    <p className="text-[13px] text-amber-600 dark:text-amber-400">
+                      Your {formatTierLabel(currentTier)} plan has been
+                      cancelled and will end on{" "}
+                      {new Date(periodEnd).toLocaleDateString()}.
+                    </p>
+                  </div>
+                </>
+              )}
               {isPaid && (
                 <>
                   <div className="h-px bg-border/40 mx-5" />
