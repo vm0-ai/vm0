@@ -30,15 +30,6 @@ export const updateSearchParams$ = command(
   },
 );
 
-/**
- * Lightweight pathname update — pushes a new history entry and
- * triggers pathname$ recomputation without reloading the route.
- */
-export const updatePathname$ = command(({ set }, newPathname: string) => {
-  pushState({}, "", newPathname);
-  set(reloadPathname$, (x) => x + 1);
-});
-
 interface Route {
   path: string;
   setup: Command<Promise<void> | void, [AbortSignal]>;

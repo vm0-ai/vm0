@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { mockLocation, setPathname } from "../../location.ts";
+import { mockLocation } from "../../location.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
-import { updatePathname$ } from "../../route.ts";
+import { updateTestPathname$ } from "../../../__tests__/page-helper.ts";
 import {
   selectedModel$,
   setSelectedModel$,
@@ -78,10 +78,7 @@ describe("zero-model-preference signals", () => {
     context.store.set(syncModelPreference$);
     expect(context.store.get(selectedModel$)).toBe("anthropic");
 
-    // Navigate to agent-b — use setPathname + updatePathname$ to
-    // both update the override and trigger pathname$ recomputation.
-    setPathname("/talk/agent-b");
-    context.store.set(updatePathname$, "/talk/agent-b");
+    context.store.set(updateTestPathname$, "/talk/agent-b");
 
     context.store.set(syncModelPreference$);
     expect(context.store.get(selectedModel$)).toBe("default");
