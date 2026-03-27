@@ -4,7 +4,8 @@ import { ZeroActivityPageWrapper } from "../../views/activity-page/zero-activity
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
-import { switchActiveAgent$ } from "../zero-page/zero-chat.ts";
+import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
+import { fetchZeroSessionList$ } from "../zero-page/zero-chat.ts";
 import { initZeroActivity$, refreshZeroActivity$ } from "./activity-signals.ts";
 
 export const setupActivityPage$ = command(
@@ -12,13 +13,16 @@ export const setupActivityPage$ = command(
     set(updatePage$, createElement(ZeroActivityPageWrapper));
     set(updateDocumentTitle$, "Activity");
     set(refreshZeroActivity$);
-    await set(initZeroActivity$, signal);
+    await Promise.all([
+      set(initZeroOnboarding$, signal),
+      set(initZeroActivity$, signal),
+    ]);
     signal.throwIfAborted();
 
     if (await set(onboardGuard$, signal)) {
       return;
     }
 
-    await set(switchActiveAgent$, null, signal);
+    await set(fetchZeroSessionList$, signal);
   },
 );

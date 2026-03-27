@@ -5,7 +5,8 @@ import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { detach, Reason } from "../utils.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
-import { switchActiveAgent$ } from "../zero-page/zero-chat.ts";
+import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
+import { fetchZeroSessionList$ } from "../zero-page/zero-chat.ts";
 import {
   initSlackOrg$,
   pollSlackConnection$,
@@ -14,7 +15,10 @@ import {
 export const setupWorksPage$ = command(async ({ set }, signal: AbortSignal) => {
   set(updatePage$, createElement(ZeroWorksPageWrapper));
   set(updateDocumentTitle$, "Works");
-  await set(initSlackOrg$, signal);
+  await Promise.all([
+    set(initZeroOnboarding$, signal),
+    set(initSlackOrg$, signal),
+  ]);
   signal.throwIfAborted();
   detach(set(pollSlackConnection$, signal), Reason.Entrance);
 
@@ -22,5 +26,5 @@ export const setupWorksPage$ = command(async ({ set }, signal: AbortSignal) => {
     return;
   }
 
-  await set(switchActiveAgent$, null, signal);
+  await set(fetchZeroSessionList$, signal);
 });

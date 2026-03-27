@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.86.4](https://github.com/vm0-ai/vm0/compare/cli-v9.86.3...cli-v9.86.4) (2026-03-27)
+
+
+### Bug Fixes
+
+* **cli:** use agent-id instead of agent-name in schedule setup help text ([#7063](https://github.com/vm0-ai/vm0/issues/7063)) ([b432703](https://github.com/vm0-ai/vm0/commit/b4327031112ac02049106d618d7481afc3f3644d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.121.0
+
 ## [9.86.3](https://github.com/vm0-ai/vm0/compare/cli-v9.86.2...cli-v9.86.3) (2026-03-27)
 
 

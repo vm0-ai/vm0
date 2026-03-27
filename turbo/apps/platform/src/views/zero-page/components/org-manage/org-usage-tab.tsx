@@ -48,20 +48,6 @@ function formatCreditsLine(tier: BillingTier, totalUsed: number): string {
   return `${monthly.toLocaleString()}/mo plan · used ${totalUsed.toLocaleString()} this period`;
 }
 
-function splitCreditsForBar(
-  balance: number,
-  tier: BillingTier,
-): { planPortion: number; rolloverPortion: number } {
-  const ref = tierCreditReference(tier);
-  if (balance <= 0 || ref <= 0) {
-    return { planPortion: Math.max(0, balance), rolloverPortion: 0 };
-  }
-  return {
-    planPortion: Math.min(balance, ref),
-    rolloverPortion: Math.max(0, balance - ref),
-  };
-}
-
 function CreditUsageBar({
   used,
   balance,
@@ -77,11 +63,7 @@ function CreditUsageBar({
   const total = used + balance;
   const barMax = Math.max(total, ref, 1);
 
-  // Three segments: used | plan pool (remaining within plan) | rollover (above plan)
   const usedPct = (used / barMax) * 100;
-  const { planPortion, rolloverPortion } = splitCreditsForBar(balance, tier);
-  const planPct = (planPortion / barMax) * 100;
-  const rolloverPct = (rolloverPortion / barMax) * 100;
 
   const [open, setOpen] = useState(false);
   const [timerId, setTimerId] = useState<ReturnType<
@@ -141,18 +123,6 @@ function CreditUsageBar({
                 style={{ width: `${usedPct}%` }}
               />
             )}
-            {planPortion > 0 && (
-              <div
-                className="h-full shrink-0 bg-primary/25"
-                style={{ width: `${planPct}%` }}
-              />
-            )}
-            {rolloverPortion > 0 && (
-              <div
-                className="h-full shrink-0 bg-amber-500/30"
-                style={{ width: `${rolloverPct}%` }}
-              />
-            )}
           </div>
         </div>
       </PopoverAnchor>
@@ -168,38 +138,6 @@ function CreditUsageBar({
       >
         <p className="text-sm font-medium text-foreground">Credit breakdown</p>
         <ul className="mt-2.5 space-y-2 text-xs text-muted-foreground">
-          <li className="relative flex items-baseline justify-between pl-5">
-            <span
-              className="absolute left-0 top-[0.35em] h-2 w-2 rounded-full bg-primary"
-              aria-hidden
-            />
-            <span>Used this period</span>
-            <span className="tabular-nums text-foreground">
-              {used.toLocaleString()}
-            </span>
-          </li>
-          <li className="relative flex items-baseline justify-between pl-5">
-            <span
-              className="absolute left-0 top-[0.35em] h-2 w-2 rounded-full bg-primary/25"
-              aria-hidden
-            />
-            <span>Plan pool remaining</span>
-            <span className="tabular-nums text-foreground">
-              {planPortion.toLocaleString()}
-            </span>
-          </li>
-          {rolloverPortion > 0 && (
-            <li className="relative flex items-baseline justify-between pl-5">
-              <span
-                className="absolute left-0 top-[0.35em] h-2 w-2 rounded-full bg-amber-500/50"
-                aria-hidden
-              />
-              <span>Rollover &amp; extra</span>
-              <span className="tabular-nums text-foreground">
-                {rolloverPortion.toLocaleString()}
-              </span>
-            </li>
-          )}
           {creditExpiry &&
             creditExpiry.expiringNextCycle > 0 &&
             creditExpiry.nextExpiryDate && (

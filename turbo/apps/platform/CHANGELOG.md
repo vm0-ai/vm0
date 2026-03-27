@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.161.0](https://github.com/vm0-ai/vm0/compare/app-v0.160.0...app-v0.161.0) (2026-03-27)
+
+
+### Features
+
+* add credit expiry records with first-expiring-first-out deduction ([#7049](https://github.com/vm0-ai/vm0/issues/7049)) ([f9bbfb1](https://github.com/vm0-ai/vm0/commit/f9bbfb170c42867c2aa64573ccf7f12c1e19ec74))
+
+
+### Bug Fixes
+
+* resolve auto-recharge toggle deadlock when no prior config exists ([#7076](https://github.com/vm0-ai/vm0/issues/7076)) ([fe554fb](https://github.com/vm0-ai/vm0/commit/fe554fb963f67c34a8fab6450874375f975b61c8))
+
+
+### Refactoring
+
+* **platform:** remove unused exports and clean up knip ignore patterns ([#7069](https://github.com/vm0-ai/vm0/issues/7069)) ([2b0707f](https://github.com/vm0-ai/vm0/commit/2b0707fea9079ef1435c5e00a4f11aaaf5d8825f))
+* **platform:** remove update-pathname signal and add test-only helper ([#7062](https://github.com/vm0-ai/vm0/issues/7062)) ([3a0eca4](https://github.com/vm0-ai/vm0/commit/3a0eca4c621ddf6d8930150a0e8c71f3bb7b2351))
+* **platform:** rename route path params to be more descriptive ([#7061](https://github.com/vm0-ai/vm0/issues/7061)) ([498b52e](https://github.com/vm0-ai/vm0/commit/498b52ef05930ddbe0c07b6d83d7dd6df9c98f14))
+* remove queued message logic from zero-chat ([#7073](https://github.com/vm0-ai/vm0/issues/7073)) ([af1cd8a](https://github.com/vm0-ai/vm0/commit/af1cd8a16140e9d77febc740101b4366a64d96b8))
+* simplify credit breakdown popover to show only expiry records ([#7078](https://github.com/vm0-ai/vm0/issues/7078)) ([9d58113](https://github.com/vm0-ai/vm0/commit/9d581137317edd7949fea5bdea7956b4d6abb644)), closes [#7072](https://github.com/vm0-ai/vm0/issues/7072)
+* **zero-onboarding:** derive onboarding step reactively instead of imperatively ([#7075](https://github.com/vm0-ai/vm0/issues/7075)) ([f873010](https://github.com/vm0-ai/vm0/commit/f8730102ec2fccd0562e888a2beec67812d46033))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.121.0
+
 ## [0.160.0](https://github.com/vm0-ai/vm0/compare/app-v0.159.0...app-v0.160.0) (2026-03-27)
 
 
