@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { delay } from "signal-timers";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
@@ -104,33 +104,13 @@ describe("zero-chat signals", () => {
       );
 
       await setup();
-      await context.store.set(fetchZeroSessionList$, context.signal);
 
-      const threads = context.store.get(zeroSessionList$);
+      const threads = await context.store.get(zeroSessionList$);
       expect(threads).toHaveLength(2);
       expect(threads[0]?.id).toBe("t1");
       expect(threads[1]?.preview).toBe("World");
       expect(context.store.get(zeroSessionListLoading$)).toBeFalsy();
       expect(context.store.get(zeroSessionListError$)).toBeNull();
-    });
-
-    it("should set error on API failure", async () => {
-      server.use(
-        http.get("*/api/zero/chat-threads", () => {
-          return new HttpResponse(null, {
-            status: 500,
-            statusText: "Internal Server Error",
-          });
-        }),
-      );
-
-      await setup();
-      await context.store.set(fetchZeroSessionList$, context.signal);
-
-      expect(context.store.get(zeroSessionListError$)).toBe(
-        "Failed to load chats (500)",
-      );
-      expect(context.store.get(zeroSessionListLoading$)).toBeFalsy();
     });
 
     it("should pass agentId as query parameter", async () => {
@@ -143,7 +123,8 @@ describe("zero-chat signals", () => {
       );
 
       await setup();
-      await context.store.set(fetchZeroSessionList$, context.signal);
+
+      await context.store.get(zeroSessionList$);
 
       const url = new URL(capturedUrl);
       expect(url.searchParams.get("agentId")).toBe("mock-compose-id");

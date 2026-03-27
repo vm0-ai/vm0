@@ -61,8 +61,6 @@ import {
 import { zeroSubagents$ } from "../../signals/zero-page/zero-agents.ts";
 import {
   zeroSessionList$,
-  zeroSessionListLoading$,
-  zeroSessionListError$,
   createNewChatSession$,
   zeroCreatingNewSession$,
 } from "../../signals/zero-page/zero-chat.ts";
@@ -894,9 +892,16 @@ export function ZeroSidebar() {
   const onRecentSelect = (id: string) => navigateToSession(id);
   const selectedRecentId = useGet(zeroSessionId$);
   const onAccountAction = useSet(handleZeroAccountAction$);
-  const recentSessions = useGet(zeroSessionList$);
-  const recentSessionsLoading = useGet(zeroSessionListLoading$);
-  const recentSessionsError = useGet(zeroSessionListError$);
+  const recentSessionsLoadable = useLastLoadable(zeroSessionList$);
+  const recentSessions =
+    recentSessionsLoadable.state === "hasData" ? recentSessionsLoadable.data : [];
+  const recentSessionsLoading = recentSessionsLoadable.state === "loading";
+  const recentSessionsError =
+    recentSessionsLoadable.state === "hasError"
+      ? recentSessionsLoadable.error instanceof Error
+        ? recentSessionsLoadable.error.message
+        : "Failed to load chats"
+      : null;
   const createNewChat = useSet(createNewChatSession$);
   const creatingNewSession = useGet(zeroCreatingNewSession$);
   const pageSignal = useGet(pageSignal$);

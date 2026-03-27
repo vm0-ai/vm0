@@ -437,15 +437,59 @@ function deduplicateSummaries(summaries: string[]): string[] {
   return result;
 }
 
-function RunActivityLine() {
+/** Live run activity rendered from a message's own runLoop signals. */
+function MessageRunActivityLine({ message }: { message: ZeroChatMessage }) {
+  const summariesLoadable = useLastLoadable(message.summaries$!);
+  const rawSummaries =
+    summariesLoadable.state === "hasData" ? summariesLoadable.data : [];
+  const detailLoadable = useLastLoadable(message.runLoop!.detail$);
+  const runStatus =
+    detailLoadable.state === "hasData" ? detailLoadable.data.status : null;
+  const queueLoadable = useLastLoadable(message.runLoop!.queuePosition$);
+  const queuePosition =
+    queueLoadable.state === "hasData" ? queueLoadable.data : 0;
+  const isQueued = runStatus === "queued";
+  const thinkingMsg = useGet(message.runLoop!.thinkingMessage$);
+  return (
+    <RunActivityLineView
+      summaries={rawSummaries}
+      isQueued={isQueued}
+      queuePosition={queuePosition}
+      thinkingMsg={thinkingMsg}
+    />
+  );
+}
+
+/** Live run activity rendered from global signals (legacy path). */
+function GlobalRunActivityLine() {
   const summariesLoadable = useLastLoadable(zeroChatRunSummaries$);
   const rawSummaries =
     summariesLoadable.state === "hasData" ? summariesLoadable.data : [];
   const runStatus = useGet(zeroChatRunStatus$);
   const queuePosition = useGet(zeroChatQueuePosition$);
   const isQueued = runStatus === "queued";
-
   const thinkingMsg = useGet(zeroChatThinkingMessage$);
+  return (
+    <RunActivityLineView
+      summaries={rawSummaries}
+      isQueued={isQueued}
+      queuePosition={queuePosition}
+      thinkingMsg={thinkingMsg}
+    />
+  );
+}
+
+function RunActivityLineView({
+  summaries: rawSummaries,
+  isQueued,
+  queuePosition,
+  thinkingMsg,
+}: {
+  summaries: string[];
+  isQueued: boolean;
+  queuePosition: number;
+  thinkingMsg: string;
+}) {
 
   if (isQueued) {
     return (
@@ -615,6 +659,54 @@ interface AssistantMessageProps {
 }
 
 function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
+  // Delegate to reactive variant when the message carries its own runLoop signals
+  if (message.result$) {
+    return (
+      <ReactiveAssistantMessage
+        message={message}
+        zeroAvatarSrc={zeroAvatarSrc}
+      />
+    );
+  }
+  return (
+    <StaticAssistantMessage message={message} zeroAvatarSrc={zeroAvatarSrc} />
+  );
+}
+
+/** Assistant message with reactive result$/summaries$ from runLoop. */
+function ReactiveAssistantMessage({
+  message,
+  zeroAvatarSrc,
+}: AssistantMessageProps) {
+  const resultLoadable = useLastLoadable(message.result$!);
+  const content =
+    resultLoadable.state === "hasData" ? resultLoadable.data : "";
+  const summariesLoadable = useLastLoadable(message.summaries$!);
+  const summaries =
+    summariesLoadable.state === "hasData" ? summariesLoadable.data : [];
+
+  // Build an enriched message with reactive content for the static renderer
+  const enrichedMessage: ZeroChatMessage = {
+    ...message,
+    content,
+    summaries: summaries.length > 0 ? summaries : message.summaries,
+  };
+  return (
+    <StaticAssistantMessage
+      message={enrichedMessage}
+      zeroAvatarSrc={zeroAvatarSrc}
+      renderActivityLine={
+        <MessageRunActivityLine message={message} />
+      }
+    />
+  );
+}
+
+function StaticAssistantMessage({
+  message,
+  zeroAvatarSrc,
+  renderActivityLine,
+}: AssistantMessageProps & { renderActivityLine?: React.ReactNode }) {
   const setOrgManageOpen = useSet(setOrgManageDialogOpen$);
   const setTab = useSet(setActiveTab$);
   const pageSignal = useGet(pageSignal$);
@@ -642,7 +734,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
     detach(copyMessage(message.id, message.content), Reason.DomCallback);
   };
 
-  const logButton = message.runId ? (
+  const logButton = message.legacyRunId ? (
     <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5">
       <div />
       <div className="flex py-2 gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
@@ -651,7 +743,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
             <TooltipTrigger asChild>
               <Link
                 pathname="/activity/:runId"
-                options={{ pathParams: { runId: message.runId } }}
+                options={{ pathParams: { runId: message.legacyRunId } }}
                 className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
                 aria-label="View run logs"
               >
@@ -798,7 +890,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
       <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 items-start">
         {avatar}
         <div className="zero-chat-bubble-assistant rounded-xl py-4 text-sm leading-relaxed min-w-0 overflow-hidden">
-          <RunActivityLine />
+          {renderActivityLine ?? <GlobalRunActivityLine />}
         </div>
       </div>
       {logButton}
