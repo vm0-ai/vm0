@@ -51,10 +51,7 @@ import {
   type OrgScheduleEntry,
   type ZeroScheduleSaveParams,
 } from "../../signals/zero-page/zero-schedule.ts";
-import {
-  slackOrgData$,
-  slackOrgInitialized$,
-} from "../../signals/zero-page/zero-slack.ts";
+import { slackOrgData$ } from "../../signals/zero-page/zero-slack.ts";
 import {
   slackChannels$,
   slackChannelsInitialized$,
@@ -1023,7 +1020,7 @@ export function ZeroScheduleDetailPage() {
   const agents = agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
 
   const loaded = useGet(allOrgSchedulesLoaded$);
-  const slackReady = useGet(slackOrgInitialized$);
+  const slackData = useLoadable(slackOrgData$);
   const channelsReady = useGet(slackChannelsInitialized$);
   const saveSchedule = useSet(saveOrgSchedule$);
   const toggleEnabled = useSet(toggleOrgScheduleEnabled$);
@@ -1044,7 +1041,7 @@ export function ZeroScheduleDetailPage() {
   if (
     !loaded ||
     entriesLoadable.state !== "hasData" ||
-    !slackReady ||
+    slackData.state !== "hasData" ||
     !channelsReady
   ) {
     return <ScheduleDetailSkeleton />;
