@@ -7,6 +7,15 @@ export const listCommand = new Command()
   .name("list")
   .alias("ls")
   .description("List all zero agents")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  zero agent list
+
+Notes:
+  - Use this to discover teammate agent IDs before delegating with "zero run"`,
+  )
   .action(
     withErrorHandler(async () => {
       const agents = await listZeroAgents();

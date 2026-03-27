@@ -9,6 +9,18 @@ export const missingTokenCommand = new Command()
     "Diagnose a missing token and find the connector that provides it",
   )
   .argument("<token-name>", "The environment variable / token name to look up")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  zero doctor missing-token GITHUB_TOKEN
+  zero doctor missing-token LINEAR_API_KEY
+  zero doctor missing-token NOTION_TOKEN
+
+Notes:
+  - Outputs which connector provides the token and a URL for the user to connect it
+  - Use this to guide the user when a required token is not available in the sandbox`,
+  )
   .action(
     withErrorHandler(async (tokenName: string) => {
       const connectorType = getConnectorTypeForSecretName(tokenName);
