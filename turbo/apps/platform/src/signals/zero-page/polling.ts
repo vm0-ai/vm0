@@ -240,6 +240,7 @@ export function createRunLoop(runId: string) {
     cancel$,
     detail$: runDetail$,
     queuePosition$,
+    finished$,
     thinkingMessage$,
   };
 }

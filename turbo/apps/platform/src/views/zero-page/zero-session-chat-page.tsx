@@ -90,7 +90,9 @@ export function ZeroSessionChatPage({
   const messagesLoadable = useLoadable(zeroChatMessages$);
   const messages =
     messagesLoadable.state === "hasData" ? messagesLoadable.data : [];
-  const sending = useGet(zeroChatSending$);
+  const sendingLoadable = useLastLoadable(zeroChatSending$);
+  const sending =
+    sendingLoadable.state === "hasData" ? sendingLoadable.data : false;
   const sessionError =
     messagesLoadable.state === "hasError"
       ? messagesLoadable.error instanceof Error

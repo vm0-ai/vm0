@@ -155,10 +155,29 @@ export const zeroChatMessages$ = computed(async (get) => {
 const internalSessionId$ = state<string | null>(null);
 export const zeroCurrentSessionId$ = computed((get) => get(internalSessionId$));
 
-/** Whether the agent is currently busy (derived from loop promise). */
-export const zeroChatSending$ = computed(
-  (get) => get(internalLoopPromise$) !== null,
-);
+const allFinished$ = computed(async (get) => {
+  const messages = await get(zeroChatMessages$);
+  const hasUnfinishedRun = (
+    await Promise.all(
+      messages.map(async (message) => {
+        if (message.role !== "assistant") {
+          return false;
+        }
+        if (!message.runLoop) {
+          return false;
+        }
+
+        return (await get(message.runLoop.finished$)) !== true;
+      }),
+    )
+  ).every((pending) => !pending);
+  return !hasUnfinishedRun;
+});
+
+/** Whether the agent is currently busy (any run still in-flight). */
+export const zeroChatSending$ = computed(async (get) => {
+  return !(await get(allFinished$));
+});
 
 /** Cancel the currently active run. */
 export const cancelActiveRun$ = command(
@@ -199,10 +218,6 @@ export const zeroChatQueuedMessage$ = computed((get) =>
 /** Queue a message to be sent automatically once the current run completes. */
 export const queueZeroChatMessage$ = command(
   ({ get, set }, text: string, options?: { modelProvider?: string }) => {
-    // Only queue when there's an active loop (agent is busy)
-    if (!get(internalLoopPromise$)) {
-      return;
-    }
     if (get(internalQueuedMessage$)) {
       return;
     }
@@ -344,8 +359,6 @@ export const resetTalkSendSignal$ = resetSignal();
 // ---------------------------------------------------------------------------
 // Promise signals — UI derives busy state from these via useLoadable
 // ---------------------------------------------------------------------------
-
-const internalLoopPromise$ = state<Promise<void> | null>(null);
 
 /** Thread ID derived from the URL `/chat/:id`. */
 export const zeroChatThreadId$ = zeroSessionId$;
@@ -879,15 +892,7 @@ export const loadSessionFromSnapshot$ = command(
         );
       })();
 
-      set(internalLoopPromise$, loopPromise);
-      detach(
-        loopPromise.finally(() => {
-          if (get(internalLoopPromise$) === loopPromise) {
-            set(internalLoopPromise$, null);
-          }
-        }),
-        Reason.Daemon,
-      );
+      detach(loopPromise, Reason.Daemon);
     }
   },
 );
@@ -902,8 +907,6 @@ export const switchZeroSession$ = command(({ set }, threadId: string) => {
   set(navigateToZeroSession$, threadId);
   set(internalSessionId$, null);
   set(internalLocalMessages$, []);
-
-  set(internalLoopPromise$, null);
 });
 
 export const startNewZeroSession$ = command(({ set }) => {
@@ -914,7 +917,6 @@ export const startNewZeroSession$ = command(({ set }) => {
   set(internalLocalMessages$, []);
   set(internalSessionId$, null);
 
-  set(internalLoopPromise$, null);
   set(internalChatInput$, "");
 });
 
@@ -1076,19 +1078,7 @@ const submitAndPollRun$ = command(
     const { assistantMessage } = createActiveRunMessage(runId, args.prompt);
     set(internalLocalMessages$, (prev) => [...prev, assistantMessage]);
 
-    // Poll until terminal — the view reads result$/summaries$ reactively
-    const loopPromise = (async () => {
-      await set(assistantMessage.beginLoop$!, signal);
-    })();
-
-    set(internalLoopPromise$, loopPromise);
-    try {
-      await loopPromise;
-    } finally {
-      if (get(internalLoopPromise$) === loopPromise) {
-        set(internalLoopPromise$, null);
-      }
-    }
+    await set(assistantMessage.beginLoop$!, signal);
 
     // Run complete — extract session ID for conversation continuity
     await set(onZeroRunComplete$, runId, signal);
