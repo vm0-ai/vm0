@@ -1,5 +1,6 @@
 import { eq, and, inArray } from "drizzle-orm";
 import { clerkClient } from "@clerk/nextjs/server";
+import { z } from "zod";
 import { badRequest, forbidden, notFound } from "../errors";
 import { logger } from "../logger";
 import type { OrgRole } from "@vm0/core";
@@ -11,16 +12,24 @@ import { orgMembersMetadata } from "../../db/schema/org-members-metadata";
 
 const log = logger("service:org-member");
 
+const CLERK_API_BASE = "https://api.clerk.com/v1";
+
 /**
- * Membership request data shape from Clerk REST API.
+ * Zod schema for Clerk membership request REST API response.
  * The backend SDK doesn't expose membership request methods yet,
- * so we call the REST API directly.
+ * so we call the REST API directly and validate the response shape at runtime.
  */
-interface MembershipRequestData {
-  id: string;
-  public_user_data?: { user_id?: string };
-  created_at: number;
-}
+const membershipRequestDataSchema = z.object({
+  id: z.string(),
+  public_user_data: z.object({ user_id: z.string().optional() }).optional(),
+  created_at: z.number(),
+});
+
+const clerkMembershipRequestsResponseSchema = z.object({
+  data: z.array(membershipRequestDataSchema),
+});
+
+type MembershipRequestData = z.infer<typeof membershipRequestDataSchema>;
 
 function getClerkSecretKey(): string {
   return globalThis.services.env.CLERK_SECRET_KEY;
@@ -31,20 +40,18 @@ async function fetchMembershipRequests(
 ): Promise<MembershipRequestData[]> {
   const secretKey = getClerkSecretKey();
   const res = await fetch(
-    `https://api.clerk.com/v1/organizations/${orgId}/membership_requests?status=pending`,
+    `${CLERK_API_BASE}/organizations/${orgId}/membership_requests?status=pending`,
     {
       headers: { Authorization: `Bearer ${secretKey}` },
     },
   );
   if (!res.ok) {
-    log.debug("Failed to fetch membership requests", {
-      orgId,
-      status: res.status,
-    });
-    return [];
+    throw new Error(
+      `Failed to fetch membership requests for org ${orgId}: HTTP ${res.status}`,
+    );
   }
-  const body = (await res.json()) as { data: MembershipRequestData[] };
-  return body.data ?? [];
+  const body = clerkMembershipRequestsResponseSchema.parse(await res.json());
+  return body.data;
 }
 
 /**
@@ -305,7 +312,7 @@ export async function acceptMembershipRequest(
 
   const secretKey = getClerkSecretKey();
   const res = await fetch(
-    `https://api.clerk.com/v1/organizations/${orgId}/membership_requests/${requestId}/accept`,
+    `${CLERK_API_BASE}/organizations/${orgId}/membership_requests/${requestId}/accept`,
     {
       method: "POST",
       headers: { Authorization: `Bearer ${secretKey}` },
@@ -335,7 +342,7 @@ export async function rejectMembershipRequest(
 
   const secretKey = getClerkSecretKey();
   const res = await fetch(
-    `https://api.clerk.com/v1/organizations/${orgId}/membership_requests/${requestId}/reject`,
+    `${CLERK_API_BASE}/organizations/${orgId}/membership_requests/${requestId}/reject`,
     {
       method: "POST",
       headers: { Authorization: `Bearer ${secretKey}` },

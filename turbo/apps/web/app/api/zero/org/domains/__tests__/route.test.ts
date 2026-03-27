@@ -1,0 +1,172 @@
+import { describe, it, expect, beforeEach } from "vitest";
+import { GET, POST, DELETE } from "../route";
+import {
+  createTestRequest,
+  createTestOrg,
+} from "../../../../../../src/__tests__/api-test-helpers";
+import {
+  testContext,
+  uniqueId,
+} from "../../../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
+
+const context = testContext();
+
+async function setupOrg(userId: string) {
+  const slug = uniqueId("dom");
+  const orgId = `org_mock_${userId}`;
+  mockClerk({ userId, orgId, orgRole: "org:admin" });
+  await createTestOrg(slug);
+  return { slug, orgId };
+}
+
+function domainsUrl(slug: string): string {
+  return `http://localhost:3000/api/zero/org/domains?org=${slug}`;
+}
+
+describe("GET /api/zero/org/domains", () => {
+  beforeEach(() => {
+    context.setupMocks();
+  });
+
+  it("should return domain list for an admin", async () => {
+    const userId = uniqueId("dom-get");
+    const { slug } = await setupOrg(userId);
+
+    const response = await GET(createTestRequest(domainsUrl(slug)));
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.domains).toBeInstanceOf(Array);
+  });
+
+  it("should return 403 when caller is not an admin", async () => {
+    const userId = uniqueId("dom-get-403");
+    const slug = uniqueId("dom-member");
+    const orgId = `org_mock_${userId}`;
+    mockClerk({ userId, orgId, orgRole: "org:member" });
+    await createTestOrg(slug);
+
+    const response = await GET(createTestRequest(domainsUrl(slug)));
+
+    expect(response.status).toBe(403);
+  });
+
+  it("should return 401 when not authenticated", async () => {
+    mockClerk({ userId: null });
+
+    const response = await GET(createTestRequest(domainsUrl("any-org")));
+
+    expect(response.status).toBe(401);
+  });
+});
+
+describe("POST /api/zero/org/domains", () => {
+  beforeEach(() => {
+    context.setupMocks();
+  });
+
+  it("should add a domain for an admin", async () => {
+    const userId = uniqueId("dom-add");
+    const { slug } = await setupOrg(userId);
+
+    const response = await POST(
+      createTestRequest(domainsUrl(slug), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "example.com" }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.message).toContain("example.com");
+  });
+
+  it("should return 403 when caller is not an admin", async () => {
+    const userId = uniqueId("dom-add-403");
+    const slug = uniqueId("dom-add-member");
+    const orgId = `org_mock_${userId}`;
+    mockClerk({ userId, orgId, orgRole: "org:member" });
+    await createTestOrg(slug);
+
+    const response = await POST(
+      createTestRequest(domainsUrl(slug), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "example.com" }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+  });
+
+  it("should return 401 when not authenticated", async () => {
+    mockClerk({ userId: null });
+
+    const response = await POST(
+      createTestRequest(domainsUrl("any-org"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "example.com" }),
+      }),
+    );
+
+    expect(response.status).toBe(401);
+  });
+});
+
+describe("DELETE /api/zero/org/domains", () => {
+  beforeEach(() => {
+    context.setupMocks();
+  });
+
+  it("should remove a domain for an admin", async () => {
+    const userId = uniqueId("dom-del");
+    const { slug } = await setupOrg(userId);
+
+    const response = await DELETE(
+      createTestRequest(domainsUrl(slug), {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ domainId: "domain_test123" }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.message).toBe("Domain removed");
+  });
+
+  it("should return 403 when caller is not an admin", async () => {
+    const userId = uniqueId("dom-del-403");
+    const slug = uniqueId("dom-del-member");
+    const orgId = `org_mock_${userId}`;
+    mockClerk({ userId, orgId, orgRole: "org:member" });
+    await createTestOrg(slug);
+
+    const response = await DELETE(
+      createTestRequest(domainsUrl(slug), {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ domainId: "domain_test123" }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+  });
+
+  it("should return 401 when not authenticated", async () => {
+    mockClerk({ userId: null });
+
+    const response = await DELETE(
+      createTestRequest(domainsUrl("any-org"), {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ domainId: "domain_test123" }),
+      }),
+    );
+
+    expect(response.status).toBe(401);
+  });
+});
