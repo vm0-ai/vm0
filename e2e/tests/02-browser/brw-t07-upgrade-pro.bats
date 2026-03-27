@@ -140,15 +140,18 @@ teardown_file() {
   local snap
   local needs_onboarding=false
 
+  local org_created=false
   for _i in $(seq 1 20); do
     snap=$(full_snapshot)
     # Handle Clerk "Create Organization" page (appears for fresh users)
-    if contains "$snap" "Select an Organization\|Create Organization"; then
+    # Only attempt org creation once to avoid retry loops if the page lingers
+    if [[ "$org_created" != "true" ]] && contains "$snap" "Select an Organization\|Create Organization"; then
       echo "# Creating Clerk organization..." >&3
       agent-browser find placeholder "Organization name" fill "E2E Pro Test"
       agent-browser wait 500
       agent-browser find text "Create organization" click
-      agent-browser wait 5000
+      org_created=true
+      agent-browser wait 8000
       snap=$(full_snapshot)
     fi
     if contains "$snap" "Name your workspace\|Choose your tools\|Connect your apps\|Where would you like to work"; then
