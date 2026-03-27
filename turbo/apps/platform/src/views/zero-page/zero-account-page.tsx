@@ -46,10 +46,7 @@ function AppearanceSettings() {
       <p className="text-sm text-muted-foreground">
         Choose how the interface looks.
       </p>
-      <div
-        className="flex items-center gap-4 bg-card p-4 rounded-xl"
-        style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-      >
+      <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border">
         <div className="shrink-0">
           <div className="flex h-7 w-7 items-center justify-center">
             <IconPalette
@@ -71,9 +68,8 @@ function AppearanceSettings() {
               key={value}
               type="button"
               onClick={() => setTheme(value)}
-              style={{ borderWidth: "0.7px" }}
               className={cn(
-                "flex items-center gap-2 rounded-lg border px-3.5 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                "flex items-center gap-2 rounded-lg border border-[0.7px] px-3.5 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                 currentPref === value
                   ? "border-primary/40 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/15"
                   : "zero-chip text-muted-foreground hover:text-foreground",
@@ -110,10 +106,7 @@ function SendModeSettings() {
       <p className="text-sm text-muted-foreground">
         Choose how to send messages in chat.
       </p>
-      <div
-        className="flex items-center gap-4 bg-card p-4 rounded-xl"
-        style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-      >
+      <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border">
         <div className="shrink-0">
           <div className="flex h-7 w-7 items-center justify-center">
             <IconKeyboard
@@ -140,9 +133,8 @@ function SendModeSettings() {
               type="button"
               disabled={saving !== null}
               onClick={() => handleChange(value)}
-              style={{ borderWidth: "0.7px" }}
               className={cn(
-                "flex items-center gap-2 rounded-lg border px-3.5 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                "flex items-center gap-2 rounded-lg border border-[0.7px] px-3.5 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                 (saving === value ? true : saving === null && current === value)
                   ? "border-primary/40 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/15"
                   : "zero-chip text-muted-foreground hover:text-foreground",

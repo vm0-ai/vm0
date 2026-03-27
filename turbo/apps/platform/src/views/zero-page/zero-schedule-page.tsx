@@ -350,7 +350,7 @@ function ScheduleCalendarSkeleton() {
   return (
     <section className="flex flex-col gap-2">
       <Skeleton className="h-4 w-20" />
-      <div className="rounded-xl border border-border/70 bg-muted/20 overflow-hidden">
+      <div className="rounded-xl zero-border bg-muted/20 overflow-hidden">
         <div className="grid grid-cols-8">
           <div className="bg-muted/50 p-2 border-b border-r border-border/60 h-9" />
           {WEEKDAY_LABELS.map((d) => (

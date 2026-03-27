@@ -31,7 +31,7 @@ function ProviderCardInDialog({
     <button
       type="button"
       onClick={onAdd}
-      className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 text-left transition-colors hover:bg-muted/50"
+      className="flex flex-col gap-3 rounded-xl zero-border bg-card p-4 text-left transition-colors hover:bg-muted/50"
       data-testid={`org-provider-card-${type}`}
     >
       <div className="flex items-center gap-3">
@@ -50,7 +50,7 @@ function ProviderCardInDialog({
         </div>
       )}
       <div className="mt-auto">
-        <span className="w-full h-8 rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-[hsl(var(--gray-50))] px-3 text-sm font-medium text-foreground hover:bg-[hsl(var(--gray-100))] transition-colors text-center flex items-center justify-center">
+        <span className="w-full h-8 rounded-lg zero-chip px-3 text-sm font-medium text-foreground transition-colors text-center flex items-center justify-center">
           Add
         </span>
       </div>

@@ -185,13 +185,13 @@ export function TiptapInstructionsEditor({
 
   return (
     <div
-      className={`relative rounded-lg border border-border/60 bg-transparent transition-colors focus-within:border-border ${disabled ? "opacity-60 pointer-events-none" : ""}`}
+      className={`relative rounded-xl zero-border bg-transparent transition-colors focus-within:border-primary ${disabled ? "opacity-60 pointer-events-none" : ""}`}
     >
       {editor && (
         <BubbleMenu
           editor={editor}
           updateDelay={0}
-          className="z-50 flex items-center gap-1 rounded-lg border border-border bg-popover px-1.5 py-1 shadow-lg"
+          className="z-50 flex items-center gap-1 rounded-lg zero-border bg-popover px-1.5 py-1 shadow-lg"
         >
           <ToolbarButton
             onAction={() => editor.chain().focus().toggleBold().run()}
@@ -288,7 +288,7 @@ export function TiptapInstructionsEditor({
         </BubbleMenu>
       )}
       <EditorContent editor={editor} />
-      <p className="mx-4 border-t border-border/40 pt-2 pb-3 text-xs text-muted-foreground">
+      <p className="mx-4 zero-border-t pt-2 pb-3 text-xs text-muted-foreground">
         {footerHint}
       </p>
     </div>

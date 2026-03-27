@@ -60,24 +60,18 @@ export function OrgInvoicesTab() {
           <div className="text-left">Amount</div>
           <div />
         </div>
-        <div className="h-px bg-border/40 mx-4" />
+        <div className="h-0 zero-border-t mx-4" />
 
         {invoices.map((inv, i) => (
           <div key={inv.id}>
-            {i > 0 && <div className="h-px bg-border/40 mx-4" />}
+            {i > 0 && <div className="h-0 zero-border-t mx-4" />}
             <div className={cn(ROW_GRID, "px-4 py-3")}>
               <div className="flex items-center gap-3 min-w-0">
                 <span className="text-sm font-medium text-foreground truncate">
                   {inv.number ?? inv.id}
                 </span>
                 {inv.status && (
-                  <span
-                    className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground"
-                    style={{
-                      border: "0.7px solid hsl(var(--gray-400))",
-                      backgroundColor: "hsl(var(--gray-0))",
-                    }}
-                  >
+                  <span className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
                     <IconCircleCheck size={12} className="text-green-600" />
                     {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
                   </span>

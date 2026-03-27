@@ -280,7 +280,7 @@ export function ZeroSettingsTab({
                   value={agentName}
                   onChange={(e) => setAgentName(e.target.value)}
                   placeholder="What should we call them?"
-                  className="h-9 w-full zero-form-border"
+                  className="h-9 w-full"
                   aria-label="Name"
                 />
               </div>
@@ -298,7 +298,7 @@ export function ZeroSettingsTab({
                   onChange={(e) => setDesc(e.target.value)}
                   placeholder="What does this agent do?"
                   rows={3}
-                  className="zero-form-border w-full rounded-lg bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:ring-[3px] focus:ring-primary/10 resize-y min-h-[72px]"
+                  className="w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 resize-y min-h-[72px]"
                   aria-label="Description"
                 />
               </div>
@@ -324,9 +324,8 @@ export function ZeroSettingsTab({
                       key={opt}
                       type="button"
                       onClick={() => setTone(opt)}
-                      style={{ borderWidth: "0.7px" }}
                       className={cn(
-                        "w-full min-w-0 rounded-lg border px-3 py-2.5 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                        "w-full min-w-0 rounded-lg border border-[0.7px] px-3 py-2.5 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                         tone === opt
                           ? "border-primary/40 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/15"
                           : "zero-chip text-muted-foreground hover:text-foreground",
@@ -337,8 +336,7 @@ export function ZeroSettingsTab({
                   ))}
                 </div>
                 <div
-                  className="rounded-lg bg-muted/30 px-3 py-2 w-full"
-                  style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+                  className="rounded-lg bg-muted/30 px-3 py-2 w-full zero-border"
                   key={tone}
                 >
                   <p className="text-xs text-muted-foreground italic min-h-[1.25rem] leading-relaxed">

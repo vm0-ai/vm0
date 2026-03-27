@@ -156,10 +156,7 @@ function ConnectorTriggerIcons({
     <span className="flex items-center -space-x-1.5">
       {connected.map((c) => (
         <span key={c.type} className="relative shrink-0">
-          <span
-            className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-background"
-            style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-          >
+          <span className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-background zero-border">
             <ConnectorIcon type={c.type as ConnectorType} size={16} />
           </span>
         </span>
@@ -209,10 +206,7 @@ function ConnectorsPopoverButton({
       </TooltipProvider>
       <PopoverContent side="top" align="start" className="w-72 p-0 rounded-lg">
         {hasOrgConnected ? (
-          <div
-            className="max-h-[240px] overflow-y-auto py-1"
-            style={{ scrollbarWidth: "thin" }}
-          >
+          <div className="max-h-[240px] overflow-y-auto py-1">
             <div className="flex flex-col">
               {visibleConnected.map((c) => {
                 const granted = addedSet.has(c.type);

@@ -15,7 +15,7 @@ export function ZeroUnsavedBar({
 }: ZeroUnsavedBarProps) {
   return createPortal(
     <div className="zero-app fixed bottom-6 left-0 right-0 z-40 flex justify-center px-4">
-      <div className="zero-card flex max-w-md items-center justify-between gap-4 rounded-xl border border-border bg-card px-5 py-4 shadow-lg">
+      <div className="zero-card flex max-w-md items-center justify-between gap-4 px-5 py-4 shadow-lg">
         <div className="flex items-center gap-2 text-sm text-foreground">
           <IconPencil
             size={18}

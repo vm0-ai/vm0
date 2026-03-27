@@ -110,10 +110,6 @@ function getPlanPrice(tier: string): string {
 const proPlanPrice = getPlanPrice("pro");
 const freePlanPrice = getPlanPrice("free");
 
-const sectionCardStyle = {
-  border: "0.7px solid hsl(var(--gray-400))",
-} as const;
-
 function tierRank(t: BillingTier): number {
   if (t === "free") {
     return 0;
@@ -155,21 +151,9 @@ function PlanCard({
   const label = planButtonLabel(plan, currentTier);
 
   return (
-    <div
-      className="relative flex flex-col rounded-xl transition-transform duration-200 hover:-translate-y-0.5"
-      style={{
-        border: "0.7px solid hsl(var(--gray-400))",
-        padding: "28px 24px",
-      }}
-    >
+    <div className="relative flex flex-col rounded-xl transition-transform duration-200 hover:-translate-y-0.5 zero-border px-6 py-7">
       {"badge" in plan && plan.badge && (
-        <span
-          className="absolute top-3 right-3 inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground"
-          style={{
-            border: "0.7px solid hsl(var(--gray-400))",
-            backgroundColor: "hsl(var(--gray-0))",
-          }}
-        >
+        <span className="absolute top-3 right-3 inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
           <IconCrown size={12} stroke={1.8} className="text-amber-500" />
           {plan.badge}
         </span>
@@ -184,10 +168,7 @@ function PlanCard({
         />
       )}
 
-      <h3
-        className="text-sm font-semibold uppercase tracking-wider"
-        style={{ color: "#ed4e01", fontFamily: "var(--font-mono, monospace)" }}
-      >
+      <h3 className="text-sm font-semibold uppercase tracking-wider text-primary font-mono">
         {plan.name}
       </h3>
 
@@ -238,12 +219,7 @@ function PlanCard({
                 : "outline"
           }
           size="sm"
-          className="w-full rounded-lg h-9 text-xs"
-          style={
-            !("primary" in plan && plan.primary) && !isCurrent
-              ? sectionCardStyle
-              : undefined
-          }
+          className="w-full h-9 text-xs"
           disabled={loading || isCurrent}
           onClick={() => onAction(plan.tier)}
         >
@@ -451,8 +427,7 @@ function PlanActionButtons({
         <Button
           variant="outline"
           size="sm"
-          className="rounded-lg h-8 text-xs"
-          style={sectionCardStyle}
+          className="h-8 text-xs"
           disabled={loading}
           onClick={onDowngrade}
         >
@@ -510,10 +485,7 @@ export function OrgBillingTab() {
     <div className="flex flex-col gap-8">
       <section className="flex flex-col gap-3">
         <h3 className="text-sm font-medium text-foreground">Plan</h3>
-        <div
-          className="overflow-hidden rounded-xl bg-card"
-          style={sectionCardStyle}
-        >
+        <div className="overflow-hidden rounded-xl bg-card zero-border">
           {statusLoading && !status ? (
             <div className="flex items-center justify-between gap-4 px-5 py-4">
               <div className="min-w-0">
@@ -530,8 +502,6 @@ export function OrgBillingTab() {
               <Button
                 size="sm"
                 variant="outline"
-                className="rounded-lg"
-                style={sectionCardStyle}
                 onClick={() => reloadBilling()}
               >
                 Retry
@@ -559,7 +529,7 @@ export function OrgBillingTab() {
               </div>
               {isCancelling && periodEnd && (
                 <>
-                  <div className="h-px bg-border/40 mx-5" />
+                  <div className="h-0 zero-border-t mx-5" />
                   <div className="px-5 py-3">
                     <p className="text-[13px] text-amber-600 dark:text-amber-400">
                       Your {formatTierLabel(currentTier)} plan has been
@@ -571,7 +541,7 @@ export function OrgBillingTab() {
               )}
               {isPaid && (
                 <>
-                  <div className="h-px bg-border/40 mx-5" />
+                  <div className="h-0 zero-border-t mx-5" />
                   <div className="flex items-center justify-between gap-4 px-5 py-4">
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-foreground">
@@ -584,8 +554,7 @@ export function OrgBillingTab() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="shrink-0 rounded-lg h-8 text-xs gap-1.5"
-                      style={sectionCardStyle}
+                      className="shrink-0 h-8 text-xs gap-1.5"
                       disabled={loading}
                       onClick={() =>
                         detach(portal(pageSignal), Reason.DomCallback)
@@ -597,7 +566,7 @@ export function OrgBillingTab() {
                   </div>
                 </>
               )}
-              <div className="h-px bg-border/40" />
+              <div className="h-0 zero-border-t" />
               <button
                 type="button"
                 className="flex w-full items-center justify-between gap-4 px-5 py-3 text-left transition-colors bg-muted/20 hover:bg-muted/35"

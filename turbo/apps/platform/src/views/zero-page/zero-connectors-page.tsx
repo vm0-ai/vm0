@@ -27,6 +27,7 @@ import { ScopeReviewModal } from "./components/settings/scope-review-modal.tsx";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
+  Input,
   Button,
   DropdownMenu,
   DropdownMenuTrigger,
@@ -116,10 +117,7 @@ function GlobalConnectorCard({
   })();
 
   return (
-    <div
-      className="flex flex-col rounded-[var(--zero-card-radius)] bg-card shadow-[var(--zero-card-shadow)]"
-      style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-    >
+    <div className="flex flex-col rounded-xl bg-card shadow-[var(--zero-card-shadow)] zero-border">
       <div className="flex h-14 items-center gap-2.5 px-5">
         <span className="flex h-5 w-5 shrink-0 items-center justify-center">
           {connector.type in CONNECTOR_TYPES ? (
@@ -172,10 +170,7 @@ function AvailableConnectorCard({
   onConnect: () => void;
 }) {
   return (
-    <div
-      className="rounded-[var(--zero-card-radius)] bg-card overflow-hidden"
-      style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-    >
+    <div className="rounded-xl bg-card overflow-hidden zero-border">
       <div className="flex items-center gap-2.5 px-5 pt-4 pb-1">
         <span className="flex h-5 w-5 shrink-0 items-center justify-center">
           {connector.type in CONNECTOR_TYPES ? (
@@ -319,12 +314,12 @@ export function ZeroConnectorsPage() {
                 stroke={1.5}
                 className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
               />
-              <input
+              <Input
                 type="text"
                 placeholder="Search connectors"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="h-9 w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input pl-9 pr-3 text-sm text-foreground outline-none placeholder:text-muted-foreground/50 transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10"
+                className="pl-9"
               />
             </div>
           </div>
@@ -370,7 +365,7 @@ export function ZeroConnectorsPage() {
               {Array.from({ length: 6 }, (_, i) => (
                 <div
                   key={i}
-                  className="flex flex-col rounded-[var(--zero-card-radius)] border border-border/50 bg-card animate-pulse"
+                  className="flex flex-col rounded-xl zero-border bg-card animate-pulse"
                 >
                   <div className="flex h-14 items-center gap-2.5 px-5">
                     <span className="h-5 w-5 shrink-0 rounded-lg bg-muted/50" />

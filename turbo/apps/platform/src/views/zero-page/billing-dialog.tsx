@@ -186,8 +186,7 @@ export function AutoRechargeSection({
     }
   };
 
-  const inputRowClass =
-    "h-9 w-[200px] shrink-0 rounded-lg border-[0.7px] border-[hsl(var(--gray-400))]";
+  const inputRowClass = "h-9 w-[200px] shrink-0";
 
   if (variant === "settings") {
     return (
@@ -226,7 +225,7 @@ export function AutoRechargeSection({
           </div>
           {enabled && (
             <>
-              <div className="h-px bg-border/40 mx-5" />
+              <div className="h-0 zero-border-t mx-5" />
               <div className="flex items-center justify-between gap-4 px-5 py-4">
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-foreground">
@@ -249,7 +248,7 @@ export function AutoRechargeSection({
                   aria-label="Credit threshold for auto-recharge"
                 />
               </div>
-              <div className="h-px bg-border/40 mx-5" />
+              <div className="h-0 zero-border-t mx-5" />
               <div className="flex items-center justify-between gap-4 px-5 py-4">
                 <div className="min-w-0 flex flex-col gap-1">
                   <span className="text-xl font-semibold tabular-nums tracking-tight text-foreground">
@@ -318,14 +317,13 @@ export function AutoRechargeSection({
             <span className="text-xs text-muted-foreground">
               When credits drop below
             </span>
-            <input
+            <Input
               key={`dialog-threshold-${threshold}`}
               id={thresholdId}
               type="number"
               min={1}
               defaultValue={threshold}
               placeholder="e.g. 1000"
-              className="rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
             />
           </label>
 
@@ -334,7 +332,7 @@ export function AutoRechargeSection({
               Recharge amount
             </span>
             <div className="flex items-center gap-2">
-              <input
+              <Input
                 key={`dialog-amount-${amount}`}
                 id={amountId}
                 type="number"
@@ -342,7 +340,7 @@ export function AutoRechargeSection({
                 step={CREDITS_PER_DOLLAR}
                 defaultValue={amount}
                 placeholder="e.g. 10000"
-                className="rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground flex-1"
+                className="flex-1"
               />
               <span className="text-xs text-muted-foreground whitespace-nowrap">
                 = ${dollarAmount}

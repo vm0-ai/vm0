@@ -9,6 +9,7 @@ import {
 } from "@tabler/icons-react";
 import {
   cn,
+  Input,
   Button,
   Dialog,
   DialogContent,
@@ -17,7 +18,6 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  Input,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -177,21 +177,18 @@ export function OrgMembersTab() {
             stroke={1.5}
             className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
           />
-          <input
+          <Input
             type="text"
             placeholder="Search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="h-9 w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input pl-9 pr-3 text-sm text-foreground outline-none placeholder:text-muted-foreground/50 transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10"
+            className="pl-9"
           />
         </div>
         {isAdmin && <InviteDialog onInvite={handleInvite} />}
       </div>
 
-      <div
-        className="overflow-hidden rounded-xl bg-card"
-        style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-      >
+      <div className="overflow-hidden rounded-xl bg-card zero-border">
         <div
           className={cn(
             ROW_GRID,
@@ -203,7 +200,7 @@ export function OrgMembersTab() {
           <div>Role</div>
           <div />
         </div>
-        <div className="h-px bg-border/40 mx-5" />
+        <div className="h-0 zero-border-t mx-5" />
 
         {isLoading && (
           <>
@@ -226,7 +223,7 @@ export function OrgMembersTab() {
         {!isLoading &&
           filtered.map((m, i) => (
             <div key={m.userId}>
-              {i > 0 && <div className="h-px bg-border/40 mx-5" />}
+              {i > 0 && <div className="h-0 zero-border-t mx-5" />}
               <MemberRow
                 member={m}
                 isCurrentUser={m.userId === currentUserId}
@@ -241,7 +238,7 @@ export function OrgMembersTab() {
           filteredPending.map((inv, i) => (
             <div key={inv.email}>
               {(i > 0 || filtered.length > 0) && (
-                <div className="h-px bg-border/40 mx-5" />
+                <div className="h-0 zero-border-t mx-5" />
               )}
               <PendingInvitationRow invitation={inv} />
             </div>
@@ -393,13 +390,7 @@ function MemberRow({
         {formatDate(member.joinedAt)}
       </div>
       <div>
-        <span
-          className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground"
-          style={{
-            border: "0.7px solid hsl(var(--gray-400))",
-            backgroundColor: "hsl(var(--gray-0))",
-          }}
-        >
+        <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
           <IconShieldCheck
             size={12}
             stroke={1.8}
@@ -625,13 +616,7 @@ function PendingInvitationRow({
         {formatDate(invitation.createdAt)}
       </div>
       <div>
-        <span
-          className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground"
-          style={{
-            border: "0.7px solid hsl(var(--gray-400))",
-            backgroundColor: "hsl(var(--gray-0))",
-          }}
-        >
+        <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
           <IconClock size={12} stroke={1.8} className="text-amber-500" />
           Pending
         </span>

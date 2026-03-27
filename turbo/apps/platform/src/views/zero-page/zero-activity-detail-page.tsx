@@ -346,15 +346,13 @@ export function ZeroActivityDetailPage() {
                   </span>
                 </div>
                 <div className="flex items-center gap-2 sm:gap-3">
-                  <div className="zero-search-input relative flex h-9 flex-1 sm:flex-none items-center rounded-lg border transition-colors focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
-                    <div className="pl-2">
-                      <IconSearch className="h-4 w-4 text-muted-foreground" />
-                    </div>
+                  <div className="relative flex-1 sm:flex-none sm:w-44">
+                    <IconSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
                       placeholder="Search steps"
                       value={stepSearch}
                       onChange={(e) => setStepSearch(e.target.value)}
-                      className="h-full w-full sm:w-44 border-0 text-sm focus:border-0 focus:ring-0 pl-2 pr-3 bg-transparent"
+                      className="pl-9"
                     />
                   </div>
                 </div>
