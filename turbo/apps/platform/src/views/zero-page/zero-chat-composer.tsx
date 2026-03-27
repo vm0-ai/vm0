@@ -527,8 +527,8 @@ export function ZeroChatComposer({
                   onNavigateToAuthorization={
                     resolvedAgentId
                       ? () =>
-                          navigateTo("/team/:id", {
-                            pathParams: { id: resolvedAgentId },
+                          navigateTo("/team/:agentId", {
+                            pathParams: { agentId: resolvedAgentId },
                           })
                       : undefined
                   }
