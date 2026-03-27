@@ -15,7 +15,6 @@ import {
 } from "./zero-nav.ts";
 import {
   RUN_ERROR_GUIDANCE,
-  zeroRunsCancelContract,
   zeroRunsMainContract,
   zeroRunsByIdContract,
   chatThreadsContract,
@@ -165,7 +164,6 @@ export const zeroChatMessages$ = computed(async (get) => {
 const internalSessionId$ = state<string | null>(null);
 export const zeroCurrentSessionId$ = computed((get) => get(internalSessionId$));
 
-const internalActiveRunId$ = state<string | null>(null);
 
 /** Whether the agent is currently busy (derived from loop promise). */
 export const zeroChatSending$ = computed(
@@ -175,8 +173,10 @@ export const zeroChatSending$ = computed(
 /** Cancel the currently active run. */
 export const cancelActiveRun$ = command(
   async ({ get, set }, _signal: AbortSignal) => {
-    const runId = get(internalActiveRunId$);
-    if (!runId) {
+    // Find the active assistant message with a runLoop
+    const local = get(internalLocalMessages$);
+    const activeMsg = [...local].reverse().find((m) => m.runLoop);
+    if (!activeMsg?.runLoop) {
       return;
     }
 
@@ -184,8 +184,7 @@ export const cancelActiveRun$ = command(
     // the `cancelled` status on the next poll (~3s).
     set(resetSending$);
 
-    const client = get(zeroClient$)(zeroRunsCancelContract);
-    await client.cancel({ params: { id: runId } });
+    await set(activeMsg.runLoop.cancelRun$, _signal);
   },
 );
 
@@ -875,7 +874,7 @@ export const loadSessionFromSnapshot$ = command(
     // and start their polling loops via beginLoop$.
     if (snapshot.activeRunMessages.length > 0) {
       set(internalLocalMessages$, snapshot.activeRunMessages);
-      set(internalActiveRunId$, snapshot.lastActiveRunId);
+
 
       const resumeSignal = set(resetSending$, signal);
       const loopPromise = (async () => {
@@ -894,7 +893,7 @@ export const loadSessionFromSnapshot$ = command(
           if (get(internalLoopPromise$) === loopPromise) {
             set(internalLoopPromise$, null);
           }
-          set(internalActiveRunId$, null);
+
         }),
         Reason.Daemon,
       );
@@ -912,7 +911,7 @@ export const switchZeroSession$ = command(({ set }, threadId: string) => {
   set(navigateToZeroSession$, threadId);
   set(internalSessionId$, null);
   set(internalLocalMessages$, []);
-  set(internalActiveRunId$, null);
+
   set(internalLoopPromise$, null);
 });
 
@@ -923,7 +922,7 @@ export const startNewZeroSession$ = command(({ set }) => {
 
   set(internalLocalMessages$, []);
   set(internalSessionId$, null);
-  set(internalActiveRunId$, null);
+
   set(internalLoopPromise$, null);
   set(internalChatInput$, "");
 });
@@ -1086,9 +1085,6 @@ const submitAndPollRun$ = command(
     const { assistantMessage } = createActiveRunMessage(runId, args.prompt);
     set(internalLocalMessages$, (prev) => [...prev, assistantMessage]);
 
-    // Set active run ID for cancel support
-    set(internalActiveRunId$, runId);
-
     // Poll until terminal — the view reads result$/summaries$ reactively
     const loopPromise = (async () => {
       await set(assistantMessage.beginLoop$!, signal);
@@ -1220,7 +1216,7 @@ export const sendZeroChatMessage$ = command(
 
 const onZeroRunComplete$ = command(
   async ({ get, set }, runId: string, signal: AbortSignal) => {
-    set(internalActiveRunId$, null);
+  
 
     try {
       const client = get(zeroClient$)(zeroRunsByIdContract);

@@ -5,6 +5,7 @@ import {
   zeroRunAgentEventsContract,
   logsByIdContract,
   zeroQueuePositionContract,
+  zeroRunsCancelContract,
 } from "@vm0/core";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 
@@ -225,9 +226,18 @@ export function createRunLoop(runId: string) {
     }
   });
 
+  const cancelRun$ = command(async ({ get }, signal: AbortSignal) => {
+    const client = get(zeroClient$)(zeroRunsCancelContract);
+    await client.cancel({
+      params: { id: runId },
+      fetchOptions: { signal },
+    });
+  });
+
   return {
     pagedEventsList$,
     beginLoop$,
+    cancelRun$,
     detail$: runDetail$,
     queuePosition$,
     thinkingMessage$,
