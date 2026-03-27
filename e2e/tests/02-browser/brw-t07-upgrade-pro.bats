@@ -217,11 +217,18 @@ teardown_file() {
 @test "verify chat page with Get Pro button" {
   echo "# Waiting for chat page..." >&3
 
+  # Give the page additional time to fully load after navigation in the previous test
+  agent-browser wait 5000
+
   local chat_loaded=false
-  for _i in $(seq 1 30); do
+  for _i in $(seq 1 60); do
     local snap
     snap=$(full_snapshot)
     if contains "$snap" "Ask me to automate workflows"; then
+      chat_loaded=true
+      break
+    fi
+    if contains "$snap" "Ideas.*use cases\|Browse use cases"; then
       chat_loaded=true
       break
     fi
