@@ -381,7 +381,6 @@ const chatThreadListResponse$ = computed(async (get) => {
   return result.body.threads;
 });
 
-export const chatThreadList$ = chatThreadListResponse$;
 
 // Backward-compatible aliases (will be removed)
 export const zeroSessionList$ = computed(async (get) => {
@@ -559,7 +558,7 @@ interface ChatSessionSnapshotData {
  * Fetches raw thread/session data from the API whenever the URL thread ID changes.
  * Tries the new chat-thread endpoint first, falls back to the legacy session endpoint.
  */
-export const currentChatThread$ = computed(
+const currentChatThread$ = computed(
   async (get): Promise<ChatThreadData | null> => {
     const threadId = get(zeroSessionId$);
     if (!threadId) {
@@ -602,7 +601,7 @@ export const currentChatThread$ = computed(
 );
 
 /** Transforms raw chat messages into display-ready ZeroChatMessage objects. */
-export const currentChatMessages$ = computed(
+const currentChatMessages$ = computed(
   async (get): Promise<ZeroChatMessage[]> => {
     const messages = (await get(currentChatThread$))?.chatMessages ?? [];
 
@@ -808,7 +807,7 @@ export const cancelZeroAttachmentUpload$ = command(
 // Commands: session list management
 // ---------------------------------------------------------------------------
 
-export const fetchZeroSessionList$ = command(({ set }) => {
+const fetchZeroSessionList$ = command(({ set }) => {
   set(reloadChatThreadList$, (n) => n + 1);
 });
 
