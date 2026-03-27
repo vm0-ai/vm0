@@ -13,6 +13,8 @@ import {
   getOrgAutoRechargeFields,
   insertOrgMembersEntry,
   getOrgMembersEntry,
+  findCreditExpiresRecords,
+  insertCreditExpiresRecord,
 } from "../../../../../src/__tests__/api-test-helpers";
 import type { StripeMockFns } from "../../../../../src/__tests__/stripe-mock";
 import { reloadEnv } from "../../../../../src/env";
@@ -547,6 +549,156 @@ describe("POST /api/webhooks/stripe", () => {
 
       const billing = await getOrgBillingFields(user.orgId);
       expect(billing?.cancelAtPeriodEnd).toBe(false);
+    });
+  });
+
+  describe("invoice.paid — credit expiry", () => {
+    it("creates expires record with correct expires_at", async () => {
+      const cusId = uniqueId("cus-exp-create");
+      const subId = uniqueId("sub-exp-create");
+      const invId = uniqueId("inv-exp-create");
+      const periodEnd = Math.floor(Date.now() / 1000) + 30 * 86400;
+
+      await updateOrgStripeFields(user.orgId, {
+        stripeCustomerId: cusId,
+        stripeSubscriptionId: subId,
+      });
+
+      stripeMocks.subscriptionsRetrieve.mockResolvedValue({
+        id: subId,
+        items: { data: [{ price: { id: TEST_PRICE_PRO } }] },
+      });
+
+      const response = await sendWebhookEvent("invoice.paid", {
+        id: invId,
+        customer: cusId,
+        period_end: periodEnd,
+        parent: { subscription_details: { subscription: subId } },
+      });
+
+      expect(response.status).toBe(200);
+
+      const records = await findCreditExpiresRecords(user.orgId);
+      expect(records).toHaveLength(1);
+      expect(records[0]!.amount).toBe(20000);
+      expect(records[0]!.remaining).toBe(20000);
+      expect(records[0]!.stripeInvoiceId).toBe(invId);
+
+      // expires_at should be period_end + 1 month
+      const expectedExpiresAt = new Date(periodEnd * 1000);
+      expectedExpiresAt.setMonth(expectedExpiresAt.getMonth() + 1);
+      expect(records[0]!.expiresAt.getTime()).toBe(expectedExpiresAt.getTime());
+    });
+
+    it("expires old credits before granting new ones", async () => {
+      const cusId = uniqueId("cus-exp-settle");
+      const subId = uniqueId("sub-exp-settle");
+      const invId = uniqueId("inv-exp-settle");
+      const periodEnd = Math.floor(Date.now() / 1000) + 30 * 86400;
+
+      await updateOrgStripeFields(user.orgId, {
+        stripeCustomerId: cusId,
+        stripeSubscriptionId: subId,
+      });
+
+      // Insert an expired record with 3000 remaining
+      const pastDate = new Date();
+      pastDate.setMonth(pastDate.getMonth() - 1);
+      await insertCreditExpiresRecord({
+        orgId: user.orgId,
+        amount: 5000,
+        remaining: 3000,
+        expiresAt: pastDate,
+        stripeInvoiceId: uniqueId("inv-old"),
+      });
+
+      const creditsBefore = await getOrgCredits(user.orgId);
+
+      stripeMocks.subscriptionsRetrieve.mockResolvedValue({
+        id: subId,
+        items: { data: [{ price: { id: TEST_PRICE_PRO } }] },
+      });
+
+      const response = await sendWebhookEvent("invoice.paid", {
+        id: invId,
+        customer: cusId,
+        period_end: periodEnd,
+        parent: { subscription_details: { subscription: subId } },
+      });
+
+      expect(response.status).toBe(200);
+
+      // Net change: -3000 (expired) + 20000 (granted) = +17000
+      const creditsAfter = await getOrgCredits(user.orgId);
+      expect(creditsAfter! - creditsBefore!).toBe(17000);
+
+      // Old record should be settled
+      const records = await findCreditExpiresRecords(user.orgId);
+      const oldRecord = records.find((r) => r.stripeInvoiceId !== invId);
+      expect(oldRecord?.remaining).toBe(0);
+    });
+
+    it("duplicate invoice.paid is idempotent for expires records", async () => {
+      const cusId = uniqueId("cus-exp-idem");
+      const subId = uniqueId("sub-exp-idem");
+      const invId = uniqueId("inv-exp-idem");
+      const periodEnd = Math.floor(Date.now() / 1000) + 30 * 86400;
+
+      await updateOrgStripeFields(user.orgId, {
+        stripeCustomerId: cusId,
+        stripeSubscriptionId: subId,
+      });
+
+      stripeMocks.subscriptionsRetrieve.mockResolvedValue({
+        id: subId,
+        items: { data: [{ price: { id: TEST_PRICE_PRO } }] },
+      });
+
+      // First call
+      await sendWebhookEvent("invoice.paid", {
+        id: invId,
+        customer: cusId,
+        period_end: periodEnd,
+        parent: { subscription_details: { subscription: subId } },
+      });
+
+      // Second call — should be skipped via lastProcessedInvoiceId
+      await sendWebhookEvent("invoice.paid", {
+        id: invId,
+        customer: cusId,
+        period_end: periodEnd,
+        parent: { subscription_details: { subscription: subId } },
+      });
+
+      const records = await findCreditExpiresRecords(user.orgId);
+      expect(records).toHaveLength(1);
+    });
+
+    it("auto-recharge does NOT create expires record", async () => {
+      const cusId = uniqueId("cus-exp-auto");
+
+      await updateOrgStripeFields(user.orgId, {
+        stripeCustomerId: cusId,
+      });
+      await updateOrgAutoRecharge(user.orgId, {
+        autoRechargePendingAt: new Date(),
+      });
+
+      const response = await sendWebhookEvent("invoice.paid", {
+        id: uniqueId("inv-auto-exp"),
+        customer: cusId,
+        metadata: {
+          type: "auto_recharge",
+          orgId: user.orgId,
+          creditsAmount: "5000",
+        },
+        parent: null,
+      });
+
+      expect(response.status).toBe(200);
+
+      const records = await findCreditExpiresRecords(user.orgId);
+      expect(records).toHaveLength(0);
     });
   });
 

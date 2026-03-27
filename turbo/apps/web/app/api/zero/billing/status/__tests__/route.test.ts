@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   createTestRequest,
   updateOrgStripeFields,
+  insertCreditExpiresRecord,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -142,6 +143,50 @@ describe("GET /api/zero/billing/status", () => {
     const response = await GET(request);
 
     expect(response.status).toBe(200);
+  });
+
+  it("includes creditExpiry data for paid org with expires records", async () => {
+    const { orgId } = await context.setupUser({ prefix: "expiry-user" });
+    const periodEnd = new Date("2026-04-20T00:00:00Z");
+    const expiryDate = new Date("2026-05-20T00:00:00Z");
+
+    await updateOrgStripeFields(orgId, {
+      stripeCustomerId: uniqueId("cus-expiry"),
+      stripeSubscriptionId: uniqueId("sub-expiry"),
+      subscriptionStatus: "active",
+      currentPeriodEnd: periodEnd,
+      tier: "pro",
+    });
+
+    await insertCreditExpiresRecord({
+      orgId,
+      amount: 20000,
+      remaining: 15000,
+      expiresAt: expiryDate,
+      stripeInvoiceId: uniqueId("inv-expiry"),
+    });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/billing/status",
+    );
+    const response = await GET(request);
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.creditExpiry.expiringNextCycle).toBe(15000);
+    expect(data.creditExpiry.nextExpiryDate).toBe(expiryDate.toISOString());
+  });
+
+  it("returns zero creditExpiry for free org", async () => {
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/billing/status",
+    );
+    const response = await GET(request);
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.creditExpiry.expiringNextCycle).toBe(0);
+    expect(data.creditExpiry.nextExpiryDate).toBeNull();
   });
 
   it("returns defaults when org row does not exist", async () => {

@@ -1,0 +1,165 @@
+import { eq, and, gt, lte, asc, sql } from "drizzle-orm";
+import { creditExpiresRecord } from "../../db/schema/credit-expires-record";
+import { logger } from "../logger";
+
+const log = logger("service:credit-expires");
+
+/** Drizzle transaction type (matches pattern from org-service.ts). */
+type Tx = Parameters<
+  Parameters<typeof globalThis.services.db.transaction>[0]
+>[0];
+
+/**
+ * Insert a new credit expires record.
+ * Uses ON CONFLICT DO NOTHING on (org_id, stripe_invoice_id) for idempotency.
+ */
+export async function createExpiresRecord(
+  tx: Tx,
+  orgId: string,
+  params: {
+    source: string;
+    stripeInvoiceId: string;
+    amount: number;
+    expiresAt: Date;
+  },
+): Promise<void> {
+  await tx
+    .insert(creditExpiresRecord)
+    .values({
+      orgId,
+      source: params.source,
+      stripeInvoiceId: params.stripeInvoiceId,
+      amount: params.amount,
+      remaining: params.amount,
+      expiresAt: params.expiresAt,
+    })
+    .onConflictDoNothing({
+      target: [creditExpiresRecord.orgId, creditExpiresRecord.stripeInvoiceId],
+    });
+}
+
+/**
+ * FEFO deduction: consume expiring credits first (First Expiring, First Out).
+ *
+ * Selects active records ordered by expires_at ASC and decrements remaining
+ * until the requested amount is covered. If total remaining < amount, the
+ * excess comes from non-expiring credits (no error).
+ */
+export async function deductFromExpiresRecords(
+  tx: Tx,
+  orgId: string,
+  amount: number,
+): Promise<void> {
+  if (amount <= 0) return;
+
+  const records = await tx
+    .select({
+      id: creditExpiresRecord.id,
+      remaining: creditExpiresRecord.remaining,
+    })
+    .from(creditExpiresRecord)
+    .where(
+      and(
+        eq(creditExpiresRecord.orgId, orgId),
+        gt(creditExpiresRecord.remaining, 0),
+      ),
+    )
+    .orderBy(asc(creditExpiresRecord.expiresAt));
+
+  let left = amount;
+  for (const record of records) {
+    if (left <= 0) break;
+    const deduct = Math.min(left, record.remaining);
+    await tx
+      .update(creditExpiresRecord)
+      .set({ remaining: record.remaining - deduct })
+      .where(eq(creditExpiresRecord.id, record.id));
+    left -= deduct;
+  }
+  // If left > 0, the excess comes from non-expiring credits — that's fine.
+}
+
+/**
+ * Settle expired credits: find records past their expiry with remaining > 0,
+ * zero them out, and deduct the total from org_metadata.credits.
+ *
+ * Called from handleInvoicePaid() BEFORE granting new credits.
+ */
+export async function expireCredits(tx: Tx, orgId: string): Promise<number> {
+  const expired = await tx
+    .select({
+      id: creditExpiresRecord.id,
+      remaining: creditExpiresRecord.remaining,
+    })
+    .from(creditExpiresRecord)
+    .where(
+      and(
+        eq(creditExpiresRecord.orgId, orgId),
+        lte(creditExpiresRecord.expiresAt, new Date()),
+        gt(creditExpiresRecord.remaining, 0),
+      ),
+    );
+
+  if (expired.length === 0) return 0;
+
+  const totalExpired = expired.reduce((sum, r) => sum + r.remaining, 0);
+
+  // Zero out all expired records
+  for (const record of expired) {
+    await tx
+      .update(creditExpiresRecord)
+      .set({ remaining: 0 })
+      .where(eq(creditExpiresRecord.id, record.id));
+  }
+
+  // Deduct expired amount from org balance
+  if (totalExpired > 0) {
+    await tx.execute(
+      sql`UPDATE org_metadata SET credits = credits - ${totalExpired}, updated_at = now() WHERE org_id = ${orgId}`,
+    );
+  }
+
+  log.info("expired credits settled", { orgId, totalExpired });
+  return totalExpired;
+}
+
+/**
+ * Read-only summary of expiring credits for API/UI.
+ * Returns the total credits expiring in the next cycle and the earliest expiry date.
+ */
+export async function getExpiresRecordsSummary(orgId: string): Promise<{
+  expiringNextCycle: number;
+  nextExpiryDate: Date | null;
+}> {
+  const db = globalThis.services.db;
+
+  const records = await db
+    .select({
+      remaining: creditExpiresRecord.remaining,
+      expiresAt: creditExpiresRecord.expiresAt,
+    })
+    .from(creditExpiresRecord)
+    .where(
+      and(
+        eq(creditExpiresRecord.orgId, orgId),
+        gt(creditExpiresRecord.remaining, 0),
+        gt(creditExpiresRecord.expiresAt, new Date()),
+      ),
+    )
+    .orderBy(asc(creditExpiresRecord.expiresAt));
+
+  const firstRecord = records[0];
+  if (!firstRecord) {
+    return { expiringNextCycle: 0, nextExpiryDate: null };
+  }
+
+  // The earliest expiry date is the "next cycle" boundary
+  const nextExpiryDate = firstRecord.expiresAt;
+
+  // Sum remaining for records expiring at the earliest date
+  const expiringNextCycle = records
+    .filter((r) => r.expiresAt.getTime() === nextExpiryDate.getTime())
+    .reduce((sum, r) => sum + r.remaining, 0);
+
+  return { expiringNextCycle, nextExpiryDate };
+}

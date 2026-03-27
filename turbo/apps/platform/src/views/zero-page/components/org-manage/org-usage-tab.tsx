@@ -66,10 +66,12 @@ function CreditUsageBar({
   used,
   balance,
   tier,
+  creditExpiry,
 }: {
   used: number;
   balance: number;
   tier: BillingTier;
+  creditExpiry?: { expiringNextCycle: number; nextExpiryDate: string | null };
 }) {
   const ref = tierCreditReference(tier);
   const total = used + balance;
@@ -198,6 +200,23 @@ function CreditUsageBar({
               </span>
             </li>
           )}
+          {creditExpiry &&
+            creditExpiry.expiringNextCycle > 0 &&
+            creditExpiry.nextExpiryDate && (
+              <li className="relative flex items-baseline justify-between pl-5">
+                <span
+                  className="absolute left-0 top-[0.35em] h-2 w-2 rounded-full bg-orange-500/50"
+                  aria-hidden
+                />
+                <span className="text-orange-600 dark:text-orange-400">
+                  Expiring on{" "}
+                  {new Date(creditExpiry.nextExpiryDate).toLocaleDateString()}
+                </span>
+                <span className="tabular-nums text-orange-600 dark:text-orange-400">
+                  {creditExpiry.expiringNextCycle.toLocaleString()}
+                </span>
+              </li>
+            )}
         </ul>
         {ref > 0 && (
           <p className="mt-2.5 border-t border-border/60 pt-2 text-[11px] text-muted-foreground leading-snug">
@@ -403,6 +422,7 @@ export function OrgUsageTab() {
                   used={totalUsed}
                   balance={billing.credits}
                   tier={currentTier}
+                  creditExpiry={billing.creditExpiry}
                 />
               </div>
             </>

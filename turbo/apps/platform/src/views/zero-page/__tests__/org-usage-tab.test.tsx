@@ -294,3 +294,129 @@ describe("org usage tab - inline cap editing", () => {
     );
   });
 });
+
+describe("org usage tab - expiring credits warning", () => {
+  it("shows expiring credits warning for paid org", async () => {
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 15_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+      creditExpiry: {
+        expiringNextCycle: 5000,
+        nextExpiryDate: "2026-04-30T00:00:00.000Z",
+      },
+    });
+
+    mockAPIs([
+      {
+        userId: "user-a",
+        email: "alice@example.com",
+        inputTokens: 100,
+        outputTokens: 50,
+        cacheReadInputTokens: 0,
+        cacheCreationInputTokens: 0,
+        creditsCharged: 2000,
+        creditCap: null,
+      },
+    ]);
+
+    await openUsageTab();
+
+    // Hover over the progress bar to open the popover
+    const progressbar = screen.getByRole("progressbar");
+    await act(() => {
+      fireEvent.pointerEnter(progressbar.closest("[class*='group']")!);
+    });
+
+    await waitFor(
+      () => {
+        expect(screen.getByText("5,000")).toBeInTheDocument();
+      },
+      { timeout: 5000 },
+    );
+
+    expect(screen.getByText(/Expiring on/)).toBeInTheDocument();
+  });
+
+  it("hides expiring credits warning when zero", async () => {
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 15_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+      creditExpiry: {
+        expiringNextCycle: 0,
+        nextExpiryDate: null,
+      },
+    });
+
+    mockAPIs([
+      {
+        userId: "user-a",
+        email: "alice@example.com",
+        inputTokens: 100,
+        outputTokens: 50,
+        cacheReadInputTokens: 0,
+        cacheCreationInputTokens: 0,
+        creditsCharged: 2000,
+        creditCap: null,
+      },
+    ]);
+
+    await openUsageTab();
+
+    // Hover over the progress bar to open the popover
+    const progressbar = screen.getByRole("progressbar");
+    await act(() => {
+      fireEvent.pointerEnter(progressbar.closest("[class*='group']")!);
+    });
+
+    await waitFor(
+      () => {
+        expect(screen.getByText("Credit breakdown")).toBeInTheDocument();
+      },
+      { timeout: 5000 },
+    );
+
+    expect(screen.queryByText(/Expiring on/)).not.toBeInTheDocument();
+  });
+
+  it("hides expiring credits warning for free org", async () => {
+    setMockBillingStatus({
+      tier: "free",
+      credits: 10_000,
+      hasSubscription: false,
+    });
+
+    mockAPIs([
+      {
+        userId: "user-a",
+        email: "alice@example.com",
+        inputTokens: 100,
+        outputTokens: 50,
+        cacheReadInputTokens: 0,
+        cacheCreationInputTokens: 0,
+        creditsCharged: 1000,
+        creditCap: null,
+      },
+    ]);
+
+    await openUsageTab();
+
+    // Hover over the progress bar to open the popover
+    const progressbar = screen.getByRole("progressbar");
+    await act(() => {
+      fireEvent.pointerEnter(progressbar.closest("[class*='group']")!);
+    });
+
+    await waitFor(
+      () => {
+        expect(screen.getByText("Credit breakdown")).toBeInTheDocument();
+      },
+      { timeout: 5000 },
+    );
+
+    expect(screen.queryByText(/Expiring on/)).not.toBeInTheDocument();
+  });
+});

@@ -14,6 +14,11 @@ const autoRechargeSchema = z.object({
   amount: z.number().nullable(),
 });
 
+const creditExpirySchema = z.object({
+  expiringNextCycle: z.number(),
+  nextExpiryDate: z.string().nullable(),
+});
+
 const billingStatusResponseSchema = z.object({
   tier: z.string(),
   credits: z.number(),
@@ -22,6 +27,7 @@ const billingStatusResponseSchema = z.object({
   cancelAtPeriodEnd: z.boolean(),
   hasSubscription: z.boolean(),
   autoRecharge: autoRechargeSchema,
+  creditExpiry: creditExpirySchema,
 });
 
 const checkoutResponseSchema = z.object({

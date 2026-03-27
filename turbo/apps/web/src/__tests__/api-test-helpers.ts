@@ -44,6 +44,11 @@ import { telegramInstallations } from "../db/schema/telegram-installation";
 import { telegramMessages } from "../db/schema/telegram-message";
 import { telegramUserLinks } from "../db/schema/telegram-user-link";
 import { orgMetadata } from "../db/schema/org-metadata";
+import { creditExpiresRecord } from "../db/schema/credit-expires-record";
+import {
+  deductFromExpiresRecords,
+  expireCredits,
+} from "../lib/credit/credit-expires-service";
 import { modelProviders } from "../db/schema/model-provider";
 import { ORG_SENTINEL_USER_ID } from "../lib/org/org-sentinel";
 import { orgCache } from "../db/schema/org-cache";
@@ -4765,4 +4770,72 @@ export async function findTestPendingQuestion(pendingId: string) {
     .where(eq(slackOrgPendingQuestions.id, pendingId))
     .limit(1);
   return row;
+}
+
+// ---------------------------------------------------------------------------
+// Credit expires record helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Insert a credit expires record for testing.
+ */
+export async function insertCreditExpiresRecord(params: {
+  orgId: string;
+  source?: string;
+  stripeInvoiceId?: string;
+  amount: number;
+  remaining?: number;
+  expiresAt: Date;
+}): Promise<string> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .insert(creditExpiresRecord)
+    .values({
+      orgId: params.orgId,
+      source: params.source ?? "subscription_renewal",
+      stripeInvoiceId: params.stripeInvoiceId ?? null,
+      amount: params.amount,
+      remaining: params.remaining ?? params.amount,
+      expiresAt: params.expiresAt,
+    })
+    .returning({ id: creditExpiresRecord.id });
+  return row!.id;
+}
+
+/**
+ * Find all credit expires records for an org, ordered by expires_at ASC.
+ */
+export async function findCreditExpiresRecords(orgId: string) {
+  initServices();
+  return globalThis.services.db
+    .select()
+    .from(creditExpiresRecord)
+    .where(eq(creditExpiresRecord.orgId, orgId))
+    .orderBy(creditExpiresRecord.expiresAt);
+}
+
+/**
+ * Deduct from expires records within a transaction (test helper).
+ */
+export async function testDeductFromExpiresRecords(
+  orgId: string,
+  amount: number,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db.transaction(async (tx) => {
+    await deductFromExpiresRecords(tx, orgId, amount);
+  });
+}
+
+/**
+ * Expire credits within a transaction (test helper).
+ * Returns the total expired amount.
+ */
+export async function testExpireCredits(orgId: string): Promise<number> {
+  initServices();
+  let result = 0;
+  await globalThis.services.db.transaction(async (tx) => {
+    result = await expireCredits(tx, orgId);
+  });
+  return result;
 }
