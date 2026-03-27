@@ -88,10 +88,10 @@ export async function POST(request: Request) {
     );
   }
 
-  const userId = await resolveTestUserId(variant);
-  if (!userId) {
-    return NextResponse.json({ error: "Test user not found" }, { status: 500 });
-  }
+  // Fall back to synthetic user ID when the Clerk test user doesn't exist
+  // (e.g., fresh preview environments). The org_members_cache entry is created
+  // by the test-token endpoint via ensureTestOrg, so the lookup below will work.
+  const userId = (await resolveTestUserId(variant)) ?? `user_e2e_${variant}`;
 
   // Look up test user's org from org_members_cache (populated by test-token endpoint)
   const [cached] = await globalThis.services.db
