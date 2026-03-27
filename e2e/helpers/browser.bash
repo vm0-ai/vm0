@@ -144,7 +144,7 @@ click_continue() {
   ref=$(echo "$snap_i" | grep -E 'button "Continue" \[ref=' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
   if [[ -n "$ref" ]]; then
     agent-browser scrollintoview "$ref" 2>/dev/null || true
-    agent-browser wait 300
+    sleep 0.3
     agent-browser click "$ref"
   else
     agent-browser find text "Continue" click
@@ -156,7 +156,7 @@ click_continue() {
 # ---------------------------------------------------------------------------
 dismiss_cookie_banner() {
   if agent-browser find text "Accept" click 2>/dev/null; then
-    agent-browser wait 500
+    sleep 0.5
   fi
 }
 
@@ -189,12 +189,12 @@ enter_otp() {
   else
     # Fallback: find first input and press digits one by one
     agent-browser find first "input" click
-    agent-browser wait 300
+    sleep 0.3
     for digit in $(echo "$code" | grep -o .); do
       agent-browser press "$digit"
     done
   fi
-  agent-browser wait 2000
+  sleep 2
 
   # Click Continue/Verify button if present (needed when OTP is a single text input)
   if agent-browser find text "Continue" click 2>/dev/null; then
@@ -202,7 +202,7 @@ enter_otp() {
   elif agent-browser find text "Verify" click 2>/dev/null; then
     : # clicked Verify
   fi
-  agent-browser wait 5000
+  sleep 5
 }
 
 # ---------------------------------------------------------------------------
@@ -383,7 +383,7 @@ navigate_to_app_page() {
   local app_url
   app_url="$(derive_app_url)"
   agent-browser open "${app_url}${path}" --ignore-https-errors
-  agent-browser wait 3000
+  sleep 3
 }
 
 # ---------------------------------------------------------------------------

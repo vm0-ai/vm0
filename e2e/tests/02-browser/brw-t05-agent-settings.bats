@@ -125,7 +125,7 @@ teardown_file() {
 
   echo "# Navigating to team page..." >&3
   agent-browser open "${APP_URL}/team" --ignore-https-errors
-  agent-browser wait 3000
+  sleep 3
 
   # Wait for team page to load (org redirect can take a while in CI)
   wait_for_text "Lead" 40
@@ -150,7 +150,7 @@ teardown_file() {
     echo "# Failed to click Create teammate button" >&3
     return 1
   fi
-  agent-browser wait 1000
+  sleep 1
 
   # Wait for dialog (allow extra time since parallel CI load can slow rendering)
   wait_for_text "Create a new teammate" 30
@@ -159,7 +159,7 @@ teardown_file() {
   # Fill agent name
   echo "# Filling agent name: $AGENT_NAME" >&3
   agent-browser find placeholder "e.g. Research Assistant" fill "$AGENT_NAME"
-  agent-browser wait 500
+  sleep 0.5
 
   # Click Create button in dialog
   local snap_i create_ref
@@ -206,7 +206,7 @@ teardown_file() {
     agent_ref=$(echo "$snap_i" | grep -F "$AGENT_NAME" | grep -v 'textbox\|disabled' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
     if [[ -n "$agent_ref" ]]; then
       agent-browser scrollintoview "$agent_ref" 2>/dev/null || true
-      agent-browser wait 300
+      sleep 0.3
       if agent-browser click "$agent_ref" 2>/dev/null; then
         agent_clicked=true
         break
@@ -219,7 +219,7 @@ teardown_file() {
     agent-browser find role link click --name "$AGENT_NAME" 2>/dev/null || \
       agent-browser find text "$AGENT_NAME" click
   fi
-  agent-browser wait 3000
+  sleep 3
 
   # Wait for agent detail page to load with tabs
   wait_for_text "Connectors" 40
@@ -231,13 +231,23 @@ teardown_file() {
   wait_for_text "Profile" 10
   wait_for_text "Instructions" 10
 
-  # Wait for Connectors tab content to fully load (the "Add connector" button
-  # loads async after the tab labels appear). Save URL so later tests can
-  # navigate back if needed.
-  wait_for_text "Add connector" 60
+  # Save the URL now so subsequent tests can navigate back even if this test
+  # fails on the Add connector wait (prevents cascading failures).
   AGENT_SETTINGS_URL=$(agent-browser get url 2>/dev/null || true)
   export AGENT_SETTINGS_URL
-  echo "# Agent settings page loaded with all tabs (URL: $AGENT_SETTINGS_URL)" >&3
+  echo "# Agent settings URL captured: $AGENT_SETTINGS_URL" >&3
+
+  # Wait for Connectors tab content to fully load (the "Add connector" button
+  # loads async after the tab labels appear).
+  if ! wait_for_text "Add connector" 90; then
+    echo "# Add connector not found after 90s, reloading page..." >&3
+    if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
+      agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
+      sleep 5
+    fi
+    wait_for_text "Add connector" 60
+  fi
+  echo "# Agent settings page loaded with all tabs" >&3
 }
 
 @test "connector: add firecrawl via dialog" {
@@ -246,7 +256,7 @@ teardown_file() {
   echo "# Testing connector: add Firecrawl..." >&3
   if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
     agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
-    agent-browser wait 3000
+    sleep 3
   fi
   # Wait for agent settings page to fully load (tab labels + Connectors content)
   wait_for_text "Connectors" 30
@@ -255,7 +265,7 @@ teardown_file() {
 
   # Click "Add connector"
   agent-browser find text "Add connector" click
-  agent-browser wait 2000
+  sleep 2
 
   # Wait for add connector dialog
   wait_for_text "Add connector to" 15
@@ -263,12 +273,12 @@ teardown_file() {
 
   # Search for Firecrawl
   agent-browser find placeholder "Search..." fill "Firecrawl"
-  agent-browser wait 1000
+  sleep 1
 
   # Wait for and click Firecrawl
   wait_for_text "Firecrawl" 10
   agent-browser find text "Firecrawl" click
-  agent-browser wait 2000
+  sleep 2
 
   # Wait for API token modal
   wait_for_text "API Token" 10
@@ -276,11 +286,11 @@ teardown_file() {
 
   # Fill in API token
   agent-browser find placeholder "fc-xxxxxxxx" fill "fc-e2etest12345"
-  agent-browser wait 500
+  sleep 0.5
 
   # Click Save in the API token modal
   agent-browser find text "Save" click
-  agent-browser wait 3000
+  sleep 3
   step_screenshot "connector-after-modal-save"
 
   # Close the Add Connector dialog
@@ -290,7 +300,7 @@ teardown_file() {
   if [[ -n "$close_ref" ]]; then
     echo "# Closing add connector dialog..." >&3
     agent-browser click "$close_ref"
-    agent-browser wait 1000
+    sleep 1
   fi
 
   # Verify the unsaved bar appeared (confirms connector was added to the list)
@@ -304,7 +314,7 @@ teardown_file() {
   discard_ref=$(echo "$snap_i" | grep -E '^- button "Discard"' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
   if [[ -n "$discard_ref" ]]; then
     agent-browser click "$discard_ref"
-    agent-browser wait 1000
+    sleep 1
   fi
   wait_for_no_unsaved_bar 10 || true
 
@@ -316,12 +326,12 @@ teardown_file() {
   # Navigate back to agent settings to ensure page is in known state
   if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
     agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
-    agent-browser wait 3000
+    sleep 3
   fi
   # Wait for agent settings page to fully load before clicking tab
   wait_for_text "Connectors" 30
   click_tab "Profile"
-  agent-browser wait 2000
+  sleep 2
 
   # Wait for profile form to load. The form content (Description field and
   # its placeholder) loads async after the tab switch. Retry tab click if
@@ -329,7 +339,7 @@ teardown_file() {
   if ! wait_for_text "Description" 15; then
     echo "# Profile content not loaded, retrying tab click..." >&3
     click_tab "Profile"
-    agent-browser wait 2000
+    sleep 2
     wait_for_text "Description" 30
   fi
   wait_for_text "What does this agent do" 30
@@ -338,7 +348,7 @@ teardown_file() {
   # Fill description with timestamped value
   local test_value="E2E test description $(date +%s)"
   agent-browser find placeholder "What does this agent do?" fill "$test_value"
-  agent-browser wait 1000
+  sleep 1
 
   # Wait for unsaved bar
   wait_for_unsaved_bar 15
@@ -346,7 +356,7 @@ teardown_file() {
 
   # Click Save on unsaved bar
   click_save_on_unsaved_bar
-  agent-browser wait 2000
+  sleep 2
 
   # Wait for unsaved bar to disappear
   wait_for_no_unsaved_bar 20
@@ -365,7 +375,7 @@ teardown_file() {
   # Navigate back to agent settings to ensure page is in known state
   if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
     agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
-    agent-browser wait 3000
+    sleep 3
   fi
   # Wait for agent settings page to fully load before clicking tab.
   # Retry with a reload in case prior test left the daemon in a bad state.
@@ -373,12 +383,12 @@ teardown_file() {
     echo "# Connectors not found, reloading agent settings page..." >&3
     if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
       agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
-      agent-browser wait 5000
+      sleep 5
     fi
     wait_for_text "Connectors" 30
   fi
   click_tab "Instructions"
-  agent-browser wait 2000
+  sleep 2
 
   # Wait for instructions editor to load by checking for the footer hint text
   # which is a regular <p> element visible in the accessibility snapshot.
@@ -402,7 +412,7 @@ teardown_file() {
     return 1
   fi
   agent-browser fill "$editor_ref" "E2E test instructions $(date +%s)"
-  agent-browser wait 1000
+  sleep 1
 
   # Wait for unsaved bar
   wait_for_unsaved_bar 15
@@ -410,7 +420,7 @@ teardown_file() {
 
   # Click Save on unsaved bar
   click_save_on_unsaved_bar
-  agent-browser wait 3000
+  sleep 3
 
   # Wait for unsaved bar to disappear (instructions may take longer due to build)
   wait_for_no_unsaved_bar 30

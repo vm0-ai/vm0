@@ -63,7 +63,7 @@ teardown_file() {
     echo "# Sidebar link not found, falling back to navigate_to_app_page..." >&3
     navigate_to_app_page "/team"
   fi
-  agent-browser wait 2000
+  sleep 2
   step_screenshot "team-page-initial"
 
   # Wait for Lead badge — workspace setup may still be in progress after onboarding.
@@ -102,7 +102,7 @@ teardown_file() {
     sleep 1
   done
   assert [ "$btn_clicked" = "true" ]
-  agent-browser wait 1000
+  sleep 1
   step_screenshot "create-dialog-opened"
 
   echo "# Waiting for dialog content..." >&3
@@ -110,7 +110,7 @@ teardown_file() {
 
   echo "# Filling agent name: $AGENT_NAME" >&3
   agent-browser find placeholder "e.g. Research Assistant" fill "$AGENT_NAME"
-  agent-browser wait 500
+  sleep 0.5
   step_screenshot "create-dialog-filled"
 
   echo "# Clicking Create button in dialog..." >&3
@@ -124,10 +124,18 @@ teardown_file() {
     agent-browser find text "Create" click
   fi
 
-  # Wait for dialog to close, then immediately verify agent appears.
-  # Keep both waits in the same test — splitting across tests causes the
-  # agent name to be missed when the browser navigates post-creation.
+  # Wait for dialog to close, then navigate to /team to verify the agent.
+  # Creation may redirect to agent settings; empty snapshots (daemon crash)
+  # can falsely pass wait_for_text_gone. Explicit /team navigation is reliable.
   wait_for_text_gone "Create a new teammate" 30
+  # Navigate to /team to find the new agent. If daemon crashed, restart it.
+  if ! navigate_to_app_page "/team" 2>/dev/null; then
+    echo "# Navigation failed after creation, restarting daemon..." >&3
+    restart_browser_daemon
+    create_clerk_sign_in_token
+    sign_in_via_token_on_app
+    navigate_to_app_page "/team"
+  fi
   wait_for_text "$AGENT_NAME" 60
   step_screenshot "after-create"
   echo "# Agent created!" >&3

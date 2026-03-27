@@ -55,9 +55,9 @@ teardown_file() {
   if [[ "$nav_ok" != "true" ]]; then
     echo "# Sidebar link not found, falling back to direct navigation..." >&3
     agent-browser open "${APP_URL}/schedule" --ignore-https-errors
-    agent-browser wait 3000
+    sleep 3
   else
-    agent-browser wait 2000
+    sleep 2
   fi
 
   # Wait for schedule page to load. Under parallel CI load snapshots can be
@@ -70,7 +70,7 @@ teardown_file() {
     fi
     echo "# Attempt ${_attempt}: schedule page not loaded yet, reloading..." >&3
     agent-browser open "${APP_URL}/schedule" --ignore-https-errors
-    agent-browser wait 5000
+    sleep 5
   done
   assert [ "$schedule_found" = "true" ]
 
@@ -102,7 +102,7 @@ teardown_file() {
     fi
   fi
   assert [ "$btn_clicked" = "true" ]
-  agent-browser wait 1000
+  sleep 1
 
   # Wait for dialog to appear — verify by finding the Prompt textarea label
   # (more specific than text search which could match existing schedule prompts)
@@ -121,7 +121,7 @@ teardown_file() {
   # reliably across BATS test boundaries.
   echo "# Filling schedule prompt: $SCHEDULE_PROMPT" >&3
   agent-browser find label "Prompt" fill "$SCHEDULE_PROMPT"
-  agent-browser wait 500
+  sleep 0.5
   step_screenshot "schedule-form-filled"
 
   echo "# Clicking Create..." >&3
@@ -131,7 +131,7 @@ teardown_file() {
   # 60-120+ seconds. We do NOT wait for it to complete — that would exceed
   # BATS_TEST_TIMEOUT (180s). Instead, we just verify the click succeeded
   # by waiting briefly and taking a screenshot for debugging.
-  agent-browser wait 5000
+  sleep 5
   step_screenshot "after-create-click"
   echo "# Schedule creation form submitted!" >&3
 }
@@ -165,7 +165,7 @@ teardown_file() {
     fi
     echo "# Attempt ${_attempt}: schedule page not loaded yet, reloading..." >&3
     agent-browser open "${APP_URL}/schedule" --ignore-https-errors
-    agent-browser wait 5000
+    sleep 5
     wait_for_text_gone "Loading your workspace" 30 || true
   done
   assert [ "$schedule_found" = "true" ]
