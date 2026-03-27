@@ -157,7 +157,6 @@ export const zeroChatMessages$ = computed(async (get) => {
 });
 
 const internalSessionId$ = state<string | null>(null);
-export const zeroCurrentSessionId$ = computed((get) => get(internalSessionId$));
 
 /** Whether all runs have finished (no in-flight runs). */
 export const allFinished$ = computed(async (get) => {
@@ -347,9 +346,6 @@ export const resetTalkSendSignal$ = resetSignal();
 // ---------------------------------------------------------------------------
 // Promise signals — UI derives busy state from these via useLoadable
 // ---------------------------------------------------------------------------
-
-/** Thread ID derived from the URL `/chat/:id`. */
-export const zeroChatThreadId$ = chatThreadId$;
 
 // Chat thread list — reload + computed pattern
 const reloadChatThreadList$ = state(0);

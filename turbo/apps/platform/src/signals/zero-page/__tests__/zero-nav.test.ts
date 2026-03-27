@@ -5,7 +5,7 @@ import { testContext } from "../../__tests__/test-helpers.ts";
 import { createPushStateMock } from "../../../__tests__/page-helper.ts";
 import {
   zeroActiveId$,
-  zeroSessionId$,
+  chatThreadId$,
   zeroTalkAgentId$,
   zeroChatAgentId$,
   setZeroChatAgent$,
@@ -141,7 +141,7 @@ describe("zero-nav", () => {
     });
   });
 
-  describe("zeroSessionId$", () => {
+  describe("chatThreadId$", () => {
     async function setupRoutes(pathname: string) {
       context.store.set(setRootSignal$, context.signal);
       createPushStateMock(context.signal);
@@ -161,17 +161,17 @@ describe("zero-nav", () => {
 
     it("should return null for /", async () => {
       await setupRoutes("/");
-      expect(context.store.get(zeroSessionId$)).toBeNull();
+      expect(context.store.get(chatThreadId$)).toBeNull();
     });
 
     it("should return null for /talk/:agentId", async () => {
       await setupRoutes("/talk/my-agent");
-      expect(context.store.get(zeroSessionId$)).toBeNull();
+      expect(context.store.get(chatThreadId$)).toBeNull();
     });
 
     it("should extract thread ID from /chat/:chatThreadId", async () => {
       await setupRoutes("/chat/thread-abc-123");
-      expect(context.store.get(zeroSessionId$)).toBe("thread-abc-123");
+      expect(context.store.get(chatThreadId$)).toBe("thread-abc-123");
     });
   });
 
