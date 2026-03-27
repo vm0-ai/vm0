@@ -18,7 +18,10 @@ import {
   timezoneSaving$,
   setTimezoneSaving$,
 } from "../../../../signals/zero-page/settings/preferences-page.ts";
-import { COMMON_TIMEZONES } from "../../../../signals/zero-page/cron.ts";
+import {
+  COMMON_TIMEZONES,
+  getTimezoneLabel,
+} from "../../../../signals/zero-page/cron.ts";
 
 export function TimezoneSettings() {
   const preferences = useLastResolved(userPreferences$);
@@ -79,7 +82,7 @@ export function TimezoneSettings() {
             <SelectContent>
               {timezoneOptions.map((tz) => (
                 <SelectItem key={tz} value={tz}>
-                  {tz.replace(/_/g, " ")}
+                  {getTimezoneLabel(tz)}
                 </SelectItem>
               ))}
             </SelectContent>

@@ -91,6 +91,39 @@ export const COMMON_TIMEZONES = [
   "Pacific/Auckland",
 ] as const;
 
+/** Human-readable display labels for COMMON_TIMEZONES entries. Falls back to the IANA string for unlisted values. */
+const TIMEZONE_LABELS = Object.freeze({
+  UTC: "UTC (Coordinated Universal Time)",
+  "America/New_York": "Eastern Time (ET)",
+  "America/Chicago": "Central Time (CT)",
+  "America/Denver": "Mountain Time (MT)",
+  "America/Los_Angeles": "Pacific Time (PT)",
+  "America/Anchorage": "Alaska Time (AKT)",
+  "Pacific/Honolulu": "Hawaii Time (HST)",
+  "America/Toronto": "Toronto (ET)",
+  "America/Vancouver": "Vancouver (PT)",
+  "America/Sao_Paulo": "Brasília Time (BRT)",
+  "Europe/London": "London (GMT/BST)",
+  "Europe/Berlin": "Central European Time (CET)",
+  "Europe/Paris": "Paris (CET)",
+  "Europe/Moscow": "Moscow Time (MSK)",
+  "Asia/Dubai": "Gulf Standard Time (GST)",
+  "Asia/Kolkata": "India Standard Time (IST)",
+  "Asia/Shanghai": "China Standard Time (CST)",
+  "Asia/Tokyo": "Japan Standard Time (JST)",
+  "Asia/Seoul": "Korea Standard Time (KST)",
+  "Asia/Singapore": "Singapore Time (SGT)",
+  "Australia/Sydney": "Australian Eastern Time (AET)",
+  "Pacific/Auckland": "New Zealand Time (NZST)",
+});
+
+/** Returns a human-readable label for an IANA timezone string. */
+export function getTimezoneLabel(iana: string): string {
+  return (
+    (TIMEZONE_LABELS as Record<string, string>)[iana] ?? iana.replace(/_/g, " ")
+  );
+}
+
 export function buildCronExpression(opts: {
   timeOption: CronTimeOption;
   hour: string;

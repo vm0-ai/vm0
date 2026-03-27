@@ -884,7 +884,7 @@ describe("zero schedule page - create dialog timezone default", () => {
   });
 
   it("should fall back to local timezone in submitted request when preference not set", async () => {
-    // timezone is null by default (resetMockUserPreferences in beforeEach)
+    // timezone is null by default (reset via resetAllMockHandlers in afterEach)
     const localTimezone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
 
     let capturedBody: Record<string, unknown> | null = null;
