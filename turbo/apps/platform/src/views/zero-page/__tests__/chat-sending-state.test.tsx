@@ -49,7 +49,7 @@ describe("chat sending state", () => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
 
-    // While sending, the Send button label changes to "Queue message"
+    // While sending, the Send button is hidden
     expect(screen.queryByLabelText("Send")).toBeNull();
 
     ctrl.completeRun("Done");
