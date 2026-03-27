@@ -135,11 +135,19 @@ teardown_file() {
   # blocks clicks even when the button is found via accessibility).
   wait_for_text_gone "Loading your workspace" 30 || true
 
-  # Click Create teammate — use role-based find which works more reliably
-  # than text-based find for buttons with composite content
+  # Wait for the "Create teammate" button to appear in the accessibility tree.
+  # The Lead badge (rawAgentName) appears before zeroSubagents$ loads, so we
+  # must wait explicitly for the button rather than relying on the Lead check.
+  echo "# Waiting for Create teammate button to appear..." >&3
+  if ! wait_for_text "Create teammate" 90; then
+    echo "# Create teammate button never appeared after 90s" >&3
+    return 1
+  fi
+
+  # Now click the button — retry a few times in case it's briefly disabled
   echo "# Clicking Create teammate..." >&3
   local btn_clicked=false
-  for _i in $(seq 1 30); do
+  for _i in $(seq 1 15); do
     if agent-browser find role button click --name "Create teammate" 2>/dev/null; then
       btn_clicked=true
       break
