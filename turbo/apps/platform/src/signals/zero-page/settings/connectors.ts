@@ -52,7 +52,7 @@ export const allConnectorTypes$ = computed(async (get) => {
   const connectorMap = new Map(connectors.map((c) => [c.type, c]));
   const features = await get(featureSwitch$);
 
-  return (Object.keys(CONNECTOR_TYPES) as ConnectorType[])
+  const items = (Object.keys(CONNECTOR_TYPES) as ConnectorType[])
     .filter((type) => {
       const flag = CONNECTOR_TYPES[type].featureFlag;
       const oauthEnabled = !flag || !!features?.[flag];
@@ -88,6 +88,16 @@ export const allConnectorTypes$ = computed(async (get) => {
         needsReconnect: connector?.needsReconnect ?? false,
       };
     });
+
+  // Sort connected connectors to the top of the list
+  items.sort((a, b) => {
+    if (a.connected === b.connected) {
+      return 0;
+    }
+    return a.connected ? -1 : 1;
+  });
+
+  return items;
 });
 
 // ---------------------------------------------------------------------------
