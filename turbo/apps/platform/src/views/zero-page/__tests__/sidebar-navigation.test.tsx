@@ -9,6 +9,25 @@ import { pathname } from "../../../signals/location.ts";
 const context = testContext();
 
 function mockSubagentAPIs() {
+  // Stateful thread store — POST adds threads, GET returns them
+  const threads: {
+    id: string;
+    title: string | null;
+    preview: string | null;
+    agentId: string;
+    createdAt: string;
+    updatedAt: string;
+  }[] = [
+    {
+      id: "thread-sub-1",
+      title: "Subagent thread",
+      preview: "Hello from subagent",
+      agentId: "subagent-compose-id",
+      createdAt: "2026-03-10T00:00:00Z",
+      updatedAt: "2026-03-10T00:00:00Z",
+    },
+  ];
+
   server.use(
     http.get("*/api/zero/team", () => {
       return HttpResponse.json([
@@ -27,18 +46,7 @@ function mockSubagentAPIs() {
       ]);
     }),
     http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({
-        threads: [
-          {
-            id: "thread-sub-1",
-            title: "Subagent thread",
-            preview: "Hello from subagent",
-            agentId: "subagent-compose-id",
-            createdAt: "2026-03-10T00:00:00Z",
-            updatedAt: "2026-03-10T00:00:00Z",
-          },
-        ],
-      });
+      return HttpResponse.json({ threads });
     }),
     http.get("*/api/zero/chat-threads/:id", () => {
       return HttpResponse.json({
@@ -62,12 +70,23 @@ function mockSubagentAPIs() {
         updatedAt: "2026-03-10T00:00:01Z",
       });
     }),
-    http.post("*/api/zero/chat-threads", () => {
+    http.post("*/api/zero/chat-threads", async ({ request }) => {
+      const body = (await request.json()) as {
+        agentId: string;
+        title?: string;
+      };
+      const now = new Date().toISOString();
+      const newThread = {
+        id: "new-thread-id",
+        title: body.title ?? null,
+        preview: body.title ?? null,
+        agentId: body.agentId,
+        createdAt: now,
+        updatedAt: now,
+      };
+      threads.unshift(newThread);
       return HttpResponse.json(
-        {
-          id: "new-thread-id",
-          title: null,
-        },
+        { id: newThread.id, title: newThread.title },
         { status: 201 },
       );
     }),
@@ -82,12 +101,9 @@ describe("sidebar new chat navigation", () => {
     await setupPage({ context, path: "/team" });
 
     // Wait for the sidebar to render with the new chat button
-    const newChatButton = await waitFor(
-      () => {
-        return screen.getByLabelText("New chat with Zero");
-      },
-      { timeout: 5000 },
-    );
+    const newChatButton = await waitFor(() => {
+      return screen.getByLabelText("New chat with Zero");
+    });
 
     fireEvent.click(newChatButton);
 
@@ -103,12 +119,9 @@ describe("sidebar new chat navigation", () => {
     await setupPage({ context, path: "/talk/subagent-compose-id" });
 
     // Wait for the subagent chat to load — find the new chat button for the subagent
-    const newChatButton = await waitFor(
-      () => {
-        return screen.getByLabelText("New chat with Helper Bot");
-      },
-      { timeout: 5000 },
-    );
+    const newChatButton = await waitFor(() => {
+      return screen.getByLabelText("New chat with Helper Bot");
+    });
 
     fireEvent.click(newChatButton);
 
@@ -136,12 +149,9 @@ describe("sidebar new chat navigation", () => {
 
     await setupPage({ context, path: "/team" });
 
-    const newChatButton = await waitFor(
-      () => {
-        return screen.getByLabelText("New chat with Zero");
-      },
-      { timeout: 5000 },
-    );
+    const newChatButton = await waitFor(() => {
+      return screen.getByLabelText("New chat with Zero");
+    });
 
     fireEvent.click(newChatButton);
 
@@ -151,12 +161,9 @@ describe("sidebar new chat navigation", () => {
     });
 
     // After creation completes, button should be re-enabled
-    await waitFor(
-      () => {
-        expect(pathname()).toBe("/chat/delayed-thread-id");
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(pathname()).toBe("/chat/delayed-thread-id");
+    });
   }, 15_000);
 
   it("should handle API failure gracefully", async () => {
@@ -172,12 +179,9 @@ describe("sidebar new chat navigation", () => {
 
     const initialPath = pathname();
 
-    const newChatButton = await waitFor(
-      () => {
-        return screen.getByLabelText("New chat with Zero");
-      },
-      { timeout: 5000 },
-    );
+    const newChatButton = await waitFor(() => {
+      return screen.getByLabelText("New chat with Zero");
+    });
 
     fireEvent.click(newChatButton);
 
@@ -210,9 +214,8 @@ describe("sidebar new chat navigation", () => {
 
     await setupPage({ context, path: "/team" });
 
-    const newChatButton = await waitFor(
-      () => screen.getByLabelText("New chat with Zero"),
-      { timeout: 5000 },
+    const newChatButton = await waitFor(() =>
+      screen.getByLabelText("New chat with Zero"),
     );
 
     fireEvent.click(newChatButton);
