@@ -318,13 +318,43 @@ sign_in_via_token() {
 }
 
 # ---------------------------------------------------------------------------
-# sign_in_via_token_on_app — Sign in via Clerk token on the platform app domain
-# Opens /sign-in-token, waits for auth redirect, dismisses cookie banner.
-# Requires APP_URL and SIGN_IN_TOKEN to be set.
+# sign_in_via_token_on_app — Sign in via Clerk token, then land on the app domain
+#
+# Signs in on the primary (www.) domain first, then navigates to the platform
+# app (app.) domain. This avoids the cross-domain session sync redirect that
+# occurs when signing in directly on the satellite (app.) domain with a fresh
+# browser profile that has no prior www. session: Clerk would redirect to
+# www./sign-in?__clerk_db_jwt=... which the helper then times out waiting on.
+#
+# Requires APP_URL, VM0_API_URL, and SIGN_IN_TOKEN to be set.
 # ---------------------------------------------------------------------------
 sign_in_via_token_on_app() {
-  echo "# Signing in via token on platform app..." >&3
-  sign_in_via_token "$APP_URL"
+  echo "# Signing in via token on primary (www.) domain..." >&3
+  sign_in_via_token "$VM0_API_URL"
+
+  echo "# Navigating to platform app domain..." >&3
+  agent-browser open "${APP_URL}" --ignore-https-errors
+  agent-browser wait 5000
+
+  # Wait for Clerk to sync session from www. to app. and settle
+  local sync_complete=false
+  for _i in $(seq 1 30); do
+    local current_url
+    current_url=$(agent-browser get url 2>/dev/null || true)
+    if url_is_on_app "$current_url" "$APP_URL" && [[ ! "$current_url" =~ sign-in ]]; then
+      sync_complete=true
+      break
+    fi
+    sleep 1
+  done
+  step_screenshot "after-app-sync"
+
+  if [[ "$sync_complete" != "true" ]]; then
+    echo "Failed to sync Clerk session to app domain" >&2
+    return 1
+  fi
+
+  dismiss_cookie_banner
   echo "# Authentication complete!" >&3
 }
 
