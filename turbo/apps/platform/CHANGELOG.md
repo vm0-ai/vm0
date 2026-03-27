@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.161.1](https://github.com/vm0-ai/vm0/compare/app-v0.161.0...app-v0.161.1) (2026-03-27)
+
+
+### Bug Fixes
+
+* **platform:** retain active agent when navigating between pages ([#7071](https://github.com/vm0-ai/vm0/issues/7071)) ([8c542da](https://github.com/vm0-ai/vm0/commit/8c542da87181a373e5a19f0e163d32578dc932ad))
+
 ## [0.161.0](https://github.com/vm0-ai/vm0/compare/app-v0.160.0...app-v0.161.0) (2026-03-27)
 
 
