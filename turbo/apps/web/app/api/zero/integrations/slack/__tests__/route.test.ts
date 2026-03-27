@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { WebClient } from "@slack/web-api";
 import { GET, DELETE } from "../route";
+import { SLACK_BOT_SCOPES } from "../../../../../../src/lib/slack-org/scopes";
 import {
   testContext,
   uniqueId,
@@ -20,14 +21,16 @@ async function givenOrgSlackSetup(
   options: {
     isAdmin?: boolean;
     withConnection?: boolean;
+    botScopes?: string | null;
   } = {},
 ) {
-  const { isAdmin = false, withConnection = true } = options;
+  const { isAdmin = false, withConnection = true, botScopes } = options;
   const user = await context.setupUser();
   const org = await createTestOrg(uniqueId("org"));
 
   const { slackWorkspaceId } = await createTestSlackOrgInstallation({
     orgId: org.id,
+    botScopes,
   });
 
   // Set up the mock with orgId so resolveOrg picks the correct org
@@ -282,6 +285,87 @@ describe("/api/zero/integrations/slack", () => {
       // Verify installation was deleted after publishing
       const installation = await findTestSlackOrgInstallation(workspaceId);
       expect(installation).toBeUndefined();
+    });
+  });
+
+  describe("GET scope mismatch detection", () => {
+    it("returns scopeMismatch=false when installation has all required scopes", async () => {
+      const fullScopes = JSON.stringify([...SLACK_BOT_SCOPES]);
+      await givenOrgSlackSetup({ isAdmin: true, botScopes: fullScopes });
+
+      const request = new Request(
+        "http://localhost:3000/api/zero/integrations/slack",
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.scopeMismatch).toBe(false);
+      expect(data.reinstallUrl).toBeNull();
+    });
+
+    it("returns scopeMismatch=true when installation is missing scopes", async () => {
+      const partialScopes = JSON.stringify(["chat:write", "channels:read"]);
+      await givenOrgSlackSetup({ isAdmin: true, botScopes: partialScopes });
+
+      const request = new Request(
+        "http://localhost:3000/api/zero/integrations/slack",
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.scopeMismatch).toBe(true);
+      expect(data.reinstallUrl).toContain("/api/zero/slack/oauth/install");
+      expect(data.reinstallUrl).toContain("reinstall=1");
+    });
+
+    it("treats null bot_scopes as no mismatch (backward compat)", async () => {
+      await givenOrgSlackSetup({ isAdmin: true, botScopes: null });
+
+      const request = new Request(
+        "http://localhost:3000/api/zero/integrations/slack",
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.scopeMismatch).toBe(false);
+    });
+
+    it("does not expose scopeMismatch to non-admin users", async () => {
+      const partialScopes = JSON.stringify(["chat:write"]);
+      await givenOrgSlackSetup({ isAdmin: false, botScopes: partialScopes });
+
+      const request = new Request(
+        "http://localhost:3000/api/zero/integrations/slack",
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.scopeMismatch).toBeUndefined();
+      expect(data.reinstallUrl).toBeUndefined();
+    });
+
+    it("returns scopeMismatch for admin when user is not connected", async () => {
+      const partialScopes = JSON.stringify(["chat:write"]);
+      await givenOrgSlackSetup({
+        isAdmin: true,
+        withConnection: false,
+        botScopes: partialScopes,
+      });
+
+      const request = new Request(
+        "http://localhost:3000/api/zero/integrations/slack",
+      );
+      const response = await GET(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.isConnected).toBe(false);
+      expect(data.scopeMismatch).toBe(true);
+      expect(data.reinstallUrl).toContain("reinstall=1");
     });
   });
 });

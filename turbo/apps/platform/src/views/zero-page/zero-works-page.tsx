@@ -1,6 +1,7 @@
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
+  IconAlertTriangle,
   IconCircleCheck,
   IconDotsVertical,
   IconDownload,
@@ -137,32 +138,53 @@ function SlackCard({ displayName }: { displayName: string }) {
   const isConnected = slackData?.isConnected ?? false;
   const isInstalled = slackData?.isInstalled ?? isConnected;
   const isAdmin = slackData?.isAdmin ?? false;
+  const scopeMismatch = slackData?.scopeMismatch === true;
+  const reinstallUrl = slackData?.reinstallUrl;
 
   return (
     <>
-      <div className="zero-card flex items-center gap-4 p-4">
-        <div className="shrink-0">
-          <img src={slackIconImg} alt="" className="h-7 w-7" />
-        </div>
-        <div className="flex flex-1 flex-col gap-1 min-w-0">
-          <div className="text-sm font-medium text-foreground">Slack</div>
-          <div className="text-sm text-muted-foreground">
-            {!isInstalled && !isAdmin
-              ? "Ask your admin to install the Slack integration"
-              : "Team communication and collaboration"}
+      <div className="zero-card flex flex-col">
+        <div className="flex items-center gap-4 p-4">
+          <div className="shrink-0">
+            <img src={slackIconImg} alt="" className="h-7 w-7" />
           </div>
+          <div className="flex flex-1 flex-col gap-1 min-w-0">
+            <div className="text-sm font-medium text-foreground">Slack</div>
+            <div className="text-sm text-muted-foreground">
+              {!isInstalled && !isAdmin
+                ? "Ask your admin to install the Slack integration"
+                : "Team communication and collaboration"}
+            </div>
+          </div>
+          <SlackCardActions
+            isConnected={isConnected}
+            isInstalled={isInstalled}
+            isAdmin={isAdmin}
+            installUrl={slackData?.installUrl}
+            connectUrl={slackData?.connectUrl}
+            onDisconnect={() =>
+              detach(disconnect(pageSignal), Reason.DomCallback)
+            }
+            onUninstall={() => setShowUninstallDialog(true)}
+          />
         </div>
-        <SlackCardActions
-          isConnected={isConnected}
-          isInstalled={isInstalled}
-          isAdmin={isAdmin}
-          installUrl={slackData?.installUrl}
-          connectUrl={slackData?.connectUrl}
-          onDisconnect={() =>
-            detach(disconnect(pageSignal), Reason.DomCallback)
-          }
-          onUninstall={() => setShowUninstallDialog(true)}
-        />
+
+        {scopeMismatch && isAdmin && reinstallUrl && (
+          <div className="flex items-center gap-3 border-t border-border/50 px-4 py-3">
+            <IconAlertTriangle size={16} className="shrink-0 text-amber-500" />
+            <span className="flex-1 text-sm text-amber-600 dark:text-amber-400">
+              Slack permissions have been updated
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 shrink-0 text-xs"
+              onClick={() => openFreshOAuth(reinstallUrl)}
+            >
+              Update Permissions
+            </Button>
+          </div>
+        )}
       </div>
 
       <Dialog open={showUninstallDialog} onOpenChange={setShowUninstallDialog}>

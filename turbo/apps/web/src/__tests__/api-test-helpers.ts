@@ -3591,6 +3591,7 @@ export async function createTestSlackOrgInstallation(opts: {
   workspaceId?: string;
   workspaceName?: string;
   orgId: string | null;
+  botScopes?: string | null;
 }): Promise<{
   slackWorkspaceId: string;
   slackWorkspaceName: string;
@@ -3615,6 +3616,7 @@ export async function createTestSlackOrgInstallation(opts: {
       orgId: opts.orgId,
       encryptedBotToken,
       botUserId: `B-${randomUUID().slice(0, 8)}`,
+      botScopes: opts.botScopes ?? null,
     })
     .returning();
 

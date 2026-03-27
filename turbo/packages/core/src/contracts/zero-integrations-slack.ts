@@ -21,6 +21,10 @@ const slackOrgStatusSchema = z.object({
   defaultAgentName: z.string().nullable().optional(),
   agentOrgSlug: z.string().nullable().optional(),
   environment: slackEnvironmentSchema.optional(),
+  /** True when the installation's granted scopes are outdated (admin-only). */
+  scopeMismatch: z.boolean().optional(),
+  /** OAuth install URL for re-authorization (admin-only, when scopeMismatch). */
+  reinstallUrl: z.string().nullable().optional(),
 });
 
 /**

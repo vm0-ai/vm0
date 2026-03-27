@@ -96,6 +96,7 @@ import {
 } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
+import { slackOrgScopeMismatch$ } from "../../signals/zero-page/zero-slack.ts";
 import { BillingDialog } from "./billing-dialog.tsx";
 import {
   ChatListDialog,
@@ -940,6 +941,7 @@ export function ZeroSidebar() {
   const setManagePinnedOpen = useSet(setManagePinnedDialogOpen$);
   // Feature gates
   const features = useLastResolved(featureSwitch$);
+  const slackScopeMismatch = useGet(slackOrgScopeMismatch$);
 
   // Compute selectedAgentIdFromChat for grey highlight
   const subagentIds = new Set(subagents.map((a) => a.id));
@@ -1041,7 +1043,12 @@ export function ZeroSidebar() {
                             : "text-sidebar-foreground hover:bg-sidebar-accent"
                         }`}
                       >
-                        <Icon size={16} className="shrink-0" />
+                        <span className="relative inline-flex">
+                          <Icon size={16} className="shrink-0" />
+                          {id === "works" && slackScopeMismatch && (
+                            <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500" />
+                          )}
+                        </span>
                       </Link>
                     </TooltipTrigger>
                     <TooltipContent side="right">
@@ -1205,7 +1212,10 @@ export function ZeroSidebar() {
                 ) : (
                   <Icon size={16} className="shrink-0" />
                 )}
-                <span className="truncate">{label}</span>
+                <span className="truncate flex-1">{label}</span>
+                {id === "works" && slackScopeMismatch && (
+                  <span className="h-2 w-2 shrink-0 rounded-full bg-red-500" />
+                )}
               </Link>
             ))}
             <div className="h-px bg-border/30 mx-1 my-1" />
