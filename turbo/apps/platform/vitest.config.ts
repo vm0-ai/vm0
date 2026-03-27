@@ -24,7 +24,9 @@ export default defineConfig({
     environment: "happy-dom",
     setupFiles: ["./src/test/setup.ts"],
     onConsoleLog(log) {
-      if (log.includes("not wrapped in act")) return false;
+      if (log.includes("not wrapped in act")) {
+        return false;
+      }
     },
   },
 });
