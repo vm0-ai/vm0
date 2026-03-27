@@ -415,32 +415,55 @@ function buildMarkdownMessage(content: string): (Block | KnownBlock)[] {
 }
 
 /**
- * Build an agent response message with optional logs link
+ * Build an agent response message with optional logs link and audit button
  *
  * @param content - The agent's response content
  * @param logsUrl - Optional URL to the run logs
  * @param triggeredBy - Optional attribution text shown as a separate context block below a divider
+ * @param runId - Optional run ID; when provided, adds an interactive Audit button that shows ephemeral details
  * @returns Block Kit blocks with response content
  */
 export function buildAgentResponseMessage(
   content: string,
   logsUrl?: string,
   triggeredBy?: string,
+  runId?: string,
 ): (Block | KnownBlock)[] {
   const blocks: (Block | KnownBlock)[] = [...buildMarkdownMessage(content)];
 
-  // Add logs link at the end if provided
-  // Emoji must be outside the link — Slack mobile doesn't render emoji inside <url|text>
-  if (logsUrl) {
-    blocks.push({
-      type: "context",
-      elements: [
-        {
-          type: "mrkdwn",
-          text: `:clipboard: <${logsUrl}|Audit>`,
-        },
-      ],
-    });
+  // Add audit button + logs link at the end if provided
+  if (logsUrl || runId) {
+    const elements: (Block | KnownBlock)[] = [];
+
+    // Interactive audit button (ephemeral details on click)
+    if (runId) {
+      const auditButton: Button = {
+        type: "button",
+        text: { type: "plain_text", text: "Audit" },
+        action_id: "audit_run",
+        value: runId,
+      };
+
+      elements.push({
+        type: "actions",
+        elements: [auditButton],
+      } as ActionsBlock);
+    }
+
+    // Persistent web link for full telemetry view
+    if (logsUrl) {
+      elements.push({
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: `:clipboard: <${logsUrl}|View in dashboard>`,
+          },
+        ],
+      });
+    }
+
+    blocks.push(...elements);
   }
 
   if (triggeredBy) {
@@ -457,6 +480,172 @@ export function buildAgentResponseMessage(
   }
 
   return blocks;
+}
+
+// ---------------------------------------------------------------------------
+// Audit ephemeral message
+// ---------------------------------------------------------------------------
+
+/**
+ * Data needed to render an audit ephemeral message.
+ */
+export interface AuditRunData {
+  runId: string;
+  status: string;
+  prompt: string;
+  error?: string;
+  output?: string;
+  triggerSource?: string;
+  modelProvider?: string;
+  createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
+  logsUrl: string;
+}
+
+const STATUS_EMOJI: Record<string, string> = {
+  completed: ":white_check_mark:",
+  failed: ":x:",
+  running: ":hourglass_flowing_sand:",
+  queued: ":clock3:",
+  pending: ":clock3:",
+  timeout: ":alarm_clock:",
+  cancelled: ":no_entry_sign:",
+};
+
+/**
+ * Build Block Kit blocks for an audit ephemeral message.
+ * Shows run metadata, prompt, output, timing, and a link to the full dashboard.
+ */
+export function buildAuditEphemeralBlocks(
+  data: AuditRunData,
+): (Block | KnownBlock)[] {
+  const emoji = STATUS_EMOJI[data.status] ?? ":grey_question:";
+  const blocks: (Block | KnownBlock)[] = [];
+
+  // Header
+  blocks.push({
+    type: "header",
+    text: { type: "plain_text", text: "Audit Details" },
+  });
+
+  // Status + metadata
+  const metaLines: string[] = [`${emoji} *Status:* ${data.status}`];
+  if (data.triggerSource) {
+    metaLines.push(`*Source:* ${data.triggerSource}`);
+  }
+  if (data.modelProvider) {
+    metaLines.push(`*Model:* ${data.modelProvider}`);
+  }
+
+  blocks.push({
+    type: "section",
+    text: { type: "mrkdwn", text: metaLines.join("\n") },
+  });
+
+  // Timing
+  const timingLines: string[] = [];
+  if (data.createdAt) {
+    timingLines.push(
+      `*Created:* <!date^${toSlackTimestamp(data.createdAt)}^{date_short_pretty} {time}|${data.createdAt}>`,
+    );
+  }
+  if (data.startedAt) {
+    timingLines.push(
+      `*Started:* <!date^${toSlackTimestamp(data.startedAt)}^{date_short_pretty} {time}|${data.startedAt}>`,
+    );
+  }
+  if (data.completedAt) {
+    timingLines.push(
+      `*Completed:* <!date^${toSlackTimestamp(data.completedAt)}^{date_short_pretty} {time}|${data.completedAt}>`,
+    );
+  }
+  if (data.startedAt && data.completedAt) {
+    const durationMs =
+      new Date(data.completedAt).getTime() - new Date(data.startedAt).getTime();
+    timingLines.push(`*Duration:* ${formatDuration(durationMs)}`);
+  }
+
+  if (timingLines.length > 0) {
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: timingLines.join("\n") },
+    });
+  }
+
+  blocks.push({ type: "divider" });
+
+  // Prompt (truncated)
+  const maxPromptLen = 1000;
+  const promptText =
+    data.prompt.length > maxPromptLen
+      ? data.prompt.substring(0, maxPromptLen) + "..."
+      : data.prompt;
+
+  blocks.push({
+    type: "section",
+    text: { type: "mrkdwn", text: `*Prompt:*\n${promptText}` },
+  });
+
+  // Error (if failed)
+  if (data.error) {
+    const maxErrorLen = 1000;
+    const errorText =
+      data.error.length > maxErrorLen
+        ? data.error.substring(0, maxErrorLen) + "..."
+        : data.error;
+
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: `:x: *Error:*\n${errorText}` },
+    });
+  }
+
+  // Output (truncated)
+  if (data.output) {
+    blocks.push({ type: "divider" });
+
+    const maxOutputLen = 2000;
+    const outputText =
+      data.output.length > maxOutputLen
+        ? data.output.substring(0, maxOutputLen) +
+          "\n\n_(Output truncated. View full output in dashboard.)_"
+        : data.output;
+
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: `*Output:*\n${outputText}` },
+    });
+  }
+
+  // Dashboard link
+  blocks.push({ type: "divider" });
+  blocks.push({
+    type: "context",
+    elements: [
+      {
+        type: "mrkdwn",
+        text: `:mag: <${data.logsUrl}|View full details in dashboard>`,
+      },
+    ],
+  });
+
+  return blocks;
+}
+
+function toSlackTimestamp(isoDate: string): number {
+  return Math.floor(new Date(isoDate).getTime() / 1000);
+}
+
+function formatDuration(ms: number): string {
+  const seconds = Math.floor(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  if (minutes < 60) return `${minutes}m ${remainingSeconds}s`;
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return `${hours}h ${remainingMinutes}m`;
 }
 
 /**

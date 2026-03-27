@@ -7,6 +7,7 @@ import {
   buildHelpMessage,
   buildSuccessMessage,
   buildAgentResponseMessage,
+  buildAuditEphemeralBlocks,
 } from "../blocks";
 
 describe("buildErrorMessage", () => {
@@ -130,7 +131,7 @@ describe("buildAgentResponseMessage", () => {
     expect(markdownBlock.text).toBe(content);
   });
 
-  it("should include context block with logs url when provided", () => {
+  it("should include context block with dashboard link when logsUrl provided", () => {
     const blocks = buildAgentResponseMessage(
       "Response text",
       "https://app.vm0.ai/audit/123",
@@ -143,10 +144,31 @@ describe("buildAgentResponseMessage", () => {
       elements: [
         {
           type: "mrkdwn",
-          text: expect.stringContaining("Audit"),
+          text: expect.stringContaining("View in dashboard"),
         },
       ],
     });
+  });
+
+  it("should include audit button when runId provided", () => {
+    const blocks = buildAgentResponseMessage(
+      "Response text",
+      "https://app.vm0.ai/activity/run-123",
+      undefined,
+      "run-123",
+    );
+
+    const actionsBlock = blocks.find((b) => b.type === "actions");
+    expect(actionsBlock).toBeDefined();
+
+    const button = (
+      actionsBlock as { elements: { action_id: string; value: string }[] }
+    ).elements[0]!;
+    expect(button.action_id).toBe("audit_run");
+    expect(button.value).toBe("run-123");
+
+    const contextBlock = blocks.find((b) => b.type === "context");
+    expect(contextBlock).toBeDefined();
   });
 
   it("should truncate content exceeding 12000 characters", () => {
@@ -170,25 +192,25 @@ describe("buildAgentResponseMessage", () => {
     expect(markdownBlock.text).toBe(content);
   });
 
-  it("should show triggeredBy as separate context block below audit with divider", () => {
+  it("should show triggeredBy as separate context block below dashboard link with divider", () => {
     const blocks = buildAgentResponseMessage(
       "Response text",
       "https://app.vm0.ai/activity/run-123",
       'triggered by schedule "Send a greeting message daily at 9 AM"',
     );
 
-    // Should have: markdown, audit context, divider, attribution context
+    // Should have: markdown, dashboard context, divider, attribution context
     const dividerBlocks = blocks.filter((b) => b.type === "divider");
     expect(dividerBlocks).toHaveLength(1);
 
     const contextBlocks = blocks.filter((b) => b.type === "context");
     expect(contextBlocks).toHaveLength(2);
 
-    // First context: audit link only
-    const auditText = (contextBlocks[0] as { elements: { text: string }[] })
+    // First context: dashboard link only
+    const dashboardText = (contextBlocks[0] as { elements: { text: string }[] })
       .elements[0]!.text;
-    expect(auditText).toContain("Audit");
-    expect(auditText).not.toContain("triggered by");
+    expect(dashboardText).toContain("View in dashboard");
+    expect(dashboardText).not.toContain("triggered by");
 
     // Second context: attribution (after divider)
     const attrText = (contextBlocks[1] as { elements: { text: string }[] })
@@ -208,7 +230,127 @@ describe("buildAgentResponseMessage", () => {
     expect(contextBlocks).toHaveLength(1);
     expect(
       (contextBlocks[0] as { elements: { text: string }[] }).elements[0]!.text,
-    ).toContain("Audit");
+    ).toContain("View in dashboard");
+  });
+});
+
+describe("buildAuditEphemeralBlocks", () => {
+  it("should include header, status, timing, prompt, and dashboard link", () => {
+    const blocks = buildAuditEphemeralBlocks({
+      runId: "run-123",
+      status: "completed",
+      prompt: "Summarize the document",
+      createdAt: "2026-03-27T10:00:00Z",
+      startedAt: "2026-03-27T10:00:01Z",
+      completedAt: "2026-03-27T10:00:30Z",
+      logsUrl: "https://app.vm0.ai/activity/run-123",
+    });
+
+    const header = blocks.find((b) => b.type === "header");
+    expect(header).toBeDefined();
+
+    const sections = blocks.filter((b) => b.type === "section");
+    expect(sections.length).toBeGreaterThanOrEqual(2);
+
+    // Status section
+    const statusSection = sections[0] as SectionBlock;
+    expect(statusSection.text?.text).toContain("completed");
+    expect(statusSection.text?.text).toContain(":white_check_mark:");
+
+    // Prompt section
+    const promptSection = sections.find((s) =>
+      (s as SectionBlock).text?.text?.includes("Prompt"),
+    );
+    expect(promptSection).toBeDefined();
+
+    // Dashboard link
+    const contextBlocks = blocks.filter((b) => b.type === "context");
+    expect(contextBlocks.length).toBeGreaterThanOrEqual(1);
+    const lastContext = contextBlocks[contextBlocks.length - 1] as {
+      elements: { text: string }[];
+    };
+    expect(lastContext.elements[0]!.text).toContain("View full details");
+  });
+
+  it("should show error section for failed runs", () => {
+    const blocks = buildAuditEphemeralBlocks({
+      runId: "run-456",
+      status: "failed",
+      prompt: "Do something",
+      error: "Sandbox timeout",
+      createdAt: "2026-03-27T10:00:00Z",
+      logsUrl: "https://app.vm0.ai/activity/run-456",
+    });
+
+    const errorSection = blocks.find(
+      (b) =>
+        b.type === "section" &&
+        (b as SectionBlock).text?.text?.includes("Error"),
+    );
+    expect(errorSection).toBeDefined();
+    expect((errorSection as SectionBlock).text?.text).toContain(
+      "Sandbox timeout",
+    );
+  });
+
+  it("should show output section when output provided", () => {
+    const blocks = buildAuditEphemeralBlocks({
+      runId: "run-789",
+      status: "completed",
+      prompt: "Hello",
+      output: "Here is the result",
+      createdAt: "2026-03-27T10:00:00Z",
+      logsUrl: "https://app.vm0.ai/activity/run-789",
+    });
+
+    const outputSection = blocks.find(
+      (b) =>
+        b.type === "section" &&
+        (b as SectionBlock).text?.text?.includes("Output"),
+    );
+    expect(outputSection).toBeDefined();
+    expect((outputSection as SectionBlock).text?.text).toContain(
+      "Here is the result",
+    );
+  });
+
+  it("should show duration when both startedAt and completedAt provided", () => {
+    const blocks = buildAuditEphemeralBlocks({
+      runId: "run-dur",
+      status: "completed",
+      prompt: "Test",
+      createdAt: "2026-03-27T10:00:00Z",
+      startedAt: "2026-03-27T10:00:00Z",
+      completedAt: "2026-03-27T10:01:30Z",
+      logsUrl: "https://app.vm0.ai/activity/run-dur",
+    });
+
+    const sections = blocks.filter((b) => b.type === "section");
+    const timingText = sections
+      .map((s) => (s as SectionBlock).text?.text ?? "")
+      .join("\n");
+    expect(timingText).toContain("Duration");
+    expect(timingText).toContain("1m 30s");
+  });
+
+  it("should truncate long prompts", () => {
+    const longPrompt = "x".repeat(2000);
+    const blocks = buildAuditEphemeralBlocks({
+      runId: "run-trunc",
+      status: "completed",
+      prompt: longPrompt,
+      createdAt: "2026-03-27T10:00:00Z",
+      logsUrl: "https://app.vm0.ai/activity/run-trunc",
+    });
+
+    const promptSection = blocks.find(
+      (b) =>
+        b.type === "section" &&
+        (b as SectionBlock).text?.text?.includes("Prompt"),
+    );
+    const text = (promptSection as SectionBlock).text?.text ?? "";
+    expect(text.length).toBeLessThan(2100);
+    expect(text).toContain("...");
   });
 });
 

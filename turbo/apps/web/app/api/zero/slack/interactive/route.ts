@@ -17,11 +17,19 @@ import {
 } from "../../../../../src/lib/slack/client";
 import {
   buildAskUserAnsweredBlocks,
+  buildAuditEphemeralBlocks,
   buildErrorMessage,
 } from "../../../../../src/lib/slack/blocks";
-import type { AskUserQuestion } from "../../../../../src/lib/slack/blocks";
+import type {
+  AskUserQuestion,
+  AuditRunData,
+} from "../../../../../src/lib/slack/blocks";
 import { refreshOrgAppHome } from "../../../../../src/lib/slack-org/handlers/app-home";
 import { disconnect } from "../../../../../src/lib/slack-org/connect-service";
+import { agentRuns } from "../../../../../src/db/schema/agent-run";
+import { zeroRuns } from "../../../../../src/db/schema/zero-run";
+import { buildLogsUrl } from "../../../../../src/lib/slack-org/handlers/shared";
+import { extractRunOutput } from "../../../../../src/lib/run/extract-run-output";
 import { logger } from "../../../../../src/lib/logger";
 
 const askUserQuestionSchema = z.array(
@@ -147,6 +155,10 @@ export async function POST(request: Request) {
     } else if (/^ask_user_pick_q\d+_o\d+$/.test(action.action_id)) {
       handleDirectPick(payload, action).catch((err: unknown) => {
         log.error("Failed to handle direct pick:", err);
+      });
+    } else if (action.action_id === "audit_run") {
+      handleAuditRun(payload, action).catch((err: unknown) => {
+        log.error("Failed to handle audit run:", err);
       });
     }
   }
@@ -513,5 +525,125 @@ async function finishSubmit(
   log.debug("askUserQuestion answer persisted", {
     pendingId,
     answerPrompt,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Audit run ephemeral message
+// ---------------------------------------------------------------------------
+
+/**
+ * Handle the "Audit" button click: look up the run and send an ephemeral
+ * message with run details to the clicking user.
+ */
+async function handleAuditRun(
+  payload: SlackInteractivePayload,
+  action: SlackAction,
+): Promise<void> {
+  const runId = action.value;
+  if (!runId) return;
+
+  const { SECRETS_ENCRYPTION_KEY } = env();
+  const slackUserId = payload.user.id;
+  const workspaceId = payload.team.id;
+  const channelId = payload.channel?.id;
+
+  if (!channelId) {
+    log.warn("audit_run action missing channel", { runId });
+    return;
+  }
+
+  // Resolve Slack installation → orgId + bot token
+  const [installation] = await globalThis.services.db
+    .select()
+    .from(slackOrgInstallations)
+    .where(eq(slackOrgInstallations.slackWorkspaceId, workspaceId))
+    .limit(1);
+
+  if (!installation?.orgId) {
+    log.warn("audit_run: installation or org not found", { workspaceId });
+    return;
+  }
+
+  const botToken = decryptSecretValue(
+    installation.encryptedBotToken,
+    SECRETS_ENCRYPTION_KEY,
+  );
+  const client = createSlackClient(botToken);
+
+  // Map Slack user → VM0 user
+  const [connection] = await globalThis.services.db
+    .select({ vm0UserId: slackOrgConnections.vm0UserId })
+    .from(slackOrgConnections)
+    .where(
+      and(
+        eq(slackOrgConnections.slackUserId, slackUserId),
+        eq(slackOrgConnections.slackWorkspaceId, workspaceId),
+      ),
+    )
+    .limit(1);
+
+  if (!connection) {
+    await client.chat.postEphemeral({
+      channel: channelId,
+      user: slackUserId,
+      text: "You don't have permission to view this audit information.",
+    });
+    return;
+  }
+
+  // Fetch the run scoped to this user + org
+  const [run] = await globalThis.services.db
+    .select()
+    .from(agentRuns)
+    .where(
+      and(
+        eq(agentRuns.id, runId),
+        eq(agentRuns.userId, connection.vm0UserId),
+        eq(agentRuns.orgId, installation.orgId),
+      ),
+    )
+    .limit(1);
+
+  if (!run) {
+    await client.chat.postEphemeral({
+      channel: channelId,
+      user: slackUserId,
+      text: "You don't have permission to view this audit information.",
+    });
+    return;
+  }
+
+  // Fetch trigger source from zero_runs
+  const [zeroRun] = await globalThis.services.db
+    .select({ triggerSource: zeroRuns.triggerSource })
+    .from(zeroRuns)
+    .where(eq(zeroRuns.id, runId))
+    .limit(1);
+
+  // Fetch output from Axiom
+  const runOutput = await extractRunOutput(runId, run.error);
+
+  const auditData: AuditRunData = {
+    runId: run.id,
+    status: run.status,
+    prompt: run.prompt,
+    error: run.error ?? undefined,
+    output: runOutput.result ?? undefined,
+    triggerSource: zeroRun?.triggerSource ?? undefined,
+    modelProvider: run.modelProvider ?? undefined,
+    createdAt: run.createdAt.toISOString(),
+    startedAt: run.startedAt?.toISOString(),
+    completedAt: run.completedAt?.toISOString(),
+    logsUrl: buildLogsUrl(runId),
+  };
+
+  const blocks = buildAuditEphemeralBlocks(auditData);
+
+  await client.chat.postEphemeral({
+    channel: channelId,
+    user: slackUserId,
+    text: `Audit details for run ${runId}`,
+    blocks,
   });
 }

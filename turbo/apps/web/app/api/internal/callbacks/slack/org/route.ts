@@ -211,7 +211,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     await postMessage(client, payload.channelId, responseText, {
       threadTs: payload.threadTs,
-      blocks: buildAgentResponseMessage(responseText, logsUrl),
+      blocks: buildAgentResponseMessage(
+        responseText,
+        logsUrl,
+        undefined,
+        isLast ? runId : undefined,
+      ),
     });
   }
 

@@ -180,7 +180,9 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
     expect(contextBlock).toBeDefined();
     expect(contextBlock).toMatchObject({
       type: "context",
-      elements: [{ type: "mrkdwn", text: expect.stringContaining("Audit") }],
+      elements: [
+        { type: "mrkdwn", text: expect.stringContaining("View in dashboard") },
+      ],
     });
   });
 
@@ -292,7 +294,9 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
     expect(contextBlock).toBeDefined();
     expect(contextBlock).toMatchObject({
       type: "context",
-      elements: [{ type: "mrkdwn", text: expect.stringContaining("Audit") }],
+      elements: [
+        { type: "mrkdwn", text: expect.stringContaining("View in dashboard") },
+      ],
     });
   });
 

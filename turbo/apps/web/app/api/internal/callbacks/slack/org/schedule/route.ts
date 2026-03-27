@@ -72,6 +72,7 @@ async function postScheduleResults(
   outputs: RunOutput[],
   logsUrl: string,
   scheduleDescription?: string,
+  runId?: string,
 ): Promise<{ messageTs: string | undefined; dmChannelId: string | undefined }> {
   let messageTs: string | undefined;
   let dmChannelId: string | undefined;
@@ -90,6 +91,7 @@ async function postScheduleResults(
       rawOutput,
       isLast ? logsUrl : undefined,
       triggeredBy,
+      isLast ? runId : undefined,
     );
 
     const threadTs = messageTs;
@@ -130,6 +132,7 @@ async function handleScheduleCompleted(opts: {
     allOutputs,
     opts.logsUrl,
     opts.scheduleDescription,
+    opts.runId,
   );
 
   // Create thread session so user can reply to continue (only for DM)
@@ -164,6 +167,7 @@ async function postScheduleFailure(
   errMsg: string,
   logsUrl: string,
   scheduleDescription?: string,
+  runId?: string,
 ): Promise<void> {
   const failureContent = `:x: **Failed**\n\n${errMsg}`;
   await postMessage(
@@ -177,6 +181,7 @@ async function postScheduleFailure(
         scheduleDescription
           ? `triggered by schedule "${scheduleDescription}"`
           : undefined,
+        runId,
       ),
     },
   );
@@ -302,6 +307,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       error ?? "Unknown error",
       logsUrl,
       scheduleDescription,
+      runId,
     );
   }
 
