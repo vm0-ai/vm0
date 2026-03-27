@@ -182,7 +182,7 @@ create_clerk_sign_in_token() {
     return 1
   fi
 
-  local email="e2e+clerk_test@vm0.ai"
+  local email="${E2E_ACCOUNT}"
 
   local clerk_api_url="https://api.clerk.com"
 
