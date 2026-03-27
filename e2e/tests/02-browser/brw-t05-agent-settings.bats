@@ -120,9 +120,21 @@ teardown_file() {
   wait_for_text "Lead" 40
   step_screenshot "team-page"
 
-  # Click Create teammate
+  # Click Create teammate — use role-based find which works more reliably
+  # than text-based find for buttons with composite content
   echo "# Clicking Create teammate..." >&3
-  agent-browser find text "Create teammate" click
+  local btn_clicked=false
+  for _i in $(seq 1 30); do
+    if agent-browser find role button click --name "Create teammate" 2>/dev/null; then
+      btn_clicked=true
+      break
+    fi
+    sleep 1
+  done
+  if [[ "$btn_clicked" != "true" ]]; then
+    echo "# Failed to click Create teammate button" >&3
+    return 1
+  fi
   agent-browser wait 1000
 
   # Wait for dialog

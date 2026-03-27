@@ -66,12 +66,12 @@ teardown_file() {
 }
 
 @test "create new agent via dialog" {
-  # Retry clicking Create teammate — the button may briefly be unclickable
-  # while the team page finishes loading async data after session sync
+  # Retry clicking Create teammate — use role-based find which works more
+  # reliably than text-based find for buttons with composite content
   echo "# Clicking Create teammate (with retry)..." >&3
   local btn_clicked=false
-  for _i in $(seq 1 20); do
-    if agent-browser find text "Create teammate" click 2>/dev/null; then
+  for _i in $(seq 1 30); do
+    if agent-browser find role button click --name "Create teammate" 2>/dev/null; then
       btn_clicked=true
       break
     fi

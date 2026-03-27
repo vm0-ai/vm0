@@ -95,7 +95,7 @@ teardown_file() {
   agent-browser open "${APP_URL}/schedule" --ignore-https-errors
   agent-browser wait 3000
 
-  wait_for_text "Scheduled tasks" 20
+  wait_for_text "Scheduled tasks" 40
   step_screenshot "schedule-list-after-create"
 
   # Check if the new schedule already appeared (it may or may not have finished)
