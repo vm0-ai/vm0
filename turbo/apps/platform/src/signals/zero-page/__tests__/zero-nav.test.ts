@@ -5,6 +5,7 @@ import { testContext } from "../../__tests__/test-helpers.ts";
 import { createPushStateMock } from "../../../__tests__/page-helper.ts";
 import {
   zeroActiveId$,
+  zeroSessionId$,
   zeroTalkAgentId$,
   zeroChatAgentId$,
   setZeroChatAgent$,
@@ -137,6 +138,40 @@ describe("zero-nav", () => {
     it("should decode URI-encoded agent names", async () => {
       await setupRoutes("/talk/agent%20with%20spaces");
       expect(context.store.get(zeroTalkAgentId$)).toBe("agent with spaces");
+    });
+  });
+
+  describe("zeroSessionId$", () => {
+    async function setupRoutes(pathname: string) {
+      context.store.set(setRootSignal$, context.signal);
+      createPushStateMock(context.signal);
+      mockLocation({ pathname, search: "" }, context.signal);
+      const noop$ = command(() => void 0);
+      await context.store.set(
+        initRoutes$,
+        [
+          { path: "/", setup: noop$ },
+          { path: "/talk/:agentId", setup: noop$ },
+          { path: "/chat/:chatThreadId", setup: noop$ },
+          { path: "{/*path}", setup: noop$ },
+        ],
+        context.signal,
+      );
+    }
+
+    it("should return null for /", async () => {
+      await setupRoutes("/");
+      expect(context.store.get(zeroSessionId$)).toBeNull();
+    });
+
+    it("should return null for /talk/:agentId", async () => {
+      await setupRoutes("/talk/my-agent");
+      expect(context.store.get(zeroSessionId$)).toBeNull();
+    });
+
+    it("should extract thread ID from /chat/:chatThreadId", async () => {
+      await setupRoutes("/chat/thread-abc-123");
+      expect(context.store.get(zeroSessionId$)).toBe("thread-abc-123");
     });
   });
 
