@@ -150,8 +150,6 @@ export const handleZeroNavSelect$ = command(({ set }, id: ZeroNavId) => {
     set(navigateTo$, "/");
   } else if (id === "team") {
     set(navigateTo$, "/team");
-  } else if (id === "ideas") {
-    set(navigateTo$, "/ideas");
   } else {
     set(navigateTo$, "/:tab", { pathParams: { tab: id } });
   }
