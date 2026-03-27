@@ -1194,6 +1194,8 @@ export const sendZeroChatMessage$ = command(
       // Loop phase: poll until terminal
       await set(startLoop$, { runId }, combinedSignal);
     } catch (error) {
+      // Errors are stored in message state to display inline in the chat thread
+      // rather than propagating — this is intentional UX for non-abort errors.
       throwIfAbort(error);
       L.error("Chat send error:", error);
       set(internalLocalMessages$, (prev) => {
