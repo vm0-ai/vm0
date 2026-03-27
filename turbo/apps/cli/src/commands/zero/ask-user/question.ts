@@ -54,14 +54,9 @@ Examples:
       --multi-select \\
       --option "API" --option "Worker" --option "Scheduler"
 
-  Custom timeout (seconds):
-    zero ask-user question "Approve rollback?" --option "Yes" --option "No" --timeout 60
-
 Notes:
   - At least one --option is required
-  - --desc must immediately follow its --option
-  - The answer is printed to stdout; status messages go to stderr
-  - Default timeout is 300 seconds (5 minutes)`,
+  - --desc must immediately follow its --option`,
   )
   .action(
     withErrorHandler(
