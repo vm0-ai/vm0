@@ -154,11 +154,12 @@ teardown_file() {
   local snap_i create_ref
   snap_i=$(agent-browser snapshot -i)
   create_ref=$(echo "$snap_i" | grep -E 'button "Create"' | grep -v 'teammate' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
-  if [[ -z "$create_ref" ]]; then
-    echo "# Failed to find Create button ref in interactive snapshot" >&3
-    return 1
+  if [[ -n "$create_ref" ]]; then
+    agent-browser click "$create_ref"
+  else
+    echo "# Create button ref not found in snapshot, trying role-based click..." >&3
+    agent-browser find role button click --name "Create"
   fi
-  agent-browser click "$create_ref"
 
   # Wait for dialog to close before checking the team page list
   wait_for_text_gone "Create a new teammate" 30

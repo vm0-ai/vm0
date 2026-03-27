@@ -128,6 +128,14 @@ teardown_file() {
 
 @test "verify schedule list page loads" {
   # After form submission, verify the schedule list page is still functional.
+  # The schedule creation API call in test 6 can leave the daemon busy/unresponsive.
+  # Restart it and re-sign-in with a fresh token before navigating.
+  echo "# Restarting browser daemon after long schedule creation API call..." >&3
+  agent-browser close 2>/dev/null || true
+  sleep 2
+  create_clerk_sign_in_token
+  sign_in_via_token_on_app
+
   echo "# Verifying schedule list page loads..." >&3
   agent-browser open "${APP_URL}/schedule" --ignore-https-errors
   agent-browser wait 3000
