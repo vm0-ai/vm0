@@ -140,8 +140,9 @@ teardown_file() {
   fi
   agent-browser click "$create_ref"
 
-  # Wait for agent creation
-  wait_for_text "$AGENT_NAME" 30
+  # Wait for dialog to close before checking the team page list
+  wait_for_text_gone "Create a new teammate" 30
+  wait_for_text "$AGENT_NAME" 10
   step_screenshot "agent-created"
   echo "# Agent created: $AGENT_NAME" >&3
 }
