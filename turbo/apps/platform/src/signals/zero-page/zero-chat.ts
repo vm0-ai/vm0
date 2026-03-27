@@ -791,10 +791,6 @@ export const cancelZeroAttachmentUpload$ = command(
 // Commands: session list management
 // ---------------------------------------------------------------------------
 
-const fetchZeroSessionList$ = command(({ set }) => {
-  set(reloadChatThreadList$, (n) => n + 1);
-});
-
 /**
  * Single entry point for changing the active agent.
  * Sets the agent identity AND refreshes the session list atomically.
