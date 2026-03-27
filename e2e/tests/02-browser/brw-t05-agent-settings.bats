@@ -172,9 +172,18 @@ teardown_file() {
     agent-browser find role button click --name "Create"
   fi
 
-  # Wait for dialog to close before checking the team page list
+  # Wait for dialog to close, then navigate to /team to verify the agent.
+  # Creation may redirect to agent settings; empty snapshots (daemon crash)
+  # can falsely pass wait_for_text_gone. Explicit /team navigation is reliable.
   wait_for_text_gone "Create a new teammate" 30
-  wait_for_text "$AGENT_NAME" 40
+  if ! navigate_to_app_page "/team" 2>/dev/null; then
+    echo "# Navigation failed after creation, restarting daemon..." >&3
+    restart_browser_daemon
+    create_clerk_sign_in_token
+    sign_in_via_token_on_app
+    navigate_to_app_page "/team"
+  fi
+  wait_for_text "$AGENT_NAME" 60
   step_screenshot "agent-created"
   echo "# Agent created: $AGENT_NAME" >&3
 }
