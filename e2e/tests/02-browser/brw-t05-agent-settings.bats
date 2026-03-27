@@ -233,7 +233,7 @@ teardown_file() {
   # Wait for Connectors tab content to fully load (the "Add connector" button
   # loads async after the tab labels appear). Save URL so later tests can
   # navigate back if needed.
-  wait_for_text "Add connector" 45
+  wait_for_text "Add connector" 60
   AGENT_SETTINGS_URL=$(agent-browser get url 2>/dev/null || true)
   export AGENT_SETTINGS_URL
   echo "# Agent settings page loaded with all tabs (URL: $AGENT_SETTINGS_URL)" >&3

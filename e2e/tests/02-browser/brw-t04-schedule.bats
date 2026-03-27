@@ -137,21 +137,23 @@ teardown_file() {
 }
 
 @test "verify schedule list page loads" {
-  # After form submission, the daemon may be busy or unresponsive due to the
-  # long schedule creation API call. Restart only if the daemon is actually dead.
-  if ! agent-browser get url 2>/dev/null; then
-    echo "# Daemon unresponsive, restarting with fresh token..." >&3
-    agent-browser close 2>/dev/null || true
-    sleep 2
-    create_clerk_sign_in_token
-    sign_in_via_token_on_app
-  fi
+  # The schedule creation API call in test 6 can leave the daemon unresponsive.
+  # Unconditionally restart to ensure a clean state. Then wait for the workspace
+  # to fully initialize after sign-in before navigating to /schedule.
+  echo "# Restarting browser daemon after schedule creation..." >&3
+  agent-browser close 2>/dev/null || true
+  sleep 2
+  create_clerk_sign_in_token
+  sign_in_via_token_on_app
+  # Wait for workspace initialization after fresh sign-in (avoids long overlay
+  # on /schedule that can prevent page content from rendering).
+  wait_for_text_gone "Loading your workspace" 60 || true
 
   echo "# Verifying schedule list page loads..." >&3
   agent-browser open "${APP_URL}/schedule" --ignore-https-errors
   agent-browser wait 3000
 
-  # Wait for any global loading overlay to clear before checking page content.
+  # Wait for any remaining loading overlay to clear.
   wait_for_text_gone "Loading your workspace" 30 || true
 
   local schedule_found=false
