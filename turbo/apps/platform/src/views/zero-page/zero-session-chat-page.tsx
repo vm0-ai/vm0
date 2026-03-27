@@ -672,7 +672,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
   );
 }
 
-/** Assistant message with reactive result$/summaries$ from runLoop. */
+/** Assistant message with reactive result$/summaries$/detail$ from runLoop. */
 function ReactiveAssistantMessage({
   message,
   zeroAvatarSrc,
@@ -682,18 +682,34 @@ function ReactiveAssistantMessage({
   const summariesLoadable = useLastLoadable(message.summaries$!);
   const summaries =
     summariesLoadable.state === "hasData" ? summariesLoadable.data : [];
+  const detailLoadable = useLastLoadable(message.runLoop!.detail$);
+  const detail =
+    detailLoadable.state === "hasData" ? detailLoadable.data : null;
+  const isFailed =
+    detail?.status === "failed" ||
+    detail?.status === "timeout" ||
+    detail?.status === "cancelled";
 
   // Build an enriched message with reactive content for the static renderer
   const enrichedMessage: ZeroChatMessage = {
     ...message,
     content,
     summaries: summaries.length > 0 ? summaries : message.summaries,
+    status: detail?.status ?? undefined,
+    error: isFailed
+      ? (detail?.error ??
+        (detail?.status === "timeout"
+          ? "Run timed out"
+          : detail?.status === "cancelled"
+            ? "Run cancelled."
+            : "Run failed"))
+      : undefined,
   };
   return (
     <StaticAssistantMessage
       message={enrichedMessage}
       zeroAvatarSrc={zeroAvatarSrc}
-      renderActivityLine={<MessageRunActivityLine message={message} />}
+      renderActivityLine={!isFailed ? <MessageRunActivityLine message={message} /> : undefined}
     />
   );
 }
