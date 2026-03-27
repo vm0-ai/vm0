@@ -3,7 +3,6 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { delay } from "signal-timers";
 import { zeroIntegrationsSlackContract } from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
-import { throwIfAbort } from "../utils.ts";
 
 const slackReload$ = state(0);
 
@@ -82,15 +81,10 @@ const MAX_POLL_ATTEMPTS = 100;
 export const pollSlackConnection$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     // Already connected — nothing to poll.
-    try {
-      const current = await get(slackOrgData$);
-      signal.throwIfAborted();
-      if (current.isConnected) {
-        return;
-      }
-    } catch (error) {
-      throwIfAbort(error);
-      // treat fetch error as not-connected, proceed with polling
+    const current = await get(slackOrgData$);
+    signal.throwIfAborted();
+    if (current.isConnected) {
+      return;
     }
 
     let attempts = 0;
@@ -99,22 +93,17 @@ export const pollSlackConnection$ = command(
       attempts++;
 
       set(reloadSlackOrg$);
-      try {
-        const fresh = await get(slackOrgData$);
-        signal.throwIfAborted();
-        if (fresh.isConnected) {
-          toast.success("Slack connected successfully");
-          return;
-        }
-      } catch (error) {
-        throwIfAbort(error);
-        // ignore poll error, keep polling
+      const fresh = await get(slackOrgData$);
+      signal.throwIfAborted();
+      if (fresh.isConnected) {
+        toast.success("Slack connected successfully");
+        return;
       }
     }
   },
 );
 
-export const initSlackOrg$ = command((_ctx, _signal: AbortSignal) => {
+export const handleSlackUrlParams$ = command((_ctx, _signal: AbortSignal) => {
   const params = new URLSearchParams(window.location.search);
   if (params.get("installed") === "1") {
     toast.success("Slack installed successfully");

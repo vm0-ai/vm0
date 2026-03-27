@@ -5,13 +5,13 @@ import { zeroSubagents$ } from "./zero-agents.ts";
 import { switchActiveAgent$ } from "./zero-chat.ts";
 import { initSidebarCollapsed$ } from "./zero-nav.ts";
 import { initZeroOnboarding$ } from "./zero-onboarding.ts";
-import { initSlackOrg$ } from "./zero-slack.ts";
+import { handleSlackUrlParams$ } from "./zero-slack.ts";
 
-/** Tracks whether the initial heavy data (agents, onboarding, slack) has loaded. */
+/** Tracks whether the initial heavy data (agents, onboarding) has loaded. */
 const initialDataLoaded$ = state(false);
 
 /**
- * Load agents, onboarding, and slack data once.
+ * Load agents and onboarding data once, and handle Slack URL params.
  * Shared by route setup functions (chat, talk, chat-session) so the first
  * route to execute pays the cost and subsequent navigations skip it.
  */
@@ -21,7 +21,7 @@ export const loadInitialData$ = command(
       return;
     }
     await set(initZeroOnboarding$, signal);
-    await set(initSlackOrg$, signal);
+    await set(handleSlackUrlParams$, signal);
     signal.throwIfAborted();
     set(initialDataLoaded$, true);
     set(initSidebarCollapsed$);
