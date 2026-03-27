@@ -73,6 +73,11 @@ export function ZeroSettingsTab({
   const [desc, setDesc] = useState(initialDescription);
   const [tone, setTone] = useState<Tone>(initialSound);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(initialAvatarUrl);
+  const [customAvatarUrl, setCustomAvatarUrl] = useState<string | null>(
+    initialAvatarUrl && !initialAvatarUrl.startsWith(AVATAR_PRESET_PREFIX)
+      ? initialAvatarUrl
+      : null,
+  );
   const [uploading, setUploading] = useState(false);
   const [fileInputEl, setFileInputEl] = useState<HTMLInputElement | null>(null);
   const [savedSettings, setSavedSettings] = useState({
@@ -113,6 +118,7 @@ export function ZeroSettingsTab({
         throw new Error(`Upload failed (${res.status})`);
       }
       const data: { url: string } = await res.json();
+      setCustomAvatarUrl(data.url);
       setAvatarUrl(data.url);
     } catch (error) {
       throwIfAbort(error);
@@ -203,22 +209,40 @@ export function ZeroSettingsTab({
                       </button>
                     );
                   })}
-                  {avatarUrl && !avatarUrl.startsWith(AVATAR_PRESET_PREFIX) && (
-                    <div className="relative h-12 w-12 shrink-0 rounded-full overflow-hidden border-2 border-primary ring-2 ring-primary/20">
-                      <img
-                        src={avatarUrl}
-                        alt="Custom avatar"
-                        className="h-full w-full object-cover object-top"
-                      />
-                      <div className="absolute inset-0 flex items-center justify-center bg-primary/20">
-                        <IconCheck
-                          size={16}
-                          stroke={2.5}
-                          className="text-primary"
-                        />
-                      </div>
-                    </div>
-                  )}
+                  {customAvatarUrl &&
+                    (() => {
+                      const isSelected = avatarUrl === customAvatarUrl;
+                      return (
+                        <button
+                          type="button"
+                          role="radio"
+                          aria-checked={isSelected}
+                          aria-label="Custom avatar"
+                          onClick={() => setAvatarUrl(customAvatarUrl)}
+                          className={cn(
+                            "relative h-12 w-12 shrink-0 rounded-full overflow-hidden border-2 transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                            isSelected
+                              ? "border-primary ring-2 ring-primary/20"
+                              : "border-transparent hover:border-muted-foreground/30",
+                          )}
+                        >
+                          <img
+                            src={customAvatarUrl}
+                            alt="Custom avatar"
+                            className="h-full w-full object-cover object-top"
+                          />
+                          {isSelected && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-primary/20">
+                              <IconCheck
+                                size={16}
+                                stroke={2.5}
+                                className="text-primary"
+                              />
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })()}
                   <button
                     type="button"
                     onClick={() => fileInputEl?.click()}
