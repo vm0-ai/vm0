@@ -2,6 +2,11 @@ import { describe, it, expect } from "vitest";
 import {
   getProviderBaseUrl,
   areProvidersCompatible,
+  getModels,
+  getDefaultModel,
+  hasModelSelection,
+  getEnvironmentMapping,
+  MODEL_PROVIDER_TYPES,
   type ModelProviderType,
 } from "../model-providers";
 
@@ -79,6 +84,43 @@ describe("areProvidersCompatible", () => {
     ).toBe(false);
     expect(areProvidersCompatible("minimax-api-key", "zai-api-key")).toBe(
       false,
+    );
+  });
+});
+
+describe("minimax model provider", () => {
+  it("offers M2.7 and M2.7-highspeed models", () => {
+    const models = getModels("minimax-api-key");
+    expect(models).toEqual(["MiniMax-M2.7", "MiniMax-M2.7-highspeed"]);
+  });
+
+  it("defaults to MiniMax-M2.7", () => {
+    expect(getDefaultModel("minimax-api-key")).toBe("MiniMax-M2.7");
+  });
+
+  it("supports model selection", () => {
+    expect(hasModelSelection("minimax-api-key")).toBe(true);
+  });
+
+  it("uses Anthropic-compatible base URL", () => {
+    expect(getProviderBaseUrl("minimax-api-key")).toBe(
+      "https://api.minimax.io/anthropic",
+    );
+  });
+
+  it("maps environment variables correctly", () => {
+    const mapping = getEnvironmentMapping("minimax-api-key");
+    expect(mapping).toMatchObject({
+      ANTHROPIC_AUTH_TOKEN: "$secret",
+      ANTHROPIC_BASE_URL: "https://api.minimax.io/anthropic",
+      ANTHROPIC_MODEL: "$model",
+    });
+  });
+
+  it("includes minimax M2.7 in vercel-ai-gateway models", () => {
+    const config = MODEL_PROVIDER_TYPES["vercel-ai-gateway"];
+    expect("models" in config && config.models).toContain(
+      "minimax/minimax-m2.7",
     );
   });
 });
