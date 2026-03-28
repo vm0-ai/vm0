@@ -257,6 +257,10 @@ teardown_file() {
   # Try to load AGENT_SETTINGS_URL captured by test 9 before daemon restart.
   # If test 9 successfully clicked the agent card and saved the URL, we can
   # navigate directly without searching /team (avoids backend timing issues).
+  echo "# Debug: AGENT_NAME=${AGENT_NAME:-UNSET}" >&3
+  echo "# Debug: url file=$(_agent_url_file)" >&3
+  echo "# Debug: /tmp/.brw-t05* files=$(ls /tmp/.brw-t05* 2>/dev/null | tr '\n' ' ' || echo NONE)" >&3
+  echo "# Debug: file exists=$(test -f "$(_agent_url_file)" && echo YES || echo NO)" >&3
   if [[ -z "${AGENT_SETTINGS_URL:-}" ]] && [[ -f "$(_agent_url_file)" ]]; then
     AGENT_SETTINGS_URL=$(tr -d '[:space:]' < "$(_agent_url_file)")
     echo "# Loaded AGENT_SETTINGS_URL from temp file: $AGENT_SETTINGS_URL" >&3
