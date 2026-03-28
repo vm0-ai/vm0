@@ -521,26 +521,34 @@ teardown_file() {
     step_screenshot "connector-modal-stuck"
     return 1
   fi
-  sleep 1
+  sleep 2
   step_screenshot "connector-after-modal-save"
 
-  # Close the outer Add Connector dialog (ZeroAddConnectionDialog is still open;
-  # the ConnectModal already closed via Save success). The unsaved bar is rendered
-  # via createPortal into document.body but Radix Dialog sets aria-hidden on it
-  # while a dialog is open — the bar only becomes visible after the dialog closes.
-  # Use Escape key (most reliable for Radix UI dialogs) to close the outer dialog.
+  # Close the outer Add Connector dialog. The unsaved bar is rendered via
+  # createPortal into document.body but Radix Dialog sets aria-hidden on it while
+  # a dialog is open — it only becomes visible after the outer dialog closes.
+  # Use Close button (X) as primary: Escape is unreliable when focus returns to
+  # document.body after the inner ConnectModal unmounts.
   echo "# Closing add connector dialog..." >&3
-  agent-browser press "Escape" 2>/dev/null || true
-  sleep 1
-  # Verify the outer dialog actually closed; if not, try clicking the Close button.
-  if agent-browser snapshot 2>/dev/null | grep -q '"Add connector'; then
-    echo "# Outer dialog still open after Escape — clicking Close button..." >&3
-    agent-browser find role button click --name "Close" 2>/dev/null || true
+  for _cc in $(seq 1 10); do
+    if ! agent-browser snapshot 2>/dev/null | grep -qi "Add connector to"; then
+      break
+    fi
+    if agent-browser find role button click --name "Close" 2>/dev/null; then
+      break
+    fi
+    agent-browser press "Escape" 2>/dev/null || true
     sleep 1
+  done
+  # Verify the outer dialog title is gone — confirms aria-hidden has been lifted.
+  if ! wait_for_text_gone "Add connector to" 15; then
+    echo "# Outer dialog may still be open after close attempts" >&3
+    step_screenshot "connector-outer-dialog-stuck"
   fi
+  sleep 1
 
   # Verify the unsaved bar appeared (confirms connector was added to the list).
-  # Increased timeout: CI load can delay React state propagation after dialog close.
+  # The bar is only visible after the outer dialog closes (Radix removes aria-hidden).
   wait_for_unsaved_bar 30
   step_screenshot "connector-unsaved"
 
@@ -581,17 +589,22 @@ teardown_file() {
     # Wait for workspace loading overlay to clear after navigation.
     wait_for_text_gone "Loading your workspace" 60 || true
   fi
+  # Wait for agent-specific loading state to clear. "Tuning the instruments..."
+  # appears while the agent workspace initialises and can cause "Connectors" to
+  # match a sidebar link before the agent-settings tabs are rendered.
+  wait_for_text "Tuning the instruments" 15 || true
+  wait_for_text_gone "Tuning the instruments" 60 || true
   # Wait for agent settings page to fully load before clicking tab.
   # Use 60s timeout to accommodate heavy CI load conditions.
   wait_for_text "Connectors" 60
   # Verify agent name and Profile tab are visible — Profile/Instructions are hidden
   # for the default (Lead) agent when the user is non-admin. If the agent name is
   # not visible, we may have navigated to the wrong agent page.
-  if ! wait_for_text "$AGENT_NAME" 5; then
+  if ! wait_for_text "$AGENT_NAME" 30; then
     echo "# WARN: '$AGENT_NAME' not visible — may be on wrong agent page" >&3
     agent-browser snapshot 2>/dev/null | head -30 >&3 || true
   fi
-  if ! wait_for_text "Profile" 10; then
+  if ! wait_for_text "Profile" 30; then
     echo "# Profile tab not visible — printing page snapshot for debugging" >&3
     agent-browser snapshot 2>/dev/null | head -30 >&3 || true
   fi
@@ -703,6 +716,11 @@ teardown_file() {
     # Wait for workspace loading overlay to clear after navigation.
     wait_for_text_gone "Loading your workspace" 60 || true
   fi
+  # Wait for agent-specific loading state to clear. "Tuning the instruments..."
+  # appears while the agent workspace initialises and can cause "Connectors" to
+  # match a sidebar link before the agent-settings tabs are rendered.
+  wait_for_text "Tuning the instruments" 15 || true
+  wait_for_text_gone "Tuning the instruments" 60 || true
   # Wait for agent settings page to fully load before clicking tab.
   # Retry with a reload in case prior test left the daemon in a bad state.
   if ! wait_for_text "Connectors" 60; then
@@ -710,6 +728,8 @@ teardown_file() {
     if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
       agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors || true
       sleep 5
+      wait_for_text "Tuning the instruments" 15 || true
+      wait_for_text_gone "Tuning the instruments" 60 || true
     fi
     wait_for_text "Connectors" 60
   fi
