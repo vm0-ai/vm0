@@ -62,13 +62,14 @@ click_save_on_unsaved_bar() {
 
 # ---------------------------------------------------------------------------
 # _agent_url_file — Return the temp file path for the agent settings URL.
-# Uses BATS_FILE_TMPDIR (BATS 1.3+) which is a directory guaranteed to be
-# shared across all @test subprocesses within this file. Falls back to /tmp
-# with AGENT_NAME for uniqueness if BATS_FILE_TMPDIR is not available.
+# Uses BRW_T05_TMPDIR which is created by mktemp in setup_file and exported
+# to all @test subprocesses via BATS's setup_file export mechanism. This is
+# more reliable than BATS_FILE_TMPDIR which may vary per test in some BATS
+# versions. Falls back to /tmp with AGENT_NAME if the dir is not set.
 # ---------------------------------------------------------------------------
 _agent_url_file() {
-  if [[ -n "${BATS_FILE_TMPDIR:-}" ]]; then
-    echo "${BATS_FILE_TMPDIR}/agent-settings-url"
+  if [[ -n "${BRW_T05_TMPDIR:-}" ]]; then
+    echo "${BRW_T05_TMPDIR}/agent-settings-url"
   else
     echo "/tmp/.brw-t05-${AGENT_NAME}"
   fi
@@ -223,7 +224,7 @@ teardown_file() {
     echo "# URL after dialog close: $post_create_url" >&3
     if [[ "$post_create_url" =~ /(talk|team)/[a-zA-Z0-9] ]]; then
       echo "$post_create_url" > "$(_agent_url_file)"
-      echo "# Captured agent settings URL from post-create navigation: $post_create_url" >&3
+      echo "# Captured agent settings URL from post-create nav: $post_create_url to $(_agent_url_file)" >&3
     else
       # App stayed on /team — wait for agent card and click it to get the URL
       echo "# Waiting for agent to appear on /team to capture settings URL..." >&3
@@ -235,7 +236,7 @@ teardown_file() {
           echo "# URL after clicking agent card: $agent_url" >&3
           if [[ "$agent_url" =~ /(talk|team)/[a-zA-Z0-9] ]]; then
             echo "$agent_url" > "$(_agent_url_file)"
-            echo "# Saved agent settings URL: $agent_url" >&3
+            echo "# Saved agent settings URL: $agent_url to $(_agent_url_file)" >&3
           fi
         fi
       else
@@ -262,6 +263,7 @@ teardown_file() {
   # Try to load AGENT_SETTINGS_URL captured by test 9 before daemon restart.
   # If test 9 successfully clicked the agent card and saved the URL, we can
   # navigate directly without searching /team (avoids backend timing issues).
+  echo "# url file: $(_agent_url_file) exists=$(test -f "$(_agent_url_file)" && echo YES || echo NO)" >&3
   if [[ -z "${AGENT_SETTINGS_URL:-}" ]] && [[ -f "$(_agent_url_file)" ]]; then
     AGENT_SETTINGS_URL=$(tr -d '[:space:]' < "$(_agent_url_file)")
     echo "# Loaded AGENT_SETTINGS_URL from temp file: $AGENT_SETTINGS_URL" >&3
