@@ -312,18 +312,25 @@ derive_app_url() {
 # ---------------------------------------------------------------------------
 sign_in_via_token() {
   local base_url="${1:-${APP_URL:-$VM0_API_URL}}"
-  agent-browser open "${base_url}/sign-in-token?token=${SIGN_IN_TOKEN}" --ignore-https-errors
+  # Use || true: agent-browser exits non-zero when --ignore-https-errors is
+  # passed to an already-running daemon (flag is silently ignored but nav still
+  # completes). The URL polling loop below detects real navigation failures.
+  agent-browser open "${base_url}/sign-in-token?token=${SIGN_IN_TOKEN}" --ignore-https-errors 2>/dev/null || true
   # Allow extra time for first-run Chrome initialisation (cold start in CI).
   # Use shell sleep instead of agent-browser wait to avoid daemon IPC during
   # Chrome startup, which can crash the daemon under parallel CI load.
   sleep 10
 
-  # Wait for token auth to complete and redirect away from /sign-in-token
+  # Wait for token auth to complete and redirect to an authenticated app page.
+  # Exclude /sign-in from the success check: a failed token exchange redirects
+  # to /sign-in (which matches url_is_on_app but is NOT an authenticated state).
   local auth_complete=false
   for _i in $(seq 1 60); do
     local current_url
     current_url=$(agent-browser get url 2>/dev/null || true)
-    if url_is_on_app "$current_url" "$base_url" && [[ ! "$current_url" =~ sign-in-token ]]; then
+    if url_is_on_app "$current_url" "$base_url" && \
+       [[ ! "$current_url" =~ sign-in-token ]] && \
+       [[ ! "$current_url" =~ /sign-in ]]; then
       auth_complete=true
       break
     fi
