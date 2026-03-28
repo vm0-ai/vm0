@@ -63,23 +63,17 @@ click_save_on_unsaved_bar() {
 # ---------------------------------------------------------------------------
 # _agent_url_file — Return the temp file path for the agent settings URL.
 #
-# Uses JOB_REF (set by CI before BATS starts) for a stable, unique path per
-# CI run that is reliably inherited by all BATS test subprocesses. This avoids
-# the BRW_T05_TMPDIR approach where the mktemp-created variable is set in
-# setup_file but may not be inherited by later @test subprocesses in some
-# BATS/GNU-parallel execution models.
+# Uses a fixed path so all BATS test subprocesses (setup_file, each @test,
+# teardown_file) always resolve to the same file regardless of which env
+# vars are inherited. JOB_REF and BRW_T05_TMPDIR were inconsistently
+# available across subshells in BATS --jobs mode with GNU parallel.
 #
-# Falls back to BRW_T05_TMPDIR (legacy) or a fixed path if JOB_REF is unset
-# (e.g. local runs without CI environment).
+# Each GitHub Actions runner gets a fresh VM per job so there is no risk of
+# cross-PR contamination. setup_file removes the file before tests run to
+# prevent stale URLs from a previous run on the same host.
 # ---------------------------------------------------------------------------
 _agent_url_file() {
-  if [[ -n "${JOB_REF:-}" ]]; then
-    echo "/tmp/.brw-t05-agent-url-${JOB_REF}"
-  elif [[ -n "${BRW_T05_TMPDIR:-}" ]]; then
-    echo "${BRW_T05_TMPDIR}/agent-settings-url"
-  else
-    echo "/tmp/.brw-t05-agent-url-local"
-  fi
+  echo "/tmp/brw-t05-agent-url"
 }
 
 # ---------------------------------------------------------------------------
@@ -240,27 +234,39 @@ teardown_file() {
   # or the agent may appear in the /team list. Saving the URL here avoids the
   # overhead of daemon restart + sign-in + /team search in test 10.
   if [[ "$dialog_closed" = "true" ]]; then
-    # Check if app already navigated to agent settings upon creation
-    sleep 2
-    local post_create_url
-    post_create_url=$(agent-browser get url 2>/dev/null | tr -d '[:space:]' || true)
+    # Check if app auto-navigated to agent settings. Poll to let the SPA settle
+    # (it may briefly hit about:blank during client-side routing after dialog close).
+    local post_create_url=""
+    for _w in $(seq 1 10); do
+      sleep 1
+      post_create_url=$(agent-browser get url 2>/dev/null | tr -d '[:space:]' || true)
+      if [[ "$post_create_url" =~ /(talk|team)/[a-zA-Z0-9] ]]; then
+        break
+      fi
+    done
     echo "# URL after dialog close: $post_create_url" >&3
     if [[ "$post_create_url" =~ /(talk|team)/[a-zA-Z0-9] ]]; then
       echo "$post_create_url" > "$(_agent_url_file)"
       echo "# Captured agent settings URL from post-create nav: $post_create_url to $(_agent_url_file)" >&3
     else
-      # App stayed on /team — wait for agent card and click it to get the URL
+      # App stayed on /team — wait for agent card and click it to get the URL.
+      # After clicking, poll for URL to settle (SPA nav briefly passes through
+      # about:blank before reaching the /talk/ or /team/ agent settings route).
       echo "# Waiting for agent to appear on /team to capture settings URL..." >&3
       if wait_for_text "$AGENT_NAME" 40; then
-        if agent-browser find text "$AGENT_NAME" click 2>/dev/null; then
-          sleep 3
-          local agent_url
+        agent-browser find text "$AGENT_NAME" click 2>/dev/null || true
+        local agent_url=""
+        for _w in $(seq 1 15); do
+          sleep 1
           agent_url=$(agent-browser get url 2>/dev/null | tr -d '[:space:]' || true)
-          echo "# URL after clicking agent card: $agent_url" >&3
           if [[ "$agent_url" =~ /(talk|team)/[a-zA-Z0-9] ]]; then
-            echo "$agent_url" > "$(_agent_url_file)"
-            echo "# Saved agent settings URL: $agent_url to $(_agent_url_file)" >&3
+            break
           fi
+        done
+        echo "# URL after clicking agent card: $agent_url" >&3
+        if [[ "$agent_url" =~ /(talk|team)/[a-zA-Z0-9] ]]; then
+          echo "$agent_url" > "$(_agent_url_file)"
+          echo "# Saved agent settings URL: $agent_url to $(_agent_url_file)" >&3
         fi
       else
         echo "# Agent not yet visible on /team — URL will be determined in test 10" >&3
