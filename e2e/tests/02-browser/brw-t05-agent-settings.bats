@@ -152,21 +152,28 @@ teardown_file() {
   echo "# Navigating to team page..." >&3
   navigate_to_app_page "/team"
 
-  # Single combined loop: wait for workspace overlay to clear, then for the
-  # "Create teammate" button to appear. Workspace init under parallel CI load
-  # can exceed 120s; a combined loop avoids burning separate timeout budgets
-  # on each phase and stays well within BATS_TEST_TIMEOUT=180s.
+  # Workspace initialisation can take 60-120s under parallel CI load — the
+  # team page renders a loading overlay until org data is ready, which also
+  # hides the "Create teammate" button. Wait for the overlay to clear first.
+  echo "# Waiting for workspace init to complete..." >&3
+  wait_for_text_gone "Loading your workspace" 120 || true
+
+  # The team page has a secondary loading state ("Spinning up the team...")
+  # that appears after the global workspace overlay clears.
+  echo "# Waiting for team page data to load..." >&3
+  wait_for_text_gone "Spinning up" 60 || true
+
+  # Wait for "Create teammate" button, dismissing the cookie banner on each
+  # iteration. The cookie consent dialog (Radix UI) appears post-workspace-init
+  # with a short delay — aria-hiding the page content — and a one-shot dismiss
+  # can race against the banner rendering. Retrying dismiss each second avoids
+  # the race without needing an exact sleep.
   echo "# Waiting for Create teammate button to be ready..." >&3
   local found_btn=false
-  for _w in $(seq 1 150); do
+  for _w in $(seq 1 40); do
     dismiss_cookie_banner
     local snap
     snap=$(agent-browser snapshot 2>/dev/null || true)
-    # Skip while workspace or team loading overlays are still active
-    if echo "$snap" | grep -qi "Loading your workspace\|Spinning up the team"; then
-      sleep 1
-      continue
-    fi
     if echo "$snap" | grep -qi "Create teammate"; then
       found_btn=true
       break
