@@ -152,15 +152,19 @@ teardown_file() {
   echo "# Navigating to team page..." >&3
   navigate_to_app_page "/team"
 
-  # Workspace initialisation can take 60-120s under parallel CI load — the
-  # team page renders a loading overlay until org data is ready, which also
-  # hides the "Create teammate" button. Wait for the overlay to clear first.
+  # Workspace initialisation can take 60-120s under parallel CI load.
+  # The loading overlay may not appear immediately after navigation, so we
+  # first wait briefly for it to START (avoids firing wait_for_text_gone
+  # before the overlay has rendered), then wait for it to clear.
   echo "# Waiting for workspace init to complete..." >&3
+  wait_for_text "Loading your workspace" 10 || true
   wait_for_text_gone "Loading your workspace" 120 || true
 
   # The team page has a secondary loading state ("Spinning up the team...")
-  # that appears after the global workspace overlay clears.
+  # that appears after the global workspace overlay clears. Same two-phase
+  # approach: wait for it to start, then wait for it to finish.
   echo "# Waiting for team page data to load..." >&3
+  wait_for_text "Spinning up" 10 || true
   wait_for_text_gone "Spinning up" 60 || true
 
   # Wait for "Create teammate" button, dismissing the cookie banner on each
