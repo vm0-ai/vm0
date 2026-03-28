@@ -62,16 +62,23 @@ click_save_on_unsaved_bar() {
 
 # ---------------------------------------------------------------------------
 # _agent_url_file — Return the temp file path for the agent settings URL.
-# Uses BRW_T05_TMPDIR which is created by mktemp in setup_file and exported
-# to all @test subprocesses via BATS's setup_file export mechanism. This is
-# more reliable than BATS_FILE_TMPDIR which may vary per test in some BATS
-# versions. Falls back to /tmp with AGENT_NAME if the dir is not set.
+#
+# Uses JOB_REF (set by CI before BATS starts) for a stable, unique path per
+# CI run that is reliably inherited by all BATS test subprocesses. This avoids
+# the BRW_T05_TMPDIR approach where the mktemp-created variable is set in
+# setup_file but may not be inherited by later @test subprocesses in some
+# BATS/GNU-parallel execution models.
+#
+# Falls back to BRW_T05_TMPDIR (legacy) or a fixed path if JOB_REF is unset
+# (e.g. local runs without CI environment).
 # ---------------------------------------------------------------------------
 _agent_url_file() {
-  if [[ -n "${BRW_T05_TMPDIR:-}" ]]; then
+  if [[ -n "${JOB_REF:-}" ]]; then
+    echo "/tmp/.brw-t05-agent-url-${JOB_REF}"
+  elif [[ -n "${BRW_T05_TMPDIR:-}" ]]; then
     echo "${BRW_T05_TMPDIR}/agent-settings-url"
   else
-    echo "/tmp/.brw-t05-${AGENT_NAME}"
+    echo "/tmp/.brw-t05-agent-url-local"
   fi
 }
 
@@ -324,8 +331,15 @@ teardown_file() {
     fi
   fi
 
-  # Verify the page loaded
+  # Verify the page loaded and we're on the correct agent's settings page.
   wait_for_text "Connectors" 20 || echo "# Connectors tab not yet visible (page loading slowly)" >&3
+  # Verify agent name is visible — if not, we may have navigated to the wrong agent.
+  if ! wait_for_text "$AGENT_NAME" 10; then
+    echo "# WARN: '$AGENT_NAME' not visible on page — may be on wrong agent" >&3
+    local page_snap
+    page_snap=$(agent-browser snapshot 2>/dev/null | head -20 || true)
+    echo "# Page snapshot: $page_snap" >&3
+  fi
   step_screenshot "agent-detail"
   echo "# Agent settings URL ready for tests 11-13" >&3
 }
@@ -498,6 +512,17 @@ teardown_file() {
   # Wait for agent settings page to fully load before clicking tab.
   # Use 60s timeout to accommodate heavy CI load conditions.
   wait_for_text "Connectors" 60
+  # Verify agent name and Profile tab are visible — Profile/Instructions are hidden
+  # for the default (Lead) agent when the user is non-admin. If the agent name is
+  # not visible, we may have navigated to the wrong agent page.
+  if ! wait_for_text "$AGENT_NAME" 5; then
+    echo "# WARN: '$AGENT_NAME' not visible — may be on wrong agent page" >&3
+    agent-browser snapshot 2>/dev/null | head -30 >&3 || true
+  fi
+  if ! wait_for_text "Profile" 10; then
+    echo "# Profile tab not visible — printing page snapshot for debugging" >&3
+    agent-browser snapshot 2>/dev/null | head -30 >&3 || true
+  fi
   click_tab "Profile"
   sleep 2
 
