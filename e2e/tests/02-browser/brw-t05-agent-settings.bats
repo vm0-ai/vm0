@@ -365,7 +365,7 @@ teardown_file() {
   local test_value="E2E test description $(date +%s)"
   local snap_i desc_ref
   snap_i=$(agent-browser snapshot -i)
-  desc_ref=$(echo "$snap_i" | grep -E '"Description"' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+  desc_ref=$(echo "$snap_i" | grep -E '^- textbox "Description"' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
   if [[ -n "$desc_ref" ]]; then
     agent-browser fill "$desc_ref" "$test_value"
   else
