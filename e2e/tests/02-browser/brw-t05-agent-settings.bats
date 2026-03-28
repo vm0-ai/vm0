@@ -234,14 +234,22 @@ teardown_file() {
   wait_for_text_gone "Loading your workspace" 30 || true
   echo "# Navigating to agent settings for: $AGENT_NAME..." >&3
 
-  # The agent name may appear in a toast before the team list refreshes.
-  # Navigate with reload-based retry until the agent CARD is clickable.
+  # Navigate to /team and wait for the agent to appear — backend creation can
+  # take 30-90s after the dialog closes. Use a reload-based retry with a
+  # long per-attempt timeout (90s on first attempt, 30s on second) so slow
+  # CI environments do not exhaust the budget prematurely.
   local agent_clicked=false
-  for _attempt in 1 2 3; do
-    navigate_to_app_page "/team"
-    wait_for_text_gone "Loading your workspace" 15 || true
-    if ! wait_for_text "$AGENT_NAME" 25; then
-      echo "# Attempt ${_attempt}: agent not visible yet, retrying..." >&3
+  navigate_to_app_page "/team"
+  wait_for_text_gone "Loading your workspace" 10 || true
+  for _attempt in 1 2; do
+    local wait_secs=90
+    if [[ "$_attempt" -gt 1 ]]; then
+      wait_secs=30
+      navigate_to_app_page "/team"
+      wait_for_text_gone "Loading your workspace" 10 || true
+    fi
+    if ! wait_for_text "$AGENT_NAME" "$wait_secs"; then
+      echo "# Attempt ${_attempt}: agent not visible after ${wait_secs}s, retrying..." >&3
       continue
     fi
     step_screenshot "team-page"
@@ -257,7 +265,7 @@ teardown_file() {
     echo "# Attempt ${_attempt}: agent visible but not yet clickable, retrying..." >&3
   done
   if [[ "$agent_clicked" != "true" ]]; then
-    echo "# Could not click agent card after 3 attempts" >&3
+    echo "# Could not click agent card after 2 attempts" >&3
     return 1
   fi
   # Wait for navigation to agent settings page to complete before capturing URL.
@@ -299,24 +307,40 @@ teardown_file() {
   sign_in_via_token_on_app
   wait_for_text_gone "Loading your workspace" 30 || true
 
-  # Load AGENT_SETTINGS_URL from temp file if it was not propagated from test 10.
-  # BATS runs each test in a separate subprocess so exports inside test functions
-  # do not cross subshell boundaries to sibling tests.
+  # Load AGENT_SETTINGS_URL from temp file (trim whitespace to avoid URL issues).
   if [[ -z "${AGENT_SETTINGS_URL:-}" ]] && [[ -f "${BATS_TMPDIR}/brw_t05_agent_settings_url" ]]; then
-    AGENT_SETTINGS_URL=$(cat "${BATS_TMPDIR}/brw_t05_agent_settings_url")
+    AGENT_SETTINGS_URL=$(tr -d '[:space:]' < "${BATS_TMPDIR}/brw_t05_agent_settings_url")
     echo "# Loaded AGENT_SETTINGS_URL from temp file: $AGENT_SETTINGS_URL" >&3
   fi
 
   if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
     agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
     sleep 3
+  else
+    # AGENT_SETTINGS_URL not available (test 10 failed before capturing it).
+    # Recover by navigating to /team and clicking the agent card.
+    echo "# AGENT_SETTINGS_URL not set — recovering via /team navigation..." >&3
+    navigate_to_app_page "/team"
+    wait_for_text_gone "Loading your workspace" 15 || true
+    if wait_for_text "$AGENT_NAME" 60; then
+      if agent-browser find role link click --name "$AGENT_NAME" 2>/dev/null || \
+         agent-browser find text "$AGENT_NAME" click 2>/dev/null; then
+        sleep 3
+        local raw_url
+        raw_url=$(agent-browser get url 2>/dev/null || true)
+        if [[ "$raw_url" == *"/team/"* ]]; then
+          AGENT_SETTINGS_URL="${raw_url%%\?*}"
+          echo "$AGENT_SETTINGS_URL" > "${BATS_TMPDIR}/brw_t05_agent_settings_url"
+          echo "# Recovered AGENT_SETTINGS_URL: $AGENT_SETTINGS_URL" >&3
+        fi
+      fi
+    fi
   fi
   # Wait for agent settings page to fully load (tab labels visible).
-  # Use 60s timeout to accommodate heavy CI load conditions.
   wait_for_text "Connectors" 60
   # Explicitly click the Connectors tab to ensure its content is active.
-  # The default tab may be Profile or another tab — without clicking, "Add
-  # connector" content will not be visible even though the tab label is.
+  # The default tab may vary — without clicking, "Add connector" content will
+  # not be visible even though the tab label appears in the navigation.
   click_tab "Connectors"
   sleep 2
   wait_for_text "Add connector" 30
@@ -397,7 +421,7 @@ teardown_file() {
 
   # Load AGENT_SETTINGS_URL from temp file if not in environment (cross-subprocess persistence).
   if [[ -z "${AGENT_SETTINGS_URL:-}" ]] && [[ -f "${BATS_TMPDIR}/brw_t05_agent_settings_url" ]]; then
-    AGENT_SETTINGS_URL=$(cat "${BATS_TMPDIR}/brw_t05_agent_settings_url")
+    AGENT_SETTINGS_URL=$(tr -d '[:space:]' < "${BATS_TMPDIR}/brw_t05_agent_settings_url")
     echo "# Loaded AGENT_SETTINGS_URL from temp file: $AGENT_SETTINGS_URL" >&3
   fi
 
@@ -470,7 +494,7 @@ teardown_file() {
 
   # Load AGENT_SETTINGS_URL from temp file if not in environment (cross-subprocess persistence).
   if [[ -z "${AGENT_SETTINGS_URL:-}" ]] && [[ -f "${BATS_TMPDIR}/brw_t05_agent_settings_url" ]]; then
-    AGENT_SETTINGS_URL=$(cat "${BATS_TMPDIR}/brw_t05_agent_settings_url")
+    AGENT_SETTINGS_URL=$(tr -d '[:space:]' < "${BATS_TMPDIR}/brw_t05_agent_settings_url")
     echo "# Loaded AGENT_SETTINGS_URL from temp file: $AGENT_SETTINGS_URL" >&3
   fi
 

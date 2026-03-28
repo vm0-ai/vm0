@@ -146,29 +146,23 @@ teardown_file() {
   restart_browser_daemon
   create_clerk_sign_in_token
   sign_in_via_token_on_app
-  # Wait for workspace initialization after fresh sign-in (avoids long overlay
-  # on /schedule that can prevent page content from rendering).
-  wait_for_text_gone "Loading your workspace" 60 || true
+  # Wait briefly for workspace initialization after fresh sign-in.
+  # Keep this short (20s) to leave budget for the retry loop below.
+  wait_for_text_gone "Loading your workspace" 20 || true
 
   echo "# Verifying schedule list page loads..." >&3
   agent-browser open "${APP_URL}/schedule" --ignore-https-errors
-  # Use shell sleep instead of agent-browser wait — daemon can crash under
-  # parallel CI load when routing a simple delay through IPC.
   sleep 3
-
-  # Wait for any remaining loading overlay to clear.
-  wait_for_text_gone "Loading your workspace" 30 || true
 
   local schedule_found=false
   for _attempt in 1 2 3; do
-    if wait_for_text "Scheduled tasks" 30; then
+    if wait_for_text "Scheduled tasks" 25; then
       schedule_found=true
       break
     fi
     echo "# Attempt ${_attempt}: schedule page not loaded yet, reloading..." >&3
     agent-browser open "${APP_URL}/schedule" --ignore-https-errors
     sleep 5
-    wait_for_text_gone "Loading your workspace" 30 || true
   done
   assert [ "$schedule_found" = "true" ]
   step_screenshot "schedule-list-after-create"
