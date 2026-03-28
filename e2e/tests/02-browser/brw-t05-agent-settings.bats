@@ -287,46 +287,31 @@ teardown_file() {
     # URL not available — find agent on /team page with retry.
     echo "# Agent settings URL not pre-captured, finding via /team..." >&3
     navigate_to_app_page "/team"
-    local agent_found=false
-    for _attempt in 1 2 3; do
-      if wait_for_text "$AGENT_NAME" 40; then
-        agent_found=true
-        break
-      fi
-      echo "# Attempt ${_attempt}: agent not found, reloading /team..." >&3
-      navigate_to_app_page "/team"
-    done
-    if [[ "$agent_found" != "true" ]]; then
-      echo "# Agent not found on /team after 2 attempts" >&3
-      return 1
-    fi
+    # Use the same approach as test 11's successful recovery: navigate to /team,
+    # wait briefly (non-fatal), then take an interactive snapshot and click the ref.
+    # Avoid long retry loops that waste time — if the agent isn't found after one
+    # attempt, navigate once more and try again.
+    wait_for_text "$AGENT_NAME" 40 || navigate_to_app_page "/team"
+    wait_for_text "$AGENT_NAME" 40 || true
     step_screenshot "team-page"
-
-    # Navigate to agent settings by clicking the agent card.
-    # find-text only clicks the text node, which may not trigger navigation.
-    # Use interactive snapshot to find the actual card ref (link/button).
-    local snap_i_card card_ref card_clicked=false
+    local snap_i_card card_ref
     snap_i_card=$(agent-browser snapshot -i 2>/dev/null || true)
     card_ref=$(echo "$snap_i_card" | grep -i "${AGENT_NAME}" | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
     echo "# Agent card ref: '${card_ref}'" >&3
     if [[ -n "$card_ref" ]]; then
-      if agent-browser click "$card_ref" 2>/dev/null; then
-        card_clicked=true
-      fi
-    fi
-    if [[ "$card_clicked" != "true" ]]; then
+      agent-browser click "$card_ref" 2>/dev/null || true
+    else
       agent-browser find role link click --name "$AGENT_NAME" 2>/dev/null || \
-        agent-browser find role button click --name "$AGENT_NAME" 2>/dev/null || \
         agent-browser find text "$AGENT_NAME" click 2>/dev/null || true
     fi
     sleep 3
     local clicked_url
     clicked_url=$(agent-browser get url 2>/dev/null | tr -d '[:space:]' || true)
     echo "# URL after clicking agent: $clicked_url" >&3
-    if [[ "$clicked_url" =~ /(talk|team)/[a-zA-Z0-9][a-zA-Z0-9/-] ]]; then
+    if [[ "$clicked_url" =~ /(talk)/[a-zA-Z0-9] ]]; then
       AGENT_SETTINGS_URL="$clicked_url"
       export AGENT_SETTINGS_URL
-      echo "$AGENT_SETTINGS_URL" > "$(_agent_url_file)"
+      echo "$AGENT_SETTINGS_URL" > "$(_agent_url_file)" 2>/dev/null || true
     else
       echo "# Could not navigate to agent settings page" >&3
       return 1
