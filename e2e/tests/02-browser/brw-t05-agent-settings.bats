@@ -117,36 +117,18 @@ teardown_file() {
 }
 
 @test "create agent for settings testing" {
-  # Reuse the browser session from test 1 (sign in via token on platform app).
-  # sign_in_via_token_on_app already restarts the daemon and creates a fresh
-  # session, so no additional restart or sign-in is needed here. Skipping the
-  # redundant restart+sign-in saves ~35s of the 180s BATS budget.
+  # Navigate to /team and click "Create teammate" in one combined retry loop.
+  # Under parallel CI load, workspace initialization can take 50-80s before the
+  # "Create teammate" button becomes clickable. Combining the wait-for-ready and
+  # click into a single 90-iteration loop is more efficient than separate Lead
+  # badge check + button click loops, and uses less of the 180s budget.
   echo "# Navigating to team page..." >&3
   navigate_to_app_page "/team"
-  wait_for_text_gone "Loading your workspace" 20 || true
+  wait_for_text_gone "Loading your workspace" 30 || true
 
-  # Wait for Lead badge with reload-based retry (same pattern as brw-t03).
-  # Fresh sign-in workspace initialization can take >20s under parallel CI load.
-  local lead_found=false
-  for _attempt in 1 2; do
-    if wait_for_text "Lead" 20; then
-      lead_found=true
-      break
-    fi
-    echo "# Attempt ${_attempt}: Lead not found, reloading /team..." >&3
-    navigate_to_app_page "/team"
-    wait_for_text_gone "Loading your workspace" 10 || true
-  done
-  if [[ "$lead_found" != "true" ]]; then
-    echo "# Lead badge not found after 2 attempts" >&3
-    return 1
-  fi
-  step_screenshot "team-page"
-
-  # Click "Create teammate" — retry up to 30 times (same budget as brw-t03).
-  echo "# Clicking Create teammate..." >&3
+  echo "# Clicking Create teammate (waiting for workspace init)..." >&3
   local btn_clicked=false
-  for _i in $(seq 1 30); do
+  for _i in $(seq 1 90); do
     if agent-browser find role button click --name "Create teammate" 2>/dev/null; then
       btn_clicked=true
       break
@@ -154,7 +136,7 @@ teardown_file() {
     sleep 1
   done
   if [[ "$btn_clicked" != "true" ]]; then
-    echo "# Failed to click Create teammate button after 30s" >&3
+    echo "# Failed to click Create teammate button after 90s" >&3
     return 1
   fi
   sleep 1
@@ -186,15 +168,9 @@ teardown_file() {
   fi
   sleep 1
 
-  # Wait for dialog to close, then navigate to /team to verify the agent.
-  # Non-fatal: test 10 independently retries finding the agent on /team.
-  wait_for_text_gone "Create a new teammate" 30 || echo "# Dialog close timed out — continuing" >&3
-  navigate_to_app_page "/team"
-  # Under heavy CI load the agent may take >30s to appear after creation.
-  # This check is best-effort — test 10 has its own retry loop.
-  if ! wait_for_text "$AGENT_NAME" 30; then
-    echo "# Agent not yet visible on /team (backend still processing) — test 10 will retry" >&3
-  fi
+  # Wait briefly for dialog to close — non-fatal since test 10 independently
+  # verifies the agent exists via /team navigation with its own retry loop.
+  wait_for_text_gone "Create a new teammate" 10 || echo "# Dialog close timed out — continuing" >&3
   step_screenshot "agent-created"
   echo "# Agent created: $AGENT_NAME" >&3
 }
