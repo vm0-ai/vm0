@@ -125,10 +125,22 @@ teardown_file() {
   navigate_to_app_page "/team"
   wait_for_text_gone "Loading your workspace" 20 || true
 
-  # Wait for team page to load. Lead badge (rawAgentName) appears quickly,
-  # but the Create teammate button (disabled={agents.length === 0}) only becomes
-  # enabled after zeroSubagents$ loads, which can take longer under CI load.
-  wait_for_text "Lead" 20
+  # Wait for Lead badge with reload-based retry (same pattern as brw-t03).
+  # Fresh sign-in workspace initialization can take >20s under parallel CI load.
+  local lead_found=false
+  for _attempt in 1 2; do
+    if wait_for_text "Lead" 25; then
+      lead_found=true
+      break
+    fi
+    echo "# Attempt ${_attempt}: Lead not found, reloading /team..." >&3
+    navigate_to_app_page "/team"
+    wait_for_text_gone "Loading your workspace" 15 || true
+  done
+  if [[ "$lead_found" != "true" ]]; then
+    echo "# Lead badge not found after 3 attempts" >&3
+    return 1
+  fi
   step_screenshot "team-page"
 
   # Wait for Create teammate button to render (may appear disabled initially).
