@@ -167,14 +167,25 @@ teardown_file() {
   echo "# Waiting for workspace init to complete..." >&3
   wait_for_text_gone "Loading your workspace" 120 || true
 
-  # Dismiss cookie consent after workspace is ready — the banner appears
-  # post-workspace-init and Radix UI aria-hides the page content behind it.
-  dismiss_cookie_banner
-
-  # Now wait for "Create teammate" button with a shorter deadline.
+  # Wait for "Create teammate" button, dismissing the cookie banner on each
+  # iteration. The cookie consent dialog (Radix UI) appears post-workspace-init
+  # with a short delay — aria-hiding the page content — and a one-shot dismiss
+  # can race against the banner rendering. Retrying dismiss each second avoids
+  # the race without needing an exact sleep.
   echo "# Waiting for Create teammate button to be ready..." >&3
-  if ! wait_for_text "Create teammate" 30; then
-    echo "# Create teammate button did not appear after 30s" >&3
+  local found_btn=false
+  for _w in $(seq 1 40); do
+    dismiss_cookie_banner
+    local snap
+    snap=$(agent-browser snapshot 2>/dev/null || true)
+    if echo "$snap" | grep -qi "Create teammate"; then
+      found_btn=true
+      break
+    fi
+    sleep 1
+  done
+  if [[ "$found_btn" != "true" ]]; then
+    echo "# Create teammate button did not appear after 40s" >&3
     agent-browser snapshot 2>/dev/null | head -30 >&3 || true
     return 1
   fi
