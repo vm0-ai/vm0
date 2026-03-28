@@ -346,21 +346,30 @@ teardown_file() {
   wait_for_text "Add connector" 30
   step_screenshot "connector-before"
 
-  # Click "Add connector" — retry up to 15 times to handle brief unavailability
-  # after clicking the Connectors tab (content may briefly re-render/refetch).
-  # Role-based find is preferred since the button has composite text
-  # ("Add connector\nBrowse 100+ popular connectors"); text-based find only
-  # matches elements whose full text equals "Add connector" exactly.
-  local add_conn_clicked=false
-  for _i in $(seq 1 15); do
-    if agent-browser find role button click --name "Add connector" 2>/dev/null; then
-      add_conn_clicked=true
-      break
+  # Click "Add connector" via interactive snapshot ref — the button has composite
+  # text so accessible-name exact matching ("find role button --name 'Add connector'")
+  # may not work if the computed accessible name includes the subtitle text.
+  # Parsing the ref from the interactive snapshot is more robust.
+  local snap_i add_conn_ref
+  snap_i=$(agent-browser snapshot -i)
+  add_conn_ref=$(echo "$snap_i" | grep -i 'Add connector' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+  if [[ -n "$add_conn_ref" ]]; then
+    agent-browser click "$add_conn_ref"
+  else
+    # Fallback: role-based with retry (handles transient unavailability after tab switch)
+    local add_conn_clicked=false
+    for _i in $(seq 1 20); do
+      if agent-browser find role button click --name "Add connector" 2>/dev/null; then
+        add_conn_clicked=true
+        break
+      fi
+      sleep 1
+    done
+    if [[ "$add_conn_clicked" != "true" ]]; then
+      echo "# Add connector button not found in snapshot or via role-based find" >&3
+      step_screenshot "add-connector-not-found"
+      return 1
     fi
-    sleep 1
-  done
-  if [[ "$add_conn_clicked" != "true" ]]; then
-    agent-browser find text "Add connector" click
   fi
   sleep 2
 
@@ -456,33 +465,40 @@ teardown_file() {
   if ! wait_for_text "How they sound" 15; then
     echo "# Profile content not loaded, retrying tab click..." >&3
     click_tab "Profile"
-    sleep 2
+    sleep 3
     wait_for_text "How they sound" 30
   fi
-  # Extra settle time after "How they sound" appears — the description textarea
-  # may still be initializing when we take the interactive snapshot.
-  sleep 1
+  # Extra settle time — the description textarea may still be initializing
+  # even after "How they sound" appears. Give the form a moment to fully render.
+  sleep 2
   step_screenshot "profile-before"
 
+  local test_value="E2E test description $(date +%s)"
   # Fill description via interactive snapshot ref — the textarea uses aria-label
   # "Description" but InlineSettingsRow renders a <p>, not a <label>, so
   # find-label is unreliable. Ref-based fill is robust across both cases.
-  local test_value="E2E test description $(date +%s)"
-  local snap_i desc_ref
-  snap_i=$(agent-browser snapshot -i)
-  # The textarea has aria-label="Description"; in the interactive snapshot it
-  # appears as '- textbox "Description" [ref=eN]' (possibly indented since it's
-  # nested inside a Card). Remove the ^ anchor so indented lines are matched.
-  desc_ref=$(echo "$snap_i" | grep -E '- textbox "Description"' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
-  if [[ -n "$desc_ref" ]]; then
-    agent-browser fill "$desc_ref" "$test_value"
-  else
+  # Retry snapshot up to 3 times in case the textarea is still rendering.
+  local snap_i desc_ref fill_done=false
+  for _snap_try in 1 2 3; do
+    snap_i=$(agent-browser snapshot -i)
+    # The textarea has aria-label="Description"; in the interactive snapshot it
+    # appears as '- textbox "Description" [ref=eN]' (possibly indented since it's
+    # nested inside a Card). Remove the ^ anchor so indented lines are matched.
+    desc_ref=$(echo "$snap_i" | grep -E '- textbox "Description"' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+    if [[ -n "$desc_ref" ]]; then
+      agent-browser fill "$desc_ref" "$test_value"
+      fill_done=true
+      break
+    fi
+    sleep 2
+  done
+  if [[ "$fill_done" != "true" ]]; then
     # Fallback: find the Description textbox by its ARIA role + name.
     # InlineSettingsRow renders a <p> not a <label>, so find-label fails;
     # the textarea's aria-label makes find-role-textbox reliable.
-    # Retry up to 10 times to handle brief unavailability after tab click.
+    # Retry up to 15 times to handle brief unavailability after tab click.
     local fill_ok=false
-    for _i in $(seq 1 10); do
+    for _i in $(seq 1 15); do
       if agent-browser find role textbox fill --name "Description" "$test_value" 2>/dev/null; then
         fill_ok=true
         break
@@ -490,7 +506,7 @@ teardown_file() {
       sleep 1
     done
     if [[ "$fill_ok" != "true" ]]; then
-      echo "# Description textbox not found after 10 retries" >&3
+      echo "# Description textbox not found after retries" >&3
       return 1
     fi
   fi
