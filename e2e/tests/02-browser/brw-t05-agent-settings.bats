@@ -150,21 +150,17 @@ teardown_file() {
     return 1
   fi
 
-  # Pause to let the agents list load (zeroSubagents$ async data fetch).
-  # The button renders as disabled while agents haven't loaded; after the list
-  # returns, it becomes enabled. 15s is usually sufficient for the API to respond.
-  sleep 15
-
-  # Click — retry up to 10 times in case the button is still briefly disabled.
-  # Each Playwright auto-wait attempt is ~4s, so 10 retries = up to ~50s budget.
+  # Click — retry up to 30 times (with 1s sleep) in case the button is still
+  # briefly disabled while agents haven't loaded (zeroSubagents$ async fetch).
+  # The sleep 15 was removed — the retry loop already handles the wait.
   echo "# Clicking Create teammate..." >&3
   local btn_clicked=false
-  for _i in $(seq 1 10); do
+  for _i in $(seq 1 30); do
     if agent-browser find role button click --name "Create teammate" 2>/dev/null; then
       btn_clicked=true
       break
     fi
-    sleep 2
+    sleep 1
   done
   if [[ "$btn_clicked" != "true" ]]; then
     echo "# Failed to click Create teammate button" >&3
@@ -181,30 +177,51 @@ teardown_file() {
   agent-browser find placeholder "e.g. Research Assistant" fill "$AGENT_NAME"
   sleep 0.5
   # Take screenshot first to let React settle after fill before snapshotting
-  # (same pattern as brw-t03 which uses the same dialog and is reliable).
   step_screenshot "create-dialog-filled"
 
-  # Click the Create button in the dialog using --exact to avoid partial-matching
-  # the background "Create teammate" button (which would dismiss the modal).
+  # Click the Create button via interactive snapshot ref — more reliable than
+  # role-based find since it avoids any accessible-name normalization issues.
   echo "# Clicking Create button in dialog..." >&3
-  agent-browser find role button click --name "Create" --exact
+  local snap_i create_ref
+  snap_i=$(agent-browser snapshot -i)
+  create_ref=$(echo "$snap_i" | grep -E '^- button "Create"$' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+  if [[ -n "$create_ref" ]]; then
+    agent-browser click "$create_ref"
+  else
+    # Fallback: role-based find with --exact
+    agent-browser find role button click --name "Create" --exact
+  fi
+  sleep 1
+
+  # Verify the click triggered the creation (button changes to "Creating...")
+  # Retry up to 3 times if not — the click may have missed the button.
+  if ! wait_for_text "Creating..." 5 2>/dev/null; then
+    if agent-browser find text "Create a new teammate" 2>/dev/null; then
+      echo "# First click may not have triggered — retrying via role find..." >&3
+      agent-browser find role button click --name "Create" --exact 2>/dev/null || true
+      sleep 1
+    fi
+  fi
 
   # Wait for dialog to close, then navigate to /team to verify the agent.
   # Creation may redirect to agent settings; empty snapshots (daemon crash)
   # can falsely pass wait_for_text_gone. Explicit /team navigation is reliable.
   wait_for_text_gone "Create a new teammate" 60
   navigate_to_app_page "/team"
-  wait_for_text "$AGENT_NAME" 90
+  wait_for_text "$AGENT_NAME" 60
   step_screenshot "agent-created"
   echo "# Agent created: $AGENT_NAME" >&3
 }
 
 @test "navigate to agent settings and verify tabs" {
-  # Reuse the browser session from test 9 (daemon is still running, session
-  # is authenticated). Restarting daemon + sign-in here would consume ~40s of
-  # the 180s BATS timeout before we even reach the agent settings page.
-  # Test 9 ends with the browser on /team with the agent visible, so a simple
-  # navigate_to_app_page is sufficient.
+  # Restart daemon to ensure a clean browser state — test 9's Create interaction
+  # can leave the daemon unresponsive. A fresh daemon + sign-in guarantees this
+  # test starts from a stable baseline regardless of test 9's outcome.
+  echo "# Restarting daemon for clean state..." >&3
+  restart_browser_daemon
+  create_clerk_sign_in_token
+  sign_in_via_token_on_app
+  wait_for_text_gone "Loading your workspace" 30 || true
   echo "# Navigating to agent settings for: $AGENT_NAME..." >&3
 
   # The agent name may appear in a toast before the team list refreshes.
