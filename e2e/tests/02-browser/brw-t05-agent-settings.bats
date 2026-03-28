@@ -233,12 +233,18 @@ teardown_file() {
     echo "# Could not click agent card after 3 attempts" >&3
     return 1
   fi
-  sleep 2
-
-  # Save URL immediately (strip query params so tests 11-13 always start
-  # on the Connectors tab rather than a previously-visited tab like Profile).
-  local raw_url
-  raw_url=$(agent-browser get url 2>/dev/null || true)
+  # Wait for navigation to agent settings page to complete before capturing URL.
+  # The URL may briefly be "about:blank" while the browser navigates; wait
+  # until it contains "/team/<uuid>" before saving for tests 11-13.
+  local raw_url=""
+  for _w in $(seq 1 20); do
+    raw_url=$(agent-browser get url 2>/dev/null || true)
+    if [[ "$raw_url" == *"/team/"* && "$raw_url" != *"/team" && "$raw_url" != *"/team/" ]]; then
+      break
+    fi
+    sleep 1
+  done
+  # Strip query params so tests 11-13 always open on the default Connectors tab.
   AGENT_SETTINGS_URL="${raw_url%%\?*}"
   export AGENT_SETTINGS_URL
   echo "# Agent settings URL captured: $AGENT_SETTINGS_URL" >&3
