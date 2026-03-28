@@ -436,11 +436,25 @@ teardown_file() {
     fi
   fi
   # Wait for agent settings page to fully load (tab labels visible).
+  # Also wait for the agent name as proof the agent data (not just skeleton UI)
+  # has loaded — the Connectors tab is only interactable after data is ready.
   wait_for_text "Connectors" 30
+  wait_for_text "$AGENT_NAME" 30 || true
   # Explicitly click the Connectors tab to ensure its content is active.
-  # The default tab may vary — without clicking, "Add connector" content will
-  # not be visible even though the tab label appears in the navigation.
-  click_tab "Connectors"
+  # Retry up to 5 times to handle transient loading state where the tab is
+  # visible but not yet interactable right after page load.
+  local connectors_tab_clicked=false
+  for _ct in $(seq 1 5); do
+    if click_tab "Connectors" 2>/dev/null; then
+      connectors_tab_clicked=true
+      break
+    fi
+    sleep 3
+  done
+  if [[ "$connectors_tab_clicked" != "true" ]]; then
+    # Final attempt without suppression so the error propagates
+    click_tab "Connectors"
+  fi
   sleep 2
   wait_for_text "Add connector" 20
   step_screenshot "connector-before"
