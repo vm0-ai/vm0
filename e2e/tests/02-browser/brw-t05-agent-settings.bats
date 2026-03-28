@@ -117,42 +117,42 @@ teardown_file() {
 }
 
 @test "create agent for settings testing" {
-  # The sign-in navigation can leave the daemon unresponsive. Fully restart the
-  # daemon (kill process + remove socket) to guarantee a clean state.
-  restart_browser_daemon
-  create_clerk_sign_in_token
-  sign_in_via_token_on_app
-
+  # Reuse the browser session from test 1 (sign in via token on platform app).
+  # sign_in_via_token_on_app already restarts the daemon and creates a fresh
+  # session, so no additional restart or sign-in is needed here. Skipping the
+  # redundant restart+sign-in saves ~35s of the 180s BATS budget.
   echo "# Navigating to team page..." >&3
-  agent-browser open "${APP_URL}/team" --ignore-https-errors
-  sleep 3
+  navigate_to_app_page "/team"
+  wait_for_text_gone "Loading your workspace" 20 || true
 
-  # Wait for team page to load (org redirect can take a while in CI)
-  wait_for_text "Lead" 40
+  # Wait for team page to load. Lead badge (rawAgentName) appears quickly,
+  # but the Create teammate button (disabled={agents.length === 0}) only becomes
+  # enabled after zeroSubagents$ loads, which can take longer under CI load.
+  wait_for_text "Lead" 20
   step_screenshot "team-page"
 
-  # Wait for any global loading overlay to clear before clicking (overlay
-  # blocks clicks even when the button is found via accessibility).
-  wait_for_text_gone "Loading your workspace" 30 || true
-
-  # Wait for the "Create teammate" button to appear in the accessibility tree.
-  # The Lead badge (rawAgentName) appears before zeroSubagents$ loads, so we
-  # must wait explicitly for the button rather than relying on the Lead check.
+  # Wait for Create teammate button to render (may appear disabled initially).
   echo "# Waiting for Create teammate button to appear..." >&3
-  if ! wait_for_text "Create teammate" 90; then
-    echo "# Create teammate button never appeared after 90s" >&3
+  if ! wait_for_text "Create teammate" 60; then
+    echo "# Create teammate button never appeared after 60s" >&3
     return 1
   fi
 
-  # Now click the button — retry a few times in case it's briefly disabled
+  # Pause to let the agents list load (zeroSubagents$ async data fetch).
+  # The button renders as disabled while agents haven't loaded; after the list
+  # returns, it becomes enabled. 15s is usually sufficient for the API to respond.
+  sleep 15
+
+  # Click — retry up to 10 times in case the button is still briefly disabled.
+  # Each Playwright auto-wait attempt is ~4s, so 10 retries = up to ~50s budget.
   echo "# Clicking Create teammate..." >&3
   local btn_clicked=false
-  for _i in $(seq 1 15); do
+  for _i in $(seq 1 10); do
     if agent-browser find role button click --name "Create teammate" 2>/dev/null; then
       btn_clicked=true
       break
     fi
-    sleep 1
+    sleep 2
   done
   if [[ "$btn_clicked" != "true" ]]; then
     echo "# Failed to click Create teammate button" >&3
