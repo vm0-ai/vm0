@@ -206,7 +206,7 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
           {/* Content area */}
           <div
             className="flex-1 min-w-0 flex flex-col overflow-hidden"
-            style={{ backgroundColor: "rgb(254, 254, 254)" }}
+            style={{ backgroundColor: "hsl(var(--background))" }}
           >
             {!hideHeader && (
               <header className="shrink-0 px-10 pt-8 pb-1">
