@@ -62,12 +62,16 @@ click_save_on_unsaved_bar() {
 
 # ---------------------------------------------------------------------------
 # _agent_url_file — Return the temp file path for the agent settings URL.
-# Computed from AGENT_NAME (which is consistently exported from setup_file)
-# rather than a separately-exported tmpdir variable, avoiding BATS subshell
-# environment propagation issues.
+# Uses BATS_FILE_TMPDIR (BATS 1.3+) which is a directory guaranteed to be
+# shared across all @test subprocesses within this file. Falls back to /tmp
+# with AGENT_NAME for uniqueness if BATS_FILE_TMPDIR is not available.
 # ---------------------------------------------------------------------------
 _agent_url_file() {
-  echo "/tmp/.brw-t05-${AGENT_NAME}"
+  if [[ -n "${BATS_FILE_TMPDIR:-}" ]]; then
+    echo "${BATS_FILE_TMPDIR}/agent-settings-url"
+  else
+    echo "/tmp/.brw-t05-${AGENT_NAME}"
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -257,10 +261,6 @@ teardown_file() {
   # Try to load AGENT_SETTINGS_URL captured by test 9 before daemon restart.
   # If test 9 successfully clicked the agent card and saved the URL, we can
   # navigate directly without searching /team (avoids backend timing issues).
-  echo "# Debug: AGENT_NAME=${AGENT_NAME:-UNSET}" >&3
-  echo "# Debug: url file=$(_agent_url_file)" >&3
-  echo "# Debug: /tmp/.brw-t05* files=$(ls /tmp/.brw-t05* 2>/dev/null | tr '\n' ' ' || echo NONE)" >&3
-  echo "# Debug: file exists=$(test -f "$(_agent_url_file)" && echo YES || echo NO)" >&3
   if [[ -z "${AGENT_SETTINGS_URL:-}" ]] && [[ -f "$(_agent_url_file)" ]]; then
     AGENT_SETTINGS_URL=$(tr -d '[:space:]' < "$(_agent_url_file)")
     echo "# Loaded AGENT_SETTINGS_URL from temp file: $AGENT_SETTINGS_URL" >&3
@@ -290,14 +290,28 @@ teardown_file() {
     fi
     step_screenshot "team-page"
 
-    # Navigate to agent settings by clicking the agent card
-    if agent-browser find text "$AGENT_NAME" click 2>/dev/null; then
-      sleep 3
+    # Navigate to agent settings by clicking the agent card.
+    # find-text only clicks the text node, which may not trigger navigation.
+    # Use interactive snapshot to find the actual card ref (link/button).
+    local snap_i_card card_ref card_clicked=false
+    snap_i_card=$(agent-browser snapshot -i 2>/dev/null || true)
+    card_ref=$(echo "$snap_i_card" | grep -i "${AGENT_NAME}" | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+    echo "# Agent card ref: '${card_ref}'" >&3
+    if [[ -n "$card_ref" ]]; then
+      if agent-browser click "$card_ref" 2>/dev/null; then
+        card_clicked=true
+      fi
     fi
+    if [[ "$card_clicked" != "true" ]]; then
+      agent-browser find role link click --name "$AGENT_NAME" 2>/dev/null || \
+        agent-browser find role button click --name "$AGENT_NAME" 2>/dev/null || \
+        agent-browser find text "$AGENT_NAME" click 2>/dev/null || true
+    fi
+    sleep 3
     local clicked_url
     clicked_url=$(agent-browser get url 2>/dev/null | tr -d '[:space:]' || true)
     echo "# URL after clicking agent: $clicked_url" >&3
-    if [[ "$clicked_url" =~ /(talk|team)/[a-zA-Z0-9] ]]; then
+    if [[ "$clicked_url" =~ /(talk|team)/[a-zA-Z0-9][a-zA-Z0-9/-] ]]; then
       AGENT_SETTINGS_URL="$clicked_url"
       export AGENT_SETTINGS_URL
       echo "$AGENT_SETTINGS_URL" > "$(_agent_url_file)"
