@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   useLoadable,
   useLastLoadable,
@@ -902,11 +902,6 @@ function SidebarUpgradeCard() {
 
 export function ZeroSidebar() {
   const [isScrolled, setIsScrolled] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const handleScroll = useCallback(() => {
-    const el = scrollRef.current;
-    setIsScrolled(!!el && el.scrollTop > 0);
-  }, []);
 
   // Read all data from signals directly
   const activeId = useGet(zeroActiveId$);
@@ -1146,8 +1141,7 @@ export function ZeroSidebar() {
 
           {/* Scrollable: Pinned + Recent chats */}
           <div
-            ref={scrollRef}
-            onScroll={handleScroll}
+            onScroll={(e) => setIsScrolled(e.currentTarget.scrollTop > 0)}
             className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden -mx-2 px-2 mt-2 pt-2"
             style={{
               boxShadow: isScrolled
