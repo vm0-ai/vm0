@@ -63,17 +63,20 @@ click_save_on_unsaved_bar() {
 # ---------------------------------------------------------------------------
 # _agent_url_file — Return the temp file path for the agent settings URL.
 #
-# Uses a fixed path so all BATS test subprocesses (setup_file, each @test,
-# teardown_file) always resolve to the same file regardless of which env
-# vars are inherited. JOB_REF and BRW_T05_TMPDIR were inconsistently
-# available across subshells in BATS --jobs mode with GNU parallel.
+# Uses BRW_T05_TMPDIR (unique per BATS run, set by setup_file) to avoid
+# cross-run contamination: multiple concurrent CI runs on the same runner
+# (e.g. from overlapping PR pushes) would race on a shared /tmp path and
+# each run's setup_file would delete the other run's URL file.
 #
-# Each GitHub Actions runner gets a fresh VM per job so there is no risk of
-# cross-PR contamination. setup_file removes the file before tests run to
-# prevent stale URLs from a previous run on the same host.
+# Falls back to a fixed /tmp path when BRW_T05_TMPDIR is not available
+# (should not happen in normal operation).
 # ---------------------------------------------------------------------------
 _agent_url_file() {
-  echo "/tmp/brw-t05-agent-url"
+  if [[ -n "${BRW_T05_TMPDIR:-}" ]]; then
+    echo "${BRW_T05_TMPDIR}/agent-url"
+  else
+    echo "/tmp/brw-t05-agent-url"
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -399,9 +402,16 @@ teardown_file() {
     echo "# Recovery snapshot ref: '$agent_ref_r'" >&3
     if [[ -n "$agent_ref_r" ]]; then
       agent-browser click "$agent_ref_r" 2>/dev/null || true
-      sleep 3
-      local recovered_url
-      recovered_url=$(agent-browser get url 2>/dev/null | tr -d '[:space:]' || true)
+      # Poll for URL after click — SPA navigation briefly passes through
+      # about:blank or stays on /team before reaching /team/<uuid>.
+      local recovered_url=""
+      for _wr in $(seq 1 15); do
+        sleep 1
+        recovered_url=$(agent-browser get url 2>/dev/null | tr -d '[:space:]' || true)
+        if [[ "$recovered_url" =~ /(talk|team)/[a-zA-Z0-9] ]]; then
+          break
+        fi
+      done
       echo "# Recovery URL after click: $recovered_url" >&3
       if [[ "$recovered_url" =~ /(talk|team)/[a-zA-Z0-9] ]]; then
         AGENT_SETTINGS_URL="$recovered_url"
@@ -410,7 +420,7 @@ teardown_file() {
       fi
     fi
     if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
-      agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
+      agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors 2>/dev/null || true
       sleep 3
     fi
   fi
