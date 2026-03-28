@@ -346,10 +346,22 @@ teardown_file() {
   wait_for_text "Add connector" 30
   step_screenshot "connector-before"
 
-  # Click "Add connector" — use role-based find since the button has composite
-  # text ("Add connector\nBrowse 100+ popular connectors"); find text only matches
-  # elements whose full text equals "Add connector", which fails on this button.
-  agent-browser find role button click --name "Add connector"
+  # Click "Add connector" — retry up to 15 times to handle brief unavailability
+  # after clicking the Connectors tab (content may briefly re-render/refetch).
+  # Role-based find is preferred since the button has composite text
+  # ("Add connector\nBrowse 100+ popular connectors"); text-based find only
+  # matches elements whose full text equals "Add connector" exactly.
+  local add_conn_clicked=false
+  for _i in $(seq 1 15); do
+    if agent-browser find role button click --name "Add connector" 2>/dev/null; then
+      add_conn_clicked=true
+      break
+    fi
+    sleep 1
+  done
+  if [[ "$add_conn_clicked" != "true" ]]; then
+    agent-browser find text "Add connector" click
+  fi
   sleep 2
 
   # Wait for add connector dialog — can take >15s under parallel CI load
@@ -447,6 +459,9 @@ teardown_file() {
     sleep 2
     wait_for_text "How they sound" 30
   fi
+  # Extra settle time after "How they sound" appears — the description textarea
+  # may still be initializing when we take the interactive snapshot.
+  sleep 1
   step_screenshot "profile-before"
 
   # Fill description via interactive snapshot ref — the textarea uses aria-label
@@ -465,7 +480,19 @@ teardown_file() {
     # Fallback: find the Description textbox by its ARIA role + name.
     # InlineSettingsRow renders a <p> not a <label>, so find-label fails;
     # the textarea's aria-label makes find-role-textbox reliable.
-    agent-browser find role textbox fill --name "Description" "$test_value"
+    # Retry up to 10 times to handle brief unavailability after tab click.
+    local fill_ok=false
+    for _i in $(seq 1 10); do
+      if agent-browser find role textbox fill --name "Description" "$test_value" 2>/dev/null; then
+        fill_ok=true
+        break
+      fi
+      sleep 1
+    done
+    if [[ "$fill_ok" != "true" ]]; then
+      echo "# Description textbox not found after 10 retries" >&3
+      return 1
+    fi
   fi
   sleep 1
 
