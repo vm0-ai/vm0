@@ -184,21 +184,30 @@ teardown_file() {
   echo "# Clicking Create button in dialog..." >&3
   local snap_i create_ref
   snap_i=$(agent-browser snapshot -i)
-  create_ref=$(echo "$snap_i" | grep -E '^- button "Create"$' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+  # Match "Create" button only — the line format is: '- button "Create" [ref=eN]'
+  # Using ' \[' after the closing quote prevents matching "Create teammate" or
+  # "Creating..." buttons.
+  create_ref=$(echo "$snap_i" | grep -E '^- button "Create" \[' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
   if [[ -n "$create_ref" ]]; then
     agent-browser click "$create_ref"
   else
-    # Fallback: role-based find with --exact
-    agent-browser find role button click --name "Create" --exact
+    # Fallback: role-based find without exact (the dialog's Create button may have
+    # extra whitespace or aria-label causing exact match to fail)
+    agent-browser find role button click --name "Create" 2>/dev/null || true
   fi
   sleep 1
 
-  # Verify the click triggered the creation (button changes to "Creating...")
-  # Retry up to 3 times if not — the click may have missed the button.
+  # Verify the click triggered the creation (button changes to "Creating...").
+  # Retry via snapshot ref if not — the first click may have missed the button.
   if ! wait_for_text "Creating..." 5 2>/dev/null; then
     if agent-browser find text "Create a new teammate" 2>/dev/null; then
-      echo "# First click may not have triggered — retrying via role find..." >&3
-      agent-browser find role button click --name "Create" --exact 2>/dev/null || true
+      echo "# First click may not have triggered — retrying via snapshot ref..." >&3
+      local retry_snap retry_ref
+      retry_snap=$(agent-browser snapshot -i)
+      retry_ref=$(echo "$retry_snap" | grep -E '^- button "Create" \[' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+      if [[ -n "$retry_ref" ]]; then
+        agent-browser click "$retry_ref"
+      fi
       sleep 1
     fi
   fi
