@@ -195,25 +195,40 @@ teardown_file() {
   fi
   step_screenshot "team-page"
 
-  # Get agent settings URL via JS eval — query the DOM directly for the link
-  # href. The agent card link has a composite accessible name ("Workspace
-  # <name> <name>") that makes accessibility-based clicking unreliable.
-  # eval finds the href attribute even when the link is not aria-accessible.
+  # Get agent settings URL by querying the agent card link via JS eval.
+  # The eval searches for an <a> whose <h2> child contains the agent name,
+  # clicks it (triggering SPA navigation as a side-effect), and returns the href.
+  # Using h2 child text is more precise than full textContent which includes
+  # the "Workspace" badge and image alt text.
   local agent_href=""
-  agent_href=$(agent-browser eval "Array.from(document.querySelectorAll('a[href*=\"/team/\"]')).find(a=>a.textContent.includes('${AGENT_NAME}'))?.getAttribute('href')??''" 2>/dev/null | tr -d '[:space:]"' || true)
+  agent_href=$(agent-browser eval "(function(){var l=Array.from(document.querySelectorAll('a[href]')).find(function(a){var h=a.querySelector('h2');return h&&h.textContent.indexOf('${AGENT_NAME}')>=0;});if(l)l.click();return l?l.getAttribute('href')||'':'';}())" 2>/dev/null | tr -d '[:space:]"' || true)
   if [[ -n "$agent_href" && "$agent_href" != "null" && "$agent_href" == /team/* ]]; then
     AGENT_SETTINGS_URL="${APP_URL}${agent_href}"
     export AGENT_SETTINGS_URL
     echo "$AGENT_SETTINGS_URL" > "${BATS_TMPDIR}/brw_t05_agent_settings_url"
     echo "# Agent settings URL via eval: $AGENT_SETTINGS_URL" >&3
+    # The click() call above triggered SPA navigation; wait for it to settle.
+    sleep 3
   else
-    echo "# Could not find agent link via eval" >&3
-    return 1
+    # Fallback: the click() side-effect may still have navigated even if
+    # getAttribute returned nothing. Check where the browser actually landed.
+    echo "# eval returned '$agent_href', checking current URL as fallback..." >&3
+    sleep 3
+    local current_url
+    current_url=$(agent-browser get url 2>/dev/null | tr -d '[:space:]' || true)
+    echo "# Current URL: $current_url" >&3
+    if [[ "$current_url" =~ /team/[a-zA-Z0-9] ]]; then
+      AGENT_SETTINGS_URL="$current_url"
+      export AGENT_SETTINGS_URL
+      echo "$AGENT_SETTINGS_URL" > "${BATS_TMPDIR}/brw_t05_agent_settings_url"
+      echo "# Agent settings URL from current URL: $AGENT_SETTINGS_URL" >&3
+    else
+      echo "# Could not determine agent settings URL" >&3
+      return 1
+    fi
   fi
 
-  # Navigate to agent settings and verify the page loaded
-  agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
-  sleep 2
+  # Verify the page loaded (we may already be there from the click() above)
   wait_for_text "Connectors" 20 || echo "# Connectors tab not yet visible (page loading slowly)" >&3
   step_screenshot "agent-detail"
   echo "# Agent settings URL ready for tests 11-13" >&3
@@ -239,16 +254,30 @@ teardown_file() {
     agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
     sleep 3
   else
-    # AGENT_SETTINGS_URL not available — recover via JS eval on /team page
+    # AGENT_SETTINGS_URL not available — recover via JS eval on /team page.
+    # Uses same click-and-return approach as test 10.
     echo "# AGENT_SETTINGS_URL not set — recovering via /team eval..." >&3
     navigate_to_app_page "/team"
     wait_for_text "$AGENT_NAME" 30 || true
     local agent_href=""
-    agent_href=$(agent-browser eval "Array.from(document.querySelectorAll('a[href*=\"/team/\"]')).find(a=>a.textContent.includes('${AGENT_NAME}'))?.getAttribute('href')??''" 2>/dev/null | tr -d '[:space:]"' || true)
+    agent_href=$(agent-browser eval "(function(){var l=Array.from(document.querySelectorAll('a[href]')).find(function(a){var h=a.querySelector('h2');return h&&h.textContent.indexOf('${AGENT_NAME}')>=0;});if(l)l.click();return l?l.getAttribute('href')||'':'';}())" 2>/dev/null | tr -d '[:space:]"' || true)
     if [[ -n "$agent_href" && "$agent_href" != "null" && "$agent_href" == /team/* ]]; then
       AGENT_SETTINGS_URL="${APP_URL}${agent_href}"
       echo "$AGENT_SETTINGS_URL" > "${BATS_TMPDIR}/brw_t05_agent_settings_url"
       echo "# Recovered AGENT_SETTINGS_URL via eval: $AGENT_SETTINGS_URL" >&3
+      sleep 3
+    else
+      # Check if click() navigated us to an agent settings page
+      sleep 3
+      local recovered_url
+      recovered_url=$(agent-browser get url 2>/dev/null | tr -d '[:space:]' || true)
+      if [[ "$recovered_url" =~ /team/[a-zA-Z0-9] ]]; then
+        AGENT_SETTINGS_URL="$recovered_url"
+        echo "$AGENT_SETTINGS_URL" > "${BATS_TMPDIR}/brw_t05_agent_settings_url"
+        echo "# Recovered AGENT_SETTINGS_URL from current URL: $AGENT_SETTINGS_URL" >&3
+      fi
+    fi
+    if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
       agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
       sleep 3
     fi
@@ -401,7 +430,7 @@ teardown_file() {
     # The textarea has aria-label="Description"; in the interactive snapshot it
     # appears as '- textbox "Description" [ref=eN]' (possibly indented since it's
     # nested inside a Card). Remove the ^ anchor so indented lines are matched.
-    desc_ref=$(echo "$snap_i" | grep -E '- textbox "Description"' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+    desc_ref=$(echo "$snap_i" | grep -E 'textbox "Description"' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
     if [[ -n "$desc_ref" ]]; then
       agent-browser fill "$desc_ref" "$test_value"
       fill_done=true
@@ -410,7 +439,13 @@ teardown_file() {
     sleep 2
   done
   if [[ "$fill_done" != "true" ]]; then
-    # Fallback: find the Description textbox by its ARIA role + name.
+    # Fallback 1: find by placeholder text (most direct — does not rely on ARIA name).
+    if agent-browser find placeholder "What does this agent do?" fill "$test_value" 2>/dev/null; then
+      fill_done=true
+    fi
+  fi
+  if [[ "$fill_done" != "true" ]]; then
+    # Fallback 2: find by ARIA role + name.
     # InlineSettingsRow renders a <p> not a <label>, so find-label fails;
     # the textarea's aria-label makes find-role-textbox reliable.
     # Retry up to 15 times to handle brief unavailability after tab click.
@@ -422,10 +457,13 @@ teardown_file() {
       fi
       sleep 1
     done
-    if [[ "$fill_ok" != "true" ]]; then
-      echo "# Description textbox not found after retries" >&3
-      return 1
+    if [[ "$fill_ok" == "true" ]]; then
+      fill_done=true
     fi
+  fi
+  if [[ "$fill_done" != "true" ]]; then
+    echo "# Description textbox not found after retries" >&3
+    return 1
   fi
   sleep 1
 
