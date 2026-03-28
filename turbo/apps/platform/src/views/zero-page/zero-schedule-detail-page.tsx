@@ -749,7 +749,7 @@ function ScheduleRunHistoryTab() {
 
       {/* Table */}
       <Card className="zero-card overflow-hidden">
-        <CardContent className="px-4 sm:px-7 pb-3 pt-0">
+        <CardContent className="pb-3 pt-0 px-0">
           <LogTable
             logs={logs}
             isLoading={isLoading}

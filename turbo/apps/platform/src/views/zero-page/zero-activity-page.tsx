@@ -170,7 +170,7 @@ export function ZeroActivityPage() {
       {/* Scrollable table area */}
       <div className="flex-1 min-h-0 overflow-auto px-4 sm:px-6 pt-4">
         <div className="mx-auto max-w-[900px]">
-          <div className="zero-card overflow-hidden px-4 sm:px-7 pb-3">
+          <div className="zero-card overflow-hidden pb-3">
             <LogTable
               logs={logs}
               isLoading={isLoading}
