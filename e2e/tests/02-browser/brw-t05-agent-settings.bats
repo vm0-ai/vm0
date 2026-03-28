@@ -120,15 +120,14 @@ teardown_file() {
   # Navigate to /team and click "Create teammate" in one combined retry loop.
   # Under parallel CI load, workspace initialization can take 50-80s before the
   # "Create teammate" button becomes clickable. Combining the wait-for-ready and
-  # click into a single 90-iteration loop is more efficient than separate Lead
-  # badge check + button click loops, and uses less of the 180s budget.
+  # click into a single 65-iteration loop handles this without excessive budget.
   echo "# Navigating to team page..." >&3
   navigate_to_app_page "/team"
-  wait_for_text_gone "Loading your workspace" 30 || true
+  wait_for_text_gone "Loading your workspace" 10 || true
 
   echo "# Clicking Create teammate (waiting for workspace init)..." >&3
   local btn_clicked=false
-  for _i in $(seq 1 90); do
+  for _i in $(seq 1 65); do
     if agent-browser find role button click --name "Create teammate" 2>/dev/null; then
       btn_clicked=true
       break
@@ -136,7 +135,7 @@ teardown_file() {
     sleep 1
   done
   if [[ "$btn_clicked" != "true" ]]; then
-    echo "# Failed to click Create teammate button after 90s" >&3
+    echo "# Failed to click Create teammate button after 65s" >&3
     return 1
   fi
   sleep 1
@@ -169,8 +168,47 @@ teardown_file() {
   sleep 1
 
   # Wait for dialog to close (confirms backend creation API call completed).
-  # Non-fatal but 30s gives the backend time to finish before test 10 checks.
-  wait_for_text_gone "Create a new teammate" 30 || echo "# Dialog close timed out — continuing" >&3
+  # Reduced to 20s — non-fatal, we capture the URL separately below.
+  local dialog_closed=false
+  if wait_for_text_gone "Create a new teammate" 20; then
+    dialog_closed=true
+  else
+    echo "# Dialog close timed out — agent creation may still be in progress" >&3
+  fi
+
+  # While still signed in with the same browser session, try to capture the
+  # agent settings URL. The app may navigate there automatically after creation,
+  # or the agent may appear in the /team list. Saving the URL here avoids the
+  # overhead of daemon restart + sign-in + /team search in test 10.
+  if [[ "$dialog_closed" = "true" ]]; then
+    # Check if app already navigated to agent settings upon creation
+    sleep 2
+    local post_create_url
+    post_create_url=$(agent-browser get url 2>/dev/null | tr -d '[:space:]' || true)
+    echo "# URL after dialog close: $post_create_url" >&3
+    if [[ "$post_create_url" =~ /team/[a-zA-Z0-9] ]]; then
+      echo "$post_create_url" > "${BATS_TMPDIR}/brw_t05_agent_settings_url"
+      echo "# Captured agent settings URL from post-create navigation: $post_create_url" >&3
+    else
+      # App stayed on /team — wait for agent card and click it to get the URL
+      echo "# Waiting for agent to appear on /team to capture settings URL..." >&3
+      if wait_for_text "$AGENT_NAME" 40; then
+        if agent-browser find text "$AGENT_NAME" click 2>/dev/null; then
+          sleep 3
+          local agent_url
+          agent_url=$(agent-browser get url 2>/dev/null | tr -d '[:space:]' || true)
+          echo "# URL after clicking agent card: $agent_url" >&3
+          if [[ "$agent_url" =~ /team/[a-zA-Z0-9] ]]; then
+            echo "$agent_url" > "${BATS_TMPDIR}/brw_t05_agent_settings_url"
+            echo "# Saved agent settings URL: $agent_url" >&3
+          fi
+        fi
+      else
+        echo "# Agent not yet visible on /team — URL will be determined in test 10" >&3
+      fi
+    fi
+  fi
+
   step_screenshot "agent-created"
   echo "# Agent created: $AGENT_NAME" >&3
 }
@@ -186,80 +224,56 @@ teardown_file() {
   wait_for_text_gone "Loading your workspace" 20 || true
   echo "# Navigating to agent settings for: $AGENT_NAME..." >&3
 
-  # Verify agent appeared on /team (confirms backend creation from test 9 completed).
-  # Retry with reload — under heavy CI load the agent list may need a page refresh
-  # after workspace initialization to reflect newly created agents.
-  navigate_to_app_page "/team"
-  local agent_found=false
-  for _attempt in 1 2; do
-    if wait_for_text "$AGENT_NAME" 40; then
-      agent_found=true
-      break
-    fi
-    echo "# Attempt ${_attempt}: agent not found, reloading /team..." >&3
-    navigate_to_app_page "/team"
-  done
-  if [[ "$agent_found" != "true" ]]; then
-    echo "# Agent not found on /team after 2 attempts" >&3
-    return 1
+  # Try to load AGENT_SETTINGS_URL captured by test 9 before daemon restart.
+  # If test 9 successfully clicked the agent card and saved the URL, we can
+  # navigate directly without searching /team (avoids backend timing issues).
+  if [[ -z "${AGENT_SETTINGS_URL:-}" ]] && [[ -f "${BATS_TMPDIR}/brw_t05_agent_settings_url" ]]; then
+    AGENT_SETTINGS_URL=$(tr -d '[:space:]' < "${BATS_TMPDIR}/brw_t05_agent_settings_url")
+    echo "# Loaded AGENT_SETTINGS_URL from temp file: $AGENT_SETTINGS_URL" >&3
   fi
-  step_screenshot "team-page"
 
-  # Get agent settings URL by clicking the agent card via its interactive
-  # snapshot ref, then capturing the resulting URL.
-  # wait_for_text already confirmed the agent name is in the snapshot, so
-  # parsing the snapshot ref is more reliable than JS eval (which can return
-  # empty for unknown reasons even when the element is present).
-  local snap_i agent_ref
-  snap_i=$(agent-browser snapshot -i 2>/dev/null || true)
-  agent_ref=$(echo "$snap_i" | grep -i "${AGENT_NAME}" | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
-  echo "# Snapshot ref for agent: '$agent_ref'" >&3
-
-  if [[ -n "$agent_ref" ]]; then
-    agent-browser click "$agent_ref" 2>/dev/null || true
+  if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
+    # URL pre-captured in test 9 — navigate directly, no /team search needed.
+    echo "# Navigating directly to agent settings: $AGENT_SETTINGS_URL" >&3
+    agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
     sleep 3
+  else
+    # URL not available — find agent on /team page with retry.
+    echo "# Agent settings URL not pre-captured, finding via /team..." >&3
+    navigate_to_app_page "/team"
+    local agent_found=false
+    for _attempt in 1 2; do
+      if wait_for_text "$AGENT_NAME" 40; then
+        agent_found=true
+        break
+      fi
+      echo "# Attempt ${_attempt}: agent not found, reloading /team..." >&3
+      navigate_to_app_page "/team"
+    done
+    if [[ "$agent_found" != "true" ]]; then
+      echo "# Agent not found on /team after 2 attempts" >&3
+      return 1
+    fi
+    step_screenshot "team-page"
+
+    # Navigate to agent settings by clicking the agent card
+    if agent-browser find text "$AGENT_NAME" click 2>/dev/null; then
+      sleep 3
+    fi
     local clicked_url
     clicked_url=$(agent-browser get url 2>/dev/null | tr -d '[:space:]' || true)
-    echo "# URL after ref click: $clicked_url" >&3
+    echo "# URL after clicking agent: $clicked_url" >&3
     if [[ "$clicked_url" =~ /team/[a-zA-Z0-9] ]]; then
       AGENT_SETTINGS_URL="$clicked_url"
       export AGENT_SETTINGS_URL
       echo "$AGENT_SETTINGS_URL" > "${BATS_TMPDIR}/brw_t05_agent_settings_url"
-      echo "# Agent settings URL via snapshot click: $AGENT_SETTINGS_URL" >&3
-    fi
-  fi
-
-  if [[ -z "${AGENT_SETTINGS_URL:-}" ]]; then
-    # Fallback: JS eval to click agent card link by h2 text and return href.
-    # Less reliable than snapshot approach but worth trying as backup.
-    local agent_href=""
-    agent_href=$(agent-browser eval "(function(){var l=Array.from(document.querySelectorAll('a[href]')).find(function(a){var h=a.querySelector('h2');return h&&h.textContent.indexOf('${AGENT_NAME}')>=0;});if(l)l.click();return l?l.getAttribute('href')||'':'';}())" 2>/dev/null | tr -d '[:space:]"' || true)
-    if [[ -n "$agent_href" && "$agent_href" != "null" && "$agent_href" == /team/* ]]; then
-      AGENT_SETTINGS_URL="${APP_URL}${agent_href}"
-      export AGENT_SETTINGS_URL
-      echo "$AGENT_SETTINGS_URL" > "${BATS_TMPDIR}/brw_t05_agent_settings_url"
-      echo "# Agent settings URL via eval: $AGENT_SETTINGS_URL" >&3
-      sleep 3
     else
-      sleep 3
-      local fallback_url
-      fallback_url=$(agent-browser get url 2>/dev/null | tr -d '[:space:]' || true)
-      echo "# Fallback URL check: $fallback_url" >&3
-      if [[ "$fallback_url" =~ /team/[a-zA-Z0-9] ]]; then
-        AGENT_SETTINGS_URL="$fallback_url"
-        export AGENT_SETTINGS_URL
-        echo "$AGENT_SETTINGS_URL" > "${BATS_TMPDIR}/brw_t05_agent_settings_url"
-        echo "# Agent settings URL from fallback URL: $AGENT_SETTINGS_URL" >&3
-      fi
+      echo "# Could not navigate to agent settings page" >&3
+      return 1
     fi
   fi
 
-  if [[ -z "${AGENT_SETTINGS_URL:-}" ]]; then
-    echo "# Could not determine agent settings URL" >&3
-    return 1
-  fi
-
-  # Verify the page loaded (we may already be there from the click above)
+  # Verify the page loaded
   wait_for_text "Connectors" 20 || echo "# Connectors tab not yet visible (page loading slowly)" >&3
   step_screenshot "agent-detail"
   echo "# Agent settings URL ready for tests 11-13" >&3

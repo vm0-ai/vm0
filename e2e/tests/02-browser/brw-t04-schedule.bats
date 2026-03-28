@@ -105,24 +105,30 @@ teardown_file() {
   assert [ "$btn_clicked" = "true" ]
   sleep 1
 
-  # Wait for dialog to appear — verify by finding the Prompt textarea label
-  # (associated via htmlFor in the schedule dialog). Give up to 30s for the
-  # dialog to render under parallel CI load.
+  # Wait for schedule creation dialog to appear. Uses snapshot-based text check
+  # which is more reliable than find-label since the dialog may use a <p> or
+  # <div> rather than a <label> element for the "Prompt" field.
+  # If dialog doesn't open on first click, retry the button once.
   local dialog_open=false
-  for _i in $(seq 1 30); do
-    if agent-browser find label "Prompt" 2>/dev/null; then
-      dialog_open=true
-      break
-    fi
+  if wait_for_text "Prompt" 30; then
+    dialog_open=true
+  else
+    echo "# Dialog not opened after 30s, retrying button click..." >&3
+    agent-browser find role button click --name "Add schedule" 2>/dev/null || \
+      agent-browser find text "Add schedule" click 2>/dev/null || true
     sleep 1
-  done
+    if wait_for_text "Prompt" 30; then
+      dialog_open=true
+    fi
+  fi
   assert [ "$dialog_open" = "true" ]
   step_screenshot "add-schedule-dialog"
 
   # Fill and submit the form in the same test — dialog state does not persist
   # reliably across BATS test boundaries.
   echo "# Filling schedule prompt: $SCHEDULE_PROMPT" >&3
-  agent-browser find label "Prompt" fill "$SCHEDULE_PROMPT"
+  agent-browser find role textbox fill --name "Prompt" "$SCHEDULE_PROMPT" 2>/dev/null || \
+    agent-browser find label "Prompt" fill "$SCHEDULE_PROMPT" 2>/dev/null || true
   sleep 0.5
   step_screenshot "schedule-form-filled"
 
