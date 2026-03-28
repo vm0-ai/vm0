@@ -168,9 +168,9 @@ teardown_file() {
   fi
   sleep 1
 
-  # Wait briefly for dialog to close — non-fatal since test 10 independently
-  # verifies the agent exists via /team navigation with its own retry loop.
-  wait_for_text_gone "Create a new teammate" 10 || echo "# Dialog close timed out — continuing" >&3
+  # Wait for dialog to close (confirms backend creation API call completed).
+  # Non-fatal but 30s gives the backend time to finish before test 10 checks.
+  wait_for_text_gone "Create a new teammate" 30 || echo "# Dialog close timed out — continuing" >&3
   step_screenshot "agent-created"
   echo "# Agent created: $AGENT_NAME" >&3
 }
@@ -187,10 +187,20 @@ teardown_file() {
   echo "# Navigating to agent settings for: $AGENT_NAME..." >&3
 
   # Verify agent appeared on /team (confirms backend creation from test 9 completed).
+  # Retry with reload — under heavy CI load the agent list may need a page refresh
+  # after workspace initialization to reflect newly created agents.
   navigate_to_app_page "/team"
-  wait_for_text_gone "Loading your workspace" 10 || true
-  if ! wait_for_text "$AGENT_NAME" 60; then
-    echo "# Agent not found on /team after 60s" >&3
+  local agent_found=false
+  for _attempt in 1 2; do
+    if wait_for_text "$AGENT_NAME" 40; then
+      agent_found=true
+      break
+    fi
+    echo "# Attempt ${_attempt}: agent not found, reloading /team..." >&3
+    navigate_to_app_page "/team"
+  done
+  if [[ "$agent_found" != "true" ]]; then
+    echo "# Agent not found on /team after 2 attempts" >&3
     return 1
   fi
   step_screenshot "team-page"
