@@ -353,7 +353,10 @@ sign_in_via_token() {
 # ---------------------------------------------------------------------------
 sign_in_via_token_on_app() {
   echo "# Pre-loading www. domain to initialise Clerk JS for satellite sync..." >&3
-  agent-browser open "${VM0_API_URL}" --ignore-https-errors
+  # Use || true: agent-browser exits non-zero when --ignore-https-errors is
+  # passed to an already-running daemon (flag is silently ignored but nav still
+  # completes). Real sign-in failures are caught by the retry block below.
+  agent-browser open "${VM0_API_URL}" --ignore-https-errors 2>/dev/null || true
   # Use shell sleep instead of agent-browser wait to avoid daemon IPC during
   # page load — Chrome can crash the daemon under parallel CI load, and routing
   # a simple delay through the daemon adds an unnecessary failure point.
@@ -366,7 +369,7 @@ sign_in_via_token_on_app() {
     echo "# sign_in_via_token failed, restarting daemon and retrying..." >&3
     restart_browser_daemon
     create_clerk_sign_in_token
-    agent-browser open "${VM0_API_URL}" --ignore-https-errors
+    agent-browser open "${VM0_API_URL}" --ignore-https-errors 2>/dev/null || true
     sleep 5
     dismiss_cookie_banner
     sign_in_via_token "$APP_URL"

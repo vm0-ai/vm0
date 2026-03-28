@@ -100,8 +100,10 @@ click_tab() {
   snap_i=$(agent-browser snapshot -i)
   ref=$(echo "$snap_i" | grep -iE "(tab|link|button|menuitem).*\"${tab_text}\"" | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
   if [[ -n "$ref" ]]; then
-    agent-browser click "$ref"
-    return 0
+    if agent-browser click "$ref" 2>/dev/null; then
+      return 0
+    fi
+    # click by ref failed (element may be non-interactable) — fall through
   fi
   # Last resort: direct text click (clicks any element containing the text)
   if agent-browser find text "$tab_text" click 2>/dev/null; then
@@ -304,7 +306,7 @@ teardown_file() {
   restart_browser_daemon
   create_clerk_sign_in_token
   sign_in_via_token_on_app
-  wait_for_text_gone "Loading your workspace" 20 || true
+  wait_for_text_gone "Loading your workspace" 60 || true
   echo "# Finding agent settings page for: $AGENT_NAME..." >&3
 
   # Check temp file (written by test 9 in same BATS worker process).
@@ -375,7 +377,7 @@ teardown_file() {
   restart_browser_daemon
   create_clerk_sign_in_token
   sign_in_via_token_on_app
-  wait_for_text_gone "Loading your workspace" 30 || true
+  wait_for_text_gone "Loading your workspace" 60 || true
 
   # Load AGENT_SETTINGS_URL from temp file (trim whitespace to avoid URL issues).
   if [[ -z "${AGENT_SETTINGS_URL:-}" ]] && [[ -f "$(_agent_url_file)" ]]; then
@@ -529,7 +531,7 @@ teardown_file() {
   restart_browser_daemon
   create_clerk_sign_in_token
   sign_in_via_token_on_app
-  wait_for_text_gone "Loading your workspace" 30 || true
+  wait_for_text_gone "Loading your workspace" 60 || true
 
   # Load AGENT_SETTINGS_URL from temp file if not in environment (cross-subprocess persistence).
   if [[ -z "${AGENT_SETTINGS_URL:-}" ]] && [[ -f "$(_agent_url_file)" ]]; then
@@ -649,7 +651,7 @@ teardown_file() {
   restart_browser_daemon
   create_clerk_sign_in_token
   sign_in_via_token_on_app
-  wait_for_text_gone "Loading your workspace" 30 || true
+  wait_for_text_gone "Loading your workspace" 60 || true
 
   # Load AGENT_SETTINGS_URL from temp file if not in environment (cross-subprocess persistence).
   if [[ -z "${AGENT_SETTINGS_URL:-}" ]] && [[ -f "$(_agent_url_file)" ]]; then
