@@ -250,9 +250,21 @@ teardown_file() {
 }
 
 @test "navigate to agent settings and verify tabs" {
-  # Restart daemon to ensure a clean browser state — test 9's Create interaction
-  # can leave the daemon unresponsive. A fresh daemon + sign-in guarantees this
-  # test starts from a stable baseline regardless of test 9's outcome.
+  # Capture agent settings URL from the daemon BEFORE restarting it.
+  # Test 9 leaves the browser at the agent settings page. Getting the URL here
+  # avoids any file-sharing race conditions (BATS --jobs parallelizes within
+  # a file, so file writes from one @test are not guaranteed to be visible to
+  # another @test that started concurrently).
+  local pre_restart_url
+  pre_restart_url=$(agent-browser get url 2>/dev/null | tr -d '[:space:]' || true)
+  echo "# URL from test 9's browser session: $pre_restart_url" >&3
+  if [[ "$pre_restart_url" =~ /(talk)/[a-zA-Z0-9] ]]; then
+    echo "# Captured agent settings URL from live daemon: $pre_restart_url" >&3
+    AGENT_SETTINGS_URL="$pre_restart_url"
+    echo "$AGENT_SETTINGS_URL" > "$(_agent_url_file)" 2>/dev/null || true
+  fi
+
+  # Restart daemon for a clean browser state, then sign in fresh.
   echo "# Restarting daemon for clean state..." >&3
   restart_browser_daemon
   create_clerk_sign_in_token
@@ -260,17 +272,14 @@ teardown_file() {
   wait_for_text_gone "Loading your workspace" 20 || true
   echo "# Navigating to agent settings for: $AGENT_NAME..." >&3
 
-  # Try to load AGENT_SETTINGS_URL captured by test 9 before daemon restart.
-  # If test 9 successfully clicked the agent card and saved the URL, we can
-  # navigate directly without searching /team (avoids backend timing issues).
-  echo "# url file: $(_agent_url_file) exists=$(test -f "$(_agent_url_file)" && echo YES || echo NO)" >&3
+  # Also check temp file (may have been written by test 9 if sequential).
   if [[ -z "${AGENT_SETTINGS_URL:-}" ]] && [[ -f "$(_agent_url_file)" ]]; then
     AGENT_SETTINGS_URL=$(tr -d '[:space:]' < "$(_agent_url_file)")
     echo "# Loaded AGENT_SETTINGS_URL from temp file: $AGENT_SETTINGS_URL" >&3
   fi
 
   if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
-    # URL pre-captured in test 9 — navigate directly, no /team search needed.
+    # URL captured from live daemon or temp file — navigate directly.
     echo "# Navigating directly to agent settings: $AGENT_SETTINGS_URL" >&3
     agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
     sleep 3
