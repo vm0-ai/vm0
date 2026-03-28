@@ -587,7 +587,7 @@ export function ZeroSchedulePage() {
 
       <main className="flex-1 overflow-auto px-4 sm:px-6 pt-4 pb-8">
         <div className="mx-auto max-w-[900px]">
-          <div className="zero-card overflow-hidden px-4 sm:px-7 pb-3">
+          <div className="zero-card overflow-hidden pb-3">
             {isInitialLoading ? (
               scheduleViewMode === "calendar" ? (
                 <ScheduleCalendarSkeleton />
