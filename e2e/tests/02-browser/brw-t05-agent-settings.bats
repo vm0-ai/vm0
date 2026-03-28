@@ -159,23 +159,24 @@ teardown_file() {
   navigate_to_app_page "/team"
   wait_for_text_gone "Loading your workspace" 10 || true
 
-  echo "# Clicking Create teammate (waiting for workspace init)..." >&3
-  local btn_clicked=false
-  for _i in $(seq 1 65); do
-    if agent-browser find role button click --name "Create teammate" 2>/dev/null; then
-      btn_clicked=true
+  # Combine button click + dialog check in a single retry loop.
+  # The workspace may not be ready when the button is first clicked (even though
+  # the button appears interactive), causing the click to have no visible effect.
+  # Re-clicking every 5s until the dialog appears handles this case.
+  echo "# Clicking Create teammate until dialog opens..." >&3
+  local dialog_opened=false
+  for _i in $(seq 1 25); do
+    agent-browser find role button click --name "Create teammate" 2>/dev/null || true
+    if wait_for_text "Create a new teammate" 5; then
+      dialog_opened=true
       break
     fi
     sleep 1
   done
-  if [[ "$btn_clicked" != "true" ]]; then
-    echo "# Failed to click Create teammate button after 65s" >&3
+  if [[ "$dialog_opened" != "true" ]]; then
+    echo "# Could not open Create teammate dialog after 25 retries" >&3
     return 1
   fi
-  sleep 1
-
-  # Wait for dialog — under parallel CI load the dialog can take >20s to appear
-  wait_for_text "Create a new teammate" 60
   step_screenshot "create-dialog"
 
   # Fill agent name
