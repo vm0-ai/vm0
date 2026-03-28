@@ -395,12 +395,16 @@ teardown_file() {
   fi
 
   if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
-    agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
+    agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors 2>/dev/null || true
     sleep 3
+    # Wait for workspace loading overlay to clear after navigation — the page
+    # re-triggers "Loading your workspace" on each fresh URL open.
+    wait_for_text_gone "Loading your workspace" 60 || true
   else
     # AGENT_SETTINGS_URL not available — recover via snapshot click on /team page.
     echo "# AGENT_SETTINGS_URL not set — recovering via /team snapshot click..." >&3
     navigate_to_app_page "/team"
+    wait_for_text_gone "Loading your workspace" 60 || true
     wait_for_text "$AGENT_NAME" 30 || true
     local snap_i_r agent_ref_r
     snap_i_r=$(agent-browser snapshot -i 2>/dev/null || true)
@@ -428,6 +432,7 @@ teardown_file() {
     if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
       agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors 2>/dev/null || true
       sleep 3
+      wait_for_text_gone "Loading your workspace" 60 || true
     fi
   fi
   # Wait for agent settings page to fully load (tab labels visible).
@@ -557,8 +562,10 @@ teardown_file() {
 
   # Navigate to agent settings.
   if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
-    agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors || true
+    agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors 2>/dev/null || true
     sleep 3
+    # Wait for workspace loading overlay to clear after navigation.
+    wait_for_text_gone "Loading your workspace" 60 || true
   fi
   # Wait for agent settings page to fully load before clicking tab.
   # Use 60s timeout to accommodate heavy CI load conditions.
@@ -677,8 +684,10 @@ teardown_file() {
 
   # Navigate back to agent settings to ensure page is in known state.
   if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
-    agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors || true
+    agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors 2>/dev/null || true
     sleep 3
+    # Wait for workspace loading overlay to clear after navigation.
+    wait_for_text_gone "Loading your workspace" 60 || true
   fi
   # Wait for agent settings page to fully load before clicking tab.
   # Retry with a reload in case prior test left the daemon in a bad state.

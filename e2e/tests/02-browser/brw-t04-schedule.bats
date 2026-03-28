@@ -77,7 +77,8 @@ teardown_file() {
   # Wait for any global loading overlay to clear before clicking buttons.
   # The page may show "Loading your workspace..." while the org data loads;
   # buttons underneath the overlay cannot be clicked until it disappears.
-  wait_for_text_gone "Loading your workspace" 30 || true
+  # Use 120s to handle slow workspace init under parallel CI load.
+  wait_for_text_gone "Loading your workspace" 120 || true
   step_screenshot "schedule-page"
 
   # Wait for the "Add schedule" button to appear before clicking (the button
