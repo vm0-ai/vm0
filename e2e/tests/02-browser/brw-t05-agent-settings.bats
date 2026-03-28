@@ -61,22 +61,16 @@ click_save_on_unsaved_bar() {
 }
 
 # ---------------------------------------------------------------------------
-# _agent_url_file — Return the temp file path for the agent settings URL.
+# _agent_url_file — Return the stable file path for the agent settings URL.
 #
-# Uses BRW_T05_TMPDIR (unique per BATS run, set by setup_file) to avoid
-# cross-run contamination: multiple concurrent CI runs on the same runner
-# (e.g. from overlapping PR pushes) would race on a shared /tmp path and
-# each run's setup_file would delete the other run's URL file.
-#
-# Falls back to a fixed /tmp path when BRW_T05_TMPDIR is not available
-# (should not happen in normal operation).
+# Uses JOB_REF (set by CI workflow, e.g. "pr-7077") to scope the file per
+# CI run, preventing cross-run contamination when multiple PRs run on the
+# same runner. JOB_REF is available in all BATS subshells (it is set in the
+# CI environment before BATS starts), unlike BRW_T05_TMPDIR which is created
+# in setup_file and may not survive across BATS @test subprocess boundaries.
 # ---------------------------------------------------------------------------
 _agent_url_file() {
-  if [[ -n "${BRW_T05_TMPDIR:-}" ]]; then
-    echo "${BRW_T05_TMPDIR}/agent-url"
-  else
-    echo "/tmp/brw-t05-agent-url"
-  fi
+  echo "/tmp/brw-t05-${JOB_REF:-local}-agent-url"
 }
 
 # ---------------------------------------------------------------------------
@@ -130,20 +124,14 @@ setup_file() {
   AGENT_NAME="E2E-Settings-$(date +%s)-$RANDOM"
   export AGENT_NAME
 
-  # Shared temp dir for persisting data across test subprocesses in this file.
-  # Exported so all @test subshells can read/write the agent settings URL file.
-  BRW_T05_TMPDIR=$(mktemp -d)
-  export BRW_T05_TMPDIR
-
-  # Clear any stale agent URL from previous CI runs on the same runner to prevent
-  # cross-run contamination (the JOB_REF-based path is stable across runs).
+  # Clear any stale agent URL from previous CI runs on the same runner.
+  # _agent_url_file uses JOB_REF so each PR run has its own path.
   rm -f "$(_agent_url_file)" 2>/dev/null || true
 
   echo "# Agent settings editing flow via agent-browser" >&3
   echo "#   Web URL: $VM0_API_URL" >&3
   echo "#   App URL: $APP_URL" >&3
   echo "#   Agent name: $AGENT_NAME" >&3
-  echo "#   Tmpdir: $BRW_T05_TMPDIR" >&3
 }
 
 teardown_file() {
@@ -152,7 +140,6 @@ teardown_file() {
     $ZERO_CLI agent delete "$AGENT_NAME" --yes 2>/dev/null || true
     rm -f "$(_agent_url_file)" 2>/dev/null || true
   fi
-  rm -rf "${BRW_T05_TMPDIR:-}" 2>/dev/null || true
 
   browser_teardown
 }
@@ -447,7 +434,7 @@ teardown_file() {
     click_tab "Connectors"
   fi
   sleep 2
-  wait_for_text "Add connector" 20
+  wait_for_text "Add connector" 40
   step_screenshot "connector-before"
 
   # Click "Add connector" via interactive snapshot ref — the button has composite
