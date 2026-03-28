@@ -301,31 +301,31 @@ teardown_file() {
   local url_file
   url_file="$(_agent_url_file)"
   echo "# agent_url_file: $url_file (exists: $(test -f "$url_file" && echo yes || echo no))" >&3
-  if [[ ! -f "$url_file" ]]; then
-    # Test 9 did not write the URL — likely failed to create the agent.
-    # Fail immediately to avoid a 80s+ timeout waiting for a non-existent agent.
-    echo "# Agent URL temp file not found — test 9 may have failed to create the agent" >&3
-    return 1
+  local agent_settings_url=""
+  if [[ -f "$url_file" ]]; then
+    agent_settings_url=$(tr -d '[:space:]' < "$url_file")
+    echo "# Loaded agent settings URL from temp file: $agent_settings_url" >&3
+  else
+    echo "# Temp file absent — will recover URL by navigating to /team" >&3
   fi
-  AGENT_SETTINGS_URL=$(tr -d '[:space:]' < "$url_file")
-  echo "# Loaded AGENT_SETTINGS_URL from temp file: $AGENT_SETTINGS_URL" >&3
 
-  # Navigate directly to agent settings and close any stale dialogs.
-  echo "# Navigating directly to agent settings: $AGENT_SETTINGS_URL" >&3
-  agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
-  sleep 3
-  # Close any stale dialogs (e.g. ConnectModal for an already-connected service).
-  agent-browser press "Escape" 2>/dev/null || true
-  sleep 1
+  if [[ -n "$agent_settings_url" ]]; then
+    # Navigate directly to agent settings and close any stale dialogs.
+    echo "# Navigating directly to agent settings: $agent_settings_url" >&3
+    agent-browser open "$agent_settings_url" --ignore-https-errors
+    sleep 3
+    agent-browser press "Escape" 2>/dev/null || true
+    sleep 1
+    dismiss_cookie_banner
+  fi
 
-  # Verify the page loaded and we're on the correct agent's settings page.
-  wait_for_text "Connectors" 20 || echo "# Connectors tab not yet visible (page loading slowly)" >&3
-  # Verify agent name is visible — if not, we navigated to the wrong agent.
-  # Fall back to /team search to find the correct agent.
-  if ! wait_for_text "$AGENT_NAME" 10; then
-    echo "# WARN: '$AGENT_NAME' not visible — searching on /team..." >&3
+  # Verify agent name is visible; if not (or URL was unknown), search /team.
+  if ! wait_for_text "$AGENT_NAME" 15; then
+    echo "# '$AGENT_NAME' not visible — searching on /team..." >&3
     agent-browser snapshot 2>/dev/null | head -20 >&3 || true
     navigate_to_app_page "/team"
+    wait_for_text_gone "Loading your workspace" 60 || true
+    dismiss_cookie_banner
     wait_for_text "$AGENT_NAME" 40 || true
     local snap_i_fb fb_ref
     snap_i_fb=$(agent-browser snapshot -i 2>/dev/null || true)
@@ -337,20 +337,21 @@ teardown_file() {
       for _w in $(seq 1 15); do
         sleep 1
         fb_url=$(agent-browser get url 2>/dev/null | tr -d '[:space:]' || true)
-        if [[ "$fb_url" =~ /(talk)/[a-zA-Z0-9] ]]; then
+        if [[ "$fb_url" =~ /(talk|team)/[a-zA-Z0-9] ]]; then
           break
         fi
       done
-      if [[ "$fb_url" =~ /(talk)/[a-zA-Z0-9] ]]; then
-        AGENT_SETTINGS_URL="$fb_url"
-        echo "$AGENT_SETTINGS_URL" > "$(_agent_url_file)" 2>/dev/null || true
-        echo "# Recovered URL via /team: $AGENT_SETTINGS_URL" >&3
+      if [[ "$fb_url" =~ /(talk|team)/[a-zA-Z0-9] ]]; then
+        agent_settings_url="$fb_url"
+        echo "$agent_settings_url" > "$(_agent_url_file)" 2>/dev/null || true
+        echo "# Recovered URL via /team: $agent_settings_url" >&3
       fi
     else
       echo "# Could not find '$AGENT_NAME' on /team — agent creation may have failed" >&3
       return 1
     fi
   fi
+  AGENT_SETTINGS_URL="$agent_settings_url"
   step_screenshot "agent-detail"
   echo "# Agent settings URL ready for tests 11-13" >&3
 }
