@@ -186,7 +186,7 @@ teardown_file() {
     local post_create_url
     post_create_url=$(agent-browser get url 2>/dev/null | tr -d '[:space:]' || true)
     echo "# URL after dialog close: $post_create_url" >&3
-    if [[ "$post_create_url" =~ /team/[a-zA-Z0-9] ]]; then
+    if [[ "$post_create_url" =~ /(talk|team)/[a-zA-Z0-9] ]]; then
       echo "$post_create_url" > "${BATS_TMPDIR}/brw_t05_agent_settings_url"
       echo "# Captured agent settings URL from post-create navigation: $post_create_url" >&3
     else
@@ -198,7 +198,7 @@ teardown_file() {
           local agent_url
           agent_url=$(agent-browser get url 2>/dev/null | tr -d '[:space:]' || true)
           echo "# URL after clicking agent card: $agent_url" >&3
-          if [[ "$agent_url" =~ /team/[a-zA-Z0-9] ]]; then
+          if [[ "$agent_url" =~ /(talk|team)/[a-zA-Z0-9] ]]; then
             echo "$agent_url" > "${BATS_TMPDIR}/brw_t05_agent_settings_url"
             echo "# Saved agent settings URL: $agent_url" >&3
           fi
@@ -263,7 +263,7 @@ teardown_file() {
     local clicked_url
     clicked_url=$(agent-browser get url 2>/dev/null | tr -d '[:space:]' || true)
     echo "# URL after clicking agent: $clicked_url" >&3
-    if [[ "$clicked_url" =~ /team/[a-zA-Z0-9] ]]; then
+    if [[ "$clicked_url" =~ /(talk|team)/[a-zA-Z0-9] ]]; then
       AGENT_SETTINGS_URL="$clicked_url"
       export AGENT_SETTINGS_URL
       echo "$AGENT_SETTINGS_URL" > "${BATS_TMPDIR}/brw_t05_agent_settings_url"
@@ -313,7 +313,7 @@ teardown_file() {
       local recovered_url
       recovered_url=$(agent-browser get url 2>/dev/null | tr -d '[:space:]' || true)
       echo "# Recovery URL after click: $recovered_url" >&3
-      if [[ "$recovered_url" =~ /team/[a-zA-Z0-9] ]]; then
+      if [[ "$recovered_url" =~ /(talk|team)/[a-zA-Z0-9] ]]; then
         AGENT_SETTINGS_URL="$recovered_url"
         echo "$AGENT_SETTINGS_URL" > "${BATS_TMPDIR}/brw_t05_agent_settings_url"
         echo "# Recovered AGENT_SETTINGS_URL: $AGENT_SETTINGS_URL" >&3
