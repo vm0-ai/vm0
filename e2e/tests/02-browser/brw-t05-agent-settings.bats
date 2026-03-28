@@ -235,17 +235,19 @@ teardown_file() {
   fi
   sleep 2
 
-  # Save URL immediately — before waiting for content, so tests 11-13 can
-  # navigate back here even if this test hits its time limit.
-  AGENT_SETTINGS_URL=$(agent-browser get url 2>/dev/null || true)
+  # Save URL immediately (strip query params so tests 11-13 always start
+  # on the Connectors tab rather than a previously-visited tab like Profile).
+  local raw_url
+  raw_url=$(agent-browser get url 2>/dev/null || true)
+  AGENT_SETTINGS_URL="${raw_url%%\?*}"
   export AGENT_SETTINGS_URL
   echo "# Agent settings URL captured: $AGENT_SETTINGS_URL" >&3
   step_screenshot "agent-detail"
 
-  # Wait for Connectors tab content — "Add connector" implies the full page
-  # loaded (tab labels + default Connectors tab content). No separate
-  # "wait for Connectors" label needed; waiting for "Add connector" is enough.
-  wait_for_text "Add connector" 60
+  # Wait for agent settings page to load — check for tab labels which are
+  # always visible regardless of active tab. "Connectors" appears in the
+  # tab navigation; "Add connector" is only visible when Connectors tab is active.
+  wait_for_text "Connectors" 60
   echo "# Agent settings page loaded with all tabs" >&3
 }
 
@@ -338,21 +340,21 @@ teardown_file() {
   click_tab "Profile"
   sleep 2
 
-  # Wait for profile form to load. The form content (Description field and
-  # its placeholder) loads async after the tab switch. Retry tab click if
-  # the content does not appear in time.
-  if ! wait_for_text "Description" 15; then
+  # Wait for profile form to load. Use "How they sound" (always-visible label)
+  # instead of the description placeholder (which doesn't appear when description
+  # has content). Retry tab click if content does not appear in time.
+  if ! wait_for_text "How they sound" 15; then
     echo "# Profile content not loaded, retrying tab click..." >&3
     click_tab "Profile"
     sleep 2
-    wait_for_text "Description" 30
+    wait_for_text "How they sound" 30
   fi
-  wait_for_text "What does this agent do" 30
   step_screenshot "profile-before"
 
-  # Fill description with timestamped value
+  # Fill description — find by placeholder attribute (works even if description
+  # already has content from a prior run).
   local test_value="E2E test description $(date +%s)"
-  agent-browser find placeholder "What does this agent do?" fill "$test_value"
+  agent-browser find label "Description" fill "$test_value"
   sleep 1
 
   # Wait for unsaved bar
