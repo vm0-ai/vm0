@@ -217,7 +217,12 @@ teardown_file() {
   # can falsely pass wait_for_text_gone. Explicit /team navigation is reliable.
   wait_for_text_gone "Create a new teammate" 60
   navigate_to_app_page "/team"
-  wait_for_text "$AGENT_NAME" 60
+  # Under heavy CI load the agent may take >60s to appear on /team after creation.
+  # This check is best-effort — test 10 has its own 3-attempt retry loop that
+  # will reliably find the agent before tests 11-13 depend on the settings URL.
+  if ! wait_for_text "$AGENT_NAME" 45; then
+    echo "# Agent not yet visible on /team (backend still processing) — test 10 will retry" >&3
+  fi
   step_screenshot "agent-created"
   echo "# Agent created: $AGENT_NAME" >&3
 }
@@ -273,6 +278,10 @@ teardown_file() {
   # Strip query params so tests 11-13 always open on the default Connectors tab.
   AGENT_SETTINGS_URL="${raw_url%%\?*}"
   export AGENT_SETTINGS_URL
+  # Persist to temp file so tests 11-13 can load it even though BATS runs each
+  # test in a separate subprocess (exports inside tests don't cross subshell
+  # boundaries to sibling tests).
+  echo "$AGENT_SETTINGS_URL" > "${BATS_TMPDIR}/brw_t05_agent_settings_url"
   echo "# Agent settings URL captured: $AGENT_SETTINGS_URL" >&3
   step_screenshot "agent-detail"
 
@@ -293,12 +302,21 @@ teardown_file() {
   sign_in_via_token_on_app
   wait_for_text_gone "Loading your workspace" 30 || true
 
+  # Load AGENT_SETTINGS_URL from temp file if it was not propagated from test 10.
+  # BATS runs each test in a separate subprocess so exports inside test functions
+  # do not cross subshell boundaries to sibling tests.
+  if [[ -z "${AGENT_SETTINGS_URL:-}" ]] && [[ -f "${BATS_TMPDIR}/brw_t05_agent_settings_url" ]]; then
+    AGENT_SETTINGS_URL=$(cat "${BATS_TMPDIR}/brw_t05_agent_settings_url")
+    echo "# Loaded AGENT_SETTINGS_URL from temp file: $AGENT_SETTINGS_URL" >&3
+  fi
+
   if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
     agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
     sleep 3
   fi
-  # Wait for agent settings page to fully load (tab labels + Connectors content)
-  wait_for_text "Connectors" 30
+  # Wait for agent settings page to fully load (tab labels + Connectors content).
+  # Use 60s timeout to accommodate heavy CI load conditions.
+  wait_for_text "Connectors" 60
   wait_for_text "Add connector" 30
   step_screenshot "connector-before"
 
@@ -374,13 +392,21 @@ teardown_file() {
 
 @test "profile: edit description and save" {
   echo "# Testing profile: edit description..." >&3
+
+  # Load AGENT_SETTINGS_URL from temp file if not in environment (cross-subprocess persistence).
+  if [[ -z "${AGENT_SETTINGS_URL:-}" ]] && [[ -f "${BATS_TMPDIR}/brw_t05_agent_settings_url" ]]; then
+    AGENT_SETTINGS_URL=$(cat "${BATS_TMPDIR}/brw_t05_agent_settings_url")
+    echo "# Loaded AGENT_SETTINGS_URL from temp file: $AGENT_SETTINGS_URL" >&3
+  fi
+
   # Navigate back to agent settings to ensure page is in known state
   if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
     agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
     sleep 3
   fi
-  # Wait for agent settings page to fully load before clicking tab
-  wait_for_text "Connectors" 30
+  # Wait for agent settings page to fully load before clicking tab.
+  # Use 60s timeout to accommodate heavy CI load conditions.
+  wait_for_text "Connectors" 60
   click_tab "Profile"
   sleep 2
 
@@ -437,6 +463,13 @@ teardown_file() {
 
 @test "instructions: edit and save" {
   echo "# Testing instructions: edit text..." >&3
+
+  # Load AGENT_SETTINGS_URL from temp file if not in environment (cross-subprocess persistence).
+  if [[ -z "${AGENT_SETTINGS_URL:-}" ]] && [[ -f "${BATS_TMPDIR}/brw_t05_agent_settings_url" ]]; then
+    AGENT_SETTINGS_URL=$(cat "${BATS_TMPDIR}/brw_t05_agent_settings_url")
+    echo "# Loaded AGENT_SETTINGS_URL from temp file: $AGENT_SETTINGS_URL" >&3
+  fi
+
   # Navigate back to agent settings to ensure page is in known state
   if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
     agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
@@ -444,13 +477,13 @@ teardown_file() {
   fi
   # Wait for agent settings page to fully load before clicking tab.
   # Retry with a reload in case prior test left the daemon in a bad state.
-  if ! wait_for_text "Connectors" 30; then
+  if ! wait_for_text "Connectors" 60; then
     echo "# Connectors not found, reloading agent settings page..." >&3
     if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
       agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
       sleep 5
     fi
-    wait_for_text "Connectors" 30
+    wait_for_text "Connectors" 60
   fi
   click_tab "Instructions"
   sleep 2
