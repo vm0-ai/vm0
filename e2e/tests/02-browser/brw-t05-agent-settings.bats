@@ -186,72 +186,34 @@ teardown_file() {
   wait_for_text_gone "Loading your workspace" 20 || true
   echo "# Navigating to agent settings for: $AGENT_NAME..." >&3
 
-  # Navigate to /team and click the agent card to get the settings URL.
-  # The agent card link has a composite accessible name ("Workspace <name> <name>")
-  # so exact-match --name fails. Use multiple click strategies with retry.
-  local agent_clicked=false
+  # Verify agent appeared on /team (confirms backend creation from test 9 completed).
   navigate_to_app_page "/team"
   wait_for_text_gone "Loading your workspace" 10 || true
-
-  # Wait for agent to appear (backend creation may take 30-60s after test 9)
   if ! wait_for_text "$AGENT_NAME" 60; then
     echo "# Agent not found on /team after 60s" >&3
     return 1
   fi
   step_screenshot "team-page"
-  sleep 1  # Let interactive elements settle after text appears
 
-  # Try multiple click strategies for the agent card.
-  # Strategy 1: interactive snapshot ref — finds the heading/link with agent name
-  local snap_i agent_ref=""
-  snap_i=$(agent-browser snapshot -i 2>/dev/null || true)
-  if [[ -n "$snap_i" ]]; then
-    agent_ref=$(echo "$snap_i" | grep -F "$AGENT_NAME" | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
-  fi
-  if [[ -n "$agent_ref" ]]; then
-    echo "# Clicking agent card via snapshot ref: $agent_ref" >&3
-    agent-browser click "$agent_ref" 2>/dev/null && agent_clicked=true
-  fi
-  # Strategy 2: heading role click (the h2 inside the card — bubbles to link)
-  if [[ "$agent_clicked" != "true" ]]; then
-    echo "# Trying heading role click..." >&3
-    agent-browser find role heading click --name "$AGENT_NAME" 2>/dev/null && agent_clicked=true
-  fi
-  # Strategy 3: text-based click
-  if [[ "$agent_clicked" != "true" ]]; then
-    echo "# Trying text click..." >&3
-    agent-browser find text "$AGENT_NAME" click 2>/dev/null && agent_clicked=true
-  fi
-  if [[ "$agent_clicked" != "true" ]]; then
-    echo "# Could not click agent card" >&3
+  # Get agent settings URL via CLI — the agent card link has a composite
+  # accessible name so browser clicking is unreliable. The CLI gives us the
+  # agentId directly, letting us construct the URL without needing to click.
+  local agent_id=""
+  agent_id=$($ZERO_CLI agent list 2>/dev/null | grep -F "$AGENT_NAME" | awk '{print $1}' | head -1)
+  if [[ -z "$agent_id" ]]; then
+    echo "# Agent not found in CLI agent list" >&3
     return 1
   fi
-  # Wait for navigation to agent settings page to complete before capturing URL.
-  # The URL may briefly be "about:blank" while the browser navigates; wait
-  # until it contains "/team/<uuid>" before saving for tests 11-13.
-  local raw_url=""
-  for _w in $(seq 1 15); do
-    raw_url=$(agent-browser get url 2>/dev/null || true)
-    if [[ "$raw_url" == *"/team/"* && "$raw_url" != *"/team" && "$raw_url" != *"/team/" ]]; then
-      break
-    fi
-    sleep 1
-  done
-  # Strip query params so tests 11-13 always open on the default Connectors tab.
-  AGENT_SETTINGS_URL="${raw_url%%\?*}"
+  AGENT_SETTINGS_URL="${APP_URL}/team/${agent_id}"
   export AGENT_SETTINGS_URL
-  # Persist to temp file so tests 11-13 can load it even though BATS runs each
-  # test in a separate subprocess (exports inside tests don't cross subshell
-  # boundaries to sibling tests).
   echo "$AGENT_SETTINGS_URL" > "${BATS_TMPDIR}/brw_t05_agent_settings_url"
-  echo "# Agent settings URL captured: $AGENT_SETTINGS_URL" >&3
-  step_screenshot "agent-detail"
+  echo "# Agent settings URL: $AGENT_SETTINGS_URL" >&3
 
-  # Verify the agent settings page loaded — "Connectors" appears in the
-  # tab navigation regardless of active tab. Make this non-fatal: the main
-  # purpose of this test is to capture AGENT_SETTINGS_URL (already done above);
-  # tests 11-13 will independently verify and navigate the settings page.
-  wait_for_text "Connectors" 20 || echo "# Connectors tab label not yet visible (page loading slowly)" >&3
+  # Navigate to agent settings and verify the page loaded
+  agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
+  sleep 2
+  wait_for_text "Connectors" 20 || echo "# Connectors tab not yet visible (page loading slowly)" >&3
+  step_screenshot "agent-detail"
   echo "# Agent settings URL ready for tests 11-13" >&3
 }
 
@@ -275,33 +237,26 @@ teardown_file() {
     agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
     sleep 3
   else
-    # AGENT_SETTINGS_URL not available (test 10 failed before capturing it).
-    # Recover by navigating to /team and clicking the agent card.
-    echo "# AGENT_SETTINGS_URL not set — recovering via /team navigation..." >&3
-    navigate_to_app_page "/team"
-    wait_for_text_gone "Loading your workspace" 15 || true
-    if wait_for_text "$AGENT_NAME" 60; then
-      if agent-browser find role link click --name "$AGENT_NAME" 2>/dev/null || \
-         agent-browser find text "$AGENT_NAME" click 2>/dev/null; then
-        sleep 3
-        local raw_url
-        raw_url=$(agent-browser get url 2>/dev/null || true)
-        if [[ "$raw_url" == *"/team/"* ]]; then
-          AGENT_SETTINGS_URL="${raw_url%%\?*}"
-          echo "$AGENT_SETTINGS_URL" > "${BATS_TMPDIR}/brw_t05_agent_settings_url"
-          echo "# Recovered AGENT_SETTINGS_URL: $AGENT_SETTINGS_URL" >&3
-        fi
-      fi
+    # AGENT_SETTINGS_URL not available — recover via CLI (same approach as test 10)
+    echo "# AGENT_SETTINGS_URL not set — recovering via CLI..." >&3
+    local agent_id=""
+    agent_id=$($ZERO_CLI agent list 2>/dev/null | grep -F "$AGENT_NAME" | awk '{print $1}' | head -1)
+    if [[ -n "$agent_id" ]]; then
+      AGENT_SETTINGS_URL="${APP_URL}/team/${agent_id}"
+      echo "$AGENT_SETTINGS_URL" > "${BATS_TMPDIR}/brw_t05_agent_settings_url"
+      echo "# Recovered AGENT_SETTINGS_URL via CLI: $AGENT_SETTINGS_URL" >&3
+      agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
+      sleep 3
     fi
   fi
   # Wait for agent settings page to fully load (tab labels visible).
-  wait_for_text "Connectors" 60
+  wait_for_text "Connectors" 30
   # Explicitly click the Connectors tab to ensure its content is active.
   # The default tab may vary — without clicking, "Add connector" content will
   # not be visible even though the tab label appears in the navigation.
   click_tab "Connectors"
   sleep 2
-  wait_for_text "Add connector" 30
+  wait_for_text "Add connector" 20
   step_screenshot "connector-before"
 
   # Click "Add connector" via interactive snapshot ref — the button has composite
