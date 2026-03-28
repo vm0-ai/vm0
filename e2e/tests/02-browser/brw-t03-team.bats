@@ -123,7 +123,10 @@ teardown_file() {
   # can falsely pass wait_for_text_gone. Explicit /team navigation is reliable.
   wait_for_text_gone "Create a new teammate" 30
   navigate_to_app_page "/team"
-  wait_for_text "$AGENT_NAME" 90
+  # Team page has a secondary loading state ("Spinning up the team...") before
+  # the agent list renders. Wait for it to clear before checking for the agent.
+  wait_for_text_gone "Spinning up" 60 || true
+  wait_for_text "$AGENT_NAME" 60
   step_screenshot "after-create"
   echo "# Agent created!" >&3
 }
