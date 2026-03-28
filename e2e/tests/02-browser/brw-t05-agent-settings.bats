@@ -166,12 +166,19 @@ teardown_file() {
   echo "# Navigating to team page..." >&3
   navigate_to_app_page "/team"
 
-  # Retry clicking Create teammate — same approach as brw-t03-team which reliably
-  # handles the case where the button is visible but not yet interactable (e.g.
-  # still loading, or focus is elsewhere). A single click + long wait is fragile.
+  # Wait for "Create teammate" button to appear before clicking — this ensures
+  # the team page has fully loaded. Under parallel CI load, workspace init can
+  # take 60-90s. Only then retry the click (button may be briefly unresponsive
+  # even after appearing due to React hydration completing).
+  echo "# Waiting for Create teammate button to be ready..." >&3
+  if ! wait_for_text "Create teammate" 100; then
+    echo "# Create teammate button did not appear after 100s" >&3
+    return 1
+  fi
+
   echo "# Clicking Create teammate (with retry)..." >&3
   local btn_clicked=false
-  for _i in $(seq 1 30); do
+  for _i in $(seq 1 10); do
     if agent-browser find role button click --name "Create teammate" 2>/dev/null; then
       btn_clicked=true
       break
@@ -179,7 +186,7 @@ teardown_file() {
     sleep 1
   done
   if [[ "$btn_clicked" != "true" ]]; then
-    echo "# Could not click Create teammate button after 30 attempts" >&3
+    echo "# Could not click Create teammate button after 10 attempts" >&3
     agent-browser snapshot 2>/dev/null | head -20 >&3 || true
     return 1
   fi
@@ -279,47 +286,22 @@ teardown_file() {
   local url_file
   url_file="$(_agent_url_file)"
   echo "# agent_url_file: $url_file (exists: $(test -f "$url_file" && echo yes || echo no))" >&3
-  if [[ -f "$url_file" ]]; then
-    AGENT_SETTINGS_URL=$(tr -d '[:space:]' < "$url_file")
-    echo "# Loaded AGENT_SETTINGS_URL from temp file: $AGENT_SETTINGS_URL" >&3
+  if [[ ! -f "$url_file" ]]; then
+    # Test 9 did not write the URL — likely failed to create the agent.
+    # Fail immediately to avoid a 80s+ timeout waiting for a non-existent agent.
+    echo "# Agent URL temp file not found — test 9 may have failed to create the agent" >&3
+    return 1
   fi
+  AGENT_SETTINGS_URL=$(tr -d '[:space:]' < "$url_file")
+  echo "# Loaded AGENT_SETTINGS_URL from temp file: $AGENT_SETTINGS_URL" >&3
 
-  if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
-    # URL from temp file — navigate directly and close any stale dialogs.
-    echo "# Navigating directly to agent settings: $AGENT_SETTINGS_URL" >&3
-    agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
-    sleep 3
-    # Close any stale dialogs (e.g. ConnectModal for an already-connected service).
-    agent-browser press "Escape" 2>/dev/null || true
-    sleep 1
-  else
-    # URL not in temp file — find agent on /team page.
-    echo "# Agent settings URL not available, finding via /team..." >&3
-    navigate_to_app_page "/team"
-    wait_for_text "$AGENT_NAME" 40 || navigate_to_app_page "/team"
-    wait_for_text "$AGENT_NAME" 40 || true
-    step_screenshot "team-page"
-    # Use find-text click which handles SPA navigation better than ref-based click.
-    # After click, poll for URL to transition away from about:blank (transient state).
-    agent-browser find text "$AGENT_NAME" click 2>/dev/null || \
-      agent-browser find role link click --name "$AGENT_NAME" 2>/dev/null || true
-    local nav_url=""
-    for _w in $(seq 1 15); do
-      sleep 1
-      nav_url=$(agent-browser get url 2>/dev/null | tr -d '[:space:]' || true)
-      if [[ "$nav_url" =~ /(talk)/[a-zA-Z0-9] ]]; then
-        break
-      fi
-    done
-    echo "# URL after navigation: $nav_url" >&3
-    if [[ "$nav_url" =~ /(talk)/[a-zA-Z0-9] ]]; then
-      AGENT_SETTINGS_URL="$nav_url"
-      echo "$AGENT_SETTINGS_URL" > "$url_file" 2>/dev/null || true
-    else
-      echo "# Could not navigate to agent settings page" >&3
-      return 1
-    fi
-  fi
+  # Navigate directly to agent settings and close any stale dialogs.
+  echo "# Navigating directly to agent settings: $AGENT_SETTINGS_URL" >&3
+  agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
+  sleep 3
+  # Close any stale dialogs (e.g. ConnectModal for an already-connected service).
+  agent-browser press "Escape" 2>/dev/null || true
+  sleep 1
 
   # Verify the page loaded and we're on the correct agent's settings page.
   wait_for_text "Connectors" 20 || echo "# Connectors tab not yet visible (page loading slowly)" >&3
