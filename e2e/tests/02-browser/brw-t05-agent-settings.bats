@@ -195,19 +195,21 @@ teardown_file() {
   fi
   step_screenshot "team-page"
 
-  # Get agent settings URL via CLI — the agent card link has a composite
-  # accessible name so browser clicking is unreliable. The CLI gives us the
-  # agentId directly, letting us construct the URL without needing to click.
-  local agent_id=""
-  agent_id=$($ZERO_CLI agent list 2>/dev/null | grep -F "$AGENT_NAME" | awk '{print $1}' | head -1)
-  if [[ -z "$agent_id" ]]; then
-    echo "# Agent not found in CLI agent list" >&3
+  # Get agent settings URL via JS eval — query the DOM directly for the link
+  # href. The agent card link has a composite accessible name ("Workspace
+  # <name> <name>") that makes accessibility-based clicking unreliable.
+  # eval finds the href attribute even when the link is not aria-accessible.
+  local agent_href=""
+  agent_href=$(agent-browser eval "Array.from(document.querySelectorAll('a[href*=\"/team/\"]')).find(a=>a.textContent.includes('${AGENT_NAME}'))?.getAttribute('href')??''" 2>/dev/null | tr -d '[:space:]' || true)
+  if [[ -n "$agent_href" && "$agent_href" != "''" && "$agent_href" != "null" ]]; then
+    AGENT_SETTINGS_URL="${APP_URL}${agent_href}"
+    export AGENT_SETTINGS_URL
+    echo "$AGENT_SETTINGS_URL" > "${BATS_TMPDIR}/brw_t05_agent_settings_url"
+    echo "# Agent settings URL via eval: $AGENT_SETTINGS_URL" >&3
+  else
+    echo "# Could not find agent link via eval" >&3
     return 1
   fi
-  AGENT_SETTINGS_URL="${APP_URL}/team/${agent_id}"
-  export AGENT_SETTINGS_URL
-  echo "$AGENT_SETTINGS_URL" > "${BATS_TMPDIR}/brw_t05_agent_settings_url"
-  echo "# Agent settings URL: $AGENT_SETTINGS_URL" >&3
 
   # Navigate to agent settings and verify the page loaded
   agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
@@ -237,14 +239,16 @@ teardown_file() {
     agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
     sleep 3
   else
-    # AGENT_SETTINGS_URL not available — recover via CLI (same approach as test 10)
-    echo "# AGENT_SETTINGS_URL not set — recovering via CLI..." >&3
-    local agent_id=""
-    agent_id=$($ZERO_CLI agent list 2>/dev/null | grep -F "$AGENT_NAME" | awk '{print $1}' | head -1)
-    if [[ -n "$agent_id" ]]; then
-      AGENT_SETTINGS_URL="${APP_URL}/team/${agent_id}"
+    # AGENT_SETTINGS_URL not available — recover via JS eval on /team page
+    echo "# AGENT_SETTINGS_URL not set — recovering via /team eval..." >&3
+    navigate_to_app_page "/team"
+    wait_for_text "$AGENT_NAME" 30 || true
+    local agent_href=""
+    agent_href=$(agent-browser eval "Array.from(document.querySelectorAll('a[href*=\"/team/\"]')).find(a=>a.textContent.includes('${AGENT_NAME}'))?.getAttribute('href')??''" 2>/dev/null | tr -d '[:space:]' || true)
+    if [[ -n "$agent_href" && "$agent_href" != "''" && "$agent_href" != "null" ]]; then
+      AGENT_SETTINGS_URL="${APP_URL}${agent_href}"
       echo "$AGENT_SETTINGS_URL" > "${BATS_TMPDIR}/brw_t05_agent_settings_url"
-      echo "# Recovered AGENT_SETTINGS_URL via CLI: $AGENT_SETTINGS_URL" >&3
+      echo "# Recovered AGENT_SETTINGS_URL via eval: $AGENT_SETTINGS_URL" >&3
       agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
       sleep 3
     fi
