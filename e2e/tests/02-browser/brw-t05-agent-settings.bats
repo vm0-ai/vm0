@@ -172,6 +172,12 @@ teardown_file() {
   echo "# Waiting for workspace init to complete..." >&3
   wait_for_text_gone "Loading your workspace" 120 || true
 
+  # The team page has a secondary loading state ("Spinning up the team...")
+  # that appears after the global workspace overlay clears and takes additional
+  # time before the agent list and "Create teammate" button are rendered.
+  echo "# Waiting for team page data to load..." >&3
+  wait_for_text_gone "Spinning up" 60 || true
+
   # Wait for "Create teammate" button, dismissing the cookie banner on each
   # iteration. The cookie consent dialog (Radix UI) appears post-workspace-init
   # with a short delay — aria-hiding the page content — and a one-shot dismiss
