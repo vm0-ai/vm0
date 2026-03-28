@@ -124,7 +124,12 @@ teardown_file() {
   wait_for_text_gone "Create a new teammate" 30
   navigate_to_app_page "/team"
   # Team page has a secondary loading state ("Spinning up the team...") before
-  # the agent list renders. Wait for it to clear before checking for the agent.
+  # the agent list renders. Use two-phase wait: first wait for the state to
+  # START (avoids firing wait_for_text_gone before it appears), then for it
+  # to END. Without the leading wait_for_text, wait_for_text_gone can return
+  # immediately if "Spinning up" hasn't appeared yet, and the agent check
+  # would then run while "Spinning up" is aria-hiding the agent list.
+  wait_for_text "Spinning up" 10 || true
   wait_for_text_gone "Spinning up" 60 || true
   wait_for_text "$AGENT_NAME" 60
   step_screenshot "after-create"
