@@ -224,7 +224,7 @@ export function ZeroSessionChatPage({
       {/* Scrollable area — messages + sticky composer share the same scroll context */}
       <div className="flex-1 overflow-auto flex flex-col min-h-0">
         <main className="flex-1 px-4 sm:px-6 py-4 items-center">
-          <div className="w-full max-w-[900px] mx-auto flex flex-1 flex-col gap-6 pb-4">
+          <div className="w-full max-w-[900px] mx-auto flex flex-1 flex-col gap-6 pb-4 overflow-visible">
             {sessionError && (
               <div className="flex-1 flex items-center justify-center py-16">
                 <div className="flex items-center gap-2 text-destructive">
@@ -287,7 +287,7 @@ function ChatSkeleton() {
         <Skeleton className="h-10 w-[60%] rounded-xl" />
       </div>
       {/* Assistant bubble skeleton */}
-      <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 items-start">
+      <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 -ml-[38px] sm:-ml-[46px] items-start">
         <Skeleton className="h-7 w-7 sm:h-9 sm:w-9 rounded-xl" />
         <div className="flex flex-col gap-2">
           <Skeleton className="h-4 w-[90%] rounded-lg" />
@@ -300,7 +300,7 @@ function ChatSkeleton() {
         <Skeleton className="h-10 w-[45%] rounded-xl" />
       </div>
       {/* Assistant bubble skeleton */}
-      <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 items-start">
+      <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 -ml-[38px] sm:-ml-[46px] items-start">
         <Skeleton className="h-7 w-7 sm:h-9 sm:w-9 rounded-xl" />
         <div className="flex flex-col gap-2">
           <Skeleton className="h-4 w-[85%] rounded-lg" />
@@ -380,7 +380,7 @@ function UserMessage({ message }: { message: ZeroChatMessage }) {
 
   return (
     <>
-      <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 items-start animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 -ml-[38px] sm:-ml-[46px] items-start animate-in fade-in slide-in-from-bottom-2 duration-300">
         <div className="w-7 h-7 sm:w-9 sm:h-9 shrink-0" />
         <div className="flex flex-col items-end min-w-0">
           <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-sm leading-relaxed break-words overflow-hidden">
@@ -643,48 +643,45 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
   };
 
   const logButton = message.runId ? (
-    <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5">
-      <div />
-      <div className="flex py-2 gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+    <div className="flex py-2 -ml-1 gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+      <TooltipProvider delayDuration={300}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Link
+              pathname="/activity/:runId"
+              options={{ pathParams: { runId: message.runId } }}
+              className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
+              aria-label="View run logs"
+            >
+              <IconChartLine size={18} stroke={1.5} />
+            </Link>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">View activity logs</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      {message.content && (
         <TooltipProvider delayDuration={300}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Link
-                pathname="/activity/:runId"
-                options={{ pathParams: { runId: message.runId } }}
+              <button
+                type="button"
+                onClick={handleCopy}
                 className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
-                aria-label="View run logs"
+                aria-label="Copy message"
               >
-                <IconChartLine size={18} stroke={1.5} />
-              </Link>
+                {copied ? (
+                  <IconCheck size={18} stroke={1.5} />
+                ) : (
+                  <IconCopy size={18} stroke={1.5} />
+                )}
+              </button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">View activity logs</TooltipContent>
+            <TooltipContent side="bottom">
+              {copied ? "Copied!" : "Copy message"}
+            </TooltipContent>
           </Tooltip>
         </TooltipProvider>
-        {message.content && (
-          <TooltipProvider delayDuration={300}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={handleCopy}
-                  className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
-                  aria-label="Copy message"
-                >
-                  {copied ? (
-                    <IconCheck size={18} stroke={1.5} />
-                  ) : (
-                    <IconCopy size={18} stroke={1.5} />
-                  )}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                {copied ? "Copied!" : "Copy message"}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
-      </div>
+      )}
     </div>
   ) : null;
 
@@ -705,7 +702,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
       message.error.includes("Invalid signature in thinking block");
     return (
       <div className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
-        <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 items-start">
+        <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 -ml-[38px] sm:-ml-[46px] items-start">
           {avatar}
           <div className="zero-chat-bubble-assistant px-0 pt-4 text-sm leading-relaxed min-w-0 break-words">
             {hasSummaries && (
@@ -769,7 +766,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
   if (message.content) {
     return (
       <div className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
-        <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 items-start">
+        <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 -ml-[38px] sm:-ml-[46px] items-start">
           {avatar}
           <div className="zero-chat-bubble-assistant px-0 pt-4 text-sm leading-relaxed min-w-0 break-words">
             {hasSummaries && (
@@ -795,7 +792,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
   // Thinking / loading state — show live run activity
   return (
     <div className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
-      <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 items-start">
+      <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 -ml-[38px] sm:-ml-[46px] items-start">
         {avatar}
         <div className="zero-chat-bubble-assistant rounded-xl py-4 text-sm leading-relaxed min-w-0 overflow-hidden">
           <RunActivityLine />
