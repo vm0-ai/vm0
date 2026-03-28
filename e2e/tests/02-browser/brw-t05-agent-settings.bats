@@ -206,25 +206,32 @@ teardown_file() {
   # Test 9 ends with the browser on /team with the agent visible, so a simple
   # navigate_to_app_page is sufficient.
   echo "# Navigating to agent settings for: $AGENT_NAME..." >&3
-  navigate_to_app_page "/team"
-  wait_for_text_gone "Loading your workspace" 15 || true
-  wait_for_text "$AGENT_NAME" 30
-  step_screenshot "team-page"
 
-  # Click the agent card — it should be immediately clickable since we just
-  # verified the name is visible. Use role-based find (agent card is a link).
-  echo "# Clicking agent card: $AGENT_NAME..." >&3
+  # The agent name may appear in a toast before the team list refreshes.
+  # Navigate with reload-based retry until the agent CARD is clickable.
   local agent_clicked=false
-  for _i in $(seq 1 15); do
+  for _attempt in 1 2 3; do
+    navigate_to_app_page "/team"
+    wait_for_text_gone "Loading your workspace" 15 || true
+    if ! wait_for_text "$AGENT_NAME" 25; then
+      echo "# Attempt ${_attempt}: agent not visible yet, retrying..." >&3
+      continue
+    fi
+    step_screenshot "team-page"
+    # Try role link first (precise), then text fallback
     if agent-browser find role link click --name "$AGENT_NAME" 2>/dev/null; then
       agent_clicked=true
       break
     fi
-    sleep 1
+    if agent-browser find text "$AGENT_NAME" click 2>/dev/null; then
+      agent_clicked=true
+      break
+    fi
+    echo "# Attempt ${_attempt}: agent visible but not yet clickable, retrying..." >&3
   done
   if [[ "$agent_clicked" != "true" ]]; then
-    echo "# Role-based link click failed, trying text find..." >&3
-    agent-browser find text "$AGENT_NAME" click
+    echo "# Could not click agent card after 3 attempts" >&3
+    return 1
   fi
   sleep 2
 
