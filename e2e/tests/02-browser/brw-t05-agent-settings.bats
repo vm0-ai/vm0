@@ -172,9 +172,15 @@ teardown_file() {
   # present before accepting the button as ready — "Spinning up the team..."
   # can appear AFTER the button is in the DOM (but before the dialog is
   # interactive), so we must filter it out in addition to workspace loading.
+  # 150-iteration loop (~225s max at 1.5s/iter) to cover late-starting
+  # workspace loads: the loading overlays may appear after navigate settles,
+  # outside the three-phase wait windows above. The loop skips iterations
+  # while any overlay is active and breaks as soon as the button is ready.
+  # Budget: 300s BATS_TEST_TIMEOUT minus 5s navigate minus 65s agent creation
+  # = 230s available, so 150 iterations fits with margin.
   echo "# Waiting for Create teammate button to be ready..." >&3
   local found_btn=false
-  for _w in $(seq 1 60); do
+  for _w in $(seq 1 150); do
     dismiss_cookie_banner
     local snap
     snap=$(agent-browser snapshot 2>/dev/null || true)
@@ -190,7 +196,7 @@ teardown_file() {
     sleep 1
   done
   if [[ "$found_btn" != "true" ]]; then
-    echo "# Create teammate button did not appear after 40s" >&3
+    echo "# Create teammate button did not appear after 150s" >&3
     agent-browser snapshot 2>/dev/null | head -30 >&3 || true
     return 1
   fi
