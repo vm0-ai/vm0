@@ -183,48 +183,54 @@ teardown_file() {
   restart_browser_daemon
   create_clerk_sign_in_token
   sign_in_via_token_on_app
-  wait_for_text_gone "Loading your workspace" 30 || true
+  wait_for_text_gone "Loading your workspace" 20 || true
   echo "# Navigating to agent settings for: $AGENT_NAME..." >&3
 
-  # Navigate to /team and wait for the agent to appear — backend creation can
-  # take 30-90s after the dialog closes. Use a reload-based retry with a
-  # long per-attempt timeout (90s on first attempt, 30s on second) so slow
-  # CI environments do not exhaust the budget prematurely.
+  # Navigate to /team and click the agent card to get the settings URL.
+  # The agent card link has a composite accessible name ("Workspace <name> <name>")
+  # so exact-match --name fails. Use multiple click strategies with retry.
   local agent_clicked=false
   navigate_to_app_page "/team"
   wait_for_text_gone "Loading your workspace" 10 || true
-  for _attempt in 1 2; do
-    local wait_secs=90
-    if [[ "$_attempt" -gt 1 ]]; then
-      wait_secs=30
-      navigate_to_app_page "/team"
-      wait_for_text_gone "Loading your workspace" 10 || true
-    fi
-    if ! wait_for_text "$AGENT_NAME" "$wait_secs"; then
-      echo "# Attempt ${_attempt}: agent not visible after ${wait_secs}s, retrying..." >&3
-      continue
-    fi
-    step_screenshot "team-page"
-    # Try role link first (precise), then text fallback
-    if agent-browser find role link click --name "$AGENT_NAME" 2>/dev/null; then
-      agent_clicked=true
-      break
-    fi
-    if agent-browser find text "$AGENT_NAME" click 2>/dev/null; then
-      agent_clicked=true
-      break
-    fi
-    echo "# Attempt ${_attempt}: agent visible but not yet clickable, retrying..." >&3
-  done
+
+  # Wait for agent to appear (backend creation may take 30-60s after test 9)
+  if ! wait_for_text "$AGENT_NAME" 60; then
+    echo "# Agent not found on /team after 60s" >&3
+    return 1
+  fi
+  step_screenshot "team-page"
+  sleep 1  # Let interactive elements settle after text appears
+
+  # Try multiple click strategies for the agent card.
+  # Strategy 1: interactive snapshot ref — finds the heading/link with agent name
+  local snap_i agent_ref=""
+  snap_i=$(agent-browser snapshot -i 2>/dev/null || true)
+  if [[ -n "$snap_i" ]]; then
+    agent_ref=$(echo "$snap_i" | grep -F "$AGENT_NAME" | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+  fi
+  if [[ -n "$agent_ref" ]]; then
+    echo "# Clicking agent card via snapshot ref: $agent_ref" >&3
+    agent-browser click "$agent_ref" 2>/dev/null && agent_clicked=true
+  fi
+  # Strategy 2: heading role click (the h2 inside the card — bubbles to link)
   if [[ "$agent_clicked" != "true" ]]; then
-    echo "# Could not click agent card after 2 attempts" >&3
+    echo "# Trying heading role click..." >&3
+    agent-browser find role heading click --name "$AGENT_NAME" 2>/dev/null && agent_clicked=true
+  fi
+  # Strategy 3: text-based click
+  if [[ "$agent_clicked" != "true" ]]; then
+    echo "# Trying text click..." >&3
+    agent-browser find text "$AGENT_NAME" click 2>/dev/null && agent_clicked=true
+  fi
+  if [[ "$agent_clicked" != "true" ]]; then
+    echo "# Could not click agent card" >&3
     return 1
   fi
   # Wait for navigation to agent settings page to complete before capturing URL.
   # The URL may briefly be "about:blank" while the browser navigates; wait
   # until it contains "/team/<uuid>" before saving for tests 11-13.
   local raw_url=""
-  for _w in $(seq 1 20); do
+  for _w in $(seq 1 15); do
     raw_url=$(agent-browser get url 2>/dev/null || true)
     if [[ "$raw_url" == *"/team/"* && "$raw_url" != *"/team" && "$raw_url" != *"/team/" ]]; then
       break
@@ -245,7 +251,7 @@ teardown_file() {
   # tab navigation regardless of active tab. Make this non-fatal: the main
   # purpose of this test is to capture AGENT_SETTINGS_URL (already done above);
   # tests 11-13 will independently verify and navigate the settings page.
-  wait_for_text "Connectors" 60 || echo "# Connectors tab label not yet visible (page loading slowly)" >&3
+  wait_for_text "Connectors" 20 || echo "# Connectors tab label not yet visible (page loading slowly)" >&3
   echo "# Agent settings URL ready for tests 11-13" >&3
 }
 
