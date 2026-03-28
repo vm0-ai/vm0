@@ -172,16 +172,15 @@ teardown_file() {
   # (same pattern as brw-t03 which uses the same dialog and is reliable).
   step_screenshot "create-dialog-filled"
 
-  # Click Create button via snapshot ref
+  # Click Create button in dialog via role-based find.
+  # Snapshot-ref approach is fragile: after fill+screenshot, React re-renders
+  # and refs become stale; the stale click silently fails, no agent is created.
+  # Role-based find with name="Create" matches only the dialog's Create button
+  # (not "Create teammate" which has a different accessible name).
   echo "# Clicking Create button in dialog..." >&3
-  local snap_i create_ref
-  snap_i=$(agent-browser snapshot -i 2>/dev/null || true)
-  create_ref=$(echo "$snap_i" | grep -E 'button "Create"' | grep -v 'teammate' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
-  if [[ -n "$create_ref" ]]; then
-    agent-browser click "$create_ref"
-  else
-    echo "# Create button ref not found in snapshot, trying role-based click..." >&3
-    agent-browser find role button click --name "Create"
+  if ! agent-browser find role button click --name "Create" 2>/dev/null; then
+    echo "# Role-based click failed, trying text-based fallback..." >&3
+    agent-browser find text "Create" click
   fi
 
   # Wait for dialog to close, then navigate to /team to verify the agent.
