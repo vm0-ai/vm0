@@ -161,13 +161,17 @@ teardown_file() {
   navigate_to_app_page "/team"
   dismiss_cookie_banner
 
-  # Wait for "Create teammate" button to appear before clicking — this ensures
-  # the team page has fully loaded. Under parallel CI load, workspace init can
-  # take 60-90s. Only then retry the click (button may be briefly unresponsive
-  # even after appearing due to React hydration completing).
+  # Workspace initialisation can take 60-120s under parallel CI load — the
+  # team page renders a loading overlay until org data is ready, which also
+  # hides the "Create teammate" button. Wait for the overlay to clear first
+  # so the subsequent button check doesn't race against workspace init.
+  echo "# Waiting for workspace init to complete..." >&3
+  wait_for_text_gone "Loading your workspace" 120 || true
+
+  # Now wait for "Create teammate" button with a shorter deadline.
   echo "# Waiting for Create teammate button to be ready..." >&3
-  if ! wait_for_text "Create teammate" 100; then
-    echo "# Create teammate button did not appear after 100s" >&3
+  if ! wait_for_text "Create teammate" 30; then
+    echo "# Create teammate button did not appear after 30s" >&3
     return 1
   fi
 
