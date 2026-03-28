@@ -129,29 +129,24 @@ teardown_file() {
   # Fresh sign-in workspace initialization can take >20s under parallel CI load.
   local lead_found=false
   for _attempt in 1 2; do
-    if wait_for_text "Lead" 25; then
+    if wait_for_text "Lead" 20; then
       lead_found=true
       break
     fi
     echo "# Attempt ${_attempt}: Lead not found, reloading /team..." >&3
     navigate_to_app_page "/team"
-    wait_for_text_gone "Loading your workspace" 15 || true
+    wait_for_text_gone "Loading your workspace" 10 || true
   done
   if [[ "$lead_found" != "true" ]]; then
-    echo "# Lead badge not found after 3 attempts" >&3
+    echo "# Lead badge not found after 2 attempts" >&3
     return 1
   fi
   step_screenshot "team-page"
 
-  # Click "Create teammate" — retry up to 90 times (1s sleep each) which covers
-  # both waiting for the button to render AND waiting for it to become enabled.
-  # Combining the wait + click into one loop avoids a 60s text-check followed by
-  # a separate 30s click-retry, saving time under heavy CI load where snapshots
-  # can be slow and the button may appear in the accessibility tree before
-  # wait_for_text (which polls non-interactive snapshots) detects its text.
+  # Click "Create teammate" — retry up to 30 times (same budget as brw-t03).
   echo "# Clicking Create teammate..." >&3
   local btn_clicked=false
-  for _i in $(seq 1 90); do
+  for _i in $(seq 1 30); do
     if agent-browser find role button click --name "Create teammate" 2>/dev/null; then
       btn_clicked=true
       break
@@ -159,64 +154,45 @@ teardown_file() {
     sleep 1
   done
   if [[ "$btn_clicked" != "true" ]]; then
-    echo "# Failed to click Create teammate button after 90s" >&3
+    echo "# Failed to click Create teammate button after 30s" >&3
     return 1
   fi
   sleep 1
 
   # Wait for dialog (allow extra time since parallel CI load can slow rendering)
-  wait_for_text "Create a new teammate" 30
+  wait_for_text "Create a new teammate" 20
   step_screenshot "create-dialog"
 
   # Fill agent name
   echo "# Filling agent name: $AGENT_NAME" >&3
   agent-browser find placeholder "e.g. Research Assistant" fill "$AGENT_NAME"
   sleep 0.5
-  # Take screenshot first to let React settle after fill before snapshotting
   step_screenshot "create-dialog-filled"
 
-  # Click the Create button via interactive snapshot ref — more reliable than
-  # role-based find since it avoids any accessible-name normalization issues.
+  # Click the Create button using --exact to avoid partial-matching the background
+  # "Create teammate" button (which would dismiss the modal). Same approach as brw-t03.
   echo "# Clicking Create button in dialog..." >&3
-  local snap_i create_ref
-  snap_i=$(agent-browser snapshot -i)
-  # Match "Create" button only — the line format is: '- button "Create" [ref=eN]'
-  # Using ' \[' after the closing quote prevents matching "Create teammate" or
-  # "Creating..." buttons.
-  create_ref=$(echo "$snap_i" | grep -E '^- button "Create" \[' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
-  if [[ -n "$create_ref" ]]; then
-    agent-browser click "$create_ref"
-  else
-    # Fallback: role-based find without exact (the dialog's Create button may have
-    # extra whitespace or aria-label causing exact match to fail)
+  local create_clicked=false
+  for _i in $(seq 1 10); do
+    if agent-browser find role button click --name "Create" --exact 2>/dev/null; then
+      create_clicked=true
+      break
+    fi
+    sleep 1
+  done
+  if [[ "$create_clicked" != "true" ]]; then
+    # Fallback without --exact in case accessible name includes extra text
     agent-browser find role button click --name "Create" 2>/dev/null || true
   fi
   sleep 1
 
-  # Verify the click triggered the creation (button changes to "Creating...").
-  # Retry via snapshot ref if not — the first click may have missed the button.
-  if ! wait_for_text "Creating..." 5 2>/dev/null; then
-    if agent-browser find text "Create a new teammate" 2>/dev/null; then
-      echo "# First click may not have triggered — retrying via snapshot ref..." >&3
-      local retry_snap retry_ref
-      retry_snap=$(agent-browser snapshot -i)
-      retry_ref=$(echo "$retry_snap" | grep -E '^- button "Create" \[' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
-      if [[ -n "$retry_ref" ]]; then
-        agent-browser click "$retry_ref"
-      fi
-      sleep 1
-    fi
-  fi
-
   # Wait for dialog to close, then navigate to /team to verify the agent.
-  # Creation may redirect to agent settings; empty snapshots (daemon crash)
-  # can falsely pass wait_for_text_gone. Explicit /team navigation is reliable.
-  wait_for_text_gone "Create a new teammate" 60
+  # Non-fatal: test 10 independently retries finding the agent on /team.
+  wait_for_text_gone "Create a new teammate" 30 || echo "# Dialog close timed out — continuing" >&3
   navigate_to_app_page "/team"
-  # Under heavy CI load the agent may take >60s to appear on /team after creation.
-  # This check is best-effort — test 10 has its own 3-attempt retry loop that
-  # will reliably find the agent before tests 11-13 depend on the settings URL.
-  if ! wait_for_text "$AGENT_NAME" 45; then
+  # Under heavy CI load the agent may take >30s to appear after creation.
+  # This check is best-effort — test 10 has its own retry loop.
+  if ! wait_for_text "$AGENT_NAME" 30; then
     echo "# Agent not yet visible on /team (backend still processing) — test 10 will retry" >&3
   fi
   step_screenshot "agent-created"
