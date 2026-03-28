@@ -281,11 +281,12 @@ teardown_file() {
   echo "# Agent settings URL captured: $AGENT_SETTINGS_URL" >&3
   step_screenshot "agent-detail"
 
-  # Wait for agent settings page to load — check for tab labels which are
-  # always visible regardless of active tab. "Connectors" appears in the
-  # tab navigation; "Add connector" is only visible when Connectors tab is active.
-  wait_for_text "Connectors" 60
-  echo "# Agent settings page loaded with all tabs" >&3
+  # Verify the agent settings page loaded — "Connectors" appears in the
+  # tab navigation regardless of active tab. Make this non-fatal: the main
+  # purpose of this test is to capture AGENT_SETTINGS_URL (already done above);
+  # tests 11-13 will independently verify and navigate the settings page.
+  wait_for_text "Connectors" 60 || echo "# Connectors tab label not yet visible (page loading slowly)" >&3
+  echo "# Agent settings URL ready for tests 11-13" >&3
 }
 
 @test "connector: add firecrawl via dialog" {
@@ -310,9 +311,14 @@ teardown_file() {
     agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
     sleep 3
   fi
-  # Wait for agent settings page to fully load (tab labels + Connectors content).
+  # Wait for agent settings page to fully load (tab labels visible).
   # Use 60s timeout to accommodate heavy CI load conditions.
   wait_for_text "Connectors" 60
+  # Explicitly click the Connectors tab to ensure its content is active.
+  # The default tab may be Profile or another tab — without clicking, "Add
+  # connector" content will not be visible even though the tab label is.
+  click_tab "Connectors"
+  sleep 2
   wait_for_text "Add connector" 30
   step_screenshot "connector-before"
 
@@ -395,9 +401,11 @@ teardown_file() {
     echo "# Loaded AGENT_SETTINGS_URL from temp file: $AGENT_SETTINGS_URL" >&3
   fi
 
-  # Navigate back to agent settings to ensure page is in known state
+  # Navigate back to agent settings to ensure page is in known state.
+  # Use || true so a daemon error (e.g. daemon not yet running after test 11
+  # failure) does not cause an immediate test failure before the retry below.
   if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
-    agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
+    agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors || true
     sleep 3
   fi
   # Wait for agent settings page to fully load before clicking tab.
@@ -466,9 +474,10 @@ teardown_file() {
     echo "# Loaded AGENT_SETTINGS_URL from temp file: $AGENT_SETTINGS_URL" >&3
   fi
 
-  # Navigate back to agent settings to ensure page is in known state
+  # Navigate back to agent settings to ensure page is in known state.
+  # Use || true so a daemon error does not cause an immediate test failure.
   if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
-    agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
+    agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors || true
     sleep 3
   fi
   # Wait for agent settings page to fully load before clicking tab.
@@ -476,7 +485,7 @@ teardown_file() {
   if ! wait_for_text "Connectors" 60; then
     echo "# Connectors not found, reloading agent settings page..." >&3
     if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
-      agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
+      agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors || true
       sleep 5
     fi
     wait_for_text "Connectors" 60
