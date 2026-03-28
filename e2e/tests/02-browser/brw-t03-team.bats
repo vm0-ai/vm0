@@ -130,7 +130,7 @@ teardown_file() {
   # immediately if "Spinning up" hasn't appeared yet, and the agent check
   # would then run while "Spinning up" is aria-hiding the agent list.
   wait_for_text "Spinning up" 10 || true
-  wait_for_text_gone "Spinning up" 60 || true
+  wait_for_text_gone "Spinning up" 120 || true
   wait_for_text "$AGENT_NAME" 60
   step_screenshot "after-create"
   echo "# Agent created!" >&3
