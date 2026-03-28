@@ -243,9 +243,15 @@ teardown_file() {
 }
 
 @test "connector: add firecrawl via dialog" {
-  # Connectors tab is already selected by default after navigating to agent settings.
-  # Navigate back to ensure we start from a clean page state.
+  # Restart daemon to ensure clean state — test 10 may have left the daemon
+  # in an unresponsive state after navigating around the settings page.
+  # A fresh daemon + sign-in guarantees tests 11-13 start from a stable baseline.
   echo "# Testing connector: add Firecrawl..." >&3
+  restart_browser_daemon
+  create_clerk_sign_in_token
+  sign_in_via_token_on_app
+  wait_for_text_gone "Loading your workspace" 30 || true
+
   if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
     agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
     sleep 3
@@ -259,8 +265,8 @@ teardown_file() {
   agent-browser find text "Add connector" click
   sleep 2
 
-  # Wait for add connector dialog
-  wait_for_text "Add connector to" 15
+  # Wait for add connector dialog — can take >15s under parallel CI load
+  wait_for_text "Add connector to" 30
   step_screenshot "connector-dialog"
 
   # Search for Firecrawl
