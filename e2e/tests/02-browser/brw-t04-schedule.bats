@@ -106,9 +106,10 @@ teardown_file() {
   sleep 1
 
   # Wait for dialog to appear — verify by finding the Prompt textarea label
-  # (more specific than text search which could match existing schedule prompts)
+  # (associated via htmlFor in the schedule dialog). Give up to 30s for the
+  # dialog to render under parallel CI load.
   local dialog_open=false
-  for _i in $(seq 1 15); do
+  for _i in $(seq 1 30); do
     if agent-browser find label "Prompt" 2>/dev/null; then
       dialog_open=true
       break

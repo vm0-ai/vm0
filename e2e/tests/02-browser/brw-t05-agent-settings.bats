@@ -276,8 +276,10 @@ teardown_file() {
   wait_for_text "Add connector" 30
   step_screenshot "connector-before"
 
-  # Click "Add connector"
-  agent-browser find text "Add connector" click
+  # Click "Add connector" — use role-based find since the button has composite
+  # text ("Add connector\nBrowse 100+ popular connectors"); find text only matches
+  # elements whose full text equals "Add connector", which fails on this button.
+  agent-browser find role button click --name "Add connector"
   sleep 2
 
   # Wait for add connector dialog — can take >15s under parallel CI load
@@ -357,10 +359,19 @@ teardown_file() {
   fi
   step_screenshot "profile-before"
 
-  # Fill description — find by placeholder attribute (works even if description
-  # already has content from a prior run).
+  # Fill description via interactive snapshot ref — the textarea uses aria-label
+  # "Description" but InlineSettingsRow renders a <p>, not a <label>, so
+  # find-label is unreliable. Ref-based fill is robust across both cases.
   local test_value="E2E test description $(date +%s)"
-  agent-browser find label "Description" fill "$test_value"
+  local snap_i desc_ref
+  snap_i=$(agent-browser snapshot -i)
+  desc_ref=$(echo "$snap_i" | grep -E '"Description"' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+  if [[ -n "$desc_ref" ]]; then
+    agent-browser fill "$desc_ref" "$test_value"
+  else
+    # Fallback: aria-label search (works when description is empty → placeholder visible)
+    agent-browser find label "Description" fill "$test_value"
+  fi
   sleep 1
 
   # Wait for unsaved bar
