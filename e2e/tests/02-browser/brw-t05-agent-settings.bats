@@ -159,7 +159,6 @@ teardown_file() {
 @test "create agent for settings testing" {
   echo "# Navigating to team page..." >&3
   navigate_to_app_page "/team"
-  dismiss_cookie_banner
 
   # Workspace initialisation can take 60-120s under parallel CI load — the
   # team page renders a loading overlay until org data is ready, which also
@@ -168,10 +167,15 @@ teardown_file() {
   echo "# Waiting for workspace init to complete..." >&3
   wait_for_text_gone "Loading your workspace" 120 || true
 
+  # Dismiss cookie consent after workspace is ready — the banner appears
+  # post-workspace-init and Radix UI aria-hides the page content behind it.
+  dismiss_cookie_banner
+
   # Now wait for "Create teammate" button with a shorter deadline.
   echo "# Waiting for Create teammate button to be ready..." >&3
   if ! wait_for_text "Create teammate" 30; then
     echo "# Create teammate button did not appear after 30s" >&3
+    agent-browser snapshot 2>/dev/null | head -30 >&3 || true
     return 1
   fi
 
