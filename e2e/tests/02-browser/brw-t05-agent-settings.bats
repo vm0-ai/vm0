@@ -266,72 +266,55 @@ teardown_file() {
 }
 
 @test "navigate to agent settings and verify tabs" {
-  # Capture agent settings URL from the daemon BEFORE restarting it.
-  # Test 9 leaves the browser at the agent settings page. Getting the URL here
-  # avoids any file-sharing race conditions (BATS --jobs parallelizes within
-  # a file, so file writes from one @test are not guaranteed to be visible to
-  # another @test that started concurrently).
-  local pre_restart_url
-  pre_restart_url=$(agent-browser get url 2>/dev/null | tr -d '[:space:]' || true)
-  echo "# URL from test 9's browser session: $pre_restart_url" >&3
-  if [[ "$pre_restart_url" =~ /(talk)/[a-zA-Z0-9] ]]; then
-    echo "# Captured agent settings URL from live daemon: $pre_restart_url" >&3
-    AGENT_SETTINGS_URL="$pre_restart_url"
-    echo "$AGENT_SETTINGS_URL" > "$(_agent_url_file)" 2>/dev/null || true
-  fi
-
   # Restart daemon for a clean browser state, then sign in fresh.
   echo "# Restarting daemon for clean state..." >&3
   restart_browser_daemon
   create_clerk_sign_in_token
   sign_in_via_token_on_app
   wait_for_text_gone "Loading your workspace" 20 || true
-  echo "# Navigating to agent settings for: $AGENT_NAME..." >&3
+  echo "# Finding agent settings page for: $AGENT_NAME..." >&3
 
-  # Also check temp file (may have been written by test 9 if sequential).
-  if [[ -z "${AGENT_SETTINGS_URL:-}" ]] && [[ -f "$(_agent_url_file)" ]]; then
-    AGENT_SETTINGS_URL=$(tr -d '[:space:]' < "$(_agent_url_file)")
+  # Check temp file (written by test 9 in same BATS worker process).
+  # Print diagnostic so we can see which path is returned and whether file exists.
+  local url_file
+  url_file="$(_agent_url_file)"
+  echo "# agent_url_file: $url_file (exists: $(test -f "$url_file" && echo yes || echo no))" >&3
+  if [[ -f "$url_file" ]]; then
+    AGENT_SETTINGS_URL=$(tr -d '[:space:]' < "$url_file")
     echo "# Loaded AGENT_SETTINGS_URL from temp file: $AGENT_SETTINGS_URL" >&3
   fi
 
   if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
-    # URL captured from live daemon or temp file — navigate directly.
+    # URL from temp file — navigate directly and close any stale dialogs.
     echo "# Navigating directly to agent settings: $AGENT_SETTINGS_URL" >&3
     agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
     sleep 3
-    # Close any stale dialogs that may have persisted from a previous run or
-    # auto-opened on page load (e.g. ConnectModal for an already-connected service).
+    # Close any stale dialogs (e.g. ConnectModal for an already-connected service).
     agent-browser press "Escape" 2>/dev/null || true
     sleep 1
   else
-    # URL not available — find agent on /team page with retry.
-    echo "# Agent settings URL not pre-captured, finding via /team..." >&3
+    # URL not in temp file — find agent on /team page.
+    echo "# Agent settings URL not available, finding via /team..." >&3
     navigate_to_app_page "/team"
-    # Use the same approach as test 11's successful recovery: navigate to /team,
-    # wait briefly (non-fatal), then take an interactive snapshot and click the ref.
-    # Avoid long retry loops that waste time — if the agent isn't found after one
-    # attempt, navigate once more and try again.
     wait_for_text "$AGENT_NAME" 40 || navigate_to_app_page "/team"
     wait_for_text "$AGENT_NAME" 40 || true
     step_screenshot "team-page"
-    local snap_i_card card_ref
-    snap_i_card=$(agent-browser snapshot -i 2>/dev/null || true)
-    card_ref=$(echo "$snap_i_card" | grep -i "${AGENT_NAME}" | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
-    echo "# Agent card ref: '${card_ref}'" >&3
-    if [[ -n "$card_ref" ]]; then
-      agent-browser click "$card_ref" 2>/dev/null || true
-    else
-      agent-browser find role link click --name "$AGENT_NAME" 2>/dev/null || \
-        agent-browser find text "$AGENT_NAME" click 2>/dev/null || true
-    fi
-    sleep 3
-    local clicked_url
-    clicked_url=$(agent-browser get url 2>/dev/null | tr -d '[:space:]' || true)
-    echo "# URL after clicking agent: $clicked_url" >&3
-    if [[ "$clicked_url" =~ /(talk)/[a-zA-Z0-9] ]]; then
-      AGENT_SETTINGS_URL="$clicked_url"
-      export AGENT_SETTINGS_URL
-      echo "$AGENT_SETTINGS_URL" > "$(_agent_url_file)" 2>/dev/null || true
+    # Use find-text click which handles SPA navigation better than ref-based click.
+    # After click, poll for URL to transition away from about:blank (transient state).
+    agent-browser find text "$AGENT_NAME" click 2>/dev/null || \
+      agent-browser find role link click --name "$AGENT_NAME" 2>/dev/null || true
+    local nav_url=""
+    for _w in $(seq 1 15); do
+      sleep 1
+      nav_url=$(agent-browser get url 2>/dev/null | tr -d '[:space:]' || true)
+      if [[ "$nav_url" =~ /(talk)/[a-zA-Z0-9] ]]; then
+        break
+      fi
+    done
+    echo "# URL after navigation: $nav_url" >&3
+    if [[ "$nav_url" =~ /(talk)/[a-zA-Z0-9] ]]; then
+      AGENT_SETTINGS_URL="$nav_url"
+      echo "$AGENT_SETTINGS_URL" > "$url_file" 2>/dev/null || true
     else
       echo "# Could not navigate to agent settings page" >&3
       return 1
@@ -351,10 +334,16 @@ teardown_file() {
     snap_i_fb=$(agent-browser snapshot -i 2>/dev/null || true)
     fb_ref=$(echo "$snap_i_fb" | grep -i "${AGENT_NAME}" | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
     if [[ -n "$fb_ref" ]]; then
-      agent-browser click "$fb_ref" 2>/dev/null || true
-      sleep 3
-      local fb_url
-      fb_url=$(agent-browser get url 2>/dev/null | tr -d '[:space:]' || true)
+      agent-browser find text "$AGENT_NAME" click 2>/dev/null || \
+        agent-browser click "$fb_ref" 2>/dev/null || true
+      local fb_url=""
+      for _w in $(seq 1 15); do
+        sleep 1
+        fb_url=$(agent-browser get url 2>/dev/null | tr -d '[:space:]' || true)
+        if [[ "$fb_url" =~ /(talk)/[a-zA-Z0-9] ]]; then
+          break
+        fi
+      done
       if [[ "$fb_url" =~ /(talk)/[a-zA-Z0-9] ]]; then
         AGENT_SETTINGS_URL="$fb_url"
         echo "$AGENT_SETTINGS_URL" > "$(_agent_url_file)" 2>/dev/null || true
