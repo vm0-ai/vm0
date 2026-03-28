@@ -152,30 +152,36 @@ teardown_file() {
 }
 
 @test "create agent for settings testing" {
-  # Navigate to /team and click "Create teammate" in one combined retry loop.
-  # Under parallel CI load, workspace initialization can take 50-80s before the
-  # "Create teammate" button becomes clickable. Combining the wait-for-ready and
-  # click into a single 65-iteration loop handles this without excessive budget.
   echo "# Navigating to team page..." >&3
   navigate_to_app_page "/team"
-  wait_for_text_gone "Loading your workspace" 10 || true
 
-  # Combine button click + dialog check in a single retry loop.
-  # The workspace may not be ready when the button is first clicked (even though
-  # the button appears interactive), causing the click to have no visible effect.
-  # Re-clicking every 5s until the dialog appears handles this case.
-  echo "# Clicking Create teammate until dialog opens..." >&3
+  # Wait for "Create teammate" button to appear — this implicitly waits for
+  # workspace loading to complete. Under parallel CI load, workspace init can
+  # take 60-90s. Using wait_for_text avoids the 25-iteration retry loop that
+  # consumed the full 180s budget (each iteration = click + 5s wait + 1s sleep).
+  echo "# Waiting for Create teammate button to be ready..." >&3
+  if ! wait_for_text "Create teammate" 100; then
+    echo "# Create teammate button did not appear after 100s" >&3
+    return 1
+  fi
+
+  # Click once, wait up to 25s for dialog. Avoid re-clicking too quickly:
+  # clicking the trigger a second time can close the dialog before we detect it.
+  echo "# Clicking Create teammate..." >&3
+  agent-browser find role button click --name "Create teammate" 2>/dev/null || true
+  echo "# Waiting for Create dialog to appear..." >&3
   local dialog_opened=false
-  for _i in $(seq 1 25); do
+  if wait_for_text "Create a new teammate" 25; then
+    dialog_opened=true
+  else
+    echo "# Retrying Create teammate click..." >&3
     agent-browser find role button click --name "Create teammate" 2>/dev/null || true
-    if wait_for_text "Create a new teammate" 5; then
+    if wait_for_text "Create a new teammate" 20; then
       dialog_opened=true
-      break
     fi
-    sleep 1
-  done
+  fi
   if [[ "$dialog_opened" != "true" ]]; then
-    echo "# Could not open Create teammate dialog after 25 retries" >&3
+    echo "# Could not open Create teammate dialog" >&3
     return 1
   fi
   step_screenshot "create-dialog"
@@ -448,12 +454,15 @@ teardown_file() {
   # the ConnectModal already closed via Save success). The unsaved bar is rendered
   # via createPortal into document.body but Radix Dialog sets aria-hidden on it
   # while a dialog is open — the bar only becomes visible after the dialog closes.
+  # Use Escape key (most reliable for Radix UI dialogs) to close the outer dialog.
   echo "# Closing add connector dialog..." >&3
-  agent-browser find role button click --name "Close" 2>/dev/null || true
+  agent-browser press "Escape" 2>/dev/null || \
+    agent-browser find role button click --name "Close" 2>/dev/null || true
   sleep 1
 
-  # Verify the unsaved bar appeared (confirms connector was added to the list)
-  wait_for_unsaved_bar 15
+  # Verify the unsaved bar appeared (confirms connector was added to the list).
+  # Increased timeout: CI load can delay React state propagation after dialog close.
+  wait_for_unsaved_bar 30
   step_screenshot "connector-unsaved"
 
   # Discard the change to leave a clean state for subsequent tests.
