@@ -136,6 +136,10 @@ setup_file() {
   BRW_T05_TMPDIR=$(mktemp -d)
   export BRW_T05_TMPDIR
 
+  # Clear any stale agent URL from previous CI runs on the same runner to prevent
+  # cross-run contamination (the JOB_REF-based path is stable across runs).
+  rm -f "$(_agent_url_file)" 2>/dev/null || true
+
   echo "# Agent settings editing flow via agent-browser" >&3
   echo "#   Web URL: $VM0_API_URL" >&3
   echo "#   App URL: $APP_URL" >&3
@@ -162,33 +166,32 @@ teardown_file() {
   echo "# Navigating to team page..." >&3
   navigate_to_app_page "/team"
 
-  # Wait for "Create teammate" button to appear — this implicitly waits for
-  # workspace loading to complete. Under parallel CI load, workspace init can
-  # take 60-90s. Using wait_for_text avoids the 25-iteration retry loop that
-  # consumed the full 180s budget (each iteration = click + 5s wait + 1s sleep).
-  echo "# Waiting for Create teammate button to be ready..." >&3
-  if ! wait_for_text "Create teammate" 100; then
-    echo "# Create teammate button did not appear after 100s" >&3
+  # Retry clicking Create teammate — same approach as brw-t03-team which reliably
+  # handles the case where the button is visible but not yet interactable (e.g.
+  # still loading, or focus is elsewhere). A single click + long wait is fragile.
+  echo "# Clicking Create teammate (with retry)..." >&3
+  local btn_clicked=false
+  for _i in $(seq 1 30); do
+    if agent-browser find role button click --name "Create teammate" 2>/dev/null; then
+      btn_clicked=true
+      break
+    fi
+    sleep 1
+  done
+  if [[ "$btn_clicked" != "true" ]]; then
+    echo "# Could not click Create teammate button after 30 attempts" >&3
+    agent-browser snapshot 2>/dev/null | head -20 >&3 || true
     return 1
   fi
+  sleep 1
 
-  # Click once, wait up to 25s for dialog. Avoid re-clicking too quickly:
-  # clicking the trigger a second time can close the dialog before we detect it.
-  echo "# Clicking Create teammate..." >&3
-  agent-browser find role button click --name "Create teammate" 2>/dev/null || true
-  echo "# Waiting for Create dialog to appear..." >&3
   local dialog_opened=false
-  if wait_for_text "Create a new teammate" 25; then
+  if wait_for_text "Create a new teammate" 15; then
     dialog_opened=true
-  else
-    echo "# Retrying Create teammate click..." >&3
-    agent-browser find role button click --name "Create teammate" 2>/dev/null || true
-    if wait_for_text "Create a new teammate" 20; then
-      dialog_opened=true
-    fi
   fi
   if [[ "$dialog_opened" != "true" ]]; then
-    echo "# Could not open Create teammate dialog" >&3
+    echo "# Dialog did not appear after successful click" >&3
+    agent-browser snapshot 2>/dev/null | head -20 >&3 || true
     return 1
   fi
   step_screenshot "create-dialog"
@@ -296,6 +299,10 @@ teardown_file() {
     echo "# Navigating directly to agent settings: $AGENT_SETTINGS_URL" >&3
     agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
     sleep 3
+    # Close any stale dialogs that may have persisted from a previous run or
+    # auto-opened on page load (e.g. ConnectModal for an already-connected service).
+    agent-browser press "Escape" 2>/dev/null || true
+    sleep 1
   else
     # URL not available — find agent on /team page with retry.
     echo "# Agent settings URL not pre-captured, finding via /team..." >&3
@@ -333,12 +340,30 @@ teardown_file() {
 
   # Verify the page loaded and we're on the correct agent's settings page.
   wait_for_text "Connectors" 20 || echo "# Connectors tab not yet visible (page loading slowly)" >&3
-  # Verify agent name is visible — if not, we may have navigated to the wrong agent.
+  # Verify agent name is visible — if not, we navigated to the wrong agent.
+  # Fall back to /team search to find the correct agent.
   if ! wait_for_text "$AGENT_NAME" 10; then
-    echo "# WARN: '$AGENT_NAME' not visible on page — may be on wrong agent" >&3
-    local page_snap
-    page_snap=$(agent-browser snapshot 2>/dev/null | head -20 || true)
-    echo "# Page snapshot: $page_snap" >&3
+    echo "# WARN: '$AGENT_NAME' not visible — searching on /team..." >&3
+    agent-browser snapshot 2>/dev/null | head -20 >&3 || true
+    navigate_to_app_page "/team"
+    wait_for_text "$AGENT_NAME" 40 || true
+    local snap_i_fb fb_ref
+    snap_i_fb=$(agent-browser snapshot -i 2>/dev/null || true)
+    fb_ref=$(echo "$snap_i_fb" | grep -i "${AGENT_NAME}" | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+    if [[ -n "$fb_ref" ]]; then
+      agent-browser click "$fb_ref" 2>/dev/null || true
+      sleep 3
+      local fb_url
+      fb_url=$(agent-browser get url 2>/dev/null | tr -d '[:space:]' || true)
+      if [[ "$fb_url" =~ /(talk)/[a-zA-Z0-9] ]]; then
+        AGENT_SETTINGS_URL="$fb_url"
+        echo "$AGENT_SETTINGS_URL" > "$(_agent_url_file)" 2>/dev/null || true
+        echo "# Recovered URL via /team: $AGENT_SETTINGS_URL" >&3
+      fi
+    else
+      echo "# Could not find '$AGENT_NAME' on /team — agent creation may have failed" >&3
+      return 1
+    fi
   fi
   step_screenshot "agent-detail"
   echo "# Agent settings URL ready for tests 11-13" >&3
@@ -470,9 +495,14 @@ teardown_file() {
   # while a dialog is open — the bar only becomes visible after the dialog closes.
   # Use Escape key (most reliable for Radix UI dialogs) to close the outer dialog.
   echo "# Closing add connector dialog..." >&3
-  agent-browser press "Escape" 2>/dev/null || \
-    agent-browser find role button click --name "Close" 2>/dev/null || true
+  agent-browser press "Escape" 2>/dev/null || true
   sleep 1
+  # Verify the outer dialog actually closed; if not, try clicking the Close button.
+  if agent-browser snapshot 2>/dev/null | grep -q '"Add connector'; then
+    echo "# Outer dialog still open after Escape — clicking Close button..." >&3
+    agent-browser find role button click --name "Close" 2>/dev/null || true
+    sleep 1
+  fi
 
   # Verify the unsaved bar appeared (confirms connector was added to the list).
   # Increased timeout: CI load can delay React state propagation after dialog close.
@@ -496,15 +526,20 @@ teardown_file() {
 @test "profile: edit description and save" {
   echo "# Testing profile: edit description..." >&3
 
+  # Restart daemon for clean state — test 11 may leave a dialog open (Escape
+  # key does not always dismiss the outer Add Connector dialog on first press).
+  restart_browser_daemon
+  create_clerk_sign_in_token
+  sign_in_via_token_on_app
+  wait_for_text_gone "Loading your workspace" 30 || true
+
   # Load AGENT_SETTINGS_URL from temp file if not in environment (cross-subprocess persistence).
   if [[ -z "${AGENT_SETTINGS_URL:-}" ]] && [[ -f "$(_agent_url_file)" ]]; then
     AGENT_SETTINGS_URL=$(tr -d '[:space:]' < "$(_agent_url_file)")
     echo "# Loaded AGENT_SETTINGS_URL from temp file: $AGENT_SETTINGS_URL" >&3
   fi
 
-  # Navigate back to agent settings to ensure page is in known state.
-  # Use || true so a daemon error (e.g. daemon not yet running after test 11
-  # failure) does not cause an immediate test failure before the retry below.
+  # Navigate to agent settings.
   if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
     agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors || true
     sleep 3
@@ -611,6 +646,13 @@ teardown_file() {
 @test "instructions: edit and save" {
   echo "# Testing instructions: edit text..." >&3
 
+  # Restart daemon for clean state — test 12 may leave the browser in an
+  # unknown state; a fresh daemon + sign-in guarantees a stable baseline.
+  restart_browser_daemon
+  create_clerk_sign_in_token
+  sign_in_via_token_on_app
+  wait_for_text_gone "Loading your workspace" 30 || true
+
   # Load AGENT_SETTINGS_URL from temp file if not in environment (cross-subprocess persistence).
   if [[ -z "${AGENT_SETTINGS_URL:-}" ]] && [[ -f "$(_agent_url_file)" ]]; then
     AGENT_SETTINGS_URL=$(tr -d '[:space:]' < "$(_agent_url_file)")
@@ -618,7 +660,6 @@ teardown_file() {
   fi
 
   # Navigate back to agent settings to ensure page is in known state.
-  # Use || true so a daemon error does not cause an immediate test failure.
   if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
     agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors || true
     sleep 3
