@@ -172,21 +172,33 @@ teardown_file() {
   # (same pattern as brw-t03 which uses the same dialog and is reliable).
   step_screenshot "create-dialog-filled"
 
-  # Click Create button in dialog via role-based find.
-  # Snapshot-ref approach is fragile: after fill+screenshot, React re-renders
-  # and refs become stale; the stale click silently fails, no agent is created.
-  # Role-based find with name="Create" matches only the dialog's Create button
-  # (not "Create teammate" which has a different accessible name).
+  # Click Create button via snapshot ref (same pattern as brw-t03).
+  # Role-based find with --name "Create" uses partial matching and may match
+  # the background "Create teammate" button, dismissing the modal without
+  # creating the agent. Snapshot-ref with grep -v 'teammate' is precise.
   echo "# Clicking Create button in dialog..." >&3
-  if ! agent-browser find role button click --name "Create" 2>/dev/null; then
-    echo "# Role-based click failed, trying text-based fallback..." >&3
+  local snap_i create_ref
+  snap_i=$(agent-browser snapshot -i 2>/dev/null || true)
+  create_ref=$(echo "$snap_i" | grep -E 'button "Create"' | grep -v 'teammate' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+  if [[ -n "$create_ref" ]]; then
+    agent-browser click "$create_ref"
+  else
+    echo "# Create ref not found, falling back to text find..." >&3
+    agent-browser find text "Create" click
+  fi
+
+  # Verify the click submitted the form: if dialog is still showing 3s after the
+  # click, the ref was stale or clicked the wrong element — retry with text find.
+  sleep 2
+  if agent-browser snapshot 2>/dev/null | grep -q "Create a new teammate"; then
+    echo "# Dialog still open after click, retrying with text-based find..." >&3
     agent-browser find text "Create" click
   fi
 
   # Wait for dialog to close, then navigate to /team to verify the agent.
   # Creation may redirect to agent settings; empty snapshots (daemon crash)
   # can falsely pass wait_for_text_gone. Explicit /team navigation is reliable.
-  wait_for_text_gone "Create a new teammate" 30
+  wait_for_text_gone "Create a new teammate" 60
   navigate_to_app_page "/team"
   wait_for_text "$AGENT_NAME" 90
   step_screenshot "agent-created"

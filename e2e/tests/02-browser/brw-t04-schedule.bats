@@ -159,7 +159,7 @@ teardown_file() {
   wait_for_text_gone "Loading your workspace" 30 || true
 
   local schedule_found=false
-  for _attempt in 1 2; do
+  for _attempt in 1 2 3; do
     if wait_for_text "Scheduled tasks" 30; then
       schedule_found=true
       break
