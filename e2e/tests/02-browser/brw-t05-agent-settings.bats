@@ -61,6 +61,16 @@ click_save_on_unsaved_bar() {
 }
 
 # ---------------------------------------------------------------------------
+# _agent_url_file — Return the temp file path for the agent settings URL.
+# Computed from AGENT_NAME (which is consistently exported from setup_file)
+# rather than a separately-exported tmpdir variable, avoiding BATS subshell
+# environment propagation issues.
+# ---------------------------------------------------------------------------
+_agent_url_file() {
+  echo "/tmp/.brw-t05-${AGENT_NAME}"
+}
+
+# ---------------------------------------------------------------------------
 # click_tab — Click a tab by its text label
 # Tries role-based find first (most reliable), then falls back to interactive
 # snapshot parsing which can have quote/format variations across environments.
@@ -125,6 +135,7 @@ teardown_file() {
   # Clean up the created agent to prevent orphan accumulation
   if [[ -n "${AGENT_NAME:-}" ]]; then
     $ZERO_CLI agent delete "$AGENT_NAME" --yes 2>/dev/null || true
+    rm -f "$(_agent_url_file)" 2>/dev/null || true
   fi
   rm -rf "${BRW_T05_TMPDIR:-}" 2>/dev/null || true
 
@@ -206,7 +217,7 @@ teardown_file() {
     post_create_url=$(agent-browser get url 2>/dev/null | tr -d '[:space:]' || true)
     echo "# URL after dialog close: $post_create_url" >&3
     if [[ "$post_create_url" =~ /(talk|team)/[a-zA-Z0-9] ]]; then
-      echo "$post_create_url" > "${BRW_T05_TMPDIR}/agent_settings_url"
+      echo "$post_create_url" > "$(_agent_url_file)"
       echo "# Captured agent settings URL from post-create navigation: $post_create_url" >&3
     else
       # App stayed on /team — wait for agent card and click it to get the URL
@@ -218,7 +229,7 @@ teardown_file() {
           agent_url=$(agent-browser get url 2>/dev/null | tr -d '[:space:]' || true)
           echo "# URL after clicking agent card: $agent_url" >&3
           if [[ "$agent_url" =~ /(talk|team)/[a-zA-Z0-9] ]]; then
-            echo "$agent_url" > "${BRW_T05_TMPDIR}/agent_settings_url"
+            echo "$agent_url" > "$(_agent_url_file)"
             echo "# Saved agent settings URL: $agent_url" >&3
           fi
         fi
@@ -246,8 +257,8 @@ teardown_file() {
   # Try to load AGENT_SETTINGS_URL captured by test 9 before daemon restart.
   # If test 9 successfully clicked the agent card and saved the URL, we can
   # navigate directly without searching /team (avoids backend timing issues).
-  if [[ -z "${AGENT_SETTINGS_URL:-}" ]] && [[ -f "${BRW_T05_TMPDIR}/agent_settings_url" ]]; then
-    AGENT_SETTINGS_URL=$(tr -d '[:space:]' < "${BRW_T05_TMPDIR}/agent_settings_url")
+  if [[ -z "${AGENT_SETTINGS_URL:-}" ]] && [[ -f "$(_agent_url_file)" ]]; then
+    AGENT_SETTINGS_URL=$(tr -d '[:space:]' < "$(_agent_url_file)")
     echo "# Loaded AGENT_SETTINGS_URL from temp file: $AGENT_SETTINGS_URL" >&3
   fi
 
@@ -285,7 +296,7 @@ teardown_file() {
     if [[ "$clicked_url" =~ /(talk|team)/[a-zA-Z0-9] ]]; then
       AGENT_SETTINGS_URL="$clicked_url"
       export AGENT_SETTINGS_URL
-      echo "$AGENT_SETTINGS_URL" > "${BRW_T05_TMPDIR}/agent_settings_url"
+      echo "$AGENT_SETTINGS_URL" > "$(_agent_url_file)"
     else
       echo "# Could not navigate to agent settings page" >&3
       return 1
@@ -309,8 +320,8 @@ teardown_file() {
   wait_for_text_gone "Loading your workspace" 30 || true
 
   # Load AGENT_SETTINGS_URL from temp file (trim whitespace to avoid URL issues).
-  if [[ -z "${AGENT_SETTINGS_URL:-}" ]] && [[ -f "${BRW_T05_TMPDIR}/agent_settings_url" ]]; then
-    AGENT_SETTINGS_URL=$(tr -d '[:space:]' < "${BRW_T05_TMPDIR}/agent_settings_url")
+  if [[ -z "${AGENT_SETTINGS_URL:-}" ]] && [[ -f "$(_agent_url_file)" ]]; then
+    AGENT_SETTINGS_URL=$(tr -d '[:space:]' < "$(_agent_url_file)")
     echo "# Loaded AGENT_SETTINGS_URL from temp file: $AGENT_SETTINGS_URL" >&3
   fi
 
@@ -334,7 +345,7 @@ teardown_file() {
       echo "# Recovery URL after click: $recovered_url" >&3
       if [[ "$recovered_url" =~ /(talk|team)/[a-zA-Z0-9] ]]; then
         AGENT_SETTINGS_URL="$recovered_url"
-        echo "$AGENT_SETTINGS_URL" > "${BRW_T05_TMPDIR}/agent_settings_url"
+        echo "$AGENT_SETTINGS_URL" > "$(_agent_url_file)"
         echo "# Recovered AGENT_SETTINGS_URL: $AGENT_SETTINGS_URL" >&3
       fi
     fi
@@ -448,8 +459,8 @@ teardown_file() {
   echo "# Testing profile: edit description..." >&3
 
   # Load AGENT_SETTINGS_URL from temp file if not in environment (cross-subprocess persistence).
-  if [[ -z "${AGENT_SETTINGS_URL:-}" ]] && [[ -f "${BRW_T05_TMPDIR}/agent_settings_url" ]]; then
-    AGENT_SETTINGS_URL=$(tr -d '[:space:]' < "${BRW_T05_TMPDIR}/agent_settings_url")
+  if [[ -z "${AGENT_SETTINGS_URL:-}" ]] && [[ -f "$(_agent_url_file)" ]]; then
+    AGENT_SETTINGS_URL=$(tr -d '[:space:]' < "$(_agent_url_file)")
     echo "# Loaded AGENT_SETTINGS_URL from temp file: $AGENT_SETTINGS_URL" >&3
   fi
 
@@ -552,8 +563,8 @@ teardown_file() {
   echo "# Testing instructions: edit text..." >&3
 
   # Load AGENT_SETTINGS_URL from temp file if not in environment (cross-subprocess persistence).
-  if [[ -z "${AGENT_SETTINGS_URL:-}" ]] && [[ -f "${BRW_T05_TMPDIR}/agent_settings_url" ]]; then
-    AGENT_SETTINGS_URL=$(tr -d '[:space:]' < "${BRW_T05_TMPDIR}/agent_settings_url")
+  if [[ -z "${AGENT_SETTINGS_URL:-}" ]] && [[ -f "$(_agent_url_file)" ]]; then
+    AGENT_SETTINGS_URL=$(tr -d '[:space:]' < "$(_agent_url_file)")
     echo "# Loaded AGENT_SETTINGS_URL from temp file: $AGENT_SETTINGS_URL" >&3
   fi
 
