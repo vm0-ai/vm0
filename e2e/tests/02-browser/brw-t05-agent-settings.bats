@@ -168,16 +168,21 @@ teardown_file() {
   wait_for_text_gone "Spinning up" 60 || true
 
   # Wait for "Create teammate" button, dismissing the cookie banner on each
-  # iteration. The cookie consent dialog (Radix UI) appears post-workspace-init
-  # with a short delay — aria-hiding the page content — and a one-shot dismiss
-  # can race against the banner rendering. Retrying dismiss each second avoids
-  # the race without needing an exact sleep.
+  # iteration. Checks that neither workspace nor team loading overlays are
+  # present before accepting the button as ready — "Spinning up the team..."
+  # can appear AFTER the button is in the DOM (but before the dialog is
+  # interactive), so we must filter it out in addition to workspace loading.
   echo "# Waiting for Create teammate button to be ready..." >&3
   local found_btn=false
-  for _w in $(seq 1 40); do
+  for _w in $(seq 1 60); do
     dismiss_cookie_banner
     local snap
     snap=$(agent-browser snapshot 2>/dev/null || true)
+    # Skip while any loading overlay is still active
+    if echo "$snap" | grep -qi "Loading your workspace\|Spinning up"; then
+      sleep 1
+      continue
+    fi
     if echo "$snap" | grep -qi "Create teammate"; then
       found_btn=true
       break
