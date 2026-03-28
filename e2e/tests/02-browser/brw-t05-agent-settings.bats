@@ -195,40 +195,61 @@ teardown_file() {
   fi
   step_screenshot "team-page"
 
-  # Get agent settings URL by querying the agent card link via JS eval.
-  # The eval searches for an <a> whose <h2> child contains the agent name,
-  # clicks it (triggering SPA navigation as a side-effect), and returns the href.
-  # Using h2 child text is more precise than full textContent which includes
-  # the "Workspace" badge and image alt text.
-  local agent_href=""
-  agent_href=$(agent-browser eval "(function(){var l=Array.from(document.querySelectorAll('a[href]')).find(function(a){var h=a.querySelector('h2');return h&&h.textContent.indexOf('${AGENT_NAME}')>=0;});if(l)l.click();return l?l.getAttribute('href')||'':'';}())" 2>/dev/null | tr -d '[:space:]"' || true)
-  if [[ -n "$agent_href" && "$agent_href" != "null" && "$agent_href" == /team/* ]]; then
-    AGENT_SETTINGS_URL="${APP_URL}${agent_href}"
-    export AGENT_SETTINGS_URL
-    echo "$AGENT_SETTINGS_URL" > "${BATS_TMPDIR}/brw_t05_agent_settings_url"
-    echo "# Agent settings URL via eval: $AGENT_SETTINGS_URL" >&3
-    # The click() call above triggered SPA navigation; wait for it to settle.
+  # Get agent settings URL by clicking the agent card via its interactive
+  # snapshot ref, then capturing the resulting URL.
+  # wait_for_text already confirmed the agent name is in the snapshot, so
+  # parsing the snapshot ref is more reliable than JS eval (which can return
+  # empty for unknown reasons even when the element is present).
+  local snap_i agent_ref
+  snap_i=$(agent-browser snapshot -i 2>/dev/null || true)
+  agent_ref=$(echo "$snap_i" | grep -i "${AGENT_NAME}" | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+  echo "# Snapshot ref for agent: '$agent_ref'" >&3
+
+  if [[ -n "$agent_ref" ]]; then
+    agent-browser click "$agent_ref" 2>/dev/null || true
     sleep 3
-  else
-    # Fallback: the click() side-effect may still have navigated even if
-    # getAttribute returned nothing. Check where the browser actually landed.
-    echo "# eval returned '$agent_href', checking current URL as fallback..." >&3
-    sleep 3
-    local current_url
-    current_url=$(agent-browser get url 2>/dev/null | tr -d '[:space:]' || true)
-    echo "# Current URL: $current_url" >&3
-    if [[ "$current_url" =~ /team/[a-zA-Z0-9] ]]; then
-      AGENT_SETTINGS_URL="$current_url"
+    local clicked_url
+    clicked_url=$(agent-browser get url 2>/dev/null | tr -d '[:space:]' || true)
+    echo "# URL after ref click: $clicked_url" >&3
+    if [[ "$clicked_url" =~ /team/[a-zA-Z0-9] ]]; then
+      AGENT_SETTINGS_URL="$clicked_url"
       export AGENT_SETTINGS_URL
       echo "$AGENT_SETTINGS_URL" > "${BATS_TMPDIR}/brw_t05_agent_settings_url"
-      echo "# Agent settings URL from current URL: $AGENT_SETTINGS_URL" >&3
-    else
-      echo "# Could not determine agent settings URL" >&3
-      return 1
+      echo "# Agent settings URL via snapshot click: $AGENT_SETTINGS_URL" >&3
     fi
   fi
 
-  # Verify the page loaded (we may already be there from the click() above)
+  if [[ -z "${AGENT_SETTINGS_URL:-}" ]]; then
+    # Fallback: JS eval to click agent card link by h2 text and return href.
+    # Less reliable than snapshot approach but worth trying as backup.
+    local agent_href=""
+    agent_href=$(agent-browser eval "(function(){var l=Array.from(document.querySelectorAll('a[href]')).find(function(a){var h=a.querySelector('h2');return h&&h.textContent.indexOf('${AGENT_NAME}')>=0;});if(l)l.click();return l?l.getAttribute('href')||'':'';}())" 2>/dev/null | tr -d '[:space:]"' || true)
+    if [[ -n "$agent_href" && "$agent_href" != "null" && "$agent_href" == /team/* ]]; then
+      AGENT_SETTINGS_URL="${APP_URL}${agent_href}"
+      export AGENT_SETTINGS_URL
+      echo "$AGENT_SETTINGS_URL" > "${BATS_TMPDIR}/brw_t05_agent_settings_url"
+      echo "# Agent settings URL via eval: $AGENT_SETTINGS_URL" >&3
+      sleep 3
+    else
+      sleep 3
+      local fallback_url
+      fallback_url=$(agent-browser get url 2>/dev/null | tr -d '[:space:]' || true)
+      echo "# Fallback URL check: $fallback_url" >&3
+      if [[ "$fallback_url" =~ /team/[a-zA-Z0-9] ]]; then
+        AGENT_SETTINGS_URL="$fallback_url"
+        export AGENT_SETTINGS_URL
+        echo "$AGENT_SETTINGS_URL" > "${BATS_TMPDIR}/brw_t05_agent_settings_url"
+        echo "# Agent settings URL from fallback URL: $AGENT_SETTINGS_URL" >&3
+      fi
+    fi
+  fi
+
+  if [[ -z "${AGENT_SETTINGS_URL:-}" ]]; then
+    echo "# Could not determine agent settings URL" >&3
+    return 1
+  fi
+
+  # Verify the page loaded (we may already be there from the click above)
   wait_for_text "Connectors" 20 || echo "# Connectors tab not yet visible (page loading slowly)" >&3
   step_screenshot "agent-detail"
   echo "# Agent settings URL ready for tests 11-13" >&3
@@ -254,27 +275,24 @@ teardown_file() {
     agent-browser open "$AGENT_SETTINGS_URL" --ignore-https-errors
     sleep 3
   else
-    # AGENT_SETTINGS_URL not available — recover via JS eval on /team page.
-    # Uses same click-and-return approach as test 10.
-    echo "# AGENT_SETTINGS_URL not set — recovering via /team eval..." >&3
+    # AGENT_SETTINGS_URL not available — recover via snapshot click on /team page.
+    echo "# AGENT_SETTINGS_URL not set — recovering via /team snapshot click..." >&3
     navigate_to_app_page "/team"
     wait_for_text "$AGENT_NAME" 30 || true
-    local agent_href=""
-    agent_href=$(agent-browser eval "(function(){var l=Array.from(document.querySelectorAll('a[href]')).find(function(a){var h=a.querySelector('h2');return h&&h.textContent.indexOf('${AGENT_NAME}')>=0;});if(l)l.click();return l?l.getAttribute('href')||'':'';}())" 2>/dev/null | tr -d '[:space:]"' || true)
-    if [[ -n "$agent_href" && "$agent_href" != "null" && "$agent_href" == /team/* ]]; then
-      AGENT_SETTINGS_URL="${APP_URL}${agent_href}"
-      echo "$AGENT_SETTINGS_URL" > "${BATS_TMPDIR}/brw_t05_agent_settings_url"
-      echo "# Recovered AGENT_SETTINGS_URL via eval: $AGENT_SETTINGS_URL" >&3
-      sleep 3
-    else
-      # Check if click() navigated us to an agent settings page
+    local snap_i_r agent_ref_r
+    snap_i_r=$(agent-browser snapshot -i 2>/dev/null || true)
+    agent_ref_r=$(echo "$snap_i_r" | grep -i "${AGENT_NAME}" | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+    echo "# Recovery snapshot ref: '$agent_ref_r'" >&3
+    if [[ -n "$agent_ref_r" ]]; then
+      agent-browser click "$agent_ref_r" 2>/dev/null || true
       sleep 3
       local recovered_url
       recovered_url=$(agent-browser get url 2>/dev/null | tr -d '[:space:]' || true)
+      echo "# Recovery URL after click: $recovered_url" >&3
       if [[ "$recovered_url" =~ /team/[a-zA-Z0-9] ]]; then
         AGENT_SETTINGS_URL="$recovered_url"
         echo "$AGENT_SETTINGS_URL" > "${BATS_TMPDIR}/brw_t05_agent_settings_url"
-        echo "# Recovered AGENT_SETTINGS_URL from current URL: $AGENT_SETTINGS_URL" >&3
+        echo "# Recovered AGENT_SETTINGS_URL: $AGENT_SETTINGS_URL" >&3
       fi
     fi
     if [[ -n "${AGENT_SETTINGS_URL:-}" ]]; then
