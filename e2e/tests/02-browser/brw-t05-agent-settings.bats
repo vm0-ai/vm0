@@ -170,8 +170,8 @@ teardown_file() {
   fi
   sleep 1
 
-  # Wait for dialog (allow extra time since parallel CI load can slow rendering)
-  wait_for_text "Create a new teammate" 20
+  # Wait for dialog — under parallel CI load the dialog can take >20s to appear
+  wait_for_text "Create a new teammate" 60
   step_screenshot "create-dialog"
 
   # Fill agent name
@@ -276,7 +276,7 @@ teardown_file() {
     echo "# Agent settings URL not pre-captured, finding via /team..." >&3
     navigate_to_app_page "/team"
     local agent_found=false
-    for _attempt in 1 2; do
+    for _attempt in 1 2 3; do
       if wait_for_text "$AGENT_NAME" 40; then
         agent_found=true
         break
