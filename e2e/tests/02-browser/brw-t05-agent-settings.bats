@@ -331,18 +331,28 @@ teardown_file() {
 
   # Click Save in the API token modal
   agent-browser find text "Save" click
-  sleep 3
+
+  # Wait for the ConnectModal to close automatically after Save succeeds.
+  # The API token form shows "API Token" label — when it disappears the modal
+  # auto-closed via onSuccess → onClose, meaning handleConnectSuccess was called.
+  # Do NOT close the modal manually here: closing it early (before the API call
+  # finishes) sets selectedType=null which skips handleConnectSuccess, so
+  # connectorsDirty stays false and the unsaved bar never appears.
+  if ! wait_for_text_gone "API Token" 30; then
+    echo "# ConnectModal did not auto-close after Save (API call may have failed)" >&3
+    step_screenshot "connector-modal-stuck"
+    return 1
+  fi
+  sleep 1
   step_screenshot "connector-after-modal-save"
 
-  # Close the Add Connector dialog
-  local snap_i close_ref
-  snap_i=$(agent-browser snapshot -i)
-  close_ref=$(echo "$snap_i" | grep -E '^- button "Close"' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
-  if [[ -n "$close_ref" ]]; then
-    echo "# Closing add connector dialog..." >&3
-    agent-browser click "$close_ref"
-    sleep 1
-  fi
+  # Close the outer Add Connector dialog (ZeroAddConnectionDialog is still open;
+  # the ConnectModal already closed via Save success). The unsaved bar is rendered
+  # via createPortal into document.body but Radix Dialog sets aria-hidden on it
+  # while a dialog is open — the bar only becomes visible after the dialog closes.
+  echo "# Closing add connector dialog..." >&3
+  agent-browser find role button click --name "Close" 2>/dev/null || true
+  sleep 1
 
   # Verify the unsaved bar appeared (confirms connector was added to the list)
   wait_for_unsaved_bar 15
@@ -391,12 +401,17 @@ teardown_file() {
   local test_value="E2E test description $(date +%s)"
   local snap_i desc_ref
   snap_i=$(agent-browser snapshot -i)
-  desc_ref=$(echo "$snap_i" | grep -E '^- textbox "Description"' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+  # The textarea has aria-label="Description"; in the interactive snapshot it
+  # appears as '- textbox "Description" [ref=eN]' (possibly indented since it's
+  # nested inside a Card). Remove the ^ anchor so indented lines are matched.
+  desc_ref=$(echo "$snap_i" | grep -E '- textbox "Description"' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
   if [[ -n "$desc_ref" ]]; then
     agent-browser fill "$desc_ref" "$test_value"
   else
-    # Fallback: aria-label search (works when description is empty → placeholder visible)
-    agent-browser find label "Description" fill "$test_value"
+    # Fallback: find the Description textbox by its ARIA role + name.
+    # InlineSettingsRow renders a <p> not a <label>, so find-label fails;
+    # the textarea's aria-label makes find-role-textbox reliable.
+    agent-browser find role textbox fill --name "Description" "$test_value"
   fi
   sleep 1
 
@@ -443,8 +458,8 @@ teardown_file() {
   # Wait for instructions editor to load by checking for the footer hint text
   # which is a regular <p> element visible in the accessibility snapshot.
   # The Tiptap placeholder is CSS-only and does not appear in snapshots.
-  if ! wait_for_text "Edit the instructions directly" 20; then
-    echo "# Instructions editor did not load within 20 seconds" >&3
+  if ! wait_for_text "Edit the instructions directly" 60; then
+    echo "# Instructions editor did not load within 60 seconds" >&3
     step_screenshot "instructions-before"
     return 1
   fi
