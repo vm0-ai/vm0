@@ -143,19 +143,15 @@ teardown_file() {
   fi
   step_screenshot "team-page"
 
-  # Wait for Create teammate button to render (may appear disabled initially).
-  echo "# Waiting for Create teammate button to appear..." >&3
-  if ! wait_for_text "Create teammate" 60; then
-    echo "# Create teammate button never appeared after 60s" >&3
-    return 1
-  fi
-
-  # Click — retry up to 30 times (with 1s sleep) in case the button is still
-  # briefly disabled while agents haven't loaded (zeroSubagents$ async fetch).
-  # The sleep 15 was removed — the retry loop already handles the wait.
+  # Click "Create teammate" — retry up to 90 times (1s sleep each) which covers
+  # both waiting for the button to render AND waiting for it to become enabled.
+  # Combining the wait + click into one loop avoids a 60s text-check followed by
+  # a separate 30s click-retry, saving time under heavy CI load where snapshots
+  # can be slow and the button may appear in the accessibility tree before
+  # wait_for_text (which polls non-interactive snapshots) detects its text.
   echo "# Clicking Create teammate..." >&3
   local btn_clicked=false
-  for _i in $(seq 1 30); do
+  for _i in $(seq 1 90); do
     if agent-browser find role button click --name "Create teammate" 2>/dev/null; then
       btn_clicked=true
       break
@@ -163,7 +159,7 @@ teardown_file() {
     sleep 1
   done
   if [[ "$btn_clicked" != "true" ]]; then
-    echo "# Failed to click Create teammate button" >&3
+    echo "# Failed to click Create teammate button after 90s" >&3
     return 1
   fi
   sleep 1

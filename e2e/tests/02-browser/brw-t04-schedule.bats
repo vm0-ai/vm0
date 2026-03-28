@@ -63,8 +63,8 @@ teardown_file() {
   # Wait for schedule page to load. Under parallel CI load snapshots can be
   # slow (~2-3s each), so use a reload-based retry to stay within test timeout.
   local schedule_found=false
-  for _attempt in 1 2; do
-    if wait_for_text "Scheduled tasks" 20; then
+  for _attempt in 1 2 3; do
+    if wait_for_text "Scheduled tasks" 30; then
       schedule_found=true
       break
     fi
