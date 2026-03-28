@@ -113,16 +113,10 @@ teardown_file() {
   sleep 0.5
   step_screenshot "create-dialog-filled"
 
+  # Click the Create button in the dialog using --exact to avoid partial-matching
+  # the background "Create teammate" button (which would dismiss the modal).
   echo "# Clicking Create button in dialog..." >&3
-  local snap_i
-  snap_i=$(agent-browser snapshot -i 2>/dev/null || true)
-  local create_ref
-  create_ref=$(echo "$snap_i" | grep -E 'button "Create"' | grep -v 'teammate' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
-  if [[ -n "$create_ref" ]]; then
-    agent-browser click "$create_ref"
-  else
-    agent-browser find text "Create" click
-  fi
+  agent-browser find role button click --name "Create" --exact
 
   # Wait for dialog to close, then navigate to /team to verify the agent.
   # Creation may redirect to agent settings; empty snapshots (daemon crash)
