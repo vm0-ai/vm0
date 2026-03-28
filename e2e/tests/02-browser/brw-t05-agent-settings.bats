@@ -68,19 +68,31 @@ click_save_on_unsaved_bar() {
 click_tab() {
   local tab_text="$1"
   wait_for_text "$tab_text" 30
-  # Try role-based find first — avoids snapshot quote/format brittle matching
+  # Try role-based finds first (tab/link/button) — avoids snapshot brittle matching.
+  # Agent settings may use different ARIA roles across environments.
   if agent-browser find role tab click --name "$tab_text" 2>/dev/null; then
     return 0
   fi
-  # Fallback: parse interactive snapshot with flexible matching
+  if agent-browser find role link click --name "$tab_text" 2>/dev/null; then
+    return 0
+  fi
+  if agent-browser find role button click --name "$tab_text" 2>/dev/null; then
+    return 0
+  fi
+  # Fallback: parse interactive snapshot with flexible role matching
   local snap_i ref
   snap_i=$(agent-browser snapshot -i)
-  ref=$(echo "$snap_i" | grep -iE "tab.*\"${tab_text}\"" | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
-  if [[ -z "$ref" ]]; then
-    echo "# Failed to find tab ref for '${tab_text}'" >&3
-    return 1
+  ref=$(echo "$snap_i" | grep -iE "(tab|link|button|menuitem).*\"${tab_text}\"" | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+  if [[ -n "$ref" ]]; then
+    agent-browser click "$ref"
+    return 0
   fi
-  agent-browser click "$ref"
+  # Last resort: direct text click (clicks any element containing the text)
+  if agent-browser find text "$tab_text" click 2>/dev/null; then
+    return 0
+  fi
+  echo "# Failed to find tab ref for '${tab_text}'" >&3
+  return 1
 }
 
 setup_file() {
@@ -97,18 +109,24 @@ setup_file() {
   AGENT_NAME="E2E-Settings-$(date +%s)-$RANDOM"
   export AGENT_NAME
 
+  # Shared temp dir for persisting data across test subprocesses in this file.
+  # Exported so all @test subshells can read/write the agent settings URL file.
+  BRW_T05_TMPDIR=$(mktemp -d)
+  export BRW_T05_TMPDIR
+
   echo "# Agent settings editing flow via agent-browser" >&3
   echo "#   Web URL: $VM0_API_URL" >&3
   echo "#   App URL: $APP_URL" >&3
   echo "#   Agent name: $AGENT_NAME" >&3
+  echo "#   Tmpdir: $BRW_T05_TMPDIR" >&3
 }
 
 teardown_file() {
   # Clean up the created agent to prevent orphan accumulation
   if [[ -n "${AGENT_NAME:-}" ]]; then
     $ZERO_CLI agent delete "$AGENT_NAME" --yes 2>/dev/null || true
-    rm -f "/tmp/brw_t05_agent_settings_${AGENT_NAME}" 2>/dev/null || true
   fi
+  rm -rf "${BRW_T05_TMPDIR:-}" 2>/dev/null || true
 
   browser_teardown
 }
@@ -188,7 +206,7 @@ teardown_file() {
     post_create_url=$(agent-browser get url 2>/dev/null | tr -d '[:space:]' || true)
     echo "# URL after dialog close: $post_create_url" >&3
     if [[ "$post_create_url" =~ /(talk|team)/[a-zA-Z0-9] ]]; then
-      echo "$post_create_url" > "/tmp/brw_t05_agent_settings_${AGENT_NAME}"
+      echo "$post_create_url" > "${BRW_T05_TMPDIR}/agent_settings_url"
       echo "# Captured agent settings URL from post-create navigation: $post_create_url" >&3
     else
       # App stayed on /team — wait for agent card and click it to get the URL
@@ -200,7 +218,7 @@ teardown_file() {
           agent_url=$(agent-browser get url 2>/dev/null | tr -d '[:space:]' || true)
           echo "# URL after clicking agent card: $agent_url" >&3
           if [[ "$agent_url" =~ /(talk|team)/[a-zA-Z0-9] ]]; then
-            echo "$agent_url" > "/tmp/brw_t05_agent_settings_${AGENT_NAME}"
+            echo "$agent_url" > "${BRW_T05_TMPDIR}/agent_settings_url"
             echo "# Saved agent settings URL: $agent_url" >&3
           fi
         fi
@@ -228,8 +246,8 @@ teardown_file() {
   # Try to load AGENT_SETTINGS_URL captured by test 9 before daemon restart.
   # If test 9 successfully clicked the agent card and saved the URL, we can
   # navigate directly without searching /team (avoids backend timing issues).
-  if [[ -z "${AGENT_SETTINGS_URL:-}" ]] && [[ -f "/tmp/brw_t05_agent_settings_${AGENT_NAME}" ]]; then
-    AGENT_SETTINGS_URL=$(tr -d '[:space:]' < "/tmp/brw_t05_agent_settings_${AGENT_NAME}")
+  if [[ -z "${AGENT_SETTINGS_URL:-}" ]] && [[ -f "${BRW_T05_TMPDIR}/agent_settings_url" ]]; then
+    AGENT_SETTINGS_URL=$(tr -d '[:space:]' < "${BRW_T05_TMPDIR}/agent_settings_url")
     echo "# Loaded AGENT_SETTINGS_URL from temp file: $AGENT_SETTINGS_URL" >&3
   fi
 
@@ -267,7 +285,7 @@ teardown_file() {
     if [[ "$clicked_url" =~ /(talk|team)/[a-zA-Z0-9] ]]; then
       AGENT_SETTINGS_URL="$clicked_url"
       export AGENT_SETTINGS_URL
-      echo "$AGENT_SETTINGS_URL" > "/tmp/brw_t05_agent_settings_${AGENT_NAME}"
+      echo "$AGENT_SETTINGS_URL" > "${BRW_T05_TMPDIR}/agent_settings_url"
     else
       echo "# Could not navigate to agent settings page" >&3
       return 1
@@ -291,8 +309,8 @@ teardown_file() {
   wait_for_text_gone "Loading your workspace" 30 || true
 
   # Load AGENT_SETTINGS_URL from temp file (trim whitespace to avoid URL issues).
-  if [[ -z "${AGENT_SETTINGS_URL:-}" ]] && [[ -f "/tmp/brw_t05_agent_settings_${AGENT_NAME}" ]]; then
-    AGENT_SETTINGS_URL=$(tr -d '[:space:]' < "/tmp/brw_t05_agent_settings_${AGENT_NAME}")
+  if [[ -z "${AGENT_SETTINGS_URL:-}" ]] && [[ -f "${BRW_T05_TMPDIR}/agent_settings_url" ]]; then
+    AGENT_SETTINGS_URL=$(tr -d '[:space:]' < "${BRW_T05_TMPDIR}/agent_settings_url")
     echo "# Loaded AGENT_SETTINGS_URL from temp file: $AGENT_SETTINGS_URL" >&3
   fi
 
@@ -316,7 +334,7 @@ teardown_file() {
       echo "# Recovery URL after click: $recovered_url" >&3
       if [[ "$recovered_url" =~ /(talk|team)/[a-zA-Z0-9] ]]; then
         AGENT_SETTINGS_URL="$recovered_url"
-        echo "$AGENT_SETTINGS_URL" > "/tmp/brw_t05_agent_settings_${AGENT_NAME}"
+        echo "$AGENT_SETTINGS_URL" > "${BRW_T05_TMPDIR}/agent_settings_url"
         echo "# Recovered AGENT_SETTINGS_URL: $AGENT_SETTINGS_URL" >&3
       fi
     fi
@@ -430,8 +448,8 @@ teardown_file() {
   echo "# Testing profile: edit description..." >&3
 
   # Load AGENT_SETTINGS_URL from temp file if not in environment (cross-subprocess persistence).
-  if [[ -z "${AGENT_SETTINGS_URL:-}" ]] && [[ -f "/tmp/brw_t05_agent_settings_${AGENT_NAME}" ]]; then
-    AGENT_SETTINGS_URL=$(tr -d '[:space:]' < "/tmp/brw_t05_agent_settings_${AGENT_NAME}")
+  if [[ -z "${AGENT_SETTINGS_URL:-}" ]] && [[ -f "${BRW_T05_TMPDIR}/agent_settings_url" ]]; then
+    AGENT_SETTINGS_URL=$(tr -d '[:space:]' < "${BRW_T05_TMPDIR}/agent_settings_url")
     echo "# Loaded AGENT_SETTINGS_URL from temp file: $AGENT_SETTINGS_URL" >&3
   fi
 
@@ -534,8 +552,8 @@ teardown_file() {
   echo "# Testing instructions: edit text..." >&3
 
   # Load AGENT_SETTINGS_URL from temp file if not in environment (cross-subprocess persistence).
-  if [[ -z "${AGENT_SETTINGS_URL:-}" ]] && [[ -f "/tmp/brw_t05_agent_settings_${AGENT_NAME}" ]]; then
-    AGENT_SETTINGS_URL=$(tr -d '[:space:]' < "/tmp/brw_t05_agent_settings_${AGENT_NAME}")
+  if [[ -z "${AGENT_SETTINGS_URL:-}" ]] && [[ -f "${BRW_T05_TMPDIR}/agent_settings_url" ]]; then
+    AGENT_SETTINGS_URL=$(tr -d '[:space:]' < "${BRW_T05_TMPDIR}/agent_settings_url")
     echo "# Loaded AGENT_SETTINGS_URL from temp file: $AGENT_SETTINGS_URL" >&3
   fi
 
