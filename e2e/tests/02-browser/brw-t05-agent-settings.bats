@@ -200,8 +200,8 @@ teardown_file() {
   # <name> <name>") that makes accessibility-based clicking unreliable.
   # eval finds the href attribute even when the link is not aria-accessible.
   local agent_href=""
-  agent_href=$(agent-browser eval "Array.from(document.querySelectorAll('a[href*=\"/team/\"]')).find(a=>a.textContent.includes('${AGENT_NAME}'))?.getAttribute('href')??''" 2>/dev/null | tr -d '[:space:]' || true)
-  if [[ -n "$agent_href" && "$agent_href" != "''" && "$agent_href" != "null" ]]; then
+  agent_href=$(agent-browser eval "Array.from(document.querySelectorAll('a[href*=\"/team/\"]')).find(a=>a.textContent.includes('${AGENT_NAME}'))?.getAttribute('href')??''" 2>/dev/null | tr -d '[:space:]"' || true)
+  if [[ -n "$agent_href" && "$agent_href" != "null" && "$agent_href" == /team/* ]]; then
     AGENT_SETTINGS_URL="${APP_URL}${agent_href}"
     export AGENT_SETTINGS_URL
     echo "$AGENT_SETTINGS_URL" > "${BATS_TMPDIR}/brw_t05_agent_settings_url"
@@ -244,8 +244,8 @@ teardown_file() {
     navigate_to_app_page "/team"
     wait_for_text "$AGENT_NAME" 30 || true
     local agent_href=""
-    agent_href=$(agent-browser eval "Array.from(document.querySelectorAll('a[href*=\"/team/\"]')).find(a=>a.textContent.includes('${AGENT_NAME}'))?.getAttribute('href')??''" 2>/dev/null | tr -d '[:space:]' || true)
-    if [[ -n "$agent_href" && "$agent_href" != "''" && "$agent_href" != "null" ]]; then
+    agent_href=$(agent-browser eval "Array.from(document.querySelectorAll('a[href*=\"/team/\"]')).find(a=>a.textContent.includes('${AGENT_NAME}'))?.getAttribute('href')??''" 2>/dev/null | tr -d '[:space:]"' || true)
+    if [[ -n "$agent_href" && "$agent_href" != "null" && "$agent_href" == /team/* ]]; then
       AGENT_SETTINGS_URL="${APP_URL}${agent_href}"
       echo "$AGENT_SETTINGS_URL" > "${BATS_TMPDIR}/brw_t05_agent_settings_url"
       echo "# Recovered AGENT_SETTINGS_URL via eval: $AGENT_SETTINGS_URL" >&3
