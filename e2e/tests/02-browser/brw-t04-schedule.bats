@@ -177,6 +177,7 @@ teardown_file() {
   echo "# Verifying schedule list page loads..." >&3
   agent-browser open "${APP_URL}/schedule" --ignore-https-errors
   sleep 3
+  dismiss_cookie_banner
 
   local schedule_found=false
   for _attempt in 1 2 3; do

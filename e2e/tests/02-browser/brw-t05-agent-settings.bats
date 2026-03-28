@@ -159,6 +159,7 @@ teardown_file() {
 @test "create agent for settings testing" {
   echo "# Navigating to team page..." >&3
   navigate_to_app_page "/team"
+  dismiss_cookie_banner
 
   # Wait for "Create teammate" button to appear before clicking — this ensures
   # the team page has fully loaded. Under parallel CI load, workspace init can
