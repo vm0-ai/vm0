@@ -1,6 +1,6 @@
 //! Runtime health diagnostics for all runners on the host.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -855,7 +855,15 @@ async fn detect_block_cow_orphans(
     // Pre-scan workspace directories once for consistent runner correlation.
     // This avoids per-target exists() calls and reduces the TOCTOU window to
     // a single filesystem snapshot.
-    let sandbox_runner_map = build_sandbox_runner_map(reports);
+    let sandbox_runner_map = {
+        let dirs: Vec<_> = reports
+            .iter()
+            .filter_map(|r| Some((r.name.clone()?, r.base_dir.as_ref()?.join("workspaces"))))
+            .collect();
+        tokio::task::spawn_blocking(move || build_sandbox_runner_map(&dirs))
+            .await
+            .unwrap_or_default()
+    };
 
     // 2. Orphan dm-snapshot targets (open_count == 0), checked in parallel.
     //    When name_filter is set, only check targets belonging to that runner.
@@ -944,15 +952,12 @@ async fn detect_block_cow_orphans(
 /// Build a map from sandbox_id → runner_name by scanning workspace directories.
 ///
 /// Takes a single filesystem snapshot so that all runner correlation lookups
-/// use a consistent view.
-fn build_sandbox_runner_map(reports: &[RunnerReport]) -> std::collections::HashMap<String, String> {
-    let mut map = std::collections::HashMap::new();
-    for r in reports {
-        let (Some(name), Some(base_dir)) = (&r.name, &r.base_dir) else {
-            continue;
-        };
-        let ws_dir = base_dir.join("workspaces");
-        let Ok(entries) = std::fs::read_dir(&ws_dir) else {
+/// use a consistent view. Accepts pre-extracted `(runner_name, workspaces_dir)`
+/// pairs so it can run inside `spawn_blocking`.
+fn build_sandbox_runner_map(dirs: &[(String, PathBuf)]) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    for (name, ws_dir) in dirs {
+        let Ok(entries) = std::fs::read_dir(ws_dir) else {
             continue;
         };
         for entry in entries.flatten() {
@@ -967,7 +972,7 @@ fn build_sandbox_runner_map(reports: &[RunnerReport]) -> std::collections::HashM
 /// Find which runner owns a `cow-{sandbox_id}` target via pre-built map.
 fn find_runner_for_dm_target(
     target_name: &str,
-    sandbox_runner_map: &std::collections::HashMap<String, String>,
+    sandbox_runner_map: &HashMap<String, String>,
 ) -> Option<String> {
     let sandbox_id = target_name.strip_prefix("cow-")?;
     sandbox_runner_map.get(sandbox_id).cloned()
@@ -1587,13 +1592,8 @@ Major, minor:      253, 0";
         let base = tmp.path().to_path_buf();
         std::fs::create_dir_all(base.join("workspaces/abc123")).unwrap();
 
-        let reports = vec![RunnerReport {
-            name: Some("pr-100-1".into()),
-            base_dir: Some(base),
-            ..make_report(Some("pr-100-1"))
-        }];
-
-        let map = build_sandbox_runner_map(&reports);
+        let dirs = vec![("pr-100-1".to_string(), base.join("workspaces"))];
+        let map = build_sandbox_runner_map(&dirs);
         assert_eq!(
             find_runner_for_dm_target("cow-abc123", &map),
             Some("pr-100-1".into())
