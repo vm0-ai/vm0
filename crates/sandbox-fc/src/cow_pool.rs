@@ -50,6 +50,15 @@ pub(crate) struct PrewarmedSlot {
     pub loop_device: block_cow::LoopDevice,
 }
 
+impl std::fmt::Debug for PrewarmedSlot {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PrewarmedSlot")
+            .field("id", &self.id)
+            .field("workspace", &self.workspace)
+            .finish_non_exhaustive()
+    }
+}
+
 /// Pool error type.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum CowPoolError {
@@ -299,5 +308,126 @@ pub(crate) fn destroy_slot(mut slot: PrewarmedSlot) {
     }
     if let Err(e) = std::fs::remove_dir_all(&slot.workspace) {
         warn!(id = %slot.id, error = %e, "failed to delete pool workspace dir");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_config(dir: &Path) -> CowPoolConfig {
+        CowPoolConfig {
+            workspaces_dir: dir.to_owned(),
+            base_sectors: 131072, // 64 MiB
+            golden_cow: None,
+        }
+    }
+
+    // -- State machine tests (no root required) --------------------------------
+
+    #[tokio::test]
+    async fn acquire_not_active_returns_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut pool = CowPool::new(test_config(tmp.path()));
+        pool.active = false;
+        let err = pool.acquire().await.unwrap_err();
+        assert!(
+            matches!(err, CowPoolError::NotActive),
+            "expected NotActive, got {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn cleanup_idempotent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut pool = CowPool::new(test_config(tmp.path()));
+        pool.cleanup().await;
+        assert!(!pool.active);
+        // Second cleanup is a no-op (no panic).
+        pool.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn warmup_with_bad_config_does_not_panic() {
+        // Point to a nonexistent golden COW file — all pre-warm tasks will
+        // fail, but warmup must handle errors gracefully.
+        let tmp = tempfile::tempdir().unwrap();
+        let config = CowPoolConfig {
+            workspaces_dir: tmp.path().to_owned(),
+            base_sectors: 131072,
+            golden_cow: Some(PathBuf::from("/nonexistent/golden.img")),
+        };
+        let mut pool = CowPool::new(config);
+        pool.warmup().await;
+        // Queue should be empty (all tasks failed).
+        assert_eq!(pool.queue.len(), 0);
+        // next_slot_idx should have advanced despite failures.
+        assert_eq!(pool.next_slot_idx, BUFFER_SIZE as u32);
+    }
+
+    #[tokio::test]
+    async fn acquire_exhausted_with_bad_config_returns_error() {
+        // No golden cow, but base_sectors=0 is fine for init_cow_file.
+        // However losetup will fail (no root), so all tiers fail.
+        let tmp = tempfile::tempdir().unwrap();
+        let config = CowPoolConfig {
+            workspaces_dir: tmp.path().to_owned(),
+            base_sectors: 131072,
+            golden_cow: Some(PathBuf::from("/nonexistent/golden.img")),
+        };
+        let mut pool = CowPool::new(config);
+        // Don't warmup — go straight to acquire.
+        let result = pool.acquire().await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn slot_limit_enforced() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut pool = CowPool::new(test_config(tmp.path()));
+        pool.next_slot_idx = MAX_SLOTS;
+        let err = pool.acquire().await.unwrap_err();
+        assert!(
+            matches!(err, CowPoolError::SlotLimitReached { max: MAX_SLOTS }),
+            "expected SlotLimitReached, got {err}"
+        );
+    }
+
+    #[test]
+    fn create_slot_with_nonexistent_golden_cow_fails() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = CowPoolConfig {
+            workspaces_dir: tmp.path().to_owned(),
+            base_sectors: 131072,
+            golden_cow: Some(PathBuf::from("/nonexistent/golden.img")),
+        };
+        let err = create_slot(0, &config).unwrap_err();
+        assert!(
+            matches!(err, CowPoolError::CowFileCreation(_)),
+            "expected CowFileCreation, got {err}"
+        );
+    }
+
+    #[test]
+    fn create_slot_fresh_mode_creates_cow_file() {
+        // In fresh mode, init_cow_file creates the cow file (no root needed).
+        // losetup_attach will fail without root, but the cow file should exist
+        // before the error.
+        let tmp = tempfile::tempdir().unwrap();
+        let config = test_config(tmp.path());
+        let result = create_slot(0, &config);
+        // Expected: losetup fails (no root), returns LoopAttach error.
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, CowPoolError::LoopAttach(_)),
+            "expected LoopAttach, got {err}"
+        );
+        // Error path should have cleaned up the cow file and workspace dir.
+        let entries: Vec<_> = std::fs::read_dir(tmp.path()).unwrap().collect();
+        assert_eq!(entries.len(), 0, "workspace dir should be cleaned up");
     }
 }
