@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use clap::Args;
 use serde::Deserialize;
+use tracing::warn;
 
 use crate::config::RunnerConfig;
 use crate::error::RunnerResult;
@@ -819,7 +820,17 @@ async fn detect_orphan_dm_snapshots(reports: &[RunnerReport]) -> Vec<Warning> {
         .await
     {
         Ok(o) if o.status.success() => Some(String::from_utf8_lossy(&o.stdout).into_owned()),
-        _ => return warnings,
+        Ok(o) => {
+            warn!(
+                stderr = %String::from_utf8_lossy(&o.stderr).trim(),
+                "dmsetup ls failed — skipping dm-snapshot check"
+            );
+            return warnings;
+        }
+        Err(e) => {
+            warn!(error = %e, "dmsetup not available — skipping dm-snapshot check");
+            return warnings;
+        }
     };
 
     let targets = super::gc::parse_dm_targets(&output, "cow-");
@@ -854,7 +865,10 @@ async fn dm_target_has_no_openers(name: &str) -> bool {
         .await
     {
         Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).into_owned(),
-        _ => return false, // can't determine → assume in use
+        _ => {
+            warn!(name, "dmsetup info failed — assuming target is in use");
+            return false;
+        }
     };
     parse_dm_open_count(&output) == Some(0)
 }
@@ -895,7 +909,17 @@ async fn detect_orphan_loop_devices(
         .await
     {
         Ok(o) if o.status.success() => Some(String::from_utf8_lossy(&o.stdout).into_owned()),
-        _ => return Vec::new(),
+        Ok(o) => {
+            warn!(
+                stderr = %String::from_utf8_lossy(&o.stderr).trim(),
+                "losetup -a failed — skipping loop device check"
+            );
+            return Vec::new();
+        }
+        Err(e) => {
+            warn!(error = %e, "losetup not available — skipping loop device check");
+            return Vec::new();
+        }
     };
 
     super::gc::parse_losetup(&output, &runner_root)
