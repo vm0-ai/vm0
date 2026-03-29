@@ -965,12 +965,12 @@ async fn detect_block_cow_orphans(
             // The dm target (`cow-{id}`) is created before the cow loop and
             // removed after it, so absence means the sandbox is fully torn down.
             //
-            // Exception: pre-warmed CowPool slots have a loop device with a
-            // holder fd but no dm target yet. These are actively managed by
-            // the pool and not orphaned. We detect them via the kernel's
-            // reference count — a held fd gives refcnt > 0.
+            // Exception: pre-warmed CowPool slots have a loop device with no
+            // dm target yet but are actively managed by a running runner.
+            // If the owning runner process is still alive, the loop device
+            // is managed by its pool — not orphaned.
             let expected = format!("cow-{sandbox_id}");
-            !dm_targets.contains(expected.as_str()) && loop_device_is_idle(&device)
+            !dm_targets.contains(expected.as_str()) && !runner_is_alive(&runner_name, reports)
         } else {
             // Base loop (rootfs.ext4): shared via BaseLoopCache, orphaned only
             // when every runner process on the host is dead.
@@ -1078,18 +1078,17 @@ fn find_runner_for_loop(backing: &str, reports: &[RunnerReport]) -> Option<Strin
     })
 }
 
-/// Check if a loop device has no active holders (idle / orphaned).
+/// Check if the runner that owns a loop device is still alive.
 ///
-/// Reads `/sys/block/{dev}/open_count` — a value > 0 means some process
-/// has the device open (e.g., CowPool's holder fd or a dm-snapshot target),
-/// indicating the device is actively managed, not orphaned.
-fn loop_device_is_idle(device: &str) -> bool {
-    let dev_name = device.rsplit('/').next().unwrap_or(device);
-    let path = format!("/sys/block/{dev_name}/open_count");
-    match std::fs::read_to_string(&path) {
-        Ok(s) => s.trim().parse::<u32>().unwrap_or(0) == 0,
-        Err(_) => true, // can't read → assume idle (conservative: flag as orphan)
-    }
+/// Used to distinguish pre-warmed CowPool slots (owned by a living runner)
+/// from leaked loop devices (runner crashed or exited).
+fn runner_is_alive(runner_name: &Option<String>, reports: &[RunnerReport]) -> bool {
+    let Some(name) = runner_name else {
+        return false;
+    };
+    reports
+        .iter()
+        .any(|r| r.name.as_deref() == Some(name.as_str()) && pid_exists(r.pid))
 }
 
 /// Check if a loop device still exists.
@@ -1712,8 +1711,7 @@ Major, minor:      253, 0";
     }
 
     #[test]
-    fn loop_device_is_idle_nonexistent_device() {
-        // A device that doesn't exist in /sys → can't read open_count → idle.
-        assert!(loop_device_is_idle("/dev/loop99999"));
+    fn runner_is_alive_no_runner() {
+        assert!(!runner_is_alive(&None, &[]));
     }
 }
