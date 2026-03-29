@@ -4,7 +4,7 @@ use std::time::{Duration, SystemTime};
 
 use clap::Args;
 use nix::fcntl::{Flock, FlockArg};
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::cmd::service;
 use crate::error::{RunnerError, RunnerResult};
@@ -53,9 +53,18 @@ pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
     let locks_removed = gc_orphaned_locks(&home, args.dry_run).await?;
     let (job_logs_removed, job_logs_freed) = gc_job_logs(&home, args.dry_run).await?;
     let versions_removed = gc_versions(&home, args.dry_run).await?;
+    let dry_run = args.dry_run;
+    let dm_removed = tokio::task::spawn_blocking(move || gc_block_cow(dry_run))
+        .await
+        .map_err(|e| RunnerError::Internal(format!("gc_block_cow join: {e}")))??;
 
     let total = rootfs_freed + snapshot_freed + job_logs_freed;
-    if total == 0 && locks_removed == 0 && job_logs_removed == 0 && versions_removed.is_empty() {
+    if total == 0
+        && locks_removed == 0
+        && job_logs_removed == 0
+        && versions_removed.is_empty()
+        && dm_removed == 0
+    {
         info!("nothing to clean up");
     } else {
         let verb = if args.dry_run {
@@ -345,7 +354,7 @@ async fn dir_stats(dir: &Path) -> (u64, SystemTime) {
         Err(_) => SystemTime::UNIX_EPOCH,
     };
 
-    let mut total_blocks = 0u64;
+    let mut total_bytes = 0u64;
     let mut stack = vec![dir.to_path_buf()];
     while let Some(current) = stack.pop() {
         let mut entries = match tokio::fs::read_dir(&current).await {
@@ -361,14 +370,14 @@ async fn dir_stats(dir: &Path) -> (u64, SystemTime) {
                 continue;
             };
             const BYTES_PER_BLOCK: u64 = 512;
-            total_blocks += meta.blocks() * BYTES_PER_BLOCK;
+            total_bytes += meta.blocks() * BYTES_PER_BLOCK;
             if meta.is_dir() {
                 stack.push(entry.path());
             }
         }
     }
 
-    (total_blocks, mtime)
+    (total_bytes, mtime)
 }
 
 /// Check whether a directory name is a semver version string (`v<major>.<minor>.<patch>`).
@@ -458,6 +467,206 @@ async fn gc_versions(home: &HomePaths, dry_run: bool) -> RunnerResult<Vec<String
     }
 
     Ok(removed)
+}
+
+/// Remove orphaned dm-snapshot targets and loop devices left behind by
+/// crashed runner processes (SIGKILL prevents normal Drop cleanup).
+///
+/// Two passes:
+/// 1. Remove orphaned `cow-*` dm-snapshot targets (`dmsetup remove`).
+/// 2. Detach orphaned loop devices backing files under `~/.vm0-runner/`.
+///    After pass 1 frees dm-snapshot references, previously-busy COW
+///    loop devices become detachable.  Since Linux v3.7, `losetup -d`
+///    sets AUTOCLEAR instead of returning EBUSY, but the device stays
+///    alive while references (holder fds or dm targets) exist.  Only
+///    loops from dead processes (where the kernel closed all fds and
+///    dm targets are removed) are actually reclaimed.
+fn gc_block_cow(dry_run: bool) -> RunnerResult<u32> {
+    let mut removed: u32 = 0;
+
+    // Pass 1: remove orphaned dm-snapshot targets.
+    for name in parse_dm_targets(&dmsetup_ls("snapshot"), "cow-") {
+        if dry_run {
+            info!(dm_target = %name, "would remove orphaned dm-snapshot target");
+            removed += 1;
+            continue;
+        }
+
+        // Try to remove the snapshot target. If busy, it's still in use — skip.
+        if !dmsetup_remove(&name) {
+            continue;
+        }
+        info!(dm_target = %name, "removed orphaned dm-snapshot target");
+        removed += 1;
+    }
+
+    // Pass 2: detach orphaned loop devices.
+    //
+    // Try to detach ALL loop devices whose backing files are under
+    // `~/.vm0-runner/`.  Since Linux v3.7, `losetup -d` on a busy
+    // device sets LO_FLAGS_AUTOCLEAR and returns success instead of
+    // EBUSY, so the call may "succeed" for active devices too.
+    // This is harmless — the device stays alive as long as any
+    // reference (holder fd or dm target) exists:
+    //
+    // - Base loops held by a live runner's BaseLoopCache: the cache
+    //   holds an fd, and any dm-snapshot targets also reference the
+    //   loop.  AUTOCLEAR defers actual detach until all are released.
+    //   If the runner was killed (SIGKILL), the kernel closes the fd
+    //   and GC can reclaim the loop.
+    //
+    // - COW loops referenced by an active dm-snapshot: the dm target
+    //   holds a reference, keeping the loop alive despite AUTOCLEAR.
+    //   Pass 1 removes orphaned dm targets first, freeing their COW
+    //   loops so AUTOCLEAR can take effect.
+    let runner_root = match crate::paths::HomePaths::new() {
+        Ok(paths) => format!("{}/", paths.root().display()),
+        Err(_) => return Ok(removed),
+    };
+    for (loop_dev, backing) in parse_losetup(&losetup_list(), &runner_root) {
+        if dry_run {
+            info!(loop_dev, backing, "would detach orphaned loop device");
+            removed += 1;
+            continue;
+        }
+
+        if losetup_detach(&loop_dev) {
+            info!(loop_dev, backing, "detached orphaned loop device");
+            removed += 1;
+        }
+    }
+
+    if removed > 0 {
+        info!(count = removed, "cleaned orphaned block-cow resources");
+    }
+
+    Ok(removed)
+}
+
+/// Parse `dmsetup ls` output and return target names matching the given prefix.
+///
+/// Output format: `"name\t(major, minor)"` per line, or `"No devices found"`.
+fn parse_dm_targets(output: &Option<String>, prefix: &str) -> Vec<String> {
+    let Some(stdout) = output else {
+        return Vec::new();
+    };
+    stdout
+        .lines()
+        .filter_map(|line| {
+            let name = line.split_whitespace().next()?;
+            if name.starts_with(prefix) {
+                Some(name.to_owned())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Run `sudo dmsetup ls --target <target_type>`, return stdout if successful.
+fn dmsetup_ls(target_type: &str) -> Option<String> {
+    let output = match std::process::Command::new("sudo")
+        .args(["dmsetup", "ls", "--target", target_type])
+        .output()
+    {
+        Ok(o) => o,
+        Err(e) => {
+            warn!(error = %e, "dmsetup not available — skipping dm-snapshot GC");
+            return None;
+        }
+    };
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        warn!(stderr = %stderr.trim(), "dmsetup ls failed — skipping dm-snapshot GC");
+        return None;
+    }
+    Some(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/// Run `sudo dmsetup remove <name>`, return true if successful.
+fn dmsetup_remove(name: &str) -> bool {
+    match std::process::Command::new("sudo")
+        .args(["dmsetup", "remove", name])
+        .output()
+    {
+        Ok(o) if o.status.success() => true,
+        Ok(o) => {
+            let stderr = String::from_utf8_lossy(&o.stderr);
+            warn!(name, stderr = %stderr.trim(), "dmsetup remove failed");
+            false
+        }
+        Err(e) => {
+            warn!(name, error = %e, "dmsetup remove failed");
+            false
+        }
+    }
+}
+
+/// Run `sudo losetup -a`, return stdout if successful.
+fn losetup_list() -> Option<String> {
+    let output = match std::process::Command::new("sudo")
+        .args(["losetup", "-a"])
+        .output()
+    {
+        Ok(o) => o,
+        Err(e) => {
+            warn!(error = %e, "losetup not available — skipping loop device GC");
+            return None;
+        }
+    };
+    if !output.status.success() {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/// Parse `losetup -a` output and return `(loop_device, backing_file)` pairs
+/// whose backing file starts with `prefix`.
+///
+/// Output format: `/dev/loopN: [offset]: (path)` or `(path (deleted))`.
+fn parse_losetup<'a>(output: &'a Option<String>, prefix: &'a str) -> Vec<(String, String)> {
+    let Some(stdout) = output else {
+        return Vec::new();
+    };
+    stdout
+        .lines()
+        .filter_map(|line| {
+            // Format: "/dev/loop5: [0048]:2345 (/home/ubuntu/.vm0-runner/...)"
+            let (dev, rest) = line.split_once(':')?;
+            let start = rest.find('(')?;
+            let end = rest.rfind(')')?;
+            if end <= start {
+                return None;
+            }
+            let backing = rest.get(start + 1..end)?;
+            // Strip " (deleted)" suffix for matching.
+            let path = backing.strip_suffix(" (deleted)").unwrap_or(backing);
+            if path.starts_with(prefix) {
+                Some((dev.trim().to_owned(), backing.to_owned()))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Run `sudo losetup -d <device>`, return true if successful.
+fn losetup_detach(device: &str) -> bool {
+    match std::process::Command::new("sudo")
+        .args(["losetup", "-d", device])
+        .output()
+    {
+        Ok(o) if o.status.success() => true,
+        Ok(o) => {
+            let stderr = String::from_utf8_lossy(&o.stderr);
+            warn!(device, stderr = %stderr.trim(), "losetup detach failed");
+            false
+        }
+        Err(e) => {
+            warn!(device, error = %e, "losetup detach failed");
+            false
+        }
+    }
 }
 
 fn human_bytes(bytes: u64) -> String {
@@ -586,7 +795,7 @@ mod tests {
         let artifacts_dir = dir.path().join("rootfs");
         let hash_dir = artifacts_dir.join("abc123");
         std::fs::create_dir_all(&hash_dir).unwrap();
-        std::fs::write(hash_dir.join("rootfs.squashfs"), b"data").unwrap();
+        std::fs::write(hash_dir.join("rootfs.ext4"), b"data").unwrap();
         // Set mtime past GC_MIN_AGE so the artifact is eligible for deletion.
         let old_time = SystemTime::now() - Duration::from_secs(3600);
         std::fs::File::open(&hash_dir)
@@ -617,7 +826,7 @@ mod tests {
         let artifacts_dir = dir.path().join("rootfs");
         let hash_dir = artifacts_dir.join("abc123");
         std::fs::create_dir_all(&hash_dir).unwrap();
-        std::fs::write(hash_dir.join("rootfs.squashfs"), b"data").unwrap();
+        std::fs::write(hash_dir.join("rootfs.ext4"), b"data").unwrap();
 
         // Hold a shared lock (simulating runner start).
         let lock_path = locks_dir.join("rootfs-abc123.lock");
@@ -656,7 +865,7 @@ mod tests {
         let artifacts_dir = dir.path().join("rootfs");
         let hash_dir = artifacts_dir.join("abc123");
         std::fs::create_dir_all(&hash_dir).unwrap();
-        std::fs::write(hash_dir.join("rootfs.squashfs"), b"data").unwrap();
+        std::fs::write(hash_dir.join("rootfs.ext4"), b"data").unwrap();
         // Set mtime past GC_MIN_AGE so the artifact is eligible for deletion.
         let old_time = SystemTime::now() - Duration::from_secs(3600);
         std::fs::File::open(&hash_dir)
@@ -989,7 +1198,7 @@ mod tests {
         let artifacts_dir = dir.path().join("rootfs");
         let recent_dir = artifacts_dir.join("recent_hash");
         std::fs::create_dir_all(&recent_dir).unwrap();
-        std::fs::write(recent_dir.join("rootfs.squashfs"), b"data").unwrap();
+        std::fs::write(recent_dir.join("rootfs.ext4"), b"data").unwrap();
         // mtime defaults to now — well within GC_MIN_AGE (10 min)
 
         let freed = gc_dir(
@@ -1018,7 +1227,7 @@ mod tests {
         let artifacts_dir = dir.path().join("rootfs");
         let old_dir = artifacts_dir.join("old_hash");
         std::fs::create_dir_all(&old_dir).unwrap();
-        std::fs::write(old_dir.join("rootfs.squashfs"), b"data").unwrap();
+        std::fs::write(old_dir.join("rootfs.ext4"), b"data").unwrap();
 
         // Set mtime to 1 hour ago — well past GC_MIN_AGE
         let old_time = SystemTime::now() - Duration::from_secs(3600);
@@ -1039,5 +1248,96 @@ mod tests {
 
         assert!(!old_dir.exists(), "old artifact should be deleted");
         assert!(freed > 0 || cfg!(target_os = "macos"));
+    }
+
+    #[test]
+    fn parse_dm_targets_cow_names() {
+        let output = Some(
+            "cow-abc123\t(253, 0)\ncow-def456\t(253, 1)\nother-target\t(253, 2)\n".to_string(),
+        );
+        let names = parse_dm_targets(&output, "cow-");
+        assert_eq!(names, vec!["cow-abc123", "cow-def456"]);
+    }
+
+    #[test]
+    fn parse_dm_targets_origin_names() {
+        let output = Some(
+            "origin-abc123\t(253, 0)\nsome-linear\t(253, 1)\norigin-def456\t(253, 2)\n".to_string(),
+        );
+        let names = parse_dm_targets(&output, "origin-");
+        assert_eq!(names, vec!["origin-abc123", "origin-def456"]);
+    }
+
+    #[test]
+    fn parse_dm_targets_no_devices() {
+        let output = Some("No devices found\n".to_string());
+        let names = parse_dm_targets(&output, "cow-");
+        assert!(names.is_empty());
+    }
+
+    #[test]
+    fn parse_dm_targets_empty_output() {
+        let output = Some(String::new());
+        let names = parse_dm_targets(&output, "cow-");
+        assert!(names.is_empty());
+    }
+
+    #[test]
+    fn parse_dm_targets_none() {
+        let names = parse_dm_targets(&None, "cow-");
+        assert!(names.is_empty());
+    }
+
+    #[test]
+    fn parse_dm_targets_malformed_lines() {
+        let output = Some("\n\t\n  \ncow-valid\t(253, 0)\n".to_string());
+        let names = parse_dm_targets(&output, "cow-");
+        assert_eq!(names, vec!["cow-valid"]);
+    }
+
+    #[test]
+    fn parse_losetup_filters_by_prefix() {
+        let output = Some(
+            "/dev/loop1: [0048]:123 (/home/ubuntu/.vm0-runner/rootfs/abc/rootfs.ext4)\n\
+             /dev/loop5: [0048]:456 (/home/ubuntu/.vm0-runner/runners/pr-123/workspaces/xxx/cow.img)\n\
+             /dev/loop0: [0048]:789 (/var/lib/snapd/snaps/amazon-ssm-agent_11798.snap)\n"
+                .to_string(),
+        );
+        let pairs = parse_losetup(&output, "/home/ubuntu/.vm0-runner/");
+        assert_eq!(pairs.len(), 2);
+        assert_eq!(pairs[0].0, "/dev/loop1");
+        assert_eq!(
+            pairs[0].1,
+            "/home/ubuntu/.vm0-runner/rootfs/abc/rootfs.ext4"
+        );
+        assert_eq!(pairs[1].0, "/dev/loop5");
+    }
+
+    #[test]
+    fn parse_losetup_deleted_files() {
+        let output = Some(
+            "/dev/loop347: [0048]:123 (/home/ubuntu/.vm0-runner/runners/pr-6521/workspaces/xxx/cow.img (deleted))\n"
+                .to_string(),
+        );
+        let pairs = parse_losetup(&output, "/home/ubuntu/.vm0-runner/");
+        assert_eq!(pairs.len(), 1);
+        assert_eq!(pairs[0].0, "/dev/loop347");
+        assert_eq!(
+            pairs[0].1,
+            "/home/ubuntu/.vm0-runner/runners/pr-6521/workspaces/xxx/cow.img (deleted)"
+        );
+    }
+
+    #[test]
+    fn parse_losetup_none() {
+        let pairs = parse_losetup(&None, "/home/ubuntu/.vm0-runner/");
+        assert!(pairs.is_empty());
+    }
+
+    #[test]
+    fn parse_losetup_empty() {
+        let output = Some(String::new());
+        let pairs = parse_losetup(&output, "/home/ubuntu/.vm0-runner/");
+        assert!(pairs.is_empty());
     }
 }

@@ -14,6 +14,13 @@ export const disableCommand = new Command()
     "-n, --name <schedule-name>",
     "Schedule name (required when agent has multiple schedules)",
   )
+  .addHelpText(
+    "after",
+    `
+Examples:
+  zero schedule disable <agent-id>
+  zero schedule disable <agent-id> -n my-schedule`,
+  )
   .action(
     withErrorHandler(async (agentName: string, options: { name?: string }) => {
       const resolved = await resolveZeroScheduleByAgent(

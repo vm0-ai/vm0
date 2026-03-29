@@ -61,14 +61,6 @@ pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<(String, Option<Sn
         return Ok((snapshot_hash, Some(config)));
     }
 
-    // Clean up any partial output from a previous failed attempt.
-    match tokio::fs::remove_dir_all(&output_dir).await {
-        Ok(()) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => return Err(e.into()),
-    }
-    tokio::fs::create_dir_all(&output_dir).await?;
-
     let rootfs_path = RootfsPaths::new(&paths, &args.rootfs_hash).rootfs();
     let rootfs_exists = tokio::fs::try_exists(&rootfs_path)
         .await
@@ -92,10 +84,10 @@ pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<(String, Option<Sn
 
     let sc = sandbox_fc::create_snapshot(create_config).await?;
 
-    let (snapshot_sz, memory_sz, overlay_sz) = tokio::join!(
+    let (snapshot_sz, memory_sz, cow_sz) = tokio::join!(
         file_sizes(&sc.snapshot_path),
         file_sizes(&sc.memory_path),
-        file_sizes(&sc.overlay_path),
+        file_sizes(&sc.cow_path),
     );
     tracing::info!(
         snapshot = %sc.snapshot_path.display(),
@@ -104,9 +96,9 @@ pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<(String, Option<Sn
         memory = %sc.memory_path.display(),
         memory_logical = %memory_sz.0,
         memory_disk = %memory_sz.1,
-        overlay = %sc.overlay_path.display(),
-        overlay_logical = %overlay_sz.0,
-        overlay_disk = %overlay_sz.1,
+        cow = %sc.cow_path.display(),
+        cow_logical = %cow_sz.0,
+        cow_disk = %cow_sz.1,
         "snapshot creation complete"
     );
 
@@ -115,7 +107,7 @@ pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<(String, Option<Sn
 
 /// Check whether all expected snapshot outputs exist in the directory.
 async fn is_snapshot_complete(output: &SnapshotOutputPaths) -> RunnerResult<bool> {
-    for path in [output.snapshot(), output.memory(), output.overlay()] {
+    for path in [output.snapshot(), output.memory(), output.cow()] {
         let exists = tokio::fs::try_exists(&path)
             .await
             .map_err(|e| RunnerError::Internal(format!("check {}: {e}", path.display())))?;
@@ -153,7 +145,7 @@ pub(crate) fn compute_snapshot_hash(args: &SnapshotArgs) -> String {
     hasher.update(args.vcpu.to_le_bytes());
     hasher.update(b"memory_mb:");
     hasher.update(args.memory_mb.to_le_bytes());
-    format!("{:x}", hasher.finalize())
+    hex::encode(hasher.finalize())
 }
 
 /// Return `(logical, disk)` as human-readable strings (e.g. "65.2 MiB").
@@ -207,7 +199,7 @@ mod tests {
         // Changing this assertion means ALL existing cached snapshots are
         // invalidated.  Only update deliberately.
         assert_eq!(
-            hash, "c3a6b6de68a3432cf445929376de33f7dfe854493ad91cd42d2b6bdc6d6adca6",
+            hash, "0451cf520cbe0db285ff4383eae2e8050addc23cd1ec3f6e2f92fa7ce4c1d7a6",
             "snapshot hash changed — this invalidates all cached snapshots"
         );
     }

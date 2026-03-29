@@ -18,6 +18,14 @@ export const createCommand = new Command()
     "Agent tone: professional, friendly, direct, supportive",
   )
   .option("--instructions-file <path>", "Path to instructions file")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  Minimal:               zero agent create --connectors github
+  With display name:     zero agent create --connectors github,linear --display-name "My Agent"
+  With instructions:     zero agent create --connectors github --instructions-file ./instructions.md`,
+  )
   .action(
     withErrorHandler(
       async (options: {

@@ -3,82 +3,162 @@ use std::path::{Path, PathBuf};
 
 use tracing::{info, warn};
 
+use crate::dmsetup;
 use crate::error::{BlockCowError, Result};
-use crate::{blockdev, dmsetup, losetup};
+use crate::losetup::{self, LoopDevice};
 
-/// Default dm-snapshot chunk size in 512-byte sectors.
-/// 8 sectors = 4KB, matching the common filesystem block size.
-const DEFAULT_CHUNK_SIZE: u32 = 8;
+/// Linux sector size in bytes.
+const SECTOR_SIZE: u64 = 512;
+
+/// Default dm-snapshot chunk size in sectors.
+/// 8 sectors × 512 bytes = 4KB, matching the common filesystem block size.
+const DEFAULT_CHUNK_SIZE: u32 = 4096 / SECTOR_SIZE as u32;
+
+/// Create an empty sparse COW file sized to match the base image.
+///
+/// The file is sparse: logical size equals `sectors * SECTOR_SIZE` but actual
+/// disk usage starts at 0. Creates parent directories if needed.
+pub fn init_cow_file(path: &Path, sectors: u64) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let f = fs::File::create(path)?;
+    let size_bytes = sectors.checked_mul(SECTOR_SIZE).ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("sector count overflow: {sectors} * {SECTOR_SIZE}"),
+        )
+    })?;
+    f.set_len(size_bytes)?;
+    Ok(())
+}
 
 /// Configuration for creating a [`CowDevice`].
 pub struct CowDeviceConfig {
-    /// Path to the base ext4 image (read-only, shared across VMs).
-    pub base_image: PathBuf,
-    /// Directory for per-VM COW sparse files.
-    pub cow_dir: PathBuf,
-    /// dm-snapshot chunk size in 512-byte sectors (default: 8 = 4KB).
-    pub chunk_size: Option<u32>,
+    /// Path to the COW file (e.g. `{workspace}/cow.img`).
+    /// Must already exist — use [`init_cow_file`] or `cp --sparse=always`
+    /// to prepare it before calling [`CowDevice::create`].
+    pub cow_file: PathBuf,
 }
 
 /// A block-level copy-on-write device backed by Linux dm-snapshot.
 ///
-/// Orchestrates loop devices and device mapper to present a single writable
-/// block device where reads of unmodified blocks go to the base image and
-/// writes are captured in a per-VM sparse COW file.
+/// Orchestrates a COW loop device and device mapper to present a single
+/// writable block device where reads of unmodified blocks go to the shared
+/// base image (via [`BaseLoopCache`](crate::BaseLoopCache)) and writes are
+/// captured in a per-VM sparse COW file.
 ///
 /// # Lifecycle
 ///
 /// ```text
-/// CowDevice::create(config)
-///   → base.ext4 ──losetup──→ /dev/loop0 (read-only)
-///   → cow-{id}.img ──losetup──→ /dev/loop1
-///   → dmsetup create origin-{id}: linear /dev/loop0
-///   → dmsetup create cow-{id}: snapshot origin-{id} /dev/loop1
+/// BaseLoopCache::acquire(rootfs.ext4) → base_handle (shared loop device)
+///
+/// // Fresh boot — caller creates empty sparse file:
+/// init_cow_file("cow.img", sectors)?;
+/// // Snapshot restore — caller copies golden COW:
+/// cp --sparse=always golden.img cow.img
+///
+/// CowDevice::create(base_handle, config)
+///   → cow.img ──losetup──→ /dev/loop1
+///   → dmsetup create cow-{id}: snapshot <base_loop> /dev/loop1
 ///   → /dev/mapper/cow-{id}
 ///
 /// CowDevice::destroy()
 ///   → dmsetup remove cow-{id}
-///   → dmsetup remove origin-{id}
 ///   → losetup -d /dev/loop1
-///   → losetup -d /dev/loop0
-///   → rm cow-{id}.img
+///   → rm cow.img
+///
+/// BaseLoopCache::release() → detaches base loop when refcount hits 0
 /// ```
 pub struct CowDevice {
     /// Unique identifier for this device (used in dm target names).
     id: String,
     /// The block device path for Firecracker: `/dev/mapper/cow-{id}`.
     device_path: PathBuf,
-    /// Loop device for the base image.
-    base_loop: PathBuf,
-    /// Loop device for the COW sparse file.
-    cow_loop: PathBuf,
+    /// Loop device for the COW sparse file (path + holder fd).
+    cow_loop: LoopDevice,
     /// Path to the COW sparse file on disk.
     cow_file: PathBuf,
+    /// Open fd on the dm device — keeps open count > 0 so that
+    /// `dmsetup remove` from GC returns EBUSY for active devices.
+    _device_holder: Option<fs::File>, // None only after teardown drops it
     /// Whether the device is currently active.
     active: bool,
 }
 
 impl CowDevice {
-    /// Create a new COW device backed by the given base image.
+    /// Create a COW device from an existing COW file.
     ///
-    /// This creates a fresh sparse COW file in `config.cow_dir` and sets up
-    /// loop devices and dm-snapshot targets. The resulting block device at
-    /// [`device_path`](Self::device_path) can be passed to Firecracker.
-    pub fn create(config: &CowDeviceConfig) -> Result<Self> {
+    /// `base_loop` is the read-only loop device path from
+    /// [`BaseLoopCache::acquire`](crate::BaseLoopCache::acquire).
+    /// `sectors` is the base image size in 512-byte sectors.
+    ///
+    /// The COW file at `config.cow_file` must already exist — either
+    /// freshly created via [`init_cow_file`] or copied from a snapshot's
+    /// golden COW file.
+    ///
+    /// On failure the COW file is left on disk for the caller to clean up.
+    pub fn create(base_loop: &Path, sectors: u64, config: &CowDeviceConfig) -> Result<Self> {
         let id = uuid::Uuid::new_v4().to_string();
-        Self::setup(config, &id, None)
-    }
+        let chunk_size = DEFAULT_CHUNK_SIZE;
+        let cow_name = format!("cow-{id}");
+        let cow_file = &config.cow_file;
 
-    /// Restore a COW device from a previously persisted COW file.
-    ///
-    /// Used for snapshot restore: reuses an existing COW file instead of
-    /// creating a new one. The COW file retains all prior writes.
-    ///
-    /// On failure the caller retains ownership of `cow_file` and is
-    /// responsible for cleanup.
-    pub fn restore(config: &CowDeviceConfig, cow_file: PathBuf) -> Result<Self> {
-        let id = uuid::Uuid::new_v4().to_string();
-        Self::setup(config, &id, Some(cow_file))
+        // 1. Attach COW file to a loop device.
+        let mut cow_loop = losetup::attach(cow_file, false)?;
+        info!(cow_loop = %cow_loop.path().display(), "attached COW file");
+
+        // 2. Create dm-snapshot target directly on the shared base loop device.
+        //
+        //    No dm-linear origin needed — the base loop is read-only and shared
+        //    across all COW devices via BaseLoopCache.
+        //
+        //    dm devices default to root:disk 0660.  The runner user must be in
+        //    the `disk` group to open the device.
+        let base_loop_str = base_loop.to_string_lossy();
+        let cow_loop_str = cow_loop.path().to_string_lossy().into_owned();
+        let device_path = match dmsetup::create_snapshot(
+            &cow_name,
+            &base_loop_str,
+            &cow_loop_str,
+            sectors,
+            chunk_size,
+        ) {
+            Ok(p) => p,
+            Err(e) => {
+                let _ = cow_loop.detach();
+                return Err(e);
+            }
+        };
+
+        // 3. Hold the dm device open so its open count stays > 0.
+        //    This prevents concurrent GC from removing the target via
+        //    `dmsetup remove` (which returns EBUSY when openers exist).
+        let device_holder = match fs::File::open(&device_path) {
+            Ok(f) => f,
+            Err(e) => {
+                let _ = dmsetup::remove(&cow_name);
+                let _ = cow_loop.detach();
+                return Err(BlockCowError::Io(e));
+            }
+        };
+
+        info!(
+            device = %device_path.display(),
+            id,
+            sectors,
+            chunk_size,
+            "COW device created"
+        );
+
+        Ok(Self {
+            id: id.to_owned(),
+            device_path,
+            cow_loop,
+            cow_file: cow_file.to_owned(),
+            _device_holder: Some(device_holder),
+            active: true,
+        })
     }
 
     /// Path to the block device (e.g. `/dev/mapper/cow-{id}`).
@@ -96,7 +176,16 @@ impl CowDevice {
         &self.cow_file
     }
 
-    /// Tear down: remove dm targets, detach loop devices, delete COW file.
+    /// Log dm-snapshot status (COW allocation) for debugging.
+    pub fn log_status(&self) {
+        let cow_name = format!("cow-{}", self.id);
+        match dmsetup::status(&cow_name) {
+            Ok(s) => info!(id = self.id, status = %s, "dm-snapshot status"),
+            Err(e) => warn!(id = self.id, error = %e, "dm-snapshot status query failed"),
+        }
+    }
+
+    /// Tear down: remove dm target, detach COW loop device, delete COW file.
     ///
     /// Takes `&mut self` so the caller can retry on failure. On success the
     /// device is marked inactive and [`Drop`] becomes a no-op.
@@ -111,113 +200,73 @@ impl CowDevice {
         self.teardown(false)
     }
 
+    /// Schedule deferred removal: remove dm target, detach COW loop, delete COW file.
+    ///
+    /// Uses `dmsetup remove --force` (`DM_DEFERRED_REMOVE`) so the kernel
+    /// removes the target when all openers release their file descriptors.
+    /// Use as a last resort after [`destroy`] retries are exhausted.
+    pub fn destroy_deferred(&mut self) -> Result<()> {
+        self.teardown_deferred(true)
+    }
+
+    /// Schedule deferred removal but keep the COW file for snapshot preservation.
+    ///
+    /// Uses `dmsetup remove --force` (`DM_DEFERRED_REMOVE`).
+    /// Use as a last resort after [`destroy_keep_cow`] retries are exhausted.
+    pub fn destroy_deferred_keep_cow(&mut self) -> Result<()> {
+        self.teardown_deferred(false)
+    }
+
+    /// Mark the device as inactive without performing cleanup.
+    ///
+    /// Use this after exhausting retries on [`destroy`] — the caller has
+    /// given up and will rely on GC to clean up the orphaned dm targets.
+    /// Prevents [`Drop`] from logging a redundant warning.
+    pub fn abandon(&mut self) {
+        warn!(
+            id = self.id,
+            "COW device abandoned — relying on GC for cleanup"
+        );
+        self.active = false;
+    }
+
     // -----------------------------------------------------------------------
     // Internal helpers
     // -----------------------------------------------------------------------
 
-    fn setup(config: &CowDeviceConfig, id: &str, existing_cow: Option<PathBuf>) -> Result<Self> {
-        let chunk_size = config.chunk_size.unwrap_or(DEFAULT_CHUNK_SIZE);
-        let origin_name = format!("origin-{id}");
-        let cow_name = format!("cow-{id}");
+    /// Best-effort deferred teardown.
+    ///
+    /// Unlike [`teardown`], this does NOT require `active == true`.
+    /// It can clean up abandoned devices where the dm target and loop
+    /// device were leaked.  All steps are best-effort; only the
+    /// `dmsetup remove --force` result is propagated.
+    fn teardown_deferred(&mut self, delete_cow_file: bool) -> Result<()> {
+        let cow_name = format!("cow-{}", self.id);
 
-        // 1. Attach base image to a read-only loop device.
-        let base_loop = losetup::attach(&config.base_image, true)?;
-        info!(base_loop = %base_loop.display(), "attached base image");
+        // Drop our dm holder fd so we don't contribute to the open count.
+        self._device_holder = None;
+        dmsetup::remove_deferred(&cow_name)?;
 
-        // 2. Get the base image size in sectors.
-        let sectors = match blockdev::get_size_sectors(&base_loop) {
-            Ok(s) => s,
-            Err(e) => {
-                let _ = losetup::detach(&base_loop);
-                return Err(e);
-            }
-        };
+        // Past the point of no return — the kernel will remove the target
+        // when the last opener (Firecracker) releases its fd.
+        self.active = false;
 
-        // 3. Create or reuse COW sparse file and attach to loop device.
-        let created_cow = existing_cow.is_none();
-        let cow_file = match existing_cow {
-            Some(path) => path,
-            None => {
-                let create_cow = || -> Result<PathBuf> {
-                    fs::create_dir_all(&config.cow_dir)?;
-                    let path = config.cow_dir.join(format!("cow-{id}.img"));
-                    let f = fs::File::create(&path)?;
-                    // Sparse file: same size as base so dm-snapshot has room
-                    // for a full overwrite. Actual disk usage starts at 0.
-                    f.set_len(sectors * 512)?;
-                    Ok(path)
-                };
-                match create_cow() {
-                    Ok(p) => p,
-                    Err(e) => {
-                        let _ = losetup::detach(&base_loop);
-                        return Err(e);
-                    }
-                }
-            }
-        };
+        // Best-effort: `losetup -d` on a busy loop device sets AUTOCLEAR
+        // and returns success.  The kernel auto-detaches the loop when dm
+        // releases its reference.
+        let _ = self.cow_loop.detach();
 
-        let cow_loop = match losetup::attach(&cow_file, false) {
-            Ok(l) => l,
-            Err(e) => {
-                if created_cow {
-                    let _ = fs::remove_file(&cow_file);
-                }
-                let _ = losetup::detach(&base_loop);
-                return Err(e);
-            }
-        };
-        info!(cow_loop = %cow_loop.display(), "attached COW file");
-
-        // 4. Create dm-linear origin target.
-        let base_loop_str = base_loop.to_string_lossy();
-        if let Err(e) = dmsetup::create_linear(&origin_name, &base_loop_str, sectors) {
-            let _ = losetup::detach(&cow_loop);
-            let _ = losetup::detach(&base_loop);
-            if created_cow {
-                let _ = fs::remove_file(&cow_file);
-            }
-            return Err(e);
+        if delete_cow_file {
+            let _ = fs::remove_file(&self.cow_file);
         }
 
-        // 5. Create dm-snapshot target.
-        let origin_path = format!("/dev/mapper/{origin_name}");
-        let cow_loop_str = cow_loop.to_string_lossy();
-        let device_path = match dmsetup::create_snapshot(
-            &cow_name,
-            &origin_path,
-            &cow_loop_str,
-            sectors,
-            chunk_size,
-        ) {
-            Ok(p) => p,
-            Err(e) => {
-                let _ = dmsetup::remove(&origin_name);
-                let _ = losetup::detach(&cow_loop);
-                let _ = losetup::detach(&base_loop);
-                if created_cow {
-                    let _ = fs::remove_file(&cow_file);
-                }
-                return Err(e);
-            }
-        };
-
         info!(
-            device = %device_path.display(),
-            id,
-            sectors,
-            chunk_size,
-            "COW device created"
+            id = self.id,
+            keep_cow = !delete_cow_file,
+            "COW device scheduled for deferred removal"
         );
 
-        Ok(Self {
-            id: id.to_owned(),
-            device_path,
-            base_loop,
-            cow_loop,
-            cow_file,
-            active: true,
-        })
+        Ok(())
     }
 
     fn teardown(&mut self, delete_cow_file: bool) -> Result<()> {
@@ -226,26 +275,23 @@ impl CowDevice {
         }
 
         let cow_name = format!("cow-{}", self.id);
-        let origin_name = format!("origin-{}", self.id);
 
-        // Teardown respects the dependency chain:
-        //   snapshot → origin → (cow_loop, base_loop) → cow_file
+        // Teardown dependency chain:
+        //   dm-snapshot → cow_loop → cow_file
         //
-        // If snapshot removal fails (device busy), the origin and loop
-        // devices are still in use — attempting to remove them would also
-        // fail. So we bail early and let the caller retry later.
+        // If snapshot removal fails (device busy), the cow loop device is
+        // still in use — attempting to detach it would also fail. So we
+        // bail early and let the caller retry later.
         //
         // Once the snapshot is removed, everything else is independent
         // and proceeds best-effort.
 
-        // Step 1: remove the snapshot target. This is the only step that
-        // can legitimately fail due to "device busy" (Firecracker still
-        // has the device open). If it fails, bail — nothing else can be
-        // cleaned up yet.
-        if let Err(e) = dmsetup::remove(&cow_name) {
-            warn!(name = cow_name, error = %e, "failed to remove snapshot target — device may be in use");
-            return Err(e);
-        }
+        // Step 1: remove the snapshot target. Drop our dm holder fd first
+        // so we don't contribute to the open count.  Firecracker may still
+        // have the device open — if so, dmsetup remove fails with EBUSY
+        // and we bail to let the caller retry.
+        self._device_holder = None;
+        dmsetup::remove(&cow_name)?;
 
         // Snapshot is gone — past the point of no return. Mark inactive
         // so Drop won't retry the (already succeeded) snapshot removal.
@@ -262,9 +308,7 @@ impl CowDevice {
             }
         };
 
-        record(dmsetup::remove(&origin_name), "remove origin target");
-        record(losetup::detach(&self.cow_loop), "detach COW loop");
-        record(losetup::detach(&self.base_loop), "detach base loop");
+        record(self.cow_loop.detach(), "detach COW loop");
 
         if delete_cow_file {
             record(
@@ -293,8 +337,12 @@ impl Drop for CowDevice {
                 id = self.id,
                 "CowDevice dropped without calling destroy() — attempting best-effort cleanup"
             );
-            // Best-effort: try to tear down, ignore errors.
-            let _ = self.teardown(true);
+            if let Err(e) = self.teardown(true) {
+                warn!(id = self.id, error = %e, "best-effort teardown failed, trying deferred removal");
+                if let Err(e) = self.teardown_deferred(true) {
+                    warn!(id = self.id, error = %e, "deferred removal also failed");
+                }
+            }
         }
     }
 }

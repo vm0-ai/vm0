@@ -41,12 +41,13 @@
       when: docker_check.rc != 0
       become: true
 
-    - name: Add user to docker and kvm groups
+    - name: Add user to docker, kvm and disk groups
       user:
         name: "{{ ansible_user }}"
         groups:
           - docker
           - kvm
+          - disk
         append: true
       become: true
 

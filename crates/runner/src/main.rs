@@ -56,7 +56,7 @@ enum Command {
     Setup,
     /// Build rootfs and snapshot in one step
     Build(cmd::BuildArgs),
-    /// Build squashfs rootfs only (without snapshot)
+    /// Build ext4 rootfs only (without snapshot)
     Rootfs(cmd::RootfsArgs),
     /// Create a Firecracker VM snapshot for fast sandbox boot
     Snapshot(cmd::SnapshotArgs),

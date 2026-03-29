@@ -10,6 +10,7 @@ import kimiIcon from "./icons/kimi.svg";
 import minimaxIcon from "./icons/minimax.svg";
 import openrouterIcon from "./icons/openrouter.svg";
 import vercelIcon from "./icons/vercel.svg";
+import vm0Icon from "./icons/vm0.svg";
 
 const PROVIDER_ICONS: Readonly<Record<ModelProviderType, string>> =
   Object.freeze({
@@ -23,7 +24,7 @@ const PROVIDER_ICONS: Readonly<Record<ModelProviderType, string>> =
     "vercel-ai-gateway": vercelIcon,
     "azure-foundry": azureIcon,
     "aws-bedrock": bedrockIcon,
-    vm0: "",
+    vm0: vm0Icon,
   });
 
 export function ProviderIcon({

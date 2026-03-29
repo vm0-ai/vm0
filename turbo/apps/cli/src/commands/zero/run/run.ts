@@ -18,6 +18,18 @@ export const mainRunCommand = new Command()
     "Override model provider (e.g., anthropic-api-key)",
   )
   .option("--verbose", "Show full tool inputs and outputs")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  Delegate a task:       zero run <agent-id> "summarize the latest issues"
+  With verbose output:   zero run <agent-id> "fix the bug" --verbose
+
+Notes:
+  - Get agent IDs from "zero agent list"
+  - The command streams events until the delegated run completes
+  - On success, a session ID is printed for follow-up with "zero run continue"`,
+  )
   .action(
     withErrorHandler(
       async (

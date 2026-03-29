@@ -71,9 +71,7 @@
 .zero-app {
   --zero-card-radius: 0.75rem;
   --zero-card-border: hsl(var(--border));
-  --zero-card-shadow:
-    0 1px 1px hsl(220 12% 20% / 0.02), 0 2px 8px hsl(220 12% 20% / 0.025),
-    0 8px 24px hsl(220 12% 20% / 0.02);
+  --zero-card-shadow: 0 1px 3px hsl(220 12% 20% / 0.08);
 }
 
 /* Search bar / text input (matches form inputs: white surface in light theme) */
@@ -207,6 +205,7 @@
   background-color: hsl(var(--card));
   border: 0.7px solid hsl(var(--gray-400));
   border-radius: var(--zero-card-radius);
+  box-shadow: var(--zero-card-shadow);
   transition: background-color 0.15s;
 }
 .zero-app .zero-card.cursor-pointer {
@@ -260,6 +259,7 @@
   background-color: hsl(var(--card));
   border: 0.7px solid hsl(var(--gray-400));
   border-radius: var(--zero-card-radius);
+  box-shadow: var(--zero-card-shadow);
 }
 
 /* Instructions/content card: uses .zero-card style */
@@ -267,6 +267,7 @@
   background-color: hsl(var(--card));
   border: 0.7px solid hsl(var(--gray-400));
   border-radius: var(--zero-card-radius);
+  box-shadow: var(--zero-card-shadow);
 }
 
 /* Instructions/feature cards: cool gray gradient */
@@ -304,10 +305,7 @@
   background-color: hsl(var(--card));
   border: 0.7px solid hsl(var(--gray-400));
   border-radius: var(--zero-card-radius);
-  box-shadow:
-    0 1px 2px hsl(var(--primary) / 0.04),
-    0 4px 12px hsl(220 20% 40% / 0.06),
-    0 12px 32px hsl(220 20% 40% / 0.04);
+  box-shadow: var(--zero-card-shadow);
 }
 
 /* Chat: outline buttons inside dialogue */
@@ -782,6 +780,7 @@ details[open] > summary > span:first-child {
   border: 0.7px solid hsl(var(--gray-400));
   border-radius: var(--zero-card-radius);
   background-color: hsl(var(--card));
+  box-shadow: var(--zero-card-shadow);
 }
 
 .zero-app .zero-doc-card-content {

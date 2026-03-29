@@ -8,12 +8,13 @@ This workspace contains Rust crates for the vm0 sandbox runtime — VM orchestra
 |-------|-------------|
 | **runner** | Sandbox orchestrator — polls for jobs (API or local queue), manages VM lifecycle, proxy, service install, and bridges to sandbox-fc |
 | **sandbox** | Sandbox trait and shared types — `SandboxFactory`, `Sandbox`, `SandboxConfig`, `ExecRequest`, `ExecResult` |
-| **sandbox-fc** | Firecracker sandbox implementation — VM lifecycle, network namespace pool, overlay FS, snapshot restore |
+| **sandbox-fc** | Firecracker sandbox implementation — VM lifecycle, network namespace pool, dm-snapshot COW, snapshot restore |
+| **block-cow** | Host-side copy-on-write via Linux dm-snapshot — loop devices, device mapper orchestration, sparse COW files |
 | **vsock-proto** | Wire protocol encoding/decoding shared by host and guest — length-prefixed binary messages |
 | **vsock-host** | Host-side async vsock client (tokio) — connects to guest via Unix domain sockets |
 | **vsock-guest** | Guest-side vsock library — IPC over vsock/Unix sockets, embedded in guest-init as PID 2 |
 | **vsock-test** | Integration tests for vsock — real host + real guest over Unix sockets |
-| **guest-init** | Init process (PID 1) for Firecracker VMs — filesystem setup, mount/pivot_root, signal handling, forks vsock-guest |
+| **guest-init** | Init process (PID 1) for Firecracker VMs — virtual filesystem setup, env config, signal handling, forks vsock-guest |
 | **guest-agent** | Guest orchestrator — CLI execution, heartbeat, telemetry upload, and checkpoint creation inside the VM |
 | **guest-common** | Shared utilities for guest crates — logging macros, telemetry recording, environment accessors |
 | **guest-download** | Downloads and extracts storage archives — parallel downloads (4 concurrent), streaming extraction, retry logic |
@@ -40,6 +41,7 @@ This workspace contains Rust crates for the vm0 sandbox runtime — VM orchestra
 │  runner ── sandbox-fc ── vsock-host      │
 │    │             │                       │
 │    │        sandbox (trait)              │
+│    │        block-cow (dm-snapshot)      │
 │    │                                     │
 │    ├── ably-subscriber (job polling)     │
 │    └── mitmproxy (HTTPS interception)    │

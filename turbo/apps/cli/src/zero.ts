@@ -94,7 +94,7 @@ program
   .addHelpText(
     "after",
     `
-Common scenarios:
+Examples:
   Missing a token?       zero doctor missing-token <TOKEN_NAME>
   Delegate to teammate?  zero run <agent-id> "your task"
   Send a Slack message?  zero slack message send -c <channel> -t "text"

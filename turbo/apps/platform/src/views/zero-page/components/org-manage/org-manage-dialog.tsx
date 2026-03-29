@@ -45,7 +45,7 @@ const TAB_META = {
   providers: {
     title: "Model Providers",
     description:
-      "Use your own model provider instead of credits. Add your API keys below.",
+      "Configure model providers for running tasks. You can also bring your own API key to use a custom provider.",
   },
   members: {
     title: "Members",

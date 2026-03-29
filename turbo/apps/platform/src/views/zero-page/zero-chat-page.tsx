@@ -2,8 +2,9 @@ import { Component, useState } from "react";
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { user$ } from "../../signals/auth.ts";
-import { IconArrowUpRight, IconPin } from "@tabler/icons-react";
+import { IconArrowUpRight, IconPin, IconUserPlus } from "@tabler/icons-react";
 import {
+  Button,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -19,6 +20,12 @@ import {
   updatePinnedAgentIds$,
 } from "../../signals/zero-page/zero-pinned-agents.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import { isOrgAdmin$ } from "../../signals/org.ts";
+import {
+  setActiveTab$,
+  setBillingSubPage$,
+} from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
+import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import {
   chatPageInput$,
@@ -167,6 +174,19 @@ export function ZeroChatPage({
   // Agent ID from URL for ideas navigation
   const talkAgentId = useGet(zeroTalkAgentId$);
 
+  // Admin invite
+  const isAdminLoadable = useLoadable(isOrgAdmin$);
+  const isAdmin =
+    isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
+  const setTab = useSet(setActiveTab$);
+  const setSubPage = useSet(setBillingSubPage$);
+  const openManage = useSet(setOrgManageDialogOpen$);
+  const handleInvite = () => {
+    setTab("members");
+    setSubPage(false);
+    detach(openManage(true, pageSignal), Reason.DomCallback);
+  };
+
   // Pin pill
   const currentChatAgentId = useGet(zeroChatAgentId$);
   const pinnedLoadable = useLastLoadable(pinnedAgentIds$);
@@ -193,10 +213,21 @@ export function ZeroChatPage({
   // Landing page: full content (title, triggers, composer, actions, prompts)
   return (
     <div className="relative flex flex-1 flex-col min-h-0">
-      <header
-        className="shrink-0 bg-transparent px-4 sm:px-6 pt-10 pb-2"
-        aria-hidden="true"
-      />
+      <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-2">
+        <div className="flex justify-end">
+          {isAdmin && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleInvite}
+              className="zero-btn-morandi gap-1.5"
+            >
+              <IconUserPlus size={14} stroke={1.5} />
+              Invite people
+            </Button>
+          )}
+        </div>
+      </header>
 
       <main className="flex flex-1 flex-col justify-center overflow-auto px-4 sm:px-6 py-12">
         <div className="mx-auto w-full max-w-[900px] flex flex-col items-stretch gap-8 -mt-24">
