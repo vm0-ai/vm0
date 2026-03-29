@@ -134,8 +134,9 @@ describe("POST /api/internal/callbacks/slack/org", () => {
     );
 
     // Call verifyCallback directly to see what it returns
-    const { verifyCallback } =
-      await import("../../../../../../../src/lib/callback");
+    const { verifyCallback } = await import(
+      "../../../../../../../src/lib/callback"
+    );
     const log = { warn: () => {} };
     const result = await verifyCallback(request, log);
 

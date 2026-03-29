@@ -631,7 +631,6 @@ export const prepareSessionSwitch$ = command(({ set }) => {
  */
 export const zeroSessionError$ = computed(() => null as string | null);
 
-
 // Chat input
 const internalChatInput$ = state("");
 export const zeroChatInput$ = computed((get) => get(internalChatInput$));
