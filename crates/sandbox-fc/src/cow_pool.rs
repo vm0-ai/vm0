@@ -28,12 +28,10 @@ const MAX_SLOTS: u32 = 256;
 
 /// Configuration for creating a [`CowPool`].
 #[derive(Clone)]
-pub struct CowPoolConfig {
+pub(crate) struct CowPoolConfig {
     /// Base directory for workspaces (e.g., `{base_dir}/workspaces`).
     pub workspaces_dir: PathBuf,
-    /// Path to the shared base loop device (from `BaseLoopCache`).
-    pub base_loop_path: PathBuf,
-    /// Base image size in 512-byte sectors.
+    /// Base image size in 512-byte sectors (for `init_cow_file` in fresh mode).
     pub base_sectors: u64,
     /// Snapshot golden COW file path (`None` = fresh mode).
     pub golden_cow: Option<PathBuf>,
@@ -43,7 +41,7 @@ pub struct CowPoolConfig {
 ///
 /// The caller must create the dm-snapshot target on acquire
 /// via [`CowDevice::create_from_loop`](block_cow::CowDevice::create_from_loop).
-pub struct PrewarmedSlot {
+pub(crate) struct PrewarmedSlot {
     /// Unique slot ID (UUID). Used as workspace directory name.
     pub id: String,
     /// Path to the workspace directory: `{workspaces_dir}/{id}/`.
@@ -56,7 +54,7 @@ pub struct PrewarmedSlot {
 
 /// Pool error type.
 #[derive(Debug, thiserror::Error)]
-pub enum CowPoolError {
+pub(crate) enum CowPoolError {
     #[error("COW file creation failed: {0}")]
     CowFileCreation(String),
     #[error("loop device attach failed: {0}")]
@@ -76,7 +74,7 @@ pub enum CowPoolError {
 /// Maintains a buffer of pre-created COW files with attached loop devices.
 /// On [`acquire`](Self::acquire), pops a slot and the caller creates the
 /// dm-snapshot target with the correct `cow-{sandbox_id}` name.
-pub struct CowPool {
+pub(crate) struct CowPool {
     active: bool,
     queue: VecDeque<PrewarmedSlot>,
     pending: tokio::task::JoinSet<Result<PrewarmedSlot, CowPoolError>>,
@@ -296,7 +294,7 @@ fn destroy_slot(mut slot: PrewarmedSlot) {
     if let Err(e) = std::fs::remove_file(&slot.cow_file) {
         warn!(id = %slot.id, error = %e, "failed to delete pool COW file");
     }
-    if let Err(e) = std::fs::remove_dir(&slot.workspace) {
+    if let Err(e) = std::fs::remove_dir_all(&slot.workspace) {
         warn!(id = %slot.id, error = %e, "failed to delete pool workspace dir");
     }
 }

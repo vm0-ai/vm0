@@ -1080,12 +1080,9 @@ fn find_runner_for_loop(backing: &str, reports: &[RunnerReport]) -> Option<Strin
 
 /// Check if a loop device has no active holders (idle / orphaned).
 ///
-/// Reads `/sys/block/{dev}/holders/` — an empty directory means no dm target
-/// or other block device is using this loop. Pre-warmed CowPool slots have
-/// a holder fd open but no dm target, so the holders dir is empty; however,
-/// we also check the kernel open count via `/sys/block/{dev}/open_count`.
-/// A value > 0 means some process has the device open (e.g., CowPool's
-/// holder fd), indicating the device is actively managed.
+/// Reads `/sys/block/{dev}/open_count` — a value > 0 means some process
+/// has the device open (e.g., CowPool's holder fd or a dm-snapshot target),
+/// indicating the device is actively managed, not orphaned.
 fn loop_device_is_idle(device: &str) -> bool {
     let dev_name = device.rsplit('/').next().unwrap_or(device);
     let path = format!("/sys/block/{dev_name}/open_count");

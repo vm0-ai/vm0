@@ -251,7 +251,6 @@ impl SandboxFactory for FirecrackerFactory {
         // Initialize COW pool with base image info.
         let cow_pool_config = crate::cow_pool::CowPoolConfig {
             workspaces_dir: self.factory_paths.workspaces(),
-            base_loop_path: self.base_loop().loop_path.clone(),
             base_sectors: self.base_loop().sectors,
             golden_cow: self.config.snapshot.as_ref().map(|s| s.cow_path.clone()),
         };
@@ -328,8 +327,15 @@ impl SandboxFactory for FirecrackerFactory {
         // Only this step runs `sudo dmsetup create` on the hot path.
         let base_loop = self.base_loop().loop_path.clone();
         let base_sectors = self.base_loop().sectors;
+        let sandbox_id = id.clone();
         let cow_result = tokio::task::spawn_blocking(move || {
-            CowDevice::create_from_loop(slot.loop_device, cow_file, &base_loop, base_sectors)
+            CowDevice::create_from_loop(
+                sandbox_id,
+                slot.loop_device,
+                cow_file,
+                &base_loop,
+                base_sectors,
+            )
         })
         .await
         .map_err(|e| SandboxError::CreationFailed(format!("join: {e}")))?
