@@ -865,9 +865,13 @@ async fn detect_block_cow_orphans(
             (name, orphan, runner_name)
         });
     }
-    while let Some(Ok((name, is_orphan, runner_name))) = info_set.join_next().await {
-        if is_orphan {
-            warnings.push(Warning::OrphanDmSnapshot { name, runner_name });
+    while let Some(result) = info_set.join_next().await {
+        match result {
+            Ok((name, true, runner_name)) => {
+                warnings.push(Warning::OrphanDmSnapshot { name, runner_name });
+            }
+            Ok(_) => {}
+            Err(e) => warn!(error = %e, "dmsetup info task failed"),
         }
     }
 
@@ -968,13 +972,18 @@ fn parse_dm_open_count(info_output: &str) -> Option<u32> {
     None
 }
 
+/// Strip the `" (deleted)"` suffix that the kernel appends to backing file
+/// paths when the underlying file has been unlinked.
+fn strip_deleted_suffix(s: &str) -> &str {
+    s.strip_suffix(" (deleted)").unwrap_or(s)
+}
+
 /// Extract sandbox ID from a cow loop backing file path.
 ///
 /// Expected format: `.../workspaces/{sandbox_id}/cow.img[ (deleted)]`
 /// Returns `None` for non-cow paths (e.g. `rootfs.ext4`).
 fn extract_sandbox_id(backing: &str) -> Option<&str> {
-    let clean = backing.strip_suffix(" (deleted)").unwrap_or(backing);
-    let path = Path::new(clean);
+    let path = Path::new(strip_deleted_suffix(backing));
     if path.file_name()? != "cow.img" {
         return None;
     }
@@ -985,8 +994,7 @@ fn extract_sandbox_id(backing: &str) -> Option<&str> {
 
 /// Find which runner owns a loop device by matching backing file path prefix.
 fn find_runner_for_loop(backing: &str, reports: &[RunnerReport]) -> Option<String> {
-    // Strip " (deleted)" suffix for path matching.
-    let path = backing.strip_suffix(" (deleted)").unwrap_or(backing);
+    let path = strip_deleted_suffix(backing);
     reports.iter().find_map(|r| {
         let base_dir = r.base_dir.as_ref()?;
         let prefix = format!("{}/", base_dir.display());
@@ -1548,7 +1556,7 @@ Major, minor:      253, 0";
 
     #[test]
     fn find_runner_for_dm_target_matches_workspace() {
-        let tmp = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
+        let tmp = tempfile::tempdir().unwrap();
         let base = tmp.path().to_path_buf();
         std::fs::create_dir_all(base.join("workspaces/abc123")).unwrap();
 
