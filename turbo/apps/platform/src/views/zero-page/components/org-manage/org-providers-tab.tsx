@@ -190,53 +190,54 @@ function ProviderListSection({ isAdmin }: { isAdmin: boolean }) {
                         e.preventDefault();
                         openEdit(p);
                       }
-                    : undefined
-                }
-                className={cn(
-                  "zero-card shadow-[var(--zero-card-shadow)]",
-                  isAdmin && "cursor-pointer",
-                )}
+                    }
+                  : undefined
+              }
+              className={cn(
+                "zero-card shadow-[var(--zero-card-shadow)]",
+                isAdmin && "cursor-pointer",
+              )}
+            >
+              <div className="flex h-14 items-center gap-2.5 px-5">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center">
+                  <ProviderIcon type={p.type} size={22} />
+                </span>
+                <span className="min-w-0 flex-1 text-sm font-medium text-foreground truncate">
+                  {getUILabel(p.type)}
+                </span>
+              </div>
+              <div
+                className="flex h-11 items-center justify-between pl-5 pr-2 zero-border-t"
+                onClick={isAdmin ? (e) => e.stopPropagation() : undefined}
               >
-                <div className="flex h-14 items-center gap-2.5 px-5">
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center">
-                    <ProviderIcon type={p.type} size={22} />
-                  </span>
-                  <span className="min-w-0 flex-1 text-sm font-medium text-foreground truncate">
-                    {getUILabel(p.type)}
-                  </span>
-                </div>
-                <div
-                  className="flex h-11 items-center justify-between pl-5 pr-2 zero-border-t"
-                  onClick={isAdmin ? (e) => e.stopPropagation() : undefined}
-                >
-                  <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
-                    Configured
-                  </span>
-                  {isAdmin && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
-                          aria-label="More options"
-                        >
-                          <IconDotsVertical size={14} stroke={1.5} />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-40">
-                        <DropdownMenuItem onClick={() => openEdit(p)}>
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          className="text-destructive"
-                          onClick={() => openDelete(p.type)}
-                        >
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+                  Configured
+                </span>
+                {isAdmin && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
+                        aria-label="More options"
+                      >
+                        <IconDotsVertical size={14} stroke={1.5} />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-40">
+                      <DropdownMenuItem onClick={() => openEdit(p)}>
+                        Edit
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className="text-destructive"
+                        onClick={() => openDelete(p.type)}
+                      >
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 )}
               </div>
             </div>
