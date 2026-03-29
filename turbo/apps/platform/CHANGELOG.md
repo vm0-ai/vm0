@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.162.0](https://github.com/vm0-ai/vm0/compare/app-v0.161.1...app-v0.162.0) (2026-03-29)
+
+
+### Features
+
+* **platform:** add collapsible sidebar sections and fix scrolling area ([#7086](https://github.com/vm0-ai/vm0/issues/7086)) ([2528e3b](https://github.com/vm0-ai/vm0/commit/2528e3baab4d86326739572e684f65315be77d44))
+* **web:** add invite people button to zero chat landing page ([#7109](https://github.com/vm0-ai/vm0/issues/7109)) ([16e6b2b](https://github.com/vm0-ai/vm0/commit/16e6b2b969c47281341e962ea5ab344d88c82c23))
+* **web:** redesign model provider settings with default selection ([#6949](https://github.com/vm0-ai/vm0/issues/6949)) ([c58e497](https://github.com/vm0-ai/vm0/commit/c58e4976e595294ee73fe17be560e5623bde7148))
+
+
+### Bug Fixes
+
+* **platform:** remove white background from illustration assets and use theme color ([#7087](https://github.com/vm0-ai/vm0/issues/7087)) ([436ebf7](https://github.com/vm0-ai/vm0/commit/436ebf7a966da3bf812934350d8d47da0b986707))
+
+
+### Documentation
+
+* **cli:** add after-help examples and notes to all zero commands ([#7079](https://github.com/vm0-ai/vm0/issues/7079)) ([e4e756f](https://github.com/vm0-ai/vm0/commit/e4e756f8c4b96b9cb508878ee64a52c8dca9a5c5))
+
+
+### Refactoring
+
+* **platform:** replace slack org state with async computed and reload trigger ([#7074](https://github.com/vm0-ai/vm0/issues/7074)) ([6b59cdb](https://github.com/vm0-ai/vm0/commit/6b59cdbd2f7d931961daa7660adb49f6f27c457f))
+* **platform:** unify card shadows and polish background color ([#7108](https://github.com/vm0-ai/vm0/issues/7108)) ([29b557b](https://github.com/vm0-ai/vm0/commit/29b557b7cb15de3a555ba398658bdafba8b4cddb))
+
 ## [0.161.1](https://github.com/vm0-ai/vm0/compare/app-v0.161.0...app-v0.161.1) (2026-03-27)
 
 

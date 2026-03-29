@@ -275,11 +275,8 @@ function TodoCard({
           </div>
         </summary>
         <div className="mt-2 space-y-1.5 ml-[18px]">
-          {todoItems.map((item, index) => (
-            <div
-              key={`${item.content}-${index}`}
-              className="flex items-center gap-2 text-sm"
-            >
+          {todoItems.map((item) => (
+            <div key={item.content} className="flex items-center gap-2 text-sm">
               <span className="shrink-0">{getTodoStatusIcon(item.status)}</span>
               <span
                 className={

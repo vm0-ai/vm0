@@ -224,7 +224,7 @@ export function ZeroSessionChatPage({
       {/* Scrollable area — messages + sticky composer share the same scroll context */}
       <div className="flex-1 overflow-auto flex flex-col min-h-0">
         <main className="flex-1 px-4 sm:px-6 py-4 items-center">
-          <div className="w-full max-w-[900px] mx-auto flex flex-1 flex-col gap-6 pb-4">
+          <div className="w-full max-w-[900px] mx-auto flex flex-1 flex-col gap-6 pb-4 overflow-visible">
             {sessionError && (
               <div className="flex-1 flex items-center justify-center py-16">
                 <div className="flex items-center gap-2 text-destructive">
@@ -287,7 +287,7 @@ function ChatSkeleton() {
         <Skeleton className="h-10 w-[60%] rounded-xl" />
       </div>
       {/* Assistant bubble skeleton */}
-      <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 items-start">
+      <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 -ml-[38px] sm:-ml-[46px] items-start">
         <Skeleton className="h-7 w-7 sm:h-9 sm:w-9 rounded-xl" />
         <div className="flex flex-col gap-2">
           <Skeleton className="h-4 w-[90%] rounded-lg" />
@@ -300,7 +300,7 @@ function ChatSkeleton() {
         <Skeleton className="h-10 w-[45%] rounded-xl" />
       </div>
       {/* Assistant bubble skeleton */}
-      <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 items-start">
+      <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 -ml-[38px] sm:-ml-[46px] items-start">
         <Skeleton className="h-7 w-7 sm:h-9 sm:w-9 rounded-xl" />
         <div className="flex flex-col gap-2">
           <Skeleton className="h-4 w-[85%] rounded-lg" />
@@ -380,7 +380,7 @@ function UserMessage({ message }: { message: UserChatMessage }) {
 
   return (
     <>
-      <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 items-start animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 -ml-[38px] sm:-ml-[46px] items-start animate-in fade-in slide-in-from-bottom-2 duration-300">
         <div className="w-7 h-7 sm:w-9 sm:h-9 shrink-0" />
         <div className="flex flex-col items-end min-w-0">
           <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-sm leading-relaxed break-words overflow-hidden">
@@ -531,7 +531,7 @@ function RunActivityLineView({
         const isLast = idx === items.length - 1;
         return (
           <p
-            key={`${idx}-${summary}`}
+            key={summary}
             className={`flex items-center gap-2.5 min-w-0 text-xs truncate animate-in fade-in slide-in-from-bottom-1 duration-300 ${
               isLast ? "" : "text-muted-foreground"
             }`}
@@ -617,9 +617,9 @@ function CollapsibleTimeline({
               />
             </div>
           )}
-          {items.map((summary, idx) => (
+          {items.map((summary) => (
             <p
-              key={`${idx}-${summary}`}
+              key={summary}
               className="flex items-center gap-2 min-w-0 text-xs text-muted-foreground truncate"
             >
               <span className="h-3 w-3 shrink-0 flex items-center justify-center relative z-[1] rounded-full bg-card">
@@ -798,7 +798,7 @@ function StaticAssistantMessage({
       message.error.includes("Invalid signature in thinking block");
     return (
       <div className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
-        <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 items-start">
+        <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 -ml-[38px] sm:-ml-[46px] items-start">
           {avatar}
           <div className="zero-chat-bubble-assistant px-0 pt-4 text-sm leading-relaxed min-w-0 break-words">
             {hasSummaries && (
@@ -862,7 +862,7 @@ function StaticAssistantMessage({
   if (message.content) {
     return (
       <div className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
-        <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 items-start">
+        <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 -ml-[38px] sm:-ml-[46px] items-start">
           {avatar}
           <div className="zero-chat-bubble-assistant px-0 pt-4 text-sm leading-relaxed min-w-0 break-words">
             {hasSummaries && (
@@ -888,7 +888,7 @@ function StaticAssistantMessage({
   // Thinking / loading state — show live run activity
   return (
     <div className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
-      <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 items-start">
+      <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 -ml-[38px] sm:-ml-[46px] items-start">
         {avatar}
         <div className="zero-chat-bubble-assistant rounded-xl py-4 text-sm leading-relaxed min-w-0 overflow-hidden">
           {renderActivityLine ?? (

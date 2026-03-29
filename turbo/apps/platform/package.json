@@ -1,6 +1,6 @@
 {
   "name": "@vm0/app",
-  "version": "0.161.1",
+  "version": "0.162.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -46,21 +46,21 @@
     "@testing-library/react": "^16.3.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@typescript-eslint/rule-tester": "^8.57.1",
-    "@typescript-eslint/type-utils": "^8.57.1",
-    "@typescript-eslint/utils": "^8.57.1",
+    "@typescript-eslint/rule-tester": "^8.57.2",
+    "@typescript-eslint/type-utils": "^8.57.2",
+    "@typescript-eslint/utils": "^8.57.2",
     "@vitejs/plugin-react": "^5.1.4",
     "@vm0/eslint-config": "workspace:*",
     "eslint": "^9.34.0",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.0.1",
-    "happy-dom": "^20.0.0",
+    "happy-dom": "^20.8.9",
     "msw": "^2.12.7",
     "oxlint": "^1.14.0",
     "tailwindcss": "^4.1.8",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.57.1",
+    "typescript-eslint": "^8.57.2",
     "vite": "^7.3.0",
-    "vitest": "^4.1.0"
+    "vitest": "^4.1.2"
   }
 }

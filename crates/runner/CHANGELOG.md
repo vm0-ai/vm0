@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.49.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.48.2...runner-rs-v0.49.0) (2026-03-29)
+
+
+### Features
+
+* **guest-init:** use kernel root= boot arg instead of pivot_root ([#7106](https://github.com/vm0-ai/vm0/issues/7106)) ([b373849](https://github.com/vm0-ai/vm0/commit/b373849cb331296ae7665704edd400548d67c2a5))
+* **runner:** detect orphan firecracker processes with --name filter ([#7113](https://github.com/vm0-ai/vm0/issues/7113)) ([8fcfc79](https://github.com/vm0-ai/vm0/commit/8fcfc79a812f273fd2ea2b2b9febffe3ab34b858))
+* **runner:** detect orphaned dm-snapshot and loop devices in doctor ([#7107](https://github.com/vm0-ai/vm0/issues/7107)) ([c76a18f](https://github.com/vm0-ai/vm0/commit/c76a18f60a4538d410ac4976329c97f7b5d52448))
+* **sandbox-fc:** replace guest-side overlayfs with host-side dm-snapshot cow ([#6521](https://github.com/vm0-ai/vm0/issues/6521)) ([8f6a118](https://github.com/vm0-ai/vm0/commit/8f6a1185bfd6dd4604687662f3d03be6076ea71f))
+
+
+### Bug Fixes
+
+* **crates:** update sha2/hmac usage for digest 0.11 compatibility ([#7101](https://github.com/vm0-ai/vm0/issues/7101)) ([cbded46](https://github.com/vm0-ai/vm0/commit/cbded46e78c8d3ed060e96f79f15cd38ee1cf9dc))
+
 ## [0.48.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.48.1...runner-rs-v0.48.2) (2026-03-26)
 
 ## [0.48.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.48.0...runner-rs-v0.48.1) (2026-03-26)

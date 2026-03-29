@@ -51,11 +51,11 @@ export function QueueRunningTable({ tasks }: QueueRunningTableProps) {
             <div>Activity logs</div>
             <div>Cancel</div>
           </div>
-          {tasks.map((task, i) => {
+          {tasks.map((task) => {
             const runId = task.runId;
             return (
               <div
-                key={runId ?? `running-${i}`}
+                key={runId ?? task.agentName}
                 className={cn(
                   ROW_GRID,
                   "py-3 -mx-4 px-4 border-b border-border/40 last:border-b-0",

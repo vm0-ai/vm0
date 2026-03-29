@@ -1,5 +1,6 @@
 //! Runtime health diagnostics for all runners on the host.
 
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -8,6 +9,7 @@ use std::time::Duration;
 
 use clap::Args;
 use serde::Deserialize;
+use tracing::warn;
 
 use crate::config::RunnerConfig;
 use crate::error::RunnerResult;
@@ -70,6 +72,17 @@ enum Warning {
     StaleMitmproxy { pid: u32, port: u16 },
     /// A network namespace whose pool lock is not held by any process.
     OrphanNamespace { ns_name: String, pool_idx: u32 },
+    /// A dm-snapshot target with no openers (leaked after crash/kill).
+    OrphanDmSnapshot {
+        name: String,
+        runner_name: Option<String>,
+    },
+    /// A loop device backing a runner file with no active sandboxes.
+    OrphanLoopDevice {
+        device: String,
+        backing: String,
+        runner_name: Option<String>,
+    },
 }
 
 impl fmt::Display for Warning {
@@ -107,6 +120,24 @@ impl fmt::Display for Warning {
             }
             Self::OrphanNamespace { ns_name, .. } => {
                 write!(f, "orphan namespace {ns_name} (pool lock not held)")
+            }
+            Self::OrphanDmSnapshot { name, runner_name } => {
+                write!(f, "orphan dm-snapshot target {name} (no openers)")?;
+                if let Some(runner) = runner_name {
+                    write!(f, " [runner: {runner}]")?;
+                }
+                Ok(())
+            }
+            Self::OrphanLoopDevice {
+                device,
+                backing,
+                runner_name,
+            } => {
+                write!(f, "orphan loop device {device} ({backing})")?;
+                if let Some(runner) = runner_name {
+                    write!(f, " [runner: {runner}]")?;
+                }
+                Ok(())
             }
         }
     }
@@ -184,6 +215,8 @@ impl Warning {
                 let lock_path = format!("/var/lock/vm0-netns-pool-{pool_idx}.lock");
                 is_lock_free(&lock_path).await
             }
+            Self::OrphanDmSnapshot { name, .. } => dm_target_has_no_openers(name).await,
+            Self::OrphanLoopDevice { device, .. } => loop_device_exists(device).await,
         }
     }
 }
@@ -199,6 +232,7 @@ fn pid_exists(pid: u32) -> bool {
 
 struct RunnerReport {
     name: Option<String>,
+    base_dir: Option<PathBuf>,
     pid: u32,
     config_path: PathBuf,
     subcommand: String,
@@ -268,16 +302,6 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
         reports.push(report);
     }
 
-    // Filter by name if specified
-    let mut reports = if let Some(ref name_filter) = args.name {
-        reports
-            .into_iter()
-            .filter(|r| r.name.as_deref() == Some(name_filter.as_str()))
-            .collect()
-    } else {
-        reports
-    };
-
     // Phase 4: Find stopped services (installed but no matching running process)
     // Skip when filtering by name — other runners' stopped services are irrelevant
     let stopped = if args.name.is_none() {
@@ -287,11 +311,41 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
     };
 
     // Phase 5: Global orphan detection
-    // Skip when filtering by name — other runners' orphans are not this runner's concern
+    // When --name is set, run block-cow and orphan firecracker detection
+    // scoped to that runner. Orphan mitmproxy and namespace are skipped
+    // (no runner-identifying info on orphaned processes).
     let mut global_warnings: Vec<Warning> = if args.name.is_none() {
         detect_global_orphans(&reports, &discovered.firecrackers, &discovered.mitmdumps).await
     } else {
-        vec![]
+        // Scoped detection: block-cow + orphan firecracker for the named runner.
+        // Orphan mitmproxy and namespace cannot be scoped (no runner-identifying
+        // info on orphaned processes / no persistent runner→pool_idx mapping).
+        let mut warnings = detect_block_cow_orphans(&reports, args.name.as_deref()).await;
+
+        // Orphan firecracker: scope by base_dir match.
+        let named_base_dir = reports
+            .iter()
+            .find(|r| r.name.as_deref() == args.name.as_deref())
+            .and_then(|r| r.base_dir.clone());
+        if let Some(base_dir) = named_base_dir {
+            let runner_pids: Vec<u32> = reports.iter().map(|r| r.pid).collect();
+            warnings.extend(
+                detect_orphan_firecrackers(&discovered.firecrackers, &runner_pids, Some(&base_dir))
+                    .await,
+            );
+        }
+
+        warnings
+    };
+
+    // Filter reports by name after global detection (which needs full list)
+    let mut reports = if let Some(ref name_filter) = args.name {
+        reports
+            .into_iter()
+            .filter(|r| r.name.as_deref() == Some(name_filter.as_str()))
+            .collect()
+    } else {
+        reports
     };
 
     // Phase 6: Targeted recheck of anomalies
@@ -420,6 +474,7 @@ async fn build_runner_report(
 
     RunnerReport {
         name,
+        base_dir: config.as_ref().map(|c| c.base_dir.clone()),
         pid: runner.pid,
         config_path: runner.config_path.clone(),
         subcommand: runner.subcommand.clone(),
@@ -664,16 +719,8 @@ async fn detect_global_orphans(
 
     let runner_pids: Vec<u32> = reports.iter().map(|r| r.pid).collect();
 
-    // Orphan firecracker processes
-    for fc in fc_procs {
-        if process::is_orphan(fc.pid, &runner_pids).await {
-            warnings.push(Warning::OrphanFirecracker {
-                pid: fc.pid,
-                run_id: fc.run_id.clone(),
-                ppid: fc.ppid,
-            });
-        }
-    }
+    // Orphan firecracker processes (all runners)
+    warnings.extend(detect_orphan_firecrackers(fc_procs, &runner_pids, None).await);
 
     // Orphan mitmproxy processes.
     // A mitmdump belongs to a runner if its port matches the runner's proxy
@@ -699,6 +746,36 @@ async fn detect_global_orphans(
     // Orphan network namespaces
     warnings.extend(detect_orphan_namespaces().await);
 
+    // Orphan dm-snapshot targets and loop devices
+    warnings.extend(detect_block_cow_orphans(reports, None).await);
+
+    warnings
+}
+
+/// Detect orphan firecracker processes whose ppid chain doesn't lead to any runner.
+///
+/// When `base_dir_filter` is `Some`, only reports processes whose working
+/// directory is under the specified base_dir (for `--name` scoping).
+async fn detect_orphan_firecrackers(
+    fc_procs: &[process::FirecrackerProcessInfo],
+    runner_pids: &[u32],
+    base_dir_filter: Option<&Path>,
+) -> Vec<Warning> {
+    let mut warnings = Vec::new();
+    for fc in fc_procs {
+        if let Some(filter) = base_dir_filter
+            && fc.base_dir.as_deref() != Some(filter)
+        {
+            continue;
+        }
+        if process::is_orphan(fc.pid, runner_pids).await {
+            warnings.push(Warning::OrphanFirecracker {
+                pid: fc.pid,
+                run_id: fc.run_id.clone(),
+                ppid: fc.ppid,
+            });
+        }
+    }
     warnings
 }
 
@@ -761,6 +838,255 @@ async fn is_lock_free(lock_path: &str) -> bool {
     })
     .await
     .unwrap_or(false) // if task panics, assume lock is held (don't false-positive)
+}
+
+// ---------------------------------------------------------------------------
+// Orphan dm-snapshot and loop device detection
+// ---------------------------------------------------------------------------
+
+/// Detect orphaned dm-snapshot targets and loop devices.
+///
+/// dm-snapshot targets: `cow-*` with `open_count == 0` (no active sandbox).
+///
+/// Loop devices (per-device precision, no global guard):
+/// - **Cow loops** (backing `…/workspaces/{id}/cow.img`): orphaned when no
+///   corresponding `cow-{id}` dm target exists — the dm target is always
+///   created before and removed after the cow loop.
+/// - **Base loops** (backing `…/rootfs/{hash}/rootfs.ext4`): shared across
+///   sandboxes via `BaseLoopCache`, orphaned only when no runner process on
+///   the host is alive.
+///
+/// When `name_filter` is `Some`, only checks resources belonging to the
+/// named runner (skips `dmsetup info` calls for unrelated targets).
+async fn detect_block_cow_orphans(
+    reports: &[RunnerReport],
+    name_filter: Option<&str>,
+) -> Vec<Warning> {
+    let mut warnings = Vec::new();
+
+    // 1. List dm-snapshot targets
+    let dm_output = match tokio::process::Command::new("sudo")
+        .args(["dmsetup", "ls", "--target", "snapshot"])
+        .output()
+        .await
+    {
+        Ok(o) if o.status.success() => Some(String::from_utf8_lossy(&o.stdout).into_owned()),
+        Ok(o) => {
+            warn!(
+                stderr = %String::from_utf8_lossy(&o.stderr).trim(),
+                "dmsetup ls failed — skipping block-cow check"
+            );
+            return warnings;
+        }
+        Err(e) => {
+            warn!(error = %e, "dmsetup not available — skipping block-cow check");
+            return warnings;
+        }
+    };
+
+    let dm_target_list = super::gc::parse_dm_targets(&dm_output, "cow-");
+    let dm_targets: HashSet<String> = dm_target_list.iter().cloned().collect();
+
+    // Pre-scan workspace directories once for consistent runner correlation.
+    // This avoids per-target exists() calls and reduces the TOCTOU window to
+    // a single filesystem snapshot.
+    let sandbox_runner_map = {
+        let dirs: Vec<_> = reports
+            .iter()
+            .filter_map(|r| Some((r.name.clone()?, r.base_dir.as_ref()?.join("workspaces"))))
+            .collect();
+        tokio::task::spawn_blocking(move || build_sandbox_runner_map(&dirs))
+            .await
+            .unwrap_or_default()
+    };
+
+    // 2. Orphan dm-snapshot targets (open_count == 0), checked in parallel.
+    //    When name_filter is set, only check targets belonging to that runner.
+    let mut info_set = tokio::task::JoinSet::new();
+    for name in dm_target_list {
+        let runner_name = find_runner_for_dm_target(&name, &sandbox_runner_map);
+        if name_filter.is_some() && runner_name.as_deref() != name_filter {
+            continue;
+        }
+        info_set.spawn(async move {
+            let orphan = dm_target_has_no_openers(&name).await;
+            (name, orphan, runner_name)
+        });
+    }
+    while let Some(result) = info_set.join_next().await {
+        match result {
+            Ok((name, true, runner_name)) => {
+                warnings.push(Warning::OrphanDmSnapshot { name, runner_name });
+            }
+            Ok(_) => {}
+            Err(e) => warn!(error = %e, "dmsetup info task failed"),
+        }
+    }
+
+    // 3. List loop devices under runner root
+    let runner_root = match crate::paths::HomePaths::new() {
+        Ok(paths) => format!("{}/", paths.root().display()),
+        Err(e) => {
+            warn!(error = %e, "failed to determine runner root — skipping loop device check");
+            return warnings;
+        }
+    };
+
+    let loop_output = match tokio::process::Command::new("sudo")
+        .args(["losetup", "-a"])
+        .output()
+        .await
+    {
+        Ok(o) if o.status.success() => Some(String::from_utf8_lossy(&o.stdout).into_owned()),
+        Ok(o) => {
+            warn!(
+                stderr = %String::from_utf8_lossy(&o.stderr).trim(),
+                "losetup -a failed — skipping loop device check"
+            );
+            return warnings;
+        }
+        Err(e) => {
+            warn!(error = %e, "losetup not available — skipping loop device check");
+            return warnings;
+        }
+    };
+
+    let loops = super::gc::parse_losetup(&loop_output, &runner_root);
+    let any_runner_alive = reports.iter().any(|r| pid_exists(r.pid));
+
+    for (device, backing) in loops {
+        let runner_name = find_runner_for_loop(&backing, reports);
+        if name_filter.is_some() && runner_name.as_deref() != name_filter {
+            continue;
+        }
+
+        let is_orphan = if let Some(sandbox_id) = extract_sandbox_id(&backing) {
+            // Cow loop: orphaned if no corresponding dm target exists.
+            // The dm target (`cow-{id}`) is created before the cow loop and
+            // removed after it, so absence means the sandbox is fully torn down.
+            let expected = format!("cow-{sandbox_id}");
+            !dm_targets.contains(expected.as_str())
+        } else {
+            // Base loop (rootfs.ext4): shared via BaseLoopCache, orphaned only
+            // when every runner process on the host is dead.
+            !any_runner_alive
+        };
+
+        if is_orphan {
+            warnings.push(Warning::OrphanLoopDevice {
+                device,
+                backing,
+                runner_name,
+            });
+        }
+    }
+
+    warnings
+}
+
+/// Build a map from sandbox_id → runner_name by scanning workspace directories.
+///
+/// Takes a single filesystem snapshot so that all runner correlation lookups
+/// use a consistent view. Accepts pre-extracted `(runner_name, workspaces_dir)`
+/// pairs so it can run inside `spawn_blocking`.
+fn build_sandbox_runner_map(dirs: &[(String, PathBuf)]) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    for (name, ws_dir) in dirs {
+        let Ok(entries) = std::fs::read_dir(ws_dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            if let Some(id) = entry.file_name().to_str() {
+                map.insert(id.to_string(), name.clone());
+            }
+        }
+    }
+    map
+}
+
+/// Find which runner owns a `cow-{sandbox_id}` target via pre-built map.
+fn find_runner_for_dm_target(
+    target_name: &str,
+    sandbox_runner_map: &HashMap<String, String>,
+) -> Option<String> {
+    let sandbox_id = target_name.strip_prefix("cow-")?;
+    sandbox_runner_map.get(sandbox_id).cloned()
+}
+
+/// Check if a dm target has no openers (`Open count: 0` in `dmsetup info`).
+async fn dm_target_has_no_openers(name: &str) -> bool {
+    let output = match tokio::process::Command::new("sudo")
+        .args(["dmsetup", "info", name])
+        .output()
+        .await
+    {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).into_owned(),
+        _ => {
+            warn!(name, "dmsetup info failed — assuming target is in use");
+            return false;
+        }
+    };
+    parse_dm_open_count(&output) == Some(0)
+}
+
+/// Extract `Open count:` value from `dmsetup info` output.
+fn parse_dm_open_count(info_output: &str) -> Option<u32> {
+    for line in info_output.lines() {
+        if let Some(rest) = line.trim().strip_prefix("Open count:") {
+            return rest.trim().parse().ok();
+        }
+    }
+    None
+}
+
+/// Strip the `" (deleted)"` suffix that the kernel appends to backing file
+/// paths when the underlying file has been unlinked.
+fn strip_deleted_suffix(s: &str) -> &str {
+    s.strip_suffix(" (deleted)").unwrap_or(s)
+}
+
+/// Extract sandbox ID from a cow loop backing file path.
+///
+/// Expected format: `.../workspaces/{sandbox_id}/cow.img[ (deleted)]`
+/// Returns `None` for non-cow paths (e.g. `rootfs.ext4`).
+fn extract_sandbox_id(backing: &str) -> Option<&str> {
+    let path = Path::new(strip_deleted_suffix(backing));
+    if path.file_name()? != "cow.img" {
+        return None;
+    }
+    // parent = `.../workspaces/{sandbox_id}`
+    let parent = path.parent()?;
+    parent.file_name()?.to_str()
+}
+
+/// Find which runner owns a loop device by matching backing file path prefix.
+fn find_runner_for_loop(backing: &str, reports: &[RunnerReport]) -> Option<String> {
+    let path = strip_deleted_suffix(backing);
+    reports.iter().find_map(|r| {
+        let base_dir = r.base_dir.as_ref()?;
+        let prefix = format!("{}/", base_dir.display());
+        if path.starts_with(&prefix) {
+            r.name.clone()
+        } else {
+            None
+        }
+    })
+}
+
+/// Check if a loop device still exists.
+async fn loop_device_exists(device: &str) -> bool {
+    match tokio::process::Command::new("sudo")
+        .args(["losetup", device])
+        .output()
+        .await
+    {
+        Ok(o) if o.status.success() => true,
+        Ok(_) => false, // device gone — expected during cleanup
+        Err(e) => {
+            warn!(device, error = %e, "losetup check failed — assuming device exists");
+            true
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1047,6 +1373,7 @@ mod tests {
         ];
         let reports = vec![RunnerReport {
             name: None,
+            base_dir: None,
             pid: 1,
             config_path: PathBuf::from("/data/active.yaml"),
             subcommand: "start".into(),
@@ -1066,6 +1393,7 @@ mod tests {
     fn make_report(name: Option<&str>) -> RunnerReport {
         RunnerReport {
             name: name.map(String::from),
+            base_dir: None,
             pid: 1,
             config_path: PathBuf::from("/data/test.yaml"),
             subcommand: "start".into(),
@@ -1144,6 +1472,57 @@ mod tests {
             w.to_string(),
             "stale mitmproxy PID 555 on port 32821 (runner stopped)"
         );
+
+        let w = Warning::OrphanDmSnapshot {
+            name: "cow-abc123".into(),
+            runner_name: None,
+        };
+        assert_eq!(
+            w.to_string(),
+            "orphan dm-snapshot target cow-abc123 (no openers)"
+        );
+
+        let w = Warning::OrphanDmSnapshot {
+            name: "cow-def456".into(),
+            runner_name: Some("pr-100-1".into()),
+        };
+        assert_eq!(
+            w.to_string(),
+            "orphan dm-snapshot target cow-def456 (no openers) [runner: pr-100-1]"
+        );
+
+        let w = Warning::OrphanLoopDevice {
+            device: "/dev/loop5".into(),
+            backing: "/home/ubuntu/.vm0-runner/workspaces/x/cow.img".into(),
+            runner_name: Some("pr-100-1".into()),
+        };
+        assert!(w.to_string().contains("/dev/loop5"));
+        assert!(w.to_string().contains("cow.img"));
+        assert!(w.to_string().contains("[runner: pr-100-1]"));
+    }
+
+    #[test]
+    fn parse_dm_open_count_extracts_value() {
+        let info = "\
+Name:              cow-abc123
+State:             ACTIVE
+Read Ahead:        256
+Tables present:    LIVE
+Open count:        1
+Event number:      0
+Major, minor:      253, 0";
+        assert_eq!(parse_dm_open_count(info), Some(1));
+    }
+
+    #[test]
+    fn parse_dm_open_count_zero() {
+        let info = "Open count:        0\n";
+        assert_eq!(parse_dm_open_count(info), Some(0));
+    }
+
+    #[test]
+    fn parse_dm_open_count_missing() {
+        assert_eq!(parse_dm_open_count("no such field"), None);
     }
 
     #[test]
@@ -1240,5 +1619,76 @@ mod tests {
         }];
         let warnings = proxy_check_warnings("running", Some(32821), &mitm_procs);
         assert!(warnings.is_empty(), "running with proxy should not warn");
+    }
+
+    #[test]
+    fn find_runner_for_dm_target_matches_workspace() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = tmp.path().to_path_buf();
+        std::fs::create_dir_all(base.join("workspaces/abc123")).unwrap();
+
+        let dirs = vec![("pr-100-1".to_string(), base.join("workspaces"))];
+        let map = build_sandbox_runner_map(&dirs);
+        assert_eq!(
+            find_runner_for_dm_target("cow-abc123", &map),
+            Some("pr-100-1".into())
+        );
+        assert_eq!(find_runner_for_dm_target("cow-unknown", &map), None);
+        assert_eq!(find_runner_for_dm_target("not-a-cow", &map), None);
+    }
+
+    #[test]
+    fn find_runner_for_loop_matches_path_prefix() {
+        let reports = vec![RunnerReport {
+            name: Some("pr-200-1".into()),
+            base_dir: Some(PathBuf::from("/data/runners/pr-200")),
+            ..make_report(Some("pr-200-1"))
+        }];
+
+        assert_eq!(
+            find_runner_for_loop("/data/runners/pr-200/workspaces/x/cow.img", &reports),
+            Some("pr-200-1".into())
+        );
+        assert_eq!(
+            find_runner_for_loop(
+                "/data/runners/pr-200/workspaces/x/cow.img (deleted)",
+                &reports
+            ),
+            Some("pr-200-1".into())
+        );
+        assert_eq!(find_runner_for_loop("/other/path/cow.img", &reports), None);
+    }
+
+    #[test]
+    fn extract_sandbox_id_from_cow_path() {
+        assert_eq!(
+            extract_sandbox_id(
+                "/home/ubuntu/.vm0-runner/runners/pr-123/workspaces/abc-def/cow.img"
+            ),
+            Some("abc-def")
+        );
+    }
+
+    #[test]
+    fn extract_sandbox_id_from_deleted_cow_path() {
+        assert_eq!(
+            extract_sandbox_id(
+                "/home/ubuntu/.vm0-runner/runners/pr-123/workspaces/abc-def/cow.img (deleted)"
+            ),
+            Some("abc-def")
+        );
+    }
+
+    #[test]
+    fn extract_sandbox_id_returns_none_for_rootfs() {
+        assert_eq!(
+            extract_sandbox_id("/home/ubuntu/.vm0-runner/rootfs/560c452/rootfs.ext4"),
+            None
+        );
+    }
+
+    #[test]
+    fn extract_sandbox_id_returns_none_for_unrelated() {
+        assert_eq!(extract_sandbox_id("/var/lib/snapd/snaps/foo.snap"), None);
     }
 }

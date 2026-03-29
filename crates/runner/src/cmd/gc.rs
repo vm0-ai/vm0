@@ -546,7 +546,7 @@ fn gc_block_cow(dry_run: bool) -> RunnerResult<u32> {
 /// Parse `dmsetup ls` output and return target names matching the given prefix.
 ///
 /// Output format: `"name\t(major, minor)"` per line, or `"No devices found"`.
-fn parse_dm_targets(output: &Option<String>, prefix: &str) -> Vec<String> {
+pub(crate) fn parse_dm_targets(output: &Option<String>, prefix: &str) -> Vec<String> {
     let Some(stdout) = output else {
         return Vec::new();
     };
@@ -624,7 +624,10 @@ fn losetup_list() -> Option<String> {
 /// whose backing file starts with `prefix`.
 ///
 /// Output format: `/dev/loopN: [offset]: (path)` or `(path (deleted))`.
-fn parse_losetup<'a>(output: &'a Option<String>, prefix: &'a str) -> Vec<(String, String)> {
+pub(crate) fn parse_losetup<'a>(
+    output: &'a Option<String>,
+    prefix: &'a str,
+) -> Vec<(String, String)> {
     let Some(stdout) = output else {
         return Vec::new();
     };

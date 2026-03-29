@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "ably-subscriber"
-version = "0.6.4"
+version = "0.6.5"
 dependencies = [
  "base64",
  "futures-util",
@@ -214,7 +214,7 @@ dependencies = [
 
 [[package]]
 name = "block-cow"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "nix",
  "tempfile",
@@ -702,7 +702,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.19.2"
+version = "0.19.3"
 dependencies = [
  "base64",
  "bytes",
@@ -745,7 +745,7 @@ dependencies = [
 
 [[package]]
 name = "guest-init"
-version = "0.14.7"
+version = "0.15.0"
 dependencies = [
  "libc",
  "nix",
@@ -1629,7 +1629,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.48.2"
+version = "0.49.0"
 dependencies = [
  "ably-subscriber",
  "async-trait",
@@ -1790,7 +1790,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "async-trait",
  "base64",
