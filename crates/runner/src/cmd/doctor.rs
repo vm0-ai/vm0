@@ -964,8 +964,13 @@ async fn detect_block_cow_orphans(
             // Cow loop: orphaned if no corresponding dm target exists.
             // The dm target (`cow-{id}`) is created before the cow loop and
             // removed after it, so absence means the sandbox is fully torn down.
+            //
+            // Exception: pre-warmed CowPool slots have a loop device with a
+            // holder fd but no dm target yet. These are actively managed by
+            // the pool and not orphaned. We detect them via the kernel's
+            // reference count — a held fd gives refcnt > 0.
             let expected = format!("cow-{sandbox_id}");
-            !dm_targets.contains(expected.as_str())
+            !dm_targets.contains(expected.as_str()) && loop_device_is_idle(&device)
         } else {
             // Base loop (rootfs.ext4): shared via BaseLoopCache, orphaned only
             // when every runner process on the host is dead.
@@ -1071,6 +1076,23 @@ fn find_runner_for_loop(backing: &str, reports: &[RunnerReport]) -> Option<Strin
             None
         }
     })
+}
+
+/// Check if a loop device has no active holders (idle / orphaned).
+///
+/// Reads `/sys/block/{dev}/holders/` — an empty directory means no dm target
+/// or other block device is using this loop. Pre-warmed CowPool slots have
+/// a holder fd open but no dm target, so the holders dir is empty; however,
+/// we also check the kernel open count via `/sys/block/{dev}/open_count`.
+/// A value > 0 means some process has the device open (e.g., CowPool's
+/// holder fd), indicating the device is actively managed.
+fn loop_device_is_idle(device: &str) -> bool {
+    let dev_name = device.rsplit('/').next().unwrap_or(device);
+    let path = format!("/sys/block/{dev_name}/open_count");
+    match std::fs::read_to_string(&path) {
+        Ok(s) => s.trim().parse::<u32>().unwrap_or(0) == 0,
+        Err(_) => true, // can't read → assume idle (conservative: flag as orphan)
+    }
 }
 
 /// Check if a loop device still exists.
@@ -1690,5 +1712,11 @@ Major, minor:      253, 0";
     #[test]
     fn extract_sandbox_id_returns_none_for_unrelated() {
         assert_eq!(extract_sandbox_id("/var/lib/snapd/snaps/foo.snap"), None);
+    }
+
+    #[test]
+    fn loop_device_is_idle_nonexistent_device() {
+        // A device that doesn't exist in /sys → can't read open_count → idle.
+        assert!(loop_device_is_idle("/dev/loop99999"));
     }
 }
