@@ -41,9 +41,8 @@ describe("POST /api/zero/uploads", () => {
 
   describe("Authentication", () => {
     it("should reject unauthenticated requests", async () => {
-      const { mockClerk } = await import(
-        "../../../../../src/__tests__/clerk-mock"
-      );
+      const { mockClerk } =
+        await import("../../../../../src/__tests__/clerk-mock");
       mockClerk({ userId: null });
 
       const file = new File(["hello"], "test.txt", { type: "text/plain" });
