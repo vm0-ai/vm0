@@ -50,9 +50,17 @@
           - disk
         append: true
       become: true
+      register: group_change
 
     - name: Ensure /dev/kvm is accessible
       file:
         path: /dev/kvm
         mode: '0666'
       become: true
+
+    # When groups change, the current SSH session still has the old group list.
+    # Reset the connection so subsequent playbooks (deploy-runner) pick up the
+    # new membership (e.g. 'disk' group needed to open /dev/loopN).
+    - name: Reset SSH connection to pick up new group membership
+      meta: reset_connection
+      when: group_change.changed
