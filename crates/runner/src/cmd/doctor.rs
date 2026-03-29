@@ -878,7 +878,10 @@ async fn detect_block_cow_orphans(
     // 3. List loop devices under runner root
     let runner_root = match crate::paths::HomePaths::new() {
         Ok(paths) => format!("{}/", paths.root().display()),
-        Err(_) => return warnings,
+        Err(e) => {
+            warn!(error = %e, "failed to determine runner root — skipping loop device check");
+            return warnings;
+        }
     };
 
     let loop_output = match tokio::process::Command::new("sudo")
