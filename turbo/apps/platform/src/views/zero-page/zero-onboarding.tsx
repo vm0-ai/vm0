@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   useGet,
+  useLoadable,
   useSet,
   useLastLoadable,
   useLastResolved,
@@ -900,7 +901,9 @@ function useOnboardingHandlers(isAdmin: boolean) {
   const navigate = useSet(navigateTo$);
   const clearOnboardingError = useSet(clearZeroOnboardingError$);
   const reloadBilling = useSet(reloadBillingStatus$);
-  const slackData = useGet(slackOrgData$);
+  const slackDataLoadable = useLoadable(slackOrgData$);
+  const slackData =
+    slackDataLoadable.state === "hasData" ? slackDataLoadable.data : null;
 
   const handleAddToSlack = () => {
     clearOnboardingError();
