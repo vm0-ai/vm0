@@ -1,16 +1,20 @@
 #!/usr/bin/env bats
 # brw-t07-upgrade-pro.bats — Verify Pro plan upgrade flow via Stripe checkout
 #
-# Tests the full user flow: sign in via Clerk token → complete onboarding →
-# click "Get Pro" → fill Stripe test card → subscribe → verify Pro plan active.
+# Tests the full user flow: sign in via Clerk token → click "Get Pro" →
+# fill Stripe test card → subscribe → verify Pro plan active.
 #
-# Uses Stripe CLI to forward webhooks to the local dev server so that
-# checkout.session.completed and invoice.paid events are processed correctly.
+# Uses Stripe CLI to forward webhooks so that checkout.session.completed
+# and invoice.paid events are processed correctly.
+#
+# Runs serially after brw-t01-platform-e2e.bats establishes the shared
+# test account. Uses token auth to enter — no OTP required.
 #
 # Required env vars:
 #   VM0_API_URL          — Target web app URL (e.g., https://www.vm7.ai:8443)
 #   STRIPE_SECRET_KEY    — Stripe test-mode secret key (sk_test_...)
 #   CLERK_SECRET_KEY     — Clerk Backend API key (for creating sign-in tokens)
+#   E2E_ACCOUNT          — Test email (must be set; signed up by brw-t01)
 
 load '../../helpers/setup'
 load '../../helpers/browser'
@@ -19,11 +23,8 @@ load '../../helpers/browser'
 # File-level setup: start Stripe webhook forwarding, init browser
 # ---------------------------------------------------------------------------
 setup_file() {
-  # Close any existing agent-browser daemon so we start with a clean session
-  agent-browser close 2>/dev/null || true
-  sleep 1
-
   browser_setup
+  create_clerk_sign_in_token
 
   if [[ -z "${STRIPE_SECRET_KEY:-}" ]]; then
     echo "STRIPE_SECRET_KEY is required but not set" >&2
@@ -37,9 +38,6 @@ setup_file() {
 
   APP_URL="$(derive_app_url)"
   export APP_URL
-
-  # Create a fresh Clerk user and sign-in token (ensures clean Free tier state)
-  create_clerk_user_and_token
 
   # Start Stripe webhook forwarding in background
   # In CI, forward to the preview deployment; locally, forward to localhost
@@ -76,6 +74,7 @@ setup_file() {
   echo "# Upgrade Pro flow verification via agent-browser" >&3
   echo "#   Web URL: $VM0_API_URL" >&3
   echo "#   App URL: $APP_URL" >&3
+  echo "#   Email: $E2E_ACCOUNT" >&3
   echo "#   Stripe webhook PID: $STRIPE_LISTEN_PID" >&3
 }
 
@@ -90,118 +89,18 @@ teardown_file() {
   fi
   pkill -f 'stripe listen' 2>/dev/null || true
 
-  # Clean up the test Clerk user
-  delete_clerk_user "${CLERK_USER_ID:-}"
-
   browser_teardown
 }
 
 # ===========================================================================
-# Test 1: Sign in via Clerk token on the app domain
+# Test 1: Sign in via token
 # ===========================================================================
 @test "sign in via token" {
-  echo "# Signing in via token on $APP_URL..." >&3
-  agent-browser open "${APP_URL}/sign-in-token?token=${SIGN_IN_TOKEN}" --ignore-https-errors
-  agent-browser wait 5000
-
-  # Wait for token auth to complete — may land on app page or Clerk org creation
-  local auth_complete=false
-  for _i in $(seq 1 30); do
-    local snap
-    snap=$(full_snapshot)
-    # Org creation page = auth succeeded, user needs to create org first
-    if contains "$snap" "Select an Organization\|Create Organization"; then
-      auth_complete=true
-      break
-    fi
-    # Normal redirect = already has an org
-    local current_url
-    current_url=$(agent-browser get url 2>/dev/null || true)
-    if url_is_on_app "$current_url" && [[ ! "$current_url" =~ sign-in-token ]]; then
-      auth_complete=true
-      break
-    fi
-    sleep 1
-  done
-
-  assert [ "$auth_complete" = "true" ]
-  dismiss_cookie_banner
-  step_screenshot "after-sign-in"
-  echo "# Authentication complete!" >&3
+  sign_in_via_token_on_app
 }
 
 # ===========================================================================
-# Test 2: Complete onboarding
-# ===========================================================================
-@test "complete onboarding" {
-  echo "# Waiting for onboarding..." >&3
-  agent-browser wait 3000
-
-  local snap
-  local needs_onboarding=false
-
-  # The test user was created with a Clerk org via API, so Clerk auto-activates
-  # the org on sign-in. We only need to wait for the app's onboarding wizard.
-  for _i in $(seq 1 30); do
-    snap=$(full_snapshot)
-    if contains "$snap" "Name your workspace\|Choose your tools\|Connect your apps\|Where would you like to work"; then
-      needs_onboarding=true
-      break
-    fi
-    if contains "$snap" "Ask me to automate workflows"; then
-      echo "# Already onboarded" >&3
-      break
-    fi
-    sleep 1
-  done
-
-  if [[ "$needs_onboarding" != "true" ]]; then
-    echo "# Skipping onboarding steps: navigating directly to chat page" >&3
-    agent-browser open "$APP_URL" --ignore-https-errors
-    agent-browser wait 5000
-    step_screenshot "onboarding-skipped"
-    return 0
-  fi
-
-  # Step 1: Name workspace
-  if contains "$snap" "Name your workspace"; then
-    echo "# Step 1: Naming workspace..." >&3
-    agent-browser find placeholder "e.g. Acme Corp" fill "Pro Upgrade Test"
-    agent-browser wait 500
-    agent-browser find text "Next" click
-    agent-browser wait 2000
-    snap=$(full_snapshot)
-  fi
-
-  # Step 2: Choose tools (skip)
-  if contains "$snap" "Choose your tools"; then
-    echo "# Step 2: Choosing tools (skip)..." >&3
-    agent-browser find text "Next" click
-    agent-browser wait 2000
-    snap=$(full_snapshot)
-  fi
-
-  # Step 3: Connect apps (skip)
-  if contains "$snap" "Connect your apps"; then
-    echo "# Step 3: Connect apps (skip)..." >&3
-    agent-browser find text "Next" click
-    agent-browser wait 2000
-    snap=$(full_snapshot)
-  fi
-
-  # Step 4: Where to work
-  if contains "$snap" "Where would you like to work\|Continue in web"; then
-    echo "# Step 4: Continue in web..." >&3
-    agent-browser find text "Continue in web" click
-    agent-browser wait 8000
-  fi
-
-  step_screenshot "onboarding-done"
-  echo "# Onboarding complete!" >&3
-}
-
-# ===========================================================================
-# Test 3: Verify chat page loads and Get Pro button exists
+# Test 2: Verify chat page loads and Get Pro button exists
 # ===========================================================================
 @test "verify chat page with Get Pro button" {
   echo "# Waiting for chat page..." >&3
@@ -210,8 +109,7 @@ teardown_file() {
 
   local snap
   local chat_loaded=false
-  local onboarding_completed_in_loop=false
-  for _i in $(seq 1 90); do
+  for _i in $(seq 1 60); do
     snap=$(full_snapshot)
     if contains "$snap" "Ask me to automate workflows"; then
       chat_loaded=true
@@ -220,34 +118,6 @@ teardown_file() {
     if contains "$snap" "Ideas.*use cases\|Browse use cases"; then
       chat_loaded=true
       break
-    fi
-    # Handle onboarding wizard appearing mid-loop (post-org-creation redirect can be slow)
-    if [[ "$onboarding_completed_in_loop" != "true" ]] && contains "$snap" "Name your workspace\|Choose your tools\|Connect your apps\|Where would you like to work"; then
-      echo "# Onboarding wizard detected in chat polling loop — completing it..." >&3
-      if contains "$snap" "Name your workspace"; then
-        agent-browser find placeholder "e.g. Acme Corp" fill "Pro Upgrade Test"
-        agent-browser wait 500
-        agent-browser find text "Next" click
-        agent-browser wait 2000
-        snap=$(full_snapshot)
-      fi
-      if contains "$snap" "Choose your tools"; then
-        agent-browser find text "Next" click
-        agent-browser wait 2000
-        snap=$(full_snapshot)
-      fi
-      if contains "$snap" "Connect your apps"; then
-        agent-browser find text "Next" click
-        agent-browser wait 2000
-        snap=$(full_snapshot)
-      fi
-      if contains "$snap" "Where would you like to work\|Continue in web"; then
-        agent-browser find text "Continue in web" click
-        agent-browser wait 8000
-      fi
-      onboarding_completed_in_loop=true
-      echo "# Onboarding completed in loop, continuing to wait for chat page..." >&3
-      continue
     fi
     sleep 1
   done
@@ -262,7 +132,7 @@ teardown_file() {
 }
 
 # ===========================================================================
-# Test 4: Click Get Pro and navigate to Stripe checkout
+# Test 3: Click Get Pro and navigate to Stripe checkout
 # ===========================================================================
 @test "open billing and click Upgrade to Pro" {
   echo "# Clicking Get Pro..." >&3
@@ -306,7 +176,7 @@ teardown_file() {
 }
 
 # ===========================================================================
-# Test 5: Fill Stripe test card and subscribe
+# Test 4: Fill Stripe test card and subscribe
 # ===========================================================================
 @test "fill Stripe test card and subscribe" {
   echo "# Filling Stripe checkout form..." >&3
@@ -372,14 +242,12 @@ teardown_file() {
   fi
 
   # Fill phone number — required when "Save my information" is checked
-  # Use agent-browser find which is more reliable than snapshot grep for this field
   echo "# Filling phone number..." >&3
   if agent-browser find placeholder "Phone number" fill "2125551234" 2>/dev/null; then
     echo "# Phone number filled via placeholder" >&3
   elif agent-browser find label "Phone number" fill "2125551234" 2>/dev/null; then
     echo "# Phone number filled via label" >&3
   else
-    # Last resort: find by ref in full snapshot
     local full_snap
     full_snap=$(agent-browser snapshot 2>/dev/null || true)
     ref=$(echo "$full_snap" | grep 'textbox "Phone number"' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
@@ -426,7 +294,7 @@ teardown_file() {
 }
 
 # ===========================================================================
-# Test 6: Verify Pro plan is active
+# Test 5: Verify Pro plan is active
 # ===========================================================================
 @test "verify Pro plan is active" {
   echo "# Waiting for app to load after upgrade..." >&3
