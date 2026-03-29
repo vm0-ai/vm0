@@ -185,11 +185,15 @@ impl CowPool {
         }
         self.active = false;
 
-        // Abort pending and collect any that completed.
-        self.pending.abort_all();
+        // Wait for in-flight spawn_blocking tasks (at most 1) to complete.
+        // Unlike async tasks, spawn_blocking tasks cannot be cancelled —
+        // abort_all would mark them as Cancelled, discarding the created
+        // slot and leaking its loop device. So we wait instead (~50-250ms).
         while let Some(result) = self.pending.join_next().await {
-            if let Ok(Ok(slot)) = result {
-                self.queue.push_back(slot);
+            match result {
+                Ok(Ok(slot)) => self.queue.push_back(slot),
+                Ok(Err(e)) => error!(error = %e, "pending slot creation failed during cleanup"),
+                Err(e) => error!(error = %e, "pending task panicked during cleanup"),
             }
         }
 
