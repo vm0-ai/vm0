@@ -46,8 +46,6 @@ pub(crate) struct PrewarmedSlot {
     pub id: String,
     /// Path to the workspace directory: `{workspaces_dir}/{id}/`.
     pub workspace: PathBuf,
-    /// Path to the COW file: `{workspace}/cow.img`.
-    pub cow_file: PathBuf,
     /// The attached loop device. Ownership transfers to `CowDevice` on acquire.
     pub loop_device: block_cow::LoopDevice,
 }
@@ -258,13 +256,18 @@ fn create_slot(_idx: u32, config: &CowPoolConfig) -> Result<PrewarmedSlot, CowPo
     }
 
     // 2. Attach loop device.
-    let loop_device = block_cow::losetup_attach(&cow_file, false)
-        .map_err(|e| CowPoolError::LoopAttach(e.to_string()))?;
+    let loop_device = match block_cow::losetup_attach(&cow_file, false) {
+        Ok(ld) => ld,
+        Err(e) => {
+            let _ = std::fs::remove_file(&cow_file);
+            let _ = std::fs::remove_dir_all(&workspace);
+            return Err(CowPoolError::LoopAttach(e.to_string()));
+        }
+    };
 
     Ok(PrewarmedSlot {
         id,
         workspace,
-        cow_file,
         loop_device,
     })
 }
@@ -287,12 +290,12 @@ fn sparse_copy(src: &Path, dst: &Path) -> Result<(), CowPoolError> {
 }
 
 /// Best-effort teardown of a pre-warmed slot.
+///
+/// Detaches the loop device first (so the backing file is released), then
+/// removes the workspace directory (which contains the cow file).
 pub(crate) fn destroy_slot(mut slot: PrewarmedSlot) {
     if let Err(e) = slot.loop_device.detach() {
         warn!(id = %slot.id, error = %e, "failed to detach pool loop device");
-    }
-    if let Err(e) = std::fs::remove_file(&slot.cow_file) {
-        warn!(id = %slot.id, error = %e, "failed to delete pool COW file");
     }
     if let Err(e) = std::fs::remove_dir_all(&slot.workspace) {
         warn!(id = %slot.id, error = %e, "failed to delete pool workspace dir");
