@@ -1,5 +1,6 @@
 //! Runtime health diagnostics for all runners on the host.
 
+use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -838,16 +839,21 @@ async fn detect_block_cow_orphans(reports: &[RunnerReport]) -> Vec<Warning> {
         }
     };
 
-    let dm_targets = super::gc::parse_dm_targets(&dm_output, "cow-");
+    let dm_target_list = super::gc::parse_dm_targets(&dm_output, "cow-");
+    let dm_targets: HashSet<String> = dm_target_list.iter().cloned().collect();
 
-    // 2. Orphan dm-snapshot targets (open_count == 0)
-    for name in &dm_targets {
-        if dm_target_has_no_openers(name).await {
-            let runner_name = find_runner_for_dm_target(name, reports);
-            warnings.push(Warning::OrphanDmSnapshot {
-                name: name.clone(),
-                runner_name,
-            });
+    // 2. Orphan dm-snapshot targets (open_count == 0), checked in parallel
+    let mut info_set = tokio::task::JoinSet::new();
+    for name in dm_target_list {
+        info_set.spawn(async move {
+            let orphan = dm_target_has_no_openers(&name).await;
+            (name, orphan)
+        });
+    }
+    while let Some(Ok((name, is_orphan))) = info_set.join_next().await {
+        if is_orphan {
+            let runner_name = find_runner_for_dm_target(&name, reports);
+            warnings.push(Warning::OrphanDmSnapshot { name, runner_name });
         }
     }
 
@@ -885,7 +891,7 @@ async fn detect_block_cow_orphans(reports: &[RunnerReport]) -> Vec<Warning> {
             // The dm target (`cow-{id}`) is created before the cow loop and
             // removed after it, so absence means the sandbox is fully torn down.
             let expected = format!("cow-{sandbox_id}");
-            !dm_targets.contains(&expected)
+            !dm_targets.contains(expected.as_str())
         } else {
             // Base loop (rootfs.ext4): shared via BaseLoopCache, orphaned only
             // when every runner process on the host is dead.
@@ -949,9 +955,14 @@ fn parse_dm_open_count(info_output: &str) -> Option<u32> {
 /// Expected format: `.../workspaces/{sandbox_id}/cow.img[ (deleted)]`
 /// Returns `None` for non-cow paths (e.g. `rootfs.ext4`).
 fn extract_sandbox_id(backing: &str) -> Option<&str> {
-    let path = backing.strip_suffix(" (deleted)").unwrap_or(backing);
-    let path = path.strip_suffix("/cow.img")?;
-    path.rsplit('/').next()
+    let clean = backing.strip_suffix(" (deleted)").unwrap_or(backing);
+    let path = Path::new(clean);
+    if path.file_name()? != "cow.img" {
+        return None;
+    }
+    // parent = `.../workspaces/{sandbox_id}`
+    let parent = path.parent()?;
+    parent.file_name()?.to_str()
 }
 
 /// Find which runner owns a loop device by matching backing file path prefix.
