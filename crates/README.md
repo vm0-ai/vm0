@@ -14,7 +14,7 @@ This workspace contains Rust crates for the vm0 sandbox runtime — VM orchestra
 | **vsock-host** | Host-side async vsock client (tokio) — connects to guest via Unix domain sockets |
 | **vsock-guest** | Guest-side vsock library — IPC over vsock/Unix sockets, embedded in guest-init as PID 2 |
 | **vsock-test** | Integration tests for vsock — real host + real guest over Unix sockets |
-| **guest-init** | Init process (PID 1) for Firecracker VMs — filesystem setup, mount/pivot_root, signal handling, forks vsock-guest |
+| **guest-init** | Init process (PID 1) for Firecracker VMs — virtual filesystem setup, env config, signal handling, forks vsock-guest |
 | **guest-agent** | Guest orchestrator — CLI execution, heartbeat, telemetry upload, and checkpoint creation inside the VM |
 | **guest-common** | Shared utilities for guest crates — logging macros, telemetry recording, environment accessors |
 | **guest-download** | Downloads and extracts storage archives — parallel downloads (4 concurrent), streaming extraction, retry logic |

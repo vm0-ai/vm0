@@ -14,7 +14,7 @@
 //!   PID 2's children, not PID 1's), there is no ECHILD race condition.
 //!
 //! Startup sequence:
-//! 1. Initialize filesystem (mounts, pivot_root)
+//! 1. Initialize filesystem (mount /proc, /sys, set env vars)
 //! 2. Install PID 1 signal handlers (SIGTERM/SIGINT for shutdown, ignore SIGTTIN/SIGTTOU/SIGPIPE)
 //! 3. Fork child process
 //! 4. Child (PID 2): reset signal handlers to default, run vsock-guest

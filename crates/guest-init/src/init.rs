@@ -1,70 +1,25 @@
 //! Filesystem initialization for VM boot.
 //!
-//! This module implements the filesystem initialization in Rust:
-//! 1. Mount ext4 rootfs (writable — COW handled by host dm-snapshot)
-//! 2. Perform pivot_root
-//! 3. Mount virtual filesystems (/proc, /sys)
+//! The kernel mounts the ext4 rootfs via `root=/dev/vda rw` boot arg and
+//! auto-mounts devtmpfs on `/dev` (`CONFIG_DEVTMPFS_MOUNT=y`).
+//!
+//! This module handles the remaining setup:
+//! 1. Mount virtual filesystems (/proc, /sys)
+//! 2. Configure TCP keepalive and environment variables
 
-use nix::mount::{MntFlags, MsFlags, mount, umount2};
-use nix::unistd::{chdir, pivot_root};
+use nix::mount::{MsFlags, mount};
 use std::fs;
-use std::io;
-use std::path::Path;
 
 const DEFAULT_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
 
-/// Initialize filesystem and perform pivot_root.
+/// Initialize virtual filesystems and environment.
 ///
-/// This uses direct syscalls for filesystem initialization.
+/// The kernel has already mounted `/dev/vda` as root (`root=/dev/vda rw`)
+/// and devtmpfs on `/dev` (`CONFIG_DEVTMPFS_MOUNT=y`).
 pub fn init_filesystem() -> Result<(), InitError> {
     eprintln!("[guest-init] Starting filesystem initialization");
 
-    // 1. Mount ext4 rootfs from /dev/vda (writable — COW handled by host dm-snapshot)
-    mount(
-        Some("/dev/vda"),
-        "/mnt/root",
-        Some("ext4"),
-        MsFlags::empty(),
-        None::<&str>,
-    )
-    .map_err(|e| InitError::Mount {
-        target: "/mnt/root".into(),
-        source: e,
-    })?;
-    eprintln!("[guest-init] Mounted ext4 rootfs on /mnt/root");
-
-    // 2. Prepare and perform pivot_root
-    fs::create_dir_all("/mnt/root/oldroot").map_err(|e| InitError::Mkdir {
-        path: "/mnt/root/oldroot".into(),
-        source: e,
-    })?;
-
-    chdir(Path::new("/mnt/root")).map_err(|e| InitError::Chdir {
-        path: "/mnt/root".into(),
-        source: e,
-    })?;
-
-    pivot_root(".", "oldroot").map_err(InitError::PivotRoot)?;
-    eprintln!("[guest-init] pivot_root complete");
-
-    // 3. Move /dev from old root
-    mount(
-        Some("/oldroot/dev"),
-        "/dev",
-        None::<&str>,
-        MsFlags::MS_MOVE,
-        None::<&str>,
-    )
-    .map_err(|e| InitError::MoveMount {
-        from: "/oldroot/dev".into(),
-        to: "/dev".into(),
-        source: e,
-    })?;
-
-    // 4. Unmount old root (lazy unmount, ignore errors)
-    let _ = umount2("/oldroot", MntFlags::MNT_DETACH);
-
-    // 5. Mount virtual filesystems
+    // 1. Mount virtual filesystems
     mount(
         Some("proc"),
         "/proc",
@@ -104,7 +59,7 @@ pub fn init_filesystem() -> Result<(), InitError> {
     })?;
     eprintln!("[guest-init] Virtual filesystems mounted");
 
-    // 6. Set environment variables for the init process (root).
+    // 2. Set environment variables for the init process (root).
     // User commands run via `su - user` which resets env from /etc/passwd,
     // so these only affect root/sudo commands (e.g. clock fix).
     // SAFETY: We are the init process, no other threads are running yet
@@ -137,7 +92,7 @@ pub fn init_filesystem() -> Result<(), InitError> {
         eprintln!("[guest-init] Warning: failed to write /etc/profile.d/vm0-path.sh: {e}");
     }
 
-    // 7. Change to root home directory (init runs as root;
+    // 3. Change to root home directory (init runs as root;
     // `su - user` will cd to /home/user automatically)
     let _ = std::env::set_current_dir("/root");
 
@@ -148,24 +103,7 @@ pub fn init_filesystem() -> Result<(), InitError> {
 /// Errors that can occur during filesystem initialization
 #[derive(Debug)]
 pub enum InitError {
-    Mount {
-        target: String,
-        source: nix::Error,
-    },
-    Mkdir {
-        path: String,
-        source: io::Error,
-    },
-    Chdir {
-        path: String,
-        source: nix::Error,
-    },
-    PivotRoot(nix::Error),
-    MoveMount {
-        from: String,
-        to: String,
-        source: nix::Error,
-    },
+    Mount { target: String, source: nix::Error },
 }
 
 impl std::fmt::Display for InitError {
@@ -173,16 +111,6 @@ impl std::fmt::Display for InitError {
         match self {
             InitError::Mount { target, source } => {
                 write!(f, "Failed to mount {}: {}", target, source)
-            }
-            InitError::Mkdir { path, source } => {
-                write!(f, "Failed to create directory {}: {}", path, source)
-            }
-            InitError::Chdir { path, source } => {
-                write!(f, "Failed to chdir to {}: {}", path, source)
-            }
-            InitError::PivotRoot(e) => write!(f, "Failed to pivot_root: {}", e),
-            InitError::MoveMount { from, to, source } => {
-                write!(f, "Failed to move mount {} to {}: {}", from, to, source)
             }
         }
     }

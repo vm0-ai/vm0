@@ -93,9 +93,6 @@ RUN userdel -r node 2>/dev/null || true \
 # NOTE: DNS configuration is handled in build-rootfs.sh after export
 # /etc/resolv.conf is read-only during Docker build
 
-# Create mount point for guest-init pivot_root
-RUN mkdir -p /mnt/root
-
 ENV LANG=C.UTF-8
 
 # Install Chromium and agent-browser CLI for browser automation.
