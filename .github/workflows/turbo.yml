@@ -1088,7 +1088,7 @@ jobs:
             -H "Content-Type: application/json")
 
           # Extract user IDs, skipping the persistent e2e test account
-          ids=$(echo "$users" | jq -r '.[] | select(.email_addresses[]?.email_address != "e2e+clerk_test@vm0.ai") | .id' 2>/dev/null || true)
+          ids=$(echo "$users" | jq -r '.[] | select((.email_addresses[]?.email_address != "e2e+clerk_test@vm0.ai") and (.email_addresses[]?.email_address != "e2e_02+clerk_test@vm0.ai")) | .id' 2>/dev/null || true)
 
           if [ -z "$ids" ]; then
             echo "No test accounts to clean up"
