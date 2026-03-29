@@ -39,6 +39,8 @@ async function setup() {
 
 /** Default chat-threads handlers used by most send tests. */
 function useChatThreadHandlers() {
+  let runAssociated = false;
+
   server.use(
     http.post("*/api/zero/chat-threads", () => {
       return HttpResponse.json(
@@ -47,6 +49,7 @@ function useChatThreadHandlers() {
       );
     }),
     http.post("*/api/zero/chat-threads/:id/runs", () => {
+      runAssociated = true;
       return new HttpResponse(null, { status: 204 });
     }),
     http.get("*/api/zero/chat-threads", () => {
@@ -55,7 +58,16 @@ function useChatThreadHandlers() {
     http.get("*/api/zero/chat-threads/:id", () => {
       return HttpResponse.json({
         chatMessages: [],
-        unsavedRuns: [],
+        unsavedRuns: runAssociated
+          ? [
+              {
+                runId: "run-1",
+                status: "running",
+                prompt: "Hello",
+                error: null,
+              },
+            ]
+          : [],
       });
     }),
   );

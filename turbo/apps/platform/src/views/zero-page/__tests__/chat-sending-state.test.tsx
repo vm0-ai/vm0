@@ -47,10 +47,9 @@ describe("chat sending state", () => {
 
     await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      // While sending, the Send button is disabled
+      expect(screen.getByLabelText("Send")).toBeDisabled();
     });
-
-    // While sending, the Send button is hidden
-    expect(screen.queryByLabelText("Send")).toBeNull();
 
     ctrl.completeRun("Done");
 

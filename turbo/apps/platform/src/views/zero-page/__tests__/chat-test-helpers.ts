@@ -86,33 +86,53 @@ export function mockChatLifecycle(options?: {
   let queuePosition = 0;
   let resultContent = "";
   let threadList: ThreadListItem[] = [];
+  let runPrompt: string | null = null;
+  let runAssociated = false;
 
   server.use(
-    http.get("*/api/zero/chat-threads/:id", () =>
-      HttpResponse.json({
+    http.get("*/api/zero/chat-threads/:id", () => {
+      // After a run is associated, include it in unsavedRuns so the snapshot
+      // can reconstruct messages (mirrors real server behaviour).
+      const effectiveUnsavedRuns =
+        unsavedRuns ??
+        (runAssociated
+          ? [
+              {
+                runId: "run-test-1",
+                status: runStatus,
+                prompt: runPrompt ?? "Hello",
+                error: runError,
+              },
+            ]
+          : []);
+      return HttpResponse.json({
         id: threadId,
         title: options?.threadTitle ?? null,
         agentComposeId: "mock-compose-id",
         chatMessages,
         latestSessionId: null,
-        unsavedRuns,
+        unsavedRuns: effectiveUnsavedRuns,
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
-      }),
-    ),
+      });
+    }),
     http.get("*/api/zero/chat-threads", () =>
       HttpResponse.json({ threads: threadList }),
     ),
     http.post("*/api/zero/chat-threads", () =>
       HttpResponse.json({ id: threadId, title: null }, { status: 201 }),
     ),
-    http.post(
-      "*/api/zero/chat-threads/:id/runs",
-      () => new HttpResponse(null, { status: 204 }),
-    ),
-    http.post("*/api/zero/runs", () =>
-      HttpResponse.json({ runId: "run-test-1" }, { status: 201 }),
-    ),
+    http.post("*/api/zero/chat-threads/:id/runs", () => {
+      runAssociated = true;
+      return new HttpResponse(null, { status: 204 });
+    }),
+    http.post("*/api/zero/runs", async ({ request }) => {
+      const body = (await request.json()) as { prompt?: string };
+      if (body.prompt) {
+        runPrompt = body.prompt;
+      }
+      return HttpResponse.json({ runId: "run-test-1" }, { status: 201 });
+    }),
     http.get("*/api/zero/logs/:id", () =>
       HttpResponse.json({
         id: "run-test-1",

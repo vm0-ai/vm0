@@ -45,7 +45,7 @@ describe("chat message lifecycle", () => {
     });
   });
 
-  it("should display error when run creation fails", async () => {
+  it("should stay on talk page when run creation fails", async () => {
     mockChatLifecycle();
     server.use(
       http.post("*/api/zero/runs", () =>
@@ -64,64 +64,13 @@ describe("chat message lifecycle", () => {
 
     sendMessageInUI(textarea, "Hello");
 
+    // User stays on /talk/ — the composer is still available for retry
     await waitFor(() => {
-      expect(screen.getByText(/Some API error/)).toBeInTheDocument();
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
     });
   });
 
-  it("should show provider incompatibility guidance", async () => {
-    mockChatLifecycle();
-    server.use(
-      http.post("*/api/zero/runs", () =>
-        HttpResponse.json(
-          {
-            error: {
-              message:
-                "Cannot continue session: this session was created with Moonshot (Kimi) and cannot be continued with Anthropic API Key",
-              code: "PROVIDER_INCOMPATIBLE",
-            },
-          },
-          { status: 400 },
-        ),
-      ),
-    );
-
-    await setupPage({ context, path: "/talk/mock-compose-id" });
-
-    const textarea = await waitFor(
-      () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-    );
-
-    sendMessageInUI(textarea, "Hello");
-
-    await waitFor(() => {
-      expect(screen.getByText(/different model provider/)).toBeInTheDocument();
-    });
-  });
-
-  it("should display generic error when error body is unparseable", async () => {
-    mockChatLifecycle();
-    server.use(
-      http.post(
-        "*/api/zero/runs",
-        () => new HttpResponse("Bad Gateway", { status: 502 }),
-      ),
-    );
-
-    await setupPage({ context, path: "/talk/mock-compose-id" });
-
-    const textarea = await waitFor(
-      () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-    );
-
-    sendMessageInUI(textarea, "Hello");
-
-    await waitFor(() => {
-      expect(screen.getByText(/502/)).toBeInTheDocument();
-    });
-  });
-
-  it("should display error when thread creation fails", async () => {
+  it("should stay on talk page when thread creation fails", async () => {
     mockChatLifecycle();
     server.use(
       http.post(
@@ -138,8 +87,9 @@ describe("chat message lifecycle", () => {
 
     sendMessageInUI(textarea, "Hello");
 
+    // User stays on /talk/ — the composer is still available for retry
     await waitFor(() => {
-      expect(screen.getByText(/chat thread/i)).toBeInTheDocument();
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
     });
   });
 
@@ -154,11 +104,9 @@ describe("chat message lifecycle", () => {
 
     sendMessageInUI(textarea, "   ");
 
-    // Empty message prompt — still visible, no new messages
+    // Empty message is ignored — user stays on /talk/ with composer available
     await waitFor(() => {
-      expect(
-        screen.getByText("Send a message to start the conversation"),
-      ).toBeInTheDocument();
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
     });
   });
 });

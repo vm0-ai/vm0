@@ -631,6 +631,7 @@ export const prepareSessionSwitch$ = command(({ set }) => {
  */
 export const zeroSessionError$ = computed(() => null as string | null);
 
+
 // Chat input
 const internalChatInput$ = state("");
 export const zeroChatInput$ = computed((get) => get(internalChatInput$));
@@ -800,12 +801,6 @@ const syncAgentForThread$ = command(
  */
 export const loadSessionFromSnapshot$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    // Skip if local messages are in-flight (e.g., navigating from /talk
-    // after sending a message — optimistic messages are already displayed).
-    if (get(internalLocalMessages$).length > 0) {
-      return;
-    }
-
     const snapshot = await get(chatSessionSnapshot$);
     signal.throwIfAborted();
     if (!snapshot) {
@@ -826,15 +821,23 @@ export const loadSessionFromSnapshot$ = command(
     if (snapshot.activeRunMessages.length > 0) {
       set(internalLocalMessages$, snapshot.activeRunMessages);
 
+      const assistantMessages = snapshot.activeRunMessages.filter(
+        (m): m is AssistantChatMessage =>
+          m.role === "assistant" && !!m.beginLoop$,
+      );
+
       await Promise.all(
-        snapshot.activeRunMessages
-          .filter(
-            (m): m is AssistantChatMessage =>
-              m.role === "assistant" && !!m.beginLoop$,
-          )
-          .map(async (message) => {
-            await set(message.beginLoop$!, signal);
-          }),
+        assistantMessages.map(async (message) => {
+          await set(message.beginLoop$!, signal);
+        }),
+      );
+      signal.throwIfAborted();
+
+      // Finalize each completed run (persist session ID, refresh sidebar)
+      await Promise.all(
+        assistantMessages
+          .filter((m) => m.legacyRunId)
+          .map((m) => set(finalizeCompletedRun$, m.legacyRunId!, signal)),
       );
     }
   },
@@ -957,10 +960,25 @@ const ensureChatThread$ = command(
 
     // Add the new thread to the session list so the sidebar updates immediately
     set(reloadChatThreadList$, (n) => n + 1);
-    // Navigate so chatThreadId$ (URL) reflects the new thread
-    set(navigateToChat$, thread.id);
 
     return thread.id;
+  },
+);
+
+/** Post-polling cleanup: persist session ID and refresh sidebar. */
+const finalizeCompletedRun$ = command(
+  async ({ get, set }, runId: string, signal: AbortSignal) => {
+    const client = get(zeroClient$)(zeroRunsByIdContract);
+    const result = await client.getById({ params: { id: runId } });
+    signal.throwIfAborted();
+    if (result.status === 200 && result.body.result?.agentSessionId) {
+      set(internalSessionId$, result.body.result.agentSessionId);
+    }
+
+    // Refresh session list (messages are persisted server-side via webhook)
+    set(reloadChatThreadList$, (n) => n + 1);
+    await delay(1000, { signal });
+    set(reloadChatThreadList$, (n) => n + 1);
   },
 );
 
@@ -981,6 +999,7 @@ const submitAndPollRun$ = command(
   ) => {
     const createClient = get(zeroClient$);
     const sessionId = get(internalSessionId$);
+    const existingThreadId = get(chatThreadId$);
 
     const threadId = await set(
       ensureChatThread$,
@@ -1012,6 +1031,14 @@ const submitAndPollRun$ = command(
     await addRunToThread(createClient, threadId, runId);
     signal.throwIfAborted();
 
+    // For new threads, navigate after server state is ready. The snapshot
+    // reconstructs messages from unsavedRuns and resumes polling.
+    if (!existingThreadId) {
+      set(navigateToChat$, threadId);
+      set(reloadChatThreadList$, (n) => n + 1);
+      return;
+    }
+
     // Refresh sidebar after run is associated (has preview now)
     set(reloadChatThreadList$, (n) => n + 1);
 
@@ -1026,17 +1053,7 @@ const submitAndPollRun$ = command(
 
     await set(runLoop.beginLoop$, signal);
 
-    const client = get(zeroClient$)(zeroRunsByIdContract);
-    const result = await client.getById({ params: { id: runId } });
-    signal.throwIfAborted();
-    if (result.status === 200 && result.body.result?.agentSessionId) {
-      set(internalSessionId$, result.body.result.agentSessionId);
-    }
-
-    // Refresh session list (messages are persisted server-side via webhook)
-    set(reloadChatThreadList$, (n) => n + 1);
-    await delay(1000, { signal });
-    set(reloadChatThreadList$, (n) => n + 1);
+    await set(finalizeCompletedRun$, runId, signal);
   },
 );
 
@@ -1069,23 +1086,9 @@ export const sendZeroChatMessage$ = command(
     } catch (error) {
       throwIfAbort(error);
       L.error("Chat send error:", error);
-      const errorMsg = error instanceof Error ? error.message : "Unknown error";
-      set(internalLocalMessages$, (prev) => {
-        const updated = [...prev];
-        const last = updated[updated.length - 1];
-        if (last && last.role === "assistant") {
-          updated[updated.length - 1] = { ...last, error: errorMsg };
-        } else {
-          // Error before assistant message was created — add one
-          updated.push({
-            id: crypto.randomUUID(),
-            role: "assistant",
-            content: "",
-            error: errorMsg,
-          });
-        }
-        return updated;
-      });
+      // Clear the optimistic user message since the send failed.
+      // The user stays on /talk/ with their input preserved for retry.
+      set(internalLocalMessages$, []);
     }
   },
 );
