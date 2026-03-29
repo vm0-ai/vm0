@@ -411,43 +411,39 @@ async function resolveModelProviderSecrets(
 /**
  * Result of connector secret resolution
  */
-interface ConnectorSecretResult {
+interface OauthConnectorSecretResult {
   /** All raw connector secrets (for masking and direct secret reference resolution) */
   connectorSecrets: Record<string, string> | undefined;
   /** Environment variables mapped from OAuth connectors via environmentMapping */
   injectedEnvVars: Record<string, string> | undefined;
   /** Maps secret names to connector types for refresh-capable OAuth connectors */
   secretConnectorMap: Record<string, string> | undefined;
-  /** Validated connector types for the user (used for firewall resolution) */
+  /** Validated OAuth connector types from DB */
   connectorTypes: ConnectorType[];
 }
 
 /**
- * Resolve and inject connector secrets if any connectors are connected.
- * For each connected connector, resolves its environmentMapping to produce
+ * Resolve and inject OAuth connector secrets.
+ * For each connected OAuth connector, resolves its environmentMapping to produce
  * environment variables (e.g., GH_TOKEN, GITHUB_TOKEN for GitHub connector).
  */
-async function resolveConnectorSecrets(
+async function resolveOauthConnectorSecrets(
   orgId: string,
   userId: string,
-): Promise<ConnectorSecretResult> {
+): Promise<OauthConnectorSecretResult> {
   const db = globalThis.services.db;
 
-  // Query OAuth connectors and derive api-token types in parallel.
-  const [userConnectors, derivedApiTokenTypes] = await Promise.all([
-    db
-      .select({ type: connectors.type, authMethod: connectors.authMethod })
-      .from(connectors)
-      .where(and(eq(connectors.orgId, orgId), eq(connectors.userId, userId))),
-    getApiTokenConnectorTypes(orgId, userId),
-  ]);
+  const userConnectors = await db
+    .select({ type: connectors.type, authMethod: connectors.authMethod })
+    .from(connectors)
+    .where(and(eq(connectors.orgId, orgId), eq(connectors.userId, userId)));
 
   if (userConnectors.length === 0) {
     return {
       connectorSecrets: undefined,
       injectedEnvVars: undefined,
       secretConnectorMap: undefined,
-      connectorTypes: derivedApiTokenTypes,
+      connectorTypes: [],
     };
   }
 
@@ -457,7 +453,7 @@ async function resolveConnectorSecrets(
       connectorSecrets: undefined,
       injectedEnvVars: undefined,
       secretConnectorMap: undefined,
-      connectorTypes: derivedApiTokenTypes,
+      connectorTypes: [],
     };
   }
 
@@ -542,12 +538,7 @@ async function resolveConnectorSecrets(
       Object.keys(secretConnectorMap).length > 0
         ? secretConnectorMap
         : undefined,
-    connectorTypes: [
-      ...new Set([
-        ...validConnectors.map((c) => c.type),
-        ...derivedApiTokenTypes,
-      ]),
-    ],
+    connectorTypes: validConnectors.map((c) => c.type),
   };
 }
 
@@ -744,33 +735,43 @@ async function resolveSecretsAndEnvironment(
   // Run all secret resolution and variable fetching in parallel.
   // The three resolve functions have independent DB queries (different secret types),
   // so there is no data dependency between them.
-  const [dbSecrets, modelProviderResult, connectorResult, mergedVars] =
-    await Promise.all([
-      fetchReferencedSecrets(orgId, userId, firstAgent?.environment),
-      resolveModelProviderSecrets(
-        orgId,
-        framework,
-        hasExplicitModelProviderConfig,
-        modelProvider,
-      ),
-      resolveConnectorSecrets(orgId, userId),
-      fetchAndMergeVariables(orgId, userId, vars),
-    ]);
+  const [
+    dbSecrets,
+    modelProviderResult,
+    oauthResult,
+    apiTokenTypes,
+    mergedVars,
+  ] = await Promise.all([
+    fetchReferencedSecrets(orgId, userId, firstAgent?.environment),
+    resolveModelProviderSecrets(
+      orgId,
+      framework,
+      hasExplicitModelProviderConfig,
+      modelProvider,
+    ),
+    resolveOauthConnectorSecrets(orgId, userId),
+    getApiTokenConnectorTypes(orgId, userId),
+    fetchAndMergeVariables(orgId, userId, vars),
+  ]);
+
+  const connectorTypes = [
+    ...new Set([...oauthResult.connectorTypes, ...apiTokenTypes]),
+  ];
 
   // Single secrets map with explicit priority (later overrides earlier).
   // All sources are included — extra secrets are harmless for environment expansion
   // (only referenced ${{ secrets.* }} names are looked up) and for auth resolution
   // (auth endpoint only resolves templates it receives).
   const hasSecrets =
-    connectorResult.connectorSecrets ||
-    connectorResult.injectedEnvVars ||
+    oauthResult.connectorSecrets ||
+    oauthResult.injectedEnvVars ||
     modelProviderResult.secrets ||
     dbSecrets ||
     cliSecrets;
   const secrets: Record<string, string> | undefined = hasSecrets
     ? {
-        ...connectorResult.connectorSecrets, // lowest: raw connector secrets
-        ...connectorResult.injectedEnvVars, // connector env mappings override raw
+        ...oauthResult.connectorSecrets, // lowest: raw connector secrets
+        ...oauthResult.injectedEnvVars, // connector env mappings override raw
         ...modelProviderResult.secrets, // model provider
         ...dbSecrets, // DB user secrets
         ...cliSecrets, // highest: CLI --secrets
@@ -779,7 +780,7 @@ async function resolveSecretsAndEnvironment(
 
   // Filter secretConnectorMap: remove keys overridden by higher-priority sources.
   const secretConnectorMap = filterSecretConnectorMap(
-    connectorResult.secretConnectorMap,
+    oauthResult.secretConnectorMap,
     [modelProviderResult.secrets, dbSecrets, cliSecrets],
   );
 
@@ -798,13 +799,12 @@ async function resolveSecretsAndEnvironment(
   // Build connector firewall configs for placeholder injection.
   // connectorFirewalls configs carry `placeholders` (custom placeholder values),
   // which expandEnvironmentFromCompose needs to replace secrets with placeholders.
-  const connectorFirewallConfigs: ExpandedFirewallConfig[] =
-    connectorResult.connectorTypes
-      .filter(isFirewallConnectorType)
-      .map((type) => ({
-        ...getConnectorFirewall(type),
-        ref: type,
-      }));
+  const connectorFirewallConfigs: ExpandedFirewallConfig[] = connectorTypes
+    .filter(isFirewallConnectorType)
+    .map((type) => ({
+      ...getConnectorFirewall(type),
+      ref: type,
+    }));
 
   const { environment } = expandEnvironmentFromCompose(
     agentCompose,

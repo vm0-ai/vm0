@@ -78,7 +78,17 @@ export const completeMemberOnboarding$ = command(
 
 type ZeroOnboardingStep = "1" | "2" | "3" | "4" | "done";
 
-const internalStep$ = state<ZeroOnboardingStep>("1");
+/** User-driven step override; null means derive from initialOnboardingStep$. */
+const userStep$ = state<ZeroOnboardingStep | null>(null);
+
+const initialOnboardingStep$ = computed(async (get) => {
+  const status = await get(zeroOnboardingStatus$);
+  if (!status.needsOnboarding) {
+    return "done" as const;
+  }
+  return (status.hasDefaultAgent ? "3" : "1") as ZeroOnboardingStep;
+});
+
 const internalAgentName$ = state("Zero");
 const internalWorkspaceName$ = state("");
 const internalSaving$ = state(false);
@@ -89,7 +99,13 @@ const internalOnboardingError$ = state<string | null>(null);
 // Exported computed state
 // ---------------------------------------------------------------------------
 
-export const zeroOnboardingStep$ = computed((get) => get(internalStep$));
+export const zeroOnboardingStep$ = computed(async (get) => {
+  const userStep = get(userStep$);
+  if (userStep !== null) {
+    return userStep;
+  }
+  return await get(initialOnboardingStep$);
+});
 export const zeroAgentName$ = computed((get) => get(internalAgentName$));
 export const zeroWorkspaceName$ = computed((get) =>
   get(internalWorkspaceName$),
@@ -112,7 +128,7 @@ export const clearZeroOnboardingError$ = command(({ set }) => {
 // ---------------------------------------------------------------------------
 
 export const setZeroStep$ = command(({ set }, step: ZeroOnboardingStep) => {
-  set(internalStep$, step);
+  set(userStep$, step);
 });
 
 export const setZeroAgentName$ = command(({ set }, name: string) => {
@@ -138,23 +154,12 @@ export const toggleZeroConnector$ = command(
 // ---------------------------------------------------------------------------
 
 /**
- * Initialize onboarding step based on current status.
- * Skips steps that are already completed.
+ * Reset the onboarding step to null so initialOnboardingStep$ takes over.
+ * Call this on page entry to ensure a fresh reactive derivation.
  */
-export const initZeroOnboarding$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const status = await get(zeroOnboardingStatus$);
-    signal.throwIfAborted();
-
-    if (!status.needsOnboarding) {
-      set(internalStep$, "done");
-      return;
-    }
-
-    // Full org setup starts at step 1; personal onboarding skips to step 3
-    set(internalStep$, status.hasDefaultAgent ? "3" : "1");
-  },
-);
+export const resetOnboardingStep$ = command(({ set }) => {
+  set(userStep$, null);
+});
 
 /**
  * Complete onboarding: create agent via zero agents API and set as default.
@@ -253,5 +258,16 @@ export const completeZeroOnboarding$ = command(
  * dialog disappears (e.g. after a chat thread is initiated).
  */
 export const dismissZeroOnboarding$ = command(({ set }) => {
-  set(internalStep$, "done");
+  set(userStep$, "done");
 });
+
+/**
+ * Initialize onboarding status by eagerly loading it.
+ * Called on page setup so onboarding data is ready before onboardGuard$ checks it.
+ */
+export const initZeroOnboarding$ = command(
+  async ({ get }, signal: AbortSignal) => {
+    await get(zeroOnboardingStatus$);
+    signal.throwIfAborted();
+  },
+);

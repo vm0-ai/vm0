@@ -217,6 +217,7 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
     .await
     .map_err(|e| RunnerError::Internal(format!("netns pool: {e}")))?;
     let shared_netns = Arc::new(tokio::sync::Mutex::new(netns_pool));
+    let shared_base_cache = Arc::new(std::sync::Mutex::new(block_cow::BaseLoopCache::new()));
 
     let mut status = StatusTracker::new(paths.status(), estimated_capacity);
     status.set_proxy_port(mitm.port()).await;
@@ -265,6 +266,7 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
         group: group_name,
         profiles: runner_config.profiles,
         shared_netns,
+        shared_base_cache,
         home,
         proxy_port: mitm.port(),
         budget,
@@ -290,6 +292,7 @@ struct RunConfig {
     group: String,
     profiles: std::collections::BTreeMap<String, ProfileConfig>,
     shared_netns: Arc<tokio::sync::Mutex<sandbox_fc::NetnsPool>>,
+    shared_base_cache: Arc<std::sync::Mutex<block_cow::BaseLoopCache>>,
     home: HomePaths,
     proxy_port: u16,
     budget: Arc<ResourceBudget>,
@@ -317,6 +320,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         group,
         profiles,
         shared_netns,
+        shared_base_cache,
         home,
         proxy_port,
         budget,
@@ -346,8 +350,12 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             Some(proxy_port),
         );
         let factory_result = async {
-            let mut factory =
-                FirecrackerFactory::new(fc_config, Some(Arc::clone(&shared_netns))).await?;
+            let mut factory = FirecrackerFactory::new(
+                fc_config,
+                Some(Arc::clone(&shared_netns)),
+                Arc::clone(&shared_base_cache),
+            )
+            .await?;
             factory.startup().await?;
             Ok::<_, sandbox::SandboxError>(factory)
         }
@@ -356,7 +364,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             Ok(f) => f,
             Err(e) => {
                 // Clean up already-started factories before propagating.
-                shutdown_factories(&mut factories, &shared_netns).await;
+                shutdown_factories(&mut factories, &shared_netns, &shared_base_cache).await;
                 return Err(e.into());
             }
         };
@@ -554,7 +562,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     }
 
     info!("shutting down factories");
-    shutdown_factories(&mut factories, &shared_netns).await;
+    shutdown_factories(&mut factories, &shared_netns, &shared_base_cache).await;
 
     // Stop proxy after all jobs have drained and factory is shut down.
     if let Err(e) = mitm.stop().await {
@@ -580,10 +588,11 @@ struct JobProfile {
     cancel: CancellationToken,
 }
 
-/// Shut down all factories and clean up the shared netns pool.
+/// Shut down all factories and clean up shared pools.
 async fn shutdown_factories(
     factories: &mut BTreeMap<String, Arc<FirecrackerFactory>>,
     shared_netns: &Arc<tokio::sync::Mutex<sandbox_fc::NetnsPool>>,
+    shared_base_cache: &Arc<std::sync::Mutex<block_cow::BaseLoopCache>>,
 ) {
     for (name, factory) in std::mem::take(factories) {
         match Arc::try_unwrap(factory) {
@@ -598,6 +607,16 @@ async fn shutdown_factories(
     if let Err(e) = pool.cleanup().await {
         warn!(error = %e, "failed to cleanup shared netns pool");
     }
+    drop(pool);
+
+    // Clean up base image pool — detach any remaining loop devices.
+    // Each factory.shutdown() releases its own reference, but if a factory
+    // was still referenced (Arc::try_unwrap failed), its base handle leaks.
+    // This is the safety net.
+    shared_base_cache
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .cleanup();
 }
 
 /// Spawn a job executor task.

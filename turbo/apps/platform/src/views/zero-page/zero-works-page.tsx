@@ -124,7 +124,9 @@ function SlackCardActions({
 }
 
 function SlackCard({ displayName }: { displayName: string }) {
-  const slackData = useGet(slackOrgData$);
+  const slackDataLoadable = useLoadable(slackOrgData$);
+  const slackData =
+    slackDataLoadable.state === "hasData" ? slackDataLoadable.data : null;
   const disconnect = useSet(disconnectSlackOrg$);
   const uninstall = useSet(uninstallSlackOrg$);
   const pageSignal = useGet(pageSignal$);

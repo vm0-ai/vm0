@@ -54,25 +54,6 @@ describe("slack schedule notification signals", () => {
     });
   }
 
-  describe("slackOrgData$ initialization", () => {
-    it("should be available on /schedule page", async () => {
-      await setup("/schedule");
-
-      const data = context.store.get(slackOrgData$);
-      expect(data).not.toBeNull();
-      expect(data?.isInstalled).toBeTruthy();
-      expect(data?.isConnected).toBeTruthy();
-    });
-
-    it("should be available on /team/:name page", async () => {
-      await setup("/team/zero");
-
-      const data = context.store.get(slackOrgData$);
-      expect(data).not.toBeNull();
-      expect(data?.isInstalled).toBeTruthy();
-    });
-  });
-
   describe("fetchSlackChannels$", () => {
     it("should fetch channels when slack is installed", async () => {
       await setup();
@@ -170,8 +151,8 @@ describe("slack schedule notification signals", () => {
     it("should have slackOrgData$ installed and fetch channels on dialog open", async () => {
       await setup("/schedule");
 
-      const data = context.store.get(slackOrgData$);
-      expect(data?.isInstalled).toBeTruthy();
+      const data = await context.store.get(slackOrgData$);
+      expect(data.isInstalled).toBeTruthy();
 
       await context.store.set(setAddScheduleOpen$, true, context.signal);
       await context.store.set(fetchSlackChannels$, context.signal);
@@ -218,9 +199,9 @@ describe("slack schedule notification signals", () => {
 
       await setup("/schedule");
 
-      const data = context.store.get(slackOrgData$);
-      expect(data?.isInstalled).toBeTruthy();
-      expect(data?.isConnected).toBeFalsy();
+      const data = await context.store.get(slackOrgData$);
+      expect(data.isInstalled).toBeTruthy();
+      expect(data.isConnected).toBeFalsy();
     });
   });
 
@@ -253,8 +234,8 @@ describe("slack schedule notification signals", () => {
 
       await setup("/schedule");
 
-      const data = context.store.get(slackOrgData$);
-      expect(data?.isInstalled).toBeFalsy();
+      const data = await context.store.get(slackOrgData$);
+      expect(data.isInstalled).toBeFalsy();
 
       await context.store.set(setAddScheduleOpen$, true, context.signal);
       await context.store.set(fetchSlackChannels$, context.signal);
@@ -268,8 +249,8 @@ describe("slack schedule notification signals", () => {
     it("should have slackOrgData$ installed and fetch channels on dialog open", async () => {
       await setup("/team/zero");
 
-      const data = context.store.get(slackOrgData$);
-      expect(data?.isInstalled).toBeTruthy();
+      const data = await context.store.get(slackOrgData$);
+      expect(data.isInstalled).toBeTruthy();
 
       await context.store.set(setAddScheduleOpen$, true, context.signal);
       await context.store.set(fetchSlackChannels$, context.signal);
@@ -319,8 +300,8 @@ describe("slack schedule notification signals", () => {
 
       await setup("/team/zero");
 
-      const data = context.store.get(slackOrgData$);
-      expect(data?.isInstalled).toBeFalsy();
+      const data = await context.store.get(slackOrgData$);
+      expect(data.isInstalled).toBeFalsy();
 
       await context.store.set(setAddScheduleOpen$, true, context.signal);
       await context.store.set(fetchSlackChannels$, context.signal);

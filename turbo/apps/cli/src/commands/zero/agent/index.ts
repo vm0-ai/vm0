@@ -15,7 +15,7 @@ export const zeroAgentCommand = new Command("agent")
   .addHelpText(
     "after",
     `
-Self-management (inside sandbox):
+Examples:
   Your agent ID is in $ZERO_AGENT_ID (or run: zero whoami)
   View your config:      zero agent view $ZERO_AGENT_ID --instructions
   Update description:    zero agent edit $ZERO_AGENT_ID --description "new role"

@@ -5,9 +5,9 @@ pub struct FirecrackerConfig {
     pub binary_path: PathBuf,
     pub kernel_path: PathBuf,
     pub rootfs_path: PathBuf,
-    /// Base directory for runtime data (workspaces, overlays, etc.).
+    /// Base directory for runtime data (workspaces, COW devices, etc.).
     pub base_dir: PathBuf,
-    /// Profile name (e.g., "vm0/default") used for per-profile overlay isolation.
+    /// Profile name (e.g., "vm0/default") used for per-profile isolation.
     pub profile: String,
     /// Port of the HTTP/HTTPS proxy. When set, iptables rules redirect traffic through it.
     pub proxy_port: Option<u16>,
@@ -21,10 +21,10 @@ pub struct SnapshotConfig {
     pub snapshot_path: PathBuf,
     /// Path to the memory dump file.
     pub memory_path: PathBuf,
-    /// Path to the base overlay file shipped with the snapshot.
-    pub overlay_path: PathBuf,
-    /// Overlay path recorded in the snapshot's Firecracker config (bind mount target).
-    pub overlay_bind_path: PathBuf,
+    /// Path to the golden COW file shipped with the snapshot.
+    pub cow_path: PathBuf,
+    /// Drive path recorded in the snapshot's Firecracker config (bind mount target).
+    pub drive_bind_path: PathBuf,
     /// Vsock directory recorded in the snapshot's Firecracker config (bind mount target).
     pub vsock_bind_dir: PathBuf,
 }

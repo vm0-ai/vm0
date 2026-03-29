@@ -110,6 +110,13 @@ export const statusCommand = new Command()
     "-n, --name <schedule-name>",
     "Schedule name (required when agent has multiple schedules)",
   )
+  .addHelpText(
+    "after",
+    `
+Examples:
+  zero schedule status <agent-id>
+  zero schedule status <agent-id> -n my-schedule`,
+  )
   .action(
     withErrorHandler(async (agentName: string, options: { name?: string }) => {
       const schedule = await resolveZeroScheduleByAgent(

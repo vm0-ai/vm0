@@ -11,6 +11,17 @@ export const sendCommand = new Command()
   .option("-t, --text <message>", "Message text")
   .option("--thread <ts>", "Thread timestamp for replies")
   .option("--blocks <json>", "Block Kit JSON string")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  Simple message:        zero slack message send -c C01234 -t "Hello!"
+  Reply in thread:       zero slack message send -c C01234 --thread 1234567890.123456 -t "reply"
+  Rich blocks:           zero slack message send -c C01234 --blocks '[{"type":"section","text":{"type":"mrkdwn","text":"*Bold*"}}]'
+
+Notes:
+  - Either --text or --blocks is required; both can be used together`,
+  )
   .action(
     withErrorHandler(
       async (options: {

@@ -473,6 +473,7 @@ function RecentChatSection({
   const setSearchOpen = useSet(setSidebarSearchOpen$);
   const searchTerm = useGet(sidebarSearchTerm$);
   const setSearchTerm = useSet(setSidebarSearchTerm$);
+  const [collapsed, setCollapsed] = useState(false);
 
   // Filter sessions by current agent
   const subagentIds = new Set(subagents.map((a) => a.id));
@@ -500,7 +501,7 @@ function RecentChatSection({
     : undefined;
 
   return (
-    <div className="mt-4 flex flex-col min-h-0 flex-1">
+    <div className="mt-4 flex flex-col">
       {searchOpen ? (
         <div
           className="shrink-0 flex h-8 items-center gap-2 rounded-lg bg-sidebar-accent/60 pl-2 pr-2"
@@ -538,9 +539,19 @@ function RecentChatSection({
           </div>
         </div>
       ) : (
-        <div className="zero-nav-recent-label flex h-8 shrink-0 items-center justify-between pl-2 pr-0">
-          <span className="text-[13px] leading-4 text-sidebar-foreground/50 font-medium truncate">
+        <div
+          className="zero-nav-recent-label group flex h-8 shrink-0 cursor-pointer items-center justify-between rounded-lg pl-2 pr-0 hover:bg-sidebar-accent/50 transition-colors"
+          onClick={() => setCollapsed(!collapsed)}
+        >
+          <span className="flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-sidebar-foreground/50 group-hover:text-sidebar-foreground transition-colors">
             Chats with {agentLabel}
+            <span className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+              <IconChevronRight
+                size={12}
+                stroke={2}
+                className={collapsed ? "" : "rotate-90"}
+              />
+            </span>
           </span>
           <div className="flex items-center gap-0.5">
             <TooltipProvider delayDuration={200}>
@@ -548,8 +559,11 @@ function RecentChatSection({
                 <TooltipTrigger asChild>
                   <button
                     type="button"
-                    onClick={() => setSearchOpen(true)}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSearchOpen(true);
+                    }}
+                    className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
                     aria-label="Search chats"
                   >
                     <IconSearch size={15} stroke={2.5} />
@@ -566,9 +580,12 @@ function RecentChatSection({
                   <TooltipTrigger asChild>
                     <button
                       type="button"
-                      onClick={handleNewChat}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleNewChat();
+                      }}
                       disabled={newChatDisabled}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors disabled:opacity-50 disabled:pointer-events-none"
+                      className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors disabled:opacity-50 disabled:pointer-events-none"
                       aria-label={`New chat with ${agentLabel}`}
                     >
                       <IconPlus size={15} stroke={2.5} />
@@ -583,52 +600,54 @@ function RecentChatSection({
           </div>
         </div>
       )}
-      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden mt-1">
-        <div className="flex flex-col gap-1">
-          {recentSessionsLoading && recentSessions.length === 0 ? (
-            <div className="flex items-center justify-center py-3">
-              <IconLoader2
-                size={14}
-                className="animate-spin text-muted-foreground"
-              />
-            </div>
-          ) : recentSessionsError ? (
-            <p className="px-2 py-2 text-xs text-destructive">
-              {recentSessionsError}
-            </p>
-          ) : filteredSessions.length === 0 ? (
-            <p className="px-2 py-2 text-xs text-muted-foreground/70 leading-relaxed">
-              {searchTerm.trim()
-                ? "No chats match your search"
-                : "Start a conversation and it'll show up here"}
-            </p>
-          ) : (
-            filteredSessions.map((session) => (
-              <Link
-                key={session.id}
-                pathname="/chat/:chatThreadId"
-                options={{ pathParams: { chatThreadId: session.id } }}
-                onClick={(e) => {
-                  if (e.metaKey || e.ctrlKey || e.shiftKey) {
-                    return;
-                  }
-                  e.preventDefault();
-                  onRecentSelect?.(session.id);
-                }}
-                className={`flex h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors ${
-                  selectedRecentId === session.id
-                    ? "bg-slate-200 text-slate-900 font-medium"
-                    : "text-sidebar-foreground hover:bg-sidebar-accent"
-                }`}
-              >
-                <span className="truncate min-w-0 flex-1">
-                  {session.preview ?? "New chat"}
-                </span>
-              </Link>
-            ))
-          )}
+      {!collapsed && (
+        <div className="mt-1">
+          <div className="flex flex-col gap-1">
+            {recentSessionsLoading && recentSessions.length === 0 ? (
+              <div className="flex items-center justify-center py-3">
+                <IconLoader2
+                  size={14}
+                  className="animate-spin text-muted-foreground"
+                />
+              </div>
+            ) : recentSessionsError ? (
+              <p className="px-2 py-2 text-xs text-destructive">
+                {recentSessionsError}
+              </p>
+            ) : filteredSessions.length === 0 ? (
+              <p className="px-2 py-2 text-xs text-muted-foreground/70 leading-relaxed">
+                {searchTerm.trim()
+                  ? "No chats match your search"
+                  : "Start a conversation and it'll show up here"}
+              </p>
+            ) : (
+              filteredSessions.map((session) => (
+                <Link
+                  key={session.id}
+                  pathname="/chat/:chatThreadId"
+                  options={{ pathParams: { chatThreadId: session.id } }}
+                  onClick={(e) => {
+                    if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                      return;
+                    }
+                    e.preventDefault();
+                    onRecentSelect?.(session.id);
+                  }}
+                  className={`flex h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors ${
+                    selectedRecentId === session.id
+                      ? "bg-gray-200 text-gray-900 font-medium"
+                      : "text-sidebar-foreground hover:bg-sidebar-accent"
+                  }`}
+                >
+                  <span className="truncate min-w-0 flex-1">
+                    {session.preview ?? "New chat"}
+                  </span>
+                </Link>
+              ))
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -661,20 +680,34 @@ function TalkToSection({
   onNewChat?: (agentId: string | null) => void;
 }) {
   const [chatListOpen, setChatListOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
 
   return (
-    <div className="shrink-0 mt-4">
-      <div className="flex h-8 items-center justify-between pl-2 pr-0">
-        <span className="flex-1 truncate text-[13px] font-medium leading-4 text-sidebar-foreground/50">
+    <div className="shrink-0">
+      <div
+        className="group flex h-8 cursor-pointer items-center justify-between rounded-lg pl-2 pr-0 hover:bg-sidebar-accent/50 transition-colors"
+        onClick={() => setCollapsed(!collapsed)}
+      >
+        <span className="flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-sidebar-foreground/50 group-hover:text-sidebar-foreground transition-colors">
           Pinned
+          <span className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            <IconChevronRight
+              size={12}
+              stroke={2}
+              className={collapsed ? "" : "rotate-90"}
+            />
+          </span>
         </span>
         <TooltipProvider delayDuration={200}>
           <Tooltip>
             <TooltipTrigger asChild>
               <button
                 type="button"
-                onClick={() => setChatListOpen(true)}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setChatListOpen(true);
+                }}
+                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
                 aria-label="Open a conversation"
               >
                 <IconPlus size={15} stroke={2.5} />
@@ -686,103 +719,105 @@ function TalkToSection({
           </Tooltip>
         </TooltipProvider>
       </div>
-      <div className="flex flex-col gap-0.5 max-h-[170px] overflow-y-auto mt-1">
-        {/* Lead agent */}
-        {(() => {
-          const isPrimarySelected =
-            activeId === "chat" &&
-            !selectedRecentId &&
-            currentChatAgentId === null;
-          const isFromChat =
-            selectedAgentIdFromChat !== undefined &&
-            selectedAgentIdFromChat === null;
-          return (
-            <Link
-              pathname={defaultAgentRawName ? "/talk/:agentId" : "/"}
-              options={
-                defaultAgentRawName
-                  ? { pathParams: { agentId: defaultAgentRawName } }
-                  : undefined
-              }
-              className={`flex w-full h-8 shrink-0 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
-                isPrimarySelected
-                  ? "bg-slate-200 text-slate-900 font-medium"
-                  : isFromChat
-                    ? "border-l-2 border-[hsl(var(--gray-400))] bg-sidebar-accent/50"
-                    : "text-sidebar-foreground hover:bg-sidebar-accent"
-              }`}
-            >
-              <img
-                src={zeroAvatarSrc}
-                alt={displayName}
-                className="h-5 w-5 shrink-0 rounded-md object-cover object-top"
-              />
-              <span className="truncate">{displayName}</span>
-            </Link>
-          );
-        })()}
-        {/* Pinned agents */}
-        {pinnedAgents.map((agent) => {
-          const isPrimarySelected =
-            activeId === "chat" &&
-            !selectedRecentId &&
-            currentChatAgentId === agent.id;
-          const isFromChat = selectedAgentIdFromChat === agent.id;
-          return (
-            <div key={agent.id} className="group relative">
+      {!collapsed && (
+        <div className="flex flex-col gap-0.5 mt-1">
+          {/* Lead agent */}
+          {(() => {
+            const isPrimarySelected =
+              activeId === "chat" &&
+              !selectedRecentId &&
+              currentChatAgentId === null;
+            const isFromChat =
+              selectedAgentIdFromChat !== undefined &&
+              selectedAgentIdFromChat === null;
+            return (
               <Link
-                pathname="/talk/:agentId"
-                options={{ pathParams: { agentId: agent.id } }}
+                pathname={defaultAgentRawName ? "/talk/:agentId" : "/"}
+                options={
+                  defaultAgentRawName
+                    ? { pathParams: { agentId: defaultAgentRawName } }
+                    : undefined
+                }
                 className={`flex w-full h-8 shrink-0 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
                   isPrimarySelected
-                    ? "bg-slate-200 text-slate-900 font-medium"
+                    ? "bg-gray-200 text-gray-900 font-medium"
                     : isFromChat
                       ? "border-l-2 border-[hsl(var(--gray-400))] bg-sidebar-accent/50"
                       : "text-sidebar-foreground hover:bg-sidebar-accent"
                 }`}
               >
-                <AgentAvatarImg
-                  name={agent.id}
-                  alt={agent.displayName ?? agent.id}
+                <img
+                  src={zeroAvatarSrc}
+                  alt={displayName}
                   className="h-5 w-5 shrink-0 rounded-md object-cover object-top"
                 />
-                <span className="truncate">
-                  {agent.displayName ?? agent.id}
-                </span>
+                <span className="truncate">{displayName}</span>
               </Link>
-              <div className="absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
-                <TooltipProvider delayDuration={200}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          onPinnedIdsChange(
-                            pinnedIds.filter((id) => id !== agent.id),
-                          );
-                        }}
-                        className={`flex h-6 w-6 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible transition-opacity duration-150 ${
-                          isPrimarySelected
-                            ? "text-slate-500 hover:text-slate-900 hover:bg-slate-300"
-                            : "text-sidebar-foreground/80 hover:text-foreground hover:bg-sidebar-foreground/10"
-                        }`}
-                        aria-label="Remove from list"
-                      >
-                        <IconX size={12} stroke={2} />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="right">
-                      <p className="text-xs">Remove from list</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+            );
+          })()}
+          {/* Pinned agents */}
+          {pinnedAgents.map((agent) => {
+            const isPrimarySelected =
+              activeId === "chat" &&
+              !selectedRecentId &&
+              currentChatAgentId === agent.id;
+            const isFromChat = selectedAgentIdFromChat === agent.id;
+            return (
+              <div key={agent.id} className="group relative">
+                <Link
+                  pathname="/talk/:agentId"
+                  options={{ pathParams: { agentId: agent.id } }}
+                  className={`flex w-full h-8 shrink-0 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
+                    isPrimarySelected
+                      ? "bg-gray-200 text-gray-900 font-medium"
+                      : isFromChat
+                        ? "border-l-2 border-[hsl(var(--gray-400))] bg-sidebar-accent/50"
+                        : "text-sidebar-foreground hover:bg-sidebar-accent"
+                  }`}
+                >
+                  <AgentAvatarImg
+                    name={agent.id}
+                    alt={agent.displayName ?? agent.id}
+                    className="h-5 w-5 shrink-0 rounded-md object-cover object-top"
+                  />
+                  <span className="truncate">
+                    {agent.displayName ?? agent.id}
+                  </span>
+                </Link>
+                <div className="absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
+                  <TooltipProvider delayDuration={200}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onPinnedIdsChange(
+                              pinnedIds.filter((id) => id !== agent.id),
+                            );
+                          }}
+                          className={`flex h-6 w-6 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible transition-opacity duration-150 ${
+                            isPrimarySelected
+                              ? "text-slate-500 hover:text-slate-900 hover:bg-slate-300"
+                              : "text-sidebar-foreground/80 hover:text-foreground hover:bg-sidebar-foreground/10"
+                          }`}
+                          aria-label="Remove from list"
+                        >
+                          <IconX size={12} stroke={2} />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="right">
+                        <p className="text-xs">Remove from list</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       <ChatListDialog
         open={chatListOpen}
@@ -866,6 +901,8 @@ function SidebarUpgradeCard() {
 }
 
 export function ZeroSidebar() {
+  const [isScrolled, setIsScrolled] = useState(false);
+
   // Read all data from signals directly
   const activeId = useGet(zeroActiveId$);
   const displayNameLoadable = useLastLoadable(agentDisplayName$);
@@ -1013,7 +1050,7 @@ export function ZeroSidebar() {
                         }}
                         className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
                           activeId === id
-                            ? "bg-slate-200 text-slate-900"
+                            ? "bg-gray-200 text-gray-900"
                             : "text-sidebar-foreground hover:bg-sidebar-accent"
                         }`}
                       >
@@ -1091,7 +1128,7 @@ export function ZeroSidebar() {
                   }}
                   className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
                     activeId === id
-                      ? "bg-slate-200 text-slate-900 font-medium"
+                      ? "bg-gray-200 text-gray-900 font-medium"
                       : "text-sidebar-foreground hover:bg-sidebar-accent"
                   }`}
                 >
@@ -1102,35 +1139,46 @@ export function ZeroSidebar() {
             </div>
           </div>
 
-          {/* Chat section */}
-          <TalkToSection
-            activeId={activeId}
-            currentChatAgentId={currentChatAgentId}
-            selectedRecentId={selectedRecentId}
-            selectedAgentIdFromChat={selectedAgentIdFromChat}
-            displayName={displayName}
-            defaultAgentRawName={defaultAgentRawName}
-            zeroAvatarSrc={zeroAvatarSrc}
-            pinnedAgents={pinnedAgents}
-            pinnedIds={pinnedIds}
-            subagents={subagents}
-            onPinnedIdsChange={setPinnedIds}
-            onNewChat={onNewChat}
-          />
+          {/* Scrollable: Pinned + Recent chats */}
+          <div
+            onScroll={(e) => setIsScrolled(e.currentTarget.scrollTop > 0)}
+            className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden -mx-2 px-2 mt-2 pt-2"
+            style={{
+              boxShadow: isScrolled
+                ? "0 -1px 0 0 hsl(var(--border) / 0.4)"
+                : "none",
+            }}
+          >
+            {/* Chat section */}
+            <TalkToSection
+              activeId={activeId}
+              currentChatAgentId={currentChatAgentId}
+              selectedRecentId={selectedRecentId}
+              selectedAgentIdFromChat={selectedAgentIdFromChat}
+              displayName={displayName}
+              defaultAgentRawName={defaultAgentRawName}
+              zeroAvatarSrc={zeroAvatarSrc}
+              pinnedAgents={pinnedAgents}
+              pinnedIds={pinnedIds}
+              subagents={subagents}
+              onPinnedIdsChange={setPinnedIds}
+              onNewChat={onNewChat}
+            />
 
-          {/* Recent chat sessions */}
-          <RecentChatSection
-            currentChatAgentId={currentChatAgentId}
-            displayName={displayName}
-            subagents={subagents}
-            recentSessions={recentSessions}
-            recentSessionsLoading={recentSessionsLoading}
-            recentSessionsError={recentSessionsError}
-            selectedRecentId={selectedRecentId}
-            onRecentSelect={onRecentSelect}
-            onNewChat={onNewChat}
-            newChatDisabled={creatingNewSession}
-          />
+            {/* Recent chat sessions */}
+            <RecentChatSection
+              currentChatAgentId={currentChatAgentId}
+              displayName={displayName}
+              subagents={subagents}
+              recentSessions={recentSessions}
+              recentSessionsLoading={recentSessionsLoading}
+              recentSessionsError={recentSessionsError}
+              selectedRecentId={selectedRecentId}
+              onRecentSelect={onRecentSelect}
+              onNewChat={onNewChat}
+              newChatDisabled={creatingNewSession}
+            />
+          </div>
         </nav>
 
         {/* Upgrade card */}
@@ -1155,7 +1203,7 @@ export function ZeroSidebar() {
                 }}
                 className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
                   activeId === id
-                    ? "bg-slate-200 text-slate-900 font-medium"
+                    ? "bg-gray-200 text-gray-900 font-medium"
                     : "text-sidebar-foreground hover:bg-sidebar-accent"
                 }`}
               >

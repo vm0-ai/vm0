@@ -23,6 +23,19 @@ export const editCommand = new Command()
     "New tone: professional, friendly, direct, supportive",
   )
   .option("--instructions-file <path>", "Path to new instructions file")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  Update description:      zero agent edit <agent-id> --description "new role"
+  Update tone:             zero agent edit <agent-id> --sound friendly
+  Update instructions:     zero agent edit <agent-id> --instructions-file ./instructions.md
+  Update yourself:         zero agent edit $ZERO_AGENT_ID --description "new role"
+
+Notes:
+  - At least one option is required
+  - Unspecified fields are preserved (not cleared)`,
+  )
   .action(
     withErrorHandler(
       async (

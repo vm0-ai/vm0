@@ -1,10 +1,11 @@
 [package]
 name = "runner"
-version = "0.48.2"
+version = "0.50.0"
 edition.workspace = true
 
 [dependencies]
 ably-subscriber = { workspace = true }
+block-cow = { workspace = true }
 sandbox = { workspace = true }
 sandbox-fc = { workspace = true }
 
@@ -24,6 +25,7 @@ tracing-appender = { workspace = true }
 tracing-subscriber = { workspace = true }
 flate2 = { workspace = true }
 reqeast = { workspace = true }
+hex = { workspace = true }
 sha2 = { workspace = true }
 tar = { workspace = true }
 tempfile = { workspace = true }

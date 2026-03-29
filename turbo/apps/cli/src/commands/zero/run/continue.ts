@@ -18,6 +18,17 @@ export const continueCommand = new Command()
     "Override model provider (e.g., anthropic-api-key)",
   )
   .option("--verbose", "Show full tool inputs and outputs")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  zero run continue <session-id> "now deploy it"
+  zero run continue <session-id> "add tests" --verbose
+
+Notes:
+  - The session ID is printed after a successful "zero run" delegation
+  - Continues the same agent session with full prior context`,
+  )
   .action(
     withErrorHandler(
       async (

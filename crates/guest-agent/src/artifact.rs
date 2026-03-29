@@ -352,7 +352,7 @@ fn compute_file_hash(path: &Path) -> Result<(String, u64), std::io::Error> {
         hasher.update(chunk);
         total += n as u64;
     }
-    let hash = format!("{:x}", hasher.finalize());
+    let hash = hex::encode(hasher.finalize());
     Ok((hash, total))
 }
 

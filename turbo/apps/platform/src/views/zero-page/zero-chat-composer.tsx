@@ -42,6 +42,7 @@ import { useModelSelection } from "./zero-model-preference.ts";
 import { useSendKeyHandler } from "./zero-send-key.ts";
 import type { ConnectorType } from "@vm0/core";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
+import { ProviderIcon } from "./components/settings/provider-icons.tsx";
 import {
   AddConnectionDialog,
   ConnectModal,
@@ -86,7 +87,7 @@ interface ZeroChatComposerProps {
 // ---------------------------------------------------------------------------
 
 function buildModelOpts(model: string): { modelProvider: string } | undefined {
-  return model !== "default" ? { modelProvider: model } : undefined;
+  return model ? { modelProvider: model } : undefined;
 }
 
 interface ComposerConnectorItem {
@@ -559,7 +560,17 @@ export function ZeroChatComposer({
                         value={opt.value}
                         className="text-sm"
                       >
-                        {opt.label}
+                        <div className="flex items-center gap-2">
+                          <ProviderIcon
+                            type={
+                              opt.value as Parameters<
+                                typeof ProviderIcon
+                              >[0]["type"]
+                            }
+                            size={16}
+                          />
+                          <span>{opt.label}</span>
+                        </div>
                       </SelectItem>
                     ))}
                   </SelectContent>

@@ -1,8 +1,13 @@
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import { IconPlus, IconDotsVertical } from "@tabler/icons-react";
-import { MODEL_PROVIDER_TYPES } from "@vm0/core";
+import { MODEL_PROVIDER_TYPES, type ModelProviderType } from "@vm0/core";
 import {
   Button,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
@@ -12,6 +17,8 @@ import {
   orgAddProviderDialogOpen$,
   setOrgAddProviderDialogOpen$,
   orgConfiguredProviders$,
+  orgDefaultProvider$,
+  orgSetDefaultProvider$,
   orgOpenEditDialog$,
   orgOpenDeleteDialog$,
 } from "../../../../signals/zero-page/settings/org-model-providers.ts";
@@ -21,6 +28,8 @@ import { ProviderIcon } from "../settings/provider-icons.tsx";
 import { OrgAddProviderDialog } from "../settings/org-add-provider-dialog.tsx";
 import { OrgProviderDialog } from "../settings/org-provider-dialog.tsx";
 import { OrgDeleteProviderDialog } from "../settings/org-delete-provider-dialog.tsx";
+import { detach, Reason } from "../../../../signals/utils.ts";
+import { pageSignal$ } from "../../../../signals/page-signal.ts";
 
 export function OrgProvidersTab() {
   const isAdminLoadable = useLoadable(isOrgAdmin$);
@@ -29,10 +38,90 @@ export function OrgProvidersTab() {
 
   return (
     <div className="flex flex-col gap-8">
+      {isAdmin && <DefaultProviderSection />}
       <ProviderListSection isAdmin={isAdmin} />
       <OrgDeleteProviderDialog />
       <OrgProviderDialog />
     </div>
+  );
+}
+
+function DefaultProviderSection() {
+  const providersLoadable = useLoadable(orgConfiguredProviders$);
+  const defaultProviderLoadable = useLoadable(orgDefaultProvider$);
+  const setDefault = useSet(orgSetDefaultProvider$);
+  const pageSignal = useGet(pageSignal$);
+
+  const isLoading =
+    providersLoadable.state === "loading" ||
+    defaultProviderLoadable.state === "loading";
+  const providers =
+    providersLoadable.state === "hasData" ? providersLoadable.data : [];
+  const defaultProvider =
+    defaultProviderLoadable.state === "hasData"
+      ? defaultProviderLoadable.data
+      : null;
+
+  const selectItems = providers.map((p) => ({
+    type: p.type,
+    label: getUILabel(p.type),
+  }));
+  const currentDefault = defaultProvider?.type ?? selectItems[0]?.type ?? "";
+
+  const handleChange = (value: string) => {
+    if (providers.length > 0) {
+      detach(
+        setDefault(value as ModelProviderType, pageSignal),
+        Reason.DomCallback,
+      );
+    }
+  };
+
+  return (
+    <section className="flex flex-col gap-3">
+      <h3 className="text-sm font-medium text-foreground">Default</h3>
+      <div
+        className="overflow-hidden rounded-xl bg-card"
+        style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+      >
+        <div className="flex items-center justify-between gap-4 px-5 py-4">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-foreground">
+              Default provider
+            </p>
+            <p className="text-[13px] text-muted-foreground mt-0.5">
+              Applied to all tasks across schedule, Slack, and web.
+            </p>
+          </div>
+          {isLoading ? (
+            <div className="w-[220px] h-9 shrink-0 rounded-lg bg-muted/50 animate-pulse" />
+          ) : selectItems.length === 0 ? (
+            <span className="text-sm text-muted-foreground shrink-0">
+              No providers configured
+            </span>
+          ) : (
+            <Select value={currentDefault} onValueChange={handleChange}>
+              <SelectTrigger
+                className="w-[280px] h-9 shrink-0 rounded-lg"
+                style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+              >
+                <SelectValue placeholder="Select a default provider" />
+              </SelectTrigger>
+              <SelectContent>
+                {selectItems.map((item) => (
+                  <SelectItem key={item.type} value={item.type}>
+                    <div className="flex items-center gap-2">
+                      <ProviderIcon type={item.type} size={16} />
+                      <span>{item.label}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -96,78 +185,76 @@ function ProviderListSection({ isAdmin }: { isAdmin: boolean }) {
         )}
 
         {!isLoading &&
-          providers
-            .filter((p) => p.type !== "vm0")
-            .map((p) => (
-              <div
-                key={p.type}
-                role={isAdmin ? "button" : undefined}
-                tabIndex={isAdmin ? 0 : undefined}
-                onClick={isAdmin ? () => openEdit(p) : undefined}
-                onKeyDown={
-                  isAdmin
-                    ? (e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          openEdit(p);
-                        }
+          providers.map((p) => (
+            <div
+              key={p.type}
+              role={isAdmin ? "button" : undefined}
+              tabIndex={isAdmin ? 0 : undefined}
+              onClick={isAdmin ? () => openEdit(p) : undefined}
+              onKeyDown={
+                isAdmin
+                  ? (e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        openEdit(p);
                       }
-                    : undefined
-                }
-                className={isAdmin ? "cursor-pointer" : ""}
-                style={{
-                  border: "0.7px solid hsl(var(--gray-400))",
-                  borderRadius: "0.75rem",
-                  backgroundColor: "hsl(var(--card))",
-                  boxShadow:
-                    "0 1px 1px hsl(220 12% 20% / 0.02), 0 2px 8px hsl(220 12% 20% / 0.025), 0 8px 24px hsl(220 12% 20% / 0.02)",
-                }}
-              >
-                <div className="flex h-14 items-center gap-2.5 px-5">
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center">
-                    <ProviderIcon type={p.type} size={22} />
-                  </span>
-                  <span className="min-w-0 flex-1 text-sm font-medium text-foreground truncate">
-                    {getUILabel(p.type)}
-                  </span>
-                </div>
-                <div
-                  className="flex h-11 items-center justify-between pl-5 pr-2"
-                  style={{ borderTop: "0.7px solid hsl(var(--gray-400))" }}
-                  onClick={isAdmin ? (e) => e.stopPropagation() : undefined}
-                >
-                  <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
-                    Configured
-                  </span>
-                  {isAdmin && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
-                          aria-label="More options"
-                        >
-                          <IconDotsVertical size={14} stroke={1.5} />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-40">
-                        <DropdownMenuItem onClick={() => openEdit(p)}>
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          className="text-destructive"
-                          onClick={() => openDelete(p.type)}
-                        >
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
-                </div>
+                    }
+                  : undefined
+              }
+              className={isAdmin ? "cursor-pointer" : ""}
+              style={{
+                border: "0.7px solid hsl(var(--gray-400))",
+                borderRadius: "0.75rem",
+                backgroundColor: "hsl(var(--card))",
+                boxShadow:
+                  "0 1px 1px hsl(220 12% 20% / 0.02), 0 2px 8px hsl(220 12% 20% / 0.025), 0 8px 24px hsl(220 12% 20% / 0.02)",
+              }}
+            >
+              <div className="flex h-14 items-center gap-2.5 px-5">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center">
+                  <ProviderIcon type={p.type} size={22} />
+                </span>
+                <span className="min-w-0 flex-1 text-sm font-medium text-foreground truncate">
+                  {getUILabel(p.type)}
+                </span>
               </div>
-            ))}
+              <div
+                className="flex h-11 items-center justify-between pl-5 pr-2"
+                style={{ borderTop: "0.7px solid hsl(var(--gray-400))" }}
+                onClick={isAdmin ? (e) => e.stopPropagation() : undefined}
+              >
+                <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+                  Configured
+                </span>
+                {isAdmin && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
+                        aria-label="More options"
+                      >
+                        <IconDotsVertical size={14} stroke={1.5} />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-40">
+                      <DropdownMenuItem onClick={() => openEdit(p)}>
+                        Edit
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className="text-destructive"
+                        onClick={() => openDelete(p.type)}
+                      >
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </div>
+            </div>
+          ))}
 
         {!isLoading && !isAdmin && providers.length === 0 && (
           <div className="col-span-full text-center py-8">

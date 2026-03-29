@@ -43,8 +43,8 @@ pub struct ProfileConfig {
 pub struct SnapshotConfig {
     pub snapshot_path: PathBuf,
     pub memory_path: PathBuf,
-    pub overlay_path: PathBuf,
-    pub overlay_bind_path: PathBuf,
+    pub cow_path: PathBuf,
+    pub drive_bind_path: PathBuf,
     pub vsock_bind_dir: PathBuf,
 }
 
@@ -53,8 +53,8 @@ impl From<sandbox_fc::SnapshotConfig> for SnapshotConfig {
         Self {
             snapshot_path: sc.snapshot_path,
             memory_path: sc.memory_path,
-            overlay_path: sc.overlay_path,
-            overlay_bind_path: sc.overlay_bind_path,
+            cow_path: sc.cow_path,
+            drive_bind_path: sc.drive_bind_path,
             vsock_bind_dir: sc.vsock_bind_dir,
         }
     }
@@ -170,8 +170,8 @@ async fn validate(config: &RunnerConfig, home: &HomePaths) -> RunnerResult<()> {
             )
             .await?;
             check_path_exists(
-                &snap_dir.join("overlay.ext4"),
-                &format!("profile {name} snapshot overlay"),
+                &snap_dir.join("cow.img"),
+                &format!("profile {name} snapshot cow"),
             )
             .await?;
         }
@@ -270,7 +270,7 @@ mod tests {
             if let Some(hash) = snapshot_hash {
                 let snap_dir = home.snapshots_dir().join(hash);
                 tokio::fs::create_dir_all(&snap_dir).await.unwrap();
-                for name in ["snapshot.bin", "memory.bin", "overlay.ext4"] {
+                for name in ["snapshot.bin", "memory.bin", "cow.img"] {
                     tokio::fs::write(snap_dir.join(name), b"").await.unwrap();
                 }
             }
@@ -651,7 +651,7 @@ profiles:
         assert_eq!(fc.kernel_path, dir.path().join("vmlinux"));
         assert_eq!(
             fc.rootfs_path,
-            home.rootfs_dir().join("abc123").join("rootfs.squashfs")
+            home.rootfs_dir().join("abc123").join("rootfs.ext4")
         );
         assert_eq!(fc.profile, "vm0/default");
         assert_eq!(fc.proxy_port, Some(8080));

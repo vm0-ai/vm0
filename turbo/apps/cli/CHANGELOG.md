@@ -1,5 +1,35 @@
 # Changelog
 
+## [9.86.6](https://github.com/vm0-ai/vm0/compare/cli-v9.86.5...cli-v9.86.6) (2026-03-29)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.122.0
+
+## [9.86.5](https://github.com/vm0-ai/vm0/compare/cli-v9.86.4...cli-v9.86.5) (2026-03-29)
+
+
+### Documentation
+
+* **cli:** add after-help examples and notes to all zero commands ([#7079](https://github.com/vm0-ai/vm0/issues/7079)) ([e4e756f](https://github.com/vm0-ai/vm0/commit/e4e756f8c4b96b9cb508878ee64a52c8dca9a5c5))
+
+## [9.86.4](https://github.com/vm0-ai/vm0/compare/cli-v9.86.3...cli-v9.86.4) (2026-03-27)
+
+
+### Bug Fixes
+
+* **cli:** use agent-id instead of agent-name in schedule setup help text ([#7063](https://github.com/vm0-ai/vm0/issues/7063)) ([b432703](https://github.com/vm0-ai/vm0/commit/b4327031112ac02049106d618d7481afc3f3644d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.121.0
+
 ## [9.86.3](https://github.com/vm0-ai/vm0/compare/cli-v9.86.2...cli-v9.86.3) (2026-03-27)
 
 

@@ -245,24 +245,22 @@ function CreateTeammateButton({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="flex flex-col rounded-[var(--zero-card-radius)] border border-dashed border-[hsl(var(--gray-400))] transition-colors hover:border-[hsl(var(--gray-400))] hover:bg-muted/30 group cursor-pointer text-left"
+      className="flex items-center gap-3 rounded-[var(--zero-card-radius)] border border-dashed border-[hsl(var(--gray-400))] px-4 py-4 transition-colors hover:bg-muted/30 group cursor-pointer text-left"
     >
-      <div className="flex items-center gap-3 px-4 py-3.5">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors">
-          <IconPlus
-            size={18}
-            stroke={2}
-            className="text-foreground/50 group-hover:text-foreground transition-colors"
-          />
-        </span>
-        <span className="text-sm font-medium text-foreground/80 group-hover:text-foreground transition-colors">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg">
+        <IconPlus
+          size={18}
+          stroke={2}
+          className="text-foreground/50 group-hover:text-foreground transition-colors"
+        />
+      </span>
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-foreground/80 group-hover:text-foreground transition-colors">
           Create teammate
-        </span>
-      </div>
-      <div className="border-t border-dashed border-[hsl(var(--gray-400))] px-4 py-2.5">
-        <span className="text-xs text-muted-foreground">
+        </p>
+        <p className="text-xs text-muted-foreground mt-0.5">
           Add a specialized agent to your team
-        </span>
+        </p>
       </div>
     </button>
   );

@@ -96,7 +96,7 @@ export async function getReceivedEmail(emailId: string): Promise<{
     subject: data.subject,
     text: data.text ?? "",
     html: data.html ?? "",
-    headers: data.headers,
+    headers: data.headers ?? {},
   };
 }
 

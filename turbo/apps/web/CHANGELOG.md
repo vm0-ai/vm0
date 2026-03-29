@@ -1,5 +1,46 @@
 # Changelog
 
+## [12.167.2](https://github.com/vm0-ai/vm0/compare/web-v12.167.1...web-v12.167.2) (2026-03-29)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.122.0
+
+## [12.167.1](https://github.com/vm0-ai/vm0/compare/web-v12.167.0...web-v12.167.1) (2026-03-29)
+
+
+### Documentation
+
+* **cli:** add after-help examples and notes to all zero commands ([#7079](https://github.com/vm0-ai/vm0/issues/7079)) ([e4e756f](https://github.com/vm0-ai/vm0/commit/e4e756f8c4b96b9cb508878ee64a52c8dca9a5c5))
+
+
+### Refactoring
+
+* **web:** split oauth and api-token connector resolution ([#7083](https://github.com/vm0-ai/vm0/issues/7083)) ([d6aeb16](https://github.com/vm0-ai/vm0/commit/d6aeb16dcbea50d4e8e000b25a74897c8d55d32b))
+
+## [12.167.0](https://github.com/vm0-ai/vm0/compare/web-v12.166.0...web-v12.167.0) (2026-03-27)
+
+
+### Features
+
+* add credit expiry records with first-expiring-first-out deduction ([#7049](https://github.com/vm0-ai/vm0/issues/7049)) ([f9bbfb1](https://github.com/vm0-ai/vm0/commit/f9bbfb170c42867c2aa64573ccf7f12c1e19ec74))
+
+
+### Bug Fixes
+
+* **web:** add --help hints to agent tools prompt for non-trivial commands ([#7059](https://github.com/vm0-ai/vm0/issues/7059)) ([b485614](https://github.com/vm0-ai/vm0/commit/b4856146d5be7dbb6f17d7564b4c086357227dc2))
+* **web:** point agents to ask-user question --help for usage guidance ([#7056](https://github.com/vm0-ai/vm0/issues/7056)) ([fba8364](https://github.com/vm0-ai/vm0/commit/fba8364c4bb5ba78b6acc8c63ce00fa3d91b4d02))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.121.0
+
 ## [12.166.0](https://github.com/vm0-ai/vm0/compare/web-v12.165.0...web-v12.166.0) (2026-03-27)
 
 

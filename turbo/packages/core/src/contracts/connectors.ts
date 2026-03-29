@@ -1828,28 +1828,15 @@ const CONNECTOR_TYPES_DEF = {
   },
   "intervals-icu": {
     label: "Intervals.icu",
-    environmentMapping: {
-      INTERVALS_ICU_TOKEN: "$secrets.INTERVALS_ICU_ACCESS_TOKEN",
-    },
-    featureFlag: FeatureSwitchKey.IntervalsIcuConnector,
     helpText:
       "Connect your Intervals.icu account to access training, activity, wellness, and calendar data",
     authMethods: {
       oauth: {
-        label: "OAuth (Recommended)",
+        label: "OAuth",
         helpText: "Sign in with Intervals.icu to grant access.",
         secrets: {
           INTERVALS_ICU_ACCESS_TOKEN: {
             label: "Access Token",
-            required: true,
-          },
-        },
-      },
-      "api-token": {
-        label: "API Key",
-        secrets: {
-          INTERVALS_ICU_TOKEN: {
-            label: "API Key",
             required: true,
           },
         },

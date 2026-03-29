@@ -5,7 +5,7 @@ import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { navigateTo$ } from "../route.ts";
 import {
-  initZeroOnboarding$,
+  resetOnboardingStep$,
   zeroNeedsOnboarding$,
   zeroNeedsMemberOnboarding$,
 } from "../zero-page/zero-onboarding.ts";
@@ -14,7 +14,7 @@ export const setupOnboardingPage$ = command(
     set(updatePage$, createElement(OnboardingPage));
     set(updateDocumentTitle$, "Onboarding");
 
-    await set(initZeroOnboarding$, signal);
+    set(resetOnboardingStep$);
     signal.throwIfAborted();
 
     // If onboarding is not needed, redirect to home

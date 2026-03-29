@@ -277,6 +277,111 @@ describe("org billing tab - auto-recharge section", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("should enable toggle when clicked with no prior threshold/amount config", async () => {
+    mockAPIs();
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+      autoRecharge: { enabled: false, threshold: null, amount: null },
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Auto-recharge")).toBeInTheDocument();
+    });
+
+    const toggle = screen.getByRole("switch", {
+      name: /enable auto-recharge/i,
+    });
+    expect(toggle).toHaveAttribute("data-state", "unchecked");
+
+    await act(() => {
+      fireEvent.click(toggle);
+    });
+
+    await waitFor(() => {
+      expect(toggle).toHaveAttribute("data-state", "checked");
+    });
+
+    // Inputs should now be visible
+    expect(
+      screen.getByLabelText(/credit threshold for auto-recharge/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(/auto-recharge credit amount in credits/i),
+    ).toBeInTheDocument();
+  });
+
+  it("should save correct data after enabling toggle with no prior config", async () => {
+    let capturedBody: unknown = null;
+    server.use(
+      http.put("*/api/zero/billing/auto-recharge", async ({ request }) => {
+        capturedBody = await request.json();
+        return HttpResponse.json({
+          enabled: true,
+          threshold: 2000,
+          amount: 10_000,
+        });
+      }),
+    );
+
+    mockAPIs();
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+      autoRecharge: { enabled: false, threshold: null, amount: null },
+    });
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Auto-recharge")).toBeInTheDocument();
+    });
+
+    const toggle = screen.getByRole("switch", {
+      name: /enable auto-recharge/i,
+    });
+
+    await act(() => {
+      fireEvent.click(toggle);
+    });
+
+    await waitFor(() => {
+      expect(toggle).toHaveAttribute("data-state", "checked");
+    });
+
+    // Enter threshold and amount values
+    const thresholdInput = screen.getByLabelText(
+      /credit threshold for auto-recharge/i,
+    );
+    const amountInput = screen.getByLabelText(
+      /auto-recharge credit amount in credits/i,
+    );
+
+    await act(() => {
+      fireEvent.change(thresholdInput, { target: { value: "2000" } });
+    });
+    await act(() => {
+      fireEvent.change(amountInput, { target: { value: "10000" } });
+    });
+    await act(() => {
+      fireEvent.blur(thresholdInput);
+    });
+
+    await waitFor(() => {
+      expect(capturedBody).toStrictEqual({
+        enabled: true,
+        threshold: 2000,
+        amount: 10_000,
+      });
+    });
+  });
+
   it("should send correct data when saving auto-recharge config", async () => {
     let capturedBody: unknown = null;
     server.use(

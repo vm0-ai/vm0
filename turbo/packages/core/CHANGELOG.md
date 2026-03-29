@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.122.0](https://github.com/vm0-ai/vm0/compare/core-v8.121.0...core-v8.122.0) (2026-03-29)
+
+
+### Features
+
+* make intervals.icu connector public, remove api-token auth method ([#7084](https://github.com/vm0-ai/vm0/issues/7084)) ([99bb642](https://github.com/vm0-ai/vm0/commit/99bb642325df8e1ee5b13f24bb7c254c8042f80f))
+
+## [8.121.0](https://github.com/vm0-ai/vm0/compare/core-v8.120.0...core-v8.121.0) (2026-03-27)
+
+
+### Features
+
+* add credit expiry records with first-expiring-first-out deduction ([#7049](https://github.com/vm0-ai/vm0/issues/7049)) ([f9bbfb1](https://github.com/vm0-ai/vm0/commit/f9bbfb170c42867c2aa64573ccf7f12c1e19ec74))
+
 ## [8.120.0](https://github.com/vm0-ai/vm0/compare/core-v8.119.2...core-v8.120.0) (2026-03-27)
 
 
