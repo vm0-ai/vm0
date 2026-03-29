@@ -22,7 +22,24 @@ function mockChatAPIs() {
       );
     }),
     http.post("*/api/zero/runs", () => {
-      return HttpResponse.json({ id: "run-abc-123" }, { status: 201 });
+      return HttpResponse.json(
+        {
+          runId: "run-abc-123",
+          status: "pending",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+        { status: 201 },
+      );
+    }),
+    http.get("*/api/zero/chat-threads/:id", () => {
+      return HttpResponse.json({
+        id: "new-thread-id-123",
+        title: "Hello",
+        agentId: "mock-compose-id",
+        chatMessages: [],
+        latestSessionId: null,
+        unsavedRuns: [],
+      });
     }),
     http.post("*/api/zero/chat-threads/:id/runs", () => {
       return new HttpResponse(null, { status: 204 });
@@ -32,6 +49,13 @@ function mockChatAPIs() {
         events: [],
         hasMore: false,
         framework: "claude-code",
+      });
+    }),
+    http.get("*/api/zero/runs/:id", ({ params }) => {
+      return HttpResponse.json({
+        id: params["id"],
+        status: "completed",
+        result: { agentSessionId: "session-1" },
       });
     }),
     // Return terminal status so polling loop stops immediately
