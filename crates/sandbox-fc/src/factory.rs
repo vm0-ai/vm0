@@ -3,7 +3,7 @@ use sandbox::{Sandbox, SandboxConfig, SandboxError, SandboxFactory};
 use sha2::{Digest, Sha256};
 use tracing::{info, warn};
 
-use block_cow::{BaseHandle, BaseLoopCache, CowDevice, CowDeviceConfig};
+use block_cow::{BaseHandle, BaseLoopCache, CowDevice};
 
 use crate::config::FirecrackerConfig;
 
@@ -122,6 +122,8 @@ pub struct FirecrackerFactory {
     base_cache: std::sync::Arc<std::sync::Mutex<BaseLoopCache>>,
     /// Handle to the shared base loop device for this factory's rootfs.
     base_loop: Option<BaseHandle>,
+    /// Pre-warming pool for COW files + loop devices.
+    cow_pool: Option<tokio::sync::Mutex<crate::cow_pool::CowPool>>,
     started: bool,
 }
 
@@ -162,6 +164,7 @@ impl FirecrackerFactory {
             netns_pool,
             base_cache,
             base_loop: None,
+            cow_pool: None,
             started: false,
         })
     }
@@ -183,6 +186,13 @@ impl FirecrackerFactory {
     #[allow(clippy::expect_used)]
     fn base_loop(&self) -> &BaseHandle {
         self.base_loop.as_ref().expect("factory not started")
+    }
+
+    /// # Panics
+    /// Panics if called before `startup()` — this is a programming error.
+    #[allow(clippy::expect_used)]
+    fn cow_pool(&self) -> &tokio::sync::Mutex<crate::cow_pool::CowPool> {
+        self.cow_pool.as_ref().expect("factory not started")
     }
 }
 
@@ -238,6 +248,22 @@ impl SandboxFactory for FirecrackerFactory {
 
         self.base_loop = Some(base_loop);
 
+        // Initialize COW pool with base image info.
+        let cow_pool_config = crate::cow_pool::CowPoolConfig {
+            workspaces_dir: self.factory_paths.workspaces(),
+            base_loop_path: self.base_loop().loop_path.clone(),
+            base_sectors: self.base_loop().sectors,
+            golden_cow: self.config.snapshot.as_ref().map(|s| s.cow_path.clone()),
+        };
+        let mut cow_pool = crate::cow_pool::CowPool::new(cow_pool_config);
+        let t = std::time::Instant::now();
+        cow_pool.warmup().await;
+        info!(
+            elapsed_ms = t.elapsed().as_millis() as u64,
+            "COW pool warmed up"
+        );
+        self.cow_pool = Some(tokio::sync::Mutex::new(cow_pool));
+
         self.started = true;
 
         let mode = if self.config.snapshot.is_some() {
@@ -252,26 +278,39 @@ impl SandboxFactory for FirecrackerFactory {
 
     async fn create(&self, config: SandboxConfig) -> sandbox::Result<Box<dyn Sandbox>> {
         let id = config.id.to_string();
-        let sandbox_paths = SandboxPaths::new(self.factory_paths.workspace(&id));
         let sock_paths = SockPaths::new(self.runtime_paths.sock_dir(&id));
 
-        // Clean stale directories from a previous crashed sandbox whose
-        // destroy() failed (e.g., COW device still busy → workspace kept).
-        if sandbox_paths.workspace().exists()
-            && let Err(e) = tokio::fs::remove_dir_all(sandbox_paths.workspace()).await
+        // Acquire a pre-warmed COW slot from the pool.
+        // The slot provides: workspace dir (already created), cow file, loop device.
+        let slot = self
+            .cow_pool()
+            .lock()
+            .await
+            .acquire()
+            .await
+            .map_err(|e| SandboxError::CreationFailed(format!("acquire COW slot: {e}")))?;
+
+        // The slot workspace is {workspaces_dir}/{slot_uuid}/.
+        // Rename to {workspaces_dir}/{sandbox_id}/ for doctor correlation.
+        let target_workspace = self.factory_paths.workspace(&id);
+        if target_workspace.exists()
+            && let Err(e) = tokio::fs::remove_dir_all(&target_workspace).await
         {
             warn!(id = %id, error = %e, "failed to clean stale workspace dir");
         }
+        tokio::fs::rename(&slot.workspace, &target_workspace)
+            .await
+            .map_err(|e| SandboxError::CreationFailed(format!("rename workspace: {e}")))?;
+
+        let sandbox_paths = SandboxPaths::new(target_workspace);
+        let cow_file = sandbox_paths.workspace().join("cow.img");
+
+        // Clean stale sock dir and create vsock directory.
         if sock_paths.dir().exists()
             && let Err(e) = tokio::fs::remove_dir_all(sock_paths.dir()).await
         {
             warn!(id = %id, error = %e, "failed to clean stale sock dir");
         }
-
-        // Create workspace and socket directories.
-        tokio::fs::create_dir_all(sandbox_paths.workspace())
-            .await
-            .map_err(|e| SandboxError::CreationFailed(format!("mkdir workspace: {e}")))?;
         tokio::fs::create_dir_all(sock_paths.vsock_dir())
             .await
             .map_err(|e| SandboxError::CreationFailed(format!("mkdir vsock dir: {e}")))?;
@@ -285,42 +324,12 @@ impl SandboxFactory for FirecrackerFactory {
             .await
             .map_err(|e| SandboxError::CreationFailed(format!("acquire netns: {e}")))?;
 
-        // Create a dm-snapshot COW device backed by the rootfs.
-        // For snapshot restore, sparse-copy the golden COW file first.
-        //
-        // Failures must release the network namespace back to the pool
-        // (netns has no Drop-based return), handled by the match below.
-        let cow_file = sandbox_paths.workspace().join("cow.img");
+        // Create dm-snapshot with correct cow-{sandbox_id} name.
+        // Only this step runs `sudo dmsetup create` on the hot path.
         let base_loop = self.base_loop().loop_path.clone();
         let base_sectors = self.base_loop().sectors;
-        // Prepare the COW file: sparse-copy from snapshot or create empty.
-        // Then set up the dm-snapshot device via spawn_blocking (losetup,
-        // dmsetup are synchronous subprocesses).
-        let cow_result = match &self.config.snapshot {
-            Some(snapshot) => sparse_copy(&snapshot.cow_path, &cow_file).await,
-            None => tokio::task::spawn_blocking({
-                let cow_file = cow_file.clone();
-                move || {
-                    block_cow::init_cow_file(&cow_file, base_sectors)
-                        .map_err(|e| SandboxError::CreationFailed(format!("init COW file: {e}")))
-                }
-            })
-            .await
-            .map_err(|e| SandboxError::CreationFailed(format!("join: {e}")))?,
-        };
-        if let Err(e) = cow_result {
-            let mut netns_pool = self.netns_pool().lock().await;
-            if let Err(rel_err) = netns_pool.release(network).await {
-                warn!(error = %rel_err, "failed to release netns during rollback");
-            }
-            let _ = tokio::fs::remove_dir_all(sandbox_paths.workspace()).await;
-            let _ = tokio::fs::remove_dir_all(sock_paths.dir()).await;
-            return Err(e);
-        }
-
-        let cow_config = CowDeviceConfig { cow_file };
         let cow_result = tokio::task::spawn_blocking(move || {
-            CowDevice::create(&base_loop, base_sectors, &cow_config)
+            CowDevice::create_from_loop(slot.loop_device, cow_file, &base_loop, base_sectors)
         })
         .await
         .map_err(|e| SandboxError::CreationFailed(format!("join: {e}")))?
@@ -443,6 +452,12 @@ impl SandboxFactory for FirecrackerFactory {
     }
 
     async fn shutdown(&mut self) {
+        // Clean up COW pool (detach pre-warmed loop devices, delete cow files).
+        if let Some(pool_mutex) = self.cow_pool.take() {
+            let mut pool = pool_mutex.into_inner();
+            pool.cleanup().await;
+        }
+
         // Release the base image handle back to the shared cache.
         if let Some(handle) = self.base_loop.take() {
             let pool = self.base_cache.clone();
@@ -469,22 +484,4 @@ impl SandboxFactory for FirecrackerFactory {
         self.started = false;
         info!("factory shutdown complete");
     }
-}
-
-/// Sparse-copy a file using `cp --sparse=always` (GNU coreutils).
-async fn sparse_copy(src: &std::path::Path, dst: &std::path::Path) -> Result<(), SandboxError> {
-    let output = tokio::process::Command::new("cp")
-        .arg("--sparse=always")
-        .arg(src)
-        .arg(dst)
-        .output()
-        .await
-        .map_err(|e| SandboxError::CreationFailed(format!("exec cp: {e}")))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(SandboxError::CreationFailed(format!(
-            "cp --sparse=always failed: {stderr}"
-        )));
-    }
-    Ok(())
 }

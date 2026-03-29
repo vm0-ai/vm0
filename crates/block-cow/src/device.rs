@@ -161,6 +161,64 @@ impl CowDevice {
         })
     }
 
+    /// Create a COW device from a pre-attached loop device.
+    ///
+    /// Used by [`CowPool`] which pre-warms loop devices in the background.
+    /// Only performs: `dmsetup create` + open holder fd.
+    ///
+    /// `cow_loop` is the pre-attached loop device (with holder fd).
+    /// `cow_file` is the path to the COW file on disk.
+    /// `base_loop` is the shared read-only base loop device path.
+    /// `sectors` is the base image size in 512-byte sectors.
+    ///
+    /// On failure the loop device is NOT detached — the caller is
+    /// responsible for cleanup (the pool still owns the slot).
+    pub fn create_from_loop(
+        cow_loop: LoopDevice,
+        cow_file: PathBuf,
+        base_loop: &Path,
+        sectors: u64,
+    ) -> Result<Self> {
+        let id = uuid::Uuid::new_v4().to_string();
+        let chunk_size = DEFAULT_CHUNK_SIZE;
+        let cow_name = format!("cow-{id}");
+
+        let base_loop_str = base_loop.to_string_lossy();
+        let cow_loop_str = cow_loop.path().to_string_lossy().into_owned();
+        let device_path = dmsetup::create_snapshot(
+            &cow_name,
+            &base_loop_str,
+            &cow_loop_str,
+            sectors,
+            chunk_size,
+        )?;
+
+        let device_holder = match fs::File::open(&device_path) {
+            Ok(f) => f,
+            Err(e) => {
+                let _ = dmsetup::remove(&cow_name);
+                return Err(BlockCowError::Io(e));
+            }
+        };
+
+        info!(
+            device = %device_path.display(),
+            id,
+            sectors,
+            chunk_size,
+            "COW device created from pre-warmed loop"
+        );
+
+        Ok(Self {
+            id: id.to_owned(),
+            device_path,
+            cow_loop,
+            cow_file,
+            _device_holder: Some(device_holder),
+            active: true,
+        })
+    }
+
     /// Path to the block device (e.g. `/dev/mapper/cow-{id}`).
     ///
     /// Pass this to Firecracker as `path_on_host` for the rootfs drive.

@@ -3,6 +3,7 @@ mod balloon;
 mod command;
 mod config;
 pub mod control;
+mod cow_pool;
 mod factory;
 mod network;
 mod paths;
@@ -13,6 +14,7 @@ mod snapshot;
 
 pub use api::{ApiClient, ApiError, BalloonStatistics};
 pub use config::{FirecrackerConfig, SnapshotConfig};
+pub use cow_pool::{CowPool, CowPoolConfig, CowPoolError};
 pub use factory::{FirecrackerFactory, PREWARM_SCRIPT, config_hash};
 pub use network::{NetnsPool, NetnsPoolConfig};
 pub use paths::{

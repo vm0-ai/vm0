@@ -9,3 +9,4 @@ mod losetup;
 pub use cache::{BaseHandle, BaseLoopCache};
 pub use device::{CowDevice, CowDeviceConfig, init_cow_file};
 pub use error::BlockCowError;
+pub use losetup::{LoopDevice, attach as losetup_attach};
