@@ -287,7 +287,7 @@ fn sparse_copy(src: &Path, dst: &Path) -> Result<(), CowPoolError> {
 }
 
 /// Best-effort teardown of a pre-warmed slot.
-fn destroy_slot(mut slot: PrewarmedSlot) {
+pub(crate) fn destroy_slot(mut slot: PrewarmedSlot) {
     if let Err(e) = slot.loop_device.detach() {
         warn!(id = %slot.id, error = %e, "failed to detach pool loop device");
     }

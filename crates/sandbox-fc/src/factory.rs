@@ -297,10 +297,18 @@ impl SandboxFactory for FirecrackerFactory {
         {
             warn!(id = %id, error = %e, "failed to clean stale workspace dir");
         }
-        tokio::fs::rename(&slot.workspace, &target_workspace)
-            .await
-            .map_err(|e| SandboxError::CreationFailed(format!("rename workspace: {e}")))?;
+        if let Err(e) = tokio::fs::rename(&slot.workspace, &target_workspace).await {
+            // Rollback: destroy the entire slot (detach loop, remove files).
+            tokio::task::spawn_blocking(|| crate::cow_pool::destroy_slot(slot));
+            return Err(SandboxError::CreationFailed(format!(
+                "rename workspace: {e}"
+            )));
+        }
 
+        // From here, workspace is at target_workspace and slot.loop_device
+        // is still valid (rename only moves the directory, not the Rust struct).
+        // We need to clean up both the loop device AND the renamed workspace
+        // on any subsequent failure before create_from_loop consumes the slot.
         let sandbox_paths = SandboxPaths::new(target_workspace);
         let cow_file = sandbox_paths.workspace().join("cow.img");
 
@@ -310,18 +318,35 @@ impl SandboxFactory for FirecrackerFactory {
         {
             warn!(id = %id, error = %e, "failed to clean stale sock dir");
         }
-        tokio::fs::create_dir_all(sock_paths.vsock_dir())
-            .await
-            .map_err(|e| SandboxError::CreationFailed(format!("mkdir vsock dir: {e}")))?;
+        if let Err(e) = tokio::fs::create_dir_all(sock_paths.vsock_dir()).await {
+            // Rollback: detach the loop device and remove workspace.
+            let ws = sandbox_paths.workspace().to_owned();
+            tokio::task::spawn_blocking(move || {
+                let mut ld = slot.loop_device;
+                let _ = ld.detach();
+            });
+            let _ = tokio::fs::remove_dir_all(&ws).await;
+            return Err(SandboxError::CreationFailed(format!(
+                "mkdir vsock dir: {e}"
+            )));
+        }
 
         // Acquire a network namespace from the pool.
-        let network = self
-            .netns_pool()
-            .lock()
-            .await
-            .acquire()
-            .await
-            .map_err(|e| SandboxError::CreationFailed(format!("acquire netns: {e}")))?;
+        let network = match self.netns_pool().lock().await.acquire().await {
+            Ok(n) => n,
+            Err(e) => {
+                // Rollback: detach the loop device and remove directories.
+                let ws = sandbox_paths.workspace().to_owned();
+                let sd = sock_paths.dir().to_owned();
+                tokio::task::spawn_blocking(move || {
+                    let mut ld = slot.loop_device;
+                    let _ = ld.detach();
+                });
+                let _ = tokio::fs::remove_dir_all(&ws).await;
+                let _ = tokio::fs::remove_dir_all(&sd).await;
+                return Err(SandboxError::CreationFailed(format!("acquire netns: {e}")));
+            }
+        };
 
         // Create dm-snapshot with correct cow-{sandbox_id} name.
         // Only this step runs `sudo dmsetup create` on the hot path.
