@@ -1,5 +1,17 @@
 # Changelog
 
+## [12.167.1](https://github.com/vm0-ai/vm0/compare/web-v12.167.0...web-v12.167.1) (2026-03-29)
+
+
+### Documentation
+
+* **cli:** add after-help examples and notes to all zero commands ([#7079](https://github.com/vm0-ai/vm0/issues/7079)) ([e4e756f](https://github.com/vm0-ai/vm0/commit/e4e756f8c4b96b9cb508878ee64a52c8dca9a5c5))
+
+
+### Refactoring
+
+* **web:** split oauth and api-token connector resolution ([#7083](https://github.com/vm0-ai/vm0/issues/7083)) ([d6aeb16](https://github.com/vm0-ai/vm0/commit/d6aeb16dcbea50d4e8e000b25a74897c8d55d32b))
+
 ## [12.167.0](https://github.com/vm0-ai/vm0/compare/web-v12.166.0...web-v12.167.0) (2026-03-27)
 
 

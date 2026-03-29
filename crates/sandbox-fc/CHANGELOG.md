@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.17.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.16.0...sandbox-fc-v0.17.0) (2026-03-29)
+
+
+### Features
+
+* **guest-init:** use kernel root= boot arg instead of pivot_root ([#7106](https://github.com/vm0-ai/vm0/issues/7106)) ([b373849](https://github.com/vm0-ai/vm0/commit/b373849cb331296ae7665704edd400548d67c2a5))
+* **sandbox-fc:** replace guest-side overlayfs with host-side dm-snapshot cow ([#6521](https://github.com/vm0-ai/vm0/issues/6521)) ([8f6a118](https://github.com/vm0-ai/vm0/commit/8f6a1185bfd6dd4604687662f3d03be6076ea71f))
+
+
+### Bug Fixes
+
+* **crates:** update sha2/hmac usage for digest 0.11 compatibility ([#7101](https://github.com/vm0-ai/vm0/issues/7101)) ([cbded46](https://github.com/vm0-ai/vm0/commit/cbded46e78c8d3ed060e96f79f15cd38ee1cf9dc))
+
 ## [0.16.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.15.0...sandbox-fc-v0.16.0) (2026-03-25)
 
 

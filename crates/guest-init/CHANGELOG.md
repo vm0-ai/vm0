@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.15.0](https://github.com/vm0-ai/vm0/compare/guest-init-v0.14.7...guest-init-v0.15.0) (2026-03-29)
+
+
+### Features
+
+* **guest-init:** use kernel root= boot arg instead of pivot_root ([#7106](https://github.com/vm0-ai/vm0/issues/7106)) ([b373849](https://github.com/vm0-ai/vm0/commit/b373849cb331296ae7665704edd400548d67c2a5))
+* **sandbox-fc:** replace guest-side overlayfs with host-side dm-snapshot cow ([#6521](https://github.com/vm0-ai/vm0/issues/6521)) ([8f6a118](https://github.com/vm0-ai/vm0/commit/8f6a1185bfd6dd4604687662f3d03be6076ea71f))
+
 ## [0.14.7](https://github.com/vm0-ai/vm0/compare/guest-init-v0.14.6...guest-init-v0.14.7) (2026-03-26)
 
 
