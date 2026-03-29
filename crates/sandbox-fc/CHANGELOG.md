@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.17.0...sandbox-fc-v0.18.0) (2026-03-29)
+
+
+### Features
+
+* **sandbox-fc:** add cow pool to pre-warm dm-snapshot resources ([#7116](https://github.com/vm0-ai/vm0/issues/7116)) ([c841e61](https://github.com/vm0-ai/vm0/commit/c841e61bfc653d143cd6a022f03ca638b2bf5a42))
+
 ## [0.17.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.16.0...sandbox-fc-v0.17.0) (2026-03-29)
 
 
