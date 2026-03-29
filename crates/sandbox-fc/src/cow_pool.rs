@@ -114,10 +114,9 @@ impl CowPool {
             if self.next_slot_idx >= MAX_SLOTS {
                 break;
             }
-            let idx = self.next_slot_idx;
             self.next_slot_idx += 1;
             let config = self.config.clone();
-            set.spawn_blocking(move || create_slot(idx, &config));
+            set.spawn_blocking(move || create_slot(&config));
         }
         while let Some(result) = set.join_next().await {
             match result {
@@ -170,10 +169,9 @@ impl CowPool {
         if self.next_slot_idx >= MAX_SLOTS {
             return Err(CowPoolError::SlotLimitReached { max: MAX_SLOTS });
         }
-        let idx = self.next_slot_idx;
         self.next_slot_idx += 1;
         let config = self.config.clone();
-        let slot = tokio::task::spawn_blocking(move || create_slot(idx, &config))
+        let slot = tokio::task::spawn_blocking(move || create_slot(&config))
             .await
             .map_err(|e| CowPoolError::CowFileCreation(format!("join: {e}")))??;
         self.maybe_replenish();
@@ -233,11 +231,9 @@ impl CowPool {
         {
             return;
         }
-        let idx = self.next_slot_idx;
         self.next_slot_idx += 1;
         let config = self.config.clone();
-        self.pending
-            .spawn_blocking(move || create_slot(idx, &config));
+        self.pending.spawn_blocking(move || create_slot(&config));
     }
 }
 
@@ -246,7 +242,7 @@ impl CowPool {
 // ---------------------------------------------------------------------------
 
 /// Create a pre-warmed slot: COW file + loop device.
-fn create_slot(_idx: u32, config: &CowPoolConfig) -> Result<PrewarmedSlot, CowPoolError> {
+fn create_slot(config: &CowPoolConfig) -> Result<PrewarmedSlot, CowPoolError> {
     let id = uuid::Uuid::new_v4().to_string();
     let workspace = config.workspaces_dir.join(&id);
     let cow_file = workspace.join("cow.img");
@@ -419,7 +415,7 @@ mod tests {
             base_sectors: 131072,
             golden_cow: Some(PathBuf::from("/nonexistent/golden.img")),
         };
-        let err = create_slot(0, &config).unwrap_err();
+        let err = create_slot(&config).unwrap_err();
         assert!(
             matches!(err, CowPoolError::CowFileCreation(_)),
             "expected CowFileCreation, got {err}"
@@ -440,7 +436,7 @@ mod tests {
         // before the error.
         let tmp = tempfile::tempdir().unwrap();
         let config = test_config(tmp.path());
-        let result = create_slot(0, &config);
+        let result = create_slot(&config);
         // Expected: losetup fails (no root), returns LoopAttach error.
         let err = result.unwrap_err();
         assert!(

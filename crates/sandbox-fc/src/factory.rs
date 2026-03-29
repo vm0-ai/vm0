@@ -255,12 +255,7 @@ impl SandboxFactory for FirecrackerFactory {
             golden_cow: self.config.snapshot.as_ref().map(|s| s.cow_path.clone()),
         };
         let mut cow_pool = crate::cow_pool::CowPool::new(cow_pool_config);
-        let t = std::time::Instant::now();
         cow_pool.warmup().await;
-        info!(
-            elapsed_ms = t.elapsed().as_millis() as u64,
-            "COW pool warmed up"
-        );
         self.cow_pool = Some(tokio::sync::Mutex::new(cow_pool));
 
         self.started = true;
@@ -299,6 +294,8 @@ impl SandboxFactory for FirecrackerFactory {
         }
         if let Err(e) = tokio::fs::rename(&slot.workspace, &target_workspace).await {
             // Rollback: destroy the entire slot (detach loop, remove files).
+            // Fire-and-forget: tokio guarantees spawn_blocking tasks run to
+            // completion even when the JoinHandle is dropped.
             tokio::task::spawn_blocking(|| crate::cow_pool::destroy_slot(slot));
             return Err(SandboxError::CreationFailed(format!(
                 "rename workspace: {e}"
