@@ -11,28 +11,26 @@ function formatDuration(ms: number): string {
   return `${(ms / 3_600_000).toFixed(1)}h`;
 }
 
-interface StatCardProps {
+interface StatRowProps {
+  icon: React.ReactNode;
   label: string;
   value: string;
   detail?: string;
-  icon: React.ReactNode;
 }
 
-function StatCard({ label, value, detail, icon }: StatCardProps) {
+function StatRow({ icon, label, value, detail }: StatRowProps) {
   return (
-    <div className="zero-card p-4">
-      <div className="flex items-center gap-1.5 mb-1.5">
-        <span className="text-muted-foreground">{icon}</span>
-        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          {label}
-        </p>
+    <div className="flex items-center gap-3 px-4 py-3">
+      <span className="text-muted-foreground shrink-0">{icon}</span>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm text-foreground">{label}</p>
+        {detail && (
+          <p className="text-xs text-muted-foreground mt-0.5">{detail}</p>
+        )}
       </div>
-      <p className="text-2xl font-semibold tracking-tight text-foreground">
+      <span className="text-sm font-semibold tabular-nums text-foreground shrink-0">
         {value}
-      </p>
-      {detail && (
-        <p className="mt-0.5 text-xs text-muted-foreground">{detail}</p>
-      )}
+      </span>
     </div>
   );
 }
@@ -50,16 +48,17 @@ export function QueueOverview({ data }: QueueOverviewProps) {
       : null;
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-      <StatCard
-        icon={<IconServer size={14} stroke={1.5} />}
+    <div className="overflow-hidden rounded-xl bg-card zero-border">
+      <StatRow
+        icon={<IconServer size={16} stroke={1.5} />}
         label="Concurrency"
         value={`${concurrency.active} / ${concurrency.limit}`}
-        detail={`${concurrency.available} slot${concurrency.available !== 1 ? "s" : ""} available (${concurrency.tier})`}
+        detail={`${concurrency.available} slot${concurrency.available !== 1 ? "s" : ""} available`}
       />
-      <StatCard
-        icon={<IconStack2 size={14} stroke={1.5} />}
-        label="Queue Length"
+      <div className="h-0 zero-border-t mx-4" />
+      <StatRow
+        icon={<IconStack2 size={16} stroke={1.5} />}
+        label="Queue length"
         value={`${queue.length}`}
         detail={
           queue.length > 0
@@ -67,9 +66,10 @@ export function QueueOverview({ data }: QueueOverviewProps) {
             : "No tasks in queue"
         }
       />
-      <StatCard
-        icon={<IconHourglass size={14} stroke={1.5} />}
-        label="Est. Clear Time"
+      <div className="h-0 zero-border-t mx-4" />
+      <StatRow
+        icon={<IconHourglass size={16} stroke={1.5} />}
+        label="Est. clear time"
         value={etaTotal ?? "--"}
         detail={
           estimatedTimePerRun

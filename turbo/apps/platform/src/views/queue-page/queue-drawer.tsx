@@ -21,12 +21,9 @@ import { QueueWaitingTable } from "./queue-waiting-table.tsx";
 function DrawerSkeleton() {
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-3">
-        <div className="zero-card p-3 h-16 animate-pulse bg-muted/20" />
-        <div className="zero-card p-3 h-16 animate-pulse bg-muted/20" />
-        <div className="zero-card p-3 h-16 animate-pulse bg-muted/20" />
-      </div>
-      <div className="zero-card h-32 animate-pulse bg-muted/20" />
+      <div className="rounded-xl bg-muted/20 zero-border h-[132px] animate-pulse" />
+      <div className="rounded-xl bg-muted/20 zero-border h-20 animate-pulse" />
+      <div className="rounded-xl bg-muted/20 zero-border h-20 animate-pulse" />
     </div>
   );
 }
@@ -47,7 +44,7 @@ export function QueueDrawer() {
 
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
-      <SheetContent side="right" className="w-full sm:max-w-xl overflow-y-auto">
+      <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
         <SheetHeader>
           <SheetTitle>Run Queue</SheetTitle>
           <SheetDescription>

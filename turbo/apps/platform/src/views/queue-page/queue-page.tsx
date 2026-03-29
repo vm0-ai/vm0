@@ -7,13 +7,9 @@ import { QueueWaitingTable } from "./queue-waiting-table.tsx";
 function QueueSkeleton() {
   return (
     <div className="flex flex-col gap-6">
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="zero-card p-4 h-24 animate-pulse bg-muted/20" />
-        <div className="zero-card p-4 h-24 animate-pulse bg-muted/20" />
-        <div className="zero-card p-4 h-24 animate-pulse bg-muted/20" />
-      </div>
-      <div className="zero-card h-48 animate-pulse bg-muted/20" />
-      <div className="zero-card h-48 animate-pulse bg-muted/20" />
+      <div className="rounded-xl bg-muted/20 zero-border h-[132px] animate-pulse" />
+      <div className="rounded-xl bg-muted/20 zero-border h-24 animate-pulse" />
+      <div className="rounded-xl bg-muted/20 zero-border h-24 animate-pulse" />
     </div>
   );
 }

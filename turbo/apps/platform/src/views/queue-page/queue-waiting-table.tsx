@@ -1,14 +1,10 @@
 import { useGet, useSet } from "ccstate-react";
-import { cn } from "@vm0/ui";
 import {
   cancelQueueRun$,
   type QueueEntry,
 } from "../../signals/queue-page/queue-signals.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { Link } from "../router/link.tsx";
-
-const ROW_GRID =
-  "grid grid-cols-[2.5rem_1fr_1fr_5rem_5rem_7rem_4rem] gap-x-6 items-center";
 
 function formatDuration(ms: number): string {
   if (ms < 60_000) {
@@ -31,6 +27,71 @@ function formatRelativeTime(iso: string): string {
   return `${(diff / 3_600_000).toFixed(1)}h ago`;
 }
 
+function WaitingRow({
+  entry,
+  estimatedTimePerRun,
+}: {
+  entry: QueueEntry;
+  estimatedTimePerRun: number | null;
+}) {
+  const cancelRun = useSet(cancelQueueRun$);
+  const pageSignal = useGet(pageSignal$);
+  const runId = entry.runId;
+
+  return (
+    <div className="flex items-center gap-3 px-4 py-3 border-b border-border/40 last:border-b-0">
+      <span className="w-6 text-center text-xs font-medium text-muted-foreground tabular-nums shrink-0">
+        {entry.position}
+      </span>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-foreground truncate">
+          {entry.agentDisplayName ?? entry.agentName}
+        </p>
+        <div className="flex items-center gap-2 mt-0.5">
+          <span className="text-xs text-muted-foreground truncate">
+            {entry.userEmail}
+          </span>
+          <span className="text-muted-foreground/40">·</span>
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {formatRelativeTime(entry.createdAt)}
+          </span>
+          {estimatedTimePerRun && (
+            <>
+              <span className="text-muted-foreground/40">·</span>
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {formatDuration(estimatedTimePerRun * entry.position)} wait
+              </span>
+            </>
+          )}
+        </div>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        {runId && (
+          <Link
+            pathname="/activity/:runId"
+            options={{ pathParams: { runId: runId } }}
+            className="text-xs text-primary hover:underline"
+          >
+            Logs
+          </Link>
+        )}
+        {entry.isOwner && runId && (
+          <>
+            <span className="text-muted-foreground/40">·</span>
+            <button
+              type="button"
+              className="text-xs text-destructive hover:underline"
+              onClick={() => void cancelRun(runId, pageSignal)}
+            >
+              Cancel
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 interface QueueWaitingTableProps {
   queue: QueueEntry[];
   estimatedTimePerRun: number | null;
@@ -40,89 +101,26 @@ export function QueueWaitingTable({
   queue,
   estimatedTimePerRun,
 }: QueueWaitingTableProps) {
-  const cancelRun = useSet(cancelQueueRun$);
-  const pageSignal = useGet(pageSignal$);
   return (
-    <div>
-      <p className="text-sm font-medium text-muted-foreground mb-2 px-1">
+    <section>
+      <h3 className="text-sm font-medium text-muted-foreground mb-2">
         Waiting ({queue.length})
-      </p>
+      </h3>
       {queue.length === 0 ? (
-        <div className="zero-card p-6 text-center text-sm text-muted-foreground">
+        <div className="rounded-xl bg-card zero-border p-5 text-center text-sm text-muted-foreground">
           No tasks in queue.
         </div>
       ) : (
-        <div className="zero-card overflow-hidden px-4 sm:px-7 pb-3">
-          <div
-            className={cn(
-              ROW_GRID,
-              "sticky top-0 z-10 -mx-4 px-4 py-3 text-sm font-medium text-muted-foreground bg-card border-b border-border/40",
-            )}
-          >
-            <div>#</div>
-            <div>Agent</div>
-            <div>User</div>
-            <div>Queued</div>
-            <div>Est. Wait</div>
-            <div>Activity logs</div>
-            <div>Cancel</div>
-          </div>
-          {queue.map((entry) => {
-            const runId = entry.runId;
-            return (
-              <div
-                key={runId ?? `queue-${entry.position}`}
-                className={cn(
-                  ROW_GRID,
-                  "py-3 -mx-4 px-4 border-b border-border/40 last:border-b-0",
-                )}
-              >
-                <div className="text-sm font-medium text-muted-foreground tabular-nums">
-                  {entry.position}
-                </div>
-                <div className="text-sm font-medium text-foreground truncate">
-                  {entry.agentDisplayName ?? entry.agentName}
-                </div>
-                <div className="text-sm text-muted-foreground truncate">
-                  {entry.userEmail}
-                </div>
-                <div className="text-sm text-muted-foreground tabular-nums">
-                  {formatRelativeTime(entry.createdAt)}
-                </div>
-                <div className="text-sm text-muted-foreground tabular-nums">
-                  {estimatedTimePerRun
-                    ? formatDuration(estimatedTimePerRun * entry.position)
-                    : "--"}
-                </div>
-                <div>
-                  {runId ? (
-                    <Link
-                      pathname="/activity/:runId"
-                      options={{ pathParams: { runId: runId } }}
-                      className="text-sm text-primary hover:underline"
-                    >
-                      View logs
-                    </Link>
-                  ) : (
-                    <span className="text-sm text-muted-foreground">--</span>
-                  )}
-                </div>
-                <div>
-                  {entry.isOwner && runId && (
-                    <button
-                      type="button"
-                      className="text-sm text-destructive hover:underline"
-                      onClick={() => void cancelRun(runId, pageSignal)}
-                    >
-                      Cancel
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+        <div className="overflow-hidden rounded-xl bg-card zero-border">
+          {queue.map((entry) => (
+            <WaitingRow
+              key={entry.runId ?? `queue-${entry.position}`}
+              entry={entry}
+              estimatedTimePerRun={estimatedTimePerRun}
+            />
+          ))}
         </div>
       )}
-    </div>
+    </section>
   );
 }

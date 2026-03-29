@@ -178,7 +178,7 @@
     /* ===================================
      * Semantic Colors (Light Theme)
      * =================================== */
-    --background: 214 20% 98.5%; /* subtle cool gray, lighter than gray-0 */
+    --background: 214 20% 98.5%; /* just a touch darker than pure white, same gray hue */
     --foreground: var(--gray-950); /* gray-950 */
 
     --card: var(--white); /* white */

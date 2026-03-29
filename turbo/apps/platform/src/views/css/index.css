@@ -302,7 +302,7 @@
     hsl(var(--gray-50) / 0.95)
   );
   border-color: hsl(var(--divider));
-  box-shadow: 0 1px 3px hsl(var(--border) / 0.06);
+  box-shadow: none;
 }
 
 /* Message bubble (e.g. Meet Zero tone samples) */
