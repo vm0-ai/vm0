@@ -585,10 +585,21 @@ fn dmsetup_ls(target_type: &str) -> Option<String> {
 
 /// Run `sudo dmsetup remove <name>`, return true if successful.
 fn dmsetup_remove(name: &str) -> bool {
-    std::process::Command::new("sudo")
+    match std::process::Command::new("sudo")
         .args(["dmsetup", "remove", name])
         .output()
-        .is_ok_and(|o| o.status.success())
+    {
+        Ok(o) if o.status.success() => true,
+        Ok(o) => {
+            let stderr = String::from_utf8_lossy(&o.stderr);
+            warn!(name, stderr = %stderr.trim(), "dmsetup remove failed");
+            false
+        }
+        Err(e) => {
+            warn!(name, error = %e, "dmsetup remove failed");
+            false
+        }
+    }
 }
 
 /// Run `sudo losetup -a`, return stdout if successful.
@@ -627,7 +638,7 @@ fn parse_losetup<'a>(output: &'a Option<String>, prefix: &'a str) -> Vec<(String
             if end <= start {
                 return None;
             }
-            let backing = &rest[start + 1..end];
+            let backing = rest.get(start + 1..end)?;
             // Strip " (deleted)" suffix for matching.
             let path = backing.strip_suffix(" (deleted)").unwrap_or(backing);
             if path.starts_with(prefix) {
@@ -641,10 +652,21 @@ fn parse_losetup<'a>(output: &'a Option<String>, prefix: &'a str) -> Vec<(String
 
 /// Run `sudo losetup -d <device>`, return true if successful.
 fn losetup_detach(device: &str) -> bool {
-    std::process::Command::new("sudo")
+    match std::process::Command::new("sudo")
         .args(["losetup", "-d", device])
         .output()
-        .is_ok_and(|o| o.status.success())
+    {
+        Ok(o) if o.status.success() => true,
+        Ok(o) => {
+            let stderr = String::from_utf8_lossy(&o.stderr);
+            warn!(device, stderr = %stderr.trim(), "losetup detach failed");
+            false
+        }
+        Err(e) => {
+            warn!(device, error = %e, "losetup detach failed");
+            false
+        }
+    }
 }
 
 fn human_bytes(bytes: u64) -> String {
