@@ -311,9 +311,9 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
     };
 
     // Phase 5: Global orphan detection
-    // When --name is set, only run block-cow detection (scoped to that runner);
-    // skip process-level orphans (firecracker/mitmproxy/namespace) since those
-    // are cross-runner concerns.
+    // When --name is set, run block-cow and orphan firecracker detection
+    // scoped to that runner. Orphan mitmproxy and namespace are skipped
+    // (no runner-identifying info on orphaned processes).
     let mut global_warnings: Vec<Warning> = if args.name.is_none() {
         detect_global_orphans(&reports, &discovered.firecrackers, &discovered.mitmdumps).await
     } else {
