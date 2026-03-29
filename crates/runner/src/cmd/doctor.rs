@@ -302,16 +302,6 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
         reports.push(report);
     }
 
-    // Filter by name if specified
-    let mut reports = if let Some(ref name_filter) = args.name {
-        reports
-            .into_iter()
-            .filter(|r| r.name.as_deref() == Some(name_filter.as_str()))
-            .collect()
-    } else {
-        reports
-    };
-
     // Phase 4: Find stopped services (installed but no matching running process)
     // Skip when filtering by name — other runners' stopped services are irrelevant
     let stopped = if args.name.is_none() {
@@ -321,11 +311,36 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
     };
 
     // Phase 5: Global orphan detection
-    // Skip when filtering by name — other runners' orphans are not this runner's concern
+    // When --name is set, only run block-cow detection (scoped to that runner);
+    // skip process-level orphans (firecracker/mitmproxy/namespace) since those
+    // are cross-runner concerns.
     let mut global_warnings: Vec<Warning> = if args.name.is_none() {
         detect_global_orphans(&reports, &discovered.firecrackers, &discovered.mitmdumps).await
     } else {
-        vec![]
+        // block-cow detection needs all reports for runner-liveness checks,
+        // but only reports warnings correlated to the specified runner.
+        let name_filter = args.name.as_deref();
+        detect_block_cow_orphans(&reports)
+            .await
+            .into_iter()
+            .filter(|w| match w {
+                Warning::OrphanDmSnapshot { runner_name, .. }
+                | Warning::OrphanLoopDevice { runner_name, .. } => {
+                    runner_name.as_deref() == name_filter
+                }
+                _ => false,
+            })
+            .collect()
+    };
+
+    // Filter reports by name after global detection (which needs full list)
+    let mut reports = if let Some(ref name_filter) = args.name {
+        reports
+            .into_iter()
+            .filter(|r| r.name.as_deref() == Some(name_filter.as_str()))
+            .collect()
+    } else {
+        reports
     };
 
     // Phase 6: Targeted recheck of anomalies
