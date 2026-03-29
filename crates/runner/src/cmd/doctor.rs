@@ -733,11 +733,8 @@ async fn detect_global_orphans(
     // Orphan network namespaces
     warnings.extend(detect_orphan_namespaces().await);
 
-    // Orphan dm-snapshot targets (cow-* with open_count == 0)
-    warnings.extend(detect_orphan_dm_snapshots(reports).await);
-
-    // Orphan loop devices (runner-path loops when no sandboxes are active)
-    warnings.extend(detect_orphan_loop_devices(fc_procs, reports).await);
+    // Orphan dm-snapshot targets and loop devices
+    warnings.extend(detect_block_cow_orphans(reports).await);
 
     warnings
 }
@@ -807,14 +804,22 @@ async fn is_lock_free(lock_path: &str) -> bool {
 // Orphan dm-snapshot and loop device detection
 // ---------------------------------------------------------------------------
 
-/// List `cow-*` dm-snapshot targets with zero openers (no active sandbox).
+/// Detect orphaned dm-snapshot targets and loop devices.
 ///
-/// Correlates each orphan to a runner by checking if
-/// `{base_dir}/workspaces/{sandbox_id}/` exists.
-async fn detect_orphan_dm_snapshots(reports: &[RunnerReport]) -> Vec<Warning> {
+/// dm-snapshot targets: `cow-*` with `open_count == 0` (no active sandbox).
+///
+/// Loop devices (per-device precision, no global guard):
+/// - **Cow loops** (backing `…/workspaces/{id}/cow.img`): orphaned when no
+///   corresponding `cow-{id}` dm target exists — the dm target is always
+///   created before and removed after the cow loop.
+/// - **Base loops** (backing `…/rootfs/{hash}/rootfs.ext4`): shared across
+///   sandboxes via `BaseLoopCache`, orphaned only when no runner process on
+///   the host is alive.
+async fn detect_block_cow_orphans(reports: &[RunnerReport]) -> Vec<Warning> {
     let mut warnings = Vec::new();
 
-    let output = match tokio::process::Command::new("sudo")
+    // 1. List dm-snapshot targets
+    let dm_output = match tokio::process::Command::new("sudo")
         .args(["dmsetup", "ls", "--target", "snapshot"])
         .output()
         .await
@@ -823,21 +828,77 @@ async fn detect_orphan_dm_snapshots(reports: &[RunnerReport]) -> Vec<Warning> {
         Ok(o) => {
             warn!(
                 stderr = %String::from_utf8_lossy(&o.stderr).trim(),
-                "dmsetup ls failed — skipping dm-snapshot check"
+                "dmsetup ls failed — skipping block-cow check"
             );
             return warnings;
         }
         Err(e) => {
-            warn!(error = %e, "dmsetup not available — skipping dm-snapshot check");
+            warn!(error = %e, "dmsetup not available — skipping block-cow check");
             return warnings;
         }
     };
 
-    let targets = super::gc::parse_dm_targets(&output, "cow-");
-    for name in targets {
-        if dm_target_has_no_openers(&name).await {
-            let runner_name = find_runner_for_dm_target(&name, reports);
-            warnings.push(Warning::OrphanDmSnapshot { name, runner_name });
+    let dm_targets = super::gc::parse_dm_targets(&dm_output, "cow-");
+
+    // 2. Orphan dm-snapshot targets (open_count == 0)
+    for name in &dm_targets {
+        if dm_target_has_no_openers(name).await {
+            let runner_name = find_runner_for_dm_target(name, reports);
+            warnings.push(Warning::OrphanDmSnapshot {
+                name: name.clone(),
+                runner_name,
+            });
+        }
+    }
+
+    // 3. List loop devices under runner root
+    let runner_root = match crate::paths::HomePaths::new() {
+        Ok(paths) => format!("{}/", paths.root().display()),
+        Err(_) => return warnings,
+    };
+
+    let loop_output = match tokio::process::Command::new("sudo")
+        .args(["losetup", "-a"])
+        .output()
+        .await
+    {
+        Ok(o) if o.status.success() => Some(String::from_utf8_lossy(&o.stdout).into_owned()),
+        Ok(o) => {
+            warn!(
+                stderr = %String::from_utf8_lossy(&o.stderr).trim(),
+                "losetup -a failed — skipping loop device check"
+            );
+            return warnings;
+        }
+        Err(e) => {
+            warn!(error = %e, "losetup not available — skipping loop device check");
+            return warnings;
+        }
+    };
+
+    let loops = super::gc::parse_losetup(&loop_output, &runner_root);
+    let any_runner_alive = reports.iter().any(|r| pid_exists(r.pid));
+
+    for (device, backing) in loops {
+        let is_orphan = if let Some(sandbox_id) = extract_sandbox_id(&backing) {
+            // Cow loop: orphaned if no corresponding dm target exists.
+            // The dm target (`cow-{id}`) is created before the cow loop and
+            // removed after it, so absence means the sandbox is fully torn down.
+            let expected = format!("cow-{sandbox_id}");
+            !dm_targets.contains(&expected)
+        } else {
+            // Base loop (rootfs.ext4): shared via BaseLoopCache, orphaned only
+            // when every runner process on the host is dead.
+            !any_runner_alive
+        };
+
+        if is_orphan {
+            let runner_name = find_runner_for_loop(&backing, reports);
+            warnings.push(Warning::OrphanLoopDevice {
+                device,
+                backing,
+                runner_name,
+            });
         }
     }
 
@@ -883,56 +944,14 @@ fn parse_dm_open_count(info_output: &str) -> Option<u32> {
     None
 }
 
-/// List orphaned loop devices under `~/.vm0-runner/` when no sandboxes are active.
+/// Extract sandbox ID from a cow loop backing file path.
 ///
-/// Only checks when no firecracker processes are running to avoid false positives
-/// (active sandboxes legitimately hold base and COW loop devices).
-///
-/// Correlates each orphan to a runner by matching the backing file path
-/// against runner base_dirs.
-async fn detect_orphan_loop_devices(
-    fc_procs: &[process::FirecrackerProcessInfo],
-    reports: &[RunnerReport],
-) -> Vec<Warning> {
-    if !fc_procs.is_empty() {
-        return Vec::new();
-    }
-
-    let runner_root = match crate::paths::HomePaths::new() {
-        Ok(paths) => format!("{}/", paths.root().display()),
-        Err(_) => return Vec::new(),
-    };
-
-    let output = match tokio::process::Command::new("sudo")
-        .args(["losetup", "-a"])
-        .output()
-        .await
-    {
-        Ok(o) if o.status.success() => Some(String::from_utf8_lossy(&o.stdout).into_owned()),
-        Ok(o) => {
-            warn!(
-                stderr = %String::from_utf8_lossy(&o.stderr).trim(),
-                "losetup -a failed — skipping loop device check"
-            );
-            return Vec::new();
-        }
-        Err(e) => {
-            warn!(error = %e, "losetup not available — skipping loop device check");
-            return Vec::new();
-        }
-    };
-
-    super::gc::parse_losetup(&output, &runner_root)
-        .into_iter()
-        .map(|(device, backing)| {
-            let runner_name = find_runner_for_loop(&backing, reports);
-            Warning::OrphanLoopDevice {
-                device,
-                backing,
-                runner_name,
-            }
-        })
-        .collect()
+/// Expected format: `.../workspaces/{sandbox_id}/cow.img[ (deleted)]`
+/// Returns `None` for non-cow paths (e.g. `rootfs.ext4`).
+fn extract_sandbox_id(backing: &str) -> Option<&str> {
+    let path = backing.strip_suffix(" (deleted)").unwrap_or(backing);
+    let path = path.strip_suffix("/cow.img")?;
+    path.rsplit('/').next()
 }
 
 /// Find which runner owns a loop device by matching backing file path prefix.
@@ -1533,5 +1552,38 @@ Major, minor:      253, 0";
             Some("pr-200-1".into())
         );
         assert_eq!(find_runner_for_loop("/other/path/cow.img", &reports), None);
+    }
+
+    #[test]
+    fn extract_sandbox_id_from_cow_path() {
+        assert_eq!(
+            extract_sandbox_id(
+                "/home/ubuntu/.vm0-runner/runners/pr-123/workspaces/abc-def/cow.img"
+            ),
+            Some("abc-def")
+        );
+    }
+
+    #[test]
+    fn extract_sandbox_id_from_deleted_cow_path() {
+        assert_eq!(
+            extract_sandbox_id(
+                "/home/ubuntu/.vm0-runner/runners/pr-123/workspaces/abc-def/cow.img (deleted)"
+            ),
+            Some("abc-def")
+        );
+    }
+
+    #[test]
+    fn extract_sandbox_id_returns_none_for_rootfs() {
+        assert_eq!(
+            extract_sandbox_id("/home/ubuntu/.vm0-runner/rootfs/560c452/rootfs.ext4"),
+            None
+        );
+    }
+
+    #[test]
+    fn extract_sandbox_id_returns_none_for_unrelated() {
+        assert_eq!(extract_sandbox_id("/var/lib/snapd/snaps/foo.snap"), None);
     }
 }
