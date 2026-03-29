@@ -296,6 +296,93 @@ delete_e2e_account_if_exists() {
 }
 
 # ---------------------------------------------------------------------------
+# create_clerk_user_and_token — Create a fresh Clerk user and sign-in token
+# Creates a new user with a random email, then generates a sign-in token.
+# Requires CLERK_SECRET_KEY. Exports SIGN_IN_TOKEN and CLERK_USER_ID.
+# ---------------------------------------------------------------------------
+create_clerk_user_and_token() {
+  if [[ -z "${CLERK_SECRET_KEY:-}" ]]; then
+    echo "CLERK_SECRET_KEY is required but not set" >&2
+    return 1
+  fi
+
+  local email
+  email="$(generate_test_email)"
+
+  # Create user via Clerk Backend API
+  local create_response
+  create_response=$(curl -sS -X POST \
+    "https://api.clerk.com/v1/users" \
+    -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
+    -H "Content-Type: application/json" \
+    -d "{\"email_address\": [\"${email}\"], \"skip_password_requirement\": true}")
+
+  local user_id
+  user_id=$(echo "$create_response" | jq -e -r '.id' 2>/dev/null)
+  if [[ -z "$user_id" || "$user_id" == "null" ]]; then
+    echo "Failed to create Clerk user for ${email}" >&2
+    echo "API response: ${create_response}" >&2
+    return 1
+  fi
+
+  export CLERK_USER_ID="$user_id"
+
+  # Create a Clerk organization for the user so they have exactly one org on
+  # sign-in. Clerk auto-activates the org when the user has only one, which
+  # avoids the "Select an Organization" blocker in the E2E flow.
+  local org_response
+  org_response=$(curl -sS -X POST \
+    "https://api.clerk.com/v1/organizations" \
+    -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
+    -H "Content-Type: application/json" \
+    -d "{\"name\": \"E2E Org\", \"created_by\": \"${user_id}\"}")
+
+  local org_id
+  org_id=$(echo "$org_response" | jq -r '.id // empty' 2>/dev/null)
+  if [[ -z "$org_id" ]]; then
+    echo "Failed to create Clerk org for user ${user_id}" >&2
+    echo "API response: ${org_response}" >&2
+    return 1
+  fi
+
+  export CLERK_ORG_ID="$org_id"
+
+  # Create sign-in token
+  local token_response
+  token_response=$(curl -sS -X POST \
+    "https://api.clerk.com/v1/sign_in_tokens" \
+    -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
+    -H "Content-Type: application/json" \
+    -d "{\"user_id\": \"${user_id}\", \"expires_in_seconds\": 300}")
+
+  local token
+  token=$(echo "$token_response" | jq -e -r '.token' 2>/dev/null)
+  if [[ -z "$token" || "$token" == "null" ]]; then
+    echo "Failed to create sign-in token" >&2
+    echo "API response: ${token_response}" >&2
+    return 1
+  fi
+
+  export SIGN_IN_TOKEN="$token"
+  export E2E_ACCOUNT="$email"
+}
+
+# ---------------------------------------------------------------------------
+# delete_clerk_user — Delete a Clerk user by ID
+# Usage: delete_clerk_user <user_id>
+# ---------------------------------------------------------------------------
+delete_clerk_user() {
+  local user_id="$1"
+  if [[ -z "$user_id" || -z "${CLERK_SECRET_KEY:-}" ]]; then
+    return 0
+  fi
+  curl -sS -X DELETE \
+    "https://api.clerk.com/v1/users/${user_id}" \
+    -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
+    > /dev/null 2>&1 || true
+}
+
+# ---------------------------------------------------------------------------
 # derive_app_url — Derive platform app URL from VM0_API_URL
 # Local:  https://www.vm7.ai:8443  → https://app.vm7.ai:8443
 # CI:     https://pr-123-www.vm0-dev.com → https://pr-123-app.vm0-dev.com
