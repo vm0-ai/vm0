@@ -852,11 +852,16 @@ async fn detect_block_cow_orphans(
     let dm_target_list = super::gc::parse_dm_targets(&dm_output, "cow-");
     let dm_targets: HashSet<String> = dm_target_list.iter().cloned().collect();
 
+    // Pre-scan workspace directories once for consistent runner correlation.
+    // This avoids per-target exists() calls and reduces the TOCTOU window to
+    // a single filesystem snapshot.
+    let sandbox_runner_map = build_sandbox_runner_map(reports);
+
     // 2. Orphan dm-snapshot targets (open_count == 0), checked in parallel.
     //    When name_filter is set, only check targets belonging to that runner.
     let mut info_set = tokio::task::JoinSet::new();
     for name in dm_target_list {
-        let runner_name = find_runner_for_dm_target(&name, reports);
+        let runner_name = find_runner_for_dm_target(&name, &sandbox_runner_map);
         if name_filter.is_some() && runner_name.as_deref() != name_filter {
             continue;
         }
@@ -936,17 +941,36 @@ async fn detect_block_cow_orphans(
     warnings
 }
 
-/// Find which runner owns a `cow-{sandbox_id}` target by checking workspace dirs.
-fn find_runner_for_dm_target(target_name: &str, reports: &[RunnerReport]) -> Option<String> {
-    let sandbox_id = target_name.strip_prefix("cow-")?;
-    reports.iter().find_map(|r| {
-        let base_dir = r.base_dir.as_ref()?;
-        if base_dir.join("workspaces").join(sandbox_id).exists() {
-            r.name.clone()
-        } else {
-            None
+/// Build a map from sandbox_id → runner_name by scanning workspace directories.
+///
+/// Takes a single filesystem snapshot so that all runner correlation lookups
+/// use a consistent view.
+fn build_sandbox_runner_map(reports: &[RunnerReport]) -> std::collections::HashMap<String, String> {
+    let mut map = std::collections::HashMap::new();
+    for r in reports {
+        let (Some(name), Some(base_dir)) = (&r.name, &r.base_dir) else {
+            continue;
+        };
+        let ws_dir = base_dir.join("workspaces");
+        let Ok(entries) = std::fs::read_dir(&ws_dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            if let Some(id) = entry.file_name().to_str() {
+                map.insert(id.to_string(), name.clone());
+            }
         }
-    })
+    }
+    map
+}
+
+/// Find which runner owns a `cow-{sandbox_id}` target via pre-built map.
+fn find_runner_for_dm_target(
+    target_name: &str,
+    sandbox_runner_map: &std::collections::HashMap<String, String>,
+) -> Option<String> {
+    let sandbox_id = target_name.strip_prefix("cow-")?;
+    sandbox_runner_map.get(sandbox_id).cloned()
 }
 
 /// Check if a dm target has no openers (`Open count: 0` in `dmsetup info`).
@@ -1569,12 +1593,13 @@ Major, minor:      253, 0";
             ..make_report(Some("pr-100-1"))
         }];
 
+        let map = build_sandbox_runner_map(&reports);
         assert_eq!(
-            find_runner_for_dm_target("cow-abc123", &reports),
+            find_runner_for_dm_target("cow-abc123", &map),
             Some("pr-100-1".into())
         );
-        assert_eq!(find_runner_for_dm_target("cow-unknown", &reports), None);
-        assert_eq!(find_runner_for_dm_target("not-a-cow", &reports), None);
+        assert_eq!(find_runner_for_dm_target("cow-unknown", &map), None);
+        assert_eq!(find_runner_for_dm_target("not-a-cow", &map), None);
     }
 
     #[test]
