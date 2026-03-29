@@ -318,19 +318,8 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
         detect_global_orphans(&reports, &discovered.firecrackers, &discovered.mitmdumps).await
     } else {
         // block-cow detection needs all reports for runner-liveness checks,
-        // but only reports warnings correlated to the specified runner.
-        let name_filter = args.name.as_deref();
-        detect_block_cow_orphans(&reports)
-            .await
-            .into_iter()
-            .filter(|w| match w {
-                Warning::OrphanDmSnapshot { runner_name, .. }
-                | Warning::OrphanLoopDevice { runner_name, .. } => {
-                    runner_name.as_deref() == name_filter
-                }
-                _ => false,
-            })
-            .collect()
+        // but scopes dmsetup info calls and loop checks to the named runner.
+        detect_block_cow_orphans(&reports, args.name.as_deref()).await
     };
 
     // Filter reports by name after global detection (which needs full list)
@@ -750,7 +739,7 @@ async fn detect_global_orphans(
     warnings.extend(detect_orphan_namespaces().await);
 
     // Orphan dm-snapshot targets and loop devices
-    warnings.extend(detect_block_cow_orphans(reports).await);
+    warnings.extend(detect_block_cow_orphans(reports, None).await);
 
     warnings
 }
@@ -831,7 +820,13 @@ async fn is_lock_free(lock_path: &str) -> bool {
 /// - **Base loops** (backing `…/rootfs/{hash}/rootfs.ext4`): shared across
 ///   sandboxes via `BaseLoopCache`, orphaned only when no runner process on
 ///   the host is alive.
-async fn detect_block_cow_orphans(reports: &[RunnerReport]) -> Vec<Warning> {
+///
+/// When `name_filter` is `Some`, only checks resources belonging to the
+/// named runner (skips `dmsetup info` calls for unrelated targets).
+async fn detect_block_cow_orphans(
+    reports: &[RunnerReport],
+    name_filter: Option<&str>,
+) -> Vec<Warning> {
     let mut warnings = Vec::new();
 
     // 1. List dm-snapshot targets
@@ -857,17 +852,21 @@ async fn detect_block_cow_orphans(reports: &[RunnerReport]) -> Vec<Warning> {
     let dm_target_list = super::gc::parse_dm_targets(&dm_output, "cow-");
     let dm_targets: HashSet<String> = dm_target_list.iter().cloned().collect();
 
-    // 2. Orphan dm-snapshot targets (open_count == 0), checked in parallel
+    // 2. Orphan dm-snapshot targets (open_count == 0), checked in parallel.
+    //    When name_filter is set, only check targets belonging to that runner.
     let mut info_set = tokio::task::JoinSet::new();
     for name in dm_target_list {
+        let runner_name = find_runner_for_dm_target(&name, reports);
+        if name_filter.is_some() && runner_name.as_deref() != name_filter {
+            continue;
+        }
         info_set.spawn(async move {
             let orphan = dm_target_has_no_openers(&name).await;
-            (name, orphan)
+            (name, orphan, runner_name)
         });
     }
-    while let Some(Ok((name, is_orphan))) = info_set.join_next().await {
+    while let Some(Ok((name, is_orphan, runner_name))) = info_set.join_next().await {
         if is_orphan {
-            let runner_name = find_runner_for_dm_target(&name, reports);
             warnings.push(Warning::OrphanDmSnapshot { name, runner_name });
         }
     }
@@ -901,6 +900,11 @@ async fn detect_block_cow_orphans(reports: &[RunnerReport]) -> Vec<Warning> {
     let any_runner_alive = reports.iter().any(|r| pid_exists(r.pid));
 
     for (device, backing) in loops {
+        let runner_name = find_runner_for_loop(&backing, reports);
+        if name_filter.is_some() && runner_name.as_deref() != name_filter {
+            continue;
+        }
+
         let is_orphan = if let Some(sandbox_id) = extract_sandbox_id(&backing) {
             // Cow loop: orphaned if no corresponding dm target exists.
             // The dm target (`cow-{id}`) is created before the cow loop and
@@ -914,7 +918,6 @@ async fn detect_block_cow_orphans(reports: &[RunnerReport]) -> Vec<Warning> {
         };
 
         if is_orphan {
-            let runner_name = find_runner_for_loop(&backing, reports);
             warnings.push(Warning::OrphanLoopDevice {
                 device,
                 backing,
@@ -997,13 +1000,18 @@ fn find_runner_for_loop(backing: &str, reports: &[RunnerReport]) -> Option<Strin
 
 /// Check if a loop device still exists.
 async fn loop_device_exists(device: &str) -> bool {
-    matches!(
-        tokio::process::Command::new("sudo")
-            .args(["losetup", device])
-            .output()
-            .await,
-        Ok(o) if o.status.success()
-    )
+    match tokio::process::Command::new("sudo")
+        .args(["losetup", device])
+        .output()
+        .await
+    {
+        Ok(o) if o.status.success() => true,
+        Ok(_) => false, // device gone — expected during cleanup
+        Err(e) => {
+            warn!(device, error = %e, "losetup check failed — assuming device exists");
+            true
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
