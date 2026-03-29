@@ -252,16 +252,10 @@ fn create_slot(_idx: u32, config: &CowPoolConfig) -> Result<PrewarmedSlot, CowPo
     let cow_file = workspace.join("cow.img");
 
     // 1. Create COW file.
-    match &config.golden_cow {
-        Some(golden) => {
-            std::fs::create_dir_all(&workspace)
-                .map_err(|e| CowPoolError::CowFileCreation(e.to_string()))?;
-            sparse_copy(golden, &cow_file)?;
-        }
-        None => {
-            block_cow::init_cow_file(&cow_file, config.base_sectors)
-                .map_err(|e| CowPoolError::CowFileCreation(e.to_string()))?;
-        }
+    if let Err(e) = create_cow_file(config, &workspace, &cow_file) {
+        // Best-effort cleanup: remove any partially-created workspace.
+        let _ = std::fs::remove_dir_all(&workspace);
+        return Err(e);
     }
 
     // 2. Attach loop device.
@@ -279,6 +273,26 @@ fn create_slot(_idx: u32, config: &CowPoolConfig) -> Result<PrewarmedSlot, CowPo
         workspace,
         loop_device,
     })
+}
+
+/// Create the COW file: sparse-copy from golden image or allocate fresh.
+fn create_cow_file(
+    config: &CowPoolConfig,
+    workspace: &Path,
+    cow_file: &Path,
+) -> Result<(), CowPoolError> {
+    match &config.golden_cow {
+        Some(golden) => {
+            std::fs::create_dir_all(workspace)
+                .map_err(|e| CowPoolError::CowFileCreation(e.to_string()))?;
+            sparse_copy(golden, cow_file)?;
+        }
+        None => {
+            block_cow::init_cow_file(cow_file, config.base_sectors)
+                .map_err(|e| CowPoolError::CowFileCreation(e.to_string()))?;
+        }
+    }
+    Ok(())
 }
 
 /// Synchronous sparse copy via `cp --sparse=always`.
@@ -409,6 +423,13 @@ mod tests {
         assert!(
             matches!(err, CowPoolError::CowFileCreation(_)),
             "expected CowFileCreation, got {err}"
+        );
+        // Workspace dir should be cleaned up after cow file creation failure.
+        let entries: Vec<_> = std::fs::read_dir(tmp.path()).unwrap().collect();
+        assert_eq!(
+            entries.len(),
+            0,
+            "workspace dir should be cleaned up on cow file creation failure"
         );
     }
 
