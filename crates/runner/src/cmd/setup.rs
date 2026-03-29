@@ -131,7 +131,7 @@ async fn stream_to_file(mut response: reqeast::Response, path: &Path) -> RunnerR
         .await
         .map_err(|e| RunnerError::Internal(format!("flush {}: {e}", path.display())))?;
 
-    Ok(format!("{:x}", hasher.finalize()))
+    Ok(hex::encode(hasher.finalize()))
 }
 
 /// Download a URL to a temp file. Cleans up on failure. Returns hex SHA256.
@@ -232,7 +232,7 @@ async fn extract_tar_entry(
                     std::io::Write::write_all(&mut out, chunk)
                         .map_err(|e| RunnerError::Internal(format!("write binary: {e}")))?;
                 }
-                return Ok(format!("{:x}", hasher.finalize()));
+                return Ok(hex::encode(hasher.finalize()));
             }
         }
 
@@ -335,7 +335,7 @@ async fn file_sha256(path: &Path) -> RunnerResult<String> {
                 .ok_or_else(|| RunnerError::Internal("read returned invalid length".into()))?;
             hasher.update(chunk);
         }
-        Ok(format!("{:x}", hasher.finalize()))
+        Ok(hex::encode(hasher.finalize()))
     })
     .await
     .map_err(|e| RunnerError::Internal(format!("sha256 task failed: {e}")))?

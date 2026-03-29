@@ -305,5 +305,5 @@ async fn compute_input_hash(
         hasher.update(&content);
     }
 
-    Ok(format!("{:x}", hasher.finalize()))
+    Ok(hex::encode(hasher.finalize()))
 }

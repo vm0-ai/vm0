@@ -124,8 +124,8 @@ impl HomePaths {
     }
 
     pub fn base_dir_lock(&self, base_dir: &Path) -> PathBuf {
-        let hash = Sha256::digest(base_dir.as_os_str().as_encoded_bytes());
-        self.locks_dir().join(format!("base-dir-{hash:x}.lock"))
+        let hash = hex::encode(Sha256::digest(base_dir.as_os_str().as_encoded_bytes()));
+        self.locks_dir().join(format!("base-dir-{hash}.lock"))
     }
 
     pub fn rootfs_lock(&self, hash: &str) -> PathBuf {

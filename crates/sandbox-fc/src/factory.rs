@@ -99,7 +99,7 @@ impl InvariantConfig {
 pub fn config_hash() -> String {
     let config = InvariantConfig::new();
     let json = serde_json::to_string(&config).expect("serialize invariant config");
-    format!("{:x}", Sha256::digest(json.as_bytes()))
+    hex::encode(Sha256::digest(json.as_bytes()))
 }
 
 pub struct FirecrackerFactory {

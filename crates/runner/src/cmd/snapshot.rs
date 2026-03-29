@@ -153,7 +153,7 @@ pub(crate) fn compute_snapshot_hash(args: &SnapshotArgs) -> String {
     hasher.update(args.vcpu.to_le_bytes());
     hasher.update(b"memory_mb:");
     hasher.update(args.memory_mb.to_le_bytes());
-    format!("{:x}", hasher.finalize())
+    hex::encode(hasher.finalize())
 }
 
 /// Return `(logical, disk)` as human-readable strings (e.g. "65.2 MiB").
