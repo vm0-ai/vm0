@@ -317,9 +317,25 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
     let mut global_warnings: Vec<Warning> = if args.name.is_none() {
         detect_global_orphans(&reports, &discovered.firecrackers, &discovered.mitmdumps).await
     } else {
-        // block-cow detection needs all reports for runner-liveness checks,
-        // but scopes dmsetup info calls and loop checks to the named runner.
-        detect_block_cow_orphans(&reports, args.name.as_deref()).await
+        // Scoped detection: block-cow + orphan firecracker for the named runner.
+        // Orphan mitmproxy and namespace cannot be scoped (no runner-identifying
+        // info on orphaned processes / no persistent runner→pool_idx mapping).
+        let mut warnings = detect_block_cow_orphans(&reports, args.name.as_deref()).await;
+
+        // Orphan firecracker: scope by base_dir match.
+        let named_base_dir = reports
+            .iter()
+            .find(|r| r.name.as_deref() == args.name.as_deref())
+            .and_then(|r| r.base_dir.clone());
+        if let Some(base_dir) = named_base_dir {
+            let runner_pids: Vec<u32> = reports.iter().map(|r| r.pid).collect();
+            warnings.extend(
+                detect_orphan_firecrackers(&discovered.firecrackers, &runner_pids, Some(&base_dir))
+                    .await,
+            );
+        }
+
+        warnings
     };
 
     // Filter reports by name after global detection (which needs full list)
@@ -703,16 +719,8 @@ async fn detect_global_orphans(
 
     let runner_pids: Vec<u32> = reports.iter().map(|r| r.pid).collect();
 
-    // Orphan firecracker processes
-    for fc in fc_procs {
-        if process::is_orphan(fc.pid, &runner_pids).await {
-            warnings.push(Warning::OrphanFirecracker {
-                pid: fc.pid,
-                run_id: fc.run_id.clone(),
-                ppid: fc.ppid,
-            });
-        }
-    }
+    // Orphan firecracker processes (all runners)
+    warnings.extend(detect_orphan_firecrackers(fc_procs, &runner_pids, None).await);
 
     // Orphan mitmproxy processes.
     // A mitmdump belongs to a runner if its port matches the runner's proxy
@@ -741,6 +749,33 @@ async fn detect_global_orphans(
     // Orphan dm-snapshot targets and loop devices
     warnings.extend(detect_block_cow_orphans(reports, None).await);
 
+    warnings
+}
+
+/// Detect orphan firecracker processes whose ppid chain doesn't lead to any runner.
+///
+/// When `base_dir_filter` is `Some`, only reports processes whose working
+/// directory is under the specified base_dir (for `--name` scoping).
+async fn detect_orphan_firecrackers(
+    fc_procs: &[process::FirecrackerProcessInfo],
+    runner_pids: &[u32],
+    base_dir_filter: Option<&Path>,
+) -> Vec<Warning> {
+    let mut warnings = Vec::new();
+    for fc in fc_procs {
+        if let Some(filter) = base_dir_filter
+            && fc.base_dir.as_deref() != Some(filter)
+        {
+            continue;
+        }
+        if process::is_orphan(fc.pid, runner_pids).await {
+            warnings.push(Warning::OrphanFirecracker {
+                pid: fc.pid,
+                run_id: fc.run_id.clone(),
+                ppid: fc.ppid,
+            });
+        }
+    }
     warnings
 }
 
