@@ -1,6 +1,8 @@
 import {
   resolveSkillRef,
   getInstructionsFilename,
+  getConnectorEnvironmentMapping,
+  connectorTypeSchema,
   CONNECTOR_TYPES,
   getCustomSkillStorageName,
 } from "@vm0/core";
@@ -9,10 +11,10 @@ import { SEED_SKILLS } from "./seed-skills";
 /**
  * Build compose content for a zero agent.
  *
- * Always includes all SEED_SKILLS plus all connector type skill names
- * (dynamically derived from CONNECTOR_TYPES so it never goes stale).
- * Connector env vars are injected at runtime by resolveConnectorSecrets,
- * not baked into the compose.
+ * Always includes all SEED_SKILLS plus connector type skill names that are
+ * generally available (i.e. not gated behind a feature flag).
+ * Connector env var templates are baked into the compose so that
+ * expandEnvironmentFromCompose can resolve firewall placeholders at runtime.
  */
 export function buildComposeContent(
   agentName: string,
@@ -28,15 +30,33 @@ export function buildComposeContent(
     }
   }
 
-  const allSkillNames = [
-    ...new Set([...SEED_SKILLS, ...Object.keys(CONNECTOR_TYPES)]),
-  ];
+  const gaConnectorTypes = Object.entries(CONNECTOR_TYPES)
+    .filter(([, config]) => !config.featureFlag)
+    .map(([type]) => type);
+
+  const allSkillNames = [...new Set([...SEED_SKILLS, ...gaConnectorTypes])];
   const skills = allSkillNames.map((name) => resolveSkillRef(name));
 
   const environment: Record<string, string> = {
     ZERO_AGENT_ID: "${{ vars.ZERO_AGENT_ID }}",
     ZERO_TOKEN: "${{ secrets.ZERO_TOKEN }}",
   };
+
+  // Inject env var templates from connector environmentMappings so that
+  // expandEnvironmentFromCompose can substitute firewall placeholders.
+  for (const connector of gaConnectorTypes) {
+    const parsed = connectorTypeSchema.safeParse(connector);
+    if (!parsed.success) continue;
+    const mapping = getConnectorEnvironmentMapping(parsed.data);
+    for (const [envVar, valueRef] of Object.entries(mapping)) {
+      if (envVar in environment) continue;
+      if (valueRef.startsWith("$secrets.")) {
+        environment[envVar] = `\${{ secrets.${envVar} }}`;
+      } else if (valueRef.startsWith("$vars.")) {
+        environment[envVar] = `\${{ vars.${envVar} }}`;
+      }
+    }
+  }
 
   // Build custom skill volumes
   const volumes: Record<string, unknown> = {};

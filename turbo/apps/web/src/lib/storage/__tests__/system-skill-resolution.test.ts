@@ -124,17 +124,17 @@ describe("System Skill Resolution", () => {
     expect(manifest.storages[0]!.vasStorageName).toBe(storageName);
   });
 
-  it("should silently skip skill not found in any org", async () => {
+  it("should throw when skill not found in any org", async () => {
     const { url } = uniqueSkillUrl();
 
-    // No skill storage in system org or agent org — skill is optional, skipped silently
-    const manifest = await prepareStorageManifest(
-      skillAgentConfig(url),
-      {},
-      user.orgId,
-      user.orgId,
-      user.userId,
-    );
-    expect(manifest.storages).toHaveLength(0);
+    await expect(
+      prepareStorageManifest(
+        skillAgentConfig(url),
+        {},
+        user.orgId,
+        user.orgId,
+        user.userId,
+      ),
+    ).rejects.toThrow("not found");
   });
 });

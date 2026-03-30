@@ -3538,8 +3538,9 @@ export async function seedTestSkill(
 }
 
 /**
- * Seed all SEED_SKILLS plus connector type skills into the skills table so
+ * Seed all SEED_SKILLS plus GA connector type skills into the skills table so
  * that server-side compose succeeds when buildComposeContent injects them.
+ * Feature-flagged connectors are excluded to match buildComposeContent behaviour.
  */
 export async function seedSeedSkills(): Promise<void> {
   const { SEED_SKILLS, buildSeedSkillValues } = await import(
@@ -3547,9 +3548,10 @@ export async function seedSeedSkills(): Promise<void> {
   );
   const { CONNECTOR_TYPES } = await import("@vm0/core");
   initServices();
-  const allNames = [
-    ...new Set([...SEED_SKILLS, ...Object.keys(CONNECTOR_TYPES)]),
-  ];
+  const gaConnectorTypes = Object.entries(CONNECTOR_TYPES)
+    .filter(([, config]) => !config.featureFlag)
+    .map(([type]) => type);
+  const allNames = [...new Set([...SEED_SKILLS, ...gaConnectorTypes])];
   const values = buildSeedSkillValues(allNames);
   await globalThis.services.db
     .insert(skills)
@@ -3558,7 +3560,7 @@ export async function seedSeedSkills(): Promise<void> {
 }
 
 /**
- * Seed storage volumes for all SEED_SKILLS plus CONNECTOR_TYPES under SYSTEM_ORG_ID.
+ * Seed storage volumes for all SEED_SKILLS plus GA connector types under SYSTEM_ORG_ID.
  * Required for tests that dispatch runs with zero-agent composes,
  * because skill volumes must exist at runtime for storage manifest resolution.
  *
@@ -3568,9 +3570,10 @@ export async function seedSeedSkills(): Promise<void> {
 export async function seedSeedSkillStorages(): Promise<void> {
   const { SEED_SKILLS } = await import("../lib/zero/seed-skills");
   const { CONNECTOR_TYPES } = await import("@vm0/core");
-  const allNames = [
-    ...new Set([...SEED_SKILLS, ...Object.keys(CONNECTOR_TYPES)]),
-  ];
+  const gaConnectorTypes = Object.entries(CONNECTOR_TYPES)
+    .filter(([, config]) => !config.featureFlag)
+    .map(([type]) => type);
+  const allNames = [...new Set([...SEED_SKILLS, ...gaConnectorTypes])];
 
   initServices();
 

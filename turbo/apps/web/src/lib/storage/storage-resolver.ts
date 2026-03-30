@@ -272,7 +272,6 @@ function resolveInstructionsAndSkills(
           mountPath: `${skillsBasePath}/${parsed.skillName}`,
           vasStorageName: storageName,
           vasVersion: "latest",
-          optional: true,
         });
       }
     }
