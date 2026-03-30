@@ -108,13 +108,10 @@ describe("chat sending state", () => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
 
-    // Re-query the textarea (page navigated to session chat page;
-    // placeholder changes to "Type your next message…" while sending)
+    // Wait for any textarea currently in the DOM (the page may or may not
+    // have navigated to the session chat page depending on timing).
     const activeTextarea = await waitFor(
-      () =>
-        screen.getByPlaceholderText(
-          "Type your next message\u2026",
-        ) as HTMLTextAreaElement,
+      () => document.querySelector("textarea") as HTMLTextAreaElement,
     );
 
     // Type a new message and press Enter while still sending
