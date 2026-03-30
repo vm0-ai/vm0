@@ -112,6 +112,7 @@ import { supadataFirewall } from "./supadata.generated";
 import { tavilyFirewall } from "./tavily.generated";
 import { tldvFirewall } from "./tldv.generated";
 import { todoistFirewall } from "./todoist.generated";
+import { twentyFirewall } from "./twenty.generated";
 import { v0Firewall } from "./v0.generated";
 import { vercelFirewall } from "./vercel.generated";
 import { webflowFirewall } from "./webflow.generated";
@@ -224,6 +225,7 @@ const CONNECTOR_FIREWALLS = {
   tavily: tavilyFirewall,
   tldv: tldvFirewall,
   todoist: todoistFirewall,
+  twenty: twentyFirewall,
   v0: v0Firewall,
   vercel: vercelFirewall,
   webflow: webflowFirewall,
@@ -323,7 +325,6 @@ export type NonFirewallConnectorType =
   | "metabase" // self-hosted, auth: x-api-key header, needs BASE_URL variable
   | "qdrant" // self-hosted, auth: api-key header or Bearer, needs BASE_URL variable
   | "salesforce" // instance-specific (*.my.salesforce.com), auth: Bearer, needs INSTANCE variable
-  | "twenty" // self-hosted, auth: Bearer token, needs BASE_URL variable
   // Datacenter-specific — feasible with static enumeration, needs connector variable addition
   | "mailchimp" // ~20 datacenter domains (usX.api.mailchimp.com), auth: Bearer works
   // Basic Auth — proxy cannot do base64 encoding at runtime
@@ -351,8 +352,10 @@ export type NonFirewallConnectorType =
  * FirewallConnectorType or NonFirewallConnectorType.
  */
 type ValidateNonFirewall<
-  T extends Exclude<ConnectorType, FirewallConnectorType> =
-    NonFirewallConnectorType,
+  T extends Exclude<
+    ConnectorType,
+    FirewallConnectorType
+  > = NonFirewallConnectorType,
 > = T;
 type ValidateExhaustive<
   T extends never = Exclude<
