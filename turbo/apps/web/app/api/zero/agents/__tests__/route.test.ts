@@ -218,13 +218,13 @@ describe("Zero Agents API", () => {
       expect(data.sound).toBe("professional");
     });
 
-    it("should create an agent with all connector skills in compose content", async () => {
+    it("should create an agent with connector env var templates in compose", async () => {
       const response = await postAgent({}, testCliToken, testOrgSlug);
 
       expect(response.status).toBe(201);
       const data = await response.json();
 
-      // Verify compose content includes all connector skills
+      // Verify compose content includes connector env var templates
       const content = await getTestComposeVersionContent(data.agentId);
       const agents = content?.agents as Record<
         string,
@@ -235,6 +235,9 @@ describe("Zero Agents API", () => {
       // Base env vars present
       expect(agentEnv.ZERO_AGENT_ID).toBe("${{ vars.ZERO_AGENT_ID }}");
       expect(agentEnv.ZERO_TOKEN).toBe("${{ secrets.ZERO_TOKEN }}");
+      // GA connector env vars present (GitHub is GA, not behind feature flag)
+      expect(agentEnv.GH_TOKEN).toBe("${{ secrets.GH_TOKEN }}");
+      expect(agentEnv.GITHUB_TOKEN).toBe("${{ secrets.GITHUB_TOKEN }}");
     });
 
     it("should return 422 when skills are not cached", async () => {
@@ -359,6 +362,32 @@ describe("Zero Agents API", () => {
       expect(fetched.sound).toBe("professional");
     });
 
+    it("should rebuild compose with connector env var templates", async () => {
+      const created = await (
+        await postAgent({}, testCliToken, testOrgSlug)
+      ).json();
+
+      const response = await putAgent(
+        created.agentId,
+        { displayName: "Refreshed" },
+        testCliToken,
+        testOrgSlug,
+      );
+      expect(response.status).toBe(200);
+
+      const content = await getTestComposeVersionContent(created.agentId);
+      const agents = content?.agents as Record<
+        string,
+        { environment: Record<string, string> }
+      >;
+      const agentEnv = Object.values(agents)[0]!.environment;
+
+      expect(agentEnv.GH_TOKEN).toBe("${{ secrets.GH_TOKEN }}");
+      expect(agentEnv.GITHUB_TOKEN).toBe("${{ secrets.GITHUB_TOKEN }}");
+      expect(agentEnv.ZERO_AGENT_ID).toBe("${{ vars.ZERO_AGENT_ID }}");
+      expect(agentEnv.ZERO_TOKEN).toBe("${{ secrets.ZERO_TOKEN }}");
+    });
+
     it("should return 404 for unknown agent", async () => {
       const response = await putAgent(
         "00000000-0000-0000-0000-000000000000",
@@ -413,6 +442,35 @@ describe("Zero Agents API", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.agentId).toBe(created.agentId);
+    });
+
+    it("should rebuild compose with connector env var templates", async () => {
+      const createResponse = await postAgent({}, testCliToken, testOrgSlug);
+      const created = await createResponse.json();
+
+      // Update instructions
+      const response = await putAgentInstructions(
+        created.agentId,
+        { content: "# New instructions" },
+        testCliToken,
+        testOrgSlug,
+      );
+      expect(response.status).toBe(200);
+
+      // Verify compose was rebuilt with connector env var templates
+      const content = await getTestComposeVersionContent(created.agentId);
+      const agents = content?.agents as Record<
+        string,
+        { environment: Record<string, string> }
+      >;
+      const agentEnv = Object.values(agents)[0]!.environment;
+
+      // GA connector env vars should be present (GitHub is GA)
+      expect(agentEnv.GH_TOKEN).toBe("${{ secrets.GH_TOKEN }}");
+      expect(agentEnv.GITHUB_TOKEN).toBe("${{ secrets.GITHUB_TOKEN }}");
+      // Base env vars still present
+      expect(agentEnv.ZERO_AGENT_ID).toBe("${{ vars.ZERO_AGENT_ID }}");
+      expect(agentEnv.ZERO_TOKEN).toBe("${{ secrets.ZERO_TOKEN }}");
     });
 
     it("should return 404 for unknown agent", async () => {
