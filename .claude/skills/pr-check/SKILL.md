@@ -1,10 +1,10 @@
 ---
 name: pr-check
-description: Monitor PR CI pipeline, auto-fix issues, and loop until all checks pass
+description: Check PR CI pipeline status and auto-fix lint/format issues (single pass, no loop)
 context: fork
 ---
 
-You are a CI pipeline specialist for the vm0 project. Your role is to monitor PR checks, automatically fix what can be fixed, and ensure all CI checks pass.
+You are a CI pipeline specialist for the vm0 project. Your role is to check PR CI status once and automatically fix lint/format issues in a single pass.
 
 ## Workflow Overview
 
@@ -12,21 +12,16 @@ You are a CI pipeline specialist for the vm0 project. Your role is to monitor PR
 1. Identify Target PR
    └── From args or current branch
 
-2. Check PR comments for existing review
-   ├── No review → Run /pr-review
-   └── Has review → Skip
+2. Check CI pipeline status (single poll)
+   ├── All passing → Report success (step 4)
+   ├── Some pending → Report pending status (step 4)
+   └── Failures → Proceed to step 3
 
-3. Monitor CI pipeline
-   ├── All passing → Go to step 5
-   └── Failures → Proceed to step 4
+3. Analyze and fix failures
+   ├── Lint/format → Auto-fix → Commit → Push
+   └── Type/test errors → Report for manual fix
 
-4. Auto-fix issues
-   ├── Lint/format → Auto-fix → Commit → Push → Back to step 3
-   └── Type/test errors → Exit for manual fix
-
-5. Completion check
-   ├── Fixes made → Run /pr-review again
-   └── No fixes → Done (no auto-merge)
+4. Report results
 ```
 
 ---
@@ -46,33 +41,9 @@ Once you have the PR number, **hardcode it as a literal** in all subsequent bash
 
 ---
 
-## Step 2: Check for Existing Review
+## Step 2: Check CI Pipeline Status
 
-Check if the PR already has a code review comment:
-
-```bash
-# Get PR comments and check for review indicators
-comments=$(gh pr view "$pr_id" --json comments --jq '.comments[].body')
-```
-
-Look for review comments containing patterns like:
-- "## Code Review"
-- "LGTM"
-- "Changes Requested"
-
-**If no review found**: Execute `/pr-review` to analyze the PR and post findings.
-
-**If review exists**: Skip to pipeline monitoring.
-
----
-
-## Step 3: Monitor CI Pipeline
-
-### Initial Wait
-
-Wait 60 seconds for pipeline to stabilize before first check.
-
-### Check Pipeline Status
+### Poll Current Status
 
 ```bash
 gh pr checks "$pr_id"
@@ -84,39 +55,26 @@ gh pr checks "$pr_id"
 - `pending`: Still running
 - `skipping`: Skipped (acceptable)
 
-### Retry Configuration
+### Classify Results
 
-- **Retry attempts**: Maximum 30
-- **Retry delay**: 60 seconds
-- **Total timeout**: ~30 minutes
+After polling, classify the overall status:
 
-### Fail-Fast Strategy
-
-**Do NOT wait for all checks to complete before acting.** After each poll:
-
-1. If any check has status `fail` → immediately proceed to Step 4 (auto-fix), even if other checks are still `pending`
-2. If no failures and no `pending` checks remain → all done, proceed to Step 5
-3. If no failures but some checks are still `pending` → wait 60 seconds and poll again
-
-This means fixes start as soon as a failure is detected, without waiting for the rest of the pipeline.
-
-### Outcomes
-
-- **Any failure detected**: Proceed immediately to Step 4 (auto-fix), regardless of pending checks
-- **All passing (no pending)**: Proceed to Step 5 (completion check)
-- **No failures, some still running**: Wait 60 seconds and retry
+1. **All checks `pass` or `skipping`** → Report success, go to Step 4
+2. **Any check `fail`** → Proceed to Step 3 (analyze and fix), even if other checks are still `pending`
+3. **No failures but some `pending`** → Report pending status, go to Step 4
 
 ---
 
-## Step 4: Auto-Fix Issues
-
-When failures are detected, attempt to fix them.
+## Step 3: Analyze and Fix Failures
 
 ### Get Failure Details
 
 ```bash
+# Get the PR branch
+branch=$(gh pr view "$pr_id" --json headRefName --jq '.headRefName')
+
 # Get failed run ID
-gh run list --branch {branch} --status failure -L 1
+gh run list --branch "$branch" --status failure -L 1
 
 # Get failure logs
 gh run view {run-id} --log-failed
@@ -139,8 +97,6 @@ git commit -m "fix: auto-format code"
 git push
 ```
 
-Track that fixes were made (for step 5).
-
 #### Type Check Failures (Manual Required)
 
 ```bash
@@ -155,15 +111,13 @@ Manual intervention required. Please fix the following type errors:
 
 <error details>
 
-After fixing, re-run /pr-check to continue.
+After fixing, re-run /pr-check to verify.
 ```
-
-Exit and wait for user to fix.
 
 #### Test Failures (Manual Required)
 
 ```bash
-cd turbo && pnpm test
+cd turbo && pnpm vitest
 ```
 
 Report failures clearly:
@@ -174,66 +128,46 @@ Manual intervention required. Please fix the following test failures:
 
 <failure details>
 
-After fixing, re-run /pr-check to continue.
+After fixing, re-run /pr-check to verify.
 ```
-
-Exit and wait for user to fix.
-
-### After Auto-Fix
-
-If auto-fix was successful (lint/format):
-1. Wait 60 seconds for the new pipeline triggered by the push to start
-2. Return to Step 3 (Monitor Pipeline), applying the same fail-fast strategy
 
 ---
 
-## Step 5: Completion Check
-
-After all CI checks pass:
-
-### Check if Fixes Were Made
-
-If any fix commits were made during this process:
-- Run `/pr-review` again to review the new changes
-- This ensures the auto-fixed code is also reviewed
-
-### Final Report
+## Step 4: Report Results
 
 ```
-PR Check Complete
+PR Check Result
 
 PR: #<number> - <title>
 Branch: <branch>
-Status: All CI checks passed
+Status: <All Passed / Pending / Auto-Fixed / Manual Fix Required>
 
 Checks:
-  lint: passed
-  test: passed
-  build: passed
+  <check-name>: <status>
+  ...
 
-[If fixes were made]
-Auto-fixes applied: <count> commits
-Final review posted.
+[If all passed]
+All CI checks passed. No action needed.
 
-Ready for manual review and merge.
+[If pending]
+Some checks are still running. Re-run /pr-check later to check again.
+
+[If auto-fixed]
+Auto-fix applied: lint/format corrections committed and pushed.
+New CI pipeline triggered — re-run /pr-check to verify.
+
+[If manual fix required]
+Manual intervention needed for: <type/test errors>
 ```
 
 ---
 
 ## Important Notes
 
-1. **No Auto-Merge**: This skill does NOT merge the PR. Merging is a manual decision.
-
-2. **Review Triggers**:
-   - Initial review: If no existing review comment found
-   - Final review: If any fixes were committed during the process
-
-3. **Manual Intervention**:
-   - Type errors require manual fixes
-   - Test failures require manual fixes
-   - The skill will exit with clear instructions
-
-4. **Idempotent**: Safe to re-run multiple times. Will skip review if already exists.
+1. **Single Pass**: This skill checks CI status once and acts on it. It does NOT poll or retry.
+2. **No Auto-Merge**: This skill does NOT merge the PR. Merging is a manual decision.
+3. **Auto-Fix Scope**: Only lint and format errors are auto-fixed. Type and test errors require manual intervention.
+4. **Idempotent**: Safe to re-run multiple times.
 
 ---
 
@@ -243,15 +177,6 @@ Ready for manual review and merge.
 ```
 Error: No PR found for current branch.
 Please create a PR first or specify a PR number.
-```
-
-### Pipeline Timeout
-```
-Pipeline Timeout
-
-CI checks did not complete within 30 minutes.
-Please check GitHub Actions for details:
-<workflow-url>
 ```
 
 ### Unfixable Errors
@@ -274,4 +199,4 @@ Please fix manually and re-run /pr-check
 4. **Preserve context** - Report exactly where manual intervention is needed
 5. **No silent failures** - Always communicate the outcome
 
-Your goal is to ensure CI passes with minimal manual intervention while maintaining code quality.
+Your goal is to report CI status and fix what can be fixed in a single pass.
