@@ -67,6 +67,11 @@
       ignore_errors: true
       become: true
 
+    - name: Stop transient service cancel
+      command: systemctl stop vm0-runner-{{ job_ref }}-cancel.service
+      ignore_errors: true
+      become: true
+
     - name: Reload systemd daemon
       command: systemctl daemon-reload
       ignore_errors: true
@@ -79,10 +84,12 @@
       loop:
         - "{{ bin_dir }}"
         - "{{ base_dir }}/runners/{{ job_ref }}-bench"
+        - "{{ base_dir }}/runners/{{ job_ref }}-cancel"
         - "{{ base_dir }}/runners/{{ job_ref }}-exec"
         - "{{ base_dir }}/runners/{{ job_ref }}-balloon"
         - "{{ base_dir }}/runners/{{ job_ref }}-upgrade-a"
         - "{{ base_dir }}/runners/{{ job_ref }}-upgrade-b"
+        - "{{ base_dir }}/groups/vm0/cancel-{{ job_ref }}"
         - "{{ base_dir }}/groups/vm0/exec-{{ job_ref }}"
         - "{{ base_dir }}/groups/vm0/balloon-{{ job_ref }}"
         - "{{ base_dir }}/groups/vm0/upgrade-{{ job_ref }}"
