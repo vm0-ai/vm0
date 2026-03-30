@@ -56,6 +56,7 @@ import { generate as generateLark } from "./lark";
 import { generate as generateLine } from "./line";
 import { generate as generateLinear } from "./linear";
 import { generate as generateLoops } from "./loops";
+import { generate as generateMake } from "./make";
 import { generate as generateMailsac } from "./mailsac";
 import { generate as generateMercury } from "./mercury";
 import { generate as generateMetaAds } from "./meta-ads";
@@ -160,6 +161,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   line: generateLine,
   linear: generateLinear,
   loops: generateLoops,
+  make: generateMake,
   mailsac: generateMailsac,
   mercury: generateMercury,
   "meta-ads": generateMetaAds,
