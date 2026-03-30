@@ -583,3 +583,164 @@ const currentWorkspaceId$ = state<string | undefined>(undefined)
 ### One-Line Summary
 
 **If A changes and B should change too, B should be a `computed` of A — whether B is calculated, fetched, or only exists when A is valid.**
+
+## Signals Object Factory Pattern
+
+When multiple concurrent instances of the same async lifecycle need independent state and cancellation, use a **factory function** that returns an object containing ccstate atoms. Each instance gets its own signals, commands, and abort control — no shared `Map<id, AbortController>` needed.
+
+### When to Use
+
+- Multiple concurrent async operations that are independently cancellable (e.g., parallel file uploads, parallel polling loops)
+- Each instance has its own lifecycle (loading → success/error/cancelled)
+- A shared `Map<string, AbortController>` is being manually synced across create/cancel/cleanup paths
+
+### Anti-pattern: Shared AbortController Map
+
+```typescript
+// ❌ Manual Map sync across 3 locations (create, cancel, finally cleanup)
+const abortControllers$ = state(new Map<string, AbortController>());
+
+const startUpload$ = command(async ({ set }, file: File, signal: AbortSignal) => {
+  const id = crypto.randomUUID();
+  const controller = new AbortController();
+  set(abortControllers$, (prev) => new Map(prev).set(id, controller));
+  try {
+    await fetch("/upload", { signal: AbortSignal.any([signal, controller.signal]) });
+  } finally {
+    set(abortControllers$, (prev) => { const m = new Map(prev); m.delete(id); return m; });
+  }
+});
+
+const cancelUpload$ = command(({ get, set }, id: string) => {
+  const controller = get(abortControllers$).get(id);
+  controller?.abort();
+  set(abortControllers$, (prev) => { const m = new Map(prev); m.delete(id); return m; });
+});
+```
+
+Problems:
+- AbortController and item data are stored in separate states, manually synced by ID
+- Three locations must coordinate Map updates (create, cancel, finally)
+- `uploading` boolean is a manual flag that duplicates what the promise state already represents
+
+### Preferred: Signals Object Factory
+
+```typescript
+// ✅ Each instance encapsulates its own lifecycle — no shared Map
+interface ChatAttachment {
+  id: string;
+  filename: string;
+  contentType: string;
+  size: number;
+  url$: Computed<Promise<string>>;   // loading/data/error via useLoadable
+  upload$: Command<Promise<void>, [File, AbortSignal]>;
+  cancel$: Command<void, []>;
+}
+
+function createChatAttachment(info: { filename: string; contentType: string; size: number }): ChatAttachment {
+  const id = crypto.randomUUID();
+  const reset$ = resetSignal();
+
+  // Create abort signal eagerly so deferred can bind to it
+  // (reset$ called without parent — upload$ will combine with parent later)
+  let uploadSignal: AbortSignal | undefined;
+
+  const urlDeferred$ = state<ReturnType<typeof createDeferredPromise<string>> | undefined>(undefined);
+
+  const upload$ = command(async ({ get, set }, file: File, parentSignal: AbortSignal) => {
+    // resetSignal combines with parent: aborted by cancel$ OR page navigation
+    uploadSignal = set(reset$, parentSignal);
+    const deferred = createDeferredPromise<string>(uploadSignal);
+    set(urlDeferred$, deferred);
+
+    try {
+      const res = await get(fetch$)("/api/uploads", {
+        method: "POST",
+        body: formData,
+        signal: uploadSignal,
+      });
+      deferred.resolve(res.url);
+    } catch (error) {
+      if (!deferred.settled()) {
+        deferred.reject(error);
+      }
+    }
+  });
+
+  const cancel$ = command(({ set }) => {
+    // resetSignal aborts previous → deferred auto-rejects → url$ goes to hasError
+    set(reset$);
+  });
+
+  return {
+    id,
+    filename: info.filename,
+    contentType: info.contentType,
+    size: info.size,
+    url$: computed(async (get) => {
+      const deferred = get(urlDeferred$);
+      if (!deferred) return new Promise<string>(() => {}); // pending until upload starts
+      return deferred.promise;
+    }),
+    upload$,
+    cancel$,
+  };
+}
+```
+
+### Key Design Decisions
+
+1. **`url$` uses deferred, not manual boolean** — `useLoadable(attachment.url$)` gives loading/data/error for free, eliminating the need for an `uploading` boolean field
+
+2. **`resetSignal` for cancel control** — `cancel$` calls `set(reset$)` which aborts the previous signal → deferred auto-rejects → `url$` transitions to error state. The `resetSignal` abort-previous semantic is used correctly here: cancel = reset.
+
+3. **Parent signal passed at `upload$` call time** — `set(reset$, parentSignal)` combines the cancel signal with the page signal, respecting the signal hierarchy (page → per-operation)
+
+4. **Factory doesn't manage the list** — adding/removing from the attachment list remains external. The factory only owns the upload lifecycle, consistent with `createRunLoop` which doesn't manage the message list.
+
+### View Consumption
+
+```typescript
+function AttachmentChip({ attachment }: { attachment: ChatAttachment }) {
+  const urlLoadable = useLoadable(attachment.url$);
+  const isUploading = urlLoadable.state === "loading";
+  const url = urlLoadable.state === "hasData" ? urlLoadable.data : "";
+
+  return (
+    <div>
+      {isUploading && <Spinner />}
+      {url && <img src={url} />}
+    </div>
+  );
+}
+```
+
+### Cancel/Remove Simplification
+
+```typescript
+// ❌ Before: branching on uploading boolean
+onRemove={(id) => {
+  const att = attachments.find((a) => a.id === id);
+  if (att?.uploading) cancelUpload(id);
+  else removeAttachment(id);
+}}
+
+// ✅ After: cancel is always safe (no-op if already settled)
+onRemove={(id) => {
+  const att = attachments.find((a) => a.id === id);
+  if (att) set(att.cancel$);
+  removeAttachment(id);
+}}
+```
+
+### Existing Example: `createRunLoop`
+
+`createRunLoop(runId)` in `polling.ts` is the established precedent for this pattern — a factory returning `{ pagedEventsList$, beginLoop$, cancel$, detail$, ... }`. The returned signals object is stored inside `AssistantChatMessage` and consumed by views via `useLastLoadable()`.
+
+### Checklist
+
+- Each instance gets its own `resetSignal` — no shared Map of AbortControllers
+- `upload$` combines `resetSignal` with parent signal via `set(reset$, parentSignal)`
+- Async state (url) exposed as `Computed<Promise<T>>` — consumers use `useLoadable`
+- No manual `loading`/`uploading` boolean — derived from loadable state
+- Factory doesn't manage the collection — only the per-instance lifecycle
