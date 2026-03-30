@@ -738,9 +738,9 @@ function StaticAssistantMessage({
   };
 
   const logButton = message.legacyRunId ? (
-    <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5">
+    <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 -ml-[38px] sm:-ml-[46px]">
       <div />
-      <div className="flex py-2 gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+      <div className="flex items-center py-2 gap-1 -ml-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
         <TooltipProvider delayDuration={300}>
           <Tooltip>
             <TooltipTrigger asChild>
