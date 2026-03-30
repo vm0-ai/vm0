@@ -5,15 +5,14 @@
  *
  * Calendly is a scheduling automation platform.
  * Uses Bearer token authentication.
- * Token format: opaque string, no known prefix.
+ * Token format: opaque alphanumeric string, no known prefix.
  */
 
 import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://developer.calendly.com/getting-started";
-// Token format not publicly documented; using generic placeholder
-const PLACEHOLDER_VALUE =
-  "eyJhbGciOiJIUzI1NiJ9.vm0placeholder000000000000000000000000000000a";
+// Token format: opaque alphanumeric string ~40 chars
+const PLACEHOLDER_VALUE = "Vm0PlaceHolder0000000000000000000000000000";
 
 function generateTypeScript(): string {
   const lines: string[] = [

@@ -158,17 +158,13 @@ describe("POST /api/runners/realtime/token", () => {
       expect(data.mac).toBe("test-mac");
     });
 
-    it("should return Ably TokenRequest for user runner with matching org group", async () => {
+    it("should return Ably TokenRequest for user runner with vm0 group", async () => {
       vi.stubEnv("ABLY_API_KEY", "test-api-key");
       reloadEnv();
       const token = await createTestCliToken(user.userId);
 
-      // Derive org slug from user context - setupUser creates org-{suffix}
-      const suffix = user.userId.replace("test-user-", "");
-      const orgSlug = `org-${suffix}`;
-
       const response = await POST(
-        makeRequest({ group: `${orgSlug}/default` }, `Bearer ${token}`),
+        makeRequest({ group: "vm0/production" }, `Bearer ${token}`),
       );
       const data = await response.json();
 

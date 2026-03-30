@@ -6,15 +6,16 @@
  * Dropbox is a cloud file storage platform.
  * Uses Bearer token authentication (OAuth).
  * Two base URLs: api.dropboxapi.com (API) and content.dropboxapi.com (file content).
- * Token format: OAuth access token, opaque string.
+ * Token format: short-lived access token, prefix "sl." + ~130 alphanumeric chars.
+ * Three base URLs: api, content, and notify.
  */
 
 import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://www.dropbox.com/developers/reference/auth-types";
-// OAuth token; using generic placeholder
+// Format: sl. + ~130 alphanumeric chars
 const PLACEHOLDER_VALUE =
-  "sl.vm0placeholder000000000000000000000000000000000000000000000000a";
+  "sl.Vm0PlaceHolder000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a";
 
 function generateTypeScript(): string {
   const lines: string[] = [
@@ -44,6 +45,15 @@ function generateTypeScript(): string {
     "    },",
     "    {",
     '      base: "https://content.dropboxapi.com",',
+    "      auth: {",
+    "        headers: {",
+    '          Authorization: "Bearer ${{ secrets.DROPBOX_TOKEN }}",',
+    "        },",
+    "      },",
+    "      permissions: [],",
+    "    },",
+    "    {",
+    '      base: "https://notify.dropboxapi.com",',
     "      auth: {",
     "        headers: {",
     '          Authorization: "Bearer ${{ secrets.DROPBOX_TOKEN }}",',

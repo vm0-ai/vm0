@@ -651,7 +651,7 @@ describe("createRun()", () => {
       expect(result.status).toBe("pending");
     });
 
-    it("should mark run as failed when runner group org validation fails", async () => {
+    it("should mark run as failed when runner group is not vm0/*", async () => {
       vi.stubEnv("RUNNER_DEFAULT_GROUP", "nonexistent-org/default");
       reloadEnv();
 
@@ -675,7 +675,7 @@ describe("createRun()", () => {
       const run = await findTestRunRecord(runId);
       expect(run).toBeDefined();
       expect(run!.status).toBe("failed");
-      expect(run!.error).toMatch(/nonexistent-org/);
+      expect(run!.error).toMatch(/vm0/);
     });
   });
 

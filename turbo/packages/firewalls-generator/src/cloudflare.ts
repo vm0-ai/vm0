@@ -4,16 +4,15 @@
  * Data source: https://developers.cloudflare.com/fundamentals/api/how-to/make-api-calls/
  *
  * Cloudflare uses Bearer token authentication via Authorization header.
- * Token format (gitleaks: cloudflare-api-key): [a-z0-9_-]{40}
+ * Token format (gitleaks: cloudflare-api-key): [A-Za-z0-9_-]{40}
  */
 
 import { writeOutput } from "./codegen";
 
 const DOCS_URL =
   "https://developers.cloudflare.com/fundamentals/api/how-to/make-api-calls/";
-// Format: [a-z0-9_-]{40} (gitleaks: cloudflare-api-key)
-// Lowercase only, cannot include Vm0PlaceHolder
-const PLACEHOLDER_VALUE = "vm0placeholder0000000000000000000000000a";
+// Format: [A-Za-z0-9_-]{40} (gitleaks: cloudflare-api-key)
+const PLACEHOLDER_VALUE = "Vm0PlaceHolder000000000000000000000000aB";
 
 function generateTypeScript(): string {
   const lines: string[] = [

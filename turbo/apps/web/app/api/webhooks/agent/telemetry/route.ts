@@ -66,7 +66,7 @@ const router = tsr.router(webhookTelemetryContract, {
     // Telemetry data is already masked client-side in the sandbox before sending
     // No server-side masking needed - secrets values are never stored
 
-    // Ingest system log to Axiom (fire-and-forget - don't fail webhook if Axiom fails)
+    // Buffer telemetry for Axiom (all flushed at response boundary)
     if (body.systemLog) {
       const axiomDataset = getDatasetName(DATASETS.SANDBOX_TELEMETRY_SYSTEM);
       const axiomEvent = {
@@ -75,12 +75,9 @@ const router = tsr.router(webhookTelemetryContract, {
         userId: auth.userId,
         log: body.systemLog, // Already masked by client
       };
-      await ingestToAxiom(axiomDataset, [axiomEvent]).catch((err) => {
-        log.error("Axiom system log ingest failed:", err);
-      });
+      ingestToAxiom(axiomDataset, [axiomEvent]);
     }
 
-    // Ingest metrics to Axiom (fire-and-forget)
     if (body.metrics && body.metrics.length > 0) {
       const axiomDataset = getDatasetName(DATASETS.SANDBOX_TELEMETRY_METRICS);
       const axiomEvents = body.metrics.map(
@@ -102,12 +99,9 @@ const router = tsr.router(webhookTelemetryContract, {
           disk_total: metric.disk_total,
         }),
       );
-      ingestToAxiom(axiomDataset, axiomEvents).catch((err) => {
-        log.error("Axiom metrics ingest failed:", err);
-      });
+      ingestToAxiom(axiomDataset, axiomEvents);
     }
 
-    // Ingest network logs to Axiom (fire-and-forget)
     if (body.networkLogs && body.networkLogs.length > 0) {
       const axiomDataset = getDatasetName(DATASETS.SANDBOX_TELEMETRY_NETWORK);
       const axiomEvents = body.networkLogs.map(
@@ -118,9 +112,7 @@ const router = tsr.router(webhookTelemetryContract, {
           userId: auth.userId,
         }),
       );
-      ingestToAxiom(axiomDataset, axiomEvents).catch((err) => {
-        log.error("Axiom network logs ingest failed:", err);
-      });
+      ingestToAxiom(axiomDataset, axiomEvents);
     }
 
     // Record sandbox internal operations as OpenTelemetry metrics (to sandbox-metric-{env} dataset)
