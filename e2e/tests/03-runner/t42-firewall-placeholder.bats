@@ -1,10 +1,11 @@
 #!/usr/bin/env bats
 
-# Test experimental_firewalls placeholder env var injection and permission-based matching
+# Test firewall placeholder env var injection and connector auto-add
 #
-# Verifies that when experimental_firewalls is declared:
+# Verifies that:
 # 1. Placeholder env vars replace secret values in the sandbox (with custom formats)
-# 2. Proxy replaces placeholder tokens and enforces permission-based access control
+# 2. Connector auto-add provides firewalls with unrestricted access
+# 3. experimental_firewalls in compose yaml is accepted but ignored at runtime
 
 load '../../helpers/setup'
 
@@ -83,6 +84,7 @@ setup_test_connector() {
 
 @test "firewall: placeholder env vars" {
     # Connectors are set up in setup_file() to avoid parallel write races.
+    # No experimental_firewalls needed — connector auto-add provides firewalls.
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
@@ -91,11 +93,6 @@ agents:
     description: "Multi-firewall placeholder test"
     framework: claude-code
     working_dir: /home/user/workspace
-    experimental_firewalls:
-      github:
-        permissions: all
-      slack:
-        permissions: all
     environment:
       GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
       SLACK_TOKEN: \${{ secrets.SLACK_TOKEN }}
@@ -119,15 +116,16 @@ EOF
     assert_output --partial "SLACK_TOKEN=xoxb-000000000000-0000000000000-Vm0PlaceHolder0000000000"
 }
 
-@test "firewall: permission-based request matching" {
+@test "firewall: experimental_firewalls in compose is accepted but ignored" {
     # Connectors are set up in setup_file() to avoid parallel write races.
-    # Only grant repo-read — search endpoints should be blocked.
+    # experimental_firewalls is accepted in vm0.yaml for backward compat but
+    # ignored at runtime — connector auto-add provides unrestricted access.
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
 agents:
   ${AGENT_NAME}-perm:
-    description: "Permission-based request matching test"
+    description: "Compose firewalls ignored test"
     framework: claude-code
     working_dir: /home/user/workspace
     experimental_firewalls:
@@ -143,35 +141,19 @@ EOF
     run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
     assert_success
 
-    # Three checks from inside the sandbox:
-    # 1. GET /repos/vm0-ai/vm0 — matches repo-read → proxy replaces token → 200
-    # 2. GET /search/code?q=vm0 — no matching permission → mitm_addon blocks → 403
-    # This also verifies proxy token replacement (200 means the real token was used).
+    # Despite experimental_firewalls declaring only metadata:read, the connector
+    # auto-add provides unrestricted access — both endpoints should succeed.
     run $VM0_CLI run "${AGENT_NAME}-perm" \
         --artifact-name "$ARTIFACT_NAME-perm" \
-        "ALLOWED=\$(curl -s -o /dev/null -w '%{http_code}' https://api.github.com/repos/vm0-ai/vm0) && BLOCKED=\$(curl -s -o /dev/null -w '%{http_code}' https://api.github.com/search/code?q=vm0) && echo \"ALLOWED_STATUS=\$ALLOWED\" && echo \"BLOCKED_STATUS=\$BLOCKED\""
+        "REPOS=\$(curl -s -o /dev/null -w '%{http_code}' https://api.github.com/repos/vm0-ai/vm0) && SEARCH=\$(curl -s -o /dev/null -w '%{http_code}' https://api.github.com/search/code?q=vm0) && echo \"REPOS_STATUS=\$REPOS\" && echo \"SEARCH_STATUS=\$SEARCH\""
 
     echo "$output"
     assert_success
     assert_output --partial "Run completed successfully"
 
-    assert_output --partial "ALLOWED_STATUS=200"
-    assert_output --partial "BLOCKED_STATUS=403"
-
-    # Verify network logs capture firewall activity
-    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
-    [ -n "$RUN_ID" ] || {
-        echo "# Failed to extract Run ID"
-        return 1
-    }
-
-    run $VM0_CLI logs "$RUN_ID" --network --tail 100
-    assert_success
-    # ALLOW: repos endpoint matches metadata:read
-    assert_output --partial "GET    200"
-    assert_output --partial "https://api.github.com/repos/vm0-ai/vm0 [github]"
-    # DENY: search endpoint has no matching permission
-    assert_output --partial "GET    DENY https://api.github.com/search/code?q=vm0 [github]"
+    # Both requests succeed — compose-declared permissions are ignored
+    assert_output --partial "REPOS_STATUS=200"
+    assert_output --partial "SEARCH_STATUS=200"
 }
 
 @test "firewall: connector auto-adds firewall without experimental_firewalls" {
