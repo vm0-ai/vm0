@@ -212,7 +212,7 @@ const router = tsr.router(webhookStoragesCommitContract, {
     }
 
     // Verify required S3 objects exist (manifest and archive)
-    const s3Key = `${runtimeOrg.slug}/${storageType}/${storageName}/${versionId}`;
+    const s3Key = `${storage.s3Prefix}/${versionId}`;
     const manifestKey = `${s3Key}/manifest.json`;
     const archiveKey = `${s3Key}/archive.tar.gz`;
     const fileCount = files.length;

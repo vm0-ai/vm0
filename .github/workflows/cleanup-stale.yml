@@ -393,6 +393,73 @@ jobs:
           echo "Deleted: $DELETED"
           echo "Skipped: $SKIPPED"
 
+  cleanup-clerk-empty-orgs:
+    runs-on: ubuntu-latest
+    needs: cleanup-clerk-test-users
+    steps:
+      - name: Delete Clerk organizations with no members
+        env:
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          DRY_RUN: ${{ env.DRY_RUN }}
+        run: |
+          set -eu
+
+          DELETED=0
+          SKIPPED=0
+          OFFSET=0
+          LIMIT=100
+
+          # Collect all org IDs first
+          ORG_IDS=()
+          ORG_NAMES=()
+          TOTAL=$(curl -sS -X GET "https://api.clerk.com/v1/organizations?limit=1" \
+            -H "Authorization: Bearer ${CLERK_SECRET_KEY}" | jq '.total_count')
+
+          echo "Total organizations: $TOTAL"
+
+          while [ "$OFFSET" -lt "$TOTAL" ]; do
+            ORGS=$(curl -sS -X GET "https://api.clerk.com/v1/organizations?limit=${LIMIT}&offset=${OFFSET}" \
+              -H "Authorization: Bearer ${CLERK_SECRET_KEY}")
+
+            while read -r org; do
+              ORG_IDS+=("$(echo "$org" | jq -r '.id')")
+              ORG_NAMES+=("$(echo "$org" | jq -r '.name')")
+            done < <(echo "$ORGS" | jq -c '.data[]')
+
+            OFFSET=$((OFFSET + LIMIT))
+          done
+
+          echo "Fetched ${#ORG_IDS[@]} organizations, checking memberships..."
+
+          for i in "${!ORG_IDS[@]}"; do
+            ORG_ID="${ORG_IDS[$i]}"
+            ORG_NAME="${ORG_NAMES[$i]}"
+
+            MEMBER_COUNT=$(curl -sS -X GET "https://api.clerk.com/v1/organizations/${ORG_ID}/memberships?limit=1" \
+              -H "Authorization: Bearer ${CLERK_SECRET_KEY}" | jq '.total_count')
+
+            if [ "$MEMBER_COUNT" -gt 0 ]; then
+              SKIPPED=$((SKIPPED + 1))
+              continue
+            fi
+
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "[DRY-RUN] Would delete org ${ORG_ID} (${ORG_NAME})"
+            else
+              echo "Deleting org ${ORG_ID} (${ORG_NAME})"
+              if ! curl -sS -X DELETE "https://api.clerk.com/v1/organizations/${ORG_ID}" \
+                -H "Authorization: Bearer ${CLERK_SECRET_KEY}" > /dev/null; then
+                echo "::warning::Failed to delete org ${ORG_ID} (${ORG_NAME})"
+              fi
+            fi
+            DELETED=$((DELETED + 1))
+          done
+
+          echo ""
+          echo "=== Clerk Empty Org Cleanup Summary ==="
+          echo "Deleted: $DELETED"
+          echo "Skipped (has members): $SKIPPED"
+
   cleanup-git-branches:
     runs-on: ubuntu-latest
     permissions:
