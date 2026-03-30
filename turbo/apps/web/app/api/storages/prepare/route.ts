@@ -187,7 +187,7 @@ const router = tsr.router(storagesPrepareContract, {
         orgId: runtimeOrg.orgId,
         name: storageName,
         type: storageType,
-        s3Prefix: `${runtimeOrg.slug}/${storageType}/${storageName}`,
+        s3Prefix: `${runtimeOrg.orgId}/${storageType}/${storageName}`,
         size: 0,
         fileCount: 0,
       })
@@ -294,7 +294,7 @@ const router = tsr.router(storagesPrepareContract, {
     }
 
     // Generate presigned URLs for archive and manifest
-    const s3Key = `${runtimeOrg.slug}/${storageType}/${storageName}/${versionId}`;
+    const s3Key = `${storage.s3Prefix}/${versionId}`;
     const archiveKey = `${s3Key}/archive.tar.gz`;
     const manifestKey = `${s3Key}/manifest.json`;
 

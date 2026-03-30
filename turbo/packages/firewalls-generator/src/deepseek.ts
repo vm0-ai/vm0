@@ -4,14 +4,14 @@
  * Data source: https://api-docs.deepseek.com/
  *
  * DeepSeek uses Bearer token authentication via Authorization header.
- * OpenAI-compatible API. Token format: sk- + 48 alphanumeric chars.
+ * OpenAI-compatible API. Token format: sk- + 32 hex chars (35 total).
  */
 
 import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://api-docs.deepseek.com/";
-// Format: sk- + 48 alphanumeric chars (total 51)
-const PLACEHOLDER_VALUE = "sk-Vm0PlaceHolder0000000000000000000000000000000000";
+// Format: sk- + 32 hex chars (total 35)
+const PLACEHOLDER_VALUE = "sk-vm0placeholder000000000000000000";
 
 function generateTypeScript(): string {
   const lines: string[] = [

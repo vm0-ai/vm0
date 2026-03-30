@@ -10,7 +10,7 @@ export const deepseekFirewall: FirewallConfig = {
   name: "deepseek",
   description: "DeepSeek API",
   placeholders: {
-    DEEPSEEK_TOKEN: "sk-Vm0PlaceHolder0000000000000000000000000000000000",
+    DEEPSEEK_TOKEN: "sk-vm0placeholder000000000000000000",
   },
   apis: [
     {

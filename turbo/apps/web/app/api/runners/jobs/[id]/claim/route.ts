@@ -16,10 +16,7 @@ import { getRunnerAuth } from "../../../../../../src/lib/auth/runner-auth";
 import { generateSandboxToken } from "../../../../../../src/lib/auth/sandbox-token";
 import { logger } from "../../../../../../src/lib/logger";
 import { decryptSecretsMap } from "../../../../../../src/lib/crypto/secrets-encryption";
-import {
-  validateRunnerGroupOrg,
-  isOfficialRunnerGroup,
-} from "../../../../../../src/lib/org/org-service";
+import { isOfficialRunnerGroup } from "../../../../../../src/lib/org/org-service";
 import { recordSandboxOperation } from "../../../../../../src/lib/metrics";
 
 const log = logger("api:runners:jobs:claim");
@@ -83,10 +80,11 @@ const router = tsr.router(runnersJobClaimContract, {
         return createErrorResponse("FORBIDDEN", "Job does not belong to user");
       }
 
-      try {
-        await validateRunnerGroupOrg(auth.userId, jobWithRun.job.runnerGroup);
-      } catch {
-        return createErrorResponse("FORBIDDEN", "Access denied");
+      if (!isOfficialRunnerGroup(jobWithRun.job.runnerGroup)) {
+        return createErrorResponse(
+          "FORBIDDEN",
+          "Only vm0/* runner groups are supported",
+        );
       }
     }
 

@@ -11,7 +11,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://docs.firecrawl.dev/api-reference/introduction";
 // Format: fc- + 32 alphanumeric chars (UUID without dashes)
-const PLACEHOLDER_VALUE = "fc-Vm0PlaceHolder00000000000000000a";
+const PLACEHOLDER_VALUE = "fc-vm0p1aceh01der000000000000000000";
 
 function generateTypeScript(): string {
   const lines: string[] = [

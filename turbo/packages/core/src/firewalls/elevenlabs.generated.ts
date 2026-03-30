@@ -10,7 +10,7 @@ export const elevenlabsFirewall: FirewallConfig = {
   name: "elevenlabs",
   description: "ElevenLabs API",
   placeholders: {
-    ELEVENLABS_TOKEN: "Vm0PlaceHolder00000000000000000a",
+    ELEVENLABS_TOKEN: "vm0p1aceh01der000000000000000000",
   },
   apis: [
     {
