@@ -110,6 +110,74 @@ export function extractSecretNamesFromApis(
 }
 
 /**
+ * Regex pattern matching `${{ vars.XXX }}` references in base URL templates.
+ */
+const BASE_URL_VARS_PATTERN = /\$\{\{\s*vars\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/;
+const BASE_URL_VARS_PATTERN_G = new RegExp(BASE_URL_VARS_PATTERN.source, "g");
+
+/**
+ * Check if a base URL contains `${{ vars.X }}` template references.
+ */
+export function hasBaseUrlVars(base: string): boolean {
+  return BASE_URL_VARS_PATTERN.test(base);
+}
+
+/**
+ * Resolve `${{ vars.X }}` templates in firewall base URLs.
+ * Returns a new array with all base URL templates replaced by actual values.
+ * Throws if a referenced variable is not provided.
+ */
+export function resolveFirewallBaseUrlVars(
+  firewalls: ExperimentalFirewalls,
+  vars: Record<string, string> | undefined,
+): ExperimentalFirewalls {
+  return firewalls.map((fw) => ({
+    ...fw,
+    apis: fw.apis.map((api) => {
+      if (!hasBaseUrlVars(api.base)) return api;
+      const resolved = api.base.replace(
+        BASE_URL_VARS_PATTERN_G,
+        (_match, name: string) => {
+          const value = vars?.[name];
+          if (!value) {
+            throw new Error(
+              `Firewall "${fw.name}" base URL requires variable "${name}" but it was not provided`,
+            );
+          }
+          return value;
+        },
+      );
+      validateBaseUrl(resolved, fw.name);
+      return { ...api, base: resolved };
+    }),
+  }));
+}
+
+export function validateBaseUrl(base: string, serviceName: string): void {
+  // Template base URLs are validated after variable resolution at compose time.
+  if (hasBaseUrlVars(base)) return;
+
+  let url: URL;
+  try {
+    url = new URL(base);
+  } catch {
+    throw new Error(
+      `Invalid base URL "${base}" in firewall "${serviceName}": not a valid URL`,
+    );
+  }
+  if (url.search) {
+    throw new Error(
+      `Invalid base URL "${base}" in firewall "${serviceName}": must not contain query string`,
+    );
+  }
+  if (url.hash) {
+    throw new Error(
+      `Invalid base URL "${base}" in firewall "${serviceName}": must not contain fragment`,
+    );
+  }
+}
+
+/**
  * Expanded firewall config stored in compose content.
  * Resolved from firewall name + FirewallConfig at compose time, then frozen.
  *

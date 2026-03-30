@@ -9,10 +9,10 @@ import { createRunLoop, type PagedRunEvents } from "./polling.ts";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
 import {
   navigateToChat$,
-  zeroChatAgentId$,
-  setZeroChatAgent$,
   chatThreadId$,
+  sidebarChatAgentId$,
 } from "./zero-nav.ts";
+import { currentAgentId$ } from "./agent.ts";
 import {
   RUN_ERROR_GUIDANCE,
   zeroRunsMainContract,
@@ -318,11 +318,17 @@ export const fetchZeroSessionList$ = command(
   },
 );
 
+// NOTE: Intentional divergence from sendZeroChatMessage$.
+// The thread list in the sidebar must reflect the *last visited* agent (sidebarChatAgentId$),
+// which persists across non-chat pages (e.g. /activity) so the user always sees the
+// threads for the agent they were talking to.  sendZeroChatMessage$ re-derives the agent
+// from the URL / thread at send time because it needs to know the authoritative agent
+// for the run being created, not what the sidebar is showing.
 const chatThreadListResponse$ = computed(async (get) => {
   get(reloadChatThreadList$);
-  const chatAgentId = get(zeroChatAgentId$);
+  const sidebarAgentId = get(sidebarChatAgentId$);
   const composeId =
-    chatAgentId ?? (await get(zeroOnboardingStatus$)).defaultAgentId;
+    sidebarAgentId ?? (await get(zeroOnboardingStatus$)).defaultAgentId;
   if (!composeId) {
     return [];
   }
@@ -510,7 +516,7 @@ interface ChatSessionSnapshotData {
  * Fetches raw thread/session data from the API whenever the URL thread ID changes.
  * Tries the new chat-thread endpoint first, falls back to the legacy session endpoint.
  */
-const currentChatThread$ = computed(
+export const currentChatThread$ = computed(
   async (get): Promise<ChatThreadData | null> => {
     const threadId = get(chatThreadId$);
     if (!threadId) {
@@ -755,49 +761,6 @@ export const cancelZeroAttachmentUpload$ = command(
   },
 );
 
-// ---------------------------------------------------------------------------
-// Commands: session list management
-// ---------------------------------------------------------------------------
-
-/**
- * Single entry point for changing the active agent.
- * Sets the agent identity immediately and kicks off a background session list
- * refresh so the caller is not blocked waiting for the network request.
- */
-export const switchActiveAgent$ = command(
-  ({ set }, agentId: string | null, _signal?: AbortSignal) => {
-    set(setZeroChatAgent$, agentId);
-    set(reloadChatThreadList$, (n) => n + 1);
-  },
-);
-
-/** Resolve which agent to activate based on the thread's agentComposeId. */
-const syncAgentForThread$ = command(
-  async (
-    { get, set },
-    agentComposeId: string | undefined,
-    signal: AbortSignal,
-  ) => {
-    if (agentComposeId) {
-      const currentAgentId = get(zeroChatAgentId$);
-      const status = await get(zeroOnboardingStatus$);
-      signal.throwIfAborted();
-      const isDefault = agentComposeId === status.defaultAgentId;
-      const newAgentId = isDefault ? null : agentComposeId;
-      if (newAgentId !== currentAgentId) {
-        set(switchActiveAgent$, newAgentId, signal);
-      } else {
-        // Same agent — refresh list in background to pick up any new/updated threads.
-        set(reloadChatThreadList$, (n) => n + 1);
-      }
-    } else if (get(zeroChatAgentId$) !== null) {
-      set(switchActiveAgent$, null, signal);
-    } else {
-      set(reloadChatThreadList$, (n) => n + 1);
-    }
-  },
-);
-
 /**
  * Load session data from the snapshot computed and populate state.
  * The snapshot auto-fetches when URL changes — this command reads the result,
@@ -816,9 +779,6 @@ export const loadSessionFromSnapshot$ = command(
     if (sessionId) {
       set(internalSessionId$, sessionId);
     }
-
-    await set(syncAgentForThread$, snapshot.agentId, signal);
-    signal.throwIfAborted();
 
     // Resume polling for active runs: copy active run messages to local
     // and start their polling loops via beginLoop$.
@@ -872,14 +832,14 @@ export const startNewZeroSession$ = command(({ set }) => {
 // Commands: create new chat session (from sidebar "New chat" button)
 // ---------------------------------------------------------------------------
 
-const creatingNewSession$ = state(false);
-export const zeroCreatingNewSession$ = computed((get) =>
-  get(creatingNewSession$),
-);
+const internalCreatingPromise$ = state<Promise<void> | undefined>(undefined);
 
-export const createNewChatSession$ = command(
+export const creatingNewSession$ = computed(async (get) => {
+  await get(internalCreatingPromise$);
+});
+
+const internalCreateNewChatSession$ = command(
   async ({ get, set }, agentComposeId: string | null, _signal: AbortSignal) => {
-    set(creatingNewSession$, true);
     try {
       set(startNewZeroSession$);
 
@@ -899,9 +859,15 @@ export const createNewChatSession$ = command(
       throwIfAbort(error);
       L.error("Failed to create new chat session:", error);
       toast.error("Failed to create new chat session");
-    } finally {
-      set(creatingNewSession$, false);
     }
+  },
+);
+
+export const createNewChatSession$ = command(
+  ({ set }, agentComposeId: string | null, signal: AbortSignal) => {
+    const promise = set(internalCreateNewChatSession$, agentComposeId, signal);
+    set(internalCreatingPromise$, promise);
+    return promise;
   },
 );
 
@@ -1068,7 +1034,11 @@ export const sendZeroChatMessage$ = command(
     options: { modelProvider?: string } | undefined,
     signal: AbortSignal,
   ) => {
-    const composeId = get(zeroChatAgentId$) ?? (await get(defaultAgentId$));
+    // Derive effective agent: URL agent (talk page), thread agent (chat page), or default
+    const pathAgentId = get(currentAgentId$);
+    const thread = pathAgentId === null ? await get(currentChatThread$) : null;
+    const composeId =
+      pathAgentId ?? thread?.agentId ?? (await get(defaultAgentId$));
     signal.throwIfAborted();
     if (!composeId || !prompt.trim()) {
       return;

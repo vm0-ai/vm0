@@ -14,11 +14,13 @@ import {
   IconCreditCard,
   IconCoins,
   IconFileInvoice,
+  IconWorldWww,
 } from "@tabler/icons-react";
 
 import { OrgGeneralTab } from "./org-general-tab.tsx";
 import { OrgProvidersTab } from "./org-providers-tab.tsx";
 import { OrgMembersTab } from "./org-members-tab.tsx";
+import { OrgDomainsTab } from "./org-domains-tab.tsx";
 import { OrgBillingTab } from "./org-billing-tab.tsx";
 import { OrgUsageTab } from "./org-usage-tab.tsx";
 import { OrgInvoicesTab } from "./org-invoices-tab.tsx";
@@ -50,6 +52,10 @@ const TAB_META = {
   members: {
     title: "Members",
     description: "Manage who has access to this workspace.",
+  },
+  domains: {
+    title: "Domains",
+    description: "Manage verified domains for your workspace.",
   },
   billing: {
     title: "Billing",
@@ -88,6 +94,11 @@ const CONFIGURATION_GROUP = {
       label: "Model Providers",
       icon: IconCpu as NavIcon,
     },
+    {
+      id: "domains",
+      label: "Domains",
+      icon: IconWorldWww as NavIcon,
+    },
   ],
 } as const satisfies SidebarGroup;
 
@@ -106,6 +117,7 @@ const TAB_COMPONENTS = {
   general: () => <OrgGeneralTab />,
   providers: () => <OrgProvidersTab />,
   members: () => <OrgMembersTab />,
+  domains: () => <OrgDomainsTab />,
   billing: () => <OrgBillingTab />,
   usage: () => <OrgUsageTab />,
   invoices: () => <OrgInvoicesTab />,

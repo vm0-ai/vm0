@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { zeroTalkAgentId$ } from "./zero-nav.ts";
+import { currentAgentId$ } from "./agent.ts";
 
 function readModelPreference(key: string): string {
   if (typeof window === "undefined") {
@@ -40,7 +40,7 @@ export const setSelectedModel$ = command(({ set }, value: string) => {
  * prevAgentId + queueMicrotask pattern entirely.
  */
 export const syncModelPreference$ = command(({ get, set }) => {
-  const agentId = get(zeroTalkAgentId$);
+  const agentId = get(currentAgentId$);
   const key = modelStorageKey(agentId);
   set(internalSelectedModel$, readModelPreference(key));
 });
@@ -50,7 +50,7 @@ export const syncModelPreference$ = command(({ get, set }) => {
  * Called before sending a message.
  */
 export const persistModelPreference$ = command(({ get }) => {
-  const agentId = get(zeroTalkAgentId$);
+  const agentId = get(currentAgentId$);
   const key = modelStorageKey(agentId);
   const value = get(internalSelectedModel$);
   writeModelPreference(key, value);

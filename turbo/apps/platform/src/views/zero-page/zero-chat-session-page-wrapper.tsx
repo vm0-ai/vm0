@@ -1,8 +1,8 @@
-import { useGet, useSet, useLastLoadable } from "ccstate-react";
+import { useSet, useLastLoadable } from "ccstate-react";
 import { SidebarLayout } from "./sidebar-layout.tsx";
 import { ZeroSessionChatPage } from "./zero-session-chat-page.tsx";
 import { useAgentAvatar } from "./zero-sidebar.tsx";
-import { zeroChatAgentId$ } from "../../signals/zero-page/zero-nav.ts";
+import { zeroChatAgentId$ } from "../../signals/zero-page/zero-active-agent.ts";
 import { zeroSubagents$ } from "../../signals/zero-page/zero-agents.ts";
 import {
   agentDisplayName$,
@@ -11,7 +11,9 @@ import {
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 
 export function ZeroChatSessionPageWrapper() {
-  const currentChatAgentId = useGet(zeroChatAgentId$);
+  const chatAgentLoadable = useLastLoadable(zeroChatAgentId$);
+  const currentChatAgentId =
+    chatAgentLoadable.state === "hasData" ? chatAgentLoadable.data : null;
   const subagentsLoadable = useLastLoadable(zeroSubagents$);
   const subagents =
     subagentsLoadable.state === "hasData" ? subagentsLoadable.data : [];

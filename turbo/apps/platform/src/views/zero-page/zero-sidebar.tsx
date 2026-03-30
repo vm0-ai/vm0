@@ -47,12 +47,12 @@ import { detach, Reason } from "../../signals/utils.ts";
 import {
   zeroActiveId$,
   chatThreadId$,
-  zeroChatAgentId$,
   zeroSidebarCollapsed$,
   setZeroSidebarCollapsed$,
   handleZeroNavSelect$,
   handleZeroAccountAction$,
   navigateToChat$,
+  sidebarChatAgentId$,
 } from "../../signals/zero-page/zero-nav.ts";
 import {
   agentDisplayName$,
@@ -63,7 +63,7 @@ import { reloadAgents$ } from "../../signals/zero-page/agents-list.ts";
 import {
   zeroSessionList$,
   createNewChatSession$,
-  zeroCreatingNewSession$,
+  creatingNewSession$,
 } from "../../signals/zero-page/zero-chat.ts";
 import {
   pinnedAgentIds$,
@@ -821,6 +821,69 @@ function TalkToSection({
   );
 }
 
+/** Overlay scroll area: hides native scrollbar, renders a custom thin indicator. */
+function OverlayScrollArea({
+  className,
+  children,
+  onScroll,
+  style,
+}: {
+  className?: string;
+  children: ReactNode;
+  onScroll?: (e: React.UIEvent<HTMLDivElement>) => void;
+  style?: React.CSSProperties;
+}) {
+  const [thumbStyle, setThumbStyle] = useState<{
+    top: number;
+    height: number;
+    visible: boolean;
+  }>({ top: 0, height: 0, visible: false });
+  const [hovering, setHovering] = useState(false);
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    onScroll?.(e);
+    const el = e.currentTarget;
+    const { scrollTop, scrollHeight, clientHeight } = el;
+    if (scrollHeight <= clientHeight) {
+      setThumbStyle((prev) => ({ ...prev, visible: false }));
+      return;
+    }
+    const ratio = clientHeight / scrollHeight;
+    const thumbH = Math.max(ratio * clientHeight, 24);
+    const maxTop = clientHeight - thumbH;
+    const top = (scrollTop / (scrollHeight - clientHeight)) * maxTop;
+    setThumbStyle({ top, height: thumbH, visible: true });
+  };
+
+  const showThumb = thumbStyle.visible && hovering;
+
+  return (
+    <div
+      className={`relative ${className ?? ""}`}
+      onMouseEnter={() => setHovering(true)}
+      onMouseLeave={() => setHovering(false)}
+    >
+      <div
+        className="h-full overflow-y-auto overflow-x-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        style={style}
+        onScroll={handleScroll}
+      >
+        {children}
+      </div>
+      <div
+        className="absolute -right-2 top-0 bottom-0 w-[6px] pointer-events-none"
+        aria-hidden="true"
+        style={{ opacity: showThumb ? 1 : 0, transition: "opacity 150ms" }}
+      >
+        <div
+          className="absolute right-0 w-[5px] rounded-full bg-foreground/15"
+          style={{ top: thumbStyle.top, height: thumbStyle.height }}
+        />
+      </div>
+    </div>
+  );
+}
+
 function nextTierInfo(tier: string): { label: string; img: string } | null {
   if (tier === "free") {
     return { label: "Pro", img: planProImg };
@@ -904,7 +967,7 @@ export function ZeroSidebar() {
           displayName: a.displayName,
         }))
       : [];
-  const currentChatAgentId = useGet(zeroChatAgentId$);
+  const currentChatAgentId = useGet(sidebarChatAgentId$);
   const collapsed = useGet(zeroSidebarCollapsed$);
   const setSidebarCollapsed = useSet(setZeroSidebarCollapsed$);
   const onCollapse = () => setSidebarCollapsed(!collapsed);
@@ -926,7 +989,8 @@ export function ZeroSidebar() {
         : "Failed to load chats"
       : null;
   const createNewChat = useSet(createNewChatSession$);
-  const creatingNewSession = useGet(zeroCreatingNewSession$);
+  const creatingNewSessionLoadable = useLoadable(creatingNewSession$);
+  const creatingNewSession = creatingNewSessionLoadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
   const onNewChat = (agentId: string | null) => {
     detach(createNewChat(agentId, pageSignal), Reason.DomCallback);
@@ -1137,9 +1201,9 @@ export function ZeroSidebar() {
           </div>
 
           {/* Scrollable: Pinned + Recent chats */}
-          <div
+          <OverlayScrollArea
+            className="flex-1 min-h-0 -mx-2 px-2 mt-2 pt-2"
             onScroll={(e) => setIsScrolled(e.currentTarget.scrollTop > 0)}
-            className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden -mx-2 px-2 mt-2 pt-2"
             style={{
               boxShadow: isScrolled
                 ? "0 -1px 0 0 hsl(var(--border) / 0.4)"
@@ -1175,7 +1239,7 @@ export function ZeroSidebar() {
               onNewChat={onNewChat}
               newChatDisabled={creatingNewSession}
             />
-          </div>
+          </OverlayScrollArea>
         </nav>
 
         {/* Upgrade card */}

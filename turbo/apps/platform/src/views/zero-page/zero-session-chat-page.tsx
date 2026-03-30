@@ -36,7 +36,7 @@ import {
   setLightboxUrl$ as setAttachmentLightboxUrl$,
 } from "../../signals/zero-page/zero-attachment-chips.ts";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
-import { zeroChatAgentId$ } from "../../signals/zero-page/zero-nav.ts";
+import { zeroChatAgentId$ } from "../../signals/zero-page/zero-active-agent.ts";
 import {
   pinnedAgentIds$,
   updatePinnedAgentIds$,
@@ -106,7 +106,9 @@ export function ZeroSessionChatPage({
   const pageSignal = useGet(pageSignal$);
 
   // Pin pill
-  const currentChatAgentId = useGet(zeroChatAgentId$);
+  const chatAgentLoadable = useLastLoadable(zeroChatAgentId$);
+  const currentChatAgentId =
+    chatAgentLoadable.state === "hasData" ? chatAgentLoadable.data : null;
   const pinnedLoadable = useLastLoadable(pinnedAgentIds$);
   const pinnedIds =
     pinnedLoadable.state === "hasData" ? pinnedLoadable.data : [];

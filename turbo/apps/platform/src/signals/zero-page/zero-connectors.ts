@@ -5,7 +5,7 @@ import { reloadOnboardingStatus$ } from "./zero-onboarding.ts";
 import { throwIfAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { zeroTalkAgentId$ } from "./zero-nav.ts";
+import { currentAgentId$ } from "./agent.ts";
 import { defaultAgentId$ } from "./zero-agent-name.ts";
 
 const L = logger("ZeroConnectors");
@@ -15,7 +15,7 @@ const L = logger("ZeroConnectors");
 // ---------------------------------------------------------------------------
 
 const zeroAgentId$ = computed(async (get) => {
-  const agentId = get(zeroTalkAgentId$);
+  const agentId = get(currentAgentId$);
   if (agentId !== null) {
     return agentId;
   }

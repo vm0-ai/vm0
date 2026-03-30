@@ -3,11 +3,12 @@ import {
   zeroOrgMembersContract,
   type OrgMember,
   type OrgPendingInvitation,
+  type OrgMembershipRequest,
 } from "@vm0/core";
 import { org$ } from "../org";
 import { zeroClient$ } from "../api-client";
 
-export type { OrgMember, OrgPendingInvitation };
+export type { OrgMember, OrgPendingInvitation, OrgMembershipRequest };
 
 const orgMembersVersion$ = state(0);
 
@@ -37,6 +38,11 @@ export const orgMembers$ = computed(async (get) => {
 export const orgPendingInvitations$ = computed(async (get) => {
   const response = await get(orgMembersResponse$);
   return response?.pendingInvitations ?? [];
+});
+
+export const orgMembershipRequests$ = computed(async (get) => {
+  const response = await get(orgMembersResponse$);
+  return response?.membershipRequests ?? [];
 });
 
 export const refreshOrgMembers$ = command(({ get, set }) => {

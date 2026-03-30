@@ -1,4 +1,8 @@
-import { type FirewallConfig, type ExpandedFirewallConfig } from "./firewalls";
+import {
+  type FirewallConfig,
+  type ExpandedFirewallConfig,
+  validateBaseUrl,
+} from "./firewalls";
 import { fetchFirewallConfig, type FetchFn } from "../firewall-loader";
 
 export interface FirewallSelection {
@@ -68,27 +72,6 @@ export function validateRule(
         );
       }
     }
-  }
-}
-
-export function validateBaseUrl(base: string, serviceName: string): void {
-  let url: URL;
-  try {
-    url = new URL(base);
-  } catch {
-    throw new Error(
-      `Invalid base URL "${base}" in firewall "${serviceName}": not a valid URL`,
-    );
-  }
-  if (url.search) {
-    throw new Error(
-      `Invalid base URL "${base}" in firewall "${serviceName}": must not contain query string`,
-    );
-  }
-  if (url.hash) {
-    throw new Error(
-      `Invalid base URL "${base}" in firewall "${serviceName}": must not contain fragment`,
-    );
   }
 }
 

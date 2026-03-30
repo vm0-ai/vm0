@@ -47,41 +47,6 @@ export const chatThreadId$ = computed((get): string | null => {
 });
 
 /**
- * Agent ID extracted from `/talk/:agentId`.
- * Returns null when chatting with the default agent.
- */
-export const zeroTalkAgentId$ = computed((get): string | null => {
-  const params = get(pathParams$);
-  const agentId = params?.agentId;
-  return typeof agentId === "string" ? agentId : null;
-});
-
-/**
- * In-memory state tracking the current chat agent ID.
- * Null means default agent. Set when navigating to a chat route.
- */
-const internalChatAgentId$ = state<string | null>(null);
-
-/**
- * Currently selected chat agent ID (in-memory).
- * Returns null when chatting with the default/main agent.
- */
-export const zeroChatAgentId$ = computed((get): string | null => {
-  return get(internalChatAgentId$);
-});
-
-const internalTalkAgentResolved$ = state(false);
-
-/**
- * Set the chat agent ID (in-memory).
- * Pass null to clear (chat with default agent).
- */
-export const setZeroChatAgent$ = command(({ set }, agentId: string | null) => {
-  set(internalChatAgentId$, agentId);
-  set(internalTalkAgentResolved$, true);
-});
-
-/**
  * Navigate to a specific chat session — `/chat/:chatThreadId`.
  *
  * Always performs a full route navigation so that `loadRoute$` fires and
@@ -96,8 +61,29 @@ export const navigateToChat$ = command(({ set }, chatThreadId: string) => {
 });
 
 // ---------------------------------------------------------------------------
-// Shell UI state — about page, sidebar
+// Shell UI state — sidebar chat agent, about page, sidebar collapse
 // ---------------------------------------------------------------------------
+
+/**
+ * In-memory state tracking which agent the sidebar displays.
+ * Written by page setup commands when entering /talk/:agentId or /chat/:chatThreadId.
+ * Persists across navigations to non-chat pages (e.g. /activity) so the sidebar
+ * "remembers" the last visited agent.
+ * Null means default agent.
+ */
+const internalSidebarChatAgentId$ = state<string | null>(null);
+
+/** Currently displayed sidebar chat agent ID. Null = default agent. */
+export const sidebarChatAgentId$ = computed((get): string | null =>
+  get(internalSidebarChatAgentId$),
+);
+
+/** Set the sidebar chat agent ID. Called by page setup commands. */
+export const setSidebarChatAgent$ = command(
+  ({ set }, agentId: string | null) => {
+    set(internalSidebarChatAgentId$, agentId);
+  },
+);
 
 const internalShowAboutPage$ = state(false);
 

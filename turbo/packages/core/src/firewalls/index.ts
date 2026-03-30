@@ -33,6 +33,7 @@ import { deepseekFirewall } from "./deepseek.generated";
 import { deelFirewall } from "./deel.generated";
 import { devtoFirewall } from "./devto.generated";
 import { discordFirewall } from "./discord.generated";
+import { docusignFirewall } from "./docusign.generated";
 import { dropboxFirewall } from "./dropbox.generated";
 import { elevenlabsFirewall } from "./elevenlabs.generated";
 import { exploriumFirewall } from "./explorium.generated";
@@ -60,10 +61,12 @@ import { instantlyFirewall } from "./instantly.generated";
 import { intercomFirewall } from "./intercom.generated";
 import { intervalsIcuFirewall } from "./intervals-icu.generated";
 import { jotformFirewall } from "./jotform.generated";
+import { kommoFirewall } from "./kommo.generated";
 import { larkFirewall } from "./lark.generated";
 import { lineFirewall } from "./line.generated";
 import { linearFirewall } from "./linear.generated";
 import { loopsFirewall } from "./loops.generated";
+import { makeFirewall } from "./make.generated";
 import { mailsacFirewall } from "./mailsac.generated";
 import { mercuryFirewall } from "./mercury.generated";
 import { metaAdsFirewall } from "./meta-ads.generated";
@@ -113,6 +116,7 @@ import { xeroFirewall } from "./xero.generated";
 import { youtubeFirewall } from "./youtube.generated";
 import { zapierFirewall } from "./zapier.generated";
 import { zapsignFirewall } from "./zapsign.generated";
+import { zendeskFirewall } from "./zendesk.generated";
 import { zeptomailFirewall } from "./zeptomail.generated";
 
 const CONNECTOR_FIREWALLS = {
@@ -140,6 +144,7 @@ const CONNECTOR_FIREWALLS = {
   deepseek: deepseekFirewall,
   devto: devtoFirewall,
   discord: discordFirewall,
+  docusign: docusignFirewall,
   dropbox: dropboxFirewall,
   elevenlabs: elevenlabsFirewall,
   explorium: exploriumFirewall,
@@ -167,10 +172,12 @@ const CONNECTOR_FIREWALLS = {
   intercom: intercomFirewall,
   "intervals-icu": intervalsIcuFirewall,
   jotform: jotformFirewall,
+  kommo: kommoFirewall,
   lark: larkFirewall,
   line: lineFirewall,
   linear: linearFirewall,
   loops: loopsFirewall,
+  make: makeFirewall,
   mailsac: mailsacFirewall,
   mercury: mercuryFirewall,
   "meta-ads": metaAdsFirewall,
@@ -220,6 +227,7 @@ const CONNECTOR_FIREWALLS = {
   youtube: youtubeFirewall,
   zapier: zapierFirewall,
   zapsign: zapsignFirewall,
+  zendesk: zendeskFirewall,
   zeptomail: zeptomailFirewall,
 } as const satisfies Partial<Record<ConnectorType, FirewallConfig>>;
 
@@ -293,18 +301,14 @@ export type NonFirewallConnectorType =
   | "chatwoot" // self-hosted
   | "cloudinary" // account-specific subdomain
   | "dify" // self-hosted
-  | "docusign" // region-specific
   | "jira" // {domain}.atlassian.net (API token auth)
-  | "kommo" // {subdomain}.kommo.com
   | "mailchimp" // datacenter-specific (usX.api.mailchimp.com)
-  | "make" // regional (eu1/eu2/us1/us2.make.com)
   | "metabase" // self-hosted
   | "minio" // self-hosted
   | "qdrant" // self-hosted / custom cluster URL
   | "salesforce" // instance-specific (*.my.salesforce.com)
   | "twenty" // self-hosted
   | "wrike" // regional ({datacenter}.wrike.com)
-  | "zendesk" // {subdomain}.zendesk.com
   // Basic auth — proxy cannot do base64 encoding at runtime
   | "htmlcsstoimage" // HTTP Basic Auth (user-id + api-key)
   | "streak" // HTTP Basic Auth (API key as username)
@@ -325,8 +329,10 @@ export type NonFirewallConnectorType =
  * FirewallConnectorType or NonFirewallConnectorType.
  */
 type ValidateNonFirewall<
-  T extends Exclude<ConnectorType, FirewallConnectorType> =
-    NonFirewallConnectorType,
+  T extends Exclude<
+    ConnectorType,
+    FirewallConnectorType
+  > = NonFirewallConnectorType,
 > = T;
 type ValidateExhaustive<
   T extends never = Exclude<

@@ -22,6 +22,7 @@ import {
   type FirewallPolicies,
   getConnectorFirewall,
   isFirewallConnectorType,
+  resolveFirewallBaseUrlVars,
 } from "@vm0/core";
 import { agentComposeVersions } from "../../db/schema/agent-compose";
 import { badRequest, notFound, providerIncompatible } from "../errors";
@@ -724,6 +725,7 @@ async function resolveSecretsAndEnvironment(
   modelProviderFirewall: ExpandedFirewallConfig | undefined;
   selectedModel: string | undefined;
   connectorFirewalls: ExpandedFirewallConfig[];
+  mergedVars: Record<string, string> | undefined;
 }> {
   // Model provider secret injection
   const hasExplicitModelProviderConfig = MODEL_PROVIDER_ENV_VARS.some(
@@ -825,6 +827,7 @@ async function resolveSecretsAndEnvironment(
     modelProviderFirewall,
     selectedModel: modelProviderResult.selectedModel,
     connectorFirewalls: connectorFirewallConfigs,
+    mergedVars,
   };
 }
 
@@ -955,6 +958,7 @@ function mergeFirewalls(
   modelProviderFirewall: ExperimentalFirewalls[number] | null | undefined,
   connectorFirewalls: ExpandedFirewallConfig[],
   firewallPolicies?: FirewallPolicies,
+  vars?: Record<string, string>,
 ): ExperimentalFirewalls | undefined {
   const autoFirewalls = modelProviderFirewall ? [modelProviderFirewall] : [];
   const policyFirewalls = applyConnectorPolicies(
@@ -962,7 +966,8 @@ function mergeFirewalls(
     firewallPolicies,
   );
   const allFirewalls = [...autoFirewalls, ...policyFirewalls];
-  return allFirewalls.length > 0 ? allFirewalls : undefined;
+  if (allFirewalls.length === 0) return undefined;
+  return resolveFirewallBaseUrlVars(allFirewalls, vars);
 }
 
 /** Unrestricted permission — allows all endpoints through the proxy. */
@@ -1135,6 +1140,7 @@ export async function buildExecutionContext(
     modelProviderFirewall,
     selectedModel,
     connectorFirewalls,
+    mergedVars,
   } = secretsResult;
   const userTimezone = userPrefs?.timezone ?? undefined;
 
@@ -1163,6 +1169,7 @@ export async function buildExecutionContext(
     modelProviderFirewall,
     connectorFirewalls,
     params.firewallPolicies,
+    mergedVars,
   );
 
   // Disallowed tools from run-time params (not compose)

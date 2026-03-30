@@ -30,6 +30,7 @@
     "generate:deel": "tsx src/index.ts deel",
     "generate:devto": "tsx src/index.ts devto",
     "generate:discord": "tsx src/index.ts discord",
+    "generate:docusign": "tsx src/index.ts docusign",
     "generate:dropbox": "tsx src/index.ts dropbox",
     "generate:elevenlabs": "tsx src/index.ts elevenlabs",
     "generate:explorium": "tsx src/index.ts explorium",
@@ -57,10 +58,12 @@
     "generate:intercom": "tsx src/index.ts intercom",
     "generate:intervals-icu": "tsx src/index.ts intervals-icu",
     "generate:jotform": "tsx src/index.ts jotform",
+    "generate:kommo": "tsx src/index.ts kommo",
     "generate:lark": "tsx src/index.ts lark",
     "generate:line": "tsx src/index.ts line",
     "generate:linear": "tsx src/index.ts linear",
     "generate:loops": "tsx src/index.ts loops",
+    "generate:make": "tsx src/index.ts make",
     "generate:mailsac": "tsx src/index.ts mailsac",
     "generate:mercury": "tsx src/index.ts mercury",
     "generate:meta-ads": "tsx src/index.ts meta-ads",
@@ -110,6 +113,7 @@
     "generate:youtube": "tsx src/index.ts youtube",
     "generate:zapier": "tsx src/index.ts zapier",
     "generate:zapsign": "tsx src/index.ts zapsign",
+    "generate:zendesk": "tsx src/index.ts zendesk",
     "generate:zeptomail": "tsx src/index.ts zeptomail"
   },
   "devDependencies": {

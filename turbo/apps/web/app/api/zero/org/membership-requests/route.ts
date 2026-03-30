@@ -3,7 +3,10 @@ import {
   createSafeErrorHandler,
   tsr,
 } from "../../../../../src/lib/ts-rest-handler";
-import { zeroOrgInviteContract, createErrorResponse } from "@vm0/core";
+import {
+  zeroOrgMembershipRequestsContract,
+  createErrorResponse,
+} from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -11,17 +14,13 @@ import {
 } from "../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import {
-  inviteMember,
-  revokeInvitation,
+  acceptMembershipRequest,
+  rejectMembershipRequest,
 } from "../../../../../src/lib/org/org-member-service";
-import {
-  isBadRequest,
-  isForbidden,
-  isNotFound,
-} from "../../../../../src/lib/errors";
+import { isBadRequest, isForbidden } from "../../../../../src/lib/errors";
 
-const router = tsr.router(zeroOrgInviteContract, {
-  invite: async ({ headers, body }, { request }) => {
+const router = tsr.router(zeroOrgMembershipRequestsContract, {
+  accept: async ({ headers, body }, { request }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
@@ -30,10 +29,10 @@ const router = tsr.router(zeroOrgInviteContract, {
     try {
       const orgSlug = new URL(request.url).searchParams.get("org");
       const { org, member } = await resolveOrg(authCtx, orgSlug);
-      await inviteMember(authCtx.userId, org.orgId, member.role, body.email);
+      await acceptMembershipRequest(org.orgId, member.role, body.requestId);
       return {
         status: 200 as const,
-        body: { message: `Invitation sent to ${body.email}` },
+        body: { message: "Membership request accepted" },
       };
     } catch (error) {
       if (isBadRequest(error)) {
@@ -41,15 +40,12 @@ const router = tsr.router(zeroOrgInviteContract, {
       }
       if (isForbidden(error)) {
         return createErrorResponse("FORBIDDEN", "Access denied");
-      }
-      if (isNotFound(error)) {
-        return createErrorResponse("NOT_FOUND", "Resource not found");
       }
       throw error;
     }
   },
 
-  revoke: async ({ headers, body }, { request }) => {
+  reject: async ({ headers, body }, { request }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
@@ -58,10 +54,10 @@ const router = tsr.router(zeroOrgInviteContract, {
     try {
       const orgSlug = new URL(request.url).searchParams.get("org");
       const { org, member } = await resolveOrg(authCtx, orgSlug);
-      await revokeInvitation(org.orgId, member.role, body.invitationId);
+      await rejectMembershipRequest(org.orgId, member.role, body.requestId);
       return {
         status: 200 as const,
-        body: { message: "Invitation revoked" },
+        body: { message: "Membership request rejected" },
       };
     } catch (error) {
       if (isBadRequest(error)) {
@@ -69,17 +65,14 @@ const router = tsr.router(zeroOrgInviteContract, {
       }
       if (isForbidden(error)) {
         return createErrorResponse("FORBIDDEN", "Access denied");
-      }
-      if (isNotFound(error)) {
-        return createErrorResponse("NOT_FOUND", "Resource not found");
       }
       throw error;
     }
   },
 });
 
-const handler = createHandler(zeroOrgInviteContract, router, {
-  errorHandler: createSafeErrorHandler("zero-org-invite"),
+const handler = createHandler(zeroOrgMembershipRequestsContract, router, {
+  errorHandler: createSafeErrorHandler("zero-org-membership-requests"),
 });
 
 export { handler as POST, handler as DELETE };
