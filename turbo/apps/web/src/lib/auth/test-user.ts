@@ -1,28 +1,30 @@
 import { clerkClient } from "@clerk/nextjs/server";
 
-const TEST_USER_EMAILS = {
-  serial: "e2e+clerk_test@vm0.ai",
-  runner: "e2e_02+clerk_test@vm0.ai",
-} as const;
-
-type TestVariant = keyof typeof TEST_USER_EMAILS;
-
-export function isTestVariant(value: string): value is TestVariant {
-  return value in TEST_USER_EMAILS;
-}
+const DEFAULT_TEST_EMAIL = "dev+clerk_test@serial.dev";
 
 /**
- * Resolve the test user ID by querying Clerk Backend API for the e2e test user.
+ * Resolve a test user ID by email. If the user doesn't exist in Clerk,
+ * creates one automatically. Used by test-token, test-approve, and
+ * test-connector endpoints.
  *
- * @param variant - which test user to resolve ("serial" or "runner")
+ * @param email - the test user's email address (defaults to dev fallback)
+ * @returns the Clerk user ID
  */
 export async function resolveTestUserId(
-  variant: TestVariant = "serial",
-): Promise<string | null> {
-  const email = TEST_USER_EMAILS[variant];
+  email: string = DEFAULT_TEST_EMAIL,
+): Promise<string> {
   const clerk = await clerkClient();
   const { data: users } = await clerk.users.getUserList({
     emailAddress: [email],
   });
-  return users[0]?.id ?? null;
+
+  if (users[0]) {
+    return users[0].id;
+  }
+
+  // User doesn't exist — create on the fly
+  const newUser = await clerk.users.createUser({
+    emailAddress: [email],
+  });
+  return newUser.id;
 }

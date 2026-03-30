@@ -12,10 +12,7 @@ import {
   getOrgBySlug,
 } from "../../../../../src/lib/org/org-cache-service";
 import { generateCliToken } from "../../../../../src/lib/auth/sandbox-token";
-import {
-  resolveTestUserId,
-  isTestVariant,
-} from "../../../../../src/lib/auth/test-user";
+import { resolveTestUserId } from "../../../../../src/lib/auth/test-user";
 import { env } from "../../../../../src/env";
 
 /**
@@ -133,17 +130,8 @@ export async function POST(request: Request) {
   initServices();
 
   const url = new URL(request.url);
-  const variant = url.searchParams.get("variant") ?? "serial";
-  if (!isTestVariant(variant)) {
-    return NextResponse.json(
-      { error: `Unknown test variant: ${variant}` },
-      { status: 400 },
-    );
-  }
-  const userId = await resolveTestUserId(variant);
-  if (!userId) {
-    return NextResponse.json({ error: "Test user not found" }, { status: 500 });
-  }
+  const email = url.searchParams.get("email") ?? undefined;
+  const userId = await resolveTestUserId(email);
 
   // Auto-create org if user doesn't have one (creates real Clerk org or sentinel)
   const { slug: orgSlug } = await ensureTestOrg(userId);

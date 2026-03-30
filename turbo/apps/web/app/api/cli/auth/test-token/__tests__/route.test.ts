@@ -9,11 +9,13 @@ const mockGetUserList = vi.fn();
 const mockGetOrganizationMembershipList = vi.fn();
 const mockCreateOrganization = vi.fn();
 const mockGetOrganization = vi.fn();
+const mockCreateUser = vi.fn();
 vi.mock("@clerk/nextjs/server", () => ({
   clerkClient: vi.fn(async () => ({
     users: {
       getUserList: mockGetUserList,
       getOrganizationMembershipList: mockGetOrganizationMembershipList,
+      createUser: mockCreateUser,
     },
     organizations: {
       createOrganization: mockCreateOrganization,
@@ -34,6 +36,7 @@ describe("/api/cli/auth/test-token", () => {
     mockGetOrganizationMembershipList.mockReset();
     mockCreateOrganization.mockReset();
     mockGetOrganization.mockReset();
+    mockCreateUser.mockReset();
     mockGetUserList.mockResolvedValue({
       data: [{ id: "user_test123" }],
     });
@@ -208,22 +211,26 @@ describe("/api/cli/auth/test-token", () => {
       expect(data.org_slug).toBe("test-token-org");
     });
 
-    it("returns 500 when test user is not found", async () => {
+    it("creates user when not found in Clerk", async () => {
       mockGetUserList.mockResolvedValue({ data: [] });
+      mockCreateUser.mockResolvedValue({ id: "user_created" });
+      mockGetOrganizationMembershipList.mockResolvedValue({ data: [] });
 
+      const email = "pr-1+clerk_test@serial.dev";
       const request = createTestRequest(
-        "http://localhost:3000/api/cli/auth/test-token",
+        `http://localhost:3000/api/cli/auth/test-token?email=${encodeURIComponent(email)}`,
         { method: "POST" },
       );
 
       const response = await POST(request);
-      const data = await response.json();
+      expect(response.status).toBe(200);
 
-      expect(response.status).toBe(500);
-      expect(data.error).toBe("Test user not found");
+      expect(mockCreateUser).toHaveBeenCalledWith({
+        emailAddress: [email],
+      });
     });
 
-    it("calls Clerk with correct email address", async () => {
+    it("uses default email when email param is absent", async () => {
       const request = createTestRequest(
         "http://localhost:3000/api/cli/auth/test-token",
         { method: "POST" },
@@ -232,7 +239,21 @@ describe("/api/cli/auth/test-token", () => {
       await POST(request);
 
       expect(mockGetUserList).toHaveBeenCalledWith({
-        emailAddress: ["e2e+clerk_test@vm0.ai"],
+        emailAddress: ["dev+clerk_test@serial.dev"],
+      });
+    });
+
+    it("uses provided email param", async () => {
+      const email = "pr-42+clerk_test@runner.dev";
+      const request = createTestRequest(
+        `http://localhost:3000/api/cli/auth/test-token?email=${encodeURIComponent(email)}`,
+        { method: "POST" },
+      );
+
+      await POST(request);
+
+      expect(mockGetUserList).toHaveBeenCalledWith({
+        emailAddress: [email],
       });
     });
   });

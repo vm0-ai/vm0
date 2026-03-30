@@ -4,10 +4,7 @@ import { eq, desc } from "drizzle-orm";
 import { connectorTypeSchema } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { upsertOAuthConnector } from "../../../../../src/lib/connector/connector-service";
-import {
-  resolveTestUserId,
-  isTestVariant,
-} from "../../../../../src/lib/auth/test-user";
+import { resolveTestUserId } from "../../../../../src/lib/auth/test-user";
 import { orgMembersCache } from "../../../../../src/db/schema/org-members-cache";
 import { getOrgDataOrNull } from "../../../../../src/lib/org/resolve-org";
 import { env } from "../../../../../src/env";
@@ -80,18 +77,8 @@ export async function POST(request: Request) {
   const connectorType = connectorParsed.data;
 
   const url = new URL(request.url);
-  const variant = url.searchParams.get("variant") ?? "serial";
-  if (!isTestVariant(variant)) {
-    return NextResponse.json(
-      { error: `Unknown test variant: ${variant}` },
-      { status: 400 },
-    );
-  }
-
-  const userId = await resolveTestUserId(variant);
-  if (!userId) {
-    return NextResponse.json({ error: "Test user not found" }, { status: 500 });
-  }
+  const email = url.searchParams.get("email") ?? undefined;
+  const userId = await resolveTestUserId(email);
 
   // Look up test user's org from org_members_cache (populated by test-token endpoint)
   const [cached] = await globalThis.services.db

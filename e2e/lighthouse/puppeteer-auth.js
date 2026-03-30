@@ -13,7 +13,7 @@
  *   VERCEL_AUTOMATION_BYPASS_SECRET  – Vercel protection bypass token
  */
 
-const TEST_EMAIL = "e2e+clerk_test@vm0.ai";
+const TEST_EMAIL = process.env.E2E_SERIAL_EMAIL || "dev+clerk_test@serial.dev";
 const TEST_OTP = "424242";
 
 /** Wait for a selector to appear and return the element handle. */

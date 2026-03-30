@@ -7,10 +7,12 @@ import { reloadEnv } from "../../../../../../src/env";
 
 // Mock Clerk Server API
 const mockGetUserList = vi.fn();
+const mockCreateUser = vi.fn();
 vi.mock("@clerk/nextjs/server", () => ({
   clerkClient: vi.fn(async () => ({
     users: {
       getUserList: mockGetUserList,
+      createUser: mockCreateUser,
     },
   })),
   auth: vi.fn(),
@@ -38,6 +40,7 @@ describe("/api/cli/auth/test-approve", () => {
     vi.stubEnv("CLERK_SECRET_KEY", "test-secret-key");
     reloadEnv();
     mockGetUserList.mockReset();
+    mockCreateUser.mockReset();
   });
 
   describe("environment gate", () => {
@@ -230,10 +233,9 @@ describe("/api/cli/auth/test-approve", () => {
   });
 
   describe("Clerk integration", () => {
-    it("should return 500 when test user is not found", async () => {
-      mockGetUserList.mockResolvedValue({
-        data: [],
-      });
+    it("should auto-create user when not found in Clerk", async () => {
+      mockGetUserList.mockResolvedValue({ data: [] });
+      mockCreateUser.mockResolvedValue({ id: "user_auto_created" });
 
       const code = await createTestDeviceCode();
 
@@ -249,11 +251,12 @@ describe("/api/cli/auth/test-approve", () => {
       const response = await POST(request);
       const data = await response.json();
 
-      expect(response.status).toBe(500);
-      expect(data.error).toBe("Test user not found");
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.userId).toBe("user_auto_created");
     });
 
-    it("should call Clerk with correct email address", async () => {
+    it("should call Clerk with default email address", async () => {
       mockGetUserList.mockResolvedValue({
         data: [{ id: "user_test789" }],
       });
@@ -272,7 +275,7 @@ describe("/api/cli/auth/test-approve", () => {
       await POST(request);
 
       expect(mockGetUserList).toHaveBeenCalledWith({
-        emailAddress: ["e2e+clerk_test@vm0.ai"],
+        emailAddress: ["dev+clerk_test@serial.dev"],
       });
     });
   });

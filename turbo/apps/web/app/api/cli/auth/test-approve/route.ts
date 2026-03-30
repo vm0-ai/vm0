@@ -56,10 +56,9 @@ export async function POST(req: Request) {
     );
   }
 
-  const testUserId = await resolveTestUserId();
-  if (!testUserId) {
-    return NextResponse.json({ error: "Test user not found" }, { status: 500 });
-  }
+  const url = new URL(req.url);
+  const email = url.searchParams.get("email") ?? undefined;
+  const testUserId = await resolveTestUserId(email);
 
   await globalThis.services.db
     .update(deviceCodes)
