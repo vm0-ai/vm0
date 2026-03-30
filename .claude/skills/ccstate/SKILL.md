@@ -559,6 +559,68 @@ const setLoading$ = command(({ set }, loading: boolean) => {
 const canSubmit$ = computed((get) => !get(isLoading$) && !get(hasError$))
 ```
 
+#### Anti-pattern 6: Manual Boolean Loading State for Async Commands
+
+**Symptom**: A boolean `state` is manually set to `true`/`false` around an async command to track whether the command is in-flight.
+
+```typescript
+// ❌ Manual loading boolean — requires try/finally, not derived
+const creatingNewSession$ = state(false);
+export const zeroCreatingNewSession$ = computed((get) => get(creatingNewSession$));
+
+export const createNewChatSession$ = command(async ({ get, set }, agentId: string | null) => {
+  set(creatingNewSession$, true);
+  try {
+    const thread = await createChatThread(client, agentId);
+    set(navigateToChat$, thread.id);
+  } finally {
+    set(creatingNewSession$, false);
+  }
+});
+
+// View: manually reads the boolean
+const creatingNewSession = useGet(zeroCreatingNewSession$);
+<button disabled={creatingNewSession}>New Chat</button>
+```
+
+**Problems:**
+- Loading state is manually maintained, not derived
+- Requires `try/finally` discipline — forgetting `finally` leaves the UI stuck
+- The boolean is a shadow of the promise's settlement status — redundant bookkeeping
+
+**Fix: Store the promise in a state, derive loading from async computed**
+
+```typescript
+// ✅ Loading state derived from promise settlement via useLoadable
+const internalCreatingPromise$ = state<Promise<void> | undefined>(undefined);
+
+const internalCreateNewChatSession$ = command(async ({ get, set }, agentId: string | null) => {
+  const thread = await createChatThread(client, agentId);
+  set(navigateToChat$, thread.id);
+});
+
+export const createNewChatSession$ = command(({ get, set }, agentId: string | null) => {
+  const promise = set(internalCreateNewChatSession$, agentId);
+  set(internalCreatingPromise$, promise);
+  return promise;
+});
+
+export const creatingNewSession$ = computed(async (get) => {
+  await get(internalCreatingPromise$);
+});
+
+// View: loading state derived automatically
+const loadable = useLoadable(creatingNewSession$);
+<button disabled={loadable.state === "loading"}>New Chat</button>
+```
+
+**How it works:**
+1. Command stores its promise into `internalCreatingPromise$`
+2. `creatingNewSession$` (async computed) awaits that promise
+3. `useLoadable` reports `"loading"` while promise is pending, `"hasData"` when resolved, `"hasError"` when rejected
+4. No manual boolean, no `try/finally` — promise settlement is the single source of truth
+5. While `state === "loading"`, the button is disabled, naturally preventing double-clicks
+
 ### Correct Usage of State
 
 ```typescript
