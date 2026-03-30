@@ -198,7 +198,7 @@ function createMockSchedulesFromAPI() {
     {
       id: "f0000002-0000-4000-a000-000000000001",
       agentId: "c0000000-0000-4000-a000-000000000001",
-      agentName: "test-agent",
+      displayName: null,
       orgSlug: "test",
       userId: "user_test1",
       name: "zero-morning",
@@ -229,7 +229,7 @@ function createMockSchedulesFromAPI() {
     {
       id: "f0000002-0000-4000-a000-000000000002",
       agentId: "c0000000-0000-4000-a000-000000000001",
-      agentName: "test-agent",
+      displayName: null,
       orgSlug: "test",
       userId: "user_test1",
       name: "zero-ac",
@@ -260,7 +260,7 @@ function createMockSchedulesFromAPI() {
     {
       id: "f0000002-0000-4000-a000-000000000003",
       agentId: "c0000000-0000-4000-a000-000000000001",
-      agentName: "test-agent",
+      displayName: null,
       orgSlug: "test",
       userId: "user_test1",
       name: "zero-evening",

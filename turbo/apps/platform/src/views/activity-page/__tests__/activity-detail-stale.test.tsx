@@ -13,7 +13,7 @@ const context = testContext();
 
 function makeLogDetail(overrides: Partial<LogDetail>): LogDetail {
   return {
-    id: "run_1",
+    id: "a0000000-0000-4000-a000-000000000001",
     sessionId: "session_1",
     agentId: "e0000000-0000-4000-a000-000000000010",
     displayName: "Agent One",
@@ -50,20 +50,20 @@ function makeEventsResponse(text: string): AgentEventsResponse {
 
 function mockAPIs() {
   const detail1 = makeLogDetail({
-    id: "run_1",
+    id: "a0000000-0000-4000-a000-000000000001",
     agentId: "e0000000-0000-4000-a000-000000000010",
     displayName: "Agent One",
   });
 
   const detail2 = makeLogDetail({
-    id: "run_2",
+    id: "a0000000-0000-4000-a000-000000000002",
     agentId: "e0000000-0000-4000-a000-000000000010",
     displayName: "Agent Two",
   });
 
   const listData = [
     {
-      id: "run_1",
+      id: "a0000000-0000-4000-a000-000000000001",
       sessionId: "session_1",
       agentId: "e0000000-0000-4000-a000-000000000010",
       displayName: "Agent One",
@@ -71,12 +71,13 @@ function mockAPIs() {
       framework: "claude-code",
       status: "completed",
       triggerSource: "web",
+      scheduleId: null,
       createdAt: "2026-03-10T14:56:00Z",
       startedAt: "2026-03-10T14:56:01Z",
       completedAt: "2026-03-10T14:56:10Z",
     },
     {
-      id: "run_2",
+      id: "a0000000-0000-4000-a000-000000000002",
       sessionId: "session_2",
       agentId: "e0000000-0000-4000-a000-000000000010",
       displayName: "Agent Two",
@@ -84,6 +85,7 @@ function mockAPIs() {
       framework: "claude-code",
       status: "completed",
       triggerSource: "cli",
+      scheduleId: null,
       createdAt: "2026-03-10T15:00:00Z",
       startedAt: "2026-03-10T15:00:01Z",
       completedAt: "2026-03-10T15:00:05Z",
@@ -95,16 +97,17 @@ function mockAPIs() {
       return HttpResponse.json({
         data: listData,
         pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
+        filters: { statuses: [], sources: [], agents: [] },
       });
     }),
     http.get("*/api/zero/composes/list", () => {
       return HttpResponse.json({ composes: [] });
     }),
     http.get("*/api/zero/logs/:id", ({ params }) => {
-      if (params["id"] === "run_1") {
+      if (params["id"] === "a0000000-0000-4000-a000-000000000001") {
         return HttpResponse.json(detail1);
       }
-      if (params["id"] === "run_2") {
+      if (params["id"] === "a0000000-0000-4000-a000-000000000002") {
         return HttpResponse.json(detail2);
       }
       return HttpResponse.json(
@@ -114,10 +117,10 @@ function mockAPIs() {
     }),
     http.get("*/api/zero/runs/:runId/telemetry/agent", ({ params }) => {
       const runId = params["runId"] as string;
-      if (runId === "run_1") {
+      if (runId === "a0000000-0000-4000-a000-000000000001") {
         return HttpResponse.json(makeEventsResponse("Response from agent one"));
       }
-      if (runId === "run_2") {
+      if (runId === "a0000000-0000-4000-a000-000000000002") {
         return HttpResponse.json(makeEventsResponse("Response from agent two"));
       }
       return HttpResponse.json({
@@ -139,7 +142,7 @@ describe("activity detail stale data", () => {
     // Start on the first activity detail page
     await setupPage({
       context,
-      path: "/activity/run_1",
+      path: "/activity/a0000000-0000-4000-a000-000000000001",
     });
 
     // Wait for first detail to load

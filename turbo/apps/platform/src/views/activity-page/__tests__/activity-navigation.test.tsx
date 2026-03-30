@@ -14,7 +14,7 @@ const context = testContext();
 function mockActivityAPIs() {
   const listData = [
     {
-      id: "run_1",
+      id: "a0000000-0000-4000-a000-000000000001",
       sessionId: "session_1",
       agentId: "test-agent",
       displayName: "Test Agent",
@@ -22,6 +22,7 @@ function mockActivityAPIs() {
       framework: "claude-code",
       status: "completed",
       triggerSource: "web",
+      scheduleId: null,
       createdAt: "2026-03-10T14:56:00Z",
       startedAt: "2026-03-10T14:56:01Z",
       completedAt: "2026-03-10T14:56:10Z",
@@ -29,7 +30,7 @@ function mockActivityAPIs() {
   ];
 
   const logDetail: LogDetail = {
-    id: "run_1",
+    id: "a0000000-0000-4000-a000-000000000001",
     sessionId: "session_1",
     agentId: "test-agent",
     displayName: "Test Agent",
@@ -65,13 +66,14 @@ function mockActivityAPIs() {
       return HttpResponse.json({
         data: listData,
         pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
+        filters: { statuses: [], sources: [], agents: [] },
       });
     }),
     http.get("*/api/zero/composes/list", () => {
       return HttpResponse.json({ composes: [] });
     }),
     http.get("*/api/zero/logs/:id", ({ params }) => {
-      if (params["id"] === "run_1") {
+      if (params["id"] === "a0000000-0000-4000-a000-000000000001") {
         return HttpResponse.json(logDetail);
       }
       return HttpResponse.json(

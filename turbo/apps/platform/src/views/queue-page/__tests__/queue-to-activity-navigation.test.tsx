@@ -18,7 +18,7 @@ function mockQueueWithActivityLinks() {
         concurrency: { tier: "free", limit: 2, active: 1, available: 1 },
         runningTasks: [
           {
-            runId: "run_nav_1",
+            runId: "a0000000-0000-4000-a000-000000000001",
             agentName: "running-agent",
             agentDisplayName: "Running Agent",
             userEmail: "me@test.com",
@@ -29,7 +29,7 @@ function mockQueueWithActivityLinks() {
         queue: [
           {
             position: 1,
-            runId: "run_nav_2",
+            runId: "a0000000-0000-4000-a000-000000000002",
             agentName: "queued-agent",
             agentDisplayName: "Queued Agent",
             userEmail: "me@test.com",
@@ -113,7 +113,7 @@ function mockActivityDetailAPIs(runId: string) {
 describe("queue to activity navigation", () => {
   it("should initialize activity page when clicking View logs in running table", async () => {
     mockQueueWithActivityLinks();
-    mockActivityDetailAPIs("run_nav_1");
+    mockActivityDetailAPIs("a0000000-0000-4000-a000-000000000001");
 
     await setupPage({ context, path: "/queue" });
 
@@ -138,7 +138,7 @@ describe("queue to activity navigation", () => {
 
   it("should initialize activity page when clicking View logs in waiting table", async () => {
     mockQueueWithActivityLinks();
-    mockActivityDetailAPIs("run_nav_2");
+    mockActivityDetailAPIs("a0000000-0000-4000-a000-000000000002");
 
     await setupPage({ context, path: "/queue" });
 

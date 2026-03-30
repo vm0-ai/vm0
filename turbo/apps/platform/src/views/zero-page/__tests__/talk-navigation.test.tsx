@@ -35,6 +35,8 @@ function mockChatAPIs() {
         chatMessages: [],
         latestSessionId: null,
         unsavedRuns: [],
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
       });
     }),
     http.get("*/api/zero/runs/:id/telemetry/agent", () => {

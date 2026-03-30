@@ -273,17 +273,32 @@ describe("zero-chat signals", () => {
         http.get("*/api/zero/logs/:runId", () => {
           return HttpResponse.json({
             id: "a0000000-0000-4000-a000-000000000097",
+            sessionId: "session-1",
+            agentId: "zero",
+            displayName: null,
+            framework: "claude-code",
+            modelProvider: null,
+            triggerSource: "web",
+            scheduleId: null,
             status: "completed",
-            error: null,
             prompt: "test",
+            appendSystemPrompt: null,
+            error: null,
             createdAt: "2026-03-10T00:00:00Z",
             startedAt: "2026-03-10T00:00:01Z",
             completedAt: "2026-03-10T00:00:02Z",
+            artifact: { name: null, version: null },
           });
         }),
         http.get("*/api/zero/runs/:runId", () => {
           return HttpResponse.json({
+            runId: "run-1",
+            agentComposeVersionId: null,
+            status: "completed",
+            prompt: "Hello",
+            appendSystemPrompt: null,
             result: { agentSessionId: "s1" },
+            createdAt: "2026-03-10T00:00:00Z",
           });
         }),
       );

@@ -13,7 +13,7 @@ const context = testContext();
 
 function makeLogDetail(overrides: Partial<LogDetail>): LogDetail {
   return {
-    id: "run_new",
+    id: "a0000000-0000-4000-a000-000000000099",
     sessionId: "session_new",
     agentId: "e0000000-0000-4000-a000-000000000010",
     displayName: "Agent One",
@@ -85,7 +85,10 @@ describe("activity detail polling with initially empty events", () => {
     );
 
     // Navigate directly to a fresh run's detail page
-    await setupPage({ context, path: "/activity/run_new" });
+    await setupPage({
+      context,
+      path: "/activity/a0000000-0000-4000-a000-000000000099",
+    });
 
     // Wait for the detail heading to appear
     await waitFor(() => {
