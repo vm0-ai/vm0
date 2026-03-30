@@ -1,11 +1,12 @@
 import { command, state } from "ccstate";
+import { detach, Reason } from "../utils.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { defaultAgentId$ } from "./zero-agent-name.ts";
 import { zeroSubagents$ } from "./zero-agents.ts";
 import { switchActiveAgent$ } from "./zero-chat.ts";
 import { initSidebarCollapsed$ } from "./zero-nav.ts";
 import { initZeroOnboarding$ } from "./zero-onboarding.ts";
-import { handleSlackUrlParams$ } from "./zero-slack.ts";
+import { initSlackOrg$ } from "./zero-slack.ts";
 
 /** Tracks whether the initial heavy data (agents, onboarding) has loaded. */
 const initialDataLoaded$ = state(false);
@@ -21,8 +22,8 @@ export const loadInitialData$ = command(
       return;
     }
     await set(initZeroOnboarding$, signal);
-    set(handleSlackUrlParams$);
     signal.throwIfAborted();
+    detach(set(initSlackOrg$, signal), Reason.Entrance);
     set(initialDataLoaded$, true);
     set(initSidebarCollapsed$);
   },

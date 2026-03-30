@@ -8,7 +8,7 @@ import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
 import { fetchZeroSessionList$ } from "../zero-page/zero-chat.ts";
 import {
-  handleSlackUrlParams$,
+  initSlackOrg$,
   pollSlackConnection$,
 } from "../zero-page/zero-slack.ts";
 
@@ -17,7 +17,7 @@ export const setupWorksPage$ = command(async ({ set }, signal: AbortSignal) => {
   set(updateDocumentTitle$, "Works");
   await Promise.all([
     set(initZeroOnboarding$, signal),
-    set(handleSlackUrlParams$),
+    set(initSlackOrg$, signal),
   ]);
   signal.throwIfAborted();
   detach(set(pollSlackConnection$, signal), Reason.Entrance);
