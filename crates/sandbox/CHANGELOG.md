@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.2](https://github.com/vm0-ai/vm0/compare/sandbox-v0.8.1...sandbox-v0.8.2) (2026-03-30)
+
+
+### Refactoring
+
+* **sandbox:** introduce runtime provider trait and consolidate sandbox-fc construction ([#7173](https://github.com/vm0-ai/vm0/issues/7173)) ([6cb7c3c](https://github.com/vm0-ai/vm0/commit/6cb7c3c8ed57b4d7eb949986046d68226dc0672a)), closes [#7119](https://github.com/vm0-ai/vm0/issues/7119)
+
 ## [0.8.1](https://github.com/vm0-ai/vm0/compare/sandbox-v0.8.0...sandbox-v0.8.1) (2026-03-30)
 
 

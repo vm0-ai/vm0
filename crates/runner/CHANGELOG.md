@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.50.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.50.1...runner-rs-v0.50.2) (2026-03-30)
+
+
+### Refactoring
+
+* **sandbox:** introduce runtime provider trait and consolidate sandbox-fc construction ([#7173](https://github.com/vm0-ai/vm0/issues/7173)) ([6cb7c3c](https://github.com/vm0-ai/vm0/commit/6cb7c3c8ed57b4d7eb949986046d68226dc0672a)), closes [#7119](https://github.com/vm0-ai/vm0/issues/7119)
+
 ## [0.50.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.50.0...runner-rs-v0.50.1) (2026-03-30)
 
 

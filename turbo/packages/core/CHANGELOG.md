@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.124.0](https://github.com/vm0-ai/vm0/compare/core-v8.123.0...core-v8.124.0) (2026-03-30)
+
+
+### Features
+
+* **core:** add default firewall permission policies for connectors ([#7170](https://github.com/vm0-ai/vm0/issues/7170)) ([97beaa1](https://github.com/vm0-ai/vm0/commit/97beaa162835d25243a8535df8b76a4bc6992da4))
+
 ## [8.123.0](https://github.com/vm0-ai/vm0/compare/core-v8.122.0...core-v8.123.0) (2026-03-30)
 
 

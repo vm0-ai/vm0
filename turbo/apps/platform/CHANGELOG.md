@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.164.0](https://github.com/vm0-ai/vm0/compare/app-v0.163.0...app-v0.164.0) (2026-03-30)
+
+
+### Features
+
+* **core:** add default firewall permission policies for connectors ([#7170](https://github.com/vm0-ai/vm0/issues/7170)) ([97beaa1](https://github.com/vm0-ai/vm0/commit/97beaa162835d25243a8535df8b76a4bc6992da4))
+
+
+### Refactoring
+
+* replace upload abort controllers map with signals object factory ([#7165](https://github.com/vm0-ai/vm0/issues/7165)) ([ec9a462](https://github.com/vm0-ai/vm0/commit/ec9a462deb9aca1ed90b0e3ff3c9fec9742f175b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.124.0
+
 ## [0.163.0](https://github.com/vm0-ai/vm0/compare/app-v0.162.2...app-v0.163.0) (2026-03-30)
 
 

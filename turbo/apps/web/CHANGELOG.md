@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.169.0](https://github.com/vm0-ai/vm0/compare/web-v12.168.0...web-v12.169.0) (2026-03-30)
+
+
+### Features
+
+* **core:** add default firewall permission policies for connectors ([#7170](https://github.com/vm0-ai/vm0/issues/7170)) ([97beaa1](https://github.com/vm0-ai/vm0/commit/97beaa162835d25243a8535df8b76a4bc6992da4))
+
+
+### Refactoring
+
+* extract zero-runs writes from infra layer to zero platform layer ([#7162](https://github.com/vm0-ai/vm0/issues/7162)) ([9b62ba9](https://github.com/vm0-ai/vm0/commit/9b62ba9277d8441c163f8c61163a55eb881b6095)), closes [#7154](https://github.com/vm0-ai/vm0/issues/7154)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.124.0
+
 ## [12.168.0](https://github.com/vm0-ai/vm0/compare/web-v12.167.2...web-v12.168.0) (2026-03-30)
 
 
