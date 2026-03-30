@@ -31,14 +31,13 @@ export const featureSwitch$ = computed(async (get) => {
   try {
     const parsed = JSON.parse(override);
     if (parsed) {
-      L.debugGroup("Loaded feature switches from localStorage:");
       for (const key of Object.values(FeatureSwitchKey)) {
         const value = parsed[key];
         if (value !== undefined) {
           result[key] = Boolean(value);
+          L.warn(`Override feature switch: ${key} = ${Boolean(value)}`);
         }
       }
-      L.debugGroupEnd();
     }
   } catch (error) {
     throwIfAbort(error);
@@ -63,6 +62,5 @@ export const overrideFeatureSwitch$ = command(
     set(internalReload$, (v) => v + 1);
   },
 );
-L.debugGroup("Overriding feature switches:");
 
 export const setFeatureSwitchLocalStorage$ = set$;
