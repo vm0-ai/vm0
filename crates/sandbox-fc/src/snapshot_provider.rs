@@ -19,16 +19,7 @@ impl SnapshotProvider for FirecrackerSnapshotProvider {
         &self,
         config: SnapshotCreateConfig,
     ) -> Result<SnapshotOutput, SnapshotError> {
-        let fc_config = snapshot::SnapshotCreateConfig {
-            id: config.id,
-            binary_path: config.binary_path,
-            kernel_path: config.kernel_path,
-            rootfs_path: config.rootfs_path,
-            output_dir: config.output_dir,
-            vcpu_count: config.vcpu_count,
-            memory_mb: config.memory_mb,
-        };
-        let sc = snapshot::create_snapshot(fc_config)
+        let sc = snapshot::create_snapshot(config)
             .await
             .map_err(|e| match e {
                 snapshot::SnapshotError::Setup(msg) => SnapshotError::Setup(msg),
