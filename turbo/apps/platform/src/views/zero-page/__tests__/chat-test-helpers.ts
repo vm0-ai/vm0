@@ -75,6 +75,7 @@ export function mockChatLifecycle(options?: {
     error: string | null;
   }[];
   threadTitle?: string | null;
+  onRunCreate?: () => void;
 }): MockLifecycleControl {
   const threadId = options?.threadId ?? "thread-test-1";
   const chatMessages = options?.chatMessages ?? [];
@@ -131,6 +132,7 @@ export function mockChatLifecycle(options?: {
       if (body.prompt) {
         runPrompt = body.prompt;
       }
+      options?.onRunCreate?.();
       return HttpResponse.json({ runId: "run-test-1" }, { status: 201 });
     }),
     http.get("*/api/zero/logs/:id", () =>

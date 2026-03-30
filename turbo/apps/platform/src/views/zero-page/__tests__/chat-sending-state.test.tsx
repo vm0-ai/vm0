@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, act } from "@testing-library/react";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import {
@@ -79,6 +79,54 @@ describe("chat sending state", () => {
     });
 
     // Complete the run and wait for polling to stop
+    ctrl.completeRun();
+    await waitFor(() => {
+      expect(screen.getByLabelText("Send")).toBeInTheDocument();
+    });
+  });
+
+  it("should not trigger send when pressing Enter while a message is being sent", async () => {
+    let runCreateCount = 0;
+    const ctrl = mockChatLifecycle({
+      onRunCreate: () => {
+        runCreateCount++;
+      },
+    });
+
+    await setupPage({ context, path: "/talk/mock-compose-id" });
+
+    const textarea = await waitFor(
+      () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
+    );
+
+    sendMessageInUI(textarea, "Hello");
+
+    // Wait for the first run to be created and sending state to be active
+    await waitFor(() => {
+      expect(runCreateCount).toBe(1);
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+
+    // Re-query the textarea (page navigated to session chat page;
+    // placeholder changes to "Type your next message…" while sending)
+    const activeTextarea = await waitFor(
+      () =>
+        screen.getByPlaceholderText(
+          "Type your next message\u2026",
+        ) as HTMLTextAreaElement,
+    );
+
+    // Type a new message and press Enter while still sending
+    sendMessageInUI(activeTextarea, "Second message");
+
+    // Give any potential second request time to fire
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    // The run creation endpoint should have been called only once
+    expect(runCreateCount).toBe(1);
+
     ctrl.completeRun();
     await waitFor(() => {
       expect(screen.getByLabelText("Send")).toBeInTheDocument();

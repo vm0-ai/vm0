@@ -439,7 +439,7 @@ export function ZeroChatComposer({
 
   const handleSend = () => {
     const trimmed = input.trim();
-    if (!trimmed) {
+    if (!trimmed || sending) {
       return;
     }
     persistSelection();
