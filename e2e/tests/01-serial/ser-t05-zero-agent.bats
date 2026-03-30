@@ -59,7 +59,6 @@ teardown_file() {
     run $ZERO_CLI agent list
     assert_success
     assert_output --partial "E2E Test Agent"
-    assert_output --partial "github"
 }
 
 @test "zero agent view shows agent details" {

@@ -47,6 +47,12 @@ describe("zero agent view command", () => {
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(mockAgent);
         }),
+        http.get(
+          "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["github"] });
+          },
+        ),
       );
 
       await viewCommand.parseAsync(["node", "cli", "my-agent"]);
@@ -55,6 +61,7 @@ describe("zero agent view command", () => {
       expect(logCalls).toContain("comp_abc123");
       expect(logCalls).toContain("A test agent");
       expect(logCalls).toContain("professional");
+      expect(logCalls).toContain("Connectors:   github");
     });
 
     it("should show instructions content with --instructions flag", async () => {
@@ -62,6 +69,12 @@ describe("zero agent view command", () => {
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(mockAgent);
         }),
+        http.get(
+          "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: [] });
+          },
+        ),
         http.get(
           "http://localhost:3000/api/zero/agents/my-agent/instructions",
           () => {
@@ -89,6 +102,12 @@ describe("zero agent view command", () => {
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(mockAgent);
         }),
+        http.get(
+          "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: [] });
+          },
+        ),
         http.get(
           "http://localhost:3000/api/zero/agents/my-agent/instructions",
           () => {
