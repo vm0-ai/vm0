@@ -149,7 +149,7 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex flex-col max-w-[960px] h-[85vh] p-0 gap-0 overflow-hidden zero-border rounded-xl bg-card">
+      <DialogContent className="zero-app flex flex-col max-w-[960px] h-[85vh] p-0 gap-0 overflow-hidden zero-border rounded-xl bg-card">
         <DialogTitle className="sr-only">Workspace settings</DialogTitle>
         <DialogDescription className="sr-only">
           Manage your workspace profile, members, integrations, and billing.

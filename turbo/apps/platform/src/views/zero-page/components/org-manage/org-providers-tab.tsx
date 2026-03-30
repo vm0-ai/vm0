@@ -147,7 +147,7 @@ function ProviderListSection({ isAdmin }: { isAdmin: boolean }) {
           <button
             type="button"
             onClick={() => setAddDialogOpen(true)}
-            className="flex flex-col transition-colors hover:bg-muted/30 group zero-border-dashed rounded-xl shadow-[var(--zero-card-shadow)]"
+            className="flex flex-col overflow-hidden transition-colors hover:bg-muted/30 group zero-border-dashed rounded-xl"
           >
             <div className="flex h-14 items-center gap-2.5 px-5">
               <span className="flex h-7 w-7 shrink-0 items-center justify-center">
@@ -194,7 +194,7 @@ function ProviderListSection({ isAdmin }: { isAdmin: boolean }) {
                   : undefined
               }
               className={cn(
-                "zero-card shadow-[var(--zero-card-shadow)]",
+                "overflow-hidden zero-card shadow-[var(--zero-card-shadow)]",
                 isAdmin && "cursor-pointer",
               )}
             >
@@ -264,7 +264,7 @@ function ProviderListSection({ isAdmin }: { isAdmin: boolean }) {
 
 function ProviderSkeleton() {
   return (
-    <div className="flex flex-col bg-card animate-pulse zero-border rounded-xl">
+    <div className="flex flex-col overflow-hidden bg-card animate-pulse zero-border rounded-xl">
       <div className="flex h-14 items-center gap-2.5 px-5">
         <span className="h-7 w-7 shrink-0 rounded-lg bg-muted/50" />
         <span className="h-4 w-24 rounded bg-muted/50" />
