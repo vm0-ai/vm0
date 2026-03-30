@@ -298,24 +298,26 @@ export type FirewallConnectorType = keyof typeof CONNECTOR_FIREWALLS;
  * that already has a firewall config.
  */
 export type NonFirewallConnectorType =
-  // Dynamic base URL — user-specific, self-hosted, or regional domains
-  | "bitrix" // {domain}.bitrix24.com
-  | "chatwoot" // self-hosted
-  | "cloudinary" // account-specific subdomain
-  | "dify" // self-hosted
-  | "jira" // {domain}.atlassian.net (API token auth)
-  | "mailchimp" // datacenter-specific (usX.api.mailchimp.com)
-  | "metabase" // self-hosted
-  | "minio" // self-hosted
-  | "qdrant" // self-hosted / custom cluster URL
-  | "salesforce" // instance-specific (*.my.salesforce.com)
-  | "twenty" // self-hosted
-  // Basic auth — proxy cannot do base64 encoding at runtime
-  | "htmlcsstoimage" // HTTP Basic Auth (user-id + api-key)
-  | "streak" // HTTP Basic Auth (API key as username)
-  // Webhook URL — token embedded in URL, not auth header
+  // Self-hosted / dynamic base URL — needs ${{ vars.X }} template + connector variable addition
+  | "chatwoot" // self-hosted, auth: api_access_token header, needs BASE_URL variable
+  | "dify" // self-hosted, auth: Bearer token, needs BASE_URL variable
+  | "metabase" // self-hosted, auth: x-api-key header, needs BASE_URL variable
+  | "qdrant" // self-hosted, auth: api-key header or Bearer, needs BASE_URL variable
+  | "salesforce" // instance-specific (*.my.salesforce.com), auth: Bearer, needs INSTANCE variable
+  | "twenty" // self-hosted, auth: Bearer token, needs BASE_URL variable
+  // Datacenter-specific — feasible with static enumeration, needs connector variable addition
+  | "mailchimp" // ~20 datacenter domains (usX.api.mailchimp.com), auth: Bearer works
+  // Basic Auth — proxy cannot do base64 encoding at runtime
+  | "cloudinary" // Basic Auth (api_key:api_secret), also supports OAuth Bearer
+  | "htmlcsstoimage" // Basic Auth (user_id:api_key)
+  | "jira" // Basic Auth (email:api_token), no Bearer alternative
+  | "streak" // Basic Auth (api_key as username)
+  // Webhook URL / non-header auth — token embedded in URL, not auth header
+  | "bitrix" // token in URL path (/rest/{user_id}/{token}/)
   | "discord-webhook" // DISCORD_WEBHOOK_URL
   | "slack-webhook" // SLACK_WEBHOOK_URL
+  // Non-standard auth mechanism
+  | "minio" // AWS Signature V4 (not simple header replacement)
   // Other
   | "computer" // not an API connector
   | "jam"; // no public REST API
