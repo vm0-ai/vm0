@@ -106,6 +106,7 @@
     "generate:vercel": "tsx src/index.ts vercel",
     "generate:webflow": "tsx src/index.ts webflow",
     "generate:wix": "tsx src/index.ts wix",
+    "generate:wrike": "tsx src/index.ts wrike",
     "generate:x": "tsx src/index.ts x",
     "generate:xero": "tsx src/index.ts xero",
     "generate:youtube": "tsx src/index.ts youtube",

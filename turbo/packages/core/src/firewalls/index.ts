@@ -109,6 +109,7 @@ import { v0Firewall } from "./v0.generated";
 import { vercelFirewall } from "./vercel.generated";
 import { webflowFirewall } from "./webflow.generated";
 import { wixFirewall } from "./wix.generated";
+import { wrikeFirewall } from "./wrike.generated";
 import { xFirewall } from "./x.generated";
 import { xeroFirewall } from "./xero.generated";
 import { youtubeFirewall } from "./youtube.generated";
@@ -218,6 +219,7 @@ const CONNECTOR_FIREWALLS = {
   vercel: vercelFirewall,
   webflow: webflowFirewall,
   wix: wixFirewall,
+  wrike: wrikeFirewall,
   x: xFirewall,
   xero: xeroFirewall,
   youtube: youtubeFirewall,
@@ -306,7 +308,6 @@ export type NonFirewallConnectorType =
   | "qdrant" // self-hosted / custom cluster URL
   | "salesforce" // instance-specific (*.my.salesforce.com)
   | "twenty" // self-hosted
-  | "wrike" // regional ({datacenter}.wrike.com)
   // Basic auth — proxy cannot do base64 encoding at runtime
   | "htmlcsstoimage" // HTTP Basic Auth (user-id + api-key)
   | "streak" // HTTP Basic Auth (API key as username)
