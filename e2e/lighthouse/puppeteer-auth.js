@@ -10,10 +10,13 @@
  * Environment variables:
  *   WEB_URL                          – Web app origin (for sign-in flow)
  *   APP_URL                          – App origin (audit target)
+ *   E2E_SERIAL_EMAIL                 – Test user email (provisioned by CI)
  *   VERCEL_AUTOMATION_BYPASS_SECRET  – Vercel protection bypass token
  */
 
-const TEST_EMAIL = "e2e+clerk_test@vm0.ai";
+const TEST_EMAIL = process.env.E2E_SERIAL_EMAIL;
+if (!TEST_EMAIL)
+  throw new Error("E2E_SERIAL_EMAIL environment variable is required");
 const TEST_OTP = "424242";
 
 /** Wait for a selector to appear and return the element handle. */
