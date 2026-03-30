@@ -22,5 +22,14 @@ export const instagramFirewall: FirewallConfig = {
       },
       permissions: [],
     },
+    {
+      base: "https://graph.facebook.com",
+      auth: {
+        headers: {
+          Authorization: "Bearer ${{ secrets.INSTAGRAM_TOKEN }}",
+        },
+      },
+      permissions: [],
+    },
   ],
 };
