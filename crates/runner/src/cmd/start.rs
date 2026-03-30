@@ -560,6 +560,10 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
 }
 
 /// A sandbox factory shared across concurrent job executors.
+///
+/// Uses `Arc<Box<...>>` instead of `Arc<dyn ...>` because `Arc::try_unwrap`
+/// requires a sized type — `dyn SandboxFactory` is unsized, but `Box<dyn
+/// SandboxFactory>` is sized, allowing `try_unwrap` at shutdown.
 type SharedFactory = Arc<Box<dyn SandboxFactory>>;
 
 /// Per-job profile parameters resolved from the profile config.

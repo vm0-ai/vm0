@@ -101,7 +101,10 @@ impl SandboxRuntime for FirecrackerRuntime {
         // Clean up base image cache — detach any remaining loop devices.
         self.base_cache
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(|e| {
+                warn!("base_cache mutex poisoned, recovering for cleanup");
+                e.into_inner()
+            })
             .cleanup();
 
         info!("runtime shutdown complete");
