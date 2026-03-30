@@ -36,7 +36,11 @@
     },
   ],
   "extensions": {
-    "recommendations": ["esbenp.prettier-vscode", "anthropic.claude-code"],
+    "recommendations": [
+      "esbenp.prettier-vscode",
+      "anthropic.claude-code",
+      "github.vscode-github-actions",
+    ],
   },
   "settings": {
     "claudeCode.useTerminal": true,
