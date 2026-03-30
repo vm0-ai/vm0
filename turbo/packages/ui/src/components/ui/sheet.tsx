@@ -24,9 +24,8 @@ const SheetOverlay = React.forwardRef<
 ));
 SheetOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
-interface SheetContentProps extends React.ComponentPropsWithoutRef<
-  typeof DialogPrimitive.Content
-> {
+interface SheetContentProps
+  extends React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> {
   side?: "top" | "bottom" | "left" | "right";
 }
 
