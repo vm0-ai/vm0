@@ -78,6 +78,7 @@ export async function getChatThread(
   id: string;
   title: string | null;
   agentComposeId: string;
+  sessionId: string | null;
   createdAt: Date;
   updatedAt: Date;
 }> {
@@ -95,6 +96,7 @@ export async function getChatThread(
     id: thread.id,
     title: thread.title,
     agentComposeId: thread.agentComposeId,
+    sessionId: thread.sessionId ?? null,
     createdAt: thread.createdAt,
     updatedAt: thread.updatedAt,
   };
@@ -183,6 +185,13 @@ export async function getChatThreadMessages(
   /** Runs not yet reflected in chatMessages (active, failed, etc.) */
   unsavedRuns: UnsavedRun[];
 }> {
+  // Check if thread has a persisted sessionId (populated by chat callback)
+  const [threadRow] = await globalThis.services.db
+    .select({ sessionId: chatThreads.sessionId })
+    .from(chatThreads)
+    .where(eq(chatThreads.id, threadId))
+    .limit(1);
+
   // Get all runs for this thread, ordered by creation time ASC (chronological)
   const runs = await globalThis.services.db
     .select({
@@ -199,16 +208,26 @@ export async function getChatThreadMessages(
     .where(eq(chatThreadRuns.chatThreadId, threadId))
     .orderBy(chatThreadRuns.createdAt);
 
-  let sessionId: string | null = null;
+  let sessionId: string | null = threadRow?.sessionId ?? null;
   const savedRunIds = new Set<string>();
 
-  for (const run of runs) {
-    if (hasAgentSessionId(run.result)) {
-      sessionId = run.result.agentSessionId;
-      savedRunIds.add(run.runId);
+  if (!sessionId) {
+    // Fallback: walk runs for legacy threads (pre-migration, sessionId is NULL)
+    for (const run of runs) {
+      if (hasAgentSessionId(run.result)) {
+        sessionId = run.result.agentSessionId;
+        savedRunIds.add(run.runId);
+      }
+      if (!sessionId && run.continuedFromSessionId) {
+        sessionId = run.continuedFromSessionId;
+      }
     }
-    if (!sessionId && run.continuedFromSessionId) {
-      sessionId = run.continuedFromSessionId;
+  } else {
+    // For threads with persisted sessionId, still mark saved runs
+    for (const run of runs) {
+      if (hasAgentSessionId(run.result)) {
+        savedRunIds.add(run.runId);
+      }
     }
   }
 

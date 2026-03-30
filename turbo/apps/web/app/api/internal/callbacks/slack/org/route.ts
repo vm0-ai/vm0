@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { eq, and, gte, desc } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../../src/lib/callback";
 import { decryptSecretValue } from "../../../../../../src/lib/crypto/secrets-encryption";
 import { slackOrgInstallations } from "../../../../../../src/db/schema/slack-org-installation";
-import { agentSessions } from "../../../../../../src/db/schema/agent-session";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
+import { findNewSessionId } from "../../../../../../src/lib/session/find-new-session";
 import {
   createSlackClient,
   postMessage,
@@ -42,26 +42,6 @@ function parsePayload(payload: unknown): SlackOrgCallbackPayload | null {
 
 function errorResponse(message: string, status: number): NextResponse {
   return NextResponse.json({ error: message }, { status });
-}
-
-async function findNewSessionId(
-  userId: string,
-  agentId: string,
-  runCreatedAt: Date,
-): Promise<string | undefined> {
-  const [newSession] = await globalThis.services.db
-    .select({ id: agentSessions.id })
-    .from(agentSessions)
-    .where(
-      and(
-        eq(agentSessions.userId, userId),
-        eq(agentSessions.agentComposeId, agentId),
-        gte(agentSessions.updatedAt, runCreatedAt),
-      ),
-    )
-    .orderBy(desc(agentSessions.updatedAt))
-    .limit(1);
-  return newSession?.id;
 }
 
 function buildResponseText(

@@ -228,10 +228,10 @@ function TodoCard({
   // Check if any todo item matches search
   const hasSearchMatch = Boolean(
     searchTerm &&
-    searchTerm.trim() &&
-    todoItems.some((t) =>
-      t.content.toLowerCase().includes(searchTerm.toLowerCase()),
-    ),
+      searchTerm.trim() &&
+      todoItems.some((t) =>
+        t.content.toLowerCase().includes(searchTerm.toLowerCase()),
+      ),
   );
 
   const timestamp = formatEventTime(message.createdAt);
