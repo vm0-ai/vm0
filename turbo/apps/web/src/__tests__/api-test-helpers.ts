@@ -3516,9 +3516,8 @@ export async function seedTestSkill(
  * succeeds when buildComposeContent injects them.
  */
 export async function seedSeedSkills(): Promise<void> {
-  const { SEED_SKILLS, buildSeedSkillValues } = await import(
-    "../lib/zero/seed-skills"
-  );
+  const { SEED_SKILLS, buildSeedSkillValues } =
+    await import("../lib/zero/seed-skills");
   initServices();
   const values = buildSeedSkillValues(SEED_SKILLS);
   await globalThis.services.db
