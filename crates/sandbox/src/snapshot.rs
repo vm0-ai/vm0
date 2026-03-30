@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use async_trait::async_trait;
 
 /// Configuration for creating a snapshot.
+#[derive(Debug)]
 pub struct SnapshotCreateConfig {
     /// Unique identifier for this snapshot (used for runtime socket directory).
     pub id: String,
@@ -21,6 +22,7 @@ pub struct SnapshotCreateConfig {
 }
 
 /// Output paths from a successful snapshot creation.
+#[derive(Debug)]
 pub struct SnapshotOutput {
     /// Path to the snapshot state file.
     pub snapshot_path: PathBuf,
