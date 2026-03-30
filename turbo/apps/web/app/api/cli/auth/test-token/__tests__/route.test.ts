@@ -212,10 +212,11 @@ describe("/api/cli/auth/test-token", () => {
       expect(data.org_slug).toBe("test-token-org");
     });
 
-    it("creates user when not found in Clerk", async () => {
+    it("creates user and org when not found in Clerk", async () => {
       mockGetUserList.mockResolvedValue({ data: [] });
       mockCreateUser.mockResolvedValue({ id: "user_created" });
       mockGetOrganizationMembershipList.mockResolvedValue({ data: [] });
+      mockCreateOrganization.mockResolvedValue({ id: "org_newly_created" });
 
       const email = "pr-1+clerk_test@serial.dev";
       const request = createTestRequest(
@@ -233,6 +234,11 @@ describe("/api/cli/auth/test-token", () => {
       expect(mockCreateUser).toHaveBeenCalledWith({
         emailAddress: [email],
         skipPasswordRequirement: true,
+      });
+      expect(mockCreateOrganization).toHaveBeenCalledWith({
+        name: "test-pr-1-serial",
+        slug: "test-pr-1-serial",
+        createdBy: "user_created",
       });
     });
 
