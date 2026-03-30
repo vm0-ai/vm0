@@ -121,9 +121,10 @@ function AttachmentChip({
   attachment: ZeroChatAttachment;
   onRemove: () => void;
 }) {
-  const urlLoadable = useLoadable(attachment.url$);
-  const uploading = urlLoadable.state === "loading";
-  const url = urlLoadable.state === "hasData" ? urlLoadable.data : undefined;
+  const infoLoadable = useLoadable(attachment.fileInfo$);
+  const uploading = infoLoadable.state === "loading";
+  const url =
+    infoLoadable.state === "hasData" ? infoLoadable.data?.url : undefined;
   const lightboxUrl = useGet(lightboxUrl$);
   const setLightboxUrlFn = useSet(setLightboxUrl$);
   const isImage = attachment.contentType.startsWith("image/");
@@ -204,15 +205,15 @@ export function AttachmentChips({
   onRemove,
 }: {
   attachments: ZeroChatAttachment[];
-  onRemove: (id: string) => void;
+  onRemove: (attachment: ZeroChatAttachment) => void;
 }) {
   return (
     <div className="flex flex-wrap gap-2 px-4 pt-3">
       {attachments.map((a) => (
         <AttachmentChip
-          key={a.id}
+          key={String(a.fileInfo$)}
           attachment={a}
-          onRemove={() => onRemove(a.id)}
+          onRemove={() => onRemove(a)}
         />
       ))}
     </div>

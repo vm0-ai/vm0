@@ -492,7 +492,7 @@ export function ZeroChatComposer({
             {attachments.length > 0 && (
               <AttachmentChips
                 attachments={attachments}
-                onRemove={(id) => removeAttachment(id)}
+                onRemove={(attachment) => removeAttachment(attachment)}
               />
             )}
             <textarea

@@ -644,51 +644,81 @@ export const clearZeroChatInput$ = command(({ set }) => {
 });
 
 // Attachments
-export interface ZeroChatAttachment {
+export interface FileInfo {
   id: string;
-  filename: string;
-  contentType: string;
-  size: number;
-  /** Reactive URL — loading while uploading, hasData when done, hasError on failure. */
-  url$: Computed<Promise<string>>;
-  /** Cancel the in-flight upload. Always safe to call (no-op if already completed). */
-  cancel$: Command<void, []>;
-  /** Synchronous resolved URL for use in commands (set when upload completes). */
-  resolvedUrl?: string;
+  url: string;
 }
 
-function createChatAttachment(info: {
-  id: string;
+export interface ZeroChatAttachment {
   filename: string;
   contentType: string;
   size: number;
-}): {
-  signals: ZeroChatAttachment;
-  resolve: (url: string) => void;
-  abortSignal: AbortSignal;
-} {
-  const controller = new AbortController();
-  const deferred = createDeferredPromise<string>(controller.signal);
+  /** Reactive file info (id + url) — loading while uploading, hasData when done. */
+  fileInfo$: Computed<Promise<FileInfo | null>>;
+  /** Cancel the in-flight upload. Always safe to call (no-op if already completed). */
+  cancel$: Command<void, []>;
+  /** Start the upload. Accepts an external signal for cascade abort (e.g. page navigation). */
+  upload$: Command<Promise<void>, [AbortSignal]>;
+}
 
-  const url$ = computed(async () => {
-    return await deferred.promise;
+function createChatAttachment(file: File): ZeroChatAttachment {
+  const resetSignal$ = resetSignal();
+  const internalPromise$ = state<Promise<FileInfo> | null>(null);
+
+  const fileInfo$ = computed(async (get) => {
+    const promise = get(internalPromise$);
+    if (promise === null) {
+      return null;
+    }
+    return await promise;
   });
 
-  const cancel$ = command(() => {
-    controller.abort();
+  const cancel$ = command(({ set }) => {
+    set(resetSignal$);
+  });
+
+  const upload$ = command(async ({ get, set }, signal: AbortSignal) => {
+    const fetchFn = get(fetch$);
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const uploadSignal = set(resetSignal$, signal);
+    const deferred = createDeferredPromise<FileInfo>(uploadSignal);
+    set(internalPromise$, deferred.promise);
+
+    const res = await fetchFn("/api/zero/uploads", {
+      method: "POST",
+      body: formData,
+      signal: uploadSignal,
+    });
+
+    if (!res.ok) {
+      const err = (await res.json().catch(() => null)) as {
+        error?: { message?: string };
+      } | null;
+      throw new Error(
+        err?.error?.message ?? `Upload failed: ${res.statusText}`,
+      );
+    }
+
+    const data = (await res.json()) as {
+      id: string;
+      filename: string;
+      contentType: string;
+      size: number;
+      url: string;
+    };
+
+    deferred.resolve({ id: data.id, url: data.url });
   });
 
   return {
-    signals: {
-      id: info.id,
-      filename: info.filename,
-      contentType: info.contentType,
-      size: info.size,
-      url$,
-      cancel$,
-    },
-    resolve: deferred.resolve,
-    abortSignal: controller.signal,
+    filename: file.name,
+    contentType: file.type,
+    size: file.size,
+    fileInfo$,
+    cancel$,
+    upload$,
   };
 }
 
@@ -704,76 +734,27 @@ export const setZeroDragOver$ = command(({ set }, value: boolean) => {
 });
 
 export const uploadZeroAttachment$ = command(
-  async ({ get, set }, file: File, signal: AbortSignal) => {
-    const id = crypto.randomUUID();
-    const {
-      signals: attachment,
-      resolve,
-      abortSignal,
-    } = createChatAttachment({
-      id,
-      filename: file.name,
-      contentType: file.type,
-      size: file.size,
-    });
-
+  async ({ set }, file: File, signal: AbortSignal) => {
+    const attachment = createChatAttachment(file);
     set(internalAttachments$, (prev) => [...prev, attachment]);
 
     try {
-      const fetchFn = get(fetch$);
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const res = await fetchFn("/api/zero/uploads", {
-        method: "POST",
-        body: formData,
-        signal: AbortSignal.any([signal, abortSignal]),
-      });
-
-      if (!res.ok) {
-        const err = (await res.json().catch(() => null)) as {
-          error?: { message?: string };
-        } | null;
-        throw new Error(
-          err?.error?.message ?? `Upload failed: ${res.statusText}`,
-        );
-      }
-
-      const data = (await res.json()) as {
-        id: string;
-        filename: string;
-        contentType: string;
-        size: number;
-        url: string;
-      };
-
-      // Update the attachment ID (server assigns final ID) and resolve the URL
-      set(internalAttachments$, (prev) =>
-        prev.map((a) =>
-          a.id === id ? { ...a, id: data.id, resolvedUrl: data.url } : a,
-        ),
-      );
-      resolve(data.url);
+      await set(attachment.upload$, signal);
     } catch (error) {
       throwIfAbort(error);
       L.error("Upload failed:", error);
-      // Abort the controller so the deferred promise rejects with an AbortError
-      // (which detach silences), rather than a non-abort error.
       set(attachment.cancel$);
-      // Remove the failed attachment
-      set(internalAttachments$, (prev) => prev.filter((a) => a.id !== id));
+      set(internalAttachments$, (prev) => prev.filter((a) => a !== attachment));
     }
   },
 );
 
-export const removeZeroAttachment$ = command(({ get, set }, id: string) => {
-  const attachments = get(internalAttachments$);
-  const attachment = attachments.find((a) => a.id === id);
-  if (attachment) {
-    set(attachment.cancel$); // no-op if already completed
-  }
-  set(internalAttachments$, (prev) => prev.filter((a) => a.id !== id));
-});
+export const removeZeroAttachment$ = command(
+  ({ set }, attachment: ZeroChatAttachment) => {
+    set(attachment.cancel$);
+    set(internalAttachments$, (prev) => prev.filter((a) => a !== attachment));
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Commands: session list management
@@ -930,15 +911,25 @@ export const createNewChatSession$ = command(
 // ---------------------------------------------------------------------------
 
 const prepareUserMessage$ = command(
-  ({ get, set }, prompt: string): { fullPrompt: string } => {
-    const attachments = get(internalAttachments$).filter(
-      (a): a is ZeroChatAttachment & { resolvedUrl: string } => !!a.resolvedUrl,
+  async ({ get, set }, prompt: string): Promise<{ fullPrompt: string }> => {
+    const allAttachments = get(internalAttachments$);
+    const allInfos = await Promise.all(
+      allAttachments.map((a) => get(a.fileInfo$)),
     );
+
+    // Pair attachments with resolved file info, dropping any that failed or haven't started
+    const ready = allAttachments
+      .map((a, i) => ({ attachment: a, info: allInfos[i] }))
+      .filter(
+        (r): r is { attachment: ZeroChatAttachment; info: FileInfo } =>
+          r.info !== null,
+      );
+
     let fullPrompt = prompt.trim();
-    if (attachments.length > 0) {
-      const lines = attachments.map(
-        (a) =>
-          `[Attached file: ${a.filename}](${a.resolvedUrl})\nDownload with: curl -sL -o "${a.filename}" "${a.resolvedUrl}"`,
+    if (ready.length > 0) {
+      const lines = ready.map(
+        (r) =>
+          `[Attached file: ${r.attachment.filename}](${r.info.url})\nDownload with: curl -sL -o "${r.attachment.filename}" "${r.info.url}"`,
       );
       fullPrompt = `${fullPrompt}\n\n${lines.join("\n")}`;
     }
@@ -948,12 +939,12 @@ const prepareUserMessage$ = command(
       role: "user",
       content: prompt.trim(),
       attachments:
-        attachments.length > 0
-          ? attachments.map((a) => ({
-              filename: a.filename,
-              contentType: a.contentType,
-              size: a.size,
-              url: a.resolvedUrl,
+        ready.length > 0
+          ? ready.map((r) => ({
+              filename: r.attachment.filename,
+              contentType: r.attachment.contentType,
+              size: r.attachment.size,
+              url: r.info.url,
             }))
           : undefined,
     };
@@ -1096,7 +1087,7 @@ export const sendZeroChatMessage$ = command(
       return;
     }
 
-    const { fullPrompt } = set(prepareUserMessage$, prompt);
+    const { fullPrompt } = await set(prepareUserMessage$, prompt);
 
     try {
       await set(
