@@ -125,8 +125,10 @@ interface AxiomMocks {
   flush: Mock;
   /** Spy for queryAxiom function - use mockResolvedValue to set return value */
   queryAxiom: MockInstance<typeof axiomClient.queryAxiom>;
-  /** Spy for ingestToAxiom function - use mockResolvedValue to set return value */
+  /** Spy for ingestToAxiom function - use mockReturnValue to set return value */
   ingestToAxiom: MockInstance<typeof axiomClient.ingestToAxiom>;
+  /** Spy for flushAxiom function */
+  flushAxiom: MockInstance<typeof axiomClient.flushAxiom>;
 }
 
 /**
@@ -291,7 +293,10 @@ export function testContext(): TestContext {
       queryAxiom: vi.spyOn(axiomClient, "queryAxiom").mockResolvedValue([]),
       ingestToAxiom: vi
         .spyOn(axiomClient, "ingestToAxiom")
-        .mockResolvedValue(true),
+        .mockReturnValue(true),
+      flushAxiom: vi
+        .spyOn(axiomClient, "flushAxiom")
+        .mockResolvedValue(undefined),
     };
     // Use try/catch since Axiom may not be mocked in all test files
     try {

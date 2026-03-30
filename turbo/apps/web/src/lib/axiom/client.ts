@@ -104,6 +104,9 @@ export function ingestToAxiom(
  *
  * Call at request/response boundaries to ensure buffered events are sent
  * before the serverless function terminates.
+ *
+ * Errors are logged but not propagated — telemetry data is non-critical
+ * and a flush failure must not break the request/response cycle.
  */
 export async function flushAxiom(): Promise<void> {
   const results = await Promise.allSettled([
@@ -185,8 +188,9 @@ export async function queryAxiom<T = Record<string, unknown>>(
     }
   }
 
-  // Unreachable — the final attempt either returns or throws above
-  return [];
+  throw new Error(
+    "queryAxiom: unreachable — retry loop exited without return or throw",
+  );
 }
 
 interface RequestLogEntry {
