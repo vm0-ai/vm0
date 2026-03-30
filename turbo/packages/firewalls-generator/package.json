@@ -30,6 +30,7 @@
     "generate:deel": "tsx src/index.ts deel",
     "generate:devto": "tsx src/index.ts devto",
     "generate:discord": "tsx src/index.ts discord",
+    "generate:docusign": "tsx src/index.ts docusign",
     "generate:dropbox": "tsx src/index.ts dropbox",
     "generate:elevenlabs": "tsx src/index.ts elevenlabs",
     "generate:explorium": "tsx src/index.ts explorium",

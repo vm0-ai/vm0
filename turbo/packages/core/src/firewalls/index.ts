@@ -33,6 +33,7 @@ import { deepseekFirewall } from "./deepseek.generated";
 import { deelFirewall } from "./deel.generated";
 import { devtoFirewall } from "./devto.generated";
 import { discordFirewall } from "./discord.generated";
+import { docusignFirewall } from "./docusign.generated";
 import { dropboxFirewall } from "./dropbox.generated";
 import { elevenlabsFirewall } from "./elevenlabs.generated";
 import { exploriumFirewall } from "./explorium.generated";
@@ -141,6 +142,7 @@ const CONNECTOR_FIREWALLS = {
   deepseek: deepseekFirewall,
   devto: devtoFirewall,
   discord: discordFirewall,
+  docusign: docusignFirewall,
   dropbox: dropboxFirewall,
   elevenlabs: elevenlabsFirewall,
   explorium: exploriumFirewall,
@@ -295,7 +297,6 @@ export type NonFirewallConnectorType =
   | "chatwoot" // self-hosted
   | "cloudinary" // account-specific subdomain
   | "dify" // self-hosted
-  | "docusign" // region-specific
   | "jira" // {domain}.atlassian.net (API token auth)
   | "kommo" // {subdomain}.kommo.com
   | "mailchimp" // datacenter-specific (usX.api.mailchimp.com)
