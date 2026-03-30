@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
@@ -14,6 +14,10 @@ async function setup() {
     withoutRender: true,
   });
 }
+
+const alwaysConnected = () => true;
+const neverConnected = () => false;
+const connectedOnThirdCall = (n: number) => n >= 3;
 
 function mockSlackEndpoint(getIsConnected: (callCount: number) => boolean) {
   let callCount = 0;
@@ -45,11 +49,15 @@ function mockSlackEndpoint(getIsConnected: (callCount: number) => boolean) {
 }
 
 describe("pollSlackConnection$", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("should return immediately when already connected", async () => {
     // Default mock returns isConnected: true
     await setup();
 
-    const counter = mockSlackEndpoint(() => true);
+    const counter = mockSlackEndpoint(alwaysConnected);
 
     await context.store.set(pollSlackConnection$, context.signal);
 
@@ -59,7 +67,7 @@ describe("pollSlackConnection$", () => {
 
   it("should poll until connected and show success toast", async () => {
     // Return connected on the 3rd call
-    const counter = mockSlackEndpoint((n) => n >= 3);
+    const counter = mockSlackEndpoint(connectedOnThirdCall);
 
     await setup();
 
@@ -80,7 +88,7 @@ describe("pollSlackConnection$", () => {
 
   it("should stop polling when signal is aborted", async () => {
     // Never return connected
-    const counter = mockSlackEndpoint(() => false);
+    const counter = mockSlackEndpoint(neverConnected);
 
     await setup();
 
