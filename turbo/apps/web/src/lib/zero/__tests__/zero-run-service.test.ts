@@ -281,9 +281,7 @@ describe("createZeroRun()", () => {
       const agentName = uniqueId("fw-nopol");
       await createTestCompose(agentName);
       await createTestConnector({ type: "slack" });
-      await createTestZeroAgent(user.orgId, agentName, {
-        connectors: ["slack"],
-      });
+      await createTestZeroAgent(user.orgId, agentName, {});
       const agentId = await getTestZeroAgentId(user.orgId, agentName);
       // Grant user permission to use slack connector for this agent
       await createTestUserConnector(user.orgId, user.userId, agentId, "slack");

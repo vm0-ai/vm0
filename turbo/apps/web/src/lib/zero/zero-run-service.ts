@@ -71,7 +71,6 @@ export async function createZeroRun(
       displayName: zeroAgents.displayName,
       description: zeroAgents.description,
       sound: zeroAgents.sound,
-      connectors: zeroAgents.connectors,
       firewallPolicies: zeroAgents.firewallPolicies,
       orgId: zeroAgents.orgId,
     })
@@ -83,24 +82,21 @@ export async function createZeroRun(
     displayName: string | null;
     description: string | null;
     sound: string | null;
-    firewallPolicies: FirewallPolicies | null;
+    rawFirewallPolicies: FirewallPolicies | null;
     orgId: string | null;
   } = row
     ? {
         displayName: row.displayName,
         description: row.description,
         sound: row.sound,
-        firewallPolicies: resolveFirewallPolicies(
-          row.firewallPolicies ?? null,
-          row.connectors,
-        ),
+        rawFirewallPolicies: row.firewallPolicies ?? null,
         orgId: row.orgId,
       }
     : {
         displayName: null,
         description: null,
         sound: null,
-        firewallPolicies: null,
+        rawFirewallPolicies: null,
         orgId: null,
       };
 
@@ -140,6 +136,13 @@ export async function createZeroRun(
     ? `${agentPrompt}\n\n${appendSystemPrompt}`
     : agentPrompt;
 
+  // Resolve firewall policies using the user's enabled connectors so that
+  // default policies are seeded for each allowed connector type.
+  const firewallPolicies = resolveFirewallPolicies(
+    agent.rawFirewallPolicies,
+    allowedConnectorTypes ?? [],
+  );
+
   // 1. Resolve compose version + org context
   const resolved = await resolveStartRunCompose({
     userId: params.userId,
@@ -164,7 +167,7 @@ export async function createZeroRun(
     artifactName: "artifact",
     disallowedTools: [...DISALLOWED_TOOLS],
     vars: { ZERO_AGENT_ID: params.agentId },
-    firewallPolicies: agent.firewallPolicies ?? undefined,
+    firewallPolicies: firewallPolicies ?? undefined,
     allowedConnectorTypes,
     agentName: resolved.agentName,
     orgId: resolved.orgId,
