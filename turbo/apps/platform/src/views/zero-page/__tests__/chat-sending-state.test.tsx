@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor, act } from "@testing-library/react";
+import { delay } from "signal-timers";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import {
@@ -121,7 +122,7 @@ describe("chat sending state", () => {
 
     // Give any potential second request time to fire
     await act(async () => {
-      await new Promise((r) => setTimeout(r, 100));
+      await delay(100);
     });
 
     // The run creation endpoint should have been called only once
