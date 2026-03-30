@@ -12,7 +12,10 @@ import {
   getOrgBySlug,
 } from "../../../../../src/lib/org/org-cache-service";
 import { generateCliToken } from "../../../../../src/lib/auth/sandbox-token";
-import { resolveTestUserId } from "../../../../../src/lib/auth/test-user";
+import {
+  resolveTestUserId,
+  DEFAULT_TEST_EMAIL,
+} from "../../../../../src/lib/auth/test-user";
 import { env } from "../../../../../src/env";
 
 /**
@@ -130,7 +133,7 @@ export async function POST(request: Request) {
   initServices();
 
   const url = new URL(request.url);
-  const email = url.searchParams.get("email") ?? undefined;
+  const email = url.searchParams.get("email") ?? DEFAULT_TEST_EMAIL;
   const userId = await resolveTestUserId(email);
 
   // Auto-create org if user doesn't have one (creates real Clerk org or sentinel)

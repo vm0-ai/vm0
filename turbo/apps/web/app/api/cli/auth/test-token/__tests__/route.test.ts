@@ -3,6 +3,7 @@ import { POST } from "../route";
 import { createTestRequest } from "../../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
 import { reloadEnv } from "../../../../../../src/env";
+import { DEFAULT_TEST_EMAIL } from "../../../../../../src/lib/auth/test-user";
 
 // Mock Clerk Server API
 const mockGetUserList = vi.fn();
@@ -236,10 +237,11 @@ describe("/api/cli/auth/test-token", () => {
         { method: "POST" },
       );
 
-      await POST(request);
+      const response = await POST(request);
+      expect(response.status).toBe(200);
 
       expect(mockGetUserList).toHaveBeenCalledWith({
-        emailAddress: ["dev+clerk_test@serial.dev"],
+        emailAddress: [DEFAULT_TEST_EMAIL],
       });
     });
 
@@ -250,7 +252,8 @@ describe("/api/cli/auth/test-token", () => {
         { method: "POST" },
       );
 
-      await POST(request);
+      const response = await POST(request);
+      expect(response.status).toBe(200);
 
       expect(mockGetUserList).toHaveBeenCalledWith({
         emailAddress: [email],

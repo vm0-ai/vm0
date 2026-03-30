@@ -4,7 +4,10 @@ import { eq, desc } from "drizzle-orm";
 import { connectorTypeSchema } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { upsertOAuthConnector } from "../../../../../src/lib/connector/connector-service";
-import { resolveTestUserId } from "../../../../../src/lib/auth/test-user";
+import {
+  resolveTestUserId,
+  DEFAULT_TEST_EMAIL,
+} from "../../../../../src/lib/auth/test-user";
 import { orgMembersCache } from "../../../../../src/db/schema/org-members-cache";
 import { getOrgDataOrNull } from "../../../../../src/lib/org/resolve-org";
 import { env } from "../../../../../src/env";
@@ -77,7 +80,7 @@ export async function POST(request: Request) {
   const connectorType = connectorParsed.data;
 
   const url = new URL(request.url);
-  const email = url.searchParams.get("email") ?? undefined;
+  const email = url.searchParams.get("email") ?? DEFAULT_TEST_EMAIL;
   const userId = await resolveTestUserId(email);
 
   // Look up test user's org from org_members_cache (populated by test-token endpoint)

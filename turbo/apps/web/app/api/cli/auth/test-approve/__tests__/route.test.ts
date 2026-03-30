@@ -4,6 +4,7 @@ import { POST as createDeviceRoute } from "../../device/route";
 import { createTestRequest } from "../../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
 import { reloadEnv } from "../../../../../../src/env";
+import { DEFAULT_TEST_EMAIL } from "../../../../../../src/lib/auth/test-user";
 
 // Mock Clerk Server API
 const mockGetUserList = vi.fn();
@@ -272,10 +273,13 @@ describe("/api/cli/auth/test-approve", () => {
         },
       );
 
-      await POST(request);
+      const response = await POST(request);
+      const data = await response.json();
 
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
       expect(mockGetUserList).toHaveBeenCalledWith({
-        emailAddress: ["dev+clerk_test@serial.dev"],
+        emailAddress: [DEFAULT_TEST_EMAIL],
       });
     });
   });
