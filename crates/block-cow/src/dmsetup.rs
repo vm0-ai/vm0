@@ -6,19 +6,13 @@ use crate::error::Result;
 /// Path prefix for device mapper targets.
 const DM_DEV_PREFIX: &str = "/dev/mapper/";
 
-/// Create a dm-linear target that maps an entire block device.
-///
-/// Returns the path to the created device (e.g. `/dev/mapper/{name}`).
-pub fn create_linear(name: &str, origin_device: &str, sectors: u64) -> Result<PathBuf> {
-    let table = format!("0 {sectors} linear {origin_device} 0");
-    command::run("dmsetup", &["create", name, "--table", &table])?;
-    Ok(PathBuf::from(format!("{DM_DEV_PREFIX}{name}")))
-}
-
 /// Create a dm-snapshot target on top of an origin device.
 ///
 /// `chunk_size` is in 512-byte sectors (e.g. 8 = 4KB chunks).
 /// Returns the path to the created snapshot device.
+///
+/// The device is created as `root:disk 0660`; the runner user must be
+/// in the `disk` group to open it.
 pub fn create_snapshot(
     name: &str,
     origin: &str,
@@ -27,12 +21,31 @@ pub fn create_snapshot(
     chunk_size: u32,
 ) -> Result<PathBuf> {
     let table = format!("0 {sectors} snapshot {origin} {cow_device} P {chunk_size}");
-    command::run("dmsetup", &["create", name, "--table", &table])?;
+    command::sudo("dmsetup", &["create", name, "--table", &table])?;
     Ok(PathBuf::from(format!("{DM_DEV_PREFIX}{name}")))
+}
+
+/// Query dm-snapshot status. Returns the raw status string.
+///
+/// Format: `<used_sectors>/<total_sectors> <metadata_sectors>`
+/// Useful for debugging COW usage after sandbox execution.
+pub fn status(name: &str) -> Result<String> {
+    command::sudo("dmsetup", &["status", name])
 }
 
 /// Remove a device mapper target.
 pub fn remove(name: &str) -> Result<()> {
-    command::run("dmsetup", &["remove", name])?;
+    command::sudo("dmsetup", &["remove", name])?;
+    Ok(())
+}
+
+/// Schedule a device mapper target for deferred removal.
+///
+/// Uses `dmsetup remove --force` which sets `DM_DEFERRED_REMOVE`.
+/// The kernel removes the target automatically when all openers release
+/// their file descriptors.  Returns success immediately even if the
+/// device is currently busy.
+pub fn remove_deferred(name: &str) -> Result<()> {
+    command::sudo("dmsetup", &["remove", "--force", name])?;
     Ok(())
 }

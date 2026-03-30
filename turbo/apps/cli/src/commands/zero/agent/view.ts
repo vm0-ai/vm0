@@ -8,6 +8,14 @@ export const viewCommand = new Command()
   .description("View a zero agent")
   .argument("<agent-id>", "Agent ID")
   .option("--instructions", "Also show instructions content")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  View basic info:         zero agent view <agent-id>
+  Include instructions:    zero agent view <agent-id> --instructions
+  View yourself:           zero agent view $ZERO_AGENT_ID --instructions`,
+  )
   .action(
     withErrorHandler(
       async (agentId: string, options: { instructions?: boolean }) => {

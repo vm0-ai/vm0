@@ -8,6 +8,12 @@ export const listCommand = new Command()
   .name("list")
   .alias("ls")
   .description("List all zero schedules")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  zero schedule list`,
+  )
   .action(
     withErrorHandler(async () => {
       const result = await listZeroSchedules();

@@ -107,26 +107,20 @@ describe("queue to activity navigation", () => {
     await setupPage({ context, path: "/queue" });
 
     // Wait for running task to render
-    await waitFor(
-      () => {
-        expect(screen.getByText("Running Agent")).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByText("Running Agent")).toBeInTheDocument();
+    });
 
     // Find "View logs" links — click the first one (running table)
     const viewLogsLinks = screen.getAllByText("View logs");
     fireEvent.click(viewLogsLinks[0]!);
 
     // The activity detail page should fully initialize
-    await waitFor(
-      () => {
-        expect(
-          screen.getByRole("heading", { name: "Test Agent" }),
-        ).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Test Agent" }),
+      ).toBeInTheDocument();
+    });
 
     expect(screen.getByText("4.0s")).toBeInTheDocument();
   }, 15_000);
@@ -138,26 +132,20 @@ describe("queue to activity navigation", () => {
     await setupPage({ context, path: "/queue" });
 
     // Wait for queued task to render
-    await waitFor(
-      () => {
-        expect(screen.getByText("Queued Agent")).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByText("Queued Agent")).toBeInTheDocument();
+    });
 
     // Find "View logs" links — click the second one (waiting table)
     const viewLogsLinks = screen.getAllByText("View logs");
     fireEvent.click(viewLogsLinks[1]!);
 
     // The activity detail page should fully initialize
-    await waitFor(
-      () => {
-        expect(
-          screen.getByRole("heading", { name: "Test Agent" }),
-        ).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Test Agent" }),
+      ).toBeInTheDocument();
+    });
 
     expect(screen.getByText("4.0s")).toBeInTheDocument();
   }, 15_000);

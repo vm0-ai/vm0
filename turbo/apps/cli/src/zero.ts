@@ -94,11 +94,11 @@ program
   .addHelpText(
     "after",
     `
-Common scenarios:
+Examples:
   Missing a token?       zero doctor missing-token <TOKEN_NAME>
   Delegate to teammate?  zero run <agent-id> "your task"
   Send a Slack message?  zero slack message send -c <channel> -t "text"
-  Set up a schedule?     zero schedule setup <agent-name>
+  Set up a schedule?     zero schedule setup <agent-id>
   Update yourself?       zero agent --help
   Check your identity?   zero whoami`,
   );

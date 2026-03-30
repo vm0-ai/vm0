@@ -9,7 +9,7 @@ import { Card, CardContent, cn, Input } from "@vm0/ui";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { getCategories } from "./zero-ideation-data.ts";
 import { setChatPageInput$ } from "../../signals/zero-page/zero-chat-page.ts";
-import { navigateTo$ } from "../../signals/route.ts";
+import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { currentAgentId$ } from "../../signals/zero-page/agent.ts";
 import { SidebarLayout } from "./sidebar-layout.tsx";
 
@@ -20,12 +20,12 @@ export function ZeroIdeationPage() {
   const [activeTab, setActiveTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const setInput = useSet(setChatPageInput$);
-  const navigate = useSet(navigateTo$);
+  const navigate = useSet(detachedNavigateTo$);
   const agentId = useGet(currentAgentId$);
 
   const navigateToChat = () => {
     if (agentId) {
-      navigate("/talk/:id", { pathParams: { id: agentId } });
+      navigate("/talk/:agentId", { pathParams: { agentId: agentId } });
     } else {
       navigate("/");
     }

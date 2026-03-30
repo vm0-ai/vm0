@@ -10,6 +10,16 @@ export const deleteCommand = new Command()
   .description("Delete a zero agent")
   .argument("<agent-id>", "Agent ID")
   .option("-y, --yes", "Skip confirmation prompt")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  zero agent delete <agent-id>
+  zero agent delete <agent-id> -y
+
+Notes:
+  - Use -y to skip confirmation in non-interactive mode`,
+  )
   .action(
     withErrorHandler(async (agentId: string, options: { yes?: boolean }) => {
       await getZeroAgent(agentId);

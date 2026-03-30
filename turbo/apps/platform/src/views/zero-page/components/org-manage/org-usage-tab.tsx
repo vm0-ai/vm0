@@ -16,16 +16,6 @@ import {
 import { setMemberCreditCap$ } from "../../../../signals/zero-page/member-credit-caps.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 
-const sectionCardStyle = {
-  border: "0.7px solid hsl(var(--gray-400))",
-} as const;
-
-const cardBoxStyle = {
-  ...sectionCardStyle,
-  borderRadius: "0.75rem",
-  backgroundColor: "hsl(var(--card))",
-} as const;
-
 // ---------------------------------------------------------------------------
 // Credit balance bar (moved from billing tab)
 // ---------------------------------------------------------------------------
@@ -48,38 +38,22 @@ function formatCreditsLine(tier: BillingTier, totalUsed: number): string {
   return `${monthly.toLocaleString()}/mo plan · used ${totalUsed.toLocaleString()} this period`;
 }
 
-function splitCreditsForBar(
-  balance: number,
-  tier: BillingTier,
-): { planPortion: number; rolloverPortion: number } {
-  const ref = tierCreditReference(tier);
-  if (balance <= 0 || ref <= 0) {
-    return { planPortion: Math.max(0, balance), rolloverPortion: 0 };
-  }
-  return {
-    planPortion: Math.min(balance, ref),
-    rolloverPortion: Math.max(0, balance - ref),
-  };
-}
-
 function CreditUsageBar({
   used,
   balance,
   tier,
+  creditExpiry,
 }: {
   used: number;
   balance: number;
   tier: BillingTier;
+  creditExpiry?: { expiringNextCycle: number; nextExpiryDate: string | null };
 }) {
   const ref = tierCreditReference(tier);
   const total = used + balance;
   const barMax = Math.max(total, ref, 1);
 
-  // Three segments: used | plan pool (remaining within plan) | rollover (above plan)
   const usedPct = (used / barMax) * 100;
-  const { planPortion, rolloverPortion } = splitCreditsForBar(balance, tier);
-  const planPct = (planPortion / barMax) * 100;
-  const rolloverPct = (rolloverPortion / barMax) * 100;
 
   const [open, setOpen] = useState(false);
   const [timerId, setTimerId] = useState<ReturnType<
@@ -139,18 +113,6 @@ function CreditUsageBar({
                 style={{ width: `${usedPct}%` }}
               />
             )}
-            {planPortion > 0 && (
-              <div
-                className="h-full shrink-0 bg-primary/25"
-                style={{ width: `${planPct}%` }}
-              />
-            )}
-            {rolloverPortion > 0 && (
-              <div
-                className="h-full shrink-0 bg-amber-500/30"
-                style={{ width: `${rolloverPct}%` }}
-              />
-            )}
           </div>
         </div>
       </PopoverAnchor>
@@ -166,38 +128,23 @@ function CreditUsageBar({
       >
         <p className="text-sm font-medium text-foreground">Credit breakdown</p>
         <ul className="mt-2.5 space-y-2 text-xs text-muted-foreground">
-          <li className="relative flex items-baseline justify-between pl-5">
-            <span
-              className="absolute left-0 top-[0.35em] h-2 w-2 rounded-full bg-primary"
-              aria-hidden
-            />
-            <span>Used this period</span>
-            <span className="tabular-nums text-foreground">
-              {used.toLocaleString()}
-            </span>
-          </li>
-          <li className="relative flex items-baseline justify-between pl-5">
-            <span
-              className="absolute left-0 top-[0.35em] h-2 w-2 rounded-full bg-primary/25"
-              aria-hidden
-            />
-            <span>Plan pool remaining</span>
-            <span className="tabular-nums text-foreground">
-              {planPortion.toLocaleString()}
-            </span>
-          </li>
-          {rolloverPortion > 0 && (
-            <li className="relative flex items-baseline justify-between pl-5">
-              <span
-                className="absolute left-0 top-[0.35em] h-2 w-2 rounded-full bg-amber-500/50"
-                aria-hidden
-              />
-              <span>Rollover &amp; extra</span>
-              <span className="tabular-nums text-foreground">
-                {rolloverPortion.toLocaleString()}
-              </span>
-            </li>
-          )}
+          {creditExpiry &&
+            creditExpiry.expiringNextCycle > 0 &&
+            creditExpiry.nextExpiryDate && (
+              <li className="relative flex items-baseline justify-between pl-5">
+                <span
+                  className="absolute left-0 top-[0.35em] h-2 w-2 rounded-full bg-orange-500/50"
+                  aria-hidden
+                />
+                <span className="text-orange-600 dark:text-orange-400">
+                  Expiring on{" "}
+                  {new Date(creditExpiry.nextExpiryDate).toLocaleDateString()}
+                </span>
+                <span className="tabular-nums text-orange-600 dark:text-orange-400">
+                  {creditExpiry.expiringNextCycle.toLocaleString()}
+                </span>
+              </li>
+            )}
         </ul>
         {ref > 0 && (
           <p className="mt-2.5 border-t border-border/60 pt-2 text-[11px] text-muted-foreground leading-snug">
@@ -307,13 +254,13 @@ function InlineCapInput({
 
 function LoadingSkeleton() {
   return (
-    <div className="flex flex-col" style={cardBoxStyle}>
+    <div className="flex flex-col rounded-xl bg-card zero-border">
       <div className="flex items-center gap-3 px-5 py-4">
         <span className="h-7 w-7 shrink-0 rounded-lg bg-muted/50 animate-pulse" />
         <span className="h-4 w-32 rounded bg-muted/50 animate-pulse" />
         <span className="ml-auto h-4 w-16 rounded bg-muted/30 animate-pulse" />
       </div>
-      <div className="h-px bg-border/40 mx-5" />
+      <div className="h-0 zero-border-t mx-5" />
       <div className="flex items-center gap-3 px-5 py-4">
         <span className="h-7 w-7 shrink-0 rounded-lg bg-muted/50 animate-pulse" />
         <span className="h-4 w-40 rounded bg-muted/40 animate-pulse" />
@@ -379,10 +326,7 @@ export function OrgUsageTab() {
       {/* Credit balance */}
       <section className="flex flex-col gap-3">
         <h3 className="text-sm font-medium text-foreground">Credit balance</h3>
-        <div
-          className="overflow-hidden rounded-xl bg-card"
-          style={sectionCardStyle}
-        >
+        <div className="overflow-hidden rounded-xl bg-card zero-border">
           {billingLoading && !billing ? (
             <div className="px-5 py-4 space-y-2">
               <div className="h-4 w-48 rounded bg-muted/50 animate-pulse" />
@@ -403,6 +347,7 @@ export function OrgUsageTab() {
                   used={totalUsed}
                   balance={billing.credits}
                   tier={currentTier}
+                  creditExpiry={billing.creditExpiry}
                 />
               </div>
             </>
@@ -423,25 +368,16 @@ export function OrgUsageTab() {
         {usageLoading && !usageData ? (
           <LoadingSkeleton />
         ) : usageError ? (
-          <div
-            className="rounded-xl bg-card px-5 py-8 text-center text-sm text-muted-foreground"
-            style={sectionCardStyle}
-          >
+          <div className="rounded-xl bg-card px-5 py-8 text-center text-sm text-muted-foreground zero-border">
             Failed to load usage. Please try again later.
           </div>
         ) : !period ? (
-          <div
-            className="rounded-xl bg-card px-5 py-8 text-center text-sm text-muted-foreground"
-            style={sectionCardStyle}
-          >
+          <div className="rounded-xl bg-card px-5 py-8 text-center text-sm text-muted-foreground zero-border">
             No active billing period. Credit usage by member is available on
             paid plans.
           </div>
         ) : members.length === 0 ? (
-          <div
-            className="flex flex-col items-center gap-2 rounded-xl bg-card px-5 py-10 text-center"
-            style={sectionCardStyle}
-          >
+          <div className="flex flex-col items-center gap-2 rounded-xl bg-card px-5 py-10 text-center zero-border">
             <IconUsers
               size={20}
               stroke={1.5}
@@ -452,10 +388,7 @@ export function OrgUsageTab() {
             </p>
           </div>
         ) : (
-          <div
-            className="overflow-hidden rounded-xl bg-card"
-            style={sectionCardStyle}
-          >
+          <div className="overflow-hidden rounded-xl bg-card zero-border">
             {/* Header */}
             <div className="grid grid-cols-[1fr_7rem_6rem_5.5rem] gap-x-4 items-center px-5 py-2.5 text-[13px] font-medium text-foreground">
               <span>Member</span>
@@ -475,7 +408,7 @@ export function OrgUsageTab() {
 
               return (
                 <div key={member.userId}>
-                  <div className="h-px bg-border/40 mx-5" />
+                  <div className="h-0 zero-border-t mx-5" />
                   <div className="grid grid-cols-[1fr_7rem_6rem_5.5rem] gap-x-4 items-center px-5 py-3">
                     <div className="flex items-center gap-3 min-w-0">
                       <MemberAvatar

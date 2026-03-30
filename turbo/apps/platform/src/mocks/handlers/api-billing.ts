@@ -15,6 +15,7 @@ let mockBillingStatus: BillingStatus = {
   cancelAtPeriodEnd: false,
   hasSubscription: false,
   autoRecharge: { enabled: false, threshold: null, amount: null },
+  creditExpiry: { expiringNextCycle: 0, nextExpiryDate: null },
 };
 
 export function setMockBillingStatus(status: Partial<BillingStatus>): void {
@@ -30,6 +31,7 @@ export function resetMockBilling(): void {
     cancelAtPeriodEnd: false,
     hasSubscription: false,
     autoRecharge: { enabled: false, threshold: null, amount: null },
+    creditExpiry: { expiringNextCycle: 0, nextExpiryDate: null },
   };
 }
 

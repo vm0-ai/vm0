@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   useGet,
+  useLoadable,
   useSet,
   useLastLoadable,
   useLastResolved,
@@ -32,7 +33,7 @@ import {
   sendZeroChatMessage$,
   startNewZeroSession$,
 } from "../../signals/zero-page/zero-chat.ts";
-import { navigateTo$ } from "../../signals/route.ts";
+import { detachedNavigateTo$ } from "../../signals/route.ts";
 import {
   allConnectorTypes$,
   connectConnector$,
@@ -99,10 +100,9 @@ function OnboardingConnectorCard({
       type="button"
       onClick={onClick}
       disabled={isPolling}
-      className={`flex items-center gap-3 rounded-xl px-4 py-3.5 transition-colors focus:outline-none ${
+      className={`flex items-center gap-3 rounded-xl px-4 py-3.5 transition-colors focus:outline-none zero-border ${
         isPolling ? "bg-yellow-500/5" : "hover:bg-muted/30 cursor-pointer"
       }`}
-      style={{ border: "0.7px solid hsl(var(--gray-400))" }}
     >
       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted/40 overflow-hidden">
         <ConnectorIcon type={type} size={20} />
@@ -254,8 +254,7 @@ function ConnectStepContent({
             return (
               <div
                 key={type}
-                className="flex items-center gap-4 rounded-xl px-5 py-4"
-                style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+                className="flex items-center gap-4 rounded-xl px-5 py-4 zero-border"
               >
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted/40 overflow-hidden">
                   <ConnectorIcon type={type} size={20} />
@@ -340,8 +339,7 @@ function WhereToWorkContent({
           type="button"
           onClick={onAddToSlack}
           disabled={saving}
-          className="flex items-center gap-4 rounded-xl bg-card px-6 py-6 text-left transition-colors hover:bg-muted/30 disabled:opacity-50"
-          style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+          className="flex items-center gap-4 rounded-xl bg-card px-6 py-6 text-left transition-colors hover:bg-muted/30 disabled:opacity-50 zero-border"
         >
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted/40 overflow-hidden">
             <img src={slackIcon} alt="" className="h-6 w-6" />
@@ -360,8 +358,7 @@ function WhereToWorkContent({
           type="button"
           onClick={onContinueWeb}
           disabled={saving}
-          className="flex items-center gap-4 rounded-xl bg-card px-6 py-6 text-left transition-colors hover:bg-muted/30 disabled:opacity-50"
-          style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+          className="flex items-center gap-4 rounded-xl bg-card px-6 py-6 text-left transition-colors hover:bg-muted/30 disabled:opacity-50 zero-border"
         >
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg overflow-hidden">
             <img
@@ -560,9 +557,8 @@ function OrbitIllustration({
         return (
           <div
             key={type}
-            className="absolute z-10 flex h-11 w-11 items-center justify-center rounded-xl bg-background shadow-sm transition-all duration-500 ease-out"
+            className="absolute z-10 flex h-11 w-11 items-center justify-center rounded-xl bg-background shadow-sm transition-all duration-500 ease-out zero-border"
             style={{
-              border: "0.7px solid hsl(var(--gray-400))",
               top: `calc(50% + ${y}px - 22px)`,
               left: `calc(50% + ${x}px - 22px)`,
             }}
@@ -581,9 +577,8 @@ function OrbitIllustration({
         return (
           <div
             key={type}
-            className="absolute z-10 flex h-10 w-10 items-center justify-center rounded-xl bg-background shadow-sm transition-all duration-500 ease-out"
+            className="absolute z-10 flex h-10 w-10 items-center justify-center rounded-xl bg-background shadow-sm transition-all duration-500 ease-out zero-border"
             style={{
-              border: "0.7px solid hsl(var(--gray-400))",
               top: `calc(50% + ${y}px - 20px)`,
               left: `calc(50% + ${x}px - 20px)`,
             }}
@@ -862,9 +857,12 @@ function WorkspaceStep({
 
 function resolveEffectiveStep(
   isAdmin: boolean,
-  step: string,
+  step: string | undefined,
   hasMemberConnectors: boolean,
-): string {
+): string | undefined {
+  if (!step || step === "done") {
+    return undefined;
+  }
   if (isAdmin) {
     return step;
   }
@@ -894,10 +892,12 @@ function useOnboardingHandlers(isAdmin: boolean) {
   const dismissOnboarding = useSet(dismissZeroOnboarding$);
   const sendMessage = useSet(sendZeroChatMessage$);
   const startNewSession = useSet(startNewZeroSession$);
-  const navigate = useSet(navigateTo$);
+  const navigate = useSet(detachedNavigateTo$);
   const clearOnboardingError = useSet(clearZeroOnboardingError$);
   const reloadBilling = useSet(reloadBillingStatus$);
-  const slackData = useGet(slackOrgData$);
+  const slackDataLoadable = useLoadable(slackOrgData$);
+  const slackData =
+    slackDataLoadable.state === "hasData" ? slackDataLoadable.data : null;
 
   const handleAddToSlack = () => {
     clearOnboardingError();
@@ -993,7 +993,7 @@ export function ZeroOnboarding({
   isAdmin: boolean;
   displayName?: string;
 }) {
-  const step = useGet(zeroOnboardingStep$);
+  const step = useLastResolved(zeroOnboardingStep$);
   const setStep = useSet(setZeroStep$);
   const agentName = useGet(zeroAgentName$);
   const saving = useGet(zeroSaving$);
@@ -1030,6 +1030,11 @@ export function ZeroOnboarding({
     step,
     hasMemberConnectors,
   );
+
+  if (!effectiveStep) {
+    return null;
+  }
+
   const visibleSteps = resolveVisibleSteps(isAdmin, hasMemberConnectors);
   const currentStepIndex = visibleSteps.indexOf(effectiveStep);
 
@@ -1040,10 +1045,6 @@ export function ZeroOnboarding({
 
   // Display name for WhereToWorkContent
   const name = isAdmin ? agentName : displayName;
-
-  if (effectiveStep === "done") {
-    return null;
-  }
 
   return (
     <>

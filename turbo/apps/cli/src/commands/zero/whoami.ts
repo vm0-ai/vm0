@@ -65,6 +65,16 @@ async function showLocalInfo(): Promise<void> {
 export const zeroWhoamiCommand = new Command()
   .name("whoami")
   .description("Show agent identity, run ID, and capabilities")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  zero whoami
+
+Notes:
+  - Inside sandbox: shows agent ID, run ID, org ID, and granted capabilities
+  - Your agent ID is also available as $ZERO_AGENT_ID`,
+  )
   .action(
     withErrorHandler(async () => {
       if (isInsideSandbox()) {

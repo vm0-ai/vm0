@@ -16,7 +16,7 @@ pub enum RunnerError {
     Internal(String),
 
     #[error("snapshot error: {0}")]
-    Snapshot(#[from] sandbox_fc::SnapshotError),
+    Snapshot(#[from] sandbox::SnapshotError),
 
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),

@@ -678,6 +678,22 @@ export const setupCommand = new Command()
   .option("--no-notify-email", "Disable email notifications")
   .option("--notify-slack", "Enable Slack notifications (default: true)")
   .option("--no-notify-slack", "Disable Slack notifications")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  Daily at 9am:          zero schedule setup <agent-id> -f daily -t 09:00 -p "run report"
+  Weekly on Monday:      zero schedule setup <agent-id> -f weekly -d mon -t 10:00 -p "weekly sync"
+  Monthly on the 1st:    zero schedule setup <agent-id> -f monthly -d 1 -t 08:00 -p "monthly review"
+  One-time:              zero schedule setup <agent-id> -f once -d 2026-04-01 -t 14:00 -p "one-off task"
+  Loop every 5 minutes:  zero schedule setup <agent-id> -f loop -i 300 -p "poll for updates"
+  Create and enable:     zero schedule setup <agent-id> -f daily -t 09:00 -p "run report" --enable
+
+Notes:
+  - Re-running setup with the same agent updates the existing "default" schedule
+  - Use -n to manage multiple named schedules for the same agent
+  - All flags are required in non-interactive mode; interactive mode prompts for missing values`,
+  )
   .action(
     withErrorHandler(async (agentIdentifier: string, options: SetupOptions) => {
       // 1. Resolve agent identifier (UUID or name) to compose ID

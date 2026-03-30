@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { pathname$, navigateTo$ } from "../route.ts";
+import { pathname$, detachedNavigateTo$, pathParams$ } from "../route.ts";
 import type {
   ZeroNavId,
   ZeroAccountAction,
@@ -20,7 +20,7 @@ function isValidTab(tab: string): tab is ZeroNavId {
 
 /**
  * Active zero nav id, derived from the URL path `/:tab`.
- * `/`, `/chat`, `/chat/:sessionId`, and `/talk/:id`
+ * `/`, `/chat`, `/chat/:chatThreadId`, and `/talk/:agentId`
  * all resolve to "chat".
  * Unknown paths resolve to "not-found".
  */
@@ -37,23 +37,23 @@ export const zeroActiveId$ = computed((get): ZeroNavId => {
 });
 
 /**
- * Session ID extracted from `/chat/:sessionId`.
- * Returns null when on `/`, `/chat`, or `/talk/:id`.
+ * Chat thread ID extracted from `/chat/:chatThreadId`.
+ * Returns null when on `/`, `/chat`, or `/talk/:agentId`.
  */
-export const zeroSessionId$ = computed((get): string | null => {
-  const path = get(pathname$);
-  const match = /^\/chat\/([^/]+)$/.exec(path);
-  return match ? match[1] : null;
+export const chatThreadId$ = computed((get): string | null => {
+  const params = get(pathParams$);
+  const chatThreadId = params?.chatThreadId;
+  return typeof chatThreadId === "string" ? chatThreadId : null;
 });
 
 /**
- * Agent ID extracted from `/talk/:id`.
+ * Agent ID extracted from `/talk/:agentId`.
  * Returns null when chatting with the default agent.
  */
 export const zeroTalkAgentId$ = computed((get): string | null => {
-  const path = get(pathname$);
-  const match = /^\/talk\/([^/]+)/.exec(path);
-  return match ? decodeURIComponent(match[1]) : null;
+  const params = get(pathParams$);
+  const agentId = params?.agentId;
+  return typeof agentId === "string" ? agentId : null;
 });
 
 /**
@@ -82,15 +82,17 @@ export const setZeroChatAgent$ = command(({ set }, agentId: string | null) => {
 });
 
 /**
- * Navigate to a specific chat session — `/chat/:sessionId`.
+ * Navigate to a specific chat session — `/chat/:chatThreadId`.
  *
  * Always performs a full route navigation so that `loadRoute$` fires and
  * the correct page setup runs (e.g. when navigating from /team).
  * `loadInitialData$` guards heavy work behind `initialDataLoaded$`, so
  * re-entry from an already-loaded zero page is cheap.
  */
-export const navigateToZeroSession$ = command(({ set }, sessionId: string) => {
-  set(navigateTo$, "/chat/:sessionId", { pathParams: { sessionId } });
+export const navigateToChat$ = command(({ set }, chatThreadId: string) => {
+  set(detachedNavigateTo$, "/chat/:chatThreadId", {
+    pathParams: { chatThreadId },
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -136,11 +138,11 @@ export const initSidebarCollapsed$ = command(({ set }) => {
 /** Handle nav tab selection: navigate to tab and close about page. */
 export const handleZeroNavSelect$ = command(({ set }, id: ZeroNavId) => {
   if (id === "chat") {
-    set(navigateTo$, "/");
+    set(detachedNavigateTo$, "/");
   } else if (id === "team") {
-    set(navigateTo$, "/team");
+    set(detachedNavigateTo$, "/team");
   } else {
-    set(navigateTo$, "/:tab", { pathParams: { tab: id } });
+    set(detachedNavigateTo$, "/:tab", { pathParams: { tab: id } });
   }
   set(internalShowAboutPage$, false);
 });
@@ -152,7 +154,7 @@ export const handleZeroAccountAction$ = command(
       return;
     }
     if (action === "preferences") {
-      set(navigateTo$, "/:tab", { pathParams: { tab: "preferences" } });
+      set(detachedNavigateTo$, "/:tab", { pathParams: { tab: "preferences" } });
     }
   },
 );

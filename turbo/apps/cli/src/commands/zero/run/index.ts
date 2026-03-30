@@ -6,7 +6,7 @@ mainRunCommand.addCommand(continueCommand);
 mainRunCommand.addHelpText(
   "after",
   `
-Delegation workflow:
+Examples:
   Discover teammates:    zero agent list
   Delegate a task:       zero run <agent-id> "your task"
   Continue delegation:   zero run continue <session-id> "follow up"`,

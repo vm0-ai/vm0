@@ -51,10 +51,10 @@ export function TimezoneSettings() {
 
   return (
     <div className="flex flex-col gap-3">
-      <div
-        className="flex items-center gap-4 bg-card p-4 rounded-xl"
-        style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-      >
+      <p className="text-sm text-muted-foreground">
+        Sets the TZ environment variable for your agent sandbox at runtime.
+      </p>
+      <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border">
         <div className="shrink-0">
           <div className="flex h-7 w-7 items-center justify-center">
             <IconClock

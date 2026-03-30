@@ -8,7 +8,7 @@ import {
   agentDisplayName$,
   defaultAgentId$,
 } from "../../signals/zero-page/zero-agent-name.ts";
-import { navigateTo$ } from "../../signals/route.ts";
+import { detachedNavigateTo$ } from "../../signals/route.ts";
 
 export function ZeroChatSessionPageWrapper() {
   const currentChatAgentId = useGet(zeroChatAgentId$);
@@ -36,12 +36,12 @@ export function ZeroChatSessionPageWrapper() {
     ? (selectedSubagent.displayName ?? selectedSubagent.id)
     : agentDisplayName;
 
-  const navigateTo = useSet(navigateTo$);
+  const navigateTo = useSet(detachedNavigateTo$);
 
   const handleNavigateToSchedule = () => {
     if (resolvedAgentId) {
-      navigateTo("/team/:id", {
-        pathParams: { id: resolvedAgentId },
+      navigateTo("/team/:agentId", {
+        pathParams: { agentId: resolvedAgentId },
         searchParams: new URLSearchParams({ tab: "schedule" }),
       });
     }
@@ -49,8 +49,8 @@ export function ZeroChatSessionPageWrapper() {
 
   const handleChatAvatarClick = () => {
     if (resolvedAgentId) {
-      navigateTo("/team/:id", {
-        pathParams: { id: resolvedAgentId },
+      navigateTo("/team/:agentId", {
+        pathParams: { agentId: resolvedAgentId },
       });
     }
   };

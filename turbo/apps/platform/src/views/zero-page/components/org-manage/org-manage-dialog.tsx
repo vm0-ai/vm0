@@ -45,7 +45,7 @@ const TAB_META = {
   providers: {
     title: "Model Providers",
     description:
-      "Use your own model provider instead of credits. Add your API keys below.",
+      "Configure model providers for running tasks. You can also bring your own API key to use a custom provider.",
   },
   members: {
     title: "Members",
@@ -137,14 +137,7 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="flex flex-col max-w-[960px] h-[85vh] p-0 gap-0 overflow-hidden"
-        style={{
-          border: "0.7px solid hsl(var(--gray-400))",
-          borderRadius: "0.75rem",
-          backgroundColor: "hsl(var(--card))",
-        }}
-      >
+      <DialogContent className="flex flex-col max-w-[960px] h-[85vh] p-0 gap-0 overflow-hidden zero-border rounded-xl bg-card">
         <DialogTitle className="sr-only">Workspace settings</DialogTitle>
         <DialogDescription className="sr-only">
           Manage your workspace profile, members, integrations, and billing.
@@ -152,13 +145,7 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
 
         <div className="flex h-full">
           {/* Sidebar nav — mirrors zero-sidebar.tsx styling */}
-          <nav
-            className="w-52 shrink-0 p-3 pt-3 pb-4 flex flex-col gap-4 overflow-y-auto"
-            style={{
-              borderRight: "0.7px solid hsl(var(--gray-300))",
-              backgroundColor: "hsl(var(--gray-0))",
-            }}
-          >
+          <nav className="w-52 shrink-0 p-3 pt-3 pb-4 flex flex-col gap-4 overflow-y-auto zero-border-r bg-[hsl(var(--gray-0))]">
             {sidebarGroups.map((group) => (
               <div key={group.label} className="shrink-0">
                 <div className="h-7 flex items-center pl-2">
@@ -206,7 +193,7 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
           {/* Content area */}
           <div
             className="flex-1 min-w-0 flex flex-col overflow-hidden"
-            style={{ backgroundColor: "rgb(254, 254, 254)" }}
+            style={{ backgroundColor: "hsl(var(--background))" }}
           >
             {!hideHeader && (
               <header className="shrink-0 px-10 pt-8 pb-1">

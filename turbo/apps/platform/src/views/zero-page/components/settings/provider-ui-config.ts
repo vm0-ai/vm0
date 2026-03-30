@@ -115,6 +115,13 @@ function getOverrides(
       },
     };
   }
+  if (type === "vm0") {
+    return {
+      label: "Built-in model",
+      description:
+        "Powered by Claude — uses your VM0 credits. No API key needed.",
+    };
+  }
   if (type === "aws-bedrock") {
     return {
       description:

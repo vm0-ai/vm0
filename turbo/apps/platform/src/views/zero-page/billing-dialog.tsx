@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -133,11 +134,14 @@ export function AutoRechargeSection({
       ? configLoadable.data
       : { enabled: false, threshold: "", amount: "" };
 
+  const [pendingEnabled, setPendingEnabled] = useState<boolean | null>(null);
+
   if (currentTier === "free") {
     return null;
   }
 
   const { enabled, threshold, amount } = config;
+  const displayEnabled = pendingEnabled !== null ? pendingEnabled : enabled;
   const amountNum = Number(amount);
   const amountParsed = Number.isFinite(amountNum) ? amountNum : 0;
   const dollarAmount =
@@ -181,13 +185,15 @@ export function AutoRechargeSection({
 
   const persistIfValid = () => {
     const { threshold: t, amount: a } = readInputNumbers();
-    if (!loading && (!enabled || (t > 0 && a >= CREDITS_PER_DOLLAR))) {
-      saveCurrent({ threshold: t, amount: a });
+    if (!loading && (!displayEnabled || (t > 0 && a >= CREDITS_PER_DOLLAR))) {
+      if (displayEnabled) {
+        setPendingEnabled(null);
+      }
+      saveCurrent({ enabled: displayEnabled, threshold: t, amount: a });
     }
   };
 
-  const inputRowClass =
-    "h-9 w-[200px] shrink-0 rounded-lg border-[0.7px] border-[hsl(var(--gray-400))]";
+  const inputRowClass = "h-9 w-[200px] shrink-0";
 
   if (variant === "settings") {
     return (
@@ -207,9 +213,10 @@ export function AutoRechargeSection({
               </p>
             </div>
             <Switch
-              checked={enabled}
+              checked={displayEnabled}
               onCheckedChange={(v) => {
                 if (!v) {
+                  setPendingEnabled(null);
                   saveCurrent({ enabled: false });
                   return;
                 }
@@ -217,6 +224,8 @@ export function AutoRechargeSection({
                 const a = amountNum;
                 if (!loading && t > 0 && a >= CREDITS_PER_DOLLAR) {
                   saveCurrent({ enabled: true, threshold: t, amount: a });
+                } else {
+                  setPendingEnabled(true);
                 }
               }}
               disabled={loading}
@@ -224,9 +233,9 @@ export function AutoRechargeSection({
               aria-label="Enable auto-recharge"
             />
           </div>
-          {enabled && (
+          {displayEnabled && (
             <>
-              <div className="h-px bg-border/40 mx-5" />
+              <div className="h-0 zero-border-t mx-5" />
               <div className="flex items-center justify-between gap-4 px-5 py-4">
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-foreground">
@@ -249,7 +258,7 @@ export function AutoRechargeSection({
                   aria-label="Credit threshold for auto-recharge"
                 />
               </div>
-              <div className="h-px bg-border/40 mx-5" />
+              <div className="h-0 zero-border-t mx-5" />
               <div className="flex items-center justify-between gap-4 px-5 py-4">
                 <div className="min-w-0 flex flex-col gap-1">
                   <span className="text-xl font-semibold tabular-nums tracking-tight text-foreground">
@@ -318,14 +327,13 @@ export function AutoRechargeSection({
             <span className="text-xs text-muted-foreground">
               When credits drop below
             </span>
-            <input
+            <Input
               key={`dialog-threshold-${threshold}`}
               id={thresholdId}
               type="number"
               min={1}
               defaultValue={threshold}
               placeholder="e.g. 1000"
-              className="rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground"
             />
           </label>
 
@@ -334,7 +342,7 @@ export function AutoRechargeSection({
               Recharge amount
             </span>
             <div className="flex items-center gap-2">
-              <input
+              <Input
                 key={`dialog-amount-${amount}`}
                 id={amountId}
                 type="number"
@@ -342,7 +350,7 @@ export function AutoRechargeSection({
                 step={CREDITS_PER_DOLLAR}
                 defaultValue={amount}
                 placeholder="e.g. 10000"
-                className="rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground flex-1"
+                className="flex-1"
               />
               <span className="text-xs text-muted-foreground whitespace-nowrap">
                 = ${dollarAmount}

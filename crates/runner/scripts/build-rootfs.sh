@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build-rootfs.sh — Build a squashfs rootfs for Firecracker VMs.
+# build-rootfs.sh — Build an ext4 rootfs image for Firecracker VMs.
 #
 # This script is called by the Rust runner binary. Its content is hashed as
 # part of the build-input hash, so any change here automatically invalidates
@@ -24,6 +24,7 @@ set -euo pipefail
 OUTPUT_DIR=""
 WORK_DIR=""
 CA_DIR=""
+INPUT_HASH=""
 GUEST_AGENT=""
 GUEST_DOWNLOAD=""
 GUEST_INIT=""
@@ -34,6 +35,7 @@ while [[ $# -gt 0 ]]; do
     --output-dir)       OUTPUT_DIR="$2";       shift 2 ;;
     --work-dir)   WORK_DIR="$2";   shift 2 ;;
     --ca-dir)     CA_DIR="$2";     shift 2 ;;
+    --hash)       INPUT_HASH="$2"; shift 2 ;;
     --guest-agent)      GUEST_AGENT="$2";      shift 2 ;;
     --guest-download)   GUEST_DOWNLOAD="$2";   shift 2 ;;
     --guest-init)       GUEST_INIT="$2";       shift 2 ;;
@@ -42,7 +44,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-for var in OUTPUT_DIR WORK_DIR CA_DIR GUEST_AGENT GUEST_DOWNLOAD GUEST_INIT GUEST_MOCK_CLAUDE; do
+for var in OUTPUT_DIR WORK_DIR CA_DIR INPUT_HASH GUEST_AGENT GUEST_DOWNLOAD GUEST_INIT GUEST_MOCK_CLAUDE; do
   if [[ -z "${!var}" ]]; then
     echo "error: --$(echo "$var" | tr '_' '-' | tr '[:upper:]' '[:lower:]') is required" >&2
     exit 1
@@ -55,7 +57,7 @@ done
 
 DOCKER="docker"
 IMAGE_NAME="vm0-rootfs"
-ROOTFS_FILE="rootfs.squashfs"
+ROOTFS_FILE="rootfs.ext4"
 CA_CERT_FILE="mitmproxy-ca-cert.pem"
 CA_KEY_FILE="mitmproxy-ca-key.pem"
 CA_COMBINED_FILE="mitmproxy-ca.pem"
@@ -75,6 +77,7 @@ ROOTFS_PATH="${OUTPUT_DIR}/${ROOTFS_FILE}"
 TAR_PATH="${OUTPUT_DIR}/${TAR_FILE}"
 TMP_ROOTFS_PATH="${OUTPUT_DIR}/${TMP_ROOTFS}"
 EXTRACT_DIR=""
+EXT4_MOUNT_DIR=""
 
 # ---------------------------------------------------------------------------
 # Dependency checks
@@ -83,15 +86,11 @@ EXTRACT_DIR=""
 check_dependencies() {
   local missing=()
 
-  for cmd in docker sudo tar chroot mktemp stat; do
+  for cmd in docker sudo tar chroot mktemp stat mkfs.ext4; do
     if ! command -v "$cmd" &> /dev/null; then
       missing+=("$cmd")
     fi
   done
-
-  if ! command -v mksquashfs &> /dev/null; then
-    missing+=("mksquashfs (apt-get install squashfs-tools)")
-  fi
 
   if [[ ${#missing[@]} -gt 0 ]]; then
     echo "error: missing required dependencies: ${missing[*]}" >&2
@@ -113,6 +112,11 @@ check_dependencies() {
 
 cleanup() {
   echo "cleaning up..."
+  # Unmount ext4 loop mount if still active
+  if [[ -n "$EXT4_MOUNT_DIR" ]]; then
+    sudo umount "$EXT4_MOUNT_DIR" 2>/dev/null || true
+    rmdir "$EXT4_MOUNT_DIR" 2>/dev/null || true
+  fi
   # Remove root-owned temp files
   sudo rm -f "$TAR_PATH" 2>/dev/null || true
   sudo rm -f "$TMP_ROOTFS_PATH" 2>/dev/null || true
@@ -206,13 +210,41 @@ extract_and_inject() {
 }
 
 # ---------------------------------------------------------------------------
-# Squashfs creation
+# ext4 image creation
 # ---------------------------------------------------------------------------
 
-create_squashfs() {
-  echo "creating squashfs image..."
-  sudo mksquashfs "$EXTRACT_DIR" "$TMP_ROOTFS_PATH" -comp xz -noappend -quiet
-  echo "[OK] squashfs created"
+create_ext4() {
+  echo "creating ext4 image..."
+
+  # Size the image to content + 2 GiB free space.
+  # With dm-snapshot COW, the guest filesystem is limited to this image
+  # size — there is no separate writable layer.  The old overlayfs approach
+  # had a 2 GiB upper layer for writes; we match that by reserving 2 GiB
+  # of free space inside the rootfs itself.
+  local content_bytes
+  content_bytes=$(sudo du -sb "$EXTRACT_DIR" | cut -f1)
+  local free_space=2147483648  # 2 GiB
+  local image_bytes=$(( content_bytes + free_space ))
+
+  # Derive a deterministic UUID from the input hash.  ext4 uses the UUID
+  # as the htree seed for directory hashing — a fixed UUID ensures
+  # identical block layout for identical content, making the rootfs
+  # reproducible.  This matters because dm-snapshot COW files record
+  # sector-level offsets: if the rootfs is rebuilt with a different block
+  # layout, existing snapshots become corrupt.
+  local fs_uuid="${INPUT_HASH:0:8}-${INPUT_HASH:8:4}-${INPUT_HASH:12:4}-${INPUT_HASH:16:4}-${INPUT_HASH:20:12}"
+
+  truncate -s "$image_bytes" "$TMP_ROOTFS_PATH"
+  mkfs.ext4 -F -q -U "$fs_uuid" "$TMP_ROOTFS_PATH"
+
+  EXT4_MOUNT_DIR=$(mktemp -d)
+  sudo mount -o loop "$TMP_ROOTFS_PATH" "$EXT4_MOUNT_DIR"
+  sudo cp -a "$EXTRACT_DIR"/. "$EXT4_MOUNT_DIR"/
+  sudo umount "$EXT4_MOUNT_DIR"
+  rmdir "$EXT4_MOUNT_DIR"
+  EXT4_MOUNT_DIR=""
+
+  echo "[OK] ext4 image created"
 }
 
 # ---------------------------------------------------------------------------
@@ -227,7 +259,7 @@ extract_and_inject
 # Free disk space early
 sudo rm -f "$TAR_PATH"
 
-create_squashfs
+create_ext4
 
 # Move into final place
 mv "$TMP_ROOTFS_PATH" "$ROOTFS_PATH"

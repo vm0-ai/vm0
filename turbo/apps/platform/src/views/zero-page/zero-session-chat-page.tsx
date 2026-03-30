@@ -43,20 +43,15 @@ import {
 } from "../../signals/zero-page/zero-pinned-agents.ts";
 import {
   zeroChatMessages$,
-  zeroChatSending$,
+  allFinished$,
   zeroChatInput$,
   setZeroChatInput$,
   clearZeroChatInput$,
   sendZeroChatMessage$,
   type ZeroChatMessage,
-  zeroChatRunSummaries$,
-  zeroChatRunStatus$,
-  zeroChatQueuePosition$,
+  type UserChatMessage,
+  type AssistantChatMessage,
   cancelActiveRun$,
-  zeroChatQueuedMessage$,
-  queueZeroChatMessage$,
-  withdrawQueuedMessage$,
-  zeroChatThinkingMessage$,
 } from "../../signals/zero-page/zero-chat.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { Link } from "../router/link.tsx";
@@ -92,7 +87,9 @@ export function ZeroSessionChatPage({
   const messagesLoadable = useLoadable(zeroChatMessages$);
   const messages =
     messagesLoadable.state === "hasData" ? messagesLoadable.data : [];
-  const sending = useGet(zeroChatSending$);
+  const allFinishedLoadable = useLastLoadable(allFinished$);
+  const sending =
+    allFinishedLoadable.state === "hasData" ? !allFinishedLoadable.data : false;
   const sessionError =
     messagesLoadable.state === "hasError"
       ? messagesLoadable.error instanceof Error
@@ -105,9 +102,6 @@ export function ZeroSessionChatPage({
   const clearInput = useSet(clearZeroChatInput$);
   const send = useSet(sendZeroChatMessage$);
   const cancelRun = useSet(cancelActiveRun$);
-  const queuedMessage = useGet(zeroChatQueuedMessage$);
-  const queueMessage = useSet(queueZeroChatMessage$);
-  const withdraw = useSet(withdrawQueuedMessage$);
   const pageSignal = useGet(pageSignal$);
 
   // Pin pill
@@ -135,12 +129,8 @@ export function ZeroSessionChatPage({
   };
 
   const handleSend = (text: string, opts?: { modelProvider: string }) => {
-    if (sending) {
-      queueMessage(text, opts);
-    } else {
-      clearInput();
-      detach(send(text, opts, pageSignal), Reason.DomCallback);
-    }
+    clearInput();
+    detach(send(text, opts, pageSignal), Reason.DomCallback);
   };
 
   return (
@@ -178,7 +168,7 @@ export function ZeroSessionChatPage({
                     <button
                       type="button"
                       onClick={handlePin}
-                      className="absolute -top-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full border-[0.7px] border-[hsl(var(--gray-400))] bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground hover:shadow-md cursor-pointer"
+                      className="absolute -top-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full zero-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground hover:shadow-md cursor-pointer"
                       aria-label="Pin to sidebar"
                     >
                       <IconPin size={10} stroke={2} />
@@ -234,7 +224,7 @@ export function ZeroSessionChatPage({
       {/* Scrollable area — messages + sticky composer share the same scroll context */}
       <div className="flex-1 overflow-auto flex flex-col min-h-0">
         <main className="flex-1 px-4 sm:px-6 py-4 items-center">
-          <div className="w-full max-w-[900px] mx-auto flex flex-1 flex-col gap-6 pb-4">
+          <div className="w-full max-w-[900px] mx-auto flex flex-1 flex-col gap-6 pb-4 overflow-visible">
             {sessionError && (
               <div className="flex-1 flex items-center justify-center py-16">
                 <div className="flex items-center gap-2 text-destructive">
@@ -275,8 +265,6 @@ export function ZeroSessionChatPage({
               onSend={handleSend}
               sending={sending}
               onCancel={() => void cancelRun(pageSignal)}
-              queuedMessage={queuedMessage}
-              onWithdraw={withdraw}
               displayName={displayName}
               autoFocus={messages.length === 0}
             />
@@ -299,7 +287,7 @@ function ChatSkeleton() {
         <Skeleton className="h-10 w-[60%] rounded-xl" />
       </div>
       {/* Assistant bubble skeleton */}
-      <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 items-start">
+      <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 -ml-[38px] sm:-ml-[46px] items-start">
         <Skeleton className="h-7 w-7 sm:h-9 sm:w-9 rounded-xl" />
         <div className="flex flex-col gap-2">
           <Skeleton className="h-4 w-[90%] rounded-lg" />
@@ -312,7 +300,7 @@ function ChatSkeleton() {
         <Skeleton className="h-10 w-[45%] rounded-xl" />
       </div>
       {/* Assistant bubble skeleton */}
-      <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 items-start">
+      <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 -ml-[38px] sm:-ml-[46px] items-start">
         <Skeleton className="h-7 w-7 sm:h-9 sm:w-9 rounded-xl" />
         <div className="flex flex-col gap-2">
           <Skeleton className="h-4 w-[85%] rounded-lg" />
@@ -363,7 +351,7 @@ function isImageFilename(filename: string): boolean {
   return /\.(png|jpe?g|gif|webp|svg)$/i.test(filename);
 }
 
-function UserMessage({ message }: { message: ZeroChatMessage }) {
+function UserMessage({ message }: { message: UserChatMessage }) {
   const { cleanContent, parsed } = parseInlineAttachments(message.content);
   // Preserve user-entered line breaks: CommonMark collapses single newlines
   // into spaces, so convert each \n to a hard line break (two trailing spaces + \n).
@@ -392,7 +380,7 @@ function UserMessage({ message }: { message: ZeroChatMessage }) {
 
   return (
     <>
-      <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 items-start animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 -ml-[38px] sm:-ml-[46px] items-start animate-in fade-in slide-in-from-bottom-2 duration-300">
         <div className="w-7 h-7 sm:w-9 sm:h-9 shrink-0" />
         <div className="flex flex-col items-end min-w-0">
           <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-sm leading-relaxed break-words overflow-hidden">
@@ -449,16 +437,46 @@ function deduplicateSummaries(summaries: string[]): string[] {
   return result;
 }
 
-function RunActivityLine() {
-  const summariesLoadable = useLastLoadable(zeroChatRunSummaries$);
+/** Live run activity rendered from a message's own runLoop signals. */
+function MessageRunActivityLine({
+  message,
+}: {
+  message: AssistantChatMessage;
+}) {
+  const summariesLoadable = useLastLoadable(message.summaries$!);
   const rawSummaries =
     summariesLoadable.state === "hasData" ? summariesLoadable.data : [];
-  const runStatus = useGet(zeroChatRunStatus$);
-  const queuePosition = useGet(zeroChatQueuePosition$);
+  const detailLoadable = useLastLoadable(message.runLoop!.detail$);
+  const runStatus =
+    detailLoadable.state === "hasData" ? detailLoadable.data.status : null;
+  const queueLoadable = useLastLoadable(message.runLoop!.queuePosition$);
+  const queuePosition =
+    queueLoadable.state === "hasData" ? queueLoadable.data : 0;
   const isQueued = runStatus === "queued";
+  const thinkingMsg = useGet(message.runLoop!.thinkingMessage$);
+  return (
+    <RunActivityLineView
+      summaries={rawSummaries}
+      isQueued={isQueued}
+      queuePosition={queuePosition}
+      thinkingMsg={thinkingMsg}
+    />
+  );
+}
 
-  const thinkingMsg = useGet(zeroChatThinkingMessage$);
+/** Live run activity rendered from global signals (legacy path). */
 
+function RunActivityLineView({
+  summaries: rawSummaries,
+  isQueued,
+  queuePosition,
+  thinkingMsg,
+}: {
+  summaries: string[];
+  isQueued: boolean;
+  queuePosition: number;
+  thinkingMsg: string;
+}) {
   if (isQueued) {
     return (
       <div className="flex items-center gap-2 min-w-0">
@@ -500,20 +518,14 @@ function RunActivityLine() {
           className="absolute left-[5.5px] top-[6px] bottom-[6px] pointer-events-none"
           aria-hidden
         >
-          <div
-            className="w-px h-full bg-border/60"
-            style={{
-              backgroundImage:
-                "repeating-linear-gradient(to bottom, transparent, transparent 2px, hsl(var(--border) / 0.6) 2px, hsl(var(--border) / 0.6) 5px)",
-            }}
-          />
+          <div className="w-px h-full bg-border/60 zero-dashed-line" />
         </div>
       )}
       {items.map((summary, idx) => {
         const isLast = idx === items.length - 1;
         return (
           <p
-            key={`${idx}-${summary}`}
+            key={summary}
             className={`flex items-center gap-2.5 min-w-0 text-xs truncate animate-in fade-in slide-in-from-bottom-1 duration-300 ${
               isLast ? "" : "text-muted-foreground"
             }`}
@@ -590,18 +602,12 @@ function CollapsibleTimeline({
               className="absolute left-[5.5px] top-[6px] bottom-[6px] pointer-events-none"
               aria-hidden
             >
-              <div
-                className="w-px h-full"
-                style={{
-                  backgroundImage:
-                    "repeating-linear-gradient(to bottom, transparent, transparent 2px, hsl(var(--border) / 0.6) 2px, hsl(var(--border) / 0.6) 5px)",
-                }}
-              />
+              <div className="w-px h-full zero-dashed-line" />
             </div>
           )}
-          {items.map((summary, idx) => (
+          {items.map((summary) => (
             <p
-              key={`${idx}-${summary}`}
+              key={summary}
               className="flex items-center gap-2 min-w-0 text-xs text-muted-foreground truncate"
             >
               <span className="h-3 w-3 shrink-0 flex items-center justify-center relative z-[1] rounded-full bg-card">
@@ -622,11 +628,74 @@ function CollapsibleTimeline({
 }
 
 interface AssistantMessageProps {
-  message: ZeroChatMessage;
+  message: AssistantChatMessage;
   zeroAvatarSrc: string;
 }
 
 function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
+  // Delegate to reactive variant when the message carries its own runLoop signals
+  if (message.result$) {
+    return (
+      <ReactiveAssistantMessage
+        message={message}
+        zeroAvatarSrc={zeroAvatarSrc}
+      />
+    );
+  }
+  return (
+    <StaticAssistantMessage message={message} zeroAvatarSrc={zeroAvatarSrc} />
+  );
+}
+
+/** Assistant message with reactive result$/summaries$/detail$ from runLoop. */
+function ReactiveAssistantMessage({
+  message,
+  zeroAvatarSrc,
+}: AssistantMessageProps) {
+  const resultLoadable = useLastLoadable(message.result$!);
+  const content = resultLoadable.state === "hasData" ? resultLoadable.data : "";
+  const summariesLoadable = useLastLoadable(message.summaries$!);
+  const summaries =
+    summariesLoadable.state === "hasData" ? summariesLoadable.data : [];
+  const detailLoadable = useLastLoadable(message.runLoop!.detail$);
+  const detail =
+    detailLoadable.state === "hasData" ? detailLoadable.data : null;
+  const isFailed =
+    detail?.status === "failed" ||
+    detail?.status === "timeout" ||
+    detail?.status === "cancelled";
+
+  // Build an enriched message with reactive content for the static renderer
+  const enrichedMessage: AssistantChatMessage = {
+    ...message,
+    content,
+    summaries: summaries.length > 0 ? summaries : message.summaries,
+    status: detail?.status ?? undefined,
+    error: isFailed
+      ? (detail?.error ??
+        (detail?.status === "timeout"
+          ? "Run timed out"
+          : detail?.status === "cancelled"
+            ? "Run cancelled."
+            : "Run failed"))
+      : undefined,
+  };
+  return (
+    <StaticAssistantMessage
+      message={enrichedMessage}
+      zeroAvatarSrc={zeroAvatarSrc}
+      renderActivityLine={
+        !isFailed ? <MessageRunActivityLine message={message} /> : undefined
+      }
+    />
+  );
+}
+
+function StaticAssistantMessage({
+  message,
+  zeroAvatarSrc,
+  renderActivityLine,
+}: AssistantMessageProps & { renderActivityLine?: React.ReactNode }) {
   const setOrgManageOpen = useSet(setOrgManageDialogOpen$);
   const setTab = useSet(setActiveTab$);
   const pageSignal = useGet(pageSignal$);
@@ -654,7 +723,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
     detach(copyMessage(message.id, message.content), Reason.DomCallback);
   };
 
-  const logButton = message.runId ? (
+  const logButton = message.legacyRunId ? (
     <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5">
       <div />
       <div className="flex py-2 gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
@@ -662,8 +731,8 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
           <Tooltip>
             <TooltipTrigger asChild>
               <Link
-                pathname="/activity/:logId"
-                options={{ pathParams: { logId: message.runId } }}
+                pathname="/activity/:runId"
+                options={{ pathParams: { runId: message.legacyRunId } }}
                 className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
                 aria-label="View run logs"
               >
@@ -717,7 +786,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
       message.error.includes("Invalid signature in thinking block");
     return (
       <div className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
-        <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 items-start">
+        <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 -ml-[38px] sm:-ml-[46px] items-start">
           {avatar}
           <div className="zero-chat-bubble-assistant px-0 pt-4 text-sm leading-relaxed min-w-0 break-words">
             {hasSummaries && (
@@ -781,7 +850,7 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
   if (message.content) {
     return (
       <div className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
-        <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 items-start">
+        <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 -ml-[38px] sm:-ml-[46px] items-start">
           {avatar}
           <div className="zero-chat-bubble-assistant px-0 pt-4 text-sm leading-relaxed min-w-0 break-words">
             {hasSummaries && (
@@ -807,10 +876,18 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
   // Thinking / loading state — show live run activity
   return (
     <div className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
-      <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 items-start">
+      <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 -ml-[38px] sm:-ml-[46px] items-start">
         {avatar}
         <div className="zero-chat-bubble-assistant rounded-xl py-4 text-sm leading-relaxed min-w-0 overflow-hidden">
-          <RunActivityLine />
+          {renderActivityLine ?? (
+            <div className="flex items-center gap-2 min-w-0">
+              <IconLoader2
+                size={14}
+                className="animate-spin text-foreground/50 shrink-0"
+              />
+              <p className="zero-shimmer-text text-xs truncate">Thinking...</p>
+            </div>
+          )}
         </div>
       </div>
       {logButton}

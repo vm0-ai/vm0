@@ -1,7 +1,6 @@
 class LocationOverrides {
   pathname: string | undefined = undefined;
   search: string | undefined = undefined;
-  origin: string | undefined = undefined;
   pushState: typeof window.history.pushState | undefined = undefined;
   replaceState: typeof window.history.replaceState | undefined = undefined;
 }
@@ -14,10 +13,6 @@ export const setPathname = (pathname: string) => {
 
 export const setSearch = (search: string) => {
   overrides.search = search;
-};
-
-export const setOrigin = (origin: string) => {
-  overrides.origin = origin;
 };
 
 export function mockLocation(
@@ -45,10 +40,6 @@ export const pathname = () => {
 
 export const search = () => {
   return overrides.search ?? location.search;
-};
-
-export const origin = () => {
-  return overrides.origin ?? location.origin;
 };
 
 export const pushState = (

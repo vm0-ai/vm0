@@ -45,7 +45,7 @@ pub fn generate_boot_args() -> String {
     format!(
         "console=ttyS0 reboot=k panic=1 pci=off nomodules random.trust_cpu=on \
          quiet loglevel=0 nokaslr audit=0 numa=off mitigations=off noresume \
-         init=/sbin/guest-init {}",
+         root=/dev/vda rootfstype=ext4 rw init=/sbin/guest-init {}",
         generate_guest_network_boot_args(),
     )
 }
@@ -60,6 +60,19 @@ mod tests {
         assert_eq!(
             args,
             "ip=192.168.241.2::192.168.241.1:255.255.255.248:vm0-guest:eth0:off"
+        );
+    }
+
+    #[test]
+    fn boot_args_contains_root_device() {
+        let args = generate_boot_args();
+        assert!(
+            args.contains("root=/dev/vda rootfstype=ext4 rw"),
+            "boot args must specify root device: {args}"
+        );
+        assert!(
+            args.contains("init=/sbin/guest-init"),
+            "boot args must specify init: {args}"
         );
     }
 

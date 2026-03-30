@@ -68,7 +68,7 @@ import type { AgentDetail } from "../../signals/zero-page/agent-types.ts";
 import { runScheduleNow$ } from "../../signals/zero-page/zero-schedule.ts";
 import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
 import { Link } from "../router/link.tsx";
-import { navigateTo$ } from "../../signals/route.ts";
+import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { useAgentAvatar } from "./zero-sidebar.tsx";
 import { resolveAvatarUrl } from "./avatar-utils.ts";
@@ -162,8 +162,8 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
             <CardContent className="px-6 py-6 text-center space-y-3">
               <p className="text-sm text-destructive">{error}</p>
               <Link
-                pathname="/team/:id"
-                options={{ pathParams: { id: agentId } }}
+                pathname="/team/:agentId"
+                options={{ pathParams: { agentId: agentId } }}
                 className="zero-btn-morandi inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-accent"
               >
                 Retry
@@ -310,7 +310,7 @@ function JobScheduleTab({ displayName }: { displayName: string }) {
   const deleteSchedule = useSet(deleteZeroJobSchedule$);
   const toggleEnabled = useSet(toggleZeroJobScheduleEnabled$);
   const runScheduleNow = useSet(runScheduleNow$);
-  const nav = useSet(navigateTo$);
+  const nav = useSet(detachedNavigateTo$);
   const pageSignal = useGet(pageSignal$);
 
   const entries: ScheduleEntry[] =
@@ -408,7 +408,7 @@ export function ZeroJobDetailPage({ agentId }: ZeroJobDetailPageProps) {
 
   const saving = useGet(zeroJobSettingsSaving$);
   const deleteAgent = useSet(deleteZeroJobAgent$);
-  const nav = useSet(navigateTo$);
+  const nav = useSet(detachedNavigateTo$);
   const pageSignal = useGet(pageSignal$);
 
   const statusLoadable = useLastLoadable(zeroOnboardingStatus$);
@@ -475,8 +475,8 @@ export function ZeroJobDetailPage({ agentId }: ZeroJobDetailPageProps) {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Link
-                    pathname="/talk/:id"
-                    options={{ pathParams: { id: agentId } }}
+                    pathname="/talk/:agentId"
+                    options={{ pathParams: { agentId: agentId } }}
                     className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg px-4 transition-colors inline-flex items-center justify-center border text-sm font-medium hover:bg-accent"
                   >
                     <IconMessageCircle size={14} stroke={1.5} />

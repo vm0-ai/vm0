@@ -164,7 +164,7 @@ export function ScheduleCalendarView<T extends ScheduleEntry>({
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Week view
         </h3>
-        <div className="rounded-xl border border-border/70 bg-muted/20 overflow-hidden">
+        <div className="rounded-xl zero-border bg-muted/20 overflow-hidden">
           {/* Mobile: single-day view */}
           <div className="md:hidden">
             <div className="flex items-center justify-between bg-muted/50 px-3 py-2 border-b border-border/60">
@@ -289,7 +289,7 @@ export function ScheduleCalendarView<T extends ScheduleEntry>({
                   >
                     {timeLabel}
                   </div>
-                  {WEEKDAY_LABELS.map((_, dayIndex) => {
+                  {WEEKDAY_LABELS.map((dayLabel, dayIndex) => {
                     const cellEntries = getEntriesInCell(
                       enabledEntries,
                       dayIndex,
@@ -300,7 +300,7 @@ export function ScheduleCalendarView<T extends ScheduleEntry>({
                     const isLastCol = dayIndex === WEEKDAY_LABELS.length - 1;
                     return (
                       <div
-                        key={`${timeLabel}-${dayIndex}`}
+                        key={`${timeLabel}-${dayLabel}`}
                         className={cn(
                           "min-h-[52px] p-1.5 border-border/60 flex items-center justify-center",
                           !isLastCol && "border-r border-border/60",

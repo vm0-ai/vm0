@@ -5,22 +5,22 @@ import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { pathParams$ } from "../route.ts";
 import { agents$ } from "../zero-page/agents-list.ts";
-import { fetchZeroJobData$ } from "../zero-page/zero-job-detail.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
+import { fetchZeroSessionList$ } from "../zero-page/zero-chat.ts";
+import { fetchZeroJobData$ } from "../zero-page/zero-job-detail.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
-import { switchActiveAgent$ } from "../zero-page/zero-chat.ts";
-import { initSlackOrg$ } from "../zero-page/zero-slack.ts";
+import { handleSlackUrlParams$ } from "../zero-page/zero-slack.ts";
 
 export const setupTeamDetailPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(updatePage$, createElement(ZeroTeamDetailPage));
 
-    const params = get(pathParams$) as { id?: string } | undefined;
-    const agentId = params?.id ?? null;
+    const params = get(pathParams$) as { agentId?: string } | undefined;
+    const agentId = params?.agentId ?? null;
     set(updateDocumentTitle$, "Team");
     await Promise.all([
       set(initZeroOnboarding$, signal),
-      set(initSlackOrg$, signal),
+      set(handleSlackUrlParams$),
       agentId ? set(fetchZeroJobData$, agentId, signal) : Promise.resolve(),
     ]);
     signal.throwIfAborted();
@@ -39,6 +39,6 @@ export const setupTeamDetailPage$ = command(
       set(updateDocumentTitle$, displayName);
     }
 
-    await set(switchActiveAgent$, null, signal);
+    await set(fetchZeroSessionList$, signal);
   },
 );

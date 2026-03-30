@@ -182,12 +182,14 @@ create_clerk_sign_in_token() {
     return 1
   fi
 
-  local email="e2e+clerk_test@vm0.ai"
+  local email="${E2E_ACCOUNT}"
+
+  local clerk_api_url="https://api.clerk.com"
 
   # Resolve user ID from email
   local users_response
   users_response=$(curl -sS -X GET \
-    "https://api.clerk.com/v1/users?email_address[]=${email}" \
+    "${clerk_api_url}/v1/users?email_address[]=${email}" \
     -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
     -H "Content-Type: application/json")
 
@@ -202,7 +204,7 @@ create_clerk_sign_in_token() {
   # Create sign-in token
   local token_response
   token_response=$(curl -sS -X POST \
-    "https://api.clerk.com/v1/sign_in_tokens" \
+    "${clerk_api_url}/v1/sign_in_tokens" \
     -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
     -H "Content-Type: application/json" \
     -d "{\"user_id\": \"${user_id}\", \"expires_in_seconds\": 300}")
@@ -216,6 +218,39 @@ create_clerk_sign_in_token() {
   fi
 
   export SIGN_IN_TOKEN="$token"
+}
+
+# ---------------------------------------------------------------------------
+# delete_e2e_account_if_exists — Delete the E2E_ACCOUNT from Clerk if it exists
+# Call this before sign-up to ensure a clean test state.
+# Requires CLERK_SECRET_KEY and E2E_ACCOUNT to be set.
+# ---------------------------------------------------------------------------
+delete_e2e_account_if_exists() {
+  if [[ -z "${CLERK_SECRET_KEY:-}" ]]; then
+    echo "CLERK_SECRET_KEY is required but not set" >&2
+    return 1
+  fi
+
+  local clerk_api_url="https://api.clerk.com"
+
+  local users_response
+  users_response=$(curl -sS -X GET \
+    "${clerk_api_url}/v1/users?email_address[]=${E2E_ACCOUNT}" \
+    -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
+    -H "Content-Type: application/json")
+
+  local user_id
+  user_id=$(echo "$users_response" | jq -r '.[0].id // empty' 2>/dev/null)
+  if [[ -z "$user_id" ]]; then
+    echo "# E2E account does not exist, nothing to delete" >&3
+    return 0
+  fi
+
+  echo "# Deleting existing E2E account: ${E2E_ACCOUNT} (${user_id})" >&3
+  curl -sS -X DELETE \
+    "${clerk_api_url}/v1/users/${user_id}" \
+    -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
+    -H "Content-Type: application/json" > /dev/null
 }
 
 # ---------------------------------------------------------------------------
@@ -249,6 +284,7 @@ sign_in_via_token() {
     fi
     sleep 1
   done
+  step_screenshot "after-auth-redirect"
 
   if [[ "$auth_complete" != "true" ]]; then
     echo "Failed to redirect after sign-in-token" >&2
@@ -257,6 +293,17 @@ sign_in_via_token() {
 
   # Dismiss cookie banner if present
   dismiss_cookie_banner
+}
+
+# ---------------------------------------------------------------------------
+# sign_in_via_token_on_app — Sign in via Clerk token on the platform app domain
+# Opens /sign-in-token, waits for auth redirect, dismisses cookie banner.
+# Requires APP_URL and SIGN_IN_TOKEN to be set.
+# ---------------------------------------------------------------------------
+sign_in_via_token_on_app() {
+  echo "# Signing in via token on platform app..." >&3
+  sign_in_via_token "$APP_URL"
+  echo "# Authentication complete!" >&3
 }
 
 # ---------------------------------------------------------------------------
@@ -282,6 +329,24 @@ wait_for_text() {
     local snap
     snap=$(full_snapshot)
     if contains "$snap" "$text"; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+# ---------------------------------------------------------------------------
+# wait_for_text_gone — Wait for text to disappear from page (case-insensitive)
+# Usage: wait_for_text_gone "some text" [timeout_secs]
+# ---------------------------------------------------------------------------
+wait_for_text_gone() {
+  local text="$1"
+  local timeout_secs="${2:-15}"
+  for _i in $(seq 1 "$timeout_secs"); do
+    local snap
+    snap=$(full_snapshot)
+    if ! contains "$snap" "$text"; then
       return 0
     fi
     sleep 1

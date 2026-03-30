@@ -33,6 +33,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  Input,
   Button,
 } from "@vm0/ui";
 import {
@@ -404,28 +405,26 @@ export function ChatListDialog({
           </p>
         </DialogHeader>
 
-        {/* Search — same pattern as zero-activity-detail-page (zero-search-input) */}
+        {/* Search */}
         <div className="px-5 pb-3">
-          <div className="zero-search-input relative flex h-10 w-full items-center rounded-lg border transition-colors focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
-            <div className="pl-2.5 shrink-0">
-              <IconSearch
-                size={16}
-                stroke={2}
-                className="text-muted-foreground"
-              />
-            </div>
-            <input
+          <div className="relative w-full">
+            <IconSearch
+              size={16}
+              stroke={2}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search agents..."
-              className="h-full min-w-0 flex-1 border-0 bg-transparent py-2 pl-2 pr-2 text-sm leading-5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-0"
+              className={`pl-9 ${query ? "pr-9" : ""}`}
             />
             {query && (
               <button
                 type="button"
                 onClick={() => setQuery("")}
-                className="mr-1.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                 aria-label="Clear search"
               >
                 <IconX size={14} stroke={2} />

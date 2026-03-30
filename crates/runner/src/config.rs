@@ -40,27 +40,6 @@ pub struct ProfileConfig {
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
-pub struct SnapshotConfig {
-    pub snapshot_path: PathBuf,
-    pub memory_path: PathBuf,
-    pub overlay_path: PathBuf,
-    pub overlay_bind_path: PathBuf,
-    pub vsock_bind_dir: PathBuf,
-}
-
-impl From<sandbox_fc::SnapshotConfig> for SnapshotConfig {
-    fn from(sc: sandbox_fc::SnapshotConfig) -> Self {
-        Self {
-            snapshot_path: sc.snapshot_path,
-            memory_path: sc.memory_path,
-            overlay_path: sc.overlay_path,
-            overlay_bind_path: sc.overlay_bind_path,
-            vsock_bind_dir: sc.vsock_bind_dir,
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SandboxConfig {
     pub max_concurrent: usize,
@@ -170,8 +149,8 @@ async fn validate(config: &RunnerConfig, home: &HomePaths) -> RunnerResult<()> {
             )
             .await?;
             check_path_exists(
-                &snap_dir.join("overlay.ext4"),
-                &format!("profile {name} snapshot overlay"),
+                &snap_dir.join("cow.img"),
+                &format!("profile {name} snapshot cow"),
             )
             .await?;
         }
@@ -199,52 +178,50 @@ impl RunnerConfig {
         resolve(&mut self.firecracker.kernel);
     }
 
-    /// Build a `sandbox_fc::FirecrackerConfig` for a given profile.
+    /// Build a [`sandbox::FactoryConfig`] for a given profile.
     ///
     /// Resolves rootfs and snapshot paths from the profile's hashes
     /// using the standard content-addressed storage layout.
-    pub fn firecracker_config(
+    pub fn factory_config(
         &self,
         profile_name: &str,
         profile: &ProfileConfig,
         home: &HomePaths,
-        proxy_port: Option<u16>,
-    ) -> sandbox_fc::FirecrackerConfig {
-        Self::build_firecracker_config(
+    ) -> sandbox::FactoryConfig {
+        Self::build_factory_config(
             &self.firecracker,
             &self.base_dir,
             profile_name,
             profile,
             home,
-            proxy_port,
         )
     }
 
-    /// Build a `sandbox_fc::FirecrackerConfig` from components.
+    /// Build a [`sandbox::FactoryConfig`] from components.
     ///
-    /// Static variant of [`firecracker_config`](Self::firecracker_config) for
+    /// Static variant of [`factory_config`](Self::factory_config) for
     /// use after `RunnerConfig` has been destructured.
-    pub fn build_firecracker_config(
+    pub fn build_factory_config(
         firecracker: &FirecrackerConfig,
         base_dir: &Path,
         profile_name: &str,
         profile: &ProfileConfig,
         home: &HomePaths,
-        proxy_port: Option<u16>,
-    ) -> sandbox_fc::FirecrackerConfig {
+    ) -> sandbox::FactoryConfig {
         let rootfs_paths = RootfsPaths::new(home, &profile.rootfs_hash);
-        let snapshot = profile.snapshot_hash.as_ref().map(|hash| {
-            let snapshot_output =
-                sandbox_fc::SnapshotOutputPaths::new(home.snapshots_dir().join(hash));
-            snapshot_output.snapshot_config(hash)
-        });
-        sandbox_fc::FirecrackerConfig {
+        let snapshot = profile
+            .snapshot_hash
+            .as_ref()
+            .map(|hash| sandbox::SnapshotRef {
+                output_dir: home.snapshots_dir().join(hash),
+                hash: hash.clone(),
+            });
+        sandbox::FactoryConfig {
+            profile: profile_name.to_string(),
             binary_path: firecracker.binary.clone(),
             kernel_path: firecracker.kernel.clone(),
             rootfs_path: rootfs_paths.rootfs(),
             base_dir: base_dir.to_path_buf(),
-            profile: profile_name.to_string(),
-            proxy_port,
             snapshot,
         }
     }
@@ -270,7 +247,7 @@ mod tests {
             if let Some(hash) = snapshot_hash {
                 let snap_dir = home.snapshots_dir().join(hash);
                 tokio::fs::create_dir_all(&snap_dir).await.unwrap();
-                for name in ["snapshot.bin", "memory.bin", "overlay.ext4"] {
+                for name in ["snapshot.bin", "memory.bin", "cow.img"] {
                     tokio::fs::write(snap_dir.join(name), b"").await.unwrap();
                 }
             }
@@ -626,7 +603,7 @@ profiles:
     }
 
     #[test]
-    fn firecracker_config_resolves_paths() {
+    fn factory_config_resolves_paths() {
         let dir = tempfile::tempdir().unwrap();
         let home = HomePaths::with_root(dir.path().to_path_buf());
 
@@ -645,16 +622,17 @@ profiles:
         };
 
         let profile = &config.profiles["vm0/default"];
-        let fc = config.firecracker_config("vm0/default", profile, &home, Some(8080));
+        let fc = config.factory_config("vm0/default", profile, &home);
 
         assert_eq!(fc.binary_path, dir.path().join("firecracker"));
         assert_eq!(fc.kernel_path, dir.path().join("vmlinux"));
         assert_eq!(
             fc.rootfs_path,
-            home.rootfs_dir().join("abc123").join("rootfs.squashfs")
+            home.rootfs_dir().join("abc123").join("rootfs.ext4")
         );
         assert_eq!(fc.profile, "vm0/default");
-        assert_eq!(fc.proxy_port, Some(8080));
-        assert!(fc.snapshot.is_some());
+        let snap = fc.snapshot.unwrap();
+        assert_eq!(snap.hash, "def456");
+        assert_eq!(snap.output_dir, home.snapshots_dir().join("def456"));
     }
 }

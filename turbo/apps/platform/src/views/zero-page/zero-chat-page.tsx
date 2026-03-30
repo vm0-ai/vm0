@@ -2,8 +2,9 @@ import { Component, useState } from "react";
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { user$ } from "../../signals/auth.ts";
-import { IconArrowUpRight, IconPin } from "@tabler/icons-react";
+import { IconArrowUpRight, IconPin, IconUserPlus } from "@tabler/icons-react";
 import {
+  Button,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -19,6 +20,12 @@ import {
   updatePinnedAgentIds$,
 } from "../../signals/zero-page/zero-pinned-agents.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import { isOrgAdmin$ } from "../../signals/org.ts";
+import {
+  setActiveTab$,
+  setBillingSubPage$,
+} from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
+import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import {
   chatPageInput$,
@@ -27,7 +34,7 @@ import {
 } from "../../signals/zero-page/zero-chat-page.ts";
 import { getRandomPrompts } from "./zero-ideation-page.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
-import { navigateTo$ } from "../../signals/route.ts";
+import { detachedNavigateTo$ } from "../../signals/route.ts";
 import zeroAvatarImg from "./assets/avatar_0.png";
 
 function getTagline(
@@ -162,10 +169,23 @@ export function ZeroChatPage({
   const taglineIndex = useGet(chatPageTaglineIndex$);
   const tagline = getTagline(displayName, userName, taglineIndex);
   const [suggestedPrompts] = useState(() => getRandomPrompts(2));
-  const navigate = useSet(navigateTo$);
+  const navigate = useSet(detachedNavigateTo$);
 
   // Agent ID from URL for ideas navigation
   const talkAgentId = useGet(zeroTalkAgentId$);
+
+  // Admin invite
+  const isAdminLoadable = useLoadable(isOrgAdmin$);
+  const isAdmin =
+    isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
+  const setTab = useSet(setActiveTab$);
+  const setSubPage = useSet(setBillingSubPage$);
+  const openManage = useSet(setOrgManageDialogOpen$);
+  const handleInvite = () => {
+    setTab("members");
+    setSubPage(false);
+    detach(openManage(true, pageSignal), Reason.DomCallback);
+  };
 
   // Pin pill
   const currentChatAgentId = useGet(zeroChatAgentId$);
@@ -193,10 +213,21 @@ export function ZeroChatPage({
   // Landing page: full content (title, triggers, composer, actions, prompts)
   return (
     <div className="relative flex flex-1 flex-col min-h-0">
-      <header
-        className="shrink-0 bg-transparent px-4 sm:px-6 pt-10 pb-2"
-        aria-hidden="true"
-      />
+      <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-2">
+        <div className="flex justify-end">
+          {isAdmin && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleInvite}
+              className="zero-btn-morandi gap-1.5"
+            >
+              <IconUserPlus size={14} stroke={1.5} />
+              Invite people
+            </Button>
+          )}
+        </div>
+      </header>
 
       <main className="flex flex-1 flex-col justify-center overflow-auto px-4 sm:px-6 py-12">
         <div className="mx-auto w-full max-w-[900px] flex flex-col items-stretch gap-8 -mt-24">
@@ -231,7 +262,7 @@ export function ZeroChatPage({
                       <button
                         type="button"
                         onClick={handlePin}
-                        className="absolute -top-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full border-[0.7px] border-[hsl(var(--gray-400))] bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground hover:shadow-md cursor-pointer"
+                        className="absolute -top-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full zero-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground hover:shadow-md cursor-pointer"
                         aria-label="Pin to sidebar"
                       >
                         <IconPin size={12} stroke={2} />
@@ -302,8 +333,8 @@ export function ZeroChatPage({
               className="zero-card cursor-pointer p-4 text-left flex flex-col relative group hover:bg-muted/30 transition-colors"
               onClick={() => {
                 if (talkAgentId) {
-                  navigate("/talk/:id/ideas", {
-                    pathParams: { id: talkAgentId },
+                  navigate("/talk/:agentId/ideas", {
+                    pathParams: { agentId: talkAgentId },
                   });
                 }
               }}

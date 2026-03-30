@@ -17,6 +17,16 @@ export const deleteCommand = new Command()
     "Schedule name (required when agent has multiple schedules)",
   )
   .option("-y, --yes", "Skip confirmation prompt")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  zero schedule delete <agent-id>
+  zero schedule delete <agent-id> -n my-schedule -y
+
+Notes:
+  - Use -y to skip confirmation in non-interactive mode`,
+  )
   .action(
     withErrorHandler(
       async (agentName: string, options: { name?: string; yes?: boolean }) => {

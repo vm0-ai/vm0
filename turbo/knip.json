@@ -44,11 +44,7 @@
       "ignoreDependencies": ["@vm0/typescript-config", "tailwindcss"]
     },
     "apps/platform": {
-      "entry": [
-        "src/main.ts",
-        "src/signals/api-client.ts",
-        "**/*.{test,spec}.ts?(x)"
-      ],
+      "entry": ["src/main.ts", "**/*.{test,spec}.ts?(x)"],
       "project": ["**/*.{ts,tsx}"],
       "ignore": ["custom-eslint/**"],
       "ignoreDependencies": [
@@ -95,16 +91,8 @@
     "**/drizzle.config.ts",
     "**/custom-eslint/**",
     "apps/platform/src/mocks/mock-log-detail-data.ts",
-    "apps/platform/src/signals/location.ts",
-    "apps/platform/src/signals/log.ts",
-    "apps/platform/src/signals/page-signal.ts",
-    "apps/platform/src/signals/utils.ts",
-    "apps/platform/src/signals/org.ts",
-    "apps/platform/src/views/router/link.tsx",
     "apps/platform/src/test/mocks/clerk-react.ts",
     "apps/platform/src/test/mocks/clerk-react-experimental.ts",
-    "apps/web/src/lib/schedule/schedule-service.ts",
-    "apps/web/src/lib/model-provider/model-provider-service.ts",
     "apps/cli/src/lib/utils/paginate.ts",
     "apps/cli/src/commands/cook/cook.ts",
     "apps/web/src/lib/auth/sandbox-token.ts",

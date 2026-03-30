@@ -140,14 +140,11 @@ describe("activity detail stale data", () => {
     });
 
     // Wait for first detail to load
-    await waitFor(
-      () => {
-        expect(
-          screen.getByRole("heading", { name: "Agent One" }),
-        ).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Agent One" }),
+      ).toBeInTheDocument();
+    });
 
     // Navigate back to the list via breadcrumb
     const breadcrumb = screen.getByText("Activity").closest("a");
@@ -155,14 +152,11 @@ describe("activity detail stale data", () => {
     fireEvent.click(breadcrumb!);
 
     // Wait for the list to render
-    await waitFor(
-      () => {
-        expect(
-          screen.getByRole("heading", { name: "Activity" }),
-        ).toBeInTheDocument();
-      },
-      { timeout: 3000 },
-    );
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Activity" }),
+      ).toBeInTheDocument();
+    });
 
     // Navigate to the second activity
     const row = screen.getByText("Agent Two").closest("a");
@@ -170,23 +164,17 @@ describe("activity detail stale data", () => {
     fireEvent.click(row!);
 
     // The old "Agent One" heading must NOT be visible — we should see skeleton or new data
-    await waitFor(
-      () => {
-        // Either skeleton (no heading) or the new agent heading should be shown
-        const oldHeading = screen.queryByRole("heading", { name: "Agent One" });
-        expect(oldHeading).not.toBeInTheDocument();
-      },
-      { timeout: 1000 },
-    );
+    await waitFor(() => {
+      // Either skeleton (no heading) or the new agent heading should be shown
+      const oldHeading = screen.queryByRole("heading", { name: "Agent One" });
+      expect(oldHeading).not.toBeInTheDocument();
+    });
 
     // Eventually the new detail should load
-    await waitFor(
-      () => {
-        expect(
-          screen.getByRole("heading", { name: "Agent Two" }),
-        ).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Agent Two" }),
+      ).toBeInTheDocument();
+    });
   }, 20_000);
 });

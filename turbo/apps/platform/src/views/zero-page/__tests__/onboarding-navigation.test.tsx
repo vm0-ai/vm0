@@ -97,20 +97,14 @@ describe("onboarding navigation", () => {
     await setupPage({ context, path: "/" });
 
     // The / route should redirect to /onboarding
-    await waitFor(
-      () => {
-        expect(pathname()).toBe("/onboarding");
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(pathname()).toBe("/onboarding");
+    });
 
     // Onboarding step 1 should be rendered
-    await waitFor(
-      () => {
-        expect(screen.getByText(/Name your workspace/)).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByText(/Name your workspace/)).toBeInTheDocument();
+    });
   }, 15_000);
 
   it("should navigate to / after completing admin onboarding via web", async () => {
@@ -119,12 +113,9 @@ describe("onboarding navigation", () => {
     await setupPage({ context, path: "/onboarding" });
 
     // Step 1: Workspace name
-    await waitFor(
-      () => {
-        expect(screen.getByText(/Name your workspace/)).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByText(/Name your workspace/)).toBeInTheDocument();
+    });
 
     // Fill name and advance
     const input = screen.getByPlaceholderText("e.g. Acme Corp");
@@ -172,12 +163,9 @@ describe("onboarding navigation", () => {
     fireEvent.click(continueButton);
 
     // Verify navigation to / (which then redirects to /talk/:name)
-    await waitFor(
-      () => {
-        expect(pathname()).not.toBe("/onboarding");
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(pathname()).not.toBe("/onboarding");
+    });
   }, 15_000);
 
   it("should redirect to /onboarding when member needs onboarding", async () => {
@@ -186,22 +174,16 @@ describe("onboarding navigation", () => {
     await setupPage({ context, path: "/" });
 
     // The / route should redirect to /onboarding
-    await waitFor(
-      () => {
-        expect(pathname()).toBe("/onboarding");
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(pathname()).toBe("/onboarding");
+    });
 
     // Member goes straight to step 4 (where-to-work) with no connectors
-    await waitFor(
-      () => {
-        expect(
-          screen.getByText(/Where would you like to work with/),
-        ).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Where would you like to work with/),
+      ).toBeInTheDocument();
+    });
   }, 15_000);
 
   it("should navigate to / after completing member onboarding via web", async () => {
@@ -210,14 +192,11 @@ describe("onboarding navigation", () => {
     await setupPage({ context, path: "/onboarding" });
 
     // Member with no connectors goes straight to step 4 (where-to-work)
-    await waitFor(
-      () => {
-        expect(
-          screen.getByText(/Where would you like to work with/),
-        ).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Where would you like to work with/),
+      ).toBeInTheDocument();
+    });
 
     // After completing onboarding, the API should report needsOnboarding: false
     server.use(
@@ -241,11 +220,8 @@ describe("onboarding navigation", () => {
     fireEvent.click(chatButton);
 
     // Verify navigation away from /onboarding (/ redirects to /talk/:name)
-    await waitFor(
-      () => {
-        expect(pathname()).not.toBe("/onboarding");
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(pathname()).not.toBe("/onboarding");
+    });
   }, 15_000);
 });

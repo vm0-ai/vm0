@@ -6,6 +6,11 @@ import { orgMetadata } from "../../db/schema/org-metadata";
 import { grantOrgCredits } from "../org/org-service";
 import { handleAutoRechargeInvoicePaid } from "./auto-recharge-service";
 import { resetMemberCreditFlags } from "../credit/member-credit-cap-service";
+import {
+  createExpiresRecord,
+  expireCredits,
+  getExpiresRecordsSummary,
+} from "../credit/credit-expires-service";
 import { logger } from "../logger";
 
 const log = logger("billing");
@@ -27,6 +32,7 @@ interface InvoiceInput {
   id: string;
   customer: string | { id: string } | null;
   metadata: Record<string, string> | null;
+  period_end?: number;
   parent: {
     subscription_details: {
       subscription: string | { id: string };
@@ -311,11 +317,37 @@ export async function handleInvoicePaid(invoice: InvoiceInput): Promise<void> {
 
   // Grant credits and mark invoice as processed in a transaction
   await db.transaction(async (tx) => {
+    // Settle expired credits before granting new ones
+    await expireCredits(tx, org.orgId);
+
     await grantOrgCredits(tx, org.orgId, credits);
+
+    // Calculate expires_at: currentPeriodEnd + 1 month
+    // invoice.period_end is required to create the expiry record correctly.
+    // If it is missing, throw so the webhook fails and Stripe retries, alerting operators.
+    const periodEndUnix = invoice.period_end;
+    if (!periodEndUnix) {
+      throw new Error(
+        `invoice.paid missing period_end — cannot create expiry record (invoiceId=${invoice.id}, orgId=${org.orgId})`,
+      );
+    }
+
+    const periodEndDate = new Date(periodEndUnix * 1000);
+    const expiresAt = new Date(periodEndDate);
+    expiresAt.setMonth(expiresAt.getMonth() + 1);
+
+    await createExpiresRecord(tx, org.orgId, {
+      source: "subscription_renewal",
+      stripeInvoiceId: invoice.id,
+      amount: credits,
+      expiresAt,
+    });
+
     await tx
       .update(orgMetadata)
       .set({
         lastProcessedInvoiceId: invoice.id,
+        currentPeriodEnd: new Date(periodEndUnix * 1000),
         updatedAt: new Date(),
       })
       .where(eq(orgMetadata.orgId, org.orgId));
@@ -654,6 +686,10 @@ export async function getBillingStatus(orgId: string): Promise<{
     threshold: number | null;
     amount: number | null;
   };
+  creditExpiry: {
+    expiringNextCycle: number;
+    nextExpiryDate: Date | null;
+  };
 }> {
   const db = globalThis.services.db;
   const [org] = await db
@@ -672,6 +708,8 @@ export async function getBillingStatus(orgId: string): Promise<{
     .where(eq(orgMetadata.orgId, orgId))
     .limit(1);
 
+  const expirySummary = await getExpiresRecordsSummary(orgId);
+
   return {
     tier: org?.tier ?? "free",
     credits: org?.credits ?? 0,
@@ -684,5 +722,6 @@ export async function getBillingStatus(orgId: string): Promise<{
       threshold: org?.autoRechargeThreshold ?? null,
       amount: org?.autoRechargeAmount ?? null,
     },
+    creditExpiry: expirySummary,
   };
 }

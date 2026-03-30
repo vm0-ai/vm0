@@ -80,20 +80,12 @@ impl FactoryPaths {
         self.base_dir.join("workspaces")
     }
 
-    /// Per-profile overlay directory: `base_dir/overlays/{profile}/`.
-    ///
-    /// Each profile gets its own subdirectory so that [`OverlayPool`]'s
-    /// `clean_stale_files()` only deletes files belonging to this profile.
-    pub fn overlays(&self, profile: &str) -> PathBuf {
-        self.base_dir.join("overlays").join(profile)
-    }
-
     pub fn workspace(&self, id: &str) -> PathBuf {
         self.workspaces().join(id)
     }
 }
 
-/// Per-sandbox workspace paths (persistent data: config, overlay).
+/// Per-sandbox workspace paths (persistent data: config, COW).
 pub struct SandboxPaths {
     workspace: PathBuf,
 }
@@ -111,8 +103,10 @@ impl SandboxPaths {
         self.workspace.join("config.json")
     }
 
-    pub fn overlay(&self) -> PathBuf {
-        self.workspace.join("overlay.ext4")
+    /// Bind mount target for the COW device during snapshot restore.
+    /// Must be a regular file (not a block device) so bind mount works.
+    pub fn cow_device_bind(&self) -> PathBuf {
+        self.workspace.join("cow-device-bind")
     }
 }
 
@@ -165,8 +159,8 @@ impl SnapshotOutputPaths {
         self.output_dir.join("memory.bin")
     }
 
-    pub fn overlay(&self) -> PathBuf {
-        self.output_dir.join("overlay.ext4")
+    pub fn cow(&self) -> PathBuf {
+        self.output_dir.join("cow.img")
     }
 
     /// Work directory used during snapshot creation.
@@ -187,8 +181,8 @@ impl SnapshotOutputPaths {
         SnapshotConfig {
             snapshot_path: self.snapshot(),
             memory_path: self.memory(),
-            overlay_path: self.overlay(),
-            overlay_bind_path: work.overlay(),
+            cow_path: self.cow(),
+            drive_bind_path: work.cow_device_bind(),
             vsock_bind_dir: sock.vsock_dir(),
         }
     }

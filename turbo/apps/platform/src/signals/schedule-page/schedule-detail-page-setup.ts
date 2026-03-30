@@ -4,10 +4,9 @@ import { ZeroScheduleDetailPageWrapper } from "../../views/schedule-page/zero-sc
 import { updatePage$ } from "../react-router.ts";
 import { pathParams$ } from "../route.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
-import { switchActiveAgent$ } from "../zero-page/zero-chat.ts";
+import { fetchZeroSessionList$ } from "../zero-page/zero-chat.ts";
 import { fetchAllOrgSchedules$ } from "../zero-page/zero-schedule.ts";
 import { fetchSlackChannels$ } from "../zero-page/slack-channels.ts";
-import { initSlackOrg$ } from "../zero-page/zero-slack.ts";
 import { Reason, detach } from "../utils.ts";
 import {
   setScheduleRunHistoryScheduleId$,
@@ -32,10 +31,10 @@ export const setupScheduleDetailPage$ = command(
     detach(set(fetchAllOrgSchedules$, signal), Reason.Entrance);
     await Promise.all([
       set(initZeroOnboarding$, signal),
-      set(initSlackOrg$, signal),
       set(fetchSlackChannels$, signal),
     ]);
     signal.throwIfAborted();
-    await set(switchActiveAgent$, null, signal);
+
+    await set(fetchZeroSessionList$, signal);
   },
 );

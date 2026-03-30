@@ -94,10 +94,7 @@ function PolicyPill({
   onChange: (p: PermissionPolicy) => void;
 }) {
   return (
-    <span
-      className="inline-flex shrink-0 rounded-md overflow-hidden text-xs font-medium"
-      style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-    >
+    <span className="inline-flex shrink-0 rounded-md overflow-hidden text-xs font-medium zero-border">
       {POLICY_OPTIONS.map((opt, idx) => (
         <button
           key={opt.value}
@@ -219,10 +216,7 @@ export function FirewallPermissionsDrawer({
               <span className="text-xs font-medium text-foreground">
                 Select all ({permissions.length})
               </span>
-              <span
-                className="inline-flex shrink-0 rounded-md overflow-hidden text-xs font-medium"
-                style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-              >
+              <span className="inline-flex shrink-0 rounded-md overflow-hidden text-xs font-medium zero-border">
                 {POLICY_OPTIONS.map((opt, idx) => (
                   <button
                     key={opt.value}

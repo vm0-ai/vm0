@@ -22,7 +22,24 @@ function mockChatAPIs() {
       );
     }),
     http.post("*/api/zero/runs", () => {
-      return HttpResponse.json({ id: "run-abc-123" }, { status: 201 });
+      return HttpResponse.json(
+        {
+          runId: "run-abc-123",
+          status: "pending",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+        { status: 201 },
+      );
+    }),
+    http.get("*/api/zero/chat-threads/:id", () => {
+      return HttpResponse.json({
+        id: "new-thread-id-123",
+        title: "Hello",
+        agentId: "mock-compose-id",
+        chatMessages: [],
+        latestSessionId: null,
+        unsavedRuns: [],
+      });
     }),
     http.post("*/api/zero/chat-threads/:id/runs", () => {
       return new HttpResponse(null, { status: 204 });
@@ -32,6 +49,13 @@ function mockChatAPIs() {
         events: [],
         hasMore: false,
         framework: "claude-code",
+      });
+    }),
+    http.get("*/api/zero/runs/:id", ({ params }) => {
+      return HttpResponse.json({
+        id: params["id"],
+        status: "completed",
+        result: { agentSessionId: "session-1" },
       });
     }),
     // Return terminal status so polling loop stops immediately
@@ -58,7 +82,7 @@ function mockChatAPIs() {
 }
 
 describe("talk navigation", () => {
-  it("should navigate from /talk/:name to /chat/:sessionId after sending a message", async () => {
+  it("should navigate from /talk/:name to /chat/:chatThreadId after sending a message", async () => {
     mockChatAPIs();
 
     await setupPage({ context, path: "/talk/mock-compose-id" });
@@ -66,7 +90,6 @@ describe("talk navigation", () => {
     // Wait for the chat input to be ready
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-      { timeout: 5000 },
     );
 
     // Type a message
@@ -84,15 +107,12 @@ describe("talk navigation", () => {
     });
 
     // The URL should navigate to /chat/new-thread-id-123
-    await waitFor(
-      () => {
-        expect(pathname()).toBe("/chat/new-thread-id-123");
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(pathname()).toBe("/chat/new-thread-id-123");
+    });
   }, 15_000);
 
-  it("should navigate to /chat/:sessionId after completing onboarding and sending auto-intro", async () => {
+  it("should navigate to /chat/:chatThreadId after completing onboarding and sending auto-intro", async () => {
     // Track onboarding status: starts as needing onboarding, then completes
     let onboardingComplete = false;
 
@@ -158,12 +178,9 @@ describe("talk navigation", () => {
     await setupPage({ context, path: "/" });
 
     // Step 1: Workspace name
-    await waitFor(
-      () => {
-        expect(screen.getByText(/Name your workspace/)).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByText(/Name your workspace/)).toBeInTheDocument();
+    });
 
     // Fill name and advance
     const input = screen.getByPlaceholderText("e.g. Acme Corp");
@@ -201,11 +218,8 @@ describe("talk navigation", () => {
 
     // The final URL should be /chat/new-thread-id-123 after the auto-intro
     // message creates a thread and navigates
-    await waitFor(
-      () => {
-        expect(pathname()).toBe("/chat/new-thread-id-123");
-      },
-      { timeout: 10_000 },
-    );
-  }, 30_000);
+    await waitFor(() => {
+      expect(pathname()).toBe("/chat/new-thread-id-123");
+    });
+  });
 });

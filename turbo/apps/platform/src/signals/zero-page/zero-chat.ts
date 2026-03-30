@@ -1,38 +1,30 @@
 import { command, computed, state, type Computed } from "ccstate";
-import { timeout } from "signal-timers";
+import { delay } from "signal-timers";
 import type { AgentEvent, LogStatus } from "./log-types.ts";
 import { fetch$ } from "../fetch.ts";
-import {
-  throwIfAbort,
-  isAbortError,
-  resetSignal,
-  detach,
-  Reason,
-} from "../utils.ts";
+import { throwIfAbort, resetSignal } from "../utils.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { logger } from "../log.ts";
-import { setupPollingLoop$, type PagedRunEvents } from "./polling.ts";
+import { createRunLoop, type PagedRunEvents } from "./polling.ts";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
 import {
-  navigateToZeroSession$,
+  navigateToChat$,
   zeroChatAgentId$,
   setZeroChatAgent$,
-  zeroSessionId$,
+  chatThreadId$,
 } from "./zero-nav.ts";
 import {
   RUN_ERROR_GUIDANCE,
-  zeroRunsCancelContract,
   zeroRunsMainContract,
   zeroRunsByIdContract,
-  zeroQueuePositionContract,
   chatThreadsContract,
   chatThreadByIdContract,
   chatThreadRunsContract,
   zeroSessionsByIdContract,
-  type ChatThreadListItem,
   type SummaryEntry,
 } from "@vm0/core";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
+import { defaultAgentId$ } from "./zero-agent-name.ts";
 
 const L = logger("ZeroChat");
 
@@ -51,65 +43,6 @@ function isResultEventData(data: unknown): data is { result: string } {
 }
 
 /** Scan telemetry event pages for the last "result" event content. */
-async function extractResultFromEvents(
-  pages: Computed<Promise<PagedRunEvents>>[],
-  get: (c: Computed<Promise<PagedRunEvents>>) => Promise<PagedRunEvents>,
-): Promise<{ result: string; summaries: string[] }> {
-  let result = "";
-  const allEvents: AgentEvent[] = [];
-  for (const page$ of pages) {
-    const page = await get(page$);
-    for (const event of page.events) {
-      allEvents.push(event);
-      if (event.eventType === "result" && isResultEventData(event.eventData)) {
-        result = event.eventData.result;
-      }
-    }
-  }
-  let lastTextIdx = -1;
-  for (let i = allEvents.length - 1; i >= 0; i--) {
-    if (hasTextBlock(allEvents[i])) {
-      lastTextIdx = i;
-      break;
-    }
-  }
-  const summaries: string[] = [];
-  for (let i = 0; i < allEvents.length; i++) {
-    const s = summarizeEvent(allEvents[i], i === lastTextIdx);
-    if (s) {
-      summaries.push(s);
-    }
-  }
-  return { result, summaries };
-}
-
-/** Fetch queue position for a run. Returns 0 if not queued. */
-async function fetchQueuePosition(
-  createClient: ZeroClientFactory,
-  runId: string,
-): Promise<number> {
-  const client = createClient(zeroQueuePositionContract);
-  const result = await client.getPosition({ query: { runId } });
-  if (result.status !== 200) {
-    return 0;
-  }
-  return result.body.position;
-}
-
-function updateQueuePosition(
-  status: string,
-  createClient: ZeroClientFactory,
-  runId: string,
-  setPosition: (pos: number) => void,
-) {
-  if (status === "queued") {
-    fetchQueuePosition(createClient, runId)
-      .then((pos) => setPosition(pos))
-      .catch(() => {});
-  } else {
-    setPosition(0);
-  }
-}
 
 /** Start an agent run and return the runId. Throws on failure with the API error message. */
 async function startAgentRun(
@@ -183,37 +116,39 @@ interface ZeroChatMessageAttachment {
   url: string;
 }
 
-export interface ZeroChatMessage {
+export interface UserChatMessage {
   id: string;
-  role: "user" | "assistant";
+  role: "user";
   content: string;
-  runId?: string;
+  attachments?: ZeroChatMessageAttachment[];
+}
+
+export interface AssistantChatMessage {
+  id: string;
+  role: "assistant";
+  content: string;
+  legacyRunId?: string;
   status?: LogStatus;
   error?: string;
   cancelled?: boolean;
-  attachments?: ZeroChatMessageAttachment[];
   summaries?: string[];
+  runLoop?: ReturnType<typeof createRunLoop>;
+  /** Reactive result content derived from runLoop events. */
+  result$?: Computed<Promise<string>>;
+  /** Reactive summaries derived from runLoop events. */
+  summaries$?: Computed<Promise<string[]>>;
+  /** Command to start the polling loop for this run. */
+  beginLoop$?: ReturnType<typeof createRunLoop>["beginLoop$"];
 }
 
-// ---------------------------------------------------------------------------
-// State
-// ---------------------------------------------------------------------------
+export type ZeroChatMessage = UserChatMessage | AssistantChatMessage;
 
-/**
- * Local interaction messages — user sends + assistant placeholders updated by polling.
- * These are appended during the current send cycle and cleared on session switch.
- */
 const internalLocalMessages$ = state<ZeroChatMessage[]>([]);
 
-/**
- * All chat messages: server snapshot (from URL) + local interaction overlay.
- * Async because server messages come from `chatSessionSnapshot$`.
- */
-/**
- * All chat messages: server snapshot (completed) + local (active interaction).
- * Active run messages live in local state so polling can mutate them.
- * No dedup needed — snapshot.messages excludes active runs.
- */
+export const resetLocalMessages$ = command(({ set }) => {
+  set(internalLocalMessages$, []);
+});
+
 export const zeroChatMessages$ = computed(async (get) => {
   const snapshot = await get(chatSessionSnapshot$);
   const serverMessages = snapshot?.messages ?? [];
@@ -222,115 +157,42 @@ export const zeroChatMessages$ = computed(async (get) => {
 });
 
 const internalSessionId$ = state<string | null>(null);
-export const zeroCurrentSessionId$ = computed((get) => get(internalSessionId$));
 
-const internalActiveRunId$ = state<string | null>(null);
-const internalRunStatus$ = state<LogStatus | null>(null);
-const internalRunError$ = state<string | null>(null);
-const internalRunEvents$ = state<Computed<Promise<PagedRunEvents>>[]>([]);
-
-/** Whether the agent is currently busy (derived from loop promise). */
-export const zeroChatSending$ = computed(
-  (get) => get(internalLoopPromise$) !== null,
-);
-
-/** Current run status (queued, pending, running, etc.) */
-export const zeroChatRunStatus$ = computed((get) => get(internalRunStatus$));
+/** Whether all runs have finished (no in-flight runs). */
+export const allFinished$ = computed(async (get) => {
+  const messages = await get(zeroChatMessages$);
+  return (
+    await Promise.all(
+      messages.map(async (message) => {
+        if (message.role !== "assistant") {
+          return true;
+        }
+        if (!message.runLoop) {
+          return true;
+        }
+        return (await get(message.runLoop.finished$)) === true;
+      }),
+    )
+  ).every(Boolean);
+});
 
 /** Cancel the currently active run. */
 export const cancelActiveRun$ = command(
-  async ({ get, set }, _signal: AbortSignal) => {
-    const runId = get(internalActiveRunId$);
-    if (!runId) {
+  async ({ get, set }, signal: AbortSignal) => {
+    // Find the active assistant message with a runLoop
+    const local = get(internalLocalMessages$);
+    const activeMsg = [...local]
+      .reverse()
+      .find(
+        (m): m is AssistantChatMessage => m.role === "assistant" && !!m.runLoop,
+      );
+    if (!activeMsg?.runLoop) {
       return;
     }
 
-    // Abort the send phase; the loop (on pageSignal) continues and discovers
-    // the `cancelled` status on the next poll (~3s).
-    set(resetSending$);
-
-    const client = get(zeroClient$)(zeroRunsCancelContract);
-    await client.cancel({ params: { id: runId } });
+    await set(activeMsg.runLoop.cancel$, signal);
   },
 );
-
-/** Queue position for the active run (0 = not queued). */
-const internalQueuePosition$ = state(0);
-export const zeroChatQueuePosition$ = computed((get) =>
-  get(internalQueuePosition$),
-);
-
-// ---------------------------------------------------------------------------
-// Queued message — allows the user to queue a follow-up while agent is busy
-// ---------------------------------------------------------------------------
-
-interface QueuedMessage {
-  text: string;
-  modelProvider?: string;
-}
-
-const internalQueuedMessage$ = state<QueuedMessage | null>(null);
-export const zeroChatQueuedMessage$ = computed((get) =>
-  get(internalQueuedMessage$),
-);
-
-/** Queue a message to be sent automatically once the current run completes. */
-export const queueZeroChatMessage$ = command(
-  ({ get, set }, text: string, options?: { modelProvider?: string }) => {
-    // Only queue when there's an active loop (agent is busy)
-    if (!get(internalLoopPromise$)) {
-      return;
-    }
-    if (get(internalQueuedMessage$)) {
-      return;
-    }
-    set(internalQueuedMessage$, {
-      text,
-      modelProvider: options?.modelProvider,
-    });
-    set(internalChatInput$, "");
-  },
-);
-
-/** Withdraw the queued message back into the input box for editing. */
-export const withdrawQueuedMessage$ = command(({ get, set }) => {
-  const queued = get(internalQueuedMessage$);
-  if (!queued) {
-    return;
-  }
-  set(internalChatInput$, queued.text);
-  set(internalQueuedMessage$, null);
-});
-
-/** Latest event summaries for the active run (for display while thinking). */
-export const zeroChatRunSummaries$ = computed(async (get) => {
-  const pages = get(internalRunEvents$);
-  if (pages.length === 0) {
-    return [];
-  }
-  // Collect all events across pages
-  const allEvents: AgentEvent[] = [];
-  for (const page of pages) {
-    const result = await get(page);
-    allEvents.push(...result.events);
-  }
-  // Find the last text event index to exclude it (it's typically the result)
-  let lastTextIdx = -1;
-  for (let i = allEvents.length - 1; i >= 0; i--) {
-    if (hasTextBlock(allEvents[i])) {
-      lastTextIdx = i;
-      break;
-    }
-  }
-  const summaries: string[] = [];
-  for (let i = 0; i < allEvents.length; i++) {
-    const s = summarizeEvent(allEvents[i], i === lastTextIdx);
-    if (s) {
-      summaries.push(s);
-    }
-  }
-  return summaries;
-});
 
 interface EventContent {
   type: string;
@@ -431,16 +293,10 @@ function summarizeEvent(event: AgentEvent, skipText: boolean): string | null {
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// Cancellation via resetSignal (replaces manual pollingAbortController$)
-// ---------------------------------------------------------------------------
-
-const resetSending$ = resetSignal();
-
 /**
  * Signal for talk-page sends that must survive page navigation.
  *
- * The talk page navigates from `/talk/` to `/chat/:sessionId` on send,
+ * The talk page navigates from `/talk/` to `/chat/:chatThreadId` on send,
  * which aborts the page-level signal.  This dedicated signal lets the
  * talk page pass a cancellable AbortSignal without coupling to the page
  * lifecycle.  It is reset each time `startNewZeroSession$` fires (which
@@ -453,125 +309,255 @@ export const resetTalkSendSignal$ = resetSignal();
 // Promise signals — UI derives busy state from these via useLoadable
 // ---------------------------------------------------------------------------
 
-const internalLoopPromise$ = state<Promise<void> | null>(null);
+// Chat thread list — reload + computed pattern
+const reloadChatThreadList$ = state(0);
 
-// ---------------------------------------------------------------------------
-// Thinking messages (cycled during polling loop)
-// ---------------------------------------------------------------------------
-
-const THINKING_MESSAGES = [
-  "On it, grab a coffee",
-  "Thinking hard...",
-  "Cooking up something good...",
-  "Give me a sec...",
-  "Working my magic...",
-  "Hang tight...",
-  "Let me figure this out...",
-  "Brewing ideas...",
-  "Crunching the numbers...",
-  "Just a moment...",
-] as const;
-
-const internalThinkingIndex$ = state(
-  Math.floor(Math.random() * THINKING_MESSAGES.length),
+export const fetchZeroSessionList$ = command(
+  ({ set }, _signal: AbortSignal) => {
+    set(reloadChatThreadList$, (n) => n + 1);
+  },
 );
 
-export const zeroChatThinkingMessage$ = computed(
-  (get) => THINKING_MESSAGES[get(internalThinkingIndex$)]!,
-);
+const chatThreadListResponse$ = computed(async (get) => {
+  get(reloadChatThreadList$);
+  const chatAgentId = get(zeroChatAgentId$);
+  const composeId =
+    chatAgentId ?? (await get(zeroOnboardingStatus$)).defaultAgentId;
+  if (!composeId) {
+    return [];
+  }
+  const client = get(zeroClient$)(chatThreadsContract);
+  const result = await client.list({ query: { agentId: composeId } });
+  if (result.status !== 200) {
+    throw new Error(`Failed to load chats (${result.status})`);
+  }
+  return result.body.threads;
+});
 
-/** Thread ID derived from the URL `/chat/:id`. */
-export const zeroChatThreadId$ = zeroSessionId$;
+// Backward-compatible aliases (will be removed)
+export const zeroSessionList$ = computed(async (get) => {
+  return await get(chatThreadListResponse$);
+});
 
-// Session list state (now backed by chat threads)
-const internalSessionList$ = state<ChatThreadListItem[]>([]);
-export const zeroSessionList$ = computed((get) => get(internalSessionList$));
-
-const internalSessionListLoading$ = state(false);
-export const zeroSessionListLoading$ = computed((get) =>
-  get(internalSessionListLoading$),
-);
-
-const internalSessionListError$ = state<string | null>(null);
-export const zeroSessionListError$ = computed((get) =>
-  get(internalSessionListError$),
-);
+export const zeroSessionListLoading$ = computed(() => false);
+export const zeroSessionListError$ = computed(() => null as string | null);
 
 // ---------------------------------------------------------------------------
 // Session snapshot — async computed derived from URL
 // ---------------------------------------------------------------------------
+
+/** Raw thread/session data returned by the API. */
+interface ChatThreadData {
+  agentId?: string;
+  chatMessages: {
+    role: "user" | "assistant";
+    content: string;
+    runId?: string;
+    error?: string;
+    summaries?: SummaryEntry[];
+    createdAt: string;
+  }[];
+  latestSessionId: string | null;
+  unsavedRuns: {
+    runId: string;
+    status: string;
+    prompt: string;
+    error: string | null;
+  }[];
+  isLegacySession: boolean;
+}
+
+/** Collect all events from paged event lists into a flat array. */
+async function collectAllEvents(
+  pages: Computed<Promise<PagedRunEvents>>[],
+  get: (c: Computed<Promise<PagedRunEvents>>) => Promise<PagedRunEvents>,
+): Promise<AgentEvent[]> {
+  const allEvents: AgentEvent[] = [];
+  for (const page$ of pages) {
+    const page = await get(page$);
+    allEvents.push(...page.events);
+  }
+  return allEvents;
+}
+
+/** Extract result content from a flat list of events. */
+function extractResult(events: AgentEvent[]): string {
+  let result = "";
+  for (const event of events) {
+    if (event.eventType === "result" && isResultEventData(event.eventData)) {
+      result = event.eventData.result;
+    }
+  }
+  return result;
+}
+
+/** Extract summary strings from a flat list of events. */
+function extractSummaries(events: AgentEvent[]): string[] {
+  let lastTextIdx = -1;
+  for (let i = events.length - 1; i >= 0; i--) {
+    if (hasTextBlock(events[i])) {
+      lastTextIdx = i;
+      break;
+    }
+  }
+  const summaries: string[] = [];
+  for (let i = 0; i < events.length; i++) {
+    const s = summarizeEvent(events[i], i === lastTextIdx);
+    if (s) {
+      summaries.push(s);
+    }
+  }
+  return summaries;
+}
+
+/**
+ * Create a pair of messages (user + assistant) for an active run.
+ * The assistant message carries reactive signals for result, summaries,
+ * and polling control — no external state management needed.
+ */
+function createActiveRunMessage(
+  runId: string,
+  prompt: string,
+): { userMessage: UserChatMessage; assistantMessage: AssistantChatMessage } {
+  const runLoop = createRunLoop(runId);
+
+  const result$ = computed(async (get) => {
+    const pages = await get(runLoop.pagedEventsList$);
+    const events = await collectAllEvents(pages, get);
+    return extractResult(events);
+  });
+
+  const summaries$ = computed(async (get) => {
+    const pages = await get(runLoop.pagedEventsList$);
+    const events = await collectAllEvents(pages, get);
+    return extractSummaries(events);
+  });
+
+  return {
+    userMessage: {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: prompt,
+    },
+    assistantMessage: {
+      id: crypto.randomUUID(),
+      role: "assistant",
+      content: "",
+      legacyRunId: runId,
+      runLoop,
+      result$,
+      summaries$,
+      beginLoop$: runLoop.beginLoop$,
+    },
+  };
+}
+
+/** Splits unsaved runs into completed (failed/cancelled) messages and active run messages. */
+function unsavedRunsToMessages(unsavedRuns: ChatThreadData["unsavedRuns"]): {
+  messages: ZeroChatMessage[];
+  activeRunMessages: ZeroChatMessage[];
+  lastActiveRunId: string | null;
+} {
+  const messages: ZeroChatMessage[] = [];
+  const activeRunMessages: ZeroChatMessage[] = [];
+  let lastActiveRunId: string | null = null;
+
+  for (const run of unsavedRuns) {
+    const isCancelled = run.status === "cancelled";
+    const isFailed =
+      run.status === "failed" || run.status === "timeout" || isCancelled;
+    if (isFailed) {
+      messages.push({
+        id: crypto.randomUUID(),
+        role: "user",
+        content: run.prompt,
+      });
+      messages.push({
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: "",
+        legacyRunId: run.runId,
+        status: "failed",
+        error: isCancelled
+          ? "Run cancelled."
+          : (run.error ??
+            "Something went wrong. Check the activity logs for details."),
+      });
+    } else {
+      const { userMessage, assistantMessage } = createActiveRunMessage(
+        run.runId,
+        run.prompt,
+      );
+      activeRunMessages.push(userMessage);
+      activeRunMessages.push(assistantMessage);
+      lastActiveRunId = run.runId;
+    }
+  }
+
+  return { messages, activeRunMessages, lastActiveRunId };
+}
 
 interface ChatSessionSnapshotData {
   /** Completed/failed messages — immutable, rendered directly from snapshot. */
   messages: ZeroChatMessage[];
   /** Active run prompt + placeholder — copied to local state for mutable polling updates. */
   activeRunMessages: ZeroChatMessage[];
-  latestSessionId: string | null;
-  agentComposeId?: string;
-  activeRunId: string | null;
+  agentId?: string;
+  lastActiveRunId: string | null;
 }
 
-const snapshotVersion$ = state(0);
-
 /**
- * Async computed that fetches session data whenever the URL thread ID changes.
- * Loading/error states are derived automatically via `useLoadable` in the view.
- * Eliminates the need for manual `internalSessionSwitching$` / `internalSessionError$`.
+ * Fetches raw thread/session data from the API whenever the URL thread ID changes.
+ * Tries the new chat-thread endpoint first, falls back to the legacy session endpoint.
  */
-export const chatSessionSnapshot$ = computed(
-  async (get): Promise<ChatSessionSnapshotData | null> => {
-    get(snapshotVersion$);
-    const threadId = get(zeroSessionId$);
+const currentChatThread$ = computed(
+  async (get): Promise<ChatThreadData | null> => {
+    const threadId = get(chatThreadId$);
     if (!threadId) {
       return null;
     }
-
-    let agentComposeId: string | undefined;
-    let chatMessages: {
-      role: "user" | "assistant";
-      content: string;
-      runId?: string;
-      error?: string;
-      summaries?: SummaryEntry[];
-      createdAt: string;
-    }[] = [];
-    let latestSessionId: string | null = null;
-    let unsavedRuns: {
-      runId: string;
-      status: string;
-      prompt: string;
-      error: string | null;
-    }[] = [];
-    let isLegacySession = false;
 
     const threadClient = get(zeroClient$)(chatThreadByIdContract);
     const threadResult = await threadClient.get({
       params: { id: threadId },
     });
+
     if (threadResult.status === 200) {
       const body = threadResult.body;
-      agentComposeId = body.agentId;
-      chatMessages = body.chatMessages ?? [];
-      latestSessionId = body.latestSessionId ?? null;
-      unsavedRuns = body.unsavedRuns ?? [];
-    } else {
-      const sessionClient = get(zeroClient$)(zeroSessionsByIdContract);
-      const sessionResult = await sessionClient.getById({
-        params: { id: threadId },
-      });
-      if (sessionResult.status !== 200) {
-        L.warn("Failed to load chat");
-        return null;
-      }
-      const body = sessionResult.body;
-      agentComposeId = body.agentId;
-      chatMessages = body.chatMessages ?? [];
-      isLegacySession = true;
+      return {
+        agentId: body.agentId,
+        chatMessages: body.chatMessages ?? [],
+        latestSessionId: body.latestSessionId ?? null,
+        unsavedRuns: body.unsavedRuns ?? [],
+        isLegacySession: false,
+      };
     }
 
-    const resolvedSessionId = isLegacySession ? threadId : latestSessionId;
+    const sessionClient = get(zeroClient$)(zeroSessionsByIdContract);
+    const sessionResult = await sessionClient.getById({
+      params: { id: threadId },
+    });
+    if (sessionResult.status !== 200) {
+      L.warn("Failed to load chat");
+      return null;
+    }
+    const body = sessionResult.body;
+    return {
+      agentId: body.agentId,
+      chatMessages: body.chatMessages ?? [],
+      latestSessionId: threadId,
+      unsavedRuns: [],
+      isLegacySession: true,
+    };
+  },
+);
 
-    const messages: ZeroChatMessage[] = chatMessages.map((m) => {
+/** Transforms raw chat messages into display-ready ZeroChatMessage objects. */
+const currentChatMessages$ = computed(
+  async (get): Promise<ZeroChatMessage[]> => {
+    const messages = (await get(currentChatThread$))?.chatMessages ?? [];
+
+    return messages.map((m) => {
       const summaries =
         m.summaries && m.summaries.length > 0
           ? m.summaries.map((s) => {
@@ -584,61 +570,50 @@ export const chatSessionSnapshot$ = computed(
               return s.text;
             })
           : undefined;
+
       return {
         id: crypto.randomUUID(),
         role: m.role,
         content: m.content,
-        runId: m.runId,
+        legacyRunId: m.runId,
         ...(summaries && summaries.length > 0 ? { summaries } : {}),
         ...(m.error ? { status: "failed" as const, error: m.error } : {}),
       };
     });
+  },
+);
 
-    let activeRunId: string | null = null;
-    const activeRunMessages: ZeroChatMessage[] = [];
-    for (const run of unsavedRuns) {
-      const userMsg: ZeroChatMessage = {
-        id: crypto.randomUUID(),
-        role: "user",
-        content: run.prompt,
-      };
+const currentChatSessionId$ = computed(async (get) => {
+  const thread = await get(currentChatThread$);
+  if (!thread) {
+    return null;
+  }
 
-      const isCancelled = run.status === "cancelled";
-      const isFailed =
-        run.status === "failed" || run.status === "timeout" || isCancelled;
-      if (isFailed) {
-        // Failed/cancelled runs are immutable — go to messages
-        messages.push(userMsg);
-        messages.push({
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: "",
-          runId: run.runId,
-          status: "failed",
-          error: isCancelled
-            ? "Run cancelled."
-            : (run.error ??
-              "Something went wrong. Check the activity logs for details."),
-        });
-      } else {
-        // Active run — goes to activeRunMessages (will be copied to local state)
-        activeRunMessages.push(userMsg);
-        activeRunMessages.push({
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: "",
-          runId: run.runId,
-        });
-        activeRunId = run.runId;
-      }
+  return thread.isLegacySession ? get(chatThreadId$) : thread.latestSessionId;
+});
+
+/**
+ * Composes the full session snapshot from thread data + transformed messages.
+ * Loading/error states are derived automatically via `useLoadable` in the view.
+ */
+export const chatSessionSnapshot$ = computed(
+  async (get): Promise<ChatSessionSnapshotData | null> => {
+    const thread = await get(currentChatThread$);
+    if (!thread) {
+      return null;
     }
 
-    return {
-      messages,
+    const {
+      messages: runMessages,
       activeRunMessages,
-      latestSessionId: resolvedSessionId,
-      agentComposeId,
-      activeRunId,
+      lastActiveRunId: legacyLastActiveRunId,
+    } = unsavedRunsToMessages(thread.unsavedRuns);
+
+    return {
+      messages: [...(await get(currentChatMessages$)), ...runMessages],
+      activeRunMessages,
+      agentId: thread.agentId,
+      lastActiveRunId: legacyLastActiveRunId,
     };
   },
 );
@@ -784,53 +759,15 @@ export const cancelZeroAttachmentUpload$ = command(
 // Commands: session list management
 // ---------------------------------------------------------------------------
 
-export const fetchZeroSessionList$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    // Keep previous list visible while loading (no flash to empty).
-    set(internalSessionListLoading$, true);
-    set(internalSessionListError$, null);
-
-    // Read the selected agent from localStorage; fall back to default agent
-    const chatAgentId = get(zeroChatAgentId$);
-    const composeId =
-      chatAgentId ?? (await get(zeroOnboardingStatus$)).defaultAgentId;
-    if (!composeId) {
-      set(internalSessionListLoading$, false);
-      return;
-    }
-    try {
-      const client = get(zeroClient$)(chatThreadsContract);
-      const result = await client.list({ query: { agentId: composeId } });
-      signal.throwIfAborted();
-      if (result.status !== 200) {
-        set(
-          internalSessionListError$,
-          `Failed to load chats (${result.status})`,
-        );
-        return;
-      }
-      set(internalSessionList$, result.body.threads);
-    } catch (error) {
-      throwIfAbort(error);
-      const msg =
-        error instanceof Error ? error.message : "Failed to load chats";
-      set(internalSessionListError$, msg);
-      L.error("Failed to fetch chat thread list:", error);
-    } finally {
-      set(internalSessionListLoading$, false);
-    }
-  },
-);
-
 /**
  * Single entry point for changing the active agent.
  * Sets the agent identity AND refreshes the session list atomically.
  * All callers that need to change the active agent should use this.
  */
 export const switchActiveAgent$ = command(
-  async ({ set }, agentId: string | null, signal: AbortSignal) => {
+  ({ set }, agentId: string | null, _signal?: AbortSignal) => {
     set(setZeroChatAgent$, agentId);
-    await set(fetchZeroSessionList$, signal);
+    set(reloadChatThreadList$, (n) => n + 1);
   },
 );
 
@@ -848,90 +785,10 @@ const syncAgentForThread$ = command(
       const isDefault = agentComposeId === status.defaultAgentId;
       const newAgentId = isDefault ? null : agentComposeId;
       if (newAgentId !== currentAgentId) {
-        await set(switchActiveAgent$, newAgentId, signal);
-      } else if (get(internalSessionList$).length === 0) {
-        detach(set(fetchZeroSessionList$, signal), Reason.DomCallback);
+        set(switchActiveAgent$, newAgentId, signal);
       }
     } else if (get(zeroChatAgentId$) !== null) {
-      await set(switchActiveAgent$, null, signal);
-    } else if (get(internalSessionList$).length === 0) {
-      detach(set(fetchZeroSessionList$, signal), Reason.DomCallback);
-    }
-  },
-);
-
-// ---------------------------------------------------------------------------
-// startLoop$: independent polling entry point
-// ---------------------------------------------------------------------------
-
-/**
- * Start polling for a run. Sets `internalLoopPromise$` so `lastMessageProcessing$`
- * reflects the active loop. Can be called standalone (session resume) or from
- * `sendZeroChatMessage$` (send flow).
- *
- * The loop uses `signal` for cancellation — typically composed from
- * `resetSending$` + `pageSignal$` via `AbortSignal.any()`.
- */
-const startLoop$ = command(
-  async (
-    { get, set },
-    config: { runId: string },
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const { runId } = config;
-    const createClient = get(zeroClient$);
-
-    set(internalActiveRunId$, runId);
-
-    const loopPromise = (async () => {
-      await set(
-        setupPollingLoop$,
-        {
-          runId,
-          state: {
-            get events$() {
-              return get(internalRunEvents$);
-            },
-            setEvents: (updater) => {
-              set(internalRunEvents$, updater);
-            },
-            setStatus: (s) => {
-              set(internalRunStatus$, s);
-              updateQueuePosition(s, createClient, runId, (pos) =>
-                set(internalQueuePosition$, pos),
-              );
-              // Cycle thinking message on each status update
-              set(
-                internalThinkingIndex$,
-                (prev) => (prev + 1) % THINKING_MESSAGES.length,
-              );
-            },
-            setError: (e) => {
-              set(internalRunError$, e);
-            },
-          },
-          onTerminal: (completedRunId) => {
-            set(onZeroRunComplete$, completedRunId, signal).catch(
-              (error: unknown) => {
-                if (!isAbortError(error)) {
-                  L.error("onRunComplete error:", error);
-                }
-              },
-            );
-          },
-        },
-        signal,
-      );
-    })();
-
-    set(internalLoopPromise$, loopPromise);
-    try {
-      await loopPromise;
-    } finally {
-      // Only clear if this is still the active loop (not replaced by a newer one)
-      if (get(internalLoopPromise$) === loopPromise) {
-        set(internalLoopPromise$, null);
-      }
+      set(switchActiveAgent$, null, signal);
     }
   },
 );
@@ -943,33 +800,43 @@ const startLoop$ = command(
  */
 export const loadSessionFromSnapshot$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    // Skip if local messages are in-flight (e.g., navigating from /talk
-    // after sending a message — optimistic messages are already displayed).
-    if (get(internalLocalMessages$).length > 0) {
-      return;
-    }
-
     const snapshot = await get(chatSessionSnapshot$);
     signal.throwIfAborted();
     if (!snapshot) {
       return;
     }
 
-    if (snapshot.latestSessionId) {
-      set(internalSessionId$, snapshot.latestSessionId);
+    const sessionId = await get(currentChatSessionId$);
+    signal.throwIfAborted();
+    if (sessionId) {
+      set(internalSessionId$, sessionId);
     }
 
-    await set(syncAgentForThread$, snapshot.agentComposeId, signal);
+    await set(syncAgentForThread$, snapshot.agentId, signal);
     signal.throwIfAborted();
 
-    // Resume polling for active run: copy active run messages to local
-    // so polling can mutate the assistant placeholder (snapshot is immutable).
-    if (snapshot.activeRunId) {
+    // Resume polling for active runs: copy active run messages to local
+    // and start their polling loops via beginLoop$.
+    if (snapshot.activeRunMessages.length > 0) {
       set(internalLocalMessages$, snapshot.activeRunMessages);
-      const resumeSignal = set(resetSending$, signal);
-      detach(
-        set(startLoop$, { runId: snapshot.activeRunId }, resumeSignal),
-        Reason.Daemon,
+
+      const assistantMessages = snapshot.activeRunMessages.filter(
+        (m): m is AssistantChatMessage =>
+          m.role === "assistant" && !!m.beginLoop$,
+      );
+
+      await Promise.all(
+        assistantMessages.map(async (message) => {
+          await set(message.beginLoop$!, signal);
+        }),
+      );
+      signal.throwIfAborted();
+
+      // Finalize each completed run (persist session ID, refresh sidebar)
+      await Promise.all(
+        assistantMessages
+          .filter((m) => m.legacyRunId)
+          .map((m) => set(finalizeCompletedRun$, m.legacyRunId!, signal)),
       );
     }
   },
@@ -981,30 +848,18 @@ export const loadSessionFromSnapshot$ = command(
  * which auto-fetches when the URL changes.
  */
 export const switchZeroSession$ = command(({ set }, threadId: string) => {
-  set(resetSending$);
-  set(navigateToZeroSession$, threadId);
+  set(navigateToChat$, threadId);
   set(internalSessionId$, null);
   set(internalLocalMessages$, []);
-  set(internalActiveRunId$, null);
-  set(internalRunEvents$, []);
-  set(internalRunStatus$, null);
-  set(internalRunError$, null);
-  set(internalQueuePosition$, 0);
-  set(internalLoopPromise$, null);
 });
 
 export const startNewZeroSession$ = command(({ set }) => {
   // Abort any in-flight send/polling from the previous session
-  set(resetSending$);
   set(resetTalkSendSignal$);
 
   set(internalLocalMessages$, []);
   set(internalSessionId$, null);
-  set(internalActiveRunId$, null);
-  set(internalRunEvents$, []);
-  set(internalRunStatus$, null);
-  set(internalRunError$, null);
-  set(internalLoopPromise$, null);
+
   set(internalChatInput$, "");
 });
 
@@ -1033,20 +888,8 @@ export const createNewChatSession$ = command(
       const createClient = get(zeroClient$);
       const thread = await createChatThread(createClient, resolvedComposeId);
 
-      const now = new Date().toISOString();
-      set(internalSessionList$, (prev) => [
-        {
-          id: thread.id,
-          title: thread.title,
-          preview: null,
-          agentId: resolvedComposeId,
-          createdAt: now,
-          updatedAt: now,
-        },
-        ...prev,
-      ]);
-
-      set(navigateToZeroSession$, thread.id);
+      set(reloadChatThreadList$, (n) => n + 1);
+      set(navigateToChat$, thread.id);
     } catch (error) {
       throwIfAbort(error);
       L.error("Failed to create new chat session:", error);
@@ -1061,7 +904,7 @@ export const createNewChatSession$ = command(
 // Commands: send message
 // ---------------------------------------------------------------------------
 
-const prepareMessages$ = command(
+const prepareUserMessage$ = command(
   ({ get, set }, prompt: string): { fullPrompt: string } => {
     const attachments = get(internalAttachments$).filter((a) => !a.uploading);
     let fullPrompt = prompt.trim();
@@ -1073,7 +916,7 @@ const prepareMessages$ = command(
       fullPrompt = `${fullPrompt}\n\n${lines.join("\n")}`;
     }
 
-    const userMessage: ZeroChatMessage = {
+    const userMessage: UserChatMessage = {
       id: crypto.randomUUID(),
       role: "user",
       content: prompt.trim(),
@@ -1090,13 +933,6 @@ const prepareMessages$ = command(
     set(internalLocalMessages$, (prev) => [...prev, userMessage]);
     set(internalAttachments$, []);
 
-    const placeholder: ZeroChatMessage = {
-      id: crypto.randomUUID(),
-      role: "assistant",
-      content: "",
-    };
-    set(internalLocalMessages$, (prev) => [...prev, placeholder]);
-
     return { fullPrompt };
   },
 );
@@ -1112,46 +948,111 @@ const ensureChatThread$ = command(
     args: { composeId: string; prompt: string },
     _signal: AbortSignal,
   ): Promise<string | null> => {
-    const threadId = get(zeroSessionId$);
+    const threadId = get(chatThreadId$);
     if (threadId) {
       return threadId;
     }
 
     const createClient = get(zeroClient$);
     const title = args.prompt.trim().slice(0, 100);
-    let thread: { id: string; title: string | null };
-    try {
-      thread = await createChatThread(createClient, args.composeId, title);
-    } catch (error) {
-      throwIfAbort(error);
-      set(internalLocalMessages$, (prev) => {
-        const updated = [...prev];
-        updated[updated.length - 1] = {
-          ...updated[updated.length - 1],
-          error: "Failed to create chat thread",
-        };
-        return updated;
-      });
-      return null;
-    }
+    const thread = await createChatThread(createClient, args.composeId, title);
 
     // Add the new thread to the session list so the sidebar updates immediately
-    const now = new Date().toISOString();
-    set(internalSessionList$, (prev) => [
-      {
-        id: thread.id,
-        title: thread.title ?? title,
-        preview: null,
-        agentId: args.composeId,
-        createdAt: now,
-        updatedAt: now,
-      },
-      ...prev,
-    ]);
-    // Navigate so zeroSessionId$ (URL) reflects the new thread
-    set(navigateToZeroSession$, thread.id);
+    set(reloadChatThreadList$, (n) => n + 1);
 
     return thread.id;
+  },
+);
+
+/** Post-polling cleanup: persist session ID and refresh sidebar. */
+const finalizeCompletedRun$ = command(
+  async ({ get, set }, runId: string, signal: AbortSignal) => {
+    const client = get(zeroClient$)(zeroRunsByIdContract);
+    const result = await client.getById({ params: { id: runId } });
+    signal.throwIfAborted();
+    if (result.status === 200 && result.body.result?.agentSessionId) {
+      set(internalSessionId$, result.body.result.agentSessionId);
+    }
+
+    // Refresh session list (messages are persisted server-side via webhook)
+    set(reloadChatThreadList$, (n) => n + 1);
+    await delay(1000, { signal });
+    set(reloadChatThreadList$, (n) => n + 1);
+  },
+);
+
+/**
+ * Create a run, associate it with a thread, poll until terminal, and handle completion.
+ * Extracted from sendZeroChatMessage$ so the core send-and-poll logic is testable independently.
+ */
+const submitAndPollRun$ = command(
+  async (
+    { get, set },
+    args: {
+      composeId: string;
+      prompt: string;
+      fullPrompt: string;
+      modelProvider?: string;
+    },
+    signal: AbortSignal,
+  ) => {
+    const createClient = get(zeroClient$);
+    const sessionId = get(internalSessionId$);
+    const existingThreadId = get(chatThreadId$);
+
+    const threadId = await set(
+      ensureChatThread$,
+      {
+        composeId: args.composeId,
+        prompt: args.prompt,
+      },
+      signal,
+    );
+
+    if (!threadId) {
+      return;
+    }
+
+    const modelProvider =
+      args.modelProvider && args.modelProvider !== "default"
+        ? args.modelProvider
+        : undefined;
+    const runId = await startAgentRun(
+      createClient,
+      args.composeId,
+      args.fullPrompt,
+      sessionId,
+      modelProvider,
+    );
+    signal.throwIfAborted();
+
+    // Associate run to thread (must complete before polling so refresh works)
+    await addRunToThread(createClient, threadId, runId);
+    signal.throwIfAborted();
+
+    // For new threads, navigate after server state is ready. The snapshot
+    // reconstructs messages from unsavedRuns and resumes polling.
+    if (!existingThreadId) {
+      set(navigateToChat$, threadId);
+      set(reloadChatThreadList$, (n) => n + 1);
+      return;
+    }
+
+    // Refresh sidebar after run is associated (has preview now)
+    set(reloadChatThreadList$, (n) => n + 1);
+
+    // Create reactive assistant message with its own runLoop
+    const { assistantMessage } = createActiveRunMessage(runId, args.prompt);
+    set(internalLocalMessages$, (prev) => [...prev, assistantMessage]);
+
+    const runLoop = assistantMessage.runLoop;
+    if (!runLoop) {
+      return;
+    }
+
+    await set(runLoop.beginLoop$, signal);
+
+    await set(finalizeCompletedRun$, runId, signal);
   },
 );
 
@@ -1162,246 +1063,31 @@ export const sendZeroChatMessage$ = command(
     options: { modelProvider?: string } | undefined,
     signal: AbortSignal,
   ) => {
-    const chatAgentId = get(zeroChatAgentId$);
-    const composeId =
-      chatAgentId ?? (await get(zeroOnboardingStatus$)).defaultAgentId;
+    const composeId = get(zeroChatAgentId$) ?? (await get(defaultAgentId$));
+    signal.throwIfAborted();
     if (!composeId || !prompt.trim()) {
       return;
     }
 
-    const sendSignal = set(resetSending$);
-    const combinedSignal = AbortSignal.any([signal, sendSignal]);
-    let currentPrompt = prompt;
-    let currentOptions = options;
+    const { fullPrompt } = set(prepareUserMessage$, prompt);
 
     try {
-      // While loop replaces recursive detach() for queued messages
-      while (true) {
-        set(internalRunEvents$, []);
-        set(internalRunStatus$, null);
-        set(internalRunError$, null);
-        set(internalQueuePosition$, 0);
-
-        const { fullPrompt } = set(prepareMessages$, currentPrompt);
-
-        try {
-          const createClient = get(zeroClient$);
-          const sessionId = get(internalSessionId$);
-
-          const threadId = await set(
-            ensureChatThread$,
-            {
-              composeId,
-              prompt: currentPrompt,
-            },
-            combinedSignal,
-          );
-          signal.throwIfAborted();
-          if (!threadId) {
-            return;
-          }
-
-          combinedSignal.throwIfAborted();
-
-          const modelProvider =
-            currentOptions?.modelProvider &&
-            currentOptions.modelProvider !== "default"
-              ? currentOptions.modelProvider
-              : undefined;
-          const runId = await startAgentRun(
-            createClient,
-            composeId,
-            fullPrompt,
-            sessionId,
-            modelProvider,
-          );
-          signal.throwIfAborted();
-
-          combinedSignal.throwIfAborted();
-
-          // Associate run to thread (must complete before polling so refresh works)
-          await addRunToThread(createClient, threadId, runId);
-          signal.throwIfAborted();
-
-          // Refresh sidebar after run is associated (has preview now)
-          set(fetchZeroSessionList$, combinedSignal).catch((error: unknown) => {
-            if (!isAbortError(error)) {
-              L.error("Failed to refresh chat list:", error);
-            }
-          });
-
-          set(internalLocalMessages$, (prev) => {
-            const updated = [...prev];
-            updated[updated.length - 1] = {
-              ...updated[updated.length - 1],
-              runId,
-            };
-            return updated;
-          });
-
-          // Loop phase: poll until terminal
-          await set(startLoop$, { runId }, combinedSignal);
-        } catch (error) {
-          throwIfAbort(error);
-          L.error("Chat send error:", error);
-          set(internalLocalMessages$, (prev) => {
-            const updated = [...prev];
-            updated[updated.length - 1] = {
-              ...updated[updated.length - 1],
-              error: error instanceof Error ? error.message : "Unknown error",
-            };
-            return updated;
-          });
-          return;
-        }
-
-        // Check for pending (queued) message
-        const pending = get(internalQueuedMessage$);
-        if (!pending) {
-          break;
-        }
-        currentPrompt = pending.text;
-        currentOptions = pending.modelProvider
-          ? { modelProvider: pending.modelProvider }
-          : undefined;
-        set(internalQueuedMessage$, null);
-      }
-    } finally {
-      // Auto-withdraw pending message back to input on abort/error
-      const pending = get(internalQueuedMessage$);
-      if (pending) {
-        set(internalChatInput$, pending.text);
-        set(internalQueuedMessage$, null);
-      }
-    }
-  },
-);
-
-// ---------------------------------------------------------------------------
-// On run complete: extract session, update message
-// ---------------------------------------------------------------------------
-
-/** Update an assistant message by runId in local messages. */
-const updateAssistantMessage$ = command(
-  (
-    { get, set },
-    args: { runId: string; updater: (msg: ZeroChatMessage) => ZeroChatMessage },
-  ) => {
-    const local = get(internalLocalMessages$);
-    const idx = local.findIndex(
-      (m) => m.role === "assistant" && m.runId === args.runId,
-    );
-    if (idx === -1) {
-      return;
-    }
-    set(internalLocalMessages$, (prev) => {
-      const updated = [...prev];
-      updated[idx] = args.updater(updated[idx]);
-      return updated;
-    });
-  },
-);
-
-/** Update the last assistant message in local messages. */
-const updateLastAssistantMessage$ = command(
-  ({ get, set }, updater: (msg: ZeroChatMessage) => ZeroChatMessage) => {
-    const local = get(internalLocalMessages$);
-    const last = local.length - 1;
-    if (last >= 0 && local[last].role === "assistant") {
-      set(internalLocalMessages$, (prev) => {
-        const updated = [...prev];
-        updated[last] = updater(updated[last]);
-        return updated;
-      });
-    }
-  },
-);
-
-const onZeroRunComplete$ = command(
-  async ({ get, set }, runId: string, signal: AbortSignal) => {
-    const runStatus = get(internalRunStatus$);
-    const runError = get(internalRunError$);
-    const isFailed =
-      runStatus === "failed" ||
-      runStatus === "timeout" ||
-      runStatus === "cancelled";
-
-    set(updateLastAssistantMessage$, (msg) => ({
-      ...msg,
-      status: runStatus ?? undefined,
-      error: isFailed
-        ? (runError ??
-          (runStatus === "timeout"
-            ? "Run timed out"
-            : runStatus === "cancelled"
-              ? "Run cancelled."
-              : "Run failed"))
-        : undefined,
-      runId,
-    }));
-
-    // If run failed/timeout/cancelled, no need to extract result or persist
-    if (isFailed) {
-      set(internalActiveRunId$, null);
-      return;
-    }
-
-    set(internalActiveRunId$, null);
-
-    // Capture events BEFORE any await — the queued-message auto-send in
-    // sendZeroChatMessage$'s finally block may clear internalRunEvents$
-    // while we're waiting on the network.
-    const pages = get(internalRunEvents$);
-
-    try {
-      const client = get(zeroClient$)(zeroRunsByIdContract);
-      const result = await client.getById({ params: { id: runId } });
-      signal.throwIfAborted();
-      if (result.status === 200) {
-        // Store sessionId for conversation continuity (used by next message)
-        if (result.body.result?.agentSessionId) {
-          set(internalSessionId$, result.body.result.agentSessionId);
-        }
-      }
-
-      // Extract result content and summaries from telemetry events
-      const { result: resultContent, summaries } =
-        await extractResultFromEvents(pages, get);
-      signal.throwIfAborted();
-
-      if (resultContent || summaries.length > 0) {
-        set(updateAssistantMessage$, {
-          runId,
-          updater: (msg) => ({
-            ...msg,
-            ...(resultContent ? { content: resultContent } : {}),
-            ...(summaries.length > 0 ? { summaries } : {}),
-          }),
-        });
-      }
-
-      // Refresh session list (messages are persisted server-side via webhook)
-      set(fetchZeroSessionList$, signal).catch((error: unknown) => {
-        if (!isAbortError(error)) {
-          L.error("Failed to refresh session list:", error);
-        }
-      });
-
-      // Refresh again after a short delay so the AI-generated title (produced by
-      // the webhook's after() callback via OpenRouter) has time to land in the DB.
-      // This is a best-effort poll — the title may arrive later if the API is slow,
-      // in which case the user will see it on next navigation. A push-based approach
-      // (e.g. Ably or Zero sync) would be more reliable but is out of scope here.
-      timeout(() => {
-        set(fetchZeroSessionList$, signal).catch((error: unknown) => {
-          if (!isAbortError(error)) {
-            L.error("Failed to refresh session list (delayed):", error);
-          }
-        });
-      }, 1000);
+      await set(
+        submitAndPollRun$,
+        {
+          composeId,
+          prompt,
+          fullPrompt,
+          modelProvider: options?.modelProvider,
+        },
+        signal,
+      );
     } catch (error) {
       throwIfAbort(error);
-      L.error("Failed to extract run result:", error);
+      L.error("Chat send error:", error);
+      // Clear the optimistic user message since the send failed.
+      // The user stays on /talk/ with their input preserved for retry.
+      set(internalLocalMessages$, []);
     }
   },
 );

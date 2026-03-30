@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.5](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.6.4...ably-subscriber-v0.6.5) (2026-03-29)
+
+
+### Bug Fixes
+
+* **crates:** update sha2/hmac usage for digest 0.11 compatibility ([#7101](https://github.com/vm0-ai/vm0/issues/7101)) ([cbded46](https://github.com/vm0-ai/vm0/commit/cbded46e78c8d3ed060e96f79f15cd38ee1cf9dc))
+
 ## [0.6.4](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.6.3...ably-subscriber-v0.6.4) (2026-03-17)
 
 

@@ -1,0 +1,2 @@
+DROP INDEX "uq_credit_expires_invoice";--> statement-breakpoint
+CREATE UNIQUE INDEX "uq_credit_expires_invoice" ON "credit_expires_record" USING btree ("org_id","stripe_invoice_id") WHERE stripe_invoice_id IS NOT NULL;

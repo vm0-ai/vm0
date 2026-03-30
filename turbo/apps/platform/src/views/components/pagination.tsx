@@ -102,8 +102,7 @@ export function Pagination({
         <Button
           variant="outline"
           size="icon"
-          className={cn("h-8 w-8 border-0 bg-card", buttonClassName)}
-          style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+          className={cn("h-8 w-8 bg-card", buttonClassName)}
           onClick={onBackTwoPages}
           disabled={!canGoBackTwo}
         >
@@ -113,8 +112,7 @@ export function Pagination({
         <Button
           variant="outline"
           size="icon"
-          className={cn("h-8 w-8 border-0 bg-card", buttonClassName)}
-          style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+          className={cn("h-8 w-8 bg-card", buttonClassName)}
           onClick={onPrevPage}
           disabled={!hasPrev}
         >
@@ -124,8 +122,7 @@ export function Pagination({
         <Button
           variant="outline"
           size="icon"
-          className={cn("h-8 w-8 border-0 bg-card", buttonClassName)}
-          style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+          className={cn("h-8 w-8 bg-card", buttonClassName)}
           onClick={onNextPage}
           disabled={!hasNext || isLoading}
         >
@@ -135,8 +132,7 @@ export function Pagination({
         <Button
           variant="outline"
           size="icon"
-          className={cn("h-8 w-8 border-0 bg-card", buttonClassName)}
-          style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+          className={cn("h-8 w-8 bg-card", buttonClassName)}
           onClick={onForwardTwoPages}
           disabled={!hasNext || isLoading}
         >

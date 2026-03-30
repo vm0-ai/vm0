@@ -6,8 +6,6 @@ import {
   IconPlayerStop,
   IconPlug,
   IconPlus,
-  IconClock,
-  IconArrowBackUp,
 } from "@tabler/icons-react";
 import {
   Button,
@@ -44,6 +42,7 @@ import { useModelSelection } from "./zero-model-preference.ts";
 import { useSendKeyHandler } from "./zero-send-key.ts";
 import type { ConnectorType } from "@vm0/core";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
+import { ProviderIcon } from "./components/settings/provider-icons.tsx";
 import {
   AddConnectionDialog,
   ConnectModal,
@@ -75,10 +74,6 @@ interface ZeroChatComposerProps {
   sending?: boolean;
   /** Cancel the active run. When provided, a stop button replaces the send button while sending. */
   onCancel?: () => void;
-  /** Message queued for delivery after the current run completes. */
-  queuedMessage?: { text: string } | null;
-  /** Withdraw the queued message back into the input for editing. */
-  onWithdraw?: () => void;
   displayName: string;
   /** Navigate to connectors management page. */
   onManageConnectors?: () => void;
@@ -92,7 +87,7 @@ interface ZeroChatComposerProps {
 // ---------------------------------------------------------------------------
 
 function buildModelOpts(model: string): { modelProvider: string } | undefined {
-  return model !== "default" ? { modelProvider: model } : undefined;
+  return model ? { modelProvider: model } : undefined;
 }
 
 interface ComposerConnectorItem {
@@ -172,10 +167,7 @@ function ConnectorTriggerIcons({
     <span className="flex items-center -space-x-1.5">
       {connected.map((c) => (
         <span key={c.type} className="relative shrink-0">
-          <span
-            className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-background"
-            style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-          >
+          <span className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-background zero-border">
             <ConnectorIcon type={c.type as ConnectorType} size={16} />
           </span>
         </span>
@@ -291,10 +283,7 @@ function ConnectorsPopoverButton({
       <PopoverContent side="top" align="start" className="w-64 p-0 rounded-lg">
         {hasAgentConnectors && (
           <TooltipProvider delayDuration={400}>
-            <div
-              className="max-h-[200px] overflow-y-auto py-1 pl-1"
-              style={{ scrollbarWidth: "thin" }}
-            >
+            <div className="max-h-[200px] overflow-y-auto py-1 pl-1">
               <div className="px-2 pt-1 pb-1">
                 <span className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider">
                   Connectors used by {displayName}
@@ -372,8 +361,6 @@ export function ZeroChatComposer({
   onSend,
   sending,
   onCancel,
-  queuedMessage,
-  onWithdraw,
   displayName,
   onManageConnectors,
   className,
@@ -452,10 +439,9 @@ export function ZeroChatComposer({
       pageSignal,
     );
 
-  // Send (or queue if agent is busy — parent decides)
   const handleSend = () => {
     const trimmed = input.trim();
-    if (!trimmed || !!queuedMessage) {
+    if (!trimmed) {
       return;
     }
     persistSelection();
@@ -518,51 +504,26 @@ export function ZeroChatComposer({
                 }}
               />
             )}
-            {queuedMessage ? (
-              <div className="flex items-start gap-3 px-5 pt-4 pb-2 min-h-[88px]">
-                <IconClock
-                  size={16}
-                  className="text-muted-foreground shrink-0 mt-0.5"
-                />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-muted-foreground mb-1">
-                    Will send when the agent finishes
-                  </p>
-                  <p className="text-sm text-foreground line-clamp-3 break-words">
-                    {queuedMessage.text}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={onWithdraw}
-                  className="shrink-0 inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                >
-                  <IconArrowBackUp size={14} />
-                  Withdraw
-                </button>
-              </div>
-            ) : (
-              <textarea
-                ref={(el) => {
-                  if (el && autoFocus) {
-                    el.focus();
-                  }
-                }}
-                className="w-full resize-none bg-transparent px-5 pt-4 pb-2 text-sm text-foreground placeholder:text-muted-foreground border-0 min-h-[88px] focus:outline-none focus:ring-0"
-                rows={3}
-                placeholder={
-                  sending
-                    ? "Type your next message\u2026"
-                    : "Ask me to automate workflows, manage tasks..."
+            <textarea
+              ref={(el) => {
+                if (el && autoFocus) {
+                  el.focus();
                 }
-                value={input}
-                onChange={(e) => onInputChange(e.target.value)}
-                onKeyDown={handleKeyDown}
-                onCompositionStart={onCompositionStart}
-                onCompositionEnd={onCompositionEnd}
-                onPaste={handlePaste}
-              />
-            )}
+              }}
+              className="w-full resize-none bg-transparent px-5 pt-4 pb-2 text-sm text-foreground placeholder:text-muted-foreground border-0 min-h-[88px] focus:outline-none focus:ring-0"
+              rows={3}
+              placeholder={
+                sending
+                  ? "Type your next message\u2026"
+                  : "Ask me to automate workflows, manage tasks..."
+              }
+              value={input}
+              onChange={(e) => onInputChange(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onCompositionStart={onCompositionStart}
+              onCompositionEnd={onCompositionEnd}
+              onPaste={handlePaste}
+            />
             <div className="flex items-center justify-between gap-2 px-4 py-3">
               <div className="flex items-center gap-1 text-muted-foreground">
                 <button
@@ -593,7 +554,17 @@ export function ZeroChatComposer({
                         value={opt.value}
                         className="text-sm"
                       >
-                        {opt.label}
+                        <div className="flex items-center gap-2">
+                          <ProviderIcon
+                            type={
+                              opt.value as Parameters<
+                                typeof ProviderIcon
+                              >[0]["type"]
+                            }
+                            size={16}
+                          />
+                          <span>{opt.label}</span>
+                        </div>
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -609,17 +580,15 @@ export function ZeroChatComposer({
                     <IconPlayerStop size={16} />
                   </Button>
                 )}
-                {!queuedMessage && (
-                  <Button
-                    size="sm"
-                    className="rounded-lg h-9 w-9 p-0 shrink-0"
-                    onClick={handleSend}
-                    disabled={!input.trim()}
-                    aria-label={sending ? "Queue message" : "Send"}
-                  >
-                    <IconArrowUp size={16} stroke={2} />
-                  </Button>
-                )}
+                <Button
+                  size="sm"
+                  className="rounded-lg h-9 w-9 p-0 shrink-0"
+                  onClick={handleSend}
+                  disabled={!input.trim() || !!sending}
+                  aria-label="Send"
+                >
+                  <IconArrowUp size={16} stroke={2} />
+                </Button>
               </div>
             </div>
           </div>

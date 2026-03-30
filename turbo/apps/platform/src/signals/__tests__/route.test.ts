@@ -7,12 +7,14 @@ import {
   pathname$,
   pathParams$,
   searchParams$,
-  updatePathname$,
   updateSearchParams$,
 } from "../route.ts";
 import { setRootSignal$ } from "../root-signal.ts";
 import { testContext } from "./test-helpers.ts";
-import { createPushStateMock } from "../../__tests__/page-helper.ts";
+import {
+  createPushStateMock,
+  updateTestPathname$,
+} from "../../__tests__/page-helper.ts";
 
 const context = testContext();
 
@@ -54,13 +56,13 @@ describe("route", () => {
     });
   });
 
-  describe("updatePathname$", () => {
+  describe("updateTestPathname$", () => {
     it("should update pathname without reloading the route", () => {
       const { store, signal } = context;
       const pushStateMock = createPushStateMock(signal);
       mockLocation({ pathname: "/", search: "" }, signal);
 
-      store.set(updatePathname$, "/team");
+      store.set(updateTestPathname$, "/team");
 
       expect(pushStateMock).toHaveBeenCalledWith({}, "", "/team");
       expect(store.get(pathname$)).toBe("/team");
