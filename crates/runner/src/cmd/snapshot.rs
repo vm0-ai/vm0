@@ -1,9 +1,7 @@
 use clap::Args;
+use sandbox::SnapshotProvider;
 use sha2::{Digest, Sha256};
 
-use sandbox_fc::SnapshotOutputPaths;
-
-use crate::config::SnapshotConfig;
 use crate::deps::{FIRECRACKER_VERSION, KERNEL_VERSION};
 use crate::error::{RunnerError, RunnerResult};
 use crate::lock;
@@ -28,37 +26,35 @@ pub struct SnapshotArgs {
     pub dry_run: bool,
 }
 
-/// Create a snapshot and return the complete snapshot path information.
-pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<(String, Option<SnapshotConfig>)> {
-    let snapshot_hash = compute_snapshot_hash(&args);
+/// Create a snapshot and return the snapshot hash.
+pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<String> {
+    let provider = sandbox_fc::FirecrackerSnapshotProvider;
+    let snapshot_hash = compute_snapshot_hash(&args, &provider);
     tracing::info!("snapshot hash: {snapshot_hash}");
     // Machine-readable output — do not change format without updating consumers
     println!("snapshot_hash={snapshot_hash}");
 
     if args.dry_run {
-        return Ok((snapshot_hash, None));
+        return Ok(snapshot_hash);
     }
 
     let paths = HomePaths::new()?;
     let output_dir = paths.snapshots_dir().join(&snapshot_hash);
-    let output = SnapshotOutputPaths::new(output_dir.clone());
 
-    if is_snapshot_complete(&output).await? {
+    if provider.is_complete(&output_dir).await? {
         tracing::info!("[OK] snapshot already exists: {}", output_dir.display());
         touch_mtime(&output_dir);
-        let config = output.snapshot_config(&snapshot_hash).into();
-        return Ok((snapshot_hash, Some(config)));
+        return Ok(snapshot_hash);
     }
 
     // Acquire exclusive lock to prevent concurrent builds with the same hash.
     let _lock = lock::acquire(paths.snapshot_lock(&snapshot_hash)).await?;
 
     // Re-check after acquiring lock — another process may have completed the build.
-    if is_snapshot_complete(&output).await? {
+    if provider.is_complete(&output_dir).await? {
         tracing::info!("[OK] snapshot already exists: {}", output_dir.display());
         touch_mtime(&output_dir);
-        let config = output.snapshot_config(&snapshot_hash).into();
-        return Ok((snapshot_hash, Some(config)));
+        return Ok(snapshot_hash);
     }
 
     let rootfs_path = RootfsPaths::new(&paths, &args.rootfs_hash).rootfs();
@@ -72,7 +68,7 @@ pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<(String, Option<Sn
         )));
     }
 
-    let create_config = sandbox_fc::SnapshotCreateConfig {
+    let create_config = sandbox::SnapshotCreateConfig {
         id: snapshot_hash.clone(),
         binary_path: paths.firecracker_bin(FIRECRACKER_VERSION),
         kernel_path: paths.kernel_bin(FIRECRACKER_VERSION, KERNEL_VERSION),
@@ -82,53 +78,43 @@ pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<(String, Option<Sn
         memory_mb: args.memory_mb,
     };
 
-    let sc = sandbox_fc::create_snapshot(create_config).await?;
+    let output = provider.create_snapshot(create_config).await?;
 
     let (snapshot_sz, memory_sz, cow_sz) = tokio::join!(
-        file_sizes(&sc.snapshot_path),
-        file_sizes(&sc.memory_path),
-        file_sizes(&sc.cow_path),
+        file_sizes(&output.snapshot_path),
+        file_sizes(&output.memory_path),
+        file_sizes(&output.cow_path),
     );
     tracing::info!(
-        snapshot = %sc.snapshot_path.display(),
+        snapshot = %output.snapshot_path.display(),
         snapshot_logical = %snapshot_sz.0,
         snapshot_disk = %snapshot_sz.1,
-        memory = %sc.memory_path.display(),
+        memory = %output.memory_path.display(),
         memory_logical = %memory_sz.0,
         memory_disk = %memory_sz.1,
-        cow = %sc.cow_path.display(),
+        cow = %output.cow_path.display(),
         cow_logical = %cow_sz.0,
         cow_disk = %cow_sz.1,
         "snapshot creation complete"
     );
 
-    Ok((snapshot_hash, Some(sc.into())))
-}
-
-/// Check whether all expected snapshot outputs exist in the directory.
-async fn is_snapshot_complete(output: &SnapshotOutputPaths) -> RunnerResult<bool> {
-    for path in [output.snapshot(), output.memory(), output.cow()] {
-        let exists = tokio::fs::try_exists(&path)
-            .await
-            .map_err(|e| RunnerError::Internal(format!("check {}: {e}", path.display())))?;
-        if !exists {
-            return Ok(false);
-        }
-    }
-    Ok(true)
+    Ok(snapshot_hash)
 }
 
 /// Compute a composite cache key from all inputs that affect the snapshot.
 ///
 /// Inputs:
-///   - `sandbox_fc::config_hash()` — boot args, guest network config
+///   - `provider.config_hash()` — boot args, guest network config
 ///   - `rootfs_hash` — rootfs content (from `rootfs`)
 ///   - `FIRECRACKER_VERSION` / `KERNEL_VERSION` — binary versions
 ///   - `vcpu` / `memory_mb` — VM resource settings
 ///
 /// **Changing this function invalidates all cached snapshots.**
-pub(crate) fn compute_snapshot_hash(args: &SnapshotArgs) -> String {
-    let fc_config = sandbox_fc::config_hash();
+pub(crate) fn compute_snapshot_hash(
+    args: &SnapshotArgs,
+    provider: &dyn SnapshotProvider,
+) -> String {
+    let fc_config = provider.config_hash();
     let mut hasher = Sha256::new();
     // Cache version seed — bump SNAPSHOT_CACHE_VERSION to force invalidation.
     hasher.update(b"version:");
@@ -188,13 +174,14 @@ mod tests {
 
     #[test]
     fn snapshot_hash_is_stable() {
+        let provider = sandbox_fc::FirecrackerSnapshotProvider;
         let args = SnapshotArgs {
             rootfs_hash: "abc123".into(),
             vcpu: 2,
             memory_mb: 2048,
             dry_run: false,
         };
-        let hash = compute_snapshot_hash(&args);
+        let hash = compute_snapshot_hash(&args, &provider);
 
         // Changing this assertion means ALL existing cached snapshots are
         // invalidated.  Only update deliberately.
@@ -206,6 +193,7 @@ mod tests {
 
     #[test]
     fn different_inputs_produce_different_hashes() {
+        let provider = sandbox_fc::FirecrackerSnapshotProvider;
         let base = SnapshotArgs {
             rootfs_hash: "abc123".into(),
             vcpu: 2,
@@ -229,11 +217,20 @@ mod tests {
             ..base.clone()
         };
 
-        let base_hash = compute_snapshot_hash(&base);
-        assert_ne!(base_hash, compute_snapshot_hash(&different_rootfs));
-        assert_ne!(base_hash, compute_snapshot_hash(&different_vcpu));
-        assert_ne!(base_hash, compute_snapshot_hash(&different_memory));
+        let base_hash = compute_snapshot_hash(&base, &provider);
+        assert_ne!(
+            base_hash,
+            compute_snapshot_hash(&different_rootfs, &provider)
+        );
+        assert_ne!(base_hash, compute_snapshot_hash(&different_vcpu, &provider));
+        assert_ne!(
+            base_hash,
+            compute_snapshot_hash(&different_memory, &provider)
+        );
         // dry_run is not a build input — it must not change the hash.
-        assert_eq!(base_hash, compute_snapshot_hash(&different_dry_run));
+        assert_eq!(
+            base_hash,
+            compute_snapshot_hash(&different_dry_run, &provider)
+        );
     }
 }

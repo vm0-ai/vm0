@@ -40,27 +40,6 @@ pub struct ProfileConfig {
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
-pub struct SnapshotConfig {
-    pub snapshot_path: PathBuf,
-    pub memory_path: PathBuf,
-    pub cow_path: PathBuf,
-    pub drive_bind_path: PathBuf,
-    pub vsock_bind_dir: PathBuf,
-}
-
-impl From<sandbox_fc::SnapshotConfig> for SnapshotConfig {
-    fn from(sc: sandbox_fc::SnapshotConfig) -> Self {
-        Self {
-            snapshot_path: sc.snapshot_path,
-            memory_path: sc.memory_path,
-            cow_path: sc.cow_path,
-            drive_bind_path: sc.drive_bind_path,
-            vsock_bind_dir: sc.vsock_bind_dir,
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SandboxConfig {
     pub max_concurrent: usize,
