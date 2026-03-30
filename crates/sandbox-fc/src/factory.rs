@@ -438,11 +438,14 @@ impl SandboxFactory for FirecrackerFactory {
                     } else {
                         // Last resort: schedule deferred removal. The kernel
                         // removes the target when Firecracker releases the fd.
+                        // Note: cow_destroyed stays false — deferred means the
+                        // dm target and loop device are NOT yet gone, so we must
+                        // keep the workspace (and its cow.img) intact.  Deleting
+                        // the backing file while the loop device still references
+                        // it creates an orphaned loop pointing at "(deleted)".
                         warn!(id = %sandbox_id, error = %e, "destroy failed after retries, trying deferred removal");
                         match sandbox.cow_device.destroy_deferred() {
-                            Ok(()) => {
-                                cow_destroyed = true;
-                            }
+                            Ok(()) => {}
                             Err(e) => {
                                 warn!(id = %sandbox_id, error = %e, "deferred removal also failed — relying on GC");
                                 sandbox.cow_device.abandon();

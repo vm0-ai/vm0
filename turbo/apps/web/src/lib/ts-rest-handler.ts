@@ -160,8 +160,7 @@ export function createHandler<T extends AppRouter>(
         }
 
         // Flush all pending logs and ingested events to Axiom
-        await flushLogs();
-        await flushAxiom();
+        await Promise.all([flushLogs(), flushAxiom()]);
       },
     ],
   });

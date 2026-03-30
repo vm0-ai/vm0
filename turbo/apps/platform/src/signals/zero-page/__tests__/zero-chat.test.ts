@@ -301,6 +301,80 @@ describe("zero-chat signals", () => {
     });
   });
 
+  describe("submitAndPollRun$ on existing thread", () => {
+    it("should send message on existing thread, poll to completion, and reload thread", async () => {
+      let threadReloadCount = 0;
+
+      server.use(
+        http.get("*/api/zero/chat-threads", () => {
+          return HttpResponse.json({ threads: [] });
+        }),
+        http.get("*/api/zero/chat-threads/:id", () => {
+          threadReloadCount++;
+          return HttpResponse.json({
+            id: "thread-existing",
+            title: null,
+            agentId: "mock-compose-id",
+            chatMessages: [],
+            latestSessionId: "session-existing",
+            unsavedRuns: [],
+            createdAt: "2026-03-10T00:00:00Z",
+            updatedAt: "2026-03-10T00:00:00Z",
+          });
+        }),
+        http.post("*/api/zero/chat/messages", () => {
+          return HttpResponse.json(
+            {
+              runId: "run-poll-1",
+              threadId: "thread-existing",
+              status: "running",
+              createdAt: "2026-03-10T00:00:00Z",
+            },
+            { status: 201 },
+          );
+        }),
+        http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
+          return HttpResponse.json({
+            events: [],
+            hasMore: false,
+            framework: "claude-code",
+          });
+        }),
+        http.get("*/api/zero/logs/:runId", () => {
+          return HttpResponse.json({
+            id: "run-poll-1",
+            status: "completed",
+            error: null,
+            prompt: "test",
+            createdAt: "2026-03-10T00:00:00Z",
+            startedAt: "2026-03-10T00:00:01Z",
+            completedAt: "2026-03-10T00:00:02Z",
+          });
+        }),
+      );
+
+      // Set up on an existing thread URL so chatThreadId$ is pre-populated
+      await setupPage({
+        context,
+        path: "/chat/thread-existing",
+        withoutRender: true,
+      });
+
+      await context.store.set(
+        sendZeroChatMessage$,
+        "Hello",
+        undefined,
+        context.signal,
+      );
+
+      // Run loop must have completed
+      await expect(context.store.get(allFinished$)).resolves.toBeTruthy();
+
+      // finalizeCompletedRun$ must have invalidated the thread (at least one reload)
+      expect(threadReloadCount).toBeGreaterThan(1);
+    });
+  });
+
   describe("startNewZeroSession$", () => {
     it("should reset all chat state", async () => {
       await setup();

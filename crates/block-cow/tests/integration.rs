@@ -179,8 +179,18 @@ fn restore_from_existing_cow() {
     let dev_path = device.device_path().to_owned();
 
     // Write a marker to the raw block device to dirty the COW.
+    // Use explicit open + sync + drop so the kernel flushes page cache
+    // before we tear down the dm device (avoids EBUSY from dmsetup remove).
     let marker = b"BLOCK_COW_TEST_MARKER";
-    fs::write(&dev_path, marker).expect("write marker to device");
+    {
+        use std::io::Write;
+        let mut f = fs::OpenOptions::new()
+            .write(true)
+            .open(&dev_path)
+            .expect("open device for writing");
+        f.write_all(marker).expect("write marker");
+        f.sync_all().expect("sync marker");
+    }
 
     device.destroy_keep_cow().expect("destroy_keep_cow");
     assert!(cow_file.exists(), "COW file should be preserved");

@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.126.0](https://github.com/vm0-ai/vm0/compare/core-v8.125.0...core-v8.126.0) (2026-03-30)
+
+
+### Features
+
+* **firewalls:** add dify connector firewall config ([#7194](https://github.com/vm0-ai/vm0/issues/7194)) ([eeb5d67](https://github.com/vm0-ai/vm0/commit/eeb5d6724af730d09d0ef90e67eb04a2459b5df0))
+* **firewalls:** add twenty connector firewall config ([#7195](https://github.com/vm0-ai/vm0/issues/7195)) ([90251c0](https://github.com/vm0-ai/vm0/commit/90251c00cd914f4fdfe36cd9f4ac2088205b11b5))
+
 ## [8.125.0](https://github.com/vm0-ai/vm0/compare/core-v8.124.0...core-v8.125.0) (2026-03-30)
 
 

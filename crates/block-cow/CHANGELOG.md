@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/vm0-ai/vm0/compare/block-cow-v0.4.0...block-cow-v0.4.1) (2026-03-30)
+
+
+### Bug Fixes
+
+* **block-cow:** sync writes before dm teardown in restore test ([#7209](https://github.com/vm0-ai/vm0/issues/7209)) ([02887ea](https://github.com/vm0-ai/vm0/commit/02887ea738eec45285b568a72adc3f5c7948cdb6))
+
 ## [0.4.0](https://github.com/vm0-ai/vm0/compare/block-cow-v0.3.0...block-cow-v0.4.0) (2026-03-29)
 
 

@@ -471,8 +471,11 @@ interface ChatSessionSnapshotData {
  * Fetches raw thread/session data from the API whenever the URL thread ID changes.
  * Tries the new chat-thread endpoint first, falls back to the legacy session endpoint.
  */
+const reloadCurrentThread$ = state(0);
+
 export const currentChatThread$ = computed(
   async (get): Promise<ChatThreadData | null> => {
+    get(reloadCurrentThread$);
     const threadId = get(chatThreadId$);
     if (!threadId) {
       return null;
@@ -743,7 +746,7 @@ export const loadSessionFromSnapshot$ = command(
       await Promise.all(
         assistantMessages
           .filter((m) => m.legacyRunId)
-          .map((m) => set(finalizeCompletedRun$, m.legacyRunId!, signal)),
+          .map(() => set(finalizeCompletedRun$, signal)),
       );
     }
   },
@@ -865,13 +868,15 @@ const prepareUserMessage$ = command(
   },
 );
 
-/** Post-polling cleanup: refresh sidebar. Session is managed server-side via callback. */
+/** Post-polling cleanup: refresh sidebar and current thread. Session is managed server-side via callback. */
 const finalizeCompletedRun$ = command(
-  async ({ get, set }, _runId: string, signal: AbortSignal) => {
+  async ({ get, set }, signal: AbortSignal) => {
     // Refresh session list (messages are persisted server-side via webhook)
     set(reloadChatThreadList$, (n) => n + 1);
     await delay(get(poolInterval$), { signal });
     set(reloadChatThreadList$, (n) => n + 1);
+    // Invalidate the current thread so latestSessionId and messages are fresh
+    set(reloadCurrentThread$, (n) => n + 1);
   },
 );
 
@@ -951,7 +956,7 @@ const submitAndPollRun$ = command(
 
     await set(runLoop.beginLoop$, signal);
 
-    await set(finalizeCompletedRun$, runId, signal);
+    await set(finalizeCompletedRun$, signal);
   },
 );
 
