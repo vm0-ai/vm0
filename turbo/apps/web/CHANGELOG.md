@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.171.0](https://github.com/vm0-ai/vm0/compare/web-v12.170.1...web-v12.171.0) (2026-03-30)
+
+
+### Features
+
+* **cli:** add --firewall-policies flag to run commands ([#7223](https://github.com/vm0-ai/vm0/issues/7223)) ([f1d7c95](https://github.com/vm0-ai/vm0/commit/f1d7c953f62dd1676d535fd2a7a01e0bb7b55a06))
+
+
+### Performance Improvements
+
+* **axiom:** merge duplicate queries and consolidate logger client ([#7237](https://github.com/vm0-ai/vm0/issues/7237)) ([22998a4](https://github.com/vm0-ai/vm0/commit/22998a403db8e38231a366f1ced9fc9126b25889))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.127.0
+
 ## [12.170.1](https://github.com/vm0-ai/vm0/compare/web-v12.170.0...web-v12.170.1) (2026-03-30)
 
 

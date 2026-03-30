@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.87.0](https://github.com/vm0-ai/vm0/compare/cli-v9.86.10...cli-v9.87.0) (2026-03-30)
+
+
+### Features
+
+* **cli:** add --firewall-policies flag to run commands ([#7223](https://github.com/vm0-ai/vm0/issues/7223)) ([f1d7c95](https://github.com/vm0-ai/vm0/commit/f1d7c953f62dd1676d535fd2a7a01e0bb7b55a06))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.127.0
+
 ## [9.86.10](https://github.com/vm0-ai/vm0/compare/cli-v9.86.9...cli-v9.86.10) (2026-03-30)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.127.0](https://github.com/vm0-ai/vm0/compare/core-v8.126.0...core-v8.127.0) (2026-03-30)
+
+
+### Features
+
+* **cli:** add --firewall-policies flag to run commands ([#7223](https://github.com/vm0-ai/vm0/issues/7223)) ([f1d7c95](https://github.com/vm0-ai/vm0/commit/f1d7c953f62dd1676d535fd2a7a01e0bb7b55a06))
+
 ## [8.126.0](https://github.com/vm0-ai/vm0/compare/core-v8.125.0...core-v8.126.0) (2026-03-30)
 
 
