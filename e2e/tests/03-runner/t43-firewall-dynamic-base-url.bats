@@ -52,7 +52,7 @@ teardown_file() {
 @test "firewall: dynamic base URL — zendesk placeholder injection" {
     # No experimental_firewalls declared — system auto-adds zendesk firewall
     # because the connector is detected as connected (all required fields present).
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
+    cat > "$TEST_DIR/vm0-placeholder.yaml" <<EOF
 version: "1.0"
 
 agents:
@@ -62,7 +62,8 @@ agents:
     working_dir: /home/user/workspace
 EOF
 
-    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
+    run $VM0_CLI compose "$TEST_DIR/vm0-placeholder.yaml"
+    echo "$output"
     assert_success
 
     # Verify ZENDESK_API_TOKEN is replaced with firewall placeholder in sandbox
@@ -81,7 +82,7 @@ EOF
 }
 
 @test "firewall: dynamic base URL — zendesk proxy token replacement" {
-    cat > "$TEST_DIR/vm0.yaml" <<EOF
+    cat > "$TEST_DIR/vm0-proxy.yaml" <<EOF
 version: "1.0"
 
 agents:
@@ -91,17 +92,19 @@ agents:
     working_dir: /home/user/workspace
 EOF
 
-    run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
+    run $VM0_CLI compose "$TEST_DIR/vm0-proxy.yaml"
+    echo "$output"
     assert_success
 
     # Make a request to the zendesk API through the proxy.
     # The proxy should:
     # 1. Match the URL against the resolved base URL (https://{subdomain}.zendesk.com)
     # 2. Replace the placeholder token with the real token in Authorization header
-    # 3. Forward the request — zendesk returns 401 (fake token) but NOT 403 (proxy block)
+    # 3. Forward the request — NOT a 403 (proxy block)
     #
-    # 401 = proxy matched and forwarded (auth header injected, zendesk rejected fake token)
-    # 403 = proxy blocked (no firewall match — would mean base URL resolution failed)
+    # If proxy matched: zendesk returns 401 (bad token) or 404 (subdomain not found)
+    # If proxy blocked: returns 403 with "no matching permission" error
+    # We check it's NOT 403 to confirm the firewall matched.
     run $VM0_CLI run "${AGENT_NAME}-proxy" \
         --artifact-name "$ARTIFACT_NAME" \
         "STATUS=\$(curl -s -o /dev/null -w '%{http_code}' https://${TEST_SUBDOMAIN}.zendesk.com/api/v2/users/me.json) && echo \"ZENDESK_STATUS=\$STATUS\""
@@ -110,7 +113,20 @@ EOF
     assert_success
     assert_output --partial "Run completed successfully"
 
-    # 401 means proxy matched the firewall, injected the auth header,
-    # and zendesk rejected the fake token. This proves the dynamic base URL works.
-    assert_output --partial "ZENDESK_STATUS=401"
+    # Verify proxy did NOT block the request (403 = firewall blocked, no match).
+    # Any other status (401, 404) means proxy matched and forwarded successfully.
+    refute_output --partial "ZENDESK_STATUS=403"
+    assert_output --regexp "ZENDESK_STATUS=(401|404)"
+
+    # Also check network logs confirm firewall match
+    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
+    [ -n "$RUN_ID" ] || {
+        echo "# Failed to extract Run ID"
+        return 1
+    }
+
+    run $VM0_CLI logs "$RUN_ID" --network --tail 100
+    assert_success
+    # ALLOW: proxy matched zendesk firewall and forwarded
+    assert_output --partial "[zendesk]"
 }

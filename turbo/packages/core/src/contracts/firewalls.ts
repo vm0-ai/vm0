@@ -113,8 +113,7 @@ export function extractSecretNamesFromApis(
  * Regex pattern matching `${{ vars.XXX }}` references in base URL templates.
  */
 const BASE_URL_VARS_PATTERN = /\$\{\{\s*vars\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/;
-const BASE_URL_VARS_PATTERN_G =
-  /\$\{\{\s*vars\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
+const BASE_URL_VARS_PATTERN_G = new RegExp(BASE_URL_VARS_PATTERN.source, "g");
 
 /**
  * Check if a base URL contains `${{ vars.X }}` template references.
