@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.162.2](https://github.com/vm0-ai/vm0/compare/app-v0.162.1...app-v0.162.2) (2026-03-30)
+
+
+### Refactoring
+
+* decompose chatSessionSnapshot$ and unify polling via createRunLoop ([#7033](https://github.com/vm0-ai/vm0/issues/7033)) ([d6dd572](https://github.com/vm0-ai/vm0/commit/d6dd5728e4668ea7f260c9bcb72dd073c7e70371))
+* **platform:** move horizontal padding into table components for consistent alignment ([#7089](https://github.com/vm0-ai/vm0/issues/7089)) ([fc266ff](https://github.com/vm0-ai/vm0/commit/fc266ff08e40f5c7e049419d20c84d915780e8e7))
+* **platform:** unify design system styles across UI components ([#7082](https://github.com/vm0-ai/vm0/issues/7082)) ([f947e95](https://github.com/vm0-ai/vm0/commit/f947e954561fc77256d5b3e63bc35ca4ba30ffda))
+
 ## [0.162.1](https://github.com/vm0-ai/vm0/compare/app-v0.162.0...app-v0.162.1) (2026-03-29)
 
 
