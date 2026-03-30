@@ -1,10 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
 import type { ExpandedFirewallConfig } from "../firewalls";
 import {
-  expandFirewallConfigs,
-  validateRule,
   validateBaseUrl,
-} from "../firewall-expander";
+  hasBaseUrlVars,
+  resolveFirewallBaseUrlVars,
+} from "../firewalls";
+import { expandFirewallConfigs, validateRule } from "../firewall-expander";
 import type { FetchFn } from "../../firewall-loader";
 
 /** Helper to create a mock fetch function returning given body and status */
@@ -423,5 +424,118 @@ describe("validateBaseUrl", () => {
     expect(() =>
       validateBaseUrl("https://api.example.com#section", "fw"),
     ).toThrow("must not contain fragment");
+  });
+
+  it("should skip template base URLs", () => {
+    expect(() =>
+      validateBaseUrl(
+        "https://${{ vars.ZENDESK_SUBDOMAIN }}.zendesk.com",
+        "zendesk",
+      ),
+    ).not.toThrow();
+  });
+});
+
+describe("hasBaseUrlVars", () => {
+  it("returns true for template base URLs", () => {
+    expect(
+      hasBaseUrlVars("https://${{ vars.ZENDESK_SUBDOMAIN }}.zendesk.com"),
+    ).toBe(true);
+  });
+
+  it("returns false for static base URLs", () => {
+    expect(hasBaseUrlVars("https://api.github.com")).toBe(false);
+  });
+
+  it("returns true for multiple vars", () => {
+    expect(
+      hasBaseUrlVars("https://${{ vars.A }}.${{ vars.B }}.example.com"),
+    ).toBe(true);
+  });
+});
+
+describe("resolveFirewallBaseUrlVars", () => {
+  const zendeskFirewall = {
+    name: "zendesk",
+    ref: "zendesk",
+    apis: [
+      {
+        base: "https://${{ vars.ZENDESK_SUBDOMAIN }}.zendesk.com",
+        auth: {
+          headers: {
+            Authorization: "Bearer ${{ secrets.ZENDESK_API_TOKEN }}",
+          },
+        },
+      },
+    ],
+  };
+
+  const staticFirewall = {
+    name: "github",
+    ref: "github",
+    apis: [
+      {
+        base: "https://api.github.com",
+        auth: {
+          headers: { Authorization: "Bearer ${{ secrets.GITHUB_TOKEN }}" },
+        },
+      },
+    ],
+  };
+
+  it("resolves template base URL with provided vars", () => {
+    const result = resolveFirewallBaseUrlVars([zendeskFirewall], {
+      ZENDESK_SUBDOMAIN: "mycompany",
+    });
+    expect(result[0]!.apis[0]!.base).toBe("https://mycompany.zendesk.com");
+  });
+
+  it("leaves static base URLs unchanged", () => {
+    const result = resolveFirewallBaseUrlVars([staticFirewall], {
+      ZENDESK_SUBDOMAIN: "mycompany",
+    });
+    expect(result[0]!.apis[0]!.base).toBe("https://api.github.com");
+  });
+
+  it("resolves mixed static and template firewalls", () => {
+    const result = resolveFirewallBaseUrlVars(
+      [staticFirewall, zendeskFirewall],
+      { ZENDESK_SUBDOMAIN: "acme" },
+    );
+    expect(result[0]!.apis[0]!.base).toBe("https://api.github.com");
+    expect(result[1]!.apis[0]!.base).toBe("https://acme.zendesk.com");
+  });
+
+  it("throws when required variable is missing", () => {
+    expect(() => resolveFirewallBaseUrlVars([zendeskFirewall], {})).toThrow(
+      'requires variable "ZENDESK_SUBDOMAIN"',
+    );
+  });
+
+  it("throws when vars is undefined", () => {
+    expect(() =>
+      resolveFirewallBaseUrlVars([zendeskFirewall], undefined),
+    ).toThrow('requires variable "ZENDESK_SUBDOMAIN"');
+  });
+
+  it("validates resolved URL is well-formed", () => {
+    expect(() =>
+      resolveFirewallBaseUrlVars([zendeskFirewall], {
+        ZENDESK_SUBDOMAIN: "bad value with spaces",
+      }),
+    ).toThrow("not a valid URL");
+  });
+
+  it("preserves auth headers unchanged", () => {
+    const result = resolveFirewallBaseUrlVars([zendeskFirewall], {
+      ZENDESK_SUBDOMAIN: "mycompany",
+    });
+    expect(result[0]!.apis[0]!.auth.headers.Authorization).toBe(
+      "Bearer ${{ secrets.ZENDESK_API_TOKEN }}",
+    );
+  });
+
+  it("returns empty array for empty input", () => {
+    expect(resolveFirewallBaseUrlVars([], undefined)).toEqual([]);
   });
 });

@@ -110,6 +110,7 @@
     "generate:youtube": "tsx src/index.ts youtube",
     "generate:zapier": "tsx src/index.ts zapier",
     "generate:zapsign": "tsx src/index.ts zapsign",
+    "generate:zendesk": "tsx src/index.ts zendesk",
     "generate:zeptomail": "tsx src/index.ts zeptomail"
   },
   "devDependencies": {

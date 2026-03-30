@@ -404,13 +404,15 @@ export {
   type ExperimentalFirewalls,
   type FirewallPolicyValue,
   type FirewallPolicies,
+  hasBaseUrlVars,
+  resolveFirewallBaseUrlVars,
+  validateBaseUrl,
 } from "./firewalls";
 
 export {
   expandFirewallConfigs,
   collectAndValidatePermissions,
   validateRule,
-  validateBaseUrl,
   type FirewallSelection,
 } from "./firewall-expander";
 

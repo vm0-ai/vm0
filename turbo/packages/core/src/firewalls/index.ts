@@ -113,6 +113,7 @@ import { xeroFirewall } from "./xero.generated";
 import { youtubeFirewall } from "./youtube.generated";
 import { zapierFirewall } from "./zapier.generated";
 import { zapsignFirewall } from "./zapsign.generated";
+import { zendeskFirewall } from "./zendesk.generated";
 import { zeptomailFirewall } from "./zeptomail.generated";
 
 const CONNECTOR_FIREWALLS = {
@@ -220,6 +221,7 @@ const CONNECTOR_FIREWALLS = {
   youtube: youtubeFirewall,
   zapier: zapierFirewall,
   zapsign: zapsignFirewall,
+  zendesk: zendeskFirewall,
   zeptomail: zeptomailFirewall,
 } as const satisfies Partial<Record<ConnectorType, FirewallConfig>>;
 
@@ -304,7 +306,6 @@ export type NonFirewallConnectorType =
   | "salesforce" // instance-specific (*.my.salesforce.com)
   | "twenty" // self-hosted
   | "wrike" // regional ({datacenter}.wrike.com)
-  | "zendesk" // {subdomain}.zendesk.com
   // Basic auth — proxy cannot do base64 encoding at runtime
   | "htmlcsstoimage" // HTTP Basic Auth (user-id + api-key)
   | "streak" // HTTP Basic Auth (API key as username)
