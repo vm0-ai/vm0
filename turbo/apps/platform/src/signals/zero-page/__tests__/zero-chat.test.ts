@@ -43,7 +43,7 @@ function useChatThreadHandlers() {
   server.use(
     http.post("*/api/zero/chat-threads", () => {
       return HttpResponse.json(
-        { id: "thread-1", createdAt: "2026-03-10T00:00:00Z" },
+        { id: "thread-1", title: null, createdAt: "2026-03-10T00:00:00Z" },
         { status: 201 },
       );
     }),
@@ -179,6 +179,7 @@ describe("zero-chat signals", () => {
               },
             ],
             latestSessionId: "session-abc",
+            unsavedRuns: [],
             createdAt: "2026-03-10T00:00:00Z",
             updatedAt: "2026-03-10T00:00:01Z",
           });
@@ -239,6 +240,7 @@ describe("zero-chat signals", () => {
             agentId: "c0000000-0000-4000-a000-000000000001",
             chatMessages: [],
             latestSessionId: null,
+            unsavedRuns: [],
             createdAt: "2026-03-10T00:00:00Z",
             updatedAt: "2026-03-10T00:00:00Z",
           });
@@ -415,6 +417,7 @@ describe("zero-chat signals", () => {
               },
             ],
             latestSessionId: "url-session",
+            unsavedRuns: [],
             createdAt: "2026-03-10T00:00:00Z",
             updatedAt: "2026-03-10T00:00:00Z",
           });
@@ -461,6 +464,7 @@ describe("zero-chat signals", () => {
               },
             ],
             latestSessionId: null,
+            unsavedRuns: [],
             createdAt: "2026-03-10T00:00:00Z",
             updatedAt: "2026-03-10T00:00:00Z",
           });

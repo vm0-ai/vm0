@@ -26,8 +26,8 @@ describe("schedule page", () => {
           schedules: [
             {
               id: "f0000002-0000-4000-a000-000000000001",
-              agentId: "compose-1",
-              agentName: "Test Agent",
+              agentId: "c0000000-0000-4000-a000-000000000001",
+              displayName: null,
               orgSlug: "test",
               name: "test-schedule",
               triggerType: "cron",

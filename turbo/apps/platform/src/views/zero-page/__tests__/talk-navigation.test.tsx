@@ -120,7 +120,7 @@ describe("talk navigation", () => {
             isAdmin: true,
             hasOrg: true,
             hasDefaultAgent: true,
-            defaultAgentId: "new-compose-id",
+            defaultAgentId: "d0000000-0000-4000-a000-000000000001",
             defaultAgentMetadata: null,
             defaultAgentSkills: [],
           });
@@ -141,7 +141,24 @@ describe("talk navigation", () => {
       }),
       // Model provider creation
       http.post("*/api/zero/model-providers", () => {
-        return HttpResponse.json({ success: true }, { status: 201 });
+        return HttpResponse.json(
+          {
+            provider: {
+              id: "a0000000-0000-4000-a000-000000000099",
+              type: "vm0",
+              framework: "claude-code",
+              secretName: null,
+              authMethod: null,
+              secretNames: null,
+              isDefault: true,
+              selectedModel: null,
+              createdAt: "2026-03-01T00:00:00Z",
+              updatedAt: "2026-03-01T00:00:00Z",
+            },
+            created: true,
+          },
+          { status: 201 },
+        );
       }),
       // Agent creation
       http.post("*/api/zero/agents", () => {
@@ -149,22 +166,39 @@ describe("talk navigation", () => {
         return HttpResponse.json(
           {
             name: "zero",
-            agentId: "new-compose-id",
+            agentId: "d0000000-0000-4000-a000-000000000001",
+            description: null,
+            displayName: null,
+            sound: null,
+            avatarUrl: null,
+            connectors: [],
+            firewallPolicies: null,
           },
           { status: 201 },
         );
       }),
       // Instructions upload
       http.put("*/api/zero/agents/:name/instructions", () => {
-        return HttpResponse.json({ success: true });
+        return HttpResponse.json({
+          name: "zero",
+          agentId: "d0000000-0000-4000-a000-000000000001",
+          description: null,
+          displayName: null,
+          sound: null,
+          avatarUrl: null,
+          connectors: [],
+          firewallPolicies: null,
+        });
       }),
       // Default agent
       http.put("*/api/zero/default-agent", () => {
-        return HttpResponse.json({ success: true });
+        return HttpResponse.json({
+          agentId: "d0000000-0000-4000-a000-000000000001",
+        });
       }),
       // Onboarding completion
       http.post("*/api/zero/onboarding/complete", () => {
-        return HttpResponse.json({ success: true });
+        return HttpResponse.json({ ok: true });
       }),
     );
 

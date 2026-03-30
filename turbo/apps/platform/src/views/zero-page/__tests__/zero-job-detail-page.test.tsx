@@ -43,12 +43,13 @@ function mockAPIs() {
         description: "A helpful agent",
         displayName: "My Agent",
         sound: null,
+        avatarUrl: null,
         connectors: [],
         firewallPolicies: null,
       });
     }),
     http.get("*/api/zero/agents/:name/instructions", () => {
-      return HttpResponse.json({ instructions: null });
+      return HttpResponse.json({ content: null, filename: null });
     }),
     http.get("*/api/zero/schedules", () => {
       return HttpResponse.json({ schedules: [] });
@@ -187,12 +188,13 @@ function mockAPIsWithSchedules() {
         description: "A helpful agent",
         displayName: "My Agent",
         sound: null,
+        avatarUrl: null,
         connectors: [],
         firewallPolicies: null,
       });
     }),
     http.get("*/api/zero/agents/:name/instructions", () => {
-      return HttpResponse.json({ instructions: null });
+      return HttpResponse.json({ content: null, filename: null });
     }),
     http.get("*/api/zero/schedules", () => {
       return HttpResponse.json({
@@ -200,7 +202,7 @@ function mockAPIsWithSchedules() {
           {
             id: "f0000002-0000-4000-a000-000000000001",
             agentId: "e0000000-0000-4000-a000-000000000010",
-            agentName: "my-agent",
+            displayName: null,
             orgSlug: "test",
             name: "morning-briefing",
             triggerType: "cron",

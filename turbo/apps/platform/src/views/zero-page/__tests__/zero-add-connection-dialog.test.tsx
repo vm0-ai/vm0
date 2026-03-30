@@ -52,6 +52,7 @@ async function renderTeamPage(connectors: string[]) {
         sound: null,
         avatarUrl: null,
         connectors,
+        firewallPolicies: null,
       });
     }),
   );

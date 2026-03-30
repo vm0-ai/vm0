@@ -19,37 +19,31 @@ import {
 
 const context = testContext();
 
+function mockScheduleResponse() {
+  return {
+    ...scheduleDefaults(),
+    id: "d0000000-0000-4000-a000-000000000001",
+    agentId: "c0000000-0000-4000-a000-000000000001",
+    orgSlug: "test",
+    name: "new-schedule",
+    triggerType: "cron" as const,
+    cronExpression: "0 9 * * *",
+    atTime: null,
+    intervalSeconds: null,
+    timezone: "UTC",
+    prompt: "test",
+    description: null,
+    enabled: true,
+    nextRunAt: null,
+    lastRunAt: null,
+    createdAt: "2026-03-01T00:00:00Z",
+    updatedAt: "2026-03-01T00:00:00Z",
+  };
+}
+
 function mockDeployResponse() {
   return {
-    schedule: {
-      ...scheduleDefaults(),
-      id: "d0000000-0000-4000-a000-000000000001",
-      agentId: "c0000000-0000-4000-a000-000000000001",
-      orgSlug: "test",
-      name: "new-schedule",
-      triggerType: "cron" as const,
-      cronExpression: "0 9 * * *",
-      atTime: null,
-      intervalSeconds: null,
-      timezone: "UTC",
-      prompt: "test",
-      description: null,
-      enabled: true,
-      nextRunAt: null,
-      lastRunAt: null,
-      createdAt: "2026-03-01T00:00:00Z",
-      updatedAt: "2026-03-01T00:00:00Z",
-      userId: "test-user-123",
-      appendSystemPrompt: null,
-      vars: null,
-      secretNames: null,
-      artifactName: null,
-      artifactVersion: null,
-      volumeVersions: null,
-      slackChannelId: null,
-      retryStartedAt: null,
-      consecutiveFailures: 0,
-    },
+    schedule: mockScheduleResponse(),
     created: true,
   };
 }
@@ -57,6 +51,18 @@ function mockDeployResponse() {
 function scheduleDefaults() {
   return {
     displayName: null,
+    userId: "test-user-123",
+    appendSystemPrompt: null,
+    vars: null,
+    secretNames: null,
+    artifactName: null,
+    artifactVersion: null,
+    volumeVersions: null,
+    notifyEmail: false,
+    notifySlack: false,
+    slackChannelId: null,
+    retryStartedAt: null,
+    consecutiveFailures: 0,
   };
 }
 
@@ -65,7 +71,7 @@ function createMockSchedules() {
     {
       ...scheduleDefaults(),
       id: "a0000001-0000-4000-a000-000000000001",
-      agentId: "a0000001-0000-4000-a000-000000000010",
+      agentId: "c0000000-0000-4000-a000-000000000001",
       orgSlug: "test",
       name: "morning-briefing",
       triggerType: "cron",
@@ -94,7 +100,7 @@ function createMockSchedules() {
     {
       ...scheduleDefaults(),
       id: "a0000001-0000-4000-a000-000000000002",
-      agentId: "a0000001-0000-4000-a000-000000000010",
+      agentId: "c0000000-0000-4000-a000-000000000001",
       orgSlug: "test",
       name: "check-inbox",
       triggerType: "loop",
@@ -583,7 +589,7 @@ describe("zero-schedule signals", () => {
           async ({ params, request }) => {
             captured.action = params["action"] as string;
             captured.body = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json(mockDeployResponse());
+            return HttpResponse.json(mockScheduleResponse());
           },
         ),
         http.get("http://localhost:3000/api/zero/schedules", () => {
@@ -615,7 +621,7 @@ describe("zero-schedule signals", () => {
           "http://localhost:3000/api/zero/schedules/:name/:action",
           ({ params }) => {
             captured.action = params["action"] as string;
-            return HttpResponse.json(mockDeployResponse());
+            return HttpResponse.json(mockScheduleResponse());
           },
         ),
         http.get("http://localhost:3000/api/zero/schedules", () => {
@@ -1075,7 +1081,9 @@ describe("org schedule signals", () => {
       );
 
       expect(captured.body).not.toBeNull();
-      expect(captured.body?.agentId).toBe("agent-uuid-123");
+      expect(captured.body?.agentId).toBe(
+        "e0000000-0000-4000-a000-000000000010",
+      );
       expect(captured.body).not.toHaveProperty("composeId");
       expect(captured.body?.prompt).toBe("Org-wide daily task");
       expect(captured.body?.cronExpression).toBe("0 8 * * *");
@@ -1095,7 +1103,7 @@ describe("org schedule signals", () => {
           async ({ params, request }) => {
             captured.action = params["action"] as string;
             captured.body = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json(mockDeployResponse());
+            return HttpResponse.json(mockScheduleResponse());
           },
         ),
         http.get("http://localhost:3000/api/zero/schedules", () => {
@@ -1115,7 +1123,9 @@ describe("org schedule signals", () => {
       );
 
       expect(captured.action).toBe("disable");
-      expect(captured.body?.agentId).toBe("agent-uuid-123");
+      expect(captured.body?.agentId).toBe(
+        "e0000000-0000-4000-a000-000000000010",
+      );
       expect(captured.body).not.toHaveProperty("composeId");
     });
   });
@@ -1151,7 +1161,7 @@ describe("org schedule signals", () => {
       );
 
       expect(deletedName).toBe("morning-briefing");
-      expect(deletedAgentId).toBe("agent-uuid-123");
+      expect(deletedAgentId).toBe("e0000000-0000-4000-a000-000000000010");
     });
   });
 });

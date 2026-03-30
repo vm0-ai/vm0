@@ -188,6 +188,7 @@ describe("create teammate dialog - avatar", () => {
           description: null,
           displayName: null,
           sound: null,
+          avatarUrl: null,
           connectors: [],
           firewallPolicies: null,
         });
@@ -242,6 +243,7 @@ describe("create teammate dialog - avatar", () => {
           description: null,
           displayName: null,
           sound: null,
+          avatarUrl: null,
           connectors: [],
           firewallPolicies: null,
         });
@@ -308,6 +310,7 @@ describe("create teammate dialog - avatar", () => {
           description: null,
           displayName: null,
           sound: null,
+          avatarUrl: null,
           connectors: [],
           firewallPolicies: null,
         });

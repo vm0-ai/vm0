@@ -920,6 +920,7 @@ describe("zero-job-detail signals", () => {
               displayName: "New Name",
               description: null,
               sound: "friendly",
+              avatarUrl: null,
               connectors: [],
               firewallPolicies: null,
             });
@@ -1079,6 +1080,7 @@ describe("zero-job-detail signals", () => {
               sound: null,
               avatarUrl: null,
               connectors: capturedBody.connectors,
+              firewallPolicies: null,
             });
           },
         ),

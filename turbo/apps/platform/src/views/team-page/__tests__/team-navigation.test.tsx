@@ -52,7 +52,7 @@ function mockAPIs() {
       });
     }),
     http.get("*/api/zero/agents/:name/instructions", () => {
-      return HttpResponse.json({ instructions: null });
+      return HttpResponse.json({ content: null, filename: null });
     }),
     http.get("*/api/zero/schedules", () => {
       return HttpResponse.json([]);

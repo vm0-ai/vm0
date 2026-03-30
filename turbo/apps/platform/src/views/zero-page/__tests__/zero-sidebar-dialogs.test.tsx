@@ -65,7 +65,11 @@ function mockAPIsWithSubagents({
     }),
     http.post("*/api/zero/chat-threads", () => {
       return HttpResponse.json(
-        { id: "new-thread-from-dialog", title: null },
+        {
+          id: "new-thread-from-dialog",
+          title: null,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
         { status: 201 },
       );
     }),

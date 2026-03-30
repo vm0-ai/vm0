@@ -89,7 +89,11 @@ function mockSubagentAPIs() {
       };
       threads.unshift(newThread);
       return HttpResponse.json(
-        { id: newThread.id, title: newThread.title },
+        {
+          id: newThread.id,
+          title: newThread.title,
+          createdAt: newThread.createdAt,
+        },
         { status: 201 },
       );
     }),
@@ -144,6 +148,7 @@ describe("sidebar new chat navigation", () => {
           {
             id: "delayed-thread-id",
             title: null,
+            createdAt: "2026-03-10T00:00:00Z",
           },
           { status: 201 },
         );

@@ -59,6 +59,7 @@ async function renderTeamPage(connectors: string[]) {
         sound: null,
         avatarUrl: null,
         connectors,
+        firewallPolicies: null,
       });
     }),
   );
@@ -346,6 +347,7 @@ async function renderTeamPageAsMember(connectors: string[]) {
         sound: null,
         avatarUrl: null,
         connectors,
+        firewallPolicies: null,
       });
     }),
     // Chat threads — required when viewing a job detail page

@@ -98,4 +98,35 @@ export const apiAgentsHandlers = [
   http.get("*/api/zero/chat-threads", () => {
     return HttpResponse.json({ threads: [] });
   }),
+
+  // POST /api/zero/chat-threads (create new thread)
+  http.post("*/api/zero/chat-threads", () => {
+    return HttpResponse.json(
+      {
+        id: "b0000000-0000-4000-a000-000000000001",
+        title: null,
+        createdAt: "2026-03-10T00:00:00Z",
+      },
+      { status: 201 },
+    );
+  }),
+
+  // POST /api/zero/chat-threads/:id/runs (associate run)
+  http.post("*/api/zero/chat-threads/:id/runs", () => {
+    return new HttpResponse(null, { status: 204 });
+  }),
+
+  // GET /api/zero/chat-threads/:id (thread detail)
+  http.get("*/api/zero/chat-threads/:id", () => {
+    return HttpResponse.json({
+      id: "b0000000-0000-4000-a000-000000000001",
+      title: null,
+      agentId: "c0000000-0000-4000-a000-000000000001",
+      chatMessages: [],
+      latestSessionId: null,
+      unsavedRuns: [],
+      createdAt: "2026-03-10T00:00:00Z",
+      updatedAt: "2026-03-10T00:00:00Z",
+    });
+  }),
 ];
