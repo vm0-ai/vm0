@@ -327,11 +327,13 @@ export const zeroJobUpdateSettings$ = command(
 interface UserConnectorPermissionsState {
   enabledTypes: string[];
   loading: boolean;
+  error: string | null;
 }
 
 const userConnectorPermissionsState$ = state<UserConnectorPermissionsState>({
   enabledTypes: [],
   loading: false,
+  error: null,
 });
 
 const fetchZeroJobUserConnectors$ = command(
@@ -341,7 +343,11 @@ const fetchZeroJobUserConnectors$ = command(
       return;
     }
 
-    set(userConnectorPermissionsState$, { enabledTypes: [], loading: true });
+    set(userConnectorPermissionsState$, {
+      enabledTypes: [],
+      loading: true,
+      error: null,
+    });
 
     try {
       const client = get(zeroClient$)(zeroUserConnectorsContract);
@@ -354,11 +360,19 @@ const fetchZeroJobUserConnectors$ = command(
       set(userConnectorPermissionsState$, {
         enabledTypes: result.body.enabledTypes,
         loading: false,
+        error: null,
       });
     } catch (error) {
       throwIfAbort(error);
       L.error("Failed to fetch user connector permissions:", error);
-      set(userConnectorPermissionsState$, { enabledTypes: [], loading: false });
+      set(userConnectorPermissionsState$, {
+        enabledTypes: [],
+        loading: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to load connector permissions",
+      });
     }
   },
 );
@@ -442,6 +456,7 @@ export const saveZeroJobConnectors$ = command(
       set(userConnectorPermissionsState$, {
         enabledTypes: result.body.enabledTypes,
         loading: false,
+        error: null,
       });
       toast.success("Connectors saved");
     } catch (error) {
@@ -852,7 +867,11 @@ export const fetchZeroJobData$ = command(
     set(scheduleState$, { schedules: [], error: null });
     set(editedContent$, null);
     set(internalAddedConnectors$, null);
-    set(userConnectorPermissionsState$, { enabledTypes: [], loading: false });
+    set(userConnectorPermissionsState$, {
+      enabledTypes: [],
+      loading: false,
+      error: null,
+    });
     set(internalBuildError$, null);
     set(jobBuilding$, false);
     set(internalSaving$, false);

@@ -3,7 +3,7 @@ import {
   createSafeErrorHandler,
   tsr,
 } from "../../../../../../src/lib/ts-rest-handler";
-import { zeroUserConnectorsContract } from "@vm0/core";
+import { zeroUserConnectorsContract, connectorTypeSchema } from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -89,6 +89,22 @@ const router = tsr.router(zeroUserConnectorsContract, {
           error: {
             message: `Agent not found: ${params.id}`,
             code: "NOT_FOUND",
+          },
+        },
+      };
+    }
+
+    // Validate connector types before storing
+    const invalidTypes = body.enabledTypes.filter(
+      (t) => !connectorTypeSchema.safeParse(t).success,
+    );
+    if (invalidTypes.length > 0) {
+      return {
+        status: 400 as const,
+        body: {
+          error: {
+            message: `Invalid connector types: ${invalidTypes.join(", ")}`,
+            code: "VALIDATION_ERROR",
           },
         },
       };
