@@ -16,6 +16,9 @@ import {
   DEFAULT_TEST_EMAIL,
 } from "../../../../../src/lib/auth/test-user";
 import { env } from "../../../../../src/env";
+import { logger } from "../../../../../src/lib/logger";
+
+const log = logger("api:test-token");
 
 /**
  * Check if test-token endpoint is allowed based on environment.
@@ -83,8 +86,9 @@ async function ensureTestOrg(userId: string): Promise<{ slug: string }> {
         .set({ cachedAt: farFuture })
         .where(eq(orgCache.orgId, orgId));
       return { slug: orgData.slug };
-    } catch {
+    } catch (error) {
       // Org not in org_cache — try next membership
+      log.warn(`skipping org ${orgId} for user ${userId}`, error);
       continue;
     }
   }
