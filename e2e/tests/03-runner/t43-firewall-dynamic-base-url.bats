@@ -27,14 +27,15 @@ setup_file() {
     $ZERO_CLI variable set ZENDESK_EMAIL "e2e@test.vm0.ai"
 
     # Create agent with zendesk connector — auto-injects env vars + firewall
-    local max_attempts=3
+    local max_attempts=6
     for ((attempt=1; attempt<=max_attempts; attempt++)); do
         run $ZERO_CLI agent create --connectors zendesk
         if [[ "$status" -eq 0 ]]; then
             break
         fi
         if [[ "$output" == *"not cached"* ]] && ((attempt < max_attempts)); then
-            sleep 3
+            echo "Attempt $attempt: skill cache not ready, retrying in 5s..." >&2
+            sleep 5
         else
             break
         fi
