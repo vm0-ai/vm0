@@ -249,7 +249,33 @@ EOF
       ;;
 
     ci_passed)
-      # Enable auto-merge directly — no subagent needed
+      # Check if PR was recently ejected from the merge queue
+      EJECTION=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}/timeline" --paginate \
+        --jq '[.[] | select(.event == "removed_from_merge_queue")] | last // empty' 2>/dev/null || true)
+
+      if [ -n "$EJECTION" ]; then
+        EJECTION_REASON=$(echo "$EJECTION" | jq -r '.reason // "unknown"')
+        EJECTION_TIME=$(echo "$EJECTION" | jq -r '.created_at // "unknown"')
+        output_action
+        cat <<EOF
+PR #${PR_NUMBER} (branch: ${BRANCH}) was ejected from the merge queue.
+
+Ejection reason: ${EJECTION_REASON}
+Ejection time: ${EJECTION_TIME}
+
+Investigate the ejection before re-enqueueing:
+
+1. If MERGE_CONFLICT: git checkout ${BRANCH} && git fetch origin main && git merge origin/main, resolve conflicts, push, then git checkout main && git pull
+2. If CI_FAILURE: Check the merge queue build logs — gh run list --branch 'gh-readonly-queue/main/pr-${PR_NUMBER}-*' --status failure -L 1, then gh run view <run-id> --log-failed | tail -50. Fix real failures or rerun if flaky.
+3. If DEQUEUED: Another PR in the group failed — safe to re-enqueue directly: gh pr merge ${PR_NUMBER} --repo ${REPO} --merge --auto
+4. If unknown: Check PR timeline for details — gh api repos/${REPO}/pulls/${PR_NUMBER}/timeline --paginate | jq '[.[] | select(.event == "removed_from_merge_queue")]'
+
+After resolving: git checkout main && git pull
+EOF
+        exit 0
+      fi
+
+      # No ejection — enable auto-merge directly, no subagent needed
       gh pr merge "$PR_NUMBER" --repo "$REPO" --merge --auto 2>/dev/null || true
       # Fall through to Phase B
       ;;
