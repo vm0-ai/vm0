@@ -3,7 +3,7 @@ import { runsQueueContract, orgTierSchema } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
-import { getRunQueueStatus } from "../../../../../src/lib/run/run-queue-service";
+import { getRunQueueStatus } from "../../../../../src/lib/zero/zero-queue-service";
 
 const router = tsr.router(runsQueueContract, {
   getQueue: async ({ headers }, { request }) => {

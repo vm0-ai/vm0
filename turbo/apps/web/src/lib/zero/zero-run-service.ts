@@ -8,6 +8,7 @@ import {
 import { formatAgentIdentityPrompt } from "../agent-identity";
 import type { CallbackPayload } from "../callback/callback-payloads";
 import { zeroAgents } from "../../db/schema/zero-agent";
+import { zeroRuns } from "../../db/schema/zero-run";
 
 /**
  * Parameters accepted by createZeroRun().
@@ -74,16 +75,14 @@ export async function createZeroRun(
     ? `${agentPrompt}\n\n${appendSystemPrompt}`
     : agentPrompt;
 
-  return startRun({
+  const result = await startRun({
     userId: params.userId,
     prompt: params.prompt,
     composeId: params.agentId,
-    triggerSource: params.triggerSource,
     sessionId: params.sessionId,
     appendSystemPrompt,
     modelProvider: params.modelProvider,
     callbacks: params.callbacks,
-    scheduleId: params.scheduleId,
     memoryName: "memory",
     artifactName: "artifact",
     disallowedTools: [...DISALLOWED_TOOLS],
@@ -91,4 +90,13 @@ export async function createZeroRun(
     firewallPolicies: agent.firewallPolicies ?? undefined,
     injectZeroToken: true,
   });
+
+  // Persist zero-layer metadata (triggerSource + schedule association)
+  await globalThis.services.db.insert(zeroRuns).values({
+    id: result.runId,
+    triggerSource: params.triggerSource,
+    scheduleId: params.scheduleId ?? null,
+  });
+
+  return result;
 }

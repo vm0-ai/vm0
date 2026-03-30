@@ -2,7 +2,6 @@ import { eq, and, count, gt, or, sql } from "drizzle-orm";
 import { env } from "../../env";
 import { checkpoints } from "../../db/schema/checkpoint";
 import { agentRuns } from "../../db/schema/agent-run";
-import { zeroRuns } from "../../db/schema/zero-run";
 import { transitionRunStatus, dispatchTerminalSideEffects } from "./run-status";
 import {
   agentComposeVersions,
@@ -46,7 +45,6 @@ import { encryptSecretValue } from "../crypto/secrets-encryption";
 import {
   type OrgTier,
   type RunStatus,
-  type TriggerSource,
   type GetRunResponse,
   type FirewallPolicies,
   orgTierSchema,
@@ -460,12 +458,10 @@ export interface CreateRunParams {
   artifactVersion?: string;
   memoryName?: string;
   volumeVersions?: Record<string, string>;
-  scheduleId?: string;
   callbacks?: Array<{ url: string; secret: string; payload: unknown }>;
   resumedFromCheckpointId?: string;
   agentName?: string;
   modelProvider?: string;
-  triggerSource?: TriggerSource;
   debugNoMockClaude?: boolean;
   checkEnv?: boolean;
   // Caller-resolved org context for variable/storage resolution.
@@ -517,10 +513,8 @@ export interface StartRunParams {
   artifactVersion?: string;
   memoryName?: string;
   volumeVersions?: Record<string, string>;
-  scheduleId?: string;
   callbacks?: Array<{ url: string; secret: string; payload: unknown }>;
   modelProvider?: string;
-  triggerSource?: TriggerSource;
   debugNoMockClaude?: boolean;
   checkEnv?: boolean;
   firewallPolicies?: FirewallPolicies;
@@ -1087,12 +1081,10 @@ export async function startRun(
     artifactVersion: params.artifactVersion,
     memoryName: params.memoryName,
     volumeVersions: params.volumeVersions,
-    scheduleId: params.scheduleId,
     callbacks: params.callbacks,
     resumedFromCheckpointId: params.checkpointId,
     agentName: resolved.agentName,
     modelProvider: params.modelProvider,
-    triggerSource: params.triggerSource,
     debugNoMockClaude: params.debugNoMockClaude,
     checkEnv: params.checkEnv,
     firewallPolicies: params.firewallPolicies,
@@ -1207,12 +1199,6 @@ export async function createRun(
       if (!newRun) {
         throw new Error("Failed to create run record");
       }
-
-      await tx.insert(zeroRuns).values({
-        id: newRun.id,
-        triggerSource: params.triggerSource ?? "cli",
-        scheduleId: params.scheduleId ?? null,
-      });
 
       return newRun;
     });

@@ -7,7 +7,6 @@ import {
 import {
   createTestCompose,
   findTestRunRecord,
-  findTestZeroRun,
   findTestQueueEntry,
   markRunningRunsAsCompleted,
   expireQueueEntry,
@@ -70,22 +69,6 @@ describe("run-queue-service", () => {
       expect(queueEntry!.orgId).toBe(user.orgId);
       expect(queueEntry!.encryptedParams).toBeTruthy();
       expect(queueEntry!.expiresAt).toBeInstanceOf(Date);
-    });
-
-    it("should persist triggerSource on the zero_runs record", async () => {
-      const result = await enqueueRun(
-        baseParams({ prompt: "Web run", triggerSource: "web" }),
-      );
-
-      const zeroRun = await findTestZeroRun(result.runId);
-      expect(zeroRun!.triggerSource).toBe("web");
-    });
-
-    it("should default triggerSource to cli when not provided", async () => {
-      const result = await enqueueRun(baseParams({ prompt: "No source" }));
-
-      const zeroRun = await findTestZeroRun(result.runId);
-      expect(zeroRun!.triggerSource).toBe("cli");
     });
 
     it("should store encrypted params that can be decrypted", async () => {
