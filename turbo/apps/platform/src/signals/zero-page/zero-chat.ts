@@ -868,13 +868,15 @@ const prepareUserMessage$ = command(
   },
 );
 
-/** Post-polling cleanup: refresh sidebar. Session is managed server-side via callback. */
+/** Post-polling cleanup: refresh sidebar and current thread. Session is managed server-side via callback. */
 const finalizeCompletedRun$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     // Refresh session list (messages are persisted server-side via webhook)
     set(reloadChatThreadList$, (n) => n + 1);
     await delay(get(poolInterval$), { signal });
     set(reloadChatThreadList$, (n) => n + 1);
+    // Invalidate the current thread so latestSessionId and messages are fresh
+    set(reloadCurrentThread$, (n) => n + 1);
   },
 );
 

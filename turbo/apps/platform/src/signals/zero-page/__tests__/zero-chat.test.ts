@@ -302,8 +302,7 @@ describe("zero-chat signals", () => {
   });
 
   describe("submitAndPollRun$ on existing thread", () => {
-    it("should read session id from thread, poll to completion, and finalize", async () => {
-      let capturedSessionId: string | undefined;
+    it("should send message on existing thread, poll to completion, and reload thread", async () => {
       let threadReloadCount = 0;
 
       server.use(
@@ -323,13 +322,16 @@ describe("zero-chat signals", () => {
             updatedAt: "2026-03-10T00:00:00Z",
           });
         }),
-        http.post("*/api/zero/runs", async ({ request }) => {
-          const body = (await request.json()) as { sessionId?: string };
-          capturedSessionId = body.sessionId;
-          return HttpResponse.json({ runId: "run-poll-1" }, { status: 201 });
-        }),
-        http.post("*/api/zero/chat-threads/:id/runs", () => {
-          return new HttpResponse(null, { status: 204 });
+        http.post("*/api/zero/chat/messages", () => {
+          return HttpResponse.json(
+            {
+              runId: "run-poll-1",
+              threadId: "thread-existing",
+              status: "running",
+              createdAt: "2026-03-10T00:00:00Z",
+            },
+            { status: 201 },
+          );
         }),
         http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
           return HttpResponse.json({
@@ -364,9 +366,6 @@ describe("zero-chat signals", () => {
         undefined,
         context.signal,
       );
-
-      // Session ID from currentChatSessionId$ must have been passed to startAgentRun
-      expect(capturedSessionId).toBe("session-existing");
 
       // Run loop must have completed
       await expect(context.store.get(allFinished$)).resolves.toBeTruthy();
