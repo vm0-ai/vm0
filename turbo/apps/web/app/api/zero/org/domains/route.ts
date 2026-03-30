@@ -14,6 +14,7 @@ import {
   getOrgDomains,
   addOrgDomain,
   removeOrgDomain,
+  setOrgDomainVerified,
 } from "../../../../../src/lib/org/org-member-service";
 import { isForbidden } from "../../../../../src/lib/errors";
 
@@ -46,7 +47,12 @@ const router = tsr.router(zeroOrgDomainsContract, {
     try {
       const orgSlug = new URL(request.url).searchParams.get("org");
       const { org, member } = await resolveOrg(authCtx, orgSlug);
-      await addOrgDomain(org.orgId, member.role, body.name);
+      await addOrgDomain(
+        org.orgId,
+        member.role,
+        body.name,
+        body.enrollmentMode,
+      );
       return {
         status: 200 as const,
         body: { message: `Domain ${body.name} added` },
@@ -80,10 +86,38 @@ const router = tsr.router(zeroOrgDomainsContract, {
       throw error;
     }
   },
+  setVerified: async ({ headers, body }, { request }) => {
+    initServices();
+
+    const authCtx = await requireAuth(headers.authorization);
+    if (isAuthError(authCtx)) return authCtx;
+
+    try {
+      const orgSlug = new URL(request.url).searchParams.get("org");
+      const { org, member } = await resolveOrg(authCtx, orgSlug);
+      await setOrgDomainVerified(
+        org.orgId,
+        member.role,
+        body.domainId,
+        body.verified,
+      );
+      return {
+        status: 200 as const,
+        body: {
+          message: body.verified ? "Domain verified" : "Domain unverified",
+        },
+      };
+    } catch (error) {
+      if (isForbidden(error)) {
+        return createErrorResponse("FORBIDDEN", "Access denied");
+      }
+      throw error;
+    }
+  },
 });
 
 const handler = createHandler(zeroOrgDomainsContract, router, {
   errorHandler: createSafeErrorHandler("zero-org-domains"),
 });
 
-export { handler as GET, handler as POST, handler as DELETE };
+export { handler as GET, handler as POST, handler as DELETE, handler as PATCH };

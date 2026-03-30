@@ -457,7 +457,9 @@ export {
   type RevokeInvitationRequest,
   type MembershipRequestAction,
   type AddDomainRequest,
+  type OrgEnrollmentMode,
   type DomainActionRequest,
+  type DomainVerifyRequest,
   type OrgMessageResponse,
 } from "./org-members";
 export {

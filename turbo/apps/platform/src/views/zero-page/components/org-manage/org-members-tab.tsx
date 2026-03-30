@@ -93,6 +93,8 @@ export function OrgMembersTab() {
     userLoadable.state === "hasData" ? userLoadable.data?.id : undefined;
   const isLoading = membersLoadable.state === "loading";
 
+  const adminCount = members.filter((m) => m.role === "admin").length;
+
   const filtered = (() => {
     if (!search.trim()) {
       return members;
@@ -319,6 +321,7 @@ export function OrgMembersTab() {
                 member={m}
                 isCurrentUser={m.userId === currentUserId}
                 isAdmin={isAdmin}
+                isOnlyAdmin={adminCount < 2}
                 onRoleChange={handleRoleChange}
                 onRemove={handleRemove}
               />
@@ -445,19 +448,22 @@ function MemberRow({
   member,
   isCurrentUser,
   isAdmin,
+  isOnlyAdmin,
   onRoleChange,
   onRemove,
 }: {
   member: OrgMember;
   isCurrentUser: boolean;
   isAdmin: boolean;
+  isOnlyAdmin: boolean;
   onRoleChange: (email: string, role: OrgRole) => Promise<void>;
   onRemove: (email: string) => Promise<void>;
 }) {
   const name = displayName(member);
   const initial = (name || member.email).charAt(0).toUpperCase();
   const canManage = isAdmin && !isCurrentUser;
-  const canSelfDemote = isAdmin && isCurrentUser && member.role === "admin";
+  const canSelfDemote =
+    isAdmin && isCurrentUser && member.role === "admin" && !isOnlyAdmin;
 
   return (
     <div className={cn(ROW_GRID, "py-3 px-5")}>

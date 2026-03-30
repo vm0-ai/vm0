@@ -45,6 +45,9 @@ async function fetchMembershipRequests(
       headers: { Authorization: `Bearer ${secretKey}` },
     },
   );
+  if (res.status === 404) {
+    return [];
+  }
   if (!res.ok) {
     throw new Error(
       `Failed to fetch membership requests for org ${orgId}: HTTP ${res.status}`,
@@ -603,15 +606,27 @@ export async function getOrgDomains(
   });
 
   return {
-    domains: domains.data.map((d) => ({
-      id: d.id,
-      name: d.name,
-      enrollmentMode: d.enrollmentMode,
-      verification: d.verification
-        ? { status: d.verification.status, strategy: d.verification.strategy }
-        : { status: "unverified", strategy: "email_code" },
-      createdAt: new Date(d.createdAt).toISOString(),
-    })),
+    domains: domains.data.map((d) => {
+      // Clerk returns raw snake_case JSON from getOrganizationDomainList
+      const raw = d as unknown as Record<string, unknown>;
+      const enrollmentMode =
+        (raw.enrollment_mode as string | undefined) ?? d.enrollmentMode;
+      const createdAtMs = (raw.created_at as number | undefined) ?? d.createdAt;
+      return {
+        id: d.id,
+        name: d.name,
+        enrollmentMode,
+        verification: d.verification
+          ? {
+              status: d.verification.status,
+              strategy: d.verification.strategy,
+            }
+          : { status: "unverified", strategy: "email_code" },
+        createdAt: createdAtMs
+          ? new Date(createdAtMs).toISOString()
+          : new Date(0).toISOString(),
+      };
+    }),
   };
 }
 
@@ -623,6 +638,10 @@ export async function addOrgDomain(
   orgId: string,
   role: OrgRole,
   domainName: string,
+  enrollmentMode:
+    | "manual_invitation"
+    | "automatic_invitation"
+    | "automatic_suggestion",
 ) {
   if (role !== "admin") {
     throw forbidden("Only admins can add domains");
@@ -632,7 +651,7 @@ export async function addOrgDomain(
   await client.organizations.createOrganizationDomain({
     organizationId: orgId,
     name: domainName,
-    enrollmentMode: "manual_invitation",
+    enrollmentMode,
   });
 
   log.debug("Domain added", { orgId, domainName });
@@ -658,6 +677,30 @@ export async function removeOrgDomain(
   });
 
   log.debug("Domain removed", { orgId, domainId });
+}
+
+/**
+ * Verify or unverify a domain for an org.
+ * Requires admin role.
+ */
+export async function setOrgDomainVerified(
+  orgId: string,
+  role: OrgRole,
+  domainId: string,
+  verified: boolean,
+) {
+  if (role !== "admin") {
+    throw forbidden("Only admins can manage domains");
+  }
+
+  const client = await clerkClient();
+  await client.organizations.updateOrganizationDomain({
+    organizationId: orgId,
+    domainId,
+    verified,
+  });
+
+  log.debug("Domain verification updated", { orgId, domainId, verified });
 }
 
 /**

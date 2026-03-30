@@ -4,6 +4,7 @@ import {
   orgDomainsResponseSchema,
   addDomainRequestSchema,
   domainActionRequestSchema,
+  domainVerifyRequestSchema,
   orgMessageResponseSchema,
 } from "./org-members";
 
@@ -50,6 +51,19 @@ export const zeroOrgDomainsContract = c.router({
       500: apiErrorSchema,
     },
     summary: "Remove a domain from the org (zero proxy)",
+  },
+  setVerified: {
+    method: "PATCH",
+    path: "/api/zero/org/domains",
+    headers: authHeadersSchema,
+    body: domainVerifyRequestSchema,
+    responses: {
+      200: orgMessageResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Verify or unverify a domain (zero proxy)",
   },
 });
 
