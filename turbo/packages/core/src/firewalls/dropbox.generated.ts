@@ -11,7 +11,7 @@ export const dropboxFirewall: FirewallConfig = {
   description: "Dropbox API",
   placeholders: {
     DROPBOX_TOKEN:
-      "sl.vm0placeholder000000000000000000000000000000000000000000000000a",
+      "sl.Vm0PlaceHolder000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a",
   },
   apis: [
     {
@@ -25,6 +25,15 @@ export const dropboxFirewall: FirewallConfig = {
     },
     {
       base: "https://content.dropboxapi.com",
+      auth: {
+        headers: {
+          Authorization: "Bearer ${{ secrets.DROPBOX_TOKEN }}",
+        },
+      },
+      permissions: [],
+    },
+    {
+      base: "https://notify.dropboxapi.com",
       auth: {
         headers: {
           Authorization: "Bearer ${{ secrets.DROPBOX_TOKEN }}",

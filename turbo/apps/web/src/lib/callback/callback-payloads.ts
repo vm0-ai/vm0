@@ -81,6 +81,11 @@ export interface GitHubIssuesCallbackPayload {
   triggerReactionId?: string;
 }
 
+export interface ChatCallbackPayload {
+  threadId: string;
+  agentId: string;
+}
+
 export type CallbackPayload =
   | TelegramCallbackPayload
   | SlackOrgCallbackPayload
@@ -89,4 +94,5 @@ export type CallbackPayload =
   | EmailScheduleCallbackPayload
   | SlackScheduleCallbackPayload
   | ScheduleLoopCallbackPayload
-  | GitHubIssuesCallbackPayload;
+  | GitHubIssuesCallbackPayload
+  | ChatCallbackPayload;

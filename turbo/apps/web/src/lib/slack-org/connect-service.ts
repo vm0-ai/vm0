@@ -8,7 +8,7 @@ import {
   getWorkspaceAgent,
 } from "./handlers/shared";
 import { refreshOrgAppHome } from "./handlers/app-home";
-import { getOrgData } from "../org/org-cache-service";
+
 import { env } from "../../env";
 import { decryptSecretValue } from "../crypto/secrets-encryption";
 import { createSlackClient, postMessage } from "../slack/client";
@@ -107,8 +107,7 @@ export async function adminConnect(params: {
     )[0]!;
 
   // Ensure artifact storage
-  const orgData = await getOrgData(orgId);
-  await ensureOrgArtifact(userId, orgId, orgData.slug);
+  await ensureOrgArtifact(userId, orgId);
 
   log.info("Admin connected workspace to org", {
     workspaceId,
@@ -186,8 +185,7 @@ export async function memberConnect(params: {
     )[0]!;
 
   // Ensure artifact storage
-  const orgData = await getOrgData(orgId);
-  await ensureOrgArtifact(userId, orgId, orgData.slug);
+  await ensureOrgArtifact(userId, orgId);
 
   log.info("Member connected to workspace", {
     workspaceId,
