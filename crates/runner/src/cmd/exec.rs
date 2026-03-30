@@ -130,4 +130,27 @@ mod tests {
         let result = run_exec(make_args("test-id", "test"), &control).await;
         assert!(result.is_err());
     }
+
+    #[tokio::test]
+    async fn exit_code_truncated_to_u8() {
+        let control = MockSandboxControl::new("/tmp");
+        // 256 truncates to 0 via `as u8`
+        control.push_exec_remote_result(Ok(RemoteExecResult {
+            exit_code: 256,
+            stdout: Vec::new(),
+            stderr: Vec::new(),
+        }));
+        // -1 (0xFFFFFFFF) truncates to 255 via `as u8`
+        control.push_exec_remote_result(Ok(RemoteExecResult {
+            exit_code: -1,
+            stdout: Vec::new(),
+            stderr: Vec::new(),
+        }));
+
+        let r1 = run_exec(make_args("id", "test"), &control).await.unwrap();
+        assert_eq!(r1, ExitCode::from(0));
+
+        let r2 = run_exec(make_args("id", "test"), &control).await.unwrap();
+        assert_eq!(r2, ExitCode::from(255));
+    }
 }
