@@ -1,10 +1,10 @@
 import { clerkClient } from "@clerk/nextjs/server";
 
-export const DEFAULT_TEST_EMAIL = "dev+clerk_test@serial.dev";
+export const DEFAULT_TEST_EMAIL = "dev+clerk_test@serial.test";
 
 /**
  * Derive a unique, valid org slug from a test user email.
- * Handles emails like "pr-123+clerk_test@runner.dev" → "test-pr-123-runner".
+ * Handles emails like "pr-123+clerk_test@runner.test" → "test-pr-123-runner".
  *
  * Org slug rules: lowercase letters, numbers, and hyphens; 3–64 chars;
  * must start and end with alphanumeric.

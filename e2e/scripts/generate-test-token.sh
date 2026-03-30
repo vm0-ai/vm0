@@ -11,7 +11,7 @@
 #   - USE_MOCK_CLAUDE must be "true" on the server
 #
 # Usage: ./generate-test-token.sh <email>
-#   email: the test user's email address (e.g., "pr-123+clerk_test@serial.dev")
+#   email: the test user's email address (e.g., "pr-123+clerk_test@serial.test")
 
 set -euo pipefail
 

@@ -66,8 +66,14 @@ async function ensureTestOrg(
   try {
     const result = await client.users.getOrganizationMembershipList({ userId });
     membershipItems = result.data;
-  } catch {
-    // userId not found in Clerk — fall through to sentinel org
+  } catch (error: unknown) {
+    // Only swallow "user not found" (404) — let network errors, auth failures,
+    // and rate limits propagate so they fail fast instead of silently creating
+    // a new org.
+    const status = (error as { status?: unknown }).status;
+    if (status !== 404) {
+      throw error;
+    }
   }
 
   // Use a far-future cachedAt so org_cache TTL checks never expire during tests

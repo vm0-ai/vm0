@@ -949,8 +949,8 @@ jobs:
 
       - name: Generate E2E test tokens
         run: |
-          SERIAL_EMAIL="${JOB_REF}+clerk_test@serial.dev"
-          RUNNER_EMAIL="${JOB_REF}+clerk_test@runner.dev"
+          SERIAL_EMAIL="${JOB_REF}+clerk_test@serial.test"
+          RUNNER_EMAIL="${JOB_REF}+clerk_test@runner.test"
           e2e/scripts/generate-test-token.sh "$SERIAL_EMAIL"
           cp ~/.vm0/config.json "/tmp/e2e-token-serial.json"
           e2e/scripts/generate-test-token.sh "$RUNNER_EMAIL"
@@ -1991,7 +1991,7 @@ jobs:
           WEB_URL: ${{ needs.deploy-web.outputs.preview-url }}
           APP_URL: ${{ needs.prepare.outputs.app-preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-          E2E_SERIAL_EMAIL: ${{ needs.prepare.outputs.job-ref }}+clerk_test@serial.dev
+          E2E_SERIAL_EMAIL: ${{ needs.prepare.outputs.job-ref }}+clerk_test@serial.test
       - name: Locate LHCI output (app)
         id: lhci-dir-app
         if: always()

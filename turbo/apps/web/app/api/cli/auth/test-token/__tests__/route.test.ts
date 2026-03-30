@@ -218,7 +218,7 @@ describe("/api/cli/auth/test-token", () => {
       mockGetOrganizationMembershipList.mockResolvedValue({ data: [] });
       mockCreateOrganization.mockResolvedValue({ id: "org_newly_created" });
 
-      const email = "pr-1+clerk_test@serial.dev";
+      const email = "pr-1+clerk_test@serial.test";
       const request = createTestRequest(
         `http://localhost:3000/api/cli/auth/test-token?email=${encodeURIComponent(email)}`,
         { method: "POST" },
@@ -257,7 +257,7 @@ describe("/api/cli/auth/test-token", () => {
     });
 
     it("uses provided email param", async () => {
-      const email = "pr-42+clerk_test@runner.dev";
+      const email = "pr-42+clerk_test@runner.test";
       const request = createTestRequest(
         `http://localhost:3000/api/cli/auth/test-token?email=${encodeURIComponent(email)}`,
         { method: "POST" },

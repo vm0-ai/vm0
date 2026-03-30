@@ -241,7 +241,7 @@ describe("/api/cli/auth/test-connector", () => {
     });
 
     it("uses provided email param", async () => {
-      const email = "pr-99+clerk_test@runner.dev";
+      const email = "pr-99+clerk_test@runner.test";
       const userIdForEmail = "user_email_test";
       mockGetUserList.mockResolvedValue({ data: [{ id: userIdForEmail }] });
 
