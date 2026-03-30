@@ -38,6 +38,7 @@ import { customerIoFirewall } from "./customer-io.generated";
 import { deepseekFirewall } from "./deepseek.generated";
 import { deelFirewall } from "./deel.generated";
 import { devtoFirewall } from "./devto.generated";
+import { difyFirewall } from "./dify.generated";
 import { discordFirewall } from "./discord.generated";
 import { docusignFirewall } from "./docusign.generated";
 import { dropboxFirewall } from "./dropbox.generated";
@@ -151,6 +152,7 @@ const CONNECTOR_FIREWALLS = {
   deel: deelFirewall,
   deepseek: deepseekFirewall,
   devto: devtoFirewall,
+  dify: difyFirewall,
   discord: discordFirewall,
   docusign: docusignFirewall,
   dropbox: dropboxFirewall,
@@ -320,7 +322,6 @@ export type PermissionNamesOf<T extends FirewallConfig> =
  */
 export type NonFirewallConnectorType =
   // Self-hosted / dynamic base URL — needs ${{ vars.X }} template + connector variable addition
-  | "dify" // self-hosted, auth: Bearer token, needs BASE_URL variable
   | "metabase" // self-hosted, auth: x-api-key header, needs BASE_URL variable
   | "qdrant" // self-hosted, auth: api-key header or Bearer, needs BASE_URL variable
   | "salesforce" // instance-specific (*.my.salesforce.com), auth: Bearer, needs INSTANCE variable
@@ -352,8 +353,10 @@ export type NonFirewallConnectorType =
  * FirewallConnectorType or NonFirewallConnectorType.
  */
 type ValidateNonFirewall<
-  T extends Exclude<ConnectorType, FirewallConnectorType> =
-    NonFirewallConnectorType,
+  T extends Exclude<
+    ConnectorType,
+    FirewallConnectorType
+  > = NonFirewallConnectorType,
 > = T;
 type ValidateExhaustive<
   T extends never = Exclude<

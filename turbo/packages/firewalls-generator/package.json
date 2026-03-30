@@ -30,6 +30,7 @@
     "generate:deepseek": "tsx src/index.ts deepseek",
     "generate:deel": "tsx src/index.ts deel",
     "generate:devto": "tsx src/index.ts devto",
+    "generate:dify": "tsx src/index.ts dify",
     "generate:discord": "tsx src/index.ts discord",
     "generate:docusign": "tsx src/index.ts docusign",
     "generate:dropbox": "tsx src/index.ts dropbox",
