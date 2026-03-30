@@ -16,19 +16,33 @@ import {
 
 const context = testContext();
 
+function logDefaults() {
+  return {
+    displayName: null,
+    triggerSource: "web" as const,
+    scheduleId: null,
+    startedAt: null,
+    completedAt: null,
+  };
+}
+
 function createMockLogs() {
   return [
     {
-      id: "log-1",
+      ...logDefaults(),
+      id: "a0000000-0000-4000-a000-000000000001",
       sessionId: "session-1",
       agentId: "zero",
       orgSlug: "test",
       framework: "claude-code",
       status: "completed",
       createdAt: "2026-03-10T14:56:00Z",
+      startedAt: "2026-03-10T14:56:01Z",
+      completedAt: "2026-03-10T14:56:04Z",
     },
     {
-      id: "log-2",
+      ...logDefaults(),
+      id: "a0000000-0000-4000-a000-000000000002",
       sessionId: "session-2",
       agentId: "zero",
       orgSlug: "test",
@@ -37,7 +51,8 @@ function createMockLogs() {
       createdAt: "2026-03-10T14:46:00Z",
     },
     {
-      id: "log-3",
+      ...logDefaults(),
+      id: "a0000000-0000-4000-a000-000000000003",
       sessionId: "session-3",
       agentId: "zero",
       orgSlug: "test",
@@ -50,12 +65,17 @@ function createMockLogs() {
 
 function createMockLogDetail() {
   return {
-    id: "log-1",
+    id: "a0000000-0000-4000-a000-000000000001",
     sessionId: "session-1",
     agentId: "zero",
+    displayName: null,
     framework: "claude-code",
+    modelProvider: null,
+    triggerSource: "web" as const,
+    scheduleId: null,
     status: "completed",
     prompt: "Summarize today's activity",
+    appendSystemPrompt: null,
     error: null,
     createdAt: "2026-03-10T14:56:00Z",
     startedAt: "2026-03-10T14:56:01Z",
@@ -83,6 +103,7 @@ describe("zero-activity signals", () => {
           return HttpResponse.json({
             data: createMockLogs(),
             pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
+            filters: { statuses: [], sources: [], agents: [] },
           });
         }),
       );
@@ -92,7 +113,7 @@ describe("zero-activity signals", () => {
 
       const response = await context.store.get(zeroActivityData$);
       expect(response.data).toHaveLength(3);
-      expect(response.data[0]?.id).toBe("log-1");
+      expect(response.data[0]?.id).toBe("a0000000-0000-4000-a000-000000000001");
       expect(response.data[0]?.status).toBe("completed");
     });
 
@@ -102,6 +123,7 @@ describe("zero-activity signals", () => {
           return HttpResponse.json({
             data: [],
             pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
+            filters: { statuses: [], sources: [], agents: [] },
           });
         }),
       );
@@ -167,6 +189,7 @@ describe("zero-activity signals", () => {
           return HttpResponse.json({
             data: [],
             pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
+            filters: { statuses: [], sources: [], agents: [] },
           });
         }),
       );
@@ -185,7 +208,7 @@ describe("zero-activity signals", () => {
     it("should fetch log detail for selected log", async () => {
       server.use(
         http.get("http://localhost:3000/api/zero/logs/:logId", ({ params }) => {
-          if (params["logId"] === "log-1") {
+          if (params["logId"] === "a0000000-0000-4000-a000-000000000001") {
             return HttpResponse.json(createMockLogDetail());
           }
           return HttpResponse.json(
@@ -207,7 +230,7 @@ describe("zero-activity signals", () => {
 
       await setupPage({
         context,
-        path: "/activity/log-1",
+        path: "/activity/a0000000-0000-4000-a000-000000000001",
         withoutRender: true,
       });
       await context.store.set(setupActivityLogLoop$, context.signal);
