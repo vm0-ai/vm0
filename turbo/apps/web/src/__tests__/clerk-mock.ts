@@ -305,6 +305,7 @@ export function mockClerk(options: {
       getOrganizationDomainList: vi.fn().mockResolvedValue({ data: [] }),
       createOrganizationDomain: vi.fn().mockResolvedValue({}),
       deleteOrganizationDomain: vi.fn().mockResolvedValue({}),
+      updateOrganizationDomain: vi.fn().mockResolvedValue({}),
     },
   } as unknown as Awaited<ReturnType<typeof clerkClient>>);
 }

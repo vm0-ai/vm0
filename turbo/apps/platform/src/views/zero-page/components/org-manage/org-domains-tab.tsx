@@ -42,22 +42,23 @@ import {
   refreshOrgDomains$,
 } from "../../../../signals/external/org-domains.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
+import { extractApiErrorMessage } from "./org-api-error.ts";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const ENROLLMENT_MODE_LABELS: Record<OrgEnrollmentMode, string> = {
+const ENROLLMENT_MODE_LABELS = {
   manual_invitation: "Manual invitation",
   automatic_invitation: "Automatic invitation",
   automatic_suggestion: "Automatic suggestion",
-};
+} as const satisfies Record<OrgEnrollmentMode, string>;
 
-const ENROLLMENT_MODE_DESCRIPTIONS: Record<OrgEnrollmentMode, string> = {
+const ENROLLMENT_MODE_DESCRIPTIONS = {
   manual_invitation: "Only invited users can join",
   automatic_invitation: "Users with matching email are auto-invited",
   automatic_suggestion: "Users with matching email are suggested to join",
-};
+} as const satisfies Record<OrgEnrollmentMode, string>;
 
 // ---------------------------------------------------------------------------
 // Components
@@ -88,12 +89,7 @@ export function OrgDomainsTab() {
       refresh();
       return;
     }
-    const msg =
-      result.status === 401 || result.status === 403 || result.status === 500
-        ? result.body.error.message
-        : undefined;
-    toast.error(msg ?? `Failed to add domain (${result.status})`);
-    throw new Error(msg ?? `Failed to add domain (${result.status})`);
+    throw new Error(extractApiErrorMessage(result, "Failed to add domain"));
   };
 
   const handleRemove = async (domainId: string) => {
@@ -104,12 +100,7 @@ export function OrgDomainsTab() {
       refresh();
       return;
     }
-    const msg =
-      result.status === 401 || result.status === 403 || result.status === 500
-        ? result.body.error.message
-        : undefined;
-    toast.error(msg ?? `Failed to remove domain (${result.status})`);
-    throw new Error(msg ?? `Failed to remove domain (${result.status})`);
+    throw new Error(extractApiErrorMessage(result, "Failed to remove domain"));
   };
 
   const handleSetVerified = async (domainId: string, verified: boolean) => {
@@ -120,12 +111,7 @@ export function OrgDomainsTab() {
       refresh();
       return;
     }
-    const msg =
-      result.status === 401 || result.status === 403 || result.status === 500
-        ? result.body.error.message
-        : undefined;
-    toast.error(msg ?? `Failed to update domain (${result.status})`);
-    throw new Error(msg ?? `Failed to update domain (${result.status})`);
+    throw new Error(extractApiErrorMessage(result, "Failed to update domain"));
   };
 
   return (
@@ -366,11 +352,8 @@ function DomainRow({
         </p>
       </div>
       <div className="text-[13px] text-muted-foreground">
-        {domain.enrollmentMode
-          ? (ENROLLMENT_MODE_LABELS[
-              domain.enrollmentMode as OrgEnrollmentMode
-            ] ?? domain.enrollmentMode.replace(/_/g, " "))
-          : "—"}
+        {ENROLLMENT_MODE_LABELS[domain.enrollmentMode as OrgEnrollmentMode] ??
+          domain.enrollmentMode.replace(/_/g, " ")}
       </div>
       <div className="text-[13px] text-muted-foreground tabular-nums">
         {formatDate(domain.createdAt)}
@@ -398,7 +381,9 @@ function DomainRow({
         <Dialog
           open={removeOpen}
           onOpenChange={(v) => {
-            if (!removing) setRemoveOpen(v);
+            if (!removing) {
+              setRemoveOpen(v);
+            }
           }}
         >
           <DropdownMenu>

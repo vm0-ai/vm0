@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { GET, POST, DELETE } from "../route";
+import { GET, POST, DELETE, PATCH } from "../route";
 import {
   createTestRequest,
   createTestOrg,
@@ -173,6 +173,78 @@ describe("DELETE /api/zero/org/domains", () => {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ domainId: "domain_test123" }),
+      }),
+    );
+
+    expect(response.status).toBe(401);
+  });
+});
+
+describe("PATCH /api/zero/org/domains (setVerified)", () => {
+  beforeEach(() => {
+    context.setupMocks();
+  });
+
+  it("should verify a domain for an admin", async () => {
+    const userId = uniqueId("dom-verify");
+    const { slug } = await setupOrg(userId);
+
+    const response = await PATCH(
+      createTestRequest(domainsUrl(slug), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ domainId: "domain_test123", verified: true }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.message).toBe("Domain verified");
+  });
+
+  it("should unverify a domain for an admin", async () => {
+    const userId = uniqueId("dom-unverify");
+    const { slug } = await setupOrg(userId);
+
+    const response = await PATCH(
+      createTestRequest(domainsUrl(slug), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ domainId: "domain_test123", verified: false }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.message).toBe("Domain unverified");
+  });
+
+  it("should return 403 when caller is not an admin", async () => {
+    const userId = uniqueId("dom-verify-403");
+    const slug = uniqueId("dom-verify-member");
+    const orgId = `org_mock_${userId}`;
+    mockClerk({ userId, orgId, orgRole: "org:member" });
+    await createTestOrg(slug);
+
+    const response = await PATCH(
+      createTestRequest(domainsUrl(slug), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ domainId: "domain_test123", verified: true }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+  });
+
+  it("should return 401 when not authenticated", async () => {
+    mockClerk({ userId: null });
+
+    const response = await PATCH(
+      createTestRequest(domainsUrl("any-org"), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ domainId: "domain_test123", verified: true }),
       }),
     );
 

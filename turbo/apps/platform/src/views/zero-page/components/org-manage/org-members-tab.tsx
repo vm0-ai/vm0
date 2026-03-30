@@ -46,6 +46,7 @@ import { isOrgAdmin$, refreshOrg$ } from "../../../../signals/org.ts";
 import { user$, clerk$ } from "../../../../signals/auth.ts";
 import { zeroClient$ } from "../../../../signals/api-client.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
+import { extractApiErrorMessage } from "./org-api-error.ts";
 import {
   memberSearch$,
   setMemberSearch$,
@@ -125,15 +126,7 @@ export function OrgMembersTab() {
       refreshMembers();
       return;
     }
-    const msg =
-      result.status === 400 ||
-      result.status === 401 ||
-      result.status === 403 ||
-      result.status === 500
-        ? result.body.error.message
-        : undefined;
-    toast.error(msg ?? `Failed to invite (${result.status})`);
-    throw new Error(msg ?? `Failed to invite (${result.status})`);
+    throw new Error(extractApiErrorMessage(result, "Failed to invite"));
   };
 
   const handleRoleChange = async (email: string, role: OrgRole) => {
@@ -149,15 +142,7 @@ export function OrgMembersTab() {
       refreshOrg();
       return;
     }
-    const msg =
-      result.status === 400 ||
-      result.status === 401 ||
-      result.status === 403 ||
-      result.status === 500
-        ? result.body.error.message
-        : undefined;
-    toast.error(msg ?? `Failed to update role (${result.status})`);
-    throw new Error(msg ?? `Failed to update role (${result.status})`);
+    throw new Error(extractApiErrorMessage(result, "Failed to update role"));
   };
 
   const handleRemove = async (email: string) => {
@@ -168,15 +153,7 @@ export function OrgMembersTab() {
       refreshMembers();
       return;
     }
-    const msg =
-      result.status === 400 ||
-      result.status === 401 ||
-      result.status === 403 ||
-      result.status === 500
-        ? result.body.error.message
-        : undefined;
-    toast.error(msg ?? `Failed to remove member (${result.status})`);
-    throw new Error(msg ?? `Failed to remove member (${result.status})`);
+    throw new Error(extractApiErrorMessage(result, "Failed to remove member"));
   };
 
   const handleRevokeInvitation = async (invitationId: string) => {
@@ -187,15 +164,9 @@ export function OrgMembersTab() {
       refreshMembers();
       return;
     }
-    const msg =
-      result.status === 400 ||
-      result.status === 401 ||
-      result.status === 403 ||
-      result.status === 500
-        ? result.body.error.message
-        : undefined;
-    toast.error(msg ?? `Failed to revoke invitation (${result.status})`);
-    throw new Error(msg ?? `Failed to revoke invitation (${result.status})`);
+    throw new Error(
+      extractApiErrorMessage(result, "Failed to revoke invitation"),
+    );
   };
 
   const handleAcceptRequest = async (requestId: string) => {
@@ -206,15 +177,7 @@ export function OrgMembersTab() {
       refreshMembers();
       return;
     }
-    const msg =
-      result.status === 400 ||
-      result.status === 401 ||
-      result.status === 403 ||
-      result.status === 500
-        ? result.body.error.message
-        : undefined;
-    toast.error(msg ?? `Failed to accept request (${result.status})`);
-    throw new Error(msg ?? `Failed to accept request (${result.status})`);
+    throw new Error(extractApiErrorMessage(result, "Failed to accept request"));
   };
 
   const handleRejectRequest = async (requestId: string) => {
@@ -225,15 +188,7 @@ export function OrgMembersTab() {
       refreshMembers();
       return;
     }
-    const msg =
-      result.status === 400 ||
-      result.status === 401 ||
-      result.status === 403 ||
-      result.status === 500
-        ? result.body.error.message
-        : undefined;
-    toast.error(msg ?? `Failed to reject request (${result.status})`);
-    throw new Error(msg ?? `Failed to reject request (${result.status})`);
+    throw new Error(extractApiErrorMessage(result, "Failed to reject request"));
   };
 
   return (

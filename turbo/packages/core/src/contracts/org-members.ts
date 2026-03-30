@@ -115,7 +115,7 @@ export type UpdateOrgMemberRoleRequest = z.infer<
 export const orgDomainSchema = z.object({
   id: z.string(),
   name: z.string(),
-  enrollmentMode: z.string().optional(),
+  enrollmentMode: z.string(),
   verification: z.object({
     status: z.string(),
     strategy: z.string(),

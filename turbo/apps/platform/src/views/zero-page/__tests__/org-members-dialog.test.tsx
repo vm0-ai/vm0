@@ -8,7 +8,7 @@ import type { OrgMember } from "../../../signals/external/org-members.ts";
 
 const context = testContext();
 
-const adminMember: OrgMember = {
+const adminMember = {
   userId: "test-user-123",
   email: "admin@example.com",
   firstName: "Admin",
@@ -16,9 +16,9 @@ const adminMember: OrgMember = {
   imageUrl: "",
   role: "admin",
   joinedAt: "2026-01-01T00:00:00Z",
-};
+} as const satisfies OrgMember;
 
-const regularMember: OrgMember = {
+const regularMember = {
   userId: "user-member",
   email: "member@example.com",
   firstName: "Regular",
@@ -26,9 +26,9 @@ const regularMember: OrgMember = {
   imageUrl: "",
   role: "member",
   joinedAt: "2026-02-01T00:00:00Z",
-};
+} as const satisfies OrgMember;
 
-const secondAdmin: OrgMember = {
+const secondAdmin = {
   userId: "user-admin-2",
   email: "admin2@example.com",
   firstName: "Second",
@@ -36,7 +36,7 @@ const secondAdmin: OrgMember = {
   imageUrl: "",
   role: "admin",
   joinedAt: "2026-01-15T00:00:00Z",
-};
+} as const satisfies OrgMember;
 
 function mockMembersAPI(members: OrgMember[] = [adminMember, regularMember]) {
   server.use(

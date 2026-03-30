@@ -3,7 +3,7 @@ import { clerkClient } from "@clerk/nextjs/server";
 import { z } from "zod";
 import { badRequest, forbidden, notFound } from "../errors";
 import { logger } from "../logger";
-import type { OrgRole } from "@vm0/core";
+import type { OrgRole, OrgEnrollmentMode } from "@vm0/core";
 import { slackOrgConnections } from "../../db/schema/slack-org-connection";
 import { slackOrgInstallations } from "../../db/schema/slack-org-installation";
 import { slackOrgPendingQuestions } from "../../db/schema/slack-org-pending-question";
@@ -19,6 +19,26 @@ const CLERK_API_BASE = "https://api.clerk.com/v1";
  * The backend SDK doesn't expose membership request methods yet,
  * so we call the REST API directly and validate the response shape at runtime.
  */
+/**
+ * Zod schema for Clerk domain REST API response.
+ * The SDK may return camelCase or snake_case depending on the version,
+ * so we parse both forms to be safe.
+ */
+const clerkDomainDataSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  enrollment_mode: z.string().optional(),
+  enrollmentMode: z.string().optional(),
+  created_at: z.number().optional(),
+  createdAt: z.number().optional(),
+  verification: z
+    .object({
+      status: z.string(),
+      strategy: z.string(),
+    })
+    .optional(),
+});
+
 const membershipRequestDataSchema = z.object({
   id: z.string(),
   public_user_data: z.object({ user_id: z.string().optional() }).optional(),
@@ -46,6 +66,10 @@ async function fetchMembershipRequests(
     },
   );
   if (res.status === 404) {
+    log.warn(
+      "Membership requests endpoint returned 404 — feature may be disabled for org",
+      { orgId },
+    );
     return [];
   }
   if (!res.ok) {
@@ -607,19 +631,18 @@ export async function getOrgDomains(
 
   return {
     domains: domains.data.map((d) => {
-      // Clerk returns raw snake_case JSON from getOrganizationDomainList
-      const raw = d as unknown as Record<string, unknown>;
+      const parsed = clerkDomainDataSchema.parse(d);
       const enrollmentMode =
-        (raw.enrollment_mode as string | undefined) ?? d.enrollmentMode;
-      const createdAtMs = (raw.created_at as number | undefined) ?? d.createdAt;
+        parsed.enrollment_mode ?? parsed.enrollmentMode ?? "";
+      const createdAtMs = parsed.created_at ?? parsed.createdAt;
       return {
-        id: d.id,
-        name: d.name,
+        id: parsed.id,
+        name: parsed.name,
         enrollmentMode,
-        verification: d.verification
+        verification: parsed.verification
           ? {
-              status: d.verification.status,
-              strategy: d.verification.strategy,
+              status: parsed.verification.status,
+              strategy: parsed.verification.strategy,
             }
           : { status: "unverified", strategy: "email_code" },
         createdAt: createdAtMs
@@ -638,10 +661,7 @@ export async function addOrgDomain(
   orgId: string,
   role: OrgRole,
   domainName: string,
-  enrollmentMode:
-    | "manual_invitation"
-    | "automatic_invitation"
-    | "automatic_suggestion",
+  enrollmentMode: OrgEnrollmentMode,
 ) {
   if (role !== "admin") {
     throw forbidden("Only admins can add domains");
