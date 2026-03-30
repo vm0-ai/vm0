@@ -10,7 +10,7 @@ export const todoistFirewall: FirewallConfig = {
   name: "todoist",
   description: "Todoist API",
   placeholders: {
-    TODOIST_TOKEN: "0000000000000000000000000000000000000000",
+    TODOIST_TOKEN: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0",
   },
   apis: [
     {

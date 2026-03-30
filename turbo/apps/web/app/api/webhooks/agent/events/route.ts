@@ -73,9 +73,9 @@ const router = tsr.router(webhookEventsContract, {
       }),
     );
 
-    // Ingest events to Axiom
+    // Buffer events for Axiom (flushed at response boundary)
     const axiomDataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
-    await ingestToAxiom(axiomDataset, axiomEvents);
+    ingestToAxiom(axiomDataset, axiomEvents);
 
     // Get first and last sequence numbers from the events
     // Note: events array is validated as non-empty by the contract

@@ -6,7 +6,6 @@ import {
   createTestCliToken,
   createTestCompose,
   createTestRunnerJob,
-  findTestComposeWithOrg,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -236,14 +235,11 @@ describe("POST /api/runners/jobs/:id/claim", () => {
 
   describe("Claim flow - Agent metadata", () => {
     it("should return appendSystemPrompt in claim response", async () => {
-      const { composeId, versionId } = await createTestCompose("test-asp");
-      const composeInfo = await findTestComposeWithOrg(composeId);
-      const orgSlug = composeInfo!.orgSlug;
-
+      const { versionId } = await createTestCompose("test-asp");
       const { runId } = await createTestRunnerJob(
         user.userId,
         versionId,
-        `${orgSlug}/default`,
+        "vm0/default",
         undefined,
         { appendSystemPrompt: "Your name is Aria." },
       );
@@ -269,14 +265,11 @@ describe("POST /api/runners/jobs/:id/claim", () => {
     });
 
     it("should return null appendSystemPrompt when not set", async () => {
-      const { composeId, versionId } = await createTestCompose("test-asp-null");
-      const composeInfo = await findTestComposeWithOrg(composeId);
-      const orgSlug = composeInfo!.orgSlug;
-
+      const { versionId } = await createTestCompose("test-asp-null");
       const { runId } = await createTestRunnerJob(
         user.userId,
         versionId,
-        `${orgSlug}/default`,
+        "vm0/default",
       );
 
       const token = await createTestCliToken(user.userId);
@@ -302,14 +295,11 @@ describe("POST /api/runners/jobs/:id/claim", () => {
 
   describe("Claim flow - sandbox token generation", () => {
     it("should generate sandbox token without capabilities", async () => {
-      const { composeId, versionId } = await createTestCompose("test-no-caps");
-      const composeInfo = await findTestComposeWithOrg(composeId);
-      const orgSlug = composeInfo!.orgSlug;
-
+      const { versionId } = await createTestCompose("test-no-caps");
       const { runId } = await createTestRunnerJob(
         user.userId,
         versionId,
-        `${orgSlug}/default`,
+        "vm0/default",
       );
 
       const token = await createTestCliToken(user.userId);
@@ -337,10 +327,7 @@ describe("POST /api/runners/jobs/:id/claim", () => {
 
   describe("Claim flow - secretValues filtering", () => {
     it("should only include secret values present in environment", async () => {
-      const { composeId, versionId } =
-        await createTestCompose("test-secret-filter");
-      const composeInfo = await findTestComposeWithOrg(composeId);
-      const orgSlug = composeInfo!.orgSlug;
+      const { versionId } = await createTestCompose("test-secret-filter");
 
       const encryptedSecrets = encryptSecretsMap(
         {
@@ -354,7 +341,7 @@ describe("POST /api/runners/jobs/:id/claim", () => {
       const { runId } = await createTestRunnerJob(
         user.userId,
         versionId,
-        `${orgSlug}/default`,
+        "vm0/default",
         {
           encryptedSecrets,
           environment: {
@@ -390,9 +377,7 @@ describe("POST /api/runners/jobs/:id/claim", () => {
     });
 
     it("should return empty array when no secrets match environment", async () => {
-      const { composeId, versionId } = await createTestCompose("test-no-match");
-      const composeInfo = await findTestComposeWithOrg(composeId);
-      const orgSlug = composeInfo!.orgSlug;
+      const { versionId } = await createTestCompose("test-no-match");
 
       const encryptedSecrets = encryptSecretsMap(
         { SECRET: "not-in-env" },
@@ -402,7 +387,7 @@ describe("POST /api/runners/jobs/:id/claim", () => {
       const { runId } = await createTestRunnerJob(
         user.userId,
         versionId,
-        `${orgSlug}/default`,
+        "vm0/default",
         {
           encryptedSecrets,
           environment: { SOME_VAR: "other-value" },
@@ -430,15 +415,11 @@ describe("POST /api/runners/jobs/:id/claim", () => {
     });
 
     it("should return null when no encrypted secrets exist", async () => {
-      const { composeId, versionId } =
-        await createTestCompose("test-no-secrets");
-      const composeInfo = await findTestComposeWithOrg(composeId);
-      const orgSlug = composeInfo!.orgSlug;
-
+      const { versionId } = await createTestCompose("test-no-secrets");
       const { runId } = await createTestRunnerJob(
         user.userId,
         versionId,
-        `${orgSlug}/default`,
+        "vm0/default",
       );
 
       const token = await createTestCliToken(user.userId);
@@ -464,14 +445,11 @@ describe("POST /api/runners/jobs/:id/claim", () => {
 
   describe("Claim flow - execution context fields", () => {
     it("should return settings when present in stored context", async () => {
-      const { composeId, versionId } = await createTestCompose("test-settings");
-      const composeInfo = await findTestComposeWithOrg(composeId);
-      const orgSlug = composeInfo!.orgSlug;
-
+      const { versionId } = await createTestCompose("test-settings");
       const { runId } = await createTestRunnerJob(
         user.userId,
         versionId,
-        `${orgSlug}/default`,
+        "vm0/default",
         { settings: '{"hooks":{}}' },
       );
 
@@ -496,14 +474,11 @@ describe("POST /api/runners/jobs/:id/claim", () => {
     });
 
     it("should return tools when present in stored context", async () => {
-      const { composeId, versionId } = await createTestCompose("test-tools");
-      const composeInfo = await findTestComposeWithOrg(composeId);
-      const orgSlug = composeInfo!.orgSlug;
-
+      const { versionId } = await createTestCompose("test-tools");
       const { runId } = await createTestRunnerJob(
         user.userId,
         versionId,
-        `${orgSlug}/default`,
+        "vm0/default",
         { tools: ["Bash", "Edit"] },
       );
 
@@ -528,15 +503,11 @@ describe("POST /api/runners/jobs/:id/claim", () => {
     });
 
     it("should omit fields when not in stored context", async () => {
-      const { composeId, versionId } =
-        await createTestCompose("test-no-extras");
-      const composeInfo = await findTestComposeWithOrg(composeId);
-      const orgSlug = composeInfo!.orgSlug;
-
+      const { versionId } = await createTestCompose("test-no-extras");
       const { runId } = await createTestRunnerJob(
         user.userId,
         versionId,
-        `${orgSlug}/default`,
+        "vm0/default",
       );
 
       const token = await createTestCliToken(user.userId);

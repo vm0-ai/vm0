@@ -10,10 +10,7 @@ import { runnerJobQueue } from "../../../../src/db/schema/runner-job-queue";
 import { eq, and, isNull, inArray, type SQL } from "drizzle-orm";
 import { getRunnerAuth } from "../../../../src/lib/auth/runner-auth";
 import { logger } from "../../../../src/lib/logger";
-import {
-  validateRunnerGroupOrg,
-  isOfficialRunnerGroup,
-} from "../../../../src/lib/org/org-service";
+import { isOfficialRunnerGroup } from "../../../../src/lib/org/org-service";
 
 const log = logger("api:runners:poll");
 
@@ -46,11 +43,12 @@ const router = tsr.router(runnersPollContract, {
       ];
       log.debug(`Official runner polling group: ${group}`);
     } else {
-      // User runners: validate org and filter by userId
-      try {
-        await validateRunnerGroupOrg(auth.userId, group);
-      } catch {
-        return createErrorResponse("FORBIDDEN", "Access denied");
+      // User runners: enforce vm0/* groups and filter by userId
+      if (!isOfficialRunnerGroup(group)) {
+        return createErrorResponse(
+          "FORBIDDEN",
+          "Only vm0/* runner groups are supported",
+        );
       }
       whereConditions = [
         eq(runnerJobQueue.runnerGroup, group),

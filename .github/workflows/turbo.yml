@@ -1051,7 +1051,7 @@ jobs:
     needs: [prepare, deploy-web, deploy-app]
     if: |
       always() &&
-      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
+      github.event_name == 'merge_group' &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
@@ -1192,7 +1192,7 @@ jobs:
         test-other,
       ]
     if: |
-      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
+      github.event_name == 'merge_group' &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
@@ -1689,7 +1689,7 @@ jobs:
         e2e-runner-bootstrap,
       ]
     if: |
-      github.event_name != 'push' &&
+      github.event_name == 'merge_group' &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||

@@ -12,8 +12,8 @@
 import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://apidocs.imgur.com/";
-// Client ID format not documented; using generic placeholder
-const PLACEHOLDER_VALUE = "vm0placeholder000000000000000000a";
+// Client ID format: 15-char alphanumeric string
+const PLACEHOLDER_VALUE = "vm0placeholder0";
 
 function generateTypeScript(): string {
   const lines: string[] = [
