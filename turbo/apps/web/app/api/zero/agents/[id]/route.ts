@@ -113,9 +113,15 @@ const router = tsr.router(zeroAgentsByIdContract, {
     const { org, member } = await resolveOrg(authCtx, orgSlug);
 
     // Verify agent exists — need compose name for serverSideCompose
+    // Join zeroAgents to get customSkills in the same query
     const [existing] = await globalThis.services.db
-      .select({ id: agentComposes.id, name: agentComposes.name })
+      .select({
+        id: agentComposes.id,
+        name: agentComposes.name,
+        customSkills: zeroAgents.customSkills,
+      })
       .from(agentComposes)
+      .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
       .where(
         and(
           eq(agentComposes.orgId, org.orgId),
@@ -145,18 +151,11 @@ const router = tsr.router(zeroAgentsByIdContract, {
     );
     if (forbidden) return forbidden;
 
-    // Look up existing agent's custom skills for compose builder
-    const [existingAgent] = await globalThis.services.db
-      .select({ customSkills: zeroAgents.customSkills })
-      .from(zeroAgents)
-      .where(eq(zeroAgents.id, params.id))
-      .limit(1);
-
     // Build compose content from connectors + existing custom skills
     const content = buildComposeContent(
       existing.name,
       body.connectors,
-      (existingAgent?.customSkills ?? []).map((name) => ({ name })),
+      (existing.customSkills ?? []).map((name) => ({ name })),
     );
 
     // Run synchronous compose

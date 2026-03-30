@@ -71,15 +71,7 @@ export async function deleteSkillServerSide(params: {
     return; // Idempotent -- nothing to delete
   }
 
-  // 2. Delete storage versions
-  await db
-    .delete(storageVersions)
-    .where(eq(storageVersions.storageId, storage.id));
-
-  // 3. Delete storage record
-  await db.delete(storages).where(eq(storages.id, storage.id));
-
-  // 4. S3 cleanup -- let errors propagate to the caller
+  // 2. S3 cleanup first so DB records remain trackable on failure
   const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
   const objects = await listS3Objects(bucketName, storage.s3Prefix);
   if (objects.length > 0) {
@@ -88,6 +80,13 @@ export async function deleteSkillServerSide(params: {
       objects.map((o) => o.key),
     );
   }
+
+  // 3. Delete DB records after successful S3 cleanup
+  await db
+    .delete(storageVersions)
+    .where(eq(storageVersions.storageId, storage.id));
+
+  await db.delete(storages).where(eq(storages.id, storage.id));
 
   log.debug(`Deleted skill storage: ${storageName}`);
 }
