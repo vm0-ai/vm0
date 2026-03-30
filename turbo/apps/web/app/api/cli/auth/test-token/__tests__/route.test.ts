@@ -1,7 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { POST } from "../route";
 import { DEFAULT_TEST_EMAIL } from "../../../../../../src/lib/auth/test-user";
-import { createTestRequest } from "../../../../../../src/__tests__/api-test-helpers";
+import {
+  createTestRequest,
+  insertOrgCacheEntry,
+  ensureOrgRow,
+} from "../../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
 import { reloadEnv } from "../../../../../../src/env";
 
@@ -21,7 +25,7 @@ vi.mock("@clerk/nextjs/server", () => ({
 const context = testContext();
 
 describe("/api/cli/auth/test-token", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     context.setupMocks();
     vi.stubEnv("CLERK_SECRET_KEY", "test-secret-key");
     reloadEnv();
@@ -44,6 +48,12 @@ describe("/api/cli/auth/test-token", () => {
         },
       ],
     });
+    // Pre-populate org_cache so getOrgData() resolves without hitting Clerk API
+    await insertOrgCacheEntry({
+      orgId: "org_test_token",
+      slug: "test-token-org",
+    });
+    await ensureOrgRow("org_test_token");
   });
 
   describe("environment-based access control", () => {
