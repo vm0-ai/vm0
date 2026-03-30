@@ -221,7 +221,7 @@ const router = tsr.router(storagesCommitContract, {
     // Verify required S3 objects exist
     // For empty artifacts (fileCount === 0), only manifest is required
     // since there's no archive to extract
-    const s3Key = `${runtimeOrg.slug}/${storageType}/${storageName}/${versionId}`;
+    const s3Key = `${storage.s3Prefix}/${versionId}`;
     const manifestKey = `${s3Key}/manifest.json`;
     const archiveKey = `${s3Key}/archive.tar.gz`;
     const fileCount = files.length;

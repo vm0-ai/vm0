@@ -110,7 +110,7 @@ const router = tsr.router(webhookStoragesPrepareContract, {
         orgId: resolvedOrg.orgId,
         name: storageName,
         type: storageType,
-        s3Prefix: `${resolvedOrg.slug}/${storageType}/${storageName}`,
+        s3Prefix: `${resolvedOrg.orgId}/${storageType}/${storageName}`,
         size: 0,
         fileCount: 0,
       })
@@ -262,7 +262,7 @@ const router = tsr.router(webhookStoragesPrepareContract, {
     }
 
     // Generate presigned URLs for archive and manifest
-    const s3Key = `${resolvedOrg.slug}/${storageType}/${storageName}/${versionId}`;
+    const s3Key = `${storage.s3Prefix}/${versionId}`;
     const archiveKey = `${s3Key}/archive.tar.gz`;
     const manifestKey = `${s3Key}/manifest.json`;
 

@@ -127,7 +127,6 @@ export async function prepareForExecution(
           runtimeOrg.orgId,
           userId,
           context.artifactName,
-          runtimeOrg.slug,
           "artifact",
         )
       : null,
@@ -136,7 +135,6 @@ export async function prepareForExecution(
           runtimeOrg.orgId,
           userId,
           context.memoryName,
-          runtimeOrg.slug,
           "memory",
         )
       : null,

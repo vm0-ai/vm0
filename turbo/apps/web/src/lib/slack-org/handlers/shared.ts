@@ -218,9 +218,8 @@ export function buildOrgConnectUrl(
 export async function ensureOrgArtifact(
   userId: string,
   orgId: string,
-  orgSlug: string,
 ): Promise<void> {
-  await ensureStorageExists(orgId, userId, "artifact", orgSlug, "artifact");
+  await ensureStorageExists(orgId, userId, "artifact", "artifact");
 }
 
 const log = logger("slack:shared");
