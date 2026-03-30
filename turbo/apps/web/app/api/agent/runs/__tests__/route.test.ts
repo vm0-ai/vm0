@@ -22,6 +22,7 @@ import {
   getOrgCacheEntry,
   createTestZeroAgent,
   updateOrgTier,
+  findTestRunnerJobEntry,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { generateSandboxToken } from "../../../../../src/lib/auth/sandbox-token";
 import {
@@ -101,6 +102,32 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const run = await getTestRun(data.runId);
 
       expect(run.appendSystemPrompt).toBe("Custom instructions");
+    });
+
+    it("should forward firewallPolicies to execution context", async () => {
+      await createTestConnector({ type: "github" });
+
+      const data = await createTestRun(testComposeId, "Test with policies", {
+        firewallPolicies: {
+          github: {
+            "actions:read": "allow",
+            "actions:write": "deny",
+            "issues:read": "allow",
+          },
+        },
+      });
+
+      expect(data.runId).toBeDefined();
+      const job = await findTestRunnerJobEntry(data.runId);
+      expect(job).toBeDefined();
+      const firewalls = job!.executionContext.experimentalFirewalls;
+      expect(firewalls).toBeDefined();
+      const ghFirewall = firewalls!.find((fw) => fw.ref === "github");
+      expect(ghFirewall).toBeDefined();
+      const permNames = ghFirewall!.apis[0]!.permissions!.map((p) => p.name);
+      expect(permNames).toContain("actions:read");
+      expect(permNames).toContain("issues:read");
+      expect(permNames).not.toContain("actions:write");
     });
   });
 

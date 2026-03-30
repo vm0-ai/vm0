@@ -857,6 +857,7 @@ export async function createTestRun(
     checkEnv?: boolean;
     memoryName?: string;
     appendSystemPrompt?: string;
+    firewallPolicies?: Record<string, Record<string, string>>;
   },
 ): Promise<{ runId: string; status: string }> {
   const request = createTestRequest("http://localhost:3000/api/agent/runs", {
