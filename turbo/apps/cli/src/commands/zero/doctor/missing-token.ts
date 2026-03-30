@@ -80,8 +80,7 @@ Notes:
 
       if (!isConnected) {
         // Connector not connected at all — direct to connectors page
-        const path = agentId ? `/team/${agentId}` : "/team";
-        const url = `${platformUrl.origin}${path}?tab=connectors`;
+        const url = `${platformUrl.origin}/connectors`;
         console.log(
           `The ${label} connector is not connected. Ask the user to connect it at: ${url}`,
         );
@@ -94,8 +93,7 @@ Notes:
         );
       } else {
         // Both connected and authorized — something else is wrong
-        const path = agentId ? `/team/${agentId}` : "/team";
-        const url = `${platformUrl.origin}${path}?tab=connectors`;
+        const url = `${platformUrl.origin}/connectors`;
         console.log(
           `The ${label} connector is connected and authorized, but the token is still missing. Ask the user to check the connector status at: ${url}`,
         );

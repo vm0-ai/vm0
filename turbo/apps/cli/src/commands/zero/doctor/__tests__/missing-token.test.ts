@@ -60,9 +60,7 @@ describe("zero doctor missing-token command", () => {
         "GH_TOKEN is provided by the GitHub connector",
       );
       expect(logCalls).toContain("not connected");
-      expect(logCalls).toContain(
-        "https://app.vm0.ai/team/agent-abc-123?tab=connectors",
-      );
+      expect(logCalls).toContain("https://app.vm0.ai/connectors");
     });
   });
 
@@ -119,9 +117,7 @@ describe("zero doctor missing-token command", () => {
       await missingTokenCommand.parseAsync(["node", "cli", "GH_TOKEN"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain(
-        "https://app.vm0.ai/team/agent-1?tab=connectors",
-      );
+      expect(logCalls).toContain("https://app.vm0.ai/connectors");
     });
 
     it("should transform tunnel -www suffix to -app", async () => {
@@ -134,7 +130,7 @@ describe("zero doctor missing-token command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain(
-        "https://tunnel-yuma-vm0-app.vm7.ai/team/agent-1?tab=connectors",
+        "https://tunnel-yuma-vm0-app.vm7.ai/connectors",
       );
     });
 
@@ -147,7 +143,7 @@ describe("zero doctor missing-token command", () => {
       await missingTokenCommand.parseAsync(["node", "cli", "GH_TOKEN"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("https://app.vm0.ai/team?tab=connectors");
+      expect(logCalls).toContain("https://app.vm0.ai/connectors");
     });
 
     it("should use custom VM0_API_URL with app prefix", async () => {
@@ -159,7 +155,7 @@ describe("zero doctor missing-token command", () => {
       await missingTokenCommand.parseAsync(["node", "cli", "GH_TOKEN"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("https://app.custom.example.com/team/agent-1");
+      expect(logCalls).toContain("https://app.custom.example.com/connectors");
     });
   });
 
@@ -174,7 +170,7 @@ describe("zero doctor missing-token command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("not connected");
-      expect(logCalls).toContain("?tab=connectors");
+      expect(logCalls).toContain("/connectors");
     });
   });
 
