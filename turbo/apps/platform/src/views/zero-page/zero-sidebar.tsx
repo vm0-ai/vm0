@@ -63,7 +63,7 @@ import { reloadAgents$ } from "../../signals/zero-page/agents-list.ts";
 import {
   zeroSessionList$,
   createNewChatSession$,
-  zeroCreatingNewSession$,
+  creatingNewSession$,
 } from "../../signals/zero-page/zero-chat.ts";
 import {
   pinnedAgentIds$,
@@ -989,7 +989,8 @@ export function ZeroSidebar() {
         : "Failed to load chats"
       : null;
   const createNewChat = useSet(createNewChatSession$);
-  const creatingNewSession = useGet(zeroCreatingNewSession$);
+  const creatingNewSessionLoadable = useLoadable(creatingNewSession$);
+  const creatingNewSession = creatingNewSessionLoadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
   const onNewChat = (agentId: string | null) => {
     detach(createNewChat(agentId, pageSignal), Reason.DomCallback);

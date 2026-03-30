@@ -872,14 +872,14 @@ export const startNewZeroSession$ = command(({ set }) => {
 // Commands: create new chat session (from sidebar "New chat" button)
 // ---------------------------------------------------------------------------
 
-const creatingNewSession$ = state(false);
-export const zeroCreatingNewSession$ = computed((get) =>
-  get(creatingNewSession$),
-);
+const internalCreatingPromise$ = state<Promise<void> | undefined>(undefined);
 
-export const createNewChatSession$ = command(
+export const creatingNewSession$ = computed(async (get) => {
+  await get(internalCreatingPromise$);
+});
+
+const internalCreateNewChatSession$ = command(
   async ({ get, set }, agentComposeId: string | null, _signal: AbortSignal) => {
-    set(creatingNewSession$, true);
     try {
       set(startNewZeroSession$);
 
@@ -899,9 +899,15 @@ export const createNewChatSession$ = command(
       throwIfAbort(error);
       L.error("Failed to create new chat session:", error);
       toast.error("Failed to create new chat session");
-    } finally {
-      set(creatingNewSession$, false);
     }
+  },
+);
+
+export const createNewChatSession$ = command(
+  ({ set }, agentComposeId: string | null, signal: AbortSignal) => {
+    const promise = set(internalCreateNewChatSession$, agentComposeId, signal);
+    set(internalCreatingPromise$, promise);
+    return promise;
   },
 );
 
