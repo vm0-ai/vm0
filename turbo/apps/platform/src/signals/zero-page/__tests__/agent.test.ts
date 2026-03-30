@@ -3,10 +3,7 @@ import { describe, it, expect } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
-import {
-  setupPage,
-  createPushStateMock,
-} from "../../../__tests__/page-helper.ts";
+import { createPushStateMock } from "../../../__tests__/page-helper.ts";
 import { zeroChatAgentId$ } from "../zero-active-agent.ts";
 import { setRootSignal$ } from "../../root-signal.ts";
 import { initRoutes$ } from "../../route.ts";
@@ -63,7 +60,7 @@ async function setupRoutes(pathname: string) {
 
 describe("zeroChatAgentId$", () => {
   it("should return null for / (no agent)", async () => {
-    await setupPage({ context, path: "/", withoutRender: true });
+    await setupRoutes("/");
 
     const agentId = await context.store.get(zeroChatAgentId$);
     expect(agentId).toBeNull();

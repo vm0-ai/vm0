@@ -318,6 +318,12 @@ export const fetchZeroSessionList$ = command(
   },
 );
 
+// NOTE: Intentional divergence from sendZeroChatMessage$.
+// The thread list in the sidebar must reflect the *last visited* agent (sidebarChatAgentId$),
+// which persists across non-chat pages (e.g. /activity) so the user always sees the
+// threads for the agent they were talking to.  sendZeroChatMessage$ re-derives the agent
+// from the URL / thread at send time because it needs to know the authoritative agent
+// for the run being created, not what the sidebar is showing.
 const chatThreadListResponse$ = computed(async (get) => {
   get(reloadChatThreadList$);
   const sidebarAgentId = get(sidebarChatAgentId$);
