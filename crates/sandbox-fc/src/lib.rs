@@ -22,7 +22,7 @@ pub use network::{NetnsPool, NetnsPoolConfig};
 pub use paths::{
     FactoryPaths, LockPaths, RuntimePaths, SandboxPaths, SnapshotOutputPaths, SockPaths,
 };
-pub use runtime::FirecrackerRuntime;
+pub use runtime::{FirecrackerRuntime, FirecrackerRuntimeProvider};
 pub use sandbox::FirecrackerSandbox;
 pub use sandbox_control::FirecrackerControl;
 pub use snapshot::{SnapshotError, create_snapshot};

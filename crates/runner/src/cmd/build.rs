@@ -1,4 +1,5 @@
 use clap::Args;
+use sandbox::SnapshotProvider;
 
 use super::rootfs::RootfsArgs;
 use super::snapshot::SnapshotArgs;
@@ -11,16 +12,19 @@ pub struct BuildArgs {
     rootfs: RootfsArgs,
 }
 
-pub async fn run_build(args: BuildArgs) -> RunnerResult<()> {
+pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> RunnerResult<()> {
     let def = profile::get(&args.rootfs.profile)?;
     let dry_run = args.rootfs.dry_run;
     let rootfs_hash = super::rootfs::run_rootfs(args.rootfs).await?;
-    super::snapshot::run_snapshot(SnapshotArgs {
-        rootfs_hash,
-        vcpu: def.vcpu,
-        memory_mb: def.memory_mb,
-        dry_run,
-    })
+    super::snapshot::run_snapshot(
+        SnapshotArgs {
+            rootfs_hash,
+            vcpu: def.vcpu,
+            memory_mb: def.memory_mb,
+            dry_run,
+        },
+        provider,
+    )
     .await?;
 
     Ok(())

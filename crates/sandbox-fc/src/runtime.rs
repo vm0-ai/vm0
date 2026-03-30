@@ -3,7 +3,9 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tracing::{info, warn};
 
-use sandbox::{FactoryConfig, SandboxError, SandboxFactory, SandboxRuntime, SnapshotRef};
+use sandbox::{
+    FactoryConfig, RuntimeProvider, SandboxError, SandboxFactory, SandboxRuntime, SnapshotRef,
+};
 
 use crate::config::{FirecrackerConfig, SnapshotConfig};
 use crate::factory::FirecrackerFactory;
@@ -108,5 +110,18 @@ impl SandboxRuntime for FirecrackerRuntime {
             .cleanup();
 
         info!("runtime shutdown complete");
+    }
+}
+
+/// Factory for creating [`FirecrackerRuntime`] instances.
+pub struct FirecrackerRuntimeProvider;
+
+#[async_trait]
+impl RuntimeProvider for FirecrackerRuntimeProvider {
+    async fn create_runtime(
+        &self,
+        config: sandbox::RuntimeConfig,
+    ) -> sandbox::Result<Box<dyn SandboxRuntime>> {
+        Ok(Box::new(FirecrackerRuntime::new(config).await?))
     }
 }

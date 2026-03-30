@@ -3,7 +3,7 @@ use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
 use clap::Args;
-use sandbox::{ExecRequest, ExecResult, SandboxConfig, SandboxFactory, SandboxRuntime};
+use sandbox::{ExecRequest, ExecResult, RuntimeProvider, SandboxConfig, SandboxFactory};
 use tracing::{info, warn};
 use uuid::Uuid;
 
@@ -42,7 +42,10 @@ pub struct BenchmarkArgs {
     profile: String,
 }
 
-pub async fn run_benchmark(args: BenchmarkArgs) -> RunnerResult<ExitCode> {
+pub async fn run_benchmark(
+    args: BenchmarkArgs,
+    runtime_provider: &dyn RuntimeProvider,
+) -> RunnerResult<ExitCode> {
     let total = Instant::now();
 
     // 1. Load config, force concurrency=1
@@ -88,10 +91,11 @@ pub async fn run_benchmark(args: BenchmarkArgs) -> RunnerResult<ExitCode> {
     let factory_config = runner_config.factory_config(&args.profile, &default_profile, &home);
 
     let t = Instant::now();
-    let mut runtime = sandbox_fc::FirecrackerRuntime::new(sandbox::RuntimeConfig {
-        proxy_port: Some(mitm.port()),
-    })
-    .await?;
+    let mut runtime = runtime_provider
+        .create_runtime(sandbox::RuntimeConfig {
+            proxy_port: Some(mitm.port()),
+        })
+        .await?;
     let mut factory = runtime.create_factory(factory_config).await?;
     let factory_ms = t.elapsed().as_millis();
     info!(factory_ms, "factory ready");

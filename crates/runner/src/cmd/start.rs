@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use clap::Args;
-use sandbox::{SandboxFactory, SandboxRuntime};
+use sandbox::{RuntimeProvider, SandboxFactory, SandboxRuntime};
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
@@ -51,7 +51,10 @@ pub struct StartArgs {
 }
 
 /// Load config and run the main poll loop.
-pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
+pub async fn run_start(
+    args: StartArgs,
+    runtime_provider: &dyn RuntimeProvider,
+) -> RunnerResult<()> {
     let mut runner_config = config::load(&args.config).await?;
 
     // CLI / env overrides — take server out so we can mutate independently
@@ -210,11 +213,12 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
     };
 
     // Build sandbox runtime with shared resources (netns pool, base loop cache).
-    let runtime = sandbox_fc::FirecrackerRuntime::new(sandbox::RuntimeConfig {
-        proxy_port: Some(mitm.port()),
-    })
-    .await
-    .map_err(|e| RunnerError::Internal(format!("sandbox runtime: {e}")))?;
+    let runtime = runtime_provider
+        .create_runtime(sandbox::RuntimeConfig {
+            proxy_port: Some(mitm.port()),
+        })
+        .await
+        .map_err(|e| RunnerError::Internal(format!("sandbox runtime: {e}")))?;
 
     let mut status = StatusTracker::new(paths.status(), estimated_capacity);
     status.set_proxy_port(mitm.port()).await;
@@ -286,7 +290,7 @@ struct RunConfig {
     name: String,
     group: String,
     profiles: std::collections::BTreeMap<String, ProfileConfig>,
-    runtime: sandbox_fc::FirecrackerRuntime,
+    runtime: Box<dyn SandboxRuntime>,
     home: HomePaths,
     budget: Arc<ResourceBudget>,
     status: Arc<StatusTracker>,
@@ -344,7 +348,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         let factory = match factory_result {
             Ok(f) => f,
             Err(e) => {
-                shutdown_factories(&mut factories, &mut runtime).await;
+                shutdown_factories(&mut factories, runtime.as_mut()).await;
                 return Err(e.into());
             }
         };
@@ -542,7 +546,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     }
 
     info!("shutting down factories");
-    shutdown_factories(&mut factories, &mut runtime).await;
+    shutdown_factories(&mut factories, runtime.as_mut()).await;
 
     // Stop proxy after all jobs have drained and factory is shut down.
     if let Err(e) = mitm.stop().await {
@@ -578,7 +582,7 @@ struct JobProfile {
 /// Shut down all factories, then release shared runtime resources.
 async fn shutdown_factories(
     factories: &mut BTreeMap<String, (SharedFactory, bool)>,
-    runtime: &mut sandbox_fc::FirecrackerRuntime,
+    runtime: &mut dyn SandboxRuntime,
 ) {
     for (name, (factory, _)) in std::mem::take(factories) {
         match Arc::try_unwrap(factory) {

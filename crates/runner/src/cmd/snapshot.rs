@@ -27,9 +27,11 @@ pub struct SnapshotArgs {
 }
 
 /// Create a snapshot and return the snapshot hash.
-pub async fn run_snapshot(args: SnapshotArgs) -> RunnerResult<String> {
-    let provider = sandbox_fc::FirecrackerSnapshotProvider;
-    let snapshot_hash = compute_snapshot_hash(&args, &provider);
+pub async fn run_snapshot(
+    args: SnapshotArgs,
+    provider: &dyn SnapshotProvider,
+) -> RunnerResult<String> {
+    let snapshot_hash = compute_snapshot_hash(&args, provider);
     tracing::info!("snapshot hash: {snapshot_hash}");
     // Machine-readable output — do not change format without updating consumers
     println!("snapshot_hash={snapshot_hash}");

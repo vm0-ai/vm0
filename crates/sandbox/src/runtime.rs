@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::config::FactoryConfig;
+use crate::config::{FactoryConfig, RuntimeConfig};
 use crate::error::Result;
 use crate::factory::SandboxFactory;
 
@@ -19,4 +19,15 @@ pub trait SandboxRuntime: Send + Sync {
 
     /// Release shared resources (network pools, device caches).
     async fn shutdown(&mut self);
+}
+
+/// Constructs a [`SandboxRuntime`] from configuration.
+///
+/// This trait decouples the runner from the concrete runtime implementation.
+/// The runner calls [`RuntimeProvider::create_runtime`] when shared resources
+/// are needed (e.g., after proxy setup provides the port), without knowing
+/// which backend is in use.
+#[async_trait]
+pub trait RuntimeProvider: Send + Sync {
+    async fn create_runtime(&self, config: RuntimeConfig) -> Result<Box<dyn SandboxRuntime>>;
 }
