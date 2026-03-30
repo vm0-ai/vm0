@@ -17,10 +17,14 @@ import {
 } from "../../../../../src/db/schema/agent-compose";
 import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
 import { zeroRuns } from "../../../../../src/db/schema/zero-run";
+import { alias } from "drizzle-orm/pg-core";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import { isNotFound, isForbidden } from "../../../../../src/lib/errors";
 import { eq, and } from "drizzle-orm";
+
+/** Alias for the zero_agents table to resolve the triggering agent's display name. */
+const triggerAgentAlias = alias(zeroAgents, "trigger_agent");
 
 interface RunResult {
   checkpointId?: string;
@@ -116,6 +120,7 @@ function buildLogDetailBody(result: {
   agentDisplayName: string | null;
   triggerSource: string | null;
   scheduleId: string | null;
+  triggerAgentName: string | null;
 }) {
   const {
     run,
@@ -124,6 +129,7 @@ function buildLogDetailBody(result: {
     agentDisplayName,
     triggerSource,
     scheduleId,
+    triggerAgentName,
   } = result;
   const runResult = run.result as RunResult | null;
   const composeContent = composeVersion?.content as ComposeContent | null;
@@ -137,6 +143,7 @@ function buildLogDetailBody(result: {
     modelProvider: run.modelProvider ?? null,
     selectedModel: run.selectedModel ?? null,
     triggerSource: (triggerSource ?? "cli") as TriggerSource,
+    triggerAgentName: triggerAgentName ?? null,
     scheduleId: scheduleId ?? null,
     status: run.status as
       | "pending"
@@ -187,6 +194,7 @@ const router = tsr.router(logsByIdContract, {
         agentDisplayName: zeroAgents.displayName,
         triggerSource: zeroRuns.triggerSource,
         scheduleId: zeroRuns.scheduleId,
+        triggerAgentName: triggerAgentAlias.displayName,
       })
       .from(agentRuns)
       .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
@@ -199,6 +207,10 @@ const router = tsr.router(logsByIdContract, {
         eq(agentComposeVersions.composeId, agentComposes.id),
       )
       .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
+      .leftJoin(
+        triggerAgentAlias,
+        eq(zeroRuns.triggerAgentId, triggerAgentAlias.id),
+      )
       .where(
         and(
           eq(agentRuns.id, params.id),

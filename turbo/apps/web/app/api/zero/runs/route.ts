@@ -13,6 +13,8 @@ import {
 import { createZeroRun } from "../../../../src/lib/zero/zero-run-service";
 import { handleCreateRunError } from "../../../../src/lib/zero/zero-run-errors";
 import { zeroAgents } from "../../../../src/db/schema/zero-agent";
+import { agentRuns } from "../../../../src/db/schema/agent-run";
+import { agentComposeVersions } from "../../../../src/db/schema/agent-compose";
 import { agentSessions } from "../../../../src/db/schema/agent-session";
 
 const router = tsr.router(zeroRunsMainContract, {
@@ -77,6 +79,22 @@ const router = tsr.router(zeroRunsMainContract, {
         };
       }
 
+      // When called from within an agent sandbox, look up the parent agent's compose ID
+      let triggerAgentId: string | undefined;
+      if (authCtx.runId) {
+        const parentRows = await globalThis.services.db
+          .select({ composeId: agentComposeVersions.composeId })
+          .from(agentRuns)
+          .innerJoin(
+            agentComposeVersions,
+            eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
+          )
+          .where(eq(agentRuns.id, authCtx.runId))
+          .limit(1)
+          .catch(() => []);
+        triggerAgentId = parentRows[0]?.composeId ?? undefined;
+      }
+
       const result = await createZeroRun({
         userId: authCtx.userId,
         prompt: body.prompt,
@@ -85,6 +103,7 @@ const router = tsr.router(zeroRunsMainContract, {
         appendSystemPrompt: body.appendSystemPrompt,
         modelProvider: body.modelProvider,
         triggerSource: authCtx.runId ? "agent" : "web",
+        triggerAgentId,
       });
 
       return {

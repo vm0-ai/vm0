@@ -7,6 +7,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { agentRuns } from "./agent-run";
+import { agentComposes } from "./agent-compose";
 import { zeroAgentSchedules } from "./zero-agent-schedule";
 
 /**
@@ -24,6 +25,11 @@ export const zeroRuns = pgTable(
     // References zero_agent_schedules.id if this run was triggered by a schedule
     scheduleId: uuid("schedule_id").references(
       (): AnyPgColumn => zeroAgentSchedules.id,
+      { onDelete: "set null" },
+    ),
+    // References agent_composes.id of the agent that triggered this run (agent-to-agent delegation)
+    triggerAgentId: uuid("trigger_agent_id").references(
+      () => agentComposes.id,
       { onDelete: "set null" },
     ),
   },

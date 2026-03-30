@@ -56,6 +56,7 @@ function mockActivityDetailAPIs(runId: string) {
     modelProvider: null,
     selectedModel: null,
     triggerSource: "web",
+    triggerAgentName: null,
     scheduleId: null,
     status: "completed",
     prompt: "Run the task",

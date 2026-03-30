@@ -23,6 +23,7 @@ import {
 } from "../../../../src/db/schema/agent-compose";
 import { zeroAgents } from "../../../../src/db/schema/zero-agent";
 import { zeroRuns } from "../../../../src/db/schema/zero-run";
+import { alias } from "drizzle-orm/pg-core";
 import { conversations } from "../../../../src/db/schema/conversation";
 import { getOrgData } from "../../../../src/lib/org/org-cache-service";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
@@ -42,6 +43,9 @@ import {
 } from "drizzle-orm";
 
 const log = logger("api:zero:logs");
+
+/** Alias for the zero_agents table to resolve the triggering agent's display name. */
+const triggerAgentAlias = alias(zeroAgents, "trigger_agent");
 
 // Minimal type for extracting framework from compose content
 interface AgentComposeContent {
@@ -283,6 +287,7 @@ const router = tsr.router(logsListContract, {
         sessionId: conversations.cliAgentSessionId,
         composeContent: agentComposeVersions.content,
         displayName: zeroAgents.displayName,
+        triggerAgentName: triggerAgentAlias.displayName,
       })
       .from(agentRuns)
       .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
@@ -295,6 +300,10 @@ const router = tsr.router(logsListContract, {
         eq(agentComposeVersions.composeId, agentComposes.id),
       )
       .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
+      .leftJoin(
+        triggerAgentAlias,
+        eq(zeroRuns.triggerAgentId, triggerAgentAlias.id),
+      )
       .leftJoin(conversations, eq(agentRuns.id, conversations.runId))
       .where(and(...conditions))
       .orderBy(desc(agentRuns.createdAt), desc(agentRuns.id))
@@ -347,6 +356,7 @@ const router = tsr.router(logsListContract, {
           orgSlug: run.orgId ? (slugMap.get(run.orgId) ?? null) : null,
           framework: extractFramework(run.composeContent),
           triggerSource: (run.triggerSource ?? "cli") as TriggerSource,
+          triggerAgentName: run.triggerAgentName ?? null,
           scheduleId: run.scheduleId ?? null,
           status: run.status as LogStatus,
           createdAt: run.createdAt.toISOString(),

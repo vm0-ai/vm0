@@ -1,0 +1,2 @@
+ALTER TABLE "zero_runs" ADD COLUMN "trigger_agent_id" uuid;--> statement-breakpoint
+ALTER TABLE "zero_runs" ADD CONSTRAINT "zero_runs_trigger_agent_id_agent_composes_id_fk" FOREIGN KEY ("trigger_agent_id") REFERENCES "public"."agent_composes"("id") ON DELETE set null ON UPDATE no action;

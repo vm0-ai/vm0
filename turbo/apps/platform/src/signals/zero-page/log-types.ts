@@ -25,6 +25,7 @@ export interface LogEntry {
   orgSlug: string | null;
   framework: string | null;
   triggerSource: TriggerSource | null;
+  triggerAgentName: string | null;
   scheduleId: string | null;
   status: LogStatus;
   createdAt: string;
@@ -61,6 +62,7 @@ export interface LogDetail {
   modelProvider: string | null;
   selectedModel: string | null;
   triggerSource: TriggerSource | null;
+  triggerAgentName: string | null;
   scheduleId: string | null;
   status: LogStatus;
   prompt: string;

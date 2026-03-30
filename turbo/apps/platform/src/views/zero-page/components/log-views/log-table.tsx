@@ -62,9 +62,11 @@ function LogRow({
           {agentName}
         </div>
         {showSource && (
-          <div className="text-left text-sm text-muted-foreground">
+          <div className="text-left text-sm text-muted-foreground truncate">
             {entry.triggerSource
-              ? TRIGGER_SOURCE_LABELS[entry.triggerSource]
+              ? entry.triggerSource === "agent" && entry.triggerAgentName
+                ? `Agent (${entry.triggerAgentName})`
+                : TRIGGER_SOURCE_LABELS[entry.triggerSource]
               : "\u2014"}
           </div>
         )}
