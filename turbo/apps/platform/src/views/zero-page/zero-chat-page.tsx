@@ -11,10 +11,8 @@ import {
   TooltipTrigger,
 } from "@vm0/ui";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
-import {
-  zeroChatAgentId$,
-  zeroTalkAgentId$,
-} from "../../signals/zero-page/zero-nav.ts";
+import { currentAgentId$ } from "../../signals/zero-page/agent.ts";
+import { zeroChatAgentId$ } from "../../signals/zero-page/zero-active-agent.ts";
 import {
   pinnedAgentIds$,
   updatePinnedAgentIds$,
@@ -173,7 +171,7 @@ export function ZeroChatPage({
   const navigate = useSet(detachedNavigateTo$);
 
   // Agent ID from URL for ideas navigation
-  const talkAgentId = useGet(zeroTalkAgentId$);
+  const talkAgentId = useGet(currentAgentId$);
 
   // Admin invite
   const isAdminLoadable = useLoadable(isOrgAdmin$);
@@ -189,7 +187,9 @@ export function ZeroChatPage({
   };
 
   // Pin pill
-  const currentChatAgentId = useGet(zeroChatAgentId$);
+  const chatAgentLoadable = useLastLoadable(zeroChatAgentId$);
+  const currentChatAgentId =
+    chatAgentLoadable.state === "hasData" ? chatAgentLoadable.data : null;
   const pinnedLoadable = useLastLoadable(pinnedAgentIds$);
   const pinnedIds =
     pinnedLoadable.state === "hasData" ? pinnedLoadable.data : [];

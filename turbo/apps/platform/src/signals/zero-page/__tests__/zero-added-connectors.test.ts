@@ -8,8 +8,6 @@ import {
   addZeroConnector$,
   saveZeroConnectors$,
 } from "../zero-connectors.ts";
-import { setZeroChatAgent$ } from "../zero-nav.ts";
-
 const context = testContext();
 
 function mockAgentApi(connectors: string[]) {
@@ -87,7 +85,6 @@ describe("zeroAddedConnectors$", () => {
       path: "/talk/sub-agent-compose-id",
       withoutRender: true,
     });
-    await context.store.set(setZeroChatAgent$, "sub-agent-compose-id");
 
     const connectors = await context.store.get(zeroAddedConnectors$);
     // Only sub-agent connectors (server already filters seed skills)

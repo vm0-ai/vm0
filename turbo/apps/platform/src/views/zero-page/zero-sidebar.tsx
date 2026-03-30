@@ -47,13 +47,13 @@ import { detach, Reason } from "../../signals/utils.ts";
 import {
   zeroActiveId$,
   chatThreadId$,
-  zeroChatAgentId$,
   zeroSidebarCollapsed$,
   setZeroSidebarCollapsed$,
   handleZeroNavSelect$,
   handleZeroAccountAction$,
   navigateToChat$,
 } from "../../signals/zero-page/zero-nav.ts";
+import { zeroChatAgentId$ } from "../../signals/zero-page/zero-active-agent.ts";
 import {
   agentDisplayName$,
   defaultAgentId$,
@@ -904,7 +904,9 @@ export function ZeroSidebar() {
           displayName: a.displayName,
         }))
       : [];
-  const currentChatAgentId = useGet(zeroChatAgentId$);
+  const chatAgentLoadable = useLastLoadable(zeroChatAgentId$);
+  const currentChatAgentId =
+    chatAgentLoadable.state === "hasData" ? chatAgentLoadable.data : null;
   const collapsed = useGet(zeroSidebarCollapsed$);
   const setSidebarCollapsed = useSet(setZeroSidebarCollapsed$);
   const onCollapse = () => setSidebarCollapsed(!collapsed);

@@ -47,41 +47,6 @@ export const chatThreadId$ = computed((get): string | null => {
 });
 
 /**
- * Agent ID extracted from `/talk/:agentId`.
- * Returns null when chatting with the default agent.
- */
-export const zeroTalkAgentId$ = computed((get): string | null => {
-  const params = get(pathParams$);
-  const agentId = params?.agentId;
-  return typeof agentId === "string" ? agentId : null;
-});
-
-/**
- * In-memory state tracking the current chat agent ID.
- * Null means default agent. Set when navigating to a chat route.
- */
-const internalChatAgentId$ = state<string | null>(null);
-
-/**
- * Currently selected chat agent ID (in-memory).
- * Returns null when chatting with the default/main agent.
- */
-export const zeroChatAgentId$ = computed((get): string | null => {
-  return get(internalChatAgentId$);
-});
-
-const internalTalkAgentResolved$ = state(false);
-
-/**
- * Set the chat agent ID (in-memory).
- * Pass null to clear (chat with default agent).
- */
-export const setZeroChatAgent$ = command(({ set }, agentId: string | null) => {
-  set(internalChatAgentId$, agentId);
-  set(internalTalkAgentResolved$, true);
-});
-
-/**
  * Navigate to a specific chat session — `/chat/:chatThreadId`.
  *
  * Always performs a full route navigation so that `loadRoute$` fires and

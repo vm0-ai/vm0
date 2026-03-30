@@ -6,9 +6,6 @@ import { createPushStateMock } from "../../../__tests__/page-helper.ts";
 import {
   zeroActiveId$,
   chatThreadId$,
-  zeroTalkAgentId$,
-  zeroChatAgentId$,
-  setZeroChatAgent$,
   zeroShowAboutPage$,
   setZeroShowAboutPage$,
   zeroSidebarCollapsed$,
@@ -103,44 +100,6 @@ describe("zero-nav", () => {
     });
   });
 
-  describe("zeroTalkAgentId$", () => {
-    async function setupRoutes(pathname: string) {
-      context.store.set(setRootSignal$, context.signal);
-      createPushStateMock(context.signal);
-      mockLocation({ pathname, search: "" }, context.signal);
-      const noop$ = command(() => void 0);
-      await context.store.set(
-        initRoutes$,
-        [
-          { path: "/", setup: noop$ },
-          { path: "/talk/:agentId", setup: noop$ },
-          { path: "{/*path}", setup: noop$ },
-        ],
-        context.signal,
-      );
-    }
-
-    it("should return null for /", async () => {
-      await setupRoutes("/");
-      expect(context.store.get(zeroTalkAgentId$)).toBeNull();
-    });
-
-    it("should return null for /chat", async () => {
-      await setupRoutes("/chat");
-      expect(context.store.get(zeroTalkAgentId$)).toBeNull();
-    });
-
-    it("should extract agent name from /talk/:name", async () => {
-      await setupRoutes("/talk/my-agent");
-      expect(context.store.get(zeroTalkAgentId$)).toBe("my-agent");
-    });
-
-    it("should decode URI-encoded agent names", async () => {
-      await setupRoutes("/talk/agent%20with%20spaces");
-      expect(context.store.get(zeroTalkAgentId$)).toBe("agent with spaces");
-    });
-  });
-
   describe("chatThreadId$", () => {
     async function setupRoutes(pathname: string) {
       context.store.set(setRootSignal$, context.signal);
@@ -172,19 +131,6 @@ describe("zero-nav", () => {
     it("should extract thread ID from /chat/:chatThreadId", async () => {
       await setupRoutes("/chat/thread-abc-123");
       expect(context.store.get(chatThreadId$)).toBe("thread-abc-123");
-    });
-  });
-
-  describe("setZeroChatAgent$ and zeroChatAgentId$", () => {
-    it("should set and read agent ID", () => {
-      context.store.set(setZeroChatAgent$, "agent-123");
-      expect(context.store.get(zeroChatAgentId$)).toBe("agent-123");
-    });
-
-    it("should clear agent ID when set to null", () => {
-      context.store.set(setZeroChatAgent$, "agent-123");
-      context.store.set(setZeroChatAgent$, null);
-      expect(context.store.get(zeroChatAgentId$)).toBeNull();
     });
   });
 

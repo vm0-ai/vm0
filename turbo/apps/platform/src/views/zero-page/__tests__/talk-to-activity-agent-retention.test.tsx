@@ -50,7 +50,7 @@ function mockTwoAgents() {
 }
 
 describe("talk to activity agent retention", () => {
-  it("should retain non-default agent in sidebar after navigating from /talk/:agentId to /activity", async () => {
+  it("should show default agent in sidebar after navigating from /talk/:agentId to /activity", async () => {
     mockTwoAgents();
 
     // Navigate to non-default agent (bar)
@@ -78,11 +78,11 @@ describe("talk to activity agent retention", () => {
       { timeout: 5000 },
     );
 
-    // After navigating to /activity, the sidebar should still show "chat with bar"
-    // (the last visited agent), not "chat with foo" (the default agent)
+    // After navigating to /activity, zeroChatAgentId$ is null (derived from path — no agent in URL)
+    // so the sidebar shows the default agent ("foo"), not the last visited agent ("bar")
     await waitFor(
       () => {
-        expect(screen.getByLabelText("New chat with bar")).toBeInTheDocument();
+        expect(screen.getByLabelText("New chat with foo")).toBeInTheDocument();
       },
       { timeout: 5000 },
     );
