@@ -1,8 +1,8 @@
-import { command, computed, state, type Computed } from "ccstate";
+import { command, computed, state, type Command, type Computed } from "ccstate";
 import { delay } from "signal-timers";
 import type { AgentEvent, LogStatus } from "./log-types.ts";
 import { fetch$ } from "../fetch.ts";
-import { throwIfAbort, resetSignal } from "../utils.ts";
+import { throwIfAbort, resetSignal, createDeferredPromise } from "../utils.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { logger } from "../log.ts";
 import { createRunLoop, type PagedRunEvents } from "./polling.ts";
@@ -649,8 +649,47 @@ export interface ZeroChatAttachment {
   filename: string;
   contentType: string;
   size: number;
-  url: string;
-  uploading?: boolean;
+  /** Reactive URL — loading while uploading, hasData when done, hasError on failure. */
+  url$: Computed<Promise<string>>;
+  /** Cancel the in-flight upload. Always safe to call (no-op if already completed). */
+  cancel$: Command<void, []>;
+  /** Synchronous resolved URL for use in commands (set when upload completes). */
+  resolvedUrl?: string;
+}
+
+function createChatAttachment(info: {
+  id: string;
+  filename: string;
+  contentType: string;
+  size: number;
+}): {
+  signals: ZeroChatAttachment;
+  resolve: (url: string) => void;
+  abortSignal: AbortSignal;
+} {
+  const controller = new AbortController();
+  const deferred = createDeferredPromise<string>(controller.signal);
+
+  const url$ = computed(async () => {
+    return await deferred.promise;
+  });
+
+  const cancel$ = command(() => {
+    controller.abort();
+  });
+
+  return {
+    signals: {
+      id: info.id,
+      filename: info.filename,
+      contentType: info.contentType,
+      size: info.size,
+      url$,
+      cancel$,
+    },
+    resolve: deferred.resolve,
+    abortSignal: controller.signal,
+  };
 }
 
 const internalAttachments$ = state<ZeroChatAttachment[]>([]);
@@ -664,23 +703,21 @@ export const setZeroDragOver$ = command(({ set }, value: boolean) => {
   set(internalDragOver$, value);
 });
 
-const uploadAbortControllers$ = state(new Map<string, AbortController>());
-
 export const uploadZeroAttachment$ = command(
   async ({ get, set }, file: File, signal: AbortSignal) => {
     const id = crypto.randomUUID();
-    const placeholder: ZeroChatAttachment = {
+    const {
+      signals: attachment,
+      resolve,
+      abortSignal,
+    } = createChatAttachment({
       id,
       filename: file.name,
       contentType: file.type,
       size: file.size,
-      url: "",
-      uploading: true,
-    };
-    set(internalAttachments$, (prev) => [...prev, placeholder]);
+    });
 
-    const controller = new AbortController();
-    set(uploadAbortControllers$, (prev) => new Map(prev).set(id, controller));
+    set(internalAttachments$, (prev) => [...prev, attachment]);
 
     try {
       const fetchFn = get(fetch$);
@@ -690,7 +727,7 @@ export const uploadZeroAttachment$ = command(
       const res = await fetchFn("/api/zero/uploads", {
         method: "POST",
         body: formData,
-        signal: AbortSignal.any([signal, controller.signal]),
+        signal: AbortSignal.any([signal, abortSignal]),
       });
 
       if (!res.ok) {
@@ -710,50 +747,33 @@ export const uploadZeroAttachment$ = command(
         url: string;
       };
 
+      // Update the attachment ID (server assigns final ID) and resolve the URL
       set(internalAttachments$, (prev) =>
         prev.map((a) =>
-          a.id === id
-            ? { ...a, url: data.url, id: data.id, uploading: false }
-            : a,
+          a.id === id ? { ...a, id: data.id, resolvedUrl: data.url } : a,
         ),
       );
+      resolve(data.url);
     } catch (error) {
       throwIfAbort(error);
       L.error("Upload failed:", error);
-      // Remove the failed placeholder
+      // Abort the controller so the deferred promise rejects with an AbortError
+      // (which detach silences), rather than a non-abort error.
+      set(attachment.cancel$);
+      // Remove the failed attachment
       set(internalAttachments$, (prev) => prev.filter((a) => a.id !== id));
-    } finally {
-      // Clean up the controller entry. When cancel triggers this path, the
-      // entry was already removed by cancelZeroAttachmentUpload$ — Map.delete
-      // on a missing key is a safe no-op.
-      set(uploadAbortControllers$, (prev) => {
-        const next = new Map(prev);
-        next.delete(id);
-        return next;
-      });
     }
   },
 );
 
-export const removeZeroAttachment$ = command(({ set }, id: string) => {
+export const removeZeroAttachment$ = command(({ get, set }, id: string) => {
+  const attachments = get(internalAttachments$);
+  const attachment = attachments.find((a) => a.id === id);
+  if (attachment) {
+    set(attachment.cancel$); // no-op if already completed
+  }
   set(internalAttachments$, (prev) => prev.filter((a) => a.id !== id));
 });
-
-export const cancelZeroAttachmentUpload$ = command(
-  ({ get, set }, id: string) => {
-    const controllers = get(uploadAbortControllers$);
-    const controller = controllers.get(id);
-    if (controller) {
-      controller.abort();
-      set(uploadAbortControllers$, (prev) => {
-        const next = new Map(prev);
-        next.delete(id);
-        return next;
-      });
-    }
-    set(internalAttachments$, (prev) => prev.filter((a) => a.id !== id));
-  },
-);
 
 // ---------------------------------------------------------------------------
 // Commands: session list management
@@ -911,12 +931,12 @@ export const createNewChatSession$ = command(
 
 const prepareUserMessage$ = command(
   ({ get, set }, prompt: string): { fullPrompt: string } => {
-    const attachments = get(internalAttachments$).filter((a) => !a.uploading);
+    const attachments = get(internalAttachments$).filter((a) => a.resolvedUrl);
     let fullPrompt = prompt.trim();
     if (attachments.length > 0) {
       const lines = attachments.map(
         (a) =>
-          `[Attached file: ${a.filename}](${a.url})\nDownload with: curl -sL -o "${a.filename}" "${a.url}"`,
+          `[Attached file: ${a.filename}](${a.resolvedUrl})\nDownload with: curl -sL -o "${a.filename}" "${a.resolvedUrl}"`,
       );
       fullPrompt = `${fullPrompt}\n\n${lines.join("\n")}`;
     }
@@ -931,7 +951,7 @@ const prepareUserMessage$ = command(
               filename: a.filename,
               contentType: a.contentType,
               size: a.size,
-              url: a.url,
+              url: a.resolvedUrl!,
             }))
           : undefined,
     };

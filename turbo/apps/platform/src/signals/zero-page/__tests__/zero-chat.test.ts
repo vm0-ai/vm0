@@ -23,7 +23,6 @@ import {
   zeroChatAttachments$,
   uploadZeroAttachment$,
   removeZeroAttachment$,
-  cancelZeroAttachmentUpload$,
 } from "../zero-chat.ts";
 import { chatThreadId$ } from "../zero-nav.ts";
 
@@ -437,8 +436,9 @@ describe("zero-chat signals", () => {
       const attachments = context.store.get(zeroChatAttachments$);
       expect(attachments).toHaveLength(1);
       expect(attachments[0]?.filename).toBe("test.png");
-      expect(attachments[0]?.uploading).toBeFalsy();
-      expect(attachments[0]?.url).toBe("https://example.com/test.png");
+      const url = await context.store.get(attachments[0]!.url$);
+      expect(url).toBe("https://example.com/test.png");
+      expect(attachments[0]?.resolvedUrl).toBe("https://example.com/test.png");
     });
 
     it("should cancel an in-flight upload and remove the attachment", async () => {
@@ -453,11 +453,10 @@ describe("zero-chat signals", () => {
       await delay(10);
       const before = context.store.get(zeroChatAttachments$);
       expect(before).toHaveLength(1);
-      expect(before[0]?.uploading).toBeTruthy();
       const attachmentId = before[0]!.id;
 
-      // Cancel the upload
-      context.store.set(cancelZeroAttachmentUpload$, attachmentId);
+      // Cancel via removeZeroAttachment$ (which internally calls cancel$)
+      context.store.set(removeZeroAttachment$, attachmentId);
 
       await uploadPromise;
 
@@ -525,17 +524,17 @@ describe("zero-chat signals", () => {
       const before = context.store.get(zeroChatAttachments$);
       expect(before).toHaveLength(2);
 
-      // Cancel the first upload
+      // Cancel the first upload via removeZeroAttachment$ (which calls cancel$)
       const firstId = before[0]!.id;
-      context.store.set(cancelZeroAttachmentUpload$, firstId);
+      context.store.set(removeZeroAttachment$, firstId);
 
       await Promise.all([promise1, promise2]);
 
       const after = context.store.get(zeroChatAttachments$);
       // Only the second upload should remain, completed
       expect(after).toHaveLength(1);
-      expect(after[0]?.uploading).toBeFalsy();
-      expect(after[0]?.url).toContain("example.com");
+      const url = await context.store.get(after[0]!.url$);
+      expect(url).toContain("example.com");
     });
 
     it("should remove placeholder on upload failure", async () => {
