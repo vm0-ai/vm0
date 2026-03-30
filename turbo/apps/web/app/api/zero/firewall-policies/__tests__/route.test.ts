@@ -92,11 +92,7 @@ describe("PUT /api/zero/firewall-policies", () => {
   });
 
   it("should persist firewall policies for an agent", async () => {
-    const createRes = await postAgent(
-      { connectors: [] },
-      testCliToken,
-      testOrgSlug,
-    );
+    const createRes = await postAgent({}, testCliToken, testOrgSlug);
     expect(createRes.status).toBe(201);
     const created = await createRes.json();
 
@@ -119,7 +115,7 @@ describe("PUT /api/zero/firewall-policies", () => {
 
   it("should persist policies across reads", async () => {
     const created = await (
-      await postAgent({ connectors: [] }, testCliToken, testOrgSlug)
+      await postAgent({}, testCliToken, testOrgSlug)
     ).json();
 
     const policies = {
@@ -137,7 +133,7 @@ describe("PUT /api/zero/firewall-policies", () => {
 
   it("should overwrite previous policies", async () => {
     const created = await (
-      await postAgent({ connectors: [] }, testCliToken, testOrgSlug)
+      await postAgent({}, testCliToken, testOrgSlug)
     ).json();
 
     const first = { github: { "issues:read": "allow" } };
@@ -163,7 +159,7 @@ describe("PUT /api/zero/firewall-policies", () => {
 
   it("should return 403 for non-admin users", async () => {
     const created = await (
-      await postAgent({ connectors: [] }, testCliToken, testOrgSlug)
+      await postAgent({}, testCliToken, testOrgSlug)
     ).json();
 
     // Create a non-admin user
@@ -191,7 +187,7 @@ describe("PUT /api/zero/firewall-policies", () => {
 
   it("should return 400 for unknown firewall ref", async () => {
     const created = await (
-      await postAgent({ connectors: [] }, testCliToken, testOrgSlug)
+      await postAgent({}, testCliToken, testOrgSlug)
     ).json();
 
     const response = await putPolicies(
@@ -209,7 +205,7 @@ describe("PUT /api/zero/firewall-policies", () => {
 
   it("should return 400 for unknown permission name", async () => {
     const created = await (
-      await postAgent({ connectors: [] }, testCliToken, testOrgSlug)
+      await postAgent({}, testCliToken, testOrgSlug)
     ).json();
 
     const response = await putPolicies(
@@ -252,7 +248,7 @@ describe("PUT /api/zero/firewall-policies", () => {
 
   it("should accept empty policies", async () => {
     const created = await (
-      await postAgent({ connectors: [] }, testCliToken, testOrgSlug)
+      await postAgent({}, testCliToken, testOrgSlug)
     ).json();
 
     const response = await putPolicies(
@@ -268,11 +264,7 @@ describe("PUT /api/zero/firewall-policies", () => {
   });
 
   it("should return firewallPolicies as null for new agents", async () => {
-    const createRes = await postAgent(
-      { connectors: [] },
-      testCliToken,
-      testOrgSlug,
-    );
+    const createRes = await postAgent({}, testCliToken, testOrgSlug);
     expect(createRes.status).toBe(201);
     const data = await createRes.json();
     expect(data.firewallPolicies).toBeNull();
@@ -280,7 +272,7 @@ describe("PUT /api/zero/firewall-policies", () => {
 
   it("should return full agent response shape", async () => {
     const created = await (
-      await postAgent({ connectors: [] }, testCliToken, testOrgSlug)
+      await postAgent({}, testCliToken, testOrgSlug)
     ).json();
 
     const policies = { github: { "issues:read": "allow" } };
@@ -298,17 +290,16 @@ describe("PUT /api/zero/firewall-policies", () => {
       description: expect.toBeOneOf([null, expect.any(String)]),
       displayName: expect.toBeOneOf([null, expect.any(String)]),
       sound: expect.toBeOneOf([null, expect.any(String)]),
-      connectors: expect.any(Array),
       firewallPolicies: policies,
     });
   });
 
   it("should isolate policies between different agents", async () => {
     const agent1 = await (
-      await postAgent({ connectors: [] }, testCliToken, testOrgSlug)
+      await postAgent({}, testCliToken, testOrgSlug)
     ).json();
     const agent2 = await (
-      await postAgent({ connectors: [] }, testCliToken, testOrgSlug)
+      await postAgent({}, testCliToken, testOrgSlug)
     ).json();
 
     const policies1 = { github: { "issues:read": "allow" } };

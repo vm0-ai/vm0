@@ -6,6 +6,7 @@ import {
   zeroSchedulesMainContract,
   zeroSchedulesByNameContract,
   zeroSchedulesEnableContract,
+  zeroUserConnectorsContract,
   type FirewallPolicies,
 } from "@vm0/core";
 import { throwIfAbort } from "../utils.ts";
@@ -21,7 +22,6 @@ import {
   type CronTimeOption,
 } from "./cron.ts";
 import { reloadAgents$ } from "./agents-list.ts";
-import { reloadZeroCompose$ } from "./zero-connectors.ts";
 import type { ScheduleEntry } from "../../views/zero-page/zero-schedule-card.tsx";
 
 const L = logger("ZeroJobDetail");
@@ -321,15 +321,57 @@ export const zeroJobUpdateSettings$ = command(
 );
 
 // ---------------------------------------------------------------------------
-// Connectors management
+// Connectors management — user-level permissions per agent
 // ---------------------------------------------------------------------------
+
+interface UserConnectorPermissionsState {
+  enabledTypes: string[];
+  loading: boolean;
+}
+
+const userConnectorPermissionsState$ = state<UserConnectorPermissionsState>({
+  enabledTypes: [],
+  loading: false,
+});
+
+export const zeroJobUserConnectorsLoading$ = computed(
+  (get) => get(userConnectorPermissionsState$).loading,
+);
+
+const fetchZeroJobUserConnectors$ = command(
+  async ({ get, set }, _signal: AbortSignal) => {
+    const detail = get(zeroJobDetail$);
+    if (!detail?.agentId) {
+      return;
+    }
+
+    set(userConnectorPermissionsState$, { enabledTypes: [], loading: true });
+
+    try {
+      const client = get(zeroClient$)(zeroUserConnectorsContract);
+      const result = await client.get({ params: { id: detail.agentId } });
+      if (result.status !== 200) {
+        throw new Error(
+          `Failed to fetch connector permissions (${result.status})`,
+        );
+      }
+      set(userConnectorPermissionsState$, {
+        enabledTypes: result.body.enabledTypes,
+        loading: false,
+      });
+    } catch (error) {
+      throwIfAbort(error);
+      L.error("Failed to fetch user connector permissions:", error);
+      set(userConnectorPermissionsState$, { enabledTypes: [], loading: false });
+    }
+  },
+);
 
 const internalAddedConnectors$ = state<string[] | null>(null);
 
-const seededConnectors$ = computed((get) => {
-  const detail = get(zeroJobDetail$);
-  return detail?.connectors ?? [];
-});
+const seededConnectors$ = computed(
+  (get) => get(userConnectorPermissionsState$).enabledTypes,
+);
 
 export const zeroJobAddedConnectors$ = computed((get) => {
   const local = get(internalAddedConnectors$);
@@ -382,29 +424,29 @@ export const saveZeroJobConnectors$ = command(
 
     set(internalSaving$, true);
     try {
-      const newConnectors = get(internalAddedConnectors$) ?? [];
-      const client = get(zeroClient$)(zeroAgentsByIdContract);
+      const enabledTypes = get(internalAddedConnectors$) ?? [];
+      const client = get(zeroClient$)(zeroUserConnectorsContract);
       const result = await client.update({
         params: { id: detail.agentId },
-        body: { connectors: newConnectors },
+        body: { enabledTypes },
       });
       signal.throwIfAborted();
 
       if (result.status !== 200) {
         const errorDetail =
-          result.status === 400 ||
           result.status === 401 ||
           result.status === 403 ||
-          result.status === 404 ||
-          result.status === 422
+          result.status === 404
             ? result.body.error.message
             : `status ${result.status}`;
         throw new Error(`Save failed: ${errorDetail}`);
       }
 
       set(internalAddedConnectors$, null);
-      await set(fetchZeroJobDetail$, signal);
-      set(reloadZeroCompose$);
+      set(userConnectorPermissionsState$, {
+        enabledTypes: result.body.enabledTypes,
+        loading: false,
+      });
       toast.success("Connectors saved");
     } catch (error) {
       throwIfAbort(error);
@@ -814,6 +856,7 @@ export const fetchZeroJobData$ = command(
     set(scheduleState$, { schedules: [], error: null });
     set(editedContent$, null);
     set(internalAddedConnectors$, null);
+    set(userConnectorPermissionsState$, { enabledTypes: [], loading: false });
     set(internalBuildError$, null);
     set(jobBuilding$, false);
     set(internalSaving$, false);
@@ -826,6 +869,7 @@ export const fetchZeroJobData$ = command(
       set(fetchZeroJobInstructions$, signal),
       set(fetchZeroJobSchedule$, signal),
       set(fetchZeroJobFirewallPolicies$, signal),
+      set(fetchZeroJobUserConnectors$, signal),
     ]);
   },
 );

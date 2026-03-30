@@ -43,7 +43,6 @@ function mockAgentResponse() {
     displayName: null,
     sound: null,
     avatarUrl: null,
-    connectors: ["search"],
     firewallPolicies: null,
     customSkills: [],
   };
@@ -304,11 +303,15 @@ describe("zero-job-detail signals", () => {
       let capturedUrl = "";
       server.use(
         http.get("http://localhost:3000/api/zero/agents/*", ({ request }) => {
-          capturedUrl = request.url;
-          // Only match the agent detail request, not the instructions sub-path
-          if (capturedUrl.includes("/instructions")) {
+          const url = request.url;
+          // Only match the agent detail request, not the instructions or user-connectors sub-paths
+          if (url.includes("/instructions")) {
             return HttpResponse.json(mockInstructions());
           }
+          if (url.includes("/user-connectors")) {
+            return HttpResponse.json({ enabledTypes: [] });
+          }
+          capturedUrl = url;
           return HttpResponse.json({
             ...mockAgentResponse(),
             name: "sub-agent",
@@ -836,7 +839,6 @@ describe("zero-job-detail signals", () => {
               displayName: null,
               sound: null,
               avatarUrl: null,
-              connectors: [],
               firewallPolicies: null,
             });
           },
@@ -916,7 +918,6 @@ describe("zero-job-detail signals", () => {
               displayName: null,
               sound: null,
               avatarUrl: null,
-              connectors: [],
               firewallPolicies: null,
             });
           },
@@ -965,7 +966,6 @@ describe("zero-job-detail signals", () => {
               description: null,
               sound: "friendly",
               avatarUrl: null,
-              connectors: [],
               firewallPolicies: null,
             });
           },
@@ -1008,7 +1008,6 @@ describe("zero-job-detail signals", () => {
               description: null,
               sound: null,
               avatarUrl: null,
-              connectors: [],
               firewallPolicies: null,
             });
           },
@@ -1065,17 +1064,22 @@ describe("zero-job-detail signals", () => {
         http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json({ schedules: [] });
         }),
+        http.get(
+          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["search"] });
+          },
+        ),
       );
 
       await setupPage({ context, path: "/", withoutRender: true });
       await context.store.set(fetchZeroJobData$, "my-agent", context.signal);
     }
 
-    it("should seed connectors from agent response", async () => {
+    it("should seed connectors from user-connectors api", async () => {
       await setupWithAgent();
 
       const connectors = context.store.get(zeroJobAddedConnectors$);
-      // Server filters out seed skills, only user connectors remain
       expect(connectors).toStrictEqual(["search"]);
       expect(context.store.get(zeroJobConnectorsDirty$)).toBeFalsy();
     });
@@ -1113,38 +1117,29 @@ describe("zero-job-detail signals", () => {
       expect(context.store.get(zeroJobConnectorsDirty$)).toBeFalsy();
     });
 
-    it("should save connectors via zero agents api", async () => {
-      let capturedBody: { connectors: string[] } | null = null;
+    it("should save connectors via user-connectors api", async () => {
+      let capturedBody: { enabledTypes: string[] } | null = null;
 
       await setupWithAgent();
 
       server.use(
         http.put(
-          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002",
+          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/user-connectors",
           async ({ request }) => {
-            capturedBody = (await request.json()) as { connectors: string[] };
+            capturedBody = (await request.json()) as { enabledTypes: string[] };
             return HttpResponse.json({
-              agentId: "c0000000-0000-4000-a000-000000000002",
-              description: null,
-              displayName: null,
-              sound: null,
-              avatarUrl: null,
-              connectors: capturedBody.connectors,
-              firewallPolicies: null,
+              enabledTypes: capturedBody.enabledTypes,
             });
           },
         ),
-        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
-          return HttpResponse.json(mockAgentResponse());
-        }),
       );
 
       context.store.set(addZeroJobConnector$, "gmail");
       await context.store.set(saveZeroJobConnectors$, context.signal);
 
-      // Verify connectors were sent as short names
+      // Verify connectors were sent as enabledTypes
       expect(capturedBody).toBeTruthy();
-      expect(capturedBody!.connectors).toStrictEqual(["search", "gmail"]);
+      expect(capturedBody!.enabledTypes).toStrictEqual(["search", "gmail"]);
 
       // After save, dirty state should be reset
       expect(context.store.get(zeroJobConnectorsDirty$)).toBeFalsy();
@@ -1156,12 +1151,12 @@ describe("zero-job-detail signals", () => {
 
       server.use(
         http.put(
-          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002",
+          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/user-connectors",
           () => {
             return HttpResponse.json(
               {
                 error: {
-                  message: "Build failed",
+                  message: "Save failed",
                   code: "INTERNAL_SERVER_ERROR",
                 },
               },

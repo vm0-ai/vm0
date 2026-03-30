@@ -18,7 +18,6 @@ const mockAgent = {
   displayName: "My Agent",
   description: null,
   sound: null,
-  connectors: ["github", "linear"],
 };
 
 describe("zero agent list command", () => {
@@ -55,7 +54,6 @@ describe("zero agent list command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("my-agent");
       expect(logCalls).toContain("My Agent");
-      expect(logCalls).toContain("github, linear");
     });
 
     it("should display empty state message when no agents", async () => {

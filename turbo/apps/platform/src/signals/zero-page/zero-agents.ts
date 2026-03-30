@@ -29,7 +29,6 @@ export const createSubagent$ = command(
     const createClient = get(zeroClient$);
 
     await createZeroAgent(createClient, {
-      connectors: [],
       displayName,
       avatarUrl,
     });

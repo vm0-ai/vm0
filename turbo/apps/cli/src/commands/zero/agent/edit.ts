@@ -12,10 +12,6 @@ export const editCommand = new Command()
   .name("edit")
   .description("Edit a zero agent")
   .argument("<agent-id>", "Agent ID")
-  .option(
-    "--connectors <items>",
-    "Comma-separated connector short names (e.g. github,linear)",
-  )
   .option("--display-name <name>", "New display name")
   .option("--description <text>", "New description")
   .option(
@@ -41,7 +37,6 @@ Notes:
       async (
         agentId: string,
         options: {
-          connectors?: string;
           displayName?: string;
           description?: string;
           sound?: string;
@@ -49,25 +44,20 @@ Notes:
         },
       ) => {
         const hasAgentUpdate =
-          options.connectors !== undefined ||
           options.displayName !== undefined ||
           options.description !== undefined ||
           options.sound !== undefined;
 
         if (!hasAgentUpdate && !options.instructionsFile) {
           throw new Error(
-            "At least one option is required (--connectors, --display-name, --description, --sound, --instructions-file)",
+            "At least one option is required (--display-name, --description, --sound, --instructions-file)",
           );
         }
 
         if (hasAgentUpdate) {
           const current = await getZeroAgent(agentId);
-          const connectors = options.connectors
-            ? options.connectors.split(",").map((s) => s.trim())
-            : current.connectors;
 
           await updateZeroAgent(agentId, {
-            connectors,
             displayName:
               options.displayName !== undefined
                 ? options.displayName

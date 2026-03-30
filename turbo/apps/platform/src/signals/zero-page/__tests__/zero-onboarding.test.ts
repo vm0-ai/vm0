@@ -17,9 +17,9 @@ import { SEED_INSTRUCTIONS } from "../../../data/the-seed.ts";
 const context = testContext();
 
 interface CreateAgentPayload {
-  connectors: string[];
   displayName?: string;
   sound?: string;
+  avatarUrl?: string;
 }
 
 interface InstructionsPayload {
@@ -27,7 +27,7 @@ interface InstructionsPayload {
 }
 
 describe("completeZeroOnboarding$", () => {
-  it("should create agent via zero agents api with connectors and metadata", async () => {
+  it("should create agent via zero agents api with metadata", async () => {
     let capturedPayload: CreateAgentPayload | null = null;
     let capturedInstructions: InstructionsPayload | null = null;
 
@@ -62,7 +62,6 @@ describe("completeZeroOnboarding$", () => {
             displayName: capturedPayload.displayName ?? null,
             sound: capturedPayload.sound ?? null,
             avatarUrl: null,
-            connectors: capturedPayload.connectors,
             firewallPolicies: null,
           },
           { status: 201 },
@@ -79,7 +78,6 @@ describe("completeZeroOnboarding$", () => {
             displayName: null,
             sound: null,
             avatarUrl: null,
-            connectors: [],
             firewallPolicies: null,
           });
         },
@@ -101,9 +99,8 @@ describe("completeZeroOnboarding$", () => {
 
     await context.store.set(completeZeroOnboarding$, context.signal);
 
-    // Verify agent was created — frontend sends only user connectors (empty)
+    // Verify agent was created with metadata (no connectors in create body)
     expect(capturedPayload).toBeTruthy();
-    expect(capturedPayload!.connectors).toStrictEqual([]);
     expect(capturedPayload!.displayName).toBe("My Assistant");
     expect(capturedPayload!.sound).toBe("professional");
 
@@ -112,8 +109,8 @@ describe("completeZeroOnboarding$", () => {
     expect(capturedInstructions!.content).toBe(SEED_INSTRUCTIONS);
   });
 
-  it("should send only user-selected connectors (server adds seed skills)", async () => {
-    let capturedPayload: CreateAgentPayload | null = null;
+  it("should set user-connectors after creating agent when connectors are selected", async () => {
+    let capturedUserConnectorsBody: { enabledTypes: string[] } | null = null;
 
     server.use(
       http.post("*/api/zero/model-providers", () => {
@@ -136,8 +133,7 @@ describe("completeZeroOnboarding$", () => {
           { status: 201 },
         );
       }),
-      http.post("*/api/zero/agents", async ({ request }) => {
-        capturedPayload = (await request.json()) as CreateAgentPayload;
+      http.post("*/api/zero/agents", () => {
         return HttpResponse.json(
           {
             name: "test-agent-uuid",
@@ -146,7 +142,6 @@ describe("completeZeroOnboarding$", () => {
             displayName: null,
             sound: null,
             avatarUrl: null,
-            connectors: capturedPayload.connectors,
             firewallPolicies: null,
           },
           { status: 201 },
@@ -162,9 +157,17 @@ describe("completeZeroOnboarding$", () => {
             displayName: null,
             sound: null,
             avatarUrl: null,
-            connectors: [],
             firewallPolicies: null,
           });
+        },
+      ),
+      http.put(
+        "*/api/zero/agents/d0000000-0000-4000-a000-000000000001/user-connectors",
+        async ({ request }) => {
+          capturedUserConnectorsBody = (await request.json()) as {
+            enabledTypes: string[];
+          };
+          return HttpResponse.json({ enabledTypes: ["slack"] });
         },
       ),
       http.put("*/api/zero/default-agent", () => {
@@ -184,8 +187,9 @@ describe("completeZeroOnboarding$", () => {
 
     await context.store.set(completeZeroOnboarding$, context.signal);
 
-    // Only user-selected connectors sent (server injects seed skills)
-    expect(capturedPayload!.connectors).toStrictEqual(["slack"]);
+    // User-selected connectors sent to user-connectors API (not create body)
+    expect(capturedUserConnectorsBody).toBeTruthy();
+    expect(capturedUserConnectorsBody!.enabledTypes).toStrictEqual(["slack"]);
   });
 
   it("should set default agent after creating compose", async () => {
@@ -221,7 +225,6 @@ describe("completeZeroOnboarding$", () => {
             displayName: null,
             sound: null,
             avatarUrl: null,
-            connectors: [],
             firewallPolicies: null,
           },
           { status: 201 },
@@ -237,7 +240,6 @@ describe("completeZeroOnboarding$", () => {
             displayName: null,
             sound: null,
             avatarUrl: null,
-            connectors: [],
             firewallPolicies: null,
           });
         },
@@ -293,7 +295,6 @@ describe("completeZeroOnboarding$", () => {
             displayName: null,
             sound: null,
             avatarUrl: null,
-            connectors: [],
             firewallPolicies: null,
           },
           { status: 201 },
@@ -309,7 +310,6 @@ describe("completeZeroOnboarding$", () => {
             displayName: null,
             sound: null,
             avatarUrl: null,
-            connectors: [],
             firewallPolicies: null,
           });
         },
@@ -450,7 +450,6 @@ describe("completeZeroOnboarding$", () => {
             displayName: null,
             sound: null,
             avatarUrl: null,
-            connectors: [],
             firewallPolicies: null,
           },
           { status: 201 },
@@ -466,7 +465,6 @@ describe("completeZeroOnboarding$", () => {
             displayName: null,
             sound: null,
             avatarUrl: null,
-            connectors: [],
             firewallPolicies: null,
           });
         },
@@ -525,7 +523,6 @@ describe("completeZeroOnboarding$ avatar", () => {
             displayName: null,
             sound: null,
             avatarUrl: capturedPayload.avatarUrl ?? null,
-            connectors: [],
             firewallPolicies: null,
           },
           { status: 201 },
@@ -541,7 +538,6 @@ describe("completeZeroOnboarding$ avatar", () => {
             displayName: null,
             sound: null,
             avatarUrl: null,
-            connectors: [],
             firewallPolicies: null,
           });
         },
@@ -603,7 +599,6 @@ describe("completeZeroOnboarding$ auto-init model provider", () => {
             displayName: null,
             sound: null,
             avatarUrl: null,
-            connectors: [],
             firewallPolicies: null,
           },
           { status: 201 },
@@ -619,7 +614,6 @@ describe("completeZeroOnboarding$ auto-init model provider", () => {
             displayName: null,
             sound: null,
             avatarUrl: null,
-            connectors: [],
             firewallPolicies: null,
           });
         },

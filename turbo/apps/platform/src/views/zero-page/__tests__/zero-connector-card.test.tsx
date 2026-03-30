@@ -74,9 +74,11 @@ async function renderTeamPage(connectors: string[]) {
         displayName: null,
         sound: null,
         avatarUrl: null,
-        connectors,
         firewallPolicies: null,
       });
+    }),
+    http.get("*/api/zero/agents/compose-1/user-connectors", () => {
+      return HttpResponse.json({ enabledTypes: connectors });
     }),
   );
 
@@ -362,9 +364,11 @@ async function renderTeamPageAsMember(connectors: string[]) {
         displayName: null,
         sound: null,
         avatarUrl: null,
-        connectors,
         firewallPolicies: null,
       });
+    }),
+    http.get("*/api/zero/agents/compose-1/user-connectors", () => {
+      return HttpResponse.json({ enabledTypes: connectors });
     }),
     // Chat threads — required when viewing a job detail page
     http.get("*/api/zero/chat-threads", () => {

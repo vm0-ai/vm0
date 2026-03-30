@@ -103,6 +103,7 @@ export {
   deleteZeroAgent,
   getZeroAgentInstructions,
   updateZeroAgentInstructions,
+  setZeroAgentUserConnectors,
 } from "./domains/zero-agents";
 
 // Domain modules - Zero Connectors

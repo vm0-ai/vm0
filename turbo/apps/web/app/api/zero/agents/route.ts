@@ -34,8 +34,8 @@ const router = tsr.router(zeroAgentsMainContract, {
     // Generate UUID agent name
     const agentName = crypto.randomUUID();
 
-    // Build compose content from connectors
-    const content = buildComposeContent(agentName, body.connectors);
+    // Build compose content (always includes all connector skills)
+    const content = buildComposeContent(agentName);
 
     // Run synchronous compose (pass empty instructions so the
     // agent-instructions storage record is created — without it,
@@ -54,7 +54,7 @@ const router = tsr.router(zeroAgentsMainContract, {
         body: {
           error: {
             message:
-              "One or more connectors reference skills that are not cached. Please try again later.",
+              "One or more skills are not cached. Please try again later.",
             code: "UNPROCESSABLE_ENTITY",
           },
         },
@@ -72,7 +72,6 @@ const router = tsr.router(zeroAgentsMainContract, {
         description: body.description ?? null,
         sound: body.sound ?? null,
         avatarUrl: body.avatarUrl ?? null,
-        connectors: body.connectors,
       })
       .onConflictDoUpdate({
         target: [zeroAgents.orgId, zeroAgents.name],
@@ -81,7 +80,6 @@ const router = tsr.router(zeroAgentsMainContract, {
           description: body.description ?? null,
           sound: body.sound ?? null,
           avatarUrl: body.avatarUrl ?? null,
-          connectors: body.connectors,
           updatedAt: new Date(),
         },
       });
@@ -96,7 +94,6 @@ const router = tsr.router(zeroAgentsMainContract, {
         displayName: body.displayName ?? null,
         sound: body.sound ?? null,
         avatarUrl: body.avatarUrl ?? null,
-        connectors: body.connectors,
         firewallPolicies: null,
         customSkills: [],
       },
@@ -121,7 +118,6 @@ const router = tsr.router(zeroAgentsMainContract, {
         description: zeroAgents.description,
         sound: zeroAgents.sound,
         avatarUrl: zeroAgents.avatarUrl,
-        connectors: zeroAgents.connectors,
         firewallPolicies: zeroAgents.firewallPolicies,
         customSkills: zeroAgents.customSkills,
       })
@@ -137,7 +133,6 @@ const router = tsr.router(zeroAgentsMainContract, {
         description: row.description ?? null,
         sound: row.sound ?? null,
         avatarUrl: row.avatarUrl ?? null,
-        connectors: row.connectors,
         firewallPolicies: row.firewallPolicies ?? null,
         customSkills: row.customSkills,
       })),

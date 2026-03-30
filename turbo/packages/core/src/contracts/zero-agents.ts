@@ -14,7 +14,6 @@ export const zeroAgentResponseSchema = z.object({
   displayName: z.string().nullable(),
   sound: z.string().nullable(),
   avatarUrl: z.string().nullable(),
-  connectors: z.array(z.string()),
   firewallPolicies: firewallPoliciesSchema.nullable(),
   customSkills: z.array(z.string()).default([]),
 });
@@ -27,7 +26,6 @@ export const zeroAgentRequestSchema = z.object({
   displayName: z.string().optional(),
   sound: z.string().optional(),
   avatarUrl: z.string().optional(),
-  connectors: z.array(z.string()),
 });
 
 /**

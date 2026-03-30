@@ -18,7 +18,6 @@ const mockAgent = {
   displayName: "My Agent",
   description: "A test agent",
   sound: "professional",
-  connectors: ["github"],
 };
 
 describe("zero agent view command", () => {
@@ -54,7 +53,6 @@ describe("zero agent view command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("comp_abc123");
-      expect(logCalls).toContain("github");
       expect(logCalls).toContain("A test agent");
       expect(logCalls).toContain("professional");
     });

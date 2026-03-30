@@ -55,6 +55,7 @@ import {
   deleteZeroJobAgent$,
   zeroJobAddedConnectors$,
   zeroJobConnectorsDirty$,
+  zeroJobUserConnectorsLoading$,
   addZeroJobConnector$,
   removeZeroJobConnector$,
   saveZeroJobConnectors$,
@@ -272,6 +273,7 @@ function JobConnectorsTab({
   readOnly?: boolean;
 }) {
   const addedConnectors = useGet(zeroJobAddedConnectors$);
+  const addedConnectorsLoading = useGet(zeroJobUserConnectorsLoading$);
   const connectorsDirty = useGet(zeroJobConnectorsDirty$);
   const connectorsSaving = useGet(zeroJobSettingsSaving$);
   const addConnector = useSet(addZeroJobConnector$);
@@ -285,7 +287,7 @@ function JobConnectorsTab({
   return (
     <ZeroConnectorsTab
       addedConnectors={addedConnectors}
-      addedConnectorsLoading={false}
+      addedConnectorsLoading={addedConnectorsLoading}
       connectorsDirty={connectorsDirty}
       connectorsSaving={connectorsSaving}
       agentId={agentId}

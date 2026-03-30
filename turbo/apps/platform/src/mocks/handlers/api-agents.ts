@@ -60,6 +60,17 @@ export const apiAgentsHandlers = [
     });
   }),
 
+  // GET /api/zero/agents/:id/user-connectors
+  http.get("*/api/zero/agents/:id/user-connectors", () => {
+    return HttpResponse.json({ enabledTypes: [] });
+  }),
+
+  // PUT /api/zero/agents/:id/user-connectors
+  http.put("*/api/zero/agents/:id/user-connectors", async ({ request }) => {
+    const body = (await request.json()) as { enabledTypes: string[] };
+    return HttpResponse.json({ enabledTypes: body.enabledTypes ?? [] });
+  }),
+
   // GET /api/zero/agents/:name
   http.get("*/api/zero/agents/:name", ({ params }) => {
     // Skip if it matches sub-routes like "instructions"
@@ -76,7 +87,6 @@ export const apiAgentsHandlers = [
       displayName: null,
       sound: null,
       avatarUrl: null,
-      connectors: [],
       firewallPolicies: null,
     });
   }),

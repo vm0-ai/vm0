@@ -7,6 +7,7 @@ import {
 import {
   createTestCompose,
   createTestConnector,
+  createTestUserConnector,
   createTestSchedule,
   createTestZeroAgent,
   getTestZeroAgentId,
@@ -259,6 +260,8 @@ describe("createZeroRun()", () => {
         },
       });
       const agentId = await getTestZeroAgentId(user.orgId, agentName);
+      // Grant user permission to use github connector for this agent
+      await createTestUserConnector(user.orgId, user.userId, agentId, "github");
 
       const result = await createZeroRun(baseParams({ agentId: agentId }));
 
@@ -282,6 +285,8 @@ describe("createZeroRun()", () => {
         connectors: ["slack"],
       });
       const agentId = await getTestZeroAgentId(user.orgId, agentName);
+      // Grant user permission to use slack connector for this agent
+      await createTestUserConnector(user.orgId, user.userId, agentId, "slack");
 
       const result = await createZeroRun(baseParams({ agentId: agentId }));
 
@@ -309,6 +314,8 @@ describe("createZeroRun()", () => {
         },
       });
       const agentId = await getTestZeroAgentId(user.orgId, agentName);
+      // Grant user permission to use slack connector for this agent
+      await createTestUserConnector(user.orgId, user.userId, agentId, "slack");
 
       const result = await createZeroRun(baseParams({ agentId: agentId }));
 
@@ -328,6 +335,9 @@ describe("createZeroRun()", () => {
       await createTestConnector({ type: "github" });
       await createTestConnector({ type: "slack" });
       const agentId = await getTestZeroAgentId(user.orgId, agentName);
+      // Grant user permissions to use both connectors for this agent
+      await createTestUserConnector(user.orgId, user.userId, agentId, "github");
+      await createTestUserConnector(user.orgId, user.userId, agentId, "slack");
 
       const result = await createZeroRun(baseParams({ agentId: agentId }));
 

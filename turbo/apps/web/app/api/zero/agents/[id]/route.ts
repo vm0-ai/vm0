@@ -24,7 +24,7 @@ const log = logger("api:zero-agents:id");
 
 function agentResponseBody(
   agent: typeof zeroAgents.$inferSelect | undefined,
-  fallback: { id: string; connectors?: string[] },
+  fallback: { id: string },
 ) {
   return {
     agentId: fallback.id,
@@ -32,7 +32,6 @@ function agentResponseBody(
     displayName: agent?.displayName ?? null,
     sound: agent?.sound ?? null,
     avatarUrl: agent?.avatarUrl ?? null,
-    connectors: fallback.connectors ?? agent?.connectors ?? [],
     firewallPolicies: agent?.firewallPolicies ?? null,
     customSkills: agent?.customSkills ?? [],
   };
@@ -126,10 +125,9 @@ const router = tsr.router(zeroAgentsByIdContract, {
     );
     if (forbidden) return forbidden;
 
-    // Build compose content from connectors + existing custom skills
+    // Build compose content (all connector skills included, plus custom skills)
     const content = buildComposeContent(
       existing.name,
-      body.connectors,
       (existing.customSkills ?? []).map((name) => ({ name })),
     );
 
@@ -147,7 +145,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
         body: {
           error: {
             message:
-              "One or more connectors reference skills that are not cached. Please try again later.",
+              "One or more skills are not cached. Please try again later.",
             code: "UNPROCESSABLE_ENTITY",
           },
         },
@@ -166,13 +164,11 @@ const router = tsr.router(zeroAgentsByIdContract, {
         description: body.description ?? null,
         sound: body.sound ?? null,
         avatarUrl: body.avatarUrl ?? null,
-        connectors: body.connectors,
       })
       .onConflictDoUpdate({
         target: [zeroAgents.orgId, zeroAgents.name],
         set: {
           updatedAt: now,
-          connectors: body.connectors,
           ...(body.displayName !== undefined && {
             displayName: body.displayName,
           }),
@@ -197,10 +193,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
 
     return {
       status: 200 as const,
-      body: agentResponseBody(agent, {
-        id: params.id,
-        connectors: body.connectors,
-      }),
+      body: agentResponseBody(agent, { id: params.id }),
     };
   },
 

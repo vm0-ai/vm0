@@ -24,7 +24,7 @@ Notes:
         console.log(chalk.dim("No zero agents found"));
         console.log(
           chalk.dim(
-            '  Create one with: zero agent create --connectors github --display-name "My Agent"',
+            '  Create one with: zero agent create --display-name "My Agent"',
           ),
         );
         return;
@@ -39,7 +39,6 @@ Notes:
       const header = [
         "AGENT ID".padEnd(idWidth),
         "DISPLAY NAME".padEnd(displayWidth),
-        "CONNECTORS",
       ].join("  ");
       console.log(chalk.dim(header));
 
@@ -47,7 +46,6 @@ Notes:
         const row = [
           agent.agentId.padEnd(idWidth),
           (agent.displayName ?? "-").padEnd(displayWidth),
-          agent.connectors.join(", ") || "-",
         ].join("  ");
         console.log(row);
       }

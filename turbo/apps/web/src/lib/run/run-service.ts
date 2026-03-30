@@ -47,6 +47,7 @@ import {
   type RunStatus,
   type GetRunResponse,
   type FirewallPolicies,
+  type ConnectorType,
   orgTierSchema,
 } from "@vm0/core";
 import { getOrgData } from "../org/org-cache-service";
@@ -470,6 +471,7 @@ export interface CreateRunParams {
   orgTier?: OrgTier;
   // Per-permission firewall policies from zero agent configuration.
   firewallPolicies?: FirewallPolicies;
+  allowedConnectorTypes?: ConnectorType[];
 }
 
 /**
@@ -515,6 +517,7 @@ interface StartRunParams {
   debugNoMockClaude?: boolean;
   checkEnv?: boolean;
   firewallPolicies?: FirewallPolicies;
+  allowedConnectorTypes?: ConnectorType[];
 }
 
 export interface CreateRunResult {
@@ -801,6 +804,7 @@ export async function buildAndDispatchRun(opts: {
       firewallPolicies: params.firewallPolicies,
       apiStartTime,
       orgId,
+      allowedConnectorTypes: params.allowedConnectorTypes,
     });
     const buildContextTime = Date.now();
 
@@ -1080,6 +1084,7 @@ export async function startRun(
     debugNoMockClaude: params.debugNoMockClaude,
     checkEnv: params.checkEnv,
     firewallPolicies: params.firewallPolicies,
+    allowedConnectorTypes: params.allowedConnectorTypes,
     orgId: authOrgId,
     orgTier,
   });

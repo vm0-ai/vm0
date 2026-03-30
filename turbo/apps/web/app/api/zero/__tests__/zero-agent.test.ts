@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 import { GET as getAgentRoute } from "../agents/[id]/route";
 import { POST as createRunRoute } from "../runs/route";
@@ -7,7 +7,6 @@ import { generateZeroToken } from "../../../../src/lib/auth/sandbox-token";
 import {
   seedSeedSkills,
   seedSeedSkillStorages,
-  clearSkillsData,
 } from "../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../src/__tests__/test-helpers";
 import { onboardNewOrgAndUser } from "./zero-api-test-helper";
@@ -27,14 +26,12 @@ describe("Zero Agent E2E: create → run → zero token access", () => {
   let userId: string;
   let agent: { agentId: string };
 
-  beforeAll(async () => {
-    await clearSkillsData();
-    await seedSeedSkills();
-    await seedSeedSkillStorages();
-  });
-
   beforeEach(async () => {
     context.setupMocks();
+    // Re-seed skills before each test to avoid concurrency issues with other
+    // test workers that call clearSkillsData() in their beforeEach.
+    await seedSeedSkills();
+    await seedSeedSkillStorages();
     const result = await onboardNewOrgAndUser(context);
     orgSlug = result.orgSlug;
     orgId = result.user.orgId;

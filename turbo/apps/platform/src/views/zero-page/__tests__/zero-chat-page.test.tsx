@@ -263,9 +263,11 @@ describe("zero chat page - connector label casing", () => {
           displayName: null,
           sound: null,
           avatarUrl: null,
-          connectors: ["axiom"],
           firewallPolicies: null,
         });
+      }),
+      http.get("*/api/zero/agents/mock-compose-id/user-connectors", () => {
+        return HttpResponse.json({ enabledTypes: ["axiom"] });
       }),
     );
     mockChatAPI();

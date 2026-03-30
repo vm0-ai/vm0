@@ -25,7 +25,6 @@ Examples:
         if (agent.displayName) console.log(chalk.dim(agent.displayName));
         console.log();
         console.log(`Agent ID:     ${agent.agentId}`);
-        console.log(`Connectors:   ${agent.connectors.join(", ") || "-"}`);
         if (agent.description)
           console.log(`Description:  ${agent.description}`);
         if (agent.sound) console.log(`Sound:        ${agent.sound}`);

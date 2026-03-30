@@ -51,6 +51,12 @@ describe("zero agent create command", () => {
         http.post("http://localhost:3000/api/zero/agents", () => {
           return HttpResponse.json(mockAgent, { status: 201 });
         }),
+        http.put(
+          "http://localhost:3000/api/zero/agents/comp_xyz789/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["github"] });
+          },
+        ),
       );
 
       await createCommand.parseAsync([
@@ -85,6 +91,12 @@ describe("zero agent create command", () => {
           http.post("http://localhost:3000/api/zero/agents", () => {
             return HttpResponse.json(mockAgent, { status: 201 });
           }),
+          http.put(
+            "http://localhost:3000/api/zero/agents/comp_xyz789/user-connectors",
+            () => {
+              return HttpResponse.json({ enabledTypes: ["github"] });
+            },
+          ),
           http.put(
             "http://localhost:3000/api/zero/agents/comp_xyz789/instructions",
             async ({ request }) => {
