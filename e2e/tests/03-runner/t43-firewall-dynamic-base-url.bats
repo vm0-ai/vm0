@@ -58,8 +58,10 @@ agents:
     description: "Zendesk dynamic base URL placeholder test"
     framework: claude-code
     working_dir: /home/user/workspace
-    skills:
-      - zendesk
+    environment:
+      ZENDESK_API_TOKEN: \${{ secrets.ZENDESK_API_TOKEN }}
+      ZENDESK_SUBDOMAIN: \${{ vars.ZENDESK_SUBDOMAIN }}
+      ZENDESK_EMAIL: \${{ vars.ZENDESK_EMAIL }}
 EOF
 
     run $VM0_CLI compose --yes "$TEST_DIR/vm0-placeholder.yaml"
@@ -89,8 +91,10 @@ agents:
     description: "Zendesk dynamic base URL proxy test"
     framework: claude-code
     working_dir: /home/user/workspace
-    skills:
-      - zendesk
+    environment:
+      ZENDESK_API_TOKEN: \${{ secrets.ZENDESK_API_TOKEN }}
+      ZENDESK_SUBDOMAIN: \${{ vars.ZENDESK_SUBDOMAIN }}
+      ZENDESK_EMAIL: \${{ vars.ZENDESK_EMAIL }}
 EOF
 
     run $VM0_CLI compose --yes "$TEST_DIR/vm0-proxy.yaml"
