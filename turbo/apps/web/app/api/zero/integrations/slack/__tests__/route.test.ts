@@ -328,7 +328,7 @@ describe("/api/zero/integrations/slack", () => {
       expect(data.reinstallUrl).toContain("reinstall=1");
     });
 
-    it("treats null bot_scopes as no mismatch (backward compat)", async () => {
+    it("treats null bot_scopes as mismatch (requires reinstall)", async () => {
       await givenOrgSlackSetup({ isAdmin: true, botScopes: null });
 
       const request = new Request(
@@ -338,7 +338,7 @@ describe("/api/zero/integrations/slack", () => {
       const data = await response.json();
 
       expect(response.status).toBe(200);
-      expect(data.scopeMismatch).toBe(false);
+      expect(data.scopeMismatch).toBe(true);
     });
 
     it("does not expose scopeMismatch to non-admin users", async () => {
