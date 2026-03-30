@@ -11,6 +11,7 @@ mod prerequisites;
 mod process;
 mod runtime;
 mod sandbox;
+mod sandbox_control;
 mod snapshot;
 mod snapshot_provider;
 
@@ -23,5 +24,6 @@ pub use paths::{
 };
 pub use runtime::FirecrackerRuntime;
 pub use sandbox::FirecrackerSandbox;
+pub use sandbox_control::FirecrackerControl;
 pub use snapshot::{SnapshotError, create_snapshot};
 pub use snapshot_provider::FirecrackerSnapshotProvider;

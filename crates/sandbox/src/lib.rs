@@ -1,4 +1,5 @@
 mod config;
+mod control;
 mod error;
 mod factory;
 mod runtime;
@@ -7,6 +8,7 @@ mod snapshot;
 mod types;
 
 pub use config::{FactoryConfig, ResourceLimits, RuntimeConfig, SandboxConfig, SnapshotRef};
+pub use control::{RemoteExecResult, SandboxControl, SandboxControlError};
 pub use error::{Result, SandboxError};
 pub use factory::SandboxFactory;
 pub use runtime::SandboxRuntime;

@@ -10,7 +10,7 @@
 use std::process::ExitCode;
 
 use clap::Args;
-use sandbox_fc::RuntimePaths;
+use sandbox::SandboxControl;
 use tracing::info;
 
 use crate::error::{RunnerError, RunnerResult};
@@ -34,7 +34,7 @@ pub struct KillArgs {
 // Entry point
 // ---------------------------------------------------------------------------
 
-pub async fn run_kill(args: KillArgs) -> RunnerResult<ExitCode> {
+pub async fn run_kill(args: KillArgs, control: &dyn SandboxControl) -> RunnerResult<ExitCode> {
     // Phase 1: Discover running processes
     let discovered = process::discover_all().await;
     let runner_pids: Vec<u32> = discovered.runners.iter().map(|r| r.pid).collect();
@@ -65,7 +65,7 @@ pub async fn run_kill(args: KillArgs) -> RunnerResult<ExitCode> {
 
     // Phase 5: Cleanup based on orphan status
     if is_orphan {
-        let results = cleanup_orphan(&target.run_id, target.base_dir.as_deref()).await;
+        let results = cleanup_orphan(&target.run_id, target.base_dir.as_deref(), control).await;
         if !results.is_empty() {
             println!("Orphan cleanup:");
             for (step, success) in &results {
@@ -164,7 +164,11 @@ async fn kill_process_group(pid: u32) -> bool {
 // Orphan cleanup
 // ---------------------------------------------------------------------------
 
-async fn cleanup_orphan(run_id: &str, base_dir: Option<&std::path::Path>) -> Vec<(String, bool)> {
+async fn cleanup_orphan(
+    run_id: &str,
+    base_dir: Option<&std::path::Path>,
+    control: &dyn SandboxControl,
+) -> Vec<(String, bool)> {
     let mut results = Vec::new();
 
     // Workspace dir
@@ -176,7 +180,7 @@ async fn cleanup_orphan(run_id: &str, base_dir: Option<&std::path::Path>) -> Vec
     }
 
     // Socket dir
-    let sock_dir = RuntimePaths::new().sock_dir(run_id);
+    let sock_dir = control.runtime_dir(run_id);
     let label = format!("Socket dir: {}", sock_dir.display());
     let success = remove_dir_if_exists(&sock_dir).await;
     results.push((label, success));
