@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.51.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.50.2...runner-rs-v0.51.0) (2026-03-30)
+
+
+### Features
+
+* **sandbox:** add sandbox-mock crate for testing ([#7177](https://github.com/vm0-ai/vm0/issues/7177)) ([d643020](https://github.com/vm0-ai/vm0/commit/d643020b2ac0059996ebeaef128b79945d9e072c))
+
 ## [0.50.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.50.1...runner-rs-v0.50.2) (2026-03-30)
 
 

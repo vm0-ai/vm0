@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.125.0](https://github.com/vm0-ai/vm0/compare/core-v8.124.0...core-v8.125.0) (2026-03-30)
+
+
+### Features
+
+* add unified chat messages endpoint ([#7222](https://github.com/vm0-ai/vm0/issues/7222)) ([1a7bb9e](https://github.com/vm0-ai/vm0/commit/1a7bb9ee48d52b416924083e32c1af6230e24bd3))
+
+
+### Bug Fixes
+
+* **firewalls:** correct placeholder formats and base urls for accuracy ([#7183](https://github.com/vm0-ai/vm0/issues/7183)) ([db394c4](https://github.com/vm0-ai/vm0/commit/db394c4eefa8c083906cc8957d9030f0a906046c))
+
 ## [8.124.0](https://github.com/vm0-ai/vm0/compare/core-v8.123.0...core-v8.124.0) (2026-03-30)
 
 
