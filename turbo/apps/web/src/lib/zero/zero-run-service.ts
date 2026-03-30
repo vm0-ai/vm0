@@ -22,6 +22,9 @@ import {
   DISALLOWED_TOOLS,
   buildAgentToolsPrompt,
 } from "../integration-context";
+import { logger } from "../logger";
+
+const log = logger("zero:run");
 import { formatAgentIdentityPrompt } from "../agent-identity";
 import type { CallbackPayload } from "../callback/callback-payloads";
 import { zeroAgents } from "../../db/schema/zero-agent";
@@ -119,6 +122,9 @@ export async function createZeroRun(
       .map((r) => connectorTypeSchema.safeParse(r.connectorType))
       .filter((p) => p.success)
       .map((p) => p.data);
+    log.info(
+      `[DEBUG] user_connectors query: orgId=${agent.orgId} userId=${params.userId} agentId=${params.agentId} rows=${permRows.length} allowedConnectorTypes=${JSON.stringify(allowedConnectorTypes)}`,
+    );
   }
 
   // Build agent system prompt: identity + tools first, then trigger context
