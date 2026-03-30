@@ -8,6 +8,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { agentComposes } from "./agent-compose";
 import { agentRuns } from "./agent-run";
+import { agentSessions } from "./agent-session";
 
 /**
  * Chat Threads table
@@ -23,6 +24,9 @@ export const chatThreads = pgTable(
       .references(() => agentComposes.id, { onDelete: "cascade" })
       .notNull(),
     title: text("title"),
+    sessionId: uuid("session_id").references(() => agentSessions.id, {
+      onDelete: "set null",
+    }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

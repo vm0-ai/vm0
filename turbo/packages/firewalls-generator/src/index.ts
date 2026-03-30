@@ -21,6 +21,7 @@ import { generate as generateBrowserless } from "./browserless";
 import { generate as generateCalCom } from "./cal-com";
 import { generate as generateCalendly } from "./calendly";
 import { generate as generateCanva } from "./canva";
+import { generate as generateChatwoot } from "./chatwoot";
 import { generate as generateClickup } from "./clickup";
 import { generate as generateClose } from "./close";
 import { generate as generateCloudflare } from "./cloudflare";
@@ -129,6 +130,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   "cal-com": generateCalCom,
   calendly: generateCalendly,
   canva: generateCanva,
+  chatwoot: generateChatwoot,
   clickup: generateClickup,
   close: generateClose,
   cloudflare: generateCloudflare,
