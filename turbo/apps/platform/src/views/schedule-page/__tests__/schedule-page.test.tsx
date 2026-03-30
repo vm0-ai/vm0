@@ -25,7 +25,7 @@ describe("schedule page", () => {
         return HttpResponse.json({
           schedules: [
             {
-              id: "sched-1",
+              id: "f0000002-0000-4000-a000-000000000001",
               agentId: "compose-1",
               agentName: "Test Agent",
               orgSlug: "test",
@@ -44,6 +44,16 @@ describe("schedule page", () => {
               lastRunAt: null,
               createdAt: "2026-03-01T00:00:00Z",
               updatedAt: "2026-03-01T00:00:00Z",
+              userId: "test-user-123",
+              appendSystemPrompt: null,
+              vars: null,
+              secretNames: null,
+              artifactName: null,
+              artifactVersion: null,
+              volumeVersions: null,
+              slackChannelId: null,
+              retryStartedAt: null,
+              consecutiveFailures: 0,
             },
           ],
         });

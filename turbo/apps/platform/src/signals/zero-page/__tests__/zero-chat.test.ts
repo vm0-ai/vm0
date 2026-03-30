@@ -270,7 +270,7 @@ describe("zero-chat signals", () => {
         }),
         http.get("*/api/zero/logs/:runId", () => {
           return HttpResponse.json({
-            id: "run-1",
+            id: "a0000000-0000-4000-a000-000000000097",
             status: "completed",
             error: null,
             prompt: "test",

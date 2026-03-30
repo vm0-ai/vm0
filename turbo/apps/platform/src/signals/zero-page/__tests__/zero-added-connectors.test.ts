@@ -14,12 +14,13 @@ function mockAgentApi(connectors: string[]) {
   server.use(
     http.get("*/api/zero/agents/:name", () => {
       return HttpResponse.json({
-        name: "test-agent",
         agentId: "c0000000-0000-4000-a000-000000000001",
         description: null,
         displayName: null,
         sound: null,
+        avatarUrl: null,
         connectors,
+        firewallPolicies: null,
       });
     }),
   );
@@ -53,11 +54,11 @@ describe("zeroAddedConnectors$", () => {
     server.use(
       http.get("*/api/zero/agents/sub-agent-compose-id", () => {
         return HttpResponse.json({
-          name: "cycling-coach",
           agentId: "sub-agent-compose-id",
           description: null,
           displayName: null,
           sound: null,
+          avatarUrl: null,
           connectors: ["github"],
           firewallPolicies: null,
         });
@@ -108,12 +109,13 @@ describe("addZeroConnector$", () => {
         async ({ request }) => {
           capturedBody = (await request.json()) as { connectors: string[] };
           return HttpResponse.json({
-            name: "test-agent",
             agentId: "c0000000-0000-4000-a000-000000000001",
             description: null,
             displayName: null,
             sound: null,
+            avatarUrl: null,
             connectors: capturedBody.connectors,
+            firewallPolicies: null,
           });
         },
       ),

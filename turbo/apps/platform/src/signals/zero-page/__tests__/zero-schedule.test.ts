@@ -39,6 +39,16 @@ function mockDeployResponse() {
       lastRunAt: null,
       createdAt: "2026-03-01T00:00:00Z",
       updatedAt: "2026-03-01T00:00:00Z",
+      userId: "test-user-123",
+      appendSystemPrompt: null,
+      vars: null,
+      secretNames: null,
+      artifactName: null,
+      artifactVersion: null,
+      volumeVersions: null,
+      slackChannelId: null,
+      retryStartedAt: null,
+      consecutiveFailures: 0,
     },
     created: true,
   };
@@ -47,18 +57,6 @@ function mockDeployResponse() {
 function scheduleDefaults() {
   return {
     displayName: null,
-    userId: "test-user-123",
-    appendSystemPrompt: null,
-    vars: null,
-    secretNames: null,
-    artifactName: null,
-    artifactVersion: null,
-    volumeVersions: null,
-    notifyEmail: false,
-    notifySlack: false,
-    slackChannelId: null,
-    retryStartedAt: null,
-    consecutiveFailures: 0,
   };
 }
 
@@ -82,6 +80,16 @@ function createMockSchedules() {
       lastRunAt: null,
       createdAt: "2026-03-01T00:00:00Z",
       updatedAt: "2026-03-01T00:00:00Z",
+      userId: "test-user-123",
+      appendSystemPrompt: null,
+      vars: null,
+      secretNames: null,
+      artifactName: null,
+      artifactVersion: null,
+      volumeVersions: null,
+      slackChannelId: null,
+      retryStartedAt: null,
+      consecutiveFailures: 0,
     },
     {
       ...scheduleDefaults(),
@@ -101,6 +109,16 @@ function createMockSchedules() {
       lastRunAt: null,
       createdAt: "2026-03-01T00:00:00Z",
       updatedAt: "2026-03-01T00:00:00Z",
+      userId: "test-user-123",
+      appendSystemPrompt: null,
+      vars: null,
+      secretNames: null,
+      artifactName: null,
+      artifactVersion: null,
+      volumeVersions: null,
+      slackChannelId: null,
+      retryStartedAt: null,
+      consecutiveFailures: 0,
     },
     {
       ...scheduleDefaults(),
@@ -120,6 +138,16 @@ function createMockSchedules() {
       lastRunAt: null,
       createdAt: "2026-03-01T00:00:00Z",
       updatedAt: "2026-03-01T00:00:00Z",
+      userId: "test-user-123",
+      appendSystemPrompt: null,
+      vars: null,
+      secretNames: null,
+      artifactName: null,
+      artifactVersion: null,
+      volumeVersions: null,
+      slackChannelId: null,
+      retryStartedAt: null,
+      consecutiveFailures: 0,
     },
   ];
 }
@@ -1041,7 +1069,7 @@ describe("org schedule signals", () => {
           minute: 0,
           timezone: "UTC",
           intervalSeconds: 0,
-          agentId: "agent-uuid-123",
+          agentId: "e0000000-0000-4000-a000-000000000010",
         },
         context.signal,
       );
@@ -1081,7 +1109,7 @@ describe("org schedule signals", () => {
         {
           name: "morning-briefing",
           enabled: false,
-          agentId: "agent-uuid-123",
+          agentId: "e0000000-0000-4000-a000-000000000010",
         },
         context.signal,
       );
@@ -1117,7 +1145,7 @@ describe("org schedule signals", () => {
         deleteOrgSchedule$,
         {
           name: "morning-briefing",
-          agentId: "agent-uuid-123",
+          agentId: "e0000000-0000-4000-a000-000000000010",
         },
         context.signal,
       );

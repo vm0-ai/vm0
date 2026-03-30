@@ -39,7 +39,7 @@ function mockAPIs() {
     http.get("*/api/zero/agents/my-agent", () => {
       return HttpResponse.json({
         name: "my-agent",
-        agentId: "agent-detail-id",
+        agentId: "e0000000-0000-4000-a000-000000000010",
         description: "A helpful agent",
         displayName: "My Agent",
         sound: null,
@@ -120,7 +120,10 @@ describe("zero job detail page", () => {
         return HttpResponse.json({ threads: [] });
       }),
       http.get("*/api/zero/agents/:name", () => {
-        return HttpResponse.json({ error: "Not found" }, { status: 404 });
+        return HttpResponse.json(
+          { error: { message: "Not found", code: "INTERNAL_SERVER_ERROR" } },
+          { status: 404 },
+        );
       }),
     );
 
@@ -180,7 +183,7 @@ function mockAPIsWithSchedules() {
     http.get("*/api/zero/agents/my-agent", () => {
       return HttpResponse.json({
         name: "my-agent",
-        agentId: "agent-detail-id",
+        agentId: "e0000000-0000-4000-a000-000000000010",
         description: "A helpful agent",
         displayName: "My Agent",
         sound: null,
@@ -195,8 +198,8 @@ function mockAPIsWithSchedules() {
       return HttpResponse.json({
         schedules: [
           {
-            id: "sched-1",
-            agentId: "agent-detail-id",
+            id: "f0000002-0000-4000-a000-000000000001",
+            agentId: "e0000000-0000-4000-a000-000000000010",
             agentName: "my-agent",
             orgSlug: "test",
             name: "morning-briefing",
@@ -214,6 +217,16 @@ function mockAPIsWithSchedules() {
             lastRunAt: null,
             createdAt: "2026-03-01T00:00:00Z",
             updatedAt: "2026-03-01T00:00:00Z",
+            userId: "test-user-123",
+            appendSystemPrompt: null,
+            vars: null,
+            secretNames: null,
+            artifactName: null,
+            artifactVersion: null,
+            volumeVersions: null,
+            slackChannelId: null,
+            retryStartedAt: null,
+            consecutiveFailures: 0,
           },
         ],
       });

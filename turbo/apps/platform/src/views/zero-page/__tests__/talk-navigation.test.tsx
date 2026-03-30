@@ -54,7 +54,7 @@ function mockChatAPIs() {
     // Return terminal status so polling loop stops immediately
     http.get("*/api/zero/logs/:id", () => {
       return HttpResponse.json({
-        id: "run-abc-123",
+        id: "a0000000-0000-4000-a000-000000000098",
         sessionId: "session-1",
         agentId: "zero",
         displayName: null,

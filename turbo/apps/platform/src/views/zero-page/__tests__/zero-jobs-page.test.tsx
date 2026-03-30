@@ -196,7 +196,7 @@ describe("zero jobs page - team list", () => {
 function createMockSchedulesFromAPI() {
   return [
     {
-      id: "sched-a1b2c3",
+      id: "f0000002-0000-4000-a000-000000000001",
       agentId: "c0000000-0000-4000-a000-000000000001",
       agentName: "test-agent",
       orgSlug: "test",
@@ -227,7 +227,7 @@ function createMockSchedulesFromAPI() {
       updatedAt: "2026-03-24T13:47:09.003Z",
     },
     {
-      id: "sched-d4e5f6",
+      id: "f0000002-0000-4000-a000-000000000002",
       agentId: "c0000000-0000-4000-a000-000000000001",
       agentName: "test-agent",
       orgSlug: "test",
@@ -258,7 +258,7 @@ function createMockSchedulesFromAPI() {
       updatedAt: "2026-03-25T01:46:27.637Z",
     },
     {
-      id: "sched-g7h8i9",
+      id: "f0000002-0000-4000-a000-000000000003",
       agentId: "c0000000-0000-4000-a000-000000000001",
       agentName: "test-agent",
       orgSlug: "test",

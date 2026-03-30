@@ -38,7 +38,7 @@ describe("connectors", () => {
         return HttpResponse.json({
           connectors: [
             {
-              id: "conn-github",
+              id: "d0000001-0000-4000-a000-000000000001",
               type: "github",
               authMethod: "oauth",
               externalId: null,

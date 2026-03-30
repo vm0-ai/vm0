@@ -6,7 +6,7 @@ function makeEntry(
   overrides: Partial<OrgScheduleEntry> = {},
 ): OrgScheduleEntry {
   return {
-    id: "sched-1",
+    id: "f0000002-0000-4000-a000-000000000001",
     time: "Every weekday at 9:00 AM",
     prompt: "Do something",
     description: null,
@@ -17,7 +17,7 @@ function makeEntry(
     name: "my-schedule",
     timezone: "UTC",
     intervalSeconds: null,
-    agentId: "agent-uuid-1",
+    agentId: "e0000000-0000-4000-a000-000000000010",
     displayName: null,
     nextRunAt: null,
     lastRunAt: null,
@@ -43,12 +43,12 @@ describe("buildCombinedSchedule", () => {
       makeEntry({ id: "s1", agentId: "default-uuid", displayName: "Zero" }),
       makeEntry({
         id: "s2",
-        agentId: "agent-a",
+        agentId: "e0000000-0000-4000-a000-000000000010",
         displayName: "Alpha Agent",
       }),
       makeEntry({
         id: "s3",
-        agentId: "agent-b",
+        agentId: "e0000000-0000-4000-a000-000000000010",
         displayName: "Beta Agent",
       }),
     ];

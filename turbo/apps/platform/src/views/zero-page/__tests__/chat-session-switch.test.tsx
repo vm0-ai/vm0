@@ -65,7 +65,7 @@ describe("chat session switch", () => {
       ),
       http.get("*/api/zero/logs/:id", () =>
         HttpResponse.json({
-          id: "run-active",
+          id: "a0000000-0000-4000-a000-000000000099",
           sessionId: "session-1",
           agentId: "zero",
           displayName: null,
