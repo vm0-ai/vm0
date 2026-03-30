@@ -3,17 +3,20 @@ import { POST } from "../route";
 import { createTestRequest } from "../../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
 import { reloadEnv } from "../../../../../../src/env";
+import { DEFAULT_TEST_EMAIL } from "../../../../../../src/lib/auth/test-user";
 
 // Mock Clerk Server API
 const mockGetUserList = vi.fn();
 const mockGetOrganizationMembershipList = vi.fn();
 const mockCreateOrganization = vi.fn();
 const mockGetOrganization = vi.fn();
+const mockCreateUser = vi.fn();
 vi.mock("@clerk/nextjs/server", () => ({
   clerkClient: vi.fn(async () => ({
     users: {
       getUserList: mockGetUserList,
       getOrganizationMembershipList: mockGetOrganizationMembershipList,
+      createUser: mockCreateUser,
     },
     organizations: {
       createOrganization: mockCreateOrganization,
@@ -34,6 +37,7 @@ describe("/api/cli/auth/test-token", () => {
     mockGetOrganizationMembershipList.mockReset();
     mockCreateOrganization.mockReset();
     mockGetOrganization.mockReset();
+    mockCreateUser.mockReset();
     mockGetUserList.mockResolvedValue({
       data: [{ id: "user_test123" }],
     });
@@ -208,34 +212,66 @@ describe("/api/cli/auth/test-token", () => {
       expect(data.org_slug).toBe("test-token-org");
     });
 
-    it("generates token with synthetic user id when test user is not found in Clerk", async () => {
+    it("creates user and org when not found in Clerk", async () => {
       mockGetUserList.mockResolvedValue({ data: [] });
+      mockCreateUser.mockResolvedValue({ id: "user_created" });
       mockGetOrganizationMembershipList.mockResolvedValue({ data: [] });
+      mockCreateOrganization.mockResolvedValue({ id: "org_newly_created" });
 
+      const email = "pr-1+clerk_test@serial.dev";
+      const request = createTestRequest(
+        `http://localhost:3000/api/cli/auth/test-token?email=${encodeURIComponent(email)}`,
+        { method: "POST" },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const data = await response.json();
+      expect(data.access_token).toMatch(/^vm0_pat_/);
+      expect(data.token_type).toBe("Bearer");
+
+      expect(mockCreateUser).toHaveBeenCalledWith({
+        emailAddress: [email],
+        skipPasswordRequirement: true,
+      });
+      expect(mockCreateOrganization).toHaveBeenCalledWith({
+        name: "test-pr-1-serial",
+        slug: "test-pr-1-serial",
+        createdBy: "user_created",
+      });
+    });
+
+    it("uses default email when email param is absent", async () => {
       const request = createTestRequest(
         "http://localhost:3000/api/cli/auth/test-token",
         { method: "POST" },
       );
 
       const response = await POST(request);
-      const data = await response.json();
-
       expect(response.status).toBe(200);
-      expect(data.access_token).toMatch(/^vm0_pat_/);
-      expect(data.user_id).toBe("user_e2e_serial");
-      expect(data.org_slug).toBe("test-org-serial");
+
+      expect(mockGetUserList).toHaveBeenCalledWith({
+        emailAddress: [DEFAULT_TEST_EMAIL],
+      });
     });
 
-    it("calls Clerk with correct email address", async () => {
+    it("uses provided email param", async () => {
+      const email = "pr-42+clerk_test@runner.dev";
       const request = createTestRequest(
-        "http://localhost:3000/api/cli/auth/test-token",
+        `http://localhost:3000/api/cli/auth/test-token?email=${encodeURIComponent(email)}`,
         { method: "POST" },
       );
 
-      await POST(request);
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const data = await response.json();
+      expect(data.access_token).toMatch(/^vm0_pat_/);
+      expect(data.token_type).toBe("Bearer");
 
       expect(mockGetUserList).toHaveBeenCalledWith({
-        emailAddress: ["e2e+clerk_test@vm0.ai"],
+        emailAddress: [email],
       });
     });
   });

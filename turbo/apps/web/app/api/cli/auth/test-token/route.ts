@@ -14,7 +14,8 @@ import {
 import { generateCliToken } from "../../../../../src/lib/auth/sandbox-token";
 import {
   resolveTestUserId,
-  isTestVariant,
+  DEFAULT_TEST_EMAIL,
+  orgSlugFromEmail,
 } from "../../../../../src/lib/auth/test-user";
 import { env } from "../../../../../src/env";
 
@@ -45,17 +46,18 @@ function isTestTokenAllowed(request: Request): boolean {
 }
 
 /**
- * Ensure the test user has an org_cache entry for org resolution.
- * Queries Clerk API directly to find the user's org membership,
- * then pre-populates org_members_cache for fast verification.
+ * Ensure the test user has a real Clerk org and corresponding org_cache entry.
+ * Queries Clerk API to find the user's org membership. If found in org_cache,
+ * refreshes the cache TTL. If not in Clerk, creates a real Clerk org.
  *
- * If the user has no Clerk org yet, creates org_cache and org_members_cache
- * entries with a sentinel orgId.
+ * Always creates a real Clerk org (never a sentinel) so all Clerk-aware
+ * operations (e.g. zero org set, model-provider setup) work correctly.
  */
-async function ensureTestOrg(userId: string): Promise<{ slug: string }> {
-  // Query Clerk API directly for user's org memberships.
-  // If userId is a synthetic fallback ID (user not in Clerk), catch the error and
-  // proceed directly to sentinel org creation.
+async function ensureTestOrg(
+  userId: string,
+  email: string,
+): Promise<{ slug: string }> {
+  // Query Clerk API directly for user's org memberships
   const client = await clerkClient();
   type MembershipItem = Awaited<
     ReturnType<typeof client.users.getOrganizationMembershipList>
@@ -68,8 +70,7 @@ async function ensureTestOrg(userId: string): Promise<{ slug: string }> {
     // userId not found in Clerk — fall through to sentinel org
   }
 
-  // Use a far-future cachedAt so org_cache TTL checks never expire these
-  // entries and trigger a Clerk API refresh (sentinel orgs don't exist in Clerk).
+  // Use a far-future cachedAt so org_cache TTL checks never expire during tests
   const farFuture = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
 
   // Find first org with a matching org_cache entry
@@ -100,20 +101,20 @@ async function ensureTestOrg(userId: string): Promise<{ slug: string }> {
     }
   }
 
-  // User has no Clerk org — use sentinel orgId with org_cache + membership cache
-  const sentinelOrgId = `org_test_${userId}`;
-  // Derive a per-user slug so that different test variants (serial, runner, …)
-  // each get a unique entry in org_cache. A shared slug causes getOrgBySlug to
-  // return a non-deterministic row when two variants share the same slug, which
-  // can give the runner variant the serial variant's orgId and break auth.
-  const slugSuffix = userId.startsWith("user_e2e_")
-    ? userId.slice("user_e2e_".length)
-    : userId;
-  const slug = `test-org-${slugSuffix}`;
+  // User has no Clerk org — create a real one so Clerk-aware operations work
+  const slug = orgSlugFromEmail(email);
+  const org = await client.organizations.createOrganization({
+    name: slug,
+    slug,
+    createdBy: userId,
+  });
+  const orgId = org.id;
+
+  // Populate caches for the newly created org
   await globalThis.services.db
     .insert(orgCache)
     .values({
-      orgId: sentinelOrgId,
+      orgId,
       slug,
       cachedAt: farFuture,
     })
@@ -123,12 +124,12 @@ async function ensureTestOrg(userId: string): Promise<{ slug: string }> {
     });
   await globalThis.services.db
     .insert(orgMetadata)
-    .values({ orgId: sentinelOrgId })
+    .values({ orgId })
     .onConflictDoNothing();
   await globalThis.services.db
     .insert(orgMembersCache)
     .values({
-      orgId: sentinelOrgId,
+      orgId,
       userId,
       role: "admin",
       cachedAt: farFuture,
@@ -152,19 +153,11 @@ export async function POST(request: Request) {
   initServices();
 
   const url = new URL(request.url);
-  const variant = url.searchParams.get("variant") ?? "serial";
-  if (!isTestVariant(variant)) {
-    return NextResponse.json(
-      { error: `Unknown test variant: ${variant}` },
-      { status: 400 },
-    );
-  }
-  // If the Clerk test user doesn't exist (e.g., fresh preview environment),
-  // fall back to a stable synthetic user ID so the token is still generated.
-  const userId = (await resolveTestUserId(variant)) ?? `user_e2e_${variant}`;
+  const email = url.searchParams.get("email") ?? DEFAULT_TEST_EMAIL;
+  const userId = await resolveTestUserId(email);
 
-  // Auto-create org if user doesn't have one (creates real Clerk org or sentinel)
-  const { slug: orgSlug } = await ensureTestOrg(userId);
+  // Auto-create org if user doesn't have one
+  const { slug: orgSlug } = await ensureTestOrg(userId, email);
 
   // Resolve orgId from slug (ensureTestOrg creates org_cache entry, so this is a cache hit)
   const orgData = await getOrgBySlug(orgSlug);

@@ -5,7 +5,11 @@ import { fetch$ } from "../fetch.ts";
 import { throwIfAbort, resetSignal, createDeferredPromise } from "../utils.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { logger } from "../log.ts";
-import { createRunLoop, type PagedRunEvents } from "./polling.ts";
+import {
+  createRunLoop,
+  poolInterval$,
+  type PagedRunEvents,
+} from "./polling.ts";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
 import {
   navigateToChat$,
@@ -966,7 +970,7 @@ const finalizeCompletedRun$ = command(
 
     // Refresh session list (messages are persisted server-side via webhook)
     set(reloadChatThreadList$, (n) => n + 1);
-    await delay(1000, { signal });
+    await delay(get(poolInterval$), { signal });
     set(reloadChatThreadList$, (n) => n + 1);
   },
 );

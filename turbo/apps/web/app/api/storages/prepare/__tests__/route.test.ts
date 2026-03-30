@@ -206,6 +206,38 @@ describe("POST /api/storages/prepare", () => {
     );
   });
 
+  it("should use orgId (not slug) in upload keys for new storage", async () => {
+    const storageName = `orgid-prefix-${Date.now()}`;
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/storages/prepare",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          storageName,
+          storageType: "artifact",
+          files: [{ path: "test.txt", hash: "a".repeat(64), size: 100 }],
+        }),
+      },
+    );
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+
+    const json = await response.json();
+    expect(json.existing).toBe(false);
+
+    // Upload keys should use orgId (org_mock_...), not org slug (org-...)
+    const archiveKey = json.uploads.archive.key as string;
+    const manifestKey = json.uploads.manifest.key as string;
+
+    expect(archiveKey).toMatch(/^org_mock_/);
+    expect(manifestKey).toMatch(/^org_mock_/);
+    expect(archiveKey).toContain(`/artifact/${storageName}/`);
+    expect(manifestKey).toContain(`/artifact/${storageName}/`);
+  });
+
   describe("file size limits", () => {
     it("should return 413 when a single file exceeds 100MB", async () => {
       const storageName = `oversize-single-${Date.now()}`;

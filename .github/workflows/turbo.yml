@@ -931,20 +931,32 @@ jobs:
           deployment-id: ${{ steps.deployment.outputs.deployment_id }}
           deployment-env: ${{ steps.deployment.outputs.env }}
 
-      # Step 6: Generate test tokens for E2E tests (one per test user)
+      # Step 6: Cleanup stale test users and generate fresh tokens
+      - name: Cleanup stale test users
+        run: |
+          echo "Cleaning up stale test users for ${JOB_REF}..."
+          USERS=$(curl -sS "https://api.clerk.com/v1/users?query=${JOB_REF}%2Bclerk_test&limit=100" \
+            -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
+            -H "Content-Type: application/json")
+          for uid in $(echo "$USERS" | jq -r '.[] | select(.email_addresses[0].email_address | startswith("'"${JOB_REF}+clerk_test@"'")) | .id' 2>/dev/null); do
+            echo "Deleting user $uid"
+            curl -sS -X DELETE "https://api.clerk.com/v1/users/${uid}" \
+              -H "Authorization: Bearer ${CLERK_SECRET_KEY}" > /dev/null
+          done
+        env:
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+
       - name: Generate E2E test tokens
         run: |
-          # serial token is required — failure stops the job
-          e2e/scripts/generate-test-token.sh "serial"
+          SERIAL_EMAIL="${JOB_REF}+clerk_test@serial.dev"
+          RUNNER_EMAIL="${JOB_REF}+clerk_test@runner.dev"
+          e2e/scripts/generate-test-token.sh "$SERIAL_EMAIL"
           cp ~/.vm0/config.json "/tmp/e2e-token-serial.json"
-          # runner token is optional — only needed for runner E2E tests which
-          # are skipped on PRs; skip gracefully if the runner test user is absent
-          if e2e/scripts/generate-test-token.sh "runner"; then
-            cp ~/.vm0/config.json "/tmp/e2e-token-runner.json"
-          else
-            echo "Warning: runner token generation failed — runner E2E tests will be skipped"
-          fi
+          e2e/scripts/generate-test-token.sh "$RUNNER_EMAIL"
+          cp ~/.vm0/config.json "/tmp/e2e-token-runner.json"
         env:
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           VM0_API_URL: ${{ steps.alias.outputs.url || steps.deploy.outputs.url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
@@ -1148,8 +1160,8 @@ jobs:
             -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
             -H "Content-Type: application/json")
 
-          # Extract user IDs, skipping the persistent e2e test account
-          ids=$(echo "$users" | jq -r '.[] | select((.email_addresses[]?.email_address != "e2e+clerk_test@vm0.ai") and (.email_addresses[]?.email_address != "e2e_02+clerk_test@vm0.ai")) | .id' 2>/dev/null || true)
+          # Extract user IDs
+          ids=$(echo "$users" | jq -r '.[].id' 2>/dev/null || true)
 
           if [ -z "$ids" ]; then
             echo "No test accounts to clean up"
@@ -1725,21 +1737,6 @@ jobs:
         run: mkdir -p ~/.vm0 && cp /tmp/e2e-token-runner.json ~/.vm0/config.json
       - name: Bootstrap test account
         run: |
-          # Try to set org slug to "e2e-runner".
-          # On a fresh Neon branch (no existing org): use create (no --force).
-          # On a branch inheriting parent DB (org already exists): use --force to update.
-          # If both fail (e.g. slug globally taken or 403 env restriction): check if
-          # account already has any org and proceed. As a last resort, create a unique slug.
-          if zero org set "e2e-runner"; then
-            echo "Org 'e2e-runner' created."
-          elif zero org set "e2e-runner" --force; then
-            echo "Org updated to 'e2e-runner'."
-          elif zero org status; then
-            echo "Warning: could not set slug to 'e2e-runner', proceeding with existing org."
-          else
-            echo "No org configured — creating with unique fallback slug"
-            zero org set "e2e-runner-${{ needs.prepare.outputs.job-ref }}"
-          fi
           zero org model-provider setup --type "claude-code-oauth-token" --secret "mock-oauth-token-for-e2e"
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
@@ -1994,6 +1991,7 @@ jobs:
           WEB_URL: ${{ needs.deploy-web.outputs.preview-url }}
           APP_URL: ${{ needs.prepare.outputs.app-preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          E2E_SERIAL_EMAIL: ${{ needs.prepare.outputs.job-ref }}+clerk_test@serial.dev
       - name: Locate LHCI output (app)
         id: lhci-dir-app
         if: always()

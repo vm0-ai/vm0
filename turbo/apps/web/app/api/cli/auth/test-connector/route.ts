@@ -6,7 +6,7 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { upsertOAuthConnector } from "../../../../../src/lib/connector/connector-service";
 import {
   resolveTestUserId,
-  isTestVariant,
+  DEFAULT_TEST_EMAIL,
 } from "../../../../../src/lib/auth/test-user";
 import { orgMembersCache } from "../../../../../src/db/schema/org-members-cache";
 import { getOrgDataOrNull } from "../../../../../src/lib/org/resolve-org";
@@ -80,18 +80,8 @@ export async function POST(request: Request) {
   const connectorType = connectorParsed.data;
 
   const url = new URL(request.url);
-  const variant = url.searchParams.get("variant") ?? "serial";
-  if (!isTestVariant(variant)) {
-    return NextResponse.json(
-      { error: `Unknown test variant: ${variant}` },
-      { status: 400 },
-    );
-  }
-
-  // Fall back to synthetic user ID when the Clerk test user doesn't exist
-  // (e.g., fresh preview environments). The org_members_cache entry is created
-  // by the test-token endpoint via ensureTestOrg, so the lookup below will work.
-  const userId = (await resolveTestUserId(variant)) ?? `user_e2e_${variant}`;
+  const email = url.searchParams.get("email") ?? DEFAULT_TEST_EMAIL;
+  const userId = await resolveTestUserId(email);
 
   // Look up test user's org from org_members_cache (populated by test-token endpoint)
   const [cached] = await globalThis.services.db

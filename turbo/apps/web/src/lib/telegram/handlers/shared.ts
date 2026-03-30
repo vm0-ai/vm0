@@ -246,13 +246,7 @@ export async function ensureOrgAndArtifact(vm0UserId: string): Promise<void> {
   const org = await resolveOrgOrNull({ userId: vm0UserId });
   if (!org) return;
 
-  await ensureStorageExists(
-    org.orgId,
-    vm0UserId,
-    "artifact",
-    org.slug,
-    "artifact",
-  );
+  await ensureStorageExists(org.orgId, vm0UserId, "artifact", "artifact");
 }
 
 /**

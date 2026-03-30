@@ -283,6 +283,53 @@ describe("POST /api/storages/commit", () => {
     expect(json.deduplicated).toBe(true);
   });
 
+  it("should verify S3 objects using orgId-based key (not slug)", async () => {
+    const storageName = `s3key-prefix-${Date.now()}`;
+    const files = [{ path: "file1.txt", hash: "e".repeat(64), size: 100 }];
+
+    // Create storage via prepare route
+    const prepareRequest = createTestRequest(
+      "http://localhost:3000/api/storages/prepare",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ storageName, storageType: "artifact", files }),
+      },
+    );
+    const prepareResponse = await preparePOST(prepareRequest);
+    const prepareData = await prepareResponse.json();
+    const { versionId } = prepareData;
+
+    // Reset mock call history before commit
+    context.mocks.s3.s3ObjectExists.mockClear();
+
+    // Commit
+    const request = createTestRequest(
+      "http://localhost:3000/api/storages/commit",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          storageName,
+          storageType: "artifact",
+          versionId,
+          files,
+        }),
+      },
+    );
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+
+    // Verify s3ObjectExists was called with orgId-based keys (not slug)
+    const calls = context.mocks.s3.s3ObjectExists.mock.calls;
+    for (const call of calls) {
+      const key = call[1] as string;
+      // Key should use orgId (org_mock_...), not slug (org-...)
+      expect(key).toMatch(/^org_mock_/);
+    }
+  });
+
   it("should return 409 when version exists but S3 files are missing", async () => {
     // This test verifies the fix for issue #658:
     // Commit should fail with 409 if S3 files are missing for existing version
