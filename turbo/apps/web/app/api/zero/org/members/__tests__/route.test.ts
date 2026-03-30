@@ -100,4 +100,25 @@ describe("GET /api/zero/org/members", () => {
 
     expect(response.status).toBe(404);
   });
+
+  it("should not expose pendingInvitations or membershipRequests to non-admin members", async () => {
+    const userId = uniqueId("mem-nonadmin");
+    const slug = uniqueId("mem-nonadmin");
+    const orgId = `org_mock_${userId}`;
+    mockClerk({
+      userId,
+      orgId,
+      orgRole: "org:member",
+      clerkOrgs: [{ id: orgId, slug, name: slug, role: "org:member" }],
+    });
+    await createTestOrg(slug);
+
+    const response = await GET(createTestRequest(membersUrl(slug)));
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.role).toBe("member");
+    expect(data.pendingInvitations).toEqual([]);
+    expect(data.membershipRequests).toEqual([]);
+  });
 });

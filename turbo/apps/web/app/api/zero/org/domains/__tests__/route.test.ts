@@ -74,7 +74,10 @@ describe("POST /api/zero/org/domains", () => {
       createTestRequest(domainsUrl(slug), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "example.com" }),
+        body: JSON.stringify({
+          name: "example.com",
+          enrollmentMode: "manual_invitation",
+        }),
       }),
     );
 
@@ -94,7 +97,10 @@ describe("POST /api/zero/org/domains", () => {
       createTestRequest(domainsUrl(slug), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "example.com" }),
+        body: JSON.stringify({
+          name: "example.com",
+          enrollmentMode: "manual_invitation",
+        }),
       }),
     );
 
@@ -108,7 +114,10 @@ describe("POST /api/zero/org/domains", () => {
       createTestRequest(domainsUrl("any-org"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "example.com" }),
+        body: JSON.stringify({
+          name: "example.com",
+          enrollmentMode: "manual_invitation",
+        }),
       }),
     );
 

@@ -55,6 +55,28 @@ describe("POST /api/zero/org/membership-requests (accept)", () => {
     expect(data.message).toBe("Membership request accepted");
   });
 
+  it("should return 400 when Clerk API rejects the accept request", async () => {
+    const userId = uniqueId("mreq-acc-fail");
+    const { orgId, slug } = await setupOrg(userId);
+
+    server.use(
+      http.post(
+        `https://api.clerk.com/v1/organizations/${orgId}/membership_requests/req_invalid/accept`,
+        () => HttpResponse.json({ error: "Not found" }, { status: 404 }),
+      ),
+    );
+
+    const response = await POST(
+      createTestRequest(membershipRequestsUrl(slug), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId: "req_invalid" }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+  });
+
   it("should return 403 when caller is not an admin", async () => {
     const userId = uniqueId("mreq-acc-403");
     const slug = uniqueId("mreq-member");
@@ -115,6 +137,28 @@ describe("DELETE /api/zero/org/membership-requests (reject)", () => {
     expect(response.status).toBe(200);
     const data = await response.json();
     expect(data.message).toBe("Membership request rejected");
+  });
+
+  it("should return 400 when Clerk API rejects the reject request", async () => {
+    const userId = uniqueId("mreq-rej-fail");
+    const { orgId, slug } = await setupOrg(userId);
+
+    server.use(
+      http.post(
+        `https://api.clerk.com/v1/organizations/${orgId}/membership_requests/req_invalid/reject`,
+        () => HttpResponse.json({ error: "Not found" }, { status: 404 }),
+      ),
+    );
+
+    const response = await DELETE(
+      createTestRequest(membershipRequestsUrl(slug), {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId: "req_invalid" }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
   });
 
   it("should return 403 when caller is not an admin", async () => {
