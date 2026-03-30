@@ -12,8 +12,6 @@ import {
   type UserContext,
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
-import { userConnectors } from "../../../../../../../src/db/schema/user-connector";
-import { and, eq } from "drizzle-orm";
 
 const context = testContext();
 
@@ -197,17 +195,14 @@ describe("User Connectors API", () => {
       const data = await res.json();
       expect(data.enabledTypes).toEqual([]);
 
-      // Verify DB is clean
-      const rows = await globalThis.services.db
-        .select()
-        .from(userConnectors)
-        .where(
-          and(
-            eq(userConnectors.agentId, agentId),
-            eq(userConnectors.userId, user.userId),
-          ),
-        );
-      expect(rows).toHaveLength(0);
+      // Verify via GET that permissions are cleared
+      const getRes = await getUserConnectors(
+        agentId,
+        testCliToken,
+        testOrgSlug,
+      );
+      const getData = await getRes.json();
+      expect(getData.enabledTypes).toEqual([]);
     });
 
     it("should return 404 for non-existent agent", async () => {
