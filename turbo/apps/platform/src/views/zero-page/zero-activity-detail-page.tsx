@@ -28,6 +28,7 @@ import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { Link } from "../router/link.tsx";
 import {
   TRIGGER_SOURCE_LABELS,
+  getTriggerSourceLabel,
   type LogStatus,
   type TriggerSource,
   type AgentEvent,
@@ -152,6 +153,7 @@ function ActivityHeaderCard({
   displayName,
   status,
   triggerSource,
+  triggerAgentName,
   detail,
   duration,
   time,
@@ -161,6 +163,7 @@ function ActivityHeaderCard({
   displayName: string;
   status: LogStatus;
   triggerSource: TriggerSource | null;
+  triggerAgentName: string | null;
   detail: {
     id: string;
     modelProvider?: string | null;
@@ -209,7 +212,7 @@ function ActivityHeaderCard({
                   </Link>
                 ) : (
                   <span className="text-foreground whitespace-nowrap">
-                    {TRIGGER_SOURCE_LABELS[triggerSource]}
+                    {getTriggerSourceLabel(triggerSource, triggerAgentName)}
                   </span>
                 )}
               </div>
@@ -362,6 +365,7 @@ export function ZeroActivityDetailPage() {
             displayName={displayName}
             status={status}
             triggerSource={detail.triggerSource ?? null}
+            triggerAgentName={detail.triggerAgentName ?? null}
             detail={detail}
             duration={duration}
             time={time}
