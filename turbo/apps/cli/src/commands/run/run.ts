@@ -12,6 +12,7 @@ import {
   extractVarNames,
   extractSecretNames,
   loadValues,
+  parseFirewallPolicies,
   parseIdentifier,
   pollEvents,
   showNextSteps,
@@ -85,6 +86,10 @@ export const mainRunCommand = new Command()
     "--settings <json>",
     "Settings JSON to pass to Claude CLI (e.g., hooks, permissions)",
   )
+  .option(
+    "--firewall-policies <json>",
+    'Firewall policies JSON (e.g., \'{"github": {"actions:read": "allow"}}\')',
+  )
   .option("--verbose", "Show full tool inputs and outputs")
   .option("--check-env", "Validate secrets and vars before running")
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
@@ -108,6 +113,7 @@ export const mainRunCommand = new Command()
           disallowedTools?: string[];
           tools?: string[];
           settings?: string;
+          firewallPolicies?: string;
           verbose?: boolean;
           checkEnv?: boolean;
           debugNoMockClaude?: boolean;
@@ -195,6 +201,7 @@ export const mainRunCommand = new Command()
           disallowedTools: options.disallowedTools,
           tools: options.tools,
           settings: options.settings,
+          firewallPolicies: parseFirewallPolicies(options.firewallPolicies),
           checkEnv: options.checkEnv || undefined,
           debugNoMockClaude: options.debugNoMockClaude || undefined,
         });

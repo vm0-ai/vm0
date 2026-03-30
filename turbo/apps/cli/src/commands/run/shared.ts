@@ -4,7 +4,11 @@ import { config as dotenvConfig } from "dotenv";
 import { getEvents } from "../../lib/api";
 import { parseEvent } from "../../lib/events/event-parser-factory";
 import { EventRenderer } from "../../lib/events/event-renderer";
-import { extractAndGroupVariables } from "@vm0/core";
+import {
+  extractAndGroupVariables,
+  firewallPoliciesSchema,
+  type FirewallPolicies,
+} from "@vm0/core";
 /**
  * Collector for --secrets and --vars flags
  * Format: KEY=value
@@ -41,6 +45,31 @@ export function collectVolumeVersions(
   }
 
   return { ...previous, [volumeName]: version };
+}
+
+/**
+ * Parse and validate --firewall-policies JSON string.
+ * Returns undefined when no value is provided.
+ */
+export function parseFirewallPolicies(
+  json: string | undefined,
+): FirewallPolicies | undefined {
+  if (!json) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    throw new Error(
+      `Invalid --firewall-policies JSON: ${json}\nExpected format: '{"ref": {"permission": "allow|deny|ask"}}'`,
+    );
+  }
+  const result = firewallPoliciesSchema.safeParse(parsed);
+  if (!result.success) {
+    throw new Error(
+      `Invalid --firewall-policies: ${result.error.issues.map((i) => i.message).join(", ")}`,
+    );
+  }
+  return result.data;
 }
 
 export function isUUID(str: string): boolean {

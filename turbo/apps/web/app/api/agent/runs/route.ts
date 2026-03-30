@@ -234,6 +234,7 @@ const router = tsr.router(runsMainContract, {
         debugNoMockClaude: body.debugNoMockClaude,
         modelProvider: body.modelProvider,
         checkEnv: body.checkEnv,
+        firewallPolicies: body.firewallPolicies,
         callerOrgId: org.orgId,
       });
 

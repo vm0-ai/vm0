@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import { firewallPoliciesSchema } from "./firewalls";
 import { triggerSourceSchema } from "./logs";
 import { orgTierSchema } from "./orgs";
 
@@ -69,6 +70,9 @@ const unifiedRunRequestSchema = z.object({
 
   // How the run was triggered (defaults to "cli" on the server if not provided)
   triggerSource: triggerSourceSchema.optional(),
+
+  // Per-permission firewall policies (e.g., { "github": { "actions:read": "allow" } })
+  firewallPolicies: firewallPoliciesSchema.optional(),
 });
 
 /**

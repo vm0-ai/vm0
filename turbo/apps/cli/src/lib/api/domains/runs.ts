@@ -7,6 +7,7 @@ import {
   type RunsListResponse,
   type CancelRunResponse,
   type QueueResponse,
+  type FirewallPolicies,
 } from "@vm0/core";
 import { getClientConfig, handleError } from "../core/client-factory";
 import type { CreateRunResponse, GetEventsResponse } from "../core/types";
@@ -44,6 +45,8 @@ export async function createRun(body: {
   tools?: string[];
   // Settings JSON to pass to Claude CLI (passed as --settings)
   settings?: string;
+  // Per-permission firewall policies
+  firewallPolicies?: FirewallPolicies;
   // Required
   prompt: string;
 }): Promise<CreateRunResponse> {

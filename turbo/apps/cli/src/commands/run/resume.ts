@@ -5,6 +5,7 @@ import {
   collectVolumeVersions,
   isUUID,
   loadValues,
+  parseFirewallPolicies,
   pollEvents,
   showNextSteps,
   renderRunCreated,
@@ -58,6 +59,10 @@ export const resumeCommand = new Command()
     "--settings <json>",
     "Settings JSON to pass to Claude CLI (e.g., hooks, permissions)",
   )
+  .option(
+    "--firewall-policies <json>",
+    'Firewall policies JSON (e.g., \'{"github": {"actions:read": "allow"}}\')',
+  )
   .option("--verbose", "Show full tool inputs and outputs")
   .option("--check-env", "Validate secrets and vars before running")
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
@@ -75,6 +80,7 @@ export const resumeCommand = new Command()
           disallowedTools?: string[];
           tools?: string[];
           settings?: string;
+          firewallPolicies?: string;
           verbose?: boolean;
           checkEnv?: boolean;
           debugNoMockClaude?: boolean;
@@ -93,6 +99,7 @@ export const resumeCommand = new Command()
           disallowedTools?: string[];
           tools?: string[];
           settings?: string;
+          firewallPolicies?: string;
           verbose?: boolean;
           checkEnv?: boolean;
           debugNoMockClaude?: boolean;
@@ -136,6 +143,9 @@ export const resumeCommand = new Command()
           disallowedTools: options.disallowedTools || allOpts.disallowedTools,
           tools: options.tools || allOpts.tools,
           settings: options.settings || allOpts.settings,
+          firewallPolicies: parseFirewallPolicies(
+            options.firewallPolicies || allOpts.firewallPolicies,
+          ),
           checkEnv: options.checkEnv || allOpts.checkEnv || undefined,
           debugNoMockClaude:
             options.debugNoMockClaude || allOpts.debugNoMockClaude || undefined,
