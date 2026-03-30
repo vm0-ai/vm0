@@ -57,6 +57,7 @@
     "generate:intercom": "tsx src/index.ts intercom",
     "generate:intervals-icu": "tsx src/index.ts intervals-icu",
     "generate:jotform": "tsx src/index.ts jotform",
+    "generate:kommo": "tsx src/index.ts kommo",
     "generate:lark": "tsx src/index.ts lark",
     "generate:line": "tsx src/index.ts line",
     "generate:linear": "tsx src/index.ts linear",

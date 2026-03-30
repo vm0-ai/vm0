@@ -60,6 +60,7 @@ import { instantlyFirewall } from "./instantly.generated";
 import { intercomFirewall } from "./intercom.generated";
 import { intervalsIcuFirewall } from "./intervals-icu.generated";
 import { jotformFirewall } from "./jotform.generated";
+import { kommoFirewall } from "./kommo.generated";
 import { larkFirewall } from "./lark.generated";
 import { lineFirewall } from "./line.generated";
 import { linearFirewall } from "./linear.generated";
@@ -168,6 +169,7 @@ const CONNECTOR_FIREWALLS = {
   intercom: intercomFirewall,
   "intervals-icu": intervalsIcuFirewall,
   jotform: jotformFirewall,
+  kommo: kommoFirewall,
   lark: larkFirewall,
   line: lineFirewall,
   linear: linearFirewall,
@@ -297,7 +299,6 @@ export type NonFirewallConnectorType =
   | "dify" // self-hosted
   | "docusign" // region-specific
   | "jira" // {domain}.atlassian.net (API token auth)
-  | "kommo" // {subdomain}.kommo.com
   | "mailchimp" // datacenter-specific (usX.api.mailchimp.com)
   | "make" // regional (eu1/eu2/us1/us2.make.com)
   | "metabase" // self-hosted
