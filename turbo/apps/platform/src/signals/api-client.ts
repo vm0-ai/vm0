@@ -4,7 +4,7 @@
  * Replaces raw fetch$ usage with typed ts-rest clients that provide
  * compile-time type checking for request/response shapes.
  */
-import { computed } from "ccstate";
+import { command, computed, state } from "ccstate";
 import {
   initClient,
   tsRestFetchApi,
@@ -23,6 +23,14 @@ import { apiBase$ } from "./fetch.ts";
 export type ZeroClientFactory = <T extends AppRouter>(
   contract: T,
 ) => InitClientReturn<T, InitClientArgs>;
+
+const internalValidateResponse$ = state(false);
+
+export const setValidateResponseForTest$ = command(
+  ({ set }, validate: boolean) => {
+    set(internalValidateResponse$, validate);
+  },
+);
 
 /**
  * Factory signal for creating typed ts-rest clients.
@@ -44,10 +52,12 @@ export type ZeroClientFactory = <T extends AppRouter>(
 export const zeroClient$ = computed((get) => {
   return <T extends AppRouter>(contract: T) => {
     const apiBase = get(apiBase$);
+    const validateResponse = get(internalValidateResponse$);
 
     return initClient(contract, {
       baseUrl: apiBase,
       jsonQuery: false,
+      validateResponse,
       api: async (args: Parameters<typeof tsRestFetchApi>[0]) => {
         const clerk = await get(clerk$);
         const token = await clerk.session?.getToken();

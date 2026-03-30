@@ -16,7 +16,10 @@ describe("chat sending state", () => {
   it("should show user message and clear input after send", async () => {
     const ctrl = mockChatLifecycle();
 
-    await setupPage({ context, path: "/talk/mock-compose-id" });
+    await setupPage({
+      context,
+      path: "/talk/c0000000-0000-4000-a000-000000000001",
+    });
 
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
@@ -38,7 +41,10 @@ describe("chat sending state", () => {
   it("should show Stop button and hide Send button while sending", async () => {
     const ctrl = mockChatLifecycle();
 
-    await setupPage({ context, path: "/talk/mock-compose-id" });
+    await setupPage({
+      context,
+      path: "/talk/c0000000-0000-4000-a000-000000000001",
+    });
 
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
@@ -64,7 +70,10 @@ describe("chat sending state", () => {
   it("should display thinking text while waiting for telemetry", async () => {
     const ctrl = mockChatLifecycle();
 
-    await setupPage({ context, path: "/talk/mock-compose-id" });
+    await setupPage({
+      context,
+      path: "/talk/c0000000-0000-4000-a000-000000000001",
+    });
 
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
@@ -134,7 +143,10 @@ describe("chat sending state", () => {
   it("should replace thinking with activity steps when telemetry arrives", async () => {
     const ctrl = mockChatLifecycle();
 
-    await setupPage({ context, path: "/talk/mock-compose-id" });
+    await setupPage({
+      context,
+      path: "/talk/c0000000-0000-4000-a000-000000000001",
+    });
 
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,

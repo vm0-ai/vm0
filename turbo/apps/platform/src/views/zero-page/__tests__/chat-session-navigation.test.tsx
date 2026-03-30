@@ -14,7 +14,7 @@ function mockChatSessionAPIs() {
       return HttpResponse.json({
         id: "session-thread-1",
         title: "Session navigation test",
-        agentId: "mock-compose-id",
+        agentId: "c0000000-0000-4000-a000-000000000001",
         chatMessages: [
           {
             role: "user",
@@ -53,9 +53,9 @@ describe("chat session page wrapper navigation", () => {
     const scheduledButton = screen.getByLabelText("Scheduled");
     fireEvent.click(scheduledButton);
 
-    // Verify navigation to /team/mock-compose-id with tab=schedule
+    // Verify navigation to /team/c0000000-0000-4000-a000-000000000001 with tab=schedule
     await waitFor(() => {
-      expect(pathname()).toBe("/team/mock-compose-id");
+      expect(pathname()).toBe("/team/c0000000-0000-4000-a000-000000000001");
       expect(search()).toContain("tab=schedule");
     });
   });
@@ -74,9 +74,9 @@ describe("chat session page wrapper navigation", () => {
     const avatarButton = screen.getByLabelText("View agent profile");
     fireEvent.click(avatarButton);
 
-    // Verify navigation to /team/mock-compose-id (no tab param)
+    // Verify navigation to /team/c0000000-0000-4000-a000-000000000001 (no tab param)
     await waitFor(() => {
-      expect(pathname()).toBe("/team/mock-compose-id");
+      expect(pathname()).toBe("/team/c0000000-0000-4000-a000-000000000001");
     });
   });
 });

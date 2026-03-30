@@ -63,6 +63,7 @@ describe("completeZeroOnboarding$", () => {
             displayName: null,
             sound: null,
             connectors: [],
+            firewallPolicies: null,
           });
         },
       ),
@@ -124,6 +125,7 @@ describe("completeZeroOnboarding$", () => {
           displayName: null,
           sound: null,
           connectors: [],
+          firewallPolicies: null,
         });
       }),
       http.put("*/api/zero/default-agent", () => {
@@ -164,6 +166,7 @@ describe("completeZeroOnboarding$", () => {
             displayName: null,
             sound: null,
             connectors: [],
+            firewallPolicies: null,
           },
           { status: 201 },
         );
@@ -176,6 +179,7 @@ describe("completeZeroOnboarding$", () => {
           displayName: null,
           sound: null,
           connectors: [],
+          firewallPolicies: null,
         });
       }),
       http.put("*/api/zero/default-agent", async ({ request }) => {
@@ -213,6 +217,7 @@ describe("completeZeroOnboarding$", () => {
             displayName: null,
             sound: null,
             connectors: [],
+            firewallPolicies: null,
           },
           { status: 201 },
         );
@@ -225,6 +230,7 @@ describe("completeZeroOnboarding$", () => {
           displayName: null,
           sound: null,
           connectors: [],
+          firewallPolicies: null,
         });
       }),
       http.put("*/api/zero/default-agent", () => {
@@ -253,7 +259,12 @@ describe("completeZeroOnboarding$", () => {
       }),
       http.post("*/api/zero/agents", () => {
         return HttpResponse.json(
-          { error: { message: "Build failed: sandbox error" } },
+          {
+            error: {
+              message: "Build failed: sandbox error",
+              code: "INTERNAL_SERVER_ERROR",
+            },
+          },
           { status: 500 },
         );
       }),
@@ -285,7 +296,7 @@ describe("completeZeroOnboarding$", () => {
       }),
       http.post("*/api/zero/agents", () => {
         return HttpResponse.json(
-          { error: { message: "Build failed" } },
+          { error: { message: "Build failed", code: "INTERNAL_SERVER_ERROR" } },
           { status: 500 },
         );
       }),
@@ -314,6 +325,7 @@ describe("completeZeroOnboarding$", () => {
             displayName: null,
             sound: null,
             connectors: [],
+            firewallPolicies: null,
           },
           { status: 201 },
         );
@@ -326,6 +338,7 @@ describe("completeZeroOnboarding$", () => {
           displayName: null,
           sound: null,
           connectors: [],
+          firewallPolicies: null,
         });
       }),
       http.put("*/api/zero/default-agent", () => {
@@ -367,6 +380,7 @@ describe("completeZeroOnboarding$ avatar", () => {
             sound: null,
             avatarUrl: capturedPayload.avatarUrl ?? null,
             connectors: [],
+            firewallPolicies: null,
           },
           { status: 201 },
         );
@@ -379,6 +393,7 @@ describe("completeZeroOnboarding$ avatar", () => {
           displayName: null,
           sound: null,
           connectors: [],
+          firewallPolicies: null,
         });
       }),
       http.put("*/api/zero/default-agent", () => {
@@ -422,6 +437,7 @@ describe("completeZeroOnboarding$ auto-init model provider", () => {
             displayName: null,
             sound: null,
             connectors: [],
+            firewallPolicies: null,
           },
           { status: 201 },
         );
@@ -434,6 +450,7 @@ describe("completeZeroOnboarding$ auto-init model provider", () => {
           displayName: null,
           sound: null,
           connectors: [],
+          firewallPolicies: null,
         });
       }),
       http.put("*/api/zero/default-agent", () => {

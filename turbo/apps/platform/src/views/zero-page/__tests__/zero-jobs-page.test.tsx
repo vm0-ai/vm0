@@ -10,9 +10,11 @@ const context = testContext();
 function createMockTeamWithSubagents() {
   return [
     {
-      id: "mock-compose-id",
+      id: "c0000000-0000-4000-a000-000000000001",
       displayName: null,
       description: null,
+      sound: null,
+      avatarUrl: null,
       headVersionId: "version_1",
       updatedAt: "2024-01-01T00:00:00Z",
     },
@@ -20,6 +22,8 @@ function createMockTeamWithSubagents() {
       id: "agent-2",
       displayName: "Research Agent",
       description: "Finds and summarizes information",
+      sound: null,
+      avatarUrl: null,
       headVersionId: "version_2",
       updatedAt: "2024-01-02T00:00:00Z",
     },
@@ -27,6 +31,8 @@ function createMockTeamWithSubagents() {
       id: "agent-3",
       displayName: null,
       description: "Writes content based on research",
+      sound: null,
+      avatarUrl: null,
       headVersionId: "version_3",
       updatedAt: "2024-01-03T00:00:00Z",
     },
@@ -38,6 +44,8 @@ function mockTeamAPI(
     id: string;
     displayName: string | null;
     description: string | null;
+    sound: null;
+    avatarUrl: null;
     headVersionId: string;
     updatedAt: string;
   }[] = createMockTeamWithSubagents(),
@@ -55,10 +63,15 @@ function mockTeamAPI(
 function mockTeamAPIError() {
   server.use(
     http.get("*/api/zero/team", () => {
-      return new HttpResponse(null, {
-        status: 500,
-        statusText: "Internal Server Error",
-      });
+      return HttpResponse.json(
+        {
+          error: {
+            message: "Internal server error",
+            code: "INTERNAL_SERVER_ERROR",
+          },
+        },
+        { status: 500 },
+      );
     }),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
@@ -92,9 +105,11 @@ describe("zero jobs page - team list", () => {
   it("should show create teammate button when no sub-agents exist", async () => {
     mockTeamAPI([
       {
-        id: "mock-compose-id",
+        id: "c0000000-0000-4000-a000-000000000001",
         displayName: null,
         description: null,
+        sound: null,
+        avatarUrl: null,
         headVersionId: "version_1",
         updatedAt: "2024-01-01T00:00:00Z",
       },
@@ -118,9 +133,11 @@ describe("zero jobs page - team list", () => {
   it("should display multiple agents when team API returns multiple agents", async () => {
     mockTeamAPI([
       {
-        id: "mock-compose-id",
+        id: "c0000000-0000-4000-a000-000000000001",
         displayName: null,
         description: null,
+        sound: null,
+        avatarUrl: null,
         headVersionId: "version_1",
         updatedAt: "2024-01-01T00:00:00Z",
       },
@@ -128,6 +145,8 @@ describe("zero jobs page - team list", () => {
         id: "agent-alpha",
         displayName: "Alpha Agent",
         description: "Handles alpha tasks",
+        sound: null,
+        avatarUrl: null,
         headVersionId: "version_a",
         updatedAt: "2024-01-02T00:00:00Z",
       },
@@ -135,6 +154,8 @@ describe("zero jobs page - team list", () => {
         id: "agent-beta",
         displayName: "Beta Agent",
         description: "Handles beta tasks",
+        sound: null,
+        avatarUrl: null,
         headVersionId: "version_b",
         updatedAt: "2024-01-03T00:00:00Z",
       },
@@ -142,6 +163,8 @@ describe("zero jobs page - team list", () => {
         id: "agent-gamma",
         displayName: "Gamma Agent",
         description: null,
+        sound: null,
+        avatarUrl: null,
         headVersionId: "version_g",
         updatedAt: "2024-01-04T00:00:00Z",
       },
@@ -174,7 +197,7 @@ function createMockSchedulesFromAPI() {
   return [
     {
       id: "sched-a1b2c3",
-      agentId: "mock-compose-id",
+      agentId: "c0000000-0000-4000-a000-000000000001",
       agentName: "test-agent",
       orgSlug: "test",
       userId: "user_test1",
@@ -205,7 +228,7 @@ function createMockSchedulesFromAPI() {
     },
     {
       id: "sched-d4e5f6",
-      agentId: "mock-compose-id",
+      agentId: "c0000000-0000-4000-a000-000000000001",
       agentName: "test-agent",
       orgSlug: "test",
       userId: "user_test1",
@@ -236,7 +259,7 @@ function createMockSchedulesFromAPI() {
     },
     {
       id: "sched-g7h8i9",
-      agentId: "mock-compose-id",
+      agentId: "c0000000-0000-4000-a000-000000000001",
       agentName: "test-agent",
       orgSlug: "test",
       userId: "user_test1",

@@ -14,7 +14,10 @@ describe("chat failure and cancel", () => {
   it("should display error message and restore Send button on failure", async () => {
     const ctrl = mockChatLifecycle();
 
-    await setupPage({ context, path: "/talk/mock-compose-id" });
+    await setupPage({
+      context,
+      path: "/talk/c0000000-0000-4000-a000-000000000001",
+    });
 
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
@@ -38,7 +41,10 @@ describe("chat failure and cancel", () => {
   it("should send cancel request when Stop button is clicked", async () => {
     const ctrl = mockChatLifecycle();
 
-    await setupPage({ context, path: "/talk/mock-compose-id" });
+    await setupPage({
+      context,
+      path: "/talk/c0000000-0000-4000-a000-000000000001",
+    });
 
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
@@ -63,7 +69,10 @@ describe("chat failure and cancel", () => {
   it("should show cancelled state after polling discovers cancellation", async () => {
     const ctrl = mockChatLifecycle();
 
-    await setupPage({ context, path: "/talk/mock-compose-id" });
+    await setupPage({
+      context,
+      path: "/talk/c0000000-0000-4000-a000-000000000001",
+    });
 
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
@@ -86,7 +95,10 @@ describe("chat failure and cancel", () => {
   it("should restore input after cancel", async () => {
     const ctrl = mockChatLifecycle();
 
-    await setupPage({ context, path: "/talk/mock-compose-id" });
+    await setupPage({
+      context,
+      path: "/talk/c0000000-0000-4000-a000-000000000001",
+    });
 
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,

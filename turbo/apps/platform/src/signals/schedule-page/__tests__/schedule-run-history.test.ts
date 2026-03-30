@@ -39,7 +39,7 @@ function logsResponse(
   return {
     data: [
       {
-        id: "run-1",
+        id: "b0000000-0000-4000-a000-000000000001",
         sessionId: null,
         agentId: "test-agent",
         displayName: "Test Agent",
@@ -95,7 +95,7 @@ describe("schedule-run-history signals", () => {
       const data = await context.store.get(scheduleRunData$);
 
       expect(data.data).toHaveLength(1);
-      expect(data.data[0]!.id).toBe("run-1");
+      expect(data.data[0]!.id).toBe("b0000000-0000-4000-a000-000000000001");
 
       // Verify the fetch URL includes scheduleId
       expect(captured.urls.length).toBeGreaterThan(0);

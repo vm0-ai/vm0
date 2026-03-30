@@ -10,9 +10,11 @@ const context = testContext();
 function createMockTeamWithSubagents() {
   return [
     {
-      id: "mock-compose-id",
+      id: "c0000000-0000-4000-a000-000000000001",
       displayName: null,
       description: null,
+      sound: null,
+      avatarUrl: null,
       headVersionId: "version_1",
       updatedAt: "2024-01-01T00:00:00Z",
     },
@@ -20,6 +22,8 @@ function createMockTeamWithSubagents() {
       id: "agent-2",
       displayName: "Research Agent",
       description: "Finds and summarizes information",
+      sound: null,
+      avatarUrl: null,
       headVersionId: "version_2",
       updatedAt: "2024-01-02T00:00:00Z",
     },

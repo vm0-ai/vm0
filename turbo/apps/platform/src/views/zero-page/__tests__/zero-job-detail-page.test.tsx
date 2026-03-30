@@ -12,10 +12,12 @@ function mockAPIs() {
     http.get("*/api/zero/team", () => {
       return HttpResponse.json([
         {
-          id: "mock-compose-id",
+          id: "c0000000-0000-4000-a000-000000000001",
           name: "zero",
           displayName: null,
           description: null,
+          sound: null,
+          avatarUrl: null,
           headVersionId: "version_1",
           updatedAt: "2024-01-01T00:00:00Z",
         },
@@ -24,6 +26,8 @@ function mockAPIs() {
           name: "my-agent",
           displayName: "My Agent",
           description: "A helpful agent",
+          sound: null,
+          avatarUrl: null,
           headVersionId: "version_2",
           updatedAt: "2024-01-02T00:00:00Z",
         },
@@ -40,6 +44,7 @@ function mockAPIs() {
         displayName: "My Agent",
         sound: null,
         connectors: [],
+        firewallPolicies: null,
       });
     }),
     http.get("*/api/zero/agents/:name/instructions", () => {
@@ -100,10 +105,12 @@ describe("zero job detail page", () => {
       http.get("*/api/zero/team", () => {
         return HttpResponse.json([
           {
-            id: "mock-compose-id",
+            id: "c0000000-0000-4000-a000-000000000001",
             name: "zero",
             displayName: null,
             description: null,
+            sound: null,
+            avatarUrl: null,
             headVersionId: "version_1",
             updatedAt: "2024-01-01T00:00:00Z",
           },
@@ -146,10 +153,12 @@ function mockAPIsWithSchedules() {
     http.get("*/api/zero/team", () => {
       return HttpResponse.json([
         {
-          id: "mock-compose-id",
+          id: "c0000000-0000-4000-a000-000000000001",
           name: "zero",
           displayName: null,
           description: null,
+          sound: null,
+          avatarUrl: null,
           headVersionId: "version_1",
           updatedAt: "2024-01-01T00:00:00Z",
         },
@@ -158,6 +167,8 @@ function mockAPIsWithSchedules() {
           name: "my-agent",
           displayName: "My Agent",
           description: "A helpful agent",
+          sound: null,
+          avatarUrl: null,
           headVersionId: "version_2",
           updatedAt: "2024-01-02T00:00:00Z",
         },
@@ -174,6 +185,7 @@ function mockAPIsWithSchedules() {
         displayName: "My Agent",
         sound: null,
         connectors: [],
+        firewallPolicies: null,
       });
     }),
     http.get("*/api/zero/agents/:name/instructions", () => {

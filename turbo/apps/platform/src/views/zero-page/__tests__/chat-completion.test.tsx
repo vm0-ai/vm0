@@ -15,7 +15,10 @@ describe("chat completion", () => {
   it("should display final markdown content after completion", async () => {
     const ctrl = mockChatLifecycle();
 
-    await setupPage({ context, path: "/talk/mock-compose-id" });
+    await setupPage({
+      context,
+      path: "/talk/c0000000-0000-4000-a000-000000000001",
+    });
 
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
@@ -37,7 +40,10 @@ describe("chat completion", () => {
   it("should restore Send button and remove Stop button after completion", async () => {
     const ctrl = mockChatLifecycle();
 
-    await setupPage({ context, path: "/talk/mock-compose-id" });
+    await setupPage({
+      context,
+      path: "/talk/c0000000-0000-4000-a000-000000000001",
+    });
 
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
@@ -60,7 +66,10 @@ describe("chat completion", () => {
   it("should collapse activity steps into expandable timeline", async () => {
     const ctrl = mockChatLifecycle();
 
-    await setupPage({ context, path: "/talk/mock-compose-id" });
+    await setupPage({
+      context,
+      path: "/talk/c0000000-0000-4000-a000-000000000001",
+    });
 
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
@@ -97,7 +106,10 @@ describe("chat completion", () => {
   it("should update sidebar title after completion", async () => {
     const ctrl = mockChatLifecycle();
 
-    await setupPage({ context, path: "/talk/mock-compose-id" });
+    await setupPage({
+      context,
+      path: "/talk/c0000000-0000-4000-a000-000000000001",
+    });
 
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
@@ -115,7 +127,7 @@ describe("chat completion", () => {
         id: "thread-test-1",
         title: "My conversation",
         preview: "Hello",
-        agentComposeId: "mock-compose-id",
+        agentId: "c0000000-0000-4000-a000-000000000001",
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
       },

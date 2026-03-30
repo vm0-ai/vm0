@@ -22,10 +22,11 @@ function createMockScheduleWithSlack(overrides?: {
   notifySlack?: boolean;
 }) {
   return {
-    id: "sched-slack-1",
-    agentId: "agent-1",
-    agentName: "zero",
+    id: "e0000000-0000-4000-a000-000000000001",
+    agentId: "e0000000-0000-4000-a000-000000000010",
     orgSlug: "test",
+    userId: "test-user-123",
+    displayName: null,
     name: "slack-schedule",
     triggerType: "cron",
     cronExpression: "0 9 * * *",
@@ -34,15 +35,28 @@ function createMockScheduleWithSlack(overrides?: {
     timezone: "UTC",
     prompt: "Daily standup",
     description: null,
+    appendSystemPrompt: null,
+    vars: null,
+    secretNames: null,
+    artifactName: null,
+    artifactVersion: null,
+    volumeVersions: null,
     enabled: true,
     notifyEmail: false,
     notifySlack: overrides?.notifySlack ?? true,
     slackChannelId: overrides?.slackChannelId ?? null,
     nextRunAt: null,
     lastRunAt: null,
+    retryStartedAt: null,
+    consecutiveFailures: 0,
     createdAt: "2026-03-01T00:00:00Z",
     updatedAt: "2026-03-01T00:00:00Z",
   };
+}
+
+function mockDeployScheduleResponse() {
+  const sched = createMockScheduleWithSlack();
+  return { schedule: sched, created: true };
 }
 
 describe("slack schedule notification signals", () => {
@@ -331,7 +345,7 @@ describe("slack schedule notification signals", () => {
           async ({ request }) => {
             captured.body = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json({
-              schedule: { id: "schedule-1" },
+              ...mockDeployScheduleResponse(),
             });
           },
         ),
@@ -374,7 +388,7 @@ describe("slack schedule notification signals", () => {
           async ({ request }) => {
             captured.body = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json({
-              schedule: { id: "schedule-2" },
+              ...mockDeployScheduleResponse(),
             });
           },
         ),
@@ -417,7 +431,7 @@ describe("slack schedule notification signals", () => {
           async ({ request }) => {
             captured.body = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json({
-              schedule: { id: "schedule-3" },
+              ...mockDeployScheduleResponse(),
             });
           },
         ),

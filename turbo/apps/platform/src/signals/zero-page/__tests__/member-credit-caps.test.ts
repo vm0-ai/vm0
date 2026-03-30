@@ -20,6 +20,7 @@ interface MockMember {
   cacheReadInputTokens: number;
   cacheCreationInputTokens: number;
   creditsCharged: number;
+  creditCap: number | null;
 }
 
 function memberA(): MockMember {
@@ -31,6 +32,7 @@ function memberA(): MockMember {
     cacheReadInputTokens: 0,
     cacheCreationInputTokens: 0,
     creditsCharged: 500,
+    creditCap: null,
   };
 }
 
@@ -43,6 +45,7 @@ function memberB(): MockMember {
     cacheReadInputTokens: 0,
     cacheCreationInputTokens: 0,
     creditsCharged: 1200,
+    creditCap: null,
   };
 }
 
@@ -82,7 +85,11 @@ function mockCreditCapPut(captured: { calls: CapturedCapCall[] }) {
     http.put("*/api/zero/org/members/credit-cap", async ({ request }) => {
       const body = (await request.json()) as CapturedCapCall;
       captured.calls.push(body);
-      return HttpResponse.json({ ok: true });
+      return HttpResponse.json({
+        userId: body.userId,
+        creditCap: body.creditCap,
+        creditEnabled: body.creditCap !== null,
+      });
     }),
   );
 }
@@ -118,7 +125,15 @@ describe("creditsMemberList$", () => {
     mockUsageMembers([memberA()]);
     server.use(
       http.get("*/api/zero/org/members/credit-cap", () => {
-        return new HttpResponse(null, { status: 500 });
+        return HttpResponse.json(
+          {
+            error: {
+              message: "Internal server error",
+              code: "INTERNAL_SERVER_ERROR",
+            },
+          },
+          { status: 500 },
+        );
       }),
     );
 

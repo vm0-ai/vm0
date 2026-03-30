@@ -17,7 +17,7 @@ function mockChatWithActivityLink() {
       return HttpResponse.json({
         id: "thread-with-activity",
         title: null,
-        agentId: "mock-compose-id",
+        agentId: "c0000000-0000-4000-a000-000000000001",
         chatMessages: [
           {
             role: "user",
@@ -80,14 +80,25 @@ function mockActivityDetailAPIs() {
   server.use(
     http.get("*/api/zero/composes/list", () => {
       return HttpResponse.json({
-        composes: [{ name: "test-agent", displayName: "Test Agent" }],
+        composes: [
+          {
+            id: "c0000000-0000-4000-a000-000000000001",
+            name: "test-agent",
+            displayName: "Test Agent",
+            headVersionId: "version_1",
+            updatedAt: "2024-01-01T00:00:00Z",
+          },
+        ],
       });
     }),
     http.get("*/api/zero/logs/:id", ({ params }) => {
       if (params["id"] === "run_activity_1") {
         return HttpResponse.json(logDetail);
       }
-      return new HttpResponse(null, { status: 404 });
+      return HttpResponse.json(
+        { error: { message: "Not found", code: "NOT_FOUND" } },
+        { status: 404 },
+      );
     }),
     http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
       return HttpResponse.json(eventsResponse);

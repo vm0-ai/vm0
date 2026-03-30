@@ -36,7 +36,7 @@ describe("prompt query parameter injection", () => {
     mockChatAPI();
     await setupPage({
       context,
-      path: "/talk/mock-compose-id?prompt=Set%20up%20a%20daily%20report",
+      path: "/talk/c0000000-0000-4000-a000-000000000001?prompt=Set%20up%20a%20daily%20report",
     });
 
     const textarea = await waitFor(
@@ -51,7 +51,7 @@ describe("prompt query parameter injection", () => {
     mockChatAPI();
     await setupPage({
       context,
-      path: "/talk/mock-compose-id?prompt=test",
+      path: "/talk/c0000000-0000-4000-a000-000000000001?prompt=test",
     });
 
     await waitFor(
@@ -67,7 +67,10 @@ describe("prompt query parameter injection", () => {
 
   it("should not modify input when no ?prompt= is present", async () => {
     mockChatAPI();
-    await setupPage({ context, path: "/talk/mock-compose-id" });
+    await setupPage({
+      context,
+      path: "/talk/c0000000-0000-4000-a000-000000000001",
+    });
 
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,

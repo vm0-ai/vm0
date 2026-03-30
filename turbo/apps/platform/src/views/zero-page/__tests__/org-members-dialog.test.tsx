@@ -117,7 +117,12 @@ describe("org members - invite dialog loading state", () => {
     server.use(
       http.post("*/api/zero/org/invite", () => {
         return HttpResponse.json(
-          { error: { message: "Already a member" } },
+          {
+            error: {
+              message: "Already a member",
+              code: "INTERNAL_SERVER_ERROR",
+            },
+          },
           { status: 400 },
         );
       }),

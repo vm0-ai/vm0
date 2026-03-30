@@ -12,7 +12,7 @@ function mockTeamWithSubagent() {
     http.get("*/api/zero/team", () => {
       return HttpResponse.json([
         {
-          id: "mock-compose-id",
+          id: "c0000000-0000-4000-a000-000000000001",
           displayName: null,
           description: null,
           sound: null,
@@ -176,6 +176,7 @@ describe("create teammate dialog - avatar", () => {
             sound: null,
             avatarUrl: capturedPayload.avatarUrl ?? null,
             connectors: [],
+            firewallPolicies: null,
           },
           { status: 201 },
         );
@@ -188,6 +189,7 @@ describe("create teammate dialog - avatar", () => {
           displayName: null,
           sound: null,
           connectors: [],
+          firewallPolicies: null,
         });
       }),
     );
@@ -228,6 +230,7 @@ describe("create teammate dialog - avatar", () => {
             sound: null,
             avatarUrl: capturedPayload.avatarUrl ?? null,
             connectors: [],
+            firewallPolicies: null,
           },
           { status: 201 },
         );
@@ -240,6 +243,7 @@ describe("create teammate dialog - avatar", () => {
           displayName: null,
           sound: null,
           connectors: [],
+          firewallPolicies: null,
         });
       }),
     );
@@ -292,6 +296,7 @@ describe("create teammate dialog - avatar", () => {
             sound: null,
             avatarUrl: capturedPayload.avatarUrl ?? null,
             connectors: [],
+            firewallPolicies: null,
           },
           { status: 201 },
         );
@@ -304,6 +309,7 @@ describe("create teammate dialog - avatar", () => {
           displayName: null,
           sound: null,
           connectors: [],
+          firewallPolicies: null,
         });
       }),
     );

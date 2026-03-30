@@ -107,7 +107,10 @@ function mockAPIs() {
       if (params["id"] === "run_2") {
         return HttpResponse.json(detail2);
       }
-      return new HttpResponse(null, { status: 404 });
+      return HttpResponse.json(
+        { error: { message: "Not found", code: "NOT_FOUND" } },
+        { status: 404 },
+      );
     }),
     http.get("*/api/zero/runs/:runId/telemetry/agent", ({ params }) => {
       const runId = params["runId"] as string;

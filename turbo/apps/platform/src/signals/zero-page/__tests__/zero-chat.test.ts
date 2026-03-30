@@ -65,7 +65,11 @@ function useChatThreadHandlers() {
     }),
     http.get("*/api/zero/chat-threads/:id", () => {
       return HttpResponse.json({
+        id: "thread-1",
+        title: null,
+        agentId: "c0000000-0000-4000-a000-000000000001",
         chatMessages: [],
+        latestSessionId: null,
         unsavedRuns: messageSent
           ? [
               {
@@ -76,6 +80,8 @@ function useChatThreadHandlers() {
               },
             ]
           : [],
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
       });
     }),
   );
@@ -104,7 +110,7 @@ describe("zero-chat signals", () => {
                 id: "t1",
                 title: null,
                 preview: "Hello",
-                agentId: "mock-compose-id",
+                agentId: "c0000000-0000-4000-a000-000000000001",
                 createdAt: "2026-03-10T00:00:00Z",
                 updatedAt: "2026-03-10T00:00:00Z",
               },
@@ -112,7 +118,7 @@ describe("zero-chat signals", () => {
                 id: "t2",
                 title: null,
                 preview: "World",
-                agentId: "mock-compose-id",
+                agentId: "c0000000-0000-4000-a000-000000000001",
                 createdAt: "2026-03-10T01:00:00Z",
                 updatedAt: "2026-03-10T01:00:00Z",
               },
@@ -145,7 +151,9 @@ describe("zero-chat signals", () => {
       await context.store.get(zeroSessionList$);
 
       const url = new URL(capturedUrl);
-      expect(url.searchParams.get("agentId")).toBe("mock-compose-id");
+      expect(url.searchParams.get("agentId")).toBe(
+        "c0000000-0000-4000-a000-000000000001",
+      );
     });
   });
 
@@ -156,7 +164,7 @@ describe("zero-chat signals", () => {
           return HttpResponse.json({
             id: "thread-abc",
             title: null,
-            agentId: "mock-compose-id",
+            agentId: "c0000000-0000-4000-a000-000000000001",
             chatMessages: [
               {
                 role: "user",
@@ -195,16 +203,16 @@ describe("zero-chat signals", () => {
     it("should set error on API failure", async () => {
       server.use(
         http.get("*/api/zero/chat-threads/:id", () => {
-          return new HttpResponse(null, {
-            status: 404,
-            statusText: "Not Found",
-          });
+          return HttpResponse.json(
+            { error: { message: "Not found", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
         }),
         http.get("*/api/zero/sessions/:id", () => {
-          return new HttpResponse(null, {
-            status: 404,
-            statusText: "Not Found",
-          });
+          return HttpResponse.json(
+            { error: { message: "Not found", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
         }),
         http.get("*/api/zero/chat-threads", () => {
           return HttpResponse.json({ threads: [] });
@@ -228,7 +236,7 @@ describe("zero-chat signals", () => {
           return HttpResponse.json({
             id: "thread-1",
             title: null,
-            agentId: "mock-compose-id",
+            agentId: "c0000000-0000-4000-a000-000000000001",
             chatMessages: [],
             latestSessionId: null,
             createdAt: "2026-03-10T00:00:00Z",
@@ -398,7 +406,7 @@ describe("zero-chat signals", () => {
           return HttpResponse.json({
             id: "url-thread",
             title: null,
-            agentId: "mock-compose-id",
+            agentId: "c0000000-0000-4000-a000-000000000001",
             chatMessages: [
               {
                 role: "user",
@@ -444,7 +452,7 @@ describe("zero-chat signals", () => {
           return HttpResponse.json({
             id: "already-loaded",
             title: null,
-            agentId: "mock-compose-id",
+            agentId: "c0000000-0000-4000-a000-000000000001",
             chatMessages: [
               {
                 role: "user",
@@ -617,7 +625,15 @@ describe("zero-chat signals", () => {
     it("should remove placeholder on upload failure", async () => {
       server.use(
         http.post("*/api/zero/uploads", () => {
-          return new HttpResponse(null, { status: 500 });
+          return HttpResponse.json(
+            {
+              error: {
+                message: "Internal server error",
+                code: "INTERNAL_SERVER_ERROR",
+              },
+            },
+            { status: 500 },
+          );
         }),
       );
       await setup();

@@ -116,7 +116,15 @@ describe("zero-activity signals", () => {
     it("should throw on API error", async () => {
       server.use(
         http.get("http://localhost:3000/api/zero/logs", () => {
-          return new HttpResponse(null, { status: 500 });
+          return HttpResponse.json(
+            {
+              error: {
+                message: "Internal server error",
+                code: "INTERNAL_SERVER_ERROR",
+              },
+            },
+            { status: 500 },
+          );
         }),
       );
 
@@ -180,7 +188,10 @@ describe("zero-activity signals", () => {
           if (params["logId"] === "log-1") {
             return HttpResponse.json(createMockLogDetail());
           }
-          return new HttpResponse(null, { status: 404 });
+          return HttpResponse.json(
+            { error: { message: "Not found", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
         }),
         http.get(
           "http://localhost:3000/api/zero/runs/:runId/telemetry/agent",

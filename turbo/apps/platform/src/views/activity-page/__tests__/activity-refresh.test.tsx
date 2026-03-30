@@ -36,7 +36,15 @@ function mockCommonAPIs() {
   server.use(
     http.get("*/api/zero/composes/list", () => {
       return HttpResponse.json({
-        composes: [{ name: "zero", displayName: "Zero" }],
+        composes: [
+          {
+            id: "c0000000-0000-4000-a000-000000000001",
+            name: "zero",
+            displayName: "Zero",
+            headVersionId: "version_1",
+            updatedAt: "2024-01-01T00:00:00Z",
+          },
+        ],
       });
     }),
     http.get("*/api/zero/chat-threads", () => {

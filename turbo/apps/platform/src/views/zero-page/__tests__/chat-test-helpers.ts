@@ -43,7 +43,7 @@ interface ThreadListItem {
   id: string;
   title: string | null;
   preview: string | null;
-  agentComposeId: string;
+  agentId: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -99,7 +99,7 @@ export function mockChatLifecycle(options?: {
         (runAssociated
           ? [
               {
-                runId: "run-test-1",
+                runId: "a0000000-0000-4000-a000-000000000001",
                 status: runStatus,
                 prompt: runPrompt ?? "Hello",
                 error: runError,
@@ -109,7 +109,7 @@ export function mockChatLifecycle(options?: {
       return HttpResponse.json({
         id: threadId,
         title: options?.threadTitle ?? null,
-        agentComposeId: "mock-compose-id",
+        agentId: "c0000000-0000-4000-a000-000000000001",
         chatMessages,
         latestSessionId: null,
         unsavedRuns: effectiveUnsavedRuns,
@@ -121,7 +121,10 @@ export function mockChatLifecycle(options?: {
       HttpResponse.json({ threads: threadList }),
     ),
     http.post("*/api/zero/chat-threads", () =>
-      HttpResponse.json({ id: threadId, title: null }, { status: 201 }),
+      HttpResponse.json(
+        { id: threadId, title: null, createdAt: "2026-03-10T00:00:00Z" },
+        { status: 201 },
+      ),
     ),
     // Unified chat message endpoint (creates thread + run + association)
     http.post("*/api/zero/chat/messages", async ({ request }) => {
@@ -143,13 +146,14 @@ export function mockChatLifecycle(options?: {
     }),
     http.get("*/api/zero/logs/:id", () =>
       HttpResponse.json({
-        id: "run-test-1",
+        id: "a0000000-0000-4000-a000-000000000001",
         sessionId: "session-1",
         agentId: "zero",
         displayName: null,
         framework: "claude-code",
         modelProvider: null,
         triggerSource: "web",
+        scheduleId: null,
         status: runStatus,
         prompt: "Hello",
         appendSystemPrompt: null,
@@ -163,13 +167,22 @@ export function mockChatLifecycle(options?: {
     http.get("*/api/zero/runs/:id/telemetry/agent", () =>
       HttpResponse.json({ events, hasMore: false, framework: "claude-code" }),
     ),
-    http.post(
-      "*/api/zero/runs/:id/cancel",
-      () => new HttpResponse(null, { status: 204 }),
+    http.post("*/api/zero/runs/:id/cancel", () =>
+      HttpResponse.json({
+        id: "a0000000-0000-4000-a000-000000000001",
+        status: "cancelled",
+        message: "Run cancelled",
+      }),
     ),
     http.get("*/api/zero/runs/:id", () =>
       HttpResponse.json({
+        runId: "a0000000-0000-4000-a000-000000000001",
+        agentComposeVersionId: null,
+        status: runStatus,
+        prompt: runPrompt ?? "Hello",
+        appendSystemPrompt: null,
         result: { agentSessionId: "session-1", output: resultContent },
+        createdAt: "2026-03-10T00:00:00Z",
       }),
     ),
     http.get("*/api/zero/queue-position", () =>

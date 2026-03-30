@@ -258,11 +258,12 @@ describe("zero chat page - connector label casing", () => {
         }
         return HttpResponse.json({
           name: params.name,
-          agentId: "mock-compose-id",
+          agentId: "c0000000-0000-4000-a000-000000000001",
           description: null,
           displayName: null,
           sound: null,
           connectors: ["axiom"],
+          firewallPolicies: null,
         });
       }),
     );
@@ -299,7 +300,10 @@ describe("zero chat page - agent avatar and greeting", () => {
     const link = await waitFor(() =>
       screen.getByRole("link", { name: "View agent profile" }),
     );
-    expect(link).toHaveAttribute("href", "/team/mock-compose-id");
+    expect(link).toHaveAttribute(
+      "href",
+      "/team/c0000000-0000-4000-a000-000000000001",
+    );
   });
 });
 

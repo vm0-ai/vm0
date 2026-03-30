@@ -18,7 +18,7 @@ function mockOnboardingStatus(overrides: Record<string, unknown>) {
         isAdmin: true,
         hasOrg: true,
         hasDefaultAgent: true,
-        defaultAgentId: "mock-compose-id",
+        defaultAgentId: "c0000000-0000-4000-a000-000000000001",
         defaultAgentMetadata: null,
         defaultAgentSkills: [],
         ...overrides,

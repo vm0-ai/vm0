@@ -12,7 +12,7 @@ export const apiAgentsHandlers = [
   http.get("*/api/zero/team", () => {
     return HttpResponse.json([
       {
-        id: "mock-compose-id",
+        id: "c0000000-0000-4000-a000-000000000001",
         displayName: null,
         description: null,
         sound: null,
@@ -28,8 +28,11 @@ export const apiAgentsHandlers = [
     return HttpResponse.json({
       composes: [
         {
-          id: "mock-compose-id",
+          id: "c0000000-0000-4000-a000-000000000001",
+          name: "zero",
           displayName: null,
+          description: null,
+          sound: null,
           headVersionId: "version_1",
           updatedAt: "2024-01-01T00:00:00Z",
         },
@@ -68,13 +71,13 @@ export const apiAgentsHandlers = [
     }
 
     return HttpResponse.json({
-      name: params.name,
-      agentId: "mock-compose-id",
+      agentId: "c0000000-0000-4000-a000-000000000001",
       description: null,
       displayName: null,
       sound: null,
       avatarUrl: null,
       connectors: [],
+      firewallPolicies: null,
     });
   }),
 

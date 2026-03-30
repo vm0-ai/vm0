@@ -67,7 +67,7 @@ describe("zeroChatAgentId$", () => {
   });
 
   it("should return agentId from /talk/:agentId (non-default)", async () => {
-    mockOnboardingStatus("mock-compose-id");
+    mockOnboardingStatus("c0000000-0000-4000-a000-000000000001");
     await setupRoutes("/talk/sub-agent-id");
 
     const agentId = await context.store.get(zeroChatAgentId$);
@@ -75,15 +75,15 @@ describe("zeroChatAgentId$", () => {
   });
 
   it("should return null for /talk/:defaultAgentId (default normalization)", async () => {
-    mockOnboardingStatus("mock-compose-id");
-    await setupRoutes("/talk/mock-compose-id");
+    mockOnboardingStatus("c0000000-0000-4000-a000-000000000001");
+    await setupRoutes("/talk/c0000000-0000-4000-a000-000000000001");
 
     const agentId = await context.store.get(zeroChatAgentId$);
     expect(agentId).toBeNull();
   });
 
   it("should return thread agentId from /chat/:chatThreadId (non-default)", async () => {
-    mockOnboardingStatus("mock-compose-id");
+    mockOnboardingStatus("c0000000-0000-4000-a000-000000000001");
     mockChatThread("thread-abc", "sub-agent-id");
     await setupRoutes("/chat/thread-abc");
 
@@ -92,8 +92,8 @@ describe("zeroChatAgentId$", () => {
   });
 
   it("should return null when /chat/:chatThreadId has default agent", async () => {
-    mockOnboardingStatus("mock-compose-id");
-    mockChatThread("thread-abc", "mock-compose-id");
+    mockOnboardingStatus("c0000000-0000-4000-a000-000000000001");
+    mockChatThread("thread-abc", "c0000000-0000-4000-a000-000000000001");
     await setupRoutes("/chat/thread-abc");
 
     const agentId = await context.store.get(zeroChatAgentId$);

@@ -37,7 +37,11 @@ describe("cancelQueueRun$", () => {
       }),
       http.post("*/api/zero/runs/:runId/cancel", ({ params }) => {
         cancelCalledWith = params.runId as string;
-        return HttpResponse.json({ ok: true });
+        return HttpResponse.json({
+          id: params.runId,
+          status: "cancelled",
+          message: "Run cancelled",
+        });
       }),
     );
 
@@ -63,10 +67,10 @@ describe("cancelQueueRun$", () => {
         return HttpResponse.json(mockQueueResponse());
       }),
       http.post("*/api/zero/runs/:runId/cancel", () => {
-        return new HttpResponse(null, {
-          status: 403,
-          statusText: "Forbidden",
-        });
+        return HttpResponse.json(
+          { error: { message: "Forbidden", code: "FORBIDDEN" } },
+          { status: 403 },
+        );
       }),
     );
 

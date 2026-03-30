@@ -16,7 +16,10 @@ describe("chat message lifecycle", () => {
   it("should show user message and assistant response after sending", async () => {
     const ctrl = mockChatLifecycle();
 
-    await setupPage({ context, path: "/talk/mock-compose-id" });
+    await setupPage({
+      context,
+      path: "/talk/c0000000-0000-4000-a000-000000000001",
+    });
 
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
@@ -56,7 +59,10 @@ describe("chat message lifecycle", () => {
       ),
     );
 
-    await setupPage({ context, path: "/talk/mock-compose-id" });
+    await setupPage({
+      context,
+      path: "/talk/c0000000-0000-4000-a000-000000000001",
+    });
 
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
@@ -73,13 +79,23 @@ describe("chat message lifecycle", () => {
   it("should stay on talk page when message sending fails", async () => {
     mockChatLifecycle();
     server.use(
-      http.post(
-        "*/api/zero/chat/messages",
-        () => new HttpResponse(null, { status: 500 }),
+      http.post("*/api/zero/chat/messages", () =>
+        HttpResponse.json(
+          {
+            error: {
+              message: "Internal server error",
+              code: "INTERNAL_SERVER_ERROR",
+            },
+          },
+          { status: 500 },
+        ),
       ),
     );
 
-    await setupPage({ context, path: "/talk/mock-compose-id" });
+    await setupPage({
+      context,
+      path: "/talk/c0000000-0000-4000-a000-000000000001",
+    });
 
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
@@ -96,7 +112,10 @@ describe("chat message lifecycle", () => {
   it("should not send empty messages", async () => {
     mockChatLifecycle();
 
-    await setupPage({ context, path: "/talk/mock-compose-id" });
+    await setupPage({
+      context,
+      path: "/talk/c0000000-0000-4000-a000-000000000001",
+    });
 
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,

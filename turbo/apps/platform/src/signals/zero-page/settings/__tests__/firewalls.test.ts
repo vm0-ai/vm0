@@ -37,11 +37,11 @@ describe("saveFirewallPolicies$", () => {
       http.put("*/api/zero/firewall-policies", async ({ request }) => {
         capturedBody = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json({
-          name: "my-agent",
           agentId: "compose-1",
           description: null,
           displayName: null,
           sound: null,
+          avatarUrl: null,
           connectors: [],
           firewallPolicies: policies,
         });

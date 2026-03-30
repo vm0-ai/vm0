@@ -44,6 +44,7 @@ function mockAgentResponse() {
     displayName: null,
     sound: null,
     connectors: ["search"],
+    firewallPolicies: null,
   };
 }
 
@@ -443,7 +444,12 @@ describe("zero-job-detail signals", () => {
       server.use(
         http.post("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json(
-            { error: { message: "Quota exceeded" } },
+            {
+              error: {
+                message: "Quota exceeded",
+                code: "INTERNAL_SERVER_ERROR",
+              },
+            },
             { status: 429, statusText: "Too Many Requests" },
           );
         }),
@@ -535,7 +541,7 @@ describe("zero-job-detail signals", () => {
       server.use(
         http.delete("http://localhost:3000/api/zero/schedules/:name", () => {
           return HttpResponse.json(
-            { error: { message: "Not found" } },
+            { error: { message: "Not found", code: "INTERNAL_SERVER_ERROR" } },
             { status: 404, statusText: "Not Found" },
           );
         }),
@@ -673,7 +679,12 @@ describe("zero-job-detail signals", () => {
           "http://localhost:3000/api/zero/schedules/:name/:action",
           () => {
             return HttpResponse.json(
-              { error: { message: "Server error" } },
+              {
+                error: {
+                  message: "Server error",
+                  code: "INTERNAL_SERVER_ERROR",
+                },
+              },
               { status: 500, statusText: "Internal Server Error" },
             );
           },
@@ -755,6 +766,7 @@ describe("zero-job-detail signals", () => {
               displayName: null,
               sound: null,
               connectors: [],
+              firewallPolicies: null,
             });
           },
         ),
@@ -791,7 +803,12 @@ describe("zero-job-detail signals", () => {
           "http://localhost:3000/api/zero/agents/compose-1/instructions",
           () => {
             return HttpResponse.json(
-              { error: { message: "Build quota exceeded" } },
+              {
+                error: {
+                  message: "Build quota exceeded",
+                  code: "INTERNAL_SERVER_ERROR",
+                },
+              },
               { status: 429, statusText: "Too Many Requests" },
             );
           },
@@ -829,6 +846,7 @@ describe("zero-job-detail signals", () => {
               displayName: null,
               sound: null,
               connectors: [],
+              firewallPolicies: null,
             });
           },
         ),
@@ -877,6 +895,7 @@ describe("zero-job-detail signals", () => {
               description: null,
               sound: "friendly",
               connectors: [],
+              firewallPolicies: null,
             });
           },
         ),
@@ -917,6 +936,7 @@ describe("zero-job-detail signals", () => {
             description: null,
             sound: null,
             connectors: [],
+            firewallPolicies: null,
           });
         }),
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
@@ -1059,7 +1079,9 @@ describe("zero-job-detail signals", () => {
       server.use(
         http.put("http://localhost:3000/api/zero/agents/compose-1", () => {
           return HttpResponse.json(
-            { error: { message: "Build failed" } },
+            {
+              error: { message: "Build failed", code: "INTERNAL_SERVER_ERROR" },
+            },
             { status: 500, statusText: "Internal Server Error" },
           );
         }),

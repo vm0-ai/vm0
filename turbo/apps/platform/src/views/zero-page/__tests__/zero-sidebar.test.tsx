@@ -15,7 +15,7 @@ function mockAPIs({
       id: "thread-1",
       title: "First chat",
       preview: "Hello world",
-      agentId: "mock-compose-id",
+      agentId: "c0000000-0000-4000-a000-000000000001",
       createdAt: "2026-03-10T00:00:00Z",
       updatedAt: "2026-03-10T00:00:00Z",
     },
@@ -23,7 +23,7 @@ function mockAPIs({
       id: "thread-2",
       title: "Second chat",
       preview: "Goodbye moon",
-      agentId: "mock-compose-id",
+      agentId: "c0000000-0000-4000-a000-000000000001",
       createdAt: "2026-03-09T00:00:00Z",
       updatedAt: "2026-03-09T00:00:00Z",
     },
@@ -42,9 +42,11 @@ function mockAPIs({
     http.get("*/api/zero/team", () => {
       return HttpResponse.json([
         {
-          id: "mock-compose-id",
+          id: "c0000000-0000-4000-a000-000000000001",
           displayName: null,
           description: null,
+          sound: null,
+          avatarUrl: null,
           headVersionId: "version_1",
           updatedAt: "2024-01-01T00:00:00Z",
         },
@@ -61,9 +63,11 @@ function mockAPIsWithSubagents() {
     http.get("*/api/zero/team", () => {
       return HttpResponse.json([
         {
-          id: "mock-compose-id",
+          id: "c0000000-0000-4000-a000-000000000001",
           displayName: null,
           description: null,
+          sound: null,
+          avatarUrl: null,
           headVersionId: "version_1",
           updatedAt: "2024-01-01T00:00:00Z",
         },
@@ -71,6 +75,8 @@ function mockAPIsWithSubagents() {
           id: "sub-agent-id",
           displayName: "Research Agent",
           description: "Finds information",
+          sound: null,
+          avatarUrl: null,
           headVersionId: "version_2",
           updatedAt: "2024-01-02T00:00:00Z",
         },
@@ -83,7 +89,7 @@ function mockAPIsWithSubagents() {
             id: "thread-main",
             title: "Main agent chat",
             preview: "Hello from main",
-            agentId: "mock-compose-id",
+            agentId: "c0000000-0000-4000-a000-000000000001",
             createdAt: "2026-03-10T00:00:00Z",
             updatedAt: "2026-03-10T00:00:00Z",
           },

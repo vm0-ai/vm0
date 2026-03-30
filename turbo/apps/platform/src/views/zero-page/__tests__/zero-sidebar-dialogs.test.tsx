@@ -21,9 +21,11 @@ function mockAPIsWithSubagents({
     http.get("*/api/zero/team", () => {
       return HttpResponse.json([
         {
-          id: "mock-compose-id",
+          id: "c0000000-0000-4000-a000-000000000001",
           displayName: null,
           description: null,
+          sound: null,
+          avatarUrl: null,
           headVersionId: "version_1",
           updatedAt: "2024-01-01T00:00:00Z",
         },
@@ -31,6 +33,8 @@ function mockAPIsWithSubagents({
           id: "pinned-agent-id",
           displayName: "Pinned Agent",
           description: "A pinned sub-agent",
+          sound: null,
+          avatarUrl: null,
           headVersionId: "version_2",
           updatedAt: "2024-01-02T00:00:00Z",
         },
@@ -38,6 +42,8 @@ function mockAPIsWithSubagents({
           id: "unpinned-agent-id",
           displayName: "Unpinned Agent",
           description: "An unpinned sub-agent",
+          sound: null,
+          avatarUrl: null,
           headVersionId: "version_3",
           updatedAt: "2024-01-03T00:00:00Z",
         },
@@ -50,7 +56,7 @@ function mockAPIsWithSubagents({
       return HttpResponse.json({
         id: "new-thread-from-dialog",
         title: null,
-        agentId: "mock-compose-id",
+        agentId: "c0000000-0000-4000-a000-000000000001",
         chatMessages: [],
         latestSessionId: "session-new",
         createdAt: "2026-03-10T00:00:00Z",

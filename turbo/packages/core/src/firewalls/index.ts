@@ -354,8 +354,10 @@ export type NonFirewallConnectorType =
  * FirewallConnectorType or NonFirewallConnectorType.
  */
 type ValidateNonFirewall<
-  T extends Exclude<ConnectorType, FirewallConnectorType> =
-    NonFirewallConnectorType,
+  T extends Exclude<
+    ConnectorType,
+    FirewallConnectorType
+  > = NonFirewallConnectorType,
 > = T;
 type ValidateExhaustive<
   T extends never = Exclude<

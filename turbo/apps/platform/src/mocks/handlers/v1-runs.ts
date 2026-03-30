@@ -13,7 +13,7 @@ import type {
 // Mock data for log details
 const mockLogDetails: LogDetail[] = [
   {
-    id: "run_1",
+    id: "a0000000-0000-4000-a000-000000000001",
     sessionId: "session_1",
     agentId: "test-agent",
     displayName: null,
@@ -34,7 +34,7 @@ const mockLogDetails: LogDetail[] = [
     },
   },
   {
-    id: "run_2",
+    id: "a0000000-0000-4000-a000-000000000002",
     sessionId: "session_2",
     agentId: "another-agent",
     displayName: null,

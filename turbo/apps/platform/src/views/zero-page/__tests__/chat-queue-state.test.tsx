@@ -18,7 +18,10 @@ describe("chat queue state", () => {
     ctrl.setRunStatus("queued");
     ctrl.setQueuePosition(3);
 
-    await setupPage({ context, path: "/talk/mock-compose-id" });
+    await setupPage({
+      context,
+      path: "/talk/c0000000-0000-4000-a000-000000000001",
+    });
 
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
@@ -42,7 +45,10 @@ describe("chat queue state", () => {
     ctrl.setRunStatus("queued");
     ctrl.setQueuePosition(2);
 
-    await setupPage({ context, path: "/talk/mock-compose-id" });
+    await setupPage({
+      context,
+      path: "/talk/c0000000-0000-4000-a000-000000000001",
+    });
 
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,

@@ -32,10 +32,12 @@ function mockAPIs(members: MockMember[]) {
     http.get("*/api/zero/team", () =>
       HttpResponse.json([
         {
-          id: "mock-compose-id",
+          id: "c0000000-0000-4000-a000-000000000001",
           name: "zero",
           displayName: null,
           description: null,
+          sound: null,
+          avatarUrl: null,
           headVersionId: "version_1",
           updatedAt: "2024-01-01T00:00:00Z",
         },

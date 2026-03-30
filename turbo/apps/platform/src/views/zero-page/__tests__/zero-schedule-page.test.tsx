@@ -12,7 +12,7 @@ function createMockSchedules() {
   return [
     {
       id: "sched-1",
-      agentId: "mock-compose-id",
+      agentId: "c0000000-0000-4000-a000-000000000001",
       displayName: "Zero",
       orgSlug: "test",
       name: "morning-briefing",
@@ -33,7 +33,7 @@ function createMockSchedules() {
     },
     {
       id: "sched-2",
-      agentId: "mock-compose-id",
+      agentId: "c0000000-0000-4000-a000-000000000001",
       displayName: "Zero",
       orgSlug: "test",
       name: "check-inbox",
@@ -54,7 +54,7 @@ function createMockSchedules() {
     },
     {
       id: "sched-disabled",
-      agentId: "mock-compose-id",
+      agentId: "c0000000-0000-4000-a000-000000000001",
       displayName: "Zero",
       orgSlug: "test",
       name: "disabled-schedule",
@@ -113,10 +113,11 @@ describe("zero schedule page - agent labels", () => {
       http.get("*/api/zero/team", () => {
         return HttpResponse.json([
           {
-            id: "mock-compose-id",
+            id: "c0000000-0000-4000-a000-000000000001",
             displayName: "Zero",
             description: null,
             sound: null,
+            avatarUrl: null,
             headVersionId: "v1",
             updatedAt: "2024-01-01T00:00:00Z",
           },
@@ -158,10 +159,11 @@ describe("zero schedule page - agent labels", () => {
       http.get("*/api/zero/team", () => {
         return HttpResponse.json([
           {
-            id: "mock-compose-id",
+            id: "c0000000-0000-4000-a000-000000000001",
             displayName: null,
             description: null,
             sound: null,
+            avatarUrl: null,
             headVersionId: "v1",
             updatedAt: "2024-01-01T00:00:00Z",
           },
@@ -768,7 +770,12 @@ describe("zero schedule page - schedule dialog fields", () => {
       }),
       http.post("*/api/zero/schedules", () => {
         return HttpResponse.json(
-          { error: { message: "Schedule limit reached" } },
+          {
+            error: {
+              message: "Schedule limit reached",
+              code: "INTERNAL_SERVER_ERROR",
+            },
+          },
           { status: 400 },
         );
       }),

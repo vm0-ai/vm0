@@ -9,7 +9,7 @@ import { pathname } from "../../../signals/location.ts";
 
 const context = testContext();
 
-const AGENT_ID = "mock-compose-id";
+const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const IDEAS_PATH = `/talk/${AGENT_ID}/ideas`;
 
 function mockChatAPI() {
@@ -264,6 +264,9 @@ describe("ideation page - navigation", () => {
             {
               id: customAgentId,
               displayName: "Custom Agent",
+              description: null,
+              sound: null,
+              avatarUrl: null,
               headVersionId: "v1",
               updatedAt: "2024-01-01T00:00:00Z",
             },
@@ -275,6 +278,9 @@ describe("ideation page - navigation", () => {
           {
             id: customAgentId,
             displayName: "Custom Agent",
+            description: null,
+            sound: null,
+            avatarUrl: null,
             headVersionId: "v1",
             updatedAt: "2024-01-01T00:00:00Z",
           },

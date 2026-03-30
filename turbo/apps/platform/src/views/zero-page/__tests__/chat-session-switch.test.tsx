@@ -17,7 +17,7 @@ describe("chat session switch", () => {
           return HttpResponse.json({
             id: "thread-completed",
             title: null,
-            agentComposeId: "mock-compose-id",
+            agentId: "c0000000-0000-4000-a000-000000000001",
             chatMessages: [
               {
                 role: "user",
@@ -39,7 +39,7 @@ describe("chat session switch", () => {
         return HttpResponse.json({
           id: "thread-running",
           title: null,
-          agentComposeId: "mock-compose-id",
+          agentId: "c0000000-0000-4000-a000-000000000001",
           chatMessages: [
             {
               role: "user",
@@ -126,7 +126,7 @@ describe("chat session switch", () => {
         return HttpResponse.json({
           id,
           title: null,
-          agentComposeId: "mock-compose-id",
+          agentId: "c0000000-0000-4000-a000-000000000001",
           chatMessages: [
             {
               role: "user",

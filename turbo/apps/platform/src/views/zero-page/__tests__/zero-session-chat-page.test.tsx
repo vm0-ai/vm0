@@ -14,7 +14,7 @@ describe("userMessage line break rendering", () => {
         return HttpResponse.json({
           id: "thread-multiline",
           title: null,
-          agentId: "mock-compose-id",
+          agentId: "c0000000-0000-4000-a000-000000000001",
           chatMessages: [
             {
               role: "user",
@@ -53,7 +53,7 @@ describe("userMessage line break rendering", () => {
         return HttpResponse.json({
           id: "thread-singleline",
           title: null,
-          agentId: "mock-compose-id",
+          agentId: "c0000000-0000-4000-a000-000000000001",
           chatMessages: [
             {
               role: "user",
@@ -90,7 +90,7 @@ describe("provider incompatibility error", () => {
         return HttpResponse.json({
           id: "thread-provider-error",
           title: null,
-          agentId: "mock-compose-id",
+          agentId: "c0000000-0000-4000-a000-000000000001",
           chatMessages: [],
           latestSessionId: null,
           unsavedRuns: [
@@ -125,7 +125,7 @@ describe("provider incompatibility error", () => {
         return HttpResponse.json({
           id: "thread-signature-error",
           title: null,
-          agentId: "mock-compose-id",
+          agentId: "c0000000-0000-4000-a000-000000000001",
           chatMessages: [],
           latestSessionId: null,
           unsavedRuns: [
@@ -161,7 +161,7 @@ describe("agent avatar link", () => {
         return HttpResponse.json({
           id: "thread-avatar-test",
           title: null,
-          agentId: "mock-compose-id",
+          agentId: "c0000000-0000-4000-a000-000000000001",
           chatMessages: [],
           latestSessionId: null,
           createdAt: "2026-03-10T00:00:00Z",
@@ -178,6 +178,9 @@ describe("agent avatar link", () => {
     const link = await waitFor(() =>
       screen.getByRole("link", { name: "View agent profile" }),
     );
-    expect(link).toHaveAttribute("href", "/team/mock-compose-id");
+    expect(link).toHaveAttribute(
+      "href",
+      "/team/c0000000-0000-4000-a000-000000000001",
+    );
   });
 });

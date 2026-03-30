@@ -32,8 +32,11 @@ function mockSubagentAPIs() {
     http.get("*/api/zero/team", () => {
       return HttpResponse.json([
         {
-          id: "mock-compose-id",
+          id: "c0000000-0000-4000-a000-000000000001",
           displayName: null,
+          description: null,
+          sound: null,
+          avatarUrl: null,
           headVersionId: "version_1",
           updatedAt: "2024-01-01T00:00:00Z",
         },
@@ -171,7 +174,15 @@ describe("sidebar new chat navigation", () => {
     // Override POST to return error
     server.use(
       http.post("*/api/zero/chat-threads", () => {
-        return new HttpResponse(null, { status: 500 });
+        return HttpResponse.json(
+          {
+            error: {
+              message: "Internal server error",
+              code: "INTERNAL_SERVER_ERROR",
+            },
+          },
+          { status: 500 },
+        );
       }),
     );
 
@@ -208,7 +219,7 @@ describe("sidebar new chat navigation", () => {
               id: "new-thread-id",
               title: null,
               preview: null,
-              agentId: "mock-compose-id",
+              agentId: "c0000000-0000-4000-a000-000000000001",
               createdAt: "2026-03-10T00:00:00Z",
               updatedAt: "2026-03-10T00:00:00Z",
             },
@@ -219,7 +230,7 @@ describe("sidebar new chat navigation", () => {
         return HttpResponse.json({
           id: "new-thread-id",
           title: null,
-          agentId: "mock-compose-id",
+          agentId: "c0000000-0000-4000-a000-000000000001",
           chatMessages: [],
           latestSessionId: "session-new-1",
           createdAt: "2026-03-10T00:00:00Z",

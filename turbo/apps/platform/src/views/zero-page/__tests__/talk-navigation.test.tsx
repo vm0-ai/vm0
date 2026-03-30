@@ -31,7 +31,7 @@ function mockChatAPIs() {
       return HttpResponse.json({
         id: "new-thread-id-123",
         title: "Hello",
-        agentId: "mock-compose-id",
+        agentId: "c0000000-0000-4000-a000-000000000001",
         chatMessages: [],
         latestSessionId: null,
         unsavedRuns: [],
@@ -78,7 +78,10 @@ describe("talk navigation", () => {
   it("should navigate from /talk/:name to /chat/:chatThreadId after sending a message", async () => {
     mockChatAPIs();
 
-    await setupPage({ context, path: "/talk/mock-compose-id" });
+    await setupPage({
+      context,
+      path: "/talk/c0000000-0000-4000-a000-000000000001",
+    });
 
     // Wait for the chat input to be ready
     const textarea = await waitFor(

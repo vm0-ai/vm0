@@ -19,11 +19,55 @@ import {
 
 const context = testContext();
 
+function mockDeployResponse() {
+  return {
+    schedule: {
+      ...scheduleDefaults(),
+      id: "d0000000-0000-4000-a000-000000000001",
+      agentId: "c0000000-0000-4000-a000-000000000001",
+      orgSlug: "test",
+      name: "new-schedule",
+      triggerType: "cron" as const,
+      cronExpression: "0 9 * * *",
+      atTime: null,
+      intervalSeconds: null,
+      timezone: "UTC",
+      prompt: "test",
+      description: null,
+      enabled: true,
+      nextRunAt: null,
+      lastRunAt: null,
+      createdAt: "2026-03-01T00:00:00Z",
+      updatedAt: "2026-03-01T00:00:00Z",
+    },
+    created: true,
+  };
+}
+
+function scheduleDefaults() {
+  return {
+    displayName: null,
+    userId: "test-user-123",
+    appendSystemPrompt: null,
+    vars: null,
+    secretNames: null,
+    artifactName: null,
+    artifactVersion: null,
+    volumeVersions: null,
+    notifyEmail: false,
+    notifySlack: false,
+    slackChannelId: null,
+    retryStartedAt: null,
+    consecutiveFailures: 0,
+  };
+}
+
 function createMockSchedules() {
   return [
     {
-      id: "sched-1",
-      agentId: "mock-compose-id",
+      ...scheduleDefaults(),
+      id: "a0000001-0000-4000-a000-000000000001",
+      agentId: "a0000001-0000-4000-a000-000000000010",
       orgSlug: "test",
       name: "morning-briefing",
       triggerType: "cron",
@@ -40,8 +84,9 @@ function createMockSchedules() {
       updatedAt: "2026-03-01T00:00:00Z",
     },
     {
-      id: "sched-2",
-      agentId: "mock-compose-id",
+      ...scheduleDefaults(),
+      id: "a0000001-0000-4000-a000-000000000002",
+      agentId: "a0000001-0000-4000-a000-000000000010",
       orgSlug: "test",
       name: "check-inbox",
       triggerType: "loop",
@@ -58,8 +103,9 @@ function createMockSchedules() {
       updatedAt: "2026-03-01T00:00:00Z",
     },
     {
-      id: "sched-other",
-      agentId: "other-compose-id",
+      ...scheduleDefaults(),
+      id: "a0000001-0000-4000-a000-000000000003",
+      agentId: "a0000001-0000-4000-a000-000000000020",
       orgSlug: "test",
       name: "other-schedule",
       triggerType: "cron",
@@ -149,7 +195,15 @@ describe("zero-schedule signals", () => {
     it("should handle API error gracefully", async () => {
       server.use(
         http.get("http://localhost:3000/api/zero/schedules", () => {
-          return new HttpResponse(null, { status: 500 });
+          return HttpResponse.json(
+            {
+              error: {
+                message: "Internal server error",
+                code: "INTERNAL_SERVER_ERROR",
+              },
+            },
+            { status: 500 },
+          );
         }),
       );
 
@@ -170,7 +224,7 @@ describe("zero-schedule signals", () => {
           "http://localhost:3000/api/zero/schedules",
           async ({ request }) => {
             captured.body = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json({ success: true });
+            return HttpResponse.json(mockDeployResponse());
           },
         ),
         http.get("http://localhost:3000/api/zero/schedules", () => {
@@ -194,7 +248,9 @@ describe("zero-schedule signals", () => {
       );
 
       expect(captured.body).not.toBeNull();
-      expect(captured.body?.agentId).toBe("mock-compose-id");
+      expect(captured.body?.agentId).toBe(
+        "c0000000-0000-4000-a000-000000000001",
+      );
       expect(captured.body?.prompt).toBe("Daily standup summary");
       expect(captured.body?.cronExpression).toBe("0 9 * * *");
       expect(captured.body?.timezone).toBe("UTC");
@@ -209,7 +265,7 @@ describe("zero-schedule signals", () => {
           "http://localhost:3000/api/zero/schedules",
           async ({ request }) => {
             captured.body = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json({ success: true });
+            return HttpResponse.json(mockDeployResponse());
           },
         ),
         http.get("http://localhost:3000/api/zero/schedules", () => {
@@ -244,7 +300,7 @@ describe("zero-schedule signals", () => {
           "http://localhost:3000/api/zero/schedules",
           async ({ request }) => {
             captured.body = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json({ success: true });
+            return HttpResponse.json(mockDeployResponse());
           },
         ),
         http.get("http://localhost:3000/api/zero/schedules", () => {
@@ -280,7 +336,7 @@ describe("zero-schedule signals", () => {
           "http://localhost:3000/api/zero/schedules",
           async ({ request }) => {
             captured.body = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json({ success: true });
+            return HttpResponse.json(mockDeployResponse());
           },
         ),
         http.get("http://localhost:3000/api/zero/schedules", () => {
@@ -317,7 +373,7 @@ describe("zero-schedule signals", () => {
           "http://localhost:3000/api/zero/schedules",
           async ({ request }) => {
             captured.body = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json({ success: true });
+            return HttpResponse.json(mockDeployResponse());
           },
         ),
         http.get("http://localhost:3000/api/zero/schedules", () => {
@@ -353,7 +409,7 @@ describe("zero-schedule signals", () => {
           "http://localhost:3000/api/zero/schedules",
           async ({ request }) => {
             captured.body = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json({ success: true });
+            return HttpResponse.json(mockDeployResponse());
           },
         ),
         http.get("http://localhost:3000/api/zero/schedules", () => {
@@ -389,7 +445,7 @@ describe("zero-schedule signals", () => {
           "http://localhost:3000/api/zero/schedules",
           async ({ request }) => {
             captured.body = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json({ success: true });
+            return HttpResponse.json(mockDeployResponse());
           },
         ),
         http.get("http://localhost:3000/api/zero/schedules", () => {
@@ -429,7 +485,7 @@ describe("zero-schedule signals", () => {
           "http://localhost:3000/api/zero/schedules",
           async ({ request }) => {
             captured.body = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json({ success: true });
+            return HttpResponse.json(mockDeployResponse());
           },
         ),
         http.get("http://localhost:3000/api/zero/schedules", () => {
@@ -461,7 +517,7 @@ describe("zero-schedule signals", () => {
       server.use(
         http.post("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json(
-            { error: { message: "Invalid timezone" } },
+            { error: { message: "Invalid timezone", code: "BAD_REQUEST" } },
             { status: 400 },
           );
         }),
@@ -499,7 +555,7 @@ describe("zero-schedule signals", () => {
           async ({ params, request }) => {
             captured.action = params["action"] as string;
             captured.body = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json({ success: true });
+            return HttpResponse.json(mockDeployResponse());
           },
         ),
         http.get("http://localhost:3000/api/zero/schedules", () => {
@@ -518,7 +574,9 @@ describe("zero-schedule signals", () => {
       );
 
       expect(captured.action).toBe("enable");
-      expect(captured.body?.agentId).toBe("mock-compose-id");
+      expect(captured.body?.agentId).toBe(
+        "c0000000-0000-4000-a000-000000000001",
+      );
     });
 
     it("should POST to disable endpoint when enabled is false", async () => {
@@ -529,7 +587,7 @@ describe("zero-schedule signals", () => {
           "http://localhost:3000/api/zero/schedules/:name/:action",
           ({ params }) => {
             captured.action = params["action"] as string;
-            return HttpResponse.json({ success: true });
+            return HttpResponse.json(mockDeployResponse());
           },
         ),
         http.get("http://localhost:3000/api/zero/schedules", () => {
@@ -556,7 +614,7 @@ describe("zero-schedule signals", () => {
           "http://localhost:3000/api/zero/schedules/:name/:action",
           () => {
             return HttpResponse.json(
-              { error: { message: "Schedule not found" } },
+              { error: { message: "Schedule not found", code: "NOT_FOUND" } },
               { status: 404 },
             );
           },
@@ -586,7 +644,14 @@ describe("zero-schedule signals", () => {
           "http://localhost:3000/api/zero/schedules/run",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json({ runId: "run-abc-123" }, { status: 201 });
+            return HttpResponse.json(
+              {
+                runId: "run-abc-123",
+                status: "running",
+                createdAt: "2026-03-10T00:00:00Z",
+              },
+              { status: 201 },
+            );
           },
         ),
       );
@@ -607,7 +672,7 @@ describe("zero-schedule signals", () => {
       server.use(
         http.post("http://localhost:3000/api/zero/schedules/run", () => {
           return HttpResponse.json(
-            { error: { message: "Schedule not found" } },
+            { error: { message: "Schedule not found", code: "NOT_FOUND" } },
             { status: 404 },
           );
         }),
@@ -623,7 +688,12 @@ describe("zero-schedule signals", () => {
       server.use(
         http.post("http://localhost:3000/api/zero/schedules/run", () => {
           return HttpResponse.json(
-            { error: { message: "Previous run is still active" } },
+            {
+              error: {
+                message: "Previous run is still active",
+                code: "CONFLICT",
+              },
+            },
             { status: 409 },
           );
         }),
@@ -643,8 +713,9 @@ describe("zero-schedule signals", () => {
           return HttpResponse.json({
             schedules: [
               {
-                id: "sched-once",
-                agentId: "mock-compose-id",
+                ...scheduleDefaults(),
+                id: "b0000000-0000-4000-a000-000000000001",
+                agentId: "c0000000-0000-4000-a000-000000000001",
                 orgSlug: "test",
                 name: "one-time",
                 triggerType: "once",
@@ -682,8 +753,9 @@ describe("zero-schedule signals", () => {
           return HttpResponse.json({
             schedules: [
               {
-                id: "sched-daily",
-                agentId: "mock-compose-id",
+                ...scheduleDefaults(),
+                id: "b0000000-0000-4000-a000-000000000002",
+                agentId: "c0000000-0000-4000-a000-000000000001",
                 orgSlug: "test",
                 name: "daily",
                 triggerType: "cron",
@@ -720,8 +792,9 @@ describe("zero-schedule signals", () => {
           return HttpResponse.json({
             schedules: [
               {
-                id: "sched-monthly",
-                agentId: "mock-compose-id",
+                ...scheduleDefaults(),
+                id: "b0000000-0000-4000-a000-000000000003",
+                agentId: "c0000000-0000-4000-a000-000000000001",
                 orgSlug: "test",
                 name: "monthly",
                 triggerType: "cron",
@@ -758,8 +831,9 @@ describe("zero-schedule signals", () => {
           return HttpResponse.json({
             schedules: [
               {
-                id: "sched-weekly",
-                agentId: "mock-compose-id",
+                ...scheduleDefaults(),
+                id: "b0000000-0000-4000-a000-000000000004",
+                agentId: "c0000000-0000-4000-a000-000000000001",
                 orgSlug: "test",
                 name: "weekly",
                 triggerType: "cron",
@@ -796,8 +870,9 @@ describe("zero-schedule signals", () => {
           return HttpResponse.json({
             schedules: [
               {
-                id: "sched-desc",
-                agentId: "mock-compose-id",
+                ...scheduleDefaults(),
+                id: "b0000000-0000-4000-a000-000000000005",
+                agentId: "c0000000-0000-4000-a000-000000000001",
                 orgSlug: "test",
                 name: "described",
                 triggerType: "cron",
@@ -834,8 +909,9 @@ describe("zero-schedule signals", () => {
           return HttpResponse.json({
             schedules: [
               {
-                id: "sched-notify",
-                agentId: "mock-compose-id",
+                ...scheduleDefaults(),
+                id: "b0000000-0000-4000-a000-000000000006",
+                agentId: "c0000000-0000-4000-a000-000000000001",
                 orgSlug: "test",
                 name: "notified",
                 triggerType: "cron",
@@ -897,7 +973,7 @@ describe("zero-schedule signals", () => {
       );
 
       expect(deletedName).toBe("morning-briefing");
-      expect(deletedAgentId).toBe("mock-compose-id");
+      expect(deletedAgentId).toBe("c0000000-0000-4000-a000-000000000001");
     });
   });
 });
@@ -926,10 +1002,10 @@ describe("org schedule signals", () => {
       expect(entries).toHaveLength(3);
 
       const zeroEntry = entries.find((e) => e.name === "morning-briefing");
-      expect(zeroEntry?.agentId).toBe("mock-compose-id");
+      expect(zeroEntry?.agentId).toBe("c0000000-0000-4000-a000-000000000001");
 
       const otherEntry = entries.find((e) => e.name === "other-schedule");
-      expect(otherEntry?.agentId).toBe("other-compose-id");
+      expect(otherEntry?.agentId).toBe("a0000001-0000-4000-a000-000000000020");
     });
   });
 
@@ -945,7 +1021,7 @@ describe("org schedule signals", () => {
           async ({ request }) => {
             captured.body = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json({
-              schedule: { id: "schedule-new" },
+              ...mockDeployResponse(),
             });
           },
         ),
@@ -991,7 +1067,7 @@ describe("org schedule signals", () => {
           async ({ params, request }) => {
             captured.action = params["action"] as string;
             captured.body = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json({ success: true });
+            return HttpResponse.json(mockDeployResponse());
           },
         ),
         http.get("http://localhost:3000/api/zero/schedules", () => {

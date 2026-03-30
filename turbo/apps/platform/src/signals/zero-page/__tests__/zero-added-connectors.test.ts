@@ -15,7 +15,7 @@ function mockAgentApi(connectors: string[]) {
     http.get("*/api/zero/agents/:name", () => {
       return HttpResponse.json({
         name: "test-agent",
-        agentId: "mock-compose-id",
+        agentId: "c0000000-0000-4000-a000-000000000001",
         description: null,
         displayName: null,
         sound: null,
@@ -59,20 +59,24 @@ describe("zeroAddedConnectors$", () => {
           displayName: null,
           sound: null,
           connectors: ["github"],
+          firewallPolicies: null,
         });
       }),
       // Include cycling-coach in the team list so route setup resolves it
       http.get("*/api/zero/team", () => {
         return HttpResponse.json([
           {
-            id: "mock-compose-id",
+            id: "c0000000-0000-4000-a000-000000000001",
             displayName: null,
+            description: null,
+            avatarUrl: null,
             headVersionId: "version_1",
             updatedAt: "2024-01-01T00:00:00Z",
           },
           {
             id: "sub-agent-compose-id",
             displayName: "Cycling Coach",
+            sound: null,
             headVersionId: "version_2",
             updatedAt: "2024-01-01T00:00:00Z",
           },
@@ -99,17 +103,20 @@ describe("addZeroConnector$", () => {
     mockAgentApi(["slack"]);
 
     server.use(
-      http.put("*/api/zero/agents/mock-compose-id", async ({ request }) => {
-        capturedBody = (await request.json()) as { connectors: string[] };
-        return HttpResponse.json({
-          name: "test-agent",
-          agentId: "mock-compose-id",
-          description: null,
-          displayName: null,
-          sound: null,
-          connectors: capturedBody.connectors,
-        });
-      }),
+      http.put(
+        "*/api/zero/agents/c0000000-0000-4000-a000-000000000001",
+        async ({ request }) => {
+          capturedBody = (await request.json()) as { connectors: string[] };
+          return HttpResponse.json({
+            name: "test-agent",
+            agentId: "c0000000-0000-4000-a000-000000000001",
+            description: null,
+            displayName: null,
+            sound: null,
+            connectors: capturedBody.connectors,
+          });
+        },
+      ),
     );
 
     await setupPage({ context, path: "/", withoutRender: true });
