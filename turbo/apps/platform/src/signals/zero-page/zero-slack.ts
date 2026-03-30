@@ -1,32 +1,27 @@
 import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { delay } from "signal-timers";
-import { zeroIntegrationsSlackContract } from "@vm0/core";
+import { zeroIntegrationsSlackContract, type SlackOrgStatus } from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
 
-const slackReload$ = state(0);
+interface SlackOrgState {
+  data: SlackOrgStatus | null;
+  loading: boolean;
+  error: string | null;
+}
 
-const POLL_INTERVAL_MS = 3000;
-const slackPollInterval$ = state(POLL_INTERVAL_MS);
-
-export const setSlackPollIntervalForTest$ = command(
-  ({ set }, interval: number) => {
-    set(slackPollInterval$, interval);
-  },
-);
-
-const reloadSlackOrg$ = command(({ set }) => {
-  set(slackReload$, (x) => x + 1);
+const slackOrgState$ = state<SlackOrgState>({
+  data: null,
+  loading: false,
+  error: null,
 });
 
-export const slackOrgData$ = computed(async (get) => {
-  get(slackReload$);
-  const client = get(zeroClient$)(zeroIntegrationsSlackContract);
-  const result = await client.getStatus();
-  if (result.status !== 200) {
-    throw new Error(`Failed to fetch Slack status: ${result.status}`);
-  }
-  return result.body;
+export const slackOrgData$ = computed((get) => get(slackOrgState$).data);
+
+/** True when the org-scoped Slack installation has outdated bot scopes (admin-only). */
+export const slackOrgScopeMismatch$ = computed((get) => {
+  const data = get(slackOrgState$).data;
+  return data?.scopeMismatch === true;
 });
 
 // ---------------------------------------------------------------------------
@@ -45,6 +40,33 @@ export const setShowUninstallDialog$ = command(({ set }, show: boolean) => {
   set(showUninstallDialogState$, show);
 });
 
+const fetchSlackOrg$ = command(async ({ get, set }, signal: AbortSignal) => {
+  set(slackOrgState$, (prev) => ({
+    ...prev,
+    loading: true,
+    error: null,
+  }));
+
+  const client = get(zeroClient$)(zeroIntegrationsSlackContract);
+  const result = await client.getStatus();
+  signal.throwIfAborted();
+
+  if (result.status !== 200) {
+    set(slackOrgState$, (prev) => ({
+      ...prev,
+      loading: false,
+      error: "Failed to fetch Slack status",
+    }));
+    return;
+  }
+
+  set(slackOrgState$, {
+    data: result.body,
+    loading: false,
+    error: null,
+  });
+});
+
 export const disconnectSlackOrg$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const client = get(zeroClient$)(zeroIntegrationsSlackContract);
@@ -57,7 +79,7 @@ export const disconnectSlackOrg$ = command(
     }
 
     toast.success("Disconnected from Slack");
-    set(reloadSlackOrg$);
+    await set(fetchSlackOrg$, signal);
   },
 );
 
@@ -75,11 +97,11 @@ export const uninstallSlackOrg$ = command(
     }
 
     toast.success("Slack workspace uninstalled");
-    set(reloadSlackOrg$);
+    await set(fetchSlackOrg$, signal);
   },
 );
 
-const MAX_POLL_ATTEMPTS = 100;
+const POLL_INTERVAL_MS = 3000;
 
 /**
  * Poll Slack connection status until connected or aborted.
@@ -89,21 +111,24 @@ const MAX_POLL_ATTEMPTS = 100;
 export const pollSlackConnection$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     // Already connected — nothing to poll.
-    const current = await get(slackOrgData$);
-    signal.throwIfAborted();
-    if (current.isConnected) {
+    const current = get(slackOrgState$).data;
+    if (current?.isConnected) {
       return;
     }
 
-    let attempts = 0;
-    while (!signal.aborted && attempts < MAX_POLL_ATTEMPTS) {
-      await delay(get(slackPollInterval$), { signal });
-      attempts++;
+    while (!signal.aborted) {
+      await delay(POLL_INTERVAL_MS, { signal });
 
-      set(reloadSlackOrg$);
-      const fresh = await get(slackOrgData$);
+      const client = get(zeroClient$)(zeroIntegrationsSlackContract);
+      const result = await client.getStatus();
       signal.throwIfAborted();
-      if (fresh.isConnected) {
+      if (result.status !== 200) {
+        continue;
+      }
+
+      set(slackOrgState$, { data: result.body, loading: false, error: null });
+
+      if (result.body.isConnected) {
         toast.success("Slack connected successfully");
         return;
       }
@@ -111,9 +136,14 @@ export const pollSlackConnection$ = command(
   },
 );
 
-export const handleSlackUrlParams$ = command(() => {
+export const initSlackOrg$ = command(async ({ set }, signal: AbortSignal) => {
+  await set(fetchSlackOrg$, signal);
+
   const params = new URLSearchParams(window.location.search);
-  if (params.get("installed") === "1") {
+  if (params.get("updated") === "1") {
+    toast.success("Permissions updated");
+    window.history.replaceState({}, "", window.location.pathname);
+  } else if (params.get("installed") === "1") {
     toast.success("Slack installed successfully");
     window.history.replaceState({}, "", window.location.pathname);
   }
@@ -121,9 +151,8 @@ export const handleSlackUrlParams$ = command(() => {
     toast.success("Slack connected successfully");
     window.history.replaceState({}, "", window.location.pathname);
   }
-  const error = params.get("error");
-  if (error) {
-    toast.error(error);
+  if (params.get("error")) {
+    toast.error(params.get("error")!);
     window.history.replaceState({}, "", window.location.pathname);
   }
 });

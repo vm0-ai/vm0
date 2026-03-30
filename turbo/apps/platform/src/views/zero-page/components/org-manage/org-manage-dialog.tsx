@@ -14,11 +14,13 @@ import {
   IconCreditCard,
   IconCoins,
   IconFileInvoice,
+  IconWorldWww,
 } from "@tabler/icons-react";
 
 import { OrgGeneralTab } from "./org-general-tab.tsx";
 import { OrgProvidersTab } from "./org-providers-tab.tsx";
 import { OrgMembersTab } from "./org-members-tab.tsx";
+import { OrgDomainsTab } from "./org-domains-tab.tsx";
 import { OrgBillingTab } from "./org-billing-tab.tsx";
 import { OrgUsageTab } from "./org-usage-tab.tsx";
 import { OrgInvoicesTab } from "./org-invoices-tab.tsx";
@@ -50,6 +52,10 @@ const TAB_META = {
   members: {
     title: "Members",
     description: "Manage who has access to this workspace.",
+  },
+  domains: {
+    title: "Domains",
+    description: "Manage verified domains for your workspace.",
   },
   billing: {
     title: "Billing",
@@ -88,6 +94,11 @@ const CONFIGURATION_GROUP = {
       label: "Model Providers",
       icon: IconCpu as NavIcon,
     },
+    {
+      id: "domains",
+      label: "Domains",
+      icon: IconWorldWww as NavIcon,
+    },
   ],
 } as const satisfies SidebarGroup;
 
@@ -106,6 +117,7 @@ const TAB_COMPONENTS = {
   general: () => <OrgGeneralTab />,
   providers: () => <OrgProvidersTab />,
   members: () => <OrgMembersTab />,
+  domains: () => <OrgDomainsTab />,
   billing: () => <OrgBillingTab />,
   usage: () => <OrgUsageTab />,
   invoices: () => <OrgInvoicesTab />,
@@ -137,14 +149,7 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="flex flex-col max-w-[960px] h-[85vh] p-0 gap-0 overflow-hidden"
-        style={{
-          border: "0.7px solid hsl(var(--gray-400))",
-          borderRadius: "0.75rem",
-          backgroundColor: "hsl(var(--card))",
-        }}
-      >
+      <DialogContent className="flex flex-col max-w-[960px] h-[85vh] p-0 gap-0 overflow-hidden zero-border rounded-xl bg-card">
         <DialogTitle className="sr-only">Workspace settings</DialogTitle>
         <DialogDescription className="sr-only">
           Manage your workspace profile, members, integrations, and billing.
@@ -152,13 +157,7 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
 
         <div className="flex h-full">
           {/* Sidebar nav — mirrors zero-sidebar.tsx styling */}
-          <nav
-            className="w-52 shrink-0 p-3 pt-3 pb-4 flex flex-col gap-4 overflow-y-auto"
-            style={{
-              borderRight: "0.7px solid hsl(var(--gray-300))",
-              backgroundColor: "hsl(var(--gray-0))",
-            }}
-          >
+          <nav className="w-52 shrink-0 p-3 pt-3 pb-4 flex flex-col gap-4 overflow-y-auto zero-border-r bg-[hsl(var(--gray-0))]">
             {sidebarGroups.map((group) => (
               <div key={group.label} className="shrink-0">
                 <div className="h-7 flex items-center pl-2">

@@ -4,7 +4,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
-import { navigateTo$ } from "../../../signals/route.ts";
+import { detachedNavigateTo$ } from "../../../signals/route.ts";
 
 const context = testContext();
 
@@ -105,7 +105,7 @@ describe("chat session switch", () => {
     expect(screen.queryByLabelText("Stop")).toBeNull();
 
     // Navigate to the running thread
-    context.store.set(navigateTo$, "/chat/:chatThreadId", {
+    context.store.set(detachedNavigateTo$, "/chat/:chatThreadId", {
       pathParams: { chatThreadId: "thread-running" },
     });
 
@@ -156,7 +156,7 @@ describe("chat session switch", () => {
     });
 
     // Switch to session-beta
-    context.store.set(navigateTo$, "/chat/:chatThreadId", {
+    context.store.set(detachedNavigateTo$, "/chat/:chatThreadId", {
       pathParams: { chatThreadId: "session-beta" },
     });
 
@@ -168,7 +168,7 @@ describe("chat session switch", () => {
     expect(screen.queryByText("Answer for session-alpha")).toBeNull();
 
     // Switch to session-gamma
-    context.store.set(navigateTo$, "/chat/:chatThreadId", {
+    context.store.set(detachedNavigateTo$, "/chat/:chatThreadId", {
       pathParams: { chatThreadId: "session-gamma" },
     });
 

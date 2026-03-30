@@ -11,10 +11,8 @@ import {
   TooltipTrigger,
 } from "@vm0/ui";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
-import {
-  zeroChatAgentId$,
-  zeroTalkAgentId$,
-} from "../../signals/zero-page/zero-nav.ts";
+import { currentAgentId$ } from "../../signals/zero-page/agent.ts";
+import { zeroChatAgentId$ } from "../../signals/zero-page/zero-active-agent.ts";
 import {
   pinnedAgentIds$,
   updatePinnedAgentIds$,
@@ -34,7 +32,8 @@ import {
 } from "../../signals/zero-page/zero-chat-page.ts";
 import { getRandomPrompts } from "./zero-ideation-page.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
-import { navigateTo$ } from "../../signals/route.ts";
+import { detachedNavigateTo$ } from "../../signals/route.ts";
+import { Link } from "../router/link.tsx";
 import zeroAvatarImg from "./assets/avatar_0.png";
 
 function getTagline(
@@ -147,8 +146,8 @@ interface ZeroChatPageProps {
   zeroAvatarSrc?: string;
   /** Override agent name when chatting with a sub-agent. */
   chatAgentName?: string;
-  /** Navigate to agent team detail page when avatar is clicked. */
-  onAvatarClick?: () => void;
+  /** Agent ID used to build the avatar link to the team detail page. */
+  avatarAgentId?: string;
 }
 
 export function ZeroChatPage({
@@ -156,7 +155,7 @@ export function ZeroChatPage({
   onSendMessage,
   zeroAvatarSrc = zeroAvatarImg,
   chatAgentName,
-  onAvatarClick,
+  avatarAgentId,
 }: ZeroChatPageProps) {
   const displayNameLoadable = useLoadable(agentDisplayName$);
   const defaultDisplayName =
@@ -169,10 +168,10 @@ export function ZeroChatPage({
   const taglineIndex = useGet(chatPageTaglineIndex$);
   const tagline = getTagline(displayName, userName, taglineIndex);
   const [suggestedPrompts] = useState(() => getRandomPrompts(2));
-  const navigate = useSet(navigateTo$);
+  const navigate = useSet(detachedNavigateTo$);
 
   // Agent ID from URL for ideas navigation
-  const talkAgentId = useGet(zeroTalkAgentId$);
+  const talkAgentId = useGet(currentAgentId$);
 
   // Admin invite
   const isAdminLoadable = useLoadable(isOrgAdmin$);
@@ -188,7 +187,9 @@ export function ZeroChatPage({
   };
 
   // Pin pill
-  const currentChatAgentId = useGet(zeroChatAgentId$);
+  const chatAgentLoadable = useLastLoadable(zeroChatAgentId$);
+  const currentChatAgentId =
+    chatAgentLoadable.state === "hasData" ? chatAgentLoadable.data : null;
   const pinnedLoadable = useLastLoadable(pinnedAgentIds$);
   const pinnedIds =
     pinnedLoadable.state === "hasData" ? pinnedLoadable.data : [];
@@ -233,28 +234,39 @@ export function ZeroChatPage({
         <div className="mx-auto w-full max-w-[900px] flex flex-col items-stretch gap-8 -mt-24">
           <div className="flex items-center gap-4 w-full">
             <div className="relative shrink-0">
-              <TooltipProvider delayDuration={200}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      aria-label="View agent profile"
-                      className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent cursor-pointer"
-                      onClick={onAvatarClick}
-                    >
-                      <img
-                        src={zeroAvatarSrc}
-                        alt=""
-                        role="presentation"
-                        className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
-                      />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    <p className="text-xs">View agent profile</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              {avatarAgentId ? (
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Link
+                        pathname="/team/:agentId"
+                        options={{ pathParams: { agentId: avatarAgentId } }}
+                        aria-label="View agent profile"
+                        className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent cursor-pointer"
+                      >
+                        <img
+                          src={zeroAvatarSrc}
+                          alt=""
+                          role="presentation"
+                          className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
+                        />
+                      </Link>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      <p className="text-xs">View agent profile</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ) : (
+                <div className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl">
+                  <img
+                    src={zeroAvatarSrc}
+                    alt=""
+                    role="presentation"
+                    className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
+                  />
+                </div>
+              )}
               {showPinPill && (
                 <TooltipProvider delayDuration={200}>
                   <Tooltip>
@@ -262,7 +274,7 @@ export function ZeroChatPage({
                       <button
                         type="button"
                         onClick={handlePin}
-                        className="absolute -top-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full border-[0.7px] border-[hsl(var(--gray-400))] bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground hover:shadow-md cursor-pointer"
+                        className="absolute -top-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full zero-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground hover:shadow-md cursor-pointer"
                         aria-label="Pin to sidebar"
                       >
                         <IconPin size={12} stroke={2} />

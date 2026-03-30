@@ -95,25 +95,19 @@ describe("activity navigation", () => {
     });
 
     // Wait for the list to render with the activity row
-    await waitFor(
-      () => {
-        expect(screen.getByText("Test Agent")).toBeInTheDocument();
-      },
-      { timeout: 3000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByText("Test Agent")).toBeInTheDocument();
+    });
 
     // Click the activity row to navigate to detail
     fireEvent.click(screen.getByText("Test Agent"));
 
     // The detail page should render with the agent name as heading
-    await waitFor(
-      () => {
-        expect(
-          screen.getByRole("heading", { name: "Test Agent" }),
-        ).toBeInTheDocument();
-      },
-      { timeout: 3000 },
-    );
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Test Agent" }),
+      ).toBeInTheDocument();
+    });
 
     // Verify the detail content is visible (duration)
     expect(screen.getByText("9.0s")).toBeInTheDocument();

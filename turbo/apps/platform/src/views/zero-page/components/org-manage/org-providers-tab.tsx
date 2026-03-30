@@ -2,6 +2,7 @@ import { useGet, useSet, useLoadable } from "ccstate-react";
 import { IconPlus, IconDotsVertical } from "@tabler/icons-react";
 import { MODEL_PROVIDER_TYPES, type ModelProviderType } from "@vm0/core";
 import {
+  cn,
   Button,
   Select,
   SelectContent,
@@ -146,13 +147,7 @@ function ProviderListSection({ isAdmin }: { isAdmin: boolean }) {
           <button
             type="button"
             onClick={() => setAddDialogOpen(true)}
-            className="flex flex-col transition-colors hover:bg-muted/30 group"
-            style={{
-              border: "0.7px dashed hsl(var(--gray-400))",
-              borderRadius: "0.75rem",
-              boxShadow:
-                "0 1px 1px hsl(220 12% 20% / 0.02), 0 2px 8px hsl(220 12% 20% / 0.025), 0 8px 24px hsl(220 12% 20% / 0.02)",
-            }}
+            className="flex flex-col transition-colors hover:bg-muted/30 group zero-border-dashed rounded-xl shadow-[var(--zero-card-shadow)]"
           >
             <div className="flex h-14 items-center gap-2.5 px-5">
               <span className="flex h-7 w-7 shrink-0 items-center justify-center">
@@ -166,10 +161,7 @@ function ProviderListSection({ isAdmin }: { isAdmin: boolean }) {
                 Add provider
               </span>
             </div>
-            <div
-              className="flex h-11 items-center px-5"
-              style={{ borderTop: "0.7px dashed hsl(var(--gray-400))" }}
-            >
+            <div className="flex h-11 items-center px-5 zero-border-dashed-t">
               <span className="text-xs text-muted-foreground/70">
                 Browse supported providers
               </span>
@@ -201,14 +193,10 @@ function ProviderListSection({ isAdmin }: { isAdmin: boolean }) {
                     }
                   : undefined
               }
-              className={isAdmin ? "cursor-pointer" : ""}
-              style={{
-                border: "0.7px solid hsl(var(--gray-400))",
-                borderRadius: "0.75rem",
-                backgroundColor: "hsl(var(--card))",
-                boxShadow:
-                  "0 1px 1px hsl(220 12% 20% / 0.02), 0 2px 8px hsl(220 12% 20% / 0.025), 0 8px 24px hsl(220 12% 20% / 0.02)",
-              }}
+              className={cn(
+                "zero-card shadow-[var(--zero-card-shadow)]",
+                isAdmin && "cursor-pointer",
+              )}
             >
               <div className="flex h-14 items-center gap-2.5 px-5">
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center">
@@ -219,8 +207,7 @@ function ProviderListSection({ isAdmin }: { isAdmin: boolean }) {
                 </span>
               </div>
               <div
-                className="flex h-11 items-center justify-between pl-5 pr-2"
-                style={{ borderTop: "0.7px solid hsl(var(--gray-400))" }}
+                className="flex h-11 items-center justify-between pl-5 pr-2 zero-border-t"
                 onClick={isAdmin ? (e) => e.stopPropagation() : undefined}
               >
                 <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
@@ -277,21 +264,12 @@ function ProviderListSection({ isAdmin }: { isAdmin: boolean }) {
 
 function ProviderSkeleton() {
   return (
-    <div
-      className="flex flex-col bg-card animate-pulse"
-      style={{
-        border: "0.7px solid hsl(var(--gray-400))",
-        borderRadius: "0.75rem",
-      }}
-    >
+    <div className="flex flex-col bg-card animate-pulse zero-border rounded-xl">
       <div className="flex h-14 items-center gap-2.5 px-5">
         <span className="h-7 w-7 shrink-0 rounded-lg bg-muted/50" />
         <span className="h-4 w-24 rounded bg-muted/50" />
       </div>
-      <div
-        className="flex h-11 items-center px-5"
-        style={{ borderTop: "0.7px solid hsl(var(--gray-400))" }}
-      >
+      <div className="flex h-11 items-center px-5 zero-border-t">
         <span className="h-3 w-16 rounded bg-muted/30" />
       </div>
     </div>

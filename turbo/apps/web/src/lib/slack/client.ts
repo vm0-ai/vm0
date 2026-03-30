@@ -161,6 +161,7 @@ export async function exchangeOAuthCode(
   teamId: string;
   teamName: string;
   authedUserId: string;
+  scope: string;
 }> {
   const client = new WebClient();
   const result = await client.oauth.v2.access({
@@ -187,6 +188,7 @@ export async function exchangeOAuthCode(
     teamId: result.team.id ?? "",
     teamName: result.team.name ?? "",
     authedUserId: result.authed_user?.id ?? "",
+    scope: typeof result.scope === "string" ? result.scope : "",
   };
 }
 

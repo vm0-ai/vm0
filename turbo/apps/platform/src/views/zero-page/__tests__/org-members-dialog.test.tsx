@@ -4,33 +4,45 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
+import type { OrgMember } from "../../../signals/external/org-members.ts";
 
 const context = testContext();
 
-function mockMembersAPI() {
+const adminMember = {
+  userId: "test-user-123",
+  email: "admin@example.com",
+  firstName: "Admin",
+  lastName: "User",
+  imageUrl: "",
+  role: "admin",
+  joinedAt: "2026-01-01T00:00:00Z",
+} as const satisfies OrgMember;
+
+const regularMember = {
+  userId: "user-member",
+  email: "member@example.com",
+  firstName: "Regular",
+  lastName: "Member",
+  imageUrl: "",
+  role: "member",
+  joinedAt: "2026-02-01T00:00:00Z",
+} as const satisfies OrgMember;
+
+const secondAdmin = {
+  userId: "user-admin-2",
+  email: "admin2@example.com",
+  firstName: "Second",
+  lastName: "Admin",
+  imageUrl: "",
+  role: "admin",
+  joinedAt: "2026-01-15T00:00:00Z",
+} as const satisfies OrgMember;
+
+function mockMembersAPI(members: OrgMember[] = [adminMember, regularMember]) {
   server.use(
     http.get("*/api/zero/org/members", () => {
       return HttpResponse.json({
-        members: [
-          {
-            userId: "test-user-123",
-            email: "admin@example.com",
-            firstName: "Admin",
-            lastName: "User",
-            imageUrl: "",
-            role: "admin",
-            joinedAt: "2026-01-01T00:00:00Z",
-          },
-          {
-            userId: "user-member",
-            email: "member@example.com",
-            firstName: "Regular",
-            lastName: "Member",
-            imageUrl: "",
-            role: "member",
-            joinedAt: "2026-02-01T00:00:00Z",
-          },
-        ],
+        members,
         pendingInvitations: [],
       });
     }),
@@ -142,7 +154,7 @@ describe("org members - invite dialog loading state", () => {
     ).toBeInTheDocument();
   });
 
-  it("should disable input and cancel button during invite", async () => {
+  it("should disable input and cancel during invite", async () => {
     let resolveInvite: (() => void) | null = null;
 
     mockMembersAPI();
@@ -186,5 +198,38 @@ describe("org members - invite dialog loading state", () => {
         screen.queryByRole("heading", { name: "Invite member" }),
       ).not.toBeInTheDocument();
     });
+  });
+});
+
+describe("org members - sole admin self-demote protection", () => {
+  it("should not show self-demote menu when user is the only admin", async () => {
+    mockMembersAPI([adminMember, regularMember]);
+
+    await renderMembersTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("admin@example.com")).toBeInTheDocument();
+    });
+
+    // The admin row for the current user should exist but have no action menu
+    const adminRow = screen.getByText("Admin User").closest("[class*=grid]")!;
+    const menuButton = adminRow.querySelector("button[class*=rounded-md]");
+    expect(menuButton).toBeNull();
+  });
+
+  it("should show self-demote menu when multiple admins exist", async () => {
+    mockMembersAPI([adminMember, secondAdmin, regularMember]);
+
+    await renderMembersTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("admin@example.com")).toBeInTheDocument();
+    });
+
+    // The current user's admin row should have an action menu button
+    const youBadge = screen.getByText("You");
+    const adminRow = youBadge.closest("[class*=grid]")!;
+    const menuButton = adminRow.querySelector("button");
+    expect(menuButton).not.toBeNull();
   });
 });

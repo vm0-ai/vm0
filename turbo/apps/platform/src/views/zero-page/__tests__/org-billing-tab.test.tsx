@@ -31,12 +31,9 @@ function mockAPIs() {
 
 async function openBillingTab() {
   await setupPage({ context, path: "/?settings=billing" });
-  await waitFor(
-    () => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
-    },
-    { timeout: 3000 },
-  );
+  await waitFor(() => {
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
 }
 
 describe("org billing tab - plan display", () => {

@@ -2,10 +2,7 @@ import { describe, it, expect } from "vitest";
 import { expandEnvironmentFromCompose } from "../expand-environment";
 import type { ExpandedFirewallConfig } from "@vm0/core";
 
-function makeCompose(
-  environment: Record<string, string>,
-  firewallConfigs?: ExpandedFirewallConfig[],
-) {
+function makeCompose(environment: Record<string, string>) {
   return {
     version: "1.0",
     agents: {
@@ -13,7 +10,6 @@ function makeCompose(
         description: "test",
         framework: "claude-code" as const,
         environment,
-        ...(firewallConfigs ? { experimental_firewalls: firewallConfigs } : {}),
       },
     },
   };
@@ -60,19 +56,18 @@ const airtableService: ExpandedFirewallConfig = {
 
 describe("expandEnvironmentFromCompose — firewall env vars", () => {
   it("replaces secret values with firewall placeholders", () => {
-    const compose = makeCompose(
-      {
-        GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
-        MY_GH: "${{ secrets.GITHUB_TOKEN }}",
-      },
-      [githubService],
-    );
+    const compose = makeCompose({
+      GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+      MY_GH: "${{ secrets.GITHUB_TOKEN }}",
+    });
 
     const { environment } = expandEnvironmentFromCompose(
       compose,
       undefined,
       undefined,
       false,
+      undefined,
+      [githubService],
     );
 
     expect(environment).toBeDefined();
@@ -82,7 +77,7 @@ describe("expandEnvironmentFromCompose — firewall env vars", () => {
     expect(environment!.MY_GH).toBe("gho_vm0placeholder0000000000000000000000");
   });
 
-  it("does not inject placeholders when firewall is not declared", () => {
+  it("does not inject placeholders when no firewalls provided", () => {
     const compose = makeCompose({
       GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
     });
@@ -99,19 +94,18 @@ describe("expandEnvironmentFromCompose — firewall env vars", () => {
   });
 
   it("handles multiple firewall configs with different placeholders", () => {
-    const compose = makeCompose(
-      {
-        GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
-        SLACK_TOKEN: "${{ secrets.SLACK_TOKEN }}",
-      },
-      [githubService, slackService],
-    );
+    const compose = makeCompose({
+      GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+      SLACK_TOKEN: "${{ secrets.SLACK_TOKEN }}",
+    });
 
     const { environment } = expandEnvironmentFromCompose(
       compose,
       undefined,
       undefined,
       false,
+      undefined,
+      [githubService, slackService],
     );
 
     expect(environment).toBeDefined();
@@ -122,18 +116,17 @@ describe("expandEnvironmentFromCompose — firewall env vars", () => {
   });
 
   it("firewall placeholder takes precedence over passed secrets", () => {
-    const compose = makeCompose(
-      {
-        GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
-      },
-      [githubService],
-    );
+    const compose = makeCompose({
+      GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
+    });
 
     const { environment } = expandEnvironmentFromCompose(
       compose,
       undefined,
       { GITHUB_TOKEN: "user-provided-token" },
       false,
+      undefined,
+      [githubService],
     );
 
     expect(environment).toBeDefined();
@@ -143,18 +136,17 @@ describe("expandEnvironmentFromCompose — firewall env vars", () => {
   });
 
   it("falls back to default placeholder when no custom placeholder defined", () => {
-    const compose = makeCompose(
-      {
-        AIRTABLE_TOKEN: "${{ secrets.AIRTABLE_TOKEN }}",
-      },
-      [airtableService],
-    );
+    const compose = makeCompose({
+      AIRTABLE_TOKEN: "${{ secrets.AIRTABLE_TOKEN }}",
+    });
 
     const { environment } = expandEnvironmentFromCompose(
       compose,
       undefined,
       undefined,
       false,
+      undefined,
+      [airtableService],
     );
 
     expect(environment).toBeDefined();
@@ -199,12 +191,9 @@ describe("expandEnvironmentFromCompose — additionalEnvironment", () => {
   });
 
   it("additional secret templates go through firewall placeholder logic", () => {
-    const compose = makeCompose(
-      {
-        MY_VAR: "hello",
-      },
-      [githubService],
-    );
+    const compose = makeCompose({
+      MY_VAR: "hello",
+    });
 
     const { environment } = expandEnvironmentFromCompose(
       compose,
@@ -212,6 +201,7 @@ describe("expandEnvironmentFromCompose — additionalEnvironment", () => {
       { GITHUB_TOKEN: "real-token" },
       false,
       { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
+      [githubService],
     );
 
     expect(environment).toBeDefined();

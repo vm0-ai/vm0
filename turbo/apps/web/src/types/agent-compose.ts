@@ -2,8 +2,6 @@
  * Agent compose types matching agent.yaml format
  */
 
-import type { ExpandedFirewallConfig } from "@vm0/core";
-
 /**
  * Volume configuration for static dependencies
  * Each volume requires explicit name and version
@@ -48,12 +46,6 @@ interface AgentDefinition {
    * Defaults to "vm0/default" when omitted.
    */
   experimental_profile?: string;
-  /**
-   * Expanded firewall configs for proxy-side token replacement.
-   * Resolved from firewall names at compose time, stored as full objects.
-   * Input format (CLI): string[] — expanded server-side before storage.
-   */
-  experimental_firewalls?: ExpandedFirewallConfig[];
 }
 
 export interface AgentComposeYaml {

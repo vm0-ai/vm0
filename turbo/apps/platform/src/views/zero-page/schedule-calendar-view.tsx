@@ -164,7 +164,7 @@ export function ScheduleCalendarView<T extends ScheduleEntry>({
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Week view
         </h3>
-        <div className="rounded-xl border border-border/70 bg-muted/20 overflow-hidden">
+        <div className="rounded-xl zero-border bg-muted/20 overflow-hidden">
           {/* Mobile: single-day view */}
           <div className="md:hidden">
             <div className="flex items-center justify-between bg-muted/50 px-3 py-2 border-b border-border/60">

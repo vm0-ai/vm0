@@ -30,6 +30,7 @@ import { generate as generateDeepseek } from "./deepseek";
 import { generate as generateDeel } from "./deel";
 import { generate as generateDevto } from "./devto";
 import { generate as generateDiscord } from "./discord";
+import { generate as generateDocusign } from "./docusign";
 import { generate as generateDropbox } from "./dropbox";
 import { generate as generateElevenlabs } from "./elevenlabs";
 import { generate as generateExplorium } from "./explorium";
@@ -52,10 +53,12 @@ import { generate as generateInstantly } from "./instantly";
 import { generate as generateIntercom } from "./intercom";
 import { generate as generateIntervalsIcu } from "./intervals-icu";
 import { generate as generateJotform } from "./jotform";
+import { generate as generateKommo } from "./kommo";
 import { generate as generateLark } from "./lark";
 import { generate as generateLine } from "./line";
 import { generate as generateLinear } from "./linear";
 import { generate as generateLoops } from "./loops";
+import { generate as generateMake } from "./make";
 import { generate as generateMailsac } from "./mailsac";
 import { generate as generateMercury } from "./mercury";
 import { generate as generateMetaAds } from "./meta-ads";
@@ -100,11 +103,13 @@ import { generate as generateV0 } from "./v0";
 import { generate as generateVercel } from "./vercel";
 import { generate as generateWebflow } from "./webflow";
 import { generate as generateWix } from "./wix";
+import { generate as generateWrike } from "./wrike";
 import { generate as generateX } from "./x";
 import { generate as generateXero } from "./xero";
 import { generate as generateYoutube } from "./youtube";
 import { generate as generateZapier } from "./zapier";
 import { generate as generateZapsign } from "./zapsign";
+import { generate as generateZendesk } from "./zendesk";
 import { generate as generateZeptomail } from "./zeptomail";
 import { createGoogleGenerator, googleServiceNames } from "./google";
 
@@ -133,6 +138,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   deepseek: generateDeepseek,
   devto: generateDevto,
   discord: generateDiscord,
+  docusign: generateDocusign,
   dropbox: generateDropbox,
   elevenlabs: generateElevenlabs,
   explorium: generateExplorium,
@@ -155,10 +161,12 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   intercom: generateIntercom,
   "intervals-icu": generateIntervalsIcu,
   jotform: generateJotform,
+  kommo: generateKommo,
   lark: generateLark,
   line: generateLine,
   linear: generateLinear,
   loops: generateLoops,
+  make: generateMake,
   mailsac: generateMailsac,
   mercury: generateMercury,
   "meta-ads": generateMetaAds,
@@ -203,11 +211,13 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   vercel: generateVercel,
   webflow: generateWebflow,
   wix: generateWix,
+  wrike: generateWrike,
   x: generateX,
   xero: generateXero,
   youtube: generateYoutube,
   zapier: generateZapier,
   zapsign: generateZapsign,
+  zendesk: generateZendesk,
   zeptomail: generateZeptomail,
   ...Object.fromEntries(
     googleServiceNames.map((name) => [name, createGoogleGenerator(name)]),

@@ -43,7 +43,7 @@ import {
   type OrgScheduleEntry,
 } from "../../signals/zero-page/zero-schedule.ts";
 import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
-import { navigateTo$ } from "../../signals/route.ts";
+import { detachedNavigateTo$ } from "../../signals/route.ts";
 
 export type CombinedEntry = ScheduleEntry & {
   agentLabel: string;
@@ -350,7 +350,7 @@ function ScheduleCalendarSkeleton() {
   return (
     <section className="flex flex-col gap-2">
       <Skeleton className="h-4 w-20" />
-      <div className="rounded-xl border border-border/70 bg-muted/20 overflow-hidden">
+      <div className="rounded-xl zero-border bg-muted/20 overflow-hidden">
         <div className="grid grid-cols-8">
           <div className="bg-muted/50 p-2 border-b border-r border-border/60 h-9" />
           {WEEKDAY_LABELS.map((d) => (
@@ -409,7 +409,7 @@ export function ZeroSchedulePage() {
   const deleteSchedule = useSet(deleteOrgSchedule$);
   const runScheduleNow = useSet(runScheduleNow$);
   const pageSignal = useGet(pageSignal$);
-  const navigate = useSet(navigateTo$);
+  const navigate = useSet(detachedNavigateTo$);
 
   const [scheduleViewMode, setScheduleViewMode] = useState<"list" | "calendar">(
     "list",
@@ -587,7 +587,7 @@ export function ZeroSchedulePage() {
 
       <main className="flex-1 overflow-auto px-4 sm:px-6 pt-4 pb-8">
         <div className="mx-auto max-w-[900px]">
-          <div className="zero-card overflow-hidden px-4 sm:px-7 pb-3">
+          <div className="zero-card overflow-hidden pb-3">
             {isInitialLoading ? (
               scheduleViewMode === "calendar" ? (
                 <ScheduleCalendarSkeleton />

@@ -1,10 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
-import type { ExpandedFirewallConfig } from "../firewalls";
 import {
-  expandFirewallConfigs,
-  validateRule,
   validateBaseUrl,
-} from "../firewall-expander";
+  hasBaseUrlVars,
+  resolveFirewallBaseUrlVars,
+} from "../firewalls";
+import { resolveFirewallSelections, validateRule } from "../firewall-expander";
 import type { FetchFn } from "../../firewall-loader";
 
 /** Helper to create a mock fetch function returning given body and status */
@@ -67,30 +67,7 @@ apis:
           - ANY /{path+}
 `;
 
-describe("expandFirewallConfigs", () => {
-  function makeConfig(
-    configs: Record<string, { permissions: string[] | "all" }>,
-  ) {
-    return {
-      version: "1.0",
-      agents: {
-        myagent: {
-          framework: "claude-code",
-          experimental_firewalls: configs,
-        },
-      },
-    };
-  }
-
-  async function getExpanded(
-    config: ReturnType<typeof makeConfig>,
-    fetchFn?: FetchFn,
-  ) {
-    await expandFirewallConfigs(config, fetchFn);
-    return config.agents.myagent
-      .experimental_firewalls as unknown as ExpandedFirewallConfig[];
-  }
-
+describe("resolveFirewallSelections", () => {
   /** Mock fetch that returns the right YAML based on URL */
   function mockMultiFetch(): FetchFn {
     return vi.fn<FetchFn>().mockImplementation((url: string) => {
@@ -106,26 +83,27 @@ describe("expandFirewallConfigs", () => {
     });
   }
 
-  it("should expand firewall with permissions: all", async () => {
-    const config = makeConfig({ "custom-git": { permissions: "all" } });
-    const expanded = await getExpanded(config, mockFetch(CUSTOM_GIT_YAML));
+  it("should resolve firewall with permissions: all", async () => {
+    const expanded = await resolveFirewallSelections(
+      { "custom-git": { permissions: "all" } },
+      mockFetch(CUSTOM_GIT_YAML),
+    );
 
     expect(expanded).toHaveLength(1);
     expect(expanded[0]!.name).toBe("custom-git");
     expect(expanded[0]!.ref).toBe("custom-git");
     expect(expanded[0]!.apis).toHaveLength(1);
-    expect(expanded[0]!.apis[0]!.base).toBe("https://api.custom-git.com");
     const permNames = expanded[0]!.apis[0]!.permissions!.map((p) => p.name);
     expect(permNames).toContain("repo-read");
     expect(permNames).toContain("issues-read");
     expect(permNames).toContain("search");
   });
 
-  it("should expand firewall with specific permissions", async () => {
-    const config = makeConfig({
-      "custom-git": { permissions: ["issues-read", "issues-write"] },
-    });
-    const expanded = await getExpanded(config, mockFetch(CUSTOM_GIT_YAML));
+  it("should resolve firewall with specific permissions", async () => {
+    const expanded = await resolveFirewallSelections(
+      { "custom-git": { permissions: ["issues-read", "issues-write"] } },
+      mockFetch(CUSTOM_GIT_YAML),
+    );
 
     expect(expanded).toHaveLength(1);
     expect(expanded[0]!.apis[0]!.permissions).toHaveLength(2);
@@ -134,21 +112,26 @@ describe("expandFirewallConfigs", () => {
     expect(permNames).toContain("issues-write");
   });
 
-  it("should include placeholders when config has them", async () => {
-    const config = makeConfig({ "custom-git": { permissions: "all" } });
-    const expanded = await getExpanded(config, mockFetch(CUSTOM_GIT_YAML));
+  it("should include placeholders and description when config has them", async () => {
+    const expanded = await resolveFirewallSelections(
+      { "custom-git": { permissions: "all" } },
+      mockFetch(CUSTOM_GIT_YAML),
+    );
 
     expect(expanded[0]!.placeholders).toEqual({
       GIT_TOKEN: "gho_Vm0PlaceHolder0000000000000000000000",
     });
+    expect(expanded[0]!.description).toBe("Custom Git API");
   });
 
-  it("should expand multiple firewall configs in parallel", async () => {
-    const config = makeConfig({
-      "custom-git": { permissions: "all" },
-      "custom-chat": { permissions: "all" },
-    });
-    const expanded = await getExpanded(config, mockMultiFetch());
+  it("should resolve multiple firewalls in parallel", async () => {
+    const expanded = await resolveFirewallSelections(
+      {
+        "custom-git": { permissions: "all" },
+        "custom-chat": { permissions: "all" },
+      },
+      mockMultiFetch(),
+    );
 
     expect(expanded).toHaveLength(2);
     const names = expanded.map((s) => s.name);
@@ -156,11 +139,46 @@ describe("expandFirewallConfigs", () => {
     expect(names).toContain("custom-chat");
   });
 
+  it("should return empty array for empty selections", async () => {
+    const expanded = await resolveFirewallSelections({});
+    expect(expanded).toEqual([]);
+  });
+
+  it("should throw for non-existent permission name", async () => {
+    await expect(
+      resolveFirewallSelections(
+        { "custom-git": { permissions: ["does-not-exist"] } },
+        mockFetch(CUSTOM_GIT_YAML),
+      ),
+    ).rejects.toThrow(
+      'Permission "does-not-exist" does not exist in firewall "custom-git"',
+    );
+  });
+
+  it("should throw when fetch fails", async () => {
+    await expect(
+      resolveFirewallSelections(
+        { "nonexistent-api": { permissions: "all" } },
+        mockFetch("Not Found", 404, "Not Found"),
+      ),
+    ).rejects.toThrow('Failed to fetch firewall config for "nonexistent-api"');
+  });
+
+  it("should filter permissions and keep only selected ones", async () => {
+    const expanded = await resolveFirewallSelections(
+      { "custom-git": { permissions: ["repo-read"] } },
+      mockFetch(CUSTOM_GIT_YAML),
+    );
+
+    expect(expanded[0]!.apis[0]!.permissions).toHaveLength(1);
+    expect(expanded[0]!.apis[0]!.permissions![0]!.name).toBe("repo-read");
+  });
+
   it("should keep all api_entries when shared permission is selected", async () => {
-    const config = makeConfig({
-      "custom-chat": { permissions: ["full-access"] },
-    });
-    const expanded = await getExpanded(config, mockFetch(CUSTOM_CHAT_YAML));
+    const expanded = await resolveFirewallSelections(
+      { "custom-chat": { permissions: ["full-access"] } },
+      mockFetch(CUSTOM_CHAT_YAML),
+    );
 
     expect(expanded).toHaveLength(1);
     expect(expanded[0]!.apis).toHaveLength(2);
@@ -169,70 +187,12 @@ describe("expandFirewallConfigs", () => {
     }
   });
 
-  it("should skip configs with no agents", async () => {
-    const config = { version: "1.0" };
-    await expandFirewallConfigs(config);
-  });
-
-  it("should skip already expanded configs (array format)", async () => {
-    const config = {
-      version: "1.0",
-      agents: {
-        myagent: {
-          framework: "claude-code",
-          experimental_firewalls: [
-            { name: "github", ref: "github", apis: [], placeholders: {} },
-          ],
-        },
-      },
-    };
-    await expandFirewallConfigs(config);
-    expect(Array.isArray(config.agents.myagent.experimental_firewalls)).toBe(
-      true,
-    );
-  });
-
-  it("should include description when config has it", async () => {
-    const config = makeConfig({ "custom-git": { permissions: "all" } });
-    const expanded = await getExpanded(config, mockFetch(CUSTOM_GIT_YAML));
-
-    expect(expanded[0]!.description).toBe("Custom Git API");
-  });
-
-  it("should throw for non-existent permission name", async () => {
-    const config = makeConfig({
-      "custom-git": { permissions: ["does-not-exist"] },
-    });
-    await expect(
-      expandFirewallConfigs(config, mockFetch(CUSTOM_GIT_YAML)),
-    ).rejects.toThrow(
-      'Permission "does-not-exist" does not exist in firewall "custom-git"',
-    );
-  });
-
-  it("should throw when GitHub fetch fails", async () => {
-    const config = makeConfig({
-      "nonexistent-api": { permissions: "all" },
-    });
-    await expect(
-      expandFirewallConfigs(config, mockFetch("Not Found", 404, "Not Found")),
-    ).rejects.toThrow('Failed to fetch firewall config for "nonexistent-api"');
-  });
-
-  it("should filter permissions on fetched config", async () => {
-    const config = makeConfig({
-      "custom-git": { permissions: ["repo-read"] },
-    });
-    const expanded = await getExpanded(config, mockFetch(CUSTOM_GIT_YAML));
-
-    expect(expanded[0]!.apis[0]!.permissions).toHaveLength(1);
-    expect(expanded[0]!.apis[0]!.permissions![0]!.name).toBe("repo-read");
-  });
-
   it("should resolve builtin github firewall without fetch", async () => {
     const fetchFn = vi.fn<FetchFn>();
-    const config = makeConfig({ github: { permissions: "all" } });
-    const expanded = await getExpanded(config, fetchFn);
+    const expanded = await resolveFirewallSelections(
+      { github: { permissions: "all" } },
+      fetchFn,
+    );
 
     expect(fetchFn).not.toHaveBeenCalled();
     expect(expanded).toHaveLength(1);
@@ -243,8 +203,10 @@ describe("expandFirewallConfigs", () => {
 
   it("should resolve builtin slack firewall without fetch", async () => {
     const fetchFn = vi.fn<FetchFn>();
-    const config = makeConfig({ slack: { permissions: "all" } });
-    const expanded = await getExpanded(config, fetchFn);
+    const expanded = await resolveFirewallSelections(
+      { slack: { permissions: "all" } },
+      fetchFn,
+    );
 
     expect(fetchFn).not.toHaveBeenCalled();
     expect(expanded).toHaveLength(1);
@@ -268,13 +230,14 @@ apis:
 `;
 
     const fetchFn = mockFetch(yamlContent);
-
-    const config = makeConfig({
-      "https://github.com/acme/firewalls/tree/main/my-firewall": {
-        permissions: "all",
+    const expanded = await resolveFirewallSelections(
+      {
+        "https://github.com/acme/firewalls/tree/main/my-firewall": {
+          permissions: "all",
+        },
       },
-    });
-    const expanded = await getExpanded(config, fetchFn);
+      fetchFn,
+    );
 
     expect(expanded[0]!.name).toBe("my-firewall");
     expect(fetchFn).toHaveBeenCalledWith(
@@ -423,5 +386,118 @@ describe("validateBaseUrl", () => {
     expect(() =>
       validateBaseUrl("https://api.example.com#section", "fw"),
     ).toThrow("must not contain fragment");
+  });
+
+  it("should skip template base URLs", () => {
+    expect(() =>
+      validateBaseUrl(
+        "https://${{ vars.ZENDESK_SUBDOMAIN }}.zendesk.com",
+        "zendesk",
+      ),
+    ).not.toThrow();
+  });
+});
+
+describe("hasBaseUrlVars", () => {
+  it("returns true for template base URLs", () => {
+    expect(
+      hasBaseUrlVars("https://${{ vars.ZENDESK_SUBDOMAIN }}.zendesk.com"),
+    ).toBe(true);
+  });
+
+  it("returns false for static base URLs", () => {
+    expect(hasBaseUrlVars("https://api.github.com")).toBe(false);
+  });
+
+  it("returns true for multiple vars", () => {
+    expect(
+      hasBaseUrlVars("https://${{ vars.A }}.${{ vars.B }}.example.com"),
+    ).toBe(true);
+  });
+});
+
+describe("resolveFirewallBaseUrlVars", () => {
+  const zendeskFirewall = {
+    name: "zendesk",
+    ref: "zendesk",
+    apis: [
+      {
+        base: "https://${{ vars.ZENDESK_SUBDOMAIN }}.zendesk.com",
+        auth: {
+          headers: {
+            Authorization: "Bearer ${{ secrets.ZENDESK_API_TOKEN }}",
+          },
+        },
+      },
+    ],
+  };
+
+  const staticFirewall = {
+    name: "github",
+    ref: "github",
+    apis: [
+      {
+        base: "https://api.github.com",
+        auth: {
+          headers: { Authorization: "Bearer ${{ secrets.GITHUB_TOKEN }}" },
+        },
+      },
+    ],
+  };
+
+  it("resolves template base URL with provided vars", () => {
+    const result = resolveFirewallBaseUrlVars([zendeskFirewall], {
+      ZENDESK_SUBDOMAIN: "mycompany",
+    });
+    expect(result[0]!.apis[0]!.base).toBe("https://mycompany.zendesk.com");
+  });
+
+  it("leaves static base URLs unchanged", () => {
+    const result = resolveFirewallBaseUrlVars([staticFirewall], {
+      ZENDESK_SUBDOMAIN: "mycompany",
+    });
+    expect(result[0]!.apis[0]!.base).toBe("https://api.github.com");
+  });
+
+  it("resolves mixed static and template firewalls", () => {
+    const result = resolveFirewallBaseUrlVars(
+      [staticFirewall, zendeskFirewall],
+      { ZENDESK_SUBDOMAIN: "acme" },
+    );
+    expect(result[0]!.apis[0]!.base).toBe("https://api.github.com");
+    expect(result[1]!.apis[0]!.base).toBe("https://acme.zendesk.com");
+  });
+
+  it("throws when required variable is missing", () => {
+    expect(() => resolveFirewallBaseUrlVars([zendeskFirewall], {})).toThrow(
+      'requires variable "ZENDESK_SUBDOMAIN"',
+    );
+  });
+
+  it("throws when vars is undefined", () => {
+    expect(() =>
+      resolveFirewallBaseUrlVars([zendeskFirewall], undefined),
+    ).toThrow('requires variable "ZENDESK_SUBDOMAIN"');
+  });
+
+  it("validates resolved URL is well-formed", () => {
+    expect(() =>
+      resolveFirewallBaseUrlVars([zendeskFirewall], {
+        ZENDESK_SUBDOMAIN: "bad value with spaces",
+      }),
+    ).toThrow("not a valid URL");
+  });
+
+  it("preserves auth headers unchanged", () => {
+    const result = resolveFirewallBaseUrlVars([zendeskFirewall], {
+      ZENDESK_SUBDOMAIN: "mycompany",
+    });
+    expect(result[0]!.apis[0]!.auth.headers.Authorization).toBe(
+      "Bearer ${{ secrets.ZENDESK_API_TOKEN }}",
+    );
+  });
+
+  it("returns empty array for empty input", () => {
+    expect(resolveFirewallBaseUrlVars([], undefined)).toEqual([]);
   });
 });

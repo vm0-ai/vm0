@@ -1,5 +1,7 @@
 import { useLastResolved, useGet, useSet } from "ccstate-react";
 import { IconSearch, IconPlus } from "@tabler/icons-react";
+import { Input } from "@vm0/ui/components/ui/input";
+import { Button } from "@vm0/ui/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -140,22 +142,21 @@ function ApiTokenForm({
           <label className="text-sm font-medium text-foreground">
             {secretConfig.label}
           </label>
-          <input
+          <Input
             type="password"
             placeholder={secretConfig.placeholder}
             value={secretValues[name] ?? ""}
             onChange={(e) => setFormValue(type, name, e.target.value)}
-            className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
       ))}
-      <button
+      <Button
         onClick={handleSubmit}
         disabled={!allFilled || submitting}
-        className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+        className="w-full"
       >
         {submitting ? "Saving..." : "Save"}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -188,7 +189,8 @@ function ConnectModalContent({
   return (
     <div className="flex flex-col gap-4">
       {hasOAuth && (
-        <button
+        <Button
+          variant="outline"
           onClick={() =>
             detach(
               (async () => {
@@ -200,16 +202,16 @@ function ConnectModalContent({
               Reason.DomCallback,
             )
           }
-          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors"
+          className="w-full"
         >
           Sign in with {config.label}
-        </button>
+        </Button>
       )}
 
       {hasOAuth && hasApiToken && (
         <div className="relative">
           <div className="absolute inset-0 flex items-center">
-            <span className="w-full border-t border-border" />
+            <span className="w-full zero-border-t" />
           </div>
           <div className="relative flex justify-center text-xs">
             <span className="bg-background px-2 text-muted-foreground">or</span>
@@ -338,7 +340,7 @@ function ConnectorCard({
 
   return (
     <div
-      className={`flex min-w-0 flex-col gap-3 rounded-xl border border-border bg-card p-4${clickable ? " cursor-pointer transition-colors hover:bg-muted/50" : ""}`}
+      className={`flex min-w-0 flex-col gap-3 rounded-xl zero-border bg-card p-4${clickable ? " cursor-pointer transition-colors hover:bg-muted/50" : ""}`}
       onClick={clickable ? handleCardClick : undefined}
       role={clickable ? "button" : undefined}
       tabIndex={clickable ? 0 : undefined}
@@ -415,7 +417,7 @@ function CustomAPITabContent({
         <button
           type="button"
           onClick={onAddSecret}
-          className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 text-left transition-colors hover:bg-muted/50"
+          className="flex flex-col gap-3 rounded-xl zero-border bg-card p-4 text-left transition-colors hover:bg-muted/50"
         >
           <div className="flex items-center gap-3">
             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-muted">
@@ -432,7 +434,7 @@ function CustomAPITabContent({
         <button
           type="button"
           onClick={onAddVariable}
-          className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 text-left transition-colors hover:bg-muted/50"
+          className="flex flex-col gap-3 rounded-xl zero-border bg-card p-4 text-left transition-colors hover:bg-muted/50"
         >
           <div className="flex items-center gap-3">
             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-muted">
@@ -483,7 +485,7 @@ function ConnectorGrid({
         : types.slice(0, 6).map((type) => (
             <div
               key={type}
-              className="flex min-w-0 flex-col gap-3 rounded-xl border border-border bg-card p-4 animate-pulse"
+              className="flex min-w-0 flex-col gap-3 rounded-xl zero-border bg-card p-4 animate-pulse"
             >
               <div className="flex min-w-0 items-center gap-3">
                 <div className="h-5 w-5 rounded bg-muted" />
@@ -704,12 +706,12 @@ function ZeroAddConnectionDialog({
               stroke={1.5}
               className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
             />
-            <input
+            <Input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search..."
-              className="w-full rounded-lg border border-border bg-background py-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+              className="pl-9"
             />
           </div>
           <Tabs

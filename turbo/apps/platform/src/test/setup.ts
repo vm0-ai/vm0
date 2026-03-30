@@ -15,7 +15,6 @@ vi.hoisted(() => {
   vi.stubEnv("VITE_API_URL", "http://localhost:3000");
 });
 
-// Start MSW server before all tests
 beforeAll(() => {
   server.listen({ onUnhandledRequest: "error" });
 });

@@ -1,5 +1,5 @@
 import type { MouseEvent } from "react";
-import { useGet, useSet } from "ccstate-react";
+import { useGet, useSet, useLoadable } from "ccstate-react";
 import { IconFile, IconPhoto, IconLoader2, IconX } from "@tabler/icons-react";
 import type { ZeroChatAttachment } from "../../signals/zero-page/zero-chat.ts";
 import {
@@ -121,6 +121,10 @@ function AttachmentChip({
   attachment: ZeroChatAttachment;
   onRemove: () => void;
 }) {
+  const infoLoadable = useLoadable(attachment.fileInfo$);
+  const uploading = infoLoadable.state === "loading";
+  const url =
+    infoLoadable.state === "hasData" ? infoLoadable.data?.url : undefined;
   const lightboxUrl = useGet(lightboxUrl$);
   const setLightboxUrlFn = useSet(setLightboxUrl$);
   const isImage = attachment.contentType.startsWith("image/");
@@ -134,17 +138,13 @@ function AttachmentChip({
         {isImage ? (
           <button
             type="button"
-            onClick={() => attachment.url && setLightboxUrlFn(attachment.url)}
-            disabled={!attachment.url}
+            onClick={() => url && setLightboxUrlFn(url)}
+            disabled={!url}
             className="group relative h-9 w-9 rounded-lg overflow-hidden border border-foreground/10 hover:border-foreground/25 transition-colors"
           >
-            {attachment.url ? (
+            {url ? (
               <>
-                <img
-                  src={attachment.url}
-                  alt=""
-                  className="h-full w-full object-cover"
-                />
+                <img src={url} alt="" className="h-full w-full object-cover" />
                 <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
                   <IconPhoto
                     size={18}
@@ -170,7 +170,7 @@ function AttachmentChip({
         ) : (
           <IconFile size={28} stroke={1.5} className="text-muted-foreground" />
         )}
-        {attachment.uploading && (
+        {uploading && (
           <span className="absolute -top-1 -left-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-background">
             <IconLoader2
               size={10}
@@ -183,7 +183,7 @@ function AttachmentChip({
           onClick={onRemove}
           className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-muted hover:bg-destructive hover:text-destructive-foreground transition-colors"
           aria-label={
-            attachment.uploading
+            uploading
               ? `Cancel upload ${attachment.filename}`
               : `Remove ${attachment.filename}`
           }
@@ -205,15 +205,15 @@ export function AttachmentChips({
   onRemove,
 }: {
   attachments: ZeroChatAttachment[];
-  onRemove: (id: string) => void;
+  onRemove: (attachment: ZeroChatAttachment) => void;
 }) {
   return (
     <div className="flex flex-wrap gap-2 px-4 pt-3">
       {attachments.map((a) => (
         <AttachmentChip
-          key={a.id}
+          key={String(a.fileInfo$)}
           attachment={a}
-          onRemove={() => onRemove(a.id)}
+          onRemove={() => onRemove(a)}
         />
       ))}
     </div>

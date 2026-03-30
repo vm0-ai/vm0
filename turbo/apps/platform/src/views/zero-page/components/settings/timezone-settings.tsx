@@ -18,28 +18,10 @@ import {
   timezoneSaving$,
   setTimezoneSaving$,
 } from "../../../../signals/zero-page/settings/preferences-page.ts";
-
-function getCommonTimezones() {
-  return [
-    { value: "UTC", label: "UTC (Coordinated Universal Time)" },
-    { value: "America/New_York", label: "Eastern Time (ET)" },
-    { value: "America/Chicago", label: "Central Time (CT)" },
-    { value: "America/Denver", label: "Mountain Time (MT)" },
-    { value: "America/Los_Angeles", label: "Pacific Time (PT)" },
-    { value: "America/Anchorage", label: "Alaska Time (AKT)" },
-    { value: "Pacific/Honolulu", label: "Hawaii Time (HST)" },
-    { value: "Europe/London", label: "London (GMT/BST)" },
-    { value: "Europe/Paris", label: "Central European Time (CET)" },
-    { value: "Europe/Helsinki", label: "Eastern European Time (EET)" },
-    { value: "Asia/Dubai", label: "Gulf Standard Time (GST)" },
-    { value: "Asia/Shanghai", label: "China Standard Time (CST)" },
-    { value: "Asia/Tokyo", label: "Japan Standard Time (JST)" },
-    { value: "Asia/Hong_Kong", label: "Hong Kong Time (HKT)" },
-    { value: "Asia/Singapore", label: "Singapore Time (SGT)" },
-    { value: "Australia/Sydney", label: "Australian Eastern Time (AET)" },
-    { value: "Pacific/Auckland", label: "New Zealand Time (NZST)" },
-  ];
-}
+import {
+  COMMON_TIMEZONES,
+  getTimezoneLabel,
+} from "../../../../signals/zero-page/cron.ts";
 
 export function TimezoneSettings() {
   const preferences = useLastResolved(userPreferences$);
@@ -60,15 +42,19 @@ export function TimezoneSettings() {
     return <Skeleton className="h-[76px] w-full rounded-xl" />;
   }
 
+  const currentTimezone = preferences.timezone ?? "UTC";
+  const timezoneOptions = (COMMON_TIMEZONES as readonly string[]).includes(
+    currentTimezone,
+  )
+    ? COMMON_TIMEZONES
+    : [currentTimezone, ...COMMON_TIMEZONES];
+
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-muted-foreground">
         Sets the TZ environment variable for your agent sandbox at runtime.
       </p>
-      <div
-        className="flex items-center gap-4 bg-card p-4 rounded-xl"
-        style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-      >
+      <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border">
         <div className="shrink-0">
           <div className="flex h-7 w-7 items-center justify-center">
             <IconClock
@@ -86,7 +72,7 @@ export function TimezoneSettings() {
         </div>
         <div className="relative shrink-0 w-64">
           <Select
-            value={preferences.timezone ?? "UTC"}
+            value={currentTimezone}
             onValueChange={handleChange}
             disabled={loading}
           >
@@ -94,9 +80,9 @@ export function TimezoneSettings() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {getCommonTimezones().map((tz) => (
-                <SelectItem key={tz.value} value={tz.value}>
-                  {tz.label}
+              {timezoneOptions.map((tz) => (
+                <SelectItem key={tz} value={tz}>
+                  {getTimezoneLabel(tz)}
                 </SelectItem>
               ))}
             </SelectContent>

@@ -68,7 +68,7 @@ import type { AgentDetail } from "../../signals/zero-page/agent-types.ts";
 import { runScheduleNow$ } from "../../signals/zero-page/zero-schedule.ts";
 import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
 import { Link } from "../router/link.tsx";
-import { navigateTo$ } from "../../signals/route.ts";
+import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { useAgentAvatar } from "./zero-sidebar.tsx";
 import { resolveAvatarUrl } from "./avatar-utils.ts";
@@ -310,7 +310,7 @@ function JobScheduleTab({ displayName }: { displayName: string }) {
   const deleteSchedule = useSet(deleteZeroJobSchedule$);
   const toggleEnabled = useSet(toggleZeroJobScheduleEnabled$);
   const runScheduleNow = useSet(runScheduleNow$);
-  const nav = useSet(navigateTo$);
+  const nav = useSet(detachedNavigateTo$);
   const pageSignal = useGet(pageSignal$);
 
   const entries: ScheduleEntry[] =
@@ -408,7 +408,7 @@ export function ZeroJobDetailPage({ agentId }: ZeroJobDetailPageProps) {
 
   const saving = useGet(zeroJobSettingsSaving$);
   const deleteAgent = useSet(deleteZeroJobAgent$);
-  const nav = useSet(navigateTo$);
+  const nav = useSet(detachedNavigateTo$);
   const pageSignal = useGet(pageSignal$);
 
   const statusLoadable = useLastLoadable(zeroOnboardingStatus$);

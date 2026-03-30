@@ -71,14 +71,11 @@ describe("zeroActivityDetailPage", () => {
     });
 
     // The page should show the detail header card (not skeleton)
-    await waitFor(
-      () => {
-        expect(
-          screen.getByRole("heading", { name: "Test Agent" }),
-        ).toBeInTheDocument();
-      },
-      { timeout: 3000 },
-    );
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Test Agent" }),
+      ).toBeInTheDocument();
+    });
 
     // Verify the header card rendered with run details
     expect(screen.getByText("9.0s")).toBeInTheDocument();
@@ -125,14 +122,11 @@ describe("zeroActivityDetailPage", () => {
       path: "/activity/run_sched",
     });
 
-    await waitFor(
-      () => {
-        expect(
-          screen.getByRole("heading", { name: "Scheduled Agent" }),
-        ).toBeInTheDocument();
-      },
-      { timeout: 3000 },
-    );
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Scheduled Agent" }),
+      ).toBeInTheDocument();
+    });
 
     // "Schedule" label should be rendered as a link pointing to the schedule page
     const scheduleLink = screen.getByRole("link", { name: "Schedule" });
@@ -181,14 +175,11 @@ describe("zeroActivityDetailPage", () => {
       path: "/activity/run_sched_no_id",
     });
 
-    await waitFor(
-      () => {
-        expect(
-          screen.getByRole("heading", { name: "Scheduled Agent No ID" }),
-        ).toBeInTheDocument();
-      },
-      { timeout: 3000 },
-    );
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Scheduled Agent No ID" }),
+      ).toBeInTheDocument();
+    });
 
     // "Schedule" should be plain text, not a link
     expect(screen.getByText("Schedule")).toBeInTheDocument();
@@ -203,14 +194,11 @@ describe("zeroActivityDetailPage", () => {
       path: "/activity/run_1",
     });
 
-    await waitFor(
-      () => {
-        expect(
-          screen.getByRole("heading", { name: "Test Agent" }),
-        ).toBeInTheDocument();
-      },
-      { timeout: 3000 },
-    );
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Test Agent" }),
+      ).toBeInTheDocument();
+    });
 
     // "Web" source should be plain text, not a link
     expect(screen.getByText("Web")).toBeInTheDocument();
@@ -263,12 +251,9 @@ describe("zeroActivityDetailPage", () => {
     });
 
     // Wait for System Prompt card to appear
-    await waitFor(
-      () => {
-        expect(screen.getByText("System Prompt")).toBeInTheDocument();
-      },
-      { timeout: 3000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByText("System Prompt")).toBeInTheDocument();
+    });
 
     // Expand the System Prompt details
     fireEvent.click(screen.getByText("System Prompt"));

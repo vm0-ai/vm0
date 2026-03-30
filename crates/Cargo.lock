@@ -1629,12 +1629,11 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.50.0"
+version = "0.50.2"
 dependencies = [
  "ably-subscriber",
  "async-trait",
  "base64",
- "block-cow",
  "chrono",
  "clap",
  "flate2",
@@ -1780,7 +1779,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox"
-version = "0.8.0"
+version = "0.8.2"
 dependencies = [
  "async-trait",
  "thiserror 2.0.18",
@@ -1790,7 +1789,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.18.0"
+version = "0.18.2"
 dependencies = [
  "async-trait",
  "base64",

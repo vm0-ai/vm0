@@ -18,13 +18,13 @@ export const setupLoggers$ = command(({ get }) => {
       // silence JSON parse errors because this data only for debugging
     }
     if (loggerNames.length > 0) {
-      L.infoGroup("Enable DEBUG for loggers:");
+      L.warnGroup("Enable DEBUG for loggers:");
       for (const name of loggerNames) {
-        L.info(name);
+        L.warn(name);
         const l = logger(name);
         l.level = Level.Debug;
       }
-      L.infoGroupEnd();
+      L.warnGroupEnd();
     }
   }
 });

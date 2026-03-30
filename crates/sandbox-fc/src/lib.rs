@@ -9,8 +9,11 @@ mod network;
 mod paths;
 mod prerequisites;
 mod process;
+mod runtime;
 mod sandbox;
+mod sandbox_control;
 mod snapshot;
+mod snapshot_provider;
 
 pub use api::{ApiClient, ApiError, BalloonStatistics};
 pub use config::{FirecrackerConfig, SnapshotConfig};
@@ -19,5 +22,8 @@ pub use network::{NetnsPool, NetnsPoolConfig};
 pub use paths::{
     FactoryPaths, LockPaths, RuntimePaths, SandboxPaths, SnapshotOutputPaths, SockPaths,
 };
+pub use runtime::{FirecrackerRuntime, FirecrackerRuntimeProvider};
 pub use sandbox::FirecrackerSandbox;
-pub use snapshot::{SnapshotCreateConfig, SnapshotError, create_snapshot};
+pub use sandbox_control::FirecrackerControl;
+pub use snapshot::{SnapshotError, create_snapshot};
+pub use snapshot_provider::FirecrackerSnapshotProvider;

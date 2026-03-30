@@ -153,3 +153,31 @@ describe("provider incompatibility error", () => {
     });
   });
 });
+
+describe("agent avatar link", () => {
+  it("should link to team detail page", async () => {
+    server.use(
+      http.get("*/api/zero/chat-threads/:id", () => {
+        return HttpResponse.json({
+          id: "thread-avatar-test",
+          title: null,
+          agentId: "mock-compose-id",
+          chatMessages: [],
+          latestSessionId: null,
+          createdAt: "2026-03-10T00:00:00Z",
+          updatedAt: "2026-03-10T00:00:00Z",
+        });
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+
+    await setupPage({ context, path: "/chat/thread-avatar-test" });
+
+    const link = await waitFor(() =>
+      screen.getByRole("link", { name: "View agent profile" }),
+    );
+    expect(link).toHaveAttribute("href", "/team/mock-compose-id");
+  });
+});

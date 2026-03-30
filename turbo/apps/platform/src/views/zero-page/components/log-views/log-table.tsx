@@ -55,7 +55,7 @@ function LogRow({
     <Link
       pathname="/activity/:runId"
       options={{ pathParams: { runId: entry.id } }}
-      className="block py-3 transition-colors hover:bg-muted/50 cursor-pointer border-b border-border/40 last:border-b-0 no-underline text-inherit"
+      className="block px-5 py-3 transition-colors hover:bg-muted/50 cursor-pointer border-b border-border/40 last:border-b-0 no-underline text-inherit"
     >
       <div className={cn(gridClassName)}>
         <div className="min-w-0 truncate text-left text-sm font-medium text-foreground">
@@ -116,7 +116,7 @@ function SkeletonRows({
   return (
     <div className="divide-y divide-border/40">
       {Array.from({ length: count }, (_, i) => (
-        <div key={i} className={cn(gridClassName, "py-3")}>
+        <div key={i} className={cn(gridClassName, "px-5 py-3")}>
           <div className="h-4 w-20 rounded bg-muted/50 animate-pulse" />
           {showSource && (
             <div className="h-4 w-12 rounded bg-muted/50 animate-pulse" />
@@ -174,7 +174,7 @@ export function LogTable({
           <div
             className={cn(
               gridClassName,
-              "sticky top-0 z-10 py-3 text-sm font-medium text-muted-foreground bg-card border-b border-border/40",
+              "sticky top-0 z-10 px-5 py-3 text-sm font-medium text-muted-foreground bg-card border-b border-border/40",
             )}
           >
             <div className="text-left">Agent</div>

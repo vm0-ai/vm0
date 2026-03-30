@@ -283,14 +283,23 @@ describe("zero chat page - connector label casing", () => {
 });
 
 describe("zero chat page - agent avatar and greeting", () => {
-  it("should render agent avatar on the landing page", async () => {
+  it("should render agent avatar link on the landing page", async () => {
     await renderChatPage();
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: "View agent profile" }),
+        screen.getByRole("link", { name: "View agent profile" }),
       ).toBeInTheDocument();
     });
+  });
+
+  it("should link avatar to team detail page", async () => {
+    await renderChatPage();
+
+    const link = await waitFor(() =>
+      screen.getByRole("link", { name: "View agent profile" }),
+    );
+    expect(link).toHaveAttribute("href", "/team/mock-compose-id");
   });
 });
 

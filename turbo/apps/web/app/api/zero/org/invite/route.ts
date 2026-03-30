@@ -10,7 +10,10 @@ import {
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
-import { inviteMember } from "../../../../../src/lib/org/org-member-service";
+import {
+  inviteMember,
+  revokeInvitation,
+} from "../../../../../src/lib/org/org-member-service";
 import {
   isBadRequest,
   isForbidden,
@@ -45,10 +48,38 @@ const router = tsr.router(zeroOrgInviteContract, {
       throw error;
     }
   },
+
+  revoke: async ({ headers, body }, { request }) => {
+    initServices();
+
+    const authCtx = await requireAuth(headers.authorization);
+    if (isAuthError(authCtx)) return authCtx;
+
+    try {
+      const orgSlug = new URL(request.url).searchParams.get("org");
+      const { org, member } = await resolveOrg(authCtx, orgSlug);
+      await revokeInvitation(org.orgId, member.role, body.invitationId);
+      return {
+        status: 200 as const,
+        body: { message: "Invitation revoked" },
+      };
+    } catch (error) {
+      if (isBadRequest(error)) {
+        return createErrorResponse("BAD_REQUEST", "Invalid request");
+      }
+      if (isForbidden(error)) {
+        return createErrorResponse("FORBIDDEN", "Access denied");
+      }
+      if (isNotFound(error)) {
+        return createErrorResponse("NOT_FOUND", "Resource not found");
+      }
+      throw error;
+    }
+  },
 });
 
 const handler = createHandler(zeroOrgInviteContract, router, {
   errorHandler: createSafeErrorHandler("zero-org-invite"),
 });
 
-export { handler as POST };
+export { handler as POST, handler as DELETE };

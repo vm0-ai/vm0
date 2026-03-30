@@ -274,10 +274,13 @@ describe("createZeroRun()", () => {
       expect(permNames).not.toContain("actions:write");
     });
 
-    it("should add unrestricted permission when no policies exist", async () => {
+    it("should apply default policies when no explicit policies exist", async () => {
       const agentName = uniqueId("fw-nopol");
       await createTestCompose(agentName);
       await createTestConnector({ type: "slack" });
+      await createTestZeroAgent(user.orgId, agentName, {
+        connectors: ["slack"],
+      });
       const agentId = await getTestZeroAgentId(user.orgId, agentName);
 
       const result = await createZeroRun(baseParams({ agentId: agentId }));
@@ -288,13 +291,12 @@ describe("createZeroRun()", () => {
       expect(firewalls).toBeDefined();
       const slackFw = firewalls!.find((fw) => fw.ref === "slack");
       expect(slackFw).toBeDefined();
-      expect(slackFw!.apis[0]!.permissions).toEqual([
-        {
-          name: "unrestricted",
-          description: "Allow all endpoints",
-          rules: ["ANY /{path*}"],
-        },
-      ]);
+      // Slack has default policies — only default-allowed permissions included
+      const permNames = slackFw!.apis[0]!.permissions!.map((p) => p.name);
+      expect(permNames).toContain("channels:read");
+      expect(permNames).toContain("users:read");
+      expect(permNames).not.toContain("admin");
+      expect(permNames).not.toContain("chat:write");
     });
 
     it("should not add firewall entry when all permissions are denied", async () => {

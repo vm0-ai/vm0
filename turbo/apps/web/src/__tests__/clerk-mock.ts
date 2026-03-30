@@ -121,16 +121,49 @@ export function mockClerk(options: {
         emailAddresses: [{ id: "email_1", emailAddress: email }],
         primaryEmailAddressId: "email_1",
       }),
-      getUserList: vi.fn().mockImplementation(({ emailAddress }) => {
-        // Return user if email matches, empty array otherwise
-        const queryEmail = emailAddress?.[0];
-        if (queryEmail === email && options.userId) {
-          return Promise.resolve({
-            data: [{ id: options.userId }],
-          });
-        }
-        return Promise.resolve({ data: [] });
-      }),
+      getUserList: vi
+        .fn()
+        .mockImplementation(
+          ({
+            emailAddress,
+            userId: userIdQuery,
+          }: {
+            emailAddress?: string[];
+            userId?: string[];
+          }) => {
+            // Return user if email matches
+            const queryEmail = emailAddress?.[0];
+            if (queryEmail === email && options.userId) {
+              return Promise.resolve({
+                data: [
+                  {
+                    id: options.userId,
+                    emailAddresses: [{ id: "email_1", emailAddress: email }],
+                    primaryEmailAddressId: "email_1",
+                    firstName: null,
+                    lastName: null,
+                    imageUrl: "",
+                  },
+                ],
+              });
+            }
+            // Return matching users when queried by userId array
+            if (userIdQuery && userIdQuery.length > 0 && options.userId) {
+              const matchedUsers = userIdQuery
+                .filter((uid) => uid === options.userId)
+                .map((uid) => ({
+                  id: uid,
+                  emailAddresses: [{ id: "email_1", emailAddress: email }],
+                  primaryEmailAddressId: "email_1",
+                  firstName: null,
+                  lastName: null,
+                  imageUrl: "",
+                }));
+              return Promise.resolve({ data: matchedUsers });
+            }
+            return Promise.resolve({ data: [] });
+          },
+        ),
       getOrganizationMembershipList: vi
         .fn()
         .mockImplementation(({ userId: queryUserId }: { userId: string }) => {
@@ -252,6 +285,7 @@ export function mockClerk(options: {
               slug,
               name: org.name,
               publicMetadata: {},
+              createdAt: Date.now(),
             });
           },
         ),
@@ -265,6 +299,13 @@ export function mockClerk(options: {
         }),
       updateOrganizationMetadata: vi.fn().mockResolvedValue({}),
       updateOrganizationMembershipMetadata: vi.fn().mockResolvedValue({}),
+      getOrganizationInvitationList: vi.fn().mockResolvedValue({ data: [] }),
+      createOrganizationInvitation: vi.fn().mockResolvedValue({}),
+      revokeOrganizationInvitation: vi.fn().mockResolvedValue({}),
+      getOrganizationDomainList: vi.fn().mockResolvedValue({ data: [] }),
+      createOrganizationDomain: vi.fn().mockResolvedValue({}),
+      deleteOrganizationDomain: vi.fn().mockResolvedValue({}),
+      updateOrganizationDomain: vi.fn().mockResolvedValue({}),
     },
   } as unknown as Awaited<ReturnType<typeof clerkClient>>);
 }

@@ -1,11 +1,11 @@
 import { command, state } from "ccstate";
-import { navigateTo$ } from "../route.ts";
+import { detach, Reason } from "../utils.ts";
+import { detachedNavigateTo$ } from "../route.ts";
 import { defaultAgentId$ } from "./zero-agent-name.ts";
 import { zeroSubagents$ } from "./zero-agents.ts";
-import { switchActiveAgent$ } from "./zero-chat.ts";
 import { initSidebarCollapsed$ } from "./zero-nav.ts";
 import { initZeroOnboarding$ } from "./zero-onboarding.ts";
-import { handleSlackUrlParams$ } from "./zero-slack.ts";
+import { initSlackOrg$ } from "./zero-slack.ts";
 
 /** Tracks whether the initial heavy data (agents, onboarding) has loaded. */
 const initialDataLoaded$ = state(false);
@@ -21,51 +21,46 @@ export const loadInitialData$ = command(
       return;
     }
     await set(initZeroOnboarding$, signal);
-    set(handleSlackUrlParams$);
     signal.throwIfAborted();
+    detach(set(initSlackOrg$, signal), Reason.Entrance);
     set(initialDataLoaded$, true);
     set(initSidebarCollapsed$);
   },
 );
 
 /**
- * Resolve an agent by ID and switch to it, auto-pinning if needed.
+ * Validate agent by ID and redirect to default if unknown.
  *
- * - If agentId matches the default agent, switches to null (default).
- * - If agentId is found among subagents, switches to it.
- * - If agentId is unknown, switches to null and redirects to default.
- * - If agentId is null, switches to null (no agent).
+ * - If agentId is found among subagents or matches default, no action needed.
+ * - If agentId is unknown, redirects to default agent.
+ * - Agent identity is now derived via zeroChatAgentId$ computed signal.
  *
- * Used by setupTalkPage$ to avoid duplicating
- * the lookup / pin / redirect logic.
+ * Used by setupTalkPage$ to handle unknown agent redirects.
  */
 export const resolveAgentById$ = command(
   async ({ get, set }, agentId: string | null, signal: AbortSignal) => {
-    if (agentId) {
-      const subagents = await get(zeroSubagents$);
-      signal.throwIfAborted();
-      const rawDefaultName = await get(defaultAgentId$);
-      signal.throwIfAborted();
+    if (!agentId) {
+      return;
+    }
 
-      if (agentId === rawDefaultName) {
-        await set(switchActiveAgent$, null, signal);
-      } else {
-        const agent = subagents.find((a) => a.id === agentId);
-        if (agent) {
-          await set(switchActiveAgent$, agent.id, signal);
-        } else {
-          // Unknown agent → redirect to default
-          await set(switchActiveAgent$, null, signal);
-          if (rawDefaultName) {
-            set(navigateTo$, "/talk/:agentId", {
-              pathParams: { agentId: rawDefaultName },
-              replace: true,
-            });
-          }
-        }
+    const subagents = await get(zeroSubagents$);
+    signal.throwIfAborted();
+    const rawDefaultName = await get(defaultAgentId$);
+    signal.throwIfAborted();
+
+    if (agentId === rawDefaultName) {
+      return;
+    }
+
+    const agent = subagents.find((a) => a.id === agentId);
+    if (!agent) {
+      // Unknown agent → redirect to default
+      if (rawDefaultName) {
+        set(detachedNavigateTo$, "/talk/:agentId", {
+          pathParams: { agentId: rawDefaultName },
+          replace: true,
+        });
       }
-    } else {
-      await set(switchActiveAgent$, null, signal);
     }
   },
 );

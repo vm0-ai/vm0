@@ -4,12 +4,7 @@ import { readFile, rm } from "fs/promises";
 import { existsSync } from "fs";
 import { dirname, join } from "path";
 import { parse as parseYaml } from "yaml";
-import {
-  extractAndGroupVariables,
-  resolveSkillRef,
-  expandFirewallConfigs,
-  type FirewallSelection,
-} from "@vm0/core";
+import { extractAndGroupVariables, resolveSkillRef } from "@vm0/core";
 import {
   getComposeByName,
   createOrUpdateCompose,
@@ -71,7 +66,6 @@ interface AgentConfig {
   framework?: string;
   skills?: string[];
   environment?: Record<string, string>;
-  experimental_firewalls?: Record<string, FirewallSelection>;
 }
 
 interface LoadedConfig {
@@ -301,9 +295,6 @@ async function finalizeCompose(
   agent: AgentConfig,
   options: { yes?: boolean; autoUpdate?: boolean; json?: boolean },
 ): Promise<ComposeResult> {
-  // Expand experimental_firewalls from names to full configs before sending to API
-  await expandFirewallConfigs(config);
-
   // Call API
   if (!options.json) {
     console.log("Uploading compose...");

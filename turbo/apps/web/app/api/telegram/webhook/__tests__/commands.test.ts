@@ -18,7 +18,7 @@ import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { server } from "../../../../../src/mocks/server";
 import { http } from "../../../../../src/__tests__/msw";
 import { POST } from "../[installationId]/route";
-import * as runModule from "../../../../../src/lib/run";
+import * as zeroRunModule from "../../../../../src/lib/zero/zero-run-service";
 
 // Mock Next.js after() to execute synchronously
 const afterPromises: Promise<unknown>[] = [];
@@ -544,7 +544,7 @@ describe("Telegram bot commands", () => {
       const editMsg = telegramEditMessageText();
       server.use(sendMsg.handler, editMsg.handler);
 
-      vi.spyOn(runModule, "startRun").mockResolvedValue({
+      vi.spyOn(zeroRunModule, "createZeroRun").mockResolvedValue({
         runId: "mock-run-id",
         status: "queued",
         createdAt: new Date(),
@@ -579,7 +579,7 @@ describe("Telegram bot commands", () => {
       const editMsg = telegramEditMessageText();
       server.use(sendMsg.handler, editMsg.handler);
 
-      vi.spyOn(runModule, "startRun").mockResolvedValue({
+      vi.spyOn(zeroRunModule, "createZeroRun").mockResolvedValue({
         runId: "mock-run-id",
         status: "queued",
         createdAt: new Date(),

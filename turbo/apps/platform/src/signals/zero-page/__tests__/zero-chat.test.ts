@@ -6,17 +6,14 @@ import { testContext } from "../../__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import {
   zeroChatMessages$,
-  zeroChatSending$,
+  allFinished$,
   zeroChatInput$,
-  zeroCurrentSessionId$,
   zeroSessionList$,
   zeroSessionListLoading$,
   zeroSessionListError$,
   zeroSessionError$,
-  zeroChatThreadId$,
   setZeroChatInput$,
   clearZeroChatInput$,
-  fetchZeroSessionList$,
   switchZeroSession$,
   startNewZeroSession$,
   sendZeroChatMessage$,
@@ -26,8 +23,8 @@ import {
   zeroChatAttachments$,
   uploadZeroAttachment$,
   removeZeroAttachment$,
-  cancelZeroAttachmentUpload$,
 } from "../zero-chat.ts";
+import { chatThreadId$ } from "../zero-nav.ts";
 
 const context = testContext();
 
@@ -41,6 +38,8 @@ async function setup() {
 
 /** Default chat-threads handlers used by most send tests. */
 function useChatThreadHandlers() {
+  let runAssociated = false;
+
   server.use(
     http.post("*/api/zero/chat-threads", () => {
       return HttpResponse.json(
@@ -49,6 +48,7 @@ function useChatThreadHandlers() {
       );
     }),
     http.post("*/api/zero/chat-threads/:id/runs", () => {
+      runAssociated = true;
       return new HttpResponse(null, { status: 204 });
     }),
     http.get("*/api/zero/chat-threads", () => {
@@ -57,7 +57,16 @@ function useChatThreadHandlers() {
     http.get("*/api/zero/chat-threads/:id", () => {
       return HttpResponse.json({
         chatMessages: [],
-        unsavedRuns: [],
+        unsavedRuns: runAssociated
+          ? [
+              {
+                runId: "run-1",
+                status: "running",
+                prompt: "Hello",
+                error: null,
+              },
+            ]
+          : [],
       });
     }),
   );
@@ -104,33 +113,13 @@ describe("zero-chat signals", () => {
       );
 
       await setup();
-      await context.store.set(fetchZeroSessionList$, context.signal);
 
-      const threads = context.store.get(zeroSessionList$);
+      const threads = await context.store.get(zeroSessionList$);
       expect(threads).toHaveLength(2);
       expect(threads[0]?.id).toBe("t1");
       expect(threads[1]?.preview).toBe("World");
       expect(context.store.get(zeroSessionListLoading$)).toBeFalsy();
       expect(context.store.get(zeroSessionListError$)).toBeNull();
-    });
-
-    it("should set error on API failure", async () => {
-      server.use(
-        http.get("*/api/zero/chat-threads", () => {
-          return new HttpResponse(null, {
-            status: 500,
-            statusText: "Internal Server Error",
-          });
-        }),
-      );
-
-      await setup();
-      await context.store.set(fetchZeroSessionList$, context.signal);
-
-      expect(context.store.get(zeroSessionListError$)).toBe(
-        "Failed to load chats (500)",
-      );
-      expect(context.store.get(zeroSessionListLoading$)).toBeFalsy();
     });
 
     it("should pass agentId as query parameter", async () => {
@@ -143,7 +132,8 @@ describe("zero-chat signals", () => {
       );
 
       await setup();
-      await context.store.set(fetchZeroSessionList$, context.signal);
+
+      await context.store.get(zeroSessionList$);
 
       const url = new URL(capturedUrl);
       expect(url.searchParams.get("agentId")).toBe("mock-compose-id");
@@ -182,8 +172,7 @@ describe("zero-chat signals", () => {
       context.store.set(switchZeroSession$, "thread-abc");
       await context.store.set(loadSessionFromSnapshot$, context.signal);
 
-      expect(context.store.get(zeroChatThreadId$)).toBe("thread-abc");
-      expect(context.store.get(zeroCurrentSessionId$)).toBe("session-abc");
+      expect(context.store.get(chatThreadId$)).toBe("thread-abc");
 
       const messages = await context.store.get(zeroChatMessages$);
       expect(messages).toHaveLength(2);
@@ -224,74 +213,6 @@ describe("zero-chat signals", () => {
       );
     });
 
-    it("should abort in-flight polling when switching threads", async () => {
-      let pollCount = 0;
-      useChatThreadHandlers();
-      server.use(
-        http.post("*/api/zero/runs", () => {
-          return HttpResponse.json({ runId: "run-old" }, { status: 201 });
-        }),
-        http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
-          return HttpResponse.json({
-            events: [],
-            hasMore: false,
-            framework: "claude-code",
-          });
-        }),
-        http.get("*/api/zero/logs/:runId", () => {
-          pollCount++;
-          return HttpResponse.json({
-            id: "run-old",
-            status: "running",
-            error: null,
-            prompt: "test",
-            createdAt: "2026-03-10T00:00:00Z",
-            startedAt: "2026-03-10T00:00:01Z",
-            completedAt: null,
-          });
-        }),
-        http.get("*/api/zero/chat-threads/:id", () => {
-          return HttpResponse.json({
-            id: "new-thread",
-            title: null,
-            agentId: "mock-compose-id",
-            chatMessages: [
-              {
-                role: "user",
-                content: "New thread msg",
-                createdAt: "2026-03-10T00:00:00Z",
-              },
-            ],
-            latestSessionId: null,
-            createdAt: "2026-03-10T00:00:00Z",
-            updatedAt: "2026-03-10T00:00:00Z",
-          });
-        }),
-      );
-
-      await setup();
-
-      const sendPromise = context.store
-        .set(sendZeroChatMessage$, "Start polling", undefined, context.signal)
-        .catch(() => {});
-
-      await delay(50);
-      expect(pollCount).toBeGreaterThan(0);
-
-      context.store.set(switchZeroSession$, "new-thread");
-      await context.store.set(loadSessionFromSnapshot$, context.signal);
-      await sendPromise;
-
-      const pollCountAfterAbort = pollCount;
-      await delay(200);
-      expect(pollCount).toBe(pollCountAfterAbort);
-
-      expect(context.store.get(zeroChatThreadId$)).toBe("new-thread");
-      const messages = await context.store.get(zeroChatMessages$);
-      expect(messages).toHaveLength(1);
-      expect(messages[0]?.content).toBe("New thread msg");
-    });
-
     it("should clear previous messages when switching", async () => {
       server.use(
         http.get("*/api/zero/chat-threads/:id", () => {
@@ -315,7 +236,7 @@ describe("zero-chat signals", () => {
       await expect(context.store.get(zeroChatMessages$)).resolves.toHaveLength(
         0,
       );
-      expect(context.store.get(zeroChatSending$)).toBeFalsy();
+      await expect(context.store.get(allFinished$)).resolves.toBeTruthy();
     });
   });
 
@@ -384,341 +305,9 @@ describe("zero-chat signals", () => {
       await expect(context.store.get(zeroChatMessages$)).resolves.toHaveLength(
         0,
       );
-      expect(context.store.get(zeroCurrentSessionId$)).toBeNull();
-      expect(context.store.get(zeroChatThreadId$)).toBeNull();
-      expect(context.store.get(zeroChatSending$)).toBeFalsy();
+      expect(context.store.get(chatThreadId$)).toBeNull();
+      await expect(context.store.get(allFinished$)).resolves.toBeTruthy();
       expect(context.store.get(zeroChatInput$)).toBe("");
-    });
-
-    it("should abort in-flight polling when starting a new session", async () => {
-      let pollCount = 0;
-      server.use(
-        http.post("*/api/zero/runs", () => {
-          return HttpResponse.json({ runId: "run-poll" }, { status: 201 });
-        }),
-        http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
-          return HttpResponse.json({
-            events: [],
-            hasMore: false,
-            framework: "claude-code",
-          });
-        }),
-        http.get("*/api/zero/logs/:runId", () => {
-          pollCount++;
-          return HttpResponse.json({
-            id: "run-poll",
-            status: "running",
-            error: null,
-            prompt: "test",
-            createdAt: "2026-03-10T00:00:00Z",
-            startedAt: "2026-03-10T00:00:01Z",
-            completedAt: null,
-          });
-        }),
-      );
-      useChatThreadHandlers();
-
-      await setup();
-
-      const sendPromise = context.store
-        .set(sendZeroChatMessage$, "Start polling", undefined, context.signal)
-        .catch(() => {});
-
-      await delay(50);
-      expect(pollCount).toBeGreaterThan(0);
-
-      context.store.set(startNewZeroSession$);
-      await sendPromise;
-
-      const pollCountAfterAbort = pollCount;
-      await delay(200);
-      expect(pollCount).toBe(pollCountAfterAbort);
-
-      expect(context.store.get(zeroCurrentSessionId$)).toBeNull();
-      await expect(context.store.get(zeroChatMessages$)).resolves.toHaveLength(
-        0,
-      );
-    });
-  });
-
-  describe("sendZeroChatMessage$", () => {
-    it("should create thread, add messages, and start a run", async () => {
-      let capturedRunBody: Record<string, string> | null = null;
-      let threadCreated = false;
-      let runAssociated = false;
-      server.use(
-        http.post("*/api/zero/chat-threads", () => {
-          threadCreated = true;
-          return HttpResponse.json(
-            { id: "thread-new", createdAt: "2026-03-10T00:00:00Z" },
-            { status: 201 },
-          );
-        }),
-        http.post("*/api/zero/chat-threads/:id/runs", () => {
-          runAssociated = true;
-          return new HttpResponse(null, { status: 204 });
-        }),
-        http.get("*/api/zero/chat-threads", () => {
-          return HttpResponse.json({ threads: [] });
-        }),
-        http.get("*/api/zero/chat-threads/:id", () => {
-          return HttpResponse.json({
-            chatMessages: [],
-            unsavedRuns: [],
-          });
-        }),
-        http.post("*/api/zero/runs", async ({ request }) => {
-          capturedRunBody = (await request.json()) as Record<string, string>;
-          return HttpResponse.json({ runId: "run-123" }, { status: 201 });
-        }),
-        http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
-          return HttpResponse.json({
-            events: [],
-            hasMore: false,
-            framework: "claude-code",
-          });
-        }),
-        http.get("*/api/zero/logs/:runId", () => {
-          return HttpResponse.json({
-            id: "run-123",
-            status: "completed",
-            error: null,
-            prompt: "What can you do?",
-            createdAt: "2026-03-10T00:00:00Z",
-            startedAt: "2026-03-10T00:00:01Z",
-            completedAt: "2026-03-10T00:00:02Z",
-          });
-        }),
-        http.get("*/api/zero/runs/:runId", () => {
-          return HttpResponse.json({
-            result: { agentSessionId: "new-session-id" },
-          });
-        }),
-      );
-
-      await setup();
-      await context.store.set(
-        sendZeroChatMessage$,
-        "What can you do?",
-        undefined,
-        context.signal,
-      );
-
-      expect(threadCreated).toBeTruthy();
-      expect(runAssociated).toBeTruthy();
-
-      expect(capturedRunBody).toBeTruthy();
-      expect(capturedRunBody!.agentId).toBe("mock-compose-id");
-      expect(capturedRunBody!.prompt).toBe("What can you do?");
-
-      expect(context.store.get(zeroChatSending$)).toBeFalsy();
-      expect(context.store.get(zeroChatThreadId$)).toBe("thread-new");
-
-      const messages = await context.store.get(zeroChatMessages$);
-      expect(messages.length).toBeGreaterThanOrEqual(2);
-      expect(messages[0]?.role).toBe("user");
-      expect(messages[0]?.content).toBe("What can you do?");
-      expect(messages[1]?.role).toBe("assistant");
-    });
-
-    it("should surface API error message on run creation failure", async () => {
-      useChatThreadHandlers();
-      server.use(
-        http.post("*/api/zero/runs", () => {
-          return HttpResponse.json(
-            { error: { message: "Some API error", code: "BAD_REQUEST" } },
-            { status: 400 },
-          );
-        }),
-      );
-
-      await setup();
-      await context.store.set(
-        sendZeroChatMessage$,
-        "Hello",
-        undefined,
-        context.signal,
-      );
-
-      const messages = await context.store.get(zeroChatMessages$);
-      const lastMsg = messages[messages.length - 1];
-      expect(lastMsg?.error).toBe("Some API error");
-      expect(context.store.get(zeroChatSending$)).toBeFalsy();
-    });
-
-    it("should surface provider incompatibility error message", async () => {
-      useChatThreadHandlers();
-      server.use(
-        http.post("*/api/zero/runs", () => {
-          return HttpResponse.json(
-            {
-              error: {
-                message:
-                  "Cannot continue session: this session was created with Moonshot (Kimi) and cannot be continued with Anthropic API Key",
-                code: "PROVIDER_INCOMPATIBLE",
-              },
-            },
-            { status: 400 },
-          );
-        }),
-      );
-
-      await setup();
-      await context.store.set(
-        sendZeroChatMessage$,
-        "Hello",
-        undefined,
-        context.signal,
-      );
-
-      const messages = await context.store.get(zeroChatMessages$);
-      const lastMsg = messages[messages.length - 1];
-      expect(lastMsg?.error).toBe(
-        "Provider not compatible: This session was created with a different provider type.",
-      );
-      expect(context.store.get(zeroChatSending$)).toBeFalsy();
-    });
-
-    it("should fall back to generic message when error body is unparseable", async () => {
-      useChatThreadHandlers();
-      server.use(
-        http.post("*/api/zero/runs", () => {
-          return new HttpResponse("Bad Gateway", { status: 502 });
-        }),
-      );
-
-      await setup();
-      await context.store.set(
-        sendZeroChatMessage$,
-        "Hello",
-        undefined,
-        context.signal,
-      );
-
-      const messages = await context.store.get(zeroChatMessages$);
-      const lastMsg = messages[messages.length - 1];
-      expect(lastMsg?.error).toBe("Failed to start agent run (502)");
-      expect(context.store.get(zeroChatSending$)).toBeFalsy();
-    });
-
-    it("should set error on thread creation failure", async () => {
-      server.use(
-        http.post("*/api/zero/chat-threads", () => {
-          return new HttpResponse(null, { status: 500 });
-        }),
-      );
-
-      await setup();
-      await context.store.set(
-        sendZeroChatMessage$,
-        "Hello",
-        undefined,
-        context.signal,
-      );
-
-      const messages = await context.store.get(zeroChatMessages$);
-      const lastMsg = messages[messages.length - 1];
-      expect(lastMsg?.error).toBe("Failed to create chat thread");
-      expect(context.store.get(zeroChatSending$)).toBeFalsy();
-    });
-
-    it("should not send empty messages", async () => {
-      let runCalled = false;
-      server.use(
-        http.post("*/api/zero/runs", () => {
-          runCalled = true;
-          return HttpResponse.json({ runId: "run-123" }, { status: 201 });
-        }),
-      );
-
-      await setup();
-      await context.store.set(
-        sendZeroChatMessage$,
-        "   ",
-        undefined,
-        context.signal,
-      );
-
-      expect(runCalled).toBeFalsy();
-      await expect(context.store.get(zeroChatMessages$)).resolves.toHaveLength(
-        0,
-      );
-    });
-
-    it("should include sessionId when continuing a thread", async () => {
-      let capturedRunBody: Record<string, string> | null = null;
-      let threadCreateCalled = false;
-      server.use(
-        http.get("*/api/zero/chat-threads/:id", () => {
-          return HttpResponse.json({
-            id: "thread-existing",
-            title: null,
-            agentId: "mock-compose-id",
-            chatMessages: [],
-            latestSessionId: "existing-session",
-            createdAt: "2026-03-10T00:00:00Z",
-            updatedAt: "2026-03-10T00:00:00Z",
-          });
-        }),
-        http.post("*/api/zero/chat-threads", () => {
-          threadCreateCalled = true;
-          return HttpResponse.json(
-            { id: "should-not-create", createdAt: "2026-03-10T00:00:00Z" },
-            { status: 201 },
-          );
-        }),
-        http.post("*/api/zero/chat-threads/:id/runs", () => {
-          return new HttpResponse(null, { status: 204 });
-        }),
-        http.get("*/api/zero/chat-threads", () => {
-          return HttpResponse.json({ threads: [] });
-        }),
-        http.post("*/api/zero/runs", async ({ request }) => {
-          capturedRunBody = (await request.json()) as Record<string, string>;
-          return HttpResponse.json({ runId: "run-456" }, { status: 201 });
-        }),
-        http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
-          return HttpResponse.json({
-            events: [],
-            hasMore: false,
-            framework: "claude-code",
-          });
-        }),
-        http.get("*/api/zero/logs/:runId", () => {
-          return HttpResponse.json({
-            id: "run-456",
-            status: "completed",
-            error: null,
-            prompt: "Follow up",
-            createdAt: "2026-03-10T00:00:00Z",
-            startedAt: "2026-03-10T00:00:01Z",
-            completedAt: "2026-03-10T00:00:02Z",
-          });
-        }),
-        http.get("*/api/zero/runs/:runId", () => {
-          return HttpResponse.json({
-            result: { agentSessionId: "existing-session" },
-          });
-        }),
-      );
-
-      await setup();
-
-      // Switch to an existing thread first
-      context.store.set(switchZeroSession$, "thread-existing");
-      await context.store.set(loadSessionFromSnapshot$, context.signal);
-
-      // Now send a follow-up — should NOT create a new thread
-      await context.store.set(
-        sendZeroChatMessage$,
-        "Follow up",
-        undefined,
-        context.signal,
-      );
-
-      expect(threadCreateCalled).toBeFalsy();
-      expect(capturedRunBody).toBeTruthy();
-      expect(capturedRunBody!.sessionId).toBe("existing-session");
     });
   });
 
@@ -751,8 +340,7 @@ describe("zero-chat signals", () => {
         withoutRender: true,
       });
 
-      expect(context.store.get(zeroChatThreadId$)).toBe("url-thread");
-      expect(context.store.get(zeroCurrentSessionId$)).toBe("url-session");
+      expect(context.store.get(chatThreadId$)).toBe("url-thread");
       const messages = await context.store.get(zeroChatMessages$);
       expect(messages).toHaveLength(1);
       expect(messages[0]?.content).toBe("From URL");
@@ -765,7 +353,7 @@ describe("zero-chat signals", () => {
         withoutRender: true,
       });
 
-      expect(context.store.get(zeroChatThreadId$)).toBeNull();
+      expect(context.store.get(chatThreadId$)).toBeNull();
     });
 
     it("should skip load when messages are already present", async () => {
@@ -808,6 +396,7 @@ describe("zero-chat signals", () => {
       expect(loadCount).toBe(countAfterSetup);
     });
   });
+
   describe("attachment upload and cancel", () => {
     function useUploadHandler(options?: { delayMs?: number }) {
       const delayMs = options?.delayMs ?? 0;
@@ -847,8 +436,9 @@ describe("zero-chat signals", () => {
       const attachments = context.store.get(zeroChatAttachments$);
       expect(attachments).toHaveLength(1);
       expect(attachments[0]?.filename).toBe("test.png");
-      expect(attachments[0]?.uploading).toBeFalsy();
-      expect(attachments[0]?.url).toBe("https://example.com/test.png");
+      const info = await context.store.get(attachments[0]!.fileInfo$);
+      expect(info?.url).toBe("https://example.com/test.png");
+      expect(info?.id).toBe("upload-1");
     });
 
     it("should cancel an in-flight upload and remove the attachment", async () => {
@@ -863,11 +453,9 @@ describe("zero-chat signals", () => {
       await delay(10);
       const before = context.store.get(zeroChatAttachments$);
       expect(before).toHaveLength(1);
-      expect(before[0]?.uploading).toBeTruthy();
-      const attachmentId = before[0]!.id;
 
-      // Cancel the upload
-      context.store.set(cancelZeroAttachmentUpload$, attachmentId);
+      // Cancel via removeZeroAttachment$ (which internally calls cancel$)
+      context.store.set(removeZeroAttachment$, before[0]!);
 
       await uploadPromise;
 
@@ -887,9 +475,8 @@ describe("zero-chat signals", () => {
 
       const attachments = context.store.get(zeroChatAttachments$);
       expect(attachments).toHaveLength(1);
-      const attachmentId = attachments[0]!.id;
 
-      context.store.set(removeZeroAttachment$, attachmentId);
+      context.store.set(removeZeroAttachment$, attachments[0]!);
 
       expect(context.store.get(zeroChatAttachments$)).toHaveLength(0);
     });
@@ -935,17 +522,16 @@ describe("zero-chat signals", () => {
       const before = context.store.get(zeroChatAttachments$);
       expect(before).toHaveLength(2);
 
-      // Cancel the first upload
-      const firstId = before[0]!.id;
-      context.store.set(cancelZeroAttachmentUpload$, firstId);
+      // Cancel the first upload via removeZeroAttachment$ (which calls cancel$)
+      context.store.set(removeZeroAttachment$, before[0]!);
 
       await Promise.all([promise1, promise2]);
 
       const after = context.store.get(zeroChatAttachments$);
       // Only the second upload should remain, completed
       expect(after).toHaveLength(1);
-      expect(after[0]?.uploading).toBeFalsy();
-      expect(after[0]?.url).toContain("example.com");
+      const info = await context.store.get(after[0]!.fileInfo$);
+      expect(info?.url).toContain("example.com");
     });
 
     it("should remove placeholder on upload failure", async () => {

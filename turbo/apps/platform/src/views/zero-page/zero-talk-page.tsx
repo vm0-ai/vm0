@@ -1,14 +1,14 @@
-import { useGet, useSet, useLastLoadable } from "ccstate-react";
+import { useSet, useLastLoadable } from "ccstate-react";
 import { SidebarLayout } from "./sidebar-layout.tsx";
 import { ZeroChatPage } from "./zero-chat-page.tsx";
 import { useAgentAvatar } from "./zero-sidebar.tsx";
-import { zeroChatAgentId$ } from "../../signals/zero-page/zero-nav.ts";
+import { zeroChatAgentId$ } from "../../signals/zero-page/zero-active-agent.ts";
 import { zeroSubagents$ } from "../../signals/zero-page/zero-agents.ts";
 import {
   agentDisplayName$,
   defaultAgentId$,
 } from "../../signals/zero-page/zero-agent-name.ts";
-import { navigateTo$ } from "../../signals/route.ts";
+import { detachedNavigateTo$ } from "../../signals/route.ts";
 import {
   resetTalkSendSignal$,
   sendZeroChatMessage$,
@@ -17,7 +17,9 @@ import {
 import { detach, Reason } from "../../signals/utils.ts";
 
 export function ZeroTalkPage() {
-  const currentChatAgentId = useGet(zeroChatAgentId$);
+  const chatAgentLoadable = useLastLoadable(zeroChatAgentId$);
+  const currentChatAgentId =
+    chatAgentLoadable.state === "hasData" ? chatAgentLoadable.data : null;
   const subagentsLoadable = useLastLoadable(zeroSubagents$);
   const subagents =
     subagentsLoadable.state === "hasData" ? subagentsLoadable.data : [];
@@ -42,7 +44,7 @@ export function ZeroTalkPage() {
     ? (selectedSubagent.displayName ?? selectedSubagent.id)
     : agentDisplayName;
 
-  const navigateTo = useSet(navigateTo$);
+  const navigateTo = useSet(detachedNavigateTo$);
   const sendMessage = useSet(sendZeroChatMessage$);
   const startNewSession = useSet(startNewZeroSession$);
   const resetTalkSendSignal = useSet(resetTalkSendSignal$);
@@ -53,14 +55,6 @@ export function ZeroTalkPage() {
       navigateTo("/team/:agentId", {
         pathParams: { agentId: resolvedAgentId },
         searchParams,
-      });
-    }
-  };
-
-  const handleChatAvatarClick = () => {
-    if (resolvedAgentId) {
-      navigateTo("/team/:agentId", {
-        pathParams: { agentId: resolvedAgentId },
       });
     }
   };
@@ -85,7 +79,7 @@ export function ZeroTalkPage() {
         onNavigateToMeet={handleNavigateToMeet}
         zeroAvatarSrc={chatAvatarSrc}
         chatAgentName={chatAgentName}
-        onAvatarClick={handleChatAvatarClick}
+        avatarAgentId={resolvedAgentId ?? undefined}
       />
     </SidebarLayout>
   );

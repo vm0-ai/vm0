@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import { firewallPermissionSchema } from "./firewalls";
 
 const c = initContract();
 
@@ -144,8 +143,8 @@ const agentDefinitionSchema = z.object({
     .optional(),
   /**
    * External firewall rules for proxy-side token replacement.
-   * CLI input: map format { slack: { permissions: [...] | "all" } }
-   * — expanded by CLI to full ExpandedFirewallConfig[] before API call.
+   * Map format: { slack: { permissions: [...] | "all" } }
+   * Resolved to full ExpandedFirewallConfig[] at runtime.
    */
   experimental_firewalls: z
     .record(
@@ -167,34 +166,19 @@ const agentComposeContentSchema = z.object({
 });
 
 /**
- * Expanded firewall config schema (after CLI expansion)
- */
-const expandedFirewallConfigSchema = z.object({
-  name: z.string(),
-  ref: z.string(),
-  description: z.string().optional(),
-  apis: z.array(
-    z.object({
-      base: z.string(),
-      auth: z.object({
-        headers: z.record(z.string(), z.string()),
-      }),
-      permissions: z.array(firewallPermissionSchema).optional(),
-    }),
-  ),
-  placeholders: z.record(z.string(), z.string()).optional(),
-});
-
-/**
  * Agent compose content schema for API requests.
- * Same as agentComposeContentSchema but experimental_firewalls is pre-expanded by CLI.
+ * experimental_firewalls is no longer stored in compose content — all firewalls
+ * are injected at runtime. The field is accepted as unknown for backward
+ * compatibility with older stored compose versions (ignored at runtime).
  */
 const agentComposeApiContentSchema = z.object({
   version: z.string().min(1, "Version is required"),
   agents: z.record(
     z.string(),
     agentDefinitionSchema.extend({
-      experimental_firewalls: z.array(expandedFirewallConfigSchema).optional(),
+      // Legacy: older compose versions may have this field (map or expanded array).
+      // Accepted for backward compat but ignored at runtime.
+      experimental_firewalls: z.unknown().optional(),
     }),
   ),
   volumes: z.record(z.string(), volumeConfigSchema).optional(),

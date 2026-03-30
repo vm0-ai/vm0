@@ -404,13 +404,15 @@ export {
   type ExperimentalFirewalls,
   type FirewallPolicyValue,
   type FirewallPolicies,
+  hasBaseUrlVars,
+  resolveFirewallBaseUrlVars,
+  validateBaseUrl,
 } from "./firewalls";
 
 export {
-  expandFirewallConfigs,
+  resolveFirewallSelections,
   collectAndValidatePermissions,
   validateRule,
-  validateBaseUrl,
   type FirewallSelection,
 } from "./firewall-expander";
 
@@ -432,18 +434,34 @@ export {
   orgRoleSchema,
   orgMemberSchema,
   orgPendingInvitationSchema,
+  orgMembershipRequestSchema,
+  orgDomainSchema,
   orgMembersResponseSchema,
+  orgDomainsResponseSchema,
   inviteOrgMemberRequestSchema,
   removeOrgMemberRequestSchema,
   updateOrgMemberRoleRequestSchema,
+  revokeInvitationRequestSchema,
+  membershipRequestActionSchema,
+  addDomainRequestSchema,
+  domainActionRequestSchema,
   orgMessageResponseSchema,
   type OrgRole,
   type OrgMember,
   type OrgPendingInvitation,
+  type OrgMembershipRequest,
+  type OrgDomain,
   type OrgMembersResponse,
+  type OrgDomainsResponse,
   type InviteOrgMemberRequest,
   type RemoveOrgMemberRequest,
   type UpdateOrgMemberRoleRequest,
+  type RevokeInvitationRequest,
+  type MembershipRequestAction,
+  type AddDomainRequest,
+  type OrgEnrollmentMode,
+  type DomainActionRequest,
+  type DomainVerifyRequest,
   type OrgMessageResponse,
 } from "./org-members";
 export {
@@ -510,9 +528,15 @@ export { zeroOrgListContract, type ZeroOrgListContract } from "./zero-org-list";
 export {
   zeroOrgMembersContract,
   zeroOrgInviteContract,
+  zeroOrgMembershipRequestsContract,
   type ZeroOrgMembersContract,
   type ZeroOrgInviteContract,
+  type ZeroOrgMembershipRequestsContract,
 } from "./zero-org-members";
+export {
+  zeroOrgDomainsContract,
+  type ZeroOrgDomainsContract,
+} from "./zero-org-domains";
 export {
   zeroComposesMainContract,
   zeroComposesByIdContract,

@@ -245,7 +245,7 @@ function CreateTeammateButton({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="flex items-center gap-3 rounded-[var(--zero-card-radius)] border border-dashed border-[hsl(var(--gray-400))] px-4 py-4 transition-colors hover:bg-muted/30 group cursor-pointer text-left"
+      className="flex items-center gap-3 rounded-xl border border-dashed border-[hsl(var(--gray-400))] px-4 py-4 transition-colors hover:bg-muted/30 group cursor-pointer text-left"
     >
       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg">
         <IconPlus

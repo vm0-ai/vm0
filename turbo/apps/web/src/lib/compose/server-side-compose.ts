@@ -3,7 +3,6 @@ import {
   resolveSkillRef,
   AGENT_NAME_REGEX,
   isSupportedFramework,
-  expandFirewallConfigs,
   type SupportedFramework,
 } from "@vm0/core";
 import type { AgentComposeYaml } from "../../types/agent-compose";
@@ -187,19 +186,12 @@ export async function serverSideCompose(params: {
     ...((agent.environment ?? {}) as Record<string, string>),
   };
 
-  // 4. Expand firewall configs (mutates in-place, so deep-clone first)
-  const contentCopy = structuredClone(content);
-  await expandFirewallConfigs(contentCopy);
-
-  // 5. Build resolved content with normalized agent name
-  const agentsCopy = contentCopy.agents as Record<
-    string,
-    Record<string, unknown>
-  >;
+  // 4. Build resolved content with normalized agent name
+  const agentsCopy = content.agents as Record<string, Record<string, unknown>>;
   const agentDef = { ...agentsCopy[agentName]! };
   const resolvedContent = {
-    ...contentCopy,
-    version: contentCopy.version as string,
+    ...content,
+    version: content.version as string,
     agents: {
       [normalizedName]: {
         ...agentDef,

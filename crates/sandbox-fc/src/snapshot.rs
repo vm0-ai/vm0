@@ -1,10 +1,10 @@
-use std::path::PathBuf;
 use std::time::Duration;
 
 use tokio::io::AsyncBufReadExt;
 use tracing::info;
 
 use block_cow::{BaseLoopCache, CowDevice, CowDeviceConfig};
+use sandbox::SnapshotCreateConfig;
 
 use crate::api::{ApiClient, ApiError};
 use crate::command;
@@ -23,25 +23,6 @@ const API_READY_TIMEOUT: Duration = Duration::from_secs(5);
 const VSOCK_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
 use crate::factory::{DESTROY_RETRIES, DESTROY_RETRY_DELAY};
-
-/// Configuration for creating a snapshot.
-#[derive(Debug, Clone)]
-pub struct SnapshotCreateConfig {
-    /// Unique identifier for this snapshot (used for runtime socket directory).
-    pub id: String,
-    /// Path to the Firecracker binary.
-    pub binary_path: PathBuf,
-    /// Path to the guest kernel image.
-    pub kernel_path: PathBuf,
-    /// Path to the root filesystem image.
-    pub rootfs_path: PathBuf,
-    /// Directory where snapshot artifacts will be written.
-    pub output_dir: PathBuf,
-    /// Number of vCPUs for the VM.
-    pub vcpu_count: u32,
-    /// Memory size in MiB for the VM.
-    pub memory_mb: u32,
-}
 
 /// Errors that can occur during snapshot creation.
 #[derive(Debug, thiserror::Error)]

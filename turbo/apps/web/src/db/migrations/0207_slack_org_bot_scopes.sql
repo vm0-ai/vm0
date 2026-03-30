@@ -1,0 +1,1 @@
+ALTER TABLE "slack_org_installations" ADD COLUMN "bot_scopes" text;

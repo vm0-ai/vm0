@@ -6,8 +6,13 @@
  * remote GitHub fetch.
  */
 
-import type { FirewallConfig } from "../contracts/firewalls";
+import type {
+  FirewallConfig,
+  FirewallPolicies,
+  FirewallPolicyValue,
+} from "../contracts/firewalls";
 import type { ConnectorType } from "../contracts/connectors";
+import { slackDefaultAllowed } from "./slack.generated";
 import { getConnectorEnvironmentMapping } from "../contracts/connectors";
 import { agentmailFirewall } from "./agentmail.generated";
 import { ahrefsFirewall } from "./ahrefs.generated";
@@ -33,6 +38,7 @@ import { deepseekFirewall } from "./deepseek.generated";
 import { deelFirewall } from "./deel.generated";
 import { devtoFirewall } from "./devto.generated";
 import { discordFirewall } from "./discord.generated";
+import { docusignFirewall } from "./docusign.generated";
 import { dropboxFirewall } from "./dropbox.generated";
 import { elevenlabsFirewall } from "./elevenlabs.generated";
 import { exploriumFirewall } from "./explorium.generated";
@@ -60,10 +66,12 @@ import { instantlyFirewall } from "./instantly.generated";
 import { intercomFirewall } from "./intercom.generated";
 import { intervalsIcuFirewall } from "./intervals-icu.generated";
 import { jotformFirewall } from "./jotform.generated";
+import { kommoFirewall } from "./kommo.generated";
 import { larkFirewall } from "./lark.generated";
 import { lineFirewall } from "./line.generated";
 import { linearFirewall } from "./linear.generated";
 import { loopsFirewall } from "./loops.generated";
+import { makeFirewall } from "./make.generated";
 import { mailsacFirewall } from "./mailsac.generated";
 import { mercuryFirewall } from "./mercury.generated";
 import { metaAdsFirewall } from "./meta-ads.generated";
@@ -108,11 +116,13 @@ import { v0Firewall } from "./v0.generated";
 import { vercelFirewall } from "./vercel.generated";
 import { webflowFirewall } from "./webflow.generated";
 import { wixFirewall } from "./wix.generated";
+import { wrikeFirewall } from "./wrike.generated";
 import { xFirewall } from "./x.generated";
 import { xeroFirewall } from "./xero.generated";
 import { youtubeFirewall } from "./youtube.generated";
 import { zapierFirewall } from "./zapier.generated";
 import { zapsignFirewall } from "./zapsign.generated";
+import { zendeskFirewall } from "./zendesk.generated";
 import { zeptomailFirewall } from "./zeptomail.generated";
 
 const CONNECTOR_FIREWALLS = {
@@ -140,6 +150,7 @@ const CONNECTOR_FIREWALLS = {
   deepseek: deepseekFirewall,
   devto: devtoFirewall,
   discord: discordFirewall,
+  docusign: docusignFirewall,
   dropbox: dropboxFirewall,
   elevenlabs: elevenlabsFirewall,
   explorium: exploriumFirewall,
@@ -167,10 +178,12 @@ const CONNECTOR_FIREWALLS = {
   intercom: intercomFirewall,
   "intervals-icu": intervalsIcuFirewall,
   jotform: jotformFirewall,
+  kommo: kommoFirewall,
   lark: larkFirewall,
   line: lineFirewall,
   linear: linearFirewall,
   loops: loopsFirewall,
+  make: makeFirewall,
   mailsac: mailsacFirewall,
   mercury: mercuryFirewall,
   "meta-ads": metaAdsFirewall,
@@ -215,11 +228,13 @@ const CONNECTOR_FIREWALLS = {
   vercel: vercelFirewall,
   webflow: webflowFirewall,
   wix: wixFirewall,
+  wrike: wrikeFirewall,
   x: xFirewall,
   xero: xeroFirewall,
   youtube: youtubeFirewall,
   zapier: zapierFirewall,
   zapsign: zapsignFirewall,
+  zendesk: zendeskFirewall,
   zeptomail: zeptomailFirewall,
 } as const satisfies Partial<Record<ConnectorType, FirewallConfig>>;
 
@@ -280,6 +295,20 @@ const EXPANDED_CONNECTOR_FIREWALLS = Object.fromEntries(
 export type FirewallConnectorType = keyof typeof CONNECTOR_FIREWALLS;
 
 /**
+ * Extract the union of permission names from a firewall config object.
+ * Requires the config to be declared with `as const satisfies FirewallConfig`
+ * so that permission name strings are preserved as literal types.
+ */
+export type PermissionNamesOf<T extends FirewallConfig> =
+  T["apis"][number] extends { permissions?: infer P }
+    ? P extends ReadonlyArray<{ name: infer N }>
+      ? N extends string
+        ? N
+        : never
+      : never
+    : never;
+
+/**
  * Connector types that do not have a firewall config.
  *
  * When adding a new ConnectorType, place it in either CONNECTOR_FIREWALLS
@@ -288,29 +317,26 @@ export type FirewallConnectorType = keyof typeof CONNECTOR_FIREWALLS;
  * that already has a firewall config.
  */
 export type NonFirewallConnectorType =
-  // Dynamic base URL — user-specific, self-hosted, or regional domains
-  | "bitrix" // {domain}.bitrix24.com
-  | "chatwoot" // self-hosted
-  | "cloudinary" // account-specific subdomain
-  | "dify" // self-hosted
-  | "docusign" // region-specific
-  | "jira" // {domain}.atlassian.net (API token auth)
-  | "kommo" // {subdomain}.kommo.com
-  | "mailchimp" // datacenter-specific (usX.api.mailchimp.com)
-  | "make" // regional (eu1/eu2/us1/us2.make.com)
-  | "metabase" // self-hosted
-  | "minio" // self-hosted
-  | "qdrant" // self-hosted / custom cluster URL
-  | "salesforce" // instance-specific (*.my.salesforce.com)
-  | "twenty" // self-hosted
-  | "wrike" // regional ({datacenter}.wrike.com)
-  | "zendesk" // {subdomain}.zendesk.com
-  // Basic auth — proxy cannot do base64 encoding at runtime
-  | "htmlcsstoimage" // HTTP Basic Auth (user-id + api-key)
-  | "streak" // HTTP Basic Auth (API key as username)
-  // Webhook URL — token embedded in URL, not auth header
+  // Self-hosted / dynamic base URL — needs ${{ vars.X }} template + connector variable addition
+  | "chatwoot" // self-hosted, auth: api_access_token header, needs BASE_URL variable
+  | "dify" // self-hosted, auth: Bearer token, needs BASE_URL variable
+  | "metabase" // self-hosted, auth: x-api-key header, needs BASE_URL variable
+  | "qdrant" // self-hosted, auth: api-key header or Bearer, needs BASE_URL variable
+  | "salesforce" // instance-specific (*.my.salesforce.com), auth: Bearer, needs INSTANCE variable
+  | "twenty" // self-hosted, auth: Bearer token, needs BASE_URL variable
+  // Datacenter-specific — feasible with static enumeration, needs connector variable addition
+  | "mailchimp" // ~20 datacenter domains (usX.api.mailchimp.com), auth: Bearer works
+  // Basic Auth — proxy cannot do base64 encoding at runtime
+  | "cloudinary" // Basic Auth (api_key:api_secret), also supports OAuth Bearer
+  | "htmlcsstoimage" // Basic Auth (user_id:api_key)
+  | "jira" // Basic Auth (email:api_token), no Bearer alternative
+  | "streak" // Basic Auth (api_key as username)
+  // Webhook URL / non-header auth — token embedded in URL, not auth header
+  | "bitrix" // token in URL path (/rest/{user_id}/{token}/)
   | "discord-webhook" // DISCORD_WEBHOOK_URL
   | "slack-webhook" // SLACK_WEBHOOK_URL
+  // Non-standard auth mechanism
+  | "minio" // AWS Signature V4 (not simple header replacement)
   // Other
   | "computer" // not an API connector
   | "jam"; // no public REST API
@@ -348,4 +374,70 @@ export function getConnectorFirewall(
   type: FirewallConnectorType,
 ): FirewallConfig {
   return EXPANDED_CONNECTOR_FIREWALLS[type];
+}
+
+/**
+ * Per-connector default-allowed permission lists.
+ *
+ * Each entry is a readonly array of permission names that are allowed by
+ * default. Permissions NOT in the array are denied. Connectors without
+ * an entry here have no defaults (all permissions allowed).
+ *
+ * These arrays are generated alongside the firewall configs — see each
+ * connector's generator (e.g. slack.ts) for the source of truth.
+ */
+const DEFAULT_ALLOWED: Partial<
+  Record<FirewallConnectorType, ReadonlyArray<string>>
+> = {
+  slack: slackDefaultAllowed,
+};
+
+/**
+ * Get the default firewall policies for a connector type.
+ *
+ * Builds a full permission → policy map from the connector's default-allowed
+ * list: listed permissions get "allow", everything else gets "deny".
+ *
+ * Returns null when no defaults are defined (caller treats as unrestricted).
+ */
+export function getDefaultFirewallPolicies(
+  type: FirewallConnectorType,
+): Record<string, FirewallPolicyValue> | null {
+  const allowed = DEFAULT_ALLOWED[type];
+  if (!allowed) return null;
+
+  const allowSet = new Set<string>(allowed);
+  const config = getConnectorFirewall(type);
+  const result: Record<string, FirewallPolicyValue> = {};
+  for (const api of config.apis) {
+    if (api.permissions) {
+      for (const p of api.permissions) {
+        result[p.name] = allowSet.has(p.name) ? "allow" : "deny";
+      }
+    }
+  }
+  return result;
+}
+
+/**
+ * Merge stored firewall policies with per-connector defaults.
+ *
+ * For each connector that has a default-allowed list, fills in default
+ * policies when no explicit entry exists in the stored policies.
+ * Call this when reading `firewallPolicies` from the database so that
+ * downstream consumers don't need to know about defaults.
+ */
+export function resolveFirewallPolicies(
+  stored: FirewallPolicies | null,
+  connectors: string[],
+): FirewallPolicies | null {
+  let resolved: FirewallPolicies | null = stored;
+  for (const connector of connectors) {
+    if (!isFirewallConnectorType(connector)) continue;
+    if (resolved?.[connector]) continue;
+    const defaults = getDefaultFirewallPolicies(connector);
+    if (!defaults) continue;
+    resolved = { ...resolved, [connector]: defaults };
+  }
+  return resolved;
 }

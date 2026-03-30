@@ -38,12 +38,9 @@ function mockAPIs(overrides?: { slug?: string; name?: string; role?: string }) {
 
 async function openGeneralTab() {
   await setupPage({ context, path: "/?settings=general" });
-  await waitFor(
-    () => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
-    },
-    { timeout: 3000 },
-  );
+  await waitFor(() => {
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
 }
 
 describe("org general tab - profile section", () => {

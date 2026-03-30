@@ -5,6 +5,8 @@ import {
   inviteOrgMemberRequestSchema,
   removeOrgMemberRequestSchema,
   updateOrgMemberRoleRequestSchema,
+  revokeInvitationRequestSchema,
+  membershipRequestActionSchema,
   orgMessageResponseSchema,
 } from "./org-members";
 
@@ -80,6 +82,57 @@ export const zeroOrgInviteContract = c.router({
     },
     summary: "Invite a member to the org (zero proxy)",
   },
+  revoke: {
+    method: "DELETE",
+    path: "/api/zero/org/invite",
+    headers: authHeadersSchema,
+    body: revokeInvitationRequestSchema,
+    responses: {
+      200: orgMessageResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Revoke a pending invitation (zero proxy)",
+  },
 });
 
 export type ZeroOrgInviteContract = typeof zeroOrgInviteContract;
+
+/**
+ * Zero contract for /api/zero/org/membership-requests
+ */
+export const zeroOrgMembershipRequestsContract = c.router({
+  accept: {
+    method: "POST",
+    path: "/api/zero/org/membership-requests",
+    headers: authHeadersSchema,
+    body: membershipRequestActionSchema,
+    responses: {
+      200: orgMessageResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Accept a membership request (zero proxy)",
+  },
+  reject: {
+    method: "DELETE",
+    path: "/api/zero/org/membership-requests",
+    headers: authHeadersSchema,
+    body: membershipRequestActionSchema,
+    responses: {
+      200: orgMessageResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Reject a membership request (zero proxy)",
+  },
+});
+
+export type ZeroOrgMembershipRequestsContract =
+  typeof zeroOrgMembershipRequestsContract;

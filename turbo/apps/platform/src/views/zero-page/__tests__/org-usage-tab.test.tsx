@@ -68,22 +68,16 @@ function mockAPIs(members: MockMember[]) {
 
 async function openUsageTab() {
   await setupPage({ context, path: "/?settings=usage" });
-  await waitFor(
-    () => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
-    },
-    { timeout: 3000 },
-  );
-  await waitFor(
-    () => {
-      expect(
-        screen.getByText(
-          "Credit balance and per-member credit consumption this billing period.",
-        ),
-      ).toBeInTheDocument();
-    },
-    { timeout: 5000 },
-  );
+  await waitFor(() => {
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+  await waitFor(() => {
+    expect(
+      screen.getByText(
+        "Credit balance and per-member credit consumption this billing period.",
+      ),
+    ).toBeInTheDocument();
+  });
 }
 
 describe("org usage tab - credit balance display", () => {
@@ -243,12 +237,9 @@ describe("org usage tab - inline cap editing", () => {
     });
 
     // Wait for save to complete
-    await waitFor(
-      () => {
-        expect(capStore["user-a"]).toBe(5000);
-      },
-      { timeout: 3000 },
-    );
+    await waitFor(() => {
+      expect(capStore["user-a"]).toBe(5000);
+    });
   });
 
   it("should allow committing cap via Enter key", async () => {
@@ -286,12 +277,9 @@ describe("org usage tab - inline cap editing", () => {
       fireEvent.keyDown(capInput, { key: "Enter" });
     });
 
-    await waitFor(
-      () => {
-        expect(capStore["user-a"]).toBe(3000);
-      },
-      { timeout: 3000 },
-    );
+    await waitFor(() => {
+      expect(capStore["user-a"]).toBe(3000);
+    });
   });
 });
 

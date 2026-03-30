@@ -38,7 +38,7 @@ import {
 import { Switch } from "@vm0/ui/components/ui/switch";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
 import { Link } from "../router/link.tsx";
-import { navigateTo$, pathParams$ } from "../../signals/route.ts";
+import { detachedNavigateTo$, pathParams$ } from "../../signals/route.ts";
 import { agents$ } from "../../signals/zero-page/agents-list.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
@@ -749,7 +749,7 @@ function ScheduleRunHistoryTab() {
 
       {/* Table */}
       <Card className="zero-card overflow-hidden">
-        <CardContent className="px-4 sm:px-7 pb-3 pt-0">
+        <CardContent className="pb-3 pt-0 px-0">
           <LogTable
             logs={logs}
             isLoading={isLoading}
@@ -1026,7 +1026,7 @@ export function ZeroScheduleDetailPage() {
   const toggleEnabled = useSet(toggleOrgScheduleEnabled$);
   const deleteSchedule = useSet(deleteOrgSchedule$);
   const runScheduleNow = useSet(runScheduleNow$);
-  const navigate = useSet(navigateTo$);
+  const navigate = useSet(detachedNavigateTo$);
   const pageSignal = useGet(pageSignal$);
 
   const [saving, setSaving] = useState(false);

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
@@ -15,97 +15,103 @@ async function setup() {
   });
 }
 
+const alwaysConnected = () => true;
+const neverConnected = () => false;
+const connectedOnThirdCall = (n: number) => n >= 3;
+
+function mockSlackEndpoint(getIsConnected: (callCount: number) => boolean) {
+  let callCount = 0;
+  const counter = {
+    get count() {
+      return callCount;
+    },
+  };
+  server.use(
+    http.get("*/api/zero/integrations/slack", () => {
+      callCount++;
+      return HttpResponse.json({
+        isConnected: getIsConnected(callCount),
+        isInstalled: true,
+        workspaceName: "Test Workspace",
+        isAdmin: false,
+        defaultAgentId: null,
+        agentOrgSlug: null,
+        environment: {
+          requiredSecrets: [],
+          requiredVars: [],
+          missingSecrets: [],
+          missingVars: [],
+        },
+      });
+    }),
+  );
+  return counter;
+}
+
 describe("pollSlackConnection$", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("should return immediately when already connected", async () => {
     // Default mock returns isConnected: true
     await setup();
 
-    let callCount = 0;
-    server.use(
-      http.get("*/api/zero/integrations/slack", () => {
-        callCount++;
-        return HttpResponse.json({
-          isConnected: true,
-          isInstalled: true,
-          workspaceName: "Test Workspace",
-          isAdmin: false,
-          defaultAgentId: null,
-          agentOrgSlug: null,
-          environment: {
-            requiredSecrets: [],
-            requiredVars: [],
-            missingSecrets: [],
-            missingVars: [],
-          },
-        });
-      }),
-    );
+    const counter = mockSlackEndpoint(alwaysConnected);
 
     await context.store.set(pollSlackConnection$, context.signal);
 
     // Should have only fetched once (the initial check), no polling
-    expect(callCount).toBe(1);
+    expect(counter.count).toBe(1);
   });
 
   it("should poll until connected and show success toast", async () => {
-    let callCount = 0;
-    server.use(
-      http.get("*/api/zero/integrations/slack", () => {
-        callCount++;
-        // Return connected on the 3rd call (initial check + 2 polls)
-        const isConnected = callCount >= 3;
-        return HttpResponse.json({
-          isConnected,
-          isInstalled: true,
-          workspaceName: "Test Workspace",
-          isAdmin: false,
-          defaultAgentId: null,
-          agentOrgSlug: null,
-          environment: {
-            requiredSecrets: [],
-            requiredVars: [],
-            missingSecrets: [],
-            missingVars: [],
-          },
-        });
-      }),
-    );
+    // Return connected on the 3rd call
+    const counter = mockSlackEndpoint(connectedOnThirdCall);
 
     await setup();
 
-    await context.store.set(pollSlackConnection$, context.signal);
+    vi.useFakeTimers();
+    const pollPromise = context.store.set(pollSlackConnection$, context.signal);
+
+    // Advance through poll intervals until connected
+    for (let i = 0; i < 5; i++) {
+      await vi.advanceTimersByTimeAsync(3000);
+    }
+
+    await pollPromise;
+    vi.useRealTimers();
 
     // Called at least 3 times: initial check + polls until connected
-    expect(callCount).toBeGreaterThanOrEqual(3);
+    expect(counter.count).toBeGreaterThanOrEqual(3);
   });
 
-  it("should stop polling after MAX_POLL_ATTEMPTS when never connected", async () => {
-    let callCount = 0;
-    server.use(
-      http.get("*/api/zero/integrations/slack", () => {
-        callCount++;
-        return HttpResponse.json({
-          isConnected: false,
-          isInstalled: true,
-          workspaceName: "Test Workspace",
-          isAdmin: false,
-          defaultAgentId: null,
-          agentOrgSlug: null,
-          environment: {
-            requiredSecrets: [],
-            requiredVars: [],
-            missingSecrets: [],
-            missingVars: [],
-          },
-        });
-      }),
-    );
+  it("should stop polling when signal is aborted", async () => {
+    // Never return connected
+    const counter = mockSlackEndpoint(neverConnected);
 
     await setup();
 
-    await context.store.set(pollSlackConnection$, context.signal);
+    const abortController = new AbortController();
 
-    // Should have made exactly MAX_POLL_ATTEMPTS + 1 calls (1 initial check + 100 poll attempts)
-    expect(callCount).toBe(101);
+    vi.useFakeTimers();
+    const pollPromise = context.store.set(
+      pollSlackConnection$,
+      abortController.signal,
+    );
+
+    // Let it poll a few times
+    for (let i = 0; i < 3; i++) {
+      await vi.advanceTimersByTimeAsync(3000);
+    }
+
+    // Abort the signal to stop polling
+    abortController.abort();
+
+    await expect(pollPromise).rejects.toThrow();
+    vi.useRealTimers();
+
+    // Should have polled a few times before abort
+    expect(counter.count).toBeGreaterThanOrEqual(1);
   });
 });

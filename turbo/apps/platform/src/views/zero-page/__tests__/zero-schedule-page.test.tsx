@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor, fireEvent } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
+import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 
@@ -834,5 +835,95 @@ describe("zero schedule page - view modes", () => {
     await waitFor(() => {
       expect(screen.getByText("Week view")).toBeInTheDocument();
     });
+  });
+});
+
+describe("zero schedule page - create dialog timezone default", () => {
+  it("should use preference timezone in submitted request when set", async () => {
+    setMockUserPreferences({ timezone: "Asia/Tokyo" });
+
+    let capturedBody: Record<string, unknown> | null = null;
+    server.use(
+      http.get("*/api/zero/schedules", () => {
+        return HttpResponse.json({ schedules: createMockSchedules() });
+      }),
+      http.post("*/api/zero/schedules", async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ schedule: { id: "schedule-new" } });
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+
+    await setupPage({ context, path: "/schedule" });
+
+    // Wait for schedules to render (preferences will have loaded by then)
+    await waitFor(() => {
+      expect(
+        screen.getByText("Summarize yesterday's threads"),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Add schedule/i }));
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Add schedule" }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText("Prompt"), {
+      target: { value: "Daily task" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    await waitFor(() => {
+      expect(capturedBody).toBeTruthy();
+    });
+    expect(capturedBody).toHaveProperty("timezone", "Asia/Tokyo");
+  });
+
+  it("should fall back to local timezone in submitted request when preference not set", async () => {
+    // timezone is null by default (reset via resetAllMockHandlers in afterEach)
+    const localTimezone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+    let capturedBody: Record<string, unknown> | null = null;
+    server.use(
+      http.get("*/api/zero/schedules", () => {
+        return HttpResponse.json({ schedules: createMockSchedules() });
+      }),
+      http.post("*/api/zero/schedules", async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ schedule: { id: "schedule-new" } });
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+
+    await setupPage({ context, path: "/schedule" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Summarize yesterday's threads"),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Add schedule/i }));
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Add schedule" }),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText("Prompt"), {
+      target: { value: "Daily task" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    await waitFor(() => {
+      expect(capturedBody).toBeTruthy();
+    });
+    expect(capturedBody).toHaveProperty("timezone", localTimezone);
   });
 });

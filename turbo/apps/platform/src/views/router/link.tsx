@@ -1,6 +1,9 @@
 import { useSet } from "ccstate-react";
 import type { MouseEvent, Ref } from "react";
-import { generateRouterPath, navigateTo$ } from "../../signals/route.ts";
+import {
+  generateRouterPath,
+  detachedNavigateTo$,
+} from "../../signals/route.ts";
 
 type PathName = Parameters<typeof generateRouterPath>[0];
 type PathParams = Parameters<typeof generateRouterPath>[1];
@@ -37,7 +40,7 @@ export function Link({
   ref,
   ...rest
 }: LinkProps) {
-  const navigate = useSet(navigateTo$);
+  const navigate = useSet(detachedNavigateTo$);
   const path = generateRouterPath(pathname, options?.pathParams);
   const href = buildHref(path, options?.searchParams);
 

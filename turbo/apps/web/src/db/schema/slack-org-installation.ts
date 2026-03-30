@@ -25,6 +25,7 @@ export const slackOrgInstallations = pgTable(
     encryptedBotToken: text("encrypted_bot_token").notNull(),
     botUserId: varchar("bot_user_id", { length: 255 }).notNull(),
     installedByUserId: text("installed_by_user_id"),
+    botScopes: text("bot_scopes"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

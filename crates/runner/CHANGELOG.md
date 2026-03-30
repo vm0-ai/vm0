@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.50.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.50.1...runner-rs-v0.50.2) (2026-03-30)
+
+
+### Refactoring
+
+* **sandbox:** introduce runtime provider trait and consolidate sandbox-fc construction ([#7173](https://github.com/vm0-ai/vm0/issues/7173)) ([6cb7c3c](https://github.com/vm0-ai/vm0/commit/6cb7c3c8ed57b4d7eb949986046d68226dc0672a)), closes [#7119](https://github.com/vm0-ai/vm0/issues/7119)
+
+## [0.50.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.50.0...runner-rs-v0.50.1) (2026-03-30)
+
+
+### Refactoring
+
+* **sandbox:** introduce sandbox control trait and decouple exec/kill from sandbox-fc ([#7150](https://github.com/vm0-ai/vm0/issues/7150)) ([4615d15](https://github.com/vm0-ai/vm0/commit/4615d1571c6dbc2ba249070654112d390e83a395)), closes [#7122](https://github.com/vm0-ai/vm0/issues/7122)
+* **sandbox:** introduce sandbox runtime trait and internalize shared resources ([#7125](https://github.com/vm0-ai/vm0/issues/7125)) ([43a2ba0](https://github.com/vm0-ai/vm0/commit/43a2ba0d6ee9df1022e6238913597dd4d1c11e2a))
+* **sandbox:** introduce snapshot provider trait and decouple snapshot operations ([#7142](https://github.com/vm0-ai/vm0/issues/7142)) ([9a864bf](https://github.com/vm0-ai/vm0/commit/9a864bfd4ec551ead8115f4fdb30df7c5570b5fe))
+
 ## [0.50.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.49.0...runner-rs-v0.50.0) (2026-03-29)
 
 

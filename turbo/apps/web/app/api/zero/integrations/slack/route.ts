@@ -29,6 +29,7 @@ import { buildAppHomeView } from "../../../../../src/lib/slack/blocks";
 import { decryptSecretValue } from "../../../../../src/lib/crypto/secrets-encryption";
 import { refreshOrgAppHome } from "../../../../../src/lib/slack-org/handlers/app-home";
 import { cleanupWorkspaceInstallation } from "../../../../../src/lib/slack-org/connect-service";
+import { hasAllBotScopes } from "../../../../../src/lib/slack-org/scopes";
 import type { AgentComposeYaml } from "../../../../../src/types/agent-compose";
 import { logger } from "../../../../../src/lib/logger";
 
@@ -108,12 +109,19 @@ export async function GET(request: Request) {
       connectUrl = url.toString();
     }
 
+    // Scope mismatch detection (admin-only)
+    const scopeFields =
+      isAdmin && installation
+        ? buildScopeFields(installation.botScopes, baseUrl, org.orgId, userId)
+        : {};
+
     return NextResponse.json({
       isConnected: false,
       isInstalled: !!installation,
       isAdmin,
       installUrl,
       connectUrl,
+      ...scopeFields,
     });
   }
 
@@ -291,11 +299,20 @@ async function getConnectedStatus(
     (name) => !existingVarNames.has(name),
   );
 
+  const isAdmin = member.role === "admin";
+  const { SLACK_CLIENT_ID } = env();
+  const baseUrl = SLACK_CLIENT_ID ? getApiUrl() : null;
+
+  const scopeFields =
+    isAdmin && installation
+      ? buildScopeFields(installation.botScopes, baseUrl, orgId, userId)
+      : {};
+
   return NextResponse.json({
     isConnected: true,
     isInstalled: true,
     workspaceName: installation?.slackWorkspaceName ?? null,
-    isAdmin: member.role === "admin",
+    isAdmin,
     defaultAgentName,
     agentOrgSlug,
     environment: {
@@ -304,7 +321,33 @@ async function getConnectedStatus(
       missingSecrets,
       missingVars,
     },
+    ...scopeFields,
   });
+}
+
+/**
+ * Build scope-mismatch fields for the status response (admin-only).
+ */
+function buildScopeFields(
+  storedBotScopes: string | null,
+  baseUrl: string | null,
+  orgId: string,
+  userId: string,
+): { scopeMismatch: boolean; reinstallUrl: string | null } {
+  const parsed: unknown = storedBotScopes ? JSON.parse(storedBotScopes) : null;
+  const stored: string[] | null = Array.isArray(parsed) ? parsed : null;
+  const scopeMismatch = !hasAllBotScopes(stored);
+
+  let reinstallUrl: string | null = null;
+  if (scopeMismatch && baseUrl) {
+    const url = new URL(`${baseUrl}/api/zero/slack/oauth/install`);
+    url.searchParams.set("orgId", orgId);
+    url.searchParams.set("vm0UserId", userId);
+    url.searchParams.set("reinstall", "1");
+    reinstallUrl = url.toString();
+  }
+
+  return { scopeMismatch, reinstallUrl };
 }
 
 async function handleDisconnect(

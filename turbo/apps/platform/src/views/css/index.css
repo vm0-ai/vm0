@@ -115,6 +115,29 @@
   border-color: hsl(var(--primary));
 }
 
+/* Reusable 0.7px border utilities — replaces inline style={{ border: "0.7px solid ..." }} */
+.zero-border {
+  border: 0.7px solid hsl(var(--gray-400));
+}
+.zero-border-t {
+  border-top: 0.7px solid hsl(var(--gray-400));
+}
+.zero-border-r {
+  border-right: 0.7px solid hsl(var(--gray-300));
+}
+.zero-border-dashed {
+  border: 0.7px dashed hsl(var(--gray-400));
+}
+.zero-border-dashed-t {
+  border-top: 0.7px dashed hsl(var(--gray-400));
+}
+
+/* Role / status badge: pill with 0.7px border on neutral background */
+.zero-badge {
+  border: 0.7px solid hsl(var(--gray-400));
+  background-color: hsl(var(--gray-0));
+}
+
 /* Zero chip-style gray (tone options, skill tags, Add skill) */
 .zero-app .zero-chip {
   background-color: hsl(var(--gray-50));
@@ -851,6 +874,17 @@ details[open] > summary > span:first-child {
 
 .tiptap:focus {
   outline: none;
+}
+
+/* Dashed vertical connector line for tool-call timelines */
+.zero-dashed-line {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent,
+    transparent 2px,
+    hsl(var(--border) / 0.6) 2px,
+    hsl(var(--border) / 0.6) 5px
+  );
 }
 
 /* Sheet / side drawer animations */

@@ -1,29 +1,23 @@
 import { command, computed, state, type Computed } from "ccstate";
-import type { AgentEvent, LogStatus } from "./log-types.ts";
+import type { AgentEvent } from "./log-types.ts";
 import { delay } from "signal-timers";
 import {
   zeroRunAgentEventsContract,
   logsByIdContract,
   zeroQueuePositionContract,
+  zeroRunsCancelContract,
 } from "@vm0/core";
-import { throwIfAbort } from "../utils.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 
 const AGENT_EVENTS_PAGE_LIMIT = 30;
-const MAX_INTERVAL = 30_000;
-const BASE_POLL_INTERVAL = 3000;
 
-const internalPollInterval$ = state(BASE_POLL_INTERVAL);
+const internalPollInterval$ = state(3000);
 
 export const setPollIntervalForTest$ = command(({ set }, interval: number) => {
   set(internalPollInterval$, interval);
 });
 
 const poolInterval$ = computed((get) => get(internalPollInterval$));
-
-// ---------------------------------------------------------------------------
-// Terminal status helper
-// ---------------------------------------------------------------------------
 
 function isTerminalStatus(status: string | null): boolean {
   return (
@@ -33,10 +27,6 @@ function isTerminalStatus(status: string | null): boolean {
     status === "cancelled"
   );
 }
-
-// ---------------------------------------------------------------------------
-// Page result & factory
-// ---------------------------------------------------------------------------
 
 export interface PagedRunEvents {
   events: AgentEvent[];
@@ -80,145 +70,6 @@ function createEventPageComputed(
     return await fetchEvents(client, runId, since);
   });
 }
-
-// ---------------------------------------------------------------------------
-// Poll for new events (append a page if new events exist)
-// ---------------------------------------------------------------------------
-
-interface PollableRunState {
-  events$: Computed<Promise<PagedRunEvents>>[];
-  setEvents: (
-    updater: (
-      prev: Computed<Promise<PagedRunEvents>>[],
-    ) => Computed<Promise<PagedRunEvents>>[],
-  ) => void;
-  setStatus: (status: LogStatus) => void;
-  setError?: (error: string | null) => void;
-}
-
-const pollNewEvents$ = command(
-  async (
-    { get },
-    args: { runId: string; state: PollableRunState },
-    _signal: AbortSignal,
-  ) => {
-    const { runId, state: runState } = args;
-    const pages = runState.events$;
-    if (pages.length === 0) {
-      return;
-    }
-
-    const lastPage = await get(pages[pages.length - 1]);
-    if (lastPage.events.length === 0) {
-      const freshPage = createEventPageComputed(runId);
-      runState.setEvents(() => [freshPage]);
-      return;
-    }
-
-    const lastEvent = lastPage.events[lastPage.events.length - 1];
-    const newPage = createEventPageComputed(runId, lastEvent.createdAt);
-    const newPageResult = await get(newPage);
-
-    if (newPageResult.events.length > 0) {
-      runState.setEvents((prev) => [...prev, newPage]);
-    }
-  },
-);
-
-// ---------------------------------------------------------------------------
-// Three-phase polling loop
-// ---------------------------------------------------------------------------
-
-export const setupPollingLoop$ = command(
-  async (
-    { get, set },
-    config: {
-      runId: string;
-      state: PollableRunState;
-      onTerminal?: (runId: string) => void;
-      onPhase2Done?: () => void;
-    },
-    signal: AbortSignal,
-  ) => {
-    const { runId, state: runState, onTerminal, onPhase2Done } = config;
-
-    // Phase 1: Eager initial load — fetch all existing event pages
-    const firstPage = createEventPageComputed(runId);
-    runState.setEvents(() => [firstPage]);
-
-    let keepLoading = true;
-    while (keepLoading && !signal.aborted) {
-      const pages = runState.events$;
-      const lastPage = await get(pages[pages.length - 1]);
-      signal.throwIfAborted();
-      if (lastPage.hasMore && lastPage.events.length > 0) {
-        const lastEvent = lastPage.events[lastPage.events.length - 1];
-        const nextPage = createEventPageComputed(runId, lastEvent.createdAt);
-        runState.setEvents((prev) => [...prev, nextPage]);
-      } else {
-        keepLoading = false;
-      }
-    }
-
-    // Phase 2: Check if already terminal
-    try {
-      const client = get(zeroClient$)(logsByIdContract);
-      const result = await client.getById({ params: { id: runId } });
-      signal.throwIfAborted();
-      if (result.status === 200) {
-        runState.setStatus(result.body.status);
-        runState.setError?.(result.body.error);
-        if (isTerminalStatus(result.body.status)) {
-          await set(pollNewEvents$, { runId, state: runState }, signal);
-          signal.throwIfAborted();
-          onTerminal?.(runId);
-          return;
-        }
-      }
-    } catch (error) {
-      throwIfAbort(error);
-    } finally {
-      onPhase2Done?.();
-    }
-
-    // Phase 3: Polling loop
-    let errorCount = 0;
-
-    while (!signal.aborted) {
-      const interval = Math.min(
-        get(internalPollInterval$) * 2 ** errorCount,
-        MAX_INTERVAL,
-      );
-
-      await delay(interval, { signal });
-      signal.throwIfAborted();
-
-      try {
-        const client = get(zeroClient$)(logsByIdContract);
-        const result = await client.getById({ params: { id: runId } });
-        signal.throwIfAborted();
-
-        if (result.status === 200) {
-          runState.setStatus(result.body.status);
-          runState.setError?.(result.body.error);
-          if (isTerminalStatus(result.body.status)) {
-            await set(pollNewEvents$, { runId, state: runState }, signal);
-            signal.throwIfAborted();
-            onTerminal?.(runId);
-            return;
-          }
-        }
-
-        await set(pollNewEvents$, { runId, state: runState }, signal);
-        signal.throwIfAborted();
-        errorCount = 0;
-      } catch (error) {
-        throwIfAbort(error);
-        errorCount++;
-      }
-    }
-  },
-);
 
 function createRunDetail(runId: string) {
   const internalReloadRunStatus$ = state(0);
@@ -344,6 +195,12 @@ export function createRunLoop(runId: string) {
     signal.throwIfAborted();
 
     while (true) {
+      // First, we need to check the "finish" status. If it has finished,
+      // we still need to pull the chat data from the page one last time.
+      // This ensures that the final set of data is successfully included.
+      const finished = await get(finished$);
+      signal.throwIfAborted();
+
       const loopedPagedEvents = get(internalLoopedPagedEvents$);
       const lastPagedEventsLists =
         loopedPagedEvents.length > 0 ? loopedPagedEvents : initialPagedEvents;
@@ -363,20 +220,27 @@ export function createRunLoop(runId: string) {
 
       const lastPage = await get(nextPage$);
       signal.throwIfAborted();
-
-      const finished = await get(finished$);
-      signal.throwIfAborted();
       if (finished && !lastPage.hasMore) {
         break;
       }
     }
   });
 
+  const cancel$ = command(async ({ get }, signal: AbortSignal) => {
+    const client = get(zeroClient$)(zeroRunsCancelContract);
+    await client.cancel({
+      params: { id: runId },
+      fetchOptions: { signal },
+    });
+  });
+
   return {
     pagedEventsList$,
     beginLoop$,
+    cancel$,
     detail$: runDetail$,
     queuePosition$,
+    finished$,
     thinkingMessage$,
   };
 }

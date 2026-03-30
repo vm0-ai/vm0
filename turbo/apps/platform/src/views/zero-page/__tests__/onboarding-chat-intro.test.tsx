@@ -145,22 +145,16 @@ function mockMemberOnboardingWithChat() {
 async function walkToWhereStep(isMember: boolean) {
   if (isMember) {
     // Member with no connectors skips directly to step 4 (where-to-work)
-    await waitFor(
-      () => {
-        expect(
-          screen.getByText(/Where would you like to work with/),
-        ).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Where would you like to work with/),
+      ).toBeInTheDocument();
+    });
   } else {
     // Admin: step 1 (workspace name) → step 2 (choose tools) → step 3 (connect) → step 4 (where)
-    await waitFor(
-      () => {
-        expect(screen.getByText(/Name your workspace/)).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByText(/Name your workspace/)).toBeInTheDocument();
+    });
 
     // Fill workspace name and advance
     const input = screen.getByPlaceholderText("e.g. Acme Corp");
@@ -201,40 +195,28 @@ describe("onboarding auto-intro message", () => {
     fireEvent.click(screen.getByRole("button", { name: /Continue in web/ }));
 
     // Verify navigation away from onboarding
-    await waitFor(
-      () => {
-        expect(pathname()).not.toBe("/onboarding");
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(pathname()).not.toBe("/onboarding");
+    });
 
     // Verify the agent run was actually created (intro message was sent)
-    await waitFor(
-      () => {
-        expect(mock.wasRunCreated()).toBeTruthy();
-      },
-      { timeout: 10_000 },
-    );
+    await waitFor(() => {
+      expect(mock.wasRunCreated()).toBeTruthy();
+    });
 
     // The assistant should be in thinking/running state
-    await waitFor(
-      () => {
-        const shimmer = document.querySelector(".zero-shimmer-text");
-        expect(shimmer).toBeInTheDocument();
-      },
-      { timeout: 10_000 },
-    );
+    await waitFor(() => {
+      const shimmer = document.querySelector(".zero-shimmer-text");
+      expect(shimmer).toBeInTheDocument();
+    });
 
     // Complete the run so the test cleans up
     mock.ctrl.completeRun("I am Zero, your AI teammate.");
 
-    await waitFor(
-      () => {
-        expect(screen.getByLabelText("Send")).toBeInTheDocument();
-      },
-      { timeout: 10_000 },
-    );
-  }, 30_000);
+    await waitFor(() => {
+      expect(screen.getByLabelText("Send")).toBeInTheDocument();
+    });
+  });
 
   it("should send intro message after member completes onboarding via web", async () => {
     const mock = mockMemberOnboardingWithChat();
@@ -246,37 +228,25 @@ describe("onboarding auto-intro message", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Continue in web/ }));
 
-    await waitFor(
-      () => {
-        expect(pathname()).not.toBe("/onboarding");
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(pathname()).not.toBe("/onboarding");
+    });
 
-    await waitFor(
-      () => {
-        expect(mock.wasRunCreated()).toBeTruthy();
-      },
-      { timeout: 10_000 },
-    );
+    await waitFor(() => {
+      expect(mock.wasRunCreated()).toBeTruthy();
+    });
 
-    await waitFor(
-      () => {
-        const shimmer = document.querySelector(".zero-shimmer-text");
-        expect(shimmer).toBeInTheDocument();
-      },
-      { timeout: 10_000 },
-    );
+    await waitFor(() => {
+      const shimmer = document.querySelector(".zero-shimmer-text");
+      expect(shimmer).toBeInTheDocument();
+    });
 
     mock.ctrl.completeRun("I am Zero, your AI teammate.");
 
-    await waitFor(
-      () => {
-        expect(screen.getByLabelText("Send")).toBeInTheDocument();
-      },
-      { timeout: 10_000 },
-    );
-  }, 30_000);
+    await waitFor(() => {
+      expect(screen.getByLabelText("Send")).toBeInTheDocument();
+    });
+  });
 
   it("should allow follow-up messages after onboarding intro completes", async () => {
     const mock = mockMemberOnboardingWithChat();
@@ -289,12 +259,9 @@ describe("onboarding auto-intro message", () => {
     fireEvent.click(screen.getByRole("button", { name: /Continue in web/ }));
 
     // Wait for intro run to start
-    await waitFor(
-      () => {
-        expect(mock.wasRunCreated()).toBeTruthy();
-      },
-      { timeout: 10_000 },
-    );
+    await waitFor(() => {
+      expect(mock.wasRunCreated()).toBeTruthy();
+    });
 
     // Complete the intro run
     mock.ctrl.completeRun("I am Zero, your AI teammate.");
@@ -302,17 +269,13 @@ describe("onboarding auto-intro message", () => {
     // Wait for the chat to be ready for input
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-      { timeout: 10_000 },
     );
 
-    await waitFor(
-      () => {
-        expect(screen.getByLabelText("Send")).toBeInTheDocument();
-      },
-      { timeout: 10_000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByLabelText("Send")).toBeInTheDocument();
+    });
 
     // Verify the textarea is interactive (user can type a follow-up)
     expect(textarea).not.toBeDisabled();
-  }, 30_000);
+  });
 });

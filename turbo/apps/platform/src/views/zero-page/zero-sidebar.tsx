@@ -46,25 +46,24 @@ import { clerk$, user$ } from "../../signals/auth.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   zeroActiveId$,
-  zeroSessionId$,
-  zeroChatAgentId$,
+  chatThreadId$,
   zeroSidebarCollapsed$,
   setZeroSidebarCollapsed$,
   handleZeroNavSelect$,
   handleZeroAccountAction$,
-  navigateToZeroSession$,
+  navigateToChat$,
+  sidebarChatAgentId$,
 } from "../../signals/zero-page/zero-nav.ts";
 import {
   agentDisplayName$,
   defaultAgentId$,
 } from "../../signals/zero-page/zero-agent-name.ts";
 import { zeroSubagents$ } from "../../signals/zero-page/zero-agents.ts";
+import { reloadAgents$ } from "../../signals/zero-page/agents-list.ts";
 import {
   zeroSessionList$,
-  zeroSessionListLoading$,
-  zeroSessionListError$,
   createNewChatSession$,
-  zeroCreatingNewSession$,
+  creatingNewSession$,
 } from "../../signals/zero-page/zero-chat.ts";
 import {
   pinnedAgentIds$,
@@ -98,6 +97,7 @@ import {
 } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
+import { slackOrgScopeMismatch$ } from "../../signals/zero-page/zero-slack.ts";
 import { BillingDialog } from "./billing-dialog.tsx";
 import {
   ChatListDialog,
@@ -290,8 +290,7 @@ function AccountDropdown({
         side="top"
         align="start"
         sideOffset={8}
-        className="w-[240px] rounded-lg"
-        style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+        className="w-[240px]"
       >
         {/* Current account header */}
         {current && (
@@ -314,10 +313,7 @@ function AccountDropdown({
                 </div>
               </div>
             </div>
-            <DropdownMenuSeparator
-              className="h-0 bg-transparent"
-              style={{ borderTop: "0.7px solid hsl(var(--gray-400))" }}
-            />
+            <DropdownMenuSeparator />
           </>
         )}
 
@@ -333,10 +329,7 @@ function AccountDropdown({
           />
           <span>Preferences</span>
         </DropdownMenuItem>
-        <DropdownMenuSeparator
-          className="h-0 bg-transparent"
-          style={{ borderTop: "0.7px solid hsl(var(--gray-400))" }}
-        />
+        <DropdownMenuSeparator />
 
         {/* Account management group */}
         {hasOthers ? (
@@ -354,10 +347,7 @@ function AccountDropdown({
                 className="text-muted-foreground"
               />
             </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent
-              className="w-[220px] rounded-lg"
-              style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-            >
+            <DropdownMenuSubContent className="w-[220px]">
               {others.map((account) => (
                 <DropdownMenuItem
                   key={account.sessionId}
@@ -379,10 +369,7 @@ function AccountDropdown({
                   </div>
                 </DropdownMenuItem>
               ))}
-              <DropdownMenuSeparator
-                className="h-0 bg-transparent"
-                style={{ borderTop: "0.7px solid hsl(var(--gray-400))" }}
-              />
+              <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={handleAddAccount}
                 className="gap-3 px-3 py-2.5 rounded-lg"
@@ -504,8 +491,7 @@ function RecentChatSection({
     <div className="mt-4 flex flex-col">
       {searchOpen ? (
         <div
-          className="shrink-0 flex h-8 items-center gap-2 rounded-lg bg-sidebar-accent/60 pl-2 pr-2"
-          style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+          className="shrink-0 flex h-8 items-center gap-2 rounded-lg bg-sidebar-accent/60 pl-2 pr-2 zero-border"
           onBlur={(e) => {
             if (!e.currentTarget.contains(e.relatedTarget)) {
               setSearchOpen(false);
@@ -681,6 +667,7 @@ function TalkToSection({
 }) {
   const [chatListOpen, setChatListOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const reloadAgents = useSet(reloadAgents$);
 
   return (
     <div className="shrink-0">
@@ -706,6 +693,7 @@ function TalkToSection({
                 onClick={(e) => {
                   e.stopPropagation();
                   setChatListOpen(true);
+                  reloadAgents();
                 }}
                 className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
                 aria-label="Open a conversation"
@@ -833,6 +821,69 @@ function TalkToSection({
   );
 }
 
+/** Overlay scroll area: hides native scrollbar, renders a custom thin indicator. */
+function OverlayScrollArea({
+  className,
+  children,
+  onScroll,
+  style,
+}: {
+  className?: string;
+  children: ReactNode;
+  onScroll?: (e: React.UIEvent<HTMLDivElement>) => void;
+  style?: React.CSSProperties;
+}) {
+  const [thumbStyle, setThumbStyle] = useState<{
+    top: number;
+    height: number;
+    visible: boolean;
+  }>({ top: 0, height: 0, visible: false });
+  const [hovering, setHovering] = useState(false);
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    onScroll?.(e);
+    const el = e.currentTarget;
+    const { scrollTop, scrollHeight, clientHeight } = el;
+    if (scrollHeight <= clientHeight) {
+      setThumbStyle((prev) => ({ ...prev, visible: false }));
+      return;
+    }
+    const ratio = clientHeight / scrollHeight;
+    const thumbH = Math.max(ratio * clientHeight, 24);
+    const maxTop = clientHeight - thumbH;
+    const top = (scrollTop / (scrollHeight - clientHeight)) * maxTop;
+    setThumbStyle({ top, height: thumbH, visible: true });
+  };
+
+  const showThumb = thumbStyle.visible && hovering;
+
+  return (
+    <div
+      className={`relative ${className ?? ""}`}
+      onMouseEnter={() => setHovering(true)}
+      onMouseLeave={() => setHovering(false)}
+    >
+      <div
+        className="h-full overflow-y-auto overflow-x-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        style={style}
+        onScroll={handleScroll}
+      >
+        {children}
+      </div>
+      <div
+        className="absolute -right-2 top-0 bottom-0 w-[6px] pointer-events-none"
+        aria-hidden="true"
+        style={{ opacity: showThumb ? 1 : 0, transition: "opacity 150ms" }}
+      >
+        <div
+          className="absolute right-0 w-[5px] rounded-full bg-foreground/15"
+          style={{ top: thumbStyle.top, height: thumbStyle.height }}
+        />
+      </div>
+    </div>
+  );
+}
+
 function nextTierInfo(tier: string): { label: string; img: string } | null {
   if (tier === "free") {
     return { label: "Pro", img: planProImg };
@@ -877,13 +928,7 @@ function SidebarUpgradeCard() {
     <button
       type="button"
       onClick={handleClick}
-      className="flex w-full items-center gap-3 rounded-lg p-2.5 text-left transition-colors hover:bg-muted/30"
-      style={{
-        border: "0.7px solid hsl(var(--gray-300))",
-        backgroundColor: "hsl(var(--card))",
-        boxShadow:
-          "0 1px 2px hsl(220 12% 20% / 0.04), 0 4px 12px hsl(220 12% 20% / 0.03)",
-      }}
+      className="flex w-full items-center gap-3 rounded-lg p-2.5 text-left transition-colors hover:bg-muted/30 zero-card shadow-[0_1px_2px_hsl(220_12%_20%/0.04),0_4px_12px_hsl(220_12%_20%/0.03)]"
     >
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium text-foreground">Get {next.label}</p>
@@ -922,20 +967,30 @@ export function ZeroSidebar() {
           displayName: a.displayName,
         }))
       : [];
-  const currentChatAgentId = useGet(zeroChatAgentId$);
+  const currentChatAgentId = useGet(sidebarChatAgentId$);
   const collapsed = useGet(zeroSidebarCollapsed$);
   const setSidebarCollapsed = useSet(setZeroSidebarCollapsed$);
   const onCollapse = () => setSidebarCollapsed(!collapsed);
   const onSelect = useSet(handleZeroNavSelect$);
-  const navigateToSession = useSet(navigateToZeroSession$);
-  const onRecentSelect = (id: string) => navigateToSession(id);
-  const selectedRecentId = useGet(zeroSessionId$);
+  const navigateToChat = useSet(navigateToChat$);
+  const onRecentSelect = (chatThreadId: string) => navigateToChat(chatThreadId);
+  const selectedRecentId = useGet(chatThreadId$);
   const onAccountAction = useSet(handleZeroAccountAction$);
-  const recentSessions = useGet(zeroSessionList$);
-  const recentSessionsLoading = useGet(zeroSessionListLoading$);
-  const recentSessionsError = useGet(zeroSessionListError$);
+  const recentSessionsLoadable = useLastLoadable(zeroSessionList$);
+  const recentSessions =
+    recentSessionsLoadable.state === "hasData"
+      ? recentSessionsLoadable.data
+      : [];
+  const recentSessionsLoading = recentSessionsLoadable.state === "loading";
+  const recentSessionsError =
+    recentSessionsLoadable.state === "hasError"
+      ? recentSessionsLoadable.error instanceof Error
+        ? recentSessionsLoadable.error.message
+        : "Failed to load chats"
+      : null;
   const createNewChat = useSet(createNewChatSession$);
-  const creatingNewSession = useGet(zeroCreatingNewSession$);
+  const creatingNewSessionLoadable = useLoadable(creatingNewSession$);
+  const creatingNewSession = creatingNewSessionLoadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
   const onNewChat = (agentId: string | null) => {
     detach(createNewChat(agentId, pageSignal), Reason.DomCallback);
@@ -953,6 +1008,7 @@ export function ZeroSidebar() {
   const setManagePinnedOpen = useSet(setManagePinnedDialogOpen$);
   // Feature gates
   const features = useLastResolved(featureSwitch$);
+  const slackScopeMismatch = useGet(slackOrgScopeMismatch$);
 
   // Compute selectedAgentIdFromChat for grey highlight
   const subagentIds = new Set(subagents.map((a) => a.id));
@@ -1054,7 +1110,12 @@ export function ZeroSidebar() {
                             : "text-sidebar-foreground hover:bg-sidebar-accent"
                         }`}
                       >
-                        <Icon size={16} className="shrink-0" />
+                        <span className="relative inline-flex">
+                          <Icon size={16} className="shrink-0" />
+                          {id === "works" && slackScopeMismatch && (
+                            <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500" />
+                          )}
+                        </span>
                       </Link>
                     </TooltipTrigger>
                     <TooltipContent side="right">
@@ -1140,9 +1201,9 @@ export function ZeroSidebar() {
           </div>
 
           {/* Scrollable: Pinned + Recent chats */}
-          <div
+          <OverlayScrollArea
+            className="flex-1 min-h-0 -mx-2 px-2 mt-2 pt-2"
             onScroll={(e) => setIsScrolled(e.currentTarget.scrollTop > 0)}
-            className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden -mx-2 px-2 mt-2 pt-2"
             style={{
               boxShadow: isScrolled
                 ? "0 -1px 0 0 hsl(var(--border) / 0.4)"
@@ -1178,7 +1239,7 @@ export function ZeroSidebar() {
               onNewChat={onNewChat}
               newChatDisabled={creatingNewSession}
             />
-          </div>
+          </OverlayScrollArea>
         </nav>
 
         {/* Upgrade card */}
@@ -1218,7 +1279,10 @@ export function ZeroSidebar() {
                 ) : (
                   <Icon size={16} className="shrink-0" />
                 )}
-                <span className="truncate">{label}</span>
+                <span className="truncate flex-1">{label}</span>
+                {id === "works" && slackScopeMismatch && (
+                  <span className="h-2 w-2 shrink-0 rounded-full bg-red-500" />
+                )}
               </Link>
             ))}
             <div className="h-px bg-border/30 mx-1 my-1" />
