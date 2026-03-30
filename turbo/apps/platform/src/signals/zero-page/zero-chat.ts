@@ -952,7 +952,7 @@ const ensureChatThread$ = command(
 
 /** Post-polling cleanup: invalidate thread cache and refresh sidebar. */
 const finalizeCompletedRun$ = command(
-  async ({ set }, _runId: string, signal: AbortSignal) => {
+  async ({ get, set }, _runId: string, signal: AbortSignal) => {
     // Invalidate thread data so currentChatSessionId$ picks up the new session ID
     set(reloadCurrentThread$, (n) => n + 1);
 
