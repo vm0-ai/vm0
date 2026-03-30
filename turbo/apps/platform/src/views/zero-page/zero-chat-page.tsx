@@ -138,7 +138,6 @@ function useUserFirstName(): string | undefined {
 }
 
 interface ZeroChatPageProps {
-  onNavigateToMeet?: (tab?: string) => void;
   onSendMessage?: (
     message: string,
     options?: { modelProvider?: string },
@@ -151,7 +150,6 @@ interface ZeroChatPageProps {
 }
 
 export function ZeroChatPage({
-  onNavigateToMeet,
   onSendMessage,
   zeroAvatarSrc = zeroAvatarImg,
   chatAgentName,
@@ -301,7 +299,6 @@ export function ZeroChatPage({
             onInputChange={setInput}
             onSend={handleSend}
             displayName={displayName}
-            onManageConnectors={() => onNavigateToMeet?.("connectors")}
           />
 
           {/* Suggested prompts */}

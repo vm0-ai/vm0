@@ -15,6 +15,8 @@ export type RoutePath =
   | "/preferences"
   | "/usage"
   | "/works"
+  | "/ideas"
+  | "/connectors"
   | "/talk/:agentId/ideas"
   | "/onboarding"
   | "/sign-in-token"

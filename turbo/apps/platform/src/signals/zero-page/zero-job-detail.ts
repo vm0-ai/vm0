@@ -41,7 +41,7 @@ const setZeroJobAgentName$ = command(({ set }, name: string | null) => {
 
 function isValidTab(tab: string): boolean {
   return (
-    tab === "connectors" ||
+    tab === "authorization" ||
     tab === "schedule" ||
     tab === "profile" ||
     tab === "instructions"
@@ -51,17 +51,17 @@ function isValidTab(tab: string): boolean {
 function getInitialTab(): string {
   const params = new URLSearchParams(search());
   const tab = params.get("tab") ?? "";
-  return isValidTab(tab) ? tab : "connectors";
+  return isValidTab(tab) ? tab : "authorization";
 }
 
-const internalActiveTab$ = state("connectors");
+const internalActiveTab$ = state("authorization");
 
 export const zeroJobActiveTab$ = computed((get) => get(internalActiveTab$));
 
 export const setZeroJobActiveTab$ = command(({ set }, tab: string) => {
   set(internalActiveTab$, tab);
   const url = new URL(location.href);
-  if (tab === "connectors") {
+  if (tab === "authorization") {
     url.searchParams.delete("tab");
   } else {
     url.searchParams.set("tab", tab);
@@ -333,10 +333,6 @@ const userConnectorPermissionsState$ = state<UserConnectorPermissionsState>({
   enabledTypes: [],
   loading: false,
 });
-
-export const zeroJobUserConnectorsLoading$ = computed(
-  (get) => get(userConnectorPermissionsState$).loading,
-);
 
 const fetchZeroJobUserConnectors$ = command(
   async ({ get, set }, _signal: AbortSignal) => {

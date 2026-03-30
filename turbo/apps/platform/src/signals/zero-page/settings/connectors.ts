@@ -122,14 +122,6 @@ const hiddenConnectorTypes$ = computed((get): Set<ConnectorType> => {
 // Add connection dialog state
 // ---------------------------------------------------------------------------
 
-const internalAddConnectionDialogOpen$ = state(false);
-export const addConnectionDialogOpen$ = computed((get) =>
-  get(internalAddConnectionDialogOpen$),
-);
-export const setAddConnectionDialogOpen$ = command(({ set }, open: boolean) => {
-  set(internalAddConnectionDialogOpen$, open);
-});
-
 const internalAddConnectionDialogTab$ = state<"connectors" | "custom-api">(
   "connectors",
 );

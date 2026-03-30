@@ -81,6 +81,18 @@ export const addZeroConnector$ = command(
   },
 );
 
+/** Remove a connector (local only, no compose job). */
+export const removeZeroConnector$ = command(
+  async ({ get, set }, name: string, _signal: AbortSignal) => {
+    if (get(internalAddedConnectors$) === null) {
+      set(internalAddedConnectors$, await get(seededConnectors$));
+    }
+    set(internalAddedConnectors$, (prev) =>
+      (prev ?? []).filter((n) => n !== name),
+    );
+  },
+);
+
 /** Save connector changes: trigger compose job and wait for completion. */
 export const saveZeroConnectors$ = command(
   async ({ get, set }, signal: AbortSignal) => {

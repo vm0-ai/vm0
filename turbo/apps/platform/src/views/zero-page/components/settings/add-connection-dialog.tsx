@@ -504,7 +504,7 @@ function ConnectorGrid({
 // Add Connection Dialog
 // ---------------------------------------------------------------------------
 
-export function AddConnectionDialog({
+function AddConnectionDialog({
   open,
   onOpenChange,
   variant,

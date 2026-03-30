@@ -1046,15 +1046,3 @@ export const setComposerFileInput$ = command(
     set(internalComposerFileInput$, el);
   },
 );
-
-const internalComposerAddDialogOpen$ = state(false);
-
-/** Whether the "Add connector" dialog in the composer is open. */
-export const composerAddDialogOpen$ = computed((get) =>
-  get(internalComposerAddDialogOpen$),
-);
-
-/** Toggle the "Add connector" dialog open state. */
-export const setComposerAddDialogOpen$ = command(({ set }, open: boolean) => {
-  set(internalComposerAddDialogOpen$, open);
-});
