@@ -22,11 +22,8 @@ import {
   type FirewallPolicies,
   getConnectorFirewall,
   isFirewallConnectorType,
-  resolveFirewallSelections,
-  type FirewallSelection,
 } from "@vm0/core";
 import { agentComposeVersions } from "../../db/schema/agent-compose";
-import type { AgentComposeYaml } from "../../types/agent-compose";
 import { badRequest, notFound, providerIncompatible } from "../errors";
 import { getOrgData } from "../org/org-cache-service";
 import { logger } from "../logger";
@@ -705,29 +702,6 @@ async function loadAgentComposeForNewRun(
 }
 
 /**
- * Resolve compose-declared firewalls from agent compose content.
- * Handles both legacy (pre-expanded array) and new (map) formats.
- */
-async function resolveComposeFirewalls(
-  agentCompose: unknown,
-): Promise<ExpandedFirewallConfig[]> {
-  const compose = agentCompose as AgentComposeYaml | undefined;
-  if (!compose?.agents) return [];
-
-  const firstAgent = Object.values(compose.agents)[0];
-  const configs = firstAgent?.experimental_firewalls;
-  if (!configs) return [];
-
-  // Legacy: already expanded (stored before this refactor)
-  if (Array.isArray(configs)) return configs;
-
-  // New: resolve from map format at runtime
-  return resolveFirewallSelections(
-    configs as Record<string, FirewallSelection>,
-  );
-}
-
-/**
  * Resolve all secrets (user, model provider, connector) and expand environment.
  * Extracted from buildExecutionContext to reduce complexity.
  */
@@ -750,7 +724,6 @@ async function resolveSecretsAndEnvironment(
   modelProviderFirewall: ExpandedFirewallConfig | undefined;
   selectedModel: string | undefined;
   connectorFirewalls: ExpandedFirewallConfig[];
-  composeFirewalls: ExpandedFirewallConfig[];
 }> {
   // Model provider secret injection
   const hasExplicitModelProviderConfig = MODEL_PROVIDER_ENV_VARS.some(
@@ -758,15 +731,15 @@ async function resolveSecretsAndEnvironment(
   );
   const framework = firstAgent?.framework || "claude-code";
 
-  // Run all secret resolution, variable fetching, and compose firewall resolution in parallel.
-  // These have independent queries/operations, so there is no data dependency between them.
+  // Run all secret resolution and variable fetching in parallel.
+  // The three resolve functions have independent DB queries (different secret types),
+  // so there is no data dependency between them.
   const [
     dbSecrets,
     modelProviderResult,
     oauthResult,
     apiTokenTypes,
     mergedVars,
-    composeFirewalls,
   ] = await Promise.all([
     fetchReferencedSecrets(orgId, userId, firstAgent?.environment),
     resolveModelProviderSecrets(
@@ -778,7 +751,6 @@ async function resolveSecretsAndEnvironment(
     resolveOauthConnectorSecrets(orgId, userId),
     getApiTokenConnectorTypes(orgId, userId),
     fetchAndMergeVariables(orgId, userId, vars),
-    resolveComposeFirewalls(agentCompose),
   ]);
 
   const connectorTypes = [
@@ -831,8 +803,8 @@ async function resolveSecretsAndEnvironment(
     }));
 
   // Expand environment variables from compose config.
-  // All firewalls (compose-declared, model provider, connector) are passed via the
-  // `firewalls` param for unified placeholder injection.
+  // All firewalls (model provider, connector) are passed via the `firewalls` param
+  // for unified placeholder injection. Compose content no longer stores firewalls.
   const { environment } = expandEnvironmentFromCompose(
     agentCompose,
     mergedVars,
@@ -840,7 +812,6 @@ async function resolveSecretsAndEnvironment(
     checkEnv,
     modelProviderResult.injectedEnvironment,
     [
-      ...composeFirewalls,
       ...(modelProviderFirewall ? [modelProviderFirewall] : []),
       ...connectorFirewallConfigs,
     ],
@@ -854,7 +825,6 @@ async function resolveSecretsAndEnvironment(
     modelProviderFirewall,
     selectedModel: modelProviderResult.selectedModel,
     connectorFirewalls: connectorFirewallConfigs,
-    composeFirewalls,
   };
 }
 
@@ -978,89 +948,20 @@ export function filterSecretConnectorMap(
 }
 
 /**
- * Check if a compose base URL covers an auto-generated base URL.
- * A compose URL covers an auto URL when the auto URL starts with the compose URL
- * (with a path-boundary check so "https://a.com/x" covers "https://a.com/x/y"
- * but not "https://a.com/xy").
- *
- * @internal Exported for testing.
- */
-export function baseUrlCoveredBy(
-  autoBase: string,
-  composeBase: string,
-): boolean {
-  // Strip trailing slashes for consistent comparison
-  const a = autoBase.replace(/\/+$/, "");
-  const c = composeBase.replace(/\/+$/, "");
-  if (a === c) return true;
-  return a.startsWith(c + "/");
-}
-
-/**
- * Drop auto-generated firewalls when ANY of their API base URLs overlap with
- * a compose-declared firewall. A single overlapping base URL means the user
- * is managing that service's firewall — the entire auto firewall is dropped.
- *
- * @internal Exported for testing.
- */
-export function deduplicateAutoFirewalls<
-  T extends { name: string; apis: { base: string }[] },
->(autoFirewalls: T[], composeFirewalls: { apis: { base: string }[] }[]): T[] {
-  if (composeFirewalls.length === 0) return autoFirewalls;
-
-  const composeBases = composeFirewalls.flatMap((fw) =>
-    fw.apis.map((api) => api.base),
-  );
-
-  return autoFirewalls.filter((autoFw) => {
-    const covered = autoFw.apis.some((api) =>
-      composeBases.some((cb) => baseUrlCoveredBy(api.base, cb)),
-    );
-    if (covered) {
-      log.debug(
-        `Skipping auto-generated firewall "${autoFw.name}" — base URL overlaps with compose firewalls`,
-      );
-    }
-    return !covered;
-  });
-}
-
-/**
- * Merge compose-declared, auto-generated, and policy-based firewalls into a
- * single manifest. Auto-generated and policy firewalls are deduplicated against
- * compose-declared ones (prefix match on base URL).
- *
- * Compose firewalls are pre-resolved by resolveComposeFirewalls() and mapped to
- * the ExperimentalFirewalls format (name, ref, apis — no placeholders).
+ * Merge model provider and connector firewalls into a single manifest.
+ * Compose content no longer stores firewalls — all firewalls are runtime-injected.
  */
 function mergeFirewalls(
-  composeFirewallConfigs: ExpandedFirewallConfig[],
   modelProviderFirewall: ExperimentalFirewalls[number] | null | undefined,
   connectorFirewalls: ExpandedFirewallConfig[],
   firewallPolicies?: FirewallPolicies,
 ): ExperimentalFirewalls | undefined {
-  // Map compose firewalls to the runner's ExperimentalFirewalls format
-  const composeFirewalls: ExperimentalFirewalls = composeFirewallConfigs.map(
-    (fw) => ({
-      name: fw.name,
-      ref: fw.ref,
-      apis: fw.apis.map((api) => ({
-        base: api.base,
-        auth: api.auth,
-        ...(api.permissions ? { permissions: api.permissions } : {}),
-      })),
-    }),
-  );
   const autoFirewalls = modelProviderFirewall ? [modelProviderFirewall] : [];
   const policyFirewalls = applyConnectorPolicies(
     connectorFirewalls,
     firewallPolicies,
   );
-  const allFirewalls = [
-    ...composeFirewalls,
-    ...deduplicateAutoFirewalls(autoFirewalls, composeFirewalls),
-    ...deduplicateAutoFirewalls(policyFirewalls, composeFirewalls),
-  ];
+  const allFirewalls = [...autoFirewalls, ...policyFirewalls];
   return allFirewalls.length > 0 ? allFirewalls : undefined;
 }
 
@@ -1234,7 +1135,6 @@ export async function buildExecutionContext(
     modelProviderFirewall,
     selectedModel,
     connectorFirewalls,
-    composeFirewalls,
   } = secretsResult;
   const userTimezone = userPrefs?.timezone ?? undefined;
 
@@ -1260,7 +1160,6 @@ export async function buildExecutionContext(
 
   // Build experimental firewall manifest (base + auth entries for the runner).
   const experimentalFirewalls = mergeFirewalls(
-    composeFirewalls,
     modelProviderFirewall,
     connectorFirewalls,
     params.firewallPolicies,
