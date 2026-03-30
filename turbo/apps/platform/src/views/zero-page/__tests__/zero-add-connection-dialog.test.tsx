@@ -50,6 +50,7 @@ async function renderTeamPage(connectors: string[]) {
         description: null,
         displayName: null,
         sound: null,
+        avatarUrl: null,
         connectors,
       });
     }),

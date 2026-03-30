@@ -38,11 +38,11 @@ const context = testContext();
 
 function mockAgentResponse() {
   return {
-    name: "my-agent",
-    agentId: "compose-1",
+    agentId: "c0000000-0000-4000-a000-000000000002",
     description: null,
     displayName: null,
     sound: null,
+    avatarUrl: null,
     connectors: ["search"],
     firewallPolicies: null,
   };
@@ -55,13 +55,35 @@ function mockInstructions() {
   };
 }
 
+function scheduleBase() {
+  return {
+    displayName: null,
+    userId: "test-user-123",
+    orgSlug: "test",
+    appendSystemPrompt: null,
+    vars: null,
+    secretNames: null,
+    artifactName: null,
+    artifactVersion: null,
+    volumeVersions: null,
+    notifyEmail: false,
+    notifySlack: false,
+    slackChannelId: null,
+    nextRunAt: null,
+    lastRunAt: null,
+    retryStartedAt: null,
+    consecutiveFailures: 0,
+    updatedAt: "2024-06-01T00:00:00Z",
+  };
+}
+
 function mockSchedules() {
   return {
     schedules: [
       {
-        id: "sched-1",
-        agentId: "compose-1",
-        agentName: "my-agent",
+        ...scheduleBase(),
+        id: "f0000000-0000-4000-a000-000000000001",
+        agentId: "c0000000-0000-4000-a000-000000000002",
         name: "daily-run",
         enabled: true,
         triggerType: "cron",
@@ -74,9 +96,9 @@ function mockSchedules() {
         createdAt: "2024-06-01T00:00:00Z",
       },
       {
-        id: "sched-2",
-        agentId: "compose-2",
-        agentName: "other-agent",
+        ...scheduleBase(),
+        id: "f0000000-0000-4000-a000-000000000002",
+        agentId: "c0000000-0000-4000-a000-000000000003",
         name: "other-run",
         enabled: true,
         triggerType: "cron",
@@ -101,7 +123,7 @@ describe("zero-job-detail signals", () => {
           return HttpResponse.json(agentResponse);
         }),
         http.get(
-          "http://localhost:3000/api/zero/agents/compose-1/instructions",
+          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
           () => {
             return HttpResponse.json(mockInstructions());
           },
@@ -146,7 +168,7 @@ describe("zero-job-detail signals", () => {
       server.use(
         http.get("http://localhost:3000/api/zero/agents/:name", () => {
           return HttpResponse.json(
-            { error: "Not Found" },
+            { error: { message: "Not Found", code: "NOT_FOUND" } },
             { status: 404, statusText: "Not Found" },
           );
         }),
@@ -174,10 +196,15 @@ describe("zero-job-detail signals", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
-          "http://localhost:3000/api/zero/agents/compose-1/instructions",
+          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
           () => {
             return HttpResponse.json(
-              { error: "Internal Server Error" },
+              {
+                error: {
+                  message: "Internal Server Error",
+                  code: "INTERNAL_SERVER_ERROR",
+                },
+              },
               { status: 500, statusText: "Internal Server Error" },
             );
           },
@@ -206,14 +233,14 @@ describe("zero-job-detail signals", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
-          "http://localhost:3000/api/zero/agents/compose-1/instructions",
+          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
           () => {
             return HttpResponse.json(mockInstructions());
           },
         ),
         http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json(
-            { error: "Forbidden" },
+            { error: { message: "Forbidden", code: "FORBIDDEN" } },
             { status: 403, statusText: "Forbidden" },
           );
         }),
@@ -274,7 +301,7 @@ describe("zero-job-detail signals", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
-          "http://localhost:3000/api/zero/agents/compose-1/instructions",
+          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
           () => {
             return HttpResponse.json(mockInstructions());
           },
@@ -319,7 +346,7 @@ describe("zero-job-detail signals", () => {
       await context.store.set(saveZeroJobSchedule$, params, context.signal);
 
       expect(capturedBody).toMatchObject({
-        agentId: "compose-1",
+        agentId: "c0000000-0000-4000-a000-000000000002",
         timezone: "UTC",
         prompt: "Run daily task",
         enabled: true,
@@ -429,7 +456,7 @@ describe("zero-job-detail signals", () => {
       await context.store.set(saveZeroJobSchedule$, params, context.signal);
 
       expect(capturedBody).toMatchObject({
-        agentId: "compose-1",
+        agentId: "c0000000-0000-4000-a000-000000000002",
         prompt: "Poll every 5 min",
         intervalSeconds: 300,
       });
@@ -480,7 +507,7 @@ describe("zero-job-detail signals", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
-          "http://localhost:3000/api/zero/agents/compose-1/instructions",
+          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
           () => {
             return HttpResponse.json(mockInstructions());
           },
@@ -525,7 +552,7 @@ describe("zero-job-detail signals", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
-          "http://localhost:3000/api/zero/agents/compose-1/instructions",
+          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
           () => {
             return HttpResponse.json(mockInstructions());
           },
@@ -567,7 +594,7 @@ describe("zero-job-detail signals", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
-          "http://localhost:3000/api/zero/agents/compose-1/instructions",
+          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
           () => {
             return HttpResponse.json(mockInstructions());
           },
@@ -617,7 +644,7 @@ describe("zero-job-detail signals", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
-          "http://localhost:3000/api/zero/agents/compose-1/instructions",
+          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
           () => {
             return HttpResponse.json(mockInstructions());
           },
@@ -661,7 +688,7 @@ describe("zero-job-detail signals", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
-          "http://localhost:3000/api/zero/agents/compose-1/instructions",
+          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
           () => {
             return HttpResponse.json(mockInstructions());
           },
@@ -711,7 +738,7 @@ describe("zero-job-detail signals", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
-          "http://localhost:3000/api/zero/agents/compose-1/instructions",
+          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
           () => {
             return HttpResponse.json(mockInstructions());
           },
@@ -756,15 +783,15 @@ describe("zero-job-detail signals", () => {
 
       server.use(
         http.put(
-          "http://localhost:3000/api/zero/agents/compose-1/instructions",
+          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
           async ({ request }) => {
             capturedBody = (await request.json()) as { content: string };
             return HttpResponse.json({
-              name: "my-agent",
-              agentId: "compose-1",
+              agentId: "c0000000-0000-4000-a000-000000000002",
               description: null,
               displayName: null,
               sound: null,
+              avatarUrl: null,
               connectors: [],
               firewallPolicies: null,
             });
@@ -800,7 +827,7 @@ describe("zero-job-detail signals", () => {
 
       server.use(
         http.put(
-          "http://localhost:3000/api/zero/agents/compose-1/instructions",
+          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
           () => {
             return HttpResponse.json(
               {
@@ -836,15 +863,15 @@ describe("zero-job-detail signals", () => {
 
       server.use(
         http.put(
-          "http://localhost:3000/api/zero/agents/compose-1/instructions",
+          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
           () => {
             apiCalled = true;
             return HttpResponse.json({
-              name: "my-agent",
-              agentId: "compose-1",
+              agentId: "c0000000-0000-4000-a000-000000000002",
               description: null,
               displayName: null,
               sound: null,
+              avatarUrl: null,
               connectors: [],
               firewallPolicies: null,
             });
@@ -864,7 +891,7 @@ describe("zero-job-detail signals", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
-          "http://localhost:3000/api/zero/agents/compose-1/instructions",
+          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
           () => {
             return HttpResponse.json(mockInstructions());
           },
@@ -889,8 +916,7 @@ describe("zero-job-detail signals", () => {
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json({
-              name: "my-agent",
-              agentId: "compose-1",
+              agentId: "c0000000-0000-4000-a000-000000000002",
               displayName: "New Name",
               description: null,
               sound: "friendly",
@@ -930,11 +956,11 @@ describe("zero-job-detail signals", () => {
         http.patch("http://localhost:3000/api/zero/agents/compose-1", () => {
           patchCalled = true;
           return HttpResponse.json({
-            name: "my-agent",
-            agentId: "compose-1",
+            agentId: "c0000000-0000-4000-a000-000000000002",
             displayName: null,
             description: null,
             sound: null,
+            avatarUrl: null,
             connectors: [],
             firewallPolicies: null,
           });
@@ -980,7 +1006,7 @@ describe("zero-job-detail signals", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
         http.get(
-          "http://localhost:3000/api/zero/agents/compose-1/instructions",
+          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
           () => {
             return HttpResponse.json(mockInstructions());
           },
@@ -1047,11 +1073,11 @@ describe("zero-job-detail signals", () => {
           async ({ request }) => {
             capturedBody = (await request.json()) as { connectors: string[] };
             return HttpResponse.json({
-              name: "my-agent",
-              agentId: "compose-1",
+              agentId: "c0000000-0000-4000-a000-000000000002",
               description: null,
               displayName: null,
               sound: null,
+              avatarUrl: null,
               connectors: capturedBody.connectors,
             });
           },

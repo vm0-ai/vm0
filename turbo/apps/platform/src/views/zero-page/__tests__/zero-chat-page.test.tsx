@@ -262,6 +262,7 @@ describe("zero chat page - connector label casing", () => {
           description: null,
           displayName: null,
           sound: null,
+          avatarUrl: null,
           connectors: ["axiom"],
           firewallPolicies: null,
         });
