@@ -15,11 +15,6 @@ const log = logger("service:org-member");
 const CLERK_API_BASE = "https://api.clerk.com/v1";
 
 /**
- * Zod schema for Clerk membership request REST API response.
- * The backend SDK doesn't expose membership request methods yet,
- * so we call the REST API directly and validate the response shape at runtime.
- */
-/**
  * Zod schema for Clerk domain REST API response.
  * The SDK may return camelCase or snake_case depending on the version,
  * so we parse both forms to be safe.
@@ -39,6 +34,11 @@ const clerkDomainDataSchema = z.object({
     .optional(),
 });
 
+/**
+ * Zod schema for Clerk membership request REST API response.
+ * The backend SDK doesn't expose membership request methods yet,
+ * so we call the REST API directly and validate the response shape at runtime.
+ */
 const membershipRequestDataSchema = z.object({
   id: z.string(),
   public_user_data: z.object({ user_id: z.string().optional() }).optional(),
