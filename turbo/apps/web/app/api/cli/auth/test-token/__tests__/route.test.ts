@@ -232,6 +232,7 @@ describe("/api/cli/auth/test-token", () => {
 
       expect(mockCreateUser).toHaveBeenCalledWith({
         emailAddress: [email],
+        skipPasswordRequirement: true,
       });
     });
 

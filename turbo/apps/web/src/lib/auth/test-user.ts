@@ -23,6 +23,7 @@ export async function resolveTestUserId(email: string): Promise<string> {
   // User doesn't exist — create on the fly
   const newUser = await clerk.users.createUser({
     emailAddress: [email],
+    skipPasswordRequirement: true,
   });
   return newUser.id;
 }
