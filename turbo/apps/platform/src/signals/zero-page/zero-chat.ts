@@ -931,7 +931,9 @@ export const createNewChatSession$ = command(
 
 const prepareUserMessage$ = command(
   ({ get, set }, prompt: string): { fullPrompt: string } => {
-    const attachments = get(internalAttachments$).filter((a) => a.resolvedUrl);
+    const attachments = get(internalAttachments$).filter(
+      (a): a is ZeroChatAttachment & { resolvedUrl: string } => !!a.resolvedUrl,
+    );
     let fullPrompt = prompt.trim();
     if (attachments.length > 0) {
       const lines = attachments.map(
@@ -951,7 +953,7 @@ const prepareUserMessage$ = command(
               filename: a.filename,
               contentType: a.contentType,
               size: a.size,
-              url: a.resolvedUrl!,
+              url: a.resolvedUrl,
             }))
           : undefined,
     };
