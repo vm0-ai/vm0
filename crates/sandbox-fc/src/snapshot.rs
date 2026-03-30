@@ -1,15 +1,17 @@
+use std::path::Path;
 use std::time::Duration;
 
+use async_trait::async_trait;
 use tokio::io::AsyncBufReadExt;
 use tracing::info;
 
 use block_cow::{BaseLoopCache, CowDevice, CowDeviceConfig};
-use sandbox::SnapshotCreateConfig;
+use sandbox::{SnapshotCreateConfig, SnapshotOutput, SnapshotProvider};
 
 use crate::api::{ApiClient, ApiError};
 use crate::command;
 use crate::config::SnapshotConfig;
-use crate::factory::InvariantConfig;
+use crate::factory::{InvariantConfig, config_hash};
 use crate::network::{NetnsPool, NetnsPoolConfig};
 use crate::paths::{RuntimePaths, SandboxPaths, SnapshotOutputPaths, SockPaths};
 use crate::prerequisites;
@@ -431,4 +433,49 @@ async fn run_with_firecracker(
     info!(output_dir = %config.output_dir.display(), "snapshot creation complete");
 
     Ok(output.snapshot_config(&config.id))
+}
+
+// ---------------------------------------------------------------------------
+// SnapshotProvider trait implementation
+// ---------------------------------------------------------------------------
+
+/// Firecracker-backed snapshot provider.
+///
+/// Stateless — can be created with zero cost and used immediately.
+pub struct FirecrackerSnapshotProvider;
+
+#[async_trait]
+impl SnapshotProvider for FirecrackerSnapshotProvider {
+    async fn create_snapshot(
+        &self,
+        config: SnapshotCreateConfig,
+    ) -> Result<SnapshotOutput, sandbox::SnapshotError> {
+        let sc = create_snapshot(config).await.map_err(|e| match e {
+            SnapshotError::Setup(msg) => sandbox::SnapshotError::Setup(msg),
+            SnapshotError::Process(msg) => sandbox::SnapshotError::Process(msg),
+            SnapshotError::Api(api_err) => sandbox::SnapshotError::Api(api_err.to_string()),
+            SnapshotError::Vsock(msg) => sandbox::SnapshotError::Vsock(msg),
+            SnapshotError::Io(io_err) => sandbox::SnapshotError::Io(io_err),
+        })?;
+        Ok(SnapshotOutput {
+            snapshot_path: sc.snapshot_path,
+            memory_path: sc.memory_path,
+            cow_path: sc.cow_path,
+        })
+    }
+
+    fn config_hash(&self) -> String {
+        config_hash()
+    }
+
+    async fn is_complete(&self, output_dir: &Path) -> Result<bool, sandbox::SnapshotError> {
+        let output = SnapshotOutputPaths::new(output_dir.to_path_buf());
+        for path in [output.snapshot(), output.memory(), output.cow()] {
+            let exists = tokio::fs::try_exists(&path).await?;
+            if !exists {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
 }
