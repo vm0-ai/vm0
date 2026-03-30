@@ -3,7 +3,8 @@ import { eq } from "drizzle-orm";
 import { agentRuns } from "../../../db/schema/agent-run";
 import { runnerJobQueue } from "../../../db/schema/runner-job-queue";
 import { encryptSecretsMap } from "../../crypto/secrets-encryption";
-import { validateRunnerGroupOrg } from "../../org/org-service";
+import { isOfficialRunnerGroup } from "../../org/org-service";
+import { forbidden } from "../../errors";
 import { publishJobNotification } from "../../realtime/client";
 import { logger } from "../../logger";
 import { recordSandboxOperation } from "../../metrics";
@@ -41,8 +42,10 @@ export async function executeRunnerJob(
 
   log.debug(`Queueing run ${context.runId} for runner group: ${runnerGroup}`);
 
-  // Validate runner group org matches user's org
-  await validateRunnerGroupOrg(context.userId, runnerGroup);
+  // Enforce vm0/* runner groups only
+  if (!isOfficialRunnerGroup(runnerGroup)) {
+    throw forbidden("Only vm0/* runner groups are supported");
+  }
 
   // Encrypt secrets map (key-value pairs) before storing
   const encryptedSecrets = encryptSecretsMap(
