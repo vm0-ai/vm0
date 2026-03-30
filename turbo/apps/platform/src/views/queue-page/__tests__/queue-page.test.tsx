@@ -168,7 +168,11 @@ describe("queue page", () => {
       }),
       http.post("*/api/zero/runs/:runId/cancel", ({ params }) => {
         cancelledRunId = params.runId as string;
-        return HttpResponse.json({ ok: true });
+        return HttpResponse.json({
+          id: params.runId,
+          status: "cancelled",
+          message: "Run cancelled",
+        });
       }),
     );
 
