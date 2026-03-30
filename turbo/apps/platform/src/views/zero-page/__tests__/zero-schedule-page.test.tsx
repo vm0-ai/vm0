@@ -162,7 +162,7 @@ describe("zero schedule page - agent labels", () => {
             consecutiveFailures: 0,
           },
           {
-            id: "sub-agent-id",
+            id: "e0000000-0000-4000-a000-000000000002",
             displayName: "Research Agent",
             description: null,
             sound: null,
@@ -187,7 +187,7 @@ describe("zero schedule page - agent labels", () => {
           schedules: [
             {
               ...createMockSchedules()[0],
-              agentId: "sub-agent-id",
+              agentId: "e0000000-0000-4000-a000-000000000002",
               displayName: "Research Agent",
             },
           ],
@@ -229,7 +229,7 @@ describe("zero schedule page - agent labels", () => {
             consecutiveFailures: 0,
           },
           {
-            id: "no-name-agent",
+            id: "e0000000-0000-4000-a000-000000000003",
             displayName: null,
             description: null,
             sound: null,
@@ -254,7 +254,7 @@ describe("zero schedule page - agent labels", () => {
           schedules: [
             {
               ...createMockSchedules()[0],
-              agentId: "no-name-agent",
+              agentId: "e0000000-0000-4000-a000-000000000003",
               displayName: null,
             },
           ],
@@ -268,7 +268,9 @@ describe("zero schedule page - agent labels", () => {
 
     // Falls back to raw agent id when displayName is null
     await waitFor(() => {
-      expect(screen.getByText("no-name-agent")).toBeInTheDocument();
+      expect(
+        screen.getByText("e0000000-0000-4000-a000-000000000003"),
+      ).toBeInTheDocument();
     });
   });
 });

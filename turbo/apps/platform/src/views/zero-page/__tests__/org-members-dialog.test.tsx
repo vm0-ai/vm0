@@ -42,8 +42,11 @@ function mockMembersAPI(members: OrgMember[] = [adminMember, regularMember]) {
   server.use(
     http.get("*/api/zero/org/members", () => {
       return HttpResponse.json({
+        slug: "user-12345678",
+        role: "admin",
         members,
         pendingInvitations: [],
+        createdAt: "2026-01-01T00:00:00Z",
       });
     }),
     http.get("*/api/zero/chat-threads", () => {

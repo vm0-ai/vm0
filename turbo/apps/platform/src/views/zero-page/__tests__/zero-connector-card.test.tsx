@@ -14,11 +14,27 @@ import {
 
 const context = testContext();
 
+function connectorUuid(type: string): string {
+  const map: Record<string, string> = {
+    github: "a0000000-0000-4000-a000-000000000001",
+    slack: "a0000000-0000-4000-a000-000000000002",
+    jira: "a0000000-0000-4000-a000-000000000003",
+    linear: "a0000000-0000-4000-a000-000000000004",
+    notion: "a0000000-0000-4000-a000-000000000005",
+    google: "a0000000-0000-4000-a000-000000000006",
+    asana: "a0000000-0000-4000-a000-000000000007",
+    confluence: "a0000000-0000-4000-a000-000000000008",
+    sentry: "a0000000-0000-4000-a000-000000000009",
+    pagerduty: "a0000000-0000-4000-a000-000000000010",
+  };
+  return map[type] ?? "a0000000-0000-4000-a000-000000000099";
+}
+
 function makeConnector(
   overrides: Partial<ConnectorResponse> & { type: ConnectorType },
 ): ConnectorResponse {
   return {
-    id: `conn-${overrides.type}`,
+    id: connectorUuid(overrides.type),
     authMethod: "oauth",
     externalId: null,
     externalUsername: null,

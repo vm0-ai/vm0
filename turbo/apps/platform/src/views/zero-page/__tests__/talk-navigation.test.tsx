@@ -63,6 +63,7 @@ function mockChatAPIs() {
         framework: "claude-code",
         modelProvider: null,
         triggerSource: "web",
+        scheduleId: null,
         status: "completed",
         prompt: "Hello",
         appendSystemPrompt: null,
@@ -139,7 +140,11 @@ describe("talk navigation", () => {
       }),
       // Org name update
       http.put("*/api/zero/org", () => {
-        return HttpResponse.json({ success: true });
+        return HttpResponse.json({
+          id: "org_1",
+          slug: "test-workspace",
+          name: "Test Workspace",
+        });
       }),
       // Model provider creation
       http.post("*/api/zero/model-providers", () => {

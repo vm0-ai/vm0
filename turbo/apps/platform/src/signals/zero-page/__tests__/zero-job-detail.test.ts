@@ -77,6 +77,45 @@ function scheduleBase() {
   };
 }
 
+function mockDeployScheduleResponse() {
+  return {
+    schedule: {
+      ...scheduleBase(),
+      id: "f0000000-0000-4000-a000-000000000099",
+      agentId: "c0000000-0000-4000-a000-000000000002",
+      name: "zero-new",
+      enabled: true,
+      triggerType: "cron",
+      cronExpression: "0 9 * * *",
+      atTime: null,
+      intervalSeconds: null,
+      timezone: "UTC",
+      prompt: "New schedule",
+      description: null,
+      createdAt: "2024-06-01T00:00:00Z",
+    },
+    created: true,
+  };
+}
+
+function mockScheduleResponse() {
+  return {
+    ...scheduleBase(),
+    id: "f0000000-0000-4000-a000-000000000001",
+    agentId: "c0000000-0000-4000-a000-000000000002",
+    name: "daily-run",
+    enabled: true,
+    triggerType: "cron",
+    cronExpression: "0 9 * * *",
+    atTime: null,
+    intervalSeconds: null,
+    timezone: "UTC",
+    prompt: "Run the daily digest",
+    description: "Daily digest summary",
+    createdAt: "2024-06-01T00:00:00Z",
+  };
+}
+
 function mockSchedules() {
   return {
     schedules: [
@@ -325,7 +364,7 @@ describe("zero-job-detail signals", () => {
           "http://localhost:3000/api/zero/schedules",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json({ id: "new-sched" });
+            return HttpResponse.json(mockDeployScheduleResponse());
           },
         ),
         http.get("http://localhost:3000/api/zero/schedules", () => {
@@ -365,7 +404,7 @@ describe("zero-job-detail signals", () => {
           "http://localhost:3000/api/zero/schedules",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json({ id: "new-sched" });
+            return HttpResponse.json(mockDeployScheduleResponse());
           },
         ),
         http.get("http://localhost:3000/api/zero/schedules", () => {
@@ -402,7 +441,7 @@ describe("zero-job-detail signals", () => {
           "http://localhost:3000/api/zero/schedules",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json({ id: "new-sched" });
+            return HttpResponse.json(mockDeployScheduleResponse());
           },
         ),
         http.get("http://localhost:3000/api/zero/schedules", () => {
@@ -435,7 +474,7 @@ describe("zero-job-detail signals", () => {
           "http://localhost:3000/api/zero/schedules",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json({ id: "new-sched" });
+            return HttpResponse.json(mockDeployScheduleResponse());
           },
         ),
         http.get("http://localhost:3000/api/zero/schedules", () => {
@@ -540,7 +579,9 @@ describe("zero-job-detail signals", () => {
       );
 
       expect(capturedUrl).toContain("/api/zero/schedules/daily-run");
-      expect(capturedUrl).toContain("agentId=compose-1");
+      expect(capturedUrl).toContain(
+        "agentId=c0000000-0000-4000-a000-000000000002",
+      );
 
       const entries = await context.store.get(zeroJobScheduleEntries$);
       expect(entries).toStrictEqual([]);
@@ -613,7 +654,7 @@ describe("zero-job-detail signals", () => {
           async ({ request }) => {
             capturedUrl = request.url;
             capturedBody = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json({ ok: true });
+            return HttpResponse.json(mockScheduleResponse());
           },
         ),
         http.get("http://localhost:3000/api/zero/schedules", () => {
@@ -632,7 +673,9 @@ describe("zero-job-detail signals", () => {
 
       expect(capturedUrl).toContain("/api/zero/schedules/daily-run/enable");
       expect(capturedBody).not.toBeNull();
-      expect(capturedBody!["agentId"]).toBe("compose-1");
+      expect(capturedBody!["agentId"]).toBe(
+        "c0000000-0000-4000-a000-000000000002",
+      );
       expect(capturedBody).not.toHaveProperty("composeId");
     });
 
@@ -662,7 +705,7 @@ describe("zero-job-detail signals", () => {
           "http://localhost:3000/api/zero/schedules/:name/:action",
           ({ request }) => {
             capturedUrl = request.url;
-            return HttpResponse.json({ ok: true });
+            return HttpResponse.json(mockScheduleResponse());
           },
         ),
         http.get("http://localhost:3000/api/zero/schedules", () => {
@@ -912,7 +955,7 @@ describe("zero-job-detail signals", () => {
 
       server.use(
         http.patch(
-          "http://localhost:3000/api/zero/agents/compose-1",
+          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json({
@@ -954,18 +997,21 @@ describe("zero-job-detail signals", () => {
       await setupWithAgent();
 
       server.use(
-        http.patch("http://localhost:3000/api/zero/agents/compose-1", () => {
-          patchCalled = true;
-          return HttpResponse.json({
-            agentId: "c0000000-0000-4000-a000-000000000002",
-            displayName: null,
-            description: null,
-            sound: null,
-            avatarUrl: null,
-            connectors: [],
-            firewallPolicies: null,
-          });
-        }),
+        http.patch(
+          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002",
+          () => {
+            patchCalled = true;
+            return HttpResponse.json({
+              agentId: "c0000000-0000-4000-a000-000000000002",
+              displayName: null,
+              description: null,
+              sound: null,
+              avatarUrl: null,
+              connectors: [],
+              firewallPolicies: null,
+            });
+          },
+        ),
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
@@ -982,9 +1028,12 @@ describe("zero-job-detail signals", () => {
       await setupWithAgent();
 
       server.use(
-        http.patch("http://localhost:3000/api/zero/agents/compose-1", () => {
-          return new HttpResponse("Internal error", { status: 500 });
-        }),
+        http.patch(
+          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002",
+          () => {
+            return new HttpResponse("Internal error", { status: 500 });
+          },
+        ),
       );
 
       // Should not throw — errors are caught and shown via toast
@@ -1070,7 +1119,7 @@ describe("zero-job-detail signals", () => {
 
       server.use(
         http.put(
-          "http://localhost:3000/api/zero/agents/compose-1",
+          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002",
           async ({ request }) => {
             capturedBody = (await request.json()) as { connectors: string[] };
             return HttpResponse.json({
@@ -1105,14 +1154,20 @@ describe("zero-job-detail signals", () => {
       await setupWithAgent();
 
       server.use(
-        http.put("http://localhost:3000/api/zero/agents/compose-1", () => {
-          return HttpResponse.json(
-            {
-              error: { message: "Build failed", code: "INTERNAL_SERVER_ERROR" },
-            },
-            { status: 500, statusText: "Internal Server Error" },
-          );
-        }),
+        http.put(
+          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002",
+          () => {
+            return HttpResponse.json(
+              {
+                error: {
+                  message: "Build failed",
+                  code: "INTERNAL_SERVER_ERROR",
+                },
+              },
+              { status: 500, statusText: "Internal Server Error" },
+            );
+          },
+        ),
       );
 
       context.store.set(addZeroJobConnector$, "gmail");

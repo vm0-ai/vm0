@@ -16,7 +16,7 @@ function makeConnector(
   overrides: Partial<ConnectorResponse> & { type: ConnectorType },
 ): ConnectorResponse {
   return {
-    id: `conn-${overrides.type}`,
+    id: "a0000000-0000-4000-a000-000000000099",
     authMethod: "oauth",
     externalId: null,
     externalUsername: null,

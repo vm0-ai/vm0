@@ -33,17 +33,24 @@ export function resetMockSlackConnect(): void {
 export const apiIntegrationsSlackConnectHandlers = [
   // GET /api/zero/integrations/slack/connect — check connection status
   http.get("*/api/zero/integrations/slack/connect", () => {
-    return HttpResponse.json({ isConnected: mockData.isConnected });
+    return HttpResponse.json({
+      isConnected: mockData.isConnected,
+      isAdmin: false,
+    });
   }),
 
   // POST /api/zero/integrations/slack/connect — connect account
   http.post("*/api/zero/integrations/slack/connect", () => {
     if (mockData.postError) {
       return HttpResponse.json(
-        { error: { message: mockData.postError } },
+        { error: { message: mockData.postError, code: "BAD_REQUEST" } },
         { status: 400 },
       );
     }
-    return HttpResponse.json({ ok: true });
+    return HttpResponse.json({
+      success: true,
+      connectionId: "conn-mock-001",
+      role: "member",
+    });
   }),
 ];

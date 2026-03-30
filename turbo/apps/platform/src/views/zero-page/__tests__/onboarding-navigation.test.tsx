@@ -56,7 +56,11 @@ function mockOnboardingNeededAdmin() {
     }),
     // Mock org name update
     http.put("*/api/zero/org", () => {
-      return HttpResponse.json({ success: true });
+      return HttpResponse.json({
+        id: "org_1",
+        slug: "test-workspace",
+        name: "Test Workspace",
+      });
     }),
     // Mock model provider creation
     http.post("*/api/zero/model-providers", () => {

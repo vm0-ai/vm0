@@ -31,6 +31,7 @@ describe("chat session switch", () => {
               },
             ],
             latestSessionId: null,
+            unsavedRuns: [],
             createdAt: "2026-03-10T00:00:00Z",
             updatedAt: "2026-03-10T00:00:00Z",
           });
@@ -72,6 +73,7 @@ describe("chat session switch", () => {
           framework: "claude-code",
           modelProvider: null,
           triggerSource: "web",
+          scheduleId: null,
           status: "running",
           prompt: "Active task prompt",
           appendSystemPrompt: null,
@@ -140,6 +142,7 @@ describe("chat session switch", () => {
             },
           ],
           latestSessionId: null,
+          unsavedRuns: [],
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:00:00Z",
         });

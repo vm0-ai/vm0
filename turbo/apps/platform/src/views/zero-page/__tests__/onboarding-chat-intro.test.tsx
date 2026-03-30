@@ -29,7 +29,11 @@ function mockAdminOnboardingWithChat() {
       });
     }),
     http.put("*/api/zero/org", () => {
-      return HttpResponse.json({ success: true });
+      return HttpResponse.json({
+        id: "org_1",
+        slug: "test-workspace",
+        name: "Test Workspace",
+      });
     }),
     http.post("*/api/zero/model-providers", () => {
       return HttpResponse.json(
