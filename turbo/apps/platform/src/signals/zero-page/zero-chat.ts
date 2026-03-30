@@ -20,7 +20,6 @@ import { currentAgentId$ } from "./agent.ts";
 import {
   RUN_ERROR_GUIDANCE,
   zeroRunsMainContract,
-  zeroRunsByIdContract,
   chatThreadsContract,
   chatThreadByIdContract,
   chatThreadRunsContract,
@@ -159,8 +158,6 @@ export const zeroChatMessages$ = computed(async (get) => {
   const localMessages = get(internalLocalMessages$);
   return [...serverMessages, ...localMessages];
 });
-
-const internalSessionId$ = state<string | null>(null);
 
 /** Whether all runs have finished (no in-flight runs). */
 export const allFinished$ = computed(async (get) => {
@@ -520,8 +517,11 @@ interface ChatSessionSnapshotData {
  * Fetches raw thread/session data from the API whenever the URL thread ID changes.
  * Tries the new chat-thread endpoint first, falls back to the legacy session endpoint.
  */
+const reloadCurrentThread$ = state(0);
+
 export const currentChatThread$ = computed(
   async (get): Promise<ChatThreadData | null> => {
+    get(reloadCurrentThread$);
     const threadId = get(chatThreadId$);
     if (!threadId) {
       return null;
@@ -780,12 +780,6 @@ export const loadSessionFromSnapshot$ = command(
       return;
     }
 
-    const sessionId = await get(currentChatSessionId$);
-    signal.throwIfAborted();
-    if (sessionId) {
-      set(internalSessionId$, sessionId);
-    }
-
     // Resume polling for active runs: copy active run messages to local
     // and start their polling loops via beginLoop$.
     if (snapshot.activeRunMessages.length > 0) {
@@ -820,7 +814,6 @@ export const loadSessionFromSnapshot$ = command(
  */
 export const switchZeroSession$ = command(({ set }, threadId: string) => {
   set(navigateToChat$, threadId);
-  set(internalSessionId$, null);
   set(internalLocalMessages$, []);
 });
 
@@ -829,7 +822,6 @@ export const startNewZeroSession$ = command(({ set }) => {
   set(resetTalkSendSignal$);
 
   set(internalLocalMessages$, []);
-  set(internalSessionId$, null);
 
   set(internalChatInput$, "");
 });
@@ -958,15 +950,11 @@ const ensureChatThread$ = command(
   },
 );
 
-/** Post-polling cleanup: persist session ID and refresh sidebar. */
+/** Post-polling cleanup: invalidate thread cache and refresh sidebar. */
 const finalizeCompletedRun$ = command(
-  async ({ get, set }, runId: string, signal: AbortSignal) => {
-    const client = get(zeroClient$)(zeroRunsByIdContract);
-    const result = await client.getById({ params: { id: runId } });
-    signal.throwIfAborted();
-    if (result.status === 200 && result.body.result?.agentSessionId) {
-      set(internalSessionId$, result.body.result.agentSessionId);
-    }
+  async ({ set }, _runId: string, signal: AbortSignal) => {
+    // Invalidate thread data so currentChatSessionId$ picks up the new session ID
+    set(reloadCurrentThread$, (n) => n + 1);
 
     // Refresh session list (messages are persisted server-side via webhook)
     set(reloadChatThreadList$, (n) => n + 1);
@@ -991,7 +979,8 @@ const submitAndPollRun$ = command(
     signal: AbortSignal,
   ) => {
     const createClient = get(zeroClient$);
-    const sessionId = get(internalSessionId$);
+    const sessionId = await get(currentChatSessionId$);
+    signal.throwIfAborted();
     const existingThreadId = get(chatThreadId$);
 
     const threadId = await set(
