@@ -723,7 +723,7 @@ async function markRunFailed(
  * Shared dispatch pipeline for steps 6-10 of the run creation flow.
  * Used by both createRun (new runs) and dispatchQueuedRun (dequeued runs).
  */
-async function buildAndDispatchRun(opts: {
+export async function buildAndDispatchRun(opts: {
   runId: string;
   createdAt: Date;
   params: CreateRunParams;
@@ -1096,30 +1096,41 @@ export async function startRun(
 }
 
 /**
- * Low-level run creation pipeline (requires pre-resolved version + org).
+ * Result of createRunRecord — contains the run record and all metadata
+ * needed by buildAndDispatchRun to complete the dispatch pipeline.
+ */
+export interface CreateRunRecordResult {
+  run: { id: string; createdAt: Date };
+  composeContent: AgentComposeYaml;
+  orgSlug: string | undefined;
+  orgId: string;
+  apiStartTime: number;
+  authorizeTime: number;
+  transactionTime: number;
+}
+
+/**
+ * Create a run record without dispatching.
  *
- * Validates, creates, and dispatches a run in a single call.
- * Prefer startRun() unless you need checkpoint/session resume or custom params.
- *
- * Pipeline:
+ * Handles steps 1-5 of the run creation pipeline:
  * 1. Load compose version content + compose metadata
  * 2. Permission check (canAccessCompose)
  * 3. Validate template vars and image access
  * 4. Validate mutual exclusivity (checkpointId vs sessionId)
- * 5. Acquire per-user advisory lock, check concurrent run limit, INSERT agentRuns (atomic transaction)
- * 6. Register callbacks (if any)
- * 7. Generate sandbox token
- * 8. Build execution context
- * 9. Dispatch to executor
+ * 5. Acquire per-org advisory lock, check concurrent run limit, INSERT agentRuns (atomic transaction)
+ *
+ * Returns the run record and compose content needed by buildAndDispatchRun().
+ * Does NOT handle the enqueueRun() fallback — callers decide how to handle
+ * ConcurrentRunLimitError.
  *
  * @throws ForbiddenError - user cannot access compose
  * @throws BadRequestError - validation failure (missing vars, mutual exclusivity)
  * @throws NotFoundError - compose version not found
- * @throws Error - dispatch failure (run already marked as "failed")
+ * @throws ConcurrentRunLimitError - org has reached concurrent run limit
  */
-export async function createRun(
+export async function createRunRecord(
   params: CreateRunParams,
-): Promise<CreateRunResult> {
+): Promise<CreateRunRecordResult> {
   const apiStartTime = Date.now();
   const { userId, agentComposeVersionId, prompt } = params;
 
@@ -1156,79 +1167,106 @@ export async function createRun(
   // Step 5: Concurrency check + INSERT in a transaction with advisory lock
   // to prevent TOCTOU race where two concurrent requests both pass the
   // concurrency check before either inserts.
-  // On concurrency failure, enqueue the run instead of rejecting.
-  let run;
-  try {
-    run = await globalThis.services.db.transaction(async (tx) => {
-      // Acquire per-org advisory lock (released when transaction ends)
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${orgId}))`);
+  const run = await globalThis.services.db.transaction(async (tx) => {
+    // Acquire per-org advisory lock (released when transaction ends)
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${orgId}))`);
 
-      // Check concurrent run limit within the serialized transaction
-      await checkRunConcurrencyLimit(orgId, params.orgTier ?? "free", tx);
+    // Check concurrent run limit within the serialized transaction
+    await checkRunConcurrencyLimit(orgId, params.orgTier ?? "free", tx);
 
-      // Check credit balance for VM0 provider runs
-      await checkOrgCredits(orgId, userId, params.modelProvider, tx);
+    // Check credit balance for VM0 provider runs
+    await checkOrgCredits(orgId, userId, params.modelProvider, tx);
 
-      // Check model provider is configured (pre-INSERT to avoid ghost run records)
-      await checkModelProviderConfigured(
+    // Check model provider is configured (pre-INSERT to avoid ghost run records)
+    await checkModelProviderConfigured(
+      orgId,
+      params.modelProvider,
+      composeContent,
+      tx,
+    );
+
+    // INSERT within the same transaction
+    const [newRun] = await tx
+      .insert(agentRuns)
+      .values({
+        userId,
         orgId,
-        params.modelProvider,
-        composeContent,
-        tx,
-      );
+        agentComposeVersionId,
+        status: "pending",
+        prompt,
+        appendSystemPrompt: params.appendSystemPrompt ?? null,
+        vars: params.vars ?? null,
+        secretNames: params.secrets ? Object.keys(params.secrets) : null,
+        resumedFromCheckpointId: params.resumedFromCheckpointId ?? null,
+        continuedFromSessionId: params.sessionId ?? null,
+        modelProvider: params.modelProvider ?? null,
+        lastHeartbeatAt: new Date(),
+      })
+      .returning();
 
-      // INSERT within the same transaction
-      const [newRun] = await tx
-        .insert(agentRuns)
-        .values({
-          userId,
-          orgId,
-          agentComposeVersionId,
-          status: "pending",
-          prompt,
-          appendSystemPrompt: params.appendSystemPrompt ?? null,
-          vars: params.vars ?? null,
-          secretNames: params.secrets ? Object.keys(params.secrets) : null,
-          resumedFromCheckpointId: params.resumedFromCheckpointId ?? null,
-          continuedFromSessionId: params.sessionId ?? null,
-          modelProvider: params.modelProvider ?? null,
-          lastHeartbeatAt: new Date(),
-        })
-        .returning();
-
-      if (!newRun) {
-        throw new Error("Failed to create run record");
-      }
-
-      return newRun;
-    });
-  } catch (error) {
-    if (isConcurrentRunLimit(error)) {
-      return enqueueRun({ ...params, orgSlug, orgId });
+    if (!newRun) {
+      throw new Error("Failed to create run record");
     }
-    throw error;
-  }
+
+    return newRun;
+  });
 
   const transactionTime = Date.now();
   log.debug(`Created run ${run.id} for user ${userId}`);
 
-  const result = await buildAndDispatchRun({
-    runId: run.id,
-    createdAt: run.createdAt,
-    params,
+  return {
+    run: { id: run.id, createdAt: run.createdAt },
     composeContent,
-    apiStartTime,
     orgSlug,
     orgId,
+    apiStartTime,
     authorizeTime,
     transactionTime,
+  };
+}
+
+/**
+ * Low-level run creation pipeline (requires pre-resolved version + org).
+ *
+ * Composes createRunRecord() + buildAndDispatchRun() into a single call.
+ * Handles the enqueueRun() fallback when the org hits the concurrent run limit.
+ * Prefer startRun() unless you need checkpoint/session resume or custom params.
+ *
+ * @throws ForbiddenError - user cannot access compose
+ * @throws BadRequestError - validation failure (missing vars, mutual exclusivity)
+ * @throws NotFoundError - compose version not found
+ * @throws Error - dispatch failure (run already marked as "failed")
+ */
+export async function createRun(
+  params: CreateRunParams,
+): Promise<CreateRunResult> {
+  let record: CreateRunRecordResult;
+  try {
+    record = await createRunRecord(params);
+  } catch (error) {
+    if (isConcurrentRunLimit(error)) {
+      return enqueueRun(params);
+    }
+    throw error;
+  }
+
+  const result = await buildAndDispatchRun({
+    runId: record.run.id,
+    createdAt: record.run.createdAt,
+    params,
+    composeContent: record.composeContent,
+    apiStartTime: record.apiStartTime,
+    orgSlug: record.orgSlug,
+    orgId: record.orgId,
+    authorizeTime: record.authorizeTime,
+    transactionTime: record.transactionTime,
   });
 
   return {
-    runId: run.id,
+    runId: record.run.id,
     status: result.status,
     sandboxId: result.sandboxId,
-    createdAt: run.createdAt,
+    createdAt: record.run.createdAt,
   };
 }
 
