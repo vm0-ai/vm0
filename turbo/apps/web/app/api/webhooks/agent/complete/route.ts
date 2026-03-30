@@ -24,7 +24,6 @@ import { drainOrgQueue } from "../../../../../src/lib/run/run-queue-service";
 import { dispatchQueuedRun } from "../../../../../src/lib/run/run-service";
 import { processOrgCredits } from "../../../../../src/lib/credit/credit-service";
 import { appendChatMessages } from "../../../../../src/lib/agent-session/agent-session-service";
-import { extractRunOutput } from "../../../../../src/lib/run/extract-run-output";
 import { chatThreadRuns } from "../../../../../src/db/schema/chat-thread";
 import { updateChatThreadTitle } from "../../../../../src/lib/chat-thread";
 import { generateChatTitle } from "../../../../../src/lib/ai/lightweight-model";
@@ -99,21 +98,45 @@ function extractSummariesFromEvents(
   return summaries;
 }
 
-async function extractSummariesFromAxiom(
-  runId: string,
-): Promise<SummaryEntry[]> {
+interface CombinedRunEvent {
+  eventType: string;
+  eventData: {
+    result?: string;
+    message?: { content?: AxiomEventContent[] };
+  };
+}
+
+/**
+ * Single Axiom query to fetch both "result" and "assistant" events for a run.
+ * Replaces two separate queries (extractRunOutput + extractSummariesFromAxiom)
+ * to halve the API call count per completion.
+ */
+async function queryRunEventsForChat(runId: string): Promise<{
+  resultText: string | null;
+  summaries: SummaryEntry[];
+}> {
   const dataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
   const apl = `['${dataset}']
 | where runId == "${runId}"
-| where eventType == "assistant"
+| where eventType in ("result", "assistant")
 | order by sequenceNumber asc
-| limit 200`;
+| limit 201`;
 
-  const events = await queryAxiom<{
-    eventData: { message?: { content?: AxiomEventContent[] } };
-  }>(apl);
+  const events = await queryAxiom<CombinedRunEvent>(apl);
 
-  return extractSummariesFromEvents(events);
+  // Extract last result event
+  const resultEvents = events.filter((e) => e.eventType === "result");
+  const lastResult = resultEvents[resultEvents.length - 1];
+  const resultText =
+    typeof lastResult?.eventData?.result === "string"
+      ? lastResult.eventData.result
+      : null;
+
+  // Extract summaries from assistant events
+  const assistantEvents = events.filter((e) => e.eventType === "assistant");
+  const summaries = extractSummariesFromEvents(assistantEvents);
+
+  return { resultText, summaries };
 }
 
 /**
@@ -128,10 +151,7 @@ async function persistChatMessages(
   userId: string,
   prompt: string,
 ): Promise<string | null> {
-  const [output, summaries] = await Promise.all([
-    extractRunOutput(runId),
-    extractSummariesFromAxiom(runId),
-  ]);
+  const { resultText, summaries } = await queryRunEventsForChat(runId);
 
   const messages: Array<{
     role: "user" | "assistant";
@@ -140,10 +160,10 @@ async function persistChatMessages(
     summaries?: SummaryEntry[];
   }> = [{ role: "user", content: prompt }];
 
-  if (output.result) {
+  if (resultText) {
     messages.push({
       role: "assistant",
-      content: output.result,
+      content: resultText,
       runId,
       ...(summaries.length > 0 ? { summaries } : {}),
     });
@@ -151,7 +171,7 @@ async function persistChatMessages(
 
   await appendChatMessages(sessionId, userId, messages);
   log.debug(`Persisted ${messages.length} chat messages for run ${runId}`);
-  return output.result;
+  return resultText;
 }
 
 /**

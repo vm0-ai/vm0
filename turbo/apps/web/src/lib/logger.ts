@@ -27,8 +27,8 @@
  */
 import "server-only";
 import { Logger as AxiomLogger, AxiomJSTransport } from "@axiomhq/logging";
-import { Axiom } from "@axiomhq/js";
 import { getDatasetName, DATASETS } from "./axiom/datasets";
+import { getTelemetryInstance } from "./axiom/instances";
 
 type LogMethod = (...args: unknown[]) => void;
 
@@ -47,8 +47,8 @@ let axiomInitialized = false;
 
 /**
  * Get or create the Axiom logger for web logs.
- * Uses a separate Axiom client instance to avoid circular dependency with axiom/client.ts.
- * Uses AXIOM_TOKEN_TELEMETRY for the telemetry scope.
+ * Uses the shared telemetry Axiom instance from axiom/instances.ts so that
+ * a single flushAxiom() call covers web-logs alongside all other datasets.
  * Returns null if no token is configured.
  */
 function getAxiomLogger(): AxiomLogger | null {
@@ -56,11 +56,11 @@ function getAxiomLogger(): AxiomLogger | null {
   axiomInitialized = true;
 
   const token = process.env.AXIOM_TOKEN_TELEMETRY;
-  if (!token) {
+  const axiom = getTelemetryInstance(token);
+  if (!axiom) {
     return null;
   }
 
-  const axiom = new Axiom({ token });
   axiomLogger = new AxiomLogger({
     transports: [
       new AxiomJSTransport({

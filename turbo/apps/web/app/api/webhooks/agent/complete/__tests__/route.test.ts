@@ -438,8 +438,10 @@ describe("POST /api/webhooks/agent/complete", () => {
       };
 
       // Mock Axiom to return a result event for this run
+      // persistChatMessages uses a single combined query for both result and assistant events
       context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
         {
+          eventType: "result",
           eventData: { result: "Here is the agent response." },
         },
       ]);
@@ -575,14 +577,10 @@ describe("POST /api/webhooks/agent/complete", () => {
         agentSessionId: string;
       };
 
-      // First Axiom call: extractRunOutput — returns the result text
-      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
-        { eventData: { result: "Done. Created 3 files." } },
-      ]);
-      // Second Axiom call: extractSummariesFromAxiom — returns message events
-      // with tool_use blocks and a final text block (which should be skipped)
+      // Combined Axiom query returns both result and assistant events
       context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
         {
+          eventType: "assistant",
           eventData: {
             message: {
               content: [{ type: "tool_use", name: "Bash" }],
@@ -590,6 +588,7 @@ describe("POST /api/webhooks/agent/complete", () => {
           },
         },
         {
+          eventType: "assistant",
           eventData: {
             message: {
               content: [{ type: "tool_use", name: "Read" }],
@@ -597,11 +596,16 @@ describe("POST /api/webhooks/agent/complete", () => {
           },
         },
         {
+          eventType: "assistant",
           eventData: {
             message: {
               content: [{ type: "text", text: "Done. Created 3 files." }],
             },
           },
+        },
+        {
+          eventType: "result",
+          eventData: { result: "Done. Created 3 files." },
         },
       ]);
 
@@ -679,14 +683,10 @@ describe("POST /api/webhooks/agent/complete", () => {
         agentSessionId: string;
       };
 
-      // First Axiom call: extractRunOutput
-      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
-        { eventData: { result: "Analysis complete." } },
-      ]);
-      // Second Axiom call: extractSummariesFromAxiom — text-only events
-      // Last text event should be skipped, earlier ones included
+      // Combined Axiom query returns both result and assistant events
       context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
         {
+          eventType: "assistant",
           eventData: {
             message: {
               content: [{ type: "text", text: "Let me check the logs first" }],
@@ -694,11 +694,16 @@ describe("POST /api/webhooks/agent/complete", () => {
           },
         },
         {
+          eventType: "assistant",
           eventData: {
             message: {
               content: [{ type: "text", text: "Analysis complete." }],
             },
           },
+        },
+        {
+          eventType: "result",
+          eventData: { result: "Analysis complete." },
         },
       ]);
 
@@ -771,13 +776,10 @@ describe("POST /api/webhooks/agent/complete", () => {
 
       const longText = "x".repeat(100);
 
-      // First Axiom call: extractRunOutput
-      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
-        { eventData: { result: "Done." } },
-      ]);
-      // Second Axiom call: extractSummariesFromAxiom — one long text, then final text
+      // Combined Axiom query returns both result and assistant events
       context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
         {
+          eventType: "assistant",
           eventData: {
             message: {
               content: [{ type: "text", text: longText }],
@@ -785,11 +787,16 @@ describe("POST /api/webhooks/agent/complete", () => {
           },
         },
         {
+          eventType: "assistant",
           eventData: {
             message: {
               content: [{ type: "text", text: "Done." }],
             },
           },
+        },
+        {
+          eventType: "result",
+          eventData: { result: "Done." },
         },
       ]);
 
@@ -864,12 +871,13 @@ describe("POST /api/webhooks/agent/complete", () => {
         agentSessionId: string;
       };
 
-      // First Axiom call: extractRunOutput — returns result
+      // Combined Axiom query returns result event only (no assistant events)
       context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
-        { eventData: { result: "All good." } },
+        {
+          eventType: "result",
+          eventData: { result: "All good." },
+        },
       ]);
-      // Second Axiom call: extractSummariesFromAxiom — no events
-      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([]);
 
       const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/complete",
@@ -1024,9 +1032,12 @@ describe("POST /api/webhooks/agent/complete", () => {
       );
       expect(checkpointRes.status).toBe(200);
 
-      // Mock Axiom to return an assistant result
+      // Mock Axiom to return a result event
       context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
-        { eventData: { result: "Use --inspect flag for debugging." } },
+        {
+          eventType: "result",
+          eventData: { result: "Use --inspect flag for debugging." },
+        },
       ]);
 
       // Mock OpenRouter to return a generated title
@@ -1092,7 +1103,10 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(cpRes.status).toBe(200);
 
       context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
-        { eventData: { result: "Use flexbox for centering" } },
+        {
+          eventType: "result",
+          eventData: { result: "Use flexbox for centering" },
+        },
       ]);
 
       vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
@@ -1220,7 +1234,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(cpRes.status).toBe(200);
 
       context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
-        { eventData: { result: "Some result" } },
+        { eventType: "result", eventData: { result: "Some result" } },
       ]);
 
       // Do NOT set OPENROUTER_API_KEY — feature should be a no-op
@@ -1277,7 +1291,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(cpRes.status).toBe(200);
 
       context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
-        { eventData: { result: "Some result" } },
+        { eventType: "result", eventData: { result: "Some result" } },
       ]);
 
       vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
