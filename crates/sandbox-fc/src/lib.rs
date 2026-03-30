@@ -9,6 +9,7 @@ mod network;
 mod paths;
 mod prerequisites;
 mod process;
+mod runtime;
 mod sandbox;
 mod snapshot;
 
@@ -19,5 +20,6 @@ pub use network::{NetnsPool, NetnsPoolConfig};
 pub use paths::{
     FactoryPaths, LockPaths, RuntimePaths, SandboxPaths, SnapshotOutputPaths, SockPaths,
 };
+pub use runtime::FirecrackerRuntime;
 pub use sandbox::FirecrackerSandbox;
 pub use snapshot::{SnapshotCreateConfig, SnapshotError, create_snapshot};

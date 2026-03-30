@@ -3,8 +3,7 @@ use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
 use clap::Args;
-use sandbox::{ExecRequest, ExecResult, SandboxConfig, SandboxFactory};
-use sandbox_fc::FirecrackerFactory;
+use sandbox::{ExecRequest, ExecResult, SandboxConfig, SandboxFactory, SandboxRuntime};
 use tracing::{info, warn};
 use uuid::Uuid;
 
@@ -85,18 +84,19 @@ pub async fn run_benchmark(args: BenchmarkArgs) -> RunnerResult<ExitCode> {
     let proxy_ms = t.elapsed().as_millis();
     info!(proxy_ms, port = mitm.port(), "proxy ready");
 
-    // 3. Factory init (with proxy port)
-    let fc_config =
-        runner_config.firecracker_config(&args.profile, &default_profile, &home, Some(mitm.port()));
+    // 3. Factory init (with proxy port) via sandbox runtime
+    let factory_config = runner_config.factory_config(&args.profile, &default_profile, &home);
 
     let t = Instant::now();
-    let base_cache = std::sync::Arc::new(std::sync::Mutex::new(block_cow::BaseLoopCache::new()));
-    let mut factory = FirecrackerFactory::new(fc_config, None, base_cache).await?;
-    factory.startup().await?;
+    let mut runtime = sandbox_fc::FirecrackerRuntime::new(sandbox::RuntimeConfig {
+        proxy_port: Some(mitm.port()),
+    })
+    .await?;
+    let mut factory = runtime.create_factory(factory_config).await?;
     let factory_ms = t.elapsed().as_millis();
     info!(factory_ms, "factory ready");
 
-    // 4. Create + run sandbox — always shutdown factory and proxy afterwards
+    // 4. Create + run sandbox — always shutdown factory and runtime afterwards
     let sandbox_config = SandboxConfig {
         id: Uuid::new_v4(),
         resources: sandbox::ResourceLimits {
@@ -104,9 +104,11 @@ pub async fn run_benchmark(args: BenchmarkArgs) -> RunnerResult<ExitCode> {
             memory_mb: default_profile.memory_mb,
         },
     };
-    let (result, timing) = run_sandbox(&args, &factory, &mitm, sandbox_config, is_snapshot).await;
+    let (result, timing) = run_sandbox(&args, &*factory, &mitm, sandbox_config, is_snapshot).await;
     let total_ms = total.elapsed().as_millis();
+    // Shutdown factory first (releases COW pool, base loop handle), then runtime.
     factory.shutdown().await;
+    runtime.shutdown().await;
     if let Err(e) = mitm.stop().await {
         warn!(error = %e, "proxy stop failed");
     }
@@ -166,7 +168,7 @@ pub async fn run_benchmark(args: BenchmarkArgs) -> RunnerResult<ExitCode> {
 /// Caller is responsible for `factory.shutdown()`.
 async fn run_sandbox(
     args: &BenchmarkArgs,
-    factory: &FirecrackerFactory,
+    factory: &dyn SandboxFactory,
     mitm: &proxy::MitmProxy,
     sandbox_config: SandboxConfig,
     is_snapshot: bool,

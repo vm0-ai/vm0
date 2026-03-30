@@ -4,8 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use clap::Args;
-use sandbox::SandboxFactory;
-use sandbox_fc::FirecrackerFactory;
+use sandbox::{SandboxFactory, SandboxRuntime};
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
@@ -210,14 +209,12 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
         }
     };
 
-    // Build per-profile netns pool (shared).
-    let netns_pool = sandbox_fc::NetnsPool::create(sandbox_fc::NetnsPoolConfig {
+    // Build sandbox runtime with shared resources (netns pool, base loop cache).
+    let runtime = sandbox_fc::FirecrackerRuntime::new(sandbox::RuntimeConfig {
         proxy_port: Some(mitm.port()),
     })
     .await
-    .map_err(|e| RunnerError::Internal(format!("netns pool: {e}")))?;
-    let shared_netns = Arc::new(tokio::sync::Mutex::new(netns_pool));
-    let shared_base_cache = Arc::new(std::sync::Mutex::new(block_cow::BaseLoopCache::new()));
+    .map_err(|e| RunnerError::Internal(format!("sandbox runtime: {e}")))?;
 
     let mut status = StatusTracker::new(paths.status(), estimated_capacity);
     status.set_proxy_port(mitm.port()).await;
@@ -265,10 +262,8 @@ pub async fn run_start(args: StartArgs) -> RunnerResult<()> {
         name,
         group: group_name,
         profiles: runner_config.profiles,
-        shared_netns,
-        shared_base_cache,
+        runtime,
         home,
-        proxy_port: mitm.port(),
         budget,
         status,
         mitm,
@@ -291,10 +286,8 @@ struct RunConfig {
     name: String,
     group: String,
     profiles: std::collections::BTreeMap<String, ProfileConfig>,
-    shared_netns: Arc<tokio::sync::Mutex<sandbox_fc::NetnsPool>>,
-    shared_base_cache: Arc<std::sync::Mutex<block_cow::BaseLoopCache>>,
+    runtime: sandbox_fc::FirecrackerRuntime,
     home: HomePaths,
-    proxy_port: u16,
     budget: Arc<ResourceBudget>,
     status: Arc<StatusTracker>,
     mitm: proxy::MitmProxy,
@@ -319,10 +312,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         name,
         group,
         profiles,
-        shared_netns,
-        shared_base_cache,
+        mut runtime,
         home,
-        proxy_port,
         budget,
         status,
         mut mitm,
@@ -338,37 +329,26 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         kmsg_handle,
     } = config;
 
-    // Build per-profile factories with shared netns pool.
-    let mut factories: BTreeMap<String, Arc<FirecrackerFactory>> = BTreeMap::new();
+    // Build per-profile factories via the sandbox runtime.
+    let mut factories: BTreeMap<String, (SharedFactory, bool)> = BTreeMap::new();
     for (profile_name, profile_config) in &profiles {
-        let fc_config = config::RunnerConfig::build_firecracker_config(
+        let factory_config = config::RunnerConfig::build_factory_config(
             &firecracker,
             &base_dir,
             profile_name,
             profile_config,
             &home,
-            Some(proxy_port),
         );
-        let factory_result = async {
-            let mut factory = FirecrackerFactory::new(
-                fc_config,
-                Some(Arc::clone(&shared_netns)),
-                Arc::clone(&shared_base_cache),
-            )
-            .await?;
-            factory.startup().await?;
-            Ok::<_, sandbox::SandboxError>(factory)
-        }
-        .await;
+        let use_snapshot = factory_config.snapshot.is_some();
+        let factory_result = runtime.create_factory(factory_config).await;
         let factory = match factory_result {
             Ok(f) => f,
             Err(e) => {
-                // Clean up already-started factories before propagating.
-                shutdown_factories(&mut factories, &shared_netns, &shared_base_cache).await;
+                shutdown_factories(&mut factories, &mut runtime).await;
                 return Err(e.into());
             }
         };
-        factories.insert(profile_name.clone(), Arc::new(factory));
+        factories.insert(profile_name.clone(), (Arc::new(factory), use_snapshot));
         info!(profile = %profile_name, "factory started");
     }
 
@@ -471,7 +451,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 let job_vcpu = profile_config.vcpu;
                 let job_memory = profile_config.memory_mb;
                 // Look up factory for this profile.
-                let Some(factory) = factories.get(&profile_name) else {
+                let Some((factory, use_snapshot)) = factories.get(&profile_name) else {
                     warn!(run_id = %run_id, profile = %profile_name, "no factory for profile, skipping");
                     continue;
                 };
@@ -506,7 +486,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 let job_profile = JobProfile {
                     vcpu: job_vcpu,
                     memory_mb: job_memory,
-                    use_snapshot: factory.has_snapshot(),
+                    use_snapshot: *use_snapshot,
                     factory: Arc::clone(factory),
                     cancel: job_cancel,
                 };
@@ -562,7 +542,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     }
 
     info!("shutting down factories");
-    shutdown_factories(&mut factories, &shared_netns, &shared_base_cache).await;
+    shutdown_factories(&mut factories, &mut runtime).await;
 
     // Stop proxy after all jobs have drained and factory is shut down.
     if let Err(e) = mitm.stop().await {
@@ -579,44 +559,31 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     Ok(())
 }
 
+/// A sandbox factory shared across concurrent job executors.
+type SharedFactory = Arc<Box<dyn SandboxFactory>>;
+
 /// Per-job profile parameters resolved from the profile config.
 struct JobProfile {
     vcpu: u32,
     memory_mb: u32,
     use_snapshot: bool,
-    factory: Arc<FirecrackerFactory>,
+    factory: SharedFactory,
     cancel: CancellationToken,
 }
 
-/// Shut down all factories and clean up shared pools.
+/// Shut down all factories, then release shared runtime resources.
 async fn shutdown_factories(
-    factories: &mut BTreeMap<String, Arc<FirecrackerFactory>>,
-    shared_netns: &Arc<tokio::sync::Mutex<sandbox_fc::NetnsPool>>,
-    shared_base_cache: &Arc<std::sync::Mutex<block_cow::BaseLoopCache>>,
+    factories: &mut BTreeMap<String, (SharedFactory, bool)>,
+    runtime: &mut sandbox_fc::FirecrackerRuntime,
 ) {
-    for (name, factory) in std::mem::take(factories) {
+    for (name, (factory, _)) in std::mem::take(factories) {
         match Arc::try_unwrap(factory) {
             Ok(mut f) => f.shutdown().await,
             Err(_) => warn!(profile = %name, "factory still referenced at shutdown"),
         }
     }
-    // Clean up shared netns pool after all factories released their references.
-    // Cannot try_unwrap here because the caller still holds a reference;
-    // lock and clean up in-place instead.
-    let mut pool = shared_netns.lock().await;
-    if let Err(e) = pool.cleanup().await {
-        warn!(error = %e, "failed to cleanup shared netns pool");
-    }
-    drop(pool);
-
-    // Clean up base image pool — detach any remaining loop devices.
-    // Each factory.shutdown() releases its own reference, but if a factory
-    // was still referenced (Arc::try_unwrap failed), its base handle leaks.
-    // This is the safety net.
-    shared_base_cache
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .cleanup();
+    // Clean up shared resources (netns pool, base loop cache).
+    runtime.shutdown().await;
 }
 
 /// Spawn a job executor task.
@@ -657,7 +624,7 @@ fn spawn_job(
         // still reports completion and releases budget.
         let cancel = job_cancel.clone();
         let inner = tokio::spawn(async move {
-            executor::execute_job(factory.as_ref(), context, &exec_config, &params, cancel).await
+            executor::execute_job(&**factory, context, &exec_config, &params, cancel).await
         });
 
         let (exit_code, err) = match inner.await {
