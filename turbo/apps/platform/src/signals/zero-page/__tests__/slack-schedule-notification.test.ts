@@ -3,7 +3,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
-import { slackOrgData$ } from "../zero-slack.ts";
+import { slackOrgData$, initSlackOrg$ } from "../zero-slack.ts";
 import { slackChannels$, fetchSlackChannels$ } from "../slack-channels.ts";
 import {
   setAddScheduleOpen$,
@@ -150,9 +150,11 @@ describe("slack schedule notification signals", () => {
   describe("/schedule page — slack bot token present", () => {
     it("should have slackOrgData$ installed and fetch channels on dialog open", async () => {
       await setup("/schedule");
+      await context.store.set(initSlackOrg$, context.signal);
 
       const data = await context.store.get(slackOrgData$);
-      expect(data.isInstalled).toBeTruthy();
+      expect(data).not.toBeNull();
+      expect(data!.isInstalled).toBeTruthy();
 
       await context.store.set(setAddScheduleOpen$, true, context.signal);
       await context.store.set(fetchSlackChannels$, context.signal);
@@ -198,10 +200,12 @@ describe("slack schedule notification signals", () => {
       );
 
       await setup("/schedule");
+      await context.store.set(initSlackOrg$, context.signal);
 
       const data = await context.store.get(slackOrgData$);
-      expect(data.isInstalled).toBeTruthy();
-      expect(data.isConnected).toBeFalsy();
+      expect(data).not.toBeNull();
+      expect(data!.isInstalled).toBeTruthy();
+      expect(data!.isConnected).toBeFalsy();
     });
   });
 
@@ -233,9 +237,11 @@ describe("slack schedule notification signals", () => {
       );
 
       await setup("/schedule");
+      await context.store.set(initSlackOrg$, context.signal);
 
       const data = await context.store.get(slackOrgData$);
-      expect(data.isInstalled).toBeFalsy();
+      expect(data).not.toBeNull();
+      expect(data!.isInstalled).toBeFalsy();
 
       await context.store.set(setAddScheduleOpen$, true, context.signal);
       await context.store.set(fetchSlackChannels$, context.signal);
@@ -250,7 +256,8 @@ describe("slack schedule notification signals", () => {
       await setup("/team/zero");
 
       const data = await context.store.get(slackOrgData$);
-      expect(data.isInstalled).toBeTruthy();
+      expect(data).not.toBeNull();
+      expect(data!.isInstalled).toBeTruthy();
 
       await context.store.set(setAddScheduleOpen$, true, context.signal);
       await context.store.set(fetchSlackChannels$, context.signal);
@@ -301,7 +308,8 @@ describe("slack schedule notification signals", () => {
       await setup("/team/zero");
 
       const data = await context.store.get(slackOrgData$);
-      expect(data.isInstalled).toBeFalsy();
+      expect(data).not.toBeNull();
+      expect(data!.isInstalled).toBeFalsy();
 
       await context.store.set(setAddScheduleOpen$, true, context.signal);
       await context.store.set(fetchSlackChannels$, context.signal);
