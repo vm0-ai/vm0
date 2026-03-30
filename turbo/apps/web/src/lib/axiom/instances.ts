@@ -19,7 +19,13 @@ let telemetryInitialized = false;
  * Get or create the sessions-scoped Axiom client (agent-run-events).
  */
 export function getSessionsInstance(token: string | undefined): Axiom | null {
-  if (sessionsInitialized) return sessionsClient;
+  if (sessionsInitialized) {
+    // Late initialization: first caller had no token, but one is now available.
+    if (token && !sessionsClient) {
+      sessionsClient = new Axiom({ token });
+    }
+    return sessionsClient;
+  }
   sessionsInitialized = true;
   if (!token) return null;
   sessionsClient = new Axiom({ token });
@@ -30,7 +36,12 @@ export function getSessionsInstance(token: string | undefined): Axiom | null {
  * Get or create the telemetry-scoped Axiom client (all other datasets).
  */
 export function getTelemetryInstance(token: string | undefined): Axiom | null {
-  if (telemetryInitialized) return telemetryClient;
+  if (telemetryInitialized) {
+    if (token && !telemetryClient) {
+      telemetryClient = new Axiom({ token });
+    }
+    return telemetryClient;
+  }
   telemetryInitialized = true;
   if (!token) return null;
   telemetryClient = new Axiom({ token });

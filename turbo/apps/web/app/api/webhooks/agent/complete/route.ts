@@ -120,7 +120,7 @@ async function queryRunEventsForChat(runId: string): Promise<{
 | where runId == "${runId}"
 | where eventType in ("result", "assistant")
 | order by sequenceNumber asc
-| limit 201`;
+| limit 201`; // 200 assistant events + 1 result event
 
   const events = await queryAxiom<CombinedRunEvent>(apl);
 
