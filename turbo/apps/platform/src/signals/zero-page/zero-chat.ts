@@ -801,7 +801,7 @@ export const loadSessionFromSnapshot$ = command(
       await Promise.all(
         assistantMessages
           .filter((m) => m.legacyRunId)
-          .map((m) => set(finalizeCompletedRun$, m.legacyRunId!, signal)),
+          .map(() => set(finalizeCompletedRun$, signal)),
       );
     }
   },
@@ -952,7 +952,7 @@ const ensureChatThread$ = command(
 
 /** Post-polling cleanup: invalidate thread cache and refresh sidebar. */
 const finalizeCompletedRun$ = command(
-  async ({ get, set }, _runId: string, signal: AbortSignal) => {
+  async ({ get, set }, signal: AbortSignal) => {
     // Invalidate thread data so currentChatSessionId$ picks up the new session ID
     set(reloadCurrentThread$, (n) => n + 1);
 
@@ -1035,7 +1035,7 @@ const submitAndPollRun$ = command(
 
     await set(runLoop.beginLoop$, signal);
 
-    await set(finalizeCompletedRun$, runId, signal);
+    await set(finalizeCompletedRun$, signal);
   },
 );
 
