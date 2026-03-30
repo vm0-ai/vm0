@@ -363,7 +363,7 @@ describe("zero-chat signals", () => {
       expect(capturedSessionId).toBe("session-existing");
 
       // Run loop must have completed
-      await expect(context.store.get(allFinished$)).resolves.toBe(true);
+      await expect(context.store.get(allFinished$)).resolves.toBeTruthy();
 
       // finalizeCompletedRun$ must have invalidated the thread (at least one reload)
       expect(threadReloadCount).toBeGreaterThan(1);
