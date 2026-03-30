@@ -170,4 +170,49 @@ describe("activity page routing", () => {
       ).toBeInTheDocument();
     });
   }, 10_000);
+
+  it("should display 'Agent (displayName)' for delegated runs with triggerAgentName", async () => {
+    server.use(
+      http.get("*/api/zero/composes/list", () => {
+        return HttpResponse.json({
+          composes: [{ name: "child-agent", displayName: "Child Agent" }],
+        });
+      }),
+      http.get("*/api/zero/logs", () => {
+        return HttpResponse.json({
+          data: [
+            {
+              id: "log-delegated",
+              sessionId: "session-delegated",
+              agentId: "child-agent",
+              displayName: "Child Agent",
+              orgSlug: "test",
+              framework: "claude-code",
+              status: "completed",
+              triggerSource: "agent",
+              triggerAgentName: "Parent Bot",
+              scheduleId: null,
+              createdAt: "2026-03-10T15:00:00Z",
+              startedAt: "2026-03-10T15:00:01Z",
+              completedAt: "2026-03-10T15:00:05Z",
+            },
+          ],
+          pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
+        });
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/activity",
+    });
+
+    // The source column should show "Agent (Parent Bot)" for the delegated run
+    await waitFor(() => {
+      expect(screen.getByText("Agent (Parent Bot)")).toBeInTheDocument();
+    });
+  }, 10_000);
 });

@@ -16,6 +16,9 @@ import { zeroAgents } from "../../../../src/db/schema/zero-agent";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { agentComposeVersions } from "../../../../src/db/schema/agent-compose";
 import { agentSessions } from "../../../../src/db/schema/agent-session";
+import { logger } from "../../../../src/lib/logger";
+
+const log = logger("api:zero-runs:trigger");
 
 const router = tsr.router(zeroRunsMainContract, {
   create: async ({ body, headers }) => {
@@ -79,20 +82,28 @@ const router = tsr.router(zeroRunsMainContract, {
         };
       }
 
-      // When called from within an agent sandbox, look up the parent agent's compose ID
+      // When called from within an agent sandbox, look up the parent agent's compose ID.
+      // This is optional metadata — if the lookup fails (e.g. parent run already deleted),
+      // the run should still be created without triggerAgentId.
       let triggerAgentId: string | undefined;
       if (authCtx.runId) {
-        const parentRows = await globalThis.services.db
-          .select({ composeId: agentComposeVersions.composeId })
-          .from(agentRuns)
-          .innerJoin(
-            agentComposeVersions,
-            eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
-          )
-          .where(eq(agentRuns.id, authCtx.runId))
-          .limit(1)
-          .catch(() => []);
-        triggerAgentId = parentRows[0]?.composeId ?? undefined;
+        try {
+          const parentRows = await globalThis.services.db
+            .select({ composeId: agentComposeVersions.composeId })
+            .from(agentRuns)
+            .innerJoin(
+              agentComposeVersions,
+              eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
+            )
+            .where(eq(agentRuns.id, authCtx.runId))
+            .limit(1);
+          triggerAgentId = parentRows[0]?.composeId ?? undefined;
+        } catch (err) {
+          log.warn(
+            `Failed to resolve trigger agent for run ${authCtx.runId}`,
+            err,
+          );
+        }
       }
 
       const result = await createZeroRun({
