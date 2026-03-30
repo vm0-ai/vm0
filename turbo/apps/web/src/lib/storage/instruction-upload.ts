@@ -11,7 +11,7 @@ import type { S3StorageManifest } from "../s3/types";
 import { computeContentHashFromHashes, hashFileContent } from "./content-hash";
 import { createSingleFileTar } from "../tar";
 import { env } from "../../env";
-import { getOrgData } from "../org/org-cache-service";
+
 import { logger } from "../logger";
 
 const log = logger("storage:instruction-upload");
@@ -31,11 +31,7 @@ export async function uploadInstructionsServerSide(params: {
 }): Promise<{ storageName: string; versionId: string }> {
   const { orgId, agentName, content, framework } = params;
 
-  // 1. Resolve org slug for S3 prefix
-  const orgData = await getOrgData(orgId);
-  const orgSlug = orgData.slug;
-
-  // 2. Determine filename and storage name
+  // 1. Determine filename and storage name
   const filename = getInstructionsFilename(framework);
   const storageName = getInstructionsStorageName(agentName.toLowerCase());
 
@@ -52,7 +48,7 @@ export async function uploadInstructionsServerSide(params: {
   // 6. Upsert storage record
   const db = globalThis.services.db;
   const storageType = "volume";
-  const s3Prefix = `${orgSlug}/${storageType}/${storageName}`;
+  const s3Prefix = `${orgId}/${storageType}/${storageName}`;
 
   const [storage] = await db
     .insert(storages)
@@ -77,7 +73,7 @@ export async function uploadInstructionsServerSide(params: {
 
   // 7. Compute version ID
   const versionId = computeContentHashFromHashes(storage.id, [fileEntry]);
-  const s3Key = `${s3Prefix}/${versionId}`;
+  const s3Key = `${storage.s3Prefix}/${versionId}`;
   const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
 
   // 8. Check for existing version (dedup)

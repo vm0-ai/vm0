@@ -11,6 +11,7 @@ members = [
     "runner",
     "sandbox",
     "sandbox-fc",
+    "sandbox-mock",
     "vsock-guest",
     "vsock-host",
     "vsock-proto",
@@ -33,6 +34,7 @@ guest-mock-claude = { path = "guest-mock-claude" }
 reqeast = { path = "reqeast" }
 sandbox = { path = "sandbox" }
 sandbox-fc = { path = "sandbox-fc" }
+sandbox-mock = { path = "sandbox-mock" }
 vsock-guest = { path = "vsock-guest" }
 vsock-host = { path = "vsock-host" }
 vsock-proto = { path = "vsock-proto" }
