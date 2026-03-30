@@ -98,6 +98,7 @@ const router = tsr.router(zeroAgentsMainContract, {
         avatarUrl: body.avatarUrl ?? null,
         connectors: body.connectors,
         firewallPolicies: null,
+        customSkills: [],
       },
     };
   },
@@ -122,6 +123,7 @@ const router = tsr.router(zeroAgentsMainContract, {
         avatarUrl: zeroAgents.avatarUrl,
         connectors: zeroAgents.connectors,
         firewallPolicies: zeroAgents.firewallPolicies,
+        customSkills: zeroAgents.customSkills,
       })
       .from(zeroAgents)
       .where(eq(zeroAgents.orgId, org.orgId))
@@ -137,6 +139,7 @@ const router = tsr.router(zeroAgentsMainContract, {
         avatarUrl: row.avatarUrl ?? null,
         connectors: row.connectors,
         firewallPolicies: row.firewallPolicies ?? null,
+        customSkills: row.customSkills,
       })),
     };
   },

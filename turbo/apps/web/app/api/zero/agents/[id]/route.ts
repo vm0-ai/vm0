@@ -39,6 +39,7 @@ function agentResponseBody(
     avatarUrl: agent?.avatarUrl ?? null,
     connectors: fallback.connectors ?? agent?.connectors ?? [],
     firewallPolicies: agent?.firewallPolicies ?? null,
+    customSkills: agent?.customSkills ?? [],
   };
 }
 
@@ -144,8 +145,19 @@ const router = tsr.router(zeroAgentsByIdContract, {
     );
     if (forbidden) return forbidden;
 
-    // Build compose content from connectors
-    const content = buildComposeContent(existing.name, body.connectors);
+    // Look up existing agent's custom skills for compose builder
+    const [existingAgent] = await globalThis.services.db
+      .select({ customSkills: zeroAgents.customSkills })
+      .from(zeroAgents)
+      .where(eq(zeroAgents.id, params.id))
+      .limit(1);
+
+    // Build compose content from connectors + existing custom skills
+    const content = buildComposeContent(
+      existing.name,
+      body.connectors,
+      (existingAgent?.customSkills ?? []).map((name) => ({ name })),
+    );
 
     // Run synchronous compose
     const result = await serverSideCompose({
