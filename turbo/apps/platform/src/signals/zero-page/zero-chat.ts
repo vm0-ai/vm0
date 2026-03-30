@@ -644,7 +644,7 @@ export const clearZeroChatInput$ = command(({ set }) => {
 });
 
 // Attachments
-export interface FileInfo {
+interface FileInfo {
   id: string;
   url: string;
 }
@@ -691,6 +691,7 @@ function createChatAttachment(file: File): ZeroChatAttachment {
       body: formData,
       signal: uploadSignal,
     });
+    signal.throwIfAborted();
 
     if (!res.ok) {
       const err = (await res.json().catch(() => null)) as {
@@ -911,11 +912,16 @@ export const createNewChatSession$ = command(
 // ---------------------------------------------------------------------------
 
 const prepareUserMessage$ = command(
-  async ({ get, set }, prompt: string): Promise<{ fullPrompt: string }> => {
+  async (
+    { get, set },
+    prompt: string,
+    signal: AbortSignal,
+  ): Promise<{ fullPrompt: string }> => {
     const allAttachments = get(internalAttachments$);
     const allInfos = await Promise.all(
       allAttachments.map((a) => get(a.fileInfo$)),
     );
+    signal.throwIfAborted();
 
     // Pair attachments with resolved file info, dropping any that failed or haven't started
     const ready = allAttachments
@@ -1087,7 +1093,8 @@ export const sendZeroChatMessage$ = command(
       return;
     }
 
-    const { fullPrompt } = await set(prepareUserMessage$, prompt);
+    const { fullPrompt } = await set(prepareUserMessage$, prompt, signal);
+    signal.throwIfAborted();
 
     try {
       await set(
