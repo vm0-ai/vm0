@@ -339,7 +339,7 @@ describe("zero-chat signals", () => {
           return HttpResponse.json({
             id: "thread-existing",
             title: null,
-            agentId: "mock-compose-id",
+            agentId: "c0000000-0000-4000-a000-000000000001",
             chatMessages: [],
             latestSessionId: "session-existing",
             unsavedRuns: [],
@@ -367,13 +367,22 @@ describe("zero-chat signals", () => {
         }),
         http.get("*/api/zero/logs/:runId", () => {
           return HttpResponse.json({
-            id: "run-poll-1",
+            id: "a0000000-0000-4000-a000-000000000098",
+            sessionId: "session-existing",
+            agentId: "zero",
+            displayName: null,
+            framework: "claude-code",
+            modelProvider: null,
+            triggerSource: "web",
+            scheduleId: null,
             status: "completed",
-            error: null,
             prompt: "test",
+            appendSystemPrompt: null,
+            error: null,
             createdAt: "2026-03-10T00:00:00Z",
             startedAt: "2026-03-10T00:00:01Z",
             completedAt: "2026-03-10T00:00:02Z",
+            artifact: { name: null, version: null },
           });
         }),
       );
