@@ -1,5 +1,9 @@
 import { eq } from "drizzle-orm";
-import type { TriggerSource, FirewallPolicies } from "@vm0/core";
+import {
+  resolveFirewallPolicies,
+  type TriggerSource,
+  type FirewallPolicies,
+} from "@vm0/core";
 import { startRun, type CreateRunResult } from "../run";
 import {
   DISALLOWED_TOOLS,
@@ -43,6 +47,7 @@ export async function createZeroRun(
       displayName: zeroAgents.displayName,
       description: zeroAgents.description,
       sound: zeroAgents.sound,
+      connectors: zeroAgents.connectors,
       firewallPolicies: zeroAgents.firewallPolicies,
     })
     .from(zeroAgents)
@@ -54,12 +59,22 @@ export async function createZeroRun(
     description: string | null;
     sound: string | null;
     firewallPolicies: FirewallPolicies | null;
-  } = row ?? {
-    displayName: null,
-    description: null,
-    sound: null,
-    firewallPolicies: null,
-  };
+  } = row
+    ? {
+        displayName: row.displayName,
+        description: row.description,
+        sound: row.sound,
+        firewallPolicies: resolveFirewallPolicies(
+          row.firewallPolicies ?? null,
+          row.connectors,
+        ),
+      }
+    : {
+        displayName: null,
+        description: null,
+        sound: null,
+        firewallPolicies: null,
+      };
 
   // Build agent system prompt: identity + tools first, then trigger context
   const agentParts: string[] = [];

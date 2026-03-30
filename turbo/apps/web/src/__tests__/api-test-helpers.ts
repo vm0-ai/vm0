@@ -441,6 +441,7 @@ export async function createTestZeroAgent(
     displayName?: string;
     description?: string;
     sound?: string;
+    connectors?: string[];
     firewallPolicies?: FirewallPolicies;
   },
 ): Promise<void> {
@@ -466,6 +467,7 @@ export async function createTestZeroAgent(
       displayName: metadata.displayName ?? null,
       description: metadata.description ?? null,
       sound: metadata.sound ?? null,
+      connectors: metadata.connectors ?? [],
       firewallPolicies: metadata.firewallPolicies ?? null,
     })
     .onConflictDoUpdate({
@@ -474,6 +476,9 @@ export async function createTestZeroAgent(
         displayName: metadata.displayName ?? null,
         description: metadata.description ?? null,
         sound: metadata.sound ?? null,
+        ...(metadata.connectors !== undefined && {
+          connectors: metadata.connectors,
+        }),
         firewallPolicies: metadata.firewallPolicies ?? null,
       },
     });

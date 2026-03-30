@@ -9,6 +9,7 @@ import {
 } from "@vm0/ui";
 import {
   getConnectorFirewall,
+  getDefaultFirewallPolicies,
   isFirewallConnectorType,
   CONNECTOR_TYPES,
   type ConnectorType,
@@ -137,14 +138,19 @@ export function FirewallPermissionsDrawer({
     ? getConnectorFirewall(ref)
     : null;
 
-  // Build policies state
+  // Build policies state — use stored policies, then per-connector defaults,
+  // then fall back to "allow" for permissions without a default.
   const [allPolicies, setAllPolicies] = useState(() => {
     const result: Record<string, Record<string, PermissionPolicy>> = {};
     if (config) {
       const perms = extractPermissions(config);
+      const defaults = isFirewallConnectorType(ref)
+        ? getDefaultFirewallPolicies(ref)
+        : null;
       const refPolicies: Record<string, PermissionPolicy> = {};
       for (const p of perms) {
-        refPolicies[p.name] = initialPolicies[ref]?.[p.name] ?? "allow";
+        refPolicies[p.name] =
+          initialPolicies[ref]?.[p.name] ?? defaults?.[p.name] ?? "allow";
       }
       result[ref] = refPolicies;
     }

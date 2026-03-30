@@ -115,6 +115,35 @@ export function renderPermissions(permissions: PermissionGroup[]): string[] {
   return lines;
 }
 
+// ── Default policies ────────────────────────────────────────────────────
+
+/**
+ * Render a default-allowed permissions export as a const array.
+ * Permissions NOT in this list are denied by default.
+ *
+ * @param varName - Export variable name (e.g. "slackDefaultAllowed")
+ * @param firewallVar - The firewall config variable for type checking
+ * @param allowed - Permission names that are allowed by default
+ */
+export function renderDefaultAllowed(
+  varName: string,
+  firewallVar: string,
+  allowed: string[],
+): string[] {
+  const lines: string[] = [
+    "",
+    `export const ${varName}: ReadonlyArray<`,
+    `  PermissionNamesOf<typeof ${firewallVar}>`,
+    "> = [",
+  ];
+  for (const name of allowed) {
+    lines.push(`  "${escapeString(name)}",`);
+  }
+  lines.push("];");
+  lines.push("");
+  return lines;
+}
+
 // ── File I/O ─────────────────────────────────────────────────────────────
 
 /**

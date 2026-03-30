@@ -6,8 +6,13 @@
  * remote GitHub fetch.
  */
 
-import type { FirewallConfig } from "../contracts/firewalls";
+import type {
+  FirewallConfig,
+  FirewallPolicies,
+  FirewallPolicyValue,
+} from "../contracts/firewalls";
 import type { ConnectorType } from "../contracts/connectors";
+import { slackDefaultAllowed } from "./slack.generated";
 import { getConnectorEnvironmentMapping } from "../contracts/connectors";
 import { agentmailFirewall } from "./agentmail.generated";
 import { ahrefsFirewall } from "./ahrefs.generated";
@@ -280,6 +285,20 @@ const EXPANDED_CONNECTOR_FIREWALLS = Object.fromEntries(
 export type FirewallConnectorType = keyof typeof CONNECTOR_FIREWALLS;
 
 /**
+ * Extract the union of permission names from a firewall config object.
+ * Requires the config to be declared with `as const satisfies FirewallConfig`
+ * so that permission name strings are preserved as literal types.
+ */
+export type PermissionNamesOf<T extends FirewallConfig> =
+  T["apis"][number] extends { permissions?: infer P }
+    ? P extends ReadonlyArray<{ name: infer N }>
+      ? N extends string
+        ? N
+        : never
+      : never
+    : never;
+
+/**
  * Connector types that do not have a firewall config.
  *
  * When adding a new ConnectorType, place it in either CONNECTOR_FIREWALLS
@@ -348,4 +367,70 @@ export function getConnectorFirewall(
   type: FirewallConnectorType,
 ): FirewallConfig {
   return EXPANDED_CONNECTOR_FIREWALLS[type];
+}
+
+/**
+ * Per-connector default-allowed permission lists.
+ *
+ * Each entry is a readonly array of permission names that are allowed by
+ * default. Permissions NOT in the array are denied. Connectors without
+ * an entry here have no defaults (all permissions allowed).
+ *
+ * These arrays are generated alongside the firewall configs — see each
+ * connector's generator (e.g. slack.ts) for the source of truth.
+ */
+const DEFAULT_ALLOWED: Partial<
+  Record<FirewallConnectorType, ReadonlyArray<string>>
+> = {
+  slack: slackDefaultAllowed,
+};
+
+/**
+ * Get the default firewall policies for a connector type.
+ *
+ * Builds a full permission → policy map from the connector's default-allowed
+ * list: listed permissions get "allow", everything else gets "deny".
+ *
+ * Returns null when no defaults are defined (caller treats as unrestricted).
+ */
+export function getDefaultFirewallPolicies(
+  type: FirewallConnectorType,
+): Record<string, FirewallPolicyValue> | null {
+  const allowed = DEFAULT_ALLOWED[type];
+  if (!allowed) return null;
+
+  const allowSet = new Set<string>(allowed);
+  const config = getConnectorFirewall(type);
+  const result: Record<string, FirewallPolicyValue> = {};
+  for (const api of config.apis) {
+    if (api.permissions) {
+      for (const p of api.permissions) {
+        result[p.name] = allowSet.has(p.name) ? "allow" : "deny";
+      }
+    }
+  }
+  return result;
+}
+
+/**
+ * Merge stored firewall policies with per-connector defaults.
+ *
+ * For each connector that has a default-allowed list, fills in default
+ * policies when no explicit entry exists in the stored policies.
+ * Call this when reading `firewallPolicies` from the database so that
+ * downstream consumers don't need to know about defaults.
+ */
+export function resolveFirewallPolicies(
+  stored: FirewallPolicies | null,
+  connectors: string[],
+): FirewallPolicies | null {
+  let resolved: FirewallPolicies | null = stored;
+  for (const connector of connectors) {
+    if (!isFirewallConnectorType(connector)) continue;
+    if (resolved?.[connector]) continue;
+    const defaults = getDefaultFirewallPolicies(connector);
+    if (!defaults) continue;
+    resolved = { ...resolved, [connector]: defaults };
+  }
+  return resolved;
 }
