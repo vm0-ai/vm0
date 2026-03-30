@@ -1646,6 +1646,7 @@ dependencies = [
  "reqeast",
  "sandbox",
  "sandbox-fc",
+ "sandbox-mock",
  "sentry",
  "serde",
  "serde_json",
@@ -1810,6 +1811,16 @@ dependencies = [
  "uuid",
  "vsock-host",
  "which",
+]
+
+[[package]]
+name = "sandbox-mock"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "sandbox",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]

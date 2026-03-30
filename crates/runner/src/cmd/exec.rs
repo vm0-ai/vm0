@@ -60,3 +60,74 @@ pub async fn run_exec(args: ExecArgs, control: &dyn SandboxControl) -> RunnerRes
         Err(e) => Err(RunnerError::Config(e.to_string())),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use sandbox::{RemoteExecResult, SandboxControlError};
+    use sandbox_mock::MockSandboxControl;
+
+    use super::*;
+
+    fn make_args(run_id: &str, command: &str) -> ExecArgs {
+        ExecArgs {
+            run_id: run_id.into(),
+            timeout: 5,
+            sudo: false,
+            command: command.split_whitespace().map(String::from).collect(),
+        }
+    }
+
+    #[tokio::test]
+    async fn success_propagates_exit_code() {
+        let control = MockSandboxControl::new("/tmp");
+        control.push_exec_remote_result(Ok(RemoteExecResult {
+            exit_code: 42,
+            stdout: b"hello\n".to_vec(),
+            stderr: Vec::new(),
+        }));
+
+        let result = run_exec(make_args("test-id", "echo hello"), &control)
+            .await
+            .unwrap();
+        assert_eq!(result, ExitCode::from(42));
+    }
+
+    #[tokio::test]
+    async fn zero_exit_code_returns_success() {
+        let control = MockSandboxControl::new("/tmp");
+        let result = run_exec(make_args("test-id", "true"), &control)
+            .await
+            .unwrap();
+        assert_eq!(result, ExitCode::SUCCESS);
+    }
+
+    #[tokio::test]
+    async fn remote_error_prints_message_and_returns_failure() {
+        let control = MockSandboxControl::new("/tmp");
+        control.push_exec_remote_result(Err(SandboxControlError::Remote("command failed".into())));
+
+        let result = run_exec(make_args("test-id", "fail"), &control)
+            .await
+            .unwrap();
+        assert_eq!(result, ExitCode::FAILURE);
+    }
+
+    #[tokio::test]
+    async fn not_found_error_propagates_as_runner_error() {
+        let control = MockSandboxControl::new("/tmp");
+        control
+            .push_exec_remote_result(Err(SandboxControlError::NotFound("no such sandbox".into())));
+
+        let result = run_exec(make_args("missing", "test"), &control).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn connection_error_propagates_as_runner_error() {
+        let control = MockSandboxControl::new("/tmp");
+        control.push_exec_remote_result(Err(SandboxControlError::Connection("refused".into())));
+
+        let result = run_exec(make_args("test-id", "test"), &control).await;
+        assert!(result.is_err());
+    }
+}
