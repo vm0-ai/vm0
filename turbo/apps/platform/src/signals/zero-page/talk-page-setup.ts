@@ -11,6 +11,7 @@ import { currentAgentId$ } from "./agent.ts";
 import { setChatPageInput$ } from "./zero-chat-page.ts";
 import { defaultAgentId$, agentDisplayName$ } from "./zero-agent-name.ts";
 import { zeroSubagents$ } from "./zero-agents.ts";
+import { setSidebarChatAgent$ } from "./zero-nav.ts";
 
 export const setupTalkPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -28,7 +29,7 @@ export const setupTalkPage$ = command(
       throw new Error("Talk page requires an active agent, but none found");
     }
 
-    // Resolve and switch agent first — uses cached data, no extra API call.
+    // Validate agent exists; redirect to default if unknown.
     await set(resolveAgentById$, agentId, signal);
     signal.throwIfAborted();
 
@@ -36,6 +37,9 @@ export const setupTalkPage$ = command(
     // /api/zero/agents/:id round-trip on every navigation.
     const defaultId = await get(defaultAgentId$);
     signal.throwIfAborted();
+
+    // Sync sidebar: remember this agent so sidebar retains it on non-chat pages.
+    set(setSidebarChatAgent$, agentId === defaultId ? null : agentId);
     let agentName: string;
     if (agentId === defaultId) {
       agentName = (await get(agentDisplayName$)) ?? "Agent";

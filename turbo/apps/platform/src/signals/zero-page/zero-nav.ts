@@ -61,8 +61,29 @@ export const navigateToChat$ = command(({ set }, chatThreadId: string) => {
 });
 
 // ---------------------------------------------------------------------------
-// Shell UI state — about page, sidebar
+// Shell UI state — sidebar chat agent, about page, sidebar collapse
 // ---------------------------------------------------------------------------
+
+/**
+ * In-memory state tracking which agent the sidebar displays.
+ * Written by page setup commands when entering /talk/:agentId or /chat/:chatThreadId.
+ * Persists across navigations to non-chat pages (e.g. /activity) so the sidebar
+ * "remembers" the last visited agent.
+ * Null means default agent.
+ */
+const internalSidebarChatAgentId$ = state<string | null>(null);
+
+/** Currently displayed sidebar chat agent ID. Null = default agent. */
+export const sidebarChatAgentId$ = computed((get): string | null =>
+  get(internalSidebarChatAgentId$),
+);
+
+/** Set the sidebar chat agent ID. Called by page setup commands. */
+export const setSidebarChatAgent$ = command(
+  ({ set }, agentId: string | null) => {
+    set(internalSidebarChatAgentId$, agentId);
+  },
+);
 
 const internalShowAboutPage$ = state(false);
 

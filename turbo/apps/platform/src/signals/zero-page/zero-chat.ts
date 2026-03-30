@@ -7,7 +7,11 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { logger } from "../log.ts";
 import { createRunLoop, type PagedRunEvents } from "./polling.ts";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
-import { navigateToChat$, chatThreadId$ } from "./zero-nav.ts";
+import {
+  navigateToChat$,
+  chatThreadId$,
+  sidebarChatAgentId$,
+} from "./zero-nav.ts";
 import { currentAgentId$ } from "./agent.ts";
 import {
   RUN_ERROR_GUIDANCE,
@@ -316,20 +320,9 @@ export const fetchZeroSessionList$ = command(
 
 const chatThreadListResponse$ = computed(async (get) => {
   get(reloadChatThreadList$);
-  // Derive effective agent: URL agent (talk page), thread agent (chat page), or default
-  const pathAgentId = get(currentAgentId$);
-  const defaultId = (await get(zeroOnboardingStatus$)).defaultAgentId;
-  let composeId: string | null | undefined;
-  if (pathAgentId !== null && pathAgentId !== defaultId) {
-    composeId = pathAgentId;
-  } else if (pathAgentId === null) {
-    const thread = await get(currentChatThread$);
-    const threadAgentId = thread?.agentId ?? null;
-    composeId =
-      threadAgentId && threadAgentId !== defaultId ? threadAgentId : defaultId;
-  } else {
-    composeId = defaultId;
-  }
+  const sidebarAgentId = get(sidebarChatAgentId$);
+  const composeId =
+    sidebarAgentId ?? (await get(zeroOnboardingStatus$)).defaultAgentId;
   if (!composeId) {
     return [];
   }
