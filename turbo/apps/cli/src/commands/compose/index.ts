@@ -4,11 +4,7 @@ import { readFile, rm } from "fs/promises";
 import { existsSync } from "fs";
 import { dirname, join } from "path";
 import { parse as parseYaml } from "yaml";
-import {
-  extractAndGroupVariables,
-  resolveSkillRef,
-  type FirewallSelection,
-} from "@vm0/core";
+import { extractAndGroupVariables, resolveSkillRef } from "@vm0/core";
 import {
   getComposeByName,
   createOrUpdateCompose,
@@ -70,7 +66,6 @@ interface AgentConfig {
   framework?: string;
   skills?: string[];
   environment?: Record<string, string>;
-  experimental_firewalls?: Record<string, FirewallSelection>;
 }
 
 interface LoadedConfig {

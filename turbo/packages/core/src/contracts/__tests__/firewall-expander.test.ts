@@ -1,7 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import type { ExpandedFirewallConfig } from "../firewalls";
 import {
-  expandFirewallConfigs,
   resolveFirewallSelections,
   validateRule,
   validateBaseUrl,
@@ -67,51 +65,6 @@ apis:
         rules:
           - ANY /{path+}
 `;
-
-describe("expandFirewallConfigs (deprecated wrapper)", () => {
-  it("should skip configs with no agents", async () => {
-    const config = { version: "1.0" };
-    await expandFirewallConfigs(config);
-  });
-
-  it("should skip already expanded configs (array format)", async () => {
-    const config = {
-      version: "1.0",
-      agents: {
-        myagent: {
-          framework: "claude-code",
-          experimental_firewalls: [
-            { name: "github", ref: "github", apis: [], placeholders: {} },
-          ],
-        },
-      },
-    };
-    await expandFirewallConfigs(config);
-    expect(Array.isArray(config.agents.myagent.experimental_firewalls)).toBe(
-      true,
-    );
-  });
-
-  it("should delegate to resolveFirewallSelections for map format", async () => {
-    const config = {
-      version: "1.0",
-      agents: {
-        myagent: {
-          framework: "claude-code",
-          experimental_firewalls: {
-            "custom-git": { permissions: "all" as const },
-          },
-        },
-      },
-    };
-    await expandFirewallConfigs(config, mockFetch(CUSTOM_GIT_YAML));
-    const expanded = config.agents.myagent
-      .experimental_firewalls as unknown as ExpandedFirewallConfig[];
-    expect(Array.isArray(expanded)).toBe(true);
-    expect(expanded).toHaveLength(1);
-    expect(expanded[0]!.name).toBe("custom-git");
-  });
-});
 
 describe("resolveFirewallSelections", () => {
   /** Mock fetch that returns the right YAML based on URL */

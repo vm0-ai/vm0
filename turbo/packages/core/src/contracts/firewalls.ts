@@ -7,7 +7,7 @@ import { z } from "zod";
  * Other modules (composes.ts, runners.ts) import from here.
  *
  * Firewall configs are hosted in GitHub: vm0-ai/vm0-firewalls
- * See expandFirewallConfigs() in firewall-expander.ts for resolution logic.
+ * See resolveFirewallSelections() in firewall-expander.ts for resolution logic.
  */
 
 /**
