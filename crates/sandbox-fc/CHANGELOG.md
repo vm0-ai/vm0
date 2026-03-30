@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.3](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.18.2...sandbox-fc-v0.18.3) (2026-03-30)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** do not delete workspace after deferred cow removal ([#7225](https://github.com/vm0-ai/vm0/issues/7225)) ([4338b56](https://github.com/vm0-ai/vm0/commit/4338b56c45c77f1822ba0fee096bd9163e5818f4))
+
 ## [0.18.2](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.18.1...sandbox-fc-v0.18.2) (2026-03-30)
 
 
