@@ -226,6 +226,10 @@ describe("/api/cli/auth/test-token", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
+      const data = await response.json();
+      expect(data.access_token).toMatch(/^vm0_pat_/);
+      expect(data.token_type).toBe("Bearer");
+
       expect(mockCreateUser).toHaveBeenCalledWith({
         emailAddress: [email],
       });
