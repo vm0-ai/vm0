@@ -465,6 +465,9 @@ jobs:
     # Skip for release-please PRs, commits, and merge queue entries
     if: needs.detect-release.outputs.skip != 'true'
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        shard: [1, 2, 3, 4]
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260324
     steps:
@@ -472,7 +475,7 @@ jobs:
       - uses: ./.github/actions/toolchain-init
       - name: Test App
         working-directory: turbo
-        run: pnpm vitest run --project=@vm0/app --coverage.enabled --coverage.reporter=json
+        run: pnpm vitest run --project=@vm0/app --shard=${{ matrix.shard }}/4 --coverage.enabled --coverage.reporter=json
       - name: Upload coverage to Codecov
         if: success() || failure()
         uses: codecov/codecov-action@v6
@@ -1090,7 +1093,7 @@ jobs:
     needs: [prepare, deploy-web, deploy-app]
     if: |
       always() &&
-      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
+      github.event_name == 'merge_group' &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
@@ -1262,7 +1265,7 @@ jobs:
         test-other,
       ]
     if: |
-      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
+      github.event_name == 'merge_group' &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
@@ -1758,7 +1761,7 @@ jobs:
         e2e-runner-bootstrap,
       ]
     if: |
-      github.event_name != 'push' &&
+      github.event_name == 'merge_group' &&
       needs.prepare.outputs.job-ref != '' && (
         needs.prepare.outputs.web-changed == 'true' ||
         needs.prepare.outputs.cli-changed == 'true' ||
@@ -1816,7 +1819,7 @@ jobs:
           echo "=== Running Runner E2E Tests (Chunk ${{ matrix.index }}, ${PARALLEL} parallel, total capacity ${RUNNER_TOTAL_CAPACITY}) ==="
           echo "Files: ${{ matrix.files }}"
           mkdir -p e2e/results
-          BATS_TEST_TIMEOUT=60 ./e2e/test/libs/bats/bin/bats -T -j "${PARALLEL}" --report-formatter junit --output e2e/results ${{ matrix.files }}
+          BATS_TEST_TIMEOUT=60 ./e2e/test/libs/bats/bin/bats -T -j "${PARALLEL}" --no-parallelize-within-files --report-formatter junit --output e2e/results ${{ matrix.files }}
           echo "✅ Chunk ${{ matrix.index }} tests passed"
         env:
           RUNNER_TOTAL_CAPACITY: ${{ needs.deploy-runner-start.outputs.total-capacity }}

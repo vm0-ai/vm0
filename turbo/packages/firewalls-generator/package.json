@@ -21,6 +21,7 @@
     "generate:cal-com": "tsx src/index.ts cal-com",
     "generate:calendly": "tsx src/index.ts calendly",
     "generate:canva": "tsx src/index.ts canva",
+    "generate:chatwoot": "tsx src/index.ts chatwoot",
     "generate:clickup": "tsx src/index.ts clickup",
     "generate:close": "tsx src/index.ts close",
     "generate:cloudflare": "tsx src/index.ts cloudflare",

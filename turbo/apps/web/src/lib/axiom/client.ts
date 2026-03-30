@@ -78,34 +78,77 @@ function extractDatasetFromApl(apl: string): string | null {
 }
 
 /**
- * Ingest events to Axiom dataset.
- * Non-blocking - logs errors but doesn't throw.
+ * Buffer events for Axiom ingestion.
+ *
+ * Events are queued in the Axiom SDK's internal batch and flushed at the
+ * response boundary via {@link flushAxiom} (called from ts-rest-handler).
+ * This avoids per-call HTTP requests and keeps API usage within org limits.
  */
-export async function ingestToAxiom(
+export function ingestToAxiom(
   dataset: string,
   events: Record<string, unknown>[],
-): Promise<boolean> {
+): boolean {
   const client = getClientForDataset(dataset);
   if (!client) {
     log.debug("Axiom not configured, skipping ingest");
     return false;
   }
 
-  try {
-    client.ingest(dataset, events);
-    await client.flush();
-    log.debug(`Ingested ${events.length} events to ${dataset}`);
-    return true;
-  } catch (error) {
-    log.error(`Axiom ingest failed for ${dataset}:`, error);
-    return false;
+  client.ingest(dataset, events);
+  log.debug(`Buffered ${events.length} events for ${dataset}`);
+  return true;
+}
+
+/**
+ * Flush all pending Axiom ingestion batches.
+ *
+ * Call at request/response boundaries to ensure buffered events are sent
+ * before the serverless function terminates.
+ */
+export async function flushAxiom(): Promise<void> {
+  const results = await Promise.allSettled([
+    sessionsClient?.flush(),
+    telemetryClient?.flush(),
+  ]);
+  for (const r of results) {
+    if (r.status === "rejected") {
+      log.error("Axiom flush failed:", r.reason);
+    }
   }
+}
+
+// ── Query retry ─────────────────────────────────────────────────────────
+
+const MAX_QUERY_RETRIES = 3;
+const QUERY_BACKOFF_BASE_MS = 2000;
+
+function isRateLimitError(error: unknown): boolean {
+  if (error instanceof Error) {
+    const msg = error.message.toLowerCase();
+    return msg.includes("rate limit") || msg.includes("429");
+  }
+  return false;
+}
+
+function extractRetryAfterMs(error: unknown): number | null {
+  if (error instanceof Error) {
+    // Axiom error format: "try again in 0m19s"
+    const match = error.message.match(/try again in (\d+)m(\d+)s/);
+    if (match?.[1] && match[2]) {
+      return (parseInt(match[1], 10) * 60 + parseInt(match[2], 10)) * 1000;
+    }
+  }
+  return null;
 }
 
 /**
  * Query events from Axiom dataset using APL.
  * Automatically routes to the correct client based on the dataset in the APL query.
  * Returns empty array if Axiom is not configured.
+ *
+ * Retries up to {@link MAX_QUERY_RETRIES} times on rate-limit (429) errors
+ * with exponential backoff, respecting the server's `retry_after` hint when
+ * available.
  */
 export async function queryAxiom<T = Record<string, unknown>>(
   apl: string,
@@ -118,12 +161,32 @@ export async function queryAxiom<T = Record<string, unknown>>(
     return [];
   }
 
-  const result = await client.query(apl);
-  // Axiom stores _time separately from data, merge them for the response
-  return (
-    result.matches?.map((m: Entry) => ({ _time: m._time, ...m.data }) as T) ??
-    []
-  );
+  for (let attempt = 0; attempt <= MAX_QUERY_RETRIES; attempt++) {
+    try {
+      const result = await client.query(apl);
+      // Axiom stores _time separately from data, merge them for the response
+      return (
+        result.matches?.map(
+          (m: Entry) => ({ _time: m._time, ...m.data }) as T,
+        ) ?? []
+      );
+    } catch (error) {
+      if (attempt < MAX_QUERY_RETRIES && isRateLimitError(error)) {
+        const waitMs =
+          extractRetryAfterMs(error) ??
+          QUERY_BACKOFF_BASE_MS * Math.pow(2, attempt);
+        log.warn(
+          `Axiom query rate limited, retrying in ${waitMs}ms (attempt ${attempt + 1}/${MAX_QUERY_RETRIES})`,
+        );
+        await new Promise((r) => setTimeout(r, waitMs));
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  // Unreachable — the final attempt either returns or throws above
+  return [];
 }
 
 interface RequestLogEntry {

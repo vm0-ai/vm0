@@ -29,6 +29,7 @@ import { browserlessFirewall } from "./browserless.generated";
 import { calComFirewall } from "./cal-com.generated";
 import { calendlyFirewall } from "./calendly.generated";
 import { canvaFirewall } from "./canva.generated";
+import { chatwootFirewall } from "./chatwoot.generated";
 import { clickupFirewall } from "./clickup.generated";
 import { closeFirewall } from "./close.generated";
 import { cloudflareFirewall } from "./cloudflare.generated";
@@ -141,6 +142,7 @@ const CONNECTOR_FIREWALLS = {
   "cal-com": calComFirewall,
   calendly: calendlyFirewall,
   canva: canvaFirewall,
+  chatwoot: chatwootFirewall,
   clickup: clickupFirewall,
   close: closeFirewall,
   cloudflare: cloudflareFirewall,
@@ -318,7 +320,6 @@ export type PermissionNamesOf<T extends FirewallConfig> =
  */
 export type NonFirewallConnectorType =
   // Self-hosted / dynamic base URL — needs ${{ vars.X }} template + connector variable addition
-  | "chatwoot" // self-hosted, auth: api_access_token header, needs BASE_URL variable
   | "dify" // self-hosted, auth: Bearer token, needs BASE_URL variable
   | "metabase" // self-hosted, auth: x-api-key header, needs BASE_URL variable
   | "qdrant" // self-hosted, auth: api-key header or Bearer, needs BASE_URL variable

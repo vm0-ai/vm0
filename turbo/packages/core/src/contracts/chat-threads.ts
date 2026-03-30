@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import { runStatusSchema } from "./runs";
 
 const c = initContract();
 
@@ -133,9 +134,41 @@ export const chatThreadRunsContract = c.router({
   },
 });
 
+/**
+ * Chat messages contract (/api/zero/chat/messages)
+ * Unified endpoint: create thread (if needed) + run + association in one call.
+ */
+export const chatMessagesContract = c.router({
+  send: {
+    method: "POST",
+    path: "/api/zero/chat/messages",
+    headers: authHeadersSchema,
+    body: z.object({
+      agentId: z.string().min(1),
+      prompt: z.string().min(1),
+      threadId: z.string().optional(),
+      modelProvider: z.string().optional(),
+    }),
+    responses: {
+      201: z.object({
+        runId: z.string(),
+        threadId: z.string(),
+        status: runStatusSchema,
+        createdAt: z.string(),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Send a chat message (create thread + run + association)",
+  },
+});
+
 export type ChatThreadsContract = typeof chatThreadsContract;
 export type ChatThreadByIdContract = typeof chatThreadByIdContract;
 export type ChatThreadRunsContract = typeof chatThreadRunsContract;
+export type ChatMessagesContract = typeof chatMessagesContract;
 
 export { chatThreadListItemSchema, chatThreadDetailSchema, summaryEntrySchema };
 

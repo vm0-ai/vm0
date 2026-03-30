@@ -10,8 +10,8 @@
 import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://developers.forem.com/api/v0";
-// Token format not publicly documented; using generic placeholder
-const PLACEHOLDER_VALUE = "Vm0PlaceHolder00000000000000000000000000000000a";
+// Token format: 24 alphanumeric chars [a-zA-Z0-9]
+const PLACEHOLDER_VALUE = "Vm0PlaceHolder0000000000";
 
 function generateTypeScript(): string {
   const lines: string[] = [

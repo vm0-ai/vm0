@@ -10,7 +10,7 @@ export const loopsFirewall: FirewallConfig = {
   name: "loops",
   description: "Loops API",
   placeholders: {
-    LOOPS_TOKEN: "00000000000000000000000000000000",
+    LOOPS_TOKEN: "d2d561f5ff80136f69b4b5a31b9fb3c9",
   },
   apis: [
     {

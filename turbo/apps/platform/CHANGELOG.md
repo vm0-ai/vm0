@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.165.0](https://github.com/vm0-ai/vm0/compare/app-v0.164.0...app-v0.165.0) (2026-03-30)
+
+
+### Features
+
+* add unified chat messages endpoint ([#7222](https://github.com/vm0-ai/vm0/issues/7222)) ([1a7bb9e](https://github.com/vm0-ai/vm0/commit/1a7bb9ee48d52b416924083e32c1af6230e24bd3))
+
+
+### Bug Fixes
+
+* **platform:** replace button role queries with text queries in onboarding tests ([#7210](https://github.com/vm0-ai/vm0/issues/7210)) ([5d46970](https://github.com/vm0-ai/vm0/commit/5d46970e87a3d7654cfcd3281915807be7a133fe))
+* **platform:** use dynamic poll interval for session list refresh ([#7189](https://github.com/vm0-ai/vm0/issues/7189)) ([bd3c2f7](https://github.com/vm0-ai/vm0/commit/bd3c2f7c76e555b9f3ad6d5f620dc4045e151675))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.125.0
+
 ## [0.164.0](https://github.com/vm0-ai/vm0/compare/app-v0.163.0...app-v0.164.0) (2026-03-30)
 
 

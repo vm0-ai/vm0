@@ -19,11 +19,9 @@ import {
 import { currentAgentId$ } from "./agent.ts";
 import {
   RUN_ERROR_GUIDANCE,
-  zeroRunsMainContract,
-  zeroRunsByIdContract,
+  chatMessagesContract,
   chatThreadsContract,
   chatThreadByIdContract,
-  chatThreadRunsContract,
   zeroSessionsByIdContract,
   type SummaryEntry,
 } from "@vm0/core";
@@ -48,37 +46,7 @@ function isResultEventData(data: unknown): data is { result: string } {
 
 /** Scan telemetry event pages for the last "result" event content. */
 
-/** Start an agent run and return the runId. Throws on failure with the API error message. */
-async function startAgentRun(
-  createClient: ZeroClientFactory,
-  composeId: string,
-  prompt: string,
-  sessionId?: string | null,
-  modelProvider?: string | null,
-): Promise<string> {
-  const client = createClient(zeroRunsMainContract);
-  const result = await client.create({
-    body: {
-      prompt: prompt.trim(),
-      agentId: composeId,
-      ...(sessionId ? { sessionId } : {}),
-      ...(modelProvider ? { modelProvider } : {}),
-    },
-  });
-  if (result.status === 201) {
-    return result.body.runId;
-  }
-  if (result.status === 400 || result.status === 403 || result.status === 404) {
-    const code = result.body.error.code;
-    const guidance = code ? RUN_ERROR_GUIDANCE[code] : undefined;
-    const message = guidance
-      ? `${guidance.title}: ${guidance.guidance}`
-      : result.body.error.message;
-    throw new Error(message);
-  }
-  throw new Error(`Failed to start agent run (${result.status})`);
-}
-
+/** Create a chat thread via the threads API. Used by the "New chat" sidebar button. */
 async function createChatThread(
   createClient: ZeroClientFactory,
   agentId: string,
@@ -92,21 +60,6 @@ async function createChatThread(
     throw new Error("Failed to create chat thread");
   }
   return { id: result.body.id, title: result.body.title };
-}
-
-async function addRunToThread(
-  createClient: ZeroClientFactory,
-  threadId: string,
-  runId: string,
-): Promise<void> {
-  const client = createClient(chatThreadRunsContract);
-  const result = await client.addRun({
-    params: { id: threadId },
-    body: { runId },
-  });
-  if (result.status !== 204) {
-    throw new Error(`Failed to associate run with thread (${result.status})`);
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -159,8 +112,6 @@ export const zeroChatMessages$ = computed(async (get) => {
   const localMessages = get(internalLocalMessages$);
   return [...serverMessages, ...localMessages];
 });
-
-const internalSessionId$ = state<string | null>(null);
 
 /** Whether all runs have finished (no in-flight runs). */
 export const allFinished$ = computed(async (get) => {
@@ -593,15 +544,6 @@ const currentChatMessages$ = computed(
   },
 );
 
-const currentChatSessionId$ = computed(async (get) => {
-  const thread = await get(currentChatThread$);
-  if (!thread) {
-    return null;
-  }
-
-  return thread.isLegacySession ? get(chatThreadId$) : thread.latestSessionId;
-});
-
 /**
  * Composes the full session snapshot from thread data + transformed messages.
  * Loading/error states are derived automatically via `useLoadable` in the view.
@@ -780,12 +722,6 @@ export const loadSessionFromSnapshot$ = command(
       return;
     }
 
-    const sessionId = await get(currentChatSessionId$);
-    signal.throwIfAborted();
-    if (sessionId) {
-      set(internalSessionId$, sessionId);
-    }
-
     // Resume polling for active runs: copy active run messages to local
     // and start their polling loops via beginLoop$.
     if (snapshot.activeRunMessages.length > 0) {
@@ -820,7 +756,6 @@ export const loadSessionFromSnapshot$ = command(
  */
 export const switchZeroSession$ = command(({ set }, threadId: string) => {
   set(navigateToChat$, threadId);
-  set(internalSessionId$, null);
   set(internalLocalMessages$, []);
 });
 
@@ -829,7 +764,6 @@ export const startNewZeroSession$ = command(({ set }) => {
   set(resetTalkSendSignal$);
 
   set(internalLocalMessages$, []);
-  set(internalSessionId$, null);
 
   set(internalChatInput$, "");
 });
@@ -931,43 +865,9 @@ const prepareUserMessage$ = command(
   },
 );
 
-/**
- * Ensure a chat thread exists for the current conversation.
- * Creates one if needed and updates sidebar + URL. Returns the thread ID,
- * or null if creation failed (caller should abort).
- */
-const ensureChatThread$ = command(
-  async (
-    { get, set },
-    args: { composeId: string; prompt: string },
-    _signal: AbortSignal,
-  ): Promise<string | null> => {
-    const threadId = get(chatThreadId$);
-    if (threadId) {
-      return threadId;
-    }
-
-    const createClient = get(zeroClient$);
-    const title = args.prompt.trim().slice(0, 100);
-    const thread = await createChatThread(createClient, args.composeId, title);
-
-    // Add the new thread to the session list so the sidebar updates immediately
-    set(reloadChatThreadList$, (n) => n + 1);
-
-    return thread.id;
-  },
-);
-
-/** Post-polling cleanup: persist session ID and refresh sidebar. */
+/** Post-polling cleanup: refresh sidebar. Session is managed server-side via callback. */
 const finalizeCompletedRun$ = command(
-  async ({ get, set }, runId: string, signal: AbortSignal) => {
-    const client = get(zeroClient$)(zeroRunsByIdContract);
-    const result = await client.getById({ params: { id: runId } });
-    signal.throwIfAborted();
-    if (result.status === 200 && result.body.result?.agentSessionId) {
-      set(internalSessionId$, result.body.result.agentSessionId);
-    }
-
+  async ({ get, set }, _runId: string, signal: AbortSignal) => {
     // Refresh session list (messages are persisted server-side via webhook)
     set(reloadChatThreadList$, (n) => n + 1);
     await delay(get(poolInterval$), { signal });
@@ -977,7 +877,8 @@ const finalizeCompletedRun$ = command(
 
 /**
  * Create a run, associate it with a thread, poll until terminal, and handle completion.
- * Extracted from sendZeroChatMessage$ so the core send-and-poll logic is testable independently.
+ * Uses the unified POST /api/zero/chat/messages endpoint — a single HTTP call
+ * replaces the previous 3-call orchestration (create thread + create run + add run to thread).
  */
 const submitAndPollRun$ = command(
   async (
@@ -991,38 +892,42 @@ const submitAndPollRun$ = command(
     signal: AbortSignal,
   ) => {
     const createClient = get(zeroClient$);
-    const sessionId = get(internalSessionId$);
     const existingThreadId = get(chatThreadId$);
-
-    const threadId = await set(
-      ensureChatThread$,
-      {
-        composeId: args.composeId,
-        prompt: args.prompt,
-      },
-      signal,
-    );
-
-    if (!threadId) {
-      return;
-    }
 
     const modelProvider =
       args.modelProvider && args.modelProvider !== "default"
         ? args.modelProvider
         : undefined;
-    const runId = await startAgentRun(
-      createClient,
-      args.composeId,
-      args.fullPrompt,
-      sessionId,
-      modelProvider,
-    );
+
+    // Single API call: create thread (if needed) + run + association
+    const client = createClient(chatMessagesContract);
+    const result = await client.send({
+      body: {
+        agentId: args.composeId,
+        prompt: args.fullPrompt,
+        ...(existingThreadId ? { threadId: existingThreadId } : {}),
+        ...(modelProvider ? { modelProvider } : {}),
+      },
+    });
     signal.throwIfAborted();
 
-    // Associate run to thread (must complete before polling so refresh works)
-    await addRunToThread(createClient, threadId, runId);
-    signal.throwIfAborted();
+    if (result.status !== 201) {
+      if (
+        result.status === 400 ||
+        result.status === 403 ||
+        result.status === 404
+      ) {
+        const code = result.body.error.code;
+        const guidance = code ? RUN_ERROR_GUIDANCE[code] : undefined;
+        const message = guidance
+          ? `${guidance.title}: ${guidance.guidance}`
+          : result.body.error.message;
+        throw new Error(message);
+      }
+      throw new Error(`Failed to send message (${result.status})`);
+    }
+
+    const { runId, threadId } = result.body;
 
     // For new threads, navigate after server state is ready. The snapshot
     // reconstructs messages from unsavedRuns and resumes polling.

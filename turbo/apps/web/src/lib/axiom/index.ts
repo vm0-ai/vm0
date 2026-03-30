@@ -1,5 +1,6 @@
 export {
   ingestToAxiom,
+  flushAxiom,
   queryAxiom,
   ingestRequestLog,
   ingestSandboxOpLog,

@@ -1,5 +1,30 @@
 # Changelog
 
+## [12.170.0](https://github.com/vm0-ai/vm0/compare/web-v12.169.0...web-v12.170.0) (2026-03-30)
+
+
+### Features
+
+* add unified chat messages endpoint ([#7222](https://github.com/vm0-ai/vm0/issues/7222)) ([1a7bb9e](https://github.com/vm0-ai/vm0/commit/1a7bb9ee48d52b416924083e32c1af6230e24bd3))
+
+
+### Bug Fixes
+
+* **axiom:** batch ingestion and add query retry to avoid org rate limit ([#7228](https://github.com/vm0-ai/vm0/issues/7228)) ([d7bc284](https://github.com/vm0-ai/vm0/commit/d7bc284a5c6defaead0e4675b4e679a25369fcfe)), closes [#7219](https://github.com/vm0-ai/vm0/issues/7219)
+* use org id instead of slug for s3 storage path prefix ([#7186](https://github.com/vm0-ai/vm0/issues/7186)) ([279be0e](https://github.com/vm0-ai/vm0/commit/279be0e184a789a238294ac95301d884ee1e0904))
+
+
+### Refactoring
+
+* remove user-defined runner groups and enforce vm0/ prefix ([#7207](https://github.com/vm0-ai/vm0/issues/7207)) ([233b5fd](https://github.com/vm0-ai/vm0/commit/233b5fd5f9e4c0a2606585ce548f3b2ba3c2e592)), closes [#7202](https://github.com/vm0-ai/vm0/issues/7202)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.125.0
+
 ## [12.169.0](https://github.com/vm0-ai/vm0/compare/web-v12.168.0...web-v12.169.0) (2026-03-30)
 
 

@@ -1013,6 +1013,7 @@ const CONNECTOR_TYPES_DEF = {
     label: "Metabase",
     environmentMapping: {
       METABASE_TOKEN: "$secrets.METABASE_TOKEN",
+      METABASE_BASE_URL: "$vars.METABASE_BASE_URL",
     },
     helpText:
       "Connect your Metabase instance to query data, manage dashboards, and automate analytics workflows",
@@ -1025,6 +1026,14 @@ const CONNECTOR_TYPES_DEF = {
           METABASE_TOKEN: {
             label: "API Key",
             required: true,
+          },
+          METABASE_BASE_URL: {
+            label: "Base URL",
+            required: true,
+            placeholder: "https://mycompany.metabaseapp.com",
+            helpText:
+              "Your Metabase instance URL (e.g. 'https://mycompany.metabaseapp.com' for cloud or your self-hosted URL)",
+            type: "variable",
           },
         },
       },
@@ -1414,6 +1423,7 @@ const CONNECTOR_TYPES_DEF = {
     label: "Salesforce",
     environmentMapping: {
       SALESFORCE_TOKEN: "$secrets.SALESFORCE_TOKEN",
+      SALESFORCE_INSTANCE: "$vars.SALESFORCE_INSTANCE",
     },
     helpText:
       "Connect your Salesforce account to manage CRM data, contacts, leads, and sales workflows",
@@ -1425,6 +1435,14 @@ const CONNECTOR_TYPES_DEF = {
             label: "API Token",
             required: true,
             placeholder: "00D...",
+          },
+          SALESFORCE_INSTANCE: {
+            label: "Instance",
+            required: true,
+            placeholder: "mycompany",
+            helpText:
+              "Your Salesforce instance name (e.g. 'mycompany' from mycompany.my.salesforce.com)",
+            type: "variable",
           },
         },
       },
@@ -3010,6 +3028,7 @@ const CONNECTOR_TYPES_DEF = {
     label: "Qdrant",
     environmentMapping: {
       QDRANT_TOKEN: "$secrets.QDRANT_TOKEN",
+      QDRANT_BASE_URL: "$vars.QDRANT_BASE_URL",
     },
     helpText:
       "Connect your Qdrant account to store, search, and manage vector embeddings",
@@ -3023,6 +3042,14 @@ const CONNECTOR_TYPES_DEF = {
             label: "API Key",
             required: true,
             placeholder: "your-qdrant-api-key",
+          },
+          QDRANT_BASE_URL: {
+            label: "Cluster URL",
+            required: true,
+            placeholder: "https://your-cluster.region.cloud.qdrant.io:6333",
+            helpText:
+              "Your Qdrant cluster URL (e.g. 'https://abc123.us-east4-0.gcp.cloud.qdrant.io:6333')",
+            type: "variable",
           },
         },
       },

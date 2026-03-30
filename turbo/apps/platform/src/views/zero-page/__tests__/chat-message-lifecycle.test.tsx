@@ -48,7 +48,7 @@ describe("chat message lifecycle", () => {
   it("should stay on talk page when run creation fails", async () => {
     mockChatLifecycle();
     server.use(
-      http.post("*/api/zero/runs", () =>
+      http.post("*/api/zero/chat/messages", () =>
         HttpResponse.json(
           { error: { message: "Some API error", code: "BAD_REQUEST" } },
           { status: 400 },
@@ -70,11 +70,11 @@ describe("chat message lifecycle", () => {
     });
   });
 
-  it("should stay on talk page when thread creation fails", async () => {
+  it("should stay on talk page when message sending fails", async () => {
     mockChatLifecycle();
     server.use(
       http.post(
-        "*/api/zero/chat-threads",
+        "*/api/zero/chat/messages",
         () => new HttpResponse(null, { status: 500 }),
       ),
     );
