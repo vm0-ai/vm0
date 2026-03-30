@@ -22,6 +22,8 @@ import {
   type FirewallPolicies,
   getConnectorFirewall,
   isFirewallConnectorType,
+  resolveFirewallSelections,
+  type FirewallSelection,
 } from "@vm0/core";
 import { agentComposeVersions } from "../../db/schema/agent-compose";
 import type { AgentComposeYaml } from "../../types/agent-compose";
@@ -703,6 +705,29 @@ async function loadAgentComposeForNewRun(
 }
 
 /**
+ * Resolve compose-declared firewalls from agent compose content.
+ * Handles both legacy (pre-expanded array) and new (map) formats.
+ */
+async function resolveComposeFirewalls(
+  agentCompose: unknown,
+): Promise<ExpandedFirewallConfig[]> {
+  const compose = agentCompose as AgentComposeYaml | undefined;
+  if (!compose?.agents) return [];
+
+  const firstAgent = Object.values(compose.agents)[0];
+  const configs = firstAgent?.experimental_firewalls;
+  if (!configs) return [];
+
+  // Legacy: already expanded (stored before this refactor)
+  if (Array.isArray(configs)) return configs;
+
+  // New: resolve from map format at runtime
+  return resolveFirewallSelections(
+    configs as Record<string, FirewallSelection>,
+  );
+}
+
+/**
  * Resolve all secrets (user, model provider, connector) and expand environment.
  * Extracted from buildExecutionContext to reduce complexity.
  */
@@ -725,6 +750,7 @@ async function resolveSecretsAndEnvironment(
   modelProviderFirewall: ExpandedFirewallConfig | undefined;
   selectedModel: string | undefined;
   connectorFirewalls: ExpandedFirewallConfig[];
+  composeFirewalls: ExpandedFirewallConfig[];
 }> {
   // Model provider secret injection
   const hasExplicitModelProviderConfig = MODEL_PROVIDER_ENV_VARS.some(
@@ -732,15 +758,15 @@ async function resolveSecretsAndEnvironment(
   );
   const framework = firstAgent?.framework || "claude-code";
 
-  // Run all secret resolution and variable fetching in parallel.
-  // The three resolve functions have independent DB queries (different secret types),
-  // so there is no data dependency between them.
+  // Run all secret resolution, variable fetching, and compose firewall resolution in parallel.
+  // These have independent queries/operations, so there is no data dependency between them.
   const [
     dbSecrets,
     modelProviderResult,
     oauthResult,
     apiTokenTypes,
     mergedVars,
+    composeFirewalls,
   ] = await Promise.all([
     fetchReferencedSecrets(orgId, userId, firstAgent?.environment),
     resolveModelProviderSecrets(
@@ -752,6 +778,7 @@ async function resolveSecretsAndEnvironment(
     resolveOauthConnectorSecrets(orgId, userId),
     getApiTokenConnectorTypes(orgId, userId),
     fetchAndMergeVariables(orgId, userId, vars),
+    resolveComposeFirewalls(agentCompose),
   ]);
 
   const connectorTypes = [
@@ -793,9 +820,6 @@ async function resolveSecretsAndEnvironment(
     ? getModelProviderFirewall(modelProviderFirewallType)
     : undefined;
 
-  // Expand environment variables from compose config.
-  // Model provider env vars are passed as additionalEnvironment so they go through
-  // the same servicePlaceholders logic (secret-derived values use ${{ secrets.X }} templates).
   // Build connector firewall configs for placeholder injection.
   // connectorFirewalls configs carry `placeholders` (custom placeholder values),
   // which expandEnvironmentFromCompose needs to replace secrets with placeholders.
@@ -806,6 +830,9 @@ async function resolveSecretsAndEnvironment(
       ref: type,
     }));
 
+  // Expand environment variables from compose config.
+  // All firewalls (compose-declared, model provider, connector) are passed via the
+  // `firewalls` param for unified placeholder injection.
   const { environment } = expandEnvironmentFromCompose(
     agentCompose,
     mergedVars,
@@ -813,6 +840,7 @@ async function resolveSecretsAndEnvironment(
     checkEnv,
     modelProviderResult.injectedEnvironment,
     [
+      ...composeFirewalls,
       ...(modelProviderFirewall ? [modelProviderFirewall] : []),
       ...connectorFirewallConfigs,
     ],
@@ -826,6 +854,7 @@ async function resolveSecretsAndEnvironment(
     modelProviderFirewall,
     selectedModel: modelProviderResult.selectedModel,
     connectorFirewalls: connectorFirewallConfigs,
+    composeFirewalls,
   };
 }
 
@@ -1000,55 +1029,39 @@ export function deduplicateAutoFirewalls<
  * Merge compose-declared, auto-generated, and policy-based firewalls into a
  * single manifest. Auto-generated and policy firewalls are deduplicated against
  * compose-declared ones (prefix match on base URL).
+ *
+ * Compose firewalls are pre-resolved by resolveComposeFirewalls() and mapped to
+ * the ExperimentalFirewalls format (name, ref, apis — no placeholders).
  */
 function mergeFirewalls(
-  agentCompose: unknown,
+  composeFirewallConfigs: ExpandedFirewallConfig[],
   modelProviderFirewall: ExperimentalFirewalls[number] | null | undefined,
   connectorFirewalls: ExpandedFirewallConfig[],
   firewallPolicies?: FirewallPolicies,
 ): ExperimentalFirewalls | undefined {
-  const composeFirewalls = buildExperimentalFirewalls(agentCompose);
+  // Map compose firewalls to the runner's ExperimentalFirewalls format
+  const composeFirewalls: ExperimentalFirewalls = composeFirewallConfigs.map(
+    (fw) => ({
+      name: fw.name,
+      ref: fw.ref,
+      apis: fw.apis.map((api) => ({
+        base: api.base,
+        auth: api.auth,
+        ...(api.permissions ? { permissions: api.permissions } : {}),
+      })),
+    }),
+  );
   const autoFirewalls = modelProviderFirewall ? [modelProviderFirewall] : [];
   const policyFirewalls = applyConnectorPolicies(
     connectorFirewalls,
     firewallPolicies,
   );
   const allFirewalls = [
-    ...(composeFirewalls ?? []),
-    ...deduplicateAutoFirewalls(autoFirewalls, composeFirewalls ?? []),
-    ...deduplicateAutoFirewalls(policyFirewalls, composeFirewalls ?? []),
+    ...composeFirewalls,
+    ...deduplicateAutoFirewalls(autoFirewalls, composeFirewalls),
+    ...deduplicateAutoFirewalls(policyFirewalls, composeFirewalls),
   ];
   return allFirewalls.length > 0 ? allFirewalls : undefined;
-}
-
-/**
- * Build ExperimentalFirewalls manifest from agent compose's expanded experimental_firewalls.
- * Returns null if no firewall configs are declared.
- *
- * Reads pre-expanded ExpandedFirewallConfig objects (resolved at compose time)
- * and maps them to a flat firewall entry array: [{ name, ref, apis }].
- *
- * Placeholder env var injection is handled by expandEnvironmentFromCompose.
- */
-function buildExperimentalFirewalls(
-  agentCompose: unknown,
-): ExperimentalFirewalls | null {
-  const compose = agentCompose as AgentComposeYaml | undefined;
-  if (!compose?.agents) return null;
-
-  const firstAgent = Object.values(compose.agents)[0];
-  const firewallConfigs = firstAgent?.experimental_firewalls;
-  if (!firewallConfigs || firewallConfigs.length === 0) return null;
-
-  return firewallConfigs.map((fw) => ({
-    name: fw.name,
-    ref: fw.ref,
-    apis: fw.apis.map((api) => ({
-      base: api.base,
-      auth: api.auth,
-      ...(api.permissions ? { permissions: api.permissions } : {}),
-    })),
-  }));
 }
 
 /** Unrestricted permission — allows all endpoints through the proxy. */
@@ -1221,6 +1234,7 @@ export async function buildExecutionContext(
     modelProviderFirewall,
     selectedModel,
     connectorFirewalls,
+    composeFirewalls,
   } = secretsResult;
   const userTimezone = userPrefs?.timezone ?? undefined;
 
@@ -1246,7 +1260,7 @@ export async function buildExecutionContext(
 
   // Build experimental firewall manifest (base + auth entries for the runner).
   const experimentalFirewalls = mergeFirewalls(
-    agentCompose,
+    composeFirewalls,
     modelProviderFirewall,
     connectorFirewalls,
     params.firewallPolicies,

@@ -144,8 +144,8 @@ const agentDefinitionSchema = z.object({
     .optional(),
   /**
    * External firewall rules for proxy-side token replacement.
-   * CLI input: map format { slack: { permissions: [...] | "all" } }
-   * — expanded by CLI to full ExpandedFirewallConfig[] before API call.
+   * Map format: { slack: { permissions: [...] | "all" } }
+   * Resolved to full ExpandedFirewallConfig[] at runtime.
    */
   experimental_firewalls: z
     .record(
@@ -187,14 +187,29 @@ const expandedFirewallConfigSchema = z.object({
 
 /**
  * Agent compose content schema for API requests.
- * Same as agentComposeContentSchema but experimental_firewalls is pre-expanded by CLI.
+ * Accepts both map format (new) and pre-expanded array format (legacy stored data).
  */
 const agentComposeApiContentSchema = z.object({
   version: z.string().min(1, "Version is required"),
   agents: z.record(
     z.string(),
     agentDefinitionSchema.extend({
-      experimental_firewalls: z.array(expandedFirewallConfigSchema).optional(),
+      experimental_firewalls: z
+        .union([
+          // Map format (current): resolved at runtime
+          z.record(
+            z.string(),
+            z.object({
+              permissions: z.union([
+                z.literal("all"),
+                z.array(z.string()).min(1),
+              ]),
+            }),
+          ),
+          // Expanded array format (legacy): stored by older compose versions
+          z.array(expandedFirewallConfigSchema),
+        ])
+        .optional(),
     }),
   ),
   volumes: z.record(z.string(), volumeConfigSchema).optional(),

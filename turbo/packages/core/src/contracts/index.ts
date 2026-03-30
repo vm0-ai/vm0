@@ -408,6 +408,7 @@ export {
 
 export {
   expandFirewallConfigs,
+  resolveFirewallSelections,
   collectAndValidatePermissions,
   validateRule,
   validateBaseUrl,

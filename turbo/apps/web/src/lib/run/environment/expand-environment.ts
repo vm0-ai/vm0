@@ -82,11 +82,11 @@ function buildFirewallPlaceholders(
 }
 
 /**
- * Extract and expand environment variables from agent compose config
- * Expands ${{ vars.xxx }} and ${{ secrets.xxx }} references
+ * Extract and expand environment variables from agent compose config.
+ * Expands ${{ vars.xxx }} and ${{ secrets.xxx }} references.
  *
- * When experimental_firewalls is declared:
- * - Firewall secret values are replaced with placeholders (proxy resolves real secrets at runtime)
+ * Firewall secret values are replaced with placeholders (proxy resolves real secrets at runtime).
+ * All firewalls (compose-declared, model provider, connector) are passed via the `firewalls` param.
  *
  * @param agentCompose Agent compose configuration
  * @param vars Variables for expansion (from --vars CLI param)
@@ -95,6 +95,7 @@ function buildFirewallPlaceholders(
  * @param additionalEnvironment Extra env entries (e.g. model provider) to merge before expansion.
  *   Compose-declared entries take precedence. Secret-derived values should use
  *   $\{{ secrets.X }} templates so firewallPlaceholders logic applies.
+ * @param firewalls All expanded firewall configs for placeholder injection.
  * @returns Expanded environment variables
  */
 export function expandEnvironmentFromCompose(
@@ -103,7 +104,7 @@ export function expandEnvironmentFromCompose(
   passedSecrets: Record<string, string> | undefined,
   checkEnv?: boolean,
   additionalEnvironment?: Record<string, string>,
-  additionalFirewalls?: ExpandedFirewallConfig[],
+  firewalls?: ExpandedFirewallConfig[],
 ): ExpandedEnvironmentResult {
   const compose = agentCompose as AgentComposeYaml | undefined;
 
@@ -134,10 +135,7 @@ export function expandEnvironmentFromCompose(
     );
   }
 
-  const firewallPlaceholders = buildFirewallPlaceholders([
-    ...(firstAgent?.experimental_firewalls ?? []),
-    ...(additionalFirewalls ?? []),
-  ]);
+  const firewallPlaceholders = buildFirewallPlaceholders(firewalls ?? []);
 
   // Process secrets if needed
   const secretNames = grouped.secrets.map((r) => r.name);

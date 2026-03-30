@@ -7,7 +7,6 @@ import { parse as parseYaml } from "yaml";
 import {
   extractAndGroupVariables,
   resolveSkillRef,
-  expandFirewallConfigs,
   type FirewallSelection,
 } from "@vm0/core";
 import {
@@ -301,9 +300,6 @@ async function finalizeCompose(
   agent: AgentConfig,
   options: { yes?: boolean; autoUpdate?: boolean; json?: boolean },
 ): Promise<ComposeResult> {
-  // Expand experimental_firewalls from names to full configs before sending to API
-  await expandFirewallConfigs(config);
-
   // Call API
   if (!options.json) {
     console.log("Uploading compose...");

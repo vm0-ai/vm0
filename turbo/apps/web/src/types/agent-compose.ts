@@ -2,7 +2,7 @@
  * Agent compose types matching agent.yaml format
  */
 
-import type { ExpandedFirewallConfig } from "@vm0/core";
+import type { ExpandedFirewallConfig, FirewallSelection } from "@vm0/core";
 
 /**
  * Volume configuration for static dependencies
@@ -49,11 +49,13 @@ interface AgentDefinition {
    */
   experimental_profile?: string;
   /**
-   * Expanded firewall configs for proxy-side token replacement.
-   * Resolved from firewall names at compose time, stored as full objects.
-   * Input format (CLI): string[] — expanded server-side before storage.
+   * Firewall configs for proxy-side token replacement.
+   * Map format (current): resolved at runtime via resolveFirewallSelections().
+   * Array format (legacy): pre-expanded configs from older compose versions.
    */
-  experimental_firewalls?: ExpandedFirewallConfig[];
+  experimental_firewalls?:
+    | Record<string, FirewallSelection>
+    | ExpandedFirewallConfig[];
 }
 
 export interface AgentComposeYaml {
