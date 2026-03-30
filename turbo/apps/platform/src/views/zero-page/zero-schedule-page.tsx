@@ -348,7 +348,7 @@ function ScheduleListSkeleton() {
 
 function ScheduleCalendarSkeleton() {
   return (
-    <section className="flex flex-col gap-2">
+    <section className="flex flex-col gap-2 px-5 pt-3">
       <Skeleton className="h-4 w-20" />
       <div className="rounded-xl zero-border bg-muted/20 overflow-hidden">
         <div className="grid grid-cols-8">

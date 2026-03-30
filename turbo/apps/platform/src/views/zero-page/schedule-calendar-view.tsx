@@ -159,7 +159,7 @@ export function ScheduleCalendarView<T extends ScheduleEntry>({
   ];
 
   return (
-    <section className="flex flex-col gap-8">
+    <section className="flex flex-col gap-8 px-5 pt-3">
       <div className="flex flex-col gap-2">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Week view
