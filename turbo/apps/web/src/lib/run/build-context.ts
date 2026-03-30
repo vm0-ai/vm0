@@ -438,14 +438,7 @@ async function resolveOauthConnectorSecrets(
     .from(connectors)
     .where(and(eq(connectors.orgId, orgId), eq(connectors.userId, userId)));
 
-  log.info(
-    `[DEBUG] resolveOauthConnectorSecrets: orgId=${orgId} userId=${userId} allowedTypes=${JSON.stringify(allowedTypes)} connectorRows=${userConnectors.length} types=${userConnectors.map((c) => c.type).join(",")}`,
-  );
-
   if (userConnectors.length === 0) {
-    log.info(
-      "[DEBUG] resolveOauthConnectorSecrets: no connectors found, returning empty",
-    );
     return {
       connectorSecrets: undefined,
       injectedEnvVars: undefined,
@@ -455,13 +448,7 @@ async function resolveOauthConnectorSecrets(
   }
 
   const connectorSecrets = await getSecretValues(orgId, userId, "connector");
-  log.info(
-    `[DEBUG] resolveOauthConnectorSecrets: connectorSecrets keys=${Object.keys(connectorSecrets).join(",")}`,
-  );
   if (Object.keys(connectorSecrets).length === 0) {
-    log.info(
-      "[DEBUG] resolveOauthConnectorSecrets: no secrets found, returning empty",
-    );
     return {
       connectorSecrets: undefined,
       injectedEnvVars: undefined,
@@ -486,10 +473,6 @@ async function resolveOauthConnectorSecrets(
   const allowedConnectors = allowedTypes
     ? validConnectors.filter(({ type }) => allowedTypes.includes(type))
     : validConnectors;
-  log.info(
-    `[DEBUG] resolveOauthConnectorSecrets: validConnectors=${validConnectors.map((c) => c.type).join(",")} allowedConnectors=${allowedConnectors.map((c) => c.type).join(",")}`,
-  );
-
   // Refresh OAuth tokens in parallel.
   // Safe: each connector writes to distinct keys in connectorSecrets (e.g. github_access_token
   // vs slack_access_token), so concurrent mutations don't conflict.
@@ -832,17 +815,6 @@ async function resolveSecretsAndEnvironment(
       ref: type,
     }));
 
-  // Log compose environment before expansion
-  const composeForLog = agentCompose as {
-    agents?: Record<string, { environment?: Record<string, string> }>;
-  };
-  const composeEnvKeys = composeForLog?.agents
-    ? Object.values(composeForLog.agents)[0]?.environment
-    : undefined;
-  log.info(
-    `[DEBUG] resolveSecretsAndEnvironment: compose env keys=${composeEnvKeys ? Object.keys(composeEnvKeys).join(",") : "none"} connectorFirewalls=${connectorFirewallConfigs.map((c) => c.ref).join(",")} secretKeys=${secrets ? Object.keys(secrets).join(",") : "none"}`,
-  );
-
   // Expand environment variables from compose config.
   // All firewalls (model provider, connector) are passed via the `firewalls` param
   // for unified placeholder injection. Compose content no longer stores firewalls.
@@ -856,16 +828,6 @@ async function resolveSecretsAndEnvironment(
       ...(modelProviderFirewall ? [modelProviderFirewall] : []),
       ...connectorFirewallConfigs,
     ],
-  );
-
-  // Log which env vars ended up with values (not the values themselves)
-  const envWithGithub = environment
-    ? Object.entries(environment)
-        .filter(([k]) => k.includes("GITHUB") || k.includes("GH_TOKEN"))
-        .map(([k, v]) => `${k}=${v ? `(${v.length} chars)` : "undefined"}`)
-    : [];
-  log.info(
-    `[DEBUG] resolveSecretsAndEnvironment: final env key count=${environment ? Object.keys(environment).length : 0} github-related=${JSON.stringify(envWithGithub)}`,
   );
 
   return {

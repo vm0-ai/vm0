@@ -3,27 +3,29 @@
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
- * - Mock (external): API calls (getZeroConnector, getZeroAgentUserConnectors)
+ * - Mock (external): Web API via MSW
  * - Real (internal): All CLI code, connector mappings from @vm0/core
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../../mocks/server";
 import { missingTokenCommand } from "../missing-token";
 import chalk from "chalk";
 
-vi.mock("../../../../lib/api/domains/zero-connectors", () => ({
-  getZeroConnector: vi.fn(),
-}));
-
-vi.mock("../../../../lib/api/domains/zero-agents", () => ({
-  getZeroAgentUserConnectors: vi.fn(),
-}));
-
-import { getZeroConnector } from "../../../../lib/api/domains/zero-connectors";
-import { getZeroAgentUserConnectors } from "../../../../lib/api/domains/zero-agents";
-
-const mockGetZeroConnector = vi.mocked(getZeroConnector);
-const mockGetUserConnectors = vi.mocked(getZeroAgentUserConnectors);
+/** Minimal valid connector response for MSW handlers */
+const connectedResponse = {
+  id: "conn-1",
+  type: "github",
+  authMethod: "oauth",
+  externalId: "ext-1",
+  externalUsername: "user",
+  externalEmail: "user@example.com",
+  oauthScopes: ["repo"],
+  needsReconnect: false,
+  createdAt: "2026-01-01T00:00:00Z",
+  updatedAt: "2026-01-01T00:00:00Z",
+};
 
 describe("zero doctor missing-token command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -36,8 +38,6 @@ describe("zero doctor missing-token command", () => {
 
   beforeEach(() => {
     chalk.level = 0;
-    mockGetZeroConnector.mockReset();
-    mockGetUserConnectors.mockReset();
   });
 
   afterEach(() => {
@@ -49,9 +49,22 @@ describe("zero doctor missing-token command", () => {
   describe("connector not connected", () => {
     it("should direct to connectors tab when connector is not connected", async () => {
       vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      mockGetZeroConnector.mockResolvedValue(null);
-      mockGetUserConnectors.mockResolvedValue([]);
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
+          return HttpResponse.json(
+            { error: { message: "Not found", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
+        http.get(
+          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: [] });
+          },
+        ),
+      );
 
       await missingTokenCommand.parseAsync(["node", "cli", "GH_TOKEN"]);
 
@@ -67,13 +80,19 @@ describe("zero doctor missing-token command", () => {
   describe("connector connected but no permission", () => {
     it("should direct to authorization tab when connector is connected but not authorized", async () => {
       vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      mockGetZeroConnector.mockResolvedValue({
-        type: "github",
-        authMethod: "oauth",
-        connected: true,
-      } as never);
-      mockGetUserConnectors.mockResolvedValue(["slack"]);
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
+          return HttpResponse.json(connectedResponse);
+        }),
+        http.get(
+          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["slack"] });
+          },
+        ),
+      );
 
       await missingTokenCommand.parseAsync(["node", "cli", "GH_TOKEN"]);
 
@@ -91,13 +110,19 @@ describe("zero doctor missing-token command", () => {
   describe("connector connected and authorized", () => {
     it("should report unexpected state when both are fine", async () => {
       vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      mockGetZeroConnector.mockResolvedValue({
-        type: "github",
-        authMethod: "oauth",
-        connected: true,
-      } as never);
-      mockGetUserConnectors.mockResolvedValue(["github", "slack"]);
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
+          return HttpResponse.json(connectedResponse);
+        }),
+        http.get(
+          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["github", "slack"] });
+          },
+        ),
+      );
 
       await missingTokenCommand.parseAsync(["node", "cli", "GH_TOKEN"]);
 
@@ -110,9 +135,22 @@ describe("zero doctor missing-token command", () => {
   describe("URL transformation", () => {
     it("should transform www.vm0.ai to app.vm0.ai", async () => {
       vi.stubEnv("VM0_API_URL", "https://www.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-1");
-      mockGetZeroConnector.mockResolvedValue(null);
-      mockGetUserConnectors.mockResolvedValue([]);
+      server.use(
+        http.get("https://www.vm0.ai/api/zero/connectors/github", () => {
+          return HttpResponse.json(
+            { error: { message: "Not found", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
+        http.get(
+          "https://www.vm0.ai/api/zero/agents/agent-1/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: [] });
+          },
+        ),
+      );
 
       await missingTokenCommand.parseAsync(["node", "cli", "GH_TOKEN"]);
 
@@ -122,9 +160,25 @@ describe("zero doctor missing-token command", () => {
 
     it("should transform tunnel -www suffix to -app", async () => {
       vi.stubEnv("VM0_API_URL", "https://tunnel-yuma-vm0-www.vm7.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-1");
-      mockGetZeroConnector.mockResolvedValue(null);
-      mockGetUserConnectors.mockResolvedValue([]);
+      server.use(
+        http.get(
+          "https://tunnel-yuma-vm0-www.vm7.ai/api/zero/connectors/github",
+          () => {
+            return HttpResponse.json(
+              { error: { message: "Not found", code: "NOT_FOUND" } },
+              { status: 404 },
+            );
+          },
+        ),
+        http.get(
+          "https://tunnel-yuma-vm0-www.vm7.ai/api/zero/agents/agent-1/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: [] });
+          },
+        ),
+      );
 
       await missingTokenCommand.parseAsync(["node", "cli", "GH_TOKEN"]);
 
@@ -136,9 +190,16 @@ describe("zero doctor missing-token command", () => {
 
     it("should fall back to generic URL when ZERO_AGENT_ID is not set", async () => {
       vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "");
-      mockGetZeroConnector.mockResolvedValue(null);
-      mockGetUserConnectors.mockResolvedValue(null as never);
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
+          return HttpResponse.json(
+            { error: { message: "Not found", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
+      );
 
       await missingTokenCommand.parseAsync(["node", "cli", "GH_TOKEN"]);
 
@@ -148,9 +209,25 @@ describe("zero doctor missing-token command", () => {
 
     it("should use custom VM0_API_URL with app prefix", async () => {
       vi.stubEnv("VM0_API_URL", "https://custom.example.com");
+      vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-1");
-      mockGetZeroConnector.mockResolvedValue(null);
-      mockGetUserConnectors.mockResolvedValue([]);
+      server.use(
+        http.get(
+          "https://custom.example.com/api/zero/connectors/github",
+          () => {
+            return HttpResponse.json(
+              { error: { message: "Not found", code: "NOT_FOUND" } },
+              { status: 404 },
+            );
+          },
+        ),
+        http.get(
+          "https://custom.example.com/api/zero/agents/agent-1/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: [] });
+          },
+        ),
+      );
 
       await missingTokenCommand.parseAsync(["node", "cli", "GH_TOKEN"]);
 
@@ -162,9 +239,19 @@ describe("zero doctor missing-token command", () => {
   describe("API errors are gracefully handled", () => {
     it("should treat connector as not connected when API call fails", async () => {
       vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-1");
-      mockGetZeroConnector.mockRejectedValue(new Error("network error"));
-      mockGetUserConnectors.mockRejectedValue(new Error("network error"));
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
+          return HttpResponse.error();
+        }),
+        http.get(
+          "https://app.vm0.ai/api/zero/agents/agent-1/user-connectors",
+          () => {
+            return HttpResponse.error();
+          },
+        ),
+      );
 
       await missingTokenCommand.parseAsync(["node", "cli", "GH_TOKEN"]);
 
