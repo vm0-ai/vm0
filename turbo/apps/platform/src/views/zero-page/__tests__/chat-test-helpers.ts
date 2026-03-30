@@ -123,17 +123,23 @@ export function mockChatLifecycle(options?: {
     http.post("*/api/zero/chat-threads", () =>
       HttpResponse.json({ id: threadId, title: null }, { status: 201 }),
     ),
-    http.post("*/api/zero/chat-threads/:id/runs", () => {
-      runAssociated = true;
-      return new HttpResponse(null, { status: 204 });
-    }),
-    http.post("*/api/zero/runs", async ({ request }) => {
+    // Unified chat message endpoint (creates thread + run + association)
+    http.post("*/api/zero/chat/messages", async ({ request }) => {
       const body = (await request.json()) as { prompt?: string };
       if (body.prompt) {
         runPrompt = body.prompt;
       }
       options?.onRunCreate?.();
-      return HttpResponse.json({ runId: "run-test-1" }, { status: 201 });
+      runAssociated = true;
+      return HttpResponse.json(
+        {
+          runId: "run-test-1",
+          threadId,
+          status: "pending",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+        { status: 201 },
+      );
     }),
     http.get("*/api/zero/logs/:id", () =>
       HttpResponse.json({

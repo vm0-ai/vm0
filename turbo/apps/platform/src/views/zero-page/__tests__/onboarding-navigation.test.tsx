@@ -120,19 +120,19 @@ describe("onboarding navigation", () => {
     // Fill name and advance
     const input = screen.getByPlaceholderText("e.g. Acme Corp");
     fireEvent.change(input, { target: { value: "Test Workspace" } });
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    fireEvent.click(screen.getByText("Next"));
 
     // Step 2: Choose your tools → Next
     await waitFor(() => {
       expect(screen.getByText("Choose your tools")).toBeInTheDocument();
     });
-    fireEvent.click(screen.getAllByRole("button", { name: "Next" })[0]!);
+    fireEvent.click(screen.getByText("Next"));
 
     // Step 3: Connect your apps → Next
     await waitFor(() => {
       expect(screen.getByText("Connect your apps")).toBeInTheDocument();
     });
-    fireEvent.click(screen.getAllByRole("button", { name: "Next" })[0]!);
+    fireEvent.click(screen.getByText("Next"));
 
     // Step 4: Where to work
     await waitFor(() => {

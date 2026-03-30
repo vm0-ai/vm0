@@ -3,10 +3,7 @@ import { runnerRealtimeTokenContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getRunnerAuth } from "../../../../../src/lib/auth/runner-auth";
 import { generateRunnerGroupToken } from "../../../../../src/lib/realtime/client";
-import {
-  validateRunnerGroupOrg,
-  isOfficialRunnerGroup,
-} from "../../../../../src/lib/org/org-service";
+import { isOfficialRunnerGroup } from "../../../../../src/lib/org/org-service";
 import { logger } from "../../../../../src/lib/logger";
 
 const log = logger("api:runners:realtime:token");
@@ -33,11 +30,12 @@ const router = tsr.router(runnerRealtimeTokenContract, {
       }
       log.debug(`Official runner requesting token for ${group}`);
     } else {
-      // User runners: validate org
-      try {
-        await validateRunnerGroupOrg(auth.userId, group);
-      } catch {
-        return createErrorResponse("FORBIDDEN", "Access denied");
+      // User runners: enforce vm0/* groups
+      if (!isOfficialRunnerGroup(group)) {
+        return createErrorResponse(
+          "FORBIDDEN",
+          "Only vm0/* runner groups are supported",
+        );
       }
       log.debug(`User runner ${auth.userId} requesting token for ${group}`);
     }

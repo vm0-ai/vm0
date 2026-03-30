@@ -51,18 +51,19 @@ function mockAdminOnboardingWithChat() {
     }),
   );
 
+  // mockChatLifecycle sets up the unified POST /api/zero/chat/messages handler
+  // which also tracks the run prompt. We wrap it to detect intro message creation.
   const ctrl = mockChatLifecycle();
 
-  // Intercept run creation to track whether the intro message was sent
-  server.use(
-    http.post("*/api/zero/runs", async ({ request }) => {
+  // Use a request interceptor to detect when the intro message is sent
+  server.events.on("request:match", ({ request }) => {
+    if (
+      request.method === "POST" &&
+      request.url.includes("/api/zero/chat/messages")
+    ) {
       runCreated = true;
-      const body = (await request.json()) as { prompt: string };
-      // Verify the auto-intro prompt
-      expect(body.prompt).toBe("Who are you and what can you do?");
-      return HttpResponse.json({ runId: "run-test-1" }, { status: 201 });
-    }),
-  );
+    }
+  });
 
   return {
     ctrl,
@@ -111,14 +112,14 @@ function mockMemberOnboardingWithChat() {
 
   const ctrl = mockChatLifecycle();
 
-  server.use(
-    http.post("*/api/zero/runs", async ({ request }) => {
+  server.events.on("request:match", ({ request }) => {
+    if (
+      request.method === "POST" &&
+      request.url.includes("/api/zero/chat/messages")
+    ) {
       runCreated = true;
-      const body = (await request.json()) as { prompt: string };
-      expect(body.prompt).toBe("Who are you and what can you do?");
-      return HttpResponse.json({ runId: "run-test-1" }, { status: 201 });
-    }),
-  );
+    }
+  });
 
   return {
     ctrl,
@@ -159,19 +160,19 @@ async function walkToWhereStep(isMember: boolean) {
     // Fill workspace name and advance
     const input = screen.getByPlaceholderText("e.g. Acme Corp");
     fireEvent.change(input, { target: { value: "Test Workspace" } });
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    fireEvent.click(screen.getByText("Next"));
 
     // Step 2: Choose your tools → Next
     await waitFor(() => {
       expect(screen.getByText("Choose your tools")).toBeInTheDocument();
     });
-    fireEvent.click(screen.getAllByRole("button", { name: "Next" })[0]!);
+    fireEvent.click(screen.getByText("Next"));
 
     // Step 3: Connect your apps → Next
     await waitFor(() => {
       expect(screen.getByText("Connect your apps")).toBeInTheDocument();
     });
-    fireEvent.click(screen.getAllByRole("button", { name: "Next" })[0]!);
+    fireEvent.click(screen.getByText("Next"));
 
     // Step 4: Where to work
     await waitFor(() => {

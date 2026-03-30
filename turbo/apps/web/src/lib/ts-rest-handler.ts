@@ -17,7 +17,7 @@ import { TsRestResponse } from "@ts-rest/serverless";
 import type { TsRestRequest } from "@ts-rest/serverless";
 import type { AppRouter } from "@ts-rest/core";
 import { flushLogs, logger } from "./logger";
-import { ingestRequestLog } from "./axiom";
+import { ingestRequestLog, flushAxiom } from "./axiom";
 
 // Re-export tsr and TsRestResponse for convenience
 export { tsr, TsRestResponse };
@@ -159,8 +159,9 @@ export function createHandler<T extends AppRouter>(
           requestStartTimes.delete(request);
         }
 
-        // Flush all pending logs to Axiom after each request
+        // Flush all pending logs and ingested events to Axiom
         await flushLogs();
+        await flushAxiom();
       },
     ],
   });

@@ -10,8 +10,7 @@ export const calendlyFirewall: FirewallConfig = {
   name: "calendly",
   description: "Calendly API",
   placeholders: {
-    CALENDLY_TOKEN:
-      "eyJhbGciOiJIUzI1NiJ9.vm0placeholder000000000000000000000000000000a",
+    CALENDLY_TOKEN: "Vm0PlaceHolder0000000000000000000000000000",
   },
   apis: [
     {

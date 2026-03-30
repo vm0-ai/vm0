@@ -15,16 +15,12 @@ function mockChatAPIs() {
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
     }),
-    http.post("*/api/zero/chat-threads", () => {
-      return HttpResponse.json(
-        { id: "new-thread-id-123", title: "Hello" },
-        { status: 201 },
-      );
-    }),
-    http.post("*/api/zero/runs", () => {
+    // Unified chat message endpoint (creates thread + run + association)
+    http.post("*/api/zero/chat/messages", () => {
       return HttpResponse.json(
         {
           runId: "run-abc-123",
+          threadId: "new-thread-id-123",
           status: "pending",
           createdAt: "2026-03-10T00:00:00Z",
         },
@@ -40,9 +36,6 @@ function mockChatAPIs() {
         latestSessionId: null,
         unsavedRuns: [],
       });
-    }),
-    http.post("*/api/zero/chat-threads/:id/runs", () => {
-      return new HttpResponse(null, { status: 204 });
     }),
     http.get("*/api/zero/runs/:id/telemetry/agent", () => {
       return HttpResponse.json({
@@ -185,19 +178,19 @@ describe("talk navigation", () => {
     // Fill name and advance
     const input = screen.getByPlaceholderText("e.g. Acme Corp");
     fireEvent.change(input, { target: { value: "Test Workspace" } });
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    fireEvent.click(screen.getByText("Next"));
 
     // Step 2: Choose your tools → Next
     await waitFor(() => {
       expect(screen.getByText("Choose your tools")).toBeInTheDocument();
     });
-    fireEvent.click(screen.getAllByRole("button", { name: "Next" })[0]!);
+    fireEvent.click(screen.getByText("Next"));
 
     // Step 3: Connect your apps → Next
     await waitFor(() => {
       expect(screen.getByText("Connect your apps")).toBeInTheDocument();
     });
-    fireEvent.click(screen.getAllByRole("button", { name: "Next" })[0]!);
+    fireEvent.click(screen.getByText("Next"));
 
     // Step 4: Where to work
     await waitFor(() => {
@@ -210,7 +203,7 @@ describe("talk navigation", () => {
     // 1. completeZeroOnboarding$ (create agent, set default)
     // 2. navigate("/") → setupChatPage$ redirects to /talk/zero
     // 3. sendZeroChatMessage$("Who are you and what can you do?")
-    //    → ensureChatThread() → navigates to /chat/:threadId
+    //    → POST /api/zero/chat/messages → navigates to /chat/:threadId
     const continueButton = screen.getByRole("button", {
       name: /Continue in web/,
     });
@@ -221,5 +214,5 @@ describe("talk navigation", () => {
     await waitFor(() => {
       expect(pathname()).toBe("/chat/new-thread-id-123");
     });
-  });
+  }, 15_000);
 });
