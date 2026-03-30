@@ -1,5 +1,25 @@
 # Changelog
 
+## [12.168.0](https://github.com/vm0-ai/vm0/compare/web-v12.167.2...web-v12.168.0) (2026-03-30)
+
+
+### Features
+
+* **slack:** prompt admin to reinstall when oauth bot scopes change ([#7057](https://github.com/vm0-ai/vm0/issues/7057)) ([34a1045](https://github.com/vm0-ai/vm0/commit/34a104570cf0b6e75be7917dc558b6ce6ab81589))
+* support dynamic base url in firewall configs for subdomain-based connectors ([#7148](https://github.com/vm0-ai/vm0/issues/7148)) ([d14d38d](https://github.com/vm0-ai/vm0/commit/d14d38d57f5d2ed4f68945f67970ca0363b40c02))
+
+
+### Bug Fixes
+
+* **platform:** add missing org management clerk features ([#7054](https://github.com/vm0-ai/vm0/issues/7054)) ([0c84dfb](https://github.com/vm0-ai/vm0/commit/0c84dfb78a5e21357616ef19e9a352a4fb0b3884))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.123.0
+
 ## [12.167.2](https://github.com/vm0-ai/vm0/compare/web-v12.167.1...web-v12.167.2) (2026-03-29)
 
 

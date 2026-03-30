@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.18.1](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.18.0...sandbox-fc-v0.18.1) (2026-03-30)
+
+
+### Refactoring
+
+* **sandbox:** introduce sandbox control trait and decouple exec/kill from sandbox-fc ([#7150](https://github.com/vm0-ai/vm0/issues/7150)) ([4615d15](https://github.com/vm0-ai/vm0/commit/4615d1571c6dbc2ba249070654112d390e83a395)), closes [#7122](https://github.com/vm0-ai/vm0/issues/7122)
+* **sandbox:** introduce sandbox runtime trait and internalize shared resources ([#7125](https://github.com/vm0-ai/vm0/issues/7125)) ([43a2ba0](https://github.com/vm0-ai/vm0/commit/43a2ba0d6ee9df1022e6238913597dd4d1c11e2a))
+* **sandbox:** introduce snapshot provider trait and decouple snapshot operations ([#7142](https://github.com/vm0-ai/vm0/issues/7142)) ([9a864bf](https://github.com/vm0-ai/vm0/commit/9a864bfd4ec551ead8115f4fdb30df7c5570b5fe))
+
 ## [0.18.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.17.0...sandbox-fc-v0.18.0) (2026-03-29)
 
 

@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.163.0](https://github.com/vm0-ai/vm0/compare/app-v0.162.2...app-v0.163.0) (2026-03-30)
+
+
+### Features
+
+* emit warn-level log for local storage config overrides ([#7147](https://github.com/vm0-ai/vm0/issues/7147)) ([24b62e5](https://github.com/vm0-ai/vm0/commit/24b62e51793184019e3ce935eee1464290365f4c)), closes [#7144](https://github.com/vm0-ai/vm0/issues/7144)
+* **platform:** use link for agent avatar and speed up agent switching ([#7064](https://github.com/vm0-ai/vm0/issues/7064)) ([1bf52d3](https://github.com/vm0-ai/vm0/commit/1bf52d3fa7ec38c77e435428660b102cf8de85f2))
+* **platform:** use preferred timezone as default in schedule dialog ([#7058](https://github.com/vm0-ai/vm0/issues/7058)) ([4958a31](https://github.com/vm0-ai/vm0/commit/4958a3138784de6013f12e9a7c720c7831e2cd35))
+* **slack:** prompt admin to reinstall when oauth bot scopes change ([#7057](https://github.com/vm0-ai/vm0/issues/7057)) ([34a1045](https://github.com/vm0-ai/vm0/commit/34a104570cf0b6e75be7917dc558b6ce6ab81589))
+
+
+### Bug Fixes
+
+* **platform:** add missing org management clerk features ([#7054](https://github.com/vm0-ai/vm0/issues/7054)) ([0c84dfb](https://github.com/vm0-ai/vm0/commit/0c84dfb78a5e21357616ef19e9a352a4fb0b3884))
+* **platform:** replace native scrollbar with overlay indicator in sidebar ([#7145](https://github.com/vm0-ai/vm0/issues/7145)) ([4360941](https://github.com/vm0-ai/vm0/commit/4360941ec8c51003f05a5abe4f08e28ec8fe165a))
+
+
+### Refactoring
+
+* **platform:** convert chat agent identity from command+state to async computed ([#7156](https://github.com/vm0-ai/vm0/issues/7156)) ([1b4d3ea](https://github.com/vm0-ai/vm0/commit/1b4d3ea8e9b3a1a0a37a0b452929953ab581efea))
+* replace manual boolean loading state with async computed ([#7163](https://github.com/vm0-ai/vm0/issues/7163)) ([e74b412](https://github.com/vm0-ai/vm0/commit/e74b41288272285b0fc93bb9e22f65fde682be21)), closes [#7157](https://github.com/vm0-ai/vm0/issues/7157)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.123.0
+
 ## [0.162.2](https://github.com/vm0-ai/vm0/compare/app-v0.162.1...app-v0.162.2) (2026-03-30)
 
 

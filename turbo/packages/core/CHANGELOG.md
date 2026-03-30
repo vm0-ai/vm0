@@ -1,5 +1,21 @@
 # Changelog
 
+## [8.123.0](https://github.com/vm0-ai/vm0/compare/core-v8.122.0...core-v8.123.0) (2026-03-30)
+
+
+### Features
+
+* **firewalls:** add docusign connector firewall config ([#7171](https://github.com/vm0-ai/vm0/issues/7171)) ([775ec01](https://github.com/vm0-ai/vm0/commit/775ec01c5e0fcc7e2cbd03266ccf34980c9b1e21)), closes [#7134](https://github.com/vm0-ai/vm0/issues/7134)
+* **firewalls:** add kommo connector firewall config ([#7166](https://github.com/vm0-ai/vm0/issues/7166)) ([ad2213d](https://github.com/vm0-ai/vm0/commit/ad2213dd0389f271b8dfe4adc91d3af2f048f905)), closes [#7127](https://github.com/vm0-ai/vm0/issues/7127)
+* **firewalls:** add make connector firewall config ([#7167](https://github.com/vm0-ai/vm0/issues/7167)) ([9e32d9e](https://github.com/vm0-ai/vm0/commit/9e32d9e43b8b0e21946e6863af16e9d60c053a2e)), closes [#7129](https://github.com/vm0-ai/vm0/issues/7129)
+* **slack:** prompt admin to reinstall when oauth bot scopes change ([#7057](https://github.com/vm0-ai/vm0/issues/7057)) ([34a1045](https://github.com/vm0-ai/vm0/commit/34a104570cf0b6e75be7917dc558b6ce6ab81589))
+* support dynamic base url in firewall configs for subdomain-based connectors ([#7148](https://github.com/vm0-ai/vm0/issues/7148)) ([d14d38d](https://github.com/vm0-ai/vm0/commit/d14d38d57f5d2ed4f68945f67970ca0363b40c02))
+
+
+### Bug Fixes
+
+* **platform:** add missing org management clerk features ([#7054](https://github.com/vm0-ai/vm0/issues/7054)) ([0c84dfb](https://github.com/vm0-ai/vm0/commit/0c84dfb78a5e21357616ef19e9a352a4fb0b3884))
+
 ## [8.122.0](https://github.com/vm0-ai/vm0/compare/core-v8.121.0...core-v8.122.0) (2026-03-29)
 
 
