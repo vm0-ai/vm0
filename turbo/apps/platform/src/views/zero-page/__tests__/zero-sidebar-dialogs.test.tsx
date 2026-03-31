@@ -88,9 +88,9 @@ function mockAPIsWithSubagents({
 }
 
 async function openChatListDialog(user: ReturnType<typeof userEvent.setup>) {
-  const openButton = await waitFor(() =>
-    screen.getByLabelText("Open a conversation"),
-  );
+  const openButton = await waitFor(() => {
+    return screen.getByLabelText("Open a conversation");
+  });
   await user.click(openButton);
   await waitFor(() => {
     expect(screen.getByText("Talk to")).toBeInTheDocument();

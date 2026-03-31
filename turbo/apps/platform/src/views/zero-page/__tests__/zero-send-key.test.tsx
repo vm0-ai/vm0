@@ -33,8 +33,12 @@ function mockChatAPI() {
   );
 
   return {
-    wasMessageSent: () => messageSent,
-    reset: () => (messageSent = false),
+    wasMessageSent: () => {
+      return messageSent;
+    },
+    reset: () => {
+      messageSent = false;
+    },
   };
 }
 
