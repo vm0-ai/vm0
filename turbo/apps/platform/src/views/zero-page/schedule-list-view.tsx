@@ -232,7 +232,7 @@ function ScheduleListCard<T extends ScheduleEntry>({
   return (
     <div
       className={cn(
-        "flex flex-col gap-1.5 px-4 py-3 border-b border-border/50 last:border-0 transition-colors",
+        "flex flex-col gap-0.5 px-4 py-3 border-b border-border/50 last:border-0 transition-colors",
         clickable && "cursor-pointer hover:bg-muted/25",
         dimmed && "opacity-75",
       )}
@@ -279,35 +279,35 @@ function ScheduleListCard<T extends ScheduleEntry>({
         </div>
       </div>
 
-      {/* Time row */}
-      <span
-        className={cn(
-          "text-sm text-muted-foreground tabular-nums truncate",
-          dimmed && "text-muted-foreground/80",
+      {/* Bottom row: schedule time + status toggle */}
+      <div className="flex items-center justify-between gap-2">
+        <span
+          className={cn(
+            "text-sm text-muted-foreground tabular-nums truncate",
+            dimmed && "text-muted-foreground/80",
+          )}
+        >
+          {entry.time}
+          {entry.timezone && (
+            <span className="text-muted-foreground/70">
+              {" "}
+              · {entry.timezone.replace(/_/g, " ")}
+            </span>
+          )}
+        </span>
+        {onToggle && (
+          <div onClick={(e) => e.stopPropagation()}>
+            <LoadingSwitch
+              checked={entry.enabled !== false}
+              loading={toggling}
+              onCheckedChange={(checked) => {
+                onToggle(entry, checked);
+              }}
+              ariaLabel={`${entry.enabled !== false ? "Disable" : "Enable"} ${entry.time}`}
+            />
+          </div>
         )}
-      >
-        {entry.time}
-        {entry.timezone && (
-          <span className="text-muted-foreground/70">
-            {" "}
-            · {entry.timezone.replace(/_/g, " ")}
-          </span>
-        )}
-      </span>
-
-      {/* Toggle row */}
-      {onToggle && (
-        <div onClick={(e) => e.stopPropagation()}>
-          <LoadingSwitch
-            checked={entry.enabled !== false}
-            loading={toggling}
-            onCheckedChange={(checked) => {
-              onToggle(entry, checked);
-            }}
-            ariaLabel={`${entry.enabled !== false ? "Disable" : "Enable"} ${entry.time}`}
-          />
-        </div>
-      )}
+      </div>
     </div>
   );
 }
