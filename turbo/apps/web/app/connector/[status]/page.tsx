@@ -4,7 +4,7 @@ import { useTheme } from "../../components/ThemeProvider";
 import Image from "next/image";
 import { IconCheck, IconX } from "@tabler/icons-react";
 import { useSearchParams } from "next/navigation";
-import { use } from "react";
+import { use, useEffect } from "react";
 
 interface PageProps {
   params: Promise<{ status: string }>;
@@ -22,6 +22,19 @@ export default function ConnectorStatusPage({
   const errorMessage = searchParams.get("message");
 
   const isSuccess = status === "success";
+
+  useEffect(() => {
+    if (typeof BroadcastChannel === "undefined") {
+      return;
+    }
+    const channel = new BroadcastChannel("vm0:connector-oauth");
+    channel.postMessage({
+      connectorType,
+      status: isSuccess ? "success" : "error",
+    });
+    channel.close();
+    window.close();
+  }, [connectorType, isSuccess]);
   const connectorLabel =
     connectorType === "github" ? "GitHub" : connectorType.toUpperCase();
 

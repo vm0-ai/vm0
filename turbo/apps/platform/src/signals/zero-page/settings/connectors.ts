@@ -300,6 +300,22 @@ export const connectConnector$ = command(
 
     set(internalPollingType$, type);
 
+    // Listen for OAuth completion via BroadcastChannel so the UI updates
+    // immediately — without waiting for the user to close the popup.
+    const channel =
+      typeof BroadcastChannel !== "undefined"
+        ? new BroadcastChannel("vm0:connector-oauth")
+        : null;
+    let channelNotified = false;
+
+    if (channel) {
+      channel.addEventListener("message", (event: MessageEvent) => {
+        if (event.data?.connectorType === type) {
+          channelNotified = true;
+        }
+      });
+    }
+
     const authWindow = window.open(
       `${baseUrl}/api/zero/connectors/${type}/authorize`,
       "_blank",
@@ -307,36 +323,48 @@ export const connectConnector$ = command(
     );
 
     if (!authWindow) {
+      channel?.close();
       throw new Error("Failed to open authorization window");
     }
 
-    while (true) {
-      await delay(500, { signal });
+    try {
+      while (true) {
+        await delay(500, { signal });
 
-      if (!authWindow.closed) {
-        continue;
-      }
+        if (!channelNotified && !authWindow.closed) {
+          continue;
+        }
 
-      set(reloadConnectors$);
-      const { connectors: freshConnectors } = await get(connectors$);
-      signal.throwIfAborted();
-
-      // Mark as optimistically connected before clearing polling so the UI
-      // transitions directly from "Connecting…" to "Connected" without flash.
-      const isConnected = freshConnectors.some((c) => c.type === type);
-      if (isConnected) {
-        set(internalJustConnectedTypes$, (prev) => new Set([...prev, type]));
+        break;
       }
-      set(internalPollingType$, null);
-      // Show in connections list again when user connects
-      const hidden = new Set(get(hiddenConnectorTypes$));
-      hidden.delete(type);
-      set(setHiddenConnectorTypes$, JSON.stringify([...hidden]));
-      // Close connect modal on OAuth success
-      if (isConnected) {
-        set(internalSelectedConnectorType$, null);
-      }
-      return isConnected;
+    } finally {
+      channel?.close();
     }
+
+    // Auto-close popup if it's still open (notified via BroadcastChannel)
+    if (!authWindow.closed) {
+      authWindow.close();
+    }
+
+    set(reloadConnectors$);
+    const { connectors: freshConnectors } = await get(connectors$);
+    signal.throwIfAborted();
+
+    // Mark as optimistically connected before clearing polling so the UI
+    // transitions directly from "Connecting…" to "Connected" without flash.
+    const isConnected = freshConnectors.some((c) => c.type === type);
+    if (isConnected) {
+      set(internalJustConnectedTypes$, (prev) => new Set([...prev, type]));
+    }
+    set(internalPollingType$, null);
+    // Show in connections list again when user connects
+    const hidden = new Set(get(hiddenConnectorTypes$));
+    hidden.delete(type);
+    set(setHiddenConnectorTypes$, JSON.stringify([...hidden]));
+    // Close connect modal on OAuth success
+    if (isConnected) {
+      set(internalSelectedConnectorType$, null);
+    }
+    return isConnected;
   },
 );
