@@ -67,10 +67,6 @@ export const mainRunCommand = new Command()
     "Resume from conversation ID (for fine-grained control)",
   )
   .option(
-    "--model-provider <type>",
-    "Override model provider (e.g., anthropic-api-key)",
-  )
-  .option(
     "--append-system-prompt <text>",
     "Append text to the agent's system prompt",
   )
@@ -108,7 +104,6 @@ export const mainRunCommand = new Command()
           memory?: string;
           volumeVersion: Record<string, string>;
           conversation?: string;
-          modelProvider?: string;
           appendSystemPrompt?: string;
           disallowedTools?: string[];
           tools?: string[];
@@ -196,7 +191,6 @@ export const mainRunCommand = new Command()
               ? options.volumeVersion
               : undefined,
           conversationId: options.conversation,
-          modelProvider: options.modelProvider,
           appendSystemPrompt: options.appendSystemPrompt,
           disallowedTools: options.disallowedTools,
           tools: options.tools,

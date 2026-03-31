@@ -31,6 +31,8 @@ const zeroRunRequestSchema = unifiedRunRequestSchema
   })
   .extend({
     agentId: z.string().optional(),
+    // Model provider for automatic secret injection (Zero-only)
+    modelProvider: z.string().optional(),
   });
 
 const c = initContract();

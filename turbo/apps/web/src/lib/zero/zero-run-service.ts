@@ -11,9 +11,14 @@ import {
   createRunRecord,
   buildAndDispatchRun,
   resolveStartRunCompose,
+  loadCompose,
   type CreateRunResult,
   type CreateRunParams,
 } from "../run";
+import {
+  checkOrgCredits,
+  checkModelProviderConfigured,
+} from "./zero-preflight";
 import { enqueueRun } from "../run/run-queue-service";
 import { generateZeroToken } from "../auth/sandbox-token";
 import { getOrgData } from "../org/org-cache-service";
@@ -167,6 +172,24 @@ export async function createZeroRun(
     orgId: resolved.orgId,
     orgTier,
   };
+
+  // 2.5 Pre-flight checks (Zero-only: generic vm0 run no longer does these)
+  const { composeContent: preflightCompose } = await loadCompose(
+    runParams.agentComposeVersionId,
+    runParams.composeId,
+  );
+  await checkOrgCredits(
+    resolved.orgId,
+    params.userId,
+    params.modelProvider,
+    db,
+  );
+  await checkModelProviderConfigured(
+    resolved.orgId,
+    params.modelProvider,
+    preflightCompose,
+    db,
+  );
 
   // 3. Create run record (may throw ConcurrentRunLimitError)
   let record;

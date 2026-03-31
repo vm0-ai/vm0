@@ -35,10 +35,6 @@ export const continueCommand = new Command()
     {},
   )
   .option(
-    "--model-provider <type>",
-    "Override model provider (e.g., anthropic-api-key)",
-  )
-  .option(
     "--append-system-prompt <text>",
     "Append text to the agent's system prompt",
   )
@@ -70,7 +66,6 @@ export const continueCommand = new Command()
           envFile?: string;
           vars: Record<string, string>;
           secrets: Record<string, string>;
-          modelProvider?: string;
           appendSystemPrompt?: string;
           disallowedTools?: string[];
           tools?: string[];
@@ -88,7 +83,6 @@ export const continueCommand = new Command()
           envFile?: string;
           vars: Record<string, string>;
           secrets: Record<string, string>;
-          modelProvider?: string;
           appendSystemPrompt?: string;
           disallowedTools?: string[];
           tools?: string[];
@@ -127,7 +121,6 @@ export const continueCommand = new Command()
           prompt,
           vars: Object.keys(vars).length > 0 ? vars : undefined,
           secrets: loadedSecrets,
-          modelProvider: options.modelProvider || allOpts.modelProvider,
           appendSystemPrompt:
             options.appendSystemPrompt || allOpts.appendSystemPrompt,
           disallowedTools: options.disallowedTools || allOpts.disallowedTools,

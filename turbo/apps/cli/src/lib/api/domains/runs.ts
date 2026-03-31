@@ -31,8 +31,6 @@ export async function createRun(body: {
   vars?: Record<string, string>;
   secrets?: Record<string, string>;
   volumeVersions?: Record<string, string>;
-  // Model provider for automatic secret injection
-  modelProvider?: string;
   // Debug flag (internal use only)
   debugNoMockClaude?: boolean;
   // Environment validation flag - when true, validates secrets/vars before running

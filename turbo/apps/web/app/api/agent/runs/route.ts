@@ -232,7 +232,6 @@ const router = tsr.router(runsMainContract, {
         memoryName: body.memoryName,
         volumeVersions: body.volumeVersions,
         debugNoMockClaude: body.debugNoMockClaude,
-        modelProvider: body.modelProvider,
         checkEnv: body.checkEnv,
         firewallPolicies: body.firewallPolicies,
         callerOrgId: org.orgId,

@@ -15,7 +15,7 @@ import { upsertOrgModelProvider } from "../../model-provider/model-provider-serv
 import { upsertSecretByOrg } from "../../secret/secret-service";
 import { setVariable } from "../../variable/variable-service";
 import { ORG_SENTINEL_USER_ID } from "../../org/org-sentinel";
-import { isNoModelProvider } from "../../errors";
+import { isBadRequest } from "../../errors";
 
 const context = testContext();
 
@@ -74,7 +74,7 @@ describe("Org-Level Runtime Resolution", () => {
         createRun(
           baseParams({ agentComposeVersionId: noKeyCompose.versionId }),
         ),
-      ).rejects.toSatisfy(isNoModelProvider);
+      ).rejects.toSatisfy(isBadRequest);
     });
   });
 

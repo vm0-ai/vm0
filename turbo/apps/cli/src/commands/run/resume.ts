@@ -40,10 +40,6 @@ export const resumeCommand = new Command()
     {},
   )
   .option(
-    "--model-provider <type>",
-    "Override model provider (e.g., anthropic-api-key)",
-  )
-  .option(
     "--append-system-prompt <text>",
     "Append text to the agent's system prompt",
   )
@@ -75,7 +71,6 @@ export const resumeCommand = new Command()
           envFile?: string;
           vars: Record<string, string>;
           secrets: Record<string, string>;
-          modelProvider?: string;
           appendSystemPrompt?: string;
           disallowedTools?: string[];
           tools?: string[];
@@ -94,7 +89,6 @@ export const resumeCommand = new Command()
           vars: Record<string, string>;
           secrets: Record<string, string>;
           volumeVersion: Record<string, string>;
-          modelProvider?: string;
           appendSystemPrompt?: string;
           disallowedTools?: string[];
           tools?: string[];
@@ -137,7 +131,6 @@ export const resumeCommand = new Command()
             Object.keys(allOpts.volumeVersion).length > 0
               ? allOpts.volumeVersion
               : undefined,
-          modelProvider: options.modelProvider || allOpts.modelProvider,
           appendSystemPrompt:
             options.appendSystemPrompt || allOpts.appendSystemPrompt,
           disallowedTools: options.disallowedTools || allOpts.disallowedTools,

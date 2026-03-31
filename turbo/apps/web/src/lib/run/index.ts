@@ -9,6 +9,7 @@ export {
   createRunRecord,
   buildAndDispatchRun,
   resolveStartRunCompose,
+  loadCompose,
   isRunDispatchError,
   type RunDispatchError,
   type CreateRunParams,
