@@ -46,7 +46,9 @@ Examples:
         });
 
         if (options.connectors) {
-          const connectors = options.connectors.split(",").map((s) => s.trim());
+          const connectors = options.connectors.split(",").map((s) => {
+            return s.trim();
+          });
           await setZeroAgentUserConnectors(agent.agentId, connectors);
         }
 
