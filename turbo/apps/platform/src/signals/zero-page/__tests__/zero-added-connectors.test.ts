@@ -3,11 +3,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
-import {
-  zeroAddedConnectors$,
-  addZeroConnector$,
-  saveZeroConnectors$,
-} from "../zero-connectors.ts";
+import { zeroAddedConnectors$, addZeroConnector$ } from "../zero-connectors.ts";
 const context = testContext();
 
 function mockAgentApi(connectors: string[]) {
@@ -114,7 +110,7 @@ describe("zeroAddedConnectors$", () => {
 });
 
 describe("addZeroConnector$", () => {
-  it("should add a connector locally and save via user-connectors api", async () => {
+  it("should add a connector via user-connectors api", async () => {
     let capturedBody: { enabledTypes: string[] } | null = null;
 
     mockAgentApi(["slack"]);
@@ -131,19 +127,10 @@ describe("addZeroConnector$", () => {
 
     await setupPage({ context, path: "/", withoutRender: true });
 
-    // Add connector locally (deferred save pattern)
+    // Add connector — saves immediately via user-connectors API
     await context.store.set(addZeroConnector$, "github", context.signal);
 
-    // Local state should include both connectors
-    const connectors = await context.store.get(zeroAddedConnectors$);
-    expect(connectors).toContain("slack");
-    expect(connectors).toContain("github");
-
-    // Save triggers the user-connectors API
-    await context.store.set(saveZeroConnectors$, context.signal);
-
     expect(capturedBody).not.toBeNull();
-    // Connectors are sent as enabledTypes
     expect(capturedBody!.enabledTypes).toContain("slack");
     expect(capturedBody!.enabledTypes).toContain("github");
   });

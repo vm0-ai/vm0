@@ -1,15 +1,10 @@
 import { command, computed, state } from "ccstate";
-import { toast } from "@vm0/ui/components/ui/sonner";
 import { zeroAgentsByIdContract, zeroUserConnectorsContract } from "@vm0/core";
 import { reloadOnboardingStatus$ } from "./zero-onboarding.ts";
-import { throwIfAbort } from "../utils.ts";
-import { logger } from "../log.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { currentAgentId$ } from "./agent.ts";
 import { defaultAgentId$ } from "./zero-agent-name.ts";
 import { currentChatThread$ } from "./zero-chat.ts";
-
-const L = logger("ZeroConnectors");
 
 // ---------------------------------------------------------------------------
 // Agent name resolution
@@ -45,16 +40,8 @@ const zeroAgent$ = computed(async (get) => {
 });
 
 // ---------------------------------------------------------------------------
-// Connectors list: derived from agent response, synced via agents API
+// Connectors list: derived from user-connectors API
 // ---------------------------------------------------------------------------
-
-const internalSaving$ = state(false);
-
-// Draft is keyed by agentId so it's automatically invalidated when the agent changes.
-const internalAddedConnectors$ = state<{
-  agentId: string;
-  connectors: string[];
-} | null>(null);
 
 /** User connector permissions for this agent from the user-connectors API. */
 const seededConnectors$ = computed(async (get) => {
@@ -70,70 +57,30 @@ const seededConnectors$ = computed(async (get) => {
   return result.body.enabledTypes;
 });
 
-/** Added connectors: local draft takes precedence, otherwise seeded from agent. */
+/** Connectors enabled for the current agent. */
 export const zeroAddedConnectors$ = computed(async (get) => {
-  const agentId = await get(zeroAgentId$);
-  const local = get(internalAddedConnectors$);
-  if (local !== null && local.agentId === agentId) {
-    return local.connectors;
-  }
   return await get(seededConnectors$);
 });
 
-/** Add a connector (local only, no compose job). */
+/** Add a connector and save via the user-connectors API. */
 export const addZeroConnector$ = command(
-  async ({ get, set }, name: string, _signal: AbortSignal) => {
-    const agentId = await get(zeroAgentId$);
-    const draft = get(internalAddedConnectors$);
-    const base =
-      draft !== null && draft.agentId === agentId
-        ? draft.connectors
-        : await get(seededConnectors$);
-    set(internalAddedConnectors$, { agentId, connectors: [...base, name] });
-  },
-);
-
-/** Remove a connector (local only, no compose job). */
-export const removeZeroConnector$ = command(
-  async ({ get, set }, name: string, _signal: AbortSignal) => {
-    const agentId = await get(zeroAgentId$);
-    const draft = get(internalAddedConnectors$);
-    const base =
-      draft !== null && draft.agentId === agentId
-        ? draft.connectors
-        : await get(seededConnectors$);
-    set(internalAddedConnectors$, {
-      agentId: agentId ?? "",
-      connectors: base.filter((n) => {
-        return n !== name;
-      }),
-    });
-  },
-);
-
-/** Save connector changes: trigger compose job and wait for completion. */
-export const saveZeroConnectors$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    set(internalSaving$, true);
-    const agentId = await get(zeroAgentId$);
+  async ({ get, set }, name: string, signal: AbortSignal) => {
+    const current = await get(seededConnectors$);
     signal.throwIfAborted();
-    try {
-      const draft = get(internalAddedConnectors$);
-      const newConnectors =
-        draft !== null && draft.agentId === agentId ? draft.connectors : [];
-      await set(syncConnectorsToCompose$, newConnectors, signal);
-      // Reset to null so seeded picks up the new agent state
-      set(internalAddedConnectors$, null);
-      toast.success("Connectors saved", { id: "connector-authorized" });
-    } catch (error) {
-      throwIfAbort(error);
-      L.error("Failed to save connectors:", error);
-      toast.error(
-        error instanceof Error ? error.message : "Failed to save connectors",
-      );
-    } finally {
-      set(internalSaving$, false);
-    }
+    await set(syncConnectorsToCompose$, [...current, name], signal);
+  },
+);
+
+/** Remove a connector and save via the user-connectors API. */
+export const removeZeroConnector$ = command(
+  async ({ get, set }, name: string, signal: AbortSignal) => {
+    const current = await get(seededConnectors$);
+    signal.throwIfAborted();
+    await set(
+      syncConnectorsToCompose$,
+      current.filter((n) => n !== name),
+      signal,
+    );
   },
 );
 

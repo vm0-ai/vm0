@@ -65,7 +65,6 @@ import {
   zeroAddedConnectors$,
   addZeroConnector$,
   removeZeroConnector$,
-  saveZeroConnectors$,
 } from "../../signals/zero-page/zero-connectors.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 
@@ -432,7 +431,6 @@ export function ZeroChatComposer({
   const pollingConnType = useGet(pollingConnectorType$);
   const addConnector = useSet(addZeroConnector$);
   const removeConnector = useSet(removeZeroConnector$);
-  const saveConnectors = useSet(saveZeroConnectors$);
   const optimisticConnected = useGet(justConnectedTypes$);
   const clearOptimistic = useSet(clearJustConnectedTypes$);
 
@@ -475,9 +473,8 @@ export function ZeroChatComposer({
     const label = resolveConnectorLabel(type, connectorMap);
     detach(
       (async () => {
-        await addConnector(type, pageSignal);
         try {
-          await saveConnectors(pageSignal);
+          await addConnector(type, pageSignal);
         } catch (error) {
           throwIfAbort(error);
           // May fail during onboarding when compose doesn't exist yet — ignore
@@ -494,13 +491,12 @@ export function ZeroChatComposer({
     setSavingType(type);
     detach(
       (async () => {
-        if (checked) {
-          await addConnector(type, pageSignal);
-        } else {
-          await removeConnector(type, pageSignal);
-        }
         try {
-          await saveConnectors(pageSignal);
+          if (checked) {
+            await addConnector(type, pageSignal);
+          } else {
+            await removeConnector(type, pageSignal);
+          }
         } catch (error) {
           throwIfAbort(error);
         } finally {

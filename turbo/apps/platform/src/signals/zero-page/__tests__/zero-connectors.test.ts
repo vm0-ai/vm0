@@ -7,7 +7,7 @@ import {
   updateTestPathname$,
 } from "../../../__tests__/page-helper.ts";
 import { allConnectorTypes$ } from "../settings/connectors.ts";
-import { zeroAddedConnectors$, addZeroConnector$ } from "../zero-connectors.ts";
+import { zeroAddedConnectors$ } from "../zero-connectors.ts";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 
 const context = testContext();
@@ -99,7 +99,7 @@ describe("connectors", () => {
   });
 });
 
-describe("zero connectors — agent switch discards local draft", () => {
+describe("zero connectors — agent switch", () => {
   it("should return seeded connectors for new agent after switching", async () => {
     // Mock two agents with different user-connector permissions
     server.use(
@@ -143,19 +143,11 @@ describe("zero connectors — agent switch discards local draft", () => {
     const initialConnectors = await context.store.get(zeroAddedConnectors$);
     expect(initialConnectors).toStrictEqual(["github"]);
 
-    // Add a local connector for agent A
-    await context.store.set(addZeroConnector$, "notion", context.signal);
-
-    const afterAdd = await context.store.get(zeroAddedConnectors$);
-    expect(afterAdd).toContain("notion");
-    expect(afterAdd).toContain("github");
-
     // Switch to agent B by updating the pathname
     context.store.set(updateTestPathname$, "/team/agent-b");
 
-    // Local draft should be discarded; agent B's seeded connectors should show
+    // Agent B's seeded connectors should show
     const agentBConnectors = await context.store.get(zeroAddedConnectors$);
     expect(agentBConnectors).toStrictEqual(["slack"]);
-    expect(agentBConnectors).not.toContain("notion");
   });
 });
