@@ -92,6 +92,8 @@ describe("pollSlackConnection$", () => {
 
     await setup();
 
+    // TODO(@yuma): refactor this test to not depend on fake timers and new AbortController — use views test pattern instead
+    // eslint-disable-next-line ccstate/no-new-abort-controller
     const abortController = new AbortController();
 
     vi.useFakeTimers();

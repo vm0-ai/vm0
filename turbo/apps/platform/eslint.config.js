@@ -36,6 +36,7 @@ export default [
       "ccstate/no-side-effect-in-render": "error",
       "ccstate/no-use-ccstate-in-views": "error",
       "ccstate/no-non-zero-api": "error",
+      "ccstate/no-new-abort-controller": "error",
     },
   },
   // Type-aware rules (only for TypeScript files)
@@ -69,6 +70,18 @@ export default [
       "ccstate/no-store-in-params": "error",
       "ccstate/command-async-signal": "error",
       "ccstate/no-getter-setter-params": "error",
+    },
+  },
+  // Allow new AbortController in signal infrastructure and signal test helpers
+  {
+    files: [
+      "src/signals/utils.ts",
+      "src/polyfill.ts",
+      "src/signals/__tests__/test-helpers.ts",
+      "src/signals/__tests__/utils.test.ts",
+    ],
+    rules: {
+      "ccstate/no-new-abort-controller": "off",
     },
   },
   {
