@@ -911,7 +911,7 @@ function ScheduleDetailView({
                   className="shrink-0 opacity-90"
                 />
               </div>
-              <div className="min-w-0 flex-1 h-14 sm:h-16 flex flex-col justify-center gap-1.5 overflow-hidden">
+              <div className="min-w-0 flex-1 flex flex-col justify-center gap-1.5">
                 <h1 className="min-w-0 text-base sm:text-lg font-semibold tracking-tight text-foreground leading-tight truncate">
                   {summaryTitle}
                 </h1>
@@ -958,7 +958,7 @@ function ScheduleDetailView({
               </div>
             </div>
 
-            <div className="mt-6 flex h-9 items-center gap-2">
+            <div className="mt-4 flex flex-col gap-2 sm:mt-6 sm:flex-row sm:h-9 sm:items-center">
               <TabsList className="zero-tabs h-9 w-full sm:w-auto gap-1 px-1 py-1 overflow-x-auto">
                 <TabsTrigger
                   value="settings"
@@ -986,7 +986,7 @@ function ScheduleDetailView({
                 type="button"
                 variant="outline"
                 size="sm"
-                className="zero-btn-morandi ml-auto h-9 shrink-0 gap-2 rounded-lg px-4 border text-sm font-medium transition-colors hover:bg-accent"
+                className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg px-4 border text-sm font-medium transition-colors hover:bg-accent sm:ml-auto"
                 disabled={running || !entry.prompt.trim()}
                 onClick={() => {
                   onRunNow().catch(() => {});

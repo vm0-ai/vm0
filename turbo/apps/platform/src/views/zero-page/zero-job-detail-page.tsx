@@ -755,16 +755,16 @@ export function ZeroJobDetailPage({ agentId }: ZeroJobDetailPageProps) {
               />
             )}
             <div className="min-w-0">
-              <h1 className="text-xl font-semibold tracking-tight text-foreground">
+              <h1 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl truncate">
                 {displayName}
               </h1>
-              <p className="text-sm text-muted-foreground mt-1.5 leading-tight">
+              <p className="text-sm text-muted-foreground mt-1.5 leading-tight line-clamp-2">
                 {description || "Your AI teammate, tuned to you"}
               </p>
             </div>
           </div>
 
-          <div className="mt-4 flex h-9 items-center gap-4">
+          <div className="mt-4">
             <AgentTabNav
               activeTab={activeTab}
               onTabChange={setActiveTab}
