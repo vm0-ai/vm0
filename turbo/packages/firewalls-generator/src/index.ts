@@ -82,6 +82,7 @@ import { generate as generatePosthog } from "./posthog";
 import { generate as generateProductlane } from "./productlane";
 import { generate as generatePrismaPostgres } from "./prisma-postgres";
 import { generate as generatePushinator } from "./pushinator";
+import { generate as generateQdrant } from "./qdrant";
 import { generate as generateQiita } from "./qiita";
 import { generate as generateReddit } from "./reddit";
 import { generate as generateReportei } from "./reportei";
@@ -195,6 +196,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   "prisma-postgres": generatePrismaPostgres,
   productlane: generateProductlane,
   pushinator: generatePushinator,
+  qdrant: generateQdrant,
   qiita: generateQiita,
   reddit: generateReddit,
   reportei: generateReportei,

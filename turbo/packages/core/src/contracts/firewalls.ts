@@ -153,9 +153,189 @@ export function resolveFirewallBaseUrlVars(
   }));
 }
 
+/**
+ * Pattern matching `{name}`, `{name+}`, or `{name*}` parameter segments.
+ */
+const PARAM_SEGMENT_PATTERN = /^\{([^}]*)\}$/;
+
+/**
+ * Check if a base URL contains `{name}` style parameter placeholders
+ * (as opposed to `${{ vars.X }}` template references).
+ */
+export function hasBaseUrlParams(base: string): boolean {
+  // Strip ${{ ... }} template references, then check for remaining { }.
+  // Uses string iteration instead of regex to avoid ReDoS risk.
+  let stripped = base;
+  let start = stripped.indexOf("${{");
+  while (start !== -1) {
+    const end = stripped.indexOf("}}", start + 3);
+    if (end === -1) break;
+    stripped = stripped.slice(0, start) + stripped.slice(end + 2);
+    start = stripped.indexOf("${{");
+  }
+  return stripped.includes("{") && stripped.includes("}");
+}
+
+function errMsg(base: string, svc: string, detail: string): string {
+  return `Invalid base URL "${base}" in firewall "${svc}": ${detail}`;
+}
+
+/**
+ * Validate host segments (`.`-delimited) for parameterized base URLs.
+ * Greedy params (`+`/`*`) must be the first (leftmost) host segment.
+ * At least one static segment is required for security.
+ */
+function validateHostParams(
+  segments: string[],
+  paramNames: Set<string>,
+  base: string,
+  svc: string,
+): void {
+  if (segments.length < 2) {
+    throw new Error(errMsg(base, svc, "host must have at least two segments"));
+  }
+  let hasStatic = false;
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i]!;
+    const match = PARAM_SEGMENT_PATTERN.exec(seg);
+    if (!match) {
+      if (seg.includes("{") || seg.includes("}")) {
+        throw new Error(
+          errMsg(
+            base,
+            svc,
+            `host segment "${seg}" contains "{" or "}" but is not a valid parameter (use "{name}" for the full segment)`,
+          ),
+        );
+      }
+      hasStatic = true;
+      continue;
+    }
+    const name = match[1]!;
+    const isGreedy = name.endsWith("+") || name.endsWith("*");
+    const baseName = isGreedy ? name.slice(0, -1) : name;
+    if (!baseName) {
+      throw new Error(errMsg(base, svc, "empty parameter name in host"));
+    }
+    if (paramNames.has(baseName)) {
+      throw new Error(
+        errMsg(base, svc, `duplicate parameter name "{${baseName}}" in host`),
+      );
+    }
+    paramNames.add(baseName);
+    if (isGreedy && i !== 0) {
+      throw new Error(
+        errMsg(base, svc, `{${name}} must be the first host segment`),
+      );
+    }
+  }
+  if (!hasStatic) {
+    throw new Error(
+      errMsg(base, svc, "host must have at least one static segment"),
+    );
+  }
+}
+
+/**
+ * Validate path segments (`/`-delimited) for parameterized base URLs.
+ * Only `{param}` is allowed — greedy params are rejected.
+ */
+function validatePathParams(
+  segments: string[],
+  paramNames: Set<string>,
+  base: string,
+  svc: string,
+): void {
+  for (const seg of segments) {
+    const match = PARAM_SEGMENT_PATTERN.exec(seg);
+    if (!match) {
+      if (seg.includes("{") || seg.includes("}")) {
+        throw new Error(
+          errMsg(
+            base,
+            svc,
+            `path segment "${seg}" contains "{" or "}" but is not a valid parameter (use "{name}" for the full segment)`,
+          ),
+        );
+      }
+      continue;
+    }
+    const name = match[1]!;
+    if (!name) {
+      throw new Error(errMsg(base, svc, "empty parameter name in path"));
+    }
+    if (name.endsWith("+") || name.endsWith("*")) {
+      throw new Error(
+        errMsg(
+          base,
+          svc,
+          `greedy parameter {${name}} is not allowed in base URL path`,
+        ),
+      );
+    }
+    if (paramNames.has(name)) {
+      throw new Error(
+        errMsg(base, svc, `duplicate parameter name "{${name}}"`),
+      );
+    }
+    paramNames.add(name);
+  }
+}
+
+/**
+ * Validate parameter segments in a firewall base URL.
+ *
+ * Host portion: `{param}`, `{param+}`, `{param*}` allowed.
+ *   - Greedy (`+`/`*`) must be in the leftmost (first) host segment.
+ *   - At least one static host segment is required for security.
+ *
+ * Path portion: only `{param}` (single-segment) allowed.
+ *   - Greedy (`+`/`*`) is rejected — it would consume the entire remaining
+ *     path, leaving nothing for permission rules to match against.
+ */
+function validateBaseUrlParams(base: string, serviceName: string): void {
+  const schemeEnd = base.indexOf("://");
+  if (schemeEnd === -1) {
+    throw new Error(errMsg(base, serviceName, "missing scheme"));
+  }
+  if (base.slice(0, schemeEnd).includes("{")) {
+    throw new Error(
+      errMsg(base, serviceName, "scheme must not contain parameters"),
+    );
+  }
+  if (base.includes("?")) {
+    throw new Error(errMsg(base, serviceName, "must not contain query string"));
+  }
+  if (base.includes("#")) {
+    throw new Error(errMsg(base, serviceName, "must not contain fragment"));
+  }
+
+  const rest = base.slice(schemeEnd + 3);
+  const slashIdx = rest.indexOf("/");
+  const host = slashIdx === -1 ? rest : rest.slice(0, slashIdx);
+  const path = slashIdx === -1 ? "" : rest.slice(slashIdx);
+
+  const paramNames = new Set<string>();
+  validateHostParams(host.split("."), paramNames, base, serviceName);
+  if (path) {
+    validatePathParams(
+      path.split("/").filter(Boolean),
+      paramNames,
+      base,
+      serviceName,
+    );
+  }
+}
+
 export function validateBaseUrl(base: string, serviceName: string): void {
   // Template base URLs are validated after variable resolution at compose time.
   if (hasBaseUrlVars(base)) return;
+
+  // Parameterized base URLs have their own validation path.
+  if (hasBaseUrlParams(base)) {
+    validateBaseUrlParams(base, serviceName);
+    return;
+  }
 
   let url: URL;
   try {

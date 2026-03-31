@@ -5,7 +5,7 @@ import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import mitm_addon
-from mitm_addon import FirewallAllow, FirewallBlock
+from mitm_addon import FirewallAllow, FirewallBlock, match_base_url, match_host, match_path_prefix
 
 
 def _make_http_flow(client_ip="10.200.0.1", host="api.github.com", port=443, path="/repos"):
@@ -509,6 +509,378 @@ class TestMatchFirewallRequest:
         assert isinstance(result, FirewallAllow)
         assert result.api_entry["auth"]["headers"]["Authorization"] == "Bearer user"
         assert result.match_info["permission"] == "send"
+
+    def test_parameterized_host_allows(self):
+        """Base URL with {subdomain} in host matches dynamically."""
+        fw_configs = _wrap_firewalls(
+            [
+                {
+                    "base": "https://{subdomain}.zendesk.com",
+                    "auth": {"headers": {"Authorization": "Basic ${{ secrets.AUTH }}"}},
+                    "permissions": [{"name": "tickets", "rules": ["GET /api/v2/tickets"]}],
+                }
+            ],
+            name="zendesk",
+            ref="zendesk",
+        )
+        result = mitm_addon.match_firewall_request(
+            "https://acme.zendesk.com/api/v2/tickets", "GET", fw_configs
+        )
+        assert isinstance(result, FirewallAllow)
+        assert result.match_info["name"] == "zendesk"
+        assert result.match_info["permission"] == "tickets"
+        assert result.match_info["params"] == {"subdomain": "acme"}
+
+    def test_parameterized_host_blocks_no_permission(self):
+        """Base URL with host param matches but no rule → block."""
+        fw_configs = _wrap_firewalls(
+            [
+                {
+                    "base": "https://{subdomain}.zendesk.com",
+                    "auth": {"headers": {}},
+                    "permissions": [{"name": "tickets", "rules": ["GET /api/v2/tickets"]}],
+                }
+            ],
+            name="zendesk",
+            ref="zendesk",
+        )
+        result = mitm_addon.match_firewall_request(
+            "https://acme.zendesk.com/api/v2/users", "GET", fw_configs
+        )
+        assert isinstance(result, FirewallBlock)
+        assert result.name == "zendesk"
+
+    def test_parameterized_host_no_match_returns_none(self):
+        """Different domain entirely → None (pass-through)."""
+        fw_configs = _wrap_firewalls(
+            [
+                {
+                    "base": "https://{subdomain}.zendesk.com",
+                    "auth": {"headers": {}},
+                    "permissions": [{"name": "p", "rules": ["ANY /{path+}"]}],
+                }
+            ]
+        )
+        result = mitm_addon.match_firewall_request(
+            "https://api.github.com/repos", "GET", fw_configs
+        )
+        assert result is None
+
+    def test_parameterized_path_allows(self):
+        """Base URL with {param} in path matches dynamically."""
+        fw_configs = _wrap_firewalls(
+            [
+                {
+                    "base": "https://api.example.com/v1/{org}",
+                    "auth": {"headers": {}},
+                    "permissions": [{"name": "projects", "rules": ["GET /projects/{id}"]}],
+                }
+            ]
+        )
+        result = mitm_addon.match_firewall_request(
+            "https://api.example.com/v1/acme/projects/123", "GET", fw_configs
+        )
+        assert isinstance(result, FirewallAllow)
+        assert result.match_info["params"] == {"org": "acme", "id": "123"}
+
+    def test_parameterized_host_and_path(self):
+        """Both host and path params extracted."""
+        fw_configs = _wrap_firewalls(
+            [
+                {
+                    "base": "https://{tenant}.api.example.com/v1/{org}",
+                    "auth": {"headers": {}},
+                    "permissions": [{"name": "data", "rules": ["GET /data"]}],
+                }
+            ]
+        )
+        result = mitm_addon.match_firewall_request(
+            "https://us.api.example.com/v1/acme/data", "GET", fw_configs
+        )
+        assert isinstance(result, FirewallAllow)
+        assert result.match_info["params"] == {"tenant": "us", "org": "acme"}
+
+    def test_greedy_host_param_matches_multi_level(self):
+        """Greedy {sub+} in host matches multiple subdomain levels."""
+        fw_configs = _wrap_firewalls(
+            [
+                {
+                    "base": "https://{sub+}.example.com",
+                    "auth": {"headers": {}},
+                    "permissions": [{"name": "p", "rules": ["GET /api"]}],
+                }
+            ]
+        )
+        result = mitm_addon.match_firewall_request(
+            "https://a.b.c.example.com/api", "GET", fw_configs
+        )
+        assert isinstance(result, FirewallAllow)
+        assert result.match_info["params"]["sub"] == "a.b.c"
+
+    def test_greedy_star_host_param_matches_zero(self):
+        """Greedy {sub*} in host matches zero subdomains."""
+        fw_configs = _wrap_firewalls(
+            [
+                {
+                    "base": "https://{sub*}.example.com",
+                    "auth": {"headers": {}},
+                    "permissions": [{"name": "p", "rules": ["GET /api"]}],
+                }
+            ]
+        )
+        result = mitm_addon.match_firewall_request("https://example.com/api", "GET", fw_configs)
+        assert isinstance(result, FirewallAllow)
+        assert result.match_info["params"]["sub"] == ""
+
+    def test_mixed_static_and_parameterized_bases(self):
+        """Static and parameterized bases in same config both work."""
+        fw_configs = [
+            {
+                "name": "github",
+                "ref": "github",
+                "apis": [
+                    {
+                        "base": "https://api.github.com",
+                        "auth": {"headers": {}},
+                        "permissions": [{"name": "p", "rules": ["ANY /{path+}"]}],
+                    }
+                ],
+            },
+            {
+                "name": "zendesk",
+                "ref": "zendesk",
+                "apis": [
+                    {
+                        "base": "https://{sub}.zendesk.com",
+                        "auth": {"headers": {}},
+                        "permissions": [{"name": "p", "rules": ["ANY /{path+}"]}],
+                    }
+                ],
+            },
+        ]
+        gh = mitm_addon.match_firewall_request("https://api.github.com/repos", "GET", fw_configs)
+        assert isinstance(gh, FirewallAllow)
+        assert gh.match_info["name"] == "github"
+
+        zd = mitm_addon.match_firewall_request(
+            "https://acme.zendesk.com/api/v2/tickets", "GET", fw_configs
+        )
+        assert isinstance(zd, FirewallAllow)
+        assert zd.match_info["name"] == "zendesk"
+        assert zd.match_info["params"]["sub"] == "acme"
+
+    def test_parameterized_host_with_query_string(self):
+        """Parameterized base URL + query string in request."""
+        fw_configs = _wrap_firewalls(
+            [
+                {
+                    "base": "https://{sub}.zendesk.com",
+                    "auth": {"headers": {}},
+                    "permissions": [{"name": "tickets", "rules": ["GET /api/v2/tickets"]}],
+                }
+            ]
+        )
+        result = mitm_addon.match_firewall_request(
+            "https://acme.zendesk.com/api/v2/tickets?page=2", "GET", fw_configs
+        )
+        assert isinstance(result, FirewallAllow)
+        assert result.match_info["params"]["sub"] == "acme"
+
+    def test_parameterized_host_rejects_nonstandard_port(self):
+        """Non-standard port must NOT match — prevents auth header leaking to rogue server."""
+        fw_configs = _wrap_firewalls(
+            [
+                {
+                    "base": "https://{sub}.zendesk.com",
+                    "auth": {"headers": {}},
+                    "permissions": [{"name": "p", "rules": ["ANY /{path+}"]}],
+                }
+            ]
+        )
+        result = mitm_addon.match_firewall_request(
+            "https://acme.zendesk.com:8443/api", "GET", fw_configs
+        )
+        assert result is None
+
+
+# =========================================================================
+# match_host
+# =========================================================================
+
+
+class TestMatchHost:
+    def test_exact_host(self):
+        assert match_host("api.github.com", "api.github.com") == {}
+
+    def test_single_param(self):
+        result = match_host("acme.zendesk.com", "{subdomain}.zendesk.com")
+        assert result == {"subdomain": "acme"}
+
+    def test_single_param_no_match_multi_level(self):
+        """Single {param} must not match multiple host segments."""
+        result = match_host("a.b.zendesk.com", "{subdomain}.zendesk.com")
+        assert result is None
+
+    def test_greedy_plus_matches_multi(self):
+        result = match_host("a.b.c.example.com", "{sub+}.example.com")
+        assert result == {"sub": "a.b.c"}
+
+    def test_greedy_plus_matches_single(self):
+        result = match_host("x.example.com", "{sub+}.example.com")
+        assert result == {"sub": "x"}
+
+    def test_greedy_plus_rejects_zero(self):
+        result = match_host("example.com", "{sub+}.example.com")
+        assert result is None
+
+    def test_greedy_star_matches_multi(self):
+        result = match_host("a.b.example.com", "{sub*}.example.com")
+        assert result == {"sub": "a.b"}
+
+    def test_greedy_star_matches_zero(self):
+        result = match_host("example.com", "{sub*}.example.com")
+        assert result == {"sub": ""}
+
+    def test_literal_mismatch(self):
+        assert match_host("api.gitlab.com", "api.github.com") is None
+
+    def test_case_insensitive(self):
+        assert match_host("API.GitHub.COM", "api.github.com") == {}
+
+    def test_host_too_few_segments(self):
+        assert match_host("github.com", "api.github.com") is None
+
+    def test_param_name_preserves_case(self):
+        """Param names should preserve original case from the pattern."""
+        result = match_host("acme.zendesk.com", "{Subdomain}.zendesk.com")
+        assert "Subdomain" in result
+        assert result["Subdomain"] == "acme"
+
+
+# =========================================================================
+# match_path_prefix
+# =========================================================================
+
+
+class TestMatchPathPrefix:
+    def test_exact_match(self):
+        result = match_path_prefix(["v1", "projects"], ["v1", "projects"])
+        assert result == ({}, 2)
+
+    def test_single_param(self):
+        result = match_path_prefix(["v1", "acme", "projects"], ["v1", "{org}"])
+        assert result == ({"org": "acme"}, 2)
+
+    def test_remaining_segments(self):
+        result = match_path_prefix(["v1", "acme", "projects", "123"], ["v1", "{org}"])
+        assert result == ({"org": "acme"}, 2)
+
+    def test_mismatch(self):
+        result = match_path_prefix(["v2", "acme"], ["v1", "{org}"])
+        assert result is None
+
+    def test_empty_pattern(self):
+        result = match_path_prefix(["v1", "acme"], [])
+        assert result == ({}, 0)
+
+    def test_path_too_short(self):
+        result = match_path_prefix(["v1"], ["v1", "{org}"])
+        assert result is None
+
+
+# =========================================================================
+# match_base_url
+# =========================================================================
+
+
+class TestMatchBaseUrl:
+    def test_static_base(self):
+        result = match_base_url("https://api.github.com/repos", "https://api.github.com")
+        assert result == ("/repos", {})
+
+    def test_static_base_exact(self):
+        result = match_base_url("https://api.github.com", "https://api.github.com")
+        assert result == ("/", {})
+
+    def test_static_base_evil_domain(self):
+        result = match_base_url("https://api.github.com.evil.com/steal", "https://api.github.com")
+        assert result is None
+
+    def test_parameterized_host(self):
+        result = match_base_url(
+            "https://acme.zendesk.com/api/v2/tickets",
+            "https://{subdomain}.zendesk.com",
+        )
+        assert result is not None
+        rel_path, params = result
+        assert rel_path == "/api/v2/tickets"
+        assert params == {"subdomain": "acme"}
+
+    def test_parameterized_path(self):
+        result = match_base_url(
+            "https://api.example.com/v1/acme/projects/123",
+            "https://api.example.com/v1/{org}",
+        )
+        assert result is not None
+        rel_path, params = result
+        assert rel_path == "/projects/123"
+        assert params == {"org": "acme"}
+
+    def test_parameterized_host_and_path(self):
+        result = match_base_url(
+            "https://us.api.example.com/v1/acme/data",
+            "https://{region}.api.example.com/v1/{org}",
+        )
+        assert result is not None
+        rel_path, params = result
+        assert rel_path == "/data"
+        assert params == {"region": "us", "org": "acme"}
+
+    def test_host_mismatch_returns_none(self):
+        result = match_base_url("https://api.github.com/repos", "https://{sub}.zendesk.com")
+        assert result is None
+
+    def test_scheme_mismatch_returns_none(self):
+        result = match_base_url("http://acme.zendesk.com/api", "https://{sub}.zendesk.com")
+        assert result is None
+
+    def test_query_stripped(self):
+        result = match_base_url(
+            "https://acme.zendesk.com/api?key=val",
+            "https://{sub}.zendesk.com",
+        )
+        assert result is not None
+        rel_path, _ = result
+        assert rel_path == "/api"
+
+    def test_no_path_after_parameterized_base(self):
+        result = match_base_url(
+            "https://acme.zendesk.com",
+            "https://{sub}.zendesk.com",
+        )
+        assert result is not None
+        rel_path, params = result
+        assert rel_path == "/"
+        assert params == {"sub": "acme"}
+
+    def test_nonstandard_port_rejected(self):
+        """Non-standard port in URL must not match base without port."""
+        result = match_base_url(
+            "https://acme.zendesk.com:8443/api",
+            "https://{sub}.zendesk.com",
+        )
+        assert result is None
+
+    def test_base_with_port_matches_url_with_same_port(self):
+        """Base with explicit port matches URL with same port."""
+        result = match_base_url(
+            "https://internal.example.com:8443/api",
+            "https://{sub}.example.com:8443",
+        )
+        assert result is not None
+        rel_path, params = result
+        assert rel_path == "/api"
+        assert params == {"sub": "internal"}
 
 
 # =========================================================================
