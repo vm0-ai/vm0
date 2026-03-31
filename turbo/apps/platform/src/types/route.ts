@@ -3,6 +3,7 @@ export type RoutePath =
   | "/select-org"
   | "/:tab"
   | "/activity"
+  | "/activity/:runId/context"
   | "/activity/:runId"
   | "/chat/:chatThreadId"
   | "/team"

@@ -9,6 +9,7 @@ import {
   IconLoader2,
   IconDownload,
   IconChartLine,
+  IconFileAnalytics,
 } from "@tabler/icons-react";
 import { Button, Input } from "@vm0/ui";
 import {
@@ -149,6 +150,7 @@ function ActivityHeaderCard({
   duration,
   time,
   events,
+  showContextLink,
 }: {
   displayName: string;
   status: LogStatus;
@@ -163,6 +165,7 @@ function ActivityHeaderCard({
   duration: string | null | undefined;
   time: string;
   events: AgentEvent[];
+  showContextLink?: boolean;
 }) {
   return (
     <div className="zero-card shrink-0 px-4 py-3">
@@ -243,6 +246,16 @@ function ActivityHeaderCard({
           </div>
         </div>
         <div className="flex-1 min-w-0" />
+        {showContextLink && (
+          <Link
+            pathname="/activity/:runId/context"
+            options={{ pathParams: { runId: detail.id } }}
+            className="inline-flex items-center h-8 shrink-0 gap-1 rounded-lg px-3 text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors no-underline"
+          >
+            <IconFileAnalytics size={14} stroke={1.5} />
+            Context
+          </Link>
+        )}
         <Button
           variant="ghost"
           size="sm"
@@ -277,6 +290,8 @@ export function ZeroActivityDetailPage() {
   const stepSearch = useGet(zeroActivityStepSearch$);
   const setStepSearch = useSet(setZeroActivityStepSearch$);
   const features = useLastResolved(featureSwitch$);
+  const showSystemPrompt =
+    features?.[FeatureSwitchKey.ShowSystemPrompt] ?? false;
 
   // Skeleton until both detail and initial events are loaded
   const eventsReady = eventsLoadable.state === "hasData";
@@ -299,9 +314,6 @@ export function ZeroActivityDetailPage() {
   const messages = visibleMessages.filter((m) =>
     groupedMessageMatchesSearch(m, stepSearch.trim()),
   );
-
-  const showSystemPrompt =
-    features?.[FeatureSwitchKey.ShowSystemPrompt] ?? false;
 
   const prompt = detail.prompt ?? "";
   const appendSystemPrompt = detail.appendSystemPrompt ?? "";
@@ -329,6 +341,7 @@ export function ZeroActivityDetailPage() {
             duration={duration}
             time={time}
             events={events}
+            showContextLink={features?.[FeatureSwitchKey.RunContext]}
           />
 
           {/* Steps section */}

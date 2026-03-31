@@ -183,6 +183,67 @@ export function ingestRequestLog(entry: RequestLogEntry): void {
   // Don't await flush - let it batch automatically
 }
 
+// ── Run context snapshot ────────────────────────────────────────────────
+
+interface RunContextVolume {
+  name: string;
+  mountPath: string;
+  vasStorageName: string;
+  vasVersionId: string;
+}
+
+interface RunContextArtifact {
+  mountPath: string;
+  vasStorageName: string;
+  vasVersionId: string;
+}
+
+interface RunContextFirewall {
+  name: string;
+  ref: string;
+  apis: {
+    base: string;
+    permissions?: { name: string; description?: string; rules: string[] }[];
+  }[];
+}
+
+/**
+ * Snapshot of dynamically-computed execution context fields.
+ * Static fields (prompt, vars, secretNames) come from agent_runs at query time.
+ */
+export interface RunContextSnapshot {
+  runId: string;
+  userId: string;
+  prompt: string;
+  appendSystemPrompt: string | null;
+  secretNames: string[];
+  environment: Record<string, string>;
+  firewalls: RunContextFirewall[];
+  volumes: RunContextVolume[];
+  artifact: RunContextArtifact | null;
+  memory: RunContextArtifact | null;
+}
+
+/**
+ * Ingest run execution context snapshot to Axiom.
+ * The snapshot must already be sanitized (secrets masked, auth headers stripped).
+ * Fire-and-forget - doesn't block the response.
+ */
+export function ingestRunContext(snapshot: RunContextSnapshot): void {
+  const client = getTelemetryInstance(env().AXIOM_TOKEN_TELEMETRY);
+  if (!client) {
+    return;
+  }
+
+  const dataset = getDatasetName(DATASETS.RUN_CONTEXT);
+  client.ingest(dataset, [
+    {
+      _time: new Date().toISOString(),
+      ...snapshot,
+    },
+  ]);
+}
+
 interface SandboxOpLogEntry {
   source: "web" | "runner" | "sandbox";
   op_type: string;

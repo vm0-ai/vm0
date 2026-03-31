@@ -264,6 +264,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     enabled: false,
   },
+  [FeatureSwitchKey.RunContext]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+    enabledUserHashes: STAFF_USER_HASHES,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
 };
 
 interface ResolvedHashes {

@@ -570,11 +570,13 @@ export {
   zeroRunsCancelContract,
   zeroRunsQueueContract,
   zeroRunAgentEventsContract,
+  zeroRunContextContract,
   type ZeroRunsMainContract,
   type ZeroRunsByIdContract,
   type ZeroRunsCancelContract,
   type ZeroRunsQueueContract,
   type ZeroRunAgentEventsContract,
+  type ZeroRunContextContract,
 } from "./zero-runs";
 export {
   zeroSchedulesMainContract,
