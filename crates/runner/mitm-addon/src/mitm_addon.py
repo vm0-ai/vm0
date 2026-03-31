@@ -140,18 +140,20 @@ def match_host(host: str, pattern: str) -> dict | None:
     - {name*} matches zero or more leading host segments. Must be first.
     """
     host_segs = host.lower().split(".")
-    pattern_segs = pattern.lower().split(".")
+    # Keep original pattern segments for param name extraction;
+    # only lowercase for literal comparison.
+    pattern_segs_orig = pattern.split(".")
 
     params: dict[str, str] = {}
 
     # Match right-to-left: reverse both, then match like a path.
     host_segs.reverse()
-    pattern_segs.reverse()
+    pattern_segs_orig.reverse()
 
     hi = 0
-    for seg in pattern_segs:
-        if seg.startswith("{") and seg.endswith("}"):
-            name = seg[1:-1]
+    for seg_orig in pattern_segs_orig:
+        if seg_orig.startswith("{") and seg_orig.endswith("}"):
+            name = seg_orig[1:-1]
             if name.endswith("+"):
                 # Greedy: consume rest (one or more)
                 if hi >= len(host_segs):
@@ -170,7 +172,7 @@ def match_host(host: str, pattern: str) -> dict | None:
             params[name] = host_segs[hi]
             hi += 1
         else:
-            if hi >= len(host_segs) or host_segs[hi] != seg:
+            if hi >= len(host_segs) or host_segs[hi] != seg_orig.lower():
                 return None
             hi += 1
 

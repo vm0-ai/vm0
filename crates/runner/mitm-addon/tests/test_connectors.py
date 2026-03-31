@@ -669,6 +669,40 @@ class TestMatchFirewallRequest:
         assert zd.match_info["name"] == "zendesk"
         assert zd.match_info["params"]["sub"] == "acme"
 
+    def test_parameterized_host_with_query_string(self):
+        """Parameterized base URL + query string in request."""
+        fw_configs = _wrap_firewalls(
+            [
+                {
+                    "base": "https://{sub}.zendesk.com",
+                    "auth": {"headers": {}},
+                    "permissions": [{"name": "tickets", "rules": ["GET /api/v2/tickets"]}],
+                }
+            ]
+        )
+        result = mitm_addon.match_firewall_request(
+            "https://acme.zendesk.com/api/v2/tickets?page=2", "GET", fw_configs
+        )
+        assert isinstance(result, FirewallAllow)
+        assert result.match_info["params"]["sub"] == "acme"
+
+    def test_parameterized_host_with_port_in_url(self):
+        """URL with explicit port still matches parameterized base."""
+        fw_configs = _wrap_firewalls(
+            [
+                {
+                    "base": "https://{sub}.zendesk.com",
+                    "auth": {"headers": {}},
+                    "permissions": [{"name": "p", "rules": ["GET /api"]}],
+                }
+            ]
+        )
+        result = mitm_addon.match_firewall_request(
+            "https://acme.zendesk.com:443/api", "GET", fw_configs
+        )
+        assert isinstance(result, FirewallAllow)
+        assert result.match_info["params"]["sub"] == "acme"
+
 
 # =========================================================================
 # match_host
@@ -716,6 +750,12 @@ class TestMatchHost:
 
     def test_host_too_few_segments(self):
         assert match_host("github.com", "api.github.com") is None
+
+    def test_param_name_preserves_case(self):
+        """Param names should preserve original case from the pattern."""
+        result = match_host("acme.zendesk.com", "{Subdomain}.zendesk.com")
+        assert "Subdomain" in result
+        assert result["Subdomain"] == "acme"
 
 
 # =========================================================================
