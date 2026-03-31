@@ -87,6 +87,7 @@
     "generate:productlane": "tsx src/index.ts productlane",
     "generate:prisma-postgres": "tsx src/index.ts prisma-postgres",
     "generate:pushinator": "tsx src/index.ts pushinator",
+    "generate:qdrant": "tsx src/index.ts qdrant",
     "generate:qiita": "tsx src/index.ts qiita",
     "generate:reddit": "tsx src/index.ts reddit",
     "generate:reportei": "tsx src/index.ts reportei",

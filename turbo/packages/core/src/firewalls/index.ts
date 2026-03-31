@@ -95,6 +95,7 @@ import { posthogFirewall } from "./posthog.generated";
 import { productlaneFirewall } from "./productlane.generated";
 import { prismaPostgresFirewall } from "./prisma-postgres.generated";
 import { pushinatorFirewall } from "./pushinator.generated";
+import { qdrantFirewall } from "./qdrant.generated";
 import { qiitaFirewall } from "./qiita.generated";
 import { redditFirewall } from "./reddit.generated";
 import { reporteiFirewall } from "./reportei.generated";
@@ -212,6 +213,7 @@ const CONNECTOR_FIREWALLS = {
   "prisma-postgres": prismaPostgresFirewall,
   productlane: productlaneFirewall,
   pushinator: pushinatorFirewall,
+  qdrant: qdrantFirewall,
   qiita: qiitaFirewall,
   reddit: redditFirewall,
   reportei: reporteiFirewall,
@@ -327,8 +329,6 @@ export type PermissionNamesOf<T extends FirewallConfig> =
  * that already has a firewall config.
  */
 export type NonFirewallConnectorType =
-  // Self-hosted / dynamic base URL — needs ${{ vars.X }} template + connector variable addition
-  | "qdrant" // self-hosted, auth: api-key header or Bearer, needs BASE_URL variable
   // Datacenter-specific — feasible with static enumeration, needs connector variable addition
   | "mailchimp" // ~20 datacenter domains (usX.api.mailchimp.com), auth: Bearer works
   // Basic Auth — proxy cannot do base64 encoding at runtime
