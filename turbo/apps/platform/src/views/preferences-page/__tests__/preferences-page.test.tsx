@@ -122,6 +122,8 @@ describe("zero preferences page - timezone update", () => {
     await waitFor(() => {
       expect(screen.getByText("Time zone")).toBeInTheDocument();
     });
+    expect(screen.getByRole("combobox")).toBeInTheDocument();
+    // Verify the combobox trigger displays the label for the current timezone (Asia/Tokyo)
     expect(screen.getByText(/Japan Standard Time \(JST\)/)).toBeInTheDocument();
   });
 
