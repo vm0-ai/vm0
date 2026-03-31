@@ -77,7 +77,9 @@ Notes:
           console.log("No named permission was found covering this request.");
         }
 
-        console.log(`Ask the user to allow it at: ${url}`);
+        console.log(
+          `Ask the user to allow it at: [Allow ${label} access](${url})`,
+        );
       },
     ),
   );

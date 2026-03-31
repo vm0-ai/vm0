@@ -46,8 +46,8 @@ describe("zero doctor firewall-deny command", () => {
         "GitHub firewall blocked GET /repos/owner/repo/pulls",
       );
       expect(logCalls).toContain('covered by the "');
-      expect(logCalls).toContain(
-        "https://app.vm0.ai/firewall-allow/agent-abc-123?",
+      expect(logCalls).toMatch(
+        /\[Allow GitHub access\]\(https:\/\/app\.vm0\.ai\/firewall-allow\/agent-abc-123\?/,
       );
       expect(logCalls).toContain("ref=github");
       expect(logCalls).toContain("permission=");
