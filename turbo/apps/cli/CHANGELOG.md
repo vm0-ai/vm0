@@ -1,5 +1,24 @@
 # Changelog
 
+## [9.87.1](https://github.com/vm0-ai/vm0/compare/cli-v9.87.0...cli-v9.87.1) (2026-03-31)
+
+
+### Bug Fixes
+
+* unify schedule notification defaults to false (opt-in) ([#7277](https://github.com/vm0-ai/vm0/issues/7277)) ([e9ff75a](https://github.com/vm0-ai/vm0/commit/e9ff75aedd63c7c652d02cf95ab96d421fab8f4e)), closes [#7273](https://github.com/vm0-ai/vm0/issues/7273)
+
+
+### Refactoring
+
+* remove dead artifact name fields from schedule system ([#7281](https://github.com/vm0-ai/vm0/issues/7281)) ([9c366b7](https://github.com/vm0-ai/vm0/commit/9c366b7bb82214fa5ede25bda026c6916d5b010b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.128.0
+
 ## [9.87.0](https://github.com/vm0-ai/vm0/compare/cli-v9.86.10...cli-v9.87.0) (2026-03-30)
 
 

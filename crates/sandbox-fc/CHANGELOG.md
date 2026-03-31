@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.4](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.18.3...sandbox-fc-v0.18.4) (2026-03-31)
+
+
+### Refactoring
+
+* **sandbox-fc:** merge trait adapters into their parent modules ([#7245](https://github.com/vm0-ai/vm0/issues/7245)) ([dddab9c](https://github.com/vm0-ai/vm0/commit/dddab9c39591c765ab05c815a7969bec0a3b4b9c))
+
 ## [0.18.3](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.18.2...sandbox-fc-v0.18.3) (2026-03-30)
 
 

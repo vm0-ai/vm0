@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.30.1](https://github.com/vm0-ai/vm0/compare/docs-v2.30.0...docs-v2.30.1) (2026-03-31)
+
+
+### Refactoring
+
+* **e2e:** replace fixed test accounts with ephemeral per-job-ref accounts ([#7250](https://github.com/vm0-ai/vm0/issues/7250)) ([d2b6f20](https://github.com/vm0-ai/vm0/commit/d2b6f20b33812a7cdada8a84d2063b048d98f920))
+
 ## [2.30.0](https://github.com/vm0-ai/vm0/compare/docs-v2.29.2...docs-v2.30.0) (2026-03-27)
 
 

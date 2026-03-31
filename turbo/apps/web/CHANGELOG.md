@@ -1,5 +1,37 @@
 # Changelog
 
+## [12.172.0](https://github.com/vm0-ai/vm0/compare/web-v12.171.0...web-v12.172.0) (2026-03-31)
+
+
+### Features
+
+* add custom skills crud api for zero agents ([#7295](https://github.com/vm0-ai/vm0/issues/7295)) ([48ed8fe](https://github.com/vm0-ai/vm0/commit/48ed8fe7c66214c12fd6979de5a99958c6c02909))
+* add custom skills foundation for zero agents ([#7198](https://github.com/vm0-ai/vm0/issues/7198)) ([b9985bc](https://github.com/vm0-ai/vm0/commit/b9985bc5e1f689d8888c95e4ead33418a4018478))
+
+
+### Bug Fixes
+
+* **firewalls:** read current token from db for skipped connectors in auth endpoint ([#7291](https://github.com/vm0-ai/vm0/issues/7291)) ([3113be3](https://github.com/vm0-ai/vm0/commit/3113be3570fb214055f372bf37112e1f17a12ce0))
+* remove /settings command from telegram bot slash menu ([#7259](https://github.com/vm0-ai/vm0/issues/7259)) ([c1ce754](https://github.com/vm0-ai/vm0/commit/c1ce75436a02a469f43fa31e6d73754a3f512d9a))
+* unify schedule notification defaults to false (opt-in) ([#7277](https://github.com/vm0-ai/vm0/issues/7277)) ([e9ff75a](https://github.com/vm0-ai/vm0/commit/e9ff75aedd63c7c652d02cf95ab96d421fab8f4e)), closes [#7273](https://github.com/vm0-ai/vm0/issues/7273)
+
+
+### Refactoring
+
+* **e2e:** replace fixed test accounts with ephemeral per-job-ref accounts ([#7250](https://github.com/vm0-ai/vm0/issues/7250)) ([d2b6f20](https://github.com/vm0-ai/vm0/commit/d2b6f20b33812a7cdada8a84d2063b048d98f920))
+* remove dead artifact name fields from schedule system ([#7281](https://github.com/vm0-ai/vm0/issues/7281)) ([9c366b7](https://github.com/vm0-ai/vm0/commit/9c366b7bb82214fa5ede25bda026c6916d5b010b))
+* remove dead orgslug from run execution pipeline ([#7294](https://github.com/vm0-ai/vm0/issues/7294)) ([6dc9d6f](https://github.com/vm0-ai/vm0/commit/6dc9d6fa464eb66f7fe75f642436772a0bba8a92)), closes [#7286](https://github.com/vm0-ai/vm0/issues/7286)
+* remove inject-zero-token flag from infra layer ([#7288](https://github.com/vm0-ai/vm0/issues/7288)) ([9015b02](https://github.com/vm0-ai/vm0/commit/9015b0213f6d22817674d3301b9b9d5e1d981741))
+* remove unused chat-threads runs endpoint ([#7263](https://github.com/vm0-ai/vm0/issues/7263)) ([15850f2](https://github.com/vm0-ai/vm0/commit/15850f27e2d2219a7f89041d0702ba2a08009871)), closes [#7258](https://github.com/vm0-ai/vm0/issues/7258)
+* split run creation into composable record and dispatch phases ([#7168](https://github.com/vm0-ai/vm0/issues/7168)) ([022a53e](https://github.com/vm0-ai/vm0/commit/022a53eb28f2a809a3f997fd0bc529c314438df5)), closes [#7164](https://github.com/vm0-ai/vm0/issues/7164)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.128.0
+
 ## [12.171.0](https://github.com/vm0-ai/vm0/compare/web-v12.170.1...web-v12.171.0) (2026-03-30)
 
 

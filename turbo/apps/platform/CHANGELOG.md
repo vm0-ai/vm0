@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.166.0](https://github.com/vm0-ai/vm0/compare/app-v0.165.2...app-v0.166.0) (2026-03-31)
+
+
+### Features
+
+* add custom skills foundation for zero agents ([#7198](https://github.com/vm0-ai/vm0/issues/7198)) ([b9985bc](https://github.com/vm0-ai/vm0/commit/b9985bc5e1f689d8888c95e4ead33418a4018478))
+* **platform:** add no-new-abort-controller eslint rule ([#7272](https://github.com/vm0-ai/vm0/issues/7272)) ([ea1c48d](https://github.com/vm0-ai/vm0/commit/ea1c48d3ed42ded313fbd3a2a5170b3664dd76d5))
+* **platform:** enable ts-rest response validation in tests ([#7205](https://github.com/vm0-ai/vm0/issues/7205)) ([84bbc67](https://github.com/vm0-ai/vm0/commit/84bbc672e9424b25b31c53fa361bbd20d7a63baf))
+
+
+### Bug Fixes
+
+* **platform:** add consistent padding to schedule calendar view ([#7232](https://github.com/vm0-ai/vm0/issues/7232)) ([ae41ee3](https://github.com/vm0-ai/vm0/commit/ae41ee39128092ab1bd8f076983fabc0b7de374e))
+* **platform:** dismiss loading toast when schedule run is aborted ([#7282](https://github.com/vm0-ai/vm0/issues/7282)) ([8ce81a9](https://github.com/vm0-ai/vm0/commit/8ce81a91b23becc6c8c743adc7383d76e7b7d6a3))
+* **platform:** fix activity log copy icon alignment ([#7235](https://github.com/vm0-ai/vm0/issues/7235)) ([32b77bc](https://github.com/vm0-ai/vm0/commit/32b77bc9e71f3a4789a9fc3e072788dc6d103381))
+* **platform:** fix model provider card overflow and add zero-app class to org dialog ([#7229](https://github.com/vm0-ai/vm0/issues/7229)) ([ec954a4](https://github.com/vm0-ai/vm0/commit/ec954a4c9a99321e823e5a8c1d57327721cb1b99))
+* show skeleton loading rows in thread list when switching agents ([#7269](https://github.com/vm0-ai/vm0/issues/7269)) ([5ee5c50](https://github.com/vm0-ai/vm0/commit/5ee5c500303a821053259e02cfa55c0a9b99e38c))
+
+
+### Refactoring
+
+* make assistant message content reactive via result$ computed ([#7299](https://github.com/vm0-ai/vm0/issues/7299)) ([bf66efb](https://github.com/vm0-ai/vm0/commit/bf66efb757a98290835af3b1fac207312e5d1fe9))
+* remove dead session switch signals and related deprecated exports ([#7270](https://github.com/vm0-ai/vm0/issues/7270)) ([2ff7992](https://github.com/vm0-ai/vm0/commit/2ff7992d79e0cf4b6903be608fc63e900b16e8c6))
+* remove unused chat-threads runs endpoint ([#7263](https://github.com/vm0-ai/vm0/issues/7263)) ([15850f2](https://github.com/vm0-ai/vm0/commit/15850f27e2d2219a7f89041d0702ba2a08009871)), closes [#7258](https://github.com/vm0-ai/vm0/issues/7258)
+* split sendZeroChatMessage$ into new-thread and existing-thread commands ([#7290](https://github.com/vm0-ai/vm0/issues/7290)) ([8901ebe](https://github.com/vm0-ai/vm0/commit/8901ebe1581b1d4e5a6f2b6a74f76a396bf3bcd5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.128.0
+
 ## [0.165.2](https://github.com/vm0-ai/vm0/compare/app-v0.165.1...app-v0.165.2) (2026-03-30)
 
 

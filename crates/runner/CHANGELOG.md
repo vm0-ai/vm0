@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.52.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.51.1...runner-rs-v0.52.0) (2026-03-31)
+
+
+### Features
+
+* **firewalls:** support path and host parameter matching in base urls ([#7256](https://github.com/vm0-ai/vm0/issues/7256)) ([d9d3a15](https://github.com/vm0-ai/vm0/commit/d9d3a15fc91c5db88a18730b5d8d8aea67238c95))
+
+
+### Bug Fixes
+
+* **mitm:** add network logging to error() hook for connection failures ([#7300](https://github.com/vm0-ai/vm0/issues/7300)) ([6fec94a](https://github.com/vm0-ai/vm0/commit/6fec94a9f4fef7994477fdd53f87f82147d5be03))
+* **mitm:** add per-key lock to coalesce concurrent firewall header fetches ([#7264](https://github.com/vm0-ai/vm0/issues/7264)) ([ab4787c](https://github.com/vm0-ai/vm0/commit/ab4787cb659b362592d4f8b5bd2f5aeb053d219b))
+
 ## [0.51.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.51.0...runner-rs-v0.51.1) (2026-03-30)
 
 ## [0.51.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.50.2...runner-rs-v0.51.0) (2026-03-30)
