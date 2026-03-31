@@ -103,7 +103,10 @@ describe("chat sending state", () => {
       },
     });
 
-    await setupPage({ context, path: "/talk/mock-compose-id" });
+    await setupPage({
+      context,
+      path: "/talk/c0000000-0000-4000-a000-000000000001",
+    });
 
     const textarea = await waitFor(
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
