@@ -38,12 +38,8 @@ async function persistMessages(
   }>,
   runId: string,
 ): Promise<void> {
-  try {
-    await appendChatMessages(sessionId, userId, messages);
-    log.debug(`Persisted ${messages.length} chat messages for run ${runId}`);
-  } catch (err) {
-    log.error("Failed to persist chat messages", { err });
-  }
+  await appendChatMessages(sessionId, userId, messages);
+  log.debug(`Persisted ${messages.length} chat messages for run ${runId}`);
 }
 
 /**
