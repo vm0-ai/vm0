@@ -915,7 +915,7 @@ function ScheduleDetailView({
                 <h1 className="min-w-0 text-base sm:text-lg font-semibold tracking-tight text-foreground leading-tight truncate">
                   {summaryTitle}
                 </h1>
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-muted-foreground leading-tight">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground leading-tight">
                   <span className="flex items-center gap-2">
                     <span
                       className={cn(
