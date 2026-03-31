@@ -10,11 +10,11 @@ import avatar1Img from "./assets/avatar_1.png";
  * Falls back to the first preset avatar when nothing is persisted.
  */
 export function useAgentAvatar(id: string): string | null {
-  const agents = useLastResolved(agents$) ?? [];
-  if (!id) {
+  const resolved = useLastResolved(agents$);
+  if (!id || resolved === undefined) {
     return null;
   }
-  const agent = agents.find((a) => a.id === id);
+  const agent = resolved.find((a) => a.id === id);
   const dbAvatar = resolveAvatarUrl(agent?.avatarUrl);
   return dbAvatar ?? avatar1Img;
 }
@@ -31,7 +31,7 @@ export function AgentAvatarImg({
 }) {
   const src = useAgentAvatar(name);
   if (!src) {
-    return <div className={className} aria-hidden />;
+    return <div className={`${className} bg-muted`} aria-hidden />;
   }
   return <img src={src} alt={alt} className={className} />;
 }
