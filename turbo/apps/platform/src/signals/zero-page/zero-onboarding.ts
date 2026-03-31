@@ -4,6 +4,7 @@ import {
   onboardingCompleteContract,
   orgDefaultAgentContract,
   zeroOrgContract,
+  zeroUserConnectorsContract,
 } from "@vm0/core";
 import { clerk$ } from "../auth.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -205,12 +206,21 @@ export const completeZeroOnboarding$ = command(
 
       // Create agent and upload instructions (server injects seed skills)
       const agent = await createZeroAgent(createClient, {
-        connectors: selectedConnectors,
         displayName,
         sound: "professional",
         avatarUrl: "preset:0",
       });
       signal.throwIfAborted();
+
+      // Set initial connector permissions for the new agent
+      if (selectedConnectors.length > 0) {
+        const userConnectorsClient = createClient(zeroUserConnectorsContract);
+        await userConnectorsClient.update({
+          params: { id: agent.agentId },
+          body: { enabledTypes: selectedConnectors },
+        });
+        signal.throwIfAborted();
+      }
 
       // Set as default agent
       const defaultAgentClient = createClient(orgDefaultAgentContract);

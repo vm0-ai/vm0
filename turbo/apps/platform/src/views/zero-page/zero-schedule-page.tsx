@@ -64,7 +64,7 @@ export function buildCombinedSchedule(
     enabled: e.enabled,
     notifyEmail: e.notifyEmail,
     notifySlack: e.notifySlack,
-    slackChannelId: e.slackChannelId,
+    notifySlackChannelId: e.notifySlackChannelId,
     name: e.name,
     intervalSeconds: e.intervalSeconds,
     agentLabel: e.displayName ?? e.agentId,
@@ -452,7 +452,7 @@ export function ZeroSchedulePage() {
           agentId: values.agentId,
           notifyEmail: values.notifyEmail,
           notifySlack: values.notifySlack,
-          slackChannelId: values.slackChannelId,
+          notifySlackChannelId: values.notifySlackChannelId,
           ...(values.freq === "every_week"
             ? { dayOfWeek: values.dayOfWeek }
             : {}),

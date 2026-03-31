@@ -71,7 +71,7 @@ describe("zero job detail page", () => {
 
     // All tabs should be visible
     expect(
-      screen.getByRole("tab", { name: /Connectors/i }),
+      screen.getByRole("tab", { name: /Authorization/i }),
     ).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Scheduled/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Profile/i })).toBeInTheDocument();
@@ -226,7 +226,7 @@ function mockAPIsWithSchedules() {
             artifactName: null,
             artifactVersion: null,
             volumeVersions: null,
-            slackChannelId: null,
+            notifySlackChannelId: null,
             retryStartedAt: null,
             consecutiveFailures: 0,
           },

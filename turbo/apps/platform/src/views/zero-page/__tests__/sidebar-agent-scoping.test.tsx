@@ -1,0 +1,167 @@
+import { describe, expect, it } from "vitest";
+import { screen, waitFor } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../mocks/server.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { setupPage } from "../../../__tests__/page-helper.ts";
+import { navigate$ } from "../../../signals/route.ts";
+
+const context = testContext();
+
+/**
+ * Agent-aware mock: returns threads filtered by the `agentId` query param,
+ * matching real API behaviour.
+ */
+function mockTwoAgents() {
+  const allThreads = [
+    {
+      id: "thread-alpha-1",
+      title: "Alpha thread",
+      preview: "Hello from Alpha",
+      agentId: "agent-alpha",
+      createdAt: "2026-03-10T00:00:00Z",
+      updatedAt: "2026-03-10T00:00:00Z",
+    },
+    {
+      id: "thread-beta-1",
+      title: "Beta thread",
+      preview: "Hello from Beta",
+      agentId: "agent-beta",
+      createdAt: "2026-03-09T00:00:00Z",
+      updatedAt: "2026-03-09T00:00:00Z",
+    },
+  ];
+
+  server.use(
+    http.get("*/api/zero/team", () => {
+      return HttpResponse.json([
+        {
+          id: "mock-compose-id",
+          displayName: null,
+          description: null,
+          sound: null,
+          avatarUrl: null,
+          headVersionId: "version_1",
+          updatedAt: "2024-01-01T00:00:00Z",
+        },
+        {
+          id: "agent-alpha",
+          displayName: "Alpha Bot",
+          description: null,
+          sound: null,
+          avatarUrl: null,
+          headVersionId: "version_2",
+          updatedAt: "2024-01-01T00:00:00Z",
+        },
+        {
+          id: "agent-beta",
+          displayName: "Beta Bot",
+          description: null,
+          sound: null,
+          avatarUrl: null,
+          headVersionId: "version_3",
+          updatedAt: "2024-01-01T00:00:00Z",
+        },
+      ]);
+    }),
+    http.get("*/api/zero/chat-threads", ({ request }) => {
+      const url = new URL(request.url);
+      const agentId = url.searchParams.get("agentId");
+      const filtered = agentId
+        ? allThreads.filter((t) => t.agentId === agentId)
+        : allThreads;
+      return HttpResponse.json({ threads: filtered });
+    }),
+  );
+}
+
+describe("sidebar agent scoping (#7239)", () => {
+  it("should show Alpha chats on /talk/agent-alpha and Beta chats on /talk/agent-beta", async () => {
+    mockTwoAgents();
+    await setupPage({ context, path: "/talk/agent-alpha" });
+
+    // Alpha thread should be visible
+    await waitFor(() => {
+      expect(screen.getByText("Hello from Alpha")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Chats with Alpha Bot")).toBeInTheDocument();
+    // Beta thread must NOT appear
+    expect(screen.queryByText("Hello from Beta")).not.toBeInTheDocument();
+
+    // Navigate to Beta agent within the same session
+    await context.store.set(navigate$, "/talk/agent-beta", {}, context.signal);
+
+    // Beta thread should now be visible
+    await waitFor(() => {
+      expect(screen.getByText("Hello from Beta")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Chats with Beta Bot")).toBeInTheDocument();
+    // Alpha thread must NOT appear
+    expect(screen.queryByText("Hello from Alpha")).not.toBeInTheDocument();
+  }, 15_000);
+
+  it("should switch back to first agent after visiting second agent", async () => {
+    mockTwoAgents();
+    await setupPage({ context, path: "/talk/agent-alpha" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Hello from Alpha")).toBeInTheDocument();
+    });
+
+    // Navigate Alpha → Beta → Alpha
+    await context.store.set(navigate$, "/talk/agent-beta", {}, context.signal);
+    await waitFor(() => {
+      expect(screen.getByText("Hello from Beta")).toBeInTheDocument();
+    });
+
+    await context.store.set(navigate$, "/talk/agent-alpha", {}, context.signal);
+
+    await waitFor(() => {
+      expect(screen.getByText("Hello from Alpha")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Hello from Beta")).not.toBeInTheDocument();
+  }, 15_000);
+
+  it("should retain agent scope when navigating to a non-chat page and back", async () => {
+    mockTwoAgents();
+    await setupPage({ context, path: "/talk/agent-beta" });
+
+    // Verify Beta threads are shown
+    await waitFor(() => {
+      expect(screen.getByText("Hello from Beta")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Hello from Alpha")).not.toBeInTheDocument();
+
+    // Navigate to a non-chat page (activity logs)
+    await context.store.set(navigate$, "/activity", {}, context.signal);
+
+    // Sidebar should still show Beta chats (persists across non-chat pages)
+    await waitFor(() => {
+      expect(screen.getByText("Chats with Beta Bot")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Hello from Beta")).toBeInTheDocument();
+    expect(screen.queryByText("Hello from Alpha")).not.toBeInTheDocument();
+  }, 15_000);
+
+  it("should update sidebar to show agent chats when navigating to /team/:agentId profile page", async () => {
+    mockTwoAgents();
+
+    // Start with Alpha's chat view — sidebar remembers Alpha
+    await setupPage({ context, path: "/talk/agent-alpha" });
+    await waitFor(() => {
+      expect(screen.getByText("Hello from Alpha")).toBeInTheDocument();
+    });
+
+    // Navigate to Beta's profile page (/team/:agentId)
+    // Bug: setupTeamDetailPage$ does not call setSidebarChatAgent$,
+    // so the sidebar still shows Alpha's chats instead of Beta's.
+    await context.store.set(navigate$, "/team/agent-beta", {}, context.signal);
+
+    // Sidebar should switch to Beta's chats
+    await waitFor(() => {
+      expect(screen.getByText("Chats with Beta Bot")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Hello from Beta")).toBeInTheDocument();
+    expect(screen.queryByText("Hello from Alpha")).not.toBeInTheDocument();
+  }, 15_000);
+});

@@ -294,7 +294,7 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
             prompt: "With notifications",
             notifyEmail: false,
             notifySlack: true,
-            slackChannelId: "C12345",
+            notifySlackChannelId: "C12345",
           }),
         },
       ),
@@ -304,7 +304,7 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
     expect(response.status).toBe(201);
     expect(data.schedule.notifyEmail).toBe(false);
     expect(data.schedule.notifySlack).toBe(true);
-    expect(data.schedule.slackChannelId).toBe("C12345");
+    expect(data.schedule.notifySlackChannelId).toBe("C12345");
   });
 
   it("should update schedule trigger type from cron to loop", async () => {

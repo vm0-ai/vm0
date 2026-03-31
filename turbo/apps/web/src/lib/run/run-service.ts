@@ -35,7 +35,7 @@ import {
   buildExecutionContext as buildContext,
   MODEL_PROVIDER_ENV_VARS,
 } from "./build-context";
-import { generateSandboxToken, generateZeroToken } from "../auth/sandbox-token";
+import { generateSandboxToken } from "../auth/sandbox-token";
 import { recordSandboxOperation } from "../metrics";
 import { extractTemplateVars } from "../config-validator";
 import { canAccessCompose } from "../agent/compose-access";
@@ -47,6 +47,7 @@ import {
   type RunStatus,
   type GetRunResponse,
   type FirewallPolicies,
+  type ConnectorType,
   orgTierSchema,
 } from "@vm0/core";
 import { getOrgData } from "../org/org-cache-service";
@@ -281,7 +282,7 @@ async function checkModelProviderConfigured(
  * @throws NotFoundError if checkpoint doesn't exist
  * @throws UnauthorizedError if checkpoint doesn't belong to user
  */
-export async function validateCheckpoint(
+async function validateCheckpoint(
   checkpointId: string,
   userId: string,
 ): Promise<{
@@ -470,8 +471,7 @@ export interface CreateRunParams {
   orgTier?: OrgTier;
   // Per-permission firewall policies from zero agent configuration.
   firewallPolicies?: FirewallPolicies;
-  // When true, generate a ZERO_TOKEN JWT and inject into secrets.
-  injectZeroToken?: boolean;
+  allowedConnectorTypes?: ConnectorType[];
 }
 
 /**
@@ -484,7 +484,7 @@ export interface CreateRunParams {
  * - checkpointId: resume from checkpoint (resolves version from checkpoint)
  * - sessionId: continue session (resolves version from session's compose)
  */
-export interface StartRunParams {
+interface StartRunParams {
   userId: string;
   prompt: string;
 
@@ -517,7 +517,7 @@ export interface StartRunParams {
   debugNoMockClaude?: boolean;
   checkEnv?: boolean;
   firewallPolicies?: FirewallPolicies;
-  injectZeroToken?: boolean;
+  allowedConnectorTypes?: ConnectorType[];
 }
 
 export interface CreateRunResult {
@@ -731,6 +731,11 @@ export async function buildAndDispatchRun(opts: {
   orgId: string;
   authorizeTime: number;
   transactionTime: number;
+  queueDispatcher?: (
+    runId: string,
+    createdAt: Date,
+    params: CreateRunParams,
+  ) => Promise<void>;
 }): Promise<{ status: RunStatus; sandboxId?: string }> {
   const {
     runId,
@@ -761,13 +766,6 @@ export async function buildAndDispatchRun(opts: {
       generateSandboxToken(userId, runId),
     ]);
 
-    // Generate ZERO_TOKEN for zero agent runs
-    let augmentedSecrets = params.secrets;
-    if (params.injectZeroToken) {
-      const zeroToken = await generateZeroToken(userId, runId, orgId);
-      augmentedSecrets = { ...params.secrets, ZERO_TOKEN: zeroToken };
-    }
-
     const tokenTime = Date.now();
 
     // Build execution context
@@ -786,7 +784,7 @@ export async function buildAndDispatchRun(opts: {
       artifactVersion: params.artifactVersion,
       memoryName: params.memoryName,
       vars: params.vars,
-      secrets: augmentedSecrets,
+      secrets: params.secrets,
       volumeVersions: params.volumeVersions,
       agentCompose: composeContent,
       prompt,
@@ -806,6 +804,7 @@ export async function buildAndDispatchRun(opts: {
       firewallPolicies: params.firewallPolicies,
       apiStartTime,
       orgId,
+      allowedConnectorTypes: params.allowedConnectorTypes,
     });
     const buildContextTime = Date.now();
 
@@ -884,11 +883,12 @@ export async function buildAndDispatchRun(opts: {
     log.debug(`Run ${runId} dispatched with status: ${result.status}`);
     return result;
   } catch (error) {
+    const dispatcher = opts.queueDispatcher ?? dispatchQueuedRun;
     await markRunFailed(
       runId,
       createdAt,
       error,
-      orgId ? () => drainOrgQueue(orgId, dispatchQueuedRun) : undefined,
+      orgId ? () => drainOrgQueue(orgId, dispatcher) : undefined,
     );
     throw error;
   }
@@ -973,7 +973,7 @@ async function resolveByComposeId(
  * 3. agentComposeVersionId → use directly, look up compose metadata
  * 4. composeId → load compose → use headVersionId
  */
-async function resolveStartRunCompose(
+export async function resolveStartRunCompose(
   params: StartRunParams,
 ): Promise<ResolvedStartRunCompose> {
   // Validate mutual exclusivity before resolution
@@ -1084,7 +1084,7 @@ export async function startRun(
     debugNoMockClaude: params.debugNoMockClaude,
     checkEnv: params.checkEnv,
     firewallPolicies: params.firewallPolicies,
-    injectZeroToken: params.injectZeroToken,
+    allowedConnectorTypes: params.allowedConnectorTypes,
     orgId: authOrgId,
     orgTier,
   });
@@ -1094,7 +1094,7 @@ export async function startRun(
  * Result of createRunRecord — contains the run record and all metadata
  * needed by buildAndDispatchRun to complete the dispatch pipeline.
  */
-export interface CreateRunRecordResult {
+interface CreateRunRecordResult {
   run: { id: string; createdAt: Date };
   composeContent: AgentComposeYaml;
   orgId: string;
@@ -1275,6 +1275,11 @@ export async function dispatchQueuedRun(
   runId: string,
   createdAt: Date,
   params: CreateRunParams,
+  queueDispatcher?: (
+    runId: string,
+    createdAt: Date,
+    params: CreateRunParams,
+  ) => Promise<void>,
 ): Promise<void> {
   const apiStartTime = Date.now();
   const { userId, agentComposeVersionId } = params;
@@ -1310,6 +1315,7 @@ export async function dispatchQueuedRun(
     orgId: params.orgId,
     authorizeTime,
     transactionTime,
+    queueDispatcher,
   });
 }
 
@@ -1429,6 +1435,11 @@ export async function cancelRun(
  */
 export async function dispatchCancelSideEffects(
   result: CancelRunResult,
+  queueDispatcher: (
+    runId: string,
+    createdAt: Date,
+    params: CreateRunParams,
+  ) => Promise<void> = dispatchQueuedRun,
 ): Promise<void> {
   const log = logger("service:run:cancel");
 
@@ -1452,7 +1463,7 @@ export async function dispatchCancelSideEffects(
     "cancelled",
     "Run cancelled",
     shouldDrain
-      ? () => drainOrgQueue(result.orgId, dispatchQueuedRun)
+      ? () => drainOrgQueue(result.orgId, queueDispatcher)
       : undefined,
   );
 

@@ -14,6 +14,7 @@ import {
   cancelRun,
   dispatchCancelSideEffects,
 } from "../../../../../../src/lib/run/run-service";
+import { dispatchQueuedZeroRun } from "../../../../../../src/lib/zero/zero-queue-service";
 import { isNotFound, isBadRequest } from "../../../../../../src/lib/errors";
 import { after } from "next/server";
 
@@ -33,7 +34,7 @@ const router = tsr.router(zeroRunsCancelContract, {
     try {
       const result = await cancelRun(params.id, userId, org.orgId);
 
-      after(() => dispatchCancelSideEffects(result));
+      after(() => dispatchCancelSideEffects(result, dispatchQueuedZeroRun));
 
       return {
         status: 200 as const,

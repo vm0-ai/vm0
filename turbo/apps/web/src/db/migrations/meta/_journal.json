@@ -1485,6 +1485,20 @@
       "when": 1774933076341,
       "tag": "0211_tearful_talisman",
       "breakpoints": true
+    },
+    {
+      "idx": 212,
+      "version": "7",
+      "when": 1774940000000,
+      "tag": "0212_rename_slack_channel_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 213,
+      "version": "7",
+      "when": 1774940000001,
+      "tag": "0213_big_meteorite",
+      "breakpoints": true
     }
   ]
 }

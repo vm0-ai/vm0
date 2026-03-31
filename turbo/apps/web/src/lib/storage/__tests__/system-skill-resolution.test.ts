@@ -127,7 +127,6 @@ describe("System Skill Resolution", () => {
   it("should throw when skill not found in any org", async () => {
     const { url } = uniqueSkillUrl();
 
-    // No skill storage in system org or agent org
     await expect(
       prepareStorageManifest(
         skillAgentConfig(url),

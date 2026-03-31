@@ -429,6 +429,7 @@ interface OauthConnectorSecretResult {
 async function resolveOauthConnectorSecrets(
   orgId: string,
   userId: string,
+  allowedTypes?: ConnectorType[],
 ): Promise<OauthConnectorSecretResult> {
   const db = globalThis.services.db;
 
@@ -468,11 +469,15 @@ async function resolveOauthConnectorSecrets(
       (c): c is { type: ConnectorType; authMethod: string } => c !== null,
     );
 
+  // Filter to only allowed connector types when a permission list is provided.
+  const allowedConnectors = allowedTypes
+    ? validConnectors.filter(({ type }) => allowedTypes.includes(type))
+    : validConnectors;
   // Refresh OAuth tokens in parallel.
   // Safe: each connector writes to distinct keys in connectorSecrets (e.g. github_access_token
   // vs slack_access_token), so concurrent mutations don't conflict.
   await Promise.all(
-    validConnectors
+    allowedConnectors
       .filter(({ type }) => {
         const handler =
           PROVIDER_HANDLERS[type as keyof typeof PROVIDER_HANDLERS];
@@ -486,7 +491,7 @@ async function resolveOauthConnectorSecrets(
   // Resolve environment mappings from connectors.
   const allInjectedEnvVars: Record<string, string> = {};
 
-  for (const { type: connectorType } of validConnectors) {
+  for (const { type: connectorType } of allowedConnectors) {
     const mapping = getConnectorEnvironmentMapping(connectorType);
     for (const [envVar, valueRef] of Object.entries(mapping)) {
       if (valueRef.startsWith("$secrets.")) {
@@ -514,7 +519,7 @@ async function resolveOauthConnectorSecrets(
   // GOOGLE_CALENDAR_TOKEN) are included because firewall templates may
   // reference either form.
   const secretConnectorMap: Record<string, string> = {};
-  for (const { type } of validConnectors) {
+  for (const { type } of allowedConnectors) {
     if (!(type in PROVIDER_HANDLERS)) continue;
     const handler = PROVIDER_HANDLERS[type as keyof typeof PROVIDER_HANDLERS];
     if (!handler.refreshToken) continue;
@@ -537,7 +542,7 @@ async function resolveOauthConnectorSecrets(
       Object.keys(secretConnectorMap).length > 0
         ? secretConnectorMap
         : undefined,
-    connectorTypes: validConnectors.map((c) => c.type),
+    connectorTypes: allowedConnectors.map((c) => c.type),
   };
 }
 
@@ -650,6 +655,9 @@ interface BuildContextParams {
   firewallPolicies?: FirewallPolicies;
   // Caller-resolved org context for secret/variable/storage resolution.
   orgId: string;
+  // Connector types the user has permitted for this agent run. When set, only
+  // these connector types will have their secrets injected at runtime.
+  allowedConnectorTypes?: ConnectorType[];
 }
 
 /**
@@ -715,6 +723,7 @@ async function resolveSecretsAndEnvironment(
   modelProvider: string | undefined,
   checkEnv: boolean | undefined,
   userId: string,
+  allowedConnectorTypes?: ConnectorType[],
 ): Promise<{
   secrets: Record<string, string> | undefined;
   environment: Record<string, string> | undefined;
@@ -748,13 +757,17 @@ async function resolveSecretsAndEnvironment(
       hasExplicitModelProviderConfig,
       modelProvider,
     ),
-    resolveOauthConnectorSecrets(orgId, userId),
+    resolveOauthConnectorSecrets(orgId, userId, allowedConnectorTypes),
     getApiTokenConnectorTypes(orgId, userId),
     fetchAndMergeVariables(orgId, userId, vars),
   ]);
 
+  const rawApiTokenTypes = allowedConnectorTypes
+    ? apiTokenTypes.filter((t) => allowedConnectorTypes.includes(t))
+    : apiTokenTypes;
+
   const connectorTypes = [
-    ...new Set([...oauthResult.connectorTypes, ...apiTokenTypes]),
+    ...new Set([...oauthResult.connectorTypes, ...rawApiTokenTypes]),
   ];
 
   // Single secrets map with explicit priority (later overrides earlier).
@@ -1108,6 +1121,7 @@ export async function buildExecutionContext(
       params.modelProvider,
       params.checkEnv,
       params.userId,
+      params.allowedConnectorTypes,
     ),
     params.userId
       ? getUserPreferences(runtimeClerkOrgId, params.userId)

@@ -29,6 +29,7 @@ export async function deployZeroSchedule(body: {
   enabled?: boolean;
   notifyEmail?: boolean;
   notifySlack?: boolean;
+  notifySlackChannelId?: string | null;
 }): Promise<DeployScheduleResponse> {
   const config = await getClientConfig();
   const client = initClient(zeroSchedulesMainContract, config);

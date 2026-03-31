@@ -65,6 +65,7 @@
     "generate:line": "tsx src/index.ts line",
     "generate:linear": "tsx src/index.ts linear",
     "generate:loops": "tsx src/index.ts loops",
+    "generate:mailchimp": "tsx src/index.ts mailchimp",
     "generate:make": "tsx src/index.ts make",
     "generate:mailsac": "tsx src/index.ts mailsac",
     "generate:mercury": "tsx src/index.ts mercury",

@@ -16,7 +16,6 @@ import {
   createTestSandboxToken,
   createTestVolume,
   findTestStorageByName,
-  seedTestSkill,
   seedSeedSkills,
   seedSeedSkillStorages,
   clearSkillsData,
@@ -190,17 +189,12 @@ describe("Zero Agents API", () => {
   });
 
   describe("POST /api/zero/agents", () => {
-    it("should create an agent with no connectors", async () => {
-      const response = await postAgent(
-        { connectors: [] },
-        testCliToken,
-        testOrgSlug,
-      );
+    it("should create an agent", async () => {
+      const response = await postAgent({}, testCliToken, testOrgSlug);
 
       expect(response.status).toBe(201);
       const data = await response.json();
       expect(data.agentId).toBeTruthy();
-      expect(data.connectors).toStrictEqual([]);
       expect(data.description).toBeNull();
       expect(data.displayName).toBeNull();
       expect(data.sound).toBeNull();
@@ -209,7 +203,6 @@ describe("Zero Agents API", () => {
     it("should create an agent with metadata", async () => {
       const response = await postAgent(
         {
-          connectors: [],
           displayName: "My Agent",
           description: "A helpful agent",
           sound: "professional",
@@ -225,28 +218,13 @@ describe("Zero Agents API", () => {
       expect(data.sound).toBe("professional");
     });
 
-    it("should create an agent with cached connectors and inject connector env vars", async () => {
-      await seedTestSkill({
-        url: "https://github.com/vm0-ai/vm0-skills/tree/main/slack",
-        name: "slack",
-        fullPath: "vm0-ai/vm0-skills/tree/main/slack",
-        frontmatter: {
-          name: "Slack",
-          description: "Slack integration",
-        },
-      });
-
-      const response = await postAgent(
-        { connectors: ["slack"] },
-        testCliToken,
-        testOrgSlug,
-      );
+    it("should create an agent with connector env var templates in compose", async () => {
+      const response = await postAgent({}, testCliToken, testOrgSlug);
 
       expect(response.status).toBe(201);
       const data = await response.json();
-      expect(data.connectors).toStrictEqual(["slack"]);
 
-      // Verify compose environment contains connector-derived env vars
+      // Verify compose content includes connector env var templates
       const content = await getTestComposeVersionContent(data.agentId);
       const agents = content?.agents as Record<
         string,
@@ -254,19 +232,18 @@ describe("Zero Agents API", () => {
       >;
       const agentEnv = Object.values(agents)[0]!.environment;
 
-      // Connector-derived: slack environmentMapping → SLACK_TOKEN
-      expect(agentEnv.SLACK_TOKEN).toBe("${{ secrets.SLACK_TOKEN }}");
-      // Base env vars still present
+      // Base env vars present
       expect(agentEnv.ZERO_AGENT_ID).toBe("${{ vars.ZERO_AGENT_ID }}");
       expect(agentEnv.ZERO_TOKEN).toBe("${{ secrets.ZERO_TOKEN }}");
+      // GA connector env vars present (GitHub is GA, not behind feature flag)
+      expect(agentEnv.GH_TOKEN).toBe("${{ secrets.GH_TOKEN }}");
+      expect(agentEnv.GITHUB_TOKEN).toBe("${{ secrets.GITHUB_TOKEN }}");
     });
 
-    it("should return 422 when connector skills are not cached", async () => {
-      const response = await postAgent(
-        { connectors: ["uncached-skill"] },
-        testCliToken,
-        testOrgSlug,
-      );
+    it("should return 422 when skills are not cached", async () => {
+      await clearSkillsData();
+
+      const response = await postAgent({}, testCliToken, testOrgSlug);
 
       expect(response.status).toBe(422);
       const data = await response.json();
@@ -276,7 +253,7 @@ describe("Zero Agents API", () => {
     it("should return 401 without auth", async () => {
       mockClerk({ userId: null });
 
-      const response = await postAgent({ connectors: [] }, "no-token");
+      const response = await postAgent({}, "no-token");
       expect(response.status).toBe(401);
     });
   });
@@ -286,7 +263,6 @@ describe("Zero Agents API", () => {
       // Create an agent first
       const createResponse = await postAgent(
         {
-          connectors: [],
           displayName: "Test Agent",
           description: "Test description",
           sound: "friendly",
@@ -327,10 +303,10 @@ describe("Zero Agents API", () => {
   });
 
   describe("PUT /api/zero/agents/:name", () => {
-    it("should update agent connectors and metadata", async () => {
+    it("should update agent metadata", async () => {
       // Create an agent first
       const createResponse = await postAgent(
-        { connectors: [], displayName: "Original" },
+        { displayName: "Original" },
         testCliToken,
         testOrgSlug,
       );
@@ -340,7 +316,6 @@ describe("Zero Agents API", () => {
       const response = await putAgent(
         created.agentId,
         {
-          connectors: [],
           displayName: "Updated Name",
           description: "Updated description",
           sound: "casual",
@@ -356,11 +331,10 @@ describe("Zero Agents API", () => {
       expect(data.sound).toBe("casual");
     });
 
-    it("should preserve metadata when only connectors are updated", async () => {
+    it("should preserve metadata on update without metadata fields", async () => {
       // Create agent with metadata
       const createResponse = await postAgent(
         {
-          connectors: [],
           displayName: "My Agent",
           description: "A helpful agent",
           sound: "professional",
@@ -370,10 +344,10 @@ describe("Zero Agents API", () => {
       );
       const created = await createResponse.json();
 
-      // Update only connectors — no metadata fields
+      // Update with no metadata fields
       const updateResponse = await putAgent(
         created.agentId,
-        { connectors: [] },
+        {},
         testCliToken,
         testOrgSlug,
       );
@@ -388,10 +362,36 @@ describe("Zero Agents API", () => {
       expect(fetched.sound).toBe("professional");
     });
 
+    it("should rebuild compose with connector env var templates", async () => {
+      const created = await (
+        await postAgent({}, testCliToken, testOrgSlug)
+      ).json();
+
+      const response = await putAgent(
+        created.agentId,
+        { displayName: "Refreshed" },
+        testCliToken,
+        testOrgSlug,
+      );
+      expect(response.status).toBe(200);
+
+      const content = await getTestComposeVersionContent(created.agentId);
+      const agents = content?.agents as Record<
+        string,
+        { environment: Record<string, string> }
+      >;
+      const agentEnv = Object.values(agents)[0]!.environment;
+
+      expect(agentEnv.GH_TOKEN).toBe("${{ secrets.GH_TOKEN }}");
+      expect(agentEnv.GITHUB_TOKEN).toBe("${{ secrets.GITHUB_TOKEN }}");
+      expect(agentEnv.ZERO_AGENT_ID).toBe("${{ vars.ZERO_AGENT_ID }}");
+      expect(agentEnv.ZERO_TOKEN).toBe("${{ secrets.ZERO_TOKEN }}");
+    });
+
     it("should return 404 for unknown agent", async () => {
       const response = await putAgent(
         "00000000-0000-0000-0000-000000000000",
-        { connectors: [] },
+        {},
         testCliToken,
         testOrgSlug,
       );
@@ -402,11 +402,7 @@ describe("Zero Agents API", () => {
 
   describe("GET /api/zero/agents/:name/instructions", () => {
     it("should return null content when no instructions uploaded", async () => {
-      const createResponse = await postAgent(
-        { connectors: [] },
-        testCliToken,
-        testOrgSlug,
-      );
+      const createResponse = await postAgent({}, testCliToken, testOrgSlug);
       const created = await createResponse.json();
 
       const response = await getAgentInstructions(
@@ -433,11 +429,7 @@ describe("Zero Agents API", () => {
 
   describe("PUT /api/zero/agents/:name/instructions", () => {
     it("should update instructions and return agent response", async () => {
-      const createResponse = await postAgent(
-        { connectors: [] },
-        testCliToken,
-        testOrgSlug,
-      );
+      const createResponse = await postAgent({}, testCliToken, testOrgSlug);
       const created = await createResponse.json();
 
       const response = await putAgentInstructions(
@@ -450,6 +442,35 @@ describe("Zero Agents API", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.agentId).toBe(created.agentId);
+    });
+
+    it("should rebuild compose with connector env var templates", async () => {
+      const createResponse = await postAgent({}, testCliToken, testOrgSlug);
+      const created = await createResponse.json();
+
+      // Update instructions
+      const response = await putAgentInstructions(
+        created.agentId,
+        { content: "# New instructions" },
+        testCliToken,
+        testOrgSlug,
+      );
+      expect(response.status).toBe(200);
+
+      // Verify compose was rebuilt with connector env var templates
+      const content = await getTestComposeVersionContent(created.agentId);
+      const agents = content?.agents as Record<
+        string,
+        { environment: Record<string, string> }
+      >;
+      const agentEnv = Object.values(agents)[0]!.environment;
+
+      // GA connector env vars should be present (GitHub is GA)
+      expect(agentEnv.GH_TOKEN).toBe("${{ secrets.GH_TOKEN }}");
+      expect(agentEnv.GITHUB_TOKEN).toBe("${{ secrets.GITHUB_TOKEN }}");
+      // Base env vars still present
+      expect(agentEnv.ZERO_AGENT_ID).toBe("${{ vars.ZERO_AGENT_ID }}");
+      expect(agentEnv.ZERO_TOKEN).toBe("${{ secrets.ZERO_TOKEN }}");
     });
 
     it("should return 404 for unknown agent", async () => {
@@ -466,19 +487,8 @@ describe("Zero Agents API", () => {
 
   describe("round-trip verification", () => {
     it("should read back agent data after POST via GET", async () => {
-      await seedTestSkill({
-        url: "https://github.com/vm0-ai/vm0-skills/tree/main/slack",
-        name: "slack",
-        fullPath: "vm0-ai/vm0-skills/tree/main/slack",
-        frontmatter: {
-          name: "Slack",
-          description: "Slack integration",
-        },
-      });
-
       const createRes = await postAgent(
         {
-          connectors: ["slack"],
           displayName: "Round Trip Agent",
           description: "test description",
           sound: "friendly",
@@ -498,17 +508,12 @@ describe("Zero Agents API", () => {
 
     it("should read back updated agent data after PUT via GET", async () => {
       const created = await (
-        await postAgent(
-          { connectors: [], displayName: "Original" },
-          testCliToken,
-          testOrgSlug,
-        )
+        await postAgent({ displayName: "Original" }, testCliToken, testOrgSlug)
       ).json();
 
       await putAgent(
         created.agentId,
         {
-          connectors: [],
           displayName: "Updated Name",
           description: "new desc",
           sound: "casual",
@@ -528,11 +533,7 @@ describe("Zero Agents API", () => {
 
     it("should reflect deleted agent in list", async () => {
       const created = await (
-        await postAgent(
-          { connectors: [], displayName: "To Delete" },
-          testCliToken,
-          testOrgSlug,
-        )
+        await postAgent({ displayName: "To Delete" }, testCliToken, testOrgSlug)
       ).json();
 
       await deleteAgent(created.agentId, testCliToken, testOrgSlug);
@@ -546,7 +547,7 @@ describe("Zero Agents API", () => {
 
     it("should read back instructions content after PUT via GET", async () => {
       const created = await (
-        await postAgent({ connectors: [] }, testCliToken, testOrgSlug)
+        await postAgent({}, testCliToken, testOrgSlug)
       ).json();
 
       const instructionsContent = "# My Instructions\nBe helpful.";
@@ -598,7 +599,6 @@ describe("Zero Agents API", () => {
       // Given — create an agent via POST
       const createResponse = await postAgent(
         {
-          connectors: [],
           displayName: "Sandbox Access Agent",
           description: "Agent accessible via sandbox token",
           sound: "professional",
@@ -642,7 +642,6 @@ describe("Zero Agents API", () => {
       const created = await (
         await postAgent(
           {
-            connectors: [],
             displayName: "Listed Agent",
             description: "desc",
             sound: "friendly",
@@ -660,7 +659,6 @@ describe("Zero Agents API", () => {
       expect(data[0].displayName).toBe("Listed Agent");
       expect(data[0].description).toBe("desc");
       expect(data[0].sound).toBe("friendly");
-      expect(data[0].connectors).toStrictEqual([]);
     });
 
     it("should return 401 without auth", async () => {
@@ -674,7 +672,7 @@ describe("Zero Agents API", () => {
     it("should update metadata fields", async () => {
       const created = await (
         await postAgent(
-          { connectors: [], displayName: "Original", sound: "professional" },
+          { displayName: "Original", sound: "professional" },
           testCliToken,
           testOrgSlug,
         )
@@ -693,14 +691,12 @@ describe("Zero Agents API", () => {
       expect(data.description).toBe("New desc");
       expect(data.sound).toBe("casual");
       expect(data.agentId).toBe(created.agentId);
-      expect(data.connectors).toStrictEqual([]);
     });
 
     it("should preserve other fields on partial update", async () => {
       const created = await (
         await postAgent(
           {
-            connectors: [],
             displayName: "My Agent",
             description: "A helpful agent",
             sound: "professional",
@@ -753,11 +749,7 @@ describe("Zero Agents API", () => {
   describe("avatarUrl CRUD", () => {
     it("should set avatarUrl via PATCH and persist it", async () => {
       const created = await (
-        await postAgent(
-          { connectors: [], displayName: "AvatarBot" },
-          testCliToken,
-          testOrgSlug,
-        )
+        await postAgent({ displayName: "AvatarBot" }, testCliToken, testOrgSlug)
       ).json();
 
       const patchRes = await patchAgent(
@@ -779,11 +771,7 @@ describe("Zero Agents API", () => {
 
     it("should clear avatarUrl by setting null", async () => {
       const created = await (
-        await postAgent(
-          { connectors: [], displayName: "ClearBot" },
-          testCliToken,
-          testOrgSlug,
-        )
+        await postAgent({ displayName: "ClearBot" }, testCliToken, testOrgSlug)
       ).json();
 
       // Set avatar first
@@ -808,11 +796,7 @@ describe("Zero Agents API", () => {
 
     it("should preserve avatarUrl on unrelated partial update", async () => {
       const created = await (
-        await postAgent(
-          { connectors: [], displayName: "KeepBot" },
-          testCliToken,
-          testOrgSlug,
-        )
+        await postAgent({ displayName: "KeepBot" }, testCliToken, testOrgSlug)
       ).json();
 
       // Set avatar
@@ -840,7 +824,7 @@ describe("Zero Agents API", () => {
   describe("DELETE /api/zero/agents/:name", () => {
     it("should delete an agent and return 204", async () => {
       const created = await (
-        await postAgent({ connectors: [] }, testCliToken, testOrgSlug)
+        await postAgent({}, testCliToken, testOrgSlug)
       ).json();
 
       const response = await deleteAgent(
@@ -853,7 +837,7 @@ describe("Zero Agents API", () => {
 
     it("should return 404 on GET after delete", async () => {
       const created = await (
-        await postAgent({ connectors: [] }, testCliToken, testOrgSlug)
+        await postAgent({}, testCliToken, testOrgSlug)
       ).json();
 
       await deleteAgent(created.agentId, testCliToken, testOrgSlug);
@@ -880,7 +864,7 @@ describe("Zero Agents API", () => {
     it("should delete agent with linked Slack thread sessions and pending questions", async () => {
       // Create an agent
       const created = await (
-        await postAgent({ connectors: [] }, testCliToken, testOrgSlug)
+        await postAgent({}, testCliToken, testOrgSlug)
       ).json();
 
       // Create an agent session linked to this compose
@@ -976,7 +960,7 @@ describe("Zero Agents API", () => {
 
     it("should return 409 when agent has running runs", async () => {
       const created = await (
-        await postAgent({ connectors: [] }, testCliToken, testOrgSlug)
+        await postAgent({}, testCliToken, testOrgSlug)
       ).json();
 
       // Create a running run for this agent
@@ -1016,7 +1000,7 @@ describe("Zero Agents API", () => {
     it("PUT should return 400 for invalid UUID", async () => {
       const response = await putAgent(
         "not-a-uuid",
-        { connectors: [] },
+        {},
         testCliToken,
         testOrgSlug,
       );
@@ -1076,11 +1060,7 @@ describe("Zero Agents API", () => {
     it("should return 403 when member patches default agent metadata", async () => {
       // Create agent as admin
       const created = await (
-        await postAgent(
-          { connectors: [], displayName: "Default" },
-          testCliToken,
-          testOrgSlug,
-        )
+        await postAgent({ displayName: "Default" }, testCliToken, testOrgSlug)
       ).json();
 
       const orgId = `org_mock_${user.userId}`;
@@ -1116,11 +1096,7 @@ describe("Zero Agents API", () => {
 
     it("should return 403 when member updates default agent instructions", async () => {
       const created = await (
-        await postAgent(
-          { connectors: [], displayName: "Default" },
-          testCliToken,
-          testOrgSlug,
-        )
+        await postAgent({ displayName: "Default" }, testCliToken, testOrgSlug)
       ).json();
 
       const orgId = `org_mock_${user.userId}`;
@@ -1156,11 +1132,7 @@ describe("Zero Agents API", () => {
 
     it("should allow admin to patch default agent metadata", async () => {
       const created = await (
-        await postAgent(
-          { connectors: [], displayName: "Default" },
-          testCliToken,
-          testOrgSlug,
-        )
+        await postAgent({ displayName: "Default" }, testCliToken, testOrgSlug)
       ).json();
 
       const orgId = `org_mock_${user.userId}`;
@@ -1181,18 +1153,10 @@ describe("Zero Agents API", () => {
     it("should allow member to patch non-default agent metadata", async () => {
       // Create two agents — mark only one as default
       const defaultAgent = await (
-        await postAgent(
-          { connectors: [], displayName: "Default" },
-          testCliToken,
-          testOrgSlug,
-        )
+        await postAgent({ displayName: "Default" }, testCliToken, testOrgSlug)
       ).json();
       const otherAgent = await (
-        await postAgent(
-          { connectors: [], displayName: "Other" },
-          testCliToken,
-          testOrgSlug,
-        )
+        await postAgent({ displayName: "Other" }, testCliToken, testOrgSlug)
       ).json();
 
       const orgId = `org_mock_${user.userId}`;
@@ -1229,11 +1193,7 @@ describe("Zero Agents API", () => {
 
     it("should return 403 when member PUT-updates default agent", async () => {
       const created = await (
-        await postAgent(
-          { connectors: [], displayName: "Default" },
-          testCliToken,
-          testOrgSlug,
-        )
+        await postAgent({ displayName: "Default" }, testCliToken, testOrgSlug)
       ).json();
 
       const orgId = `org_mock_${user.userId}`;
@@ -1258,7 +1218,7 @@ describe("Zero Agents API", () => {
 
       const response = await putAgent(
         created.agentId,
-        { connectors: [], displayName: "Hacked via PUT" },
+        { displayName: "Hacked via PUT" },
         memberToken,
         testOrgSlug,
       );
@@ -1269,11 +1229,7 @@ describe("Zero Agents API", () => {
 
     it("should return 403 when member deletes default agent", async () => {
       const created = await (
-        await postAgent(
-          { connectors: [], displayName: "Default" },
-          testCliToken,
-          testOrgSlug,
-        )
+        await postAgent({ displayName: "Default" }, testCliToken, testOrgSlug)
       ).json();
 
       const orgId = `org_mock_${user.userId}`;
@@ -1317,7 +1273,7 @@ describe("Zero Agents API", () => {
 
       // 1. Create agent via POST /api/zero/agents
       const createResponse = await postAgent(
-        { connectors: [], displayName: "Schedule Bug Agent" },
+        { displayName: "Schedule Bug Agent" },
         testCliToken,
         testOrgSlug,
       );

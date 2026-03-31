@@ -4,7 +4,6 @@ export interface AgentDetail {
   displayName: string | null;
   sound: string | null;
   avatarUrl: string | null;
-  connectors: string[];
 }
 
 export interface AgentInstructions {

@@ -14,7 +14,6 @@ export const zeroAgentResponseSchema = z.object({
   displayName: z.string().nullable(),
   sound: z.string().nullable(),
   avatarUrl: z.string().nullable(),
-  connectors: z.array(z.string()),
   firewallPolicies: firewallPoliciesSchema.nullable(),
   customSkills: z.array(z.string()).default([]),
 });
@@ -27,7 +26,6 @@ export const zeroAgentRequestSchema = z.object({
   displayName: z.string().optional(),
   sound: z.string().optional(),
   avatarUrl: z.string().optional(),
-  connectors: z.array(z.string()),
 });
 
 /**
@@ -257,9 +255,9 @@ export const zeroAgentSkillListResponseSchema = z.array(
 );
 
 /**
- * Contract for /api/zero/agents/:id/skills endpoints
+ * Contract for GET/POST /api/zero/agents/:id/skills (list + create)
  */
-export const zeroAgentSkillsContract = c.router({
+export const zeroAgentSkillsCollectionContract = c.router({
   list: {
     method: "GET",
     path: "/api/zero/agents/:id/skills",
@@ -293,6 +291,12 @@ export const zeroAgentSkillsContract = c.router({
     },
     summary: "Create custom skill for agent",
   },
+});
+
+/**
+ * Contract for GET/PUT/DELETE /api/zero/agents/:id/skills/:name
+ */
+export const zeroAgentSkillsDetailContract = c.router({
   get: {
     method: "GET",
     path: "/api/zero/agents/:id/skills/:name",
@@ -374,4 +378,7 @@ export type ZeroAgentSkillContentRequest = z.infer<
 export type ZeroAgentSkillContentResponse = z.infer<
   typeof zeroAgentSkillContentResponseSchema
 >;
-export type ZeroAgentSkillsContract = typeof zeroAgentSkillsContract;
+export type ZeroAgentSkillsCollectionContract =
+  typeof zeroAgentSkillsCollectionContract;
+export type ZeroAgentSkillsDetailContract =
+  typeof zeroAgentSkillsDetailContract;

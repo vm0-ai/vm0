@@ -46,7 +46,7 @@ export interface ScheduleResponse {
   enabled: boolean;
   notifyEmail: boolean;
   notifySlack: boolean;
-  slackChannelId: string | null;
+  notifySlackChannelId: string | null;
   nextRunAt: string | null;
   lastRunAt: string | null;
   retryStartedAt: string | null;
@@ -83,7 +83,7 @@ interface DeployScheduleRequest {
   enabled?: boolean;
   notifyEmail?: boolean;
   notifySlack?: boolean;
-  slackChannelId?: string | null;
+  notifySlackChannelId?: string | null;
   // vars and secrets removed - now managed via server-side tables
   volumeVersions?: Record<string, string>;
 }
@@ -154,7 +154,7 @@ function toResponse(
     enabled: schedule.enabled,
     notifyEmail: schedule.notifyEmail,
     notifySlack: schedule.notifySlack,
-    slackChannelId: schedule.slackChannelId ?? null,
+    notifySlackChannelId: schedule.notifySlackChannelId ?? null,
     nextRunAt: schedule.nextRunAt?.toISOString() ?? null,
     lastRunAt: schedule.lastRunAt?.toISOString() ?? null,
     retryStartedAt: schedule.retryStartedAt?.toISOString() ?? null,
@@ -288,8 +288,8 @@ async function updateExistingSchedule(
       ...(request.notifySlack !== undefined && {
         notifySlack: request.notifySlack,
       }),
-      ...(request.slackChannelId !== undefined && {
-        slackChannelId: request.slackChannelId,
+      ...(request.notifySlackChannelId !== undefined && {
+        notifySlackChannelId: request.notifySlackChannelId,
       }),
       nextRunAt,
       consecutiveFailures: 0,
@@ -337,7 +337,7 @@ async function insertNewSchedule(
       enabled: request.enabled ?? false,
       notifyEmail: request.notifyEmail ?? false,
       notifySlack: request.notifySlack ?? false,
-      slackChannelId: request.slackChannelId ?? null,
+      notifySlackChannelId: request.notifySlackChannelId ?? null,
       nextRunAt,
       consecutiveFailures: 0,
       createdAt: now,
@@ -930,7 +930,7 @@ export async function executeSchedule(
       agentId: schedule.agentId,
       userId: schedule.userId,
       orgId: schedule.orgId,
-      slackChannelId: schedule.slackChannelId,
+      notifySlackChannelId: schedule.notifySlackChannelId,
     };
     callbacks.push({
       url: `${getApiUrl()}/api/internal/callbacks/slack/org/schedule`,

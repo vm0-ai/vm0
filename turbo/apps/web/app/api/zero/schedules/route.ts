@@ -47,7 +47,7 @@ const router = tsr.router(zeroSchedulesMainContract, {
         enabled: body.enabled,
         notifyEmail: body.notifyEmail,
         notifySlack: body.notifySlack,
-        slackChannelId: body.slackChannelId,
+        notifySlackChannelId: body.notifySlackChannelId,
         volumeVersions: body.volumeVersions,
       });
 

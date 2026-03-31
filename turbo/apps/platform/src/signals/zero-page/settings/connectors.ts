@@ -119,57 +119,6 @@ const hiddenConnectorTypes$ = computed((get): Set<ConnectorType> => {
 });
 
 // ---------------------------------------------------------------------------
-// Add connection dialog state
-// ---------------------------------------------------------------------------
-
-const internalAddConnectionDialogOpen$ = state(false);
-export const addConnectionDialogOpen$ = computed((get) =>
-  get(internalAddConnectionDialogOpen$),
-);
-export const setAddConnectionDialogOpen$ = command(({ set }, open: boolean) => {
-  set(internalAddConnectionDialogOpen$, open);
-});
-
-const internalAddConnectionDialogTab$ = state<"connectors" | "custom-api">(
-  "connectors",
-);
-export const addConnectionDialogTab$ = computed((get) =>
-  get(internalAddConnectionDialogTab$),
-);
-export const setAddConnectionDialogTab$ = command(
-  ({ set }, tab: "connectors" | "custom-api") => {
-    set(internalAddConnectionDialogTab$, tab);
-  },
-);
-
-// ---------------------------------------------------------------------------
-// Zero variant: add connection dialog search & tab state
-// ---------------------------------------------------------------------------
-
-const internalZeroDialogSearch$ = state("");
-export const zeroDialogSearch$ = computed((get) =>
-  get(internalZeroDialogSearch$),
-);
-export const setZeroDialogSearch$ = command(({ set }, search: string) => {
-  set(internalZeroDialogSearch$, search);
-});
-
-const internalZeroDialogTab$ = state<"not-connected" | "connected">(
-  "not-connected",
-);
-export const zeroDialogTab$ = computed((get) => get(internalZeroDialogTab$));
-export const setZeroDialogTab$ = command(
-  ({ set }, tab: "not-connected" | "connected") => {
-    set(internalZeroDialogTab$, tab);
-  },
-);
-
-export const resetZeroDialogState$ = command(({ set }) => {
-  set(internalZeroDialogSearch$, "");
-  set(internalZeroDialogTab$, "not-connected");
-});
-
-// ---------------------------------------------------------------------------
 // Selected connector for connect modal
 // ---------------------------------------------------------------------------
 

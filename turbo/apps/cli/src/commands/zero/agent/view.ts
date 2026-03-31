@@ -1,6 +1,10 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { getZeroAgent, getZeroAgentInstructions } from "../../../lib/api";
+import {
+  getZeroAgent,
+  getZeroAgentInstructions,
+  getZeroAgentUserConnectors,
+} from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 
 export const viewCommand = new Command()
@@ -25,7 +29,9 @@ Examples:
         if (agent.displayName) console.log(chalk.dim(agent.displayName));
         console.log();
         console.log(`Agent ID:     ${agent.agentId}`);
-        console.log(`Connectors:   ${agent.connectors.join(", ") || "-"}`);
+        const connectors = await getZeroAgentUserConnectors(agentId);
+        if (connectors.length > 0)
+          console.log(`Connectors:   ${connectors.join(", ")}`);
         if (agent.description)
           console.log(`Description:  ${agent.description}`);
         if (agent.sound) console.log(`Sound:        ${agent.sound}`);

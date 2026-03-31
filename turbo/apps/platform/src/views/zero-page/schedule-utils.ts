@@ -31,7 +31,7 @@ export interface ScheduleEntry {
   notifySlack?: boolean;
   /** IANA timezone from the server (not derivable from `time` alone). */
   timezone?: string;
-  slackChannelId?: string | null;
+  notifySlackChannelId?: string | null;
   /** Raw interval in seconds for loop schedules */
   intervalSeconds?: number | null;
 }

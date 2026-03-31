@@ -204,7 +204,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const { userId, orgId } = payload;
-  const targetChannelId = payload.slackChannelId;
+  const targetChannelId = payload.notifySlackChannelId;
 
   log.debug("Processing Slack org schedule callback", {
     runId,

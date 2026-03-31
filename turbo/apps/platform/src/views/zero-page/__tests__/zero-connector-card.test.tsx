@@ -1,15 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor, fireEvent } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
-import { mockedWindowOpen } from "../../../__tests__/mock-window-open.ts";
 import {
   CONNECTOR_TYPES,
   type ConnectorResponse,
   type ConnectorType,
-  type ScopeDiff,
 } from "@vm0/core";
 
 const context = testContext();
@@ -60,11 +58,15 @@ function mockConnectors(connectors: ConnectorResponse[]) {
 }
 
 /**
- * Set up the /team/zero route with the given connectors seeded in the agent.
- * This renders the full page through setupPage, exercising the real signal flow.
+ * Set up the /team/zero route with the given user-connector permissions.
+ * `orgConnectors` are the org-level connected connectors (shown in the list).
+ * `enabledTypes` are the agent-level permissions (toggle checked state).
  */
-async function renderTeamPage(connectors: string[]) {
-  // Mock the agent detail lookup (fetched by name)
+async function renderTeamPage(
+  orgConnectors: ConnectorResponse[],
+  enabledTypes: string[],
+) {
+  mockConnectors(orgConnectors);
   server.use(
     http.get("*/api/zero/agents/zero", () => {
       return HttpResponse.json({
@@ -74,286 +76,109 @@ async function renderTeamPage(connectors: string[]) {
         displayName: null,
         sound: null,
         avatarUrl: null,
-        connectors,
         firewallPolicies: null,
       });
+    }),
+    http.get("*/api/zero/agents/compose-1/user-connectors", () => {
+      return HttpResponse.json({ enabledTypes });
     }),
   );
 
   await setupPage({ context, path: "/team/zero" });
 }
 
-describe("zero connector card status display", () => {
-  it("shows green indicator for connected OAuth connector with username", async () => {
-    mockConnectors([
-      makeConnector({
-        type: "github",
-        externalUsername: "testuser",
-        oauthScopes: ["repo", "project"],
-      }),
-    ]);
+describe("zero authorization tab — toggle rows", () => {
+  it("shows a toggle row for a connected org connector", async () => {
+    await renderTeamPage(
+      [makeConnector({ type: "github", oauthScopes: ["repo", "project"] })],
+      [],
+    );
 
-    await renderTeamPage(["github"]);
+    await waitFor(() => {
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+    });
+  });
 
-    // A connected connector shows a green dot and the Connectors tab renders it
+  it("toggle is unchecked (Grant) when connector is not in enabledTypes", async () => {
+    await renderTeamPage(
+      [makeConnector({ type: "github", oauthScopes: ["repo", "project"] })],
+      [],
+    );
+
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: "More options" }),
+        screen.getByRole("button", { name: "Grant GitHub" }),
       ).toBeInTheDocument();
     });
   });
 
-  it("shows green indicator for connected API token connector", async () => {
-    mockConnectors([
-      makeConnector({
-        type: "axiom",
-        authMethod: "api-token",
-      }),
-    ]);
-
-    await renderTeamPage(["axiom"]);
+  it("toggle is checked (Revoke) when connector is in enabledTypes", async () => {
+    await renderTeamPage(
+      [makeConnector({ type: "github", oauthScopes: ["repo", "project"] })],
+      ["github"],
+    );
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: "More options" }),
+        screen.getByRole("button", { name: "Revoke GitHub" }),
       ).toBeInTheDocument();
     });
   });
 
-  it("shows green indicator for connected OAuth connector without username", async () => {
-    mockConnectors([
-      makeConnector({
-        type: "github",
-        externalUsername: null,
-        oauthScopes: ["repo", "project"],
-      }),
-    ]);
-
-    await renderTeamPage(["github"]);
+  it("shows empty state when no org connectors are connected", async () => {
+    await renderTeamPage([], []);
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "More options" }),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/No connected services yet/)).toBeInTheDocument();
     });
   });
 
-  it("shows Reconnect button for needsReconnect connector", async () => {
-    mockConnectors([
-      makeConnector({
-        type: "github",
-        needsReconnect: true,
-        oauthScopes: ["repo", "project"],
-      }),
-    ]);
-
-    await renderTeamPage(["github"]);
+  it("does not show unconnected org connectors in the authorization tab", async () => {
+    // github is not connected at org level
+    await renderTeamPage([], ["github"]);
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Reconnect" }),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/No connected services yet/)).toBeInTheDocument();
     });
-  });
-
-  it("shows Review button for scope mismatch connector", async () => {
-    // GitHub requires ["repo", "project"] — only storing ["repo"] triggers mismatch
-    mockConnectors([
-      makeConnector({
-        type: "github",
-        oauthScopes: ["repo"],
-      }),
-    ]);
-
-    await renderTeamPage(["github"]);
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Review" }),
-      ).toBeInTheDocument();
-    });
-  });
-
-  it("shows Connect button for not-connected OAuth connector", async () => {
-    mockConnectors([]);
-
-    await renderTeamPage(["github"]);
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Connect" }),
-      ).toBeInTheDocument();
-    });
-  });
-
-  it("shows Connect button for not-connected API-token-only connector", async () => {
-    mockConnectors([]);
-
-    await renderTeamPage(["axiom"]);
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Connect" }),
-      ).toBeInTheDocument();
-    });
+    expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
   });
 });
 
-describe("zero connector card button clicks", () => {
-  it("calls window.open with authorize URL when Connect is clicked", async () => {
-    mockConnectors([]);
-    await renderTeamPage(["github"]);
-
-    const connectButton = await waitFor(() =>
-      screen.getByRole("button", { name: "Connect" }),
+describe("zero authorization tab — multiple connectors", () => {
+  it("shows all org-connected connectors as toggle rows", async () => {
+    await renderTeamPage(
+      [
+        makeConnector({ type: "github", oauthScopes: ["repo", "project"] }),
+        makeConnector({ type: "slack" }),
+      ],
+      ["github"],
     );
 
-    fireEvent.click(connectButton);
-
     await waitFor(() => {
-      expect(mockedWindowOpen).toHaveBeenCalledWith(
-        expect.stringContaining("/api/zero/connectors/github/authorize"),
-        "_blank",
-        "width=600,height=700",
-      );
-    });
-  });
-
-  it("calls window.open when Reconnect is clicked on expired connector", async () => {
-    mockConnectors([
-      makeConnector({
-        type: "github",
-        needsReconnect: true,
-        oauthScopes: ["repo", "project"],
-      }),
-    ]);
-
-    await renderTeamPage(["github"]);
-
-    const reconnectButton = await waitFor(() =>
-      screen.getByRole("button", { name: "Reconnect" }),
-    );
-
-    fireEvent.click(reconnectButton);
-
-    await waitFor(() => {
-      expect(mockedWindowOpen).toHaveBeenCalledWith(
-        expect.stringContaining("/api/zero/connectors/github/authorize"),
-        "_blank",
-        "width=600,height=700",
-      );
-    });
-  });
-
-  it("opens ConnectModal when Connect is clicked for API-token connector", async () => {
-    mockConnectors([]);
-    await renderTeamPage(["axiom"]);
-
-    const connectButton = await waitFor(() =>
-      screen.getByRole("button", { name: "Connect" }),
-    );
-
-    fireEvent.click(connectButton);
-
-    // ConnectModal should open showing the connector's dialog
-    await waitFor(() => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
-    });
-  });
-});
-
-describe("zero connector card scope review modal", () => {
-  it("opens ScopeReviewModal with scope diff when Review is clicked", async () => {
-    mockConnectors([
-      makeConnector({
-        type: "github",
-        oauthScopes: ["repo"],
-      }),
-    ]);
-
-    server.use(
-      http.get("*/api/zero/connectors/github/scope-diff", () => {
-        return HttpResponse.json({
-          addedScopes: ["project"],
-          removedScopes: [],
-          currentScopes: ["repo", "project"],
-          storedScopes: ["repo"],
-        } satisfies ScopeDiff);
-      }),
-    );
-
-    await renderTeamPage(["github"]);
-
-    const reviewButton = await waitFor(() =>
-      screen.getByRole("button", { name: "Review" }),
-    );
-
-    fireEvent.click(reviewButton);
-
-    // ScopeReviewModal should open as a dialog
-    await waitFor(() => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+      expect(screen.getByText("Slack")).toBeInTheDocument();
     });
 
-    // Added scope should render in the modal
-    await waitFor(() => {
-      expect(screen.getByText("project")).toBeInTheDocument();
-    });
-  });
-
-  it("calls window.open when Reconnect is clicked in ScopeReviewModal", async () => {
-    mockConnectors([
-      makeConnector({
-        type: "github",
-        oauthScopes: ["repo"],
-      }),
-    ]);
-
-    server.use(
-      http.get("*/api/zero/connectors/github/scope-diff", () => {
-        return HttpResponse.json({
-          addedScopes: ["project"],
-          removedScopes: [],
-          currentScopes: ["repo", "project"],
-          storedScopes: ["repo"],
-        } satisfies ScopeDiff);
-      }),
-    );
-
-    await renderTeamPage(["github"]);
-
-    const reviewButton = await waitFor(() =>
-      screen.getByRole("button", { name: "Review" }),
-    );
-
-    fireEvent.click(reviewButton);
-
-    // Wait for modal to appear
-    await waitFor(() => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
-    });
-
-    // Click Reconnect in the modal
-    const reconnectButton = screen.getByRole("button", { name: "Reconnect" });
-    fireEvent.click(reconnectButton);
-
-    await waitFor(() => {
-      expect(mockedWindowOpen).toHaveBeenCalledWith(
-        expect.stringContaining("/api/zero/connectors/github/authorize"),
-        "_blank",
-        "width=600,height=700",
-      );
-    });
+    // GitHub is enabled, Slack is not
+    expect(
+      screen.getByRole("button", { name: "Revoke GitHub" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Grant Slack" }),
+    ).toBeInTheDocument();
   });
 });
 
 /**
- * Render the default agent's connector tab as a non-admin member.
+ * Render the default agent's authorization tab as a non-admin member.
  * This triggers readOnly=true (hideProfileAndInstructions) in ZeroJobDetailPage.
  */
-async function renderTeamPageAsMember(connectors: string[]) {
+async function renderTeamPageAsMember(
+  orgConnectors: ConnectorResponse[],
+  enabledTypes: string[],
+) {
+  mockConnectors(orgConnectors);
   server.use(
-    // Agent detail — agentId matches defaultAgentId below
     http.get("*/api/zero/agents/zero", () => {
       return HttpResponse.json({
         name: "zero",
@@ -362,15 +187,15 @@ async function renderTeamPageAsMember(connectors: string[]) {
         displayName: null,
         sound: null,
         avatarUrl: null,
-        connectors,
         firewallPolicies: null,
       });
     }),
-    // Chat threads — required when viewing a job detail page
+    http.get("*/api/zero/agents/compose-1/user-connectors", () => {
+      return HttpResponse.json({ enabledTypes });
+    }),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
     }),
-    // Onboarding status — default agent matches the agent being viewed
     http.get("*/api/zero/onboarding/status", () => {
       return HttpResponse.json({
         needsOnboarding: false,
@@ -382,7 +207,6 @@ async function renderTeamPageAsMember(connectors: string[]) {
         defaultAgentSkills: [],
       });
     }),
-    // Org — role=member so isOrgAdmin$ resolves to false
     http.get("*/api/zero/org", () => {
       return HttpResponse.json({
         id: "org_1",
@@ -396,124 +220,38 @@ async function renderTeamPageAsMember(connectors: string[]) {
   await setupPage({ context, path: "/team/zero" });
 }
 
-describe("connector sorting: connected first", () => {
-  it("renders connected connectors before unconnected ones", async () => {
-    // Only github is connected; slack and axiom are not
-    mockConnectors([
-      makeConnector({
-        type: "github",
-        externalUsername: "testuser",
-        oauthScopes: ["repo", "project"],
-      }),
-    ]);
+describe("zero authorization tab — readOnly behavior (member on default agent)", () => {
+  it("shows toggle row but disables it when readOnly", async () => {
+    await renderTeamPageAsMember(
+      [makeConnector({ type: "github", oauthScopes: ["repo", "project"] })],
+      ["github"],
+    );
 
-    // Agent has connectors in order: slack, github, axiom
-    // After sorting, github (connected) should appear first
-    await renderTeamPage(["slack", "github", "axiom"]);
+    const toggleRow = await waitFor(() =>
+      screen.getByRole("button", { name: "Revoke GitHub" }),
+    );
+    expect(toggleRow).toBeDisabled();
+  });
 
-    // Wait for all connector cards to render
+  it("shows empty state when readOnly and no org connectors", async () => {
+    await renderTeamPageAsMember([], []);
+
+    await waitFor(() => {
+      expect(screen.getByText(/No connected services yet/)).toBeInTheDocument();
+    });
+  });
+
+  it("shows toggle row for enabled connector when readOnly", async () => {
+    await renderTeamPageAsMember(
+      [makeConnector({ type: "github", oauthScopes: ["repo", "project"] })],
+      ["github"],
+    );
+
     await waitFor(() => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
-      expect(screen.getByText("Slack")).toBeInTheDocument();
-      expect(screen.getByText("Axiom")).toBeInTheDocument();
     });
-
-    // Verify order: GitHub (connected) should appear before Slack and Axiom (unconnected)
-    const allCardLabels = screen
-      .getAllByText(/^(GitHub|Slack|Axiom)$/)
-      .map((el) => el.textContent);
-
-    expect(allCardLabels.indexOf("GitHub")).toBeLessThan(
-      allCardLabels.indexOf("Slack"),
-    );
-    expect(allCardLabels.indexOf("GitHub")).toBeLessThan(
-      allCardLabels.indexOf("Axiom"),
-    );
-  });
-});
-
-describe("zero connector card readOnly behavior (member on default agent)", () => {
-  it("hides the Add connector button when readOnly", async () => {
-    mockConnectors([
-      makeConnector({
-        type: "github",
-        externalUsername: "testuser",
-        oauthScopes: ["repo", "project"],
-      }),
-    ]);
-
-    await renderTeamPageAsMember(["github"]);
-
-    // Wait for the connector card to render
-    await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "More options" }),
-      ).toBeInTheDocument();
-    });
-
-    // "Add connector" button should NOT be present
-    expect(screen.queryByText("Add connector")).not.toBeInTheDocument();
-  });
-
-  it("hides the dropdown menu entirely for unconnected connector when readOnly", async () => {
-    mockConnectors([]);
-
-    await renderTeamPageAsMember(["github"]);
-
-    // Wait for the Connect button to appear (proves the card rendered)
-    await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Connect" }),
-      ).toBeInTheDocument();
-    });
-
-    // When readOnly and not connected, CardDropdownMenu returns null
     expect(
-      screen.queryByRole("button", { name: "More options" }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("still shows Connect button for unconnected connector when readOnly", async () => {
-    mockConnectors([]);
-
-    await renderTeamPageAsMember(["github"]);
-
-    // Connect should still be available (user-scoped OAuth)
-    await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Connect" }),
-      ).toBeInTheDocument();
-    });
-  });
-
-  it("still shows Disconnect in dropdown for connected connector when readOnly", async () => {
-    mockConnectors([
-      makeConnector({
-        type: "github",
-        externalUsername: "testuser",
-        oauthScopes: ["repo", "project"],
-      }),
-    ]);
-
-    await renderTeamPageAsMember(["github"]);
-
-    // Connected card should still have the dropdown menu
-    const menuButton = await waitFor(() =>
-      screen.getByRole("button", { name: "More options" }),
-    );
-
-    // Radix DropdownMenu requires pointerDown to open
-    fireEvent.pointerDown(menuButton, { button: 0, ctrlKey: false });
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("menuitem", { name: "Disconnect" }),
-      ).toBeInTheDocument();
-    });
-
-    // "Remove connector" should NOT appear
-    expect(
-      screen.queryByRole("menuitem", { name: "Remove connector" }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("button", { name: "Revoke GitHub" }),
+    ).toBeInTheDocument();
   });
 });

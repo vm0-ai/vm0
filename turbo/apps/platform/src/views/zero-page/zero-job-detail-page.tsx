@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   useGet,
   useSet,
@@ -9,10 +10,12 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   IconFileText,
   IconUserCircle,
-  IconPlug,
+  IconShield,
   IconCalendar,
-  IconMessageCircle,
   IconUsers,
+  IconAdjustmentsHorizontal,
+  IconSearch,
+  IconX,
 } from "@tabler/icons-react";
 import {
   Tabs,
@@ -24,9 +27,10 @@ import {
   TooltipTrigger,
   Card,
   CardContent,
+  Switch,
+  cn,
 } from "@vm0/ui";
 import { ZeroScheduleTab } from "./zero-schedule-tab.tsx";
-import { ZeroConnectorsTab } from "./zero-connectors-tab.tsx";
 import { ZeroInstructionsTab } from "./zero-instructions-tab.tsx";
 import { ZeroSettingsTab } from "./zero-settings-tab.tsx";
 
@@ -75,6 +79,19 @@ import { resolveAvatarUrl } from "./avatar-utils.ts";
 import { agents$ } from "../../signals/zero-page/agents-list.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { ZeroNoPermissionIllustration } from "./components/zero-no-permission-illustration.tsx";
+import type { ConnectorType } from "@vm0/core";
+import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
+import { FirewallPermissionsDrawer } from "./components/settings/firewall-permissions-dialog.tsx";
+import {
+  hasFirewallPermissions,
+  saveFirewallPolicies$,
+} from "../../signals/zero-page/settings/firewalls.ts";
+import {
+  allConnectorTypes$,
+  type ConnectorTypeWithStatus,
+} from "../../signals/zero-page/settings/connectors.ts";
+import { ZeroUnsavedBar } from "./zero-unsaved-bar.tsx";
+import { toast } from "@vm0/ui/components/ui/sonner";
 
 // ---------------------------------------------------------------------------
 // Page shell: skeleton, error, header
@@ -179,17 +196,17 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
 const TAB_TRIGGER_CLASS =
   "gap-1.5 text-sm data-[state=active]:bg-background px-3";
 
-/** Coerce hidden tabs back to "connectors" for non-admin default-agent view. */
+/** Coerce hidden tabs back to "authorization" for non-admin default-agent view. */
 function resolveVisibleTab(
   rawTab: string,
   hideProfileAndInstructions: boolean,
 ): string {
   if (
     hideProfileAndInstructions &&
-    rawTab !== "connectors" &&
+    rawTab !== "authorization" &&
     rawTab !== "schedule"
   ) {
-    return "connectors";
+    return "authorization";
   }
   return rawTab;
 }
@@ -210,9 +227,9 @@ function AgentTabNav({
       className="flex-1 min-w-0"
     >
       <TabsList className="zero-tabs h-9 w-full sm:w-auto gap-1 px-1 py-1 overflow-x-auto">
-        <TabsTrigger value="connectors" className={TAB_TRIGGER_CLASS}>
-          <IconPlug size={14} stroke={1.5} />
-          Connectors
+        <TabsTrigger value="authorization" className={TAB_TRIGGER_CLASS}>
+          <IconShield size={14} stroke={1.5} />
+          Authorization
         </TabsTrigger>
         <TabsTrigger value="schedule" className={TAB_TRIGGER_CLASS}>
           <IconCalendar size={14} stroke={1.5} />
@@ -259,47 +276,310 @@ function extractAgentFields(
 }
 
 // ---------------------------------------------------------------------------
+// PermissionRow — single connector toggle row inside the authorization tab
+// ---------------------------------------------------------------------------
+
+function PermissionRow({
+  connector,
+  enabled,
+  onToggle,
+  readOnly,
+  showManage,
+  onManage,
+  isLast,
+}: {
+  connector: ConnectorTypeWithStatus;
+  enabled: boolean;
+  onToggle: (checked: boolean) => void;
+  readOnly?: boolean;
+  showManage?: boolean;
+  onManage?: () => void;
+  isLast?: boolean;
+}) {
+  return (
+    <>
+      <button
+        type="button"
+        disabled={readOnly}
+        onClick={() => onToggle(!enabled)}
+        className={cn(
+          "flex items-center gap-3 px-5 py-4 w-full text-left transition-colors",
+          !readOnly && "hover:bg-muted/40 cursor-pointer",
+          readOnly && "cursor-default",
+        )}
+        aria-label={`${enabled ? "Revoke" : "Grant"} ${connector.label}`}
+      >
+        <ConnectorIcon type={connector.type} size={20} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-foreground">
+              {connector.label}
+            </span>
+            {connector.connector?.externalUsername && (
+              <span className="text-xs text-muted-foreground">
+                @{connector.connector.externalUsername}
+              </span>
+            )}
+          </div>
+          {connector.helpText && (
+            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
+              {connector.helpText
+                .replace(/^Connect your \w+ account to /i, "")
+                .replace(/^access /i, "")
+                .replace(/^create /i, "Create ")
+                .replace(/^./, (c) => c.toUpperCase())}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {showManage && (
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onManage?.();
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        onManage?.();
+                      }
+                    }}
+                    className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                    aria-label={`Manage ${connector.label} permissions`}
+                  >
+                    <IconAdjustmentsHorizontal size={15} stroke={1.5} />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  <p className="text-xs">Manage permissions</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          <span onClick={(e) => e.stopPropagation()} className="inline-flex">
+            <Switch
+              checked={enabled}
+              onCheckedChange={(checked) => onToggle(checked)}
+              disabled={readOnly}
+              size="sm"
+              aria-label={`${enabled ? "Revoke" : "Grant"} ${connector.label} access`}
+            />
+          </span>
+        </div>
+      </button>
+      {!isLast && <div className="mx-5 border-b border-border/50" />}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Tab wrappers — resolve signals into shared component props
 // ---------------------------------------------------------------------------
 
-function JobConnectorsTab({
+function JobPermissionsTab({
   agentId,
-  agentDisplayName,
+  displayName,
   readOnly,
 }: {
   agentId: string;
-  agentDisplayName: string;
+  displayName: string;
   readOnly?: boolean;
 }) {
   const addedConnectors = useGet(zeroJobAddedConnectors$);
-  const connectorsDirty = useGet(zeroJobConnectorsDirty$);
-  const connectorsSaving = useGet(zeroJobSettingsSaving$);
   const addConnector = useSet(addZeroJobConnector$);
   const removeConnector = useSet(removeZeroJobConnector$);
+  const connectorsDirty = useGet(zeroJobConnectorsDirty$);
+  const connectorsSaving = useGet(zeroJobSettingsSaving$);
   const saveConnectors = useSet(saveZeroJobConnectors$);
   const discardConnectors = useSet(discardZeroJobConnectors$);
+  const pageSignal = useGet(pageSignal$);
   const firewallPolicies = useGet(zeroJobFirewallPolicies$);
   const setFirewallPolicies = useSet(setZeroJobFirewallPolicies$);
-  const pageSignal = useGet(pageSignal$);
+  const saveFirewallPol = useSet(saveFirewallPolicies$);
+  const [firewallType, setFirewallType] = useState<ConnectorType | null>(null);
+  const [search, setSearch] = useState("");
+  const [searchActive, setSearchActive] = useState(false);
+
+  const adminLoadable = useLoadable(isOrgAdmin$);
+  const isAdmin = adminLoadable.state === "hasData" && adminLoadable.data;
+
+  const allTypesLoadable = useLastLoadable(allConnectorTypes$);
+  const allConnectors =
+    allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
+
+  const connectedConnectors = allConnectors.filter((c) => c.connected);
+  const filteredConnectors = search
+    ? connectedConnectors.filter((c) =>
+        c.label.toLowerCase().includes(search.toLowerCase()),
+      )
+    : connectedConnectors;
+  const addedSet = new Set(addedConnectors);
+
+  const handleToggle = (type: string, checked: boolean) => {
+    if (checked) {
+      addConnector(type);
+    } else {
+      removeConnector(type);
+    }
+  };
+
+  if (allTypesLoadable.state !== "hasData") {
+    return (
+      <div className="mx-auto max-w-[900px]">
+        <div className="rounded-[var(--zero-card-radius)] border-[0.7px] border-[hsl(var(--gray-400))] bg-card animate-pulse">
+          {Array.from({ length: 4 }, (_, i) => (
+            <div
+              key={i}
+              className={cn(
+                "flex items-center gap-3 px-5 py-4",
+                i < 3 && "border-b border-border/50",
+              )}
+            >
+              <span className="h-5 w-5 shrink-0 rounded bg-muted/50" />
+              <div className="flex-1 space-y-1.5">
+                <span className="block h-4 w-24 rounded bg-muted/50" />
+                <span className="block h-3 w-48 rounded bg-muted/30" />
+              </div>
+              <span className="h-4 w-7 rounded-full bg-muted/50" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <ZeroConnectorsTab
-      addedConnectors={addedConnectors}
-      addedConnectorsLoading={false}
-      connectorsDirty={connectorsDirty}
-      connectorsSaving={connectorsSaving}
-      agentId={agentId}
-      displayName={agentDisplayName}
-      firewallPolicies={firewallPolicies}
-      onFirewallPoliciesChange={setFirewallPolicies}
-      onAddConnector={addConnector}
-      onRemoveConnector={removeConnector}
-      onSaveConnectors={() =>
-        detach(saveConnectors(pageSignal), Reason.DomCallback)
-      }
-      onDiscardConnectors={() => discardConnectors()}
-      readOnly={readOnly}
-    />
+    <div className="mx-auto max-w-[900px] flex flex-col gap-4">
+      {connectedConnectors.length === 0 ? (
+        <div className="rounded-[var(--zero-card-radius)] border-[0.7px] border-[hsl(var(--gray-400))] bg-card py-8 text-center">
+          <p className="text-sm text-muted-foreground">
+            No connected services yet. Head to the{" "}
+            <Link
+              pathname="/connectors"
+              className="font-medium text-foreground hover:underline"
+            >
+              Connectors
+            </Link>{" "}
+            page to connect your first service.
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className="rounded-[var(--zero-card-radius)] border-[0.7px] border-[hsl(var(--gray-400))] bg-card">
+            <div className="relative border-b border-border/50">
+              <div
+                className={cn(
+                  "px-5 pt-4 pb-3 pr-12 text-sm text-muted-foreground transition-opacity duration-150",
+                  searchActive && "opacity-0 select-none",
+                )}
+                aria-hidden={searchActive}
+              >
+                When running, the agent can securely use your connected
+                services. You can manage or turn off access anytime.
+              </div>
+              {searchActive && (
+                <div className="absolute inset-0 flex items-center gap-2 px-5">
+                  <IconSearch
+                    size={14}
+                    stroke={1.5}
+                    className="shrink-0 text-muted-foreground"
+                  />
+                  <input
+                    ref={(el) => el?.focus()}
+                    type="text"
+                    placeholder="Search connectors..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") {
+                        setSearch("");
+                        setSearchActive(false);
+                      }
+                    }}
+                    className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearch("");
+                      setSearchActive(false);
+                    }}
+                    className="shrink-0 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                    aria-label="Close search"
+                  >
+                    <IconX size={14} stroke={1.5} />
+                  </button>
+                </div>
+              )}
+              {!searchActive && (
+                <button
+                  type="button"
+                  onClick={() => setSearchActive(true)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                  aria-label="Search connectors"
+                >
+                  <IconSearch size={14} stroke={1.5} />
+                </button>
+              )}
+            </div>
+            {filteredConnectors.length > 0 ? (
+              filteredConnectors.map((c, i) => (
+                <PermissionRow
+                  key={c.type}
+                  connector={c}
+                  enabled={addedSet.has(c.type)}
+                  onToggle={(checked) => handleToggle(c.type, checked)}
+                  readOnly={readOnly}
+                  showManage={isAdmin && hasFirewallPermissions(c.type)}
+                  onManage={() => setFirewallType(c.type)}
+                  isLast={i === filteredConnectors.length - 1}
+                />
+              ))
+            ) : (
+              <p className="px-5 py-4 text-sm text-muted-foreground">
+                No results for &ldquo;{search}&rdquo;
+              </p>
+            )}
+          </div>
+
+          {firewallType && (
+            <FirewallPermissionsDrawer
+              connectorType={firewallType}
+              displayName={displayName}
+              initialPolicies={firewallPolicies ?? {}}
+              onApply={async (policies) => {
+                const saved = await saveFirewallPol(
+                  agentId,
+                  policies,
+                  pageSignal,
+                );
+                if (saved !== undefined) {
+                  setFirewallPolicies(saved);
+                }
+                toast.success("Permissions updated");
+              }}
+              onClose={() => setFirewallType(null)}
+            />
+          )}
+
+          {!readOnly && (connectorsDirty || connectorsSaving) && (
+            <ZeroUnsavedBar
+              onDiscard={() => discardConnectors()}
+              onSave={() =>
+                detach(saveConnectors(pageSignal), Reason.DomCallback)
+              }
+              saving={connectorsSaving}
+            />
+          )}
+        </>
+      )}
+    </div>
   );
 }
 
@@ -450,11 +730,18 @@ export function ZeroJobDetailPage({ agentId }: ZeroJobDetailPageProps) {
       <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-6 pb-3">
         <div className="mx-auto max-w-[900px]">
           <div className="flex items-center gap-4">
-            <img
-              src={currentAvatar}
-              alt={displayName}
-              className="h-14 w-14 shrink-0 rounded-full object-cover object-top sm:h-16 sm:w-16"
-            />
+            {currentAvatar ? (
+              <img
+                src={currentAvatar}
+                alt={displayName}
+                className="h-14 w-14 shrink-0 rounded-full object-cover object-top sm:h-16 sm:w-16"
+              />
+            ) : (
+              <div
+                className="h-14 w-14 shrink-0 rounded-full bg-muted sm:h-16 sm:w-16"
+                aria-hidden
+              />
+            )}
             <div className="min-w-0">
               <h1 className="text-xl font-semibold tracking-tight text-foreground">
                 {displayName}
@@ -465,41 +752,21 @@ export function ZeroJobDetailPage({ agentId }: ZeroJobDetailPageProps) {
             </div>
           </div>
 
-          <div className="mt-4 flex h-9 items-center justify-between gap-6">
+          <div className="mt-4 flex h-9 items-center gap-6">
             <AgentTabNav
               activeTab={activeTab}
               onTabChange={setActiveTab}
               showProfileAndInstructions={!hideProfileAndInstructions}
             />
-            <TooltipProvider delayDuration={300}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Link
-                    pathname="/talk/:agentId"
-                    options={{ pathParams: { agentId: agentId } }}
-                    className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg px-4 transition-colors inline-flex items-center justify-center border text-sm font-medium hover:bg-accent"
-                  >
-                    <IconMessageCircle size={14} stroke={1.5} />
-                    Chat with {displayName}
-                  </Link>
-                </TooltipTrigger>
-                <TooltipContent
-                  side="bottom"
-                  className="max-w-[220px] text-center"
-                >
-                  Make updates or assign tasks
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
           </div>
         </div>
       </header>
 
       <main className="shrink-0 px-4 sm:px-6 pt-4 pb-16">
-        {activeTab === "connectors" && (
-          <JobConnectorsTab
+        {activeTab === "authorization" && (
+          <JobPermissionsTab
             agentId={agentId}
-            agentDisplayName={displayName}
+            displayName={displayName}
             readOnly={hideProfileAndInstructions}
           />
         )}

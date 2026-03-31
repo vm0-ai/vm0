@@ -12,22 +12,33 @@ const context = testContext();
 
 function mockAgentApi(connectors: string[]) {
   server.use(
-    http.get("*/api/zero/agents/:name", () => {
+    http.get("*/api/zero/agents/:name", ({ params }) => {
+      if (
+        params.name === "instructions" ||
+        (typeof params.name === "string" && params.name.includes("/"))
+      ) {
+        return;
+      }
       return HttpResponse.json({
         agentId: "c0000000-0000-4000-a000-000000000001",
         description: null,
         displayName: null,
         sound: null,
         avatarUrl: null,
-        connectors,
         firewallPolicies: null,
       });
     }),
+    http.get(
+      "*/api/zero/agents/c0000000-0000-4000-a000-000000000001/user-connectors",
+      () => {
+        return HttpResponse.json({ enabledTypes: connectors });
+      },
+    ),
   );
 }
 
 describe("zeroAddedConnectors$", () => {
-  it("should seed connectors from agent response", async () => {
+  it("should seed connectors from user-connectors api", async () => {
     mockAgentApi(["slack", "github"]);
 
     await setupPage({ context, path: "/", withoutRender: true });
@@ -59,9 +70,11 @@ describe("zeroAddedConnectors$", () => {
           displayName: null,
           sound: null,
           avatarUrl: null,
-          connectors: ["github"],
           firewallPolicies: null,
         });
+      }),
+      http.get("*/api/zero/agents/sub-agent-compose-id/user-connectors", () => {
+        return HttpResponse.json({ enabledTypes: ["github"] });
       }),
       // Include cycling-coach in the team list so route setup resolves it
       http.get("*/api/zero/team", () => {
@@ -101,25 +114,17 @@ describe("zeroAddedConnectors$", () => {
 });
 
 describe("addZeroConnector$", () => {
-  it("should add a connector locally and save via zero agents api", async () => {
-    let capturedBody: { connectors: string[] } | null = null;
+  it("should add a connector locally and save via user-connectors api", async () => {
+    let capturedBody: { enabledTypes: string[] } | null = null;
 
     mockAgentApi(["slack"]);
 
     server.use(
       http.put(
-        "*/api/zero/agents/c0000000-0000-4000-a000-000000000001",
+        "*/api/zero/agents/c0000000-0000-4000-a000-000000000001/user-connectors",
         async ({ request }) => {
-          capturedBody = (await request.json()) as { connectors: string[] };
-          return HttpResponse.json({
-            agentId: "c0000000-0000-4000-a000-000000000001",
-            description: null,
-            displayName: null,
-            sound: null,
-            avatarUrl: null,
-            connectors: capturedBody.connectors,
-            firewallPolicies: null,
-          });
+          capturedBody = (await request.json()) as { enabledTypes: string[] };
+          return HttpResponse.json({ enabledTypes: capturedBody.enabledTypes });
         },
       ),
     );
@@ -134,12 +139,12 @@ describe("addZeroConnector$", () => {
     expect(connectors).toContain("slack");
     expect(connectors).toContain("github");
 
-    // Save triggers the zero agents API
+    // Save triggers the user-connectors API
     await context.store.set(saveZeroConnectors$, context.signal);
 
     expect(capturedBody).not.toBeNull();
-    // Connectors are sent as short names
-    expect(capturedBody!.connectors).toContain("slack");
-    expect(capturedBody!.connectors).toContain("github");
+    // Connectors are sent as enabledTypes
+    expect(capturedBody!.enabledTypes).toContain("slack");
+    expect(capturedBody!.enabledTypes).toContain("github");
   });
 });

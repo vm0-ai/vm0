@@ -35,6 +35,7 @@ import {
 import { extractFileFromTar } from "../../../../../../src/lib/tar";
 import { env } from "../../../../../../src/env";
 import { isDefaultAgentCompose } from "../../../../../../src/lib/zero/resolve-default-agent";
+import { buildComposeContent } from "../../../../../../src/lib/zero/build-compose-content";
 import { logger } from "../../../../../../src/lib/logger";
 
 const log = logger("api:zero-agents:instructions");
@@ -256,14 +257,15 @@ const router = tsr.router(zeroAgentInstructionsContract, {
     );
     if (forbidden) return forbidden;
 
-    // Re-compose with existing content + new instructions
-    const existingContent = (compose.content ?? {}) as Record<string, unknown>;
+    // Rebuild compose from scratch so environment templates stay current,
+    // then overlay new instructions.
+    const content = buildComposeContent(compose.name);
 
     const result = await serverSideCompose({
       userId,
       orgId: org.orgId,
       orgSlug: org.slug,
-      content: existingContent,
+      content,
       instructions: body.content,
     });
 
@@ -299,7 +301,6 @@ const router = tsr.router(zeroAgentInstructionsContract, {
         displayName: agent?.displayName ?? null,
         sound: agent?.sound ?? null,
         avatarUrl: agent?.avatarUrl ?? null,
-        connectors: agent?.connectors ?? [],
         firewallPolicies: agent?.firewallPolicies ?? null,
         customSkills: agent?.customSkills ?? [],
       },

@@ -62,7 +62,7 @@ export interface SlackScheduleCallbackPayload {
   agentId: string;
   userId: string;
   orgId: string;
-  slackChannelId?: string | null;
+  notifySlackChannelId: string | null;
 }
 
 export interface ScheduleLoopCallbackPayload {

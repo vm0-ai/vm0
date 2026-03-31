@@ -3,6 +3,7 @@ import {
   zeroAgentsMainContract,
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
+  zeroUserConnectorsContract,
   type ZeroAgentResponse,
   type ZeroAgentRequest,
   type ZeroAgentInstructionsResponse,
@@ -62,6 +63,36 @@ export async function getZeroAgentInstructions(
   const result = await client.get({ params: { id } });
   if (result.status === 200) return result.body;
   handleError(result, `Failed to get instructions for zero agent "${id}"`);
+}
+
+export async function getZeroAgentUserConnectors(
+  id: string,
+): Promise<string[]> {
+  const config = await getClientConfig();
+  const client = initClient(zeroUserConnectorsContract, config);
+  const result = await client.get({ params: { id } });
+  if (result.status === 200) return result.body.enabledTypes;
+  handleError(
+    result,
+    `Failed to get connector permissions for zero agent "${id}"`,
+  );
+}
+
+export async function setZeroAgentUserConnectors(
+  id: string,
+  enabledTypes: string[],
+): Promise<void> {
+  const config = await getClientConfig();
+  const client = initClient(zeroUserConnectorsContract, config);
+  const result = await client.update({
+    params: { id },
+    body: { enabledTypes },
+  });
+  if (result.status === 200) return;
+  handleError(
+    result,
+    `Failed to set connector permissions for zero agent "${id}"`,
+  );
 }
 
 export async function updateZeroAgentInstructions(

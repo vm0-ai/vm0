@@ -28,7 +28,7 @@ export const scheduleResponseSchema = z.object({
   enabled: z.boolean(),
   notifyEmail: z.boolean(),
   notifySlack: z.boolean(),
-  slackChannelId: z.string().nullable(),
+  notifySlackChannelId: z.string().nullable(),
   nextRunAt: z.string().nullable(),
   lastRunAt: z.string().nullable(),
   retryStartedAt: z.string().nullable(),
@@ -64,7 +64,7 @@ const zeroDeployScheduleRequestSchema = z
     enabled: z.boolean().optional(),
     notifyEmail: z.boolean().optional(),
     notifySlack: z.boolean().optional(),
-    slackChannelId: z.string().nullable().optional(),
+    notifySlackChannelId: z.string().nullable().optional(),
   })
   .refine(
     (data) => {

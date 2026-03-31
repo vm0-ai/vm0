@@ -21,7 +21,6 @@ const mockAgent = {
   displayName: "My Agent",
   description: null,
   sound: null,
-  connectors: ["github"],
 };
 
 describe("zero agent edit command", () => {
@@ -46,8 +45,8 @@ describe("zero agent edit command", () => {
   });
 
   describe("successful edit", () => {
-    it("should preserve existing connectors when --connectors not provided", async () => {
-      let capturedBody: { connectors?: string[] } | undefined;
+    it("should update display name and show success", async () => {
+      let capturedBody: Record<string, unknown> | undefined;
       server.use(
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(mockAgent);
@@ -55,7 +54,7 @@ describe("zero agent edit command", () => {
         http.put(
           "http://localhost:3000/api/zero/agents/my-agent",
           async ({ request }) => {
-            capturedBody = (await request.json()) as { connectors?: string[] };
+            capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json({ ...mockAgent, displayName: "Updated" });
           },
         ),
@@ -69,7 +68,7 @@ describe("zero agent edit command", () => {
         "Updated",
       ]);
 
-      expect(capturedBody?.connectors).toEqual(["github"]);
+      expect(capturedBody?.displayName).toBe("Updated");
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("updated");
     });

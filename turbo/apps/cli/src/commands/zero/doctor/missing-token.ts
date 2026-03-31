@@ -1,7 +1,35 @@
 import { Command } from "commander";
-import { getConnectorTypeForSecretName, CONNECTOR_TYPES } from "@vm0/core";
+import {
+  getConnectorTypeForSecretName,
+  CONNECTOR_TYPES,
+  type ConnectorType,
+} from "@vm0/core";
 import { getApiUrl } from "../../../lib/api/config";
+import { getZeroConnector } from "../../../lib/api/domains/zero-connectors";
+import { getZeroAgentUserConnectors } from "../../../lib/api/domains/zero-agents";
 import { withErrorHandler } from "../../../lib/command";
+
+/**
+ * Transform the API host to the platform (app) host.
+ *
+ *   www.vm0.ai                    → app.vm0.ai
+ *   platform.vm0.ai               → app.vm0.ai
+ *   tunnel-user-host-www.vm7.ai   → tunnel-user-host-app.vm7.ai
+ *   custom.example.com            → app.custom.example.com
+ */
+function toPlatformUrl(apiUrl: string): URL {
+  const parsed = new URL(apiUrl);
+  const parts = parsed.hostname.split(".");
+  if (parts[0]!.endsWith("-www")) {
+    parts[0] = parts[0]!.slice(0, -"-www".length) + "-app";
+  } else if (parts[0] === "www" || parts[0] === "platform") {
+    parts[0] = "app";
+  } else if (parts[0] !== "app" && parts[0] !== "localhost") {
+    parts.unshift("app");
+  }
+  parsed.hostname = parts.join(".");
+  return parsed;
+}
 
 export const missingTokenCommand = new Command()
   .name("missing-token")
@@ -31,24 +59,44 @@ Notes:
       }
 
       const { label } = CONNECTOR_TYPES[connectorType];
-
       const apiUrl = await getApiUrl();
-      const parsed = new URL(apiUrl);
-
-      // Transform API host to platform host: www.vm0.ai → app.vm0.ai
-      const parts = parsed.hostname.split(".");
-      if (parts[0] === "www" || parts[0] === "platform") {
-        parts[0] = "app";
-      } else if (parts[0] !== "app" && parts[0] !== "localhost") {
-        parts.unshift("app");
-      }
-      parsed.hostname = parts.join(".");
-
+      const platformUrl = toPlatformUrl(apiUrl);
       const agentId = process.env.ZERO_AGENT_ID;
-      const path = agentId ? `/team/${agentId}` : "/team";
-      const url = `${parsed.origin}${path}?tab=connectors`;
+
+      // Check whether the user has connected this connector and whether the
+      // agent has permission to use it. Run both checks in parallel.
+      const [connector, enabledTypes] = await Promise.all([
+        getZeroConnector(connectorType as ConnectorType).catch(() => null),
+        agentId
+          ? getZeroAgentUserConnectors(agentId).catch(() => null)
+          : Promise.resolve(null),
+      ]);
+
+      const isConnected = connector !== null;
+      const hasPermission =
+        enabledTypes !== null && enabledTypes.includes(connectorType);
 
       console.log(`${tokenName} is provided by the ${label} connector.`);
-      console.log(`Ask the user to connect it at: ${url}`);
+
+      if (!isConnected) {
+        // Connector not connected at all — direct to connectors page
+        const url = `${platformUrl.origin}/connectors`;
+        console.log(
+          `The ${label} connector is not connected. Ask the user to connect it at: ${url}`,
+        );
+      } else if (!hasPermission) {
+        // Connected but not authorized for this agent — direct to authorization tab
+        const path = agentId ? `/team/${agentId}` : "/team";
+        const url = `${platformUrl.origin}${path}?tab=authorization`;
+        console.log(
+          `The ${label} connector is connected but not authorized for this agent. Ask the user to enable it at: ${url}`,
+        );
+      } else {
+        // Both connected and authorized — something else is wrong
+        const url = `${platformUrl.origin}/connectors`;
+        console.log(
+          `The ${label} connector is connected and authorized, but the token is still missing. Ask the user to check the connector status at: ${url}`,
+        );
+      }
     }),
   );

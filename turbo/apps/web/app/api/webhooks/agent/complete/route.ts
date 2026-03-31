@@ -21,7 +21,7 @@ import type {
 import type { RunResult } from "../../../../../src/lib/run/types";
 import { logger } from "../../../../../src/lib/logger";
 import { drainOrgQueue } from "../../../../../src/lib/run/run-queue-service";
-import { dispatchQueuedRun } from "../../../../../src/lib/run/run-service";
+import { dispatchQueuedZeroRun } from "../../../../../src/lib/zero/zero-queue-service";
 import { processOrgCredits } from "../../../../../src/lib/credit/credit-service";
 import { appendChatMessages } from "../../../../../src/lib/agent-session/agent-session-service";
 import { chatThreadRuns } from "../../../../../src/db/schema/chat-thread";
@@ -185,7 +185,7 @@ function scheduleTerminalSideEffects(
 ): void {
   after(async () => {
     await dispatchTerminalSideEffects(runId, status, errorMsg, () =>
-      drainOrgQueue(orgId, dispatchQueuedRun),
+      drainOrgQueue(orgId, dispatchQueuedZeroRun),
     );
     await processOrgCredits(orgId);
   });

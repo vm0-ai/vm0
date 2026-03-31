@@ -2,22 +2,22 @@ import {
   resolveSkillRef,
   getInstructionsFilename,
   getConnectorEnvironmentMapping,
-  getCustomSkillStorageName,
   connectorTypeSchema,
+  CONNECTOR_TYPES,
+  getCustomSkillStorageName,
 } from "@vm0/core";
 import { SEED_SKILLS } from "./seed-skills";
 
 /**
- * Build compose content from connector short names.
+ * Build compose content for a zero agent.
  *
- * Merges SEED_SKILLS with user connectors (deduplicated) and maps
- * to GitHub skill URLs. Produces compose content with hardcoded
- * defaults per issue #5548. Injects connector environment variables
- * from each connector's environmentMapping.
+ * Always includes all SEED_SKILLS plus connector type skill names that are
+ * generally available (i.e. not gated behind a feature flag).
+ * Connector env var templates are baked into the compose so that
+ * expandEnvironmentFromCompose can resolve firewall placeholders at runtime.
  */
 export function buildComposeContent(
   agentName: string,
-  connectors: string[],
   customSkills: Array<{ name: string }> = [],
 ): Record<string, unknown> {
   // Validate custom skill names don't conflict with seed skills
@@ -30,16 +30,21 @@ export function buildComposeContent(
     }
   }
 
-  const merged = [...new Set([...SEED_SKILLS, ...connectors])];
-  const skills = merged.map((c) => resolveSkillRef(c));
+  const gaConnectorTypes = Object.entries(CONNECTOR_TYPES)
+    .filter(([, config]) => !config.featureFlag)
+    .map(([type]) => type);
+
+  const allSkillNames = [...new Set([...SEED_SKILLS, ...gaConnectorTypes])];
+  const skills = allSkillNames.map((name) => resolveSkillRef(name));
 
   const environment: Record<string, string> = {
     ZERO_AGENT_ID: "${{ vars.ZERO_AGENT_ID }}",
     ZERO_TOKEN: "${{ secrets.ZERO_TOKEN }}",
   };
 
-  // Inject env vars from connector environmentMappings
-  for (const connector of connectors) {
+  // Inject env var templates from connector environmentMappings so that
+  // expandEnvironmentFromCompose can substitute firewall placeholders.
+  for (const connector of gaConnectorTypes) {
     const parsed = connectorTypeSchema.safeParse(connector);
     if (!parsed.success) continue;
     const mapping = getConnectorEnvironmentMapping(parsed.data);

@@ -21,8 +21,40 @@ import { getCachedUser } from "../auth/user-cache-service";
 import {
   PENDING_RUN_TTL_MS,
   getEffectiveConcurrencyLimit,
+  dispatchQueuedRun,
 } from "../run/run-service";
+import type { CreateRunParams } from "../run/run-service";
+import { generateZeroToken } from "../auth/sandbox-token";
 import type { OrgTier, QueueResponse, TriggerSource } from "@vm0/core";
+
+/**
+ * Zero-layer dispatch wrapper for queued runs.
+ * If the run has ZERO_AGENT_ID in vars, generates a fresh ZERO_TOKEN before dispatch.
+ * For non-zero runs, delegates directly to the infra dispatcher unchanged.
+ */
+export async function dispatchQueuedZeroRun(
+  runId: string,
+  createdAt: Date,
+  params: CreateRunParams,
+): Promise<void> {
+  if (params.vars?.ZERO_AGENT_ID) {
+    const zeroToken = await generateZeroToken(
+      params.userId,
+      runId,
+      params.orgId,
+    );
+    return dispatchQueuedRun(
+      runId,
+      createdAt,
+      {
+        ...params,
+        secrets: { ...params.secrets, ZERO_TOKEN: zeroToken },
+      },
+      dispatchQueuedZeroRun,
+    );
+  }
+  return dispatchQueuedRun(runId, createdAt, params, dispatchQueuedZeroRun);
+}
 
 const RECENT_RUNS_FOR_ETA = 20;
 const PROMPT_TRUNCATE_LENGTH = 200;

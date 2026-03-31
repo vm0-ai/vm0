@@ -1,15 +1,19 @@
 import { Command } from "commander";
 import { readFileSync } from "node:fs";
 import chalk from "chalk";
-import { createZeroAgent, updateZeroAgentInstructions } from "../../../lib/api";
+import {
+  createZeroAgent,
+  setZeroAgentUserConnectors,
+  updateZeroAgentInstructions,
+} from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 
 export const createCommand = new Command()
   .name("create")
   .description("Create a new zero agent")
-  .requiredOption(
+  .option(
     "--connectors <items>",
-    "Comma-separated connector short names (e.g. github,linear)",
+    "Comma-separated connector types to enable for this agent (e.g. github,linear)",
   )
   .option("--display-name <name>", "Agent display name")
   .option("--description <text>", "Agent description")
@@ -22,27 +26,29 @@ export const createCommand = new Command()
     "after",
     `
 Examples:
-  Minimal:               zero agent create --connectors github
-  With display name:     zero agent create --connectors github,linear --display-name "My Agent"
+  Minimal:               zero agent create --display-name "My Agent"
+  With connectors:       zero agent create --connectors github,linear --display-name "My Agent"
   With instructions:     zero agent create --connectors github --instructions-file ./instructions.md`,
   )
   .action(
     withErrorHandler(
       async (options: {
-        connectors: string;
+        connectors?: string;
         displayName?: string;
         description?: string;
         sound?: string;
         instructionsFile?: string;
       }) => {
-        const connectors = options.connectors.split(",").map((s) => s.trim());
-
         const agent = await createZeroAgent({
-          connectors,
           displayName: options.displayName,
           description: options.description,
           sound: options.sound,
         });
+
+        if (options.connectors) {
+          const connectors = options.connectors.split(",").map((s) => s.trim());
+          await setZeroAgentUserConnectors(agent.agentId, connectors);
+        }
 
         if (options.instructionsFile) {
           const content = readFileSync(options.instructionsFile, "utf-8");
@@ -51,7 +57,9 @@ Examples:
 
         console.log(chalk.green(`✓ Agent "${agent.agentId}" created`));
         console.log(`  Agent ID:     ${agent.agentId}`);
-        console.log(`  Connectors:   ${agent.connectors.join(", ")}`);
+        if (options.connectors) {
+          console.log(`  Connectors:   ${options.connectors}`);
+        }
         if (agent.displayName) {
           console.log(`  Display Name: ${agent.displayName}`);
         }

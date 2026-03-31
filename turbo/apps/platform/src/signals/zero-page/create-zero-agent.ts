@@ -8,7 +8,6 @@ import { SEED_INSTRUCTIONS } from "../../data/the-seed.ts";
 import { randomPresetAvatar } from "../../views/zero-page/avatar-utils.ts";
 
 interface CreateZeroAgentParams {
-  connectors: string[];
   displayName: string;
   sound?: string;
   avatarUrl?: string;
@@ -31,7 +30,6 @@ export async function createZeroAgent(
   const agentsClient = createClient(zeroAgentsMainContract);
   const createResult = await agentsClient.create({
     body: {
-      connectors: params.connectors,
       displayName: params.displayName,
       sound: params.sound,
       avatarUrl,

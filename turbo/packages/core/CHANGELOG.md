@@ -1,5 +1,23 @@
 # Changelog
 
+## [8.128.0](https://github.com/vm0-ai/vm0/compare/core-v8.127.0...core-v8.128.0) (2026-03-31)
+
+
+### Features
+
+* add custom skills crud api for zero agents ([#7295](https://github.com/vm0-ai/vm0/issues/7295)) ([48ed8fe](https://github.com/vm0-ai/vm0/commit/48ed8fe7c66214c12fd6979de5a99958c6c02909))
+* add custom skills foundation for zero agents ([#7198](https://github.com/vm0-ai/vm0/issues/7198)) ([b9985bc](https://github.com/vm0-ai/vm0/commit/b9985bc5e1f689d8888c95e4ead33418a4018478))
+* **firewalls:** add metabase connector firewall config ([#7267](https://github.com/vm0-ai/vm0/issues/7267)) ([e6fc0c9](https://github.com/vm0-ai/vm0/commit/e6fc0c9649bc2f8f316b7f8aa2f748f393a4cce1)), closes [#7265](https://github.com/vm0-ai/vm0/issues/7265)
+* **firewalls:** add salesforce connector firewall config ([#7254](https://github.com/vm0-ai/vm0/issues/7254)) ([b0370f9](https://github.com/vm0-ai/vm0/commit/b0370f9661cf586b4a0cb6e7710790823689a384)), closes [#7133](https://github.com/vm0-ai/vm0/issues/7133)
+* **firewalls:** support path and host parameter matching in base urls ([#7256](https://github.com/vm0-ai/vm0/issues/7256)) ([d9d3a15](https://github.com/vm0-ai/vm0/commit/d9d3a15fc91c5db88a18730b5d8d8aea67238c95))
+* **platform:** add qdrant firewall config ([#7268](https://github.com/vm0-ai/vm0/issues/7268)) ([601186d](https://github.com/vm0-ai/vm0/commit/601186d3e3ba131a886bf8f93c7bb88266da4f19)), closes [#7266](https://github.com/vm0-ai/vm0/issues/7266)
+
+
+### Refactoring
+
+* remove dead artifact name fields from schedule system ([#7281](https://github.com/vm0-ai/vm0/issues/7281)) ([9c366b7](https://github.com/vm0-ai/vm0/commit/9c366b7bb82214fa5ede25bda026c6916d5b010b))
+* remove unused chat-threads runs endpoint ([#7263](https://github.com/vm0-ai/vm0/issues/7263)) ([15850f2](https://github.com/vm0-ai/vm0/commit/15850f27e2d2219a7f89041d0702ba2a08009871)), closes [#7258](https://github.com/vm0-ai/vm0/issues/7258)
+
 ## [8.127.0](https://github.com/vm0-ai/vm0/compare/core-v8.126.0...core-v8.127.0) (2026-03-30)
 
 

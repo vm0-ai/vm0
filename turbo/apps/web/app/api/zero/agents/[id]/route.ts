@@ -15,21 +15,16 @@ import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
 import { agentComposes } from "../../../../../src/db/schema/agent-compose";
 import { eq, and } from "drizzle-orm";
 import { buildComposeContent } from "../../../../../src/lib/zero/build-compose-content";
-import { isDefaultAgentCompose } from "../../../../../src/lib/zero/resolve-default-agent";
+import { requireAdminForDefaultAgent } from "../../../../../src/lib/zero/require-admin";
 import { deleteComposeById } from "../../../../../src/lib/agent-compose/compose-service";
 import { isConflict } from "../../../../../src/lib/errors";
 import { logger } from "../../../../../src/lib/logger";
 
 const log = logger("api:zero-agents:id");
 
-type ForbiddenResponse = {
-  status: 403;
-  body: { error: { message: string; code: string } };
-};
-
 function agentResponseBody(
   agent: typeof zeroAgents.$inferSelect | undefined,
-  fallback: { id: string; connectors?: string[] },
+  fallback: { id: string },
 ) {
   return {
     agentId: fallback.id,
@@ -37,29 +32,8 @@ function agentResponseBody(
     displayName: agent?.displayName ?? null,
     sound: agent?.sound ?? null,
     avatarUrl: agent?.avatarUrl ?? null,
-    connectors: fallback.connectors ?? agent?.connectors ?? [],
     firewallPolicies: agent?.firewallPolicies ?? null,
     customSkills: agent?.customSkills ?? [],
-  };
-}
-
-async function requireAdminForDefaultAgent(
-  orgId: string,
-  composeId: string,
-  memberRole: string,
-  label: string,
-): Promise<ForbiddenResponse | null> {
-  if (memberRole === "admin") return null;
-  const isDefault = await isDefaultAgentCompose(orgId, composeId);
-  if (!isDefault) return null;
-  return {
-    status: 403 as const,
-    body: {
-      error: {
-        message: `Only org admins can update the default agent's ${label}`,
-        code: "FORBIDDEN",
-      },
-    },
   };
 }
 
@@ -151,10 +125,9 @@ const router = tsr.router(zeroAgentsByIdContract, {
     );
     if (forbidden) return forbidden;
 
-    // Build compose content from connectors + existing custom skills
+    // Build compose content (all connector skills included, plus custom skills)
     const content = buildComposeContent(
       existing.name,
-      body.connectors,
       (existing.customSkills ?? []).map((name) => ({ name })),
     );
 
@@ -172,7 +145,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
         body: {
           error: {
             message:
-              "One or more connectors reference skills that are not cached. Please try again later.",
+              "One or more skills are not cached. Please try again later.",
             code: "UNPROCESSABLE_ENTITY",
           },
         },
@@ -191,13 +164,11 @@ const router = tsr.router(zeroAgentsByIdContract, {
         description: body.description ?? null,
         sound: body.sound ?? null,
         avatarUrl: body.avatarUrl ?? null,
-        connectors: body.connectors,
       })
       .onConflictDoUpdate({
         target: [zeroAgents.orgId, zeroAgents.name],
         set: {
           updatedAt: now,
-          connectors: body.connectors,
           ...(body.displayName !== undefined && {
             displayName: body.displayName,
           }),
@@ -222,10 +193,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
 
     return {
       status: 200 as const,
-      body: agentResponseBody(agent, {
-        id: params.id,
-        connectors: body.connectors,
-      }),
+      body: agentResponseBody(agent, { id: params.id }),
     };
   },
 

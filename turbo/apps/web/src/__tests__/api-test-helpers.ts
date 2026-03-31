@@ -55,6 +55,7 @@ import { orgCache } from "../db/schema/org-cache";
 import { orgMembersCache } from "../db/schema/org-members-cache";
 import { orgMembersMetadata } from "../db/schema/org-members-metadata";
 import { zeroAgents } from "../db/schema/zero-agent";
+import { userConnectors } from "../db/schema/user-connector";
 import { userCache } from "../db/schema/user-cache";
 import { creditUsage } from "../db/schema/credit-usage";
 import { creditPricing } from "../db/schema/credit-pricing";
@@ -441,7 +442,6 @@ export async function createTestZeroAgent(
     displayName?: string;
     description?: string;
     sound?: string;
-    connectors?: string[];
     firewallPolicies?: FirewallPolicies;
   },
 ): Promise<void> {
@@ -467,7 +467,6 @@ export async function createTestZeroAgent(
       displayName: metadata.displayName ?? null,
       description: metadata.description ?? null,
       sound: metadata.sound ?? null,
-      connectors: metadata.connectors ?? [],
       firewallPolicies: metadata.firewallPolicies ?? null,
     })
     .onConflictDoUpdate({
@@ -476,9 +475,6 @@ export async function createTestZeroAgent(
         displayName: metadata.displayName ?? null,
         description: metadata.description ?? null,
         sound: metadata.sound ?? null,
-        ...(metadata.connectors !== undefined && {
-          connectors: metadata.connectors,
-        }),
         firewallPolicies: metadata.firewallPolicies ?? null,
       },
     });
@@ -1380,34 +1376,36 @@ export async function createTestVolumeForOrg(
   const versionId = randomUUID().replace(/-/g, "").repeat(2).slice(0, 64);
   const s3Key = `${orgId}/${name}/${versionId}`;
 
-  const [storage] = await globalThis.services.db
-    .insert(storages)
-    .values({
-      orgId,
-      userId: VOLUME_ORG_USER_ID,
-      name,
-      type: "volume",
-      s3Prefix: `${orgId}/${name}`,
-    })
-    .returning();
+  return globalThis.services.db.transaction(async (tx) => {
+    const [storage] = await tx
+      .insert(storages)
+      .values({
+        orgId,
+        userId: VOLUME_ORG_USER_ID,
+        name,
+        type: "volume",
+        s3Prefix: `${orgId}/${name}`,
+      })
+      .returning();
 
-  const storageId = storage!.id;
+    const storageId = storage!.id;
 
-  await globalThis.services.db.insert(storageVersions).values({
-    id: versionId,
-    storageId,
-    s3Key,
-    size: 100,
-    fileCount: 1,
-    createdBy: "test",
+    await tx.insert(storageVersions).values({
+      id: versionId,
+      storageId,
+      s3Key,
+      size: 100,
+      fileCount: 1,
+      createdBy: "test",
+    });
+
+    await tx
+      .update(storages)
+      .set({ headVersionId: versionId })
+      .where(eq(storages.id, storageId));
+
+    return { storageId, versionId };
   });
-
-  await globalThis.services.db
-    .update(storages)
-    .set({ headVersionId: versionId })
-    .where(eq(storages.id, storageId));
-
-  return { storageId, versionId };
 }
 
 /**
@@ -1644,6 +1642,23 @@ export async function createTestConnector(options?: {
   } else {
     await createTestOAuthConnector(options);
   }
+}
+
+/**
+ * Grant a user permission to use a connector for a specific agent.
+ * Inserts into the user_connectors table (sparse: presence = enabled).
+ */
+export async function createTestUserConnector(
+  orgId: string,
+  userId: string,
+  agentId: string,
+  connectorType: string,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .insert(userConnectors)
+    .values({ orgId, userId, agentId, connectorType })
+    .onConflictDoNothing();
 }
 
 /**
@@ -3518,14 +3533,20 @@ export async function seedTestSkill(
 }
 
 /**
- * Seed all SEED_SKILLS into the skills table so that server-side compose
- * succeeds when buildComposeContent injects them.
+ * Seed all SEED_SKILLS plus GA connector type skills into the skills table so
+ * that server-side compose succeeds when buildComposeContent injects them.
+ * Feature-flagged connectors are excluded to match buildComposeContent behaviour.
  */
 export async function seedSeedSkills(): Promise<void> {
   const { SEED_SKILLS, buildSeedSkillValues } =
     await import("../lib/zero/seed-skills");
+  const { CONNECTOR_TYPES } = await import("@vm0/core");
   initServices();
-  const values = buildSeedSkillValues(SEED_SKILLS);
+  const gaConnectorTypes = Object.entries(CONNECTOR_TYPES)
+    .filter(([, config]) => !config.featureFlag)
+    .map(([type]) => type);
+  const allNames = [...new Set([...SEED_SKILLS, ...gaConnectorTypes])];
+  const values = buildSeedSkillValues(allNames);
   await globalThis.services.db
     .insert(skills)
     .values(values)
@@ -3533,17 +3554,76 @@ export async function seedSeedSkills(): Promise<void> {
 }
 
 /**
- * Seed storage volumes for all SEED_SKILLS under SYSTEM_ORG_ID.
+ * Seed storage volumes for all SEED_SKILLS plus GA connector types under SYSTEM_ORG_ID.
  * Required for tests that dispatch runs with zero-agent composes,
  * because skill volumes must exist at runtime for storage manifest resolution.
+ *
+ * Uses a single batched transaction to minimise the time window during which
+ * concurrent workers running clearSkillsData() could cause FK violations.
  */
 export async function seedSeedSkillStorages(): Promise<void> {
   const { SEED_SKILLS } = await import("../lib/zero/seed-skills");
-  for (const name of SEED_SKILLS) {
+  const { CONNECTOR_TYPES } = await import("@vm0/core");
+  const gaConnectorTypes = Object.entries(CONNECTOR_TYPES)
+    .filter(([, config]) => !config.featureFlag)
+    .map(([type]) => type);
+  const allNames = [...new Set([...SEED_SKILLS, ...gaConnectorTypes])];
+
+  initServices();
+
+  // Pre-compute stable version IDs so we can reference them after the insert.
+  const entries = allNames.map((name) => {
     const fullPath = `vm0-ai/vm0-skills/tree/main/${name}`;
     const storageName = `agent-skills@${fullPath}`;
-    await createTestVolumeForOrg(SYSTEM_ORG_ID, storageName);
-  }
+    const versionId = randomUUID().replace(/-/g, "").repeat(2).slice(0, 64);
+    return { storageName, versionId };
+  });
+
+  await globalThis.services.db.transaction(async (tx) => {
+    // Batch-insert all storages; skip any that already exist.
+    const inserted = await tx
+      .insert(storages)
+      .values(
+        entries.map(({ storageName }) => ({
+          orgId: SYSTEM_ORG_ID,
+          userId: VOLUME_ORG_USER_ID,
+          name: storageName,
+          type: "volume" as const,
+          s3Prefix: `${SYSTEM_ORG_ID}/${storageName}`,
+        })),
+      )
+      .onConflictDoNothing()
+      .returning({ id: storages.id, name: storages.name });
+
+    if (inserted.length === 0) return;
+
+    const nameToId = new Map(inserted.map((s) => [s.name, s.id]));
+
+    // Only create versions for storages that were actually inserted.
+    const newEntries = entries.filter(({ storageName }) =>
+      nameToId.has(storageName),
+    );
+
+    // Batch-insert all versions.
+    await tx.insert(storageVersions).values(
+      newEntries.map(({ storageName, versionId }) => ({
+        id: versionId,
+        storageId: nameToId.get(storageName)!,
+        s3Key: `${SYSTEM_ORG_ID}/${storageName}/${versionId}`,
+        size: 100,
+        fileCount: 1,
+        createdBy: "test",
+      })),
+    );
+
+    // Batch-update headVersionId for each newly created storage.
+    for (const { storageName, versionId } of newEntries) {
+      await tx
+        .update(storages)
+        .set({ headVersionId: versionId })
+        .where(eq(storages.id, nameToId.get(storageName)!));
+    }
+  });
 }
 
 /**
@@ -4845,4 +4925,26 @@ export async function testExpireCredits(orgId: string): Promise<number> {
     result = await expireCredits(tx, orgId);
   });
   return result;
+}
+
+/**
+ * Bind an existing custom skill to an agent by updating its customSkills array.
+ * Used for testing multi-agent skill sharing.
+ */
+export async function bindCustomSkillToAgent(
+  agentId: string,
+  skillName: string,
+): Promise<void> {
+  initServices();
+  const [agent] = await globalThis.services.db
+    .select({ customSkills: zeroAgents.customSkills })
+    .from(zeroAgents)
+    .where(eq(zeroAgents.id, agentId))
+    .limit(1);
+  if (!agent) throw new Error(`Agent not found: ${agentId}`);
+  const updated = [...agent.customSkills, skillName];
+  await globalThis.services.db
+    .update(zeroAgents)
+    .set({ customSkills: updated })
+    .where(eq(zeroAgents.id, agentId));
 }

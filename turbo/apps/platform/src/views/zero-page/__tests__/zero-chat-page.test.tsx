@@ -224,8 +224,8 @@ describe("zero chat page - file input ref", () => {
   });
 });
 
-describe("zero chat page - add connector dialog", () => {
-  it("should open add connector dialog when clicking Add connector in popover", async () => {
+describe("zero chat page - connectors popover", () => {
+  it("should navigate to connectors page when clicking Manage connectors in popover", async () => {
     await renderChatPage();
 
     const connectorsButton = await waitFor(() =>
@@ -234,14 +234,18 @@ describe("zero chat page - add connector dialog", () => {
 
     fireEvent.click(connectorsButton);
 
-    const addConnectorButton = await waitFor(() =>
-      screen.getByText("Add connector"),
+    const manageButton = await waitFor(() =>
+      screen.getByText("Manage connectors"),
     );
 
-    fireEvent.click(addConnectorButton);
+    fireEvent.click(manageButton);
 
     await waitFor(() => {
-      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          "Connect third-party services for your agents to use.",
+        ),
+      ).toBeInTheDocument();
     });
   });
 });
@@ -263,8 +267,34 @@ describe("zero chat page - connector label casing", () => {
           displayName: null,
           sound: null,
           avatarUrl: null,
-          connectors: ["axiom"],
           firewallPolicies: null,
+        });
+      }),
+      http.get(
+        "*/api/zero/agents/c0000000-0000-4000-a000-000000000001/user-connectors",
+        () => {
+          return HttpResponse.json({ enabledTypes: ["axiom"] });
+        },
+      ),
+      // Axiom must be connected at org level for it to appear in the popover
+      http.get("*/api/zero/connectors", () => {
+        return HttpResponse.json({
+          connectors: [
+            {
+              id: crypto.randomUUID(),
+              authMethod: "api-token",
+              externalId: null,
+              externalUsername: null,
+              externalEmail: null,
+              oauthScopes: null,
+              needsReconnect: false,
+              createdAt: "2026-01-01T00:00:00Z",
+              updatedAt: "2026-01-01T00:00:00Z",
+              type: "axiom",
+            },
+          ],
+          configuredTypes: ["axiom"],
+          connectorProvidedSecretNames: [],
         });
       }),
     );

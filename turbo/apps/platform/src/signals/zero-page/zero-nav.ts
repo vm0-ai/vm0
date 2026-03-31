@@ -14,7 +14,8 @@ function isValidTab(tab: string): tab is ZeroNavId {
     tab === "works" ||
     tab === "usage" ||
     tab === "preferences" ||
-    tab === "queue"
+    tab === "queue" ||
+    tab === "connectors"
   );
 }
 
@@ -127,6 +128,8 @@ export const handleZeroNavSelect$ = command(({ set }, id: ZeroNavId) => {
     set(detachedNavigateTo$, "/");
   } else if (id === "team") {
     set(detachedNavigateTo$, "/team");
+  } else if (id === "connectors") {
+    set(detachedNavigateTo$, "/connectors");
   } else {
     set(detachedNavigateTo$, "/:tab", { pathParams: { tab: id } });
   }
