@@ -638,9 +638,9 @@ function RecentChatSection({
 
   const trimmedTerm = searchTerm.trim().toLowerCase();
   const filteredSessions = trimmedTerm
-    ? agentSessions.filter((s) =>
-        (s.title ?? "").toLowerCase().includes(trimmedTerm),
-      )
+    ? agentSessions.filter((s) => {
+        return (s.title ?? "").toLowerCase().includes(trimmedTerm);
+      })
     : agentSessions;
 
   const handleNewChat = onNewChat

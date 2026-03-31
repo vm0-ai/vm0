@@ -17,7 +17,9 @@ export const setPollIntervalForTest$ = command(({ set }, interval: number) => {
   set(internalPollInterval$, interval);
 });
 
-export const poolInterval$ = computed((get) => get(internalPollInterval$));
+const poolInterval$ = computed((get) => {
+  return get(internalPollInterval$);
+});
 
 function isTerminalStatus(status: string | null): boolean {
   return (

@@ -1,6 +1,6 @@
 import { command, computed, state, type Computed } from "ccstate";
 import type { AgentEvent, LogStatus } from "./log-types.ts";
-import { resetSignal } from "../utils.ts";
+import { resetSignal, throwIfAbort } from "../utils.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { logger } from "../log.ts";
@@ -312,7 +312,9 @@ export const resetTalkSendSignal$ = resetSignal();
 const internalReloadChatThreads$ = state(0);
 
 export const reloadChatThreads$ = command(({ set }) => {
-  set(internalReloadChatThreads$, (n) => n + 1);
+  set(internalReloadChatThreads$, (n) => {
+    return n + 1;
+  });
 });
 
 export const chatThreads$ = computed(async (get) => {
@@ -331,11 +333,13 @@ export const chatThreads$ = computed(async (get) => {
   const threads = result.body.threads;
 
   const currentThread = await get(currentChatThread$);
-  return threads.map((t) => ({
-    ...t,
-    title:
-      t.id === currentThread?.id ? currentThread.title || t.title : t.title,
-  }));
+  return threads.map((t) => {
+    return {
+      ...t,
+      title:
+        t.id === currentThread?.id ? currentThread.title || t.title : t.title,
+    };
+  });
 });
 
 export const deleteChatThread$ = command(
@@ -360,7 +364,9 @@ export const deleteChatThread$ = command(
       set(detachedNavigateTo$, "/");
     }
 
-    set(internalReloadChatThreads$, (n) => n + 1);
+    set(internalReloadChatThreads$, (n) => {
+      return n + 1;
+    });
   },
 );
 
@@ -641,8 +647,9 @@ export const loadSessionFromSnapshot$ = command(
     set(internalLocalMessages$, snapshot.activeRunMessages);
 
     const assistantMessages = snapshot.activeRunMessages.filter(
-      (m): m is AssistantChatMessage =>
-        m.role === "assistant" && !!m.beginLoop$,
+      (m): m is AssistantChatMessage => {
+        return m.role === "assistant" && !!m.beginLoop$;
+      },
     );
 
     await Promise.all(
@@ -652,8 +659,12 @@ export const loadSessionFromSnapshot$ = command(
     );
     signal.throwIfAborted();
 
-    set(internalReloadChatThreads$, (n) => n + 1);
-    set(reloadCurrentThread$, (n) => n + 1);
+    set(internalReloadChatThreads$, (n) => {
+      return n + 1;
+    });
+    set(reloadCurrentThread$, (n) => {
+      return n + 1;
+    });
   },
 );
 
@@ -682,7 +693,14 @@ const internalCreateNewChatSession$ = command(
     }
 
     const createClient = get(zeroClient$);
-    const thread = await createChatThread(createClient, resolvedComposeId);
+    let thread;
+    try {
+      thread = await createChatThread(createClient, resolvedComposeId);
+    } catch (error) {
+      throwIfAbort(error);
+      toast.error("Failed to create new chat session");
+      return;
+    }
 
     set(reloadChatThreads$);
     set(navigateToChat$, thread.id);
@@ -870,11 +888,17 @@ export const sendExistingThreadMessage$ = command(
 
     const { runId } = result.body;
 
-    set(internalReloadChatThreads$, (n) => n + 1);
-    set(reloadCurrentThread$, (n) => n + 1);
+    set(internalReloadChatThreads$, (n) => {
+      return n + 1;
+    });
+    set(reloadCurrentThread$, (n) => {
+      return n + 1;
+    });
 
     const { assistantMessage } = createActiveRunMessage(runId, prompt);
-    set(internalLocalMessages$, (prev) => [...prev, assistantMessage]);
+    set(internalLocalMessages$, (prev) => {
+      return [...prev, assistantMessage];
+    });
 
     const runLoop = assistantMessage.runLoop;
     if (!runLoop) {
@@ -882,8 +906,12 @@ export const sendExistingThreadMessage$ = command(
     }
 
     await set(runLoop.beginLoop$, signal);
-    set(internalReloadChatThreads$, (n) => n + 1);
-    set(reloadCurrentThread$, (n) => n + 1);
+    set(internalReloadChatThreads$, (n) => {
+      return n + 1;
+    });
+    set(reloadCurrentThread$, (n) => {
+      return n + 1;
+    });
   },
 );
 
@@ -893,9 +921,9 @@ export const sendExistingThreadMessage$ = command(
 
 const internalComposerFileInput$ = state<HTMLElement | null>(null);
 
-export const composerFileInput$ = computed((get) =>
-  get(internalComposerFileInput$),
-);
+export const composerFileInput$ = computed((get) => {
+  return get(internalComposerFileInput$);
+});
 
 export const setComposerFileInput$ = command(
   ({ set }, el: HTMLElement | null) => {
