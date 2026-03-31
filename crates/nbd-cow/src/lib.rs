@@ -53,7 +53,9 @@ impl NbdCowDevice {
         let shutdown = CancellationToken::new();
 
         // Create COW layer
-        let cow_layer = cow::CowLayer::new(base_image, size, BLOCK_SIZE, DEFAULT_FLUSH_THRESHOLD)?;
+        let mut cow_layer =
+            cow::CowLayer::new(base_image, size, BLOCK_SIZE, DEFAULT_FLUSH_THRESHOLD)?;
+        cow_layer.set_cow_path(cow_file);
         let cow_layer = std::sync::Arc::new(tokio::sync::Mutex::new(cow_layer));
 
         // Create socketpairs and spawn server tasks
@@ -75,7 +77,7 @@ impl NbdCowDevice {
         }
 
         // Connect via netlink
-        netlink::connect(device_index, &client_fds, size, BLOCK_SIZE as u32)?;
+        netlink::connect(device_index, &client_fds, size, BLOCK_SIZE as u64)?;
 
         Ok(Self {
             id,
@@ -118,13 +120,16 @@ impl NbdCowDevice {
         // Signal all dispatch tasks to stop
         self.shutdown.cancel();
 
-        // Disconnect via netlink
-        netlink::disconnect(self.device_index)?;
-
-        // Wait for all tasks to complete
+        // Wait for all tasks to complete (they will flush on shutdown)
         for handle in self.server_handles.drain(..) {
             let _ = handle.await;
         }
+
+        // Disconnect via netlink (after tasks are done)
+        netlink::disconnect(self.device_index)?;
+
+        // Wait for kernel to release the device
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         Ok(())
     }

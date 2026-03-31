@@ -9,9 +9,9 @@ use std::path::Path;
 
 use crate::error::{NbdCowError, Result};
 
-// NBD generic netlink command constants
-const NBD_CMD_CONNECT: u8 = 0;
-const NBD_CMD_DISCONNECT: u8 = 1;
+// NBD generic netlink command constants (from include/uapi/linux/nbd-netlink.h)
+const NBD_CMD_CONNECT: u8 = 1;
+const NBD_CMD_DISCONNECT: u8 = 2;
 
 // NBD generic netlink attribute types
 const NBD_ATTR_INDEX: u16 = 1;
@@ -19,7 +19,10 @@ const NBD_ATTR_SIZE_BYTES: u16 = 2;
 const NBD_ATTR_BLOCK_SIZE_BYTES: u16 = 3;
 const NBD_ATTR_SERVER_FLAGS: u16 = 5;
 const NBD_ATTR_SOCKETS: u16 = 7;
-const NBD_SOCK_FD: u16 = 0;
+
+// NBD socket item attribute types (nested inside NBD_ATTR_SOCKETS)
+const NBD_SOCK_ITEM: u16 = 1;
+const NBD_SOCK_FD: u16 = 1;
 
 // NBD server flags
 const NBD_FLAG_HAS_FLAGS: u64 = 1 << 0;
@@ -98,20 +101,22 @@ pub fn connect(
     device_index: u32,
     client_fds: &[OwnedFd],
     size: u64,
-    block_size: u32,
+    block_size: u64,
 ) -> Result<()> {
     let sock = open_genl_socket()?;
     let family_id = resolve_nbd_family(&sock)?;
     let flags = NBD_FLAG_HAS_FLAGS | NBD_FLAG_CAN_MULTI_CONN;
 
-    // Build nested SOCKETS attribute
+    // Build nested SOCKETS attribute:
+    // NBD_ATTR_SOCKETS (nested)
+    //   NBD_SOCK_ITEM (nested, per socket)
+    //     NBD_SOCK_FD (u32)
     let mut sockets_payload = Vec::new();
-    for (i, fd) in client_fds.iter().enumerate() {
+    for fd in client_fds.iter() {
         let raw_fd = std::os::unix::io::AsRawFd::as_raw_fd(fd) as u32;
-        // Each socket is a nested attribute containing NBD_SOCK_FD
         let fd_nla = build_nla(NBD_SOCK_FD, &raw_fd.to_ne_bytes());
-        let sock_nla = build_nested_nla((i as u16) + 1, &fd_nla);
-        sockets_payload.extend_from_slice(&sock_nla);
+        let item_nla = build_nested_nla(NBD_SOCK_ITEM, &fd_nla);
+        sockets_payload.extend_from_slice(&item_nla);
     }
 
     // Build the full message
