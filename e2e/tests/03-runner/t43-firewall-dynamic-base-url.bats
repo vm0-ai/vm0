@@ -77,7 +77,7 @@ EOF
     assert_output --partial "Run completed successfully"
 
     # Token should be the placeholder (not the real fake token)
-    assert_output --partial "TOKEN=zkTkn_Vm0PlaceHolder"
+    assert_output --partial "TOKEN=zkTkn_CoffeeSafeLocalCoffeeSafeLocalCoffeeSa"
     # Subdomain should be the real value (it's a variable, not a secret)
     assert_output --partial "SUBDOMAIN=${TEST_SUBDOMAIN}"
 }

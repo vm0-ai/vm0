@@ -119,8 +119,8 @@ EOF
     assert_success
     assert_output --partial "Run completed successfully"
 
-    assert_output --partial "GITHUB_TOKEN=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"
-    assert_output --partial "SLACK_TOKEN=xoxb-000000000000-0000000000000-Vm0PlaceHolder0000000000"
+    assert_output --partial "GITHUB_TOKEN=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"
+    assert_output --partial "SLACK_TOKEN=xoxb-100100100100-1001001001001-CoffeeSafeLocalCoffeeSaf"
 }
 
 @test "firewall: connector auto-adds firewall without experimental_firewalls" {
