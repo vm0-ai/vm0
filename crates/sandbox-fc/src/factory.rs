@@ -297,7 +297,9 @@ impl SandboxFactory for FirecrackerFactory {
         }
         if let Err(e) = tokio::fs::create_dir_all(sock_paths.vsock_dir()).await {
             let ws = sandbox_paths.workspace().to_owned();
+            let sd = sock_paths.dir().to_owned();
             let _ = tokio::fs::remove_dir_all(&ws).await;
+            let _ = tokio::fs::remove_dir_all(&sd).await;
             return Err(SandboxError::CreationFailed(format!(
                 "mkdir vsock dir: {e}"
             )));
