@@ -132,6 +132,66 @@ pub fn find_and_connect(client_fds: &[OwnedFd], size: u64, block_size: u64) -> R
     Err(NbdCowError::NoFreeDevice)
 }
 
+/// Find a free NBD device, connect it, and verify the device size.
+///
+/// On reconnect (same index after a recent disconnect), the kernel may still
+/// be tearing down the old connection. The netlink CONNECT succeeds but
+/// `set_capacity` may not take effect, leaving the device at 0 bytes.
+/// When this is detected, the device is disconnected, we wait briefly for
+/// the old teardown to complete, and retry the connect.
+pub fn find_connect_with_size_check(
+    client_fds: &[OwnedFd],
+    size: u64,
+    block_size: u64,
+) -> Result<u32> {
+    let expected_sectors = size / 512;
+    let max_retries = 5;
+
+    for attempt in 0..=max_retries {
+        let idx = find_and_connect(client_fds, size, block_size)?;
+
+        // Verify the device got the correct size
+        let size_path = format!("/sys/block/nbd{idx}/size");
+        let mut size_ok = false;
+        // Brief poll: the kernel connect is synchronous so the size should
+        // be set immediately, but give it a few ms just in case.
+        for _ in 0..5 {
+            if let Ok(content) = std::fs::read_to_string(&size_path) {
+                let sectors: u64 = content.trim().parse().unwrap_or(0);
+                if sectors == expected_sectors {
+                    size_ok = true;
+                    break;
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+
+        if size_ok {
+            return Ok(idx);
+        }
+
+        // Size is wrong — old disconnect hasn't finished. Disconnect this
+        // connection, wait for cleanup, and retry.
+        if attempt < max_retries {
+            tracing::debug!(
+                device_index = idx,
+                attempt = attempt + 1,
+                "device size 0 after connect, disconnecting and retrying"
+            );
+            let _ = disconnect(idx);
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        } else {
+            tracing::warn!(
+                device_index = idx,
+                "device size still 0 after {max_retries} retries"
+            );
+            return Ok(idx);
+        }
+    }
+
+    Err(NbdCowError::NoFreeDevice)
+}
+
 /// Disconnect an NBD device via generic netlink.
 pub fn disconnect(device_index: u32) -> Result<()> {
     let sock = open_genl_socket()?;

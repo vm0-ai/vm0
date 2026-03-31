@@ -83,43 +83,23 @@ impl NbdCowDevice {
 
         // Atomically find a free device and connect — retries on EBUSY so
         // concurrent runners don't race for the same device index.
-        let device_index = match netlink::find_and_connect(&client_fds, size, BLOCK_SIZE as u64) {
-            Ok(idx) => idx,
-            Err(e) => {
-                shutdown.cancel();
-                for handle in server_handles {
-                    handle.abort();
-                }
-                return Err(e);
-            }
-        };
-        let device_path = PathBuf::from(format!("/dev/nbd{device_index}"));
-
-        // Wait for the kernel to finish setting up the device capacity.
+        //
         // On reconnect (same index after a recent disconnect), the kernel may
-        // still be tearing down the old connection when we connect. The netlink
-        // CONNECT succeeds but set_capacity may not take effect until the old
-        // config is fully released. Poll sysfs until the size is correct.
-        let size_path = format!("/sys/block/nbd{device_index}/size");
-        let expected_sectors = size / 512;
-        let mut size_ok = false;
-        for _ in 0..50 {
-            if let Ok(content) = std::fs::read_to_string(&size_path) {
-                let sectors: u64 = content.trim().parse().unwrap_or(0);
-                if sectors == expected_sectors {
-                    size_ok = true;
-                    break;
+        // still be tearing down the old connection. The netlink CONNECT succeeds
+        // but set_capacity may not take effect, leaving the device at 0 bytes.
+        // When this happens, disconnect, wait for cleanup, and retry.
+        let device_index =
+            match netlink::find_connect_with_size_check(&client_fds, size, BLOCK_SIZE as u64) {
+                Ok(idx) => idx,
+                Err(e) => {
+                    shutdown.cancel();
+                    for handle in server_handles {
+                        handle.abort();
+                    }
+                    return Err(e);
                 }
-            }
-            std::thread::sleep(std::time::Duration::from_millis(20));
-        }
-        if !size_ok {
-            tracing::warn!(
-                device_index,
-                expected_sectors,
-                "device size not set after connect — reconnect may have raced with disconnect"
-            );
-        }
+            };
+        let device_path = PathBuf::from(format!("/dev/nbd{device_index}"));
 
         Ok(Self {
             device_index,
@@ -185,11 +165,6 @@ impl NbdCowDevice {
 
     /// Destroy the device but keep the COW file for snapshot persistence.
     ///
-    /// The caller must ensure all data is synced to the COW file before
-    /// calling this method (e.g., via the kernel `sync` command). The
-    /// dispatch tasks are not given a chance to flush because the device
-    /// is disconnected first to avoid kernel reconnect issues.
-    ///
     /// Saves the dirty bitmap as a sidecar file (`{cow_file}.bitmap`)
     /// so that a future `create()` call with the same paths can restore
     /// the dirty state and serve reads from the COW file correctly.
@@ -198,33 +173,26 @@ impl NbdCowDevice {
     }
 
     async fn shutdown_inner(&mut self, save_bitmap: bool) -> Result<()> {
-        // Disconnect via netlink FIRST — while dispatch tasks (and their
-        // server-side sockets) are still alive. This ensures the kernel
-        // processes the disconnect cleanly. If we cancel the tasks first,
-        // their server sockets close before the explicit disconnect, causing
-        // the kernel to detect dead connections and enter a state where the
-        // next connect may not properly set the device capacity.
-        if let Err(e) = netlink::disconnect(self.device_index) {
-            tracing::warn!("NBD disconnect failed for nbd{}: {e}", self.device_index);
-        }
-        self.disconnected = true;
-
-        // Now cancel and wait for tasks. They will see socket errors from
-        // the kernel-side shutdown and exit. The cancel token ensures we
-        // don't hang if a task is blocked elsewhere.
+        // Signal all dispatch tasks to stop
         self.shutdown.cancel();
+
+        // Wait for all tasks to complete (they will flush on shutdown)
         for handle in self.server_handles.drain(..) {
             let _ = handle.await;
         }
 
         // Tasks are stopped — we have exclusive logical access to the COW layer.
-        // Save bitmap if keeping the COW file.
-        // NOTE: The caller must sync data before calling destroy_keep_cow().
-        // The graceful task flush is skipped because we disconnect first.
+        // Save bitmap before disconnecting if keeping the COW file.
         if save_bitmap {
             let cow = self.cow.read().await;
             cow.save_bitmap(&self.bitmap_path())?;
         }
+
+        // Disconnect via netlink (after tasks are done)
+        if let Err(e) = netlink::disconnect(self.device_index) {
+            tracing::warn!("NBD disconnect failed for nbd{}: {e}", self.device_index);
+        }
+        self.disconnected = true;
 
         // Wait for kernel to release the device (poll pid file)
         let pid_path = format!("/sys/block/nbd{}/pid", self.device_index);
