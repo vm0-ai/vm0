@@ -906,8 +906,9 @@ export const sendExistingThreadMessage$ = command(
 
       const { runId } = result.body;
 
-      // Refresh sidebar after run is associated (has preview now)
+      // Refresh sidebar (title may have been regenerated) and current thread
       set(reloadChatThreadList$, (n) => n + 1);
+      set(reloadCurrentThread$, (n) => n + 1);
 
       // Create reactive assistant message with its own runLoop
       const { assistantMessage } = createActiveRunMessage(runId, prompt);
