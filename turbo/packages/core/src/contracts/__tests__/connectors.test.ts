@@ -113,65 +113,46 @@ describe("getConnectorEnvironmentMapping", () => {
   });
 
   it("OAuth connectors have consistent secrets and environmentMapping naming", () => {
+    // All naming derives from a single prefix XXX:
+    //   oauth secrets:      XXX_ACCESS_TOKEN (required), XXX_REFRESH_TOKEN (optional)
+    //   environmentMapping: all values -> $secrets.XXX_ACCESS_TOKEN
+    //   api-token secrets:  XXX_TOKEN (if api-token auth method exists)
     for (const type of connectorTypeSchema.options) {
-      const oauthConfig = getConnectorOAuthConfig(type);
-      if (!oauthConfig) continue;
-
+      if (!getConnectorOAuthConfig(type)) continue;
       const authMethods = getConnectorAuthMethods(type);
-      const oauthMethod = authMethods["oauth"];
-      if (!oauthMethod) continue;
+      if (!authMethods["oauth"]) continue;
 
-      const secretNames = Object.keys(oauthMethod.secrets);
+      const oauthSecrets = Object.keys(authMethods["oauth"].secrets);
+      const prefix = oauthSecrets
+        .find((s) => s.endsWith("_ACCESS_TOKEN"))
+        ?.replace(/_ACCESS_TOKEN$/, "");
+      expect(
+        prefix,
+        `${type}: oauth secrets must include an _ACCESS_TOKEN key`,
+      ).toBeDefined();
+
+      // oauth secrets: exactly {XXX_ACCESS_TOKEN} or {XXX_ACCESS_TOKEN, XXX_REFRESH_TOKEN}
+      const allowed = [`${prefix}_ACCESS_TOKEN`, `${prefix}_REFRESH_TOKEN`];
+      expect(
+        oauthSecrets.every((s) => allowed.includes(s)),
+        `${type}: unexpected oauth secrets: ${oauthSecrets.join(", ")}`,
+      ).toBe(true);
+
+      // environmentMapping: all values point to $secrets.XXX_ACCESS_TOKEN
       const mapping = getConnectorEnvironmentMapping(type);
-
-      // OAuth secrets must include exactly one XXX_ACCESS_TOKEN
-      const accessTokens = secretNames.filter((s) =>
-        s.endsWith("_ACCESS_TOKEN"),
-      );
-      expect(
-        accessTokens.length,
-        `${type}: oauth secrets must have exactly one _ACCESS_TOKEN key, got: ${secretNames.join(", ")}`,
-      ).toBe(1);
-
-      // OAuth secrets must only be XXX_ACCESS_TOKEN and optionally XXX_REFRESH_TOKEN
-      const prefix = accessTokens[0]!.replace(/_ACCESS_TOKEN$/, "");
-      const allowed = new Set([
-        `${prefix}_ACCESS_TOKEN`,
-        `${prefix}_REFRESH_TOKEN`,
-      ]);
-      for (const name of secretNames) {
-        expect(
-          allowed.has(name),
-          `${type}: unexpected oauth secret "${name}", allowed: ${[...allowed].join(", ")}`,
-        ).toBe(true);
-      }
-      expect(
-        secretNames.length,
-        `${type}: oauth secrets must have 1 or 2 entries, got: ${secretNames.join(", ")}`,
-      ).toBeLessThanOrEqual(2);
-
-      // environmentMapping must map XXX_TOKEN -> $secrets.XXX_ACCESS_TOKEN (same prefix)
-      expect(
-        mapping[`${prefix}_TOKEN`],
-        `${type}: environmentMapping must map ${prefix}_TOKEN -> $secrets.${prefix}_ACCESS_TOKEN`,
-      ).toBe(`$secrets.${prefix}_ACCESS_TOKEN`);
-
-      // environmentMapping must only contain mappings to the same access token
-      const expectedValue = `$secrets.${prefix}_ACCESS_TOKEN`;
+      const expectedRef = `$secrets.${prefix}_ACCESS_TOKEN`;
       for (const [key, value] of Object.entries(mapping)) {
         expect(
           value,
-          `${type}: environmentMapping["${key}"] must point to ${expectedValue}`,
-        ).toBe(expectedValue);
+          `${type}: environmentMapping["${key}"] must be ${expectedRef}`,
+        ).toBe(expectedRef);
       }
 
-      // If both oauth and api-token exist, api-token must have exactly one secret: ${prefix}_TOKEN
-      const apiTokenMethod = authMethods["api-token"];
-      if (apiTokenMethod) {
-        const apiSecrets = Object.keys(apiTokenMethod.secrets);
+      // api-token (if exists): exactly one secret XXX_TOKEN
+      if (authMethods["api-token"]) {
         expect(
-          apiSecrets,
-          `${type}: api-token with oauth must have exactly ["${prefix}_TOKEN"]`,
+          Object.keys(authMethods["api-token"].secrets),
+          `${type}: api-token must have exactly ["${prefix}_TOKEN"]`,
         ).toEqual([`${prefix}_TOKEN`]);
       }
     }
