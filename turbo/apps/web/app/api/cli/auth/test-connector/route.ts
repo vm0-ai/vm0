@@ -45,7 +45,7 @@ function isAllowed(request: Request): boolean {
  * Used by E2E tests to verify proxy-side token replacement.
  *
  * Body: { connectorName: string, accessToken: string }
- * Query: ?email=<email> (default: dev+clerk_test@serial.test)
+ * Query: ?email=<email> (default: dev+clerk_test+serial@vm0-e2e.ai)
  */
 export async function POST(request: Request) {
   if (!isAllowed(request)) {

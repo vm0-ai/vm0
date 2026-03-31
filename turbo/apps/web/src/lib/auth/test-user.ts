@@ -1,6 +1,6 @@
 import { clerkClient } from "@clerk/nextjs/server";
 
-export const DEFAULT_TEST_EMAIL = "dev+clerk_test@serial.test";
+export const DEFAULT_TEST_EMAIL = "dev+clerk_test+serial@vm0-e2e.ai";
 
 /**
  * Resolve the test user ID by querying Clerk Backend API for the e2e test user.

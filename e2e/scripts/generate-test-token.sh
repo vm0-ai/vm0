@@ -11,12 +11,12 @@
 #   - USE_MOCK_CLAUDE must be "true" on the server
 #
 # Usage: ./generate-test-token.sh <email>
-#   email: test user email (default: dev+clerk_test@serial.test)
+#   email: test user email (default: dev+clerk_test+serial@vm0-e2e.ai)
 
 set -euo pipefail
 
 # Test user email
-EMAIL="${1:-dev+clerk_test@serial.test}"
+EMAIL="${1:-dev+clerk_test+serial@vm0-e2e.ai}"
 
 # URL-encode the email (handle + and @)
 ENCODED_EMAIL=$(printf '%s' "$EMAIL" | sed 's/+/%2B/g; s/@/%40/g')

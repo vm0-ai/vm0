@@ -941,29 +941,39 @@ jobs:
           done
 
           # Create 3 test users + orgs
-          for domain in browser.test serial.test runner.test; do
-            email="${JOB_REF}+clerk_test@${domain}"
+          for variant in browser serial runner; do
+            email="${JOB_REF}+clerk_test+${variant}@vm0-e2e.ai"
             user=$(curl -sS -X POST "https://api.clerk.com/v1/users" \
               -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
               -H "Content-Type: application/json" \
               -d "{\"email_address\":[\"${email}\"],\"skip_password_requirement\":true}")
             user_id=$(echo "$user" | jq -r '.id')
+            if [[ "$user_id" == "null" || -z "$user_id" ]]; then
+              echo "Error: Failed to create user ${email}"
+              echo "Clerk response: ${user}"
+              exit 1
+            fi
             echo "Created user ${email} -> ${user_id}"
 
             org=$(curl -sS -X POST "https://api.clerk.com/v1/organizations" \
               -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
               -H "Content-Type: application/json" \
-              -d "{\"name\":\"e2e-${domain%%.*}-${JOB_REF}\",\"created_by\":\"${user_id}\"}")
+              -d "{\"name\":\"e2e-${variant}-${JOB_REF}\",\"created_by\":\"${user_id}\"}")
             org_id=$(echo "$org" | jq -r '.id')
+            if [[ "$org_id" == "null" || -z "$org_id" ]]; then
+              echo "Error: Failed to create org for user ${email}"
+              echo "Clerk response: ${org}"
+              exit 1
+            fi
             echo "Created org -> ${org_id}"
           done
 
       # Step 7: Generate test tokens for E2E tests (one per test user)
       - name: Generate E2E test tokens
         run: |
-          e2e/scripts/generate-test-token.sh "${JOB_REF}+clerk_test@serial.test"
+          e2e/scripts/generate-test-token.sh "${JOB_REF}+clerk_test+serial@vm0-e2e.ai"
           cp ~/.vm0/config.json "/tmp/e2e-token-serial.json"
-          e2e/scripts/generate-test-token.sh "${JOB_REF}+clerk_test@runner.test"
+          e2e/scripts/generate-test-token.sh "${JOB_REF}+clerk_test+runner@vm0-e2e.ai"
           cp ~/.vm0/config.json "/tmp/e2e-token-runner.json"
         env:
           VM0_API_URL: ${{ steps.alias.outputs.url || steps.deploy.outputs.url }}
@@ -1972,7 +1982,7 @@ jobs:
           WEB_URL: ${{ needs.deploy-web.outputs.preview-url }}
           APP_URL: ${{ needs.prepare.outputs.app-preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-          E2E_SERIAL_EMAIL: ${{ needs.prepare.outputs.job-ref }}+clerk_test@serial.test
+          E2E_SERIAL_EMAIL: ${{ needs.prepare.outputs.job-ref }}+clerk_test+serial@vm0-e2e.ai
       - name: Locate LHCI output (app)
         id: lhci-dir-app
         if: always()
