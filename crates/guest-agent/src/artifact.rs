@@ -374,7 +374,8 @@ fn create_archive(dir_path: &str, tar_path: &Path, file_paths: &[String]) -> boo
 
     // Write NUL-separated file list for tar -T --null (handles filenames with newlines)
     let list_path = tar_path.with_extension("filelist");
-    let list_content = file_paths.join("\0");
+    let mut list_content = file_paths.join("\0");
+    list_content.push('\0'); // trailing NUL for strict NUL-termination
     if let Err(e) = std::fs::write(&list_path, &list_content) {
         log_error!(LOG_TAG, "Failed to write file list: {e}");
         return false;
@@ -524,6 +525,49 @@ mod tests {
         // Symlinks should NOT exist in the archive
         assert!(!extract_dir.join("link.txt").exists());
         assert!(!extract_dir.join("dangling").exists());
+    }
+
+    #[test]
+    fn archive_handles_special_filenames() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        // Files with spaces and special characters
+        std::fs::write(root.join("file with spaces.txt"), "spaces").unwrap();
+        std::fs::create_dir(root.join("dir with spaces")).unwrap();
+        std::fs::write(root.join("dir with spaces/inner.txt"), "inner").unwrap();
+        std::fs::write(root.join("file-with-dashes.txt"), "dashes").unwrap();
+        // File with newline in name
+        std::fs::write(root.join("line1\nline2.txt"), "newline").unwrap();
+
+        let files = collect_file_metadata(root.to_str().unwrap());
+        let file_paths: Vec<String> = files.iter().map(|f| f.path.clone()).collect();
+
+        let tar_path = dir.path().join("archive.tar.gz");
+        assert!(create_archive(
+            root.to_str().unwrap(),
+            &tar_path,
+            &file_paths
+        ));
+
+        // Extract and verify
+        let extract_dir = dir.path().join("extracted");
+        std::fs::create_dir(&extract_dir).unwrap();
+        let status = std::process::Command::new("tar")
+            .args([
+                "-xzf",
+                tar_path.to_str().unwrap(),
+                "-C",
+                extract_dir.to_str().unwrap(),
+            ])
+            .status()
+            .unwrap();
+        assert!(status.success());
+
+        assert!(extract_dir.join("file with spaces.txt").exists());
+        assert!(extract_dir.join("dir with spaces/inner.txt").exists());
+        assert!(extract_dir.join("file-with-dashes.txt").exists());
+        assert!(extract_dir.join("line1\nline2.txt").exists());
     }
 
     #[test]
