@@ -70,10 +70,6 @@ For user-facing guides and tutorials, visit [docs.vm0.ai](https://docs.vm0.ai).
 
 ![Alt](https://repobeats.axiom.co/api/embed/ef46db5e11f5146fcc8af07077a79d789efdfbe5.svg "Repobeats analytics image")
 
-## ⭐ Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=vm0-ai/vm0&type=date&legend=top-left)](https://www.star-history.com/#vm0-ai/vm0&type=date&legend=top-left)
-
 ## 📃 License
 
 See [LICENSE](./LICENSE) for details.
