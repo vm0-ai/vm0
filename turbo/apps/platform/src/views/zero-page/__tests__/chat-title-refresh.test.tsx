@@ -50,7 +50,7 @@ describe("chat title refresh", () => {
 
     const fetchCountBeforeSend = threadListFetchCount;
 
-    sendMessageInUI(textarea, "Follow-up question");
+    await sendMessageInUI(textarea, "Follow-up question");
 
     // Wait for sidebar to be refetched (title is generated async on the server;
     // the client schedules a delayed refresh to pick up the updated title)
@@ -109,7 +109,7 @@ describe("chat title refresh", () => {
 
     const fetchCountBeforeSend = threadDetailFetchCount;
 
-    sendMessageInUI(textarea, "Follow-up question");
+    await sendMessageInUI(textarea, "Follow-up question");
 
     // The current thread should be re-fetched after message send
     // so the updated title is available

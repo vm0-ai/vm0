@@ -21,6 +21,6 @@ export const setupSchedulePage$ = command(
       return;
     }
 
-    await set(reloadChatThreads$, signal);
+    set(reloadChatThreads$);
   },
 );

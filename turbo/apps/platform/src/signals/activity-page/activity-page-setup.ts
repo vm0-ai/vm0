@@ -23,6 +23,6 @@ export const setupActivityPage$ = command(
       return;
     }
 
-    await set(reloadChatThreads$, signal);
+    set(reloadChatThreads$);
   },
 );

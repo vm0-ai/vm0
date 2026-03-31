@@ -1,5 +1,4 @@
 import { command, computed, state, type Computed } from "ccstate";
-import { delay } from "signal-timers";
 import type { AgentEvent, LogStatus } from "./log-types.ts";
 import { resetSignal } from "../utils.ts";
 import { detachedNavigateTo$ } from "../route.ts";
@@ -281,7 +280,7 @@ function summarizeEvent(event: AgentEvent, skipText: boolean): string | null {
  * is called before every talk-page send), so stale controllers are
  * cleaned up automatically.
  */
-const resetTalkSendSignal$ = resetSignal();
+export const resetTalkSendSignal$ = resetSignal();
 
 const internalReloadChatThreads$ = state(0);
 
@@ -833,6 +832,7 @@ export const sendExistingThreadMessage$ = command(
     const { runId } = result.body;
 
     set(internalReloadChatThreads$, (n) => n + 1);
+    set(reloadCurrentThread$, (n) => n + 1);
 
     const { assistantMessage } = createActiveRunMessage(runId, prompt);
     set(internalLocalMessages$, (prev) => [...prev, assistantMessage]);

@@ -127,7 +127,7 @@ describe("chat sending state", () => {
     );
 
     // Type a new message and press Enter while still sending
-    sendMessageInUI(activeTextarea, "Second message");
+    await sendMessageInUI(activeTextarea, "Second message");
 
     // Give any potential second request time to fire.
     // NOTE: intentionally not wrapped in act() — background polling loops with

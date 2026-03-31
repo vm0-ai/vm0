@@ -35,6 +35,6 @@ export const setupScheduleDetailPage$ = command(
     ]);
     signal.throwIfAborted();
 
-    await set(reloadChatThreads$, signal);
+    set(reloadChatThreads$);
   },
 );

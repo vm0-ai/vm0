@@ -20,7 +20,7 @@ export const setupActivityDetailPage$ = command(
 
     await Promise.all([
       set(setupActivityLogLoop$, signal),
-      set(reloadChatThreads$, signal),
+      set(reloadChatThreads$),
     ]);
     signal.throwIfAborted();
   },
