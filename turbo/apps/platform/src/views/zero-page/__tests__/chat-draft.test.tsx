@@ -107,8 +107,8 @@ describe("chat draft persistence across thread navigation", () => {
   it("should complete upload after switching away and show it on return", async () => {
     // Deferred upload handler — resolve manually
     let resolveUpload: (() => void) | null = null;
-    const uploadStarted = new Promise<void>((r) => {
-      resolveUpload = r;
+    const uploadStarted = new Promise<void>((resolve) => {
+      resolveUpload = resolve;
     });
 
     let uploadRequestResolve: ((value: Response) => void) | null = null;

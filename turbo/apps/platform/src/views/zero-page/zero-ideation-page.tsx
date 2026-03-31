@@ -8,7 +8,6 @@ import {
 import { Card, CardContent, cn, Input } from "@vm0/ui";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { getCategories } from "./zero-ideation-data.ts";
-import { setChatPageInput$ } from "../../signals/zero-page/zero-chat-page.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { currentAgentId$ } from "../../signals/zero-page/agent.ts";
 import { SidebarLayout } from "./sidebar-layout.tsx";
@@ -19,7 +18,6 @@ export function ZeroIdeationPage() {
   const categories = getCategories().slice(0, 5);
   const [activeTab, setActiveTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const setInput = useSet(setChatPageInput$);
   const navigate = useSet(detachedNavigateTo$);
   const agentId = useGet(currentAgentId$);
 
@@ -51,8 +49,15 @@ export function ZeroIdeationPage() {
           .filter((c) => c.cases.length > 0);
 
   const handleSelectPrompt = (prompt: string) => {
-    setInput(prompt);
-    navigateToChat();
+    const searchParams = new URLSearchParams({ prompt });
+    if (agentId) {
+      navigate("/talk/:agentId", {
+        pathParams: { agentId: agentId },
+        searchParams,
+      });
+    } else {
+      navigate("/", { searchParams });
+    }
   };
 
   const handleBack = () => {
