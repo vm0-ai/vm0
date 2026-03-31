@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
-import { IconMenu2 } from "@tabler/icons-react";
+import { IconMenu2, IconUserPlus } from "@tabler/icons-react";
 import { ZeroSidebar } from "./zero-sidebar.tsx";
 import { user$ } from "../../signals/auth.ts";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
@@ -9,11 +9,20 @@ import {
   setZeroShowAboutPage$,
   zeroSidebarCollapsed$,
   setZeroSidebarCollapsed$,
+  zeroActiveId$,
 } from "../../signals/zero-page/zero-nav.ts";
 import { mobileBreadcrumb$ } from "../../signals/zero-page/zero-mobile-breadcrumb.ts";
 import { ZeroAboutPage } from "./zero-about-page.tsx";
 import { AppSkeleton } from "./app-skeleton.tsx";
 import { Link } from "../router/link.tsx";
+import { isOrgAdmin$ } from "../../signals/org.ts";
+import {
+  setActiveTab$,
+  setBillingSubPage$,
+} from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
+import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 
 function SidebarLayoutSkeleton() {
   const userLoadable = useLoadable(user$);
@@ -31,6 +40,16 @@ function MobileTopBar() {
   const breadcrumbLoadable = useLastLoadable(mobileBreadcrumb$);
   const breadcrumb =
     breadcrumbLoadable.state === "hasData" ? breadcrumbLoadable.data : null;
+
+  const activeId = useGet(zeroActiveId$);
+  const isAdminLoadable = useLoadable(isOrgAdmin$);
+  const isAdmin = isAdminLoadable.state === "hasData" && isAdminLoadable.data;
+  const setTab = useSet(setActiveTab$);
+  const setSubPage = useSet(setBillingSubPage$);
+  const openManage = useSet(setOrgManageDialogOpen$);
+  const pageSignal = useGet(pageSignal$);
+
+  const showInvite = activeId === "chat" && isAdmin;
 
   return (
     <div className="md:hidden shrink-0 flex items-center h-12 px-3 gap-2 bg-background border-b border-border/50 z-10">
@@ -59,6 +78,21 @@ function MobileTopBar() {
             </>
           )}
         </div>
+      )}
+      {!breadcrumb && <div className="flex-1" />}
+      {showInvite && (
+        <button
+          type="button"
+          onClick={() => {
+            setTab("members");
+            setSubPage(false);
+            detach(openManage(true, pageSignal), Reason.DomCallback);
+          }}
+          className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors shrink-0"
+        >
+          <IconUserPlus size={14} stroke={1.5} />
+          Invite
+        </button>
       )}
     </div>
   );
