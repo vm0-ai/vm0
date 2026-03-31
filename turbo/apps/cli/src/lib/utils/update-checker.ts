@@ -118,7 +118,9 @@ function buildRerunCommand(prompt: string | undefined): string {
 export async function getLatestVersion(): Promise<string | null> {
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    const timeoutId = setTimeout(() => {
+      return controller.abort();
+    }, TIMEOUT_MS);
 
     const response = await fetch(NPM_REGISTRY_URL, {
       signal: controller.signal,
@@ -289,8 +291,12 @@ export async function startSilentUpgrade(
   });
 
   const promise = new Promise<boolean>((resolve) => {
-    child.on("close", (code) => resolve(code === 0));
-    child.on("error", () => resolve(false));
+    child.on("close", (code) => {
+      return resolve(code === 0);
+    });
+    child.on("error", () => {
+      return resolve(false);
+    });
   });
 
   pendingUpgrade = { promise, child, packageManager };

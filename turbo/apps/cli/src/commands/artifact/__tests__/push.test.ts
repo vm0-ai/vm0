@@ -244,7 +244,11 @@ describe("artifact push", () => {
       // Should only include data.txt, not .vm0 files
       expect(filesInRequest).toHaveLength(1);
       expect(filesInRequest[0]?.path).toBe("data.txt");
-      expect(filesInRequest.some((f) => f.path.startsWith(".vm0"))).toBe(false);
+      expect(
+        filesInRequest.some((f) => {
+          return f.path.startsWith(".vm0");
+        }),
+      ).toBe(false);
     });
 
     it("should include files with vm0 in name (not .vm0 directory)", async () => {
@@ -282,7 +286,11 @@ describe("artifact push", () => {
 
       // All three files should be included
       expect(filesInRequest).toHaveLength(3);
-      const paths = filesInRequest.map((f) => f.path).sort();
+      const paths = filesInRequest
+        .map((f) => {
+          return f.path;
+        })
+        .sort();
       expect(paths).toEqual(["my.vm0.data", "vm0", "vm0-config.txt"]);
     });
 

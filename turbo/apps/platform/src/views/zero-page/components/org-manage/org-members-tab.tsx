@@ -94,18 +94,21 @@ export function OrgMembersTab() {
     userLoadable.state === "hasData" ? userLoadable.data?.id : undefined;
   const isLoading = membersLoadable.state === "loading";
 
-  const adminCount = members.filter((m) => m.role === "admin").length;
+  const adminCount = members.filter((m) => {
+    return m.role === "admin";
+  }).length;
 
   const filtered = (() => {
     if (!search.trim()) {
       return members;
     }
     const q = search.toLowerCase();
-    return members.filter(
-      (m) =>
+    return members.filter((m) => {
+      return (
         m.email.toLowerCase().includes(q) ||
-        displayName(m).toLowerCase().includes(q),
-    );
+        displayName(m).toLowerCase().includes(q)
+      );
+    });
   })();
 
   const filteredPending = (() => {
@@ -113,9 +116,9 @@ export function OrgMembersTab() {
       return pendingInvitations;
     }
     const q = search.toLowerCase();
-    return pendingInvitations.filter((inv) =>
-      inv.email.toLowerCase().includes(q),
-    );
+    return pendingInvitations.filter((inv) => {
+      return inv.email.toLowerCase().includes(q);
+    });
   })();
 
   const handleInvite = async (email: string) => {
@@ -204,7 +207,9 @@ export function OrgMembersTab() {
             type="text"
             placeholder="Search"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              return setSearch(e.target.value);
+            }}
             className="pl-9"
           />
         </div>
@@ -252,52 +257,58 @@ export function OrgMembersTab() {
                 Join requests
               </span>
             </div>
-            {membershipRequests.map((req, i) => (
-              <div key={req.id}>
-                {i > 0 && <div className="h-0 zero-border-t mx-5" />}
-                <MembershipRequestRow
-                  request={req}
-                  onAccept={handleAcceptRequest}
-                  onReject={handleRejectRequest}
-                />
-              </div>
-            ))}
+            {membershipRequests.map((req, i) => {
+              return (
+                <div key={req.id}>
+                  {i > 0 && <div className="h-0 zero-border-t mx-5" />}
+                  <MembershipRequestRow
+                    request={req}
+                    onAccept={handleAcceptRequest}
+                    onReject={handleRejectRequest}
+                  />
+                </div>
+              );
+            })}
             <div className="h-0 zero-border-t mx-5" />
           </>
         )}
 
         {!isLoading &&
-          filtered.map((m, i) => (
-            <div key={m.userId}>
-              {(i > 0 || membershipRequests.length > 0) && (
-                <div className="h-0 zero-border-t mx-5" />
-              )}
-              <MemberRow
-                member={m}
-                isCurrentUser={m.userId === currentUserId}
-                isAdmin={isAdmin}
-                isOnlyAdmin={adminCount < 2}
-                onRoleChange={handleRoleChange}
-                onRemove={handleRemove}
-              />
-            </div>
-          ))}
+          filtered.map((m, i) => {
+            return (
+              <div key={m.userId}>
+                {(i > 0 || membershipRequests.length > 0) && (
+                  <div className="h-0 zero-border-t mx-5" />
+                )}
+                <MemberRow
+                  member={m}
+                  isCurrentUser={m.userId === currentUserId}
+                  isAdmin={isAdmin}
+                  isOnlyAdmin={adminCount < 2}
+                  onRoleChange={handleRoleChange}
+                  onRemove={handleRemove}
+                />
+              </div>
+            );
+          })}
 
         {!isLoading &&
-          filteredPending.map((inv, i) => (
-            <div key={inv.id}>
-              {(i > 0 ||
-                filtered.length > 0 ||
-                membershipRequests.length > 0) && (
-                <div className="h-0 zero-border-t mx-5" />
-              )}
-              <PendingInvitationRow
-                invitation={inv}
-                isAdmin={isAdmin}
-                onRevoke={handleRevokeInvitation}
-              />
-            </div>
-          ))}
+          filteredPending.map((inv, i) => {
+            return (
+              <div key={inv.id}>
+                {(i > 0 ||
+                  filtered.length > 0 ||
+                  membershipRequests.length > 0) && (
+                  <div className="h-0 zero-border-t mx-5" />
+                )}
+                <PendingInvitationRow
+                  invitation={inv}
+                  isAdmin={isAdmin}
+                  onRevoke={handleRevokeInvitation}
+                />
+              </div>
+            );
+          })}
       </div>
     </div>
   );
@@ -373,7 +384,9 @@ function InviteDialog({
               setEmail(e.target.value);
               setTouched(false);
             }}
-            onBlur={() => setTouched(true)}
+            onBlur={() => {
+              return setTouched(true);
+            }}
           />
           {touched && trimmed && !isValid && (
             <p className="text-[13px] text-destructive">
@@ -385,7 +398,9 @@ function InviteDialog({
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setOpen(false)}
+            onClick={() => {
+              return setOpen(false);
+            }}
             disabled={sending}
           >
             Cancel
@@ -540,7 +555,9 @@ function SelfDemoteAction({
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setOpen(false)}
+            onClick={() => {
+              return setOpen(false);
+            }}
             disabled={loading}
           >
             Cancel
@@ -608,9 +625,12 @@ function MemberActions({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-48">
           <DropdownMenuItem
-            onClick={() =>
-              detach(onRoleChange(member.email, newRole), Reason.DomCallback)
-            }
+            onClick={() => {
+              return detach(
+                onRoleChange(member.email, newRole),
+                Reason.DomCallback,
+              );
+            }}
           >
             {newRole === "admin" ? "Make admin" : "Make member"}
           </DropdownMenuItem>
@@ -634,7 +654,9 @@ function MemberActions({
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setOpen(false)}
+            onClick={() => {
+              return setOpen(false);
+            }}
             disabled={removing}
           >
             Cancel
@@ -743,7 +765,9 @@ function PendingInvitationRow({
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setOpen(false)}
+                  onClick={() => {
+                    return setOpen(false);
+                  }}
                   disabled={revoking}
                 >
                   Cancel
@@ -782,7 +806,9 @@ function MembershipRequestRow({
     setLoading(true);
     detach(
       onAccept(request.id).then(
-        () => setLoading(false),
+        () => {
+          return setLoading(false);
+        },
         (error: unknown) => {
           setLoading(false);
           const message =
@@ -798,7 +824,9 @@ function MembershipRequestRow({
     setLoading(true);
     detach(
       onReject(request.id).then(
-        () => setLoading(false),
+        () => {
+          return setLoading(false);
+        },
         (error: unknown) => {
           setLoading(false);
           const message =

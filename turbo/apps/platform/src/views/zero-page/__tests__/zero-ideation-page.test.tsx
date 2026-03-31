@@ -163,9 +163,9 @@ describe("ideation page - search", () => {
     const user = userEvent.setup();
     await renderIdeationPage();
 
-    const searchInput = await waitFor(() =>
-      screen.getByRole("searchbox", { name: "Search use cases" }),
-    );
+    const searchInput = await waitFor(() => {
+      return screen.getByRole("searchbox", { name: "Search use cases" });
+    });
 
     await user.clear(searchInput);
     await user.type(searchInput, "Daily standup");
@@ -182,9 +182,9 @@ describe("ideation page - search", () => {
     const user = userEvent.setup();
     await renderIdeationPage();
 
-    const searchInput = await waitFor(() =>
-      screen.getByRole("searchbox", { name: "Search use cases" }),
-    );
+    const searchInput = await waitFor(() => {
+      return screen.getByRole("searchbox", { name: "Search use cases" });
+    });
 
     await user.clear(searchInput);
     await user.type(searchInput, "xyznonexistentquery");
@@ -246,9 +246,9 @@ describe("ideation page - navigation", () => {
     const user = userEvent.setup();
     await renderIdeationPage();
 
-    const chatBreadcrumb = await waitFor(
-      () => screen.getByText("Chat").closest("button")!,
-    );
+    const chatBreadcrumb = await waitFor(() => {
+      return screen.getByText("Chat").closest("button")!;
+    });
 
     await user.click(chatBreadcrumb!);
 

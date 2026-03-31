@@ -422,9 +422,9 @@ function processUserEvent(
 export function groupEventsIntoMessages(
   events: AgentEvent[],
 ): GroupedMessage[] {
-  const sorted = [...events].sort(
-    (a, b) => a.sequenceNumber - b.sequenceNumber,
-  );
+  const sorted = [...events].sort((a, b) => {
+    return a.sequenceNumber - b.sequenceNumber;
+  });
 
   const seen = new Set<number>();
   const deduped = sorted.filter((e) => {
@@ -500,7 +500,11 @@ function getVisibleGroupedMessageText(message: GroupedMessage): string {
       parts.push(...eventData.agents);
     }
     if (eventData.slash_commands) {
-      parts.push(...eventData.slash_commands.map((cmd) => `/${cmd}`));
+      parts.push(
+        ...eventData.slash_commands.map((cmd) => {
+          return `/${cmd}`;
+        }),
+      );
     }
   }
 

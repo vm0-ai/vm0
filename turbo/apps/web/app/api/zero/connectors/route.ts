@@ -30,7 +30,11 @@ const router = tsr.router(zeroConnectorsMainContract, {
       globalThis.services.env,
     );
     const connectorProvidedSecretNames = [
-      ...getConnectorProvidedSecretNames(connectorList.map((c) => c.type)),
+      ...getConnectorProvidedSecretNames(
+        connectorList.map((c) => {
+          return c.type;
+        }),
+      ),
     ];
 
     return {

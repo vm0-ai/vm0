@@ -60,11 +60,13 @@ export async function dispatchTerminalSideEffects(
 ): Promise<void> {
   const callbackStatus = status === "completed" ? "completed" : "failed";
   await dispatchCallbacks(runId, callbackStatus, undefined, error).catch(
-    (err) => log.error("Failed to dispatch callbacks", { err }),
+    (err) => {
+      return log.error("Failed to dispatch callbacks", { err });
+    },
   );
   if (drain) {
-    await drain().catch((err) =>
-      log.error("Failed to drain org queue", { err }),
-    );
+    await drain().catch((err) => {
+      return log.error("Failed to drain org queue", { err });
+    });
   }
 }

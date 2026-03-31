@@ -137,11 +137,12 @@ export const zeroChatMessages$ = computed(async (get) => {
   // drop the local copy (server is the canonical source after persistence).
   const serverRunIds = new Set(
     serverMessages
-      .filter(
-        (m): m is AssistantChatMessage =>
-          m.role === "assistant" && !!m.legacyRunId,
-      )
-      .map((m) => m.legacyRunId),
+      .filter((m): m is AssistantChatMessage => {
+        return m.role === "assistant" && !!m.legacyRunId;
+      })
+      .map((m) => {
+        return m.legacyRunId;
+      }),
   );
 
   const skipIndices = new Set<number>();
@@ -160,7 +161,9 @@ export const zeroChatMessages$ = computed(async (get) => {
     }
   }
 
-  const filteredLocal = localMessages.filter((_, i) => !skipIndices.has(i));
+  const filteredLocal = localMessages.filter((_, i) => {
+    return !skipIndices.has(i);
+  });
   return [...serverMessages, ...filteredLocal];
 });
 
@@ -189,9 +192,9 @@ export const cancelActiveRun$ = command(
     const local = get(internalLocalMessages$);
     const activeMsg = [...local]
       .reverse()
-      .find(
-        (m): m is AssistantChatMessage => m.role === "assistant" && !!m.runLoop,
-      );
+      .find((m): m is AssistantChatMessage => {
+        return m.role === "assistant" && !!m.runLoop;
+      });
     if (!activeMsg?.runLoop) {
       return;
     }
@@ -217,7 +220,9 @@ function getEventContent(event: AgentEvent): EventContent[] {
 }
 
 function hasTextBlock(event: AgentEvent): boolean {
-  return getEventContent(event).some((b) => b.type === "text" && b.text);
+  return getEventContent(event).some((b) => {
+    return b.type === "text" && b.text;
+  });
 }
 
 function basename(filepath: string): string {
@@ -238,36 +243,58 @@ function domainFromUrl(url: string): string {
 const TOOL_LABELS: Readonly<
   Record<string, (input: Record<string, unknown> | undefined) => string>
 > = {
-  Bash: () => "Running a command...",
-  Read: (i) =>
-    i?.file_path
+  Bash: () => {
+    return "Running a command...";
+  },
+  Read: (i) => {
+    return i?.file_path
       ? `Reading ${basename(String(i.file_path))}`
-      : "Peeking at a file...",
-  Write: (i) =>
-    i?.file_path
+      : "Peeking at a file...";
+  },
+  Write: (i) => {
+    return i?.file_path
       ? `Writing ${basename(String(i.file_path))}`
-      : "Jotting things down...",
-  Edit: (i) =>
-    i?.file_path
+      : "Jotting things down...";
+  },
+  Edit: (i) => {
+    return i?.file_path
       ? `Tweaking ${basename(String(i.file_path))}`
-      : "Making some edits...",
-  Search: () => "Searching for info...",
-  Grep: () => "Digging through the code...",
-  Glob: () => "Scouting for files...",
-  Skill: (i) =>
-    i?.skill ? `Using ${String(i.skill)}` : "Pulling out a trick...",
-  WebSearch: (i) =>
-    i?.query
+      : "Making some edits...";
+  },
+  Search: () => {
+    return "Searching for info...";
+  },
+  Grep: () => {
+    return "Digging through the code...";
+  },
+  Glob: () => {
+    return "Scouting for files...";
+  },
+  Skill: (i) => {
+    return i?.skill ? `Using ${String(i.skill)}` : "Pulling out a trick...";
+  },
+  WebSearch: (i) => {
+    return i?.query
       ? `Looking up "${truncate(String(i.query), 40)}"`
-      : "Browsing the web...",
-  WebFetch: (i) =>
-    i?.url
+      : "Browsing the web...";
+  },
+  WebFetch: (i) => {
+    return i?.url
       ? `Checking out ${domainFromUrl(String(i.url))}`
-      : "Grabbing a page...",
-  Agent: () => "Delegating to a helper...",
-  ToolSearch: () => "Finding the right tool...",
-  CodeSearch: () => "Searching through code...",
-  FileSearch: () => "Looking for files...",
+      : "Grabbing a page...";
+  },
+  Agent: () => {
+    return "Delegating to a helper...";
+  },
+  ToolSearch: () => {
+    return "Finding the right tool...";
+  },
+  CodeSearch: () => {
+    return "Searching through code...";
+  },
+  FileSearch: () => {
+    return "Looking for files...";
+  },
 };
 
 function humanizeToolUse(
@@ -320,7 +347,9 @@ const reloadChatThreadList$ = state(0);
 
 export const fetchZeroSessionList$ = command(
   ({ set }, _signal: AbortSignal) => {
-    set(reloadChatThreadList$, (n) => n + 1);
+    set(reloadChatThreadList$, (n) => {
+      return n + 1;
+    });
   },
 );
 
@@ -349,8 +378,12 @@ export const zeroSessionList$ = computed(async (get) => {
   return await get(chatThreadListResponse$);
 });
 
-export const zeroSessionListLoading$ = computed(() => false);
-export const zeroSessionListError$ = computed(() => null as string | null);
+export const zeroSessionListLoading$ = computed(() => {
+  return false;
+});
+export const zeroSessionListError$ = computed(() => {
+  return null as string | null;
+});
 
 /** Delete a chat thread and refresh the sidebar list. */
 export const deleteChatThread$ = command(
@@ -376,7 +409,9 @@ export const deleteChatThread$ = command(
       set(detachedNavigateTo$, "/");
     }
 
-    set(reloadChatThreadList$, (n) => n + 1);
+    set(reloadChatThreadList$, (n) => {
+      return n + 1;
+    });
   },
 );
 
@@ -512,7 +547,9 @@ function unsavedRunsToMessages(unsavedRuns: ChatThreadData["unsavedRuns"]): {
       messages.push({
         id: crypto.randomUUID(),
         role: "assistant",
-        result$: computed(() => Promise.resolve("")),
+        result$: computed(() => {
+          return Promise.resolve("");
+        }),
         legacyRunId: run.runId,
         status: "failed",
         error: isCancelled
@@ -627,7 +664,9 @@ const currentChatMessages$ = computed(
       return {
         ...base,
         role: "assistant" as const,
-        result$: computed(() => Promise.resolve(m.content)),
+        result$: computed(() => {
+          return Promise.resolve(m.content);
+        }),
         legacyRunId: m.runId,
         ...(m.error ? { status: "failed" as const, error: m.error } : {}),
       };
@@ -683,8 +722,9 @@ export const loadSessionFromSnapshot$ = command(
       set(internalLocalMessages$, snapshot.activeRunMessages);
 
       const assistantMessages = snapshot.activeRunMessages.filter(
-        (m): m is AssistantChatMessage =>
-          m.role === "assistant" && !!m.beginLoop$,
+        (m): m is AssistantChatMessage => {
+          return m.role === "assistant" && !!m.beginLoop$;
+        },
       );
 
       await Promise.all(
@@ -697,8 +737,12 @@ export const loadSessionFromSnapshot$ = command(
       // Finalize each completed run (persist session ID, refresh sidebar)
       await Promise.all(
         assistantMessages
-          .filter((m) => m.legacyRunId)
-          .map(() => set(finalizeCompletedRun$, signal)),
+          .filter((m) => {
+            return m.legacyRunId;
+          })
+          .map(() => {
+            return set(finalizeCompletedRun$, signal);
+          }),
       );
     }
   },
@@ -739,7 +783,9 @@ const internalCreateNewChatSession$ = command(
       const createClient = get(zeroClient$);
       const thread = await createChatThread(createClient, resolvedComposeId);
 
-      set(reloadChatThreadList$, (n) => n + 1);
+      set(reloadChatThreadList$, (n) => {
+        return n + 1;
+      });
       set(navigateToChat$, thread.id);
     } catch (error) {
       throwIfAbort(error);
@@ -771,28 +817,33 @@ const prepareUserMessage$ = command(
     const draft = get(currentDraft$);
     const allAttachments = draft ? get(draft.attachments$) : [];
     const allInfos = await Promise.all(
-      allAttachments.map((a) => get(a.fileInfo$)),
+      allAttachments.map((a) => {
+        return get(a.fileInfo$);
+      }),
     );
     signal.throwIfAborted();
 
     // Pair attachments with resolved file info, dropping any that failed or haven't started
     const ready = allAttachments
-      .map((a, i) => ({ attachment: a, info: allInfos[i] }))
+      .map((a, i) => {
+        return { attachment: a, info: allInfos[i] };
+      })
       .filter(
         (
           r,
         ): r is {
           attachment: ZeroChatAttachment;
           info: { id: string; url: string };
-        } => r.info !== null,
+        } => {
+          return r.info !== null;
+        },
       );
 
     let fullPrompt = prompt.trim();
     if (ready.length > 0) {
-      const lines = ready.map(
-        (r) =>
-          `[Attached file: ${r.attachment.filename}](${r.info.url})\nDownload with: curl -sL -o "${r.attachment.filename}" "${r.info.url}"`,
-      );
+      const lines = ready.map((r) => {
+        return `[Attached file: ${r.attachment.filename}](${r.info.url})\nDownload with: curl -sL -o "${r.attachment.filename}" "${r.info.url}"`;
+      });
       fullPrompt = `${fullPrompt}\n\n${lines.join("\n")}`;
     }
 
@@ -802,15 +853,19 @@ const prepareUserMessage$ = command(
       content: prompt.trim(),
       attachments:
         ready.length > 0
-          ? ready.map((r) => ({
-              filename: r.attachment.filename,
-              contentType: r.attachment.contentType,
-              size: r.attachment.size,
-              url: r.info.url,
-            }))
+          ? ready.map((r) => {
+              return {
+                filename: r.attachment.filename,
+                contentType: r.attachment.contentType,
+                size: r.attachment.size,
+                url: r.info.url,
+              };
+            })
           : undefined,
     };
-    set(internalLocalMessages$, (prev) => [...prev, userMessage]);
+    set(internalLocalMessages$, (prev) => {
+      return [...prev, userMessage];
+    });
 
     // Clear the draft after preparing the message
     if (draft) {
@@ -825,11 +880,17 @@ const prepareUserMessage$ = command(
 const finalizeCompletedRun$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     // Refresh session list (messages are persisted server-side via webhook)
-    set(reloadChatThreadList$, (n) => n + 1);
+    set(reloadChatThreadList$, (n) => {
+      return n + 1;
+    });
     await delay(get(poolInterval$), { signal });
-    set(reloadChatThreadList$, (n) => n + 1);
+    set(reloadChatThreadList$, (n) => {
+      return n + 1;
+    });
     // Invalidate the current thread so latestSessionId and messages are fresh
-    set(reloadCurrentThread$, (n) => n + 1);
+    set(reloadCurrentThread$, (n) => {
+      return n + 1;
+    });
   },
 );
 
@@ -906,11 +967,17 @@ export const sendNewThreadMessage$ = command(
       }
 
       set(navigateToChat$, result.body.threadId);
-      set(reloadChatThreadList$, (n) => n + 1);
+      set(reloadChatThreadList$, (n) => {
+        return n + 1;
+      });
 
       // Title is generated async on the server — refresh after a short delay
       delay(TITLE_REFRESH_DELAY_MS, { signal })
-        .then(() => set(reloadChatThreadList$, (n) => n + 1))
+        .then(() => {
+          set(reloadChatThreadList$, (n) => {
+            return n + 1;
+          });
+        })
         .catch(() => {});
     } catch (error) {
       throwIfAbort(error);
@@ -978,18 +1045,28 @@ export const sendExistingThreadMessage$ = command(
 
       // Refresh sidebar and current thread — title is generated async,
       // so schedule a delayed refresh to pick it up
-      set(reloadChatThreadList$, (n) => n + 1);
-      set(reloadCurrentThread$, (n) => n + 1);
+      set(reloadChatThreadList$, (n) => {
+        return n + 1;
+      });
+      set(reloadCurrentThread$, (n) => {
+        return n + 1;
+      });
       delay(TITLE_REFRESH_DELAY_MS, { signal })
         .then(() => {
-          set(reloadChatThreadList$, (n) => n + 1);
-          set(reloadCurrentThread$, (n) => n + 1);
+          set(reloadChatThreadList$, (n) => {
+            return n + 1;
+          });
+          set(reloadCurrentThread$, (n) => {
+            return n + 1;
+          });
         })
         .catch(() => {});
 
       // Create reactive assistant message with its own runLoop
       const { assistantMessage } = createActiveRunMessage(runId, prompt);
-      set(internalLocalMessages$, (prev) => [...prev, assistantMessage]);
+      set(internalLocalMessages$, (prev) => {
+        return [...prev, assistantMessage];
+      });
 
       const runLoop = assistantMessage.runLoop;
       if (!runLoop) {
@@ -1019,9 +1096,9 @@ export const sendExistingThreadMessage$ = command(
 const internalComposerFileInput$ = state<HTMLElement | null>(null);
 
 /** The file input element used by the composer attach button. */
-export const composerFileInput$ = computed((get) =>
-  get(internalComposerFileInput$),
-);
+export const composerFileInput$ = computed((get) => {
+  return get(internalComposerFileInput$);
+});
 
 /** Store a reference to the composer file input element. */
 export const setComposerFileInput$ = command(

@@ -17,7 +17,9 @@ function getInitialTab(): ScheduleDetailTab {
 
 const internalTab$ = state<ScheduleDetailTab>(DEFAULT_TAB);
 
-export const scheduleDetailTab$ = computed((get) => get(internalTab$));
+export const scheduleDetailTab$ = computed((get) => {
+  return get(internalTab$);
+});
 
 export const setScheduleDetailTab$ = command(
   ({ set }, tab: ScheduleDetailTab) => {

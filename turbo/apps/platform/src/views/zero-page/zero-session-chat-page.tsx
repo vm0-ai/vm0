@@ -269,13 +269,15 @@ export function ZeroSessionChatPage({
                 </p>
               </div>
             )}
-            {messages.map((msg) => (
-              <ChatMessageRow
-                key={msg.id}
-                message={msg}
-                zeroAvatarSrc={zeroAvatarSrc}
-              />
-            ))}
+            {messages.map((msg) => {
+              return (
+                <ChatMessageRow
+                  key={msg.id}
+                  message={msg}
+                  zeroAvatarSrc={zeroAvatarSrc}
+                />
+              );
+            })}
             <div ref={scrollAnchorRef} />
           </div>
         </main>
@@ -290,7 +292,9 @@ export function ZeroSessionChatPage({
               onInputChange={setInput}
               onSend={handleSend}
               sending={sending}
-              onCancel={() => void cancelRun(pageSignal)}
+              onCancel={() => {
+                detach(cancelRun(pageSignal), Reason.DomCallback);
+              }}
               displayName={displayName}
               autoFocus={messages.length === 0}
             />
@@ -387,21 +391,26 @@ function UserMessage({ message }: { message: UserChatMessage }) {
 
   // Merge explicit attachments with those parsed from content
   const allAttachments = [
-    ...(message.attachments ?? []).map((a) => ({
-      filename: a.filename,
-      url: a.url,
-      isImage: a.contentType.startsWith("image/"),
-    })),
+    ...(message.attachments ?? []).map((a) => {
+      return {
+        filename: a.filename,
+        url: a.url,
+        isImage: a.contentType.startsWith("image/"),
+      };
+    }),
     ...parsed
-      .filter(
-        (p) =>
-          !(message.attachments ?? []).some((a) => a.filename === p.filename),
-      )
-      .map((p) => ({
-        filename: p.filename,
-        url: p.url,
-        isImage: isImageFilename(p.filename),
-      })),
+      .filter((p) => {
+        return !(message.attachments ?? []).some((a) => {
+          return a.filename === p.filename;
+        });
+      })
+      .map((p) => {
+        return {
+          filename: p.filename,
+          url: p.url,
+          isImage: isImageFilename(p.filename),
+        };
+      }),
   ];
 
   return (
@@ -415,12 +424,14 @@ function UserMessage({ message }: { message: UserChatMessage }) {
             </div>
             {allAttachments.length > 0 && (
               <div className="border-t border-foreground/10 px-3 py-2.5 flex flex-wrap gap-2">
-                {allAttachments.map((a) =>
-                  a.isImage ? (
+                {allAttachments.map((a) => {
+                  return a.isImage ? (
                     <button
                       key={a.url}
                       type="button"
-                      onClick={() => setLightboxUrl(a.url)}
+                      onClick={() => {
+                        return setLightboxUrl(a.url);
+                      }}
                       className="group relative rounded-lg overflow-hidden border border-foreground/10 hover:border-foreground/25 transition-colors"
                     >
                       <img
@@ -441,8 +452,8 @@ function UserMessage({ message }: { message: UserChatMessage }) {
                       filename={a.filename}
                       url={a.url}
                     />
-                  ),
-                )}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -609,7 +620,9 @@ function CollapsibleTimeline({
     <div className="mb-6">
       <button
         type="button"
-        onClick={() => toggleExpanded(messageId)}
+        onClick={() => {
+          return toggleExpanded(messageId);
+        }}
         className="flex items-center justify-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors duration-150"
       >
         <IconChevronDown
@@ -631,22 +644,24 @@ function CollapsibleTimeline({
               <div className="w-px h-full zero-dashed-line" />
             </div>
           )}
-          {items.map((summary) => (
-            <p
-              key={summary}
-              className="flex items-center gap-2 min-w-0 text-xs text-muted-foreground truncate"
-            >
-              <span className="h-3 w-3 shrink-0 flex items-center justify-center relative z-[1] rounded-full bg-card">
-                <span
-                  className="text-[8px] leading-none text-foreground/30"
-                  aria-hidden
-                >
-                  ●
+          {items.map((summary) => {
+            return (
+              <p
+                key={summary}
+                className="flex items-center gap-2 min-w-0 text-xs text-muted-foreground truncate"
+              >
+                <span className="h-3 w-3 shrink-0 flex items-center justify-center relative z-[1] rounded-full bg-card">
+                  <span
+                    className="text-[8px] leading-none text-foreground/30"
+                    aria-hidden
+                  >
+                    ●
+                  </span>
                 </span>
-              </span>
-              <span className="truncate">{summary}</span>
-            </p>
-          ))}
+                <span className="truncate">{summary}</span>
+              </p>
+            );
+          })}
         </div>
       )}
     </div>
@@ -843,7 +858,9 @@ function StaticAssistantMessage({
                     className="inline-flex items-center gap-1 text-amber-500 underline underline-offset-2 hover:text-amber-400"
                     onClick={() => {
                       setTab("providers");
-                      setOrgManageOpen(true, pageSignal).catch(() => undefined);
+                      setOrgManageOpen(true, pageSignal).catch(() => {
+                        return undefined;
+                      });
                     }}
                   >
                     Set one up in Workspace Settings

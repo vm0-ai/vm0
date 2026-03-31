@@ -17,9 +17,9 @@ async function getSecurityHeaders(): Promise<
     throw new Error("headers() function not found in Next.js config");
   }
   const headerEntries = await config.headers();
-  const catchAllEntry = headerEntries.find(
-    (entry: { source: string }) => entry.source === "/(.*)",
-  );
+  const catchAllEntry = headerEntries.find((entry: { source: string }) => {
+    return entry.source === "/(.*)";
+  });
   return catchAllEntry?.headers ?? [];
 }
 
@@ -27,13 +27,17 @@ function findHeader(
   headers: Array<{ key: string; value: string }>,
   name: string,
 ): string | undefined {
-  return headers.find((h) => h.key === name)?.value;
+  return headers.find((h) => {
+    return h.key === name;
+  })?.value;
 }
 
 describe("Security Response Headers", () => {
   it("should include all 5 ASVS-required security headers", async () => {
     const headers = await getSecurityHeaders();
-    const headerNames = headers.map((h) => h.key);
+    const headerNames = headers.map((h) => {
+      return h.key;
+    });
 
     expect(headerNames).toContain("X-Frame-Options");
     expect(headerNames).toContain("X-Content-Type-Options");

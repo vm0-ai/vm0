@@ -7,7 +7,13 @@ export const pdf4meHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("PDF4me does not support OAuth — use API key auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "PDF4ME_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "PDF4ME_TOKEN";
+  },
 };

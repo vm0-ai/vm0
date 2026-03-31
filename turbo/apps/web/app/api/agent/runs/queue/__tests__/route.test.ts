@@ -138,12 +138,12 @@ describe("GET /api/agent/runs/queue", () => {
     expect(response.status).toBe(200);
     expect(data.queue).toHaveLength(2);
 
-    const ownEntry = data.queue.find(
-      (e: { runId: string | null }) => e.runId !== null,
-    );
-    const otherEntry = data.queue.find(
-      (e: { runId: string | null }) => e.runId === null,
-    );
+    const ownEntry = data.queue.find((e: { runId: string | null }) => {
+      return e.runId !== null;
+    });
+    const otherEntry = data.queue.find((e: { runId: string | null }) => {
+      return e.runId === null;
+    });
 
     // Own run should include real data and runId
     expect(ownEntry).toBeDefined();
@@ -187,12 +187,12 @@ describe("GET /api/agent/runs/queue", () => {
 
     expect(response.status).toBe(200);
 
-    const ownEntry = data.queue.find(
-      (e: { isOwner: boolean }) => e.isOwner === true,
-    );
-    const otherEntry = data.queue.find(
-      (e: { isOwner: boolean }) => e.isOwner === false,
-    );
+    const ownEntry = data.queue.find((e: { isOwner: boolean }) => {
+      return e.isOwner === true;
+    });
+    const otherEntry = data.queue.find((e: { isOwner: boolean }) => {
+      return e.isOwner === false;
+    });
 
     // Own run should include prompt
     expect(ownEntry.prompt).toBe("my-prompt-content");
@@ -299,12 +299,12 @@ describe("GET /api/agent/runs/queue", () => {
     expect(response.status).toBe(200);
     expect(data.runningTasks).toHaveLength(2);
 
-    const ownTask = data.runningTasks.find(
-      (t: { isOwner: boolean }) => t.isOwner === true,
-    );
-    const otherTask = data.runningTasks.find(
-      (t: { isOwner: boolean }) => t.isOwner === false,
-    );
+    const ownTask = data.runningTasks.find((t: { isOwner: boolean }) => {
+      return t.isOwner === true;
+    });
+    const otherTask = data.runningTasks.find((t: { isOwner: boolean }) => {
+      return t.isOwner === false;
+    });
 
     expect(ownTask.runId).toBeTruthy();
     expect(ownTask.agentName).toBeTruthy();

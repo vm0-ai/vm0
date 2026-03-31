@@ -46,7 +46,9 @@ Examples:
         instructionsFile?: string;
       }) => {
         const customSkills = options.skills
-          ? options.skills.split(",").map((s) => s.trim())
+          ? options.skills.split(",").map((s) => {
+              return s.trim();
+            })
           : undefined;
 
         const agent = await createZeroAgent({
@@ -57,7 +59,9 @@ Examples:
         });
 
         if (options.connectors) {
-          const connectors = options.connectors.split(",").map((s) => s.trim());
+          const connectors = options.connectors.split(",").map((s) => {
+            return s.trim();
+          });
           await setZeroAgentUserConnectors(agent.agentId, connectors);
         }
 

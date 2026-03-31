@@ -4,11 +4,13 @@ import { afterAll, afterEach, beforeAll, vi } from "vitest";
 import { mockedClerk } from "../__tests__/mock-auth.ts";
 import { clearAllDetached } from "../signals/utils.ts";
 
-vi.mock("@clerk/clerk-js", () => ({
-  Clerk: function MockClerk() {
-    return mockedClerk;
-  },
-}));
+vi.mock("@clerk/clerk-js", () => {
+  return {
+    Clerk: function MockClerk() {
+      return mockedClerk;
+    },
+  };
+});
 
 vi.hoisted(() => {
   vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY", "test_key");

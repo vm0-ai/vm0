@@ -129,12 +129,13 @@ export async function POST(
       ];
       const hasBotMention =
         installation.botUsername &&
-        allEntities.some(
-          (e) =>
+        allEntities.some((e) => {
+          return (
             e.type === "mention" &&
             mentionSource.slice(e.offset, e.offset + e.length).toLowerCase() ===
-              `@${installation.botUsername?.toLowerCase()}`,
-        );
+              `@${installation.botUsername?.toLowerCase()}`
+          );
+        });
 
       // Check if reply to bot's message
       const isReplyToBot = message.reply_to_message?.from?.is_bot === true;

@@ -19,7 +19,9 @@ function handleSetSecret(body: {
   description?: string;
 }) {
   const now = new Date().toISOString();
-  const existing = mockSecrets.find((s) => s.name === body.name);
+  const existing = mockSecrets.find((s) => {
+    return s.name === body.name;
+  });
   const created = !existing;
 
   const secret: SecretResponse = {
@@ -32,7 +34,9 @@ function handleSetSecret(body: {
   };
 
   if (existing) {
-    mockSecrets = mockSecrets.map((s) => (s.name === body.name ? secret : s));
+    mockSecrets = mockSecrets.map((s) => {
+      return s.name === body.name ? secret : s;
+    });
   } else {
     mockSecrets.push(secret);
   }

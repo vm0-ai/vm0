@@ -33,9 +33,15 @@ export const docusignHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.DOCUSIGN_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.DOCUSIGN_OAUTH_CLIENT_SECRET,
+  getClientId: (e) => {
+    return e.DOCUSIGN_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.DOCUSIGN_OAUTH_CLIENT_SECRET;
+  },
   getSecretName: getDocuSignSecretName,
-  getRefreshSecretName: () => "DOCUSIGN_REFRESH_TOKEN",
+  getRefreshSecretName: () => {
+    return "DOCUSIGN_REFRESH_TOKEN";
+  },
   refreshToken: refreshDocuSignToken,
 };

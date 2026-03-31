@@ -48,7 +48,9 @@ export function ClerkOrgSwitcher() {
       </div>
       <OrgManageDialog
         open={dialogOpen}
-        onOpenChange={(open) => void setDialogOpen(open, pageSignal)}
+        onOpenChange={(open) => {
+          return void setDialogOpen(open, pageSignal);
+        }}
       />
     </>
   );

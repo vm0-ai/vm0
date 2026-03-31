@@ -115,7 +115,9 @@ describe("compose command", () => {
 
     // Default spawn mock - succeeds immediately
     // This is needed because silentUpgradeAfterCommand uses spawn
-    mockSpawn.mockImplementation(() => createMockChildProcess(0) as never);
+    mockSpawn.mockImplementation(() => {
+      return createMockChildProcess(0) as never;
+    });
   });
 
   afterEach(() => {
@@ -900,12 +902,12 @@ agents:
         await composeCommand.parseAsync(["node", "cli", "vm0.yaml"]);
       }).rejects.toThrow("process.exit called");
 
-      const allErrors = mockConsoleError.mock.calls.map(
-        (call) => call[0] as string,
-      );
-      const hasFormatError = allErrors.some(
-        (err) => err.includes("vm0/") || err.includes("format"),
-      );
+      const allErrors = mockConsoleError.mock.calls.map((call) => {
+        return call[0] as string;
+      });
+      const hasFormatError = allErrors.some((err) => {
+        return err.includes("vm0/") || err.includes("format");
+      });
       expect(hasFormatError).toBe(true);
       expect(mockExit).toHaveBeenCalledWith(1);
     });
@@ -1001,9 +1003,15 @@ agents:
       await composeCommand.parseAsync(["node", "cli", "vm0.yaml"]);
 
       const allLogs = mockConsoleLog.mock.calls
-        .map((call) => call[0])
-        .filter((log): log is string => typeof log === "string");
-      const versionLog = allLogs.find((log) => log.includes("Version:"));
+        .map((call) => {
+          return call[0];
+        })
+        .filter((log): log is string => {
+          return typeof log === "string";
+        });
+      const versionLog = allLogs.find((log) => {
+        return log.includes("Version:");
+      });
       expect(versionLog).toBeDefined();
       expect(versionLog).toContain("a1b2c3d4");
       expect(versionLog).not.toContain(fullVersionId);
@@ -1037,9 +1045,15 @@ agents:
       await composeCommand.parseAsync(["node", "cli", "vm0.yaml"]);
 
       const allLogs = mockConsoleLog.mock.calls
-        .map((call) => call[0])
-        .filter((log): log is string => typeof log === "string");
-      const runHint = allLogs.find((log) => log.includes("vm0 run"));
+        .map((call) => {
+          return call[0];
+        })
+        .filter((log): log is string => {
+          return typeof log === "string";
+        });
+      const runHint = allLogs.find((log) => {
+        return log.includes("vm0 run");
+      });
       expect(runHint).toBeDefined();
       expect(runHint).toContain(":deadbeef");
     });
@@ -1089,7 +1103,9 @@ agents:
       );
 
       // Mock spawn - use mockImplementation to create fresh EventEmitter each call
-      mockSpawn.mockImplementation(() => createMockChildProcess(0) as never);
+      mockSpawn.mockImplementation(() => {
+        return createMockChildProcess(0) as never;
+      });
 
       await composeCommand.parseAsync([
         "node",
@@ -1111,7 +1127,9 @@ agents:
       );
 
       // Mock spawn - use mockImplementation to create fresh EventEmitter each call
-      mockSpawn.mockImplementation(() => createMockChildProcess(0) as never);
+      mockSpawn.mockImplementation(() => {
+        return createMockChildProcess(0) as never;
+      });
 
       await composeCommand.parseAsync(["node", "cli", "vm0.yaml"]);
 
@@ -1134,17 +1152,25 @@ agents:
 
       // Mock spawn to return success (exit code 0)
       // Use mockImplementation to create fresh EventEmitter each call
-      mockSpawn.mockImplementation(() => createMockChildProcess(0) as never);
+      mockSpawn.mockImplementation(() => {
+        return createMockChildProcess(0) as never;
+      });
 
       await composeCommand.parseAsync(["node", "cli", "vm0.yaml"]);
 
       // No whisper message should appear
       const allLogs = mockConsoleLog.mock.calls
-        .map((call) => call[0])
-        .filter((log): log is string => typeof log === "string");
-      expect(allLogs.some((log) => log.includes("auto upgrade failed"))).toBe(
-        false,
-      );
+        .map((call) => {
+          return call[0];
+        })
+        .filter((log): log is string => {
+          return typeof log === "string";
+        });
+      expect(
+        allLogs.some((log) => {
+          return log.includes("auto upgrade failed");
+        }),
+      ).toBe(false);
     });
 
     it("should show whisper when upgrade fails", async () => {
@@ -1156,19 +1182,29 @@ agents:
 
       // Mock spawn to return failure (exit code 1)
       // Use mockImplementation to create fresh EventEmitter each call
-      mockSpawn.mockImplementation(() => createMockChildProcess(1) as never);
+      mockSpawn.mockImplementation(() => {
+        return createMockChildProcess(1) as never;
+      });
 
       await composeCommand.parseAsync(["node", "cli", "vm0.yaml"]);
 
       // Whisper message should appear
       const allLogs = mockConsoleLog.mock.calls
-        .map((call) => call[0])
-        .filter((log): log is string => typeof log === "string");
-      expect(allLogs.some((log) => log.includes("auto upgrade failed"))).toBe(
-        true,
-      );
+        .map((call) => {
+          return call[0];
+        })
+        .filter((log): log is string => {
+          return typeof log === "string";
+        });
       expect(
-        allLogs.some((log) => log.includes("npm install -g @vm0/cli@latest")),
+        allLogs.some((log) => {
+          return log.includes("auto upgrade failed");
+        }),
+      ).toBe(true);
+      expect(
+        allLogs.some((log) => {
+          return log.includes("npm install -g @vm0/cli@latest");
+        }),
       ).toBe(true);
     });
 
@@ -1180,7 +1216,9 @@ agents:
         }),
       );
 
-      mockSpawn.mockImplementation(() => createMockChildProcess(0) as never);
+      mockSpawn.mockImplementation(() => {
+        return createMockChildProcess(0) as never;
+      });
 
       await composeCommand.parseAsync(["node", "cli", "vm0.yaml"]);
 
@@ -1198,7 +1236,9 @@ agents:
         }),
       );
 
-      mockSpawn.mockImplementation(() => createMockChildProcess(0) as never);
+      mockSpawn.mockImplementation(() => {
+        return createMockChildProcess(0) as never;
+      });
 
       await composeCommand.parseAsync(["node", "cli", "vm0.yaml"]);
 
@@ -1207,11 +1247,17 @@ agents:
 
       // No whisper for unsupported PM
       const allLogs = mockConsoleLog.mock.calls
-        .map((call) => call[0])
-        .filter((log): log is string => typeof log === "string");
-      expect(allLogs.some((log) => log.includes("auto upgrade failed"))).toBe(
-        false,
-      );
+        .map((call) => {
+          return call[0];
+        })
+        .filter((log): log is string => {
+          return typeof log === "string";
+        });
+      expect(
+        allLogs.some((log) => {
+          return log.includes("auto upgrade failed");
+        }),
+      ).toBe(false);
     });
 
     it("should use pnpm when installed via pnpm", async () => {
@@ -1224,7 +1270,9 @@ agents:
         }),
       );
 
-      mockSpawn.mockImplementation(() => createMockChildProcess(0) as never);
+      mockSpawn.mockImplementation(() => {
+        return createMockChildProcess(0) as never;
+      });
 
       await composeCommand.parseAsync(["node", "cli", "vm0.yaml"]);
 
@@ -1302,16 +1350,28 @@ agents:
 
       // Should not have "Uploading compose..." or "Compose created:" messages
       const allLogs = mockConsoleLog.mock.calls
-        .map((call) => call[0])
-        .filter((log): log is string => typeof log === "string");
+        .map((call) => {
+          return call[0];
+        })
+        .filter((log): log is string => {
+          return typeof log === "string";
+        });
 
-      expect(allLogs.some((log) => log.includes("Uploading compose"))).toBe(
-        false,
-      );
-      expect(allLogs.some((log) => log.includes("Compose created:"))).toBe(
-        false,
-      );
-      expect(allLogs.some((log) => log.includes("Run your agent"))).toBe(false);
+      expect(
+        allLogs.some((log) => {
+          return log.includes("Uploading compose");
+        }),
+      ).toBe(false);
+      expect(
+        allLogs.some((log) => {
+          return log.includes("Compose created:");
+        }),
+      ).toBe(false);
+      expect(
+        allLogs.some((log) => {
+          return log.includes("Run your agent");
+        }),
+      ).toBe(false);
     });
 
     it("should output JSON error on failure", async () => {
@@ -1358,11 +1418,23 @@ agents:
 
       // No prompt-related output should appear
       const allLogs = mockConsoleLog.mock.calls
-        .map((call) => call[0])
-        .filter((log): log is string => typeof log === "string");
+        .map((call) => {
+          return call[0];
+        })
+        .filter((log): log is string => {
+          return typeof log === "string";
+        });
 
-      expect(allLogs.some((log) => log.includes("confirm"))).toBe(false);
-      expect(allLogs.some((log) => log.includes("Approve"))).toBe(false);
+      expect(
+        allLogs.some((log) => {
+          return log.includes("confirm");
+        }),
+      ).toBe(false);
+      expect(
+        allLogs.some((log) => {
+          return log.includes("Approve");
+        }),
+      ).toBe(false);
     });
 
     it("should not call checkMissingItems in --json mode", async () => {
@@ -1459,11 +1531,17 @@ agents:
 
       // Should show deprecation warning
       const errorCalls = mockConsoleError.mock.calls
-        .map((call) => call[0])
-        .filter((log): log is string => typeof log === "string");
+        .map((call) => {
+          return call[0];
+        })
+        .filter((log): log is string => {
+          return typeof log === "string";
+        });
 
       expect(
-        errorCalls.some((log) => log.includes("--porcelain is deprecated")),
+        errorCalls.some((log) => {
+          return log.includes("--porcelain is deprecated");
+        }),
       ).toBe(true);
     });
   });
@@ -1512,7 +1590,9 @@ describe("GitHub URL compose", () => {
     );
 
     // Default spawn mock
-    mockSpawn.mockImplementation(() => createMockChildProcess(0) as never);
+    mockSpawn.mockImplementation(() => {
+      return createMockChildProcess(0) as never;
+    });
   });
 
   afterEach(() => {
@@ -2148,9 +2228,17 @@ agents:
 
       // Should not show the "already exists" warning
       const allLogs = mockConsoleLog.mock.calls
-        .map((call) => call[0])
-        .filter((log): log is string => typeof log === "string");
-      expect(allLogs.some((log) => log.includes("already exists"))).toBe(false);
+        .map((call) => {
+          return call[0];
+        })
+        .filter((log): log is string => {
+          return typeof log === "string";
+        });
+      expect(
+        allLogs.some((log) => {
+          return log.includes("already exists");
+        }),
+      ).toBe(false);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Compose created"),
@@ -2254,15 +2342,23 @@ agents:
 
       // Should not have "Downloading from GitHub..." message
       const allLogs = mockConsoleLog.mock.calls
-        .map((call) => call[0])
-        .filter((log): log is string => typeof log === "string");
+        .map((call) => {
+          return call[0];
+        })
+        .filter((log): log is string => {
+          return typeof log === "string";
+        });
 
       expect(
-        allLogs.some((log) => log.includes("Downloading from GitHub")),
+        allLogs.some((log) => {
+          return log.includes("Downloading from GitHub");
+        }),
       ).toBe(false);
-      expect(allLogs.some((log) => log.includes("Uploading compose"))).toBe(
-        false,
-      );
+      expect(
+        allLogs.some((log) => {
+          return log.includes("Uploading compose");
+        }),
+      ).toBe(false);
     });
 
     it("should output JSON error for GitHub URL failures", async () => {

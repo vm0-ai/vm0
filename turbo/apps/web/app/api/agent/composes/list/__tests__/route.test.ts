@@ -64,7 +64,9 @@ describe("GET /api/agent/composes/list", () => {
     expect(data.composes).toHaveLength(2);
 
     // Check that both agents are in the list
-    const names = data.composes.map((c: { name: string }) => c.name);
+    const names = data.composes.map((c: { name: string }) => {
+      return c.name;
+    });
     expect(names).toContain(agentName1);
     expect(names).toContain(agentName2);
 
@@ -98,7 +100,9 @@ describe("GET /api/agent/composes/list", () => {
 
     expect(response.status).toBe(200);
     // Should include user's compose
-    const names = data.composes.map((c: { name: string }) => c.name);
+    const names = data.composes.map((c: { name: string }) => {
+      return c.name;
+    });
     expect(names).toContain(userAgentName);
     // Should not include other user's compose
     expect(names).not.toContain(otherAgentName);
@@ -111,7 +115,9 @@ describe("GET /api/agent/composes/list", () => {
     const otherResponse = await GET(otherRequest);
     const otherData = await otherResponse.json();
 
-    const otherNames = otherData.composes.map((c: { name: string }) => c.name);
+    const otherNames = otherData.composes.map((c: { name: string }) => {
+      return c.name;
+    });
     expect(otherNames).toContain(otherAgentName);
     expect(otherNames).not.toContain(userAgentName);
   });
@@ -129,7 +135,9 @@ describe("GET /api/agent/composes/list", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    const names = data.composes.map((c: { name: string }) => c.name);
+    const names = data.composes.map((c: { name: string }) => {
+      return c.name;
+    });
     expect(names).toContain(agentName);
   });
 });

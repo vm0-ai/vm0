@@ -7,7 +7,13 @@ export const productlaneHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Productlane does not support OAuth — use API key auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "PRODUCTLANE_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "PRODUCTLANE_TOKEN";
+  },
 };

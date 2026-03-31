@@ -59,7 +59,9 @@ export function classifyRoute(pathname: string): RouteKind {
 const PROTECTED_SKIP_PREFIXES = ["/cli-auth"] as const;
 
 export function isProtectedSkipRoute(pathname: string): boolean {
-  return PROTECTED_SKIP_PREFIXES.some((p) => pathname.startsWith(p));
+  return PROTECTED_SKIP_PREFIXES.some((p) => {
+    return pathname.startsWith(p);
+  });
 }
 
 // ---------------------------------------------------------------------------

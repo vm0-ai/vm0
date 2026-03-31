@@ -81,7 +81,9 @@ describe("GET /api/zero/logs", () => {
       expect(data.data).toHaveLength(3);
 
       // Verify all run IDs are present (order depends on creation timing)
-      const returnedIds = data.data.map((r: { id: string }) => r.id);
+      const returnedIds = data.data.map((r: { id: string }) => {
+        return r.id;
+      });
       for (const runId of runIds) {
         expect(returnedIds).toContain(runId);
       }
@@ -114,8 +116,12 @@ describe("GET /api/zero/logs", () => {
 
       // Ensure no duplicate IDs between pages
       const allIds = [
-        ...data1.data.map((r: { id: string }) => r.id),
-        ...data2.data.map((r: { id: string }) => r.id),
+        ...data1.data.map((r: { id: string }) => {
+          return r.id;
+        }),
+        ...data2.data.map((r: { id: string }) => {
+          return r.id;
+        }),
       ];
       const uniqueIds = new Set(allIds);
       expect(uniqueIds.size).toBe(allIds.length);
@@ -269,7 +275,9 @@ describe("GET /api/zero/logs", () => {
     const data = await response.json();
 
     // Should only see own run, not other user's run
-    const returnedIds = data.data.map((r: { id: string }) => r.id);
+    const returnedIds = data.data.map((r: { id: string }) => {
+      return r.id;
+    });
     expect(returnedIds).toContain(myRunId);
     expect(returnedIds).not.toContain(otherRunId);
   });
@@ -340,7 +348,9 @@ describe("GET /api/zero/logs", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    const run = data.data.find((r: { id: string }) => r.id === runId);
+    const run = data.data.find((r: { id: string }) => {
+      return r.id === runId;
+    });
     expect(run).toBeDefined();
     expect(run.displayName).toBe("My Display Name");
   });
@@ -356,7 +366,9 @@ describe("GET /api/zero/logs", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    const run = data.data.find((r: { id: string }) => r.id === runId);
+    const run = data.data.find((r: { id: string }) => {
+      return r.id === runId;
+    });
     expect(run).toBeDefined();
     expect(run.displayName).toBeNull();
   });
@@ -406,9 +418,9 @@ describe("GET /api/zero/logs", () => {
       const data = await response.json();
 
       expect(response.status).toBe(200);
-      const run = data.data.find(
-        (r: { triggerSource: string }) => r.triggerSource === "slack",
-      );
+      const run = data.data.find((r: { triggerSource: string }) => {
+        return r.triggerSource === "slack";
+      });
       expect(run).toBeDefined();
       expect(run.triggerSource).toBe("slack");
     });
@@ -432,9 +444,9 @@ describe("GET /api/zero/logs", () => {
       const data = await response.json();
 
       expect(response.status).toBe(200);
-      const run = data.data.find(
-        (r: { triggerSource: string }) => r.triggerSource === "schedule",
-      );
+      const run = data.data.find((r: { triggerSource: string }) => {
+        return r.triggerSource === "schedule";
+      });
       expect(run).toBeDefined();
       expect(run.triggerSource).toBe("schedule");
       expect(run.scheduleId).toBe(schedule.id);
@@ -453,9 +465,9 @@ describe("GET /api/zero/logs", () => {
       const data = await response.json();
 
       expect(response.status).toBe(200);
-      const run = data.data.find(
-        (r: { triggerSource: string }) => r.triggerSource === "web",
-      );
+      const run = data.data.find((r: { triggerSource: string }) => {
+        return r.triggerSource === "web";
+      });
       expect(run).toBeDefined();
       expect(run.scheduleId).toBeNull();
     });
@@ -474,9 +486,9 @@ describe("GET /api/zero/logs", () => {
       const data = await response.json();
 
       expect(response.status).toBe(200);
-      const run = data.data.find(
-        (r: { triggerSource: string }) => r.triggerSource === "web",
-      );
+      const run = data.data.find((r: { triggerSource: string }) => {
+        return r.triggerSource === "web";
+      });
       expect(run).toBeDefined();
       expect(run.triggerSource).toBe("web");
     });

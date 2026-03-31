@@ -167,7 +167,9 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
     expect(firstCall.channel).toBe("C-TARGET-CHANNEL");
 
     // Verify blocks use markdown block type (from buildAgentResponseMessage)
-    const markdownBlock = firstCall.blocks.find((b) => b.type === "markdown");
+    const markdownBlock = firstCall.blocks.find((b) => {
+      return b.type === "markdown";
+    });
     expect(markdownBlock).toBeDefined();
 
     // Verify no header — content should be the raw output without a title prefix
@@ -176,7 +178,9 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
     expect(markdownText).not.toContain("Scheduled run for");
 
     // Verify audit link is present as a context block
-    const contextBlock = firstCall.blocks.find((b) => b.type === "context");
+    const contextBlock = firstCall.blocks.find((b) => {
+      return b.type === "context";
+    });
     expect(contextBlock).toBeDefined();
     expect(contextBlock).toMatchObject({
       type: "context",
@@ -280,7 +284,9 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
     expect(call.text).toContain("failed");
 
     // Verify failure message uses markdown block with error content
-    const markdownBlock = call.blocks.find((b) => b.type === "markdown");
+    const markdownBlock = call.blocks.find((b) => {
+      return b.type === "markdown";
+    });
     expect(markdownBlock).toBeDefined();
     const markdownText = (markdownBlock as { type: "markdown"; text: string })
       .text;
@@ -288,7 +294,9 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
     expect(markdownText).toContain("Agent crashed");
 
     // Verify audit link is present
-    const contextBlock = call.blocks.find((b) => b.type === "context");
+    const contextBlock = call.blocks.find((b) => {
+      return b.type === "context";
+    });
     expect(contextBlock).toBeDefined();
     expect(contextBlock).toMatchObject({
       type: "context",
@@ -342,10 +350,14 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
     };
 
     // Should have a divider followed by an attribution context block
-    const dividerBlocks = firstCall.blocks.filter((b) => b.type === "divider");
+    const dividerBlocks = firstCall.blocks.filter((b) => {
+      return b.type === "divider";
+    });
     expect(dividerBlocks).toHaveLength(1);
 
-    const contextBlocks = firstCall.blocks.filter((b) => b.type === "context");
+    const contextBlocks = firstCall.blocks.filter((b) => {
+      return b.type === "context";
+    });
     // audit context + attribution context
     expect(contextBlocks).toHaveLength(2);
 
@@ -399,7 +411,9 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
       blocks: (Block | KnownBlock)[];
     };
 
-    const contextBlocks = call.blocks.filter((b) => b.type === "context");
+    const contextBlocks = call.blocks.filter((b) => {
+      return b.type === "context";
+    });
     expect(contextBlocks).toHaveLength(2);
 
     const attrText = (contextBlocks[1] as { elements: { text: string }[] })

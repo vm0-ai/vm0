@@ -22,7 +22,12 @@ export const agentRuns = pgTable(
     userId: text("user_id").notNull(), // Clerk user ID - owner of this run
     agentComposeVersionId: varchar("agent_compose_version_id", {
       length: 64,
-    }).references(() => agentComposeVersions.id, { onDelete: "set null" }),
+    }).references(
+      () => {
+        return agentComposeVersions.id;
+      },
+      { onDelete: "set null" },
+    ),
     resumedFromCheckpointId: uuid("resumed_from_checkpoint_id"),
     continuedFromSessionId: uuid("continued_from_session_id"),
     status: varchar("status", { length: 20 }).notNull(),
@@ -43,27 +48,29 @@ export const agentRuns = pgTable(
     lastHeartbeatAt: timestamp("last_heartbeat_at"),
     runnerGroup: varchar("runner_group", { length: 255 }),
   },
-  (table) => [
-    // Composite index for user listing with time-based sorting
-    index("idx_agent_runs_user_created").on(
-      table.userId,
-      table.createdAt.desc(),
-    ),
-    index("idx_agent_runs_org").on(table.orgId),
-    // Composite index for status-based heartbeat queries
-    index("idx_agent_runs_status_heartbeat").on(
-      table.status,
-      table.lastHeartbeatAt,
-    ),
-    // Partial index for cron cleanup (only running status)
-    index("idx_agent_runs_running_heartbeat")
-      .on(table.lastHeartbeatAt)
-      .where(sql`status = 'running'`),
-    // Composite index for org+status queries (concurrency checks, queue listing)
-    index("idx_agent_runs_org_status_created").on(
-      table.orgId,
-      table.status,
-      table.createdAt.desc(),
-    ),
-  ],
+  (table) => {
+    return [
+      // Composite index for user listing with time-based sorting
+      index("idx_agent_runs_user_created").on(
+        table.userId,
+        table.createdAt.desc(),
+      ),
+      index("idx_agent_runs_org").on(table.orgId),
+      // Composite index for status-based heartbeat queries
+      index("idx_agent_runs_status_heartbeat").on(
+        table.status,
+        table.lastHeartbeatAt,
+      ),
+      // Partial index for cron cleanup (only running status)
+      index("idx_agent_runs_running_heartbeat")
+        .on(table.lastHeartbeatAt)
+        .where(sql`status = 'running'`),
+      // Composite index for org+status queries (concurrency checks, queue listing)
+      index("idx_agent_runs_org_status_created").on(
+        table.orgId,
+        table.status,
+        table.createdAt.desc(),
+      ),
+    ];
+  },
 );

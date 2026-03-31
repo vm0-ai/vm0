@@ -17,7 +17,9 @@ import {
 
 const context = testContext();
 
-const noop$ = command(() => void 0);
+const noop$ = command(() => {
+  return void 0;
+});
 
 async function setupTalkRoutes(pathname: string) {
   context.store.set(setRootSignal$, context.signal);

@@ -41,11 +41,13 @@ const router = tsr.router(zeroSkillsCollectionContract, {
 
     return {
       status: 200 as const,
-      body: rows.map((r) => ({
-        name: r.name,
-        displayName: r.displayName ?? null,
-        description: r.description ?? null,
-      })),
+      body: rows.map((r) => {
+        return {
+          name: r.name,
+          displayName: r.displayName ?? null,
+          description: r.description ?? null,
+        };
+      }),
     };
   },
 

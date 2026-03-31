@@ -40,8 +40,12 @@ function PricingCard({
         transform: isHovered ? "translateY(-2px)" : "translateY(0)",
         position: "relative",
       }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      onMouseEnter={() => {
+        return setIsHovered(true);
+      }}
+      onMouseLeave={() => {
+        return setIsHovered(false);
+      }}
     >
       <h3
         style={{
@@ -101,33 +105,35 @@ function PricingCard({
           color: "var(--text-secondary)",
         }}
       >
-        {features.map((feature, index) => (
-          <li
-            key={index}
-            style={{
-              marginBottom: "12px",
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              letterSpacing: "0.1px",
-            }}
-          >
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#ed4e01"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              style={{ flexShrink: 0 }}
+        {features.map((feature, index) => {
+          return (
+            <li
+              key={index}
+              style={{
+                marginBottom: "12px",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                letterSpacing: "0.1px",
+              }}
             >
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-            <span>{feature}</span>
-          </li>
-        ))}
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#ed4e01"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                style={{ flexShrink: 0 }}
+              >
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              <span>{feature}</span>
+            </li>
+          );
+        })}
       </ul>
       <a
         href={buttonHref}
@@ -714,7 +720,9 @@ function FAQItem({ question, answer }: { question: string; answer: string }) {
         transition: "border-color 0.2s ease",
         cursor: "pointer",
       }}
-      onClick={() => setIsExpanded(!isExpanded)}
+      onClick={() => {
+        return setIsExpanded(!isExpanded);
+      }}
       onMouseEnter={(e) => {
         e.currentTarget.style.borderColor = "var(--border-light)";
       }}

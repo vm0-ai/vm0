@@ -23,17 +23,24 @@ export const userConnectors = pgTable(
     userId: text("user_id").notNull(),
     agentId: uuid("agent_id")
       .notNull()
-      .references(() => zeroAgents.id, { onDelete: "cascade" }),
+      .references(
+        () => {
+          return zeroAgents.id;
+        },
+        { onDelete: "cascade" },
+      ),
     connectorType: varchar("connector_type", { length: 50 }).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
-  (table) => [
-    uniqueIndex("idx_user_connectors_unique").on(
-      table.orgId,
-      table.userId,
-      table.agentId,
-      table.connectorType,
-    ),
-    index("idx_user_connectors_agent_user").on(table.agentId, table.userId),
-  ],
+  (table) => {
+    return [
+      uniqueIndex("idx_user_connectors_unique").on(
+        table.orgId,
+        table.userId,
+        table.agentId,
+        table.connectorType,
+      ),
+      index("idx_user_connectors_agent_user").on(table.agentId, table.userId),
+    ];
+  },
 );

@@ -21,28 +21,40 @@ export const telegramThreadSessions = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     telegramUserLinkId: uuid("telegram_user_link_id")
       .notNull()
-      .references(() => telegramUserLinks.id, { onDelete: "cascade" }),
+      .references(
+        () => {
+          return telegramUserLinks.id;
+        },
+        { onDelete: "cascade" },
+      ),
     chatId: varchar("chat_id", { length: 255 }).notNull(),
     rootMessageId: varchar("root_message_id", { length: 255 }).notNull(),
     agentSessionId: uuid("agent_session_id")
       .notNull()
-      .references(() => agentSessions.id, { onDelete: "cascade" }),
+      .references(
+        () => {
+          return agentSessions.id;
+        },
+        { onDelete: "cascade" },
+      ),
     lastProcessedMessageId: varchar("last_processed_message_id", {
       length: 255,
     }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (table) => [
-    // Each chat + user link + root message combination can only have one session
-    uniqueIndex("idx_telegram_thread_sessions_chat_user_link").on(
-      table.telegramUserLinkId,
-      table.chatId,
-      table.rootMessageId,
-    ),
-    // Index for looking up sessions by user link
-    index("idx_telegram_thread_sessions_user_link").on(
-      table.telegramUserLinkId,
-    ),
-  ],
+  (table) => {
+    return [
+      // Each chat + user link + root message combination can only have one session
+      uniqueIndex("idx_telegram_thread_sessions_chat_user_link").on(
+        table.telegramUserLinkId,
+        table.chatId,
+        table.rootMessageId,
+      ),
+      // Index for looking up sessions by user link
+      index("idx_telegram_thread_sessions_user_link").on(
+        table.telegramUserLinkId,
+      ),
+    ];
+  },
 );

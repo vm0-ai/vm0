@@ -253,27 +253,27 @@ describe("resolveSkillRef", () => {
   });
 
   it("throws on empty string", () => {
-    expect(() => resolveSkillRef("")).toThrow(
-      "Skill reference cannot be empty",
-    );
+    expect(() => {
+      return resolveSkillRef("");
+    }).toThrow("Skill reference cannot be empty");
   });
 
   it("throws on whitespace-only string", () => {
-    expect(() => resolveSkillRef("   ")).toThrow(
-      "Skill reference cannot be empty",
-    );
+    expect(() => {
+      return resolveSkillRef("   ");
+    }).toThrow("Skill reference cannot be empty");
   });
 
   it("throws on non-GitHub URL", () => {
-    expect(() => resolveSkillRef("https://example.com/foo")).toThrow(
-      "Invalid skill URL",
-    );
+    expect(() => {
+      return resolveSkillRef("https://example.com/foo");
+    }).toThrow("Invalid skill URL");
   });
 
   it("throws on GitHub blob URL", () => {
-    expect(() =>
-      resolveSkillRef("https://github.com/owner/repo/blob/main/file.ts"),
-    ).toThrow("Invalid skill URL");
+    expect(() => {
+      return resolveSkillRef("https://github.com/owner/repo/blob/main/file.ts");
+    }).toThrow("Invalid skill URL");
   });
 });
 
@@ -302,31 +302,39 @@ describe("resolveFirewallRef", () => {
   });
 
   it("throws on empty string", () => {
-    expect(() => resolveFirewallRef("")).toThrow(
-      "Firewall reference cannot be empty",
-    );
+    expect(() => {
+      return resolveFirewallRef("");
+    }).toThrow("Firewall reference cannot be empty");
   });
 
   it("throws on non-GitHub URL", () => {
-    expect(() => resolveFirewallRef("https://example.com/foo")).toThrow(
-      "Invalid firewall URL",
-    );
+    expect(() => {
+      return resolveFirewallRef("https://example.com/foo");
+    }).toThrow("Invalid firewall URL");
   });
 
   it("throws on path traversal attempt", () => {
-    expect(() => resolveFirewallRef("../../etc/passwd")).toThrow(
-      "Invalid firewall URL",
-    );
+    expect(() => {
+      return resolveFirewallRef("../../etc/passwd");
+    }).toThrow("Invalid firewall URL");
   });
 
   it("throws on bare name with special characters", () => {
-    expect(() => resolveFirewallRef("..")).toThrow("Invalid firewall name");
-    expect(() => resolveFirewallRef("-bad")).toThrow("Invalid firewall name");
-    expect(() => resolveFirewallRef(".bad")).toThrow("Invalid firewall name");
+    expect(() => {
+      return resolveFirewallRef("..");
+    }).toThrow("Invalid firewall name");
+    expect(() => {
+      return resolveFirewallRef("-bad");
+    }).toThrow("Invalid firewall name");
+    expect(() => {
+      return resolveFirewallRef(".bad");
+    }).toThrow("Invalid firewall name");
   });
 
   it("throws on input with slashes that is not a valid GitHub URL", () => {
-    expect(() => resolveFirewallRef("a/b")).toThrow("Invalid firewall URL");
+    expect(() => {
+      return resolveFirewallRef("a/b");
+    }).toThrow("Invalid firewall URL");
   });
 
   it("accepts bare names with dots and underscores", () => {

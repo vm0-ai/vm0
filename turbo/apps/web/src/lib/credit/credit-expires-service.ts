@@ -106,7 +106,9 @@ export async function expireCredits(tx: Tx, orgId: string): Promise<number> {
 
   if (expired.length === 0) return 0;
 
-  const totalExpired = expired.reduce((sum, r) => sum + r.remaining, 0);
+  const totalExpired = expired.reduce((sum, r) => {
+    return sum + r.remaining;
+  }, 0);
 
   // Zero out all expired records
   for (const record of expired) {
@@ -166,8 +168,12 @@ export async function getExpiresRecordsSummary(orgId: string): Promise<{
 
   // Sum remaining for records expiring at the earliest date
   const expiringNextCycle = records
-    .filter((r) => r.expiresAt.getTime() === nextExpiryDate.getTime())
-    .reduce((sum, r) => sum + r.remaining, 0);
+    .filter((r) => {
+      return r.expiresAt.getTime() === nextExpiryDate.getTime();
+    })
+    .reduce((sum, r) => {
+      return sum + r.remaining;
+    }, 0);
 
   return { expiringNextCycle, nextExpiryDate };
 }

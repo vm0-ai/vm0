@@ -7,7 +7,13 @@ export const salesforceHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Salesforce does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "SALESFORCE_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "SALESFORCE_TOKEN";
+  },
 };

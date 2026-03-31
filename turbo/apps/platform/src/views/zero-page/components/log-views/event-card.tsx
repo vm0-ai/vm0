@@ -124,11 +124,13 @@ function CategoryPopover({
         className="w-80 max-h-64 overflow-y-auto p-3"
       >
         <div className="flex flex-wrap gap-1.5">
-          {items.map((item) => (
-            <span key={item} className="text-xs text-muted-foreground">
-              {item}
-            </span>
-          ))}
+          {items.map((item) => {
+            return (
+              <span key={item} className="text-xs text-muted-foreground">
+                {item}
+              </span>
+            );
+          })}
         </div>
       </PopoverContent>
     </Popover>
@@ -171,7 +173,9 @@ export function SystemInitContent({ eventData }: { eventData: EventData }) {
           icon={IconTerminal}
           label="commands"
           count={slashCommands.length}
-          items={slashCommands.map((cmd) => `/${cmd}`)}
+          items={slashCommands.map((cmd) => {
+            return `/${cmd}`;
+          })}
         />
       )}
     </div>
@@ -192,9 +196,9 @@ function ModelUsagePopover({
     }
   >;
 }) {
-  const entries = Object.entries(modelUsage).filter(
-    ([, usage]) => usage.inputTokens || usage.outputTokens,
-  );
+  const entries = Object.entries(modelUsage).filter(([, usage]) => {
+    return usage.inputTokens || usage.outputTokens;
+  });
 
   if (entries.length === 0) {
     return null;
@@ -211,19 +215,21 @@ function ModelUsagePopover({
         className="w-80 max-h-64 overflow-y-auto p-3"
       >
         <div className="space-y-1.5">
-          {entries.map(([model, usage]) => (
-            <div key={model} className="text-xs font-mono">
-              <div className="text-foreground font-medium">{model}</div>
-              <div className="text-muted-foreground pl-2">
-                {usage.inputTokens && (
-                  <div>in: {usage.inputTokens.toLocaleString()}</div>
-                )}
-                {usage.outputTokens && (
-                  <div>out: {usage.outputTokens.toLocaleString()}</div>
-                )}
+          {entries.map(([model, usage]) => {
+            return (
+              <div key={model} className="text-xs font-mono">
+                <div className="text-foreground font-medium">{model}</div>
+                <div className="text-muted-foreground pl-2">
+                  {usage.inputTokens && (
+                    <div>in: {usage.inputTokens.toLocaleString()}</div>
+                  )}
+                  {usage.outputTokens && (
+                    <div>out: {usage.outputTokens.toLocaleString()}</div>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </PopoverContent>
     </Popover>

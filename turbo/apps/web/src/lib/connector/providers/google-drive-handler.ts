@@ -6,8 +6,14 @@ import {
 } from "./google-oauth";
 
 export const googleDriveHandler: ProviderHandler = {
-  buildAuthUrl: (clientId, redirectUri, state) =>
-    buildGoogleAuthorizationUrl("google-drive", clientId, redirectUri, state),
+  buildAuthUrl: (clientId, redirectUri, state) => {
+    return buildGoogleAuthorizationUrl(
+      "google-drive",
+      clientId,
+      redirectUri,
+      state,
+    );
+  },
   async exchangeCode(clientId, clientSecret, code, redirectUri) {
     const result = await exchangeGoogleOAuthCode(
       "google-drive",
@@ -28,10 +34,24 @@ export const googleDriveHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.GOOGLE_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.GOOGLE_OAUTH_CLIENT_SECRET,
-  getSecretName: () => "GOOGLE_DRIVE_ACCESS_TOKEN",
-  getRefreshSecretName: () => "GOOGLE_DRIVE_REFRESH_TOKEN",
-  refreshToken: (clientId, clientSecret, refreshToken) =>
-    refreshGoogleToken("google-drive", clientId, clientSecret, refreshToken),
+  getClientId: (e) => {
+    return e.GOOGLE_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.GOOGLE_OAUTH_CLIENT_SECRET;
+  },
+  getSecretName: () => {
+    return "GOOGLE_DRIVE_ACCESS_TOKEN";
+  },
+  getRefreshSecretName: () => {
+    return "GOOGLE_DRIVE_REFRESH_TOKEN";
+  },
+  refreshToken: (clientId, clientSecret, refreshToken) => {
+    return refreshGoogleToken(
+      "google-drive",
+      clientId,
+      clientSecret,
+      refreshToken,
+    );
+  },
 };

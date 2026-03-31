@@ -73,9 +73,9 @@ function toModelProviderInfo(params: {
  * Get all provider types that belong to a given framework.
  */
 function getTypesForFramework(framework: ModelProviderFramework): string[] {
-  return Object.keys(MODEL_PROVIDER_TYPES).filter(
-    (t) => getFrameworkForType(t as ModelProviderType) === framework,
-  );
+  return Object.keys(MODEL_PROVIDER_TYPES).filter((t) => {
+    return getFrameworkForType(t as ModelProviderType) === framework;
+  });
 }
 
 /**
@@ -150,8 +150,8 @@ async function listModelProviders(
     )
     .orderBy(modelProviders.type);
 
-  return result.map((row) =>
-    toModelProviderInfo({
+  return result.map((row) => {
+    return toModelProviderInfo({
       id: row.id,
       type: row.type as ModelProviderType,
       secretName: row.secretName,
@@ -160,8 +160,8 @@ async function listModelProviders(
       selectedModel: row.selectedModel,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
-    }),
-  );
+    });
+  });
 }
 
 /**
@@ -337,9 +337,9 @@ async function cleanupOldAuthMethodSecrets(
   const oldSecretNames = getSecretNamesForAuthMethod(type, oldAuthMethod);
 
   // Find secrets that exist in old auth method but not in new
-  const secretsToDelete = oldSecretNames?.filter(
-    (name) => !newSecretNames.includes(name),
-  );
+  const secretsToDelete = oldSecretNames?.filter((name) => {
+    return !newSecretNames.includes(name);
+  });
 
   if (secretsToDelete && secretsToDelete.length > 0) {
     await globalThis.services.db
@@ -697,9 +697,9 @@ async function deleteModelProvider(
       )
       .orderBy(modelProviders.createdAt);
 
-    const nextDefault = remaining.find(
-      (p) => getFrameworkForType(p.type as ModelProviderType) === framework,
-    );
+    const nextDefault = remaining.find((p) => {
+      return getFrameworkForType(p.type as ModelProviderType) === framework;
+    });
 
     if (nextDefault) {
       await globalThis.services.db
@@ -766,10 +766,12 @@ async function setModelProviderDefault(
     );
 
   const sameFrameworkIds = allProviders
-    .filter(
-      (p) => getFrameworkForType(p.type as ModelProviderType) === framework,
-    )
-    .map((p) => p.id);
+    .filter((p) => {
+      return getFrameworkForType(p.type as ModelProviderType) === framework;
+    })
+    .map((p) => {
+      return p.id;
+    });
 
   // Use transaction to ensure atomicity
   await globalThis.services.db.transaction(async (tx) => {
@@ -885,11 +887,12 @@ async function getDefaultModelProvider(
       and(eq(modelProviders.orgId, orgId), eq(modelProviders.userId, userId)),
     );
 
-  const defaultProvider = allProviders.find(
-    (p) =>
+  const defaultProvider = allProviders.find((p) => {
+    return (
       p.isDefault &&
-      getFrameworkForType(p.type as ModelProviderType) === framework,
-  );
+      getFrameworkForType(p.type as ModelProviderType) === framework
+    );
+  });
 
   if (!defaultProvider) {
     return null;

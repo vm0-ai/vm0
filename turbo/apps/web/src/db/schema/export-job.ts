@@ -40,15 +40,17 @@ export const exportJobs = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     completedAt: timestamp("completed_at"),
   },
-  (table) => [
-    // Index for finding active jobs by user (rate limit + idempotency check)
-    index("idx_export_jobs_user_status").on(table.userId, table.status),
-    // Index for cleanup job (finding expired jobs)
-    index("idx_export_jobs_created").on(table.createdAt),
-    // Partial unique index: only one active (pending/running) job per user.
-    // Enforces idempotency at the DB level, preventing concurrent exports.
-    uniqueIndex("idx_export_jobs_user_active")
-      .on(table.userId)
-      .where(sql`status IN ('pending', 'running')`),
-  ],
+  (table) => {
+    return [
+      // Index for finding active jobs by user (rate limit + idempotency check)
+      index("idx_export_jobs_user_status").on(table.userId, table.status),
+      // Index for cleanup job (finding expired jobs)
+      index("idx_export_jobs_created").on(table.createdAt),
+      // Partial unique index: only one active (pending/running) job per user.
+      // Enforces idempotency at the DB level, preventing concurrent exports.
+      uniqueIndex("idx_export_jobs_user_active")
+        .on(table.userId)
+        .where(sql`status IN ('pending', 'running')`),
+    ];
+  },
 );

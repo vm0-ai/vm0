@@ -96,7 +96,9 @@ export async function extractAllRunOutputs(
     ];
   }
 
-  return events.map((event) => buildRunOutput(event, error));
+  return events.map((event) => {
+    return buildRunOutput(event, error);
+  });
 }
 
 function buildRunOutput(event: ResultEvent, error?: string | null): RunOutput {

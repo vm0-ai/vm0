@@ -7,7 +7,13 @@ export const kommoHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Kommo does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "KOMMO_API_KEY",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "KOMMO_API_KEY";
+  },
 };

@@ -260,13 +260,13 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
 
       // MSW handler for Notion token refresh
       server.use(
-        mswHttp.post(NOTION_TOKEN_URL, () =>
-          HttpResponse.json({
+        mswHttp.post(NOTION_TOKEN_URL, () => {
+          return HttpResponse.json({
             access_token: "fresh-notion-token",
             refresh_token: "new-refresh-token",
             expires_in: 3600,
-          }),
-        ),
+          });
+        }),
       );
 
       const encrypted = encryptTestSecrets({
@@ -307,12 +307,12 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       await setupNotionConnector({ tokenExpiresAt: expiresIn30s });
 
       server.use(
-        mswHttp.post(NOTION_TOKEN_URL, () =>
-          HttpResponse.json({
+        mswHttp.post(NOTION_TOKEN_URL, () => {
+          return HttpResponse.json({
             access_token: "proactive-fresh-token",
             expires_in: 3600,
-          }),
-        ),
+          });
+        }),
       );
 
       const encrypted = encryptTestSecrets({
@@ -443,13 +443,13 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       await setupNotionConnector({ tokenExpiresAt: expiredAt });
 
       server.use(
-        mswHttp.post(NOTION_TOKEN_URL, () =>
-          HttpResponse.json({
+        mswHttp.post(NOTION_TOKEN_URL, () => {
+          return HttpResponse.json({
             access_token: "refreshed-token",
             refresh_token: "new-refresh",
             expires_in: 1800,
-          }),
-        ),
+          });
+        }),
       );
 
       const encrypted = encryptTestSecrets({
@@ -488,12 +488,12 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       await setupNotionConnector({ tokenExpiresAt: expiredAt });
 
       server.use(
-        mswHttp.post(NOTION_TOKEN_URL, () =>
-          HttpResponse.json({
+        mswHttp.post(NOTION_TOKEN_URL, () => {
+          return HttpResponse.json({
             access_token: "fresh-mapped-token",
             expires_in: 3600,
-          }),
-        ),
+          });
+        }),
       );
 
       // Secrets contain both raw and mapped names (as build-context produces)
@@ -537,9 +537,9 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
 
       // Provider returns error (e.g. refresh token revoked)
       server.use(
-        mswHttp.post(NOTION_TOKEN_URL, () =>
-          HttpResponse.json({ error: "invalid_grant" }, { status: 400 }),
-        ),
+        mswHttp.post(NOTION_TOKEN_URL, () => {
+          return HttpResponse.json({ error: "invalid_grant" }, { status: 400 });
+        }),
       );
 
       const encrypted = encryptTestSecrets({
@@ -600,15 +600,15 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
 
       // Notion refresh succeeds, Close refresh fails
       server.use(
-        mswHttp.post(NOTION_TOKEN_URL, () =>
-          HttpResponse.json({
+        mswHttp.post(NOTION_TOKEN_URL, () => {
+          return HttpResponse.json({
             access_token: "fresh-notion-token",
             expires_in: 3600,
-          }),
-        ),
-        mswHttp.post(CLOSE_TOKEN_URL, () =>
-          HttpResponse.json({ error: "invalid_grant" }, { status: 400 }),
-        ),
+          });
+        }),
+        mswHttp.post(CLOSE_TOKEN_URL, () => {
+          return HttpResponse.json({ error: "invalid_grant" }, { status: 400 });
+        }),
       );
 
       const encrypted = encryptTestSecrets({
@@ -765,12 +765,12 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
 
       // MSW for Notion refresh
       server.use(
-        mswHttp.post(NOTION_TOKEN_URL, () =>
-          HttpResponse.json({
+        mswHttp.post(NOTION_TOKEN_URL, () => {
+          return HttpResponse.json({
             access_token: "fresh-notion-token",
             expires_in: 3600,
-          }),
-        ),
+          });
+        }),
       );
 
       const encrypted = encryptTestSecrets({

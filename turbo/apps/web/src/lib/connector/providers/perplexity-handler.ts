@@ -7,7 +7,13 @@ export const perplexityHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Perplexity does not support OAuth — use API key auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "PERPLEXITY_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "PERPLEXITY_TOKEN";
+  },
 };

@@ -27,9 +27,15 @@ export const figmaHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.FIGMA_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.FIGMA_OAUTH_CLIENT_SECRET,
+  getClientId: (e) => {
+    return e.FIGMA_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.FIGMA_OAUTH_CLIENT_SECRET;
+  },
   getSecretName: getFigmaSecretName,
-  getRefreshSecretName: () => "FIGMA_REFRESH_TOKEN",
+  getRefreshSecretName: () => {
+    return "FIGMA_REFRESH_TOKEN";
+  },
   refreshToken: refreshFigmaToken,
 };

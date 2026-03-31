@@ -27,9 +27,15 @@ export const hubspotHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.HUBSPOT_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.HUBSPOT_OAUTH_CLIENT_SECRET,
+  getClientId: (e) => {
+    return e.HUBSPOT_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.HUBSPOT_OAUTH_CLIENT_SECRET;
+  },
   getSecretName: getHubSpotSecretName,
-  getRefreshSecretName: () => "HUBSPOT_REFRESH_TOKEN",
+  getRefreshSecretName: () => {
+    return "HUBSPOT_REFRESH_TOKEN";
+  },
   refreshToken: refreshHubSpotToken,
 };

@@ -38,18 +38,20 @@ const router = tsr.router(zeroModelProvidersMainContract, {
     return {
       status: 200 as const,
       body: {
-        modelProviders: providers.map((p) => ({
-          id: p.id,
-          type: p.type,
-          framework: p.framework,
-          secretName: p.secretName,
-          authMethod: p.authMethod ?? null,
-          secretNames: p.secretNames ?? null,
-          isDefault: p.isDefault,
-          selectedModel: p.selectedModel,
-          createdAt: p.createdAt.toISOString(),
-          updatedAt: p.updatedAt.toISOString(),
-        })),
+        modelProviders: providers.map((p) => {
+          return {
+            id: p.id,
+            type: p.type,
+            framework: p.framework,
+            secretName: p.secretName,
+            authMethod: p.authMethod ?? null,
+            secretNames: p.secretNames ?? null,
+            isDefault: p.isDefault,
+            selectedModel: p.selectedModel,
+            createdAt: p.createdAt.toISOString(),
+            updatedAt: p.updatedAt.toISOString(),
+          };
+        }),
       },
     };
   },

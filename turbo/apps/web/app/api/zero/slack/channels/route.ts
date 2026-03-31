@@ -74,7 +74,9 @@ export async function GET(request: Request) {
     cursor = result.response_metadata?.next_cursor || undefined;
   } while (cursor);
 
-  channels.sort((a, b) => a.name.localeCompare(b.name));
+  channels.sort((a, b) => {
+    return a.name.localeCompare(b.name);
+  });
 
   return NextResponse.json({ channels });
 }

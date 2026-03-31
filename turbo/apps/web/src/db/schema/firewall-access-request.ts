@@ -19,7 +19,12 @@ export const firewallAccessRequests = pgTable(
     orgId: text("org_id").notNull(),
     agentId: uuid("agent_id")
       .notNull()
-      .references(() => zeroAgents.id, { onDelete: "cascade" }),
+      .references(
+        () => {
+          return zeroAgents.id;
+        },
+        { onDelete: "cascade" },
+      ),
     requesterUserId: text("requester_user_id").notNull(),
     firewallRef: varchar("firewall_ref", { length: 64 }).notNull(),
     permission: varchar("permission", { length: 128 }).notNull(),
@@ -31,11 +36,13 @@ export const firewallAccessRequests = pgTable(
     resolvedAt: timestamp("resolved_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
-  (table) => [
-    index("idx_firewall_access_requests_agent_status").on(
-      table.agentId,
-      table.status,
-    ),
-    index("idx_firewall_access_requests_org").on(table.orgId),
-  ],
+  (table) => {
+    return [
+      index("idx_firewall_access_requests_agent_status").on(
+        table.agentId,
+        table.status,
+      ),
+      index("idx_firewall_access_requests_org").on(table.orgId),
+    ];
+  },
 );

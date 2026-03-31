@@ -51,6 +51,8 @@ export const updateUserPreference$ = command(
     const clerk = await get(clerk$);
     await clerk.session?.getToken({ skipCache: true });
 
-    set(internalReloadPreferences$, (x) => x + 1);
+    set(internalReloadPreferences$, (x) => {
+      return x + 1;
+    });
   },
 );

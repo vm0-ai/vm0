@@ -26,7 +26,9 @@ export async function deleteOrgS3Data(orgId: string): Promise<void> {
     if (objects.length > 0) {
       await deleteS3Objects(
         bucket,
-        objects.map((o) => o.key),
+        objects.map((o) => {
+          return o.key;
+        }),
       );
       log.debug("deleted storage objects", {
         prefix: storage.s3Prefix,
@@ -42,8 +44,12 @@ export async function deleteOrgS3Data(orgId: string): Promise<void> {
     .where(and(eq(exportJobs.orgId, orgId), isNotNull(exportJobs.s3Key)));
 
   const exportKeys = orgExports
-    .map((e) => e.s3Key)
-    .filter((k): k is string => k !== null);
+    .map((e) => {
+      return e.s3Key;
+    })
+    .filter((k): k is string => {
+      return k !== null;
+    });
 
   if (exportKeys.length > 0) {
     await deleteS3Objects(bucket, exportKeys);

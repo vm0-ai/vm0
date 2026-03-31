@@ -27,9 +27,15 @@ export const dropboxHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.DROPBOX_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.DROPBOX_OAUTH_CLIENT_SECRET,
+  getClientId: (e) => {
+    return e.DROPBOX_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.DROPBOX_OAUTH_CLIENT_SECRET;
+  },
   getSecretName: getDropboxSecretName,
-  getRefreshSecretName: () => "DROPBOX_REFRESH_TOKEN",
+  getRefreshSecretName: () => {
+    return "DROPBOX_REFRESH_TOKEN";
+  },
   refreshToken: refreshDropboxToken,
 };

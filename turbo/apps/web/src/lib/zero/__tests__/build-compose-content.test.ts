@@ -9,13 +9,21 @@ import {
 
 /** Connector types that are NOT behind a feature flag (generally available). */
 const gaConnectorTypes = Object.entries(CONNECTOR_TYPES)
-  .filter(([, config]) => !config.featureFlag)
-  .map(([type]) => type);
+  .filter(([, config]) => {
+    return !config.featureFlag;
+  })
+  .map(([type]) => {
+    return type;
+  });
 
 /** Connector types that ARE behind a feature flag. */
 const flaggedConnectorTypes = Object.entries(CONNECTOR_TYPES)
-  .filter(([, config]) => !!config.featureFlag)
-  .map(([type]) => type);
+  .filter(([, config]) => {
+    return !!config.featureFlag;
+  })
+  .map(([type]) => {
+    return type;
+  });
 
 describe("buildComposeContent", () => {
   it("should return valid compose structure", () => {

@@ -37,12 +37,18 @@ export function SidebarLayout({ children }: { children: ReactNode }) {
       {!sidebarCollapsed && (
         <div
           className="fixed inset-0 z-30 bg-black/40 md:hidden"
-          onClick={() => setSidebarCollapsed(true)}
+          onClick={() => {
+            return setSidebarCollapsed(true);
+          }}
         />
       )}
       <div className="flex flex-1 flex-col min-w-0 min-h-0 zero-workspace-bg">
         {showAboutPage ? (
-          <ZeroAboutPage onBack={() => setShowAboutPage(false)} />
+          <ZeroAboutPage
+            onBack={() => {
+              return setShowAboutPage(false);
+            }}
+          />
         ) : (
           children
         )}

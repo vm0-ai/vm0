@@ -34,7 +34,13 @@ describe("getDefaultFirewallPolicies", () => {
     const policies = getDefaultFirewallPolicies("slack")!;
     const config = getConnectorFirewall("slack");
     const allPermissions = new Set(
-      config.apis.flatMap((api) => api.permissions?.map((p) => p.name) ?? []),
+      config.apis.flatMap((api) => {
+        return (
+          api.permissions?.map((p) => {
+            return p.name;
+          }) ?? []
+        );
+      }),
     );
 
     for (const name of allPermissions) {

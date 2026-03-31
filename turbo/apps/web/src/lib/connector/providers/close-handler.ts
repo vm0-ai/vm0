@@ -27,9 +27,15 @@ export const closeHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.CLOSE_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.CLOSE_OAUTH_CLIENT_SECRET,
+  getClientId: (e) => {
+    return e.CLOSE_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.CLOSE_OAUTH_CLIENT_SECRET;
+  },
   getSecretName: getCloseSecretName,
-  getRefreshSecretName: () => "CLOSE_REFRESH_TOKEN",
+  getRefreshSecretName: () => {
+    return "CLOSE_REFRESH_TOKEN";
+  },
   refreshToken: refreshCloseToken,
 };

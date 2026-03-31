@@ -7,7 +7,13 @@ export const mailsacHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Mailsac does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "MAILSAC_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "MAILSAC_TOKEN";
+  },
 };

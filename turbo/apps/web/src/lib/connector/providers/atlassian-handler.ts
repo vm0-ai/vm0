@@ -7,7 +7,13 @@ export const atlassianHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Atlassian does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "ATLASSIAN_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "ATLASSIAN_TOKEN";
+  },
 };

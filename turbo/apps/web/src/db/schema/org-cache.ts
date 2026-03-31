@@ -20,5 +20,7 @@ export const orgCache = pgTable(
     currentPeriodEnd: timestamp("current_period_end"),
     billingCachedAt: timestamp("billing_cached_at"),
   },
-  (table) => [index("idx_org_cache_slug").on(table.slug)],
+  (table) => {
+    return [index("idx_org_cache_slug").on(table.slug)];
+  },
 );

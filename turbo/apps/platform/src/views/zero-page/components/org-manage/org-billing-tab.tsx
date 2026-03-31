@@ -103,7 +103,9 @@ const PLANS = [
 ] as const;
 
 function getPlanPrice(tier: string): string {
-  const plan = PLANS.find((p) => p.tier === tier);
+  const plan = PLANS.find((p) => {
+    return p.tier === tier;
+  });
   return plan ? `${plan.price}${plan.period}` : "";
 }
 
@@ -186,27 +188,29 @@ function PlanCard({
       </p>
 
       <ul className="mb-6 flex flex-col gap-2.5">
-        {plan.features.map((feature) => (
-          <li key={feature} className="flex items-center gap-2">
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="shrink-0 text-muted-foreground/40"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <polyline points="16 9 10.5 15 8 12.5" />
-            </svg>
-            <span className="text-[13px] font-light text-muted-foreground">
-              {feature}
-            </span>
-          </li>
-        ))}
+        {plan.features.map((feature) => {
+          return (
+            <li key={feature} className="flex items-center gap-2">
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="shrink-0 text-muted-foreground/40"
+              >
+                <circle cx="12" cy="12" r="10" />
+                <polyline points="16 9 10.5 15 8 12.5" />
+              </svg>
+              <span className="text-[13px] font-light text-muted-foreground">
+                {feature}
+              </span>
+            </li>
+          );
+        })}
       </ul>
 
       <div className="mt-auto">
@@ -221,7 +225,9 @@ function PlanCard({
           size="sm"
           className="w-full h-9 text-xs"
           disabled={loading || isCurrent}
-          onClick={() => onAction(plan.tier)}
+          onClick={() => {
+            return onAction(plan.tier);
+          }}
         >
           {isCurrent ? "Current plan" : label}
         </Button>
@@ -285,15 +291,17 @@ function PricingPage({
       </div>
 
       <div className="grid grid-cols-3 gap-4">
-        {PLANS.map((plan) => (
-          <PlanCard
-            key={plan.tier}
-            plan={plan}
-            currentTier={currentTier}
-            loading={loading}
-            onAction={handlePlanAction}
-          />
-        ))}
+        {PLANS.map((plan) => {
+          return (
+            <PlanCard
+              key={plan.tier}
+              plan={plan}
+              currentTier={currentTier}
+              loading={loading}
+              onAction={handlePlanAction}
+            />
+          );
+        })}
       </div>
     </div>
   );
@@ -319,7 +327,12 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && close()}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        return !v && close();
+      }}
+    >
       <DialogContent className="sm:max-w-[440px]">
         <DialogHeader>
           <DialogTitle>Downgrade plan</DialogTitle>
@@ -334,7 +347,9 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
           <div className="flex flex-col gap-2 mt-2">
             <button
               type="button"
-              onClick={() => setSelectedTarget("pro")}
+              onClick={() => {
+                return setSelectedTarget("pro");
+              }}
               className={`flex items-center justify-between rounded-lg border p-3 text-left transition-colors ${
                 selectedTarget === "pro"
                   ? "border-primary ring-2 ring-primary/20"
@@ -352,7 +367,9 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
             </button>
             <button
               type="button"
-              onClick={() => setSelectedTarget("free")}
+              onClick={() => {
+                return setSelectedTarget("free");
+              }}
               className={`flex items-center justify-between rounded-lg border p-3 text-left transition-colors ${
                 selectedTarget === "free"
                   ? "border-primary ring-2 ring-primary/20"
@@ -374,7 +391,13 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
         {error && <p className="text-sm text-destructive mt-2">{error}</p>}
 
         <div className="flex justify-end gap-2 mt-4">
-          <Button variant="outline" onClick={() => close()} disabled={loading}>
+          <Button
+            variant="outline"
+            onClick={() => {
+              return close();
+            }}
+            disabled={loading}
+          >
             Cancel
           </Button>
           <Button
@@ -441,7 +464,9 @@ function PlanActionButtons({
 export function OrgBillingTab() {
   const pricingOpen = useGet(billingSubPage$);
   const setBillingSubPage = useSet(setBillingSubPage$);
-  const setPricingOpen = (v: boolean) => setBillingSubPage(v);
+  const setPricingOpen = (v: boolean) => {
+    return setBillingSubPage(v);
+  };
   const pageSignal = useGet(pageSignal$);
   const reloadBilling = useSet(reloadBillingStatus$);
   const openDowngrade = useSet(openDowngradeDialog$);
@@ -474,7 +499,9 @@ export function OrgBillingTab() {
       <>
         <PricingPage
           currentTier={currentTier}
-          onBack={() => setPricingOpen(false)}
+          onBack={() => {
+            return setPricingOpen(false);
+          }}
         />
         <DowngradeConfirmDialog currentTier={currentTier} />
       </>
@@ -502,7 +529,9 @@ export function OrgBillingTab() {
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => reloadBilling()}
+                onClick={() => {
+                  return reloadBilling();
+                }}
               >
                 Retry
               </Button>
@@ -523,7 +552,9 @@ export function OrgBillingTab() {
                   isCancelling={isCancelling}
                   currentTier={currentTier}
                   loading={loading}
-                  onUpgrade={() => setPricingOpen(true)}
+                  onUpgrade={() => {
+                    return setPricingOpen(true);
+                  }}
                   onDowngrade={handleDowngrade}
                 />
               </div>
@@ -556,9 +587,9 @@ export function OrgBillingTab() {
                       size="sm"
                       className="shrink-0 h-8 text-xs gap-1.5"
                       disabled={loading}
-                      onClick={() =>
-                        detach(portal(pageSignal), Reason.DomCallback)
-                      }
+                      onClick={() => {
+                        return detach(portal(pageSignal), Reason.DomCallback);
+                      }}
                     >
                       Manage
                       <IconExternalLink size={13} stroke={1.5} />
@@ -570,7 +601,9 @@ export function OrgBillingTab() {
               <button
                 type="button"
                 className="flex w-full items-center justify-between gap-4 px-5 py-3 text-left transition-colors bg-muted/20 hover:bg-muted/35"
-                onClick={() => setPricingOpen(true)}
+                onClick={() => {
+                  return setPricingOpen(true);
+                }}
               >
                 <span className="inline-flex items-center gap-2 text-sm font-medium text-foreground">
                   Compare all plans

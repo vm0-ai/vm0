@@ -56,7 +56,9 @@ function getInitialTab(): string {
 
 const internalActiveTab$ = state("authorization");
 
-export const zeroJobActiveTab$ = computed((get) => get(internalActiveTab$));
+export const zeroJobActiveTab$ = computed((get) => {
+  return get(internalActiveTab$);
+});
 
 export const setZeroJobActiveTab$ = command(({ set }, tab: string) => {
   set(internalActiveTab$, tab);
@@ -85,11 +87,15 @@ const detailState$ = state<ZeroJobDetailState>({
   error: null,
 });
 
-export const zeroJobDetail$ = computed((get) => get(detailState$).detail);
-export const zeroJobDetailLoading$ = computed(
-  (get) => get(detailState$).loading,
-);
-export const zeroJobDetailError$ = computed((get) => get(detailState$).error);
+export const zeroJobDetail$ = computed((get) => {
+  return get(detailState$).detail;
+});
+export const zeroJobDetailLoading$ = computed((get) => {
+  return get(detailState$).loading;
+});
+export const zeroJobDetailError$ = computed((get) => {
+  return get(detailState$).error;
+});
 
 const fetchZeroJobDetail$ = command(
   async ({ get, set }, _signal: AbortSignal) => {
@@ -98,7 +104,9 @@ const fetchZeroJobDetail$ = command(
       return;
     }
 
-    set(detailState$, (prev) => ({ ...prev, loading: true, error: null }));
+    set(detailState$, (prev) => {
+      return { ...prev, loading: true, error: null };
+    });
 
     try {
       const client = get(zeroClient$)(zeroAgentsByIdContract);
@@ -115,11 +123,13 @@ const fetchZeroJobDetail$ = command(
     } catch (error) {
       throwIfAbort(error);
       L.error("Failed to fetch agent detail:", error);
-      set(detailState$, (prev) => ({
-        ...prev,
-        loading: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-      }));
+      set(detailState$, (prev) => {
+        return {
+          ...prev,
+          loading: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+        };
+      });
     }
   },
 );
@@ -140,15 +150,15 @@ const instructionsState$ = state<ZeroJobInstructionsState>({
   error: null,
 });
 
-export const zeroJobInstructions$ = computed(
-  (get) => get(instructionsState$).instructions,
-);
-export const zeroJobInstructionsLoading$ = computed(
-  (get) => get(instructionsState$).loading,
-);
-export const zeroJobInstructionsError$ = computed(
-  (get) => get(instructionsState$).error,
-);
+export const zeroJobInstructions$ = computed((get) => {
+  return get(instructionsState$).instructions;
+});
+export const zeroJobInstructionsLoading$ = computed((get) => {
+  return get(instructionsState$).loading;
+});
+export const zeroJobInstructionsError$ = computed((get) => {
+  return get(instructionsState$).error;
+});
 
 const fetchZeroJobInstructions$ = command(
   async ({ get, set }, _signal: AbortSignal) => {
@@ -192,7 +202,9 @@ const fetchZeroJobInstructions$ = command(
 
 const editedContent$ = state<string | null>(null);
 
-export const zeroJobEditedContent$ = computed((get) => get(editedContent$));
+export const zeroJobEditedContent$ = computed((get) => {
+  return get(editedContent$);
+});
 
 export const zeroJobInstructionsDirty$ = computed((get) => {
   const edited = get(editedContent$);
@@ -210,10 +222,14 @@ export const discardZeroJobEdit$ = command(({ set }) => {
 });
 
 const jobBuilding$ = state(false);
-export const zeroJobBuilding$ = computed((get) => get(jobBuilding$));
+export const zeroJobBuilding$ = computed((get) => {
+  return get(jobBuilding$);
+});
 
 const internalBuildError$ = state<string | null>(null);
-export const zeroJobBuildError$ = computed((get) => get(internalBuildError$));
+export const zeroJobBuildError$ = computed((get) => {
+  return get(internalBuildError$);
+});
 
 export const buildZeroJobInstructions$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -273,7 +289,9 @@ export const buildZeroJobInstructions$ = command(
 // ---------------------------------------------------------------------------
 
 const internalSaving$ = state(false);
-export const zeroJobSettingsSaving$ = computed((get) => get(internalSaving$));
+export const zeroJobSettingsSaving$ = computed((get) => {
+  return get(internalSaving$);
+});
 
 interface ZeroJobSettingsUpdate {
   displayName?: string;
@@ -379,13 +397,13 @@ const fetchZeroJobUserConnectors$ = command(
 
 const internalAddedConnectors$ = state<string[] | null>(null);
 
-const seededConnectors$ = computed(
-  (get) => get(userConnectorPermissionsState$).enabledTypes,
-);
+const seededConnectors$ = computed((get) => {
+  return get(userConnectorPermissionsState$).enabledTypes;
+});
 
-export const zeroJobConnectorsLoading$ = computed(
-  (get) => get(userConnectorPermissionsState$).loading,
-);
+export const zeroJobConnectorsLoading$ = computed((get) => {
+  return get(userConnectorPermissionsState$).loading;
+});
 
 export const zeroJobAddedConnectors$ = computed((get) => {
   const local = get(internalAddedConnectors$);
@@ -406,23 +424,29 @@ export const zeroJobConnectorsDirty$ = computed((get) => {
   }
   const sorted = [...local].sort();
   const seededSorted = [...seeded].sort();
-  return sorted.some((s, i) => s !== seededSorted[i]);
+  return sorted.some((s, i) => {
+    return s !== seededSorted[i];
+  });
 });
 
 export const addZeroJobConnector$ = command(({ get, set }, name: string) => {
   if (get(internalAddedConnectors$) === null) {
     set(internalAddedConnectors$, get(seededConnectors$));
   }
-  set(internalAddedConnectors$, (prev) => [...(prev ?? []), name]);
+  set(internalAddedConnectors$, (prev) => {
+    return [...(prev ?? []), name];
+  });
 });
 
 export const removeZeroJobConnector$ = command(({ get, set }, name: string) => {
   if (get(internalAddedConnectors$) === null) {
     set(internalAddedConnectors$, get(seededConnectors$));
   }
-  set(internalAddedConnectors$, (prev) =>
-    (prev ?? []).filter((s) => s !== name),
-  );
+  set(internalAddedConnectors$, (prev) => {
+    return (prev ?? []).filter((s) => {
+      return s !== name;
+    });
+  });
 });
 
 export const discardZeroJobConnectors$ = command(({ set }) => {
@@ -481,9 +505,9 @@ export const saveZeroJobConnectors$ = command(
 
 const internalFirewallPolicies$ = state<FirewallPolicies | null>(null);
 
-export const zeroJobFirewallPolicies$ = computed((get) =>
-  get(internalFirewallPolicies$),
-);
+export const zeroJobFirewallPolicies$ = computed((get) => {
+  return get(internalFirewallPolicies$);
+});
 
 export const setZeroJobFirewallPolicies$ = command(
   ({ set }, policies: FirewallPolicies | null) => {
@@ -569,7 +593,9 @@ function cronToTimeString(cron: string): string {
     };
     const days = dayOfWeek
       .split(",")
-      .map((d) => dayNames[d])
+      .map((d) => {
+        return dayNames[d];
+      })
       .filter(Boolean);
     if (days.length > 0) {
       return `Every week on ${days.join(", ")} at ${timeStr}`;
@@ -618,9 +644,11 @@ const scheduleState$ = state<ZeroJobScheduleState>({
 export const zeroJobScheduleEntries$ = computed((get) => {
   const items = get(scheduleState$).schedules;
   return [...items]
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .map(
-      (s): ScheduleEntry => ({
+    .sort((a, b) => {
+      return b.createdAt.localeCompare(a.createdAt);
+    })
+    .map((s): ScheduleEntry => {
+      return {
         id: s.id,
         time: scheduleToTimeString(s),
         prompt: s.prompt,
@@ -632,13 +660,13 @@ export const zeroJobScheduleEntries$ = computed((get) => {
         name: s.name,
         timezone: s.timezone,
         intervalSeconds: s.intervalSeconds,
-      }),
-    );
+      };
+    });
 });
 
-export const zeroJobScheduleError$ = computed(
-  (get) => get(scheduleState$).error,
-);
+export const zeroJobScheduleError$ = computed((get) => {
+  return get(scheduleState$).error;
+});
 
 const fetchZeroJobSchedule$ = command(
   async ({ get, set }, _signal: AbortSignal) => {
@@ -656,9 +684,9 @@ const fetchZeroJobSchedule$ = command(
         throw new Error(`Failed to fetch schedules (${result.status})`);
       }
 
-      const agentSchedules = result.body.schedules.filter(
-        (s) => s.agentId === detail.agentId,
-      );
+      const agentSchedules = result.body.schedules.filter((s) => {
+        return s.agentId === detail.agentId;
+      });
       set(scheduleState$, { schedules: agentSchedules, error: null });
     } catch (error) {
       throwIfAbort(error);

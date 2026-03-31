@@ -8,12 +8,14 @@ const log = logger("slack-channels");
 const slackChannelsState$ = state<SlackChannel[]>([]);
 const slackChannelsLoaded$ = state(false);
 
-export const slackChannels$ = computed((get) => get(slackChannelsState$));
+export const slackChannels$ = computed((get) => {
+  return get(slackChannelsState$);
+});
 
 /** True after the initial Slack channels fetch has completed. */
-export const slackChannelsInitialized$ = computed((get) =>
-  get(slackChannelsLoaded$),
-);
+export const slackChannelsInitialized$ = computed((get) => {
+  return get(slackChannelsLoaded$);
+});
 
 export const fetchSlackChannels$ = command(
   async ({ get, set }, _signal: AbortSignal) => {

@@ -10,10 +10,17 @@ export const sandboxTelemetry = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     runId: uuid("run_id")
-      .references(() => agentRuns.id, { onDelete: "cascade" })
+      .references(
+        () => {
+          return agentRuns.id;
+        },
+        { onDelete: "cascade" },
+      )
       .notNull(),
     data: jsonb("data").notNull(), // { systemLog: string, metrics: array }
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
-  (table) => [index("idx_sandbox_telemetry_run_id").on(table.runId)],
+  (table) => {
+    return [index("idx_sandbox_telemetry_run_id").on(table.runId)];
+  },
 );

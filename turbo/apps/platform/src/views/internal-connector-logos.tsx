@@ -95,24 +95,28 @@ export function InternalConnectorLogos() {
           Connector Logos ({connectorTypes.length})
         </h1>
         <div style={{ display: "flex", gap: 4 }}>
-          {sizes.map((s) => (
-            <button
-              key={s}
-              onClick={() => setSize(s as IconSize)}
-              style={{
-                padding: "4px 12px",
-                fontSize: 14,
-                border: s === size ? "2px solid #111" : "1px solid #ccc",
-                borderRadius: 4,
-                background: s === size ? "#111" : "#fff",
-                color: s === size ? "#fff" : "#333",
-                cursor: "pointer",
-                fontFamily: "monospace",
-              }}
-            >
-              {s}
-            </button>
-          ))}
+          {sizes.map((s) => {
+            return (
+              <button
+                key={s}
+                onClick={() => {
+                  return setSize(s as IconSize);
+                }}
+                style={{
+                  padding: "4px 12px",
+                  fontSize: 14,
+                  border: s === size ? "2px solid #111" : "1px solid #ccc",
+                  borderRadius: 4,
+                  background: s === size ? "#111" : "#fff",
+                  color: s === size ? "#fff" : "#333",
+                  cursor: "pointer",
+                  fontFamily: "monospace",
+                }}
+              >
+                {s}
+              </button>
+            );
+          })}
         </div>
         <span style={{ fontSize: 13, color: "#999" }}>
           {size}x{size}px

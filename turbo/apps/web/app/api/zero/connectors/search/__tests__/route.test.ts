@@ -100,9 +100,9 @@ describe("GET /api/zero/connectors/search", () => {
 
     // computer has a feature flag and only "api" auth (no api-token, no oauth)
     // A random test user won't have the flag enabled, so it should be hidden
-    const computer = data.connectors.find(
-      (c: { id: string }) => c.id === "computer",
-    );
+    const computer = data.connectors.find((c: { id: string }) => {
+      return c.id === "computer";
+    });
     expect(computer).toBeUndefined();
   });
 
@@ -113,7 +113,9 @@ describe("GET /api/zero/connectors/search", () => {
 
     // neon has a feature flag AND api-token auth method
     // Even with flag disabled, it should be visible with only api-token
-    const neon = data.connectors.find((c: { id: string }) => c.id === "neon");
+    const neon = data.connectors.find((c: { id: string }) => {
+      return c.id === "neon";
+    });
     expect(neon).toBeDefined();
     expect(neon.authMethods).toContain("api-token");
     // oauth should NOT be included since the feature flag is disabled
@@ -131,9 +133,9 @@ describe("GET /api/zero/connectors/search", () => {
 
     // computer has a feature flag and is only visible to staff
     // The orgId matches STAFF_ORG_ID_HASHES, so it should be visible
-    const computer = data.connectors.find(
-      (c: { id: string }) => c.id === "computer",
-    );
+    const computer = data.connectors.find((c: { id: string }) => {
+      return c.id === "computer";
+    });
     expect(computer).toBeDefined();
   });
 
@@ -145,11 +147,15 @@ describe("GET /api/zero/connectors/search", () => {
     // Find a connector without a feature flag (e.g., github)
     const unflaggedTypes = (
       Object.keys(CONNECTOR_TYPES) as ConnectorType[]
-    ).filter((type) => !CONNECTOR_TYPES[type].featureFlag);
+    ).filter((type) => {
+      return !CONNECTOR_TYPES[type].featureFlag;
+    });
     expect(unflaggedTypes.length).toBeGreaterThan(0);
 
     for (const type of unflaggedTypes) {
-      const found = data.connectors.find((c: { id: string }) => c.id === type);
+      const found = data.connectors.find((c: { id: string }) => {
+        return c.id === type;
+      });
       expect(found).toBeDefined();
     }
   });

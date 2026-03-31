@@ -13,9 +13,9 @@ describe("blog/config", () => {
 
     it("throws when NEXT_PUBLIC_BASE_URL is not configured", () => {
       // setup.ts doesn't stub NEXT_PUBLIC_BASE_URL, so env() has it as undefined
-      expect(() => getBlogBaseUrl()).toThrow(
-        "NEXT_PUBLIC_BASE_URL environment variable is not configured",
-      );
+      expect(() => {
+        return getBlogBaseUrl();
+      }).toThrow("NEXT_PUBLIC_BASE_URL environment variable is not configured");
     });
   });
 });

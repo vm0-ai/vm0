@@ -30,20 +30,24 @@ export const storages = pgTable(
     size: bigint("size", { mode: "number" }).notNull().default(0),
     fileCount: integer("file_count").notNull().default(0),
     headVersionId: varchar("head_version_id", { length: 64 }).references(
-      (): AnyPgColumn => storageVersions.id,
+      (): AnyPgColumn => {
+        return storageVersions.id;
+      },
     ),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (table) => ({
-    orgIdx: index("idx_storages_org").on(table.orgId),
-    orgUserNameTypeIdx: uniqueIndex("idx_storages_org_user_name_type").on(
-      table.orgId,
-      table.userId,
-      table.name,
-      table.type,
-    ),
-  }),
+  (table) => {
+    return {
+      orgIdx: index("idx_storages_org").on(table.orgId),
+      orgUserNameTypeIdx: uniqueIndex("idx_storages_org_user_name_type").on(
+        table.orgId,
+        table.userId,
+        table.name,
+        table.type,
+      ),
+    };
+  },
 );
 
 /**
@@ -55,7 +59,12 @@ export const storageVersions = pgTable("storage_versions", {
   id: varchar("id", { length: 64 }).primaryKey(),
   storageId: uuid("storage_id")
     .notNull()
-    .references(() => storages.id, { onDelete: "cascade" }),
+    .references(
+      () => {
+        return storages.id;
+      },
+      { onDelete: "cascade" },
+    ),
   s3Key: text("s3_key").notNull(),
   size: bigint("size", { mode: "number" }).notNull().default(0),
   fileCount: integer("file_count").notNull().default(0),

@@ -120,12 +120,14 @@ const router = tsr.router(runEventsContract, {
     return {
       status: 200 as const,
       body: {
-        events: events.map((e) => ({
-          sequenceNumber: e.sequenceNumber,
-          eventType: e.eventType,
-          eventData: e.eventData,
-          createdAt: e._time,
-        })),
+        events: events.map((e) => {
+          return {
+            sequenceNumber: e.sequenceNumber,
+            eventType: e.eventType,
+            eventData: e.eventData,
+            createdAt: e._time,
+          };
+        }),
         hasMore,
         nextSequence,
         run: runState,

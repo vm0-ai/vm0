@@ -109,7 +109,9 @@ function mockAdminOnboardingWithChat() {
 
   return {
     ctrl,
-    wasRunCreated: () => runCreated,
+    wasRunCreated: () => {
+      return runCreated;
+    },
     /** Switch onboarding status to completed (call before clicking "Continue in web") */
     completeOnboarding: () => {
       server.use(
@@ -165,7 +167,9 @@ function mockMemberOnboardingWithChat() {
 
   return {
     ctrl,
-    wasRunCreated: () => runCreated,
+    wasRunCreated: () => {
+      return runCreated;
+    },
     completeOnboarding: () => {
       server.use(
         http.get("*/api/zero/onboarding/status", () => {
@@ -317,9 +321,9 @@ describe("onboarding auto-intro message", () => {
     mock.ctrl.completeRun("I am Zero, your AI teammate.");
 
     // Wait for the chat to be ready for input
-    const textarea = await waitFor(
-      () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-    );
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
 
     await waitFor(() => {
       expect(screen.getByLabelText("Send")).toBeInTheDocument();

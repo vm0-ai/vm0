@@ -97,8 +97,12 @@ describe("team page navigation", () => {
     const teamLinks = screen.getAllByText("Agents");
     // Find the breadcrumb link (inside a nav with breadcrumb-like structure)
     const breadcrumbLink = teamLinks
-      .map((el) => el.closest("a"))
-      .find((a) => a?.getAttribute("href") === "/team");
+      .map((el) => {
+        return el.closest("a");
+      })
+      .find((a) => {
+        return a?.getAttribute("href") === "/team";
+      });
     expect(breadcrumbLink).toBeTruthy();
     await act(() => {
       breadcrumbLink!.click();

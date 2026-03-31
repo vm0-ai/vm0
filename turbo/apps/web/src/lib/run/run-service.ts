@@ -248,9 +248,9 @@ async function checkModelProviderConfigured(
   if (framework !== "claude-code") return;
 
   // If compose has explicit model provider env vars, skip check
-  const hasExplicitConfig = MODEL_PROVIDER_ENV_VARS.some(
-    (v) => firstAgent?.environment?.[v] !== undefined,
-  );
+  const hasExplicitConfig = MODEL_PROVIDER_ENV_VARS.some((v) => {
+    return firstAgent?.environment?.[v] !== undefined;
+  });
   if (hasExplicitConfig) return;
 
   // Check if org has a default model provider (within transaction)
@@ -646,9 +646,9 @@ async function validateComposeRequirements(
         getVariableValues(orgId, userId),
       ]);
       const allVars = { ...orgVars, ...userVars, ...vars };
-      const missingVars = requiredVars.filter(
-        (varName) => allVars[varName] === undefined,
-      );
+      const missingVars = requiredVars.filter((varName) => {
+        return allVars[varName] === undefined;
+      });
       if (missingVars.length > 0) {
         throw badRequest(
           `Missing required template variables: ${missingVars.join(", ")}`,
@@ -667,15 +667,17 @@ async function registerCallbacks(
 ): Promise<void> {
   const { SECRETS_ENCRYPTION_KEY } = env();
   await globalThis.services.db.insert(agentRunCallbacks).values(
-    callbacks.map((callback) => ({
-      runId,
-      url: callback.url,
-      encryptedSecret: encryptSecretValue(
-        callback.secret,
-        SECRETS_ENCRYPTION_KEY,
-      ),
-      payload: callback.payload,
-    })),
+    callbacks.map((callback) => {
+      return {
+        runId,
+        url: callback.url,
+        encryptedSecret: encryptSecretValue(
+          callback.secret,
+          SECRETS_ENCRYPTION_KEY,
+        ),
+        payload: callback.payload,
+      };
+    }),
   );
   log.debug(`Registered ${callbacks.length} callback(s) for run ${runId}`);
 }
@@ -888,7 +890,11 @@ export async function buildAndDispatchRun(opts: {
       runId,
       createdAt,
       error,
-      orgId ? () => drainOrgQueue(orgId, dispatcher) : undefined,
+      orgId
+        ? () => {
+            return drainOrgQueue(orgId, dispatcher);
+          }
+        : undefined,
     );
     throw error;
   }
@@ -1463,7 +1469,9 @@ export async function dispatchCancelSideEffects(
     "cancelled",
     "Run cancelled",
     shouldDrain
-      ? () => drainOrgQueue(result.orgId, queueDispatcher)
+      ? () => {
+          return drainOrgQueue(result.orgId, queueDispatcher);
+        }
       : undefined,
   );
 

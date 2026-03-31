@@ -87,7 +87,9 @@ export function listTarFiles(tarPath: string): Promise<string[]> {
           }
         },
       })
-      .then(() => resolve(files))
+      .then(() => {
+        return resolve(files);
+      })
       .catch(reject);
   });
 }

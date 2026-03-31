@@ -118,18 +118,20 @@ function SkeletonRows({
 }) {
   return (
     <div className="divide-y divide-border/40">
-      {Array.from({ length: count }, (_, i) => (
-        <div key={i} className={cn(gridClassName, "px-5 py-3")}>
-          <div className="h-4 w-20 rounded bg-muted/50 animate-pulse" />
-          {showSource && (
-            <div className="h-4 w-12 rounded bg-muted/50 animate-pulse" />
-          )}
-          <div className="h-5 w-16 rounded-full bg-muted/50 animate-pulse" />
-          <div className="h-4 w-24 rounded bg-muted/50 animate-pulse" />
-          <div className="h-4 w-14 rounded bg-muted/50 animate-pulse" />
-          <div />
-        </div>
-      ))}
+      {Array.from({ length: count }, (_, i) => {
+        return (
+          <div key={i} className={cn(gridClassName, "px-5 py-3")}>
+            <div className="h-4 w-20 rounded bg-muted/50 animate-pulse" />
+            {showSource && (
+              <div className="h-4 w-12 rounded bg-muted/50 animate-pulse" />
+            )}
+            <div className="h-5 w-16 rounded-full bg-muted/50 animate-pulse" />
+            <div className="h-4 w-24 rounded bg-muted/50 animate-pulse" />
+            <div className="h-4 w-14 rounded bg-muted/50 animate-pulse" />
+            <div />
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -212,14 +214,16 @@ export function LogTable({
             </div>
           </div>
         ) : (
-          logs.map((entry) => (
-            <LogRow
-              key={entry.id}
-              entry={entry}
-              showSource={showSource}
-              gridClassName={gridClassName}
-            />
-          ))
+          logs.map((entry) => {
+            return (
+              <LogRow
+                key={entry.id}
+                entry={entry}
+                showSource={showSource}
+                gridClassName={gridClassName}
+              />
+            );
+          })
         )}
       </div>
     </div>

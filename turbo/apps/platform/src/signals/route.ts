@@ -26,7 +26,9 @@ export const updateSearchParams$ = command(
   ({ set }, searchParams: URLSearchParams) => {
     const str = searchParams.toString();
     pushState({}, "", `${pathname()}${str ? `?${str}` : ""}`);
-    set(reloadPathname$, (x) => x + 1);
+    set(reloadPathname$, (x) => {
+      return x + 1;
+    });
   },
 );
 
@@ -92,7 +94,9 @@ const navigateToDefaultWhenInvalid$ = command(({ get, set }) => {
   }
 
   if (!get(currentRoute$)) {
-    set(reloadPathname$, (x) => x + 1);
+    set(reloadPathname$, (x) => {
+      return x + 1;
+    });
     pushState({}, "", "/");
   }
 });
@@ -105,7 +109,9 @@ export const initRoutes$ = command(
     window.addEventListener(
       "popstate",
       onDomEventFn(async () => {
-        set(reloadPathname$, (x) => x + 1);
+        set(reloadPathname$, (x) => {
+          return x + 1;
+        });
         set(navigateToDefaultWhenInvalid$);
         await set(loadRoute$, signal);
       }),
@@ -136,7 +142,9 @@ export const navigate$ = command(
     } else {
       pushState({}, "", newPath);
     }
-    set(reloadPathname$, (x) => x + 1);
+    set(reloadPathname$, (x) => {
+      return x + 1;
+    });
     // Use rootSignal$ (not the caller's route signal) so the new route gets
     // a fresh, non-aborted signal.  resetRouteSignal$ inside loadRoute$ will
     // abort the previous route's controller, which would poison any signal

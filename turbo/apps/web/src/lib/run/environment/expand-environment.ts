@@ -29,9 +29,9 @@ function processSecretValues(
   if (secretNames.length === 0) return undefined;
 
   if (checkEnv) {
-    const missingSecrets = secretNames.filter(
-      (name) => !passedSecrets || !passedSecrets[name],
-    );
+    const missingSecrets = secretNames.filter((name) => {
+      return !passedSecrets || !passedSecrets[name];
+    });
     if (missingSecrets.length > 0) {
       throw badRequest(
         `Missing required secrets: ${missingSecrets.join(", ")}. Use '--secrets ${missingSecrets[0]}=<value>' or '--env-file <path>' to provide them.`,
@@ -132,14 +132,20 @@ export function expandEnvironmentFromCompose(
     log.warn(
       "Environment contains $" +
         "{{ env.xxx }} references which are not supported: " +
-        grouped.env.map((r) => r.name).join(", "),
+        grouped.env
+          .map((r) => {
+            return r.name;
+          })
+          .join(", "),
     );
   }
 
   const firewallPlaceholders = buildFirewallPlaceholders(firewalls ?? []);
 
   // Process secrets if needed
-  const secretNames = grouped.secrets.map((r) => r.name);
+  const secretNames = grouped.secrets.map((r) => {
+    return r.name;
+  });
   const secrets = processSecretValues(
     secretNames,
     passedSecrets,
@@ -164,7 +170,11 @@ export function expandEnvironmentFromCompose(
     log.warn(
       "Environment contains $" +
         "{{ vars.xxx }} but no vars provided: " +
-        grouped.vars.map((r) => r.name).join(", "),
+        grouped.vars
+          .map((r) => {
+            return r.name;
+          })
+          .join(", "),
     );
   }
 
@@ -174,8 +184,12 @@ export function expandEnvironmentFromCompose(
   // Check for missing vars (only when checkEnv is enabled)
   if (checkEnv) {
     const missingVarNames = missingVars
-      .filter((v) => v.source === "vars")
-      .map((v) => v.name);
+      .filter((v) => {
+        return v.source === "vars";
+      })
+      .map((v) => {
+        return v.name;
+      });
     if (missingVarNames.length > 0) {
       throw badRequest(
         `Missing required variables: ${missingVarNames.join(", ")}. Use '--vars ${missingVarNames[0]}=<value>' or '--env-file <path>' to provide them.`,

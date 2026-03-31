@@ -63,22 +63,26 @@ function AppearanceSettings() {
           </div>
         </div>
         <div className="flex gap-2 shrink-0">
-          {THEME_OPTIONS.map(({ value, label, icon: Icon }) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setTheme(value)}
-              className={cn(
-                "flex items-center gap-2 rounded-lg border border-[0.7px] px-3.5 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                currentPref === value
-                  ? "border-primary/40 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/15"
-                  : "zero-chip text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <Icon size={15} stroke={1.5} />
-              {label}
-            </button>
-          ))}
+          {THEME_OPTIONS.map(({ value, label, icon: Icon }) => {
+            return (
+              <button
+                key={value}
+                type="button"
+                onClick={() => {
+                  return setTheme(value);
+                }}
+                className={cn(
+                  "flex items-center gap-2 rounded-lg border border-[0.7px] px-3.5 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                  currentPref === value
+                    ? "border-primary/40 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/15"
+                    : "zero-chip text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <Icon size={15} stroke={1.5} />
+                {label}
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -127,26 +131,34 @@ function SendModeSettings() {
           </div>
         </div>
         <div className="flex gap-2 shrink-0">
-          {SEND_OPTIONS.map(({ value, label }) => (
-            <button
-              key={value}
-              type="button"
-              disabled={saving !== null}
-              onClick={() => handleChange(value)}
-              className={cn(
-                "flex items-center gap-2 rounded-lg border border-[0.7px] px-3.5 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                (saving === value ? true : saving === null && current === value)
-                  ? "border-primary/40 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/15"
-                  : "zero-chip text-muted-foreground hover:text-foreground",
-                saving !== null && "opacity-60 cursor-not-allowed",
-              )}
-            >
-              {saving === value && (
-                <IconLoader2 size={14} className="animate-spin" />
-              )}
-              {label}
-            </button>
-          ))}
+          {SEND_OPTIONS.map(({ value, label }) => {
+            return (
+              <button
+                key={value}
+                type="button"
+                disabled={saving !== null}
+                onClick={() => {
+                  return handleChange(value);
+                }}
+                className={cn(
+                  "flex items-center gap-2 rounded-lg border border-[0.7px] px-3.5 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                  (
+                    saving === value
+                      ? true
+                      : saving === null && current === value
+                  )
+                    ? "border-primary/40 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/15"
+                    : "zero-chip text-muted-foreground hover:text-foreground",
+                  saving !== null && "opacity-60 cursor-not-allowed",
+                )}
+              >
+                {saving === value && (
+                  <IconLoader2 size={14} className="animate-spin" />
+                )}
+                {label}
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -172,7 +184,12 @@ export function ZeroPreferencesPage() {
 
       <main className="shrink-0 px-4 sm:px-6 pt-4 pb-16">
         <div className="mx-auto max-w-[900px] flex flex-col gap-8">
-          <Tabs value={tab} onValueChange={(v) => setTab(v)}>
+          <Tabs
+            value={tab}
+            onValueChange={(v) => {
+              return setTab(v);
+            }}
+          >
             <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
               <TabsTrigger
                 value="appearance"

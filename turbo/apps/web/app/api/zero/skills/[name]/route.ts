@@ -123,10 +123,12 @@ const router = tsr.router(zeroSkillsDetailContract, {
 
     // Download manifest to find SKILL.md
     const manifest = await downloadManifest(bucket, version.s3Key);
-    const normalize = (p: string) => (p.startsWith("./") ? p.slice(2) : p);
-    const skillFile = manifest.files.find(
-      (f) => normalize(f.path) === SKILL_FILENAME,
-    );
+    const normalize = (p: string) => {
+      return p.startsWith("./") ? p.slice(2) : p;
+    };
+    const skillFile = manifest.files.find((f) => {
+      return normalize(f.path) === SKILL_FILENAME;
+    });
 
     if (!skillFile) {
       return {
@@ -264,9 +266,9 @@ const router = tsr.router(zeroSkillsDetailContract, {
 
     // Remove skill from each affected agent and rebuild compose
     for (const agent of affectedAgents) {
-      const updatedSkills = (agent.customSkills ?? []).filter(
-        (s) => s !== params.name,
-      );
+      const updatedSkills = (agent.customSkills ?? []).filter((s) => {
+        return s !== params.name;
+      });
       await globalThis.services.db
         .update(zeroAgents)
         .set({ customSkills: updatedSkills, updatedAt: new Date() })
@@ -275,7 +277,9 @@ const router = tsr.router(zeroSkillsDetailContract, {
       // Rebuild compose (best-effort — skill deletion proceeds even if compose rebuild fails)
       const content = buildComposeContent(
         agent.name,
-        updatedSkills.map((name) => ({ name })),
+        updatedSkills.map((name) => {
+          return { name };
+        }),
       );
 
       try {

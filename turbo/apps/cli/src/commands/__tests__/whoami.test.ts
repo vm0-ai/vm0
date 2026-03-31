@@ -29,7 +29,9 @@ vi.mock("os", async (importOriginal) => {
   const original = await importOriginal<typeof import("os")>();
   return {
     ...original,
-    homedir: () => TEST_HOME,
+    homedir: () => {
+      return TEST_HOME;
+    },
   };
 });
 
@@ -55,8 +57,12 @@ describe("whoami command", () => {
 
   function getAllOutput(): string[] {
     return mockConsoleLog.mock.calls
-      .map((call) => call[0] as string | undefined)
-      .filter((call): call is string => call !== undefined);
+      .map((call) => {
+        return call[0] as string | undefined;
+      })
+      .filter((call): call is string => {
+        return call !== undefined;
+      });
   }
 
   async function runWhoami(): Promise<void> {
@@ -76,20 +82,47 @@ describe("whoami command", () => {
           capabilities: [],
         }),
       );
-      vi.stubEnv("VM0_API_URL", "https://api.vm0.ai");
+      const apiUrl = "https://api.vm0.ai";
+      vi.stubEnv("VM0_API_URL", apiUrl);
 
       await runWhoami();
 
       const output = getAllOutput();
-      expect(output.some((line) => line.includes("Agent:"))).toBe(true);
-      expect(output.some((line) => line.includes("agent-456"))).toBe(true);
-      expect(output.some((line) => line.includes("claude"))).toBe(true);
-      expect(output.some((line) => line.includes("Run:"))).toBe(true);
-      expect(output.some((line) => line.includes("run-123"))).toBe(true);
-      expect(output.some((line) => line.includes("active-org"))).toBe(true);
-      expect(output.some((line) => line.includes("https://api.vm0.ai"))).toBe(
-        true,
-      );
+      expect(
+        output.some((line) => {
+          return line.includes("Agent:");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("agent-456");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("claude");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("Run:");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("run-123");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("active-org");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes(apiUrl);
+        }),
+      ).toBe(true);
     });
 
     it("should skip agent section when no agent env vars are set", async () => {
@@ -98,9 +131,21 @@ describe("whoami command", () => {
       await runWhoami();
 
       const output = getAllOutput();
-      expect(output.some((line) => line.includes("Agent:"))).toBe(false);
-      expect(output.some((line) => line.includes("Run:"))).toBe(true);
-      expect(output.some((line) => line.includes("run-789"))).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("Agent:");
+        }),
+      ).toBe(false);
+      expect(
+        output.some((line) => {
+          return line.includes("Run:");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("run-789");
+        }),
+      ).toBe(true);
     });
 
     it("should show agent section with only partial info when only ZERO_AGENT_ID is set", async () => {
@@ -110,12 +155,26 @@ describe("whoami command", () => {
       await runWhoami();
 
       const output = getAllOutput();
-      expect(output.some((line) => line.includes("Agent:"))).toBe(true);
-      expect(output.some((line) => line.includes("partial-agent-id"))).toBe(
-        true,
-      );
-      expect(output.some((line) => line.includes("Framework:"))).toBe(false);
-      expect(output.some((line) => line.includes("Run:"))).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("Agent:");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("partial-agent-id");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("Framework:");
+        }),
+      ).toBe(false);
+      expect(
+        output.some((line) => {
+          return line.includes("Run:");
+        }),
+      ).toBe(true);
     });
   });
 
@@ -131,8 +190,16 @@ describe("whoami command", () => {
       await runWhoami();
 
       const output = getAllOutput();
-      expect(output.some((line) => line.includes("Authenticated"))).toBe(true);
-      expect(output.some((line) => line.includes("config file"))).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("Authenticated");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("config file");
+        }),
+      ).toBe(true);
     });
 
     it("should show authenticated via env var when VM0_TOKEN is set", async () => {
@@ -141,19 +208,27 @@ describe("whoami command", () => {
       await runWhoami();
 
       const output = getAllOutput();
-      expect(output.some((line) => line.includes("Authenticated"))).toBe(true);
-      expect(output.some((line) => line.includes("VM0_TOKEN env var"))).toBe(
-        true,
-      );
+      expect(
+        output.some((line) => {
+          return line.includes("Authenticated");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("VM0_TOKEN env var");
+        }),
+      ).toBe(true);
     });
 
     it("should show not authenticated when no token exists", async () => {
       await runWhoami();
 
       const output = getAllOutput();
-      expect(output.some((line) => line.includes("Not authenticated"))).toBe(
-        true,
-      );
+      expect(
+        output.some((line) => {
+          return line.includes("Not authenticated");
+        }),
+      ).toBe(true);
     });
 
     it("should display active org from CLI JWT token", async () => {
@@ -168,18 +243,29 @@ describe("whoami command", () => {
       await runWhoami();
 
       const output = getAllOutput();
-      expect(output.some((line) => line.includes("Org:"))).toBe(true);
-      expect(output.some((line) => line.includes("test-org-slug"))).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("Org:");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("test-org-slug");
+        }),
+      ).toBe(true);
     });
 
     it("should display API URL", async () => {
-      vi.stubEnv("VM0_API_URL", "https://custom-api.vm0.ai");
+      const customApiUrl = "https://custom-api.vm0.ai";
+      vi.stubEnv("VM0_API_URL", customApiUrl);
 
       await runWhoami();
 
       const output = getAllOutput();
       expect(
-        output.some((line) => line.includes("https://custom-api.vm0.ai")),
+        output.some((line) => {
+          return line.includes(customApiUrl);
+        }),
       ).toBe(true);
     });
   });

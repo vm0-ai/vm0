@@ -1216,9 +1216,9 @@ describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
 
       // Check cookies are cleared
       const cookies = response.headers.getSetCookie();
-      const stateCookie = cookies.find((c) =>
-        c.startsWith("connector_oauth_state="),
-      );
+      const stateCookie = cookies.find((c) => {
+        return c.startsWith("connector_oauth_state=");
+      });
       expect(stateCookie).toContain("Max-Age=0");
     });
   });

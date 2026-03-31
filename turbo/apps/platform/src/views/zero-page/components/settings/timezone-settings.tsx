@@ -34,8 +34,12 @@ export function TimezoneSettings() {
   const handleChange = (value: string) => {
     setLoading(true);
     updatePreference({ timezone: value }, pageSignal)
-      .finally(() => setLoading(false))
-      .catch(() => toast.error("Failed to update timezone"));
+      .finally(() => {
+        setLoading(false);
+      })
+      .catch(() => {
+        toast.error("Failed to update timezone");
+      });
   };
 
   if (!preferences) {
@@ -82,11 +86,13 @@ export function TimezoneSettings() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {timezoneOptions.map((tz) => (
-                <SelectItem key={tz} value={tz}>
-                  {getTimezoneLabel(tz)}
-                </SelectItem>
-              ))}
+              {timezoneOptions.map((tz) => {
+                return (
+                  <SelectItem key={tz} value={tz}>
+                    {getTimezoneLabel(tz)}
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
           {loading && (

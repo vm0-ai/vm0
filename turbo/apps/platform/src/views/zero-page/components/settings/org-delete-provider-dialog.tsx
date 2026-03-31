@@ -30,7 +30,12 @@ export function OrgDeleteProviderDialog() {
   };
 
   return (
-    <Dialog open={deleteState.open} onOpenChange={() => closeDelete()}>
+    <Dialog
+      open={deleteState.open}
+      onOpenChange={() => {
+        return closeDelete();
+      }}
+    >
       <DialogContent className="max-w-2xl gap-6">
         <DialogHeader>
           <DialogTitle className="font-normal leading-7">
@@ -46,7 +51,9 @@ export function OrgDeleteProviderDialog() {
         <DialogFooter>
           <Button
             variant="outline"
-            onClick={() => closeDelete()}
+            onClick={() => {
+              return closeDelete();
+            }}
             disabled={isLoading}
           >
             Cancel

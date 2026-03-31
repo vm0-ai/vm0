@@ -40,9 +40,9 @@ export const pinnedAgentIds$ = computed((get) => {
  * Whether a pinned agents update is in flight.
  */
 const internalSavingPinned$ = state(false);
-export const savingPinnedAgents$ = computed((get) =>
-  get(internalSavingPinned$),
-);
+export const savingPinnedAgents$ = computed((get) => {
+  return get(internalSavingPinned$);
+});
 
 /**
  * Update pinned agent IDs on the server with optimistic UI.
@@ -66,7 +66,9 @@ export const updatePinnedAgentIds$ = command(
       const clerk = await get(clerk$);
       await clerk.session?.getToken({ skipCache: true });
 
-      set(reloadPinned$, (x) => x + 1);
+      set(reloadPinned$, (x) => {
+        return x + 1;
+      });
     } finally {
       set(optimisticPinnedIds$, null);
       set(internalSavingPinned$, false);

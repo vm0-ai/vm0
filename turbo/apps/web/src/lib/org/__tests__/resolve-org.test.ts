@@ -16,11 +16,13 @@ const context = testContext();
  * resolves the correct orgId from the user's org memberships.
  */
 function testOrgs(...slugs: string[]) {
-  return slugs.map((slug) => ({
-    id: `org_mock_${slug}`,
-    slug,
-    name: slug,
-  }));
+  return slugs.map((slug) => {
+    return {
+      id: `org_mock_${slug}`,
+      slug,
+      name: slug,
+    };
+  });
 }
 
 /**

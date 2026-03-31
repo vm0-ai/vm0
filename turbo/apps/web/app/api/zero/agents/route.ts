@@ -38,7 +38,9 @@ const router = tsr.router(zeroAgentsMainContract, {
     // Build compose content (always includes all connector skills)
     const content = buildComposeContent(
       agentName,
-      customSkills.map((name) => ({ name })),
+      customSkills.map((name) => {
+        return { name };
+      }),
     );
 
     // Run synchronous compose (pass empty instructions so the
@@ -131,15 +133,17 @@ const router = tsr.router(zeroAgentsMainContract, {
 
     return {
       status: 200 as const,
-      body: rows.map((row) => ({
-        agentId: row.agentId,
-        displayName: row.displayName ?? null,
-        description: row.description ?? null,
-        sound: row.sound ?? null,
-        avatarUrl: row.avatarUrl ?? null,
-        firewallPolicies: row.firewallPolicies ?? null,
-        customSkills: row.customSkills,
-      })),
+      body: rows.map((row) => {
+        return {
+          agentId: row.agentId,
+          displayName: row.displayName ?? null,
+          description: row.description ?? null,
+          sound: row.sound ?? null,
+          avatarUrl: row.avatarUrl ?? null,
+          firewallPolicies: row.firewallPolicies ?? null,
+          customSkills: row.customSkills,
+        };
+      }),
     };
   },
 });

@@ -186,7 +186,9 @@ async function handleInstallCallback(params: {
     .from(slackOrgInstallations)
     .where(eq(slackOrgInstallations.slackWorkspaceId, oauthResult.teamId))
     .limit(1)
-    .then((rows) => rows[0] ?? null);
+    .then((rows) => {
+      return rows[0] ?? null;
+    });
 
   const isReinstall = existing !== null;
 
@@ -300,11 +302,11 @@ async function handlePlatformInstall(
       installation: inst,
       slackUserId: oauthResult.authedUserId,
       orgId,
-    }).catch((err) =>
-      log.warn("Failed to notify connect success after install", {
+    }).catch((err) => {
+      return log.warn("Failed to notify connect success after install", {
         error: err,
-      }),
-    );
+      });
+    });
   }
 
   // Reinstall flow: redirect back to Works page with "updated" flag.
@@ -409,9 +411,9 @@ async function handleConnectCallback(params: {
     installation,
     slackUserId: userIdentity.authedUserId,
     orgId: state.orgId,
-  }).catch((err) =>
-    log.warn("Failed to notify connect success", { error: err }),
-  );
+  }).catch((err) => {
+    return log.warn("Failed to notify connect success", { error: err });
+  });
 
   return NextResponse.redirect(
     `${appUrl}/slack/connect?status=connected&workspace=${encodeURIComponent(installation.slackWorkspaceName ?? "")}`,

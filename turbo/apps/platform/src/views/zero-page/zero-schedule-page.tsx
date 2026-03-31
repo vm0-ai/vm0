@@ -59,23 +59,25 @@ export type CombinedEntry = ScheduleEntry & {
 export function buildCombinedSchedule(
   entries: OrgScheduleEntry[],
 ): CombinedEntry[] {
-  return entries.map((e) => ({
-    id: e.id,
-    time: e.time,
-    prompt: e.prompt,
-    description: e.description,
-    enabled: e.enabled,
-    notifyEmail: e.notifyEmail,
-    notifySlack: e.notifySlack,
-    notifySlackChannelId: e.notifySlackChannelId,
-    name: e.name,
-    intervalSeconds: e.intervalSeconds,
-    agentLabel: e.displayName ?? e.agentId,
-    agentId: e.agentId,
-    timezone: e.timezone,
-    nextRunAt: e.nextRunAt,
-    lastRunAt: e.lastRunAt,
-  }));
+  return entries.map((e) => {
+    return {
+      id: e.id,
+      time: e.time,
+      prompt: e.prompt,
+      description: e.description,
+      enabled: e.enabled,
+      notifyEmail: e.notifyEmail,
+      notifySlack: e.notifySlack,
+      notifySlackChannelId: e.notifySlackChannelId,
+      name: e.name,
+      intervalSeconds: e.intervalSeconds,
+      agentLabel: e.displayName ?? e.agentId,
+      agentId: e.agentId,
+      timezone: e.timezone,
+      nextRunAt: e.nextRunAt,
+      lastRunAt: e.lastRunAt,
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -94,18 +96,21 @@ const SCHEDULE_FREQUENCY_OPTIONS = [
 
 const SCHEDULE_LOOP_MINUTES = [5, 15, 30, 60] as const;
 
-const HOUR_OPTIONS: readonly number[] = Array.from({ length: 24 }, (_, i) => i);
+const HOUR_OPTIONS: readonly number[] = Array.from({ length: 24 }, (_, i) => {
+  return i;
+});
 
-const MINUTE_OPTIONS: readonly number[] = Array.from(
-  { length: 12 },
-  (_, i) => i * 5,
-);
+const MINUTE_OPTIONS: readonly number[] = Array.from({ length: 12 }, (_, i) => {
+  return i * 5;
+});
 
 function getMinuteOptions(currentMinute?: number): readonly number[] {
   if (currentMinute === undefined || MINUTE_OPTIONS.includes(currentMinute)) {
     return MINUTE_OPTIONS;
   }
-  return [...MINUTE_OPTIONS, currentMinute].sort((a, b) => a - b);
+  return [...MINUTE_OPTIONS, currentMinute].sort((a, b) => {
+    return a - b;
+  });
 }
 
 function isCronFreq(f: string): boolean {
@@ -159,11 +164,13 @@ export function ScheduleEditFields({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {SCHEDULE_FREQUENCY_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>
-                {opt.label}
-              </SelectItem>
-            ))}
+            {SCHEDULE_FREQUENCY_OPTIONS.map((opt) => {
+              return (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              );
+            })}
           </SelectContent>
         </Select>
       </div>
@@ -177,17 +184,21 @@ export function ScheduleEditFields({
           </label>
           <Select
             value={String(loopMinutes)}
-            onValueChange={(v) => setLoopMinutes(Number(v))}
+            onValueChange={(v) => {
+              return setLoopMinutes(Number(v));
+            }}
           >
             <SelectTrigger id="schedule-dialog-loop" className="h-9 w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {SCHEDULE_LOOP_MINUTES.map((m) => (
-                <SelectItem key={m} value={String(m)}>
-                  {m} minutes
-                </SelectItem>
-              ))}
+              {SCHEDULE_LOOP_MINUTES.map((m) => {
+                return (
+                  <SelectItem key={m} value={String(m)}>
+                    {m} minutes
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
         </div>
@@ -204,7 +215,9 @@ export function ScheduleEditFields({
             id="schedule-dialog-date"
             type="date"
             value={date}
-            onChange={(e) => setDate(e.target.value)}
+            onChange={(e) => {
+              return setDate(e.target.value);
+            }}
             className="h-9 w-full"
           />
         </div>
@@ -216,17 +229,21 @@ export function ScheduleEditFields({
             <div className="min-w-0 flex-1">
               <Select
                 value={String(hour)}
-                onValueChange={(v) => setHour(Number(v))}
+                onValueChange={(v) => {
+                  return setHour(Number(v));
+                }}
               >
                 <SelectTrigger className="h-9 w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {HOUR_OPTIONS.map((h) => (
-                    <SelectItem key={h} value={String(h)}>
-                      {h.toString().padStart(2, "0")}
-                    </SelectItem>
-                  ))}
+                  {HOUR_OPTIONS.map((h) => {
+                    return (
+                      <SelectItem key={h} value={String(h)}>
+                        {h.toString().padStart(2, "0")}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             </div>
@@ -234,17 +251,21 @@ export function ScheduleEditFields({
             <div className="min-w-0 flex-1">
               <Select
                 value={String(minute)}
-                onValueChange={(v) => setMinute(Number(v))}
+                onValueChange={(v) => {
+                  return setMinute(Number(v));
+                }}
               >
                 <SelectTrigger className="h-9 w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {getMinuteOptions(minute).map((m) => (
-                    <SelectItem key={m} value={String(m)}>
-                      {m.toString().padStart(2, "0")}
-                    </SelectItem>
-                  ))}
+                  {getMinuteOptions(minute).map((m) => {
+                    return (
+                      <SelectItem key={m} value={String(m)}>
+                        {m.toString().padStart(2, "0")}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             </div>
@@ -264,11 +285,13 @@ export function ScheduleEditFields({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {COMMON_TIMEZONES.map((tz) => (
-                <SelectItem key={tz} value={tz}>
-                  {getTimezoneLabel(tz)}
-                </SelectItem>
-              ))}
+              {COMMON_TIMEZONES.map((tz) => {
+                return (
+                  <SelectItem key={tz} value={tz}>
+                    {getTimezoneLabel(tz)}
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
         </div>
@@ -320,29 +343,31 @@ function ScheduleListSkeleton() {
           </tr>
         </thead>
         <tbody>
-          {SKELETON_LIST_KEYS.map((key) => (
-            <tr key={key} className="border-b border-border/50 last:border-0">
-              <td className="py-2.5 pr-2 align-middle w-[5rem]">
-                <Skeleton className="h-4 w-14 rounded-md" />
-              </td>
-              <td className="py-2.5 pr-4 align-middle min-w-0 max-w-[1px]">
-                <Skeleton className="h-4 w-full max-w-md" />
-              </td>
-              <td className="py-2.5 px-2 align-middle min-w-[6.5rem] max-w-[9rem] overflow-hidden">
-                <Skeleton className="h-4 w-full max-w-[8rem] rounded-md" />
-              </td>
-              <td className="py-2.5 px-3 align-middle w-16">
-                <div className="flex justify-center">
-                  <Skeleton className="h-5 w-9 rounded-full" />
-                </div>
-              </td>
-              <td className="py-2.5 pl-2 align-middle text-right w-10">
-                <div className="flex justify-end">
-                  <Skeleton className="h-8 w-8 rounded-lg" />
-                </div>
-              </td>
-            </tr>
-          ))}
+          {SKELETON_LIST_KEYS.map((key) => {
+            return (
+              <tr key={key} className="border-b border-border/50 last:border-0">
+                <td className="py-2.5 pr-2 align-middle w-[5rem]">
+                  <Skeleton className="h-4 w-14 rounded-md" />
+                </td>
+                <td className="py-2.5 pr-4 align-middle min-w-0 max-w-[1px]">
+                  <Skeleton className="h-4 w-full max-w-md" />
+                </td>
+                <td className="py-2.5 px-2 align-middle min-w-[6.5rem] max-w-[9rem] overflow-hidden">
+                  <Skeleton className="h-4 w-full max-w-[8rem] rounded-md" />
+                </td>
+                <td className="py-2.5 px-3 align-middle w-16">
+                  <div className="flex justify-center">
+                    <Skeleton className="h-5 w-9 rounded-full" />
+                  </div>
+                </td>
+                <td className="py-2.5 pl-2 align-middle text-right w-10">
+                  <div className="flex justify-end">
+                    <Skeleton className="h-8 w-8 rounded-lg" />
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -356,31 +381,37 @@ function ScheduleCalendarSkeleton() {
       <div className="rounded-xl zero-border bg-muted/20 overflow-hidden">
         <div className="grid grid-cols-8">
           <div className="bg-muted/50 p-2 border-b border-r border-border/60 h-9" />
-          {WEEKDAY_LABELS.map((d) => (
-            <div
-              key={d}
-              className="bg-muted/50 p-2 border-b border-border/60 flex justify-center"
-            >
-              <Skeleton className="h-4 w-8" />
-            </div>
-          ))}
-          {SKELETON_ROW_KEYS.map((rowKey, row) => (
-            <div key={rowKey} className="contents">
-              <div className="bg-muted/30 p-2 border-r border-b border-border/60 flex items-center">
-                <Skeleton className="h-3 w-12" />
+          {WEEKDAY_LABELS.map((d) => {
+            return (
+              <div
+                key={d}
+                className="bg-muted/50 p-2 border-b border-border/60 flex justify-center"
+              >
+                <Skeleton className="h-4 w-8" />
               </div>
-              {WEEKDAY_LABELS.map((day, col) => (
-                <div
-                  key={`${rowKey}-${day}`}
-                  className="min-h-[52px] p-1.5 border-r border-b border-border/60 flex items-center justify-center"
-                >
-                  {(row + col) % 3 === 0 && (
-                    <Skeleton className="h-6 w-full rounded" />
-                  )}
+            );
+          })}
+          {SKELETON_ROW_KEYS.map((rowKey, row) => {
+            return (
+              <div key={rowKey} className="contents">
+                <div className="bg-muted/30 p-2 border-r border-b border-border/60 flex items-center">
+                  <Skeleton className="h-3 w-12" />
                 </div>
-              ))}
-            </div>
-          ))}
+                {WEEKDAY_LABELS.map((day, col) => {
+                  return (
+                    <div
+                      key={`${rowKey}-${day}`}
+                      className="min-h-[52px] p-1.5 border-r border-b border-border/60 flex items-center justify-center"
+                    >
+                      {(row + col) % 3 === 0 && (
+                        <Skeleton className="h-6 w-full rounded" />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
         </div>
       </div>
     </section>
@@ -429,7 +460,11 @@ export function ZeroSchedulePage() {
   const combinedSchedule = buildCombinedSchedule(entries);
 
   const agentOrder = [
-    ...new Set(combinedSchedule.map((e) => e.agentLabel)),
+    ...new Set(
+      combinedSchedule.map((e) => {
+        return e.agentLabel;
+      }),
+    ),
   ] as const;
 
   const openScheduleDetail = (entry: CombinedEntry) => {
@@ -488,7 +523,9 @@ export function ZeroSchedulePage() {
       return;
     }
     const id = entry.id;
-    setTogglingIds((prev) => new Set([...prev, id]));
+    setTogglingIds((prev) => {
+      return new Set([...prev, id]);
+    });
     try {
       await toggleEnabled(
         {
@@ -509,7 +546,9 @@ export function ZeroSchedulePage() {
 
   const handleRunNow = async (entry: CombinedEntry) => {
     const id = entry.id;
-    setRunningIds((prev) => new Set([...prev, id]));
+    setRunningIds((prev) => {
+      return new Set([...prev, id]);
+    });
     try {
       await runScheduleNow(entry.id, pageSignal);
     } finally {
@@ -555,16 +594,18 @@ export function ZeroSchedulePage() {
               size="sm"
               className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
               disabled={agents.length === 0}
-              onClick={() => setCreateOpen(true)}
+              onClick={() => {
+                return setCreateOpen(true);
+              }}
             >
               <IconPlus size={14} stroke={2} />
               Add schedule
             </Button>
             <Tabs
               value={scheduleViewMode}
-              onValueChange={(v) =>
-                setScheduleViewMode(v as "list" | "calendar")
-              }
+              onValueChange={(v) => {
+                return setScheduleViewMode(v as "list" | "calendar");
+              }}
               className="shrink-0"
             >
               <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
@@ -602,13 +643,17 @@ export function ZeroSchedulePage() {
                 entries={combinedSchedule}
                 togglingIds={togglingIds}
                 runningIds={runningIds}
-                getAgentLabel={(e) => e.agentLabel}
+                getAgentLabel={(e) => {
+                  return e.agentLabel;
+                }}
                 onEdit={openScheduleDetail}
                 onToggle={(entry, enabled) => {
                   handleToggle(entry, enabled).catch(() => {});
                 }}
                 onDelete={handleDelete}
-                onNew={() => setCreateOpen(true)}
+                onNew={() => {
+                  return setCreateOpen(true);
+                }}
                 onRunNow={(entry) => {
                   handleRunNow(entry).catch(() => {});
                 }}
@@ -618,7 +663,9 @@ export function ZeroSchedulePage() {
               <ScheduleCalendarView
                 entries={combinedSchedule}
                 agentOrder={agentOrder}
-                getAgentLabel={(e) => e.agentLabel}
+                getAgentLabel={(e) => {
+                  return e.agentLabel;
+                }}
                 onEdit={openScheduleDetail}
               />
             )}
@@ -628,7 +675,9 @@ export function ZeroSchedulePage() {
 
       <ScheduleFormDialog
         open={createOpen}
-        onClose={() => setCreateOpen(false)}
+        onClose={() => {
+          return setCreateOpen(false);
+        }}
         onSave={handleCreateSave}
         saving={saving}
         saveError={saveError}
@@ -658,7 +707,12 @@ export function ZeroSchedulePage() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPendingDelete(null)}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                return setPendingDelete(null);
+              }}
+            >
               Cancel
             </Button>
             <Button variant="destructive" onClick={confirmDelete}>

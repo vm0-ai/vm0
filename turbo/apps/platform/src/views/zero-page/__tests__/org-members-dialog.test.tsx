@@ -69,8 +69,11 @@ describe("org members - invite dialog loading state", () => {
     server.use(
       http.post("*/api/zero/org/invite", () => {
         return new Promise<Response>((resolve) => {
-          resolveInvite = () =>
-            resolve(HttpResponse.json({ message: "ok" }, { status: 200 }));
+          resolveInvite = () => {
+            return resolve(
+              HttpResponse.json({ message: "ok" }, { status: 200 }),
+            );
+          };
         });
       }),
     );
@@ -170,8 +173,11 @@ describe("org members - invite dialog loading state", () => {
     server.use(
       http.post("*/api/zero/org/invite", () => {
         return new Promise<Response>((resolve) => {
-          resolveInvite = () =>
-            resolve(HttpResponse.json({ message: "ok" }, { status: 200 }));
+          resolveInvite = () => {
+            return resolve(
+              HttpResponse.json({ message: "ok" }, { status: 200 }),
+            );
+          };
         });
       }),
     );

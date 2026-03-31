@@ -74,7 +74,9 @@ describe("sidebar chat navigation from /team", () => {
     });
 
     // Find and click the chat thread in sidebar
-    const chatLink = await waitFor(() => screen.getByText("Test conversation"));
+    const chatLink = await waitFor(() => {
+      return screen.getByText("Test conversation");
+    });
     const anchor = chatLink.closest("a");
     expect(anchor).not.toBeNull();
     await act(() => {

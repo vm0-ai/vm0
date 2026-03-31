@@ -64,8 +64,16 @@ export async function getApiTokenConnectorTypes(
       .where(and(eq(variables.orgId, orgId), eq(variables.userId, userId))),
   ]);
   return deriveApiTokenConnectedTypes(
-    new Set(userSecretRows.map((r) => r.name)),
-    new Set(userVariableRows.map((r) => r.name)),
+    new Set(
+      userSecretRows.map((r) => {
+        return r.name;
+      }),
+    ),
+    new Set(
+      userVariableRows.map((r) => {
+        return r.name;
+      }),
+    ),
   );
 }
 
@@ -101,36 +109,46 @@ export async function listConnectors(
     getApiTokenConnectorTypes(orgId, userId),
   ]);
 
-  const dbConnectors: ConnectorResponse[] = dbResult.map((row) => ({
-    id: row.id,
-    type: parseConnectorType(row.type),
-    authMethod: row.authMethod,
-    externalId: row.externalId,
-    externalUsername: row.externalUsername,
-    externalEmail: row.externalEmail,
-    oauthScopes: row.oauthScopes ? JSON.parse(row.oauthScopes) : null,
-    needsReconnect: row.needsReconnect,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
-  }));
+  const dbConnectors: ConnectorResponse[] = dbResult.map((row) => {
+    return {
+      id: row.id,
+      type: parseConnectorType(row.type),
+      authMethod: row.authMethod,
+      externalId: row.externalId,
+      externalUsername: row.externalUsername,
+      externalEmail: row.externalEmail,
+      oauthScopes: row.oauthScopes ? JSON.parse(row.oauthScopes) : null,
+      needsReconnect: row.needsReconnect,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    };
+  });
 
   // DB record takes precedence over derived
-  const dbTypeSet = new Set(dbConnectors.map((c) => c.type));
+  const dbTypeSet = new Set(
+    dbConnectors.map((c) => {
+      return c.type;
+    }),
+  );
   const now = new Date().toISOString();
   const derivedConnectors: ConnectorResponse[] = derivedTypes
-    .filter((type) => !dbTypeSet.has(type))
-    .map((type) => ({
-      id: null,
-      type,
-      authMethod: "api-token",
-      externalId: null,
-      externalUsername: null,
-      externalEmail: null,
-      oauthScopes: null,
-      needsReconnect: false,
-      createdAt: now,
-      updatedAt: now,
-    }));
+    .filter((type) => {
+      return !dbTypeSet.has(type);
+    })
+    .map((type) => {
+      return {
+        id: null,
+        type,
+        authMethod: "api-token",
+        externalId: null,
+        externalUsername: null,
+        externalEmail: null,
+        oauthScopes: null,
+        needsReconnect: false,
+        createdAt: now,
+        updatedAt: now,
+      };
+    });
 
   return [...dbConnectors, ...derivedConnectors];
 }
@@ -210,12 +228,22 @@ export async function getConnector(
       : Promise.resolve([]),
   ]);
 
-  const userSecretNames = new Set(userSecretRows.map((r) => r.name));
-  const userVariableNames = new Set(userVariableRows.map((r) => r.name));
-  const secretsOk = fields.secrets.every((name) => userSecretNames.has(name));
-  const variablesOk = fields.variables.every((name) =>
-    userVariableNames.has(name),
+  const userSecretNames = new Set(
+    userSecretRows.map((r) => {
+      return r.name;
+    }),
   );
+  const userVariableNames = new Set(
+    userVariableRows.map((r) => {
+      return r.name;
+    }),
+  );
+  const secretsOk = fields.secrets.every((name) => {
+    return userSecretNames.has(name);
+  });
+  const variablesOk = fields.variables.every((name) => {
+    return userVariableNames.has(name);
+  });
   if (!secretsOk || !variablesOk) return null;
 
   const now = new Date().toISOString();

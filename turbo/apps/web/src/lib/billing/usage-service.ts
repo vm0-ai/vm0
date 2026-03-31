@@ -69,16 +69,24 @@ export async function getUsageMembers(
   }
 
   // Resolve user emails from user_cache
-  const userIds = rows.map((r) => r.userId);
+  const userIds = rows.map((r) => {
+    return r.userId;
+  });
   const cachedUsers = await db
     .select({ userId: userCache.userId, email: userCache.email })
     .from(userCache)
     .where(inArray(userCache.userId, userIds));
 
-  const emailMap = new Map(cachedUsers.map((u) => [u.userId, u.email]));
+  const emailMap = new Map(
+    cachedUsers.map((u) => {
+      return [u.userId, u.email];
+    }),
+  );
 
   // Find missing users and fetch from Clerk
-  const missingIds = userIds.filter((id) => !emailMap.has(id));
+  const missingIds = userIds.filter((id) => {
+    return !emailMap.has(id);
+  });
   if (missingIds.length > 0) {
     const client = await clerkClient();
     const clerkUsers = await client.users.getUserList({
@@ -88,9 +96,9 @@ export async function getUsageMembers(
 
     const now = new Date();
     for (const user of clerkUsers.data) {
-      const primaryEmail = user.emailAddresses.find(
-        (e) => e.id === user.primaryEmailAddressId,
-      );
+      const primaryEmail = user.emailAddresses.find((e) => {
+        return e.id === user.primaryEmailAddressId;
+      });
       const email = primaryEmail?.emailAddress ?? "unknown";
       emailMap.set(user.id, email);
 
@@ -118,21 +126,29 @@ export async function getUsageMembers(
         inArray(orgMembersMetadata.userId, userIds),
       ),
     );
-  const capMap = new Map(capRows.map((r) => [r.userId, r.creditCap]));
+  const capMap = new Map(
+    capRows.map((r) => {
+      return [r.userId, r.creditCap];
+    }),
+  );
 
-  const members: MemberUsage[] = rows.map((row) => ({
-    userId: row.userId,
-    email: emailMap.get(row.userId) ?? "unknown",
-    inputTokens: Number(row.inputTokens),
-    outputTokens: Number(row.outputTokens),
-    cacheReadInputTokens: Number(row.cacheReadInputTokens),
-    cacheCreationInputTokens: Number(row.cacheCreationInputTokens),
-    creditsCharged: Number(row.creditsCharged),
-    creditCap: capMap.get(row.userId) ?? null,
-  }));
+  const members: MemberUsage[] = rows.map((row) => {
+    return {
+      userId: row.userId,
+      email: emailMap.get(row.userId) ?? "unknown",
+      inputTokens: Number(row.inputTokens),
+      outputTokens: Number(row.outputTokens),
+      cacheReadInputTokens: Number(row.cacheReadInputTokens),
+      cacheCreationInputTokens: Number(row.cacheCreationInputTokens),
+      creditsCharged: Number(row.creditsCharged),
+      creditCap: capMap.get(row.userId) ?? null,
+    };
+  });
 
   // Sort by credits charged descending
-  members.sort((a, b) => b.creditsCharged - a.creditsCharged);
+  members.sort((a, b) => {
+    return b.creditsCharged - a.creditsCharged;
+  });
 
   return {
     period: {

@@ -23,8 +23,12 @@ function makeTelegramAuth(telegramUserId: number) {
   };
 
   const checkString = Object.entries(fields)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, value]) => `${key}=${value}`)
+    .sort(([a], [b]) => {
+      return a.localeCompare(b);
+    })
+    .map(([key, value]) => {
+      return `${key}=${value}`;
+    })
     .join("\n");
 
   const secretKey = createHash("sha256").update(TEST_BOT_TOKEN).digest();

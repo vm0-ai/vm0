@@ -15,9 +15,15 @@ async function setup() {
   });
 }
 
-const alwaysConnected = () => true;
-const neverConnected = () => false;
-const connectedOnThirdCall = (n: number) => n >= 3;
+const alwaysConnected = () => {
+  return true;
+};
+const neverConnected = () => {
+  return false;
+};
+const connectedOnThirdCall = (n: number) => {
+  return n >= 3;
+};
 
 function mockSlackEndpoint(getIsConnected: (callCount: number) => boolean) {
   let callCount = 0;

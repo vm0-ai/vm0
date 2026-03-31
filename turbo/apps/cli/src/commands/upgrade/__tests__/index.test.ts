@@ -13,9 +13,11 @@ import { server } from "../../../mocks/server";
 import { createMockChildProcess } from "../../../mocks/spawn-helpers";
 
 // Mock child_process for package manager commands (external tools)
-vi.mock("child_process", () => ({
-  spawn: vi.fn(),
-}));
+vi.mock("child_process", () => {
+  return {
+    spawn: vi.fn(),
+  };
+});
 
 import { spawn } from "child_process";
 import { upgradeCommand } from "..";
@@ -46,9 +48,9 @@ describe("upgrade command", () => {
         return HttpResponse.json({ version: "99.0.0" });
       }),
     );
-    vi.mocked(spawn).mockImplementation(
-      () => createMockChildProcess(0) as never,
-    );
+    vi.mocked(spawn).mockImplementation(() => {
+      return createMockChildProcess(0) as never;
+    });
 
     await upgradeCommand.parseAsync(["node", "cli"]);
 
@@ -59,11 +61,17 @@ describe("upgrade command", () => {
     );
 
     const allLogs = mockConsoleLog.mock.calls
-      .map((call) => call[0])
-      .filter((log): log is string => typeof log === "string");
+      .map((call) => {
+        return call[0];
+      })
+      .filter((log): log is string => {
+        return typeof log === "string";
+      });
 
     expect(
-      allLogs.some((log) => log.includes("Upgraded from 0.0.0-test to 99.0.0")),
+      allLogs.some((log) => {
+        return log.includes("Upgraded from 0.0.0-test to 99.0.0");
+      }),
     ).toBe(true);
   });
 
@@ -78,9 +86,9 @@ describe("upgrade command", () => {
         return HttpResponse.json({ version: "99.0.0" });
       }),
     );
-    vi.mocked(spawn).mockImplementation(
-      () => createMockChildProcess(0) as never,
-    );
+    vi.mocked(spawn).mockImplementation(() => {
+      return createMockChildProcess(0) as never;
+    });
 
     await upgradeCommand.parseAsync(["node", "cli"]);
 
@@ -103,12 +111,18 @@ describe("upgrade command", () => {
     expect(spawn).not.toHaveBeenCalled();
 
     const allLogs = mockConsoleLog.mock.calls
-      .map((call) => call[0])
-      .filter((log): log is string => typeof log === "string");
+      .map((call) => {
+        return call[0];
+      })
+      .filter((log): log is string => {
+        return typeof log === "string";
+      });
 
-    expect(allLogs.some((log) => log.includes("Already up to date"))).toBe(
-      true,
-    );
+    expect(
+      allLogs.some((log) => {
+        return log.includes("Already up to date");
+      }),
+    ).toBe(true);
   });
 
   it("should exit with error when version check fails", async () => {
@@ -126,11 +140,17 @@ describe("upgrade command", () => {
     expect(spawn).not.toHaveBeenCalled();
 
     const allErrors = mockConsoleError.mock.calls
-      .map((call) => call[0])
-      .filter((log): log is string => typeof log === "string");
+      .map((call) => {
+        return call[0];
+      })
+      .filter((log): log is string => {
+        return typeof log === "string";
+      });
 
     expect(
-      allErrors.some((log) => log.includes("Could not check for updates")),
+      allErrors.some((log) => {
+        return log.includes("Could not check for updates");
+      }),
     ).toBe(true);
   });
 
@@ -148,14 +168,22 @@ describe("upgrade command", () => {
     expect(spawn).not.toHaveBeenCalled();
 
     const allLogs = mockConsoleLog.mock.calls
-      .map((call) => call[0])
-      .filter((log): log is string => typeof log === "string");
+      .map((call) => {
+        return call[0];
+      })
+      .filter((log): log is string => {
+        return typeof log === "string";
+      });
 
-    expect(allLogs.some((log) => log.includes("not supported for bun"))).toBe(
-      true,
-    );
     expect(
-      allLogs.some((log) => log.includes("bun add -g @vm0/cli@latest")),
+      allLogs.some((log) => {
+        return log.includes("not supported for bun");
+      }),
+    ).toBe(true);
+    expect(
+      allLogs.some((log) => {
+        return log.includes("bun add -g @vm0/cli@latest");
+      }),
     ).toBe(true);
   });
 
@@ -173,14 +201,22 @@ describe("upgrade command", () => {
     expect(spawn).not.toHaveBeenCalled();
 
     const allLogs = mockConsoleLog.mock.calls
-      .map((call) => call[0])
-      .filter((log): log is string => typeof log === "string");
+      .map((call) => {
+        return call[0];
+      })
+      .filter((log): log is string => {
+        return typeof log === "string";
+      });
 
-    expect(allLogs.some((log) => log.includes("not supported for yarn"))).toBe(
-      true,
-    );
     expect(
-      allLogs.some((log) => log.includes("yarn global add @vm0/cli@latest")),
+      allLogs.some((log) => {
+        return log.includes("not supported for yarn");
+      }),
+    ).toBe(true);
+    expect(
+      allLogs.some((log) => {
+        return log.includes("yarn global add @vm0/cli@latest");
+      }),
     ).toBe(true);
   });
 
@@ -198,16 +234,22 @@ describe("upgrade command", () => {
     expect(spawn).not.toHaveBeenCalled();
 
     const allLogs = mockConsoleLog.mock.calls
-      .map((call) => call[0])
-      .filter((log): log is string => typeof log === "string");
+      .map((call) => {
+        return call[0];
+      })
+      .filter((log): log is string => {
+        return typeof log === "string";
+      });
 
     expect(
-      allLogs.some((log) =>
-        log.includes("Could not detect your package manager"),
-      ),
+      allLogs.some((log) => {
+        return log.includes("Could not detect your package manager");
+      }),
     ).toBe(true);
     expect(
-      allLogs.some((log) => log.includes("npm install -g @vm0/cli@latest")),
+      allLogs.some((log) => {
+        return log.includes("npm install -g @vm0/cli@latest");
+      }),
     ).toBe(true);
   });
 
@@ -217,9 +259,9 @@ describe("upgrade command", () => {
         return HttpResponse.json({ version: "99.0.0" });
       }),
     );
-    vi.mocked(spawn).mockImplementation(
-      () => createMockChildProcess(1) as never,
-    );
+    vi.mocked(spawn).mockImplementation(() => {
+      return createMockChildProcess(1) as never;
+    });
 
     await expect(async () => {
       await upgradeCommand.parseAsync(["node", "cli"]);
@@ -228,12 +270,22 @@ describe("upgrade command", () => {
     expect(mockExit).toHaveBeenCalledWith(1);
 
     const allErrors = mockConsoleError.mock.calls
-      .map((call) => call[0])
-      .filter((log): log is string => typeof log === "string");
+      .map((call) => {
+        return call[0];
+      })
+      .filter((log): log is string => {
+        return typeof log === "string";
+      });
 
-    expect(allErrors.some((log) => log.includes("Upgrade failed"))).toBe(true);
     expect(
-      allErrors.some((log) => log.includes("npm install -g @vm0/cli@latest")),
+      allErrors.some((log) => {
+        return log.includes("Upgrade failed");
+      }),
+    ).toBe(true);
+    expect(
+      allErrors.some((log) => {
+        return log.includes("npm install -g @vm0/cli@latest");
+      }),
     ).toBe(true);
   });
 });

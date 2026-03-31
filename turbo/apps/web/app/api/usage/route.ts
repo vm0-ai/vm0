@@ -72,11 +72,13 @@ async function queryAgentRunsDaily(
     )
     .groupBy(sql`DATE(${agentRuns.createdAt})`);
 
-  return rows.map((row) => ({
-    date: String(row.date),
-    run_count: Number(row.run_count),
-    run_time_ms: Number(row.run_time_ms),
-  }));
+  return rows.map((row) => {
+    return {
+      date: String(row.date),
+      run_count: Number(row.run_count),
+      run_time_ms: Number(row.run_time_ms),
+    };
+  });
 }
 
 /**
@@ -233,7 +235,11 @@ export async function GET(request: NextRequest) {
         ),
       );
 
-    const cachedDates = new Set(cachedRows.map((r) => r.date));
+    const cachedDates = new Set(
+      cachedRows.map((r) => {
+        return r.date;
+      }),
+    );
 
     for (const row of cachedRows) {
       daily.push({
@@ -257,9 +263,9 @@ export async function GET(request: NextRequest) {
         historicalTo,
       );
 
-      const uncachedRows = computedRows.filter(
-        (row) => !cachedDates.has(row.date),
-      );
+      const uncachedRows = computedRows.filter((row) => {
+        return !cachedDates.has(row.date);
+      });
       daily.push(...uncachedRows);
 
       // Batch cache for next time (single upsert instead of N)
@@ -267,13 +273,15 @@ export async function GET(request: NextRequest) {
         await db
           .insert(usageDaily)
           .values(
-            uncachedRows.map((row) => ({
-              userId,
-              orgId: org.orgId,
-              date: row.date,
-              runCount: row.run_count,
-              runTimeMs: row.run_time_ms,
-            })),
+            uncachedRows.map((row) => {
+              return {
+                userId,
+                orgId: org.orgId,
+                date: row.date,
+                runCount: row.run_count,
+                runTimeMs: row.run_time_ms,
+              };
+            }),
           )
           .onConflictDoUpdate({
             target: [usageDaily.userId, usageDaily.orgId, usageDaily.date],
@@ -299,7 +307,9 @@ export async function GET(request: NextRequest) {
   }
 
   // Sort descending by date and calculate totals
-  daily.sort((a, b) => b.date.localeCompare(a.date));
+  daily.sort((a, b) => {
+    return b.date.localeCompare(a.date);
+  });
 
   let totalRuns = 0;
   let totalRunTimeMs = 0;

@@ -26,7 +26,11 @@ export const metaAdsHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.META_ADS_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.META_ADS_OAUTH_CLIENT_SECRET,
+  getClientId: (e) => {
+    return e.META_ADS_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.META_ADS_OAUTH_CLIENT_SECRET;
+  },
   getSecretName: getMetaAdsSecretName,
 };

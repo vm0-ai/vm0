@@ -45,7 +45,9 @@ export const createOrgModelProvider$ = command(
       throw new Error(`Failed to create org model provider: ${result.status}`);
     }
 
-    set(internalReloadOrgModelProviders$, (x) => x + 1);
+    set(internalReloadOrgModelProviders$, (x) => {
+      return x + 1;
+    });
 
     return result.body;
   },
@@ -68,7 +70,9 @@ export const setDefaultOrgModelProvider$ = command(
       );
     }
 
-    set(internalReloadOrgModelProviders$, (x) => x + 1);
+    set(internalReloadOrgModelProviders$, (x) => {
+      return x + 1;
+    });
   },
 );
 
@@ -85,6 +89,8 @@ export const deleteOrgModelProvider$ = command(
       throw new Error(`Failed to delete org model provider: ${result.status}`);
     }
 
-    set(internalReloadOrgModelProviders$, (x) => x + 1);
+    set(internalReloadOrgModelProviders$, (x) => {
+      return x + 1;
+    });
   },
 );

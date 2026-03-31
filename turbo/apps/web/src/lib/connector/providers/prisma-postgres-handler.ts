@@ -11,7 +11,13 @@ export const prismaPostgresHandler: ProviderHandler = {
       "Prisma Postgres does not support OAuth — use API token auth",
     );
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "PRISMA_POSTGRES_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "PRISMA_POSTGRES_TOKEN";
+  },
 };

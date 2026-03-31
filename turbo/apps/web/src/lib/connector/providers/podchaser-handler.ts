@@ -7,7 +7,13 @@ export const podchaserHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Podchaser does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "PODCHASER_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "PODCHASER_TOKEN";
+  },
 };

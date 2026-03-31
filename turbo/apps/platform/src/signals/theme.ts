@@ -8,12 +8,16 @@ const internalResolved$ = state<"light" | "dark">("light");
 /**
  * Current resolved theme value (always "light" or "dark").
  */
-export const theme$ = computed((get) => get(internalResolved$));
+export const theme$ = computed((get) => {
+  return get(internalResolved$);
+});
 
 /**
  * User's theme preference ("light", "dark", or "system").
  */
-export const themePreference$ = computed((get) => get(internalPreference$));
+export const themePreference$ = computed((get) => {
+  return get(internalPreference$);
+});
 
 function resolveTheme(preference: ThemePreference): "light" | "dark" {
   if (preference === "system") {

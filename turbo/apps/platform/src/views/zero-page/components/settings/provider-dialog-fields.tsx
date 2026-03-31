@@ -44,7 +44,9 @@ export function OAuthFields({
       <Input
         value={secret}
         placeholder="sk-ant-XXXXXXX"
-        onChange={(e) => onSecretChange(e.target.value)}
+        onChange={(e) => {
+          return onSecretChange(e.target.value);
+        }}
         readOnly={isLoading}
         className={error ? "border-destructive" : ""}
       />
@@ -96,7 +98,9 @@ export function ApiKeyFields({
               ? `Enter new ${fieldSecretLabel} to update`
               : `Enter your ${fieldSecretLabel}`
           }
-          onChange={(e) => onSecretChange(e.target.value)}
+          onChange={(e) => {
+            return onSecretChange(e.target.value);
+          }}
           readOnly={isLoading}
           className={error ? "border-destructive" : ""}
         />
@@ -165,11 +169,13 @@ export function MultiAuthFields({
               <SelectValue placeholder="Select auth method" />
             </SelectTrigger>
             <SelectContent>
-              {authMethodEntries.map(([key, method]) => (
-                <SelectItem key={key} value={key}>
-                  {getUIAuthMethodLabel(type, key, method.label)}
-                </SelectItem>
-              ))}
+              {authMethodEntries.map(([key, method]) => {
+                return (
+                  <SelectItem key={key} value={key}>
+                    {getUIAuthMethodLabel(type, key, method.label)}
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
         </div>
@@ -192,7 +198,9 @@ export function MultiAuthFields({
               <Input
                 value={secrets[key] ?? ""}
                 placeholder={field.placeholder ?? ""}
-                onChange={(e) => onSecretFieldChange(key, e.target.value)}
+                onChange={(e) => {
+                  return onSecretFieldChange(key, e.target.value);
+                }}
                 readOnly={isLoading}
                 className={errors[key] ? "border-destructive" : ""}
               />
@@ -300,7 +308,9 @@ function ModelSelector({
             <Input
               value={selectedModel}
               placeholder={placeholder}
-              onChange={(e) => onModelChange(e.target.value)}
+              onChange={(e) => {
+                return onModelChange(e.target.value);
+              }}
             />
           </div>
         )}
@@ -321,11 +331,13 @@ function ModelSelector({
           <SelectValue placeholder="Select a model" />
         </SelectTrigger>
         <SelectContent>
-          {models.map((model) => (
-            <SelectItem key={model} value={model}>
-              {model}
-            </SelectItem>
-          ))}
+          {models.map((model) => {
+            return (
+              <SelectItem key={model} value={model}>
+                {model}
+              </SelectItem>
+            );
+          })}
         </SelectContent>
       </Select>
     </div>

@@ -770,7 +770,11 @@ describe("POST /api/webhooks/agent/complete", () => {
       // Verify both callbacks were dispatched (attempted)
       const callbacks = await findTestCallbacksByRunId(runId);
       expect(callbacks).toHaveLength(2);
-      expect(callbacks.every((c) => c.attempts === 1)).toBe(true);
+      expect(
+        callbacks.every((c) => {
+          return c.attempts === 1;
+        }),
+      ).toBe(true);
     });
   });
 });

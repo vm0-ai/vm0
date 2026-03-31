@@ -33,14 +33,16 @@ const router = tsr.router(zeroVariablesContract, {
     return {
       status: 200 as const,
       body: {
-        variables: vars.map((v) => ({
-          id: v.id,
-          name: v.name,
-          value: v.value,
-          description: v.description,
-          createdAt: v.createdAt.toISOString(),
-          updatedAt: v.updatedAt.toISOString(),
-        })),
+        variables: vars.map((v) => {
+          return {
+            id: v.id,
+            name: v.name,
+            value: v.value,
+            description: v.description,
+            createdAt: v.createdAt.toISOString(),
+            updatedAt: v.updatedAt.toISOString(),
+          };
+        }),
       },
     };
   },

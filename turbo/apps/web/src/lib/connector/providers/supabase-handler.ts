@@ -33,9 +33,15 @@ export const supabaseHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.SUPABASE_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.SUPABASE_OAUTH_CLIENT_SECRET,
+  getClientId: (e) => {
+    return e.SUPABASE_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.SUPABASE_OAUTH_CLIENT_SECRET;
+  },
   getSecretName: getSupabaseSecretName,
-  getRefreshSecretName: () => "SUPABASE_REFRESH_TOKEN",
+  getRefreshSecretName: () => {
+    return "SUPABASE_REFRESH_TOKEN";
+  },
   refreshToken: refreshSupabaseToken,
 };

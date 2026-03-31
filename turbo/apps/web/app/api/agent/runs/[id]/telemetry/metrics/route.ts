@@ -87,14 +87,16 @@ ${sinceFilter}
     const records = hasMore ? events.slice(0, limit) : events;
 
     // Transform to API response format
-    const metrics = records.map((e) => ({
-      ts: e._time,
-      cpu: e.cpu,
-      mem_used: e.mem_used,
-      mem_total: e.mem_total,
-      disk_used: e.disk_used,
-      disk_total: e.disk_total,
-    }));
+    const metrics = records.map((e) => {
+      return {
+        ts: e._time,
+        cpu: e.cpu,
+        mem_used: e.mem_used,
+        mem_total: e.mem_total,
+        disk_used: e.disk_used,
+        disk_total: e.disk_total,
+      };
+    });
 
     return {
       status: 200 as const,

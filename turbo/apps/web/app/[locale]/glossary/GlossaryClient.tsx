@@ -126,18 +126,28 @@ export default function GlossaryClient() {
 
   // Build terms from translations
   const glossaryTerms = useMemo(() => {
-    return termConfigs.map((config) => ({
-      term: t(`terms.${config.key}.name`),
-      definition: t(`terms.${config.key}.definition`),
-      category: config.category,
-      relatedTerms: config.relatedTerms?.map((key) => t(`terms.${key}.name`)),
-      key: config.key,
-    }));
+    return termConfigs.map((config) => {
+      return {
+        term: t(`terms.${config.key}.name`),
+        definition: t(`terms.${config.key}.definition`),
+        category: config.category,
+        relatedTerms: config.relatedTerms?.map((key) => {
+          return t(`terms.${key}.name`);
+        }),
+        key: config.key,
+      };
+    });
   }, [t]);
 
   const categories = [
     "all",
-    ...Array.from(new Set(glossaryTerms.map((term) => term.category))).sort(),
+    ...Array.from(
+      new Set(
+        glossaryTerms.map((term) => {
+          return term.category;
+        }),
+      ),
+    ).sort(),
   ];
 
   const filteredTerms = glossaryTerms.filter((term) => {
@@ -240,7 +250,9 @@ export default function GlossaryClient() {
                     type="text"
                     placeholder={t("search.placeholder")}
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onChange={(e) => {
+                      return setSearchQuery(e.target.value);
+                    }}
                     className="glossary-search-input"
                     style={{
                       width: "100%",
@@ -281,7 +293,9 @@ export default function GlossaryClient() {
                 <div style={{ position: "relative" }}>
                   <select
                     value={selectedCategory}
-                    onChange={(e) => setSelectedCategory(e.target.value)}
+                    onChange={(e) => {
+                      return setSelectedCategory(e.target.value);
+                    }}
                     className="glossary-category-select"
                     style={{
                       width: "100%",
@@ -297,13 +311,15 @@ export default function GlossaryClient() {
                       transition: "border-color 0.2s ease",
                     }}
                   >
-                    {categories.map((category) => (
-                      <option key={category} value={category}>
-                        {category === "all"
-                          ? t("search.allCategories")
-                          : t(`categories.${category}`)}
-                      </option>
-                    ))}
+                    {categories.map((category) => {
+                      return (
+                        <option key={category} value={category}>
+                          {category === "all"
+                            ? t("search.allCategories")
+                            : t(`categories.${category}`)}
+                        </option>
+                      );
+                    })}
                   </select>
                   <svg
                     style={{
@@ -350,140 +366,148 @@ export default function GlossaryClient() {
             <div style={{ marginTop: "40px" }}>
               {Object.keys(groupedTerms)
                 .sort()
-                .map((letter) => (
-                  <div key={letter} style={{ marginBottom: "48px" }}>
-                    {/* Letter Header */}
-                    <h2
-                      style={{
-                        fontSize: "28px",
-                        fontWeight: "600",
-                        color: "var(--text-primary)",
-                        marginBottom: "24px",
-                        fontFamily: '"Noto Sans", sans-serif',
-                      }}
-                    >
-                      {letter}
-                    </h2>
+                .map((letter) => {
+                  return (
+                    <div key={letter} style={{ marginBottom: "48px" }}>
+                      {/* Letter Header */}
+                      <h2
+                        style={{
+                          fontSize: "28px",
+                          fontWeight: "600",
+                          color: "var(--text-primary)",
+                          marginBottom: "24px",
+                          fontFamily: '"Noto Sans", sans-serif',
+                        }}
+                      >
+                        {letter}
+                      </h2>
 
-                    {/* Terms */}
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "20px",
-                      }}
-                    >
-                      {groupedTerms[letter]!.map((term) => (
-                        <div
-                          key={term.key}
-                          className="glossary-card"
-                          style={{
-                            background: "var(--card-bg)",
-                            border: "1px solid var(--border-light)",
-                            borderRadius: "16px",
-                            padding: "24px",
-                            transition: "all 0.3s ease",
-                          }}
-                        >
-                          {/* Category Badge */}
-                          <div style={{ marginBottom: "12px" }}>
-                            <span
+                      {/* Terms */}
+                      <div
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "20px",
+                        }}
+                      >
+                        {groupedTerms[letter]!.map((term) => {
+                          return (
+                            <div
+                              key={term.key}
+                              className="glossary-card"
                               style={{
-                                display: "inline-block",
-                                padding: "4px 10px",
-                                fontSize: "12px",
-                                fontFamily: '"Fira Mono", monospace',
-                                fontWeight: 500,
-                                background: "var(--bg-tertiary)",
-                                color: "var(--text-secondary)",
-                                borderRadius: "4px",
+                                background: "var(--card-bg)",
+                                border: "1px solid var(--border-light)",
+                                borderRadius: "16px",
+                                padding: "24px",
+                                transition: "all 0.3s ease",
                               }}
                             >
-                              {t(`categories.${term.category}`)}
-                            </span>
-                          </div>
+                              {/* Category Badge */}
+                              <div style={{ marginBottom: "12px" }}>
+                                <span
+                                  style={{
+                                    display: "inline-block",
+                                    padding: "4px 10px",
+                                    fontSize: "12px",
+                                    fontFamily: '"Fira Mono", monospace',
+                                    fontWeight: 500,
+                                    background: "var(--bg-tertiary)",
+                                    color: "var(--text-secondary)",
+                                    borderRadius: "4px",
+                                  }}
+                                >
+                                  {t(`categories.${term.category}`)}
+                                </span>
+                              </div>
 
-                          {/* Term Name */}
-                          <h3
-                            style={{
-                              fontFamily: '"Noto Sans", sans-serif',
-                              fontSize: "20px",
-                              fontWeight: 600,
-                              marginBottom: "12px",
-                              color: "var(--text-primary)",
-                            }}
-                          >
-                            {term.term}
-                          </h3>
-
-                          {/* Definition */}
-                          <p
-                            style={{
-                              fontFamily: '"Noto Sans", sans-serif',
-                              fontSize: "15px",
-                              color: "var(--text-secondary)",
-                              lineHeight: 1.6,
-                              marginBottom:
-                                term.relatedTerms &&
-                                term.relatedTerms.length > 0
-                                  ? "20px"
-                                  : "0",
-                            }}
-                          >
-                            {term.definition}
-                          </p>
-
-                          {/* Related Terms */}
-                          {term.relatedTerms &&
-                            term.relatedTerms.length > 0 && (
-                              <div
+                              {/* Term Name */}
+                              <h3
                                 style={{
-                                  paddingTop: "16px",
-                                  borderTop: "1px solid var(--border-light)",
+                                  fontFamily: '"Noto Sans", sans-serif',
+                                  fontSize: "20px",
+                                  fontWeight: 600,
+                                  marginBottom: "12px",
+                                  color: "var(--text-primary)",
                                 }}
                               >
-                                <p
-                                  style={{
-                                    fontSize: "12px",
-                                    color: "var(--text-muted)",
-                                    fontFamily: '"Fira Mono", monospace',
-                                    marginBottom: "8px",
-                                    fontWeight: 500,
-                                  }}
-                                >
-                                  {t("relatedTerms")}
-                                </p>
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    gap: "8px",
-                                    flexWrap: "wrap",
-                                  }}
-                                >
-                                  {term.relatedTerms.map((relatedTerm) => (
-                                    <span
-                                      key={relatedTerm}
+                                {term.term}
+                              </h3>
+
+                              {/* Definition */}
+                              <p
+                                style={{
+                                  fontFamily: '"Noto Sans", sans-serif',
+                                  fontSize: "15px",
+                                  color: "var(--text-secondary)",
+                                  lineHeight: 1.6,
+                                  marginBottom:
+                                    term.relatedTerms &&
+                                    term.relatedTerms.length > 0
+                                      ? "20px"
+                                      : "0",
+                                }}
+                              >
+                                {term.definition}
+                              </p>
+
+                              {/* Related Terms */}
+                              {term.relatedTerms &&
+                                term.relatedTerms.length > 0 && (
+                                  <div
+                                    style={{
+                                      paddingTop: "16px",
+                                      borderTop:
+                                        "1px solid var(--border-light)",
+                                    }}
+                                  >
+                                    <p
                                       style={{
-                                        padding: "4px 10px",
-                                        borderRadius: "4px",
-                                        background: "var(--bg-tertiary)",
-                                        color: "var(--text-secondary)",
                                         fontSize: "12px",
+                                        color: "var(--text-muted)",
                                         fontFamily: '"Fira Mono", monospace',
+                                        marginBottom: "8px",
                                         fontWeight: 500,
                                       }}
                                     >
-                                      {relatedTerm}
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                        </div>
-                      ))}
+                                      {t("relatedTerms")}
+                                    </p>
+                                    <div
+                                      style={{
+                                        display: "flex",
+                                        gap: "8px",
+                                        flexWrap: "wrap",
+                                      }}
+                                    >
+                                      {term.relatedTerms.map((relatedTerm) => {
+                                        return (
+                                          <span
+                                            key={relatedTerm}
+                                            style={{
+                                              padding: "4px 10px",
+                                              borderRadius: "4px",
+                                              background: "var(--bg-tertiary)",
+                                              color: "var(--text-secondary)",
+                                              fontSize: "12px",
+                                              fontFamily:
+                                                '"Fira Mono", monospace',
+                                              fontWeight: 500,
+                                            }}
+                                          >
+                                            {relatedTerm}
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
             </div>
           ) : (
             <div

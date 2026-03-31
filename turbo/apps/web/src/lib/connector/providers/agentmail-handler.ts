@@ -7,7 +7,13 @@ export const agentmailHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("AgentMail does not support OAuth — use API key auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "AGENTMAIL_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "AGENTMAIL_TOKEN";
+  },
 };

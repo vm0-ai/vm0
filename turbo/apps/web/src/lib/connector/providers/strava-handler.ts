@@ -22,9 +22,15 @@ export const stravaHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.STRAVA_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.STRAVA_OAUTH_CLIENT_SECRET,
+  getClientId: (e) => {
+    return e.STRAVA_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.STRAVA_OAUTH_CLIENT_SECRET;
+  },
   getSecretName: getStravaSecretName,
-  getRefreshSecretName: () => "STRAVA_REFRESH_TOKEN",
+  getRefreshSecretName: () => {
+    return "STRAVA_REFRESH_TOKEN";
+  },
   refreshToken: refreshStravaToken,
 };

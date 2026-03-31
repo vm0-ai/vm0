@@ -11,7 +11,13 @@ export const slackWebhookHandler: ProviderHandler = {
       "Slack Webhook does not support OAuth — use webhook URL auth",
     );
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "SLACK_WEBHOOK_URL",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "SLACK_WEBHOOK_URL";
+  },
 };

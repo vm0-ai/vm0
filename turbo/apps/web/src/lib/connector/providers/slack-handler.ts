@@ -30,8 +30,12 @@ export const slackHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.SLACK_CLIENT_ID,
-  getClientSecret: (e) => e.SLACK_CLIENT_SECRET,
+  getClientId: (e) => {
+    return e.SLACK_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.SLACK_CLIENT_SECRET;
+  },
   getSecretName: getSlackSecretName,
   revokeToken: revokeSlackToken,
 };

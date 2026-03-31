@@ -128,12 +128,14 @@ export async function getReceivedEmailAttachments(
     );
   }
 
-  return data.data.map((a) => ({
-    id: a.id,
-    filename: a.filename ?? `attachment-${a.id}`,
-    size: a.size,
-    content_type: a.content_type,
-    content_disposition: a.content_disposition,
-    download_url: a.download_url,
-  }));
+  return data.data.map((a) => {
+    return {
+      id: a.id,
+      filename: a.filename ?? `attachment-${a.id}`,
+      size: a.size,
+      content_type: a.content_type,
+      content_disposition: a.content_disposition,
+      download_url: a.download_url,
+    };
+  });
 }

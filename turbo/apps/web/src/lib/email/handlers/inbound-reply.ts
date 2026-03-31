@@ -40,7 +40,9 @@ export async function handleInboundEmailReply(
   const { email_id: emailId, to } = event.data;
 
   // 1. Parse plus address from to field
-  const replyToAddress = to.find((addr) => addr.includes("reply+"));
+  const replyToAddress = to.find((addr) => {
+    return addr.includes("reply+");
+  });
   if (!replyToAddress) {
     log.debug("No reply+ address found, ignoring", { to });
     return {
@@ -134,13 +136,13 @@ export async function handleInboundEmailReply(
 
   // 8. Extract inbound Message-ID and References for threading (case-insensitive lookup)
   const headers = email.headers ?? {};
-  const messageIdKey = Object.keys(headers).find(
-    (k) => k.toLowerCase() === "message-id",
-  );
+  const messageIdKey = Object.keys(headers).find((k) => {
+    return k.toLowerCase() === "message-id";
+  });
   const inboundMessageId = messageIdKey ? headers[messageIdKey] : undefined;
-  const referencesKey = Object.keys(headers).find(
-    (k) => k.toLowerCase() === "references",
-  );
+  const referencesKey = Object.keys(headers).find((k) => {
+    return k.toLowerCase() === "references";
+  });
   const inboundReferences = referencesKey ? headers[referencesKey] : undefined;
 
   // 9. Extract email body (prefer HTML, fallback to text, strip quotes)

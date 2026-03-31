@@ -68,7 +68,9 @@ export async function POST(request: Request) {
   const { SECRETS_ENCRYPTION_KEY } = env();
 
   // 1. Verify bot token
-  const botInfoResult = await getMe(body.botToken).catch(() => null);
+  const botInfoResult = await getMe(body.botToken).catch(() => {
+    return null;
+  });
   if (!botInfoResult) {
     return NextResponse.json(
       {

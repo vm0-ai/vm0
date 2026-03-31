@@ -24,7 +24,11 @@ export const vercelHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.VERCEL_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.VERCEL_OAUTH_CLIENT_SECRET,
+  getClientId: (e) => {
+    return e.VERCEL_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.VERCEL_OAUTH_CLIENT_SECRET;
+  },
   getSecretName: getVercelSecretName,
 };

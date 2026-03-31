@@ -23,7 +23,9 @@ describe("zero connector connect command", () => {
     .mockImplementation(() => {});
   const mockStdoutWrite = vi
     .spyOn(process.stdout, "write")
-    .mockImplementation(() => true);
+    .mockImplementation(() => {
+      return true;
+    });
 
   beforeEach(() => {
     chalk.level = 0;

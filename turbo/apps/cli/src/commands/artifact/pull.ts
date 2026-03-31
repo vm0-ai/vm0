@@ -86,7 +86,9 @@ export const pullCommand = new Command()
       console.log(chalk.dim("Syncing local files..."));
       const remoteFiles = await listTarFiles(tarPath);
       const remoteFilesSet = new Set(
-        remoteFiles.map((f) => f.replace(/\\/g, "/")),
+        remoteFiles.map((f) => {
+          return f.replace(/\\/g, "/");
+        }),
       );
 
       // Remove local files not in remote

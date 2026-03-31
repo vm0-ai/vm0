@@ -35,9 +35,15 @@ export const airtableHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.AIRTABLE_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.AIRTABLE_OAUTH_CLIENT_SECRET,
+  getClientId: (e) => {
+    return e.AIRTABLE_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.AIRTABLE_OAUTH_CLIENT_SECRET;
+  },
   getSecretName: getAirtableSecretName,
-  getRefreshSecretName: () => "AIRTABLE_REFRESH_TOKEN",
+  getRefreshSecretName: () => {
+    return "AIRTABLE_REFRESH_TOKEN";
+  },
   refreshToken: refreshAirtableToken,
 };

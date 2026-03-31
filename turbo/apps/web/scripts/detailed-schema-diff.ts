@@ -84,8 +84,16 @@ function compareArrays<T>(
   removed: T[];
   modified: Array<{ key: string; old: T; new: T }>;
 } {
-  const map1 = new Map(arr1.map((item) => [keyFn(item), item]));
-  const map2 = new Map(arr2.map((item) => [keyFn(item), item]));
+  const map1 = new Map(
+    arr1.map((item) => {
+      return [keyFn(item), item];
+    }),
+  );
+  const map2 = new Map(
+    arr2.map((item) => {
+      return [keyFn(item), item];
+    }),
+  );
 
   const added: T[] = [];
   const removed: T[] = [];
@@ -282,33 +290,27 @@ async function main() {
     console.log("=== 1. Comparing Table Columns ===\n");
     const columns1 = await getTableColumns(client1);
     const columns2 = await getTableColumns(client2);
-    const columnDiff = compareArrays(
-      columns1,
-      columns2,
-      (c) => `${c.table_name}.${c.column_name}`,
-    );
+    const columnDiff = compareArrays(columns1, columns2, (c) => {
+      return `${c.table_name}.${c.column_name}`;
+    });
     printColumnDiff(columnDiff);
 
     // Compare indexes
     console.log("=== 2. Comparing Indexes ===\n");
     const indexes1 = await getIndexes(client1);
     const indexes2 = await getIndexes(client2);
-    const indexDiff = compareArrays(
-      indexes1,
-      indexes2,
-      (i) => `${i.tablename}.${i.indexname}`,
-    );
+    const indexDiff = compareArrays(indexes1, indexes2, (i) => {
+      return `${i.tablename}.${i.indexname}`;
+    });
     printIndexDiff(indexDiff);
 
     // Compare constraints
     console.log("=== 3. Comparing Constraints ===\n");
     const constraints1 = await getConstraints(client1);
     const constraints2 = await getConstraints(client2);
-    const constraintDiff = compareArrays(
-      constraints1,
-      constraints2,
-      (c) => `${c.table_name}.${c.constraint_name}`,
-    );
+    const constraintDiff = compareArrays(constraints1, constraints2, (c) => {
+      return `${c.table_name}.${c.constraint_name}`;
+    });
     printConstraintDiff(constraintDiff);
 
     // Summary

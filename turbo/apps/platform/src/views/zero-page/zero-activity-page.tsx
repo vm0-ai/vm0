@@ -69,30 +69,36 @@ export function ZeroActivityPage() {
   const agentOptions = [
     { value: "all", label: "All agents" },
     ...(availableAgentsLoadable.state === "hasData"
-      ? availableAgentsLoadable.data.map((a) => ({
-          value: a.name,
-          label: a.displayName,
-        }))
+      ? availableAgentsLoadable.data.map((a) => {
+          return {
+            value: a.name,
+            label: a.displayName,
+          };
+        })
       : []),
   ];
 
   const statusOptions = [
     { value: "all", label: "All status" },
     ...(availableStatusesLoadable.state === "hasData"
-      ? availableStatusesLoadable.data.map((s) => ({
-          value: s,
-          label: STATUS_LABELS[s],
-        }))
+      ? availableStatusesLoadable.data.map((s) => {
+          return {
+            value: s,
+            label: STATUS_LABELS[s],
+          };
+        })
       : []),
   ];
 
   const sourceOptions = [
     { value: "all", label: "All sources" },
     ...(availableSourcesLoadable.state === "hasData"
-      ? availableSourcesLoadable.data.map((s) => ({
-          value: s,
-          label: TRIGGER_SOURCE_LABELS[s],
-        }))
+      ? availableSourcesLoadable.data.map((s) => {
+          return {
+            value: s,
+            label: TRIGGER_SOURCE_LABELS[s],
+          };
+        })
       : []),
   ];
 
@@ -113,39 +119,49 @@ export function ZeroActivityPage() {
             <div className="flex items-center gap-2">
               <Select
                 value={agentFilter}
-                onValueChange={(v) => setFilter("agent", v)}
+                onValueChange={(v) => {
+                  return setFilter("agent", v);
+                }}
               >
                 <SelectTrigger className="zero-btn-morandi h-9 w-auto gap-1.5 rounded-lg px-3.5 text-sm font-medium">
                   <IconUsers size={14} stroke={1.5} className="shrink-0" />
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {agentOptions.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
+                  {agentOptions.map((opt) => {
+                    return (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
               <Select
                 value={statusFilter}
-                onValueChange={(v) => setFilter("status", v)}
+                onValueChange={(v) => {
+                  return setFilter("status", v);
+                }}
               >
                 <SelectTrigger className="zero-btn-morandi h-9 w-auto gap-1.5 rounded-lg px-3.5 text-sm font-medium">
                   <IconCircleDot size={14} stroke={1.5} className="shrink-0" />
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {statusOptions.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
+                  {statusOptions.map((opt) => {
+                    return (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
               <Select
                 value={sourceFilter}
-                onValueChange={(v) => setFilter("source", v)}
+                onValueChange={(v) => {
+                  return setFilter("source", v);
+                }}
               >
                 <SelectTrigger className="zero-btn-morandi h-9 w-auto gap-1.5 rounded-lg px-3.5 text-sm font-medium">
                   <IconPlugConnected
@@ -156,11 +172,13 @@ export function ZeroActivityPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {sourceOptions.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
+                  {sourceOptions.map((opt) => {
+                    return (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             </div>
@@ -209,15 +227,24 @@ export function ZeroActivityPage() {
                     isLoading={isLoading}
                     labelClassName="font-normal text-muted-foreground"
                     buttonClassName="bg-transparent border-border/70"
-                    onNextPage={() =>
-                      detach(goToNext(pageSignal), Reason.DomCallback)
-                    }
-                    onPrevPage={() => goToPrev()}
-                    onForwardTwoPages={() =>
-                      detach(goForwardTwo(pageSignal), Reason.DomCallback)
-                    }
-                    onBackTwoPages={() => goBackTwo()}
-                    onRowsPerPageChange={(limit) => setRowsPerPage(limit)}
+                    onNextPage={() => {
+                      return detach(goToNext(pageSignal), Reason.DomCallback);
+                    }}
+                    onPrevPage={() => {
+                      return goToPrev();
+                    }}
+                    onForwardTwoPages={() => {
+                      return detach(
+                        goForwardTwo(pageSignal),
+                        Reason.DomCallback,
+                      );
+                    }}
+                    onBackTwoPages={() => {
+                      return goBackTwo();
+                    }}
+                    onRowsPerPageChange={(limit) => {
+                      return setRowsPerPage(limit);
+                    }}
                   />
                 </div>
               )}

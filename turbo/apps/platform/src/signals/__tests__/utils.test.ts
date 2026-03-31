@@ -20,13 +20,15 @@ describe("utils", () => {
 
   describe("detach", () => {
     it("should handle non-promise values", () => {
-      expect(() => detach("value", Reason.Entrance)).not.toThrow();
+      expect(() => {
+        return detach("value", Reason.Entrance);
+      }).not.toThrow();
     });
 
     it("should handle promise values", () => {
-      expect(() =>
-        detach(Promise.resolve("value"), Reason.Entrance),
-      ).not.toThrow();
+      expect(() => {
+        return detach(Promise.resolve("value"), Reason.Entrance);
+      }).not.toThrow();
     });
   });
 

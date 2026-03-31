@@ -27,9 +27,15 @@ export const ahrefsHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.AHREFS_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.AHREFS_OAUTH_CLIENT_SECRET,
+  getClientId: (e) => {
+    return e.AHREFS_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.AHREFS_OAUTH_CLIENT_SECRET;
+  },
   getSecretName: getAhrefsSecretName,
-  getRefreshSecretName: () => "AHREFS_REFRESH_TOKEN",
+  getRefreshSecretName: () => {
+    return "AHREFS_REFRESH_TOKEN";
+  },
   refreshToken: refreshAhrefsToken,
 };

@@ -325,7 +325,11 @@ export async function prepareStorageManifest(
 
   // Check for volume resolution errors (missing variables, invalid config, etc.)
   if (volumeResult.errors.length > 0) {
-    const messages = volumeResult.errors.map((e) => e.message).join("; ");
+    const messages = volumeResult.errors
+      .map((e) => {
+        return e.message;
+      })
+      .join("; ");
     throw new Error(`Volume resolution failed: ${messages}`);
   }
 
@@ -495,9 +499,9 @@ export async function prepareStorageManifest(
   ]);
 
   // Filter out null results (skipped optional volumes)
-  const filteredStorages = storageResults.filter(
-    (s): s is ManifestStorage => s !== null,
-  );
+  const filteredStorages = storageResults.filter((s): s is ManifestStorage => {
+    return s !== null;
+  });
 
   log.debug(
     `Storage manifest prepared: ${filteredStorages.length} storages, ${artifact ? "1 artifact" : "no artifact"}, ${memory ? "1 memory" : "no memory"}`,

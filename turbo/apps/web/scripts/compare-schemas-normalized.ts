@@ -136,10 +136,14 @@ function compareColumns(
   }>;
 } {
   const map1 = new Map(
-    cols1.map((c) => [`${c.table_name}.${c.column_name}`, c]),
+    cols1.map((c) => {
+      return [`${c.table_name}.${c.column_name}`, c];
+    }),
   );
   const map2 = new Map(
-    cols2.map((c) => [`${c.table_name}.${c.column_name}`, c]),
+    cols2.map((c) => {
+      return [`${c.table_name}.${c.column_name}`, c];
+    }),
   );
 
   const added: TableColumn[] = [];
@@ -215,8 +219,16 @@ function compareIndexes(
   removed: IndexInfo[];
   modified: Array<{ index: string; oldDef: string; newDef: string }>;
 } {
-  const map1 = new Map(indexes1.map((i) => [i.index_name, i]));
-  const map2 = new Map(indexes2.map((i) => [i.index_name, i]));
+  const map1 = new Map(
+    indexes1.map((i) => {
+      return [i.index_name, i];
+    }),
+  );
+  const map2 = new Map(
+    indexes2.map((i) => {
+      return [i.index_name, i];
+    }),
+  );
 
   const added: IndexInfo[] = [];
   const removed: IndexInfo[] = [];
@@ -259,8 +271,16 @@ function compareConstraints(
   removed: ConstraintInfo[];
   modified: Array<{ constraint: string; oldDef: string; newDef: string }>;
 } {
-  const map1 = new Map(constraints1.map((c) => [c.constraint_name, c]));
-  const map2 = new Map(constraints2.map((c) => [c.constraint_name, c]));
+  const map1 = new Map(
+    constraints1.map((c) => {
+      return [c.constraint_name, c];
+    }),
+  );
+  const map2 = new Map(
+    constraints2.map((c) => {
+      return [c.constraint_name, c];
+    }),
+  );
 
   const added: ConstraintInfo[] = [];
   const removed: ConstraintInfo[] = [];

@@ -7,7 +7,13 @@ export const calendlyHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Calendly does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "CALENDLY_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "CALENDLY_TOKEN";
+  },
 };

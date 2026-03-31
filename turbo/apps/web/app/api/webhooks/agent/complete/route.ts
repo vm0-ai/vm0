@@ -37,9 +37,9 @@ function scheduleTerminalSideEffects(
   errorMsg?: string,
 ): void {
   after(async () => {
-    await dispatchTerminalSideEffects(runId, status, errorMsg, () =>
-      drainOrgQueue(orgId, dispatchQueuedZeroRun),
-    );
+    await dispatchTerminalSideEffects(runId, status, errorMsg, () => {
+      return drainOrgQueue(orgId, dispatchQueuedZeroRun);
+    });
     await processOrgCredits(orgId);
   });
 }

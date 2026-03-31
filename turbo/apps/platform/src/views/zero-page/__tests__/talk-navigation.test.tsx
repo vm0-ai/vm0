@@ -91,9 +91,9 @@ describe("talk navigation", () => {
     });
 
     // Wait for the chat input to be ready
-    const textarea = await waitFor(
-      () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-    );
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
 
     // Type a message
     await user.clear(textarea);

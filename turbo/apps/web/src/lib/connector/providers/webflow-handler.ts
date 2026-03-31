@@ -25,7 +25,11 @@ export const webflowHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.WEBFLOW_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.WEBFLOW_OAUTH_CLIENT_SECRET,
+  getClientId: (e) => {
+    return e.WEBFLOW_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.WEBFLOW_OAUTH_CLIENT_SECRET;
+  },
   getSecretName: getWebflowSecretName,
 };

@@ -29,12 +29,16 @@ const CopyButton = React.forwardRef<HTMLButtonElement, CopyButtonProps>(
         setCopied(false);
       }, resetDelay);
 
-      return () => clearTimeout(timer);
+      return () => {
+        return clearTimeout(timer);
+      };
     }, [copied, resetDelay]);
 
     const handleCopy = () => {
       navigator.clipboard.writeText(text).then(
-        () => setCopied(true),
+        () => {
+          return setCopied(true);
+        },
         () => {
           // Clipboard API not available or failed
         },

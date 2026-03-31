@@ -51,9 +51,9 @@ describe("GET /api/agent/sessions", () => {
     expect(data.sessions).toBeInstanceOf(Array);
     expect(data.sessions.length).toBeGreaterThanOrEqual(1);
 
-    const session = data.sessions.find(
-      (s: { id: string }) => s.id === agentSessionId,
-    );
+    const session = data.sessions.find((s: { id: string }) => {
+      return s.id === agentSessionId;
+    });
     expect(session).toBeDefined();
     expect(session.messageCount).toBe(2);
     expect(session.preview).toBe("Hello agent");

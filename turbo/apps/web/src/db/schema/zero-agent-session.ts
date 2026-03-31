@@ -22,6 +22,11 @@ export interface StoredChatMessage {
 export const zeroAgentSessions = pgTable("zero_agent_sessions", {
   id: uuid("id")
     .primaryKey()
-    .references(() => agentSessions.id, { onDelete: "cascade" }),
+    .references(
+      () => {
+        return agentSessions.id;
+      },
+      { onDelete: "cascade" },
+    ),
   chatMessages: jsonb("chat_messages").$type<StoredChatMessage[]>().default([]),
 });

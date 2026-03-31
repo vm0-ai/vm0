@@ -16,7 +16,9 @@ export type OrgManageTab =
 
 const internalActiveTab$ = state<OrgManageTab>("general");
 
-export const activeTab$ = computed((get) => get(internalActiveTab$));
+export const activeTab$ = computed((get) => {
+  return get(internalActiveTab$);
+});
 
 export const setActiveTab$ = command(({ set }, tab: OrgManageTab) => {
   set(internalActiveTab$, tab);
@@ -28,7 +30,9 @@ export const setActiveTab$ = command(({ set }, tab: OrgManageTab) => {
 
 const internalProfileName$ = state("");
 
-export const profileName$ = computed((get) => get(internalProfileName$));
+export const profileName$ = computed((get) => {
+  return get(internalProfileName$);
+});
 
 export const setProfileName$ = command(({ set }, value: string) => {
   set(internalProfileName$, value);
@@ -36,7 +40,9 @@ export const setProfileName$ = command(({ set }, value: string) => {
 
 const internalProfileSlug$ = state("");
 
-export const profileSlug$ = computed((get) => get(internalProfileSlug$));
+export const profileSlug$ = computed((get) => {
+  return get(internalProfileSlug$);
+});
 
 export const setProfileSlug$ = command(({ set }, value: string) => {
   set(internalProfileSlug$, value);
@@ -44,7 +50,9 @@ export const setProfileSlug$ = command(({ set }, value: string) => {
 
 const internalProfileSaving$ = state(false);
 
-export const profileSaving$ = computed((get) => get(internalProfileSaving$));
+export const profileSaving$ = computed((get) => {
+  return get(internalProfileSaving$);
+});
 
 export const setProfileSaving$ = command(({ set }, value: boolean) => {
   set(internalProfileSaving$, value);
@@ -52,7 +60,9 @@ export const setProfileSaving$ = command(({ set }, value: boolean) => {
 
 const internalProfileLogoUrl$ = state<string | null>(null);
 
-export const profileLogoUrl$ = computed((get) => get(internalProfileLogoUrl$));
+export const profileLogoUrl$ = computed((get) => {
+  return get(internalProfileLogoUrl$);
+});
 
 export const setProfileLogoUrl$ = command(({ set }, value: string | null) => {
   set(internalProfileLogoUrl$, value);
@@ -60,9 +70,9 @@ export const setProfileLogoUrl$ = command(({ set }, value: string | null) => {
 
 const internalPendingLogoFile$ = state<File | null>(null);
 
-export const pendingLogoFile$ = computed((get) =>
-  get(internalPendingLogoFile$),
-);
+export const pendingLogoFile$ = computed((get) => {
+  return get(internalPendingLogoFile$);
+});
 
 export const setPendingLogoFile$ = command(({ set }, value: File | null) => {
   set(internalPendingLogoFile$, value);
@@ -70,9 +80,9 @@ export const setPendingLogoFile$ = command(({ set }, value: File | null) => {
 
 const internalPendingLogoPreview$ = state<string | null>(null);
 
-export const pendingLogoPreview$ = computed((get) =>
-  get(internalPendingLogoPreview$),
-);
+export const pendingLogoPreview$ = computed((get) => {
+  return get(internalPendingLogoPreview$);
+});
 
 export const setPendingLogoPreview$ = command(
   ({ set }, value: string | null) => {
@@ -82,7 +92,9 @@ export const setPendingLogoPreview$ = command(
 
 const internalFileInputEl$ = state<HTMLInputElement | null>(null);
 
-export const fileInputEl$ = computed((get) => get(internalFileInputEl$));
+export const fileInputEl$ = computed((get) => {
+  return get(internalFileInputEl$);
+});
 
 export const setFileInputEl$ = command(
   ({ set }, value: HTMLInputElement | null) => {
@@ -92,7 +104,9 @@ export const setFileInputEl$ = command(
 
 const internalLogoLoaded$ = state(false);
 
-export const logoLoaded$ = computed((get) => get(internalLogoLoaded$));
+export const logoLoaded$ = computed((get) => {
+  return get(internalLogoLoaded$);
+});
 
 export const setLogoLoaded$ = command(({ set }, value: boolean) => {
   set(internalLogoLoaded$, value);
@@ -112,7 +126,9 @@ export const initProfileName$ = command(
 
 const internalLeaving$ = state(false);
 
-export const leaving$ = computed((get) => get(internalLeaving$));
+export const leaving$ = computed((get) => {
+  return get(internalLeaving$);
+});
 
 export const setLeaving$ = command(({ set }, value: boolean) => {
   set(internalLeaving$, value);
@@ -120,7 +136,9 @@ export const setLeaving$ = command(({ set }, value: boolean) => {
 
 const internalDeleting$ = state(false);
 
-export const deleting$ = computed((get) => get(internalDeleting$));
+export const deleting$ = computed((get) => {
+  return get(internalDeleting$);
+});
 
 export const setDeleting$ = command(({ set }, value: boolean) => {
   set(internalDeleting$, value);
@@ -128,7 +146,9 @@ export const setDeleting$ = command(({ set }, value: boolean) => {
 
 const internalDeleteConfirm$ = state("");
 
-export const deleteConfirm$ = computed((get) => get(internalDeleteConfirm$));
+export const deleteConfirm$ = computed((get) => {
+  return get(internalDeleteConfirm$);
+});
 
 export const setDeleteConfirm$ = command(({ set }, value: string) => {
   set(internalDeleteConfirm$, value);
@@ -140,7 +160,9 @@ export const setDeleteConfirm$ = command(({ set }, value: string) => {
 
 const internalBillingSubPage$ = state(false);
 
-export const billingSubPage$ = computed((get) => get(internalBillingSubPage$));
+export const billingSubPage$ = computed((get) => {
+  return get(internalBillingSubPage$);
+});
 
 export const setBillingSubPage$ = command(({ set }, value: boolean) => {
   set(internalBillingSubPage$, value);
@@ -152,7 +174,9 @@ export const setBillingSubPage$ = command(({ set }, value: boolean) => {
 
 const internalMemberSearch$ = state("");
 
-export const memberSearch$ = computed((get) => get(internalMemberSearch$));
+export const memberSearch$ = computed((get) => {
+  return get(internalMemberSearch$);
+});
 
 export const setMemberSearch$ = command(({ set }, value: string) => {
   set(internalMemberSearch$, value);
@@ -160,7 +184,9 @@ export const setMemberSearch$ = command(({ set }, value: string) => {
 
 const internalInviteEmail$ = state("");
 
-export const inviteEmail$ = computed((get) => get(internalInviteEmail$));
+export const inviteEmail$ = computed((get) => {
+  return get(internalInviteEmail$);
+});
 
 export const setInviteEmail$ = command(({ set }, value: string) => {
   set(internalInviteEmail$, value);
@@ -168,7 +194,9 @@ export const setInviteEmail$ = command(({ set }, value: string) => {
 
 const internalInviteTouched$ = state(false);
 
-export const inviteTouched$ = computed((get) => get(internalInviteTouched$));
+export const inviteTouched$ = computed((get) => {
+  return get(internalInviteTouched$);
+});
 
 export const setInviteTouched$ = command(({ set }, value: boolean) => {
   set(internalInviteTouched$, value);

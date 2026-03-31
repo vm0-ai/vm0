@@ -13,7 +13,12 @@ import { agentRuns } from "./agent-run";
 export const conversations = pgTable("conversations", {
   id: uuid("id").defaultRandom().primaryKey(),
   runId: uuid("run_id")
-    .references(() => agentRuns.id, { onDelete: "cascade" })
+    .references(
+      () => {
+        return agentRuns.id;
+      },
+      { onDelete: "cascade" },
+    )
     .notNull()
     .unique(),
   cliAgentType: varchar("cli_agent_type", { length: 64 }).notNull(),

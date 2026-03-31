@@ -7,7 +7,13 @@ export const larkHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Lark does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "LARK_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "LARK_TOKEN";
+  },
 };

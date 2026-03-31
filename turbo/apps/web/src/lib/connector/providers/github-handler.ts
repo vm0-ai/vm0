@@ -19,8 +19,12 @@ export const githubHandler: ProviderHandler = {
     const userInfo = await fetchGitHubUserInfo(accessToken);
     return { accessToken, scopes, userInfo };
   },
-  getClientId: (e) => e.GH_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.GH_OAUTH_CLIENT_SECRET,
+  getClientId: (e) => {
+    return e.GH_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.GH_OAUTH_CLIENT_SECRET;
+  },
   getSecretName: getGitHubSecretName,
   revokeToken: revokeGitHubGrant,
 };

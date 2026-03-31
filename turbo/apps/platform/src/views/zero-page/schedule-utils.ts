@@ -69,7 +69,13 @@ function parseScheduleTime(timeStr: string): {
   );
   if (onMatch) {
     const names = onMatch[1].split(/,\s*/);
-    const indices = names.map((n) => dayMap[n] ?? -1).filter((i) => i >= 0);
+    const indices = names
+      .map((n) => {
+        return dayMap[n] ?? -1;
+      })
+      .filter((i) => {
+        return i >= 0;
+      });
     if (indices.length > 0) {
       return { dayIndices: indices, timeLabel };
     }
@@ -124,9 +130,9 @@ export function buildCalendarTimeSlots(
       slotSet.add(timeLabel);
     }
   }
-  return [...slotSet].sort(
-    (a, b) => timeLabelToMinutes(a) - timeLabelToMinutes(b),
-  );
+  return [...slotSet].sort((a, b) => {
+    return timeLabelToMinutes(a) - timeLabelToMinutes(b);
+  });
 }
 
 export function getEntriesInCell(

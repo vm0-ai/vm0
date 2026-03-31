@@ -7,7 +7,13 @@ export const difyHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Dify does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "DIFY_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "DIFY_TOKEN";
+  },
 };

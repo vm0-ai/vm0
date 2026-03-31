@@ -12,23 +12,25 @@ import {
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { reloadEnv } from "../../../../../../src/env";
 
-vi.mock("stripe", () => ({
-  default: function MockStripe() {
-    return {
-      invoices: {
-        create: vi.fn(),
-        finalizeInvoice: vi.fn(),
-        pay: vi.fn(),
-      },
-      invoiceItems: { create: vi.fn() },
-      subscriptions: { retrieve: vi.fn() },
-      customers: { create: vi.fn() },
-      checkout: { sessions: { create: vi.fn() } },
-      billingPortal: { sessions: { create: vi.fn() } },
-      webhooks: { constructEvent: vi.fn() },
-    };
-  },
-}));
+vi.mock("stripe", () => {
+  return {
+    default: function MockStripe() {
+      return {
+        invoices: {
+          create: vi.fn(),
+          finalizeInvoice: vi.fn(),
+          pay: vi.fn(),
+        },
+        invoiceItems: { create: vi.fn() },
+        subscriptions: { retrieve: vi.fn() },
+        customers: { create: vi.fn() },
+        checkout: { sessions: { create: vi.fn() } },
+        billingPortal: { sessions: { create: vi.fn() } },
+        webhooks: { constructEvent: vi.fn() },
+      };
+    },
+  };
+});
 
 import { GET, PUT } from "../route";
 

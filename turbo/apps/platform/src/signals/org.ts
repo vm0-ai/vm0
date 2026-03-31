@@ -62,5 +62,7 @@ export const isOrgAdmin$ = computed(async (get) => {
  * Trigger a re-fetch of the org signal.
  */
 export const refreshOrg$ = command(({ set }) => {
-  set(reloadOrg$, (x) => x + 1);
+  set(reloadOrg$, (x) => {
+    return x + 1;
+  });
 });

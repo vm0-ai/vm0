@@ -230,5 +230,7 @@ export async function getAllCategoriesFromStrapi(
     res,
     url,
   );
-  return data.data.map((cat) => cat.name);
+  return data.data.map((cat) => {
+    return cat.name;
+  });
 }

@@ -22,12 +22,29 @@ const log = logger("service:org-external-cleanup");
  */
 export async function cleanupOrgExternalServices(orgId: string): Promise<void> {
   const steps = [
-    { name: "stripe subscription", fn: () => cancelStripeSubscription(orgId) },
-    { name: "telegram webhooks", fn: () => deregisterTelegramWebhooks(orgId) },
-    { name: "connector tokens", fn: () => revokeOrgConnectorTokens(orgId) },
+    {
+      name: "stripe subscription",
+      fn: () => {
+        return cancelStripeSubscription(orgId);
+      },
+    },
+    {
+      name: "telegram webhooks",
+      fn: () => {
+        return deregisterTelegramWebhooks(orgId);
+      },
+    },
+    {
+      name: "connector tokens",
+      fn: () => {
+        return revokeOrgConnectorTokens(orgId);
+      },
+    },
     {
       name: "slack installation",
-      fn: () => cleanupOrgSlackInstallation(orgId),
+      fn: () => {
+        return cleanupOrgSlackInstallation(orgId);
+      },
     },
   ];
 

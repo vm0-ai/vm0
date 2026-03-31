@@ -553,7 +553,9 @@ describe("Zero Agents API", () => {
       const listResponse = await listAgentsReq(testCliToken);
       const data = await listResponse.json();
       expect(
-        data.find((a: { agentId: string }) => a.agentId === created.agentId),
+        data.find((a: { agentId: string }) => {
+          return a.agentId === created.agentId;
+        }),
       ).toBeUndefined();
     });
 

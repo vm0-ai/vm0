@@ -74,7 +74,9 @@ export async function callTelegramApi<T>(
         retryAfter,
         attempt: _retryCount + 1,
       });
-      await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
+      await new Promise((resolve) => {
+        return setTimeout(resolve, retryAfter * 1000);
+      });
       return callTelegramApi<T>(token, method, params, _retryCount + 1);
     }
 

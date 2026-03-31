@@ -7,7 +7,13 @@ export const brightDataHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Bright Data does not support OAuth — use API key auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "BRIGHTDATA_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "BRIGHTDATA_TOKEN";
+  },
 };

@@ -26,11 +26,13 @@ export const usageDaily = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (table) => [
-    uniqueIndex("uq_usage_daily_user_org_date").on(
-      table.userId,
-      table.orgId,
-      table.date,
-    ),
-  ],
+  (table) => {
+    return [
+      uniqueIndex("uq_usage_daily_user_org_date").on(
+        table.userId,
+        table.orgId,
+        table.date,
+      ),
+    ];
+  },
 );

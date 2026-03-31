@@ -112,7 +112,9 @@ export async function POST(request: Request) {
   const { userId } = authCtx;
 
   const parseResult = connectBodySchema.safeParse(
-    await request.json().catch(() => undefined),
+    await request.json().catch(() => {
+      return undefined;
+    }),
   );
   if (!parseResult.success) {
     return NextResponse.json(
@@ -178,9 +180,9 @@ export async function POST(request: Request) {
       orgId: org.orgId,
       channelId,
       threadTs,
-    }).catch((err) =>
-      log.warn("Failed to notify connect success", { error: err }),
-    );
+    }).catch((err) => {
+      return log.warn("Failed to notify connect success", { error: err });
+    });
 
     return NextResponse.json({
       success: true,
@@ -223,9 +225,9 @@ export async function POST(request: Request) {
     orgId: org.orgId,
     channelId,
     threadTs,
-  }).catch((err) =>
-    log.warn("Failed to notify connect success", { error: err }),
-  );
+  }).catch((err) => {
+    return log.warn("Failed to notify connect success", { error: err });
+  });
 
   return NextResponse.json({
     success: true,

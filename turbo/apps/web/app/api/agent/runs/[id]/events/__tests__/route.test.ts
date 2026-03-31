@@ -239,14 +239,14 @@ describe("GET /api/agent/runs/:id/events", () => {
     });
 
     it("should set hasMore to true when results equal limit", async () => {
-      const testEvents = Array.from({ length: 3 }, (_, i) =>
-        createAxiomAgentEvent({
+      const testEvents = Array.from({ length: 3 }, (_, i) => {
+        return createAxiomAgentEvent({
           runId: testRunId,
           sequenceNumber: i,
           eventType: `event_${i}`,
           eventData: { type: `event_${i}` },
-        }),
-      );
+        });
+      });
 
       context.mocks.axiom.queryAxiom.mockResolvedValue(testEvents);
 
@@ -264,14 +264,14 @@ describe("GET /api/agent/runs/:id/events", () => {
     });
 
     it("should set hasMore to false when results less than limit", async () => {
-      const testEvents = Array.from({ length: 2 }, (_, i) =>
-        createAxiomAgentEvent({
+      const testEvents = Array.from({ length: 2 }, (_, i) => {
+        return createAxiomAgentEvent({
           runId: testRunId,
           sequenceNumber: i,
           eventType: `event_${i}`,
           eventData: { type: `event_${i}` },
-        }),
-      );
+        });
+      });
 
       context.mocks.axiom.queryAxiom.mockResolvedValue(testEvents);
 
@@ -509,7 +509,11 @@ describe("GET /api/agent/runs/:id/events", () => {
       const result = filterConsecutiveEvents(events, -1);
 
       expect(result).toHaveLength(3);
-      expect(result.map((e) => e.sequenceNumber)).toEqual([0, 1, 2]);
+      expect(
+        result.map((e) => {
+          return e.sequenceNumber;
+        }),
+      ).toEqual([0, 1, 2]);
     });
 
     it("should truncate at first gap (Axiom eventual consistency)", () => {
@@ -543,7 +547,11 @@ describe("GET /api/agent/runs/:id/events", () => {
       const result = filterConsecutiveEvents(events, -1);
 
       expect(result).toHaveLength(2);
-      expect(result.map((e) => e.sequenceNumber)).toEqual([0, 1]);
+      expect(
+        result.map((e) => {
+          return e.sequenceNumber;
+        }),
+      ).toEqual([0, 1]);
     });
 
     it("should return empty when first event is not since+1", () => {
@@ -592,7 +600,11 @@ describe("GET /api/agent/runs/:id/events", () => {
       const result = filterConsecutiveEvents(events, 5);
 
       expect(result).toHaveLength(3);
-      expect(result.map((e) => e.sequenceNumber)).toEqual([6, 7, 8]);
+      expect(
+        result.map((e) => {
+          return e.sequenceNumber;
+        }),
+      ).toEqual([6, 7, 8]);
     });
 
     it("should return empty for empty input", () => {
@@ -632,7 +644,11 @@ describe("GET /api/agent/runs/:id/events", () => {
       const result = filterConsecutiveEvents(events, 10);
 
       expect(result).toHaveLength(2);
-      expect(result.map((e) => e.sequenceNumber)).toEqual([11, 12]);
+      expect(
+        result.map((e) => {
+          return e.sequenceNumber;
+        }),
+      ).toEqual([11, 12]);
     });
 
     it("should handle single event with correct sequence", () => {
@@ -713,7 +729,9 @@ describe("GET /api/agent/runs/:id/events", () => {
 
       expect(data.events).toHaveLength(2);
       expect(
-        data.events.map((e: { sequenceNumber: number }) => e.sequenceNumber),
+        data.events.map((e: { sequenceNumber: number }) => {
+          return e.sequenceNumber;
+        }),
       ).toEqual([0, 1]);
       expect(data.hasMore).toBe(true);
       expect(data.nextSequence).toBe(1);
@@ -782,9 +800,9 @@ describe("GET /api/agent/runs/:id/events", () => {
 
       expect(secondData.events).toHaveLength(2);
       expect(
-        secondData.events.map(
-          (e: { sequenceNumber: number }) => e.sequenceNumber,
-        ),
+        secondData.events.map((e: { sequenceNumber: number }) => {
+          return e.sequenceNumber;
+        }),
       ).toEqual([2, 3]);
       expect(secondData.nextSequence).toBe(3);
     });

@@ -58,7 +58,11 @@ const router = tsr.router(zeroUserConnectorsContract, {
 
     return {
       status: 200 as const,
-      body: { enabledTypes: rows.map((r) => r.connectorType) },
+      body: {
+        enabledTypes: rows.map((r) => {
+          return r.connectorType;
+        }),
+      },
     };
   },
 
@@ -93,9 +97,9 @@ const router = tsr.router(zeroUserConnectorsContract, {
     }
 
     // Validate connector types before storing
-    const invalidTypes = body.enabledTypes.filter(
-      (t) => !connectorTypeSchema.safeParse(t).success,
-    );
+    const invalidTypes = body.enabledTypes.filter((t) => {
+      return !connectorTypeSchema.safeParse(t).success;
+    });
     if (invalidTypes.length > 0) {
       return {
         status: 400 as const,
@@ -124,12 +128,14 @@ const router = tsr.router(zeroUserConnectorsContract, {
 
       if (body.enabledTypes.length > 0) {
         await tx.insert(userConnectors).values(
-          body.enabledTypes.map((connectorType) => ({
-            orgId: org.orgId,
-            userId,
-            agentId: params.id,
-            connectorType,
-          })),
+          body.enabledTypes.map((connectorType) => {
+            return {
+              orgId: org.orgId,
+              userId,
+              agentId: params.id,
+              connectorType,
+            };
+          }),
         );
       }
     });

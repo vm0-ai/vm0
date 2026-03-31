@@ -23,9 +23,15 @@ export const notionHandler: ProviderHandler = {
       userInfo: result.userInfo,
     };
   },
-  getClientId: (e) => e.NOTION_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.NOTION_OAUTH_CLIENT_SECRET,
+  getClientId: (e) => {
+    return e.NOTION_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.NOTION_OAUTH_CLIENT_SECRET;
+  },
   getSecretName: getNotionSecretName,
-  getRefreshSecretName: () => "NOTION_REFRESH_TOKEN",
+  getRefreshSecretName: () => {
+    return "NOTION_REFRESH_TOKEN";
+  },
   refreshToken: refreshNotionToken,
 };

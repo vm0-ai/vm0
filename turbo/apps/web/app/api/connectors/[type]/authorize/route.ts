@@ -36,7 +36,9 @@ const COOKIE_MAX_AGE = 15 * 60; // 15 minutes
 function generateState(): string {
   const array = new Uint8Array(32);
   crypto.getRandomValues(array);
-  return Array.from(array, (b) => b.toString(16).padStart(2, "0")).join("");
+  return Array.from(array, (b) => {
+    return b.toString(16).padStart(2, "0");
+  }).join("");
 }
 
 /**
@@ -148,8 +150,9 @@ export async function GET(
   const authResult = await handler.buildAuthUrl(clientId, redirectUri, state);
 
   // Normalize result — handlers may return a plain URL string or { url, codeVerifier }
-  const isAuthUrlResult = (v: string | AuthUrlResult): v is AuthUrlResult =>
-    typeof v === "object" && "url" in v;
+  const isAuthUrlResult = (v: string | AuthUrlResult): v is AuthUrlResult => {
+    return typeof v === "object" && "url" in v;
+  };
   const authUrl = isAuthUrlResult(authResult) ? authResult.url : authResult;
   const codeVerifier = isAuthUrlResult(authResult)
     ? authResult.codeVerifier

@@ -153,12 +153,18 @@ async function validateSnapshotFiles(): Promise<void> {
 
   // Count SQL files
   const files = await fs.readdir(MIGRATIONS_DIR);
-  const sqlFiles = files.filter((f) => f.endsWith(".sql")).sort();
+  const sqlFiles = files
+    .filter((f) => {
+      return f.endsWith(".sql");
+    })
+    .sort();
 
   // Count snapshot files
   const metaFiles = await fs.readdir(path.join(MIGRATIONS_DIR, "meta"));
   const snapshotFiles = metaFiles
-    .filter((f) => f.endsWith("_snapshot.json"))
+    .filter((f) => {
+      return f.endsWith("_snapshot.json");
+    })
     .sort();
 
   console.log(`   SQL migrations: ${sqlFiles.length}`);
@@ -311,7 +317,11 @@ async function extractSchemaFromDb(dbUrl: string): Promise<{
       ORDER BY table_name
     `);
 
-    const tables = new Set<string>(tablesResult.rows.map((r) => r.table_name));
+    const tables = new Set<string>(
+      tablesResult.rows.map((r) => {
+        return r.table_name;
+      }),
+    );
     const columns = new Map<string, Set<string>>();
 
     for (const row of tablesResult.rows) {
@@ -331,7 +341,11 @@ async function extractSchemaFromDb(dbUrl: string): Promise<{
 
       columns.set(
         tableName,
-        new Set(columnsResult.rows.map((c) => c.column_name)),
+        new Set(
+          columnsResult.rows.map((c) => {
+            return c.column_name;
+          }),
+        ),
       );
     }
 
@@ -380,8 +394,12 @@ function compareSchemas(
   const dbTables = Array.from(dbSchema.tables).sort();
   const snapshotTables = Array.from(snapshotSchema.tables).sort();
 
-  const missingInSnapshot = dbTables.filter((t) => !snapshotTables.includes(t));
-  const extraInSnapshot = snapshotTables.filter((t) => !dbTables.includes(t));
+  const missingInSnapshot = dbTables.filter((t) => {
+    return !snapshotTables.includes(t);
+  });
+  const extraInSnapshot = snapshotTables.filter((t) => {
+    return !dbTables.includes(t);
+  });
 
   if (missingInSnapshot.length > 0) {
     differences.push(
@@ -403,8 +421,12 @@ function compareSchemas(
       snapshotSchema.columns.get(tableName) || [],
     ).sort();
 
-    const missingCols = dbCols.filter((c) => !snapshotCols.includes(c));
-    const extraCols = snapshotCols.filter((c) => !dbCols.includes(c));
+    const missingCols = dbCols.filter((c) => {
+      return !snapshotCols.includes(c);
+    });
+    const extraCols = snapshotCols.filter((c) => {
+      return !dbCols.includes(c);
+    });
 
     if (missingCols.length > 0) {
       differences.push(

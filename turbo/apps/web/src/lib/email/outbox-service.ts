@@ -234,7 +234,9 @@ export async function drainBatch(): Promise<number> {
 
     // Delay between sends to respect rate limit
     if (i < MAX_BATCH_SIZE - 1) {
-      await new Promise((resolve) => setTimeout(resolve, DRAIN_DELAY_MS));
+      await new Promise((resolve) => {
+        return setTimeout(resolve, DRAIN_DELAY_MS);
+      });
     }
   }
 
@@ -273,7 +275,9 @@ export async function cleanupExpiredOutbox(): Promise<number> {
 function normalizeAddresses(raw: unknown): string[] {
   if (typeof raw === "string") return [raw];
   if (Array.isArray(raw))
-    return raw.filter((x): x is string => typeof x === "string");
+    return raw.filter((x): x is string => {
+      return typeof x === "string";
+    });
   return [];
 }
 
@@ -287,13 +291,17 @@ async function findSuppressedAddress(
 ): Promise<string | null> {
   if (addresses.length === 0) return null;
 
-  const lowerAddresses = addresses.map((a) => a.toLowerCase());
+  const lowerAddresses = addresses.map((a) => {
+    return a.toLowerCase();
+  });
   const results = await tx
     .select({ emailAddress: emailSuppressions.emailAddress })
     .from(emailSuppressions)
     .where(
       sql`lower(${emailSuppressions.emailAddress}) IN (${sql.join(
-        lowerAddresses.map((a) => sql`${a}`),
+        lowerAddresses.map((a) => {
+          return sql`${a}`;
+        }),
         sql`, `,
       )})`,
     )
@@ -303,7 +311,9 @@ async function findSuppressedAddress(
     // Return the original-cased address that matched
     const matchedLower = results[0]!.emailAddress.toLowerCase();
     return (
-      addresses.find((a) => a.toLowerCase() === matchedLower) ?? matchedLower
+      addresses.find((a) => {
+        return a.toLowerCase() === matchedLower;
+      }) ?? matchedLower
     );
   }
   return null;

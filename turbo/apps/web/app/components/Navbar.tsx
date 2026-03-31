@@ -27,7 +27,9 @@ export default function Navbar() {
       }
     };
     window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    return () => {
+      return window.removeEventListener("resize", handleResize);
+    };
   }, []);
 
   // Prevent body scroll when mobile menu is open
@@ -136,7 +138,9 @@ export default function Navbar() {
             {/* Hamburger Menu Button */}
             <button
               className="hamburger-btn"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              onClick={() => {
+                return setMobileMenuOpen(!mobileMenuOpen);
+              }}
               aria-label="Toggle menu"
               aria-expanded={mobileMenuOpen}
             >
@@ -161,7 +165,9 @@ export default function Navbar() {
             <Link
               href="/security"
               className="mobile-menu-link"
-              onClick={() => setMobileMenuOpen(false)}
+              onClick={() => {
+                return setMobileMenuOpen(false);
+              }}
             >
               Security
             </Link>
@@ -169,7 +175,9 @@ export default function Navbar() {
               <Link
                 href="/blog"
                 className="mobile-menu-link"
-                onClick={() => setMobileMenuOpen(false)}
+                onClick={() => {
+                  return setMobileMenuOpen(false);
+                }}
               >
                 {t("blog")}
               </Link>
@@ -179,7 +187,9 @@ export default function Navbar() {
               target="_blank"
               rel="noopener noreferrer"
               className="mobile-menu-link"
-              onClick={() => setMobileMenuOpen(false)}
+              onClick={() => {
+                return setMobileMenuOpen(false);
+              }}
             >
               {t("github")}
             </a>
@@ -188,7 +198,9 @@ export default function Navbar() {
               target="_blank"
               rel="noopener noreferrer"
               className="mobile-menu-link"
-              onClick={() => setMobileMenuOpen(false)}
+              onClick={() => {
+                return setMobileMenuOpen(false);
+              }}
             >
               {t("contact")}
             </a>
@@ -209,7 +221,9 @@ export default function Navbar() {
                   target="_blank"
                   rel="noopener noreferrer"
                   className="mobile-menu-link group"
-                  onClick={() => setMobileMenuOpen(false)}
+                  onClick={() => {
+                    return setMobileMenuOpen(false);
+                  }}
                   style={{ display: "flex", alignItems: "center", gap: "8px" }}
                 >
                   <span>Open app</span>
@@ -232,7 +246,9 @@ export default function Navbar() {
       {mobileMenuOpen && (
         <div
           className="mobile-menu-overlay"
-          onClick={() => setMobileMenuOpen(false)}
+          onClick={() => {
+            return setMobileMenuOpen(false);
+          }}
         />
       )}
     </nav>

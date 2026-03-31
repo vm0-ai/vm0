@@ -631,9 +631,13 @@ export function getCategories(): readonly Category[] {
 }
 
 export function getRandomPrompts(count: number): UseCase[] {
-  const all = categories.flatMap((c) =>
-    c.cases.filter((u) => u.connectors && u.connectors.length > 0),
-  );
-  const shuffled = [...all].sort(() => Math.random() - 0.5);
+  const all = categories.flatMap((c) => {
+    return c.cases.filter((u) => {
+      return u.connectors && u.connectors.length > 0;
+    });
+  });
+  const shuffled = [...all].sort(() => {
+    return Math.random() - 0.5;
+  });
   return shuffled.slice(0, count);
 }

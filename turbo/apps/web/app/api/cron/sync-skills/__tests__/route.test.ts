@@ -127,13 +127,14 @@ const MOCK_SKILLS = [
 
 function setupMswHandlers(commitSha: string, tarball: Buffer) {
   server.use(
-    http.get(
-      "https://github.com/vm0-ai/vm0-skills.git/info/refs",
-      () => new HttpResponse(createGitRefsResponse(commitSha)),
-    ),
+    http.get("https://github.com/vm0-ai/vm0-skills.git/info/refs", () => {
+      return new HttpResponse(createGitRefsResponse(commitSha));
+    }),
     http.get(
       "https://codeload.github.com/vm0-ai/vm0-skills/tar.gz/refs/heads/main",
-      () => new HttpResponse(tarball),
+      () => {
+        return new HttpResponse(tarball);
+      },
     ),
   );
 }

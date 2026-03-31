@@ -112,7 +112,9 @@ export function QueueWaitingTable({
                     <button
                       type="button"
                       className="text-sm text-destructive hover:underline"
-                      onClick={() => void cancelRun(runId, pageSignal)}
+                      onClick={() => {
+                        return void cancelRun(runId, pageSignal);
+                      }}
                     >
                       Cancel
                     </button>

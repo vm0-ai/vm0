@@ -283,11 +283,14 @@ describe("/api/zero/integrations/slack", () => {
           elements?: Array<{ action_id?: string }>;
         }>;
       };
-      const hasSettingsAction = view.blocks.some(
-        (b) =>
+      const hasSettingsAction = view.blocks.some((b) => {
+        return (
           b.type === "actions" &&
-          b.elements?.some((e) => e.action_id === "home_open_settings"),
-      );
+          b.elements?.some((e) => {
+            return e.action_id === "home_open_settings";
+          })
+        );
+      });
       expect(hasSettingsAction).toBe(true);
 
       // Verify installation was deleted after publishing

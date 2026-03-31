@@ -95,7 +95,9 @@ async function findBotUserByName(
     const response = await ngrokFetch(apiKey, nextPageUri);
     const page = (await response.json()) as NgrokBotUsersPage;
 
-    const found = page.bot_users.find((u) => u.name === name);
+    const found = page.bot_users.find((u) => {
+      return u.name === name;
+    });
     if (found) {
       return found;
     }

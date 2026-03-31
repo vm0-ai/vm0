@@ -24,7 +24,9 @@ export const orgMetadata = pgTable(
     credits: bigint("credits", { mode: "number" }).notNull().default(10_000),
     tier: text("tier").notNull().default("free"),
     defaultAgentId: uuid("default_agent_id").references(
-      () => agentComposes.id,
+      () => {
+        return agentComposes.id;
+      },
       { onDelete: "set null" },
     ),
     // Stripe billing fields
@@ -46,5 +48,7 @@ export const orgMetadata = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (table) => [uniqueIndex("uq_org_stripe_customer").on(table.stripeCustomerId)],
+  (table) => {
+    return [uniqueIndex("uq_org_stripe_customer").on(table.stripeCustomerId)];
+  },
 );

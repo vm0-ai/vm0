@@ -164,10 +164,12 @@ const router = tsr.router(zeroAgentInstructionsContract, {
     const manifest = await downloadManifest(bucket, version.s3Key);
 
     const canonicalFilename = getInstructionsFilename(agentDef?.framework);
-    const normalize = (p: string) => (p.startsWith("./") ? p.slice(2) : p);
-    const instructionFile = manifest.files.find(
-      (f) => normalize(f.path) === normalize(canonicalFilename),
-    );
+    const normalize = (p: string) => {
+      return p.startsWith("./") ? p.slice(2) : p;
+    };
+    const instructionFile = manifest.files.find((f) => {
+      return normalize(f.path) === normalize(canonicalFilename);
+    });
 
     if (!instructionFile) {
       return {

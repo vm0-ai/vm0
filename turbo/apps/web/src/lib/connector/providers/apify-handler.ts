@@ -7,7 +7,13 @@ export const apifyHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Apify does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "APIFY_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "APIFY_TOKEN";
+  },
 };

@@ -35,15 +35,23 @@ function buildProgram(): Command {
 function visibleCommandNames(prog: Command): string[] {
   return new Help()
     .visibleCommands(prog)
-    .map((cmd) => cmd.name())
-    .filter((name) => name !== "help");
+    .map((cmd) => {
+      return cmd.name();
+    })
+    .filter((name) => {
+      return name !== "help";
+    });
 }
 
 function hiddenCommandNames(prog: Command): string[] {
   const visible = new Set(visibleCommandNames(prog));
   return prog.commands
-    .map((cmd) => cmd.name())
-    .filter((name) => !visible.has(name));
+    .map((cmd) => {
+      return cmd.name();
+    })
+    .filter((name) => {
+      return !visible.has(name);
+    });
 }
 
 describe("decodeZeroTokenPayload", () => {

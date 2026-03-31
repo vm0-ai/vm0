@@ -28,19 +28,33 @@ export const slackOrgPendingQuestions = pgTable(
     slackMessageTs: varchar("slack_message_ts", { length: 255 }),
     connectionId: uuid("connection_id")
       .notNull()
-      .references(() => slackOrgConnections.id),
+      .references(() => {
+        return slackOrgConnections.id;
+      }),
     composeId: uuid("compose_id")
       .notNull()
-      .references(() => agentComposes.id, { onDelete: "cascade" }),
+      .references(
+        () => {
+          return agentComposes.id;
+        },
+        { onDelete: "cascade" },
+      ),
     agentName: varchar("agent_name", { length: 255 }).notNull(),
-    sessionId: uuid("session_id").references(() => agentSessions.id, {
-      onDelete: "set null",
-    }),
+    sessionId: uuid("session_id").references(
+      () => {
+        return agentSessions.id;
+      },
+      {
+        onDelete: "set null",
+      },
+    ),
     questions: jsonb("questions").notNull(),
     answer: text("answer"),
     answeredAt: timestamp("answered_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     expiresAt: timestamp("expires_at").notNull(),
   },
-  (table) => [index("idx_slack_org_pending_questions_run_id").on(table.runId)],
+  (table) => {
+    return [index("idx_slack_org_pending_questions_run_id").on(table.runId)];
+  },
 );

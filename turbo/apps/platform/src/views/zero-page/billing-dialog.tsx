@@ -96,15 +96,17 @@ function PlanCard({
         <span className="text-sm text-muted-foreground">{plan.period}</span>
       </div>
       <ul className="flex flex-col gap-1.5">
-        {plan.features.map((feature) => (
-          <li
-            key={feature}
-            className="flex items-center gap-1.5 text-sm text-muted-foreground"
-          >
-            <IconCheck size={14} className="shrink-0 text-primary" />
-            {feature}
-          </li>
-        ))}
+        {plan.features.map((feature) => {
+          return (
+            <li
+              key={feature}
+              className="flex items-center gap-1.5 text-sm text-muted-foreground"
+            >
+              <IconCheck size={14} className="shrink-0 text-primary" />
+              {feature}
+            </li>
+          );
+        })}
       </ul>
     </button>
   );
@@ -252,7 +254,9 @@ export function AutoRechargeSection({
                   type="number"
                   min={1}
                   defaultValue={threshold}
-                  onBlur={() => persistIfValid()}
+                  onBlur={() => {
+                    return persistIfValid();
+                  }}
                   placeholder="e.g. 2000"
                   className={inputRowClass}
                   aria-label="Credit threshold for auto-recharge"
@@ -276,7 +280,9 @@ export function AutoRechargeSection({
                     min={CREDITS_PER_DOLLAR}
                     step={CREDITS_PER_DOLLAR}
                     defaultValue={amount}
-                    onBlur={() => persistIfValid()}
+                    onBlur={() => {
+                      return persistIfValid();
+                    }}
                     placeholder="100000"
                     className={`${inputRowClass} pr-[4.25rem] tabular-nums`}
                     aria-label="Auto-recharge credit amount in credits"
@@ -365,7 +371,9 @@ export function AutoRechargeSection({
           size="sm"
           variant="outline"
           disabled={loading}
-          onClick={() => persistIfValid()}
+          onClick={() => {
+            return persistIfValid();
+          }}
         >
           {loading ? "Saving..." : "Save"}
         </Button>
@@ -403,7 +411,12 @@ export function BillingDialog() {
   };
 
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && close()}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        return !v && close();
+      }}
+    >
       <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
           <DialogTitle>Choose your plan</DialogTitle>
@@ -415,15 +428,19 @@ export function BillingDialog() {
         </DialogHeader>
 
         <div className="grid grid-cols-3 gap-3 mt-2">
-          {PLANS.map((plan) => (
-            <PlanCard
-              key={plan.tier}
-              plan={plan}
-              isCurrent={plan.tier === currentTier}
-              isSelected={plan.tier === selectedTier}
-              onSelect={() => setSelectedTier(plan.tier)}
-            />
-          ))}
+          {PLANS.map((plan) => {
+            return (
+              <PlanCard
+                key={plan.tier}
+                plan={plan}
+                isCurrent={plan.tier === currentTier}
+                isSelected={plan.tier === selectedTier}
+                onSelect={() => {
+                  return setSelectedTier(plan.tier);
+                }}
+              />
+            );
+          })}
         </div>
 
         {(isUpgrade || isDowngrade) && (

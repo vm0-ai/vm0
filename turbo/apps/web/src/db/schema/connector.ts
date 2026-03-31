@@ -36,12 +36,14 @@ export const connectors = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (table) => [
-    index("idx_connectors_org").on(table.orgId),
-    uniqueIndex("idx_connectors_org_user_type").on(
-      table.orgId,
-      table.userId,
-      table.type,
-    ),
-  ],
+  (table) => {
+    return [
+      index("idx_connectors_org").on(table.orgId),
+      uniqueIndex("idx_connectors_org_user_type").on(
+        table.orgId,
+        table.userId,
+        table.type,
+      ),
+    ];
+  },
 );

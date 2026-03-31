@@ -152,13 +152,13 @@ export async function handleInboundEmailTrigger(
 
   // 7. Extract inbound Message-ID for threading (case-insensitive lookup)
   const headers = email.headers ?? {};
-  const messageIdKey = Object.keys(headers).find(
-    (k) => k.toLowerCase() === "message-id",
-  );
+  const messageIdKey = Object.keys(headers).find((k) => {
+    return k.toLowerCase() === "message-id";
+  });
   const inboundMessageId = messageIdKey ? headers[messageIdKey] : undefined;
-  const referencesKey = Object.keys(headers).find(
-    (k) => k.toLowerCase() === "references",
-  );
+  const referencesKey = Object.keys(headers).find((k) => {
+    return k.toLowerCase() === "references";
+  });
   const inboundReferences = referencesKey ? headers[referencesKey] : undefined;
 
   // 8. Verify sender authenticity via DMARC

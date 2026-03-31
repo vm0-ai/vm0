@@ -37,36 +37,42 @@ interface TelegramCallbackPayload {
 function telegramSendMessage() {
   return http.post(
     `https://api.telegram.org/bot${TEST_BOT_TOKEN}/sendMessage`,
-    () =>
-      HttpResponse.json({
+    () => {
+      return HttpResponse.json({
         ok: true,
         result: { message_id: 999, chat: { id: 123 }, text: "response" },
-      }),
+      });
+    },
   );
 }
 
 function telegramSendChatAction() {
   return http.post(
     `https://api.telegram.org/bot${TEST_BOT_TOKEN}/sendChatAction`,
-    () => HttpResponse.json({ ok: true, result: true }),
+    () => {
+      return HttpResponse.json({ ok: true, result: true });
+    },
   );
 }
 
 function telegramEditMessageText() {
   return http.post(
     `https://api.telegram.org/bot${TEST_BOT_TOKEN}/editMessageText`,
-    () =>
-      HttpResponse.json({
+    () => {
+      return HttpResponse.json({
         ok: true,
         result: { message_id: 100, chat: { id: 123 }, text: "edited" },
-      }),
+      });
+    },
   );
 }
 
 function telegramDeleteMessage() {
   return http.post(
     `https://api.telegram.org/bot${TEST_BOT_TOKEN}/deleteMessage`,
-    () => HttpResponse.json({ ok: true, result: true }),
+    () => {
+      return HttpResponse.json({ ok: true, result: true });
+    },
   );
 }
 

@@ -7,7 +7,13 @@ export const deepseekHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("DeepSeek does not support OAuth — use API key auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "DEEPSEEK_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "DEEPSEEK_TOKEN";
+  },
 };

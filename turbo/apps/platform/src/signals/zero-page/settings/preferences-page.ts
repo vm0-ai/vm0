@@ -11,7 +11,9 @@ import { throwIfAbort } from "../../utils.ts";
 
 const internalPreferencesTab$ = state("appearance");
 
-export const preferencesTab$ = computed((get) => get(internalPreferencesTab$));
+export const preferencesTab$ = computed((get) => {
+  return get(internalPreferencesTab$);
+});
 
 export const setPreferencesTab$ = command(({ set }, value: string) => {
   set(internalPreferencesTab$, value);
@@ -23,7 +25,9 @@ export const setPreferencesTab$ = command(({ set }, value: string) => {
 
 const internalSendModeSaving$ = state<SendMode | null>(null);
 
-export const sendModeSaving$ = computed((get) => get(internalSendModeSaving$));
+export const sendModeSaving$ = computed((get) => {
+  return get(internalSendModeSaving$);
+});
 
 /**
  * Update send mode preference and clear saving state once the refetched value
@@ -56,7 +60,9 @@ export const updateSendMode$ = command(
 
 const internalTimezoneSaving$ = state(false);
 
-export const timezoneSaving$ = computed((get) => get(internalTimezoneSaving$));
+export const timezoneSaving$ = computed((get) => {
+  return get(internalTimezoneSaving$);
+});
 
 export const setTimezoneSaving$ = command(({ set }, value: boolean) => {
   set(internalTimezoneSaving$, value);

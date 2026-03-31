@@ -37,9 +37,9 @@ const internalSchedules$ = state<ScheduleResponse[]>([]);
 // Schedule tab saving state (used by ZeroScheduleTab to show loading during save)
 const internalScheduleTabSaving$ = state(false);
 
-export const scheduleTabSaving$ = computed((get) =>
-  get(internalScheduleTabSaving$),
-);
+export const scheduleTabSaving$ = computed((get) => {
+  return get(internalScheduleTabSaving$);
+});
 
 export const setScheduleTabSaving$ = command(({ set }, value: boolean) => {
   set(internalScheduleTabSaving$, value);
@@ -104,7 +104,9 @@ function cronToTimeString(cron: string): string {
     };
     const days = dayOfWeek
       .split(",")
-      .map((d) => dayNames[d])
+      .map((d) => {
+        return dayNames[d];
+      })
       .filter(Boolean);
     if (days.length > 0) {
       return `Every week on ${days.join(", ")} at ${timeStr}`;
@@ -138,9 +140,11 @@ interface ZeroScheduleEntry {
 export const zeroScheduleEntries$ = computed((get) => {
   const schedules = get(internalSchedules$);
   return [...schedules]
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .map(
-      (s): ZeroScheduleEntry => ({
+    .sort((a, b) => {
+      return b.createdAt.localeCompare(a.createdAt);
+    })
+    .map((s): ZeroScheduleEntry => {
+      return {
         id: s.id,
         time: scheduleToTimeString(s),
         prompt: s.prompt,
@@ -152,8 +156,8 @@ export const zeroScheduleEntries$ = computed((get) => {
         name: s.name,
         timezone: s.timezone,
         intervalSeconds: s.intervalSeconds,
-      }),
-    );
+      };
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -181,9 +185,9 @@ export const fetchZeroSchedules$ = command(
       }
 
       // Filter schedules for this agent's composeId
-      const agentSchedules = result.body.schedules.filter(
-        (s) => s.agentId === composeId,
-      );
+      const agentSchedules = result.body.schedules.filter((s) => {
+        return s.agentId === composeId;
+      });
       set(internalSchedules$, agentSchedules);
     } catch (error) {
       throwIfAbort(error);
@@ -405,16 +409,18 @@ const internalAllSchedules$ = state<ScheduleResponse[]>([]);
 const internalAllSchedulesLoaded$ = state(false);
 
 /** Whether the org schedules have been loaded at least once. */
-export const allOrgSchedulesLoaded$ = computed((get) =>
-  get(internalAllSchedulesLoaded$),
-);
+export const allOrgSchedulesLoaded$ = computed((get) => {
+  return get(internalAllSchedulesLoaded$);
+});
 
 export const allOrgScheduleEntries$ = computed((get) => {
   const schedules = get(internalAllSchedules$);
   return [...schedules]
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .map(
-      (s): OrgScheduleEntry => ({
+    .sort((a, b) => {
+      return b.createdAt.localeCompare(a.createdAt);
+    })
+    .map((s): OrgScheduleEntry => {
+      return {
         id: s.id,
         time: scheduleToTimeString(s),
         prompt: s.prompt,
@@ -430,8 +436,8 @@ export const allOrgScheduleEntries$ = computed((get) => {
         displayName: s.displayName,
         nextRunAt: s.nextRunAt,
         lastRunAt: s.lastRunAt,
-      }),
-    );
+      };
+    });
 });
 
 export const fetchAllOrgSchedules$ = command(
@@ -543,7 +549,9 @@ export const deleteOrgSchedule$ = command(
 export const runScheduleNow$ = command(
   async ({ get }, scheduleId: string, signal: AbortSignal): Promise<string> => {
     const toastId = toast.loading("Starting run…");
-    signal.addEventListener("abort", () => toast.dismiss(toastId));
+    signal.addEventListener("abort", () => {
+      return toast.dismiss(toastId);
+    });
     const client = get(zeroClient$)(zeroScheduleRunContract);
     const result = await client.run({ body: { scheduleId } });
     signal.throwIfAborted();

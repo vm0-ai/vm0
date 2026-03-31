@@ -125,9 +125,9 @@ export async function evaluateMemberCaps(
     );
 
   // Filter to enabled members with caps set
-  const enabledCapped = cappedMembers.filter(
-    (m) => m.creditEnabled && m.creditCap !== null,
-  );
+  const enabledCapped = cappedMembers.filter((m) => {
+    return m.creditEnabled && m.creditCap !== null;
+  });
   if (enabledCapped.length === 0) return;
 
   // Batch: single aggregation query instead of N individual queries
@@ -142,7 +142,9 @@ export async function evaluateMemberCaps(
         eq(creditUsage.orgId, orgId),
         inArray(
           creditUsage.userId,
-          enabledCapped.map((m) => m.userId),
+          enabledCapped.map((m) => {
+            return m.userId;
+          }),
         ),
         eq(creditUsage.status, "processed"),
         gte(creditUsage.processedAt, billingPeriod.start),
@@ -150,7 +152,11 @@ export async function evaluateMemberCaps(
     )
     .groupBy(creditUsage.userId);
 
-  const usageMap = new Map(usageByUser.map((u) => [u.userId, u.total]));
+  const usageMap = new Map(
+    usageByUser.map((u) => {
+      return [u.userId, u.total];
+    }),
+  );
 
   for (const member of enabledCapped) {
     const totalUsage = usageMap.get(member.userId) ?? 0;

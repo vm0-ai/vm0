@@ -38,9 +38,9 @@ export async function getCachedUser(userId: string): Promise<CachedUser> {
   const client = await clerkClient();
   const user = await client.users.getUser(userId);
 
-  const primaryEmail = user.emailAddresses.find(
-    (e) => e.id === user.primaryEmailAddressId,
-  );
+  const primaryEmail = user.emailAddresses.find((e) => {
+    return e.id === user.primaryEmailAddressId;
+  });
 
   if (!primaryEmail?.emailAddress) {
     throw new Error(`No primary email found for user ${userId}`);
@@ -98,8 +98,9 @@ export async function getCachedUserIdByEmail(
   // Resolve the canonical email: prefer primary email from user object,
   // fall back to the query email (which Clerk already matched)
   const resolvedEmail =
-    user.emailAddresses?.find((e) => e.id === user.primaryEmailAddressId)
-      ?.emailAddress ?? email;
+    user.emailAddresses?.find((e) => {
+      return e.id === user.primaryEmailAddressId;
+    })?.emailAddress ?? email;
 
   // 3. Upsert cache
   const now = new Date();

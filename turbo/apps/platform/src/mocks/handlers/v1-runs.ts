@@ -69,7 +69,9 @@ export const appLogsHandlers = [
 
     // Simple pagination logic
     const cursorIndex = cursor
-      ? mockLogDetails.findIndex((r) => r.id === cursor) + 1
+      ? mockLogDetails.findIndex((r) => {
+          return r.id === cursor;
+        }) + 1
       : 0;
     const data = mockLogDetails.slice(cursorIndex, cursorIndex + limit);
     const hasMore = cursorIndex + limit < mockLogDetails.length;
@@ -77,21 +79,23 @@ export const appLogsHandlers = [
     const totalPages = Math.max(1, Math.ceil(mockLogDetails.length / limit));
 
     const response: LogsListResponse = {
-      data: data.map((log) => ({
-        id: log.id,
-        sessionId: log.sessionId,
-        agentId: log.agentId,
-        displayName: null,
-        orgSlug: null,
-        framework: log.framework,
-        triggerSource: null,
-        triggerAgentName: null,
-        scheduleId: null,
-        status: log.status,
-        createdAt: log.createdAt,
-        startedAt: log.startedAt,
-        completedAt: log.completedAt,
-      })),
+      data: data.map((log) => {
+        return {
+          id: log.id,
+          sessionId: log.sessionId,
+          agentId: log.agentId,
+          displayName: null,
+          orgSlug: null,
+          framework: log.framework,
+          triggerSource: null,
+          triggerAgentName: null,
+          scheduleId: null,
+          status: log.status,
+          createdAt: log.createdAt,
+          startedAt: log.startedAt,
+          completedAt: log.completedAt,
+        };
+      }),
       pagination: {
         hasMore,
         nextCursor,
@@ -106,7 +110,9 @@ export const appLogsHandlers = [
   // GET /api/zero/logs/:id - Get log detail
   http.get("*/api/zero/logs/:id", ({ params }) => {
     const { id } = params;
-    const logDetail = mockLogDetails.find((log) => log.id === id);
+    const logDetail = mockLogDetails.find((log) => {
+      return log.id === id;
+    });
 
     if (!logDetail) {
       return HttpResponse.json(

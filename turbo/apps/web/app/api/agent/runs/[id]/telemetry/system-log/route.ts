@@ -83,7 +83,11 @@ ${sinceFilter}
     const records = hasMore ? events.slice(0, limit) : events;
 
     // Aggregate system logs from records
-    const aggregatedSystemLog = records.map((r) => r.log).join("");
+    const aggregatedSystemLog = records
+      .map((r) => {
+        return r.log;
+      })
+      .join("");
 
     return {
       status: 200 as const,

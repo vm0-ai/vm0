@@ -211,15 +211,18 @@ describe("POST /api/telegram/webhook/[installationId]", () => {
       // Set up MSW handlers for Telegram API calls the DM handler makes
       const sendChatActionHandler = http.post(
         `https://api.telegram.org/bot${TEST_BOT_TOKEN}/sendChatAction`,
-        () => HttpResponse.json({ ok: true, result: true }),
+        () => {
+          return HttpResponse.json({ ok: true, result: true });
+        },
       );
       const sendMessageHandler = http.post(
         `https://api.telegram.org/bot${TEST_BOT_TOKEN}/sendMessage`,
-        () =>
-          HttpResponse.json({
+        () => {
+          return HttpResponse.json({
             ok: true,
             result: { message_id: 99, chat: { id: 789 } },
-          }),
+          });
+        },
       );
       server.use(sendChatActionHandler.handler, sendMessageHandler.handler);
 

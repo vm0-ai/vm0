@@ -4,7 +4,9 @@ const internalCopyStatus$ = state<"idle" | "copied">("idle");
 
 const internalCopyTimeoutId$ = state<number | null>(null);
 
-export const copyStatus$ = computed((get) => get(internalCopyStatus$));
+export const copyStatus$ = computed((get) => {
+  return get(internalCopyStatus$);
+});
 
 /**
  * Copy text to clipboard and show "copied" status for 5 seconds.

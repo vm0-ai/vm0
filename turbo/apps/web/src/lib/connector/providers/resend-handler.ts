@@ -7,7 +7,13 @@ export const resendHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Resend does not support OAuth — use API key auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "RESEND_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "RESEND_TOKEN";
+  },
 };

@@ -38,7 +38,9 @@ describe("link component new-tab behavior", () => {
     const user = userEvent.setup();
     mockQueuePage();
 
-    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => {
+      return null;
+    });
 
     await setupPage({ context, path: "/queue" });
 

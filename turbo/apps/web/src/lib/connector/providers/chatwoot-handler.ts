@@ -7,7 +7,13 @@ export const chatwootHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Chatwoot does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "CHATWOOT_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "CHATWOOT_TOKEN";
+  },
 };

@@ -147,7 +147,11 @@ function parseWeeklyDays(timeStr: string): string {
     return "1";
   }
   const names = weekDayMatch[1].split(/,\s*/);
-  return names.map((n) => DAY_NAME_TO_CRON[n] ?? "1").join(",");
+  return names
+    .map((n) => {
+      return DAY_NAME_TO_CRON[n] ?? "1";
+    })
+    .join(",");
 }
 
 export function parseScheduleTimeString(timeStr: string): ParsedScheduleTime {
@@ -272,7 +276,9 @@ export function ZeroScheduleCard({
   const setTogglingIds = useSet(setTogglingIds$);
 
   const editingEntry = editingScheduleId
-    ? (scheduleList.find((e) => e.id === editingScheduleId) ?? null)
+    ? (scheduleList.find((e) => {
+        return e.id === editingScheduleId;
+      }) ?? null)
     : null;
 
   const openAddSchedule = () => {
@@ -295,7 +301,9 @@ export function ZeroScheduleCard({
           return;
         }
         const id = entry.id;
-        setTogglingIds((prev) => new Set([...prev, id]));
+        setTogglingIds((prev) => {
+          return new Set([...prev, id]);
+        });
         detach(
           onToggleEnabled({ name: entry.name, enabled }).finally(() => {
             setTogglingIds((prev) => {
@@ -320,7 +328,9 @@ export function ZeroScheduleCard({
   const handleRunNow = onRunNow
     ? async (entry: ScheduleEntry) => {
         const id = entry.id;
-        setRunningIds((prev) => new Set([...prev, id]));
+        setRunningIds((prev) => {
+          return new Set([...prev, id]);
+        });
         try {
           await onRunNow(entry);
         } finally {
@@ -388,14 +398,16 @@ export function ZeroScheduleCard({
       loopMinutes:
         values.freq === "every_n_minutes" ? values.loopMinutes : undefined,
     });
-    setScheduleList((prev) => [
-      ...prev,
-      {
-        id: String(Date.now()),
-        time: timeStr,
-        prompt: values.prompt.trim(),
-      },
-    ]);
+    setScheduleList((prev) => {
+      return [
+        ...prev,
+        {
+          id: String(Date.now()),
+          time: timeStr,
+          prompt: values.prompt.trim(),
+        },
+      ];
+    });
     detach(setAddScheduleOpen(false, signal), Reason.DomCallback);
   };
 
@@ -447,13 +459,13 @@ export function ZeroScheduleCard({
         loopMinutes:
           values.freq === "every_n_minutes" ? values.loopMinutes : undefined,
       });
-      setScheduleList((prev) =>
-        prev.map((e) =>
-          e.id === editingScheduleId
+      setScheduleList((prev) => {
+        return prev.map((e) => {
+          return e.id === editingScheduleId
             ? { ...e, time: timeStr, prompt: values.prompt.trim() }
-            : e,
-        ),
-      );
+            : e;
+        });
+      });
       detach(setEditingScheduleId(null, signal), Reason.DomCallback);
     }
   };
@@ -480,7 +492,9 @@ export function ZeroScheduleCard({
           </Button>
           <Tabs
             value={scheduleViewMode}
-            onValueChange={(v) => setScheduleViewMode(v as "list" | "calendar")}
+            onValueChange={(v) => {
+              return setScheduleViewMode(v as "list" | "calendar");
+            }}
             className="shrink-0"
           >
             <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
@@ -531,9 +545,9 @@ export function ZeroScheduleCard({
 
       <ScheduleFormDialog
         open={addScheduleOpen}
-        onClose={() =>
-          detach(setAddScheduleOpen(false, signal), Reason.DomCallback)
-        }
+        onClose={() => {
+          return detach(setAddScheduleOpen(false, signal), Reason.DomCallback);
+        }}
         onSave={handleCreateSave}
         saving={!!saving}
         mode="create"
@@ -541,9 +555,9 @@ export function ZeroScheduleCard({
       />
       <ScheduleFormDialog
         open={editingScheduleId !== null}
-        onClose={() =>
-          detach(setEditingScheduleId(null, signal), Reason.DomCallback)
-        }
+        onClose={() => {
+          return detach(setEditingScheduleId(null, signal), Reason.DomCallback);
+        }}
         onSave={handleEditSave}
         saving={!!saving}
         mode="edit"
@@ -589,7 +603,12 @@ export function ZeroScheduleCard({
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPendingDelete(null)}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                return setPendingDelete(null);
+              }}
+            >
               Cancel
             </Button>
             <Button variant="destructive" onClick={confirmDelete}>

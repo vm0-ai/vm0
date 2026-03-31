@@ -54,9 +54,9 @@ const router = tsr.router(webhookHeartbeatContract, {
     // Dispatch progress notifications to integration callbacks (non-blocking).
     // Keeps status indicators alive (e.g. Slack's assistant typing indicator).
     after(() => {
-      dispatchProgressCallbacks(body.runId).catch((err) =>
-        log.debug("Failed to dispatch progress callbacks", { err }),
-      );
+      dispatchProgressCallbacks(body.runId).catch((err) => {
+        return log.debug("Failed to dispatch progress callbacks", { err });
+      });
     });
 
     return {

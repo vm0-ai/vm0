@@ -7,7 +7,13 @@ export const brevoHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Brevo does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "BREVO_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "BREVO_TOKEN";
+  },
 };

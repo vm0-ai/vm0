@@ -7,7 +7,13 @@ export const elevenlabsHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("ElevenLabs does not support OAuth — use API key auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "ELEVENLABS_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "ELEVENLABS_TOKEN";
+  },
 };

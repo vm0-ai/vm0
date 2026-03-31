@@ -114,7 +114,9 @@ describe("run command", () => {
     );
 
     // Default spawn mock - succeeds immediately
-    mockSpawn.mockImplementation(() => createMockChildProcess(0) as never);
+    mockSpawn.mockImplementation(() => {
+      return createMockChildProcess(0) as never;
+    });
   });
 
   afterEach(() => {
@@ -1661,15 +1663,16 @@ describe("run command", () => {
         ]);
       }).rejects.toThrow("process.exit called");
 
-      const allErrors = mockConsoleError.mock.calls.map(
-        (call) => call[0] as string,
-      );
-      const hasForbidden = allErrors.some(
-        (err) =>
+      const allErrors = mockConsoleError.mock.calls.map((call) => {
+        return call[0] as string;
+      });
+      const hasForbidden = allErrors.some((err) => {
+        return (
           err.toLowerCase().includes("forbidden") ||
           err.toLowerCase().includes("unauthorized") ||
-          err.toLowerCase().includes("permission denied"),
-      );
+          err.toLowerCase().includes("permission denied")
+        );
+      });
       expect(hasForbidden).toBe(false);
 
       expect(mockConsoleError).toHaveBeenCalledWith(
@@ -2033,18 +2036,32 @@ describe("run command", () => {
       }).rejects.toThrow("process.exit called");
 
       const allErrors = mockConsoleError.mock.calls
-        .map((call) => call[0])
-        .filter((log): log is string => typeof log === "string");
+        .map((call) => {
+          return call[0];
+        })
+        .filter((log): log is string => {
+          return typeof log === "string";
+        });
 
-      expect(allErrors.some((log) => log.includes("Run failed"))).toBe(true);
       expect(
-        allErrors.some((log) => log.includes("Could not resume session")),
+        allErrors.some((log) => {
+          return log.includes("Run failed");
+        }),
       ).toBe(true);
       expect(
-        allErrors.some((log) => log.includes("Session history file not found")),
+        allErrors.some((log) => {
+          return log.includes("Could not resume session");
+        }),
       ).toBe(true);
       expect(
-        allErrors.some((log) => log.includes("Agent exited with code 1")),
+        allErrors.some((log) => {
+          return log.includes("Session history file not found");
+        }),
+      ).toBe(true);
+      expect(
+        allErrors.some((log) => {
+          return log.includes("Agent exited with code 1");
+        }),
       ).toBe(false);
       expect(mockExit).toHaveBeenCalledWith(1);
     });
@@ -2073,13 +2090,17 @@ describe("run command", () => {
       }).rejects.toThrow("process.exit called");
 
       const allErrors = mockConsoleError.mock.calls
-        .map((call) => call[0])
-        .filter((log): log is string => typeof log === "string");
+        .map((call) => {
+          return call[0];
+        })
+        .filter((log): log is string => {
+          return typeof log === "string";
+        });
 
       expect(
-        allErrors.some((log) =>
-          log.includes(`vm0 logs ${errorTestRunId} --system`),
-        ),
+        allErrors.some((log) => {
+          return log.includes(`vm0 logs ${errorTestRunId} --system`);
+        }),
       ).toBe(true);
     });
 
@@ -2111,10 +2132,18 @@ describe("run command", () => {
       }).rejects.toThrow("process.exit called");
 
       const allErrors = mockConsoleError.mock.calls
-        .map((call) => call[0])
-        .filter((log): log is string => typeof log === "string");
+        .map((call) => {
+          return call[0];
+        })
+        .filter((log): log is string => {
+          return typeof log === "string";
+        });
 
-      expect(allErrors.some((log) => log.includes("Unknown error"))).toBe(true);
+      expect(
+        allErrors.some((log) => {
+          return log.includes("Unknown error");
+        }),
+      ).toBe(true);
     });
 
     it.each([
@@ -2158,10 +2187,18 @@ describe("run command", () => {
         }).rejects.toThrow("process.exit called");
 
         const allErrors = mockConsoleError.mock.calls
-          .map((call) => call[0])
-          .filter((log): log is string => typeof log === "string");
+          .map((call) => {
+            return call[0];
+          })
+          .filter((log): log is string => {
+            return typeof log === "string";
+          });
 
-        expect(allErrors.some((log) => log.includes(expected))).toBe(true);
+        expect(
+          allErrors.some((log) => {
+            return log.includes(expected);
+          }),
+        ).toBe(true);
       },
     );
   });

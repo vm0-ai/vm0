@@ -129,8 +129,12 @@ describe("Org-level model provider service", () => {
       expect(updated.isDefault).toBe(true);
 
       const providers = await listOrgModelProviders(orgId);
-      const anthropic = providers.find((p) => p.type === "anthropic-api-key");
-      const oauth = providers.find((p) => p.type === "claude-code-oauth-token");
+      const anthropic = providers.find((p) => {
+        return p.type === "anthropic-api-key";
+      });
+      const oauth = providers.find((p) => {
+        return p.type === "claude-code-oauth-token";
+      });
       expect(anthropic!.isDefault).toBe(false);
       expect(oauth!.isDefault).toBe(true);
     });

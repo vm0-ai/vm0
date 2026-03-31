@@ -7,7 +7,13 @@ export const cloudflareHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Cloudflare does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "CLOUDFLARE_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "CLOUDFLARE_TOKEN";
+  },
 };

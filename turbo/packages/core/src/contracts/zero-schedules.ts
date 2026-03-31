@@ -72,7 +72,9 @@ const zeroDeployScheduleRequestSchema = z
         data.cronExpression,
         data.atTime,
         data.intervalSeconds,
-      ].filter((v) => v !== undefined);
+      ].filter((v) => {
+        return v !== undefined;
+      });
       return triggers.length === 1;
     },
     {

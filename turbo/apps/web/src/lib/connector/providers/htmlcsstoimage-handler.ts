@@ -11,7 +11,13 @@ export const htmlcsstoimageHandler: ProviderHandler = {
       "HTML/CSS to Image does not support OAuth — use API token auth",
     );
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "HCTI_API_KEY",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "HCTI_API_KEY";
+  },
 };

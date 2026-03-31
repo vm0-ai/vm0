@@ -7,7 +7,13 @@ export const twentyHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Twenty does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "TWENTY_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "TWENTY_TOKEN";
+  },
 };

@@ -44,12 +44,13 @@ const SCHEDULE_FREQUENCY_OPTIONS = [
 
 const SCHEDULE_LOOP_MINUTES = [5, 15, 30, 60] as const;
 
-const HOUR_OPTIONS: readonly number[] = Array.from({ length: 24 }, (_, i) => i);
+const HOUR_OPTIONS: readonly number[] = Array.from({ length: 24 }, (_, i) => {
+  return i;
+});
 
-const MINUTE_OPTIONS: readonly number[] = Array.from(
-  { length: 12 },
-  (_, i) => i * 5,
-);
+const MINUTE_OPTIONS: readonly number[] = Array.from({ length: 12 }, (_, i) => {
+  return i * 5;
+});
 
 /**
  * Build the minute dropdown options, inserting a non-standard value (e.g. an
@@ -60,7 +61,9 @@ function getMinuteOptions(currentMinute?: number): readonly number[] {
   if (currentMinute === undefined || MINUTE_OPTIONS.includes(currentMinute)) {
     return MINUTE_OPTIONS;
   }
-  return [...MINUTE_OPTIONS, currentMinute].sort((a, b) => a - b);
+  return [...MINUTE_OPTIONS, currentMinute].sort((a, b) => {
+    return a - b;
+  });
 }
 
 function isCronFreq(f: string): boolean {
@@ -87,7 +90,9 @@ function getLoopMinuteOptions(current: number): readonly number[] {
   if ((SCHEDULE_LOOP_MINUTES as readonly number[]).includes(current)) {
     return SCHEDULE_LOOP_MINUTES;
   }
-  return [...SCHEDULE_LOOP_MINUTES, current].sort((a, b) => a - b);
+  return [...SCHEDULE_LOOP_MINUTES, current].sort((a, b) => {
+    return a - b;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -234,11 +239,13 @@ function ScheduleTimingFields({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {SCHEDULE_FREQUENCY_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>
-                {opt.label}
-              </SelectItem>
-            ))}
+            {SCHEDULE_FREQUENCY_OPTIONS.map((opt) => {
+              return (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              );
+            })}
           </SelectContent>
         </Select>
       </div>
@@ -254,17 +261,21 @@ function ScheduleTimingFields({
           </label>
           <Select
             value={String(loopMinutes)}
-            onValueChange={(v) => setLoopMinutes(Number(v))}
+            onValueChange={(v) => {
+              return setLoopMinutes(Number(v));
+            }}
           >
             <SelectTrigger id="schedule-dialog-loop" className="h-9">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {getLoopMinuteOptions(loopMinutes).map((m) => (
-                <SelectItem key={m} value={String(m)}>
-                  {m} minutes
-                </SelectItem>
-              ))}
+              {getLoopMinuteOptions(loopMinutes).map((m) => {
+                return (
+                  <SelectItem key={m} value={String(m)}>
+                    {m} minutes
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
         </div>
@@ -284,7 +295,9 @@ function ScheduleTimingFields({
             type="date"
             value={date}
             min={getTodayDateLocal()}
-            onChange={(e) => setDate(e.target.value)}
+            onChange={(e) => {
+              return setDate(e.target.value);
+            }}
             className="h-9"
           />
         </div>
@@ -306,11 +319,13 @@ function ScheduleTimingFields({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {Array.from({ length: 31 }, (_, i) => (
-                <SelectItem key={i + 1} value={String(i + 1)}>
-                  {i + 1}
-                </SelectItem>
-              ))}
+              {Array.from({ length: 31 }, (_, i) => {
+                return (
+                  <SelectItem key={i + 1} value={String(i + 1)}>
+                    {i + 1}
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
         </div>
@@ -323,33 +338,41 @@ function ScheduleTimingFields({
           <div className="flex items-center gap-2">
             <Select
               value={String(hour)}
-              onValueChange={(v) => setHour(Number(v))}
+              onValueChange={(v) => {
+                return setHour(Number(v));
+              }}
             >
               <SelectTrigger className="h-9 w-20">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {HOUR_OPTIONS.map((h) => (
-                  <SelectItem key={h} value={String(h)}>
-                    {h.toString().padStart(2, "0")}
-                  </SelectItem>
-                ))}
+                {HOUR_OPTIONS.map((h) => {
+                  return (
+                    <SelectItem key={h} value={String(h)}>
+                      {h.toString().padStart(2, "0")}
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
             <span className="text-muted-foreground">:</span>
             <Select
               value={String(minute)}
-              onValueChange={(v) => setMinute(Number(v))}
+              onValueChange={(v) => {
+                return setMinute(Number(v));
+              }}
             >
               <SelectTrigger className="h-9 w-20">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {getMinuteOptions(minute).map((m) => (
-                  <SelectItem key={m} value={String(m)}>
-                    {m.toString().padStart(2, "0")}
-                  </SelectItem>
-                ))}
+                {getMinuteOptions(minute).map((m) => {
+                  return (
+                    <SelectItem key={m} value={String(m)}>
+                      {m.toString().padStart(2, "0")}
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
           </div>
@@ -373,11 +396,13 @@ function ScheduleTimingFields({
               {((COMMON_TIMEZONES as readonly string[]).includes(timezone)
                 ? COMMON_TIMEZONES
                 : [timezone, ...COMMON_TIMEZONES]
-              ).map((tz) => (
-                <SelectItem key={tz} value={tz}>
-                  {getTimezoneLabel(tz)}
-                </SelectItem>
-              ))}
+              ).map((tz) => {
+                return (
+                  <SelectItem key={tz} value={tz}>
+                    {getTimezoneLabel(tz)}
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
         </div>
@@ -416,7 +441,13 @@ function DayOfWeekPicker({
                 const current = dayOfWeek.split(",").filter(Boolean);
                 if (selected) {
                   if (current.length > 1) {
-                    setDayOfWeek(current.filter((d) => d !== value).join(","));
+                    setDayOfWeek(
+                      current
+                        .filter((d) => {
+                          return d !== value;
+                        })
+                        .join(","),
+                    );
                   }
                 } else {
                   setDayOfWeek([...current, value].join(","));
@@ -491,20 +522,22 @@ function ScheduleNotificationFields({
           </label>
           <Select
             value={notifySlackChannelId ?? "__dm__"}
-            onValueChange={(v) =>
-              setNotifySlackChannelId(v === "__dm__" ? null : v)
-            }
+            onValueChange={(v) => {
+              return setNotifySlackChannelId(v === "__dm__" ? null : v);
+            }}
           >
             <SelectTrigger id="schedule-dialog-slack-channel" className="h-9">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="__dm__">Direct message</SelectItem>
-              {slackChannels.map((ch) => (
-                <SelectItem key={ch.id} value={ch.id}>
-                  #{ch.name}
-                </SelectItem>
-              ))}
+              {slackChannels.map((ch) => {
+                return (
+                  <SelectItem key={ch.id} value={ch.id}>
+                    #{ch.name}
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
         </div>
@@ -704,11 +737,13 @@ function ScheduleFormDialogInner({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {agents.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>
-                      {a.displayName ?? a.id}
-                    </SelectItem>
-                  ))}
+                  {agents.map((a) => {
+                    return (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.displayName ?? a.id}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             </div>
@@ -725,7 +760,9 @@ function ScheduleFormDialogInner({
             <textarea
               id="schedule-dialog-prompt"
               value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
+              onChange={(e) => {
+                return setPrompt(e.target.value);
+              }}
               placeholder="Describe your task and instruction"
               rows={5}
               className="w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 resize-y min-h-[120px]"
@@ -747,7 +784,9 @@ function ScheduleFormDialogInner({
               <Input
                 id="schedule-dialog-description"
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                onChange={(e) => {
+                  return setDescription(e.target.value);
+                }}
                 placeholder="Leave blank to auto-generate"
                 className="h-9"
               />
@@ -813,7 +852,9 @@ function ScheduleFormDialogInner({
       {showConfirm && (
         <ConfirmCloseOverlay
           onDiscard={onClose}
-          onContinue={() => setShowConfirm(false)}
+          onContinue={() => {
+            return setShowConfirm(false);
+          }}
         />
       )}
     </>

@@ -137,8 +137,12 @@ function validateSecrets(
   for (const [name, fieldConfig] of Object.entries(secretsConfig)) {
     if (fieldConfig.required && !secrets[name]) {
       const requiredNames = Object.entries(secretsConfig)
-        .filter(([, fc]) => fc.required)
-        .map(([n]) => n)
+        .filter(([, fc]) => {
+          return fc.required;
+        })
+        .map(([n]) => {
+          return n;
+        })
         .join(", ");
       throw new Error(`Missing required secret: ${name}`, {
         cause: new Error(`Required secrets: ${requiredNames}`),
@@ -282,7 +286,11 @@ export async function promptForModelSelection(
       message: "Select model:",
       choices: modelChoices,
     },
-    { onCancel: () => process.exit(0) },
+    {
+      onCancel: () => {
+        return process.exit(0);
+      },
+    },
   );
 
   const selected = modelResponse.model as string;
@@ -298,9 +306,15 @@ export async function promptForModelSelection(
         type: "text",
         name: "customModel",
         message: "Enter model ID:",
-        validate: (value: string) => value.length > 0 || "Model ID is required",
+        validate: (value: string) => {
+          return value.length > 0 || "Model ID is required";
+        },
       },
-      { onCancel: () => process.exit(0) },
+      {
+        onCancel: () => {
+          return process.exit(0);
+        },
+      },
     );
     return customResponse.customModel as string;
   }
@@ -322,13 +336,15 @@ export async function promptForAuthMethod(
     return "default";
   }
 
-  const choices = Object.entries(authMethods).map(([method, config]) => ({
-    title:
-      method === defaultAuthMethod
-        ? `${config.label} (Recommended)`
-        : config.label,
-    value: method,
-  }));
+  const choices = Object.entries(authMethods).map(([method, config]) => {
+    return {
+      title:
+        method === defaultAuthMethod
+          ? `${config.label} (Recommended)`
+          : config.label,
+      value: method,
+    };
+  });
 
   const response = await prompts(
     {
@@ -337,7 +353,11 @@ export async function promptForAuthMethod(
       message: "Select authentication method:",
       choices,
     },
-    { onCancel: () => process.exit(0) },
+    {
+      onCancel: () => {
+        return process.exit(0);
+      },
+    },
   );
 
   return response.authMethod as string;
@@ -349,9 +369,9 @@ export async function promptForAuthMethod(
  */
 function isSensitiveSecret(name: string): boolean {
   const nonSecretPatterns = ["REGION", "ENDPOINT", "URL"];
-  return !nonSecretPatterns.some((pattern) =>
-    name.toUpperCase().includes(pattern),
-  );
+  return !nonSecretPatterns.some((pattern) => {
+    return name.toUpperCase().includes(pattern);
+  });
 }
 
 export async function promptForSecrets(
@@ -382,10 +402,15 @@ export async function promptForSecrets(
           name: "value",
           message: `${fieldConfig.label}:`,
           initial: placeholder ? "" : undefined,
-          validate: (value: string) =>
-            value.length > 0 || `${fieldConfig.label} is required`,
+          validate: (value: string) => {
+            return value.length > 0 || `${fieldConfig.label} is required`;
+          },
         },
-        { onCancel: () => process.exit(0) },
+        {
+          onCancel: () => {
+            return process.exit(0);
+          },
+        },
       );
       secrets[name] = response.value as string;
     } else {
@@ -396,7 +421,11 @@ export async function promptForSecrets(
           name: "value",
           message: `${fieldConfig.label} (optional):`,
         },
-        { onCancel: () => process.exit(0) },
+        {
+          onCancel: () => {
+            return process.exit(0);
+          },
+        },
       );
       const value = response.value as string;
       if (value && value.trim()) {

@@ -21,22 +21,26 @@ const stripeMocks = vi.hoisted<
     StripeMockFns,
     "subscriptionsRetrieve" | "subscriptionsUpdate" | "subscriptionsCancel"
   >
->(() => ({
-  subscriptionsRetrieve: vi.fn(),
-  subscriptionsUpdate: vi.fn(),
-  subscriptionsCancel: vi.fn(),
-}));
+>(() => {
+  return {
+    subscriptionsRetrieve: vi.fn(),
+    subscriptionsUpdate: vi.fn(),
+    subscriptionsCancel: vi.fn(),
+  };
+});
 
-vi.mock("stripe", () => ({
-  default: function MockStripe() {
-    return {
-      subscriptions: {
-        retrieve: stripeMocks.subscriptionsRetrieve,
-        cancel: stripeMocks.subscriptionsCancel,
-      },
-    };
-  },
-}));
+vi.mock("stripe", () => {
+  return {
+    default: function MockStripe() {
+      return {
+        subscriptions: {
+          retrieve: stripeMocks.subscriptionsRetrieve,
+          cancel: stripeMocks.subscriptionsCancel,
+        },
+      };
+    },
+  };
+});
 
 // --- Test setup ---
 
@@ -95,7 +99,9 @@ describe("cleanupOrgExternalServices", () => {
 
     const telegramHandler = http.post(
       `https://api.telegram.org/bot${botToken}/deleteWebhook`,
-      () => HttpResponse.json({ ok: true, result: true }),
+      () => {
+        return HttpResponse.json({ ok: true, result: true });
+      },
     );
     server.use(telegramHandler.handler);
 
@@ -123,11 +129,15 @@ describe("cleanupOrgExternalServices", () => {
 
     const handler1 = http.post(
       `https://api.telegram.org/bot${token1}/deleteWebhook`,
-      () => HttpResponse.json({ ok: true, result: true }),
+      () => {
+        return HttpResponse.json({ ok: true, result: true });
+      },
     );
     const handler2 = http.post(
       `https://api.telegram.org/bot${token2}/deleteWebhook`,
-      () => HttpResponse.json({ ok: true, result: true }),
+      () => {
+        return HttpResponse.json({ ok: true, result: true });
+      },
     );
     server.use(handler1.handler, handler2.handler);
 
@@ -194,11 +204,15 @@ describe("cleanupOrgExternalServices", () => {
 
     const failHandler = http.post(
       `https://api.telegram.org/bot${tokenFail}/deleteWebhook`,
-      () => HttpResponse.error(),
+      () => {
+        return HttpResponse.error();
+      },
     );
     const okHandler = http.post(
       `https://api.telegram.org/bot${tokenOk}/deleteWebhook`,
-      () => HttpResponse.json({ ok: true, result: true }),
+      () => {
+        return HttpResponse.json({ ok: true, result: true });
+      },
     );
     server.use(failHandler.handler, okHandler.handler);
 

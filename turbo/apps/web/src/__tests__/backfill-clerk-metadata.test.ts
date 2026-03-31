@@ -62,10 +62,12 @@ function mockClerkClient(opts: {
       }: {
         limit: number;
         offset: number;
-      }) => ({
-        data: orgs.slice(offset, offset + limit),
-        totalCount: orgs.length,
-      }),
+      }) => {
+        return {
+          data: orgs.slice(offset, offset + limit),
+          totalCount: orgs.length,
+        };
+      },
       getOrganizationMembershipList: async ({
         organizationId,
         limit,
@@ -89,10 +91,12 @@ function mockClerkClient(opts: {
       }: {
         limit: number;
         offset: number;
-      }) => ({
-        data: clerkUsers.slice(offset, offset + limit),
-        totalCount: clerkUsers.length,
-      }),
+      }) => {
+        return {
+          data: clerkUsers.slice(offset, offset + limit),
+          totalCount: clerkUsers.length,
+        };
+      },
     },
   } as unknown as ClerkClient;
 }
@@ -550,13 +554,15 @@ describe("backfill-clerk-metadata", () => {
 
     it("aborts when error count exceeds threshold", async () => {
       // No trackOrg — all orgs have invalid UUIDs, every INSERT fails, nothing written to DB
-      const badOrgs = Array.from({ length: MAX_ERRORS + 5 }, (_, i) => ({
-        id: uniqueId(`bf-thresh-${i}`),
-        publicMetadata: {
-          tier: "pro",
-          default_agent_compose_id: "not-a-valid-uuid",
-        },
-      }));
+      const badOrgs = Array.from({ length: MAX_ERRORS + 5 }, (_, i) => {
+        return {
+          id: uniqueId(`bf-thresh-${i}`),
+          publicMetadata: {
+            tier: "pro",
+            default_agent_compose_id: "not-a-valid-uuid",
+          },
+        };
+      });
 
       const clerk = mockClerkClient({ orgs: badOrgs });
 

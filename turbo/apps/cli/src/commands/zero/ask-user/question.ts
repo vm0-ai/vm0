@@ -129,7 +129,9 @@ Notes:
             throw new Error("Question expired before user responded");
           }
 
-          await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+          await new Promise((resolve) => {
+            return setTimeout(resolve, pollIntervalMs);
+          });
         }
 
         // Timeout reached

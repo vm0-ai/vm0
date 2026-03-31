@@ -74,7 +74,9 @@ export function computeReplyRecipients(opts: {
   const { from, to, cc, replyTo, botDomain } = opts;
   const botDomainLower = botDomain.toLowerCase();
 
-  const isBotAddress = (addr: string) => emailDomain(addr) === botDomainLower;
+  const isBotAddress = (addr: string) => {
+    return emailDomain(addr) === botDomainLower;
+  };
 
   // Primary reply target: honor Reply-To if present, otherwise use From
   const primaryTarget = replyTo.length > 0 ? replyTo[0]! : from;
@@ -83,7 +85,9 @@ export function computeReplyRecipients(opts: {
   const botInTo = to.some(isBotAddress);
 
   // Non-bot To recipients (excluding the bot itself)
-  const otherToRecipients = to.filter((addr) => !isBotAddress(addr));
+  const otherToRecipients = to.filter((addr) => {
+    return !isBotAddress(addr);
+  });
 
   let replyToList: string[];
   let replyCcList: string[];
@@ -100,8 +104,12 @@ export function computeReplyRecipients(opts: {
   replyCcList = [...cc];
 
   // Remove bot's own addresses
-  replyToList = replyToList.filter((addr) => !isBotAddress(addr));
-  replyCcList = replyCcList.filter((addr) => !isBotAddress(addr));
+  replyToList = replyToList.filter((addr) => {
+    return !isBotAddress(addr);
+  });
+  replyCcList = replyCcList.filter((addr) => {
+    return !isBotAddress(addr);
+  });
 
   // Deduplicate (case-insensitive)
   const dedup = (list: string[]): string[] => {
@@ -118,8 +126,14 @@ export function computeReplyRecipients(opts: {
   replyCcList = dedup(replyCcList);
 
   // Remove from CC any address already in To
-  const toSet = new Set(replyToList.map((a) => a.toLowerCase()));
-  replyCcList = replyCcList.filter((addr) => !toSet.has(addr.toLowerCase()));
+  const toSet = new Set(
+    replyToList.map((a) => {
+      return a.toLowerCase();
+    }),
+  );
+  replyCcList = replyCcList.filter((addr) => {
+    return !toSet.has(addr.toLowerCase());
+  });
 
   return { to: replyToList, cc: replyCcList };
 }

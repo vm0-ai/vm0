@@ -84,8 +84,14 @@ export async function uploadBlobs(
     .from(blobs)
     .where(inArray(blobs.hash, uniqueHashes));
 
-  const existingHashSet = new Set(existingBlobs.map((b) => b.hash));
-  const newHashes = uniqueHashes.filter((h) => !existingHashSet.has(h));
+  const existingHashSet = new Set(
+    existingBlobs.map((b) => {
+      return b.hash;
+    }),
+  );
+  const newHashes = uniqueHashes.filter((h) => {
+    return !existingHashSet.has(h);
+  });
 
   log.debug(
     `Found ${existingHashSet.size} existing blobs, ${newHashes.length} new blobs`,
@@ -96,15 +102,15 @@ export async function uploadBlobs(
   let bytesUploaded = 0;
   const uploadedS3Keys: string[] = [];
 
-  const uploadPromises = newHashes.map((hash) =>
-    limit(async () => {
+  const uploadPromises = newHashes.map((hash) => {
+    return limit(async () => {
       const file = hashToFiles.get(hash)![0]!;
       const s3Key = `blobs/${hash}.blob`;
       await uploadS3Buffer(bucketName, s3Key, file.content);
       uploadedS3Keys.push(s3Key);
       bytesUploaded += file.content.length;
-    }),
-  );
+    });
+  });
 
   await Promise.all(uploadPromises);
 

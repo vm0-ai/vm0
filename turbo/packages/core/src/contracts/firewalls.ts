@@ -131,26 +131,28 @@ export function resolveFirewallBaseUrlVars(
   firewalls: ExperimentalFirewalls,
   vars: Record<string, string> | undefined,
 ): ExperimentalFirewalls {
-  return firewalls.map((fw) => ({
-    ...fw,
-    apis: fw.apis.map((api) => {
-      if (!hasBaseUrlVars(api.base)) return api;
-      const resolved = api.base.replace(
-        BASE_URL_VARS_PATTERN_G,
-        (_match, name: string) => {
-          const value = vars?.[name];
-          if (!value) {
-            throw new Error(
-              `Firewall "${fw.name}" base URL requires variable "${name}" but it was not provided`,
-            );
-          }
-          return value;
-        },
-      );
-      validateBaseUrl(resolved, fw.name);
-      return { ...api, base: resolved };
-    }),
-  }));
+  return firewalls.map((fw) => {
+    return {
+      ...fw,
+      apis: fw.apis.map((api) => {
+        if (!hasBaseUrlVars(api.base)) return api;
+        const resolved = api.base.replace(
+          BASE_URL_VARS_PATTERN_G,
+          (_match, name: string) => {
+            const value = vars?.[name];
+            if (!value) {
+              throw new Error(
+                `Firewall "${fw.name}" base URL requires variable "${name}" but it was not provided`,
+              );
+            }
+            return value;
+          },
+        );
+        validateBaseUrl(resolved, fw.name);
+        return { ...api, base: resolved };
+      }),
+    };
+  });
 }
 
 /**

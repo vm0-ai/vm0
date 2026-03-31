@@ -38,7 +38,7 @@ const SESSIONS_DATASET_BASES: ReadonlySet<string> = new Set([
  * Check if a full dataset name (e.g., "vm0-agent-run-events-prod") belongs to the sessions scope.
  */
 export function isSessionsDataset(datasetName: string): boolean {
-  return Array.from(SESSIONS_DATASET_BASES).some((base) =>
-    datasetName.includes(base),
-  );
+  return Array.from(SESSIONS_DATASET_BASES).some((base) => {
+    return datasetName.includes(base);
+  });
 }

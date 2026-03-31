@@ -18,12 +18,16 @@ export function useModelSelection() {
     modelProvidersLoadable.state === "hasData"
       ? (modelProvidersLoadable.data.modelProviders ?? [])
       : [];
-  const modelOptions = configuredProviders.map((p) => ({
-    value: p.type,
-    label: getUILabel(p.type),
-  }));
+  const modelOptions = configuredProviders.map((p) => {
+    return {
+      value: p.type,
+      label: getUILabel(p.type),
+    };
+  });
 
-  const defaultProvider = configuredProviders.find((p) => p.isDefault);
+  const defaultProvider = configuredProviders.find((p) => {
+    return p.isDefault;
+  });
   const rawSelected = useGet(selectedModel$);
   const effectiveSelected =
     rawSelected === "default" && defaultProvider

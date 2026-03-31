@@ -7,7 +7,13 @@ export const browserbaseHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Browserbase does not support OAuth — use API key auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "BROWSERBASE_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "BROWSERBASE_TOKEN";
+  },
 };

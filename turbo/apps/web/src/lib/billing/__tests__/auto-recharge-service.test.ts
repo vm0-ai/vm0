@@ -13,35 +13,39 @@ import {
 } from "../../../__tests__/api-test-helpers";
 
 // Stripe mock — must be defined before importing the service
-const stripeMocks = vi.hoisted(() => ({
-  invoicesCreate: vi.fn(),
-  invoiceItemsCreate: vi.fn(),
-  invoicesFinalize: vi.fn(),
-  invoicesPay: vi.fn(),
-  customersRetrieve: vi.fn(),
-  subscriptionsRetrieve: vi.fn(),
-}));
+const stripeMocks = vi.hoisted(() => {
+  return {
+    invoicesCreate: vi.fn(),
+    invoiceItemsCreate: vi.fn(),
+    invoicesFinalize: vi.fn(),
+    invoicesPay: vi.fn(),
+    customersRetrieve: vi.fn(),
+    subscriptionsRetrieve: vi.fn(),
+  };
+});
 
-vi.mock("stripe", () => ({
-  default: function MockStripe() {
-    return {
-      invoices: {
-        create: stripeMocks.invoicesCreate,
-        finalizeInvoice: stripeMocks.invoicesFinalize,
-        pay: stripeMocks.invoicesPay,
-      },
-      invoiceItems: { create: stripeMocks.invoiceItemsCreate },
-      subscriptions: { retrieve: stripeMocks.subscriptionsRetrieve },
-      customers: {
-        create: stripeMocks.customersRetrieve,
-        retrieve: stripeMocks.customersRetrieve,
-      },
-      checkout: { sessions: { create: vi.fn() } },
-      billingPortal: { sessions: { create: vi.fn() } },
-      webhooks: { constructEvent: vi.fn() },
-    };
-  },
-}));
+vi.mock("stripe", () => {
+  return {
+    default: function MockStripe() {
+      return {
+        invoices: {
+          create: stripeMocks.invoicesCreate,
+          finalizeInvoice: stripeMocks.invoicesFinalize,
+          pay: stripeMocks.invoicesPay,
+        },
+        invoiceItems: { create: stripeMocks.invoiceItemsCreate },
+        subscriptions: { retrieve: stripeMocks.subscriptionsRetrieve },
+        customers: {
+          create: stripeMocks.customersRetrieve,
+          retrieve: stripeMocks.customersRetrieve,
+        },
+        checkout: { sessions: { create: vi.fn() } },
+        billingPortal: { sessions: { create: vi.fn() } },
+        webhooks: { constructEvent: vi.fn() },
+      };
+    },
+  };
+});
 
 import { reloadEnv } from "../../../env";
 import {

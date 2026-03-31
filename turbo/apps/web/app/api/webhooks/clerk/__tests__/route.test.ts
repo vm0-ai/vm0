@@ -54,24 +54,32 @@ import {
 } from "../../../../../src/__tests__/api-test-helpers";
 
 // Mock @clerk/nextjs/webhooks (external dependency)
-const mockVerifyWebhook = vi.hoisted(() => vi.fn());
-vi.mock("@clerk/nextjs/webhooks", () => ({
-  verifyWebhook: mockVerifyWebhook,
-}));
+const mockVerifyWebhook = vi.hoisted(() => {
+  return vi.fn();
+});
+vi.mock("@clerk/nextjs/webhooks", () => {
+  return {
+    verifyWebhook: mockVerifyWebhook,
+  };
+});
 
 // Mock stripe (external dependency)
-const stripeMocks = vi.hoisted(() => ({
-  subscriptionsCancel: vi.fn(),
-}));
-vi.mock("stripe", () => ({
-  default: function MockStripe() {
-    return {
-      subscriptions: {
-        cancel: stripeMocks.subscriptionsCancel,
-      },
-    };
-  },
-}));
+const stripeMocks = vi.hoisted(() => {
+  return {
+    subscriptionsCancel: vi.fn(),
+  };
+});
+vi.mock("stripe", () => {
+  return {
+    default: function MockStripe() {
+      return {
+        subscriptions: {
+          cancel: stripeMocks.subscriptionsCancel,
+        },
+      };
+    },
+  };
+});
 
 // Import route handler AFTER mocks are set up
 import { POST } from "../route";
@@ -412,7 +420,9 @@ describe("organization.deleted e2e cleanup", () => {
 
     const telegramHandler = http.post(
       `https://api.telegram.org/bot${botToken}/deleteWebhook`,
-      () => HttpResponse.json({ ok: true, result: true }),
+      () => {
+        return HttpResponse.json({ ok: true, result: true });
+      },
     );
     server.use(telegramHandler.handler);
 
