@@ -891,6 +891,7 @@ class TestMatchBaseUrl:
 class TestGetFirewallHeaders:
     def setup_method(self):
         mitm_addon._firewall_header_cache.clear()
+        mitm_addon._cache_locks.clear()
 
     async def test_cache_miss_fetches_and_caches(self):
         mock_headers = {"Authorization": "Bearer fresh-token"}
@@ -995,6 +996,7 @@ class TestGetFirewallHeaders:
 class TestHandleFirewallRequest:
     def setup_method(self):
         mitm_addon._firewall_header_cache.clear()
+        mitm_addon._cache_locks.clear()
 
     async def test_success_injects_headers_and_audit_metadata(self):
         flow = _make_http_flow()
