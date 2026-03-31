@@ -26,9 +26,9 @@ const log = logger("webhook:firewall-auth");
 const SECRET_TEMPLATE_RE = /\$\{\{\s*secrets\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 
 /**
- * Sync latest refresh tokens from DB into the secrets map.
- * The secrets map originates from a build-time encrypted snapshot and may
- * contain stale refresh tokens rotated by a concurrent request (#7339).
+ * Load refresh tokens from DB into the secrets map.
+ * The encrypted secrets snapshot only contains mapped env vars (access tokens);
+ * refresh tokens are kept server-side and must be fetched from DB (#7365).
  * Mutates `secrets` in place.
  */
 async function syncRefreshTokensFromDb(
@@ -127,9 +127,9 @@ async function refreshExpiredTokens(
     envVarsByConnector.set(ct, arr);
   }
 
-  // Sync latest refresh tokens from DB into secrets before refreshing.
-  // The secrets map was decrypted from a build-time snapshot and may contain
-  // stale refresh tokens that were rotated by a concurrent request (#7339).
+  // Load refresh tokens from DB into secrets before refreshing.
+  // The encrypted secrets snapshot only contains mapped env vars (access tokens),
+  // not refresh tokens — refresh tokens are kept server-side only (#7365).
   await syncRefreshTokensFromDb(toRefresh, run.orgId, auth.userId, secrets);
 
   const refreshResults = await Promise.all(

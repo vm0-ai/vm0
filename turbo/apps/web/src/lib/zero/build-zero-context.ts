@@ -412,8 +412,6 @@ async function resolveModelProviderSecrets(
  * Result of connector secret resolution
  */
 interface OauthConnectorSecretResult {
-  /** All raw connector secrets (for masking and direct secret reference resolution) */
-  connectorSecrets: Record<string, string> | undefined;
   /** Environment variables mapped from OAuth connectors via environmentMapping */
   injectedEnvVars: Record<string, string> | undefined;
   /** Maps secret names to connector types for refresh-capable OAuth connectors */
@@ -441,7 +439,6 @@ async function resolveOauthConnectorSecrets(
 
   if (userConnectors.length === 0) {
     return {
-      connectorSecrets: undefined,
       injectedEnvVars: undefined,
       secretConnectorMap: undefined,
       connectorTypes: [],
@@ -451,7 +448,6 @@ async function resolveOauthConnectorSecrets(
   const connectorSecrets = await getSecretValues(orgId, userId, "connector");
   if (Object.keys(connectorSecrets).length === 0) {
     return {
-      connectorSecrets: undefined,
       injectedEnvVars: undefined,
       secretConnectorMap: undefined,
       connectorTypes: [],
@@ -544,7 +540,6 @@ async function resolveOauthConnectorSecrets(
   }
 
   return {
-    connectorSecrets,
     injectedEnvVars: allInjectedEnvVars,
     secretConnectorMap:
       Object.keys(secretConnectorMap).length > 0
@@ -786,19 +781,16 @@ async function resolveSecretsAndEnvironment(
   ];
 
   // Single secrets map with explicit priority (later overrides earlier).
-  // All sources are included — extra secrets are harmless for environment expansion
-  // (only referenced ${{ secrets.* }} names are looked up) and for auth resolution
-  // (auth endpoint only resolves templates it receives).
+  // Only mapped env vars from connectors are included — raw connector secrets
+  // (including refresh tokens) are kept server-side and never sent to the runner.
   const hasSecrets =
-    oauthResult.connectorSecrets ||
     oauthResult.injectedEnvVars ||
     modelProviderResult.secrets ||
     dbSecrets ||
     cliSecrets;
   const secrets: Record<string, string> | undefined = hasSecrets
     ? {
-        ...oauthResult.connectorSecrets, // lowest: raw connector secrets
-        ...oauthResult.injectedEnvVars, // connector env mappings override raw
+        ...oauthResult.injectedEnvVars, // connector env mappings (e.g. GITHUB_TOKEN)
         ...modelProviderResult.secrets, // model provider
         ...dbSecrets, // DB user secrets
         ...cliSecrets, // highest: CLI --secrets
