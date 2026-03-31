@@ -19,13 +19,10 @@ export const zeroScheduleCommand = new Command()
     "after",
     `
 Examples:
-  Create a daily schedule:   zero schedule setup <agent-id> -f daily -t 09:00 -p "run report"
-  Create a loop schedule:    zero schedule setup <agent-id> -f loop -i 300 -p "poll for updates"
-  Check all schedules:       zero schedule list
-  Pause a schedule:          zero schedule disable <agent-id>
-  Resume a schedule:         zero schedule enable <agent-id>
-
-Notes:
-  - setup is idempotent — re-running it with the same agent updates the existing schedule
-  - Schedules are created disabled by default; use --enable or enable separately`,
+  Create a schedule:     zero schedule setup --help
+  Check all schedules:   zero schedule list
+  Check schedule status: zero schedule status <agent-id>
+  Pause a schedule:      zero schedule disable <agent-id>
+  Resume a schedule:     zero schedule enable <agent-id>
+  Delete a schedule:     zero schedule delete <agent-id>`,
   );
