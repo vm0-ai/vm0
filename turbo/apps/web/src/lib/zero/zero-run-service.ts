@@ -164,9 +164,9 @@ async function checkModelProviderConfigured(
   if (framework !== "claude-code") return;
 
   // If compose has explicit model provider env vars, skip check
-  const hasExplicitConfig = MODEL_PROVIDER_ENV_VARS.some(
-    (v) => firstAgent?.environment?.[v] !== undefined,
-  );
+  const hasExplicitConfig = MODEL_PROVIDER_ENV_VARS.some((v) => {
+    return firstAgent?.environment?.[v] !== undefined;
+  });
   if (hasExplicitConfig) return;
 
   // Check if org has a default model provider
@@ -413,9 +413,9 @@ export async function createZeroRun(
       createdAt: record.run.createdAt,
     };
   } catch (error) {
-    await markRunFailed(record.run.id, record.run.createdAt, error, () =>
-      drainOrgQueue(resolved.orgId, dispatchQueuedZeroRun),
-    );
+    await markRunFailed(record.run.id, record.run.createdAt, error, () => {
+      return drainOrgQueue(resolved.orgId, dispatchQueuedZeroRun);
+    });
     throw error;
   }
 }

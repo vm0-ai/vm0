@@ -1100,9 +1100,9 @@ export async function createRun(
     // Mark run as failed when context building or dispatch fails.
     // buildAndDispatchRun may have already called markRunFailed — the
     // second call is a safe no-op (transitionRunStatus guards on status).
-    await markRunFailed(record.run.id, record.run.createdAt, error, () =>
-      drainOrgQueue(record.orgId, dispatchQueuedRun),
-    );
+    await markRunFailed(record.run.id, record.run.createdAt, error, () => {
+      return drainOrgQueue(record.orgId, dispatchQueuedRun);
+    });
     throw error;
   }
 }
@@ -1187,9 +1187,9 @@ export async function dispatchQueuedRun(
     });
   } catch (error) {
     const dispatcher = queueDispatcher ?? dispatchQueuedRun;
-    await markRunFailed(runId, createdAt, error, () =>
-      drainOrgQueue(params.orgId, dispatcher),
-    );
+    await markRunFailed(runId, createdAt, error, () => {
+      return drainOrgQueue(params.orgId, dispatcher);
+    });
     throw error;
   }
 }
