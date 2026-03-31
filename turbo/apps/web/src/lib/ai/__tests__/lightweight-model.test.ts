@@ -164,9 +164,8 @@ describe("generateScheduleDescription", () => {
     });
     server.use(handler.handler);
 
-    const { generateScheduleDescription } = await import(
-      "../lightweight-model"
-    );
+    const { generateScheduleDescription } =
+      await import("../lightweight-model");
 
     const result = await generateScheduleDescription(
       "BackupBot",
@@ -190,9 +189,8 @@ describe("generateScheduleDescription", () => {
     });
     server.use(handler.handler);
 
-    const { generateScheduleDescription } = await import(
-      "../lightweight-model"
-    );
+    const { generateScheduleDescription } =
+      await import("../lightweight-model");
 
     const result = await generateScheduleDescription(
       "BackupBot",
