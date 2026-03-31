@@ -8,7 +8,6 @@ import {
   getConnectorFirewall,
   isFirewallConnectorType,
   type FirewallPolicies,
-  type FirewallAccessRequestResponse,
 } from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
 import { pathParams$, searchParams$ } from "../route.ts";
@@ -111,9 +110,7 @@ export const firewallAccessRequests$ = computed(async (get) => {
   }
 
   // Filter to only requests for this firewall ref
-  return (result.body as FirewallAccessRequestResponse[]).filter(
-    (r) => r.firewallRef === ref,
-  );
+  return result.body.filter((r) => r.firewallRef === ref);
 });
 
 // ---------------------------------------------------------------------------

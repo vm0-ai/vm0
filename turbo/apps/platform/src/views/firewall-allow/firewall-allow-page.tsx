@@ -14,6 +14,7 @@ import {
   CONNECTOR_TYPES,
   getDefaultFirewallPolicies,
   type FirewallPolicies,
+  type FirewallPolicyValue,
 } from "@vm0/core";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import {
@@ -29,7 +30,6 @@ import {
   resolveAccessRequest$,
   createAccessRequest$,
 } from "../../signals/firewall-allow/firewall-allow-signals.ts";
-import type { PermissionPolicy } from "../../signals/zero-page/settings/firewalls.ts";
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
 
@@ -47,8 +47,8 @@ function PolicyPill({
   onChange,
   disabled,
 }: {
-  policy: PermissionPolicy;
-  onChange?: (p: PermissionPolicy) => void;
+  policy: FirewallPolicyValue;
+  onChange?: (p: FirewallPolicyValue) => void;
   disabled?: boolean;
 }) {
   return (
@@ -114,9 +114,9 @@ function AdminView({
   const [saving, setSaving] = useState(false);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
 
-  const [policies, setPolicies] = useState<Record<string, PermissionPolicy>>(
+  const [policies, setPolicies] = useState<Record<string, FirewallPolicyValue>>(
     () => {
-      const result: Record<string, PermissionPolicy> = {};
+      const result: Record<string, FirewallPolicyValue> = {};
       for (const p of permissions) {
         result[p.name] =
           agent.firewallPolicies?.[ref]?.[p.name] ??
