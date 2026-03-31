@@ -64,14 +64,27 @@ import {
   copiedMessageIdValue$,
   copyMessageContent$,
 } from "../../signals/zero-page/zero-session-chat-ui.ts";
-import zeroAvatarImg from "./assets/avatar_0.png";
+function AvatarOrPlaceholder({
+  src,
+  className,
+  placeholderClassName,
+}: {
+  src: string | null | undefined;
+  className: string;
+  placeholderClassName?: string;
+}) {
+  if (src) {
+    return <img src={src} alt="" role="presentation" className={className} />;
+  }
+  return <div className={placeholderClassName ?? className} aria-hidden />;
+}
 
 // ---------------------------------------------------------------------------
 // ZeroSessionChatPage — real conversation backed by agent runs
 // ---------------------------------------------------------------------------
 
 interface ZeroSessionChatPageProps {
-  zeroAvatarSrc?: string;
+  zeroAvatarSrc?: string | null;
   onNavigateToSchedule?: () => void;
   /** Agent ID used to build the avatar link to the team detail page. */
   avatarAgentId?: string;
@@ -79,7 +92,7 @@ interface ZeroSessionChatPageProps {
 }
 
 export function ZeroSessionChatPage({
-  zeroAvatarSrc = zeroAvatarImg,
+  zeroAvatarSrc,
   onNavigateToSchedule,
   avatarAgentId,
   chatAgentName,
@@ -153,11 +166,10 @@ export function ZeroSessionChatPage({
                       className="h-8 w-8 shrink-0 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                       aria-label="View agent profile"
                     >
-                      <img
+                      <AvatarOrPlaceholder
                         src={zeroAvatarSrc}
-                        alt=""
-                        role="presentation"
                         className="h-8 w-8 rounded-full object-cover object-top"
+                        placeholderClassName="h-8 w-8 rounded-full bg-muted"
                       />
                     </Link>
                   </TooltipTrigger>
@@ -168,11 +180,10 @@ export function ZeroSessionChatPage({
               </TooltipProvider>
             ) : (
               <div className="h-8 w-8 shrink-0 overflow-hidden rounded-xl">
-                <img
+                <AvatarOrPlaceholder
                   src={zeroAvatarSrc}
-                  alt=""
-                  role="presentation"
                   className="h-8 w-8 rounded-full object-cover object-top"
+                  placeholderClassName="h-8 w-8 rounded-full bg-muted"
                 />
               </div>
             )}
@@ -332,7 +343,7 @@ function ChatSkeleton() {
 
 interface ChatMessageRowProps {
   message: ZeroChatMessage;
-  zeroAvatarSrc: string;
+  zeroAvatarSrc: string | null | undefined;
 }
 
 function ChatMessageRow({ message, zeroAvatarSrc }: ChatMessageRowProps) {
@@ -644,7 +655,7 @@ function CollapsibleTimeline({
 
 interface AssistantMessageProps {
   message: AssistantChatMessage;
-  zeroAvatarSrc: string;
+  zeroAvatarSrc: string | null | undefined;
 }
 
 function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
@@ -726,11 +737,10 @@ function StaticAssistantMessage({
   const content = useLastResolved(message.result$) ?? "";
   const avatar = (
     <div className="h-9 w-9 shrink-0 mt-0.5 overflow-hidden rounded-xl">
-      <img
+      <AvatarOrPlaceholder
         src={zeroAvatarSrc}
-        alt=""
-        role="presentation"
         className="h-7 w-7 sm:h-9 sm:w-9 rounded-full object-cover object-top"
+        placeholderClassName="h-7 w-7 sm:h-9 sm:w-9 rounded-full bg-muted"
       />
     </div>
   );

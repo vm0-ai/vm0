@@ -34,7 +34,6 @@ import { getRandomPrompts } from "./zero-ideation-page.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { Link } from "../router/link.tsx";
-import zeroAvatarImg from "./assets/avatar_0.png";
 
 function getTagline(
   agentName: string,
@@ -143,7 +142,7 @@ interface ZeroChatPageProps {
     message: string,
     options?: { modelProvider?: string },
   ) => void;
-  zeroAvatarSrc?: string;
+  zeroAvatarSrc?: string | null;
   /** Override agent name when chatting with a sub-agent. */
   chatAgentName?: string;
   /** Agent ID used to build the avatar link to the team detail page. */
@@ -153,7 +152,7 @@ interface ZeroChatPageProps {
 export function ZeroChatPage({
   onNavigateToMeet,
   onSendMessage,
-  zeroAvatarSrc = zeroAvatarImg,
+  zeroAvatarSrc,
   chatAgentName,
   avatarAgentId,
 }: ZeroChatPageProps) {
@@ -244,12 +243,19 @@ export function ZeroChatPage({
                         aria-label="View agent profile"
                         className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent cursor-pointer"
                       >
-                        <img
-                          src={zeroAvatarSrc}
-                          alt=""
-                          role="presentation"
-                          className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
-                        />
+                        {zeroAvatarSrc ? (
+                          <img
+                            src={zeroAvatarSrc}
+                            alt=""
+                            role="presentation"
+                            className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
+                          />
+                        ) : (
+                          <div
+                            className="h-14 w-14 rounded-full bg-muted sm:h-16 sm:w-16"
+                            aria-hidden
+                          />
+                        )}
                       </Link>
                     </TooltipTrigger>
                     <TooltipContent side="bottom">
@@ -259,12 +265,19 @@ export function ZeroChatPage({
                 </TooltipProvider>
               ) : (
                 <div className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl">
-                  <img
-                    src={zeroAvatarSrc}
-                    alt=""
-                    role="presentation"
-                    className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
-                  />
+                  {zeroAvatarSrc ? (
+                    <img
+                      src={zeroAvatarSrc}
+                      alt=""
+                      role="presentation"
+                      className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
+                    />
+                  ) : (
+                    <div
+                      className="h-14 w-14 rounded-full bg-muted sm:h-16 sm:w-16"
+                      aria-hidden
+                    />
+                  )}
                 </div>
               )}
               {showPinPill && (

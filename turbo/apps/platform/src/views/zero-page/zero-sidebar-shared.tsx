@@ -5,10 +5,15 @@ import avatar1Img from "./assets/avatar_1.png";
 
 /**
  * Reactive hook that returns the agent avatar from the DB.
+ * Returns `null` while the agent id is unknown (still loading) to avoid
+ * flashing an incorrect fallback avatar before the real one resolves.
  * Falls back to the first preset avatar when nothing is persisted.
  */
-export function useAgentAvatar(id: string): string {
+export function useAgentAvatar(id: string): string | null {
   const agents = useLastResolved(agents$) ?? [];
+  if (!id) {
+    return null;
+  }
   const agent = agents.find((a) => a.id === id);
   const dbAvatar = resolveAvatarUrl(agent?.avatarUrl);
   return dbAvatar ?? avatar1Img;
@@ -25,6 +30,9 @@ export function AgentAvatarImg({
   className: string;
 }) {
   const src = useAgentAvatar(name);
+  if (!src) {
+    return <div className={className} aria-hidden />;
+  }
   return <img src={src} alt={alt} className={className} />;
 }
 

@@ -450,11 +450,18 @@ export function ZeroJobDetailPage({ agentId }: ZeroJobDetailPageProps) {
       <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-6 pb-3">
         <div className="mx-auto max-w-[900px]">
           <div className="flex items-center gap-4">
-            <img
-              src={currentAvatar}
-              alt={displayName}
-              className="h-14 w-14 shrink-0 rounded-full object-cover object-top sm:h-16 sm:w-16"
-            />
+            {currentAvatar ? (
+              <img
+                src={currentAvatar}
+                alt={displayName}
+                className="h-14 w-14 shrink-0 rounded-full object-cover object-top sm:h-16 sm:w-16"
+              />
+            ) : (
+              <div
+                className="h-14 w-14 shrink-0 rounded-full bg-muted sm:h-16 sm:w-16"
+                aria-hidden
+              />
+            )}
             <div className="min-w-0">
               <h1 className="text-xl font-semibold tracking-tight text-foreground">
                 {displayName}

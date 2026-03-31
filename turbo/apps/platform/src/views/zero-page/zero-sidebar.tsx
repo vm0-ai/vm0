@@ -659,7 +659,7 @@ function TalkToSection({
   selectedAgentIdFromChat: string | null | undefined;
   displayName: string;
   defaultAgentRawName?: string | null;
-  zeroAvatarSrc: string;
+  zeroAvatarSrc: string | null;
   pinnedAgents: SubagentInfo[];
   pinnedIds: string[];
   subagents: SubagentInfo[];
@@ -735,11 +735,18 @@ function TalkToSection({
                       : "text-sidebar-foreground hover:bg-sidebar-accent"
                 }`}
               >
-                <img
-                  src={zeroAvatarSrc}
-                  alt={displayName}
-                  className="h-5 w-5 shrink-0 rounded-md object-cover object-top"
-                />
+                {zeroAvatarSrc ? (
+                  <img
+                    src={zeroAvatarSrc}
+                    alt={displayName}
+                    className="h-5 w-5 shrink-0 rounded-md object-cover object-top"
+                  />
+                ) : (
+                  <div
+                    className="h-5 w-5 shrink-0 rounded-md bg-muted"
+                    aria-hidden
+                  />
+                )}
                 <span className="truncate">{displayName}</span>
               </Link>
             );

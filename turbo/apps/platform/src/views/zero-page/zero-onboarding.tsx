@@ -313,7 +313,7 @@ function WhereToWorkContent({
   error,
 }: {
   name: string;
-  zeroAvatarSrc: string;
+  zeroAvatarSrc: string | null;
   onAddToSlack: () => void;
   onContinueWeb: () => void;
   saving: boolean;
@@ -361,12 +361,16 @@ function WhereToWorkContent({
           className="flex items-center gap-4 rounded-xl bg-card px-6 py-6 text-left transition-colors hover:bg-muted/30 disabled:opacity-50 zero-border"
         >
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg overflow-hidden">
-            <img
-              src={zeroAvatarSrc}
-              alt=""
-              role="presentation"
-              className="h-10 w-10 rounded-lg object-cover object-top"
-            />
+            {zeroAvatarSrc ? (
+              <img
+                src={zeroAvatarSrc}
+                alt=""
+                role="presentation"
+                className="h-10 w-10 rounded-lg object-cover object-top"
+              />
+            ) : (
+              <div className="h-10 w-10 rounded-lg bg-muted" aria-hidden />
+            )}
           </span>
           <div className="min-w-0 flex-1">
             <span className="block text-sm font-semibold text-foreground">
@@ -634,7 +638,7 @@ function OnboardingPage({
   showBack: boolean;
   showNext: boolean;
   nextDisabled?: boolean;
-  zeroAvatarSrc?: string;
+  zeroAvatarSrc?: string | null;
   selectedConnectors?: string[];
   children: React.ReactNode;
 }) {
@@ -802,7 +806,7 @@ function WorkspaceStep({
   zeroAvatarSrc,
   onNext,
 }: {
-  zeroAvatarSrc: string;
+  zeroAvatarSrc: string | null;
   onNext: () => void;
 }) {
   const workspaceName = useGet(zeroWorkspaceName$);
@@ -994,7 +998,7 @@ export function ZeroOnboarding({
   isAdmin,
   displayName = "Zero",
 }: {
-  zeroAvatarSrc?: string;
+  zeroAvatarSrc?: string | null;
   isAdmin: boolean;
   displayName?: string;
 }) {

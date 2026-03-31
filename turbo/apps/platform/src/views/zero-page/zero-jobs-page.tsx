@@ -114,11 +114,18 @@ export function ZeroJobsPage() {
             >
               <Card className="zero-card cursor-pointer hover:bg-muted/30 transition-colors">
                 <CardContent className="p-5 flex items-center gap-4">
-                  <img
-                    src={zeroAvatarSrc}
-                    alt={displayName}
-                    className="h-12 w-12 shrink-0 rounded-full object-cover object-top"
-                  />
+                  {zeroAvatarSrc ? (
+                    <img
+                      src={zeroAvatarSrc}
+                      alt={displayName}
+                      className="h-12 w-12 shrink-0 rounded-full object-cover object-top"
+                    />
+                  ) : (
+                    <div
+                      className="h-12 w-12 shrink-0 rounded-full bg-muted"
+                      aria-hidden
+                    />
+                  )}
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <h2 className="text-base font-semibold tracking-tight text-foreground truncate">
@@ -144,11 +151,18 @@ export function ZeroJobsPage() {
           ) : (
             <Card className="zero-card">
               <CardContent className="p-5 flex items-center gap-4">
-                <img
-                  src={zeroAvatarSrc}
-                  alt={displayName}
-                  className="h-12 w-12 shrink-0 rounded-full object-cover object-top"
-                />
+                {zeroAvatarSrc ? (
+                  <img
+                    src={zeroAvatarSrc}
+                    alt={displayName}
+                    className="h-12 w-12 shrink-0 rounded-full object-cover object-top"
+                  />
+                ) : (
+                  <div
+                    className="h-12 w-12 shrink-0 rounded-full bg-muted"
+                    aria-hidden
+                  />
+                )}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <h2 className="text-base font-semibold tracking-tight text-foreground truncate">
@@ -459,11 +473,18 @@ function AgentCard({
           Workspace
         </span>
         <div className="flex items-center gap-2.5">
-          <img
-            src={avatarSrc}
-            alt={displayName}
-            className="h-10 w-10 shrink-0 rounded-full object-cover object-top"
-          />
+          {avatarSrc ? (
+            <img
+              src={avatarSrc}
+              alt={displayName}
+              className="h-10 w-10 shrink-0 rounded-full object-cover object-top"
+            />
+          ) : (
+            <div
+              className="h-10 w-10 shrink-0 rounded-full bg-muted"
+              aria-hidden
+            />
+          )}
           <h2 className="text-base font-semibold tracking-tight text-foreground truncate">
             {displayName}
           </h2>

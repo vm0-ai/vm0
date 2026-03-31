@@ -126,7 +126,7 @@ export function ManagePinnedAgentsDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   saving?: boolean;
-  zeroAvatarSrc: string;
+  zeroAvatarSrc: string | null;
   displayName: string;
   subagents: SubagentInfo[];
   onPinnedIdsChange: (ids: string[]) => void;
@@ -198,11 +198,18 @@ export function ManagePinnedAgentsDialog({
 
         <div className="px-5 pb-1">
           <div className="flex items-center gap-2 px-1 py-2.5 rounded-lg">
-            <img
-              src={zeroAvatarSrc}
-              alt={displayName}
-              className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
-            />
+            {zeroAvatarSrc ? (
+              <img
+                src={zeroAvatarSrc}
+                alt={displayName}
+                className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
+              />
+            ) : (
+              <div
+                className="h-8 w-8 shrink-0 rounded-lg bg-muted"
+                aria-hidden
+              />
+            )}
             <span className="text-sm font-medium text-foreground flex-1 truncate">
               {displayName}
             </span>
@@ -325,7 +332,7 @@ export function ChatListDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  zeroAvatarSrc: string;
+  zeroAvatarSrc: string | null;
   displayName: string;
   subagents: SubagentInfo[];
   pinnedIds: string[];
@@ -445,11 +452,18 @@ export function ChatListDialog({
                 onClick={() => handleChat(null)}
                 className="flex w-full items-center gap-2 px-1 py-2 rounded-lg hover:bg-accent transition-colors"
               >
-                <img
-                  src={zeroAvatarSrc}
-                  alt={displayName}
-                  className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
-                />
+                {zeroAvatarSrc ? (
+                  <img
+                    src={zeroAvatarSrc}
+                    alt={displayName}
+                    className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
+                  />
+                ) : (
+                  <div
+                    className="h-8 w-8 shrink-0 rounded-lg bg-muted"
+                    aria-hidden
+                  />
+                )}
                 <div className="flex-1 min-w-0 text-left">
                   <span className="text-sm font-medium text-foreground truncate block">
                     {displayName}
