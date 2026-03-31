@@ -152,7 +152,9 @@ describe("expandEnvironmentFromCompose — firewall env vars", () => {
     );
 
     expect(environment).toBeDefined();
-    expect(environment!.AIRTABLE_TOKEN).toBe("VM0_PLACEHOLDER_AIRTABLE_TOKEN");
+    expect(environment!.AIRTABLE_TOKEN).toBe(
+      "c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe",
+    );
   });
 });
 
