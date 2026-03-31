@@ -329,7 +329,9 @@ function PermissionRow({
                   <span
                     role="button"
                     tabIndex={0}
-                    onClick={() => onManage?.()}
+                    onClick={() => {
+                      onManage?.();
+                    }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
@@ -414,7 +416,9 @@ function JobPermissionsTab({
     }
     setSavingType(type);
     detach(
-      saveConnectors(pageSignal).finally(() => setSavingType(null)),
+      saveConnectors(pageSignal).finally(() => {
+        setSavingType(null);
+      }),
       Reason.DomCallback,
     );
   };

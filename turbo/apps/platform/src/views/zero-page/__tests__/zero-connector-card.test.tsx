@@ -227,9 +227,9 @@ describe("zero authorization tab — member on default agent", () => {
       ["github"],
     );
 
-    const toggleRow = await waitFor(() =>
-      screen.getByRole("switch", { name: "Revoke GitHub access" }),
-    );
+    const toggleRow = await waitFor(() => {
+      return screen.getByRole("switch", { name: "Revoke GitHub access" });
+    });
     expect(toggleRow).not.toBeDisabled();
   });
 

@@ -190,13 +190,15 @@ function ConnectorsPopoverButton({
           </div>
           {connectorsLoading ? (
             <div className="flex flex-col animate-pulse">
-              {Array.from({ length: 3 }, (_, i) => (
-                <div key={i} className="flex items-center gap-2 px-3 py-2">
-                  <span className="h-4 w-4 shrink-0 rounded bg-muted/50" />
-                  <span className="h-3.5 w-20 rounded bg-muted/50 flex-1" />
-                  <span className="h-3 w-6 rounded-full bg-muted/50" />
-                </div>
-              ))}
+              {Array.from({ length: 3 }, (_, i) => {
+                return (
+                  <div key={i} className="flex items-center gap-2 px-3 py-2">
+                    <span className="h-4 w-4 shrink-0 rounded bg-muted/50" />
+                    <span className="h-3.5 w-20 rounded bg-muted/50 flex-1" />
+                    <span className="h-3 w-6 rounded-full bg-muted/50" />
+                  </div>
+                );
+              })}
             </div>
           ) : agentConnectors.length > 0 ? (
             <div className="flex flex-col">
@@ -217,9 +219,9 @@ function ConnectorsPopoverButton({
                     </span>
                     <LoadingSwitch
                       checked={item.added}
-                      onCheckedChange={(checked) =>
-                        onToggle(item.type, checked)
-                      }
+                      onCheckedChange={(checked) => {
+                        onToggle(item.type, checked);
+                      }}
                       loading={savingType === item.type}
                       ariaLabel={`${item.added ? "Remove" : "Add"} ${item.label}`}
                     />

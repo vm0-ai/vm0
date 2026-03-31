@@ -39,7 +39,9 @@ async function syncRefreshTokensFromDb(
 ): Promise<void> {
   if (connectorTypes.length === 0) return;
   const results = await Promise.all(
-    connectorTypes.map((ct) => getConnectorRefreshToken(ct, orgId, userId)),
+    connectorTypes.map((ct) => {
+      return getConnectorRefreshToken(ct, orgId, userId);
+    }),
   );
   for (const result of results) {
     if (result) {

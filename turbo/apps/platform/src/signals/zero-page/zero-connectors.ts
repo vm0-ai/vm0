@@ -102,7 +102,9 @@ export const removeZeroConnector$ = command(
         : await get(seededConnectors$);
     set(internalAddedConnectors$, {
       agentId: agentId ?? "",
-      connectors: base.filter((n) => n !== name),
+      connectors: base.filter((n) => {
+        return n !== name;
+      }),
     });
   },
 );
