@@ -362,6 +362,63 @@ describe("GET /api/zero/firewall-access-requests", () => {
     const adminData = await adminList.json();
     expect(adminData).toHaveLength(2);
   });
+
+  it("should include requesterName from Clerk user data", async () => {
+    const agent = await (await createAgent(testCliToken, testOrgSlug)).json();
+
+    // Override Clerk mock to return user with a name
+    mockClerk({
+      userId: testUserId,
+      firstName: "Alice",
+      lastName: "Smith",
+    });
+
+    await createAccessRequest(
+      {
+        agentId: agent.agentId,
+        firewallRef: "github",
+        permission: "issues:read",
+      },
+      testCliToken,
+      testOrgSlug,
+    );
+
+    const response = await listAccessRequests(
+      agent.agentId,
+      testCliToken,
+      testOrgSlug,
+    );
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data).toHaveLength(1);
+    expect(data[0].requesterName).toBe("Alice Smith");
+  });
+
+  it("should return null requesterName when Clerk has no name data", async () => {
+    const agent = await (await createAgent(testCliToken, testOrgSlug)).json();
+
+    await createAccessRequest(
+      {
+        agentId: agent.agentId,
+        firewallRef: "github",
+        permission: "issues:read",
+      },
+      testCliToken,
+      testOrgSlug,
+    );
+
+    const response = await listAccessRequests(
+      agent.agentId,
+      testCliToken,
+      testOrgSlug,
+    );
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data).toHaveLength(1);
+    expect(data[0].requesterName).toBeNull();
+  });
 });
 
 describe("PUT /api/zero/firewall-access-requests", () => {
