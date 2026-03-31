@@ -5,8 +5,10 @@ pub mod protocol;
 pub mod server;
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
-use error::{NbdCowError, Result};
+use error::Result;
+use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
@@ -31,6 +33,8 @@ pub struct NbdCowDevice {
     device_path: PathBuf,
     /// Path to the sparse COW file.
     cow_file: PathBuf,
+    /// Shared COW layer (also held by dispatch tasks).
+    cow: Arc<RwLock<cow::CowLayer>>,
     /// Background server task handles (one per connection).
     server_handles: Vec<JoinHandle<()>>,
     /// Shutdown signal for all server tasks.
@@ -57,7 +61,7 @@ impl NbdCowDevice {
             BLOCK_SIZE,
             DEFAULT_FLUSH_THRESHOLD,
         )?;
-        let cow_layer = std::sync::Arc::new(tokio::sync::RwLock::new(cow_layer));
+        let cow_layer = Arc::new(RwLock::new(cow_layer));
 
         // Create socketpairs and spawn server tasks
         let mut client_fds = Vec::with_capacity(NUM_CONNECTIONS);
@@ -95,6 +99,7 @@ impl NbdCowDevice {
             device_index,
             device_path,
             cow_file: cow_file.to_path_buf(),
+            cow: cow_layer,
             server_handles,
             shutdown,
             disconnected: false,
@@ -111,30 +116,70 @@ impl NbdCowDevice {
         &self.cow_file
     }
 
-    /// Destroy the device, removing the COW file.
-    pub async fn destroy(&mut self) -> Result<()> {
-        self.shutdown_inner().await?;
+    /// Log COW device status for debugging.
+    pub async fn log_status(&self) {
+        let cow = self.cow.read().await;
+        tracing::info!(
+            device_index = self.device_index,
+            device_path = %self.device_path.display(),
+            dirty_blocks = cow.dirty_block_count(),
+            buffered_blocks = cow.buffered_block_count(),
+            buffer_bytes = cow.buffer_bytes(),
+            "NBD COW device status"
+        );
+    }
 
-        // Remove COW file
-        if self.cow_file.exists() {
-            std::fs::remove_file(&self.cow_file).map_err(NbdCowError::Io)?;
+    /// Mark the device as abandoned without performing cleanup.
+    ///
+    /// Use as a last resort when netlink disconnect fails. Cancels tasks
+    /// and marks the device as disconnected so Drop becomes a no-op.
+    /// The kernel will eventually timeout and release the device.
+    pub fn abandon(&mut self) {
+        tracing::warn!(
+            device_index = self.device_index,
+            "NBD device abandoned — relying on kernel timeout for cleanup"
+        );
+        self.shutdown.cancel();
+        for handle in self.server_handles.drain(..) {
+            handle.abort();
         }
+        self.disconnected = true;
+    }
+
+    /// Destroy the device, removing the COW file and bitmap.
+    pub async fn destroy(&mut self) -> Result<()> {
+        self.shutdown_inner(false).await?;
+
+        // Remove COW file and bitmap
+        let _ = std::fs::remove_file(&self.cow_file);
+        let _ = std::fs::remove_file(self.bitmap_path());
 
         Ok(())
     }
 
     /// Destroy the device but keep the COW file for snapshot persistence.
+    ///
+    /// Saves the dirty bitmap as a sidecar file (`{cow_file}.bitmap`)
+    /// so that a future `create()` call with the same paths can restore
+    /// the dirty state and serve reads from the COW file correctly.
     pub async fn destroy_keep_cow(&mut self) -> Result<()> {
-        self.shutdown_inner().await
+        self.shutdown_inner(true).await
     }
 
-    async fn shutdown_inner(&mut self) -> Result<()> {
+    async fn shutdown_inner(&mut self, save_bitmap: bool) -> Result<()> {
         // Signal all dispatch tasks to stop
         self.shutdown.cancel();
 
         // Wait for all tasks to complete (they will flush on shutdown)
         for handle in self.server_handles.drain(..) {
             let _ = handle.await;
+        }
+
+        // Tasks are stopped — we have exclusive logical access to the COW layer.
+        // Save bitmap before disconnecting if keeping the COW file.
+        if save_bitmap {
+            let cow = self.cow.read().await;
+            cow.save_bitmap(&self.bitmap_path())?;
         }
 
         // Disconnect via netlink (after tasks are done)
@@ -159,6 +204,10 @@ impl NbdCowDevice {
         }
 
         Ok(())
+    }
+
+    fn bitmap_path(&self) -> PathBuf {
+        cow::bitmap_path_for(&self.cow_file)
     }
 }
 

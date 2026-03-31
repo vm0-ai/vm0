@@ -280,3 +280,87 @@ async fn multiple_devices_from_same_base() {
     dev1.destroy().await.expect("destroy 1");
     dev2.destroy().await.expect("destroy 2");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore]
+async fn snapshot_restore_round_trip() {
+    require_root!();
+    require_nbd!();
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let base = tmp.path().join("base.img");
+    create_test_base_image(&base);
+    let cow = tmp.path().join("cow.img");
+    let size = 64 * 1024 * 1024;
+
+    let marker = "NBD_SNAPSHOT_RESTORE_TEST_1234";
+
+    // Phase 1: create device, write data, destroy_keep_cow
+    {
+        let mut device = nbd_cow::NbdCowDevice::create(&base, &cow, size)
+            .await
+            .expect("create");
+
+        let dev_path = device.device_path().to_owned();
+
+        // Write a marker
+        let status = Command::new("bash")
+            .args([
+                "-c",
+                &format!(
+                    "echo -n '{}' | dd of={} bs=1 count={} conv=notrunc",
+                    marker,
+                    dev_path.to_string_lossy(),
+                    marker.len()
+                ),
+            ])
+            .status()
+            .expect("dd write");
+        assert!(status.success(), "dd write should succeed");
+
+        // Sync to flush to COW file
+        let status = Command::new("sync").status().expect("sync");
+        assert!(status.success());
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+        // Log status before destroy
+        device.log_status().await;
+
+        device.destroy_keep_cow().await.expect("destroy_keep_cow");
+    }
+
+    // Verify COW file and bitmap exist
+    assert!(cow.exists(), "COW file should be preserved");
+    let bitmap = cow.with_extension("img.bitmap");
+    assert!(bitmap.exists(), "bitmap file should be created");
+
+    // Phase 2: create new device with same base + COW — data should persist
+    {
+        let mut device = nbd_cow::NbdCowDevice::create(&base, &cow, size)
+            .await
+            .expect("restore create");
+
+        let dev_path = device.device_path().to_owned();
+
+        // Read back the marker
+        let output = Command::new("dd")
+            .args([
+                &format!("if={}", dev_path.to_string_lossy()),
+                "bs=1",
+                &format!("count={}", marker.len()),
+            ])
+            .output()
+            .expect("dd read");
+        assert!(output.status.success());
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            marker,
+            "marker should survive snapshot restore"
+        );
+
+        device.destroy().await.expect("destroy");
+    }
+
+    // After destroy, COW and bitmap should be cleaned up
+    assert!(!cow.exists(), "COW file should be removed after destroy");
+}
