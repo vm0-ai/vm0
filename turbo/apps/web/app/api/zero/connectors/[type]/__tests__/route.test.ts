@@ -55,9 +55,7 @@ describe("GET /api/zero/connectors/:type", () => {
   it("should return 401 when not authenticated", async () => {
     mockClerk({ userId: null });
 
-    const response = await GET(
-      createTestRequest(connectorUrl("github")),
-    );
+    const response = await GET(createTestRequest(connectorUrl("github")));
     expect(response.status).toBe(401);
   });
 
