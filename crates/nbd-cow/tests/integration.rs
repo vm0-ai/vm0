@@ -303,6 +303,17 @@ async fn snapshot_restore_round_trip() {
 
         let dev_path = device.device_path().to_owned();
 
+        // Diagnostic: check Phase 1 device size
+        let dev_name = dev_path.file_name().unwrap().to_string_lossy();
+        let size_path = format!("/sys/block/{dev_name}/size");
+        let sysfs_size = fs::read_to_string(&size_path).unwrap_or_else(|e| format!("ERR:{e}"));
+        eprintln!(
+            "Phase 1: device={} sysfs_sectors={} expected_sectors={}",
+            dev_path.display(),
+            sysfs_size.trim(),
+            size / 512
+        );
+
         // Write a full 4K block with the marker at the start (block-aligned I/O)
         let mut write_buf = vec![0u8; 4096];
         write_buf[..marker.len()].copy_from_slice(marker);
@@ -365,6 +376,17 @@ async fn snapshot_restore_round_trip() {
 
         let dev_path = device.device_path().to_owned();
         device.log_status().await;
+
+        // Diagnostic: check device size via sysfs
+        let dev_name = dev_path.file_name().unwrap().to_string_lossy();
+        let size_path = format!("/sys/block/{dev_name}/size");
+        let sysfs_size = fs::read_to_string(&size_path).unwrap_or_else(|e| format!("ERR:{e}"));
+        eprintln!(
+            "Phase 2: device={} sysfs_sectors={} expected_sectors={}",
+            dev_path.display(),
+            sysfs_size.trim(),
+            size / 512
+        );
 
         // Read first 4K block from the device
         let output = Command::new("dd")
