@@ -20,6 +20,7 @@ describe("zero doctor firewall-deny command", () => {
     .mockImplementation(() => {});
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
