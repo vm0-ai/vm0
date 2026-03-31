@@ -73,6 +73,34 @@ describe("zero agent edit command", () => {
       expect(logCalls).toContain("updated");
     });
 
+    it("should update custom skills and include them in request body", async () => {
+      let capturedBody: Record<string, unknown> | undefined;
+      server.use(
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
+          return HttpResponse.json(mockAgent);
+        }),
+        http.put(
+          "http://localhost:3000/api/zero/agents/my-agent",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(mockAgent);
+          },
+        ),
+      );
+
+      await editCommand.parseAsync([
+        "node",
+        "cli",
+        "my-agent",
+        "--skills",
+        "my-skill, other-skill",
+      ]);
+
+      expect(capturedBody?.customSkills).toEqual(["my-skill", "other-skill"]);
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("updated");
+    });
+
     describe("with instructions file", () => {
       let instructionsPath: string;
 

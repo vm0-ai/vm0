@@ -73,6 +73,33 @@ describe("zero agent create command", () => {
       expect(logCalls).toContain("github");
     });
 
+    it("should create agent with custom skills and include them in request body", async () => {
+      let capturedBody: Record<string, unknown> | undefined;
+      server.use(
+        http.post(
+          "http://localhost:3000/api/zero/agents",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(mockAgent, { status: 201 });
+          },
+        ),
+      );
+
+      await createCommand.parseAsync([
+        "node",
+        "cli",
+        "--skills",
+        "my-skill,other-skill",
+        "--display-name",
+        "New Agent",
+      ]);
+
+      expect(capturedBody?.customSkills).toEqual(["my-skill", "other-skill"]);
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("my-skill");
+      expect(logCalls).toContain("other-skill");
+    });
+
     describe("with instructions file", () => {
       let instructionsPath: string;
 
