@@ -107,7 +107,7 @@ export function ZeroActivityPage() {
       {/* Fixed header: title + filters */}
       <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-10 pb-3">
         <div className="mx-auto max-w-[900px]">
-          <div className="flex items-end justify-between gap-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
             <div>
               <h1 className="text-xl font-semibold tracking-tight text-foreground">
                 Activity
