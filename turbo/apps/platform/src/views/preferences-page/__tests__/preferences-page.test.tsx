@@ -122,7 +122,7 @@ describe("zero preferences page - timezone update", () => {
     await waitFor(() => {
       expect(screen.getByText("Time zone")).toBeInTheDocument();
     });
-    expect(screen.getByText("Japan Standard Time (JST)")).toBeInTheDocument();
+    expect(screen.getByText(/Japan Standard Time \(JST\)/)).toBeInTheDocument();
   });
 
   it("should send update request when changing timezone", async () => {
@@ -158,9 +158,9 @@ describe("zero preferences page - timezone update", () => {
 
     // Select a different timezone
     await waitFor(() => {
-      expect(screen.getByText("Eastern Time (ET)")).toBeInTheDocument();
+      expect(screen.getByText(/Eastern Time \(ET\)/)).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByText("Eastern Time (ET)"));
+    fireEvent.click(screen.getByText(/Eastern Time \(ET\)/));
 
     await waitFor(() => {
       expect(capturedBody).toBeTruthy();

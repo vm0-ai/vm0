@@ -92,7 +92,7 @@ export const COMMON_TIMEZONES = [
 ] as const;
 
 /** Human-readable display labels for COMMON_TIMEZONES entries. Falls back to the IANA string for unlisted values. */
-const TIMEZONE_LABELS = Object.freeze({
+const TIMEZONE_LABELS: Readonly<Record<string, string>> = Object.freeze({
   "Etc/UTC": "UTC",
   "America/New_York": "Eastern Time (ET)",
   "America/Chicago": "Central Time (CT)",
@@ -128,9 +128,7 @@ function getGmtOffset(iana: string): string {
 /** Returns a human-readable label for an IANA timezone string, prefixed with GMT offset. */
 export function getTimezoneLabel(iana: string): string {
   const offset = getGmtOffset(iana);
-  const name =
-    (TIMEZONE_LABELS as Record<string, string>)[iana] ??
-    iana.replace(/_/g, " ");
+  const name = TIMEZONE_LABELS[iana] ?? iana.replace(/_/g, " ");
   return `(${offset}) ${name}`;
 }
 

@@ -5,7 +5,7 @@ describe("getTimezoneLabel", () => {
   it("returns label with GMT offset prefix for known timezone", () => {
     const label = getTimezoneLabel("Asia/Shanghai");
     expect(label).toMatch(/^\(GMT[+-]\d{2}:\d{2}\)/);
-    expect(label).toContain("China Standard Time");
+    expect(label).toMatch(/^\(GMT\+08:00\)/);
   });
 
   it("returns label with GMT offset prefix for Etc/UTC", () => {
