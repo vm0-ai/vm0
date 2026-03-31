@@ -5,6 +5,8 @@ import {
   getConnectorTypeForSecretName,
   getConnectorEnvironmentMapping,
   getConnectorProvidedSecretNames,
+  getConnectorAuthMethods,
+  getConnectorOAuthConfig,
   connectorTypeSchema,
 } from "../connectors";
 
@@ -108,6 +110,60 @@ describe("getConnectorEnvironmentMapping", () => {
       GH_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",
       GITHUB_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",
     });
+  });
+
+  it("OAuth connectors have consistent secrets and environmentMapping naming", () => {
+    for (const type of connectorTypeSchema.options) {
+      const oauthConfig = getConnectorOAuthConfig(type);
+      if (!oauthConfig) continue;
+
+      const authMethods = getConnectorAuthMethods(type);
+      const oauthMethod = authMethods["oauth"];
+      if (!oauthMethod) continue;
+
+      const secretNames = Object.keys(oauthMethod.secrets);
+      const mapping = getConnectorEnvironmentMapping(type);
+
+      // OAuth secrets must include exactly one XXX_ACCESS_TOKEN
+      const accessTokens = secretNames.filter((s) =>
+        s.endsWith("_ACCESS_TOKEN"),
+      );
+      expect(
+        accessTokens.length,
+        `${type}: oauth secrets must have exactly one _ACCESS_TOKEN key, got: ${secretNames.join(", ")}`,
+      ).toBe(1);
+
+      // If refresh token exists, must be exactly one with matching prefix
+      const prefix = accessTokens[0]!.replace(/_ACCESS_TOKEN$/, "");
+      const refreshTokens = secretNames.filter((s) =>
+        s.endsWith("_REFRESH_TOKEN"),
+      );
+      expect(
+        refreshTokens.length,
+        `${type}: must have 0 or 1 _REFRESH_TOKEN, got: ${refreshTokens.join(", ")}`,
+      ).toBeLessThanOrEqual(1);
+      if (refreshTokens.length === 1) {
+        expect(
+          refreshTokens[0],
+          `${type}: refresh token must be ${prefix}_REFRESH_TOKEN`,
+        ).toBe(`${prefix}_REFRESH_TOKEN`);
+      }
+
+      // environmentMapping must map XXX_TOKEN -> $secrets.XXX_ACCESS_TOKEN (same prefix)
+      expect(
+        mapping[`${prefix}_TOKEN`],
+        `${type}: environmentMapping must map ${prefix}_TOKEN -> $secrets.${prefix}_ACCESS_TOKEN`,
+      ).toBe(`$secrets.${prefix}_ACCESS_TOKEN`);
+
+      // environmentMapping must only contain mappings to the same access token
+      const expectedValue = `$secrets.${prefix}_ACCESS_TOKEN`;
+      for (const [key, value] of Object.entries(mapping)) {
+        expect(
+          value,
+          `${type}: environmentMapping["${key}"] must point to ${expectedValue}`,
+        ).toBe(expectedValue);
+      }
+    }
   });
 
   it("all mapping values use $secrets. or $vars. prefix", () => {
