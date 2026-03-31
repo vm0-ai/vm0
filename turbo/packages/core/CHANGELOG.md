@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.131.0](https://github.com/vm0-ai/vm0/compare/core-v8.130.2...core-v8.131.0) (2026-03-31)
+
+
+### Features
+
+* add chat thread deletion ([#7372](https://github.com/vm0-ai/vm0/issues/7372)) ([c3f8932](https://github.com/vm0-ai/vm0/commit/c3f8932847f40a3de1c5f4279b225e10fe64a73a))
+
 ## [8.130.2](https://github.com/vm0-ai/vm0/compare/core-v8.130.1...core-v8.130.2) (2026-03-31)
 
 

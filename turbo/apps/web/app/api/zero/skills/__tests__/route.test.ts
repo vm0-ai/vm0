@@ -10,70 +10,56 @@ import {
   createTestRequest,
   createTestCliToken,
   seedSeedSkills,
-  setDefaultAgentByComposeId,
-  clearOrgMembersCacheEntry,
   bindCustomSkillToAgent,
   seedTestCompose,
-} from "../../../../../../../src/__tests__/api-test-helpers";
+  getAgentCustomSkills,
+} from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
   type UserContext,
-} from "../../../../../../../src/__tests__/test-helpers";
-import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
-import { createSingleFileTar } from "../../../../../../../src/lib/tar";
+} from "../../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
+import { createSingleFileTar } from "../../../../../src/lib/tar";
 
 const context = testContext();
 
 let user: UserContext;
 let testCliToken: string;
 let testOrgSlug: string;
-let agentId: string;
 
 function postSkillReq(
-  agentId: string,
   body: Record<string, unknown>,
   token: string,
   orgSlug?: string,
 ) {
   const orgParam = orgSlug ? `?org=${orgSlug}` : "";
   return postSkill(
-    createTestRequest(
-      `http://localhost:3000/api/zero/agents/${agentId}/skills${orgParam}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(body),
+    createTestRequest(`http://localhost:3000/api/zero/skills${orgParam}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
       },
-    ),
+      body: JSON.stringify(body),
+    }),
   );
 }
 
-function listSkillsReq(agentId: string, token: string, orgSlug?: string) {
+function listSkillsReq(token: string, orgSlug?: string) {
   const orgParam = orgSlug ? `?org=${orgSlug}` : "";
   return listSkills(
-    createTestRequest(
-      `http://localhost:3000/api/zero/agents/${agentId}/skills${orgParam}`,
-      {
-        method: "GET",
-        headers: { Authorization: `Bearer ${token}` },
-      },
-    ),
+    createTestRequest(`http://localhost:3000/api/zero/skills${orgParam}`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+    }),
   );
 }
 
-function getSkillReq(
-  agentId: string,
-  name: string,
-  token: string,
-  orgSlug?: string,
-) {
+function getSkillReq(name: string, token: string, orgSlug?: string) {
   const orgParam = orgSlug ? `?org=${orgSlug}` : "";
   return getSkill(
     createTestRequest(
-      `http://localhost:3000/api/zero/agents/${agentId}/skills/${name}${orgParam}`,
+      `http://localhost:3000/api/zero/skills/${name}${orgParam}`,
       {
         method: "GET",
         headers: { Authorization: `Bearer ${token}` },
@@ -83,7 +69,6 @@ function getSkillReq(
 }
 
 function putSkillReq(
-  agentId: string,
   name: string,
   body: Record<string, unknown>,
   token: string,
@@ -92,7 +77,7 @@ function putSkillReq(
   const orgParam = orgSlug ? `?org=${orgSlug}` : "";
   return putSkill(
     createTestRequest(
-      `http://localhost:3000/api/zero/agents/${agentId}/skills/${name}${orgParam}`,
+      `http://localhost:3000/api/zero/skills/${name}${orgParam}`,
       {
         method: "PUT",
         headers: {
@@ -105,16 +90,11 @@ function putSkillReq(
   );
 }
 
-function deleteSkillReq(
-  agentId: string,
-  name: string,
-  token: string,
-  orgSlug?: string,
-) {
+function deleteSkillReq(name: string, token: string, orgSlug?: string) {
   const orgParam = orgSlug ? `?org=${orgSlug}` : "";
   return deleteSkill(
     createTestRequest(
-      `http://localhost:3000/api/zero/agents/${agentId}/skills/${name}${orgParam}`,
+      `http://localhost:3000/api/zero/skills/${name}${orgParam}`,
       {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
@@ -140,30 +120,18 @@ function mockSkillContent(content: string) {
   context.mocks.s3.downloadS3Buffer.mockResolvedValueOnce(gzipped);
 }
 
-describe("Zero Agent Skills API", () => {
+describe("Zero Skills API (org-level)", () => {
   beforeEach(async () => {
     context.setupMocks();
-    // Seed skills table for serverSideCompose (uses onConflictDoNothing)
     await seedSeedSkills();
     user = await context.setupUser();
     testCliToken = await createTestCliToken(user.userId);
     testOrgSlug = `org-${user.userId.slice(-8)}`;
-
-    // Seed agent directly in DB to avoid API-level serverSideCompose call
-    // during setup (reduces exposure to parallel test interference).
-    const orgId = `org_mock_${user.userId}`;
-    const result = await seedTestCompose({
-      userId: user.userId,
-      name: `test-agent-${user.userId.slice(-8)}`,
-      orgId,
-    });
-    agentId = result.agentId;
   });
 
-  describe("POST /api/zero/agents/:id/skills", () => {
+  describe("POST /api/zero/skills", () => {
     it("should create a skill and return 201", async () => {
       const response = await postSkillReq(
-        agentId,
         { name: "my-skill", content: "# My Skill\nHello" },
         testCliToken,
         testOrgSlug,
@@ -178,7 +146,6 @@ describe("Zero Agent Skills API", () => {
 
     it("should create a skill with metadata", async () => {
       const response = await postSkillReq(
-        agentId,
         {
           name: "my-skill",
           content: "# Content",
@@ -195,16 +162,40 @@ describe("Zero Agent Skills API", () => {
       expect(data.description).toBe("A useful skill");
     });
 
+    it("should not bind skill to any agent", async () => {
+      const orgId = `org_mock_${user.userId}`;
+      const { agentId } = await seedTestCompose({
+        userId: user.userId,
+        name: `test-agent-${user.userId.slice(-8)}`,
+        orgId,
+      });
+
+      await postSkillReq(
+        { name: "unbound-skill", content: "# Content" },
+        testCliToken,
+        testOrgSlug,
+      );
+
+      // Verify skill exists in org list
+      const listRes = await listSkillsReq(testCliToken, testOrgSlug);
+      const skills = await listRes.json();
+      expect(
+        skills.some((s: { name: string }) => s.name === "unbound-skill"),
+      ).toBe(true);
+
+      // Verify agent's customSkills is still empty after skill creation
+      const agentSkills = await getAgentCustomSkills(agentId);
+      expect(agentSkills).toEqual([]);
+    });
+
     it("should reject duplicate skill name with 409", async () => {
       await postSkillReq(
-        agentId,
         { name: "my-skill", content: "# Content" },
         testCliToken,
         testOrgSlug,
       );
 
       const response = await postSkillReq(
-        agentId,
         { name: "my-skill", content: "# Other" },
         testCliToken,
         testOrgSlug,
@@ -215,7 +206,6 @@ describe("Zero Agent Skills API", () => {
 
     it("should reject seed skill name with 409", async () => {
       const response = await postSkillReq(
-        agentId,
         { name: "deep-dive", content: "# Content" },
         testCliToken,
         testOrgSlug,
@@ -224,74 +214,29 @@ describe("Zero Agent Skills API", () => {
       expect(response.status).toBe(409);
     });
 
-    it("should return 404 for non-existent agent", async () => {
-      const fakeId = "00000000-0000-0000-0000-000000000000";
-      const response = await postSkillReq(
-        fakeId,
-        { name: "my-skill", content: "# Content" },
-        testCliToken,
-        testOrgSlug,
-      );
-
-      expect(response.status).toBe(404);
-    });
-
     it("should return 401 without auth", async () => {
       mockClerk({ userId: null });
 
       const response = await postSkillReq(
-        agentId,
         { name: "my-skill", content: "# Content" },
         "no-token",
       );
 
       expect(response.status).toBe(401);
     });
-
-    it("should return 403 for non-admin on default agent", async () => {
-      const orgId = `org_mock_${user.userId}`;
-      await setDefaultAgentByComposeId(orgId, agentId);
-
-      // Re-mock as member and clear cached admin role
-      mockClerk({
-        userId: user.userId,
-        orgId,
-        orgRole: "org:member",
-        clerkOrgs: [
-          {
-            id: orgId,
-            slug: testOrgSlug,
-            name: testOrgSlug,
-            role: "org:member",
-          },
-        ],
-      });
-      await clearOrgMembersCacheEntry(orgId, user.userId);
-      const memberToken = await createTestCliToken(user.userId);
-
-      const response = await postSkillReq(
-        agentId,
-        { name: "my-skill", content: "# Content" },
-        memberToken,
-        testOrgSlug,
-      );
-
-      expect(response.status).toBe(403);
-    });
   });
 
-  describe("GET /api/zero/agents/:id/skills", () => {
+  describe("GET /api/zero/skills", () => {
     it("should return empty array when no skills", async () => {
-      const response = await listSkillsReq(agentId, testCliToken, testOrgSlug);
+      const response = await listSkillsReq(testCliToken, testOrgSlug);
 
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data).toEqual([]);
     });
 
-    it("should return created skills", async () => {
+    it("should return all org skills", async () => {
       await postSkillReq(
-        agentId,
         {
           name: "skill-one",
           content: "# One",
@@ -302,13 +247,12 @@ describe("Zero Agent Skills API", () => {
         testOrgSlug,
       );
       await postSkillReq(
-        agentId,
         { name: "skill-two", content: "# Two" },
         testCliToken,
         testOrgSlug,
       );
 
-      const response = await listSkillsReq(agentId, testCliToken, testOrgSlug);
+      const response = await listSkillsReq(testCliToken, testOrgSlug);
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -320,19 +264,11 @@ describe("Zero Agent Skills API", () => {
       expect(names).toContain("skill-one");
       expect(names).toContain("skill-two");
     });
-
-    it("should return 404 for non-existent agent", async () => {
-      const fakeId = "00000000-0000-0000-0000-000000000000";
-      const response = await listSkillsReq(fakeId, testCliToken, testOrgSlug);
-
-      expect(response.status).toBe(404);
-    });
   });
 
-  describe("GET /api/zero/agents/:id/skills/:name", () => {
+  describe("GET /api/zero/skills/:name", () => {
     it("should return skill with content", async () => {
       await postSkillReq(
-        agentId,
         {
           name: "my-skill",
           content: "# My Skill Content",
@@ -344,12 +280,7 @@ describe("Zero Agent Skills API", () => {
 
       mockSkillContent("# My Skill Content");
 
-      const response = await getSkillReq(
-        agentId,
-        "my-skill",
-        testCliToken,
-        testOrgSlug,
-      );
+      const response = await getSkillReq("my-skill", testCliToken, testOrgSlug);
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -360,7 +291,6 @@ describe("Zero Agent Skills API", () => {
 
     it("should return 404 for non-existent skill", async () => {
       const response = await getSkillReq(
-        agentId,
         "no-such-skill",
         testCliToken,
         testOrgSlug,
@@ -370,17 +300,15 @@ describe("Zero Agent Skills API", () => {
     });
   });
 
-  describe("PUT /api/zero/agents/:id/skills/:name", () => {
+  describe("PUT /api/zero/skills/:name", () => {
     it("should update skill content", async () => {
       await postSkillReq(
-        agentId,
         { name: "my-skill", content: "# Original" },
         testCliToken,
         testOrgSlug,
       );
 
       const response = await putSkillReq(
-        agentId,
         "my-skill",
         { content: "# Updated Content" },
         testCliToken,
@@ -395,7 +323,6 @@ describe("Zero Agent Skills API", () => {
 
     it("should return 404 for non-existent skill", async () => {
       const response = await putSkillReq(
-        agentId,
         "no-such-skill",
         { content: "# Content" },
         testCliToken,
@@ -406,17 +333,15 @@ describe("Zero Agent Skills API", () => {
     });
   });
 
-  describe("DELETE /api/zero/agents/:id/skills/:name", () => {
+  describe("DELETE /api/zero/skills/:name", () => {
     it("should delete skill and return 204", async () => {
       await postSkillReq(
-        agentId,
         { name: "my-skill", content: "# Content" },
         testCliToken,
         testOrgSlug,
       );
 
       const response = await deleteSkillReq(
-        agentId,
         "my-skill",
         testCliToken,
         testOrgSlug,
@@ -425,45 +350,51 @@ describe("Zero Agent Skills API", () => {
       expect(response.status).toBe(204);
 
       // Verify skill is removed from list
-      const listRes = await listSkillsReq(agentId, testCliToken, testOrgSlug);
+      const listRes = await listSkillsReq(testCliToken, testOrgSlug);
       const data = await listRes.json();
       expect(data).toEqual([]);
     });
 
-    it("should keep skill in DB when another agent references it", async () => {
-      // Create skill on first agent
+    it("should unbind skill from all agents on delete", async () => {
+      // Create skill
       await postSkillReq(
-        agentId,
         { name: "shared-skill", content: "# Shared" },
         testCliToken,
         testOrgSlug,
       );
 
-      // Create second agent directly in DB
+      // Bind to two agents
       const orgId = `org_mock_${user.userId}`;
-      const result2 = await seedTestCompose({
+      const agent1 = await seedTestCompose({
         userId: user.userId,
-        name: `test-agent2-${user.userId.slice(-8)}`,
+        name: `agent1-${user.userId.slice(-8)}`,
         orgId,
       });
-      const agent2Id = result2.agentId;
+      const agent2 = await seedTestCompose({
+        userId: user.userId,
+        name: `agent2-${user.userId.slice(-8)}`,
+        orgId,
+      });
+      await bindCustomSkillToAgent(agent1.agentId, "shared-skill");
+      await bindCustomSkillToAgent(agent2.agentId, "shared-skill");
 
-      // Bind the existing skill to agent2
-      await bindCustomSkillToAgent(agent2Id, "shared-skill");
+      // Delete the skill at org level
+      const response = await deleteSkillReq(
+        "shared-skill",
+        testCliToken,
+        testOrgSlug,
+      );
 
-      // Delete from first agent
-      await deleteSkillReq(agentId, "shared-skill", testCliToken, testOrgSlug);
+      expect(response.status).toBe(204);
 
-      // Skill should still be accessible on second agent (not deleted from zero_skills)
-      const listRes = await listSkillsReq(agent2Id, testCliToken, testOrgSlug);
+      // Verify skill is gone from org
+      const listRes = await listSkillsReq(testCliToken, testOrgSlug);
       const data = await listRes.json();
-      expect(data).toHaveLength(1);
-      expect(data[0].name).toBe("shared-skill");
+      expect(data).toEqual([]);
     });
 
     it("should return 404 for non-existent skill", async () => {
       const response = await deleteSkillReq(
-        agentId,
         "no-such-skill",
         testCliToken,
         testOrgSlug,

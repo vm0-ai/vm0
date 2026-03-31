@@ -256,27 +256,24 @@ export const zeroAgentSkillListResponseSchema = z.array(
 );
 
 /**
- * Contract for GET/POST /api/zero/agents/:id/skills (list + create)
+ * Contract for GET/POST /api/zero/skills (list + create org-level skills)
  */
-export const zeroAgentSkillsCollectionContract = c.router({
+export const zeroSkillsCollectionContract = c.router({
   list: {
     method: "GET",
-    path: "/api/zero/agents/:id/skills",
+    path: "/api/zero/skills",
     headers: authHeadersSchema,
-    pathParams: z.object({ id: z.string().uuid() }),
     responses: {
       200: zeroAgentSkillListResponseSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
-      404: apiErrorSchema,
     },
-    summary: "List custom skills for agent",
+    summary: "List all custom skills in the organization",
   },
   create: {
     method: "POST",
-    path: "/api/zero/agents/:id/skills",
+    path: "/api/zero/skills",
     headers: authHeadersSchema,
-    pathParams: z.object({ id: z.string().uuid() }),
     body: zeroAgentSkillContentRequestSchema.extend({
       name: zeroAgentCustomSkillNameSchema,
       displayName: z.string().max(256).optional(),
@@ -287,25 +284,21 @@ export const zeroAgentSkillsCollectionContract = c.router({
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
-      404: apiErrorSchema,
       409: apiErrorSchema,
     },
-    summary: "Create custom skill for agent",
+    summary: "Create a custom skill in the organization",
   },
 });
 
 /**
- * Contract for GET/PUT/DELETE /api/zero/agents/:id/skills/:name
+ * Contract for GET/PUT/DELETE /api/zero/skills/:name (org-level skill detail)
  */
-export const zeroAgentSkillsDetailContract = c.router({
+export const zeroSkillsDetailContract = c.router({
   get: {
     method: "GET",
-    path: "/api/zero/agents/:id/skills/:name",
+    path: "/api/zero/skills/:name",
     headers: authHeadersSchema,
-    pathParams: z.object({
-      id: z.string().uuid(),
-      name: zeroAgentCustomSkillNameSchema,
-    }),
+    pathParams: z.object({ name: zeroAgentCustomSkillNameSchema }),
     responses: {
       200: zeroAgentSkillContentResponseSchema,
       401: apiErrorSchema,
@@ -316,12 +309,9 @@ export const zeroAgentSkillsDetailContract = c.router({
   },
   update: {
     method: "PUT",
-    path: "/api/zero/agents/:id/skills/:name",
+    path: "/api/zero/skills/:name",
     headers: authHeadersSchema,
-    pathParams: z.object({
-      id: z.string().uuid(),
-      name: zeroAgentCustomSkillNameSchema,
-    }),
+    pathParams: z.object({ name: zeroAgentCustomSkillNameSchema }),
     body: zeroAgentSkillContentRequestSchema,
     responses: {
       200: zeroAgentSkillContentResponseSchema,
@@ -333,12 +323,9 @@ export const zeroAgentSkillsDetailContract = c.router({
   },
   delete: {
     method: "DELETE",
-    path: "/api/zero/agents/:id/skills/:name",
+    path: "/api/zero/skills/:name",
     headers: authHeadersSchema,
-    pathParams: z.object({
-      id: z.string().uuid(),
-      name: zeroAgentCustomSkillNameSchema,
-    }),
+    pathParams: z.object({ name: zeroAgentCustomSkillNameSchema }),
     body: c.noBody(),
     responses: {
       204: c.noBody(),
@@ -346,7 +333,7 @@ export const zeroAgentSkillsDetailContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Delete custom skill",
+    summary: "Delete custom skill from the organization",
   },
 });
 
@@ -491,10 +478,8 @@ export type ZeroAgentSkillContentRequest = z.infer<
 export type ZeroAgentSkillContentResponse = z.infer<
   typeof zeroAgentSkillContentResponseSchema
 >;
-export type ZeroAgentSkillsCollectionContract =
-  typeof zeroAgentSkillsCollectionContract;
-export type ZeroAgentSkillsDetailContract =
-  typeof zeroAgentSkillsDetailContract;
+export type ZeroSkillsCollectionContract = typeof zeroSkillsCollectionContract;
+export type ZeroSkillsDetailContract = typeof zeroSkillsDetailContract;
 export type FirewallAccessRequestResponse = z.infer<
   typeof firewallAccessRequestResponseSchema
 >;
