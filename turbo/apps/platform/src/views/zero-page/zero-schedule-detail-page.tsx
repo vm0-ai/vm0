@@ -943,12 +943,12 @@ function ScheduleDetailView({
                     {entry.time}
                   </span>
                   <span
-                    className="text-muted-foreground/50 select-none"
+                    className="hidden sm:inline text-muted-foreground/50 select-none"
                     aria-hidden
                   >
                     |
                   </span>
-                  <span className="whitespace-nowrap">
+                  <span className="hidden sm:inline whitespace-nowrap">
                     <span className="font-medium text-foreground/90">
                       Next run
                     </span>{" "}
