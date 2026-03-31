@@ -61,7 +61,7 @@ _request_start_times = {}
 _firewall_header_cache = {}
 
 # Per-key locks to coalesce concurrent fetches for the same (run_id, api_id)
-_cache_locks: dict[tuple, asyncio.Lock] = {}
+_cache_locks: dict[tuple[str, str], asyncio.Lock] = {}
 
 
 def load_registry() -> dict:
