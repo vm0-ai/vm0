@@ -281,7 +281,7 @@ mod tests {
         let yaml = format!(
             r#"
 name: test-runner
-group: acme/prod
+group: vm0/prod
 base_dir: {base_dir}
 ca_dir: {ca_dir}
 firecracker:
@@ -541,7 +541,7 @@ sandbox:
         let runner_dir = dir.path().join("my-runner");
         let config = RunnerConfig {
             name: "test-runner".into(),
-            group: "acme/prod".into(),
+            group: "vm0/prod".into(),
             base_dir: runner_dir.clone(),
             ca_dir: dir.path().to_path_buf(),
             firecracker: FirecrackerConfig { binary: fc, kernel },

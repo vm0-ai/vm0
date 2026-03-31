@@ -867,7 +867,7 @@ agents:
     description: "Test agent with valid runner group"
     framework: claude-code
     experimental_runner:
-      group: acme/production`,
+      group: vm0/production`,
       );
 
       server.use(
