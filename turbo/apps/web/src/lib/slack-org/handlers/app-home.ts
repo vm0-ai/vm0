@@ -10,7 +10,6 @@ import {
   postMessage,
 } from "../../slack/client";
 import { buildAppHomeView, buildWelcomeMessage } from "../../slack/blocks";
-import { requireOrgMember } from "../../org/org-member-service";
 import {
   resolveDefaultComposeId,
   getWorkspaceAgent,
@@ -95,26 +94,11 @@ export async function refreshOrgAppHome(
   // Get user email for display
   const userEmail = await getUserEmail(connection.vm0UserId);
 
-  // Determine admin status from Clerk (not from DB column)
-  let isAdmin = false;
-  if (installation.orgId) {
-    try {
-      const member = await requireOrgMember(
-        installation.orgId,
-        connection.vm0UserId,
-      );
-      isAdmin = member.role === "admin";
-    } catch {
-      // Not a member or error — treat as non-admin
-    }
-  }
-
   const view = buildAppHomeView({
     isLinked: true,
     vm0UserId: connection.vm0UserId,
     userEmail,
     agentName,
-    isAdmin,
   });
   await publishAppHome(client, slackUserId, view);
 }

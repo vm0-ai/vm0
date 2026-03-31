@@ -173,50 +173,11 @@ function buildNotInstalledMessage(detail?: string): unknown[] {
   ];
 }
 
-async function handleSettings(
-  installation: typeof slackOrgInstallations.$inferSelect,
-): Promise<NextResponse> {
-  const appUrl = getAppUrl();
-  let agentLabel = "Agent";
-  let agentId: string | undefined;
-  if (installation.orgId) {
-    const composeId = await resolveDefaultComposeId(installation.orgId);
-    if (composeId) {
-      const agent = await getWorkspaceAgent(composeId);
-      agentLabel = agent?.displayName ?? agent?.name ?? agentLabel;
-      agentId = agent?.id;
-    }
-  }
-  const settingsPath = agentId
-    ? `/team/${encodeURIComponent(agentId)}?tab=connectors`
-    : "/team";
-  return ephemeral([
-    {
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: `:gear: *Settings*\n\nConfigure your workspace agent *${agentLabel}* on the Zero platform.`,
-      },
-    },
-    {
-      type: "actions",
-      elements: [
-        {
-          type: "button",
-          text: { type: "plain_text", text: `Configure ${agentLabel}` },
-          url: `${appUrl}${settingsPath}`,
-          action_id: "open_platform_settings",
-        },
-      ],
-    },
-  ]);
-}
-
 /**
  * POST /api/zero/slack/commands
  *
  * Org-aware slash commands handler.
- * Handles /vm0 connect, disconnect, settings, help.
+ * Handles /vm0 connect, disconnect, help.
  */
 export async function POST(request: Request) {
   const { SLACK_SIGNING_SECRET } = env();
@@ -264,7 +225,7 @@ export async function POST(request: Request) {
 
   // Handle help command (doesn't require installation)
   if (subCommand === "help" || subCommand === "") {
-    return ephemeral(buildHelpMessage({ isAdmin: false }));
+    return ephemeral(buildHelpMessage());
   }
 
   // Handle connect command
@@ -314,11 +275,6 @@ export async function POST(request: Request) {
     return ephemeral(buildLoginMessage(connectUrl));
   }
 
-  // Handle settings command
-  if (subCommand === "settings") {
-    return handleSettings(installation);
-  }
-
   // Unknown command
-  return ephemeral(buildHelpMessage({ isAdmin: false }));
+  return ephemeral(buildHelpMessage());
 }
