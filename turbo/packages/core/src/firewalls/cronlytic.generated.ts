@@ -10,8 +10,10 @@ export const cronlyticFirewall: FirewallConfig = {
   name: "cronlytic",
   description: "Cronlytic API",
   placeholders: {
-    CRONLYTIC_API_KEY: "vm0placeholderCronlyticApiKey000000000000000000000000a",
-    CRONLYTIC_USER_ID: "vm0placeholderCronlyticUserId000000000000000000000000a",
+    CRONLYTIC_API_KEY:
+      "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafe",
+    CRONLYTIC_USER_ID:
+      "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSaf0",
   },
   apis: [
     {

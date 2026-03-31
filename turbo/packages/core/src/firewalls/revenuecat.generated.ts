@@ -10,7 +10,7 @@ export const revenuecatFirewall: FirewallConfig = {
   name: "revenuecat",
   description: "RevenueCat API",
   placeholders: {
-    REVENUECAT_TOKEN: "vm0placeholderRevenuecatToken000000000000000000000000a",
+    REVENUECAT_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSaf",
   },
   apis: [
     {

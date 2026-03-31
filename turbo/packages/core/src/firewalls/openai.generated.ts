@@ -11,7 +11,7 @@ export const openaiFirewall: FirewallConfig = {
   description: "OpenAI API",
   placeholders: {
     OPENAI_TOKEN:
-      "sk-proj-Vm0PlaceHolder000000000000000000000000000000000000000000000000000000000000T3BlbkFJVm0PlaceHolder000000000000000000000000000000000000000000000000000000000000",
+      "sk-proj-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocaT3BlbkFJCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoca",
   },
   apis: [
     {

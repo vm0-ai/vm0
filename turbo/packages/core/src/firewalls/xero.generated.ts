@@ -10,7 +10,7 @@ export const xeroFirewall: FirewallConfig = {
   name: "xero",
   description: "Xero API",
   placeholders: {
-    XERO_TOKEN: "vm0placeholderXeroToken000000000000000000000000000000a",
+    XERO_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSaf",
   },
   apis: [
     {

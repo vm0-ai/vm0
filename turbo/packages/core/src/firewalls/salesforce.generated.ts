@@ -11,7 +11,7 @@ export const salesforceFirewall: FirewallConfig = {
   description: "Salesforce REST API",
   placeholders: {
     SALESFORCE_TOKEN:
-      "00D0x000000Vm0P!AQEAQFVm0PlaceHolder0000000000000000000000000000000000000000000000000000000000000000000",
+      "00D0c0ffee5afe1!AQEAQFCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffee",
   },
   apis: [
     {

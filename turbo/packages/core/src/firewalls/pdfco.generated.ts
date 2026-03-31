@@ -10,7 +10,7 @@ export const pdfcoFirewall: FirewallConfig = {
   name: "pdfco",
   description: "PDF.co API",
   placeholders: {
-    PDFCO_TOKEN: "vm0placeholderPdfcoToken0000000000000000000000000000a",
+    PDFCO_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa",
   },
   apis: [
     {

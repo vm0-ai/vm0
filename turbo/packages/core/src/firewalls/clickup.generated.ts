@@ -10,7 +10,7 @@ export const clickupFirewall: FirewallConfig = {
   name: "clickup",
   description: "ClickUp API",
   placeholders: {
-    CLICKUP_TOKEN: "pk_0000000_VM0PLACEHOLDER0000000000000000000A",
+    CLICKUP_TOKEN: "pk_1001001_COFFEESAFELOCALCOFFEESAFELOCALCOFF",
   },
   apis: [
     {

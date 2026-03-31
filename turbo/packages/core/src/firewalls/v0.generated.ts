@@ -10,7 +10,7 @@ export const v0Firewall: FirewallConfig = {
   name: "v0",
   description: "v0 API",
   placeholders: {
-    V0_TOKEN: "vm0placeholderV0Token00000000000000000000000000000000a",
+    V0_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSaf",
   },
   apis: [
     {

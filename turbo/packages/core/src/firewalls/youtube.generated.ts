@@ -10,7 +10,7 @@ export const youtubeFirewall: FirewallConfig = {
   name: "youtube",
   description: "YouTube Data API",
   placeholders: {
-    YOUTUBE_TOKEN: "AIzaSyBVm0PlaceHolder000000000000000000",
+    YOUTUBE_TOKEN: "AIzaSyBCoffeeSafeLocalCoffeeSafeLocalCo",
   },
   apis: [
     {

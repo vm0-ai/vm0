@@ -10,7 +10,7 @@ export const shortioFirewall: FirewallConfig = {
   name: "shortio",
   description: "Short.io API",
   placeholders: {
-    SHORTIO_TOKEN: "Vm0PlaceHolder00000000000000000000000000000000a",
+    SHORTIO_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalC",
   },
   apis: [
     {

@@ -10,7 +10,7 @@ export const gitlabFirewall: FirewallConfig = {
   name: "gitlab",
   description: "GitLab API",
   placeholders: {
-    GITLAB_TOKEN: "glpat-Vm0PlaceHolder000000",
+    GITLAB_TOKEN: "glpat-CoffeeSafeLocalCoffe",
   },
   apis: [
     {

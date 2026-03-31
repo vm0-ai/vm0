@@ -10,7 +10,7 @@ export const cloudflareFirewall: FirewallConfig = {
   name: "cloudflare",
   description: "Cloudflare API",
   placeholders: {
-    CLOUDFLARE_TOKEN: "Vm0PlaceHolder000000000000000000000000aB",
+    CLOUDFLARE_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafe",
   },
   apis: [
     {

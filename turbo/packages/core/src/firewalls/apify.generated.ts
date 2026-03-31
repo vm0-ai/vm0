@@ -10,7 +10,7 @@ export const apifyFirewall: FirewallConfig = {
   name: "apify",
   description: "Apify API",
   placeholders: {
-    APIFY_TOKEN: "apify_api_Vm0PlaceHolder0000000000000000000000a",
+    APIFY_TOKEN: "apify_api_CoffeeSafeLocalCoffeeSafeLocalCoffee0",
   },
   apis: [
     {

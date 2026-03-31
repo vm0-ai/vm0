@@ -11,7 +11,7 @@ export const customerIoFirewall: FirewallConfig = {
   description: "Customer.io API",
   placeholders: {
     CUSTOMERIO_APP_TOKEN:
-      "vm0placeholder00000000000000000000000000000000000000000000000000a",
+      "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeL",
   },
   apis: [
     {

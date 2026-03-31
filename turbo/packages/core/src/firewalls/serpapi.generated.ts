@@ -10,7 +10,7 @@ export const serpapiFirewall: FirewallConfig = {
   name: "serpapi",
   description: "SerpApi",
   placeholders: {
-    SERPAPI_TOKEN: "Vm0PlaceHolder00000000000000000000000000000000000a",
+    SERPAPI_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCof",
   },
   apis: [
     {

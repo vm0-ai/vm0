@@ -10,7 +10,7 @@ export const qiitaFirewall: FirewallConfig = {
   name: "qiita",
   description: "Qiita API",
   placeholders: {
-    QIITA_TOKEN: "vm0placeholderQiitaToken0000000000000000000000000000a",
+    QIITA_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa",
   },
   apis: [
     {

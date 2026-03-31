@@ -11,7 +11,7 @@ export const discordFirewall: FirewallConfig = {
   description: "Discord API",
   placeholders: {
     DISCORD_BOT_TOKEN:
-      "Vm0PlaceHolder0000000000.000000.Vm0PlaceHolder0000000000000",
+      "CoffeeSafeLocalCoffeeSaf.Coffee.CoffeeSafeLocalCoffeeSafeLo",
   },
   apis: [
     {

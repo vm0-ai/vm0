@@ -10,7 +10,7 @@ export const mailchimpFirewall: FirewallConfig = {
   name: "mailchimp",
   description: "Mailchimp Marketing API",
   placeholders: {
-    MAILCHIMP_TOKEN: "ae54fcc23ade65fa404a65e78c56f898-us6",
+    MAILCHIMP_TOKEN: "c0ffee5afe10ca1c0ffee5afe10ca1c0-us6",
   },
   apis: [
     {

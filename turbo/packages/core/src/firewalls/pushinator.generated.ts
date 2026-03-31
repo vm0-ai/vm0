@@ -10,7 +10,7 @@ export const pushinatorFirewall: FirewallConfig = {
   name: "pushinator",
   description: "Pushinator API",
   placeholders: {
-    PUSHINATOR_TOKEN: "vm0placeholderPushinatorToken000000000000000000000000a",
+    PUSHINATOR_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSaf",
   },
   apis: [
     {

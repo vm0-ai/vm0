@@ -10,7 +10,7 @@ export const resendFirewall: FirewallConfig = {
   name: "resend",
   description: "Resend API",
   placeholders: {
-    RESEND_TOKEN: "re_Vm0PlaceHolder000000000000000000",
+    RESEND_TOKEN: "re_CoffeeSafeLocalCoffeeSafeLocalCof",
   },
   apis: [
     {

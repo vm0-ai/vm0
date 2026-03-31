@@ -10,7 +10,7 @@ export const plausibleFirewall: FirewallConfig = {
   name: "plausible",
   description: "Plausible Analytics API",
   placeholders: {
-    PLAUSIBLE_TOKEN: "Vm0PlaceHolder00000000000000000000000000000000a",
+    PLAUSIBLE_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalC",
   },
   apis: [
     {

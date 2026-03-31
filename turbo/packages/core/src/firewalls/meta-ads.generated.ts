@@ -10,7 +10,7 @@ export const metaAdsFirewall: FirewallConfig = {
   name: "meta-ads",
   description: "Meta Ads (Facebook Graph) API",
   placeholders: {
-    META_ADS_TOKEN: "vm0placeholderMetaAdsToken0000000000000000000000000000a",
+    META_ADS_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafe",
   },
   apis: [
     {

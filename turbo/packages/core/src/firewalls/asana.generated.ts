@@ -10,7 +10,7 @@ export const asanaFirewall: FirewallConfig = {
   name: "asana",
   description: "Asana API",
   placeholders: {
-    ASANA_TOKEN: "Vm0PlaceHolder0000000000000000000000000000",
+    ASANA_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafe00",
   },
   apis: [
     {

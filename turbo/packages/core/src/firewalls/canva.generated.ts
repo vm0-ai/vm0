@@ -10,7 +10,7 @@ export const canvaFirewall: FirewallConfig = {
   name: "canva",
   description: "Canva Connect API",
   placeholders: {
-    CANVA_TOKEN: "vm0placeholderCanvaToken00000000000000000000000000000a",
+    CANVA_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa0",
   },
   apis: [
     {

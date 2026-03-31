@@ -10,7 +10,7 @@ export const neonFirewall: FirewallConfig = {
   name: "neon",
   description: "Neon API",
   placeholders: {
-    NEON_TOKEN: "Vm0PlaceHolder00000000000000000a",
+    NEON_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCo",
   },
   apis: [
     {

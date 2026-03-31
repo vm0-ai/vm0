@@ -10,7 +10,7 @@ export const braveSearchFirewall: FirewallConfig = {
   name: "brave-search",
   description: "Brave Search API",
   placeholders: {
-    BRAVE_API_KEY: "BSAVm0PlaceHolder0000000000000",
+    BRAVE_API_KEY: "BSACoffeeSafeLocalCoffeeSafe000",
   },
   apis: [
     {

@@ -10,7 +10,7 @@ export const granolaFirewall: FirewallConfig = {
   name: "granola",
   description: "Granola API",
   placeholders: {
-    GRANOLA_TOKEN: "vm0placeholderGranolaToken0000000000000000000000000000a",
+    GRANOLA_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeL",
   },
   apis: [
     {
