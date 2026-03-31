@@ -10,10 +10,8 @@ import {
   TooltipTrigger,
 } from "./tooltip";
 
-export interface CopyButtonProps extends Omit<
-  React.ButtonHTMLAttributes<HTMLButtonElement>,
-  "children"
-> {
+export interface CopyButtonProps
+  extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "children"> {
   text: string;
   resetDelay?: number;
 }
