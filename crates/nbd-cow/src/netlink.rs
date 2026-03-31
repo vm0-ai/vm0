@@ -235,8 +235,11 @@ fn resolve_nbd_family(sock: &GenlSocket) -> Result<u16> {
     ))
 }
 
+// NBD genl family version (from kernel: NBD_GENL_VERSION = 0x1)
+const NBD_GENL_VERSION: u8 = 1;
+
 fn send_genl_msg(sock: &GenlSocket, family_id: u16, cmd: u8, attrs: &[u8]) -> Result<()> {
-    send_genl_msg_raw(sock, family_id, cmd, 0, attrs)
+    send_genl_msg_raw(sock, family_id, cmd, NBD_GENL_VERSION, attrs)
 }
 
 fn send_genl_msg_raw(
