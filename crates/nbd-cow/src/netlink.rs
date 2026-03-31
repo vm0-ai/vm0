@@ -192,6 +192,25 @@ fn open_genl_socket() -> Result<GenlSocket> {
         return Err(NbdCowError::Io(std::io::Error::last_os_error()));
     }
 
+    // Set a receive timeout so recv() doesn't block forever if the
+    // kernel never sends an ACK (e.g., nbd module unloaded mid-call).
+    let timeout = libc::timeval {
+        tv_sec: 5,
+        tv_usec: 0,
+    };
+    let ret = unsafe {
+        libc::setsockopt(
+            std::os::unix::io::AsRawFd::as_raw_fd(&fd),
+            libc::SOL_SOCKET,
+            libc::SO_RCVTIMEO,
+            std::ptr::from_ref(&timeout).cast(),
+            std::mem::size_of::<libc::timeval>() as u32,
+        )
+    };
+    if ret < 0 {
+        return Err(NbdCowError::Io(std::io::Error::last_os_error()));
+    }
+
     Ok(GenlSocket { fd })
 }
 
