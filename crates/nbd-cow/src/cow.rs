@@ -311,7 +311,11 @@ impl CowLayer {
         for word in raw {
             data.extend_from_slice(&(*word as u64).to_le_bytes());
         }
-        std::fs::write(path, &data)?;
+        // Write to a temp file then rename for atomicity — if the process
+        // crashes mid-write, the old bitmap (or no bitmap) remains intact.
+        let tmp_path = PathBuf::from(format!("{}.tmp", path.display()));
+        std::fs::write(&tmp_path, &data)?;
+        std::fs::rename(&tmp_path, path)?;
         Ok(())
     }
 
