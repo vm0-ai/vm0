@@ -310,18 +310,24 @@ fn send_genl_msg_raw(
 }
 
 fn recv_nl(sock: &GenlSocket, buf: &mut [u8]) -> Result<usize> {
-    let n = unsafe {
-        libc::recv(
-            std::os::unix::io::AsRawFd::as_raw_fd(&sock.fd),
-            buf.as_mut_ptr().cast(),
-            buf.len(),
-            0,
-        )
-    };
-    if n < 0 {
-        return Err(NbdCowError::Io(std::io::Error::last_os_error()));
+    loop {
+        let n = unsafe {
+            libc::recv(
+                std::os::unix::io::AsRawFd::as_raw_fd(&sock.fd),
+                buf.as_mut_ptr().cast(),
+                buf.len(),
+                0,
+            )
+        };
+        if n >= 0 {
+            return Ok(n as usize);
+        }
+        let err = std::io::Error::last_os_error();
+        if err.kind() != std::io::ErrorKind::Interrupted {
+            return Err(NbdCowError::Io(err));
+        }
+        // EINTR — retry
     }
-    Ok(n as usize)
 }
 
 fn recv_genl_ack(sock: &GenlSocket) -> Result<()> {
