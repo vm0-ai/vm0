@@ -21,7 +21,9 @@ describe("extractPermissions", () => {
 
   it("should deduplicate permissions by name", () => {
     const permissions = extractPermissions("github");
-    const names = permissions.map((p) => p.name);
+    const names = permissions.map((p) => {
+      return p.name;
+    });
     const uniqueNames = [...new Set(names)];
     expect(names).toStrictEqual(uniqueNames);
   });
@@ -29,7 +31,9 @@ describe("extractPermissions", () => {
   it("should return permissions with description when available", () => {
     const permissions = extractPermissions("github");
     // At least some permissions should have descriptions
-    const withDescription = permissions.filter((p) => p.description);
+    const withDescription = permissions.filter((p) => {
+      return p.description;
+    });
     expect(withDescription.length).toBeGreaterThan(0);
   });
 });

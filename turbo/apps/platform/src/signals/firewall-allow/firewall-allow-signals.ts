@@ -110,7 +110,9 @@ export const firewallAccessRequests$ = computed(async (get) => {
   }
 
   // Filter to only requests for this firewall ref
-  return result.body.filter((r) => r.firewallRef === ref);
+  return result.body.filter((r) => {
+    return r.firewallRef === ref;
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -139,7 +141,9 @@ export const saveFirewallPolicies$ = command(
           : `status ${result.status}`;
       throw new Error(`Save failed: ${detail}`);
     }
-    set(internalAgentReload$, (prev) => prev + 1);
+    set(internalAgentReload$, (prev) => {
+      return prev + 1;
+    });
   },
 );
 
@@ -169,8 +173,12 @@ export const resolveAccessRequest$ = command(
           : `status ${result.status}`;
       throw new Error(`Resolve failed: ${detail}`);
     }
-    set(internalRequestsReload$, (prev) => prev + 1);
-    set(internalAgentReload$, (prev) => prev + 1);
+    set(internalRequestsReload$, (prev) => {
+      return prev + 1;
+    });
+    set(internalAgentReload$, (prev) => {
+      return prev + 1;
+    });
   },
 );
 
@@ -206,6 +214,8 @@ export const createAccessRequest$ = command(
           : `status ${result.status}`;
       throw new Error(`Request failed: ${detail}`);
     }
-    set(internalRequestsReload$, (prev) => prev + 1);
+    set(internalRequestsReload$, (prev) => {
+      return prev + 1;
+    });
   },
 );

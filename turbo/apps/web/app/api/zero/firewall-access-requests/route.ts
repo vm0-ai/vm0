@@ -208,11 +208,17 @@ const listRouter = tsr.router(firewallAccessRequestsListContract, {
       .from(firewallAccessRequests)
       .where(and(...conditions));
 
-    const nameMap = await resolveUserNames(rows.map((r) => r.requesterUserId));
+    const nameMap = await resolveUserNames(
+      rows.map((r) => {
+        return r.requesterUserId;
+      }),
+    );
 
     return {
       status: 200 as const,
-      body: rows.map((r) => formatRequest(r, nameMap)),
+      body: rows.map((r) => {
+        return formatRequest(r, nameMap);
+      }),
     };
   },
 });
