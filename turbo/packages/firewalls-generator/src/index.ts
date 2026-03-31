@@ -60,6 +60,7 @@ import { generate as generateLark } from "./lark";
 import { generate as generateLine } from "./line";
 import { generate as generateLinear } from "./linear";
 import { generate as generateLoops } from "./loops";
+import { generate as generateMailchimp } from "./mailchimp";
 import { generate as generateMake } from "./make";
 import { generate as generateMailsac } from "./mailsac";
 import { generate as generateMercury } from "./mercury";
@@ -174,6 +175,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   line: generateLine,
   linear: generateLinear,
   loops: generateLoops,
+  mailchimp: generateMailchimp,
   make: generateMake,
   mailsac: generateMailsac,
   mercury: generateMercury,

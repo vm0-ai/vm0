@@ -73,6 +73,7 @@ import { larkFirewall } from "./lark.generated";
 import { lineFirewall } from "./line.generated";
 import { linearFirewall } from "./linear.generated";
 import { loopsFirewall } from "./loops.generated";
+import { mailchimpFirewall } from "./mailchimp.generated";
 import { makeFirewall } from "./make.generated";
 import { mailsacFirewall } from "./mailsac.generated";
 import { mercuryFirewall } from "./mercury.generated";
@@ -191,6 +192,7 @@ const CONNECTOR_FIREWALLS = {
   line: lineFirewall,
   linear: linearFirewall,
   loops: loopsFirewall,
+  mailchimp: mailchimpFirewall,
   make: makeFirewall,
   mailsac: mailsacFirewall,
   mercury: mercuryFirewall,
@@ -329,8 +331,6 @@ export type PermissionNamesOf<T extends FirewallConfig> =
  * that already has a firewall config.
  */
 export type NonFirewallConnectorType =
-  // Datacenter-specific — feasible with static enumeration, needs connector variable addition
-  | "mailchimp" // ~20 datacenter domains (usX.api.mailchimp.com), auth: Bearer works
   // Basic Auth — proxy cannot do base64 encoding at runtime
   | "cloudinary" // Basic Auth (api_key:api_secret), also supports OAuth Bearer
   | "htmlcsstoimage" // Basic Auth (user_id:api_key)

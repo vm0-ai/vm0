@@ -2526,6 +2526,7 @@ const CONNECTOR_TYPES_DEF = {
     label: "Mailchimp",
     environmentMapping: {
       MAILCHIMP_TOKEN: "$secrets.MAILCHIMP_ACCESS_TOKEN",
+      MAILCHIMP_DC: "$vars.MAILCHIMP_DC",
     },
     featureFlag: FeatureSwitchKey.MailchimpConnector,
     helpText:
@@ -2539,6 +2540,14 @@ const CONNECTOR_TYPES_DEF = {
             required: true,
             placeholder: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-us00",
           },
+          MAILCHIMP_DC: {
+            label: "Server Prefix",
+            required: true,
+            type: "variable",
+            placeholder: "us21",
+            helpText:
+              "The datacenter prefix from your API key (e.g., 'us21' from xxxxx-us21)",
+          },
         },
       },
     },
@@ -2549,6 +2558,7 @@ const CONNECTOR_TYPES_DEF = {
       scopes: [],
       environmentMapping: {
         MAILCHIMP_TOKEN: "$secrets.MAILCHIMP_ACCESS_TOKEN",
+        MAILCHIMP_DC: "$vars.MAILCHIMP_DC",
       },
     },
   },
