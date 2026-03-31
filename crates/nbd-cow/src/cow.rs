@@ -301,13 +301,15 @@ impl CowLayer {
 
     /// Save the dirty bitmap to a file.
     ///
-    /// Format: `[u64 num_blocks LE] [raw bitmap usize elements as LE bytes]`.
+    /// Format: `[u64 num_blocks LE] [u64 words as LE bytes]`.
+    /// Uses u64 words for portability (not platform-dependent usize).
     pub(crate) fn save_bitmap(&self, path: &Path) -> Result<()> {
         let num_blocks = self.dirty.len() as u64;
-        let mut data = Vec::with_capacity(8 + std::mem::size_of_val(self.dirty.as_raw_slice()));
+        let raw = self.dirty.as_raw_slice();
+        let mut data = Vec::with_capacity(8 + raw.len() * 8);
         data.extend_from_slice(&num_blocks.to_le_bytes());
-        for word in self.dirty.as_raw_slice() {
-            data.extend_from_slice(&word.to_le_bytes());
+        for word in raw {
+            data.extend_from_slice(&(*word as u64).to_le_bytes());
         }
         std::fs::write(path, &data)?;
         Ok(())
@@ -315,17 +317,18 @@ impl CowLayer {
 
     /// Load a dirty bitmap from a file.
     ///
-    /// Returns an error if the block count doesn't match `expected_blocks`.
+    /// Returns an error if the block count doesn't match `expected_blocks`
+    /// or if the file is truncated.
     fn load_bitmap(path: &Path, expected_blocks: usize) -> Result<BitVec> {
         let data = std::fs::read(path)?;
         if data.len() < 8 {
             return Err(NbdCowError::Io(std::io::Error::other(
-                "bitmap file too short",
+                "bitmap file too short for header",
             )));
         }
         let header: [u8; 8] = data
             .get(..8)
-            .ok_or_else(|| NbdCowError::Io(std::io::Error::other("bitmap header read error")))?
+            .ok_or_else(|| NbdCowError::Io(std::io::Error::other("bitmap header too short")))?
             .try_into()
             .map_err(|_| NbdCowError::Io(std::io::Error::other("bitmap header parse error")))?;
         let num_blocks = u64::from_le_bytes(header) as usize;
@@ -334,28 +337,28 @@ impl CowLayer {
                 "bitmap block count mismatch: file has {num_blocks}, expected {expected_blocks}"
             ))));
         }
-        let word_size = std::mem::size_of::<usize>();
         let bitmap_bytes = data
             .get(8..)
             .ok_or_else(|| NbdCowError::Io(std::io::Error::other("bitmap data missing")))?;
-        let mut words = Vec::new();
-        let mut offset = 0;
-        while offset + word_size <= bitmap_bytes.len() {
-            let word_bytes: [u8; std::mem::size_of::<usize>()] = bitmap_bytes
-                .get(offset..offset + word_size)
-                .ok_or_else(|| NbdCowError::Io(std::io::Error::other("bitmap word read error")))?
-                .try_into()
-                .map_err(|_| NbdCowError::Io(std::io::Error::other("bitmap word parse error")))?;
-            words.push(usize::from_le_bytes(word_bytes));
-            offset += word_size;
-        }
-        let mut bv = BitVec::from_vec(words);
-        if bv.len() < num_blocks {
+        let expected_words = num_blocks.div_ceil(64);
+        let expected_data_len = expected_words * 8;
+        if bitmap_bytes.len() < expected_data_len {
             return Err(NbdCowError::Io(std::io::Error::other(format!(
-                "bitmap data too short: got {} bits, expected {num_blocks}",
-                bv.len()
+                "bitmap data truncated: got {} bytes, expected {expected_data_len}",
+                bitmap_bytes.len()
             ))));
         }
+        let mut words: Vec<usize> = Vec::with_capacity(expected_words);
+        for i in 0..expected_words {
+            let offset = i * 8;
+            let word_bytes: [u8; 8] = bitmap_bytes
+                .get(offset..offset + 8)
+                .ok_or_else(|| NbdCowError::Io(std::io::Error::other("bitmap word out of bounds")))?
+                .try_into()
+                .map_err(|_| NbdCowError::Io(std::io::Error::other("bitmap word parse error")))?;
+            words.push(u64::from_le_bytes(word_bytes) as usize);
+        }
+        let mut bv = BitVec::from_vec(words);
         bv.truncate(num_blocks);
         Ok(bv)
     }
@@ -580,6 +583,26 @@ mod tests {
 
         // Try to load with wrong block count
         let result = CowLayer::load_bitmap(bitmap_file.path(), 999);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn bitmap_load_truncated_data_errors() {
+        let bitmap_file = NamedTempFile::new().unwrap();
+
+        // Write header claiming 128 blocks but no bitmap data
+        let num_blocks: u64 = 128;
+        std::fs::write(bitmap_file.path(), num_blocks.to_le_bytes()).unwrap();
+
+        let result = CowLayer::load_bitmap(bitmap_file.path(), 128);
+        assert!(result.is_err());
+
+        // Write header + partial data (less than needed)
+        let mut data = num_blocks.to_le_bytes().to_vec();
+        data.extend_from_slice(&[0u8; 4]); // only 4 bytes, need 128/64*8 = 16
+        std::fs::write(bitmap_file.path(), &data).unwrap();
+
+        let result = CowLayer::load_bitmap(bitmap_file.path(), 128);
         assert!(result.is_err());
     }
 
