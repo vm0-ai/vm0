@@ -14,6 +14,7 @@ import { loadInitialData$ } from "./zero-page.ts";
 import { syncModelPreference$ } from "./zero-model-preference.ts";
 import { detach, Reason } from "../utils.ts";
 import { zeroChatAgentId$ } from "./zero-active-agent.ts";
+import { currentDraft$, ensureDraft$ } from "./chat-draft.ts";
 
 export const setupChatSessionPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -28,6 +29,12 @@ export const setupChatSessionPage$ = command(
     }
 
     set(resetLocalMessages$);
+
+    // Ensure a draft exists for this thread
+    const threadId = get(chatThreadId$);
+    if (threadId && !get(currentDraft$)) {
+      set(ensureDraft$, threadId);
+    }
 
     // Update title with session preview
     const sessionId = get(chatThreadId$);

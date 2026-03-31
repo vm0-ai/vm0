@@ -8,7 +8,7 @@ import { syncModelPreference$ } from "./zero-model-preference.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
 import { loadInitialData$, resolveAgentById$ } from "./zero-page.ts";
 import { currentAgentId$ } from "./agent.ts";
-import { setChatPageInput$ } from "./zero-chat-page.ts";
+import { talkDraft$ } from "./chat-draft.ts";
 import { defaultAgentId$, agentDisplayName$ } from "./zero-agent-name.ts";
 import { zeroSubagents$ } from "./zero-agents.ts";
 import { setSidebarChatAgent$ } from "./zero-nav.ts";
@@ -17,6 +17,9 @@ export const setupTalkPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(updatePage$, createElement(ZeroTalkPage));
     set(updateDocumentTitle$, "Chat");
+
+    // Reset the talk draft on entrance
+    set(get(talkDraft$).clear$);
 
     await set(loadInitialData$, signal);
 
@@ -58,7 +61,7 @@ export const setupTalkPage$ = command(
     const params = get(searchParams$);
     const prompt = params.get("prompt");
     if (prompt) {
-      set(setChatPageInput$, prompt);
+      set(get(talkDraft$).setInput$, prompt);
       const next = new URLSearchParams(params);
       next.delete("prompt");
       set(updateSearchParams$, next);

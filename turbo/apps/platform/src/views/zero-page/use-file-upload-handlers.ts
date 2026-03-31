@@ -1,6 +1,6 @@
 import type { ClipboardEvent, DragEvent } from "react";
 import { useGet, useSet } from "ccstate-react";
-import { pageSignal$ } from "../../signals/page-signal.ts";
+import { rootSignal$ } from "../../signals/root-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   uploadZeroAttachment$,
@@ -20,7 +20,7 @@ export function useFileUploadHandlers(): FileUploadHandlers {
   const uploadAttachment = useSet(uploadZeroAttachment$);
   const dragOver = useGet(zeroDragOver$);
   const setDragOver = useSet(setZeroDragOver$);
-  const pageSignal = useGet(pageSignal$);
+  const { signal: rootSignal } = useGet(rootSignal$);
 
   const handlePaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
     const items = e.clipboardData?.items;
@@ -32,7 +32,7 @@ export function useFileUploadHandlers(): FileUploadHandlers {
         const file = item.getAsFile();
         if (file) {
           e.preventDefault();
-          detach(uploadAttachment(file, pageSignal), Reason.DomCallback);
+          detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
         }
       }
     }
@@ -46,7 +46,7 @@ export function useFileUploadHandlers(): FileUploadHandlers {
       return;
     }
     for (const file of files) {
-      detach(uploadAttachment(file, pageSignal), Reason.DomCallback);
+      detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
     }
   };
 

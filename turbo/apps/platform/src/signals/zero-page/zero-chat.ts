@@ -1,10 +1,14 @@
-import { command, computed, state, type Command, type Computed } from "ccstate";
+import { command, computed, state, type Computed } from "ccstate";
 import { delay } from "signal-timers";
 import type { AgentEvent, LogStatus } from "./log-types.ts";
-import { fetch$ } from "../fetch.ts";
-import { throwIfAbort, resetSignal, createDeferredPromise } from "../utils.ts";
+import { throwIfAbort, resetSignal } from "../utils.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { logger } from "../log.ts";
+import {
+  currentDraft$,
+  talkDraft$,
+  type ZeroChatAttachment,
+} from "./chat-draft.ts";
 import {
   createRunLoop,
   poolInterval$,
@@ -25,6 +29,19 @@ import {
   type SummaryEntry,
 } from "@vm0/core";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
+
+// Re-export draft signals so existing imports from zero-chat.ts keep working
+export {
+  zeroChatInput$,
+  setZeroChatInput$,
+  clearZeroChatInput$,
+  zeroChatAttachments$,
+  uploadZeroAttachment$,
+  removeZeroAttachment$,
+  zeroDragOver$,
+  setZeroDragOver$,
+  type ZeroChatAttachment,
+} from "./chat-draft.ts";
 
 const L = logger("ZeroChat");
 
@@ -579,131 +596,8 @@ const chatSessionSnapshot$ = computed(
   },
 );
 
-// Chat input
-const internalChatInput$ = state("");
-export const zeroChatInput$ = computed((get) => get(internalChatInput$));
-
-export const setZeroChatInput$ = command(({ set }, value: string) => {
-  set(internalChatInput$, value);
-});
-
-export const clearZeroChatInput$ = command(({ set }) => {
-  set(internalChatInput$, "");
-});
-
-// Attachments
-interface FileInfo {
-  id: string;
-  url: string;
-}
-
-export interface ZeroChatAttachment {
-  filename: string;
-  contentType: string;
-  size: number;
-  /** Reactive file info (id + url) — loading while uploading, hasData when done. */
-  fileInfo$: Computed<Promise<FileInfo | null>>;
-  /** Cancel the in-flight upload. Always safe to call (no-op if already completed). */
-  cancel$: Command<void, []>;
-  /** Start the upload. Accepts an external signal for cascade abort (e.g. page navigation). */
-  upload$: Command<Promise<void>, [AbortSignal]>;
-}
-
-function createChatAttachment(file: File): ZeroChatAttachment {
-  const resetSignal$ = resetSignal();
-  const internalPromise$ = state<Promise<FileInfo> | null>(null);
-
-  const fileInfo$ = computed(async (get) => {
-    const promise = get(internalPromise$);
-    if (promise === null) {
-      return null;
-    }
-    return await promise;
-  });
-
-  const cancel$ = command(({ set }) => {
-    set(resetSignal$);
-  });
-
-  const upload$ = command(async ({ get, set }, signal: AbortSignal) => {
-    const fetchFn = get(fetch$);
-    const formData = new FormData();
-    formData.append("file", file);
-
-    const uploadSignal = set(resetSignal$, signal);
-    const deferred = createDeferredPromise<FileInfo>(uploadSignal);
-    set(internalPromise$, deferred.promise);
-
-    const res = await fetchFn("/api/zero/uploads", {
-      method: "POST",
-      body: formData,
-      signal: uploadSignal,
-    });
-    signal.throwIfAborted();
-
-    if (!res.ok) {
-      const err = (await res.json().catch(() => null)) as {
-        error?: { message?: string };
-      } | null;
-      throw new Error(
-        err?.error?.message ?? `Upload failed: ${res.statusText}`,
-      );
-    }
-
-    const data = (await res.json()) as {
-      id: string;
-      filename: string;
-      contentType: string;
-      size: number;
-      url: string;
-    };
-
-    deferred.resolve({ id: data.id, url: data.url });
-  });
-
-  return {
-    filename: file.name,
-    contentType: file.type,
-    size: file.size,
-    fileInfo$,
-    cancel$,
-    upload$,
-  };
-}
-
-const internalAttachments$ = state<ZeroChatAttachment[]>([]);
-export const zeroChatAttachments$ = computed((get) =>
-  get(internalAttachments$),
-);
-
-const internalDragOver$ = state(false);
-export const zeroDragOver$ = computed((get) => get(internalDragOver$));
-export const setZeroDragOver$ = command(({ set }, value: boolean) => {
-  set(internalDragOver$, value);
-});
-
-export const uploadZeroAttachment$ = command(
-  async ({ set }, file: File, signal: AbortSignal) => {
-    const attachment = createChatAttachment(file);
-    set(internalAttachments$, (prev) => [...prev, attachment]);
-
-    try {
-      await set(attachment.upload$, signal);
-    } catch (error) {
-      throwIfAbort(error);
-      L.error("Upload failed:", error);
-      set(attachment.cancel$);
-      set(internalAttachments$, (prev) => prev.filter((a) => a !== attachment));
-    }
-  },
-);
-
-export const removeZeroAttachment$ = command(
-  ({ set }, attachment: ZeroChatAttachment) => {
-    set(attachment.cancel$);
-    set(internalAttachments$, (prev) => prev.filter((a) => a !== attachment));
-  },
-);
+// Chat input and attachments are now managed per-draft in chat-draft.ts.
+// Convenience signals are re-exported at the top of this file.
 
 /**
  * Load session data from the snapshot computed and populate state.
@@ -745,13 +639,14 @@ export const loadSessionFromSnapshot$ = command(
   },
 );
 
-export const startNewZeroSession$ = command(({ set }) => {
+export const startNewZeroSession$ = command(({ get, set }) => {
   // Abort any in-flight send/polling from the previous session
   set(resetTalkSendSignal$);
 
   set(internalLocalMessages$, []);
 
-  set(internalChatInput$, "");
+  // Clear the talk draft (input, attachments, model)
+  set(get(talkDraft$).clear$);
 });
 
 // ---------------------------------------------------------------------------
@@ -807,7 +702,9 @@ const prepareUserMessage$ = command(
     prompt: string,
     signal: AbortSignal,
   ): Promise<{ fullPrompt: string }> => {
-    const allAttachments = get(internalAttachments$);
+    // Capture the current draft before any async work
+    const draft = get(currentDraft$);
+    const allAttachments = draft ? get(draft.attachments$) : [];
     const allInfos = await Promise.all(
       allAttachments.map((a) => get(a.fileInfo$)),
     );
@@ -817,8 +714,12 @@ const prepareUserMessage$ = command(
     const ready = allAttachments
       .map((a, i) => ({ attachment: a, info: allInfos[i] }))
       .filter(
-        (r): r is { attachment: ZeroChatAttachment; info: FileInfo } =>
-          r.info !== null,
+        (
+          r,
+        ): r is {
+          attachment: ZeroChatAttachment;
+          info: { id: string; url: string };
+        } => r.info !== null,
       );
 
     let fullPrompt = prompt.trim();
@@ -845,7 +746,11 @@ const prepareUserMessage$ = command(
           : undefined,
     };
     set(internalLocalMessages$, (prev) => [...prev, userMessage]);
-    set(internalAttachments$, []);
+
+    // Clear the draft after preparing the message
+    if (draft) {
+      set(draft.clear$);
+    }
 
     return { fullPrompt };
   },

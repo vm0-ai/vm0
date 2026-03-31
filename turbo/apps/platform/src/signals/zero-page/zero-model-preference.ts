@@ -1,4 +1,5 @@
-import { command, computed, state } from "ccstate";
+import { command } from "ccstate";
+import { currentDraft$ } from "./chat-draft.ts";
 import { currentAgentId$ } from "./agent.ts";
 
 function readModelPreference(key: string): string {
@@ -21,28 +22,27 @@ function modelStorageKey(agentId: string | null): string {
 }
 
 // ---------------------------------------------------------------------------
-// State
+// State — now delegated to per-draft signals in chat-draft.ts
 // ---------------------------------------------------------------------------
 
-const internalSelectedModel$ = state("default");
-
-/** Currently selected model provider for the active agent. */
-export const selectedModel$ = computed((get) => get(internalSelectedModel$));
-
-/** Set the selected model provider. */
-export const setSelectedModel$ = command(({ set }, value: string) => {
-  set(internalSelectedModel$, value);
-});
+// Re-export convenience signals so existing imports keep working
+export {
+  draftSelectedModel$ as selectedModel$,
+  setDraftSelectedModel$ as setSelectedModel$,
+} from "./chat-draft.ts";
 
 /**
  * Sync model preference from localStorage for the current agent.
- * Called from each route's setup function on navigation — eliminates the
- * prevAgentId + queueMicrotask pattern entirely.
+ * Called from each route's setup function on navigation — writes to the
+ * current draft's model selection.
  */
 export const syncModelPreference$ = command(({ get, set }) => {
   const agentId = get(currentAgentId$);
   const key = modelStorageKey(agentId);
-  set(internalSelectedModel$, readModelPreference(key));
+  const draft = get(currentDraft$);
+  if (draft) {
+    set(draft.setSelectedModel$, readModelPreference(key));
+  }
 });
 
 /**
@@ -52,6 +52,9 @@ export const syncModelPreference$ = command(({ get, set }) => {
 export const persistModelPreference$ = command(({ get }) => {
   const agentId = get(currentAgentId$);
   const key = modelStorageKey(agentId);
-  const value = get(internalSelectedModel$);
-  writeModelPreference(key, value);
+  const draft = get(currentDraft$);
+  if (draft) {
+    const value = get(draft.selectedModel$);
+    writeModelPreference(key, value);
+  }
 });

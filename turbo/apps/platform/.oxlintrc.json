@@ -120,7 +120,10 @@
       }
     },
     {
-      "files": ["src/signals/zero-page/zero-chat.ts"],
+      "files": [
+        "src/signals/zero-page/zero-chat.ts",
+        "src/signals/zero-page/chat-draft.ts"
+      ],
       "rules": {
         "no-restricted-imports": [
           "deny",
