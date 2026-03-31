@@ -1,0 +1,341 @@
+import {
+  createHandler,
+  createSafeErrorHandler,
+  tsr,
+} from "../../../../src/lib/ts-rest-handler";
+import {
+  firewallAccessRequestsCreateContract,
+  firewallAccessRequestsListContract,
+  firewallAccessRequestsResolveContract,
+  isFirewallConnectorType,
+  type FirewallPolicies,
+} from "@vm0/core";
+import { initServices } from "../../../../src/lib/init-services";
+import {
+  requireAuth,
+  isAuthError,
+} from "../../../../src/lib/auth/require-auth";
+import { resolveOrg } from "../../../../src/lib/org/resolve-org";
+import { zeroAgents } from "../../../../src/db/schema/zero-agent";
+import { firewallAccessRequests } from "../../../../src/db/schema/firewall-access-request";
+import { eq, and } from "drizzle-orm";
+import { logger } from "../../../../src/lib/logger";
+
+const log = logger("api:zero:firewall-access-requests");
+
+function formatRequest(row: typeof firewallAccessRequests.$inferSelect) {
+  return {
+    id: row.id,
+    agentId: row.agentId,
+    firewallRef: row.firewallRef,
+    permission: row.permission,
+    method: row.method ?? null,
+    path: row.path ?? null,
+    reason: row.reason ?? null,
+    status: row.status as "pending" | "approved" | "rejected",
+    requesterUserId: row.requesterUserId,
+    resolvedBy: row.resolvedBy ?? null,
+    resolvedAt: row.resolvedAt?.toISOString() ?? null,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+// --- POST: Create Request ---
+const createRouter = tsr.router(firewallAccessRequestsCreateContract, {
+  create: async ({ body, headers }, { request }) => {
+    initServices();
+
+    const authCtx = await requireAuth(headers.authorization, {
+      requiredCapability: "agent:write",
+    });
+    if (isAuthError(authCtx)) return authCtx;
+
+    const orgSlug = new URL(request.url).searchParams.get("org");
+    const { org, member } = await resolveOrg(authCtx, orgSlug);
+
+    // Validate firewall ref
+    if (!isFirewallConnectorType(body.firewallRef)) {
+      return {
+        status: 400 as const,
+        body: {
+          error: {
+            message: `Unknown firewall ref: ${body.firewallRef}`,
+            code: "VALIDATION_ERROR",
+          },
+        },
+      };
+    }
+
+    // Verify agent belongs to org
+    const [agent] = await globalThis.services.db
+      .select({ id: zeroAgents.id })
+      .from(zeroAgents)
+      .where(
+        and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.id, body.agentId)),
+      )
+      .limit(1);
+
+    if (!agent) {
+      return {
+        status: 404 as const,
+        body: {
+          error: {
+            message: `Agent not found: ${body.agentId}`,
+            code: "NOT_FOUND",
+          },
+        },
+      };
+    }
+
+    // Dedup: check for existing pending request with same (agent, ref, permission, requester)
+    const [existing] = await globalThis.services.db
+      .select()
+      .from(firewallAccessRequests)
+      .where(
+        and(
+          eq(firewallAccessRequests.agentId, body.agentId),
+          eq(firewallAccessRequests.firewallRef, body.firewallRef),
+          eq(firewallAccessRequests.permission, body.permission),
+          eq(firewallAccessRequests.requesterUserId, member.userId),
+          eq(firewallAccessRequests.status, "pending"),
+        ),
+      )
+      .limit(1);
+
+    if (existing) {
+      // Update reason instead of creating new
+      const [updated] = await globalThis.services.db
+        .update(firewallAccessRequests)
+        .set({ reason: body.reason ?? existing.reason })
+        .where(eq(firewallAccessRequests.id, existing.id))
+        .returning();
+
+      log.info(
+        `Updated existing firewall access request: ${existing.id} for agent: ${body.agentId}`,
+      );
+
+      return {
+        status: 201 as const,
+        body: formatRequest(updated!),
+      };
+    }
+
+    // Create new request
+    const [created] = await globalThis.services.db
+      .insert(firewallAccessRequests)
+      .values({
+        orgId: org.orgId,
+        agentId: body.agentId,
+        requesterUserId: member.userId,
+        firewallRef: body.firewallRef,
+        permission: body.permission,
+        method: body.method,
+        path: body.path,
+        reason: body.reason,
+      })
+      .returning();
+
+    log.info(
+      `Created firewall access request: ${created!.id} for agent: ${body.agentId}`,
+    );
+
+    return {
+      status: 201 as const,
+      body: formatRequest(created!),
+    };
+  },
+});
+
+// --- GET: List Requests ---
+const listRouter = tsr.router(firewallAccessRequestsListContract, {
+  list: async ({ headers }, { request }) => {
+    initServices();
+
+    const authCtx = await requireAuth(headers.authorization, {
+      requiredCapability: "agent:read",
+    });
+    if (isAuthError(authCtx)) return authCtx;
+
+    const url = new URL(request.url);
+    const orgSlug = url.searchParams.get("org");
+    const { org, member } = await resolveOrg(authCtx, orgSlug);
+
+    const agentId = url.searchParams.get("agentId");
+    if (!agentId) {
+      return {
+        status: 400 as const,
+        body: {
+          error: {
+            message: "agentId query parameter is required",
+            code: "BAD_REQUEST",
+          },
+        },
+      };
+    }
+
+    const status = url.searchParams.get("status");
+
+    // Build conditions
+    const conditions = [
+      eq(firewallAccessRequests.agentId, agentId),
+      eq(firewallAccessRequests.orgId, org.orgId),
+    ];
+
+    // Members see only own requests, admins see all
+    if (member.role !== "admin") {
+      conditions.push(
+        eq(firewallAccessRequests.requesterUserId, member.userId),
+      );
+    }
+
+    if (status) {
+      conditions.push(eq(firewallAccessRequests.status, status));
+    }
+
+    const rows = await globalThis.services.db
+      .select()
+      .from(firewallAccessRequests)
+      .where(and(...conditions));
+
+    return {
+      status: 200 as const,
+      body: rows.map(formatRequest),
+    };
+  },
+});
+
+// --- PUT: Resolve Request ---
+const resolveRouter = tsr.router(firewallAccessRequestsResolveContract, {
+  resolve: async ({ body, headers }, { request }) => {
+    initServices();
+
+    const authCtx = await requireAuth(headers.authorization, {
+      requiredCapability: "agent:write",
+    });
+    if (isAuthError(authCtx)) return authCtx;
+
+    const orgSlug = new URL(request.url).searchParams.get("org");
+    const { org, member } = await resolveOrg(authCtx, orgSlug);
+
+    // Admin-only
+    if (member.role !== "admin") {
+      return {
+        status: 403 as const,
+        body: {
+          error: {
+            message: "Only org admins can resolve firewall access requests",
+            code: "FORBIDDEN",
+          },
+        },
+      };
+    }
+
+    // Find the request
+    const [existing] = await globalThis.services.db
+      .select()
+      .from(firewallAccessRequests)
+      .where(
+        and(
+          eq(firewallAccessRequests.id, body.requestId),
+          eq(firewallAccessRequests.orgId, org.orgId),
+        ),
+      )
+      .limit(1);
+
+    if (!existing) {
+      return {
+        status: 404 as const,
+        body: {
+          error: {
+            message: `Access request not found: ${body.requestId}`,
+            code: "NOT_FOUND",
+          },
+        },
+      };
+    }
+
+    if (existing.status !== "pending") {
+      return {
+        status: 400 as const,
+        body: {
+          error: {
+            message: `Request already resolved with status: ${existing.status}`,
+            code: "ALREADY_RESOLVED",
+          },
+        },
+      };
+    }
+
+    const now = new Date();
+    const newStatus = body.action === "approve" ? "approved" : "rejected";
+
+    const db = globalThis.services.db;
+
+    const [updated] = await db.transaction(async (tx) => {
+      // On approve: also update the agent's firewallPolicies
+      if (body.action === "approve") {
+        const [agent] = await tx
+          .select({ firewallPolicies: zeroAgents.firewallPolicies })
+          .from(zeroAgents)
+          .where(eq(zeroAgents.id, existing.agentId))
+          .limit(1);
+
+        const currentPolicies =
+          (agent?.firewallPolicies as FirewallPolicies | null) ?? {};
+        const refPolicies = currentPolicies[existing.firewallRef] ?? {};
+        const updatedPolicies: FirewallPolicies = {
+          ...currentPolicies,
+          [existing.firewallRef]: {
+            ...refPolicies,
+            [existing.permission]: "allow",
+          },
+        };
+
+        await tx
+          .update(zeroAgents)
+          .set({ firewallPolicies: updatedPolicies, updatedAt: now })
+          .where(eq(zeroAgents.id, existing.agentId));
+      }
+
+      // Update request status
+      return tx
+        .update(firewallAccessRequests)
+        .set({
+          status: newStatus,
+          resolvedBy: member.userId,
+          resolvedAt: now,
+        })
+        .where(eq(firewallAccessRequests.id, body.requestId))
+        .returning();
+    });
+
+    log.info(
+      `Resolved firewall access request: ${body.requestId} as ${newStatus}`,
+    );
+
+    return {
+      status: 200 as const,
+      body: formatRequest(updated!),
+    };
+  },
+});
+
+const postHandler = createHandler(
+  firewallAccessRequestsCreateContract,
+  createRouter,
+  { errorHandler: createSafeErrorHandler("zero:firewall-access-requests") },
+);
+
+const getHandler = createHandler(
+  firewallAccessRequestsListContract,
+  listRouter,
+  { errorHandler: createSafeErrorHandler("zero:firewall-access-requests") },
+);
+
+const putHandler = createHandler(
+  firewallAccessRequestsResolveContract,
+  resolveRouter,
+  { errorHandler: createSafeErrorHandler("zero:firewall-access-requests") },
+);
+
+export { postHandler as POST, getHandler as GET, putHandler as PUT };

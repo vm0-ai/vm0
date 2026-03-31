@@ -350,6 +350,111 @@ export const zeroAgentSkillsDetailContract = c.router({
   },
 });
 
+/**
+ * Firewall access request status
+ */
+export const firewallAccessRequestStatusSchema = z.enum([
+  "pending",
+  "approved",
+  "rejected",
+]);
+
+/**
+ * Firewall access request response schema
+ */
+export const firewallAccessRequestResponseSchema = z.object({
+  id: z.string().uuid(),
+  agentId: z.string().uuid(),
+  firewallRef: z.string(),
+  permission: z.string(),
+  method: z.string().nullable(),
+  path: z.string().nullable(),
+  reason: z.string().nullable(),
+  status: firewallAccessRequestStatusSchema,
+  requesterUserId: z.string(),
+  resolvedBy: z.string().nullable(),
+  resolvedAt: z.string().nullable(),
+  createdAt: z.string(),
+});
+
+/**
+ * Create firewall access request body
+ */
+export const createFirewallAccessRequestSchema = z.object({
+  agentId: z.string().uuid(),
+  firewallRef: z.string(),
+  permission: z.string(),
+  method: z.string().optional(),
+  path: z.string().optional(),
+  reason: z.string().optional(),
+});
+
+/**
+ * Resolve firewall access request body
+ */
+export const resolveFirewallAccessRequestSchema = z.object({
+  requestId: z.string().uuid(),
+  action: z.enum(["approve", "reject"]),
+});
+
+/**
+ * Contract for POST /api/zero/firewall-access-requests (create)
+ */
+export const firewallAccessRequestsCreateContract = c.router({
+  create: {
+    method: "POST",
+    path: "/api/zero/firewall-access-requests",
+    headers: authHeadersSchema,
+    body: createFirewallAccessRequestSchema,
+    responses: {
+      201: firewallAccessRequestResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Create firewall access request",
+  },
+});
+
+/**
+ * Contract for GET /api/zero/firewall-access-requests (list)
+ */
+export const firewallAccessRequestsListContract = c.router({
+  list: {
+    method: "GET",
+    path: "/api/zero/firewall-access-requests",
+    headers: authHeadersSchema,
+    responses: {
+      200: z.array(firewallAccessRequestResponseSchema),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+    },
+    summary: "List firewall access requests for an agent",
+  },
+});
+
+/**
+ * Contract for PUT /api/zero/firewall-access-requests (resolve)
+ */
+export const firewallAccessRequestsResolveContract = c.router({
+  resolve: {
+    method: "PUT",
+    path: "/api/zero/firewall-access-requests",
+    headers: authHeadersSchema,
+    body: resolveFirewallAccessRequestSchema,
+    responses: {
+      200: firewallAccessRequestResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Resolve (approve/reject) a firewall access request (admin only)",
+  },
+});
+
 // Export types
 export type ZeroAgentResponse = z.infer<typeof zeroAgentResponseSchema>;
 export type ZeroAgentRequest = z.infer<typeof zeroAgentRequestSchema>;
@@ -383,3 +488,18 @@ export type ZeroAgentSkillsCollectionContract =
   typeof zeroAgentSkillsCollectionContract;
 export type ZeroAgentSkillsDetailContract =
   typeof zeroAgentSkillsDetailContract;
+export type FirewallAccessRequestResponse = z.infer<
+  typeof firewallAccessRequestResponseSchema
+>;
+export type CreateFirewallAccessRequest = z.infer<
+  typeof createFirewallAccessRequestSchema
+>;
+export type ResolveFirewallAccessRequest = z.infer<
+  typeof resolveFirewallAccessRequestSchema
+>;
+export type FirewallAccessRequestsCreateContract =
+  typeof firewallAccessRequestsCreateContract;
+export type FirewallAccessRequestsListContract =
+  typeof firewallAccessRequestsListContract;
+export type FirewallAccessRequestsResolveContract =
+  typeof firewallAccessRequestsResolveContract;
