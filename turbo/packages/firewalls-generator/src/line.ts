@@ -2,7 +2,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://developers.line.biz/en/reference/messaging-api/";
 const PLACEHOLDER_VALUE =
-  "vm0placeholderLineToken000000000000000000000000000000a";
+  "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSaf";
 
 function generateTypeScript(): string {
   const lines: string[] = [

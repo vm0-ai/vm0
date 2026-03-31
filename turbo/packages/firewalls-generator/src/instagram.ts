@@ -3,7 +3,7 @@ import { writeOutput } from "./codegen";
 const DOCS_URL =
   "https://developers.facebook.com/docs/instagram-platform/reference/access_token/";
 const PLACEHOLDER_VALUE =
-  "vm0placeholderInstagramAccessToken00000000000000000000a";
+  "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeL";
 
 function generateTypeScript(): string {
   const lines: string[] = [

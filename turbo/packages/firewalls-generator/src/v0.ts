@@ -2,7 +2,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://v0.dev/docs/api/platform/quickstart";
 const PLACEHOLDER_VALUE =
-  "vm0placeholderV0Token00000000000000000000000000000000a";
+  "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSaf";
 
 function generateTypeScript(): string {
   const lines: string[] = [

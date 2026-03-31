@@ -2,7 +2,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://developer.garmin.com/gc-developer-program/";
 const PLACEHOLDER_VALUE =
-  "vm0placeholderGarminConnectToken000000000000000000000a";
+  "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafe";
 
 function generateTypeScript(): string {
   const lines: string[] = [

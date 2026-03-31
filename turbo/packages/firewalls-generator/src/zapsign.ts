@@ -11,7 +11,7 @@ import { writeOutput } from "./codegen";
 const DOCS_URL =
   "https://docs.zapsign.com.br/english/authentication/autenticacao";
 // Format: 8-4-4-4-8 hex with hyphens (e.g. c7f35c84-7893-4087-b4fb-d1f06c23)
-const PLACEHOLDER_VALUE = "00000000-0000-0000-0000-00000000";
+const PLACEHOLDER_VALUE = "c0ffee5a-fe10-ca1c-0ffe-e5afe10c";
 
 function generateTypeScript(): string {
   const lines: string[] = [

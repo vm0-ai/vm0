@@ -14,7 +14,7 @@ import { writeOutput } from "./codegen";
 const DOCS_URL = "https://api.jotform.com/docs/";
 // API key format not documented; using generic placeholder
 const PLACEHOLDER_VALUE =
-  "vm0placeholder00000000000000000000000000000000000000000000000000a";
+  "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffe";
 
 const DOMAINS = [
   "api.jotform.com",

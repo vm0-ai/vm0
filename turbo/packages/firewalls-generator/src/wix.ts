@@ -3,7 +3,7 @@ import { writeOutput } from "./codegen";
 const DOCS_URL =
   "https://dev.wix.com/docs/go-headless/develop-your-project/admin-operations/make-rest-api-calls-with-an-api-key";
 const PLACEHOLDER_VALUE =
-  "vm0placeholderWixToken0000000000000000000000000000000a";
+  "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSaf";
 
 function generateTypeScript(): string {
   const lines: string[] = [
