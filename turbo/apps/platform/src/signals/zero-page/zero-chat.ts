@@ -129,11 +129,12 @@ export const zeroChatMessages$ = computed(async (get) => {
   // drop the local copy (server is the canonical source after persistence).
   const serverRunIds = new Set(
     serverMessages
-      .filter(
-        (m): m is AssistantChatMessage =>
-          m.role === "assistant" && !!m.legacyRunId,
-      )
-      .map((m) => m.legacyRunId),
+      .filter((m): m is AssistantChatMessage => {
+        return m.role === "assistant" && !!m.legacyRunId;
+      })
+      .map((m) => {
+        return m.legacyRunId;
+      }),
   );
 
   const skipIndices = new Set<number>();
@@ -152,7 +153,9 @@ export const zeroChatMessages$ = computed(async (get) => {
     }
   }
 
-  const filteredLocal = localMessages.filter((_, i) => !skipIndices.has(i));
+  const filteredLocal = localMessages.filter((_, i) => {
+    return !skipIndices.has(i);
+  });
   return [...serverMessages, ...filteredLocal];
 });
 

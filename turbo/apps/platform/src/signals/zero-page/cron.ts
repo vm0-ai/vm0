@@ -122,7 +122,11 @@ function getGmtOffset(iana: string): string {
     timeZone: iana,
     timeZoneName: "longOffset",
   }).formatToParts(new Date());
-  return parts.find((p) => p.type === "timeZoneName")?.value ?? "GMT+00:00";
+  return (
+    parts.find((p) => {
+      return p.type === "timeZoneName";
+    })?.value ?? "GMT+00:00"
+  );
 }
 
 /** Returns a human-readable label for an IANA timezone string, prefixed with GMT offset. */

@@ -303,8 +303,12 @@ describe("zero-chat signals", () => {
       // Server now returns persisted messages. The local optimistic messages
       // should be deduplicated against the server messages.
       const messages = await context.store.get(zeroChatMessages$);
-      const userMessages = messages.filter((m) => m.role === "user");
-      const assistantMessages = messages.filter((m) => m.role === "assistant");
+      const userMessages = messages.filter((m) => {
+        return m.role === "user";
+      });
+      const assistantMessages = messages.filter((m) => {
+        return m.role === "assistant";
+      });
 
       // There should be exactly one user message and one assistant message,
       // not duplicates from both server and local sources.

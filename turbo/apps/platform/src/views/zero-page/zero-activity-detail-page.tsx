@@ -316,12 +316,12 @@ function prepareRenderData(
 ) {
   const events: AgentEvent[] = rawEvents ?? [];
   const allMessages = groupEventsIntoMessages(events);
-  const visibleMessages = allMessages.filter((message, index) =>
-    isVisibleMessage(message, allMessages[index + 1]),
-  );
-  const messages = visibleMessages.filter((m) =>
-    groupedMessageMatchesSearch(m, stepSearch.trim()),
-  );
+  const visibleMessages = allMessages.filter((message, index) => {
+    return isVisibleMessage(message, allMessages[index + 1]);
+  });
+  const messages = visibleMessages.filter((m) => {
+    return groupedMessageMatchesSearch(m, stepSearch.trim());
+  });
   const showModelDetail = features?.[FeatureSwitchKey.ModelDetail] ?? false;
   const prompt = detail.prompt ?? "";
   const appendSystemPrompt = detail.appendSystemPrompt ?? "";
