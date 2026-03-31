@@ -284,7 +284,7 @@ function CreateTeammateButton({ onClick }: { onClick: () => void }) {
         <p className="text-sm font-medium text-foreground/80 group-hover:text-foreground transition-colors">
           Create teammate
         </p>
-        <p className="text-xs text-muted-foreground mt-0.5">
+        <p className="text-sm text-muted-foreground mt-0.5">
           Add a specialized agent to your team
         </p>
       </div>
