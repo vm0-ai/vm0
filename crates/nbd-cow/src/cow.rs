@@ -1,11 +1,17 @@
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::os::unix::fs::FileExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use bitvec::prelude::*;
 
 use crate::error::{NbdCowError, Result};
+
+// Bitmap serialization assumes usize == u64 (bitvec stores usize words).
+const _: () = assert!(
+    std::mem::size_of::<usize>() == 8,
+    "nbd-cow requires a 64-bit target"
+);
 
 /// COW (Copy-on-Write) layer with write buffering.
 ///
@@ -36,6 +42,12 @@ pub struct CowLayer {
 impl CowLayer {
     /// Create a new COW layer.
     ///
+    /// If a bitmap sidecar file (`{cow_path}.bitmap`) exists, the dirty bitmap
+    /// is restored from it and the COW file is opened eagerly. This enables
+    /// snapshot restore: a previous `save_bitmap()` + `destroy_keep_cow()` cycle
+    /// preserves the COW state, and a subsequent `new()` with the same paths
+    /// picks it up automatically.
+    ///
     /// `base_path`: read-only base image file
     /// `cow_path`: path for the sparse COW file (created on first flush)
     /// `size`: total device size in bytes
@@ -51,11 +63,38 @@ impl CowLayer {
         let base_fd = File::open(base_path)?;
         let num_blocks = (size as usize).div_ceil(block_size);
 
+        // Auto-detect restore mode: load bitmap if sidecar file exists.
+        let bitmap_path = bitmap_path_for(cow_path);
+        let dirty = if bitmap_path.exists() {
+            let bv = Self::load_bitmap(&bitmap_path, num_blocks)?;
+            tracing::info!(dirty_blocks = bv.count_ones(), "restored dirty bitmap");
+            bv
+        } else {
+            bitvec![0; num_blocks]
+        };
+
+        // If bitmap has dirty bits, COW file must already exist — open it eagerly.
+        let cow_fd = if dirty.count_ones() > 0 {
+            Some(
+                File::options()
+                    .read(true)
+                    .write(true)
+                    .open(cow_path)
+                    .map_err(|e| {
+                        NbdCowError::Io(std::io::Error::other(format!(
+                            "dirty bitmap present but COW file cannot be opened: {e}"
+                        )))
+                    })?,
+            )
+        } else {
+            None
+        };
+
         Ok(Self {
             base_fd,
             cow_path: cow_path.to_path_buf(),
-            cow_fd: None,
-            dirty: bitvec![0; num_blocks],
+            cow_fd,
+            dirty,
             write_buffer: BTreeMap::new(),
             buffer_bytes: 0,
             flush_threshold,
@@ -265,6 +304,89 @@ impl CowLayer {
         }
         Ok(())
     }
+
+    /// Save the dirty bitmap to a file.
+    ///
+    /// Format: `[u64 num_blocks LE] [u64 words as LE bytes]`.
+    /// Uses u64 words for portability (not platform-dependent usize).
+    pub(crate) fn save_bitmap(&self, path: &Path) -> Result<()> {
+        let num_blocks = self.dirty.len() as u64;
+        let raw = self.dirty.as_raw_slice();
+        let mut data = Vec::with_capacity(8 + raw.len() * 8);
+        data.extend_from_slice(&num_blocks.to_le_bytes());
+        for word in raw {
+            data.extend_from_slice(&(*word as u64).to_le_bytes());
+        }
+        // Write to a temp file then rename for atomicity — if the process
+        // crashes mid-write, the old bitmap (or no bitmap) remains intact.
+        let tmp_path = PathBuf::from(format!("{}.tmp", path.display()));
+        if let Err(e) = std::fs::write(&tmp_path, &data) {
+            let _ = std::fs::remove_file(&tmp_path);
+            return Err(e.into());
+        }
+        if let Err(e) = std::fs::rename(&tmp_path, path) {
+            let _ = std::fs::remove_file(&tmp_path);
+            return Err(e.into());
+        }
+        Ok(())
+    }
+
+    /// Load a dirty bitmap from a file.
+    ///
+    /// Returns an error if the block count doesn't match `expected_blocks`
+    /// or if the file is truncated.
+    fn load_bitmap(path: &Path, expected_blocks: usize) -> Result<BitVec> {
+        let data = std::fs::read(path)?;
+        if data.len() < 8 {
+            return Err(NbdCowError::Io(std::io::Error::other(
+                "bitmap file too short for header",
+            )));
+        }
+        let header: [u8; 8] = data
+            .get(..8)
+            .ok_or_else(|| NbdCowError::Io(std::io::Error::other("bitmap header too short")))?
+            .try_into()
+            .map_err(|_| NbdCowError::Io(std::io::Error::other("bitmap header parse error")))?;
+        let num_blocks = u64::from_le_bytes(header) as usize;
+        if num_blocks != expected_blocks {
+            return Err(NbdCowError::Io(std::io::Error::other(format!(
+                "bitmap block count mismatch: file has {num_blocks}, expected {expected_blocks}"
+            ))));
+        }
+        let bitmap_bytes = data
+            .get(8..)
+            .ok_or_else(|| NbdCowError::Io(std::io::Error::other("bitmap data missing")))?;
+        let expected_words = num_blocks.div_ceil(64);
+        let expected_data_len = expected_words * 8;
+        if bitmap_bytes.len() < expected_data_len {
+            return Err(NbdCowError::Io(std::io::Error::other(format!(
+                "bitmap data truncated: got {} bytes, expected {expected_data_len}",
+                bitmap_bytes.len()
+            ))));
+        }
+        let mut words: Vec<usize> = Vec::with_capacity(expected_words);
+        for i in 0..expected_words {
+            let offset = i * 8;
+            let word_bytes: [u8; 8] = bitmap_bytes
+                .get(offset..offset + 8)
+                .ok_or_else(|| NbdCowError::Io(std::io::Error::other("bitmap word out of bounds")))?
+                .try_into()
+                .map_err(|_| NbdCowError::Io(std::io::Error::other("bitmap word parse error")))?;
+            words.push(u64::from_le_bytes(word_bytes) as usize);
+        }
+        let mut bv = BitVec::from_vec(words);
+        bv.truncate(num_blocks);
+        Ok(bv)
+    }
+}
+
+/// Compute the bitmap sidecar path for a given COW file path.
+///
+/// Convention: `{cow_path}.bitmap` (e.g., `cow.img.bitmap`).
+pub(crate) fn bitmap_path_for(cow_path: &Path) -> PathBuf {
+    let mut name = cow_path.as_os_str().to_os_string();
+    name.push(".bitmap");
+    PathBuf::from(name)
 }
 
 #[cfg(test)]
@@ -442,5 +564,127 @@ mod tests {
         cow.read(4090, &mut buf).unwrap();
         assert!(buf.iter().all(|&b| b == 0xEE));
         assert_eq!(cow.buffered_block_count(), 2);
+    }
+
+    #[test]
+    fn bitmap_save_load_round_trip() {
+        let base = create_base_image(&vec![0x00; 8192]);
+        let cow_file = NamedTempFile::new().unwrap();
+        let mut cow = make_cow(&base, &cow_file, 8192, 1024 * 1024);
+
+        // Write to block 0, flush to set dirty bit
+        cow.write(0, &vec![0xAA; 4096]).unwrap();
+        cow.flush().unwrap();
+        assert_eq!(cow.dirty_block_count(), 1);
+
+        // Save bitmap
+        let bitmap_file = NamedTempFile::new().unwrap();
+        cow.save_bitmap(bitmap_file.path()).unwrap();
+
+        // Load bitmap and verify
+        let loaded = CowLayer::load_bitmap(bitmap_file.path(), 2).unwrap();
+        assert_eq!(loaded.count_ones(), 1);
+        assert!(loaded[0]); // block 0 is dirty
+        assert!(!loaded[1]); // block 1 is clean
+    }
+
+    #[test]
+    fn bitmap_load_wrong_block_count_errors() {
+        let base = create_base_image(&vec![0x00; 8192]);
+        let cow_file = NamedTempFile::new().unwrap();
+        let cow = make_cow(&base, &cow_file, 8192, 1024 * 1024);
+
+        let bitmap_file = NamedTempFile::new().unwrap();
+        cow.save_bitmap(bitmap_file.path()).unwrap();
+
+        // Try to load with wrong block count
+        let result = CowLayer::load_bitmap(bitmap_file.path(), 999);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn bitmap_load_truncated_data_errors() {
+        let bitmap_file = NamedTempFile::new().unwrap();
+
+        // Write header claiming 128 blocks but no bitmap data
+        let num_blocks: u64 = 128;
+        std::fs::write(bitmap_file.path(), num_blocks.to_le_bytes()).unwrap();
+
+        let result = CowLayer::load_bitmap(bitmap_file.path(), 128);
+        assert!(result.is_err());
+
+        // Write header + partial data (less than needed)
+        let mut data = num_blocks.to_le_bytes().to_vec();
+        data.extend_from_slice(&[0u8; 4]); // only 4 bytes, need 128/64*8 = 16
+        std::fs::write(bitmap_file.path(), &data).unwrap();
+
+        let result = CowLayer::load_bitmap(bitmap_file.path(), 128);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn bitmap_empty_round_trip() {
+        let base = create_base_image(&vec![0x00; 4096]);
+        let cow_file = NamedTempFile::new().unwrap();
+        let cow = make_cow(&base, &cow_file, 4096, 1024 * 1024);
+
+        let bitmap_file = NamedTempFile::new().unwrap();
+        cow.save_bitmap(bitmap_file.path()).unwrap();
+
+        let loaded = CowLayer::load_bitmap(bitmap_file.path(), 1).unwrap();
+        assert_eq!(loaded.count_ones(), 0);
+    }
+
+    #[test]
+    fn create_with_existing_bitmap_restores_dirty_state() {
+        let base_data = vec![0x00; 8192];
+        let base = create_base_image(&base_data);
+        let cow_file = NamedTempFile::new().unwrap();
+
+        // Phase 1: write, flush, save bitmap
+        {
+            let mut cow = make_cow(&base, &cow_file, 8192, 1024 * 1024);
+            cow.write(0, &vec![0xBB; 4096]).unwrap();
+            cow.flush().unwrap();
+            let bitmap_path = bitmap_path_for(cow_file.path());
+            cow.save_bitmap(&bitmap_path).unwrap();
+        }
+
+        // Phase 2: create new CowLayer with same paths — bitmap auto-loaded
+        let cow2 = CowLayer::new(base.path(), cow_file.path(), 8192, 4096, 1024 * 1024).unwrap();
+        assert_eq!(
+            cow2.dirty_block_count(),
+            1,
+            "dirty bitmap should be restored"
+        );
+
+        // Read block 0 — should come from COW file, not base
+        let mut buf = vec![0u8; 4096];
+        cow2.read(0, &mut buf).unwrap();
+        assert!(buf.iter().all(|&b| b == 0xBB), "restored data should match");
+
+        // Read block 1 — should come from base
+        cow2.read(4096, &mut buf).unwrap();
+        assert!(
+            buf.iter().all(|&b| b == 0x00),
+            "unmodified block should read from base"
+        );
+
+        // Cleanup bitmap file
+        let _ = std::fs::remove_file(bitmap_path_for(cow_file.path()));
+    }
+
+    #[test]
+    fn create_without_bitmap_starts_fresh() {
+        let base = create_base_image(&vec![0xAA; 4096]);
+        let cow_file = NamedTempFile::new().unwrap();
+
+        // No bitmap file exists — should start with empty dirty set
+        let cow = CowLayer::new(base.path(), cow_file.path(), 4096, 4096, 1024 * 1024).unwrap();
+        assert_eq!(cow.dirty_block_count(), 0);
+
+        let mut buf = vec![0u8; 4096];
+        cow.read(0, &mut buf).unwrap();
+        assert!(buf.iter().all(|&b| b == 0xAA));
     }
 }

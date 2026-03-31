@@ -265,7 +265,9 @@ export const zeroActivityDetail$ = computed(async (get) => {
 export const zeroActivityEvents$ = computed(async (get) => {
   const run = get(internalActiveRunLoop$);
   if (!run) {
-    return [] as AgentEvent[];
+    // Return null (not []) so useLastLoadable won't treat a stale empty array
+    // as "hasData" while the real events are still loading.
+    return null;
   }
   const pages = await get(run.pagedEventsList$);
   if (pages.length === 0) {

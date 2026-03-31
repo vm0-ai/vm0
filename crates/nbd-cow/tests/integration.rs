@@ -280,3 +280,121 @@ async fn multiple_devices_from_same_base() {
     dev1.destroy().await.expect("destroy 1");
     dev2.destroy().await.expect("destroy 2");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore]
+async fn snapshot_restore_round_trip() {
+    require_root!();
+    require_nbd!();
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let base = tmp.path().join("base.img");
+    create_test_base_image(&base);
+    let cow = tmp.path().join("cow.img");
+    let size = 64 * 1024 * 1024;
+
+    let marker = b"NBD_SNAPSHOT_RESTORE_TEST_1234";
+
+    // Phase 1: create device, write data, destroy_keep_cow
+    {
+        let mut device = nbd_cow::NbdCowDevice::create(&base, &cow, size)
+            .await
+            .expect("create");
+
+        let dev_path = device.device_path().to_owned();
+
+        // Write a full 4K block with the marker at the start (block-aligned I/O)
+        let mut write_buf = vec![0u8; 4096];
+        write_buf[..marker.len()].copy_from_slice(marker);
+
+        let status = Command::new("dd")
+            .args([
+                "if=/dev/stdin",
+                &format!("of={}", dev_path.to_string_lossy()),
+                "bs=4096",
+                "count=1",
+                "conv=notrunc",
+            ])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .and_then(|mut child| {
+                use std::io::Write;
+                child.stdin.take().unwrap().write_all(&write_buf).unwrap();
+                child.wait()
+            })
+            .expect("dd write");
+        assert!(status.success(), "dd write should succeed");
+
+        // Sync to flush to COW file
+        let status = Command::new("sync").status().expect("sync");
+        assert!(status.success());
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+        device.log_status().await;
+        device.destroy_keep_cow().await.expect("destroy_keep_cow");
+    }
+
+    // Verify COW file and bitmap exist
+    assert!(cow.exists(), "COW file should be preserved");
+    let mut bitmap_name = cow.as_os_str().to_os_string();
+    bitmap_name.push(".bitmap");
+    let bitmap = std::path::PathBuf::from(bitmap_name);
+    assert!(bitmap.exists(), "bitmap file should be created");
+
+    // Verify COW file has data (direct file read, independent of NBD)
+    {
+        use std::os::unix::fs::FileExt;
+        let cow_fd = fs::File::open(&cow).expect("open COW file for verification");
+        let mut verify_buf = vec![0u8; marker.len()];
+        cow_fd
+            .read_at(&mut verify_buf, 0)
+            .expect("read COW file at offset 0");
+        assert_eq!(
+            &verify_buf, marker,
+            "COW file should contain marker data at offset 0"
+        );
+    }
+
+    // Phase 2: create new device with same base + COW — data should persist
+    {
+        let mut device = nbd_cow::NbdCowDevice::create(&base, &cow, size)
+            .await
+            .expect("restore create");
+
+        let dev_path = device.device_path().to_owned();
+        device.log_status().await;
+
+        // Read first 4K block from the device
+        let output = Command::new("dd")
+            .args([
+                &format!("if={}", dev_path.to_string_lossy()),
+                "bs=4096",
+                "count=1",
+            ])
+            .output()
+            .expect("dd read");
+        assert!(
+            output.status.success(),
+            "dd read failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            output.stdout.len() >= marker.len(),
+            "dd read returned {} bytes, expected at least {}",
+            output.stdout.len(),
+            marker.len()
+        );
+        assert_eq!(
+            output.stdout.get(..marker.len()),
+            Some(marker.as_slice()),
+            "marker should survive snapshot restore"
+        );
+
+        device.destroy().await.expect("destroy");
+    }
+
+    // After destroy, COW and bitmap should be cleaned up
+    assert!(!cow.exists(), "COW file should be removed after destroy");
+}

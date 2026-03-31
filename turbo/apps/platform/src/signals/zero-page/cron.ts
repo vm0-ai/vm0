@@ -67,7 +67,7 @@ export function getTodayDateLocal(): string {
 // ---------------------------------------------------------------------------
 
 export const COMMON_TIMEZONES = [
-  "UTC",
+  "Etc/UTC",
   "America/New_York",
   "America/Chicago",
   "America/Denver",
@@ -92,8 +92,8 @@ export const COMMON_TIMEZONES = [
 ] as const;
 
 /** Human-readable display labels for COMMON_TIMEZONES entries. Falls back to the IANA string for unlisted values. */
-const TIMEZONE_LABELS = Object.freeze({
-  UTC: "UTC (Coordinated Universal Time)",
+const TIMEZONE_LABELS: Readonly<Record<string, string>> = Object.freeze({
+  "Etc/UTC": "UTC",
   "America/New_York": "Eastern Time (ET)",
   "America/Chicago": "Central Time (CT)",
   "America/Denver": "Mountain Time (MT)",
@@ -117,11 +117,19 @@ const TIMEZONE_LABELS = Object.freeze({
   "Pacific/Auckland": "New Zealand Time (NZST)",
 });
 
-/** Returns a human-readable label for an IANA timezone string. */
+function getGmtOffset(iana: string): string {
+  const parts = new Intl.DateTimeFormat("en", {
+    timeZone: iana,
+    timeZoneName: "longOffset",
+  }).formatToParts(new Date());
+  return parts.find((p) => p.type === "timeZoneName")?.value ?? "GMT+00:00";
+}
+
+/** Returns a human-readable label for an IANA timezone string, prefixed with GMT offset. */
 export function getTimezoneLabel(iana: string): string {
-  return (
-    (TIMEZONE_LABELS as Record<string, string>)[iana] ?? iana.replace(/_/g, " ")
-  );
+  const offset = getGmtOffset(iana);
+  const name = TIMEZONE_LABELS[iana] ?? iana.replace(/_/g, " ");
+  return `(${offset}) ${name}`;
 }
 
 export function buildCronExpression(opts: {

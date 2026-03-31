@@ -306,6 +306,37 @@ function ActivityHeaderCard({
   );
 }
 
+function prepareRenderData(
+  detail: { prompt: string | null; appendSystemPrompt: string | null },
+  rawEvents: AgentEvent[] | null,
+  stepSearch: string,
+  features: Record<FeatureSwitchKey, boolean> | undefined,
+) {
+  const events: AgentEvent[] = rawEvents ?? [];
+  const allMessages = groupEventsIntoMessages(events);
+  const visibleMessages = allMessages.filter((message, index) =>
+    isVisibleMessage(message, allMessages[index + 1]),
+  );
+  const messages = visibleMessages.filter((m) =>
+    groupedMessageMatchesSearch(m, stepSearch.trim()),
+  );
+  const showModelDetail = features?.[FeatureSwitchKey.ModelDetail] ?? false;
+  const prompt = detail.prompt ?? "";
+  const appendSystemPrompt = detail.appendSystemPrompt ?? "";
+  const showSystemPrompt =
+    (features?.[FeatureSwitchKey.ShowSystemPrompt] ?? false) &&
+    appendSystemPrompt.trim().length > 0;
+  return {
+    events,
+    visibleMessages,
+    messages,
+    showModelDetail,
+    prompt,
+    appendSystemPrompt,
+    showSystemPrompt,
+  };
+}
+
 function resolveDisplayName(
   detail: { displayName: string | null; agentId: string | null } | null,
   isStale: boolean,
@@ -331,8 +362,12 @@ export function ZeroActivityDetailPage() {
   const setStepSearch = useSet(setZeroActivityStepSearch$);
   const features = useLastResolved(featureSwitch$);
 
-  // Skeleton until both detail and initial events are loaded
-  const eventsReady = eventsLoadable.state === "hasData";
+  // Skeleton until both detail and initial events are loaded.
+  // Events signal returns null when the run loop hasn't been set up yet;
+  // useLastLoadable would keep the stale null as "hasData" which correctly
+  // prevents the page from rendering with an empty steps list.
+  const eventsReady =
+    eventsLoadable.state === "hasData" && eventsLoadable.data !== null;
   if (!detail || isStale || !eventsReady) {
     if (detailLoadable.state === "hasError") {
       return <ActivityNotFound />;
@@ -340,26 +375,15 @@ export function ZeroActivityDetailPage() {
     return <ActivitySkeleton />;
   }
 
-  const events: AgentEvent[] = eventsLoadable.data;
-
-  const allMessages = groupEventsIntoMessages(events);
-
-  // Filter out text-only assistant messages right before result (redundant)
-  const visibleMessages = allMessages.filter((message, index) =>
-    isVisibleMessage(message, allMessages[index + 1]),
-  );
-
-  const messages = visibleMessages.filter((m) =>
-    groupedMessageMatchesSearch(m, stepSearch.trim()),
-  );
-
-  const showModelDetail = features?.[FeatureSwitchKey.ModelDetail] ?? false;
-
-  const prompt = detail.prompt ?? "";
-  const appendSystemPrompt = detail.appendSystemPrompt ?? "";
-  const showSystemPrompt =
-    (features?.[FeatureSwitchKey.ShowSystemPrompt] ?? false) &&
-    appendSystemPrompt.trim().length > 0;
+  const {
+    events,
+    visibleMessages,
+    messages,
+    showModelDetail,
+    prompt,
+    showSystemPrompt,
+    appendSystemPrompt,
+  } = prepareRenderData(detail, eventsLoadable.data, stepSearch, features);
   const status: LogStatus = detail.status;
   const time = formatLogTime(detail.createdAt);
   const duration = formatDuration(detail.startedAt, detail.completedAt);

@@ -42,7 +42,9 @@ export function TimezoneSettings() {
     return <Skeleton className="h-[76px] w-full rounded-xl" />;
   }
 
-  const currentTimezone = preferences.timezone ?? "UTC";
+  const currentTimezone =
+    preferences.timezone ??
+    new Intl.DateTimeFormat().resolvedOptions().timeZone;
   const timezoneOptions = (COMMON_TIMEZONES as readonly string[]).includes(
     currentTimezone,
   )
@@ -52,7 +54,7 @@ export function TimezoneSettings() {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-muted-foreground">
-        Sets the TZ environment variable for your agent sandbox at runtime.
+        Used to schedule tasks and send notifications at the right time.
       </p>
       <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border">
         <div className="shrink-0">
