@@ -543,6 +543,7 @@ export const deleteOrgSchedule$ = command(
 export const runScheduleNow$ = command(
   async ({ get }, scheduleId: string, signal: AbortSignal): Promise<string> => {
     const toastId = toast.loading("Starting run…");
+    signal.addEventListener("abort", () => toast.dismiss(toastId));
     const client = get(zeroClient$)(zeroScheduleRunContract);
     const result = await client.run({ body: { scheduleId } });
     signal.throwIfAborted();
