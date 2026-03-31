@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.129.0](https://github.com/vm0-ai/vm0/compare/core-v8.128.0...core-v8.129.0) (2026-03-31)
+
+
+### Features
+
+* **connectors:** introduce per-user connector permission system ([#7174](https://github.com/vm0-ai/vm0/issues/7174)) ([121f1c7](https://github.com/vm0-ai/vm0/commit/121f1c7012fe37277597d40062e808265f022eec))
+* **firewalls:** add mailchimp connector firewall config ([#7305](https://github.com/vm0-ai/vm0/issues/7305)) ([274e3c5](https://github.com/vm0-ai/vm0/commit/274e3c5360d7bd5a65ec024b23214fb125f7c952)), closes [#7130](https://github.com/vm0-ai/vm0/issues/7130)
+
 ## [8.128.0](https://github.com/vm0-ai/vm0/compare/core-v8.127.0...core-v8.128.0) (2026-03-31)
 
 

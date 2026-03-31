@@ -1,5 +1,24 @@
 # Changelog
 
+## [9.88.0](https://github.com/vm0-ai/vm0/compare/cli-v9.87.1...cli-v9.88.0) (2026-03-31)
+
+
+### Features
+
+* **connectors:** introduce per-user connector permission system ([#7174](https://github.com/vm0-ai/vm0/issues/7174)) ([121f1c7](https://github.com/vm0-ai/vm0/commit/121f1c7012fe37277597d40062e808265f022eec))
+
+
+### Documentation
+
+* **cli:** add slack notification note to schedule setup help ([#7276](https://github.com/vm0-ai/vm0/issues/7276)) ([fc0584d](https://github.com/vm0-ai/vm0/commit/fc0584d28eb212f6a9a1c827c0296b2300ae1dfd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.129.0
+
 ## [9.87.1](https://github.com/vm0-ai/vm0/compare/cli-v9.87.0...cli-v9.87.1) (2026-03-31)
 
 

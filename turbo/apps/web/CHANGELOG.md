@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.173.0](https://github.com/vm0-ai/vm0/compare/web-v12.172.0...web-v12.173.0) (2026-03-31)
+
+
+### Features
+
+* **connectors:** introduce per-user connector permission system ([#7174](https://github.com/vm0-ai/vm0/issues/7174)) ([121f1c7](https://github.com/vm0-ai/vm0/commit/121f1c7012fe37277597d40062e808265f022eec))
+
+
+### Bug Fixes
+
+* **web:** clarify agent traffic scope in pricing page copy ([#7289](https://github.com/vm0-ai/vm0/issues/7289)) ([60d103a](https://github.com/vm0-ai/vm0/commit/60d103abb76a7e7149cd6667ab6afc0e5daa7e58)), closes [#6886](https://github.com/vm0-ai/vm0/issues/6886)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.129.0
+
 ## [12.172.0](https://github.com/vm0-ai/vm0/compare/web-v12.171.0...web-v12.172.0) (2026-03-31)
 
 

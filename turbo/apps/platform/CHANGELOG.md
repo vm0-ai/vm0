@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.167.0](https://github.com/vm0-ai/vm0/compare/app-v0.166.0...app-v0.167.0) (2026-03-31)
+
+
+### Features
+
+* **connectors:** introduce per-user connector permission system ([#7174](https://github.com/vm0-ai/vm0/issues/7174)) ([121f1c7](https://github.com/vm0-ai/vm0/commit/121f1c7012fe37277597d40062e808265f022eec))
+
+
+### Bug Fixes
+
+* **platform:** prevent avatar flicker on page load ([#7287](https://github.com/vm0-ai/vm0/issues/7287)) ([cc28edb](https://github.com/vm0-ai/vm0/commit/cc28edb373e1015af92ae4a5d2a89abd15c0c546))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.129.0
+
 ## [0.166.0](https://github.com/vm0-ai/vm0/compare/app-v0.165.2...app-v0.166.0) (2026-03-31)
 
 
