@@ -12,13 +12,13 @@ const c = initContract();
 export const DEFAULT_PROFILE = "vm0/default";
 
 /**
- * Runner group format: org/name (e.g., "vm0/production")
+ * Runner group format: vm0/<name> (e.g., "vm0/production")
  */
 export const runnerGroupSchema = z
   .string()
   .regex(
     /^[a-z0-9-]+\/[a-z0-9-]+$/,
-    "Runner group must be in org/name format (e.g., vm0/production)",
+    "Runner group must be in vm0/<name> format (e.g., vm0/production)",
   );
 
 /**

@@ -27,7 +27,7 @@ pub struct ConfigArgs {
     /// Runner logical name
     #[arg(long)]
     name: String,
-    /// Runner group in org/name format (e.g. "vm0/production")
+    /// Runner group in vm0/<name> format (e.g. "vm0/production")
     #[arg(long)]
     group: String,
     /// Runner directory name (under ~/.vm0-runner/runners/)

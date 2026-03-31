@@ -107,7 +107,7 @@ export async function updateOrg(
  * Check if a runner group belongs to the official vm0 org.
  * Official runner groups (vm0/production, vm0/development) can be used by any user.
  *
- * @param group - Runner group in format "org/name"
+ * @param group - Runner group in format "vm0/<name>"
  * @returns true if the group is an official runner group (vm0/*)
  */
 export function isOfficialRunnerGroup(group: string): boolean {

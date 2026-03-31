@@ -858,7 +858,7 @@ agents:
   });
 
   describe("runner group validation", () => {
-    it("should accept valid runner group format (org/name)", async () => {
+    it("should accept valid runner group format (vm0/<name>)", async () => {
       await fs.writeFile(
         path.join(tempDir, "vm0.yaml"),
         `version: "1.0"
@@ -911,7 +911,7 @@ agents:
         (call) => call[0] as string,
       );
       const hasFormatError = allErrors.some(
-        (err) => err.includes("org/name") || err.includes("format"),
+        (err) => err.includes("vm0/") || err.includes("format"),
       );
       expect(hasFormatError).toBe(true);
       expect(mockExit).toHaveBeenCalledWith(1);
