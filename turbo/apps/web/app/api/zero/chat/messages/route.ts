@@ -72,14 +72,18 @@ const router = tsr.router(chatMessagesContract, {
         sessionId = undefined;
       }
 
-      // Generate AI title synchronously from context + current prompt
-      const title = await generateChatTitle(
+      // Generate AI title in the background — don't block the response
+      const capturedThreadId = threadId;
+      void generateChatTitle(
         body.prompt,
         previousContext.length > 0 ? previousContext : undefined,
-      ).catch(() => null);
-      if (title) {
-        await updateChatThreadTitle(threadId, title);
-      }
+      )
+        .then((title) => {
+          if (title) {
+            return updateChatThreadTitle(capturedThreadId, title);
+          }
+        })
+        .catch(() => {});
 
       // Build callback for session persistence
       const chatCallback: {

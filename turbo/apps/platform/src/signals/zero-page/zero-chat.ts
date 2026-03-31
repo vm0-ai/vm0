@@ -842,6 +842,11 @@ export const sendNewThreadMessage$ = command(
 
       set(navigateToChat$, result.body.threadId);
       set(reloadChatThreadList$, (n) => n + 1);
+
+      // Title is generated async on the server — refresh after a short delay
+      delay(3000, { signal })
+        .then(() => set(reloadChatThreadList$, (n) => n + 1))
+        .catch(() => {});
     } catch (error) {
       throwIfAbort(error);
       L.error("Chat send error:", error);
@@ -906,9 +911,16 @@ export const sendExistingThreadMessage$ = command(
 
       const { runId } = result.body;
 
-      // Refresh sidebar (title may have been regenerated) and current thread
+      // Refresh sidebar and current thread — title is generated async,
+      // so schedule a delayed refresh to pick it up
       set(reloadChatThreadList$, (n) => n + 1);
       set(reloadCurrentThread$, (n) => n + 1);
+      delay(3000, { signal })
+        .then(() => {
+          set(reloadChatThreadList$, (n) => n + 1);
+          set(reloadCurrentThread$, (n) => n + 1);
+        })
+        .catch(() => {});
 
       // Create reactive assistant message with its own runLoop
       const { assistantMessage } = createActiveRunMessage(runId, prompt);
