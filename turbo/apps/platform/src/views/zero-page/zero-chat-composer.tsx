@@ -348,6 +348,7 @@ function ConnectorsPopoverButton({
                         }}
                         loading={savingType === item.type}
                         ariaLabel={`${item.added ? "Remove" : "Add"} ${item.label}`}
+                        size="sm"
                       />
                     </div>
                   );

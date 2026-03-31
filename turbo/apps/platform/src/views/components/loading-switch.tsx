@@ -10,6 +10,7 @@ interface LoadingSwitchProps {
   loading?: boolean;
   onCheckedChange: (checked: boolean) => void;
   ariaLabel?: string;
+  size?: "default" | "sm";
 }
 
 export function LoadingSwitch({
@@ -17,15 +18,19 @@ export function LoadingSwitch({
   loading = false,
   onCheckedChange,
   ariaLabel,
+  size = "default",
 }: LoadingSwitchProps) {
   return (
-    <div className="relative shrink-0 h-5 w-9">
+    <div
+      className={cn("relative shrink-0", size === "sm" ? "h-4 w-7" : "h-5 w-9")}
+    >
       <Switch
         checked={checked}
         disabled={loading}
         onCheckedChange={onCheckedChange}
         aria-label={ariaLabel}
-        className={compactSwitchClassName}
+        size={size}
+        className={size === "default" ? compactSwitchClassName : undefined}
       />
       {loading && (
         <IconLoader2
