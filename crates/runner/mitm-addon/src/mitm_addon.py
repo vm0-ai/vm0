@@ -809,10 +809,66 @@ def response(flow: http.HTTPFlow) -> None:
 
 def error(flow: http.HTTPFlow) -> None:
     """
-    Clean up _request_start_times on flow error (timeout, connection reset, etc.)
-    to prevent unbounded dict growth over the runner's lifetime.
+    Log connection-level errors (timeout, RST, TLS failure) to the
+    per-run JSONL network log and clean up request tracking state.
     """
-    _request_start_times.pop(flow.id, None)
+    start_time = _request_start_times.pop(flow.id, None)
+
+    run_id = flow.metadata.get("vm_run_id", "")
+    network_log_path = flow.metadata.get("vm_network_log_path", "")
+
+    if not run_id or not network_log_path:
+        return
+
+    latency_ms = int((time.time() - start_time) * 1000) if start_time else 0
+    original_url = flow.metadata.get("original_url", flow.request.pretty_url)
+    firewall_action = flow.metadata.get("firewall_action", "ALLOW")
+
+    try:
+        parsed_url = urllib.parse.urlparse(original_url)
+        host = parsed_url.hostname or flow.request.pretty_host
+        port = parsed_url.port or (443 if parsed_url.scheme == "https" else 80)
+    except Exception:
+        host = flow.request.pretty_host
+        port = flow.request.port
+
+    request_size = len(flow.request.content) if flow.request.content else 0
+    error_msg = flow.error.msg if flow.error else "unknown error"
+
+    # [NETWORK_LOG_FIELDS] — keep in sync with response() and runs.ts schema
+    log_entry: dict = {
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
+        "type": "http",
+        "action": firewall_action,
+        "host": host,
+        "port": port,
+        "method": flow.request.method,
+        "url": original_url,
+        "status": 0,
+        "latency_ms": latency_ms,
+        "request_size": request_size,
+        "response_size": 0,
+        "error": error_msg,
+    }
+
+    # Add firewall context if available
+    firewall_base = flow.metadata.get("firewall_base")
+    if firewall_base:
+        log_entry["firewall_base"] = firewall_base
+        log_entry["firewall_name"] = flow.metadata.get("firewall_name", "")
+        log_entry["firewall_ref"] = flow.metadata.get("firewall_ref", "")
+        log_entry["firewall_permission"] = flow.metadata.get("firewall_permission", "")
+        log_entry["firewall_rule_match"] = flow.metadata.get("firewall_rule_match", "")
+        params = flow.metadata.get("firewall_params")
+        if params:
+            log_entry["firewall_params"] = params
+        fw_error = flow.metadata.get("firewall_error")
+        if fw_error:
+            log_entry["firewall_error"] = fw_error
+
+    log_network_entry(network_log_path, log_entry)
+
+    ctx.log.warn(f"[{run_id}] Error: {error_msg}: {original_url}")
 
 
 # ============================================================================

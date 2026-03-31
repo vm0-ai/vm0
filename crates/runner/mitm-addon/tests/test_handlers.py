@@ -463,20 +463,99 @@ class TestErrorHandler:
     def setup_method(self):
         _reset()
 
-    def test_cleans_up_start_time(self):
-        flow = MagicMock()
+    def test_cleans_up_start_time(self, tmp_path):
+        flow = _make_http_flow()
         flow.id = "flow-err-1"
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = str(tmp_path / "net.jsonl")
+        flow.error = MagicMock()
+        flow.error.msg = "connection reset"
         mitm_addon._request_start_times["flow-err-1"] = 12345.0
 
-        mitm_addon.error(flow)
+        with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
+            mitm_addon.error(flow)
 
         assert "flow-err-1" not in mitm_addon._request_start_times
 
-    def test_noop_if_no_start_time(self):
+    def test_skips_log_when_no_metadata(self, tmp_path):
         flow = MagicMock()
         flow.id = "flow-err-2"
+        flow.metadata = {}
 
-        mitm_addon.error(flow)  # Should not raise
+        with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
+            mitm_addon.error(flow)  # Should not raise
+
+    def test_logs_error_to_jsonl(self, tmp_path):
+        flow = _make_http_flow(host="slack.com", path="/api/chat.postMessage")
+        flow.request.method = "POST"
+        log_path = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["original_url"] = "https://slack.com/api/chat.postMessage"
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.error = MagicMock()
+        flow.error.msg = "connection reset by peer"
+        mitm_addon._request_start_times[flow.id] = time.time() - 1.5
+
+        with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
+            mitm_addon.error(flow)
+
+        lines = Path(log_path).read_text().splitlines()
+        assert len(lines) == 1
+        entry = json.loads(lines[0])
+        assert entry["type"] == "http"
+        assert entry["action"] == "ALLOW"
+        assert entry["host"] == "slack.com"
+        assert entry["method"] == "POST"
+        assert entry["status"] == 0
+        assert entry["response_size"] == 0
+        assert entry["error"] == "connection reset by peer"
+        assert entry["latency_ms"] > 0
+
+    def test_error_includes_firewall_context(self, tmp_path):
+        flow = _make_http_flow(host="slack.com")
+        log_path = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["original_url"] = "https://slack.com/api/chat.postMessage"
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["firewall_base"] = "https://slack.com/api"
+        flow.metadata["firewall_ref"] = "slack"
+        flow.metadata["firewall_name"] = "Slack API"
+        flow.metadata["firewall_permission"] = "chat:write"
+        flow.metadata["firewall_rule_match"] = "POST /chat.postMessage"
+        flow.error = MagicMock()
+        flow.error.msg = "timed out"
+
+        with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
+            mitm_addon.error(flow)
+
+        entry = json.loads(Path(log_path).read_text().strip())
+        assert entry["firewall_base"] == "https://slack.com/api"
+        assert entry["firewall_ref"] == "slack"
+        assert entry["firewall_name"] == "Slack API"
+        assert entry["firewall_permission"] == "chat:write"
+        assert entry["firewall_rule_match"] == "POST /chat.postMessage"
+        assert entry["error"] == "timed out"
+
+    def test_error_logs_warning_to_console(self, tmp_path):
+        flow = _make_http_flow(host="slack.com")
+        log_path = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["original_url"] = "https://slack.com/api/test"
+        flow.error = MagicMock()
+        flow.error.msg = "connection reset by peer"
+
+        mock_log = MagicMock()
+        with patch.object(mitm_addon.ctx, "log", mock_log, create=True):
+            mitm_addon.error(flow)
+
+        mock_log.warn.assert_called_once()
+        warn_msg = mock_log.warn.call_args[0][0]
+        assert "run-abc-123" in warn_msg
+        assert "connection reset by peer" in warn_msg
+        assert "slack.com" in warn_msg
 
 
 class TestTlsClienthello:
