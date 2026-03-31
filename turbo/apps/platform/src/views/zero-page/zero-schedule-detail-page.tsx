@@ -897,12 +897,12 @@ function ScheduleDetailView({
           <div className="mx-auto max-w-[900px]">
             <div
               className={cn(
-                "flex items-center justify-center gap-4 min-w-0",
+                "flex items-stretch gap-4 min-w-0",
                 dimmed && "opacity-90",
               )}
             >
               <div
-                className="h-[54px] w-[54px] shrink-0 sm:h-[54px] sm:w-[54px] flex items-center justify-center rounded-xl bg-muted/60 text-muted-foreground"
+                className="self-stretch w-[54px] shrink-0 flex items-center justify-center rounded-xl bg-muted/60 text-muted-foreground"
                 aria-hidden
               >
                 <IconCalendar
