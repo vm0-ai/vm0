@@ -387,14 +387,14 @@ async function gatherNotificationPreferences(
     optionNotifyEmail ??
     (await promptConfirm(
       "Enable email notifications?",
-      existingSchedule?.notifyEmail ?? true,
+      existingSchedule?.notifyEmail ?? false,
     ));
 
   const notifySlack =
     optionNotifySlack ??
     (await promptConfirm(
       "Enable Slack notifications?",
-      existingSchedule?.notifySlack ?? true,
+      existingSchedule?.notifySlack ?? false,
     ));
 
   return { notifyEmail, notifySlack };
@@ -674,9 +674,9 @@ export const setupCommand = new Command()
   .option("-p, --prompt <text>", "Prompt to run")
   .option("--artifact-name <name>", "Artifact name", "artifact")
   .option("-e, --enable", "Enable schedule immediately after creation")
-  .option("--notify-email", "Enable email notifications (default: true)")
+  .option("--notify-email", "Enable email notifications (default: false)")
   .option("--no-notify-email", "Disable email notifications")
-  .option("--notify-slack", "Enable Slack notifications (default: true)")
+  .option("--notify-slack", "Enable Slack notifications (default: false)")
   .option("--no-notify-slack", "Disable Slack notifications")
   .addHelpText(
     "after",
