@@ -126,11 +126,28 @@ impl NbdCowDevice {
         }
 
         // Disconnect via netlink (after tasks are done)
-        netlink::disconnect(self.device_index)?;
+        if let Err(e) = netlink::disconnect(self.device_index) {
+            tracing::warn!("NBD disconnect failed for nbd{}: {e}", self.device_index);
+        }
 
         // Wait for kernel to release the device
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         Ok(())
+    }
+}
+
+/// Best-effort cleanup on drop: cancel tasks and disconnect the NBD device.
+/// This ensures leaked devices are cleaned up even if `destroy()` is not called
+/// (e.g., test panics).
+impl Drop for NbdCowDevice {
+    fn drop(&mut self) {
+        self.shutdown.cancel();
+        // Abort all server tasks (they may be blocked on socket I/O)
+        for handle in self.server_handles.drain(..) {
+            handle.abort();
+        }
+        // Synchronous netlink disconnect — best effort
+        let _ = netlink::disconnect(self.device_index);
     }
 }
