@@ -14,7 +14,7 @@ export const mailchimpFirewall: FirewallConfig = {
   },
   apis: [
     {
-      base: "https://${{ vars.MAILCHIMP_DC }}.api.mailchimp.com",
+      base: "https://{dc}.api.mailchimp.com",
       auth: {
         headers: {
           Authorization: "Bearer ${{ secrets.MAILCHIMP_TOKEN }}",
