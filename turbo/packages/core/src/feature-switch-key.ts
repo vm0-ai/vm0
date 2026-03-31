@@ -41,4 +41,5 @@ export enum FeatureSwitchKey {
   CreditAddOn = "creditAddOn",
   ModelDetail = "modelDetail",
   RunContext = "runContext",
+  ActivityLogList = "activityLogList",
 }

@@ -1,4 +1,4 @@
-import { useLastLoadable, useGet } from "ccstate-react";
+import { useLastLoadable, useGet, useLastResolved } from "ccstate-react";
 import { IconChartLine } from "@tabler/icons-react";
 import {
   Table,
@@ -9,9 +9,11 @@ import {
   TableRow,
   Skeleton,
 } from "@vm0/ui";
+import { FeatureSwitchKey } from "@vm0/core";
 import { Link } from "../router/link.tsx";
 import { currentRunId$ } from "../../signals/activity-page/activity-signals.ts";
 import { zeroActivityContext$ } from "../../signals/activity-page/activity-context-signals.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 
 // ---------------------------------------------------------------------------
 // Section components
@@ -247,16 +249,21 @@ export function ZeroActivityContextPage() {
 // ---------------------------------------------------------------------------
 
 function Breadcrumb({ runId }: { runId: string | null }) {
+  const features = useLastResolved(featureSwitch$);
   return (
     <nav className="shrink-0 flex items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
-      <Link
-        pathname="/activity"
-        className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors no-underline text-inherit"
-      >
-        <IconChartLine size={14} stroke={1.5} className="shrink-0" />
-        Activity
-      </Link>
-      <span className="text-muted-foreground/40 select-none">/</span>
+      {features?.[FeatureSwitchKey.ActivityLogList] && (
+        <>
+          <Link
+            pathname="/activity"
+            className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors no-underline text-inherit"
+          >
+            <IconChartLine size={14} stroke={1.5} className="shrink-0" />
+            Activity
+          </Link>
+          <span className="text-muted-foreground/40 select-none">/</span>
+        </>
+      )}
       {runId && (
         <>
           <Link

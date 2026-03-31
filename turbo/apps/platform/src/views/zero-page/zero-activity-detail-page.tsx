@@ -123,11 +123,16 @@ function ActivityBreadcrumbLink() {
 }
 
 function ActivityNotFound() {
+  const features = useLastResolved(featureSwitch$);
   return (
     <div className="h-full flex flex-col min-h-0">
       <nav className="shrink-0 flex items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
-        <ActivityBreadcrumbLink />
-        <span className="text-muted-foreground/40 select-none">/</span>
+        {features?.[FeatureSwitchKey.ActivityLogList] && (
+          <>
+            <ActivityBreadcrumbLink />
+            <span className="text-muted-foreground/40 select-none">/</span>
+          </>
+        )}
         <span className="rounded-md px-1.5 py-0.5 text-foreground font-medium">
           Log
         </span>
@@ -393,8 +398,12 @@ export function ZeroActivityDetailPage() {
     <div className="h-full flex flex-col min-h-0 overflow-hidden">
       <div className="flex-1 flex flex-col min-h-0 overflow-auto">
         <nav className="shrink-0 flex items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
-          <ActivityBreadcrumbLink />
-          <span className="text-muted-foreground/40 select-none">/</span>
+          {features?.[FeatureSwitchKey.ActivityLogList] && (
+            <>
+              <ActivityBreadcrumbLink />
+              <span className="text-muted-foreground/40 select-none">/</span>
+            </>
+          )}
           <span className="rounded-md px-1.5 py-0.5 text-foreground font-medium truncate">
             {displayName}
           </span>
@@ -458,12 +467,17 @@ export function ZeroActivityDetailPage() {
 }
 
 function ActivitySkeleton() {
+  const features = useLastResolved(featureSwitch$);
   return (
     <div className="h-full flex flex-col min-h-0 overflow-hidden">
       <div className="flex-1 flex flex-col min-h-0 overflow-auto">
         <nav className="shrink-0 flex items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
-          <ActivityBreadcrumbLink />
-          <span className="text-muted-foreground/40 select-none">/</span>
+          {features?.[FeatureSwitchKey.ActivityLogList] && (
+            <>
+              <ActivityBreadcrumbLink />
+              <span className="text-muted-foreground/40 select-none">/</span>
+            </>
+          )}
           <div className="h-4 w-20 rounded bg-muted/50 animate-pulse" />
         </nav>
         <div className="mx-auto max-w-[900px] px-4 sm:px-6 pt-4 pb-8 w-full">

@@ -1221,7 +1221,11 @@ export function ZeroSidebar() {
       return a !== undefined;
     });
 
-  const manageNav = MANAGE_NAV.map((item) => {
+  const manageNav = MANAGE_NAV.filter((item) => {
+    return (
+      item.id !== "activity" || features?.[FeatureSwitchKey.ActivityLogList]
+    );
+  }).map((item) => {
     return {
       ...item,
       label: item.label.replace("Zero", displayName),

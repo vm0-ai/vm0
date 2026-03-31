@@ -87,6 +87,46 @@ describe("zeroActivityDetailPage", () => {
     expect(screen.getByText("9.0s")).toBeInTheDocument();
   }, 10_000);
 
+  it("should hide Activity breadcrumb when ActivityLogList switch is off", async () => {
+    mockActivityDetailAPI();
+
+    await setupPage({
+      context,
+      path: "/activity/a0000000-0000-4000-a000-000000000001",
+      featureSwitches: { [FeatureSwitchKey.ActivityLogList]: false },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Test Agent" }),
+      ).toBeInTheDocument();
+    });
+
+    // The breadcrumb link to /activity should not be present
+    const activityLinks = screen.queryAllByRole("link", { name: /Activity/i });
+    expect(activityLinks).toHaveLength(0);
+  }, 10_000);
+
+  it("should show Activity breadcrumb when ActivityLogList switch is on", async () => {
+    mockActivityDetailAPI();
+
+    await setupPage({
+      context,
+      path: "/activity/a0000000-0000-4000-a000-000000000001",
+      featureSwitches: { [FeatureSwitchKey.ActivityLogList]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Test Agent" }),
+      ).toBeInTheDocument();
+    });
+
+    // The breadcrumb link to /activity should be present
+    const activityLinks = screen.queryAllByRole("link", { name: /Activity/i });
+    expect(activityLinks.length).toBeGreaterThan(0);
+  }, 10_000);
+
   it("should render schedule source as a clickable link when scheduleId is present", async () => {
     const logDetail: LogDetail = {
       id: "a0000000-0000-4000-a000-000000000002",

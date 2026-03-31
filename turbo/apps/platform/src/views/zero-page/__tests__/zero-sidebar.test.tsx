@@ -135,6 +135,34 @@ describe("zero sidebar", () => {
     expect(features[FeatureSwitchKey.DataExport]).toBeFalsy();
   });
 
+  it("should hide Activity logs when ActivityLogList switch is off", async () => {
+    mockAPIs();
+    await setupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.ActivityLogList]: false },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Agents")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Activity logs")).not.toBeInTheDocument();
+  });
+
+  it("should show Activity logs when ActivityLogList switch is on", async () => {
+    mockAPIs();
+    await setupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.ActivityLogList]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Agents")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Activity logs")).toBeInTheDocument();
+  });
+
   it("should filter chat sessions when searching", async () => {
     const user = userEvent.setup();
     mockAPIs();
