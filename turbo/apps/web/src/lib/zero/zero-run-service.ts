@@ -183,6 +183,7 @@ export async function createZeroRun(
         id: queueResult.runId,
         triggerSource: params.triggerSource,
         scheduleId: params.scheduleId ?? null,
+        triggerAgentId: params.triggerAgentId ?? null,
       });
 
       return queueResult;

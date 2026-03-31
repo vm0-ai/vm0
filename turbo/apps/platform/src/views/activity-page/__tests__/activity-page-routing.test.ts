@@ -191,7 +191,7 @@ describe("activity page routing", () => {
         return HttpResponse.json({
           data: [
             {
-              id: "log-delegated",
+              id: "b0000000-0000-4000-a000-000000000001",
               sessionId: "session-delegated",
               agentId: "child-agent",
               displayName: "Child Agent",
