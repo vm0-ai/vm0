@@ -100,6 +100,7 @@ import { reporteiFirewall } from "./reportei.generated";
 import { resendFirewall } from "./resend.generated";
 import { revenuecatFirewall } from "./revenuecat.generated";
 import { runwayFirewall } from "./runway.generated";
+import { salesforceFirewall } from "./salesforce.generated";
 import { scrapeninjaFirewall } from "./scrapeninja.generated";
 import { sentryFirewall } from "./sentry.generated";
 import { serpapiFirewall } from "./serpapi.generated";
@@ -215,6 +216,7 @@ const CONNECTOR_FIREWALLS = {
   resend: resendFirewall,
   revenuecat: revenuecatFirewall,
   runway: runwayFirewall,
+  salesforce: salesforceFirewall,
   scrapeninja: scrapeninjaFirewall,
   sentry: sentryFirewall,
   serpapi: serpapiFirewall,
@@ -326,7 +328,6 @@ export type NonFirewallConnectorType =
   // Self-hosted / dynamic base URL — needs ${{ vars.X }} template + connector variable addition
   | "metabase" // self-hosted, auth: x-api-key header, needs BASE_URL variable
   | "qdrant" // self-hosted, auth: api-key header or Bearer, needs BASE_URL variable
-  | "salesforce" // instance-specific (*.my.salesforce.com), auth: Bearer, needs INSTANCE variable
   // Datacenter-specific — feasible with static enumeration, needs connector variable addition
   | "mailchimp" // ~20 datacenter domains (usX.api.mailchimp.com), auth: Bearer works
   // Basic Auth — proxy cannot do base64 encoding at runtime

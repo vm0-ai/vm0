@@ -92,6 +92,7 @@
     "generate:resend": "tsx src/index.ts resend",
     "generate:revenuecat": "tsx src/index.ts revenuecat",
     "generate:runway": "tsx src/index.ts runway",
+    "generate:salesforce": "tsx src/index.ts salesforce",
     "generate:scrapeninja": "tsx src/index.ts scrapeninja",
     "generate:sentry": "tsx src/index.ts sentry",
     "generate:serpapi": "tsx src/index.ts serpapi",
