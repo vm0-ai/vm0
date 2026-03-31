@@ -157,16 +157,13 @@ export function loadValues(
 
 /**
  * Parse identifier with optional org and version specifier
- * Format: [org/]name[:version]
+ * Format: name[:version]
  * Examples:
  *   "demo:d084948d"      → { name: "demo", version: "d084948d" }
  *   "demo:latest"        → { name: "demo", version: "latest" }
  *   "demo"               → { name: "demo" }
- *   "lancy/demo"         → { org: "lancy", name: "demo" }
- *   "lancy/demo:abc123"  → { org: "lancy", name: "demo", version: "abc123" }
  */
 export function parseIdentifier(identifier: string): {
-  org?: string;
   name: string;
   version?: string;
 } {
@@ -175,27 +172,16 @@ export function parseIdentifier(identifier: string): {
     return { name: identifier };
   }
 
-  let org: string | undefined;
-  let rest = identifier;
-
-  // Check for org (contains "/")
-  const slashIndex = identifier.indexOf("/");
-  if (slashIndex > 0) {
-    org = identifier.slice(0, slashIndex);
-    rest = identifier.slice(slashIndex + 1);
-  }
-
   // Parse name:version format using indexOf (version comes after name)
-  const colonIndex = rest.indexOf(":");
-  if (colonIndex > 0 && colonIndex < rest.length - 1) {
+  const colonIndex = identifier.indexOf(":");
+  if (colonIndex > 0 && colonIndex < identifier.length - 1) {
     return {
-      org,
-      name: rest.slice(0, colonIndex),
-      version: rest.slice(colonIndex + 1),
+      name: identifier.slice(0, colonIndex),
+      version: identifier.slice(colonIndex + 1),
     };
   }
 
-  return { org, name: rest };
+  return { name: identifier };
 }
 
 /**

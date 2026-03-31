@@ -106,8 +106,7 @@ export async function GET(request: NextRequest) {
   const { userId } = authCtx;
 
   // Resolve org context
-  const orgSlug = request.nextUrl.searchParams.get("org");
-  const { org } = await resolveOrg(authCtx, orgSlug);
+  const { org } = await resolveOrg(authCtx);
 
   // Parse query parameters
   const searchParams = request.nextUrl.searchParams;

@@ -38,8 +38,7 @@ export async function GET(request: NextRequest) {
   if (!authCtx) return errorJson("Not authenticated", 401);
 
   try {
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org: resolvedOrg } = await resolveOrg(authCtx, orgSlug);
+    const { org: resolvedOrg } = await resolveOrg(authCtx);
 
     const client = await clerkClient();
     const clerkOrg = await client.organizations.getOrganization({
@@ -70,8 +69,7 @@ export async function POST(request: NextRequest) {
   if (!authCtx) return errorJson("Not authenticated", 401);
 
   try {
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org: resolvedOrg, member } = await resolveOrg(authCtx, orgSlug);
+    const { org: resolvedOrg, member } = await resolveOrg(authCtx);
 
     if (member.role !== "admin") {
       return errorJson("Only admins can upload the logo", 403);
@@ -123,8 +121,7 @@ export async function DELETE(request: NextRequest) {
   if (!authCtx) return errorJson("Not authenticated", 401);
 
   try {
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org: resolvedOrg, member } = await resolveOrg(authCtx, orgSlug);
+    const { org: resolvedOrg, member } = await resolveOrg(authCtx);
 
     if (member.role !== "admin") {
       return errorJson("Only admins can remove the logo", 403);

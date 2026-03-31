@@ -24,8 +24,8 @@ async function setupOrg(userId: string) {
   return { slug, orgId };
 }
 
-function telemetryUrl(slug: string, runId: string): string {
-  return `http://localhost:3000/api/zero/runs/${runId}/telemetry/agent?org=${slug}&limit=10&order=desc`;
+function telemetryUrl(runId: string): string {
+  return `http://localhost:3000/api/zero/runs/${runId}/telemetry/agent?limit=10&order=desc`;
 }
 
 describe("GET /api/zero/runs/:id/telemetry/agent", () => {
@@ -35,7 +35,7 @@ describe("GET /api/zero/runs/:id/telemetry/agent", () => {
 
   it("should return agent events for a run", async () => {
     const userId = uniqueId("ztele-get");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
     const compose = await createTestCompose(`agent-${uniqueId("ztele")}`);
     const { runId } = await createTestRunInDb(userId, compose.composeId, {
       status: "running",
@@ -43,7 +43,7 @@ describe("GET /api/zero/runs/:id/telemetry/agent", () => {
 
     context.mocks.axiom.queryAxiom.mockResolvedValue([]);
 
-    const response = await GET(createTestRequest(telemetryUrl(slug, runId)));
+    const response = await GET(createTestRequest(telemetryUrl(runId)));
     expect(response.status).toBe(200);
 
     const data = await response.json();
@@ -54,11 +54,9 @@ describe("GET /api/zero/runs/:id/telemetry/agent", () => {
 
   it("should return 404 when run not found", async () => {
     const userId = uniqueId("ztele-nf");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
 
-    const response = await GET(
-      createTestRequest(telemetryUrl(slug, randomUUID())),
-    );
+    const response = await GET(createTestRequest(telemetryUrl(randomUUID())));
     expect(response.status).toBe(404);
   });
 
@@ -67,7 +65,7 @@ describe("GET /api/zero/runs/:id/telemetry/agent", () => {
 
     const response = await GET(
       createTestRequest(
-        `http://localhost:3000/api/zero/runs/${randomUUID()}/telemetry/agent?org=test&limit=10&order=desc`,
+        `http://localhost:3000/api/zero/runs/${randomUUID()}/telemetry/agent?limit=10&order=desc`,
       ),
     );
     expect(response.status).toBe(401);
@@ -79,7 +77,7 @@ describe("GET /api/zero/runs/:id/telemetry/agent", () => {
 
     const response = await GET(
       createTestRequest(
-        `http://localhost:3000/api/zero/runs/${randomUUID()}/telemetry/agent?org=test&limit=10&order=desc`,
+        `http://localhost:3000/api/zero/runs/${randomUUID()}/telemetry/agent?limit=10&order=desc`,
         {
           headers: { Authorization: `Bearer ${token}` },
         },

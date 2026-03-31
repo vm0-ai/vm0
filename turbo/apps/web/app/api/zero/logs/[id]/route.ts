@@ -163,7 +163,7 @@ function buildLogDetailBody(result: {
 }
 
 const router = tsr.router(logsByIdContract, {
-  getById: async ({ params, headers }, { request }) => {
+  getById: async ({ params, headers }) => {
     initServices();
 
     const authCtx = await getAuthContext(headers.authorization);
@@ -174,9 +174,8 @@ const router = tsr.router(logsByIdContract, {
 
     // Resolve active org from JWT / CLI token / default
     let orgId: string;
-    const orgSlug = new URL(request.url).searchParams.get("org");
     try {
-      const { org: resolvedOrg } = await resolveOrg(authCtx, orgSlug);
+      const { org: resolvedOrg } = await resolveOrg(authCtx);
       orgId = resolvedOrg.orgId;
     } catch (error) {
       if (isNotFound(error) || isForbidden(error)) {

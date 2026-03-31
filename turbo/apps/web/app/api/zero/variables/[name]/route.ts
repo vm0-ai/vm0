@@ -17,7 +17,7 @@ import { isNotFound } from "../../../../../src/lib/errors";
 const log = logger("api:zero-variables");
 
 const router = tsr.router(zeroVariablesByNameContract, {
-  delete: async ({ params, headers }, { request }) => {
+  delete: async ({ params, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
@@ -27,8 +27,7 @@ const router = tsr.router(zeroVariablesByNameContract, {
     log.debug("deleting variable", { userId, name: params.name });
 
     try {
-      const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org } = await resolveOrg(authCtx, orgSlug);
+      const { org } = await resolveOrg(authCtx);
       await deleteVariable(org.orgId, userId, params.name);
 
       return {

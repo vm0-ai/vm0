@@ -20,8 +20,8 @@ async function setupOrg(userId: string) {
   return { slug, orgId };
 }
 
-function domainsUrl(slug: string): string {
-  return `http://localhost:3000/api/zero/org/domains?org=${slug}`;
+function domainsUrl(): string {
+  return `http://localhost:3000/api/zero/org/domains`;
 }
 
 describe("GET /api/zero/org/domains", () => {
@@ -31,9 +31,9 @@ describe("GET /api/zero/org/domains", () => {
 
   it("should return domain list for an admin", async () => {
     const userId = uniqueId("dom-get");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
 
-    const response = await GET(createTestRequest(domainsUrl(slug)));
+    const response = await GET(createTestRequest(domainsUrl()));
 
     expect(response.status).toBe(200);
     const data = await response.json();
@@ -47,7 +47,7 @@ describe("GET /api/zero/org/domains", () => {
     mockClerk({ userId, orgId, orgRole: "org:member" });
     await createTestOrg(slug);
 
-    const response = await GET(createTestRequest(domainsUrl(slug)));
+    const response = await GET(createTestRequest(domainsUrl()));
 
     expect(response.status).toBe(403);
   });
@@ -55,7 +55,7 @@ describe("GET /api/zero/org/domains", () => {
   it("should return 401 when not authenticated", async () => {
     mockClerk({ userId: null });
 
-    const response = await GET(createTestRequest(domainsUrl("any-org")));
+    const response = await GET(createTestRequest(domainsUrl()));
 
     expect(response.status).toBe(401);
   });
@@ -68,10 +68,10 @@ describe("POST /api/zero/org/domains", () => {
 
   it("should add a domain for an admin", async () => {
     const userId = uniqueId("dom-add");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
 
     const response = await POST(
-      createTestRequest(domainsUrl(slug), {
+      createTestRequest(domainsUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -94,7 +94,7 @@ describe("POST /api/zero/org/domains", () => {
     await createTestOrg(slug);
 
     const response = await POST(
-      createTestRequest(domainsUrl(slug), {
+      createTestRequest(domainsUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -111,7 +111,7 @@ describe("POST /api/zero/org/domains", () => {
     mockClerk({ userId: null });
 
     const response = await POST(
-      createTestRequest(domainsUrl("any-org"), {
+      createTestRequest(domainsUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -132,10 +132,10 @@ describe("DELETE /api/zero/org/domains", () => {
 
   it("should remove a domain for an admin", async () => {
     const userId = uniqueId("dom-del");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
 
     const response = await DELETE(
-      createTestRequest(domainsUrl(slug), {
+      createTestRequest(domainsUrl(), {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ domainId: "domain_test123" }),
@@ -155,7 +155,7 @@ describe("DELETE /api/zero/org/domains", () => {
     await createTestOrg(slug);
 
     const response = await DELETE(
-      createTestRequest(domainsUrl(slug), {
+      createTestRequest(domainsUrl(), {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ domainId: "domain_test123" }),
@@ -169,7 +169,7 @@ describe("DELETE /api/zero/org/domains", () => {
     mockClerk({ userId: null });
 
     const response = await DELETE(
-      createTestRequest(domainsUrl("any-org"), {
+      createTestRequest(domainsUrl(), {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ domainId: "domain_test123" }),
@@ -187,10 +187,10 @@ describe("PATCH /api/zero/org/domains (setVerified)", () => {
 
   it("should verify a domain for an admin", async () => {
     const userId = uniqueId("dom-verify");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
 
     const response = await PATCH(
-      createTestRequest(domainsUrl(slug), {
+      createTestRequest(domainsUrl(), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ domainId: "domain_test123", verified: true }),
@@ -204,10 +204,10 @@ describe("PATCH /api/zero/org/domains (setVerified)", () => {
 
   it("should unverify a domain for an admin", async () => {
     const userId = uniqueId("dom-unverify");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
 
     const response = await PATCH(
-      createTestRequest(domainsUrl(slug), {
+      createTestRequest(domainsUrl(), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ domainId: "domain_test123", verified: false }),
@@ -227,7 +227,7 @@ describe("PATCH /api/zero/org/domains (setVerified)", () => {
     await createTestOrg(slug);
 
     const response = await PATCH(
-      createTestRequest(domainsUrl(slug), {
+      createTestRequest(domainsUrl(), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ domainId: "domain_test123", verified: true }),
@@ -241,7 +241,7 @@ describe("PATCH /api/zero/org/domains (setVerified)", () => {
     mockClerk({ userId: null });
 
     const response = await PATCH(
-      createTestRequest(domainsUrl("any-org"), {
+      createTestRequest(domainsUrl(), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ domainId: "domain_test123", verified: true }),

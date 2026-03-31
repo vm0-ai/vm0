@@ -25,8 +25,8 @@ async function setupOrg(userId: string) {
   return { slug, orgId };
 }
 
-function secretUrl(slug: string): string {
-  return `http://localhost:3000/api/zero/secrets?org=${slug}`;
+function secretUrl(): string {
+  return `http://localhost:3000/api/zero/secrets`;
 }
 
 describe("GET /api/zero/secrets", () => {
@@ -36,10 +36,10 @@ describe("GET /api/zero/secrets", () => {
 
   it("should return empty array when no secrets exist", async () => {
     const userId = uniqueId("zsec-empty");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
 
     const response = await GET(
-      createTestRequest(secretUrl(slug), { method: "GET" }),
+      createTestRequest(secretUrl(), { method: "GET" }),
     );
     expect(response.status).toBe(200);
 
@@ -49,11 +49,11 @@ describe("GET /api/zero/secrets", () => {
 
   it("should list secrets for authenticated user", async () => {
     const userId = uniqueId("zsec-list");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
 
     // Create a secret first
     await POST(
-      createTestRequest(secretUrl(slug), {
+      createTestRequest(secretUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -65,7 +65,7 @@ describe("GET /api/zero/secrets", () => {
     );
 
     const response = await GET(
-      createTestRequest(secretUrl(slug), { method: "GET" }),
+      createTestRequest(secretUrl(), { method: "GET" }),
     );
     expect(response.status).toBe(200);
 
@@ -86,7 +86,7 @@ describe("GET /api/zero/secrets", () => {
     mockClerk({ userId: null });
 
     const response = await GET(
-      createTestRequest("http://localhost:3000/api/zero/secrets?org=test", {
+      createTestRequest("http://localhost:3000/api/zero/secrets", {
         method: "GET",
       }),
     );
@@ -101,10 +101,10 @@ describe("POST /api/zero/secrets", () => {
 
   it("should create a secret as admin", async () => {
     const userId = uniqueId("zsec-create");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
 
     const response = await POST(
-      createTestRequest(secretUrl(slug), {
+      createTestRequest(secretUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -127,11 +127,11 @@ describe("POST /api/zero/secrets", () => {
 
   it("should update an existing secret", async () => {
     const userId = uniqueId("zsec-update");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
 
     // Create
     await POST(
-      createTestRequest(secretUrl(slug), {
+      createTestRequest(secretUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -143,7 +143,7 @@ describe("POST /api/zero/secrets", () => {
 
     // Update
     const response = await POST(
-      createTestRequest(secretUrl(slug), {
+      createTestRequest(secretUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -164,7 +164,7 @@ describe("POST /api/zero/secrets", () => {
     mockClerk({ userId: null });
 
     const response = await POST(
-      createTestRequest("http://localhost:3000/api/zero/secrets?org=test", {
+      createTestRequest("http://localhost:3000/api/zero/secrets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -178,10 +178,10 @@ describe("POST /api/zero/secrets", () => {
 
   it("should reject invalid secret name", async () => {
     const userId = uniqueId("zsec-invalid");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
 
     const response = await POST(
-      createTestRequest(secretUrl(slug), {
+      createTestRequest(secretUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -12,7 +12,7 @@ import { orgMetadata as orgTable } from "../../../../src/db/schema/org-metadata"
 import { eq, and } from "drizzle-orm";
 
 const router = tsr.router(orgDefaultAgentContract, {
-  setDefaultAgent: async ({ query, body, headers }) => {
+  setDefaultAgent: async ({ body, headers }) => {
     initServices();
 
     const authCtx = await getAuthContext(headers.authorization);
@@ -25,7 +25,7 @@ const router = tsr.router(orgDefaultAgentContract, {
       };
     }
 
-    const { org, member } = await resolveOrg(authCtx, undefined, query.org);
+    const { org, member } = await resolveOrg(authCtx);
 
     if (member.role !== "admin") {
       return {

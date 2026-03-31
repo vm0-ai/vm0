@@ -31,7 +31,7 @@ export const mainRunCommand = new Command()
   .description("Run an agent")
   .argument(
     "<agent-name>",
-    "Agent reference: [org/]name[:version] (e.g., 'my-agent', 'lancy/my-agent:abc123', 'my-agent:latest')",
+    "Agent reference: name[:version] (e.g., 'my-agent', 'my-agent:abc123', 'my-agent:latest')",
   )
   .argument("<prompt>", "Prompt for the agent")
   .option(
@@ -125,8 +125,8 @@ export const mainRunCommand = new Command()
           await startSilentUpgrade(__CLI_VERSION__);
         }
 
-        // 1. Parse identifier for optional org and version specifier
-        const { org, name, version } = parseIdentifier(identifier);
+        // 1. Parse identifier for optional version specifier
+        const { name, version } = parseIdentifier(identifier);
 
         // 2. Resolve name to composeId and get compose content
         let composeId: string;
@@ -139,7 +139,7 @@ export const mainRunCommand = new Command()
           composeContent = compose.content;
         } else {
           // It's an agent name - resolve to compose ID
-          const compose = await getComposeByName(name, org);
+          const compose = await getComposeByName(name);
           if (!compose) {
             throw new Error(`Agent not found: ${identifier}`, {
               cause: new Error(

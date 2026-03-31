@@ -200,8 +200,7 @@ export async function GET(
     // when the code adds new scopes and prompt users to re-authorize.
     // Note: do not read "scope" from the callback URL — OAuth providers (e.g., Monday.com)
     // may append OAuth scopes as ?scope=... which would be mistaken for an app scope slug.
-    const orgSlug = url.searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
     const { created } = await upsertOAuthConnector(
       org.orgId,
       userId,

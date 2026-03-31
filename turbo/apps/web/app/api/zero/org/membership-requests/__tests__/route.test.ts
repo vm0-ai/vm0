@@ -22,8 +22,8 @@ async function setupOrg(userId: string) {
   return { slug, orgId };
 }
 
-function membershipRequestsUrl(slug: string): string {
-  return `http://localhost:3000/api/zero/org/membership-requests?org=${slug}`;
+function membershipRequestsUrl(): string {
+  return `http://localhost:3000/api/zero/org/membership-requests`;
 }
 
 describe("POST /api/zero/org/membership-requests (accept)", () => {
@@ -33,7 +33,7 @@ describe("POST /api/zero/org/membership-requests (accept)", () => {
 
   it("should accept a membership request for an admin", async () => {
     const userId = uniqueId("mreq-acc");
-    const { orgId, slug } = await setupOrg(userId);
+    const { orgId } = await setupOrg(userId);
 
     server.use(
       http.post(
@@ -43,7 +43,7 @@ describe("POST /api/zero/org/membership-requests (accept)", () => {
     );
 
     const response = await POST(
-      createTestRequest(membershipRequestsUrl(slug), {
+      createTestRequest(membershipRequestsUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ requestId: "req_test123" }),
@@ -57,7 +57,7 @@ describe("POST /api/zero/org/membership-requests (accept)", () => {
 
   it("should return 400 when Clerk API rejects the accept request", async () => {
     const userId = uniqueId("mreq-acc-fail");
-    const { orgId, slug } = await setupOrg(userId);
+    const { orgId } = await setupOrg(userId);
 
     server.use(
       http.post(
@@ -67,7 +67,7 @@ describe("POST /api/zero/org/membership-requests (accept)", () => {
     );
 
     const response = await POST(
-      createTestRequest(membershipRequestsUrl(slug), {
+      createTestRequest(membershipRequestsUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ requestId: "req_invalid" }),
@@ -85,7 +85,7 @@ describe("POST /api/zero/org/membership-requests (accept)", () => {
     await createTestOrg(slug);
 
     const response = await POST(
-      createTestRequest(membershipRequestsUrl(slug), {
+      createTestRequest(membershipRequestsUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ requestId: "req_test123" }),
@@ -99,7 +99,7 @@ describe("POST /api/zero/org/membership-requests (accept)", () => {
     mockClerk({ userId: null });
 
     const response = await POST(
-      createTestRequest(membershipRequestsUrl("any-org"), {
+      createTestRequest(membershipRequestsUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ requestId: "req_test123" }),
@@ -117,7 +117,7 @@ describe("DELETE /api/zero/org/membership-requests (reject)", () => {
 
   it("should reject a membership request for an admin", async () => {
     const userId = uniqueId("mreq-rej");
-    const { orgId, slug } = await setupOrg(userId);
+    const { orgId } = await setupOrg(userId);
 
     server.use(
       http.post(
@@ -127,7 +127,7 @@ describe("DELETE /api/zero/org/membership-requests (reject)", () => {
     );
 
     const response = await DELETE(
-      createTestRequest(membershipRequestsUrl(slug), {
+      createTestRequest(membershipRequestsUrl(), {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ requestId: "req_test456" }),
@@ -141,7 +141,7 @@ describe("DELETE /api/zero/org/membership-requests (reject)", () => {
 
   it("should return 400 when Clerk API rejects the reject request", async () => {
     const userId = uniqueId("mreq-rej-fail");
-    const { orgId, slug } = await setupOrg(userId);
+    const { orgId } = await setupOrg(userId);
 
     server.use(
       http.post(
@@ -151,7 +151,7 @@ describe("DELETE /api/zero/org/membership-requests (reject)", () => {
     );
 
     const response = await DELETE(
-      createTestRequest(membershipRequestsUrl(slug), {
+      createTestRequest(membershipRequestsUrl(), {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ requestId: "req_invalid" }),
@@ -169,7 +169,7 @@ describe("DELETE /api/zero/org/membership-requests (reject)", () => {
     await createTestOrg(slug);
 
     const response = await DELETE(
-      createTestRequest(membershipRequestsUrl(slug), {
+      createTestRequest(membershipRequestsUrl(), {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ requestId: "req_test456" }),
@@ -183,7 +183,7 @@ describe("DELETE /api/zero/org/membership-requests (reject)", () => {
     mockClerk({ userId: null });
 
     const response = await DELETE(
-      createTestRequest(membershipRequestsUrl("any-org"), {
+      createTestRequest(membershipRequestsUrl(), {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ requestId: "req_test456" }),

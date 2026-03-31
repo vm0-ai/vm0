@@ -17,14 +17,13 @@ import {
 import { isBadRequest } from "../../../../src/lib/errors";
 
 const router = tsr.router(zeroUserPreferencesContract, {
-  get: async ({ headers }, { request }) => {
+  get: async ({ headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
 
     const prefs = await getUserPreferences(org.orgId, authCtx.userId);
 
@@ -38,14 +37,13 @@ const router = tsr.router(zeroUserPreferencesContract, {
     };
   },
 
-  update: async ({ body, headers }, { request }) => {
+  update: async ({ body, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
 
     try {
       const prefs = await updateUserPreferences(org.orgId, authCtx.userId, {

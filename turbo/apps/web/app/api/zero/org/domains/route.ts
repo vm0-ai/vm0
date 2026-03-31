@@ -19,15 +19,14 @@ import {
 import { isForbidden } from "../../../../../src/lib/errors";
 
 const router = tsr.router(zeroOrgDomainsContract, {
-  list: async ({ headers }, { request }) => {
+  list: async ({ headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
 
     try {
-      const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org, member } = await resolveOrg(authCtx, orgSlug);
+      const { org, member } = await resolveOrg(authCtx);
       const result = await getOrgDomains(org.orgId, member.role);
       return { status: 200 as const, body: result };
     } catch (error) {
@@ -38,15 +37,14 @@ const router = tsr.router(zeroOrgDomainsContract, {
     }
   },
 
-  add: async ({ headers, body }, { request }) => {
+  add: async ({ headers, body }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
 
     try {
-      const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org, member } = await resolveOrg(authCtx, orgSlug);
+      const { org, member } = await resolveOrg(authCtx);
       await addOrgDomain(
         org.orgId,
         member.role,
@@ -65,15 +63,14 @@ const router = tsr.router(zeroOrgDomainsContract, {
     }
   },
 
-  remove: async ({ headers, body }, { request }) => {
+  remove: async ({ headers, body }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
 
     try {
-      const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org, member } = await resolveOrg(authCtx, orgSlug);
+      const { org, member } = await resolveOrg(authCtx);
       await removeOrgDomain(org.orgId, member.role, body.domainId);
       return {
         status: 200 as const,
@@ -86,15 +83,14 @@ const router = tsr.router(zeroOrgDomainsContract, {
       throw error;
     }
   },
-  setVerified: async ({ headers, body }, { request }) => {
+  setVerified: async ({ headers, body }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
 
     try {
-      const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org, member } = await resolveOrg(authCtx, orgSlug);
+      const { org, member } = await resolveOrg(authCtx);
       await setOrgDomainVerified(
         org.orgId,
         member.role,

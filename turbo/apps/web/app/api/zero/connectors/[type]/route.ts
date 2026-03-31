@@ -17,7 +17,7 @@ import {
 import { isNotFound } from "../../../../../src/lib/errors";
 
 const router = tsr.router(zeroConnectorsByTypeContract, {
-  get: async ({ params, headers }, { request }) => {
+  get: async ({ params, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -26,8 +26,7 @@ const router = tsr.router(zeroConnectorsByTypeContract, {
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
     const connector = await getConnector(org.orgId, userId, params.type);
 
     if (!connector) {
@@ -39,7 +38,7 @@ const router = tsr.router(zeroConnectorsByTypeContract, {
       body: connector,
     };
   },
-  delete: async ({ params, headers }, { request }) => {
+  delete: async ({ params, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
@@ -47,8 +46,7 @@ const router = tsr.router(zeroConnectorsByTypeContract, {
     const { userId } = authCtx;
 
     try {
-      const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org } = await resolveOrg(authCtx, orgSlug);
+      const { org } = await resolveOrg(authCtx);
       await deleteConnector(org.orgId, userId, params.type);
 
       return {

@@ -44,8 +44,7 @@ export async function GET(request: Request) {
   }
 
   const { userId } = authCtx;
-  const orgSlug = new URL(request.url).searchParams.get("org");
-  const { org, member } = await resolveOrg(authCtx, orgSlug);
+  const { org, member } = await resolveOrg(authCtx);
 
   // Find installation for this org, then find user's connection via workspace
   const [orgInstallation] = await globalThis.services.db
@@ -130,8 +129,7 @@ export async function POST(request: Request) {
   const { workspaceId, slackUserId, channelId, threadTs } = parseResult.data;
 
   // Resolve org and check membership
-  const orgSlug = new URL(request.url).searchParams.get("org");
-  const { org, member } = await resolveOrg(authCtx, orgSlug);
+  const { org, member } = await resolveOrg(authCtx);
 
   // Check installation exists
   const [installation] = await globalThis.services.db
@@ -196,7 +194,7 @@ export async function POST(request: Request) {
     // Check if user is a member of the workspace's org but has the wrong active org
     let isMemberOfTargetOrg = false;
     try {
-      await resolveOrg(authCtx, null, installation.orgId);
+      await resolveOrg(authCtx, installation.orgId);
       isMemberOfTargetOrg = true;
     } catch {
       // Not a member

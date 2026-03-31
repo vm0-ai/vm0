@@ -20,14 +20,13 @@ import { isNotFound } from "../../../../../../src/lib/errors";
 const log = logger("api:zero-model-providers");
 
 const router = tsr.router(zeroModelProvidersDefaultContract, {
-  setDefault: async ({ params, headers }, { request }) => {
+  setDefault: async ({ params, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org, member } = await resolveOrg(authCtx, orgSlug);
+    const { org, member } = await resolveOrg(authCtx);
 
     if (member.role !== "admin") {
       return createErrorResponse(

@@ -22,15 +22,14 @@ import {
 } from "../../../../../src/lib/errors";
 
 const router = tsr.router(zeroOrgMembersContract, {
-  members: async ({ headers }, { request }) => {
+  members: async ({ headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
 
     try {
-      const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org } = await resolveOrg(authCtx, orgSlug);
+      const { org } = await resolveOrg(authCtx);
       const status = await getOrgMembers(authCtx.userId, org.orgId, org.slug);
       return { status: 200 as const, body: status };
     } catch (error) {
@@ -47,15 +46,14 @@ const router = tsr.router(zeroOrgMembersContract, {
     }
   },
 
-  updateRole: async ({ headers, body }, { request }) => {
+  updateRole: async ({ headers, body }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
 
     try {
-      const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org, member } = await resolveOrg(authCtx, orgSlug);
+      const { org, member } = await resolveOrg(authCtx);
       await updateMemberRole(
         authCtx.userId,
         org.orgId,
@@ -81,15 +79,14 @@ const router = tsr.router(zeroOrgMembersContract, {
     }
   },
 
-  removeMember: async ({ headers, body }, { request }) => {
+  removeMember: async ({ headers, body }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
 
     try {
-      const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org, member } = await resolveOrg(authCtx, orgSlug);
+      const { org, member } = await resolveOrg(authCtx);
       await removeMember(authCtx.userId, org.orgId, member.role, body.email);
       return {
         status: 200 as const,

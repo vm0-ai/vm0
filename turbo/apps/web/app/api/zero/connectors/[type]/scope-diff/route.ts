@@ -14,7 +14,7 @@ import { resolveOrg } from "../../../../../../src/lib/org/resolve-org";
 import { getConnector } from "../../../../../../src/lib/connector/connector-service";
 
 const router = tsr.router(zeroConnectorScopeDiffContract, {
-  getScopeDiff: async ({ params, headers }, { request }) => {
+  getScopeDiff: async ({ params, headers }) => {
     initServices();
 
     const authCtx = await getAuthContext(headers.authorization);
@@ -23,8 +23,7 @@ const router = tsr.router(zeroConnectorScopeDiffContract, {
     }
     const { userId } = authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
     const connector = await getConnector(org.orgId, userId, params.type);
 
     if (!connector) {

@@ -14,7 +14,7 @@ import { getRunAgentEvents } from "../../../../../../../src/lib/run/run-telemetr
 import { isNotFound } from "../../../../../../../src/lib/errors";
 
 const router = tsr.router(zeroRunAgentEventsContract, {
-  getAgentEvents: async ({ params, query, headers }, { request }) => {
+  getAgentEvents: async ({ params, query, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -23,8 +23,7 @@ const router = tsr.router(zeroRunAgentEventsContract, {
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
 
     try {
       const result = await getRunAgentEvents(

@@ -27,7 +27,7 @@ interface TelemetryData {
 }
 
 const router = tsr.router(runTelemetryContract, {
-  getTelemetry: async ({ params, headers }, { request }) => {
+  getTelemetry: async ({ params, headers }) => {
     initServices();
 
     const authCtx = await getAuthContext(headers.authorization, {
@@ -43,8 +43,7 @@ const router = tsr.router(runTelemetryContract, {
     }
     const { userId } = authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
 
     // Verify run exists and belongs to user+org
     const [run] = await globalThis.services.db

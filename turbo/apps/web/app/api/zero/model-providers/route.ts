@@ -26,14 +26,13 @@ import { isBadRequest } from "../../../../src/lib/errors";
 const log = logger("api:zero-model-providers");
 
 const router = tsr.router(zeroModelProvidersMainContract, {
-  list: async ({ headers }, { request }) => {
+  list: async ({ headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
     const providers = await listOrgModelProviders(org.orgId);
 
     return {
@@ -55,14 +54,13 @@ const router = tsr.router(zeroModelProvidersMainContract, {
     };
   },
 
-  upsert: async ({ body, headers }, { request }) => {
+  upsert: async ({ body, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org, member } = await resolveOrg(authCtx, orgSlug);
+    const { org, member } = await resolveOrg(authCtx);
 
     if (member.role !== "admin") {
       return createErrorResponse(

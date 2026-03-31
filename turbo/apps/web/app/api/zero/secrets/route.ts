@@ -20,15 +20,14 @@ import { isBadRequest } from "../../../../src/lib/errors";
 const log = logger("api:zero-secrets");
 
 const router = tsr.router(zeroSecretsContract, {
-  list: async ({ headers }, { request }) => {
+  list: async ({ headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
     const secrets = await listSecrets(org.orgId, userId);
 
     return {
@@ -46,7 +45,7 @@ const router = tsr.router(zeroSecretsContract, {
     };
   },
 
-  set: async ({ body, headers }, { request }) => {
+  set: async ({ body, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
@@ -58,8 +57,7 @@ const router = tsr.router(zeroSecretsContract, {
     log.debug("setting secret", { userId, name });
 
     try {
-      const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org } = await resolveOrg(authCtx, orgSlug);
+      const { org } = await resolveOrg(authCtx);
       const secret = await setSecret(
         org.orgId,
         userId,

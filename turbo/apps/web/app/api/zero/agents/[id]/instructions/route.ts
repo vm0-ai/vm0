@@ -65,7 +65,7 @@ async function requireAdminForDefault(
 }
 
 const router = tsr.router(zeroAgentInstructionsContract, {
-  get: async ({ params, headers }, { request }) => {
+  get: async ({ params, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -73,8 +73,7 @@ const router = tsr.router(zeroAgentInstructionsContract, {
     });
     if (isAuthError(authCtx)) return authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
 
     // Look up compose by ID
     const [compose] = await globalThis.services.db
@@ -205,7 +204,7 @@ const router = tsr.router(zeroAgentInstructionsContract, {
     };
   },
 
-  update: async ({ params, body, headers }, { request }) => {
+  update: async ({ params, body, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -214,8 +213,7 @@ const router = tsr.router(zeroAgentInstructionsContract, {
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org, member } = await resolveOrg(authCtx, orgSlug);
+    const { org, member } = await resolveOrg(authCtx);
 
     // Look up existing compose by ID
     const [compose] = await globalThis.services.db
@@ -264,7 +262,6 @@ const router = tsr.router(zeroAgentInstructionsContract, {
     const result = await serverSideCompose({
       userId,
       orgId: org.orgId,
-      orgSlug: org.slug,
       content,
       instructions: body.content,
     });

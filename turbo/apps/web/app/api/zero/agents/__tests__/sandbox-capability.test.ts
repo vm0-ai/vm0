@@ -21,12 +21,10 @@ const context = testContext();
 
 describe("Sandbox capability enforcement on zero agent routes", () => {
   let user: UserContext;
-  let orgSlug: string;
 
   beforeEach(async () => {
     context.setupMocks();
     user = await context.setupUser();
-    orgSlug = `org-${user.userId.slice(-8)}`;
     await seedSeedSkills();
   });
 
@@ -42,7 +40,7 @@ describe("Sandbox capability enforcement on zero agent routes", () => {
       const token = await generateSandboxToken(user.userId, "run-123");
 
       const request = createTestRequest(
-        `http://localhost:3000/api/zero/agents?org=${orgSlug}`,
+        `http://localhost:3000/api/zero/agents`,
         {
           method: "POST",
           headers: {
@@ -64,7 +62,7 @@ describe("Sandbox capability enforcement on zero agent routes", () => {
       const token = await generateSandboxToken(user.userId, "run-123");
 
       const request = createTestRequest(
-        `http://localhost:3000/api/zero/agents/00000000-0000-0000-0000-000000000000?org=${orgSlug}`,
+        `http://localhost:3000/api/zero/agents/00000000-0000-0000-0000-000000000000`,
         {
           headers: { Authorization: `Bearer ${token}` },
         },
@@ -81,7 +79,7 @@ describe("Sandbox capability enforcement on zero agent routes", () => {
       const token = await generateSandboxToken(user.userId, "run-123");
 
       const request = createTestRequest(
-        `http://localhost:3000/api/zero/agents/00000000-0000-0000-0000-000000000000?org=${orgSlug}`,
+        `http://localhost:3000/api/zero/agents/00000000-0000-0000-0000-000000000000`,
         {
           method: "PUT",
           headers: {
@@ -103,7 +101,7 @@ describe("Sandbox capability enforcement on zero agent routes", () => {
       const token = await generateSandboxToken(user.userId, "run-123");
 
       const request = createTestRequest(
-        `http://localhost:3000/api/zero/agents/00000000-0000-0000-0000-000000000000/instructions?org=${orgSlug}`,
+        `http://localhost:3000/api/zero/agents/00000000-0000-0000-0000-000000000000/instructions`,
         {
           headers: { Authorization: `Bearer ${token}` },
         },
@@ -120,7 +118,7 @@ describe("Sandbox capability enforcement on zero agent routes", () => {
       const token = await generateSandboxToken(user.userId, "run-123");
 
       const request = createTestRequest(
-        `http://localhost:3000/api/zero/agents/00000000-0000-0000-0000-000000000000/instructions?org=${orgSlug}`,
+        `http://localhost:3000/api/zero/agents/00000000-0000-0000-0000-000000000000/instructions`,
         {
           method: "PUT",
           headers: {

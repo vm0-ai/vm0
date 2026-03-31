@@ -92,7 +92,7 @@ async function mergeWithBaseVersion(
 }
 
 const router = tsr.router(storagesPrepareContract, {
-  prepare: async ({ body, headers }, { request }) => {
+  prepare: async ({ body, headers }) => {
     initServices();
 
     const {
@@ -153,8 +153,7 @@ const router = tsr.router(storagesPrepareContract, {
       }
       runtimeOrg = await getOrgData(run.orgId);
     } else {
-      const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org } = await resolveOrg(authCtx, orgSlug);
+      const { org } = await resolveOrg(authCtx);
       runtimeOrg = org;
 
       // For CLI tokens, verify body.runId belongs to the user if provided

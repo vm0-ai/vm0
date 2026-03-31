@@ -12,12 +12,9 @@ import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 
 const context = testContext();
 
-function putDefaultAgent(orgSlug: string | undefined, agentId: string | null) {
-  const url = orgSlug
-    ? `http://localhost:3000/api/zero/default-agent?org=${orgSlug}`
-    : "http://localhost:3000/api/zero/default-agent";
+function putDefaultAgent(agentId: string | null) {
   return PUT(
-    createTestRequest(url, {
+    createTestRequest("http://localhost:3000/api/zero/default-agent", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ agentId }),
@@ -32,7 +29,7 @@ describe("PUT /api/zero/default-agent", () => {
 
   it("should require authentication", async () => {
     mockClerk({ userId: null });
-    const response = await putDefaultAgent(undefined, null);
+    const response = await putDefaultAgent(null);
     expect(response.status).toBe(401);
   });
 
@@ -40,7 +37,7 @@ describe("PUT /api/zero/default-agent", () => {
     await context.setupUser();
     const compose = await createTestCompose("test-agent");
 
-    const response = await putDefaultAgent(undefined, compose.composeId);
+    const response = await putDefaultAgent(compose.composeId);
     expect(response.status).toBe(200);
 
     const data = await response.json();
@@ -52,10 +49,10 @@ describe("PUT /api/zero/default-agent", () => {
     const compose = await createTestCompose("test-agent");
 
     // Set first
-    await putDefaultAgent(undefined, compose.composeId);
+    await putDefaultAgent(compose.composeId);
 
     // Attempt to unset — blocked by 409 guard
-    const response = await putDefaultAgent(undefined, null);
+    const response = await putDefaultAgent(null);
     expect(response.status).toBe(409);
 
     const data = await response.json();
@@ -71,7 +68,7 @@ describe("PUT /api/zero/default-agent", () => {
 
     // The member user resolves to their own org where they ARE admin,
     // but they don't have the compose. Test that agent-not-in-org returns 404.
-    const response = await putDefaultAgent(undefined, compose.composeId);
+    const response = await putDefaultAgent(compose.composeId);
     expect(response.status).toBe(404);
   });
 
@@ -80,7 +77,6 @@ describe("PUT /api/zero/default-agent", () => {
 
     // Use a random UUID that doesn't exist
     const response = await putDefaultAgent(
-      undefined,
       "00000000-0000-0000-0000-000000000000",
     );
     expect(response.status).toBe(404);
@@ -90,7 +86,7 @@ describe("PUT /api/zero/default-agent", () => {
     const { orgId } = await context.setupUser();
     const compose = await createTestCompose("test-agent");
 
-    await putDefaultAgent(undefined, compose.composeId);
+    await putDefaultAgent(compose.composeId);
 
     // Verify the value was persisted to the org table (stored as zero agent UUID)
     const storedId = await getOrgDefaultAgent(orgId);
@@ -101,10 +97,10 @@ describe("PUT /api/zero/default-agent", () => {
     const { orgId } = await context.setupUser();
     const compose = await createTestCompose("test-agent");
 
-    await putDefaultAgent(undefined, compose.composeId);
+    await putDefaultAgent(compose.composeId);
 
     // Attempt to unset — should be rejected with 409
-    const response = await putDefaultAgent(undefined, null);
+    const response = await putDefaultAgent(null);
     expect(response.status).toBe(409);
 
     // org table should still have the original value (stored as zero agent UUID)
@@ -117,11 +113,11 @@ describe("PUT /api/zero/default-agent", () => {
     const compose = await createTestCompose("test-agent");
 
     // Set default
-    const response1 = await putDefaultAgent(undefined, compose.composeId);
+    const response1 = await putDefaultAgent(compose.composeId);
     expect(response1.status).toBe(200);
 
     // Attempt to set again — blocked by 409 guard
-    const response2 = await putDefaultAgent(undefined, compose.composeId);
+    const response2 = await putDefaultAgent(compose.composeId);
     expect(response2.status).toBe(409);
 
     const data = await response2.json();
@@ -133,7 +129,7 @@ describe("PUT /api/zero/default-agent", () => {
     const compose1 = await createTestCompose("agent-1");
 
     // Set first default agent
-    const response1 = await putDefaultAgent(undefined, compose1.composeId);
+    const response1 = await putDefaultAgent(compose1.composeId);
     expect(response1.status).toBe(200);
 
     // Delete the compose from DB (simulating user deleting the agent)
@@ -141,7 +137,7 @@ describe("PUT /api/zero/default-agent", () => {
 
     // Setting a new default should succeed since the old one no longer exists
     const compose2 = await createTestCompose("agent-2");
-    const response2 = await putDefaultAgent(undefined, compose2.composeId);
+    const response2 = await putDefaultAgent(compose2.composeId);
     expect(response2.status).toBe(200);
 
     const data = await response2.json();
@@ -153,7 +149,7 @@ describe("PUT /api/zero/default-agent", () => {
     const compose = await createTestCompose("test-agent");
 
     // No default agent configured yet — should succeed
-    const response = await putDefaultAgent(undefined, compose.composeId);
+    const response = await putDefaultAgent(compose.composeId);
     expect(response.status).toBe(200);
 
     const data = await response.json();
@@ -168,7 +164,7 @@ describe("PUT /api/zero/default-agent", () => {
     await deleteOrgRow(orgId);
 
     // The upsert should create the org row and set the default agent
-    const response = await putDefaultAgent(undefined, compose.composeId);
+    const response = await putDefaultAgent(compose.composeId);
     expect(response.status).toBe(200);
 
     const data = await response.json();

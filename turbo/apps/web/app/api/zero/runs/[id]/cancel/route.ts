@@ -19,7 +19,7 @@ import { isNotFound, isBadRequest } from "../../../../../../src/lib/errors";
 import { after } from "next/server";
 
 const router = tsr.router(zeroRunsCancelContract, {
-  cancel: async ({ params, headers }, { request }) => {
+  cancel: async ({ params, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -28,8 +28,7 @@ const router = tsr.router(zeroRunsCancelContract, {
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
 
     try {
       const result = await cancelRun(params.id, userId, org.orgId);

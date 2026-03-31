@@ -19,13 +19,12 @@ import type {
 
 export async function getComposeByName(
   name: string,
-  org?: string,
 ): Promise<GetComposeResponse | null> {
   const config = await getClientConfig();
   const client = initClient(composesMainContract, config);
 
   const result = await client.getByName({
-    query: { name, org },
+    query: { name },
   });
 
   if (result.status === 200) {
@@ -49,7 +48,6 @@ const UUID_PATTERN =
  */
 export async function resolveCompose(
   identifier: string,
-  org?: string,
 ): Promise<GetComposeResponse | null> {
   if (UUID_PATTERN.test(identifier)) {
     try {
@@ -61,7 +59,7 @@ export async function resolveCompose(
       throw error;
     }
   }
-  return getComposeByName(identifier, org);
+  return getComposeByName(identifier);
 }
 
 export async function getComposeById(id: string): Promise<GetComposeResponse> {

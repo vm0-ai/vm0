@@ -229,7 +229,7 @@ export async function createTestCliToken(
   // Generate CLI JWT containing userId, orgId, and tokenId for revocation checks
   const token = await generateCliToken(
     userId,
-    orgId ?? "org_test_default",
+    orgId ?? `org_mock_${userId}`,
     tokenId,
   );
 

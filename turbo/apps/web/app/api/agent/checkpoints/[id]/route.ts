@@ -27,7 +27,7 @@ interface VolumeVersionsSnapshot {
 }
 
 const router = tsr.router(checkpointsByIdContract, {
-  getById: async ({ params, headers }, { request }) => {
+  getById: async ({ params, headers }) => {
     initServices();
 
     const authCtx = await getAuthContext(headers.authorization);
@@ -41,8 +41,7 @@ const router = tsr.router(checkpointsByIdContract, {
     }
     const { userId } = authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
 
     const [checkpoint] = await globalThis.services.db
       .select()

@@ -6,12 +6,11 @@ import {
 import { sessionsByIdContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
-import { resolveCallerOrgId } from "../../../../../src/lib/org/resolve-org";
 import { getSessionResponse } from "../../../../../src/lib/agent-session/agent-session-service";
 import { isNotFound, isForbidden } from "../../../../../src/lib/errors";
 
 const router = tsr.router(sessionsByIdContract, {
-  getById: async ({ params, headers }, { request }) => {
+  getById: async ({ params, headers }) => {
     initServices();
 
     const authCtx = await getAuthContext(headers.authorization);
@@ -25,7 +24,7 @@ const router = tsr.router(sessionsByIdContract, {
     }
     const { userId } = authCtx;
 
-    const callerOrgId = await resolveCallerOrgId(authCtx, request);
+    const callerOrgId = authCtx.orgId ?? null;
     if (!callerOrgId) {
       return {
         status: 404 as const,

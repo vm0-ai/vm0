@@ -14,7 +14,7 @@ import { listComposes } from "../../../../../src/lib/agent-compose/compose-servi
 import { isNotFound, isForbidden } from "../../../../../src/lib/errors";
 
 const router = tsr.router(zeroComposesListContract, {
-  list: async ({ query, headers }) => {
+  list: async ({ headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
@@ -22,7 +22,7 @@ const router = tsr.router(zeroComposesListContract, {
 
     let orgId: string;
     try {
-      const { org } = await resolveOrg(authCtx, query.org);
+      const { org } = await resolveOrg(authCtx);
       orgId = org.orgId;
     } catch (error) {
       if (isNotFound(error)) {

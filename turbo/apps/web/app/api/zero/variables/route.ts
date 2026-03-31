@@ -20,15 +20,14 @@ import { isBadRequest } from "../../../../src/lib/errors";
 const log = logger("api:zero-variables");
 
 const router = tsr.router(zeroVariablesContract, {
-  list: async ({ headers }, { request }) => {
+  list: async ({ headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
     const vars = await listVariables(org.orgId, userId);
 
     return {
@@ -46,7 +45,7 @@ const router = tsr.router(zeroVariablesContract, {
     };
   },
 
-  set: async ({ body, headers }, { request }) => {
+  set: async ({ body, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
@@ -58,8 +57,7 @@ const router = tsr.router(zeroVariablesContract, {
     log.debug("setting variable", { userId, name });
 
     try {
-      const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org } = await resolveOrg(authCtx, orgSlug);
+      const { org } = await resolveOrg(authCtx);
       const variable = await setVariable(
         org.orgId,
         userId,

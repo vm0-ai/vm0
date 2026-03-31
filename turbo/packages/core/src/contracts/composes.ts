@@ -223,7 +223,6 @@ export const composesMainContract = c.router({
     headers: authHeadersSchema,
     query: z.object({
       name: z.string().min(1, "Missing name query parameter"),
-      org: z.string().optional(),
     }),
     responses: {
       200: composeResponseSchema,
@@ -357,15 +356,13 @@ export const composesListContract = c.router({
   /**
    * GET /api/agent/composes/list?org={org}
    * List all agent composes for an org
-   * If org is not provided, uses the authenticated user's default org
+   * Uses the authenticated user's active org.
    */
   list: {
     method: "GET",
     path: "/api/agent/composes/list",
     headers: authHeadersSchema,
-    query: z.object({
-      org: z.string().optional(),
-    }),
+    query: z.object({}),
     responses: {
       200: z.object({
         composes: z.array(composeListItemSchema),

@@ -47,7 +47,7 @@ interface AxiomNetworkEvent {
 }
 
 const router = tsr.router(runNetworkLogsContract, {
-  getNetworkLogs: async ({ params, query, headers }, { request }) => {
+  getNetworkLogs: async ({ params, query, headers }) => {
     initServices();
 
     const authCtx = await getAuthContext(headers.authorization, {
@@ -63,8 +63,7 @@ const router = tsr.router(runNetworkLogsContract, {
     }
     const { userId } = authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
 
     // Verify run exists and belongs to user+org
     const [run] = await globalThis.services.db
