@@ -755,7 +755,7 @@ def response(flow: http.HTTPFlow) -> None:
         parsed_url = urllib.parse.urlparse(original_url)
         host = parsed_url.hostname or flow.request.pretty_host
         port = parsed_url.port or (443 if parsed_url.scheme == "https" else 80)
-    except Exception:
+    except ValueError:
         host = flow.request.pretty_host
         port = flow.request.port
 
@@ -828,7 +828,7 @@ def error(flow: http.HTTPFlow) -> None:
         parsed_url = urllib.parse.urlparse(original_url)
         host = parsed_url.hostname or flow.request.pretty_host
         port = parsed_url.port or (443 if parsed_url.scheme == "https" else 80)
-    except Exception:
+    except ValueError:
         host = flow.request.pretty_host
         port = flow.request.port
 
