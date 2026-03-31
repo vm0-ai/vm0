@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor, act } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import { delay } from "signal-timers";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import {
@@ -126,9 +127,12 @@ describe("chat sending state", () => {
     );
 
     // Type a new message and press Enter while still sending
-    act(() => {
-      sendMessageInUI(activeTextarea, "Second message");
-    });
+    sendMessageInUI(activeTextarea, "Second message");
+
+    // Give any potential second request time to fire.
+    // NOTE: intentionally not wrapped in act() — background polling loops with
+    // 0ms interval cause act() to hang indefinitely waiting for them to settle.
+    await delay(100);
 
     // The sending state is still active (Stop button visible), so the run
     // creation endpoint should have been called only once — no artificial
