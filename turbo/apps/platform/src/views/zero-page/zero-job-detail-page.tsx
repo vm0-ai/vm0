@@ -106,9 +106,17 @@ interface ZeroJobDetailPageProps {
   agentId: string;
 }
 
-function Breadcrumb({ currentName }: { currentName?: string }) {
+function Breadcrumb({
+  currentName,
+  className,
+}: {
+  currentName?: string;
+  className?: string;
+}) {
   return (
-    <nav className="shrink-0 flex items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
+    <nav
+      className={`shrink-0 flex items-center gap-1 px-4 pt-4 text-sm text-muted-foreground${className ? ` ${className}` : ""}`}
+    >
       <Link
         pathname="/team"
         className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors no-underline text-inherit"
@@ -762,7 +770,7 @@ export function ZeroJobDetailPage({ agentId }: ZeroJobDetailPageProps) {
 
   return (
     <div className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]">
-      <Breadcrumb currentName={displayName} />
+      <Breadcrumb currentName={displayName} className="hidden sm:flex" />
       <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-6 pb-3">
         <div className="mx-auto max-w-[900px]">
           <div className="flex items-center gap-4">

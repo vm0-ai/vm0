@@ -885,7 +885,7 @@ function ScheduleDetailView({
         }}
         className="flex flex-1 flex-col min-h-0"
       >
-        <nav className="shrink-0 flex items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
+        <nav className="hidden sm:flex shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
           <ScheduleBreadcrumbLink />
           <span className="text-muted-foreground/40 select-none">/</span>
           <span className="rounded-md px-1.5 py-0.5 text-foreground font-medium truncate min-w-0">
