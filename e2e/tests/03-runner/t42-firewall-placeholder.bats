@@ -167,7 +167,5 @@ EOF
         return 1
     }
 
-    run $VM0_CLI logs "$RUN_ID" --network --all
-    assert_success
-    assert_output --partial "GITHUB_TOKEN"
+    wait_for_log "$RUN_ID" --network -- "GITHUB_TOKEN"
 }

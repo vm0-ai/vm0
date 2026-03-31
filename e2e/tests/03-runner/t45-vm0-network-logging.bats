@@ -62,12 +62,8 @@ EOF
         return 1
     }
 
-    run $VM0_CLI logs "$RUN_ID" --network --tail 100
-    assert_success
     # TCP connections show as IP:port (DNS resolved before TCP layer)
-    assert_output --partial "TCP"
-    assert_output --partial ":22"
-    assert_output --partial ":443"
+    wait_for_log "$RUN_ID" --network -- "TCP" ":22" ":443"
 }
 
 @test "t45-1: udp dns queries appear in network logs" {
@@ -90,14 +86,8 @@ EOF
         return 1
     }
 
-    # Verify network logs contain the HTTP request (proves log pipeline works).
-    run $VM0_CLI logs "$RUN_ID" --network --all
-    assert_success
-    assert_output --partial "example.com"
-
-    # Verify network logs also contain UDP entries from DNS queries.
+    # Verify network logs contain HTTP and UDP entries.
     # formatNetworkOther renders: [timestamp] UDP   <size> <host>:<port>
     # DNS uses port 53, so match both the protocol and port.
-    assert_output --partial "UDP"
-    assert_output --partial ":53"
+    wait_for_log "$RUN_ID" --network -- "example.com" "UDP" ":53"
 }

@@ -105,52 +105,26 @@ teardown() {
 
     # Step 4: Verify vm0 logs command (default: agent events)
     echo "# Step 4: Fetching agent events (default)..."
-    run $VM0_CLI logs "$RUN_ID"
-
-    assert_success
-
-    # Default output shows agent events - verify event type markers are present
     # Mock-claude produces: Claude Code Started, text, tool calls, Completed
-    assert_output --partial "▷ Claude Code Started"
-    assert_output --partial "◆ Claude Code Completed"
+    wait_for_log "$RUN_ID" -- "▷ Claude Code Started" "◆ Claude Code Completed"
     echo "# Agent events contain expected event types"
 
     # Step 5: Verify --agent option explicitly shows agent events
     echo "# Step 5: Testing --agent option..."
-    run $VM0_CLI logs "$RUN_ID" --agent
-
-    assert_success
-    assert_output --partial "▷ Claude Code Started"
+    wait_for_log "$RUN_ID" --agent -- "▷ Claude Code Started"
     echo "# --agent option works correctly"
 
     # Step 6: Verify --system option shows system logs
     echo "# Step 6: Testing --system option..."
-    run $VM0_CLI logs "$RUN_ID" --system --tail 100
-
-    assert_success
     # System log should contain sandbox log entries with INFO level
     # Format: [TIMESTAMP] [INFO] [sandbox:run-agent] message
-    assert_output --partial "[INFO]"
-    assert_output --partial "[sandbox:"
+    wait_for_log "$RUN_ID" --system -- "[INFO]" "[sandbox:"
     echo "# System log contains expected log format"
 
     # Step 7: Verify --metrics option shows resource metrics
     echo "# Step 7: Testing --metrics option..."
-    run $VM0_CLI logs "$RUN_ID" --metrics --tail 100
-
-    assert_success
-    # Metrics may take time to collect, so check if either:
-    # 1. Metrics are available (contains CPU/Mem/Disk)
-    # 2. Or "No metrics found" message is shown (acceptable for quick runs)
-    if echo "$output" | grep -q "No metrics found"; then
-        echo "# Metrics not yet available (acceptable for quick runs)"
-    else
-        # If metrics are available, verify format
-        assert_output --partial "CPU:"
-        assert_output --partial "Mem:"
-        assert_output --partial "Disk:"
-        echo "# Metrics contain expected resource data"
-    fi
+    wait_for_log "$RUN_ID" --metrics -- "CPU:" "Mem:" "Disk:"
+    echo "# Metrics contain expected resource data"
 
     # Step 8: Verify --tail option limits output
     echo "# Step 8: Testing --tail option..."

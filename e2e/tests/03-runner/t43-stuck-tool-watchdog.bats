@@ -61,8 +61,5 @@ EOF
     }
 
     echo "# Step 4: Verify system logs contain tool timeout error..."
-    run $VM0_CLI logs "$RUN_ID" --system
-    assert_success
-    assert_output --partial "Tool timeout"
-    assert_output --partial "WebFetch"
+    wait_for_log "$RUN_ID" --system -- "Tool timeout" "WebFetch"
 }

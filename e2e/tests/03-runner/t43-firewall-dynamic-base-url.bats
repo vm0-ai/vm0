@@ -124,8 +124,6 @@ EOF
         return 1
     }
 
-    run $VM0_CLI logs "$RUN_ID" --network --tail 100
-    assert_success
     # ALLOW: proxy matched zendesk firewall and forwarded
-    assert_output --partial "[zendesk]"
+    wait_for_log "$RUN_ID" --network -- "[zendesk]"
 }

@@ -40,6 +40,59 @@ VOLEOF
     cd - >/dev/null
 }
 
+# Retry `vm0 logs --all` until output contains ALL expected strings or timeout.
+# Sets $output and $status for subsequent assert_* calls.
+# Automatically appends --all to fetch complete logs on each attempt.
+# Usage: wait_for_log [vm0 logs args...] -- <expected1> [expected2...]
+# Example: wait_for_log "$RUN_ID" --system -- "Tool timeout" "WebFetch"
+# Example: wait_for_log "$RUN_ID" --network -- "TCP" ":22" ":443"
+wait_for_log() {
+    local -a _wfl_args=()
+    local -a _wfl_expected=()
+    local _wfl_sep_found=false
+    for arg in "$@"; do
+        if [[ "$arg" == "--" ]]; then
+            _wfl_sep_found=true
+        elif $_wfl_sep_found; then
+            _wfl_expected+=("$arg")
+        else
+            _wfl_args+=("$arg")
+        fi
+    done
+    if [[ ${#_wfl_expected[@]} -eq 0 ]]; then
+        echo "# wait_for_log: no expected strings after --"
+        return 1
+    fi
+    local _wfl_timeout=30
+    local _wfl_elapsed=0
+    while (( _wfl_elapsed < _wfl_timeout )); do
+        # Append --all for non-search commands to fetch complete logs
+        if [[ "${_wfl_args[0]:-}" == "search" ]]; then
+            output="$($VM0_CLI logs "${_wfl_args[@]}" 2>&1)"
+        else
+            output="$($VM0_CLI logs "${_wfl_args[@]}" --all 2>&1)"
+        fi
+        status=$?
+        if [[ "$status" -eq 0 ]]; then
+            local _wfl_all=true
+            for _wfl_e in "${_wfl_expected[@]}"; do
+                if [[ "$output" != *"$_wfl_e"* ]]; then
+                    _wfl_all=false
+                    break
+                fi
+            done
+            if $_wfl_all; then
+                return 0
+            fi
+        fi
+        sleep 2
+        (( _wfl_elapsed += 2 ))
+    done
+    echo "# Timed out (${_wfl_timeout}s) waiting for log containing: ${_wfl_expected[*]}"
+    echo "# Last output: $output"
+    return 1
+}
+
 # Cleanup test volume directory
 cleanup_test_volume() {
     if [ -n "$TEST_VOLUME_DIR" ] && [ -d "$TEST_VOLUME_DIR" ]; then

@@ -107,9 +107,7 @@ teardown() {
     # Step 4: Search for keyword scoped to this run
     echo "# Step 4: Searching for 'hello from agent' in run events..."
     SHORT_ID="${RUN_ID:0:8}"
-    run $VM0_CLI logs search "hello from agent" --run "$RUN_ID" --since 1h
-    assert_success
-    assert_output --partial "$SHORT_ID"
+    wait_for_log search "hello from agent" --run "$RUN_ID" --since 1h -- "$SHORT_ID"
 
     # Step 5: Search for non-matching keyword shows empty guidance
     echo "# Step 5: Testing empty results guidance..."
