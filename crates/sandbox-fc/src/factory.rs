@@ -395,8 +395,8 @@ impl SandboxFactory for FirecrackerFactory {
                     if attempt + 1 < DESTROY_RETRIES {
                         tokio::time::sleep(DESTROY_RETRY_DELAY).await;
                     } else {
-                        // Last resort: abandon the device. The kernel will
-                        // timeout and release the NBD device.
+                        // Last resort: abandon the device. It persists in
+                        // the kernel until `runner gc` cleans it up.
                         warn!(id = %sandbox_id, error = %e, "destroy failed after retries — abandoning");
                         sandbox.cow_device.abandon();
                     }

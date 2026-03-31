@@ -69,6 +69,8 @@ enum Warning {
     StaleMitmproxy { pid: u32, port: u16 },
     /// A network namespace whose pool lock is not held by any process.
     OrphanNamespace { ns_name: String, pool_idx: u32 },
+    /// An NBD device whose owning process has exited without disconnecting.
+    OrphanNbdDevice { device_index: u32, pid: u32 },
 }
 
 impl fmt::Display for Warning {
@@ -106,6 +108,12 @@ impl fmt::Display for Warning {
             }
             Self::OrphanNamespace { ns_name, .. } => {
                 write!(f, "orphan namespace {ns_name} (pool lock not held)")
+            }
+            Self::OrphanNbdDevice { device_index, pid } => {
+                write!(
+                    f,
+                    "orphan NBD device /dev/nbd{device_index} (owner PID {pid} no longer exists)"
+                )
             }
         }
     }
@@ -182,6 +190,32 @@ impl Warning {
             Self::OrphanNamespace { pool_idx, .. } => {
                 let lock_path = format!("/var/lock/vm0-netns-pool-{pool_idx}.lock");
                 is_lock_free(&lock_path).await
+            }
+            Self::OrphanNbdDevice { device_index, pid } => {
+                // Re-read sysfs to check if the device is still connected with a dead owner.
+                let idx = *device_index;
+                let original_pid = *pid;
+                tokio::task::spawn_blocking(move || {
+                    let path = format!("/sys/block/nbd{idx}/pid");
+                    match std::fs::read_to_string(&path) {
+                        Ok(content) => {
+                            let trimmed = content.trim();
+                            if trimmed.is_empty() || trimmed == "-1" || trimmed == "0" {
+                                return false; // device freed
+                            }
+                            match trimmed.parse::<u32>() {
+                                Ok(current_pid) => {
+                                    // Still orphaned if same dead PID, or new dead PID
+                                    current_pid == original_pid && !pid_exists(current_pid)
+                                }
+                                Err(_) => false,
+                            }
+                        }
+                        Err(_) => false, // pid file gone → device freed
+                    }
+                })
+                .await
+                .unwrap_or(false)
             }
         }
     }
@@ -712,6 +746,9 @@ async fn detect_global_orphans(
     // Orphan network namespaces
     warnings.extend(detect_orphan_namespaces().await);
 
+    // Orphan NBD devices
+    warnings.extend(detect_nbd_orphans().await);
+
     warnings
 }
 
@@ -775,6 +812,44 @@ async fn detect_orphan_namespaces() -> Vec<Warning> {
     }
 
     warnings
+}
+
+/// Default upper bound for NBD device indices when `/sys/module/nbd/parameters/nbds_max`
+/// is unreadable (e.g. module not loaded).
+const NBD_DEFAULT_MAX: u32 = 256;
+
+/// Scan for NBD devices whose owning process has exited without disconnecting.
+async fn detect_nbd_orphans() -> Vec<Warning> {
+    let orphans = tokio::task::spawn_blocking(|| {
+        let max_devs = std::fs::read_to_string("/sys/module/nbd/parameters/nbds_max")
+            .ok()
+            .and_then(|s| s.trim().parse::<u32>().ok())
+            .unwrap_or(NBD_DEFAULT_MAX);
+
+        let mut found: Vec<(u32, u32)> = Vec::new();
+        for i in 0..max_devs {
+            let pid_path = format!("/sys/block/nbd{i}/pid");
+            if let Ok(content) = std::fs::read_to_string(&pid_path) {
+                let trimmed = content.trim();
+                if trimmed.is_empty() || trimmed == "-1" || trimmed == "0" {
+                    continue;
+                }
+                if let Ok(pid) = trimmed.parse::<u32>()
+                    && !Path::new(&format!("/proc/{pid}")).exists()
+                {
+                    found.push((i, pid));
+                }
+            }
+        }
+        found
+    })
+    .await
+    .unwrap_or_default();
+
+    orphans
+        .into_iter()
+        .map(|(device_index, pid)| Warning::OrphanNbdDevice { device_index, pid })
+        .collect()
 }
 
 /// Parse pool index from namespace name: `vm0-ns-{XX}-{XX}` → pool_idx as u32.
@@ -1185,6 +1260,15 @@ mod tests {
         assert_eq!(
             w.to_string(),
             "stale mitmproxy PID 555 on port 32821 (runner stopped)"
+        );
+
+        let w = Warning::OrphanNbdDevice {
+            device_index: 3,
+            pid: 12345,
+        };
+        assert_eq!(
+            w.to_string(),
+            "orphan NBD device /dev/nbd3 (owner PID 12345 no longer exists)"
         );
     }
 

@@ -1703,6 +1703,7 @@ dependencies = [
  "guest-init",
  "guest-mock-claude",
  "hex",
+ "nbd-cow",
  "nix",
  "reqeast",
  "sandbox",

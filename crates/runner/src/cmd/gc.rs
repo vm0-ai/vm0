@@ -11,6 +11,10 @@ use crate::error::{RunnerError, RunnerResult};
 use crate::lock;
 use crate::paths::{HomePaths, LogPaths};
 
+/// Default upper bound for NBD device indices when `/sys/module/nbd/parameters/nbds_max`
+/// is unreadable (e.g. module not loaded).
+const NBD_DEFAULT_MAX: u32 = 256;
+
 /// Artifacts younger than this are unconditionally kept, regardless of lock
 /// status or `--keep-latest`. This prevents races between `runner build`
 /// releasing its lock and `runner start` acquiring a shared lock.
@@ -54,8 +58,15 @@ pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
     let (job_logs_removed, job_logs_freed) = gc_job_logs(&home, args.dry_run).await?;
     let versions_removed = gc_versions(&home, args.dry_run).await?;
 
+    let nbd_orphans = gc_nbd_orphans(args.dry_run).await?;
+
     let total = rootfs_freed + snapshot_freed + job_logs_freed;
-    if total == 0 && locks_removed == 0 && job_logs_removed == 0 && versions_removed.is_empty() {
+    if total == 0
+        && locks_removed == 0
+        && job_logs_removed == 0
+        && versions_removed.is_empty()
+        && nbd_orphans == 0
+    {
         info!("nothing to clean up");
     } else {
         let verb = if args.dry_run {
@@ -458,6 +469,79 @@ async fn gc_versions(home: &HomePaths, dry_run: bool) -> RunnerResult<Vec<String
     }
 
     Ok(removed)
+}
+
+/// Read the maximum number of NBD devices from the kernel module parameter.
+fn read_nbds_max() -> u32 {
+    std::fs::read_to_string("/sys/module/nbd/parameters/nbds_max")
+        .ok()
+        .and_then(|s| s.trim().parse::<u32>().ok())
+        .unwrap_or(NBD_DEFAULT_MAX)
+}
+
+/// Parse the PID from `/sys/block/nbd{i}/pid`. Returns `None` if the file
+/// doesn't exist, is empty, or contains a non-positive value (-1, 0).
+fn read_nbd_pid(device_index: u32) -> Option<u32> {
+    let content = std::fs::read_to_string(format!("/sys/block/nbd{device_index}/pid")).ok()?;
+    let trimmed = content.trim();
+    if trimmed.is_empty() || trimmed == "-1" || trimmed == "0" {
+        return None;
+    }
+    trimmed.parse::<u32>().ok()
+}
+
+/// Scan for NBD devices whose owning process has exited (orphans) and
+/// optionally disconnect them. Returns the number of orphans found.
+async fn gc_nbd_orphans(dry_run: bool) -> RunnerResult<u32> {
+    let (max_devs, orphans) = tokio::task::spawn_blocking(|| {
+        let max_devs = read_nbds_max();
+        let mut orphans: Vec<(u32, u32)> = Vec::new();
+
+        for i in 0..max_devs {
+            if let Some(pid) = read_nbd_pid(i)
+                && !Path::new(&format!("/proc/{pid}")).exists()
+            {
+                orphans.push((i, pid));
+            }
+        }
+        (max_devs, orphans)
+    })
+    .await
+    .map_err(|e| RunnerError::Internal(format!("nbd orphan scan task failed: {e}")))?;
+
+    let count = orphans.len() as u32;
+    if orphans.is_empty() {
+        tracing::debug!("nbd: scanned {max_devs} devices, no orphans");
+        return Ok(0);
+    }
+
+    for (device_index, pid) in orphans {
+        if dry_run {
+            info!(
+                "[dry-run] would disconnect orphan NBD device /dev/nbd{device_index} (owner PID {pid} dead)"
+            );
+        } else {
+            let result =
+                tokio::task::spawn_blocking(move || nbd_cow::netlink::disconnect(device_index))
+                    .await
+                    .map_err(|e| {
+                        RunnerError::Internal(format!("nbd disconnect task failed: {e}"))
+                    })?;
+
+            match result {
+                Ok(()) => {
+                    info!(
+                        "disconnected orphan NBD device /dev/nbd{device_index} (owner PID {pid} dead)"
+                    );
+                }
+                Err(e) => {
+                    info!("failed to disconnect orphan NBD device /dev/nbd{device_index}: {e}");
+                }
+            }
+        }
+    }
+
+    Ok(count)
 }
 
 fn human_bytes(bytes: u64) -> String {
@@ -1039,5 +1123,26 @@ mod tests {
 
         assert!(!old_dir.exists(), "old artifact should be deleted");
         assert!(freed > 0 || cfg!(target_os = "macos"));
+    }
+
+    #[tokio::test]
+    async fn gc_nbd_orphans_no_devices() {
+        // On CI / dev machines without NBD module, this should return 0 without panicking.
+        let count = gc_nbd_orphans(true).await.unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn read_nbd_pid_nonexistent_device() {
+        // A device index that almost certainly doesn't exist.
+        assert!(read_nbd_pid(9999).is_none());
+    }
+
+    #[test]
+    fn read_nbds_max_returns_default_without_module() {
+        // When the NBD module is not loaded, the function should return the default.
+        // On CI this is expected; on a host with NBD it returns the actual value.
+        let max = read_nbds_max();
+        assert!(max > 0);
     }
 }

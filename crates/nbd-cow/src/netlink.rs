@@ -3,6 +3,11 @@
 //! This module handles creating and destroying `/dev/nbdN` devices using the
 //! kernel's NBD generic netlink interface. This is the modern approach (vs ioctl)
 //! and supports multi-connection.
+//!
+//! A `NBD_ATTR_DEAD_CONN_TIMEOUT` of 30 seconds is set on every connect so
+//! I/O on dead devices fails after 30s instead of hanging forever. Note: this
+//! does NOT auto-disconnect the device — explicit `disconnect()` is still
+//! required (handled by `Drop` normally, or by `runner gc` after SIGKILL).
 
 use std::os::unix::io::{FromRawFd, OwnedFd};
 use std::path::Path;
@@ -19,6 +24,7 @@ const NBD_ATTR_SIZE_BYTES: u16 = 2;
 const NBD_ATTR_BLOCK_SIZE_BYTES: u16 = 3;
 const NBD_ATTR_SERVER_FLAGS: u16 = 5;
 const NBD_ATTR_SOCKETS: u16 = 7;
+const NBD_ATTR_DEAD_CONN_TIMEOUT: u16 = 8;
 
 // NBD socket item attribute types (nested inside NBD_ATTR_SOCKETS)
 const NBD_SOCK_ITEM: u16 = 1;
@@ -116,6 +122,13 @@ pub fn find_and_connect(client_fds: &[OwnedFd], size: u64, block_size: u64) -> R
             &block_size.to_ne_bytes(),
         ));
         attrs.extend_from_slice(&build_nla(NBD_ATTR_SERVER_FLAGS, &flags.to_ne_bytes()));
+        // Fail I/O after 30s on dead sockets (SIGKILL where Drop can't run).
+        // Does NOT auto-disconnect — `runner gc` handles orphan cleanup.
+        let dead_conn_timeout: u64 = 30;
+        attrs.extend_from_slice(&build_nla(
+            NBD_ATTR_DEAD_CONN_TIMEOUT,
+            &dead_conn_timeout.to_ne_bytes(),
+        ));
         attrs.extend_from_slice(&sockets_nla);
 
         send_genl_msg(&sock, family_id, NBD_CMD_CONNECT, &attrs)?;

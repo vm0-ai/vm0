@@ -266,8 +266,8 @@ async fn run_snapshot_workflow(
             }
         }
         if last_err.is_some() {
-            // Last resort: abandon the device. The kernel will timeout and
-            // release the NBD device. abandon() does NOT delete the COW file.
+            // Last resort: abandon the device. It persists in the kernel
+            // until `runner gc` cleans it up. Does NOT delete the COW file.
             cow_device.abandon();
         }
         tokio::fs::rename(&cow_file, &output.cow()).await?;

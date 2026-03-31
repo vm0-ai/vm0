@@ -181,11 +181,11 @@ impl NbdCowDevice {
     ///
     /// Use as a last resort when netlink disconnect fails. Cancels tasks
     /// and marks the device as disconnected so Drop becomes a no-op.
-    /// The kernel will eventually timeout and release the device.
+    /// The device persists in the kernel until `runner gc` cleans it up.
     pub fn abandon(&mut self) {
         tracing::warn!(
             device_index = self.device_index,
-            "NBD device abandoned — relying on kernel timeout for cleanup"
+            "NBD device abandoned — requires `runner gc` for cleanup"
         );
         self.shutdown.cancel();
         for handle in self.server_handles.drain(..) {
