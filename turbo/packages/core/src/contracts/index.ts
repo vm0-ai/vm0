@@ -381,6 +381,7 @@ export {
   type ConnectorConfig,
   type ConnectorSecretConfig,
   type ConnectorAuthMethodConfig,
+  type ConnectorAuthMethodType,
   type ConnectorOAuthConfig,
   computerConnectorCreateResponseSchema,
   type ComputerConnectorCreateResponse,
