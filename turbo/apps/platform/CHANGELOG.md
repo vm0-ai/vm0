@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.170.0](https://github.com/vm0-ai/vm0/compare/app-v0.169.0...app-v0.170.0) (2026-03-31)
+
+
+### Features
+
+* add chat button on agent profile page ([#7376](https://github.com/vm0-ai/vm0/issues/7376)) ([4ad0862](https://github.com/vm0-ai/vm0/commit/4ad0862e86a0b36ed550018640d64e78b727b005))
+* **platform:** add account dropdown to onboarding page ([#7383](https://github.com/vm0-ai/vm0/issues/7383)) ([6dc8237](https://github.com/vm0-ai/vm0/commit/6dc8237f54ae9a0df638a49d02f3c67c426b2309))
+
+
+### Bug Fixes
+
+* set instruction card background to bg-card instead of bg-transparent ([#7378](https://github.com/vm0-ai/vm0/issues/7378)) ([e2a2a3f](https://github.com/vm0-ai/vm0/commit/e2a2a3fe819a6acab8a0170acabfd4d6071a8d4c))
+
+
+### Refactoring
+
+* move chat title generation from webhook completion to message creation ([#7357](https://github.com/vm0-ai/vm0/issues/7357)) ([915b066](https://github.com/vm0-ai/vm0/commit/915b0662ebaa2fb22362799f5fb68b2fdf876ac8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.130.2
+
 ## [0.169.0](https://github.com/vm0-ai/vm0/compare/app-v0.168.0...app-v0.169.0) (2026-03-31)
 
 

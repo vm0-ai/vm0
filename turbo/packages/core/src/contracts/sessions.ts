@@ -129,40 +129,6 @@ export const sessionsByIdContract = c.router({
 });
 
 /**
- * Session messages route contract (/api/agent/sessions/[id]/messages)
- */
-export const sessionMessagesContract = c.router({
-  /**
-   * POST /api/agent/sessions/:id/messages
-   * Append chat messages to a session
-   */
-  append: {
-    method: "POST",
-    path: "/api/agent/sessions/:id/messages",
-    headers: authHeadersSchema,
-    pathParams: z.object({
-      id: z.string().min(1, "Session ID is required"),
-    }),
-    body: z.object({
-      messages: z.array(
-        z.object({
-          role: z.enum(["user", "assistant"]),
-          content: z.string(),
-          runId: z.string().optional(),
-        }),
-      ),
-    }),
-    responses: {
-      200: z.object({ success: z.literal(true) }),
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Append chat messages to a session",
-  },
-});
-
-/**
  * Checkpoints by ID route contract (/api/agent/checkpoints/[id])
  */
 export const checkpointsByIdContract = c.router({
@@ -189,7 +155,6 @@ export const checkpointsByIdContract = c.router({
 
 export type SessionsContract = typeof sessionsContract;
 export type SessionsByIdContract = typeof sessionsByIdContract;
-export type SessionMessagesContract = typeof sessionMessagesContract;
 export type CheckpointsByIdContract = typeof checkpointsByIdContract;
 
 // Export schemas for reuse

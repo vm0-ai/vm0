@@ -78,6 +78,25 @@ function formatNetworkDeny(entry: NetworkLogEntry): string {
 }
 
 /**
+ * Format token replacement info (resolved secrets, refresh/cache status)
+ */
+function formatTokenInfo(entry: NetworkLogEntry): string {
+  if (
+    !entry.token_resolved_secrets ||
+    entry.token_resolved_secrets.length === 0
+  ) {
+    return "";
+  }
+  const refreshedSet = new Set(entry.token_refreshed_secrets ?? []);
+  const parts = entry.token_resolved_secrets.map((name) => {
+    if (refreshedSet.has(name)) return `${name} (refreshed)`;
+    if (entry.token_cache_hit) return `${name} (cached)`;
+    return name;
+  });
+  return ` ${chalk.yellow(`\u2194 ${parts.join(", ")}`)}`;
+}
+
+/**
  * Format an ALLOW or ERROR network request with full HTTP details
  */
 function formatNetworkRequest(entry: NetworkLogEntry): string {
@@ -114,7 +133,7 @@ function formatNetworkRequest(entry: NetworkLogEntry): string {
     ? ` ${chalk.red(entry.firewall_error)}`
     : "";
 
-  return `[${entry.timestamp}] ${method.padEnd(6)} ${statusColor(status)} ${latencyColor(latencyMs + "ms")} ${formatBytes(requestSize)}/${formatBytes(responseSize)} ${chalk.dim(url)}${firewall}${error}`;
+  return `[${entry.timestamp}] ${method.padEnd(6)} ${statusColor(status)} ${latencyColor(latencyMs + "ms")} ${formatBytes(requestSize)}/${formatBytes(responseSize)} ${chalk.dim(url)}${firewall}${error}${formatTokenInfo(entry)}`;
 }
 
 /**

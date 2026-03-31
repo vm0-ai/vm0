@@ -261,7 +261,6 @@ export {
 export {
   sessionsContract,
   sessionsByIdContract,
-  sessionMessagesContract,
   checkpointsByIdContract,
   storedChatMessageSchema,
   sessionResponseSchema,
@@ -272,7 +271,6 @@ export {
   volumeVersionsSnapshotSchema,
   type SessionsContract,
   type SessionsByIdContract,
-  type SessionMessagesContract,
   type CheckpointsByIdContract,
   // Inferred types
   type StoredChatMessage,

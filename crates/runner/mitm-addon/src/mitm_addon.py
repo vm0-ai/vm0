@@ -475,6 +475,20 @@ async def fetch_firewall_headers(
     )
 
 
+def _build_cache_hit(cached: dict) -> dict | None:
+    """Check if a cached entry is still valid and return a cache-hit result."""
+    expires_at = cached.get("expiresAt")
+    if expires_at is None or time.time() < expires_at:
+        return {
+            "headers": cached["headers"],
+            "resolved_secrets": cached.get("resolvedSecrets", []),
+            "refreshed_connectors": [],
+            "refreshed_secrets": [],
+            "cache_hit": True,
+        }
+    return None
+
+
 async def get_firewall_headers(
     run_id: str,
     api_id: str,
@@ -498,9 +512,9 @@ async def get_firewall_headers(
     # Fast path: cache hit (no lock needed — single-threaded event loop)
     cached = _firewall_header_cache.get(cache_key)
     if cached:
-        expires_at = cached.get("expiresAt")
-        if expires_at is None or time.time() < expires_at:
-            return cached["headers"]
+        hit = _build_cache_hit(cached)
+        if hit:
+            return hit
 
     # Slow path: acquire per-key lock so only one coroutine fetches
     lock = _cache_locks.setdefault(cache_key, asyncio.Lock())
@@ -508,19 +522,27 @@ async def get_firewall_headers(
         # Double-check: another coroutine may have populated cache while we waited
         cached = _firewall_header_cache.get(cache_key)
         if cached:
-            expires_at = cached.get("expiresAt")
-            if expires_at is None or time.time() < expires_at:
-                return cached["headers"]
+            hit = _build_cache_hit(cached)
+            if hit:
+                return hit
 
         result = await fetch_firewall_headers(
             encrypted_secrets, auth_headers, sandbox_token, secret_connector_map
         )
         headers = result["headers"]
+        resolved_secrets = result.get("resolvedSecrets", [])
         _firewall_header_cache[cache_key] = {
             "headers": headers,
             "expiresAt": result.get("expiresAt"),
+            "resolvedSecrets": resolved_secrets,
         }
-        return headers
+        return {
+            "headers": headers,
+            "resolved_secrets": resolved_secrets,
+            "refreshed_connectors": result.get("refreshedConnectors", []),
+            "refreshed_secrets": result.get("refreshedSecrets", []),
+            "cache_hit": False,
+        }
 
 
 async def handle_firewall_request(
@@ -563,7 +585,7 @@ async def handle_firewall_request(
         return
 
     try:
-        headers = await get_firewall_headers(
+        token_meta = await get_firewall_headers(
             run_id, api_id, encrypted_secrets, auth_headers, sandbox_token, secret_connector_map
         )
     except Exception as e:
@@ -585,10 +607,15 @@ async def handle_firewall_request(
         return
 
     # Inject resolved auth headers into the request
+    headers = token_meta["headers"]
     for header_name, header_value in headers.items():
         flow.request.headers[header_name] = header_value
 
     flow.metadata["firewall_action"] = "ALLOW"
+    flow.metadata["token_resolved_secrets"] = token_meta.get("resolved_secrets", [])
+    flow.metadata["token_refreshed_connectors"] = token_meta.get("refreshed_connectors", [])
+    flow.metadata["token_refreshed_secrets"] = token_meta.get("refreshed_secrets", [])
+    flow.metadata["token_cache_hit"] = token_meta.get("cache_hit", False)
 
     ctx.log.info(f"[{run_id}] Firewall {firewall_base}: {flow.request.pretty_host}")
 
@@ -732,6 +759,28 @@ def responseheaders(flow: http.HTTPFlow) -> None:
     flow.response.stream = True
 
 
+def _add_firewall_metadata(flow: http.HTTPFlow, log_entry: dict) -> None:
+    """Copy firewall and token replacement metadata from flow into a log entry."""
+    meta = flow.metadata
+    log_entry["firewall_base"] = meta.get("firewall_base", "")
+    log_entry["firewall_name"] = meta.get("firewall_name", "")
+    log_entry["firewall_ref"] = meta.get("firewall_ref", "")
+    log_entry["firewall_permission"] = meta.get("firewall_permission", "")
+    log_entry["firewall_rule_match"] = meta.get("firewall_rule_match", "")
+    # Optional fields — only include when present
+    for key in (
+        "firewall_params",
+        "firewall_error",
+        "token_resolved_secrets",
+        "token_refreshed_connectors",
+        "token_refreshed_secrets",
+        "token_cache_hit",
+    ):
+        value = meta.get(key)
+        if value is not None:
+            log_entry[key] = value
+
+
 def response(flow: http.HTTPFlow) -> None:
     """
     Handle response and log network activity.
@@ -780,17 +829,7 @@ def response(flow: http.HTTPFlow) -> None:
         # Add firewall match info if this was a firewall request
         firewall_base = flow.metadata.get("firewall_base")
         if firewall_base:
-            log_entry["firewall_base"] = firewall_base
-            log_entry["firewall_name"] = flow.metadata.get("firewall_name", "")
-            log_entry["firewall_ref"] = flow.metadata.get("firewall_ref", "")
-            log_entry["firewall_permission"] = flow.metadata.get("firewall_permission", "")
-            log_entry["firewall_rule_match"] = flow.metadata.get("firewall_rule_match", "")
-            params = flow.metadata.get("firewall_params")
-            if params:
-                log_entry["firewall_params"] = params
-            error = flow.metadata.get("firewall_error")
-            if error:
-                log_entry["firewall_error"] = error
+            _add_firewall_metadata(flow, log_entry)
 
         log_network_entry(network_log_path, log_entry)
 
@@ -854,17 +893,7 @@ def error(flow: http.HTTPFlow) -> None:
     # Add firewall context if available
     firewall_base = flow.metadata.get("firewall_base")
     if firewall_base:
-        log_entry["firewall_base"] = firewall_base
-        log_entry["firewall_name"] = flow.metadata.get("firewall_name", "")
-        log_entry["firewall_ref"] = flow.metadata.get("firewall_ref", "")
-        log_entry["firewall_permission"] = flow.metadata.get("firewall_permission", "")
-        log_entry["firewall_rule_match"] = flow.metadata.get("firewall_rule_match", "")
-        params = flow.metadata.get("firewall_params")
-        if params:
-            log_entry["firewall_params"] = params
-        fw_error = flow.metadata.get("firewall_error")
-        if fw_error:
-            log_entry["firewall_error"] = fw_error
+        _add_firewall_metadata(flow, log_entry)
 
     log_network_entry(network_log_path, log_entry)
 

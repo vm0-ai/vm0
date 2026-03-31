@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.130.2](https://github.com/vm0-ai/vm0/compare/core-v8.130.1...core-v8.130.2) (2026-03-31)
+
+
+### Bug Fixes
+
+* **firewalls:** replace placeholder tokens with realistic fill pattern ([#7332](https://github.com/vm0-ai/vm0/issues/7332)) ([237916e](https://github.com/vm0-ai/vm0/commit/237916e4d424b924ed8ac603d20da4813b969b40))
+
 ## [8.130.1](https://github.com/vm0-ai/vm0/compare/core-v8.130.0...core-v8.130.1) (2026-03-31)
 
 

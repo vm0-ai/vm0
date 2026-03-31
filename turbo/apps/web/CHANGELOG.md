@@ -1,5 +1,29 @@
 # Changelog
 
+## [12.176.0](https://github.com/vm0-ai/vm0/compare/web-v12.175.0...web-v12.176.0) (2026-03-31)
+
+
+### Features
+
+* add system prompt context for firewall deny doctor ([#7382](https://github.com/vm0-ai/vm0/issues/7382)) ([30d8d0c](https://github.com/vm0-ai/vm0/commit/30d8d0cf3ea1da0ff703c0a2771c267000c8ac35)), closes [#7317](https://github.com/vm0-ai/vm0/issues/7317)
+
+
+### Bug Fixes
+
+* **firewalls:** replace placeholder tokens with realistic fill pattern ([#7332](https://github.com/vm0-ai/vm0/issues/7332)) ([237916e](https://github.com/vm0-ai/vm0/commit/237916e4d424b924ed8ac603d20da4813b969b40))
+
+
+### Refactoring
+
+* move chat title generation from webhook completion to message creation ([#7357](https://github.com/vm0-ai/vm0/issues/7357)) ([915b066](https://github.com/vm0-ai/vm0/commit/915b0662ebaa2fb22362799f5fb68b2fdf876ac8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.130.2
+
 ## [12.175.0](https://github.com/vm0-ai/vm0/compare/web-v12.174.0...web-v12.175.0) (2026-03-31)
 
 
