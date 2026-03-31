@@ -165,6 +165,32 @@ describe("getConnectorEnvironmentMapping", () => {
     }
   });
 
+  it("api-token-only connectors expose all secrets via environmentMapping with same name", () => {
+    for (const type of connectorTypeSchema.options) {
+      const authMethods = getConnectorAuthMethods(type);
+      if (authMethods["oauth"] || !authMethods["api-token"]) continue;
+      if (getConnectorOAuthConfig(type)) continue;
+
+      const secrets = Object.keys(authMethods["api-token"].secrets);
+      const mapping = getConnectorEnvironmentMapping(type);
+      const mapKeys = Object.keys(mapping);
+
+      // mapping keys must be exactly the same set as secrets
+      expect(
+        mapKeys.sort(),
+        `${type}: environmentMapping keys must match api-token secrets`,
+      ).toEqual(secrets.sort());
+
+      // each mapping value must be $secrets.KEY or $vars.KEY (same name)
+      for (const key of secrets) {
+        expect(
+          mapping[key] === `$secrets.${key}` || mapping[key] === `$vars.${key}`,
+          `${type}: environmentMapping["${key}"] = "${mapping[key]}", expected $secrets.${key} or $vars.${key}`,
+        ).toBe(true);
+      }
+    }
+  });
+
   it("all mapping values use $secrets. or $vars. prefix", () => {
     for (const type of connectorTypeSchema.options) {
       const mapping = getConnectorEnvironmentMapping(type);
