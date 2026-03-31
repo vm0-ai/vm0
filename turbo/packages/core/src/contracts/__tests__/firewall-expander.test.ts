@@ -511,6 +511,17 @@ describe("hasBaseUrlParams", () => {
   it("returns false for template vars", () => {
     expect(hasBaseUrlParams("https://${{ vars.X }}.example.com")).toBe(false);
   });
+
+  it("returns true when both template vars and params present", () => {
+    expect(hasBaseUrlParams("https://${{ vars.X }}.{region}.example.com")).toBe(
+      true,
+    );
+  });
+
+  it("handles adversarial input with many ${{ without closing }}", () => {
+    const adversarial = "https://" + "${{".repeat(1000) + ".example.com";
+    expect(hasBaseUrlParams(adversarial)).toBe(false);
+  });
 });
 
 describe("hasBaseUrlVars", () => {
