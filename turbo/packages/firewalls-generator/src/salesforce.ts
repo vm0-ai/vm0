@@ -17,7 +17,7 @@ const DOCS_URL =
   "https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/";
 // Format: session ID (~100 chars). Use a realistic-length placeholder.
 const PLACEHOLDER_VALUE =
-  "00D0x000000Vm0P!AQEAQFVm0PlaceHolder0000000000000000000000000000000000000000000000000000000000000000000";
+  "00D0c0ffee5afe1!AQEAQFCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffee";
 
 function generateTypeScript(): string {
   const lines: string[] = [

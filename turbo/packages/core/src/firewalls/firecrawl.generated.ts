@@ -10,7 +10,7 @@ export const firecrawlFirewall: FirewallConfig = {
   name: "firecrawl",
   description: "Firecrawl API",
   placeholders: {
-    FIRECRAWL_TOKEN: "fc-vm0p1aceh01der000000000000000000",
+    FIRECRAWL_TOKEN: "fc-c0ffee5afe10ca1c0ffee5afe10ca1c0",
   },
   apis: [
     {

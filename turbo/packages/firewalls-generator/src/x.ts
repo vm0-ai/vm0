@@ -33,7 +33,7 @@ const OPENAPI_URL = "https://api.twitter.com/2/openapi.json";
 // Format: A{22} + [a-zA-Z0-9%]{80-100} (gitleaks: twitter-bearer-token)
 // e.g. AAAAAAAAAAAAAAAAAAAAAA... + 80 alphanumeric chars
 const PLACEHOLDER_VALUE =
-  "AAAAAAAAAAAAAAAAAAAAAAVm0PlaceHolder0000000000000000000000000000000000000000000000000000000000000000000000";
+  "AAAAAAAAAAAAAAAAAAAAAACoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffe";
 
 // ── OpenAPI types ────────────────────────────────────────────────────────
 

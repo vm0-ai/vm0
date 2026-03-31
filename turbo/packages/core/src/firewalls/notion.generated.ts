@@ -10,7 +10,7 @@ export const notionFirewall: FirewallConfig = {
   name: "notion",
   description: "Notion API",
   placeholders: {
-    NOTION_TOKEN: "ntn_00000000000Vm0PlaceHolder000000000000000000Aaa",
+    NOTION_TOKEN: "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",
   },
   apis: [
     {

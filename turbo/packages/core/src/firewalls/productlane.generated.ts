@@ -10,7 +10,7 @@ export const productlaneFirewall: FirewallConfig = {
   name: "productlane",
   description: "Productlane API",
   placeholders: {
-    PRODUCTLANE_TOKEN: "vm0placeholderProductlaneToken0000000000000000000000a",
+    PRODUCTLANE_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa",
   },
   apis: [
     {

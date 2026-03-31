@@ -12,7 +12,7 @@ import { writeOutput } from "./codegen";
 const DOCS_URL =
   "https://api-dashboard.search.brave.com/documentation/guides/authentication";
 // Format: BSA + 28 chars [a-zA-Z0-9_-] = 31 total
-const PLACEHOLDER_VALUE = "BSAVm0PlaceHolder0000000000000";
+const PLACEHOLDER_VALUE = "BSACoffeeSafeLocalCoffeeSafe000";
 
 function generateTypeScript(): string {
   const lines: string[] = [

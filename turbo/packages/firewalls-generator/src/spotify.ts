@@ -2,7 +2,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://developer.spotify.com/documentation/web-api";
 const PLACEHOLDER_VALUE =
-  "vm0placeholderSpotifyToken000000000000000000000000000000a";
+  "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLo";
 
 function generateTypeScript(): string {
   const lines: string[] = [

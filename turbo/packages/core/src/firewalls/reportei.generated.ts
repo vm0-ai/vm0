@@ -10,7 +10,7 @@ export const reporteiFirewall: FirewallConfig = {
   name: "reportei",
   description: "Reportei API",
   placeholders: {
-    REPORTEI_TOKEN: "vm0placeholderReporteiToken00000000000000000000000000a",
+    REPORTEI_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSaf",
   },
   apis: [
     {

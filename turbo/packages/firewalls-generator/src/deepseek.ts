@@ -11,7 +11,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://api-docs.deepseek.com/";
 // Format: sk- + 32 hex chars (total 35)
-const PLACEHOLDER_VALUE = "sk-vm0placeholder000000000000000000";
+const PLACEHOLDER_VALUE = "sk-c0ffee5afe10ca1c0ffee5afe10ca1c0";
 
 function generateTypeScript(): string {
   const lines: string[] = [

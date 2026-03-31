@@ -2,7 +2,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://dev.pdf4me.com/apiv2/documentation/";
 const PLACEHOLDER_VALUE =
-  "vm0placeholderPdf4meToken000000000000000000000000000a";
+  "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa";
 
 function generateTypeScript(): string {
   const lines: string[] = [

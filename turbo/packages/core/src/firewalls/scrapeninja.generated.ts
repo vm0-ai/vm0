@@ -10,7 +10,7 @@ export const scrapeninjaFirewall: FirewallConfig = {
   name: "scrapeninja",
   description: "ScrapeNinja Web Scraping API",
   placeholders: {
-    SCRAPENINJA_TOKEN: "vm0placeholderScrapeninjaToken0000000000000000000000a",
+    SCRAPENINJA_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa",
   },
   apis: [
     {

@@ -2,7 +2,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://docs.granola.ai/introduction";
 const PLACEHOLDER_VALUE =
-  "vm0placeholderGranolaToken0000000000000000000000000000a";
+  "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeL";
 
 function generateTypeScript(): string {
   const lines: string[] = [

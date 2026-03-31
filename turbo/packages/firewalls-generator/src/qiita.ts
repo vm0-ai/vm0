@@ -2,7 +2,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://qiita.com/api/v2/docs";
 const PLACEHOLDER_VALUE =
-  "vm0placeholderQiitaToken0000000000000000000000000000a";
+  "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa";
 
 function generateTypeScript(): string {
   const lines: string[] = [

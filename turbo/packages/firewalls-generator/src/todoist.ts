@@ -11,8 +11,8 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://developer.todoist.com/guides/";
 // Format: 40-char hex string
-// Hex-only format, cannot include Vm0PlaceHolder
-const PLACEHOLDER_VALUE = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0";
+// Hex-only format, using c0ffee5afe10ca1 pattern
+const PLACEHOLDER_VALUE = "c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5af";
 
 function generateTypeScript(): string {
   const lines: string[] = [

@@ -10,7 +10,7 @@ export const metabaseFirewall: FirewallConfig = {
   name: "metabase",
   description: "Metabase API",
   placeholders: {
-    METABASE_TOKEN: "mb_Vm0PlaceHolder00000000000000000000000000000",
+    METABASE_TOKEN: "mb_CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoca",
   },
   apis: [
     {

@@ -10,7 +10,7 @@ export const mailsacFirewall: FirewallConfig = {
   name: "mailsac",
   description: "Mailsac Email API",
   placeholders: {
-    MAILSAC_TOKEN: "vm0placeholderMailsacToken0000000000000000000000000000a",
+    MAILSAC_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafe",
   },
   apis: [
     {

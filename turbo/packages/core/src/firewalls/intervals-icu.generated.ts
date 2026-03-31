@@ -11,7 +11,7 @@ export const intervalsIcuFirewall: FirewallConfig = {
   description: "Intervals.icu Training API",
   placeholders: {
     INTERVALS_ICU_TOKEN:
-      "vm0placeholderIntervalsIcuToken0000000000000000000000a",
+      "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSaf",
   },
   apis: [
     {

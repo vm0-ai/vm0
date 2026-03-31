@@ -12,7 +12,7 @@ const DOCS_URL = "https://airtable.com/developers/web/api/authentication";
 // Format: pat + 14 alphanumeric + . + 64 hex (gitleaks: airtable-personnal-access-token)
 // e.g. patAbCdEfGhIjKl.0123456789abcdef...
 const PLACEHOLDER_VALUE =
-  "patVm0PlaceHolder.0000000000000000000000000000000000000000000000000000000000000000";
+  "patCoffeeSafeL0.c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe10ca1c0ff";
 
 function generateTypeScript(): string {
   const lines: string[] = [

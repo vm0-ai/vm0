@@ -28,7 +28,7 @@ const OPENAPI_URL = "https://developers.notion.com/openapi.json";
 
 // Notion integration token placeholder.
 // Format: ntn_[0-9]{11}[A-Za-z0-9]{35} (50 chars total)
-const PLACEHOLDER_VALUE = "ntn_00000000000Vm0PlaceHolder000000000000000000Aaa";
+const PLACEHOLDER_VALUE = "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";
 
 // ── OpenAPI types ────────────────────────────────────────────────────────
 

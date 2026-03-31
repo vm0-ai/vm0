@@ -11,7 +11,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://www.chatwoot.com/developers/api/";
 // Format: base58 string, 24 chars (SecureRandom.base58(24))
-const PLACEHOLDER_VALUE = "Vm0PlaceHolder0000000000";
+const PLACEHOLDER_VALUE = "CoffeeSafeLocalCoffeeSaf";
 
 function generateTypeScript(): string {
   const lines: string[] = [

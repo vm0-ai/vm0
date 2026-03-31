@@ -2,7 +2,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://doc.tldv.io/index.html";
 const PLACEHOLDER_VALUE =
-  "vm0placeholderTldvToken000000000000000000000000000000a";
+  "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSaf";
 
 function generateTypeScript(): string {
   const lines: string[] = [

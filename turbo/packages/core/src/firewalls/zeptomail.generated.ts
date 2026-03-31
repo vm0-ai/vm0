@@ -10,7 +10,7 @@ export const zeptomailFirewall: FirewallConfig = {
   name: "zeptomail",
   description: "ZeptoMail API",
   placeholders: {
-    ZEPTOMAIL_TOKEN: "vm0placeholder00000000000000000a",
+    ZEPTOMAIL_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCo",
   },
   apis: [
     {

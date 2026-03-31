@@ -10,7 +10,7 @@ export const pdforgeFirewall: FirewallConfig = {
   name: "pdforge",
   description: "PDForge PDF Generation API",
   placeholders: {
-    PDFORGE_API_KEY: "vm0placeholderPdforgeApiKey00000000000000000000000000a",
+    PDFORGE_API_KEY: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSaf",
   },
   apis: [
     {

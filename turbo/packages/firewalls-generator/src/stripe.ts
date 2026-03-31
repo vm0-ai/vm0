@@ -12,7 +12,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://docs.stripe.com/api/authentication";
 // Format: sk_live_ + [a-zA-Z0-9]{10,99} (gitleaks: stripe-access-token)
-const PLACEHOLDER_VALUE = "sk_live_Vm0PlaceHolder00000000000000000000";
+const PLACEHOLDER_VALUE = "sk_live_CoffeeSafeLocalCoffeeSafeLocalCoff";
 
 function generateTypeScript(): string {
   const lines: string[] = [

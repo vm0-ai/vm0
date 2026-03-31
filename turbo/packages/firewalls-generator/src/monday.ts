@@ -14,7 +14,7 @@ const DOCS_URL =
   "https://developer.monday.com/api-reference/docs/authentication";
 // Monday OAuth tokens are JWTs: base64url(header).base64url(payload).base64url(signature)
 const PLACEHOLDER_VALUE =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IlZtMFBsYWNlSG9sZGVyIiwiaWF0IjoxNTE2MjM5MDIyfQ.Vm0PlaceHolder00000000000000000000000000000a";
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkNvZmZlZVNhZmVMb2NhbCIsImlhdCI6MTUxNjIzOTAyMn0.CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoc";
 
 function generateTypeScript(): string {
   const lines: string[] = [

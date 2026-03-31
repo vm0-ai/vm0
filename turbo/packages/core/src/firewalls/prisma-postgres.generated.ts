@@ -11,7 +11,7 @@ export const prismaPostgresFirewall: FirewallConfig = {
   description: "Prisma Postgres Management API",
   placeholders: {
     PRISMA_POSTGRES_TOKEN:
-      "vm0placeholderPrismaPostgresToken0000000000000000000a",
+      "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa",
   },
   apis: [
     {

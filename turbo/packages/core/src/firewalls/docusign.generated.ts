@@ -11,7 +11,7 @@ export const docusignFirewall: FirewallConfig = {
   description: "DocuSign eSignature REST API",
   placeholders: {
     DOCUSIGN_TOKEN:
-      "eyJ0eXAiOiJNVCIsImFsZyI6IlJTMjU2In0.Vm0PlaceHolder000000000000000000.signature",
+      "eyJ0eXAiOiJNVCIsImFsZyI6IlJTMjU2In0.CoffeeSafeLocalCoffeeSafeLocal.CoffeeSaf",
   },
   apis: [
     {

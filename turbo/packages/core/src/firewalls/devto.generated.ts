@@ -10,7 +10,7 @@ export const devtoFirewall: FirewallConfig = {
   name: "devto",
   description: "DEV.to API",
   placeholders: {
-    DEVTO_TOKEN: "Vm0PlaceHolder0000000000",
+    DEVTO_TOKEN: "CoffeeSafeLocalCoffeeSaf",
   },
   apis: [
     {

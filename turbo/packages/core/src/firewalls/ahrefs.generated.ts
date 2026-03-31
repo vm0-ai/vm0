@@ -10,7 +10,7 @@ export const ahrefsFirewall: FirewallConfig = {
   name: "ahrefs",
   description: "Ahrefs API",
   placeholders: {
-    AHREFS_TOKEN: "Vm0PlaceHolder0000000000000000000000000000",
+    AHREFS_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafe00",
   },
   apis: [
     {

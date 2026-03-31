@@ -10,7 +10,7 @@ export const sentryFirewall: FirewallConfig = {
   name: "sentry",
   description: "Sentry API",
   placeholders: {
-    SENTRY_TOKEN: "Vm0PlaceHolder00000000000000000a",
+    SENTRY_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCo",
   },
   apis: [
     {
@@ -489,6 +489,9 @@ export const sentryFirewall: FirewallConfig = {
             "GET /api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/ownership/",
             "PUT /api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/ownership/",
             "GET /api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/preprodartifacts/build-distribution/latest/",
+            "GET /api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/replays/jobs/delete/",
+            "POST /api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/replays/jobs/delete/",
+            "GET /api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/replays/jobs/delete/{job_id}/",
             "DELETE /api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/replays/{replay_id}/",
             "GET /api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/replays/{replay_id}/clicks/",
             "GET /api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/replays/{replay_id}/recording-segments/",
@@ -626,6 +629,9 @@ export const sentryFirewall: FirewallConfig = {
             "GET /api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/ownership/",
             "PUT /api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/ownership/",
             "GET /api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/preprodartifacts/build-distribution/latest/",
+            "GET /api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/replays/jobs/delete/",
+            "POST /api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/replays/jobs/delete/",
+            "GET /api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/replays/jobs/delete/{job_id}/",
             "DELETE /api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/replays/{replay_id}/",
             "GET /api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/replays/{replay_id}/clicks/",
             "GET /api/0/projects/{organization_id_or_slug}/{project_id_or_slug}/replays/{replay_id}/recording-segments/",

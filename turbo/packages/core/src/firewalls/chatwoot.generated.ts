@@ -10,7 +10,7 @@ export const chatwootFirewall: FirewallConfig = {
   name: "chatwoot",
   description: "Chatwoot API",
   placeholders: {
-    CHATWOOT_TOKEN: "Vm0PlaceHolder0000000000",
+    CHATWOOT_TOKEN: "CoffeeSafeLocalCoffeeSaf",
   },
   apis: [
     {

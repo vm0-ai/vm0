@@ -10,7 +10,7 @@ export const calComFirewall: FirewallConfig = {
   name: "cal-com",
   description: "Cal.com API",
   placeholders: {
-    CALCOM_TOKEN: "cal_live_vm0placeholder000000000000000000000a",
+    CALCOM_TOKEN: "cal_live_CoffeeSafeLocalCoffeeSafeLocalCof00a",
   },
   apis: [
     {

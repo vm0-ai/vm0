@@ -12,7 +12,7 @@ export const googleDriveFirewall: FirewallConfig = {
   description: "Google Drive API",
   placeholders: {
     GOOGLE_DRIVE_TOKEN:
-      "ya29.A0Vm0PlaceHolder-Vm0_PlaceHolder00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "ya29.A0CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa",
   },
   apis: [
     {

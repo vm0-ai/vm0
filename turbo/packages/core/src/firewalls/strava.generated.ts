@@ -11,7 +11,7 @@ export const stravaFirewall: FirewallConfig = {
   description: "Strava API",
   placeholders: {
     STRAVA_TOKEN:
-      "vm0placeholder00000000000000000000000000000000000000000000000000a",
+      "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffe",
   },
   apis: [
     {

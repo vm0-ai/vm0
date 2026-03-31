@@ -2,7 +2,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://scrapeninja.net/docs/getting-started/";
 const PLACEHOLDER_VALUE =
-  "vm0placeholderScrapeninjaToken0000000000000000000000a";
+  "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa";
 
 function generateTypeScript(): string {
   const lines: string[] = [

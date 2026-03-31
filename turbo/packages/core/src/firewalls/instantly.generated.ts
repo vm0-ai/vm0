@@ -10,7 +10,7 @@ export const instantlyFirewall: FirewallConfig = {
   name: "instantly",
   description: "Instantly API",
   placeholders: {
-    INSTANTLY_API_KEY: "vm0placeholderInstantlyApiKey000000000000000000000000a",
+    INSTANTLY_API_KEY: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSaf",
   },
   apis: [
     {

@@ -14,7 +14,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://www.metabase.com/docs/latest/api-documentation";
 // Format: mb_ + 44 alphanumeric chars (total 47)
-const PLACEHOLDER_VALUE = "mb_Vm0PlaceHolder00000000000000000000000000000";
+const PLACEHOLDER_VALUE = "mb_CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoca";
 
 function generateTypeScript(): string {
   const lines: string[] = [
