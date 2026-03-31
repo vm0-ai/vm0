@@ -31,6 +31,8 @@ export interface ConnectorOAuthConfig {
   scopes: string[];
 }
 
+export type ConnectorAuthMethodType = "oauth" | "api-token" | "api";
+
 /**
  * Base configuration shape for all connector types.
  */
@@ -38,8 +40,10 @@ export interface ConnectorConfig {
   readonly label: string;
   readonly helpText: string;
   readonly featureFlag?: FeatureSwitchKey;
-  readonly authMethods: Record<string, ConnectorAuthMethodConfig>;
-  readonly defaultAuthMethod?: string;
+  readonly authMethods: Partial<
+    Record<ConnectorAuthMethodType, ConnectorAuthMethodConfig>
+  >;
+  readonly defaultAuthMethod?: ConnectorAuthMethodType;
   readonly oauth?: ConnectorOAuthConfig;
   /** Environment mapping declaring which env vars this connector provides. */
   readonly environmentMapping: Record<string, string>;
@@ -3631,7 +3635,7 @@ export function getConnectorAuthMethods(
  */
 export function getConnectorDefaultAuthMethod(
   type: ConnectorType,
-): string | undefined {
+): ConnectorAuthMethodType | undefined {
   return CONNECTOR_TYPES[type].defaultAuthMethod;
 }
 
@@ -3640,7 +3644,7 @@ export function getConnectorDefaultAuthMethod(
  */
 export function getConnectorSecretsForAuthMethod(
   type: ConnectorType,
-  authMethod: string,
+  authMethod: ConnectorAuthMethodType,
 ): Record<string, ConnectorSecretConfig> | undefined {
   const authMethods = getConnectorAuthMethods(type);
   return authMethods[authMethod]?.secrets;
@@ -3651,7 +3655,7 @@ export function getConnectorSecretsForAuthMethod(
  */
 export function getConnectorSecretNames(
   type: ConnectorType,
-  authMethod: string,
+  authMethod: ConnectorAuthMethodType,
 ): string[] {
   const secrets = getConnectorSecretsForAuthMethod(type, authMethod);
   return secrets ? Object.keys(secrets) : [];
