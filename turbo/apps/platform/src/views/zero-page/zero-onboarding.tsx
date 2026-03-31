@@ -52,6 +52,9 @@ import {
   IconSearch,
 } from "@tabler/icons-react";
 import { detach, Reason } from "../../signals/utils.ts";
+import { AccountDropdown } from "./zero-sidebar.tsx";
+import { VM0ClerkProvider } from "../clerk/clerk-provider.tsx";
+import { handleZeroAccountAction$ } from "../../signals/zero-page/zero-nav.ts";
 
 // ---------------------------------------------------------------------------
 // Progress bar
@@ -642,6 +645,7 @@ function OnboardingPage({
   selectedConnectors?: string[];
   children: React.ReactNode;
 }) {
+  const onAccountAction = useSet(handleZeroAccountAction$);
   const illustration = getStepIllustration(stepKey);
   const showOrbit = stepKey === "connectors" && selectedConnectors;
   const showChat = stepKey === "workspace";
@@ -749,6 +753,16 @@ function OnboardingPage({
               )}
             </>
           )}
+        </div>
+
+        {/* Account dropdown — bottom-left of left panel, left-4 offsets the button's p-2 so the avatar aligns with the logo above */}
+        <div className="absolute bottom-6 left-4 z-20">
+          <VM0ClerkProvider>
+            <AccountDropdown
+              onAccountAction={onAccountAction}
+              hidePreferences
+            />
+          </VM0ClerkProvider>
         </div>
       </div>
 
