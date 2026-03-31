@@ -58,9 +58,30 @@
         mode: '0666'
       become: true
 
+    - name: Load nbd kernel module
+      community.general.modprobe:
+        name: nbd
+        params: nbds_max=256
+        state: present
+      become: true
+
+    - name: Persist nbd module across reboots
+      copy:
+        dest: /etc/modules-load.d/nbd.conf
+        content: "nbd\n"
+        mode: '0644'
+      become: true
+
+    - name: Persist nbd module options across reboots
+      copy:
+        dest: /etc/modprobe.d/nbd.conf
+        content: "options nbd nbds_max=256\n"
+        mode: '0644'
+      become: true
+
     # When groups change, the current SSH session still has the old group list.
     # Reset the connection so subsequent playbooks (deploy-runner) pick up the
-    # new membership (e.g. 'disk' group needed to open /dev/loopN).
+    # new membership (e.g. 'disk' group needed to open /dev/nbdN).
     - name: Reset SSH connection to pick up new group membership
       meta: reset_connection
       when: group_change.changed
