@@ -1,20 +1,12 @@
 import { Command } from "commander";
 import { readFileSync } from "node:fs";
 import chalk from "chalk";
-import {
-  createZeroAgent,
-  setZeroAgentUserConnectors,
-  updateZeroAgentInstructions,
-} from "../../../lib/api";
+import { createZeroAgent, updateZeroAgentInstructions } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 
 export const createCommand = new Command()
   .name("create")
   .description("Create a new zero agent")
-  .option(
-    "--connectors <items>",
-    "Comma-separated connector types to enable for this agent (e.g. github,linear)",
-  )
   .option(
     "--skills <items>",
     "Comma-separated custom skill names to attach (e.g. my-skill,other-skill)",
@@ -31,14 +23,12 @@ export const createCommand = new Command()
     `
 Examples:
   Minimal:               zero agent create --display-name "My Agent"
-  With connectors:       zero agent create --connectors github,linear --display-name "My Agent"
   With skills:           zero agent create --skills my-skill,other-skill --display-name "My Agent"
-  With instructions:     zero agent create --connectors github --instructions-file ./instructions.md`,
+  With instructions:     zero agent create --display-name "My Agent" --instructions-file ./instructions.md`,
   )
   .action(
     withErrorHandler(
       async (options: {
-        connectors?: string;
         skills?: string;
         displayName?: string;
         description?: string;
@@ -58,13 +48,6 @@ Examples:
           customSkills,
         });
 
-        if (options.connectors) {
-          const connectors = options.connectors.split(",").map((s) => {
-            return s.trim();
-          });
-          await setZeroAgentUserConnectors(agent.agentId, connectors);
-        }
-
         if (options.instructionsFile) {
           const content = readFileSync(options.instructionsFile, "utf-8");
           await updateZeroAgentInstructions(agent.agentId, content);
@@ -72,9 +55,6 @@ Examples:
 
         console.log(chalk.green(`✓ Agent "${agent.agentId}" created`));
         console.log(`  Agent ID:     ${agent.agentId}`);
-        if (options.connectors) {
-          console.log(`  Connectors:   ${options.connectors}`);
-        }
         if (customSkills?.length) {
           console.log(`  Skills:       ${customSkills.join(", ")}`);
         }

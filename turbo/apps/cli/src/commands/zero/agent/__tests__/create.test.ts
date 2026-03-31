@@ -21,7 +21,6 @@ const mockAgent = {
   displayName: "New Agent",
   description: null,
   sound: null,
-  connectors: ["github"],
 };
 
 describe("zero agent create command", () => {
@@ -46,31 +45,23 @@ describe("zero agent create command", () => {
   });
 
   describe("successful create", () => {
-    it("should create agent with required connectors", async () => {
+    it("should create agent with display name", async () => {
       server.use(
         http.post("http://localhost:3000/api/zero/agents", () => {
           return HttpResponse.json(mockAgent, { status: 201 });
         }),
-        http.put(
-          "http://localhost:3000/api/zero/agents/comp_xyz789/user-connectors",
-          () => {
-            return HttpResponse.json({ enabledTypes: ["github"] });
-          },
-        ),
       );
 
       await createCommand.parseAsync([
         "node",
         "cli",
-        "--connectors",
-        "github",
         "--display-name",
         "New Agent",
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("comp_xyz789");
-      expect(logCalls).toContain("github");
+      expect(logCalls).toContain("created");
     });
 
     it("should create agent with custom skills and include them in request body", async () => {
@@ -119,12 +110,6 @@ describe("zero agent create command", () => {
             return HttpResponse.json(mockAgent, { status: 201 });
           }),
           http.put(
-            "http://localhost:3000/api/zero/agents/comp_xyz789/user-connectors",
-            () => {
-              return HttpResponse.json({ enabledTypes: ["github"] });
-            },
-          ),
-          http.put(
             "http://localhost:3000/api/zero/agents/comp_xyz789/instructions",
             async ({ request }) => {
               const body = (await request.json()) as { content: string };
@@ -137,8 +122,8 @@ describe("zero agent create command", () => {
         await createCommand.parseAsync([
           "node",
           "cli",
-          "--connectors",
-          "github",
+          "--display-name",
+          "New Agent",
           "--instructions-file",
           instructionsPath,
         ]);
@@ -166,8 +151,8 @@ describe("zero agent create command", () => {
         await createCommand.parseAsync([
           "node",
           "cli",
-          "--connectors",
-          "github",
+          "--display-name",
+          "Test",
         ]);
       }).rejects.toThrow("process.exit called");
 
