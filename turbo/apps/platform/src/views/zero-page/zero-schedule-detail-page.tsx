@@ -959,7 +959,27 @@ function ScheduleDetailView({
             </div>
 
             <div className="mt-4 flex flex-col gap-2 sm:mt-6 sm:flex-row sm:h-9 sm:items-center">
-              <TabsList className="zero-tabs h-9 w-full sm:w-auto gap-1 px-1 py-1 overflow-x-auto overflow-y-hidden justify-start">
+              {/* Mobile: native select */}
+              <select
+                className="sm:hidden h-9 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground"
+                value={activeTab}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (
+                    v === "settings" ||
+                    v === "instructions" ||
+                    v === "history"
+                  ) {
+                    setActiveTab(v);
+                  }
+                }}
+              >
+                <option value="settings">Settings</option>
+                <option value="instructions">Instructions</option>
+                <option value="history">Run History</option>
+              </select>
+              {/* Desktop: tab list */}
+              <TabsList className="zero-tabs hidden sm:inline-flex h-9 gap-1 px-1 py-1">
                 <TabsTrigger
                   value="settings"
                   className={SCHEDULE_DETAIL_TAB_TRIGGER_CLASS}
