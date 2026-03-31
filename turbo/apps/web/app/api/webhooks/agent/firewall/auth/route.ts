@@ -114,7 +114,8 @@ async function refreshExpiredTokens(
   // read the current token from the secrets store. This fixes a race condition
   // where another concurrent request just refreshed the token — the DB expiry
   // looks fresh but encryptedSecrets still has the stale build-time value.
-  const skippedTypes = connectorTypes.filter((ct) => !toRefresh.includes(ct));
+  const toRefreshSet = new Set(toRefresh);
+  const skippedTypes = connectorTypes.filter((ct) => !toRefreshSet.has(ct));
   if (skippedTypes.length > 0) {
     const currentTokens = await Promise.all(
       skippedTypes.map(async (ct) => ({
@@ -123,7 +124,12 @@ async function refreshExpiredTokens(
       })),
     );
     for (const { connectorType, token } of currentTokens) {
-      if (!token) continue;
+      if (!token) {
+        log.warn(
+          `[${auth.runId}] No DB token for skipped connector ${connectorType}, using encryptedSecrets value`,
+        );
+        continue;
+      }
       for (const envVar of envVarsByConnector.get(connectorType) ?? []) {
         secrets[envVar] = token;
       }
