@@ -131,7 +131,6 @@ export async function checkRunConcurrencyLimit(
   }
 }
 
-
 /**
  * Validate a checkpoint for resume operation
  * Returns checkpoint data without creating full execution context
