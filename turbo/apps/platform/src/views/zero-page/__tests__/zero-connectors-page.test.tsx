@@ -124,8 +124,8 @@ describe("connectors page", () => {
     mockConnectors([{ type: "github", externalUsername: "testuser" }]);
 
     let deleteResolve: () => void;
-    const deletePromise = new Promise<void>((r) => {
-      deleteResolve = r;
+    const deletePromise = new Promise<void>((resolve) => {
+      deleteResolve = resolve;
     });
 
     server.use(
