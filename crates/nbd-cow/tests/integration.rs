@@ -293,7 +293,7 @@ async fn snapshot_restore_round_trip() {
     let cow = tmp.path().join("cow.img");
     let size = 64 * 1024 * 1024;
 
-    let marker = "NBD_SNAPSHOT_RESTORE_TEST_1234";
+    let marker = b"NBD_SNAPSHOT_RESTORE_TEST_1234";
 
     // Phase 1: create device, write data, destroy_keep_cow
     {
@@ -303,18 +303,27 @@ async fn snapshot_restore_round_trip() {
 
         let dev_path = device.device_path().to_owned();
 
-        // Write a marker
-        let status = Command::new("bash")
+        // Write a full 4K block with the marker at the start (block-aligned I/O)
+        let mut write_buf = vec![0u8; 4096];
+        write_buf[..marker.len()].copy_from_slice(marker);
+
+        let status = Command::new("dd")
             .args([
-                "-c",
-                &format!(
-                    "echo -n '{}' | dd of={} bs=1 count={} conv=notrunc",
-                    marker,
-                    dev_path.to_string_lossy(),
-                    marker.len()
-                ),
+                "if=/dev/stdin",
+                &format!("of={}", dev_path.to_string_lossy()),
+                "bs=4096",
+                "count=1",
+                "conv=notrunc",
             ])
-            .status()
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .and_then(|mut child| {
+                use std::io::Write;
+                child.stdin.take().unwrap().write_all(&write_buf).unwrap();
+                child.wait()
+            })
             .expect("dd write");
         assert!(status.success(), "dd write should succeed");
 
@@ -323,9 +332,7 @@ async fn snapshot_restore_round_trip() {
         assert!(status.success());
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-        // Log status before destroy
         device.log_status().await;
-
         device.destroy_keep_cow().await.expect("destroy_keep_cow");
     }
 
@@ -336,6 +343,20 @@ async fn snapshot_restore_round_trip() {
     let bitmap = std::path::PathBuf::from(bitmap_name);
     assert!(bitmap.exists(), "bitmap file should be created");
 
+    // Verify COW file has data (direct file read, independent of NBD)
+    {
+        use std::os::unix::fs::FileExt;
+        let cow_fd = fs::File::open(&cow).expect("open COW file for verification");
+        let mut verify_buf = vec![0u8; marker.len()];
+        cow_fd
+            .read_at(&mut verify_buf, 0)
+            .expect("read COW file at offset 0");
+        assert_eq!(
+            &verify_buf, marker,
+            "COW file should contain marker data at offset 0"
+        );
+    }
+
     // Phase 2: create new device with same base + COW — data should persist
     {
         let mut device = nbd_cow::NbdCowDevice::create(&base, &cow, size)
@@ -343,20 +364,34 @@ async fn snapshot_restore_round_trip() {
             .expect("restore create");
 
         let dev_path = device.device_path().to_owned();
+        device.log_status().await;
 
-        // Read back the marker
+        // Brief wait for kernel to finish setting up the reconnected device
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Read first 4K block from the device
         let output = Command::new("dd")
             .args([
                 &format!("if={}", dev_path.to_string_lossy()),
-                "bs=1",
-                &format!("count={}", marker.len()),
+                "bs=4096",
+                "count=1",
             ])
             .output()
             .expect("dd read");
-        assert!(output.status.success());
+        assert!(
+            output.status.success(),
+            "dd read failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            output.stdout.len() >= marker.len(),
+            "dd read returned {} bytes, expected at least {}",
+            output.stdout.len(),
+            marker.len()
+        );
         assert_eq!(
-            String::from_utf8_lossy(&output.stdout),
-            marker,
+            output.stdout.get(..marker.len()),
+            Some(marker.as_slice()),
             "marker should survive snapshot restore"
         );
 
