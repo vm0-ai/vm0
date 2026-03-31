@@ -167,7 +167,7 @@ export function ZeroActivityPage() {
         </div>
       </header>
 
-      {/* Scrollable table area */}
+      {/* Scrollable table + pagination area */}
       <div className="flex-1 min-h-0 overflow-auto px-4 sm:px-6 pt-4">
         <div className="mx-auto max-w-[900px]">
           <div className="zero-card overflow-hidden pb-3">
@@ -183,35 +183,31 @@ export function ZeroActivityPage() {
               }
             />
           </div>
+          {(totalPages === undefined || totalPages > 1) && (
+            <div className="py-4">
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                rowsPerPage={rowsPerPage}
+                hasNext={hasNext}
+                hasPrev={hasPrev}
+                isLoading={isLoading}
+                labelClassName="font-normal text-muted-foreground"
+                buttonClassName="bg-transparent border-border/70"
+                onNextPage={() =>
+                  detach(goToNext(pageSignal), Reason.DomCallback)
+                }
+                onPrevPage={() => goToPrev()}
+                onForwardTwoPages={() =>
+                  detach(goForwardTwo(pageSignal), Reason.DomCallback)
+                }
+                onBackTwoPages={() => goBackTwo()}
+                onRowsPerPageChange={(limit) => setRowsPerPage(limit)}
+              />
+            </div>
+          )}
         </div>
       </div>
-
-      {/* Fixed pagination footer — hidden when everything fits on one page */}
-      {(totalPages === undefined || totalPages > 1) && (
-        <div className="shrink-0 px-4 sm:px-6 py-4">
-          <div className="mx-auto max-w-[900px]">
-            <Pagination
-              currentPage={currentPage}
-              totalPages={totalPages}
-              rowsPerPage={rowsPerPage}
-              hasNext={hasNext}
-              hasPrev={hasPrev}
-              isLoading={isLoading}
-              labelClassName="font-normal text-muted-foreground"
-              buttonClassName="bg-transparent border-border/70"
-              onNextPage={() =>
-                detach(goToNext(pageSignal), Reason.DomCallback)
-              }
-              onPrevPage={() => goToPrev()}
-              onForwardTwoPages={() =>
-                detach(goForwardTwo(pageSignal), Reason.DomCallback)
-              }
-              onBackTwoPages={() => goBackTwo()}
-              onRowsPerPageChange={(limit) => setRowsPerPage(limit)}
-            />
-          </div>
-        </div>
-      )}
     </div>
   );
 }
