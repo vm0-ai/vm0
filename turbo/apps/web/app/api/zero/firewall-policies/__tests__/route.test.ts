@@ -97,9 +97,7 @@ describe("PUT /api/zero/firewall-policies", () => {
   });
 
   it("should persist policies across reads", async () => {
-    const created = await (
-      await postAgent({}, testCliToken)
-    ).json();
+    const created = await (await postAgent({}, testCliToken)).json();
 
     const policies = {
       slack: { "channels:read": "allow", "chat:write": "ask" },
@@ -115,16 +113,10 @@ describe("PUT /api/zero/firewall-policies", () => {
   });
 
   it("should overwrite previous policies", async () => {
-    const created = await (
-      await postAgent({}, testCliToken)
-    ).json();
+    const created = await (await postAgent({}, testCliToken)).json();
 
     const first = { github: { "issues:read": "allow" } };
-    await putPolicies(
-      created.agentId,
-      { policies: first },
-      testCliToken,
-    );
+    await putPolicies(created.agentId, { policies: first }, testCliToken);
 
     const second = { slack: { "channels:read": "deny" } };
     const response = await putPolicies(
@@ -139,13 +131,15 @@ describe("PUT /api/zero/firewall-policies", () => {
   });
 
   it("should return 403 for non-admin users", async () => {
-    const created = await (
-      await postAgent({}, testCliToken)
-    ).json();
+    const created = await (await postAgent({}, testCliToken)).json();
 
     // Create a non-admin user
     const member = await context.setupUser({ prefix: "member-user" });
-    const memberToken = await createTestCliToken(member.userId);
+    const memberToken = await createTestCliToken(
+      member.userId,
+      undefined,
+      testOrgId,
+    );
 
     // Grant member role in the same org
     await insertOrgMembersCacheEntry({
@@ -166,9 +160,7 @@ describe("PUT /api/zero/firewall-policies", () => {
   });
 
   it("should return 400 for unknown firewall ref", async () => {
-    const created = await (
-      await postAgent({}, testCliToken)
-    ).json();
+    const created = await (await postAgent({}, testCliToken)).json();
 
     const response = await putPolicies(
       created.agentId,
@@ -183,9 +175,7 @@ describe("PUT /api/zero/firewall-policies", () => {
   });
 
   it("should return 400 for unknown permission name", async () => {
-    const created = await (
-      await postAgent({}, testCliToken)
-    ).json();
+    const created = await (await postAgent({}, testCliToken)).json();
 
     const response = await putPolicies(
       created.agentId,
@@ -224,9 +214,7 @@ describe("PUT /api/zero/firewall-policies", () => {
   });
 
   it("should accept empty policies", async () => {
-    const created = await (
-      await postAgent({}, testCliToken)
-    ).json();
+    const created = await (await postAgent({}, testCliToken)).json();
 
     const response = await putPolicies(
       created.agentId,
@@ -247,9 +235,7 @@ describe("PUT /api/zero/firewall-policies", () => {
   });
 
   it("should return full agent response shape", async () => {
-    const created = await (
-      await postAgent({}, testCliToken)
-    ).json();
+    const created = await (await postAgent({}, testCliToken)).json();
 
     const policies = { github: { "issues:read": "allow" } };
     const response = await putPolicies(
@@ -270,26 +256,14 @@ describe("PUT /api/zero/firewall-policies", () => {
   });
 
   it("should isolate policies between different agents", async () => {
-    const agent1 = await (
-      await postAgent({}, testCliToken)
-    ).json();
-    const agent2 = await (
-      await postAgent({}, testCliToken)
-    ).json();
+    const agent1 = await (await postAgent({}, testCliToken)).json();
+    const agent2 = await (await postAgent({}, testCliToken)).json();
 
     const policies1 = { github: { "issues:read": "allow" } };
     const policies2 = { slack: { "channels:read": "deny" } };
 
-    await putPolicies(
-      agent1.agentId,
-      { policies: policies1 },
-      testCliToken,
-    );
-    await putPolicies(
-      agent2.agentId,
-      { policies: policies2 },
-      testCliToken,
-    );
+    await putPolicies(agent1.agentId, { policies: policies1 }, testCliToken);
+    await putPolicies(agent2.agentId, { policies: policies2 }, testCliToken);
 
     const get1 = await getAgent(agent1.agentId, testCliToken);
     const get2 = await getAgent(agent2.agentId, testCliToken);

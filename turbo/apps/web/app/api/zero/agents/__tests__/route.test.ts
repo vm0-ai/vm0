@@ -66,11 +66,7 @@ function getAgent(name: string, token: string) {
   );
 }
 
-function putAgent(
-  name: string,
-  body: Record<string, unknown>,
-  token: string,
-) {
+function putAgent(name: string, body: Record<string, unknown>, token: string) {
   return PUT(
     createTestRequest(`http://localhost:3000/api/zero/agents/${name}`, {
       method: "PUT",
@@ -270,10 +266,7 @@ describe("Zero Agents API", () => {
       const created = await createResponse.json();
 
       // Get the agent
-      const response = await getAgent(
-        created.agentId,
-        testCliToken,
-      );
+      const response = await getAgent(created.agentId, testCliToken);
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -335,11 +328,7 @@ describe("Zero Agents API", () => {
       const created = await createResponse.json();
 
       // Update with no metadata fields
-      const updateResponse = await putAgent(
-        created.agentId,
-        {},
-        testCliToken,
-      );
+      const updateResponse = await putAgent(created.agentId, {}, testCliToken);
       expect(updateResponse.status).toBe(200);
 
       // Verify metadata is preserved
@@ -352,9 +341,7 @@ describe("Zero Agents API", () => {
     });
 
     it("should rebuild compose with connector env var templates", async () => {
-      const created = await (
-        await postAgent({}, testCliToken)
-      ).json();
+      const created = await (await postAgent({}, testCliToken)).json();
 
       const response = await putAgent(
         created.agentId,
@@ -580,9 +567,7 @@ describe("Zero Agents API", () => {
     });
 
     it("should read back instructions content after PUT via GET", async () => {
-      const created = await (
-        await postAgent({}, testCliToken)
-      ).json();
+      const created = await (await postAgent({}, testCliToken)).json();
 
       const instructionsContent = "# My Instructions\nBe helpful.";
       await putAgentInstructions(
@@ -615,10 +600,7 @@ describe("Zero Agents API", () => {
         ),
       );
 
-      const getRes = await getAgentInstructions(
-        created.agentId,
-        testCliToken,
-      );
+      const getRes = await getAgentInstructions(created.agentId, testCliToken);
       expect(getRes.status).toBe(200);
       const fetched = await getRes.json();
 
@@ -650,10 +632,7 @@ describe("Zero Agents API", () => {
       const sandboxToken = await createTestSandboxToken(user.userId, runId);
 
       // Use the sandbox token to GET the agent — should be rejected
-      const response = await getAgent(
-        created.agentId,
-        sandboxToken,
-      );
+      const response = await getAgent(created.agentId, sandboxToken);
 
       // Then — sandbox tokens can no longer satisfy requiredCapability
       expect(response.status).toBe(403);
@@ -842,28 +821,18 @@ describe("Zero Agents API", () => {
 
   describe("DELETE /api/zero/agents/:name", () => {
     it("should delete an agent and return 204", async () => {
-      const created = await (
-        await postAgent({}, testCliToken)
-      ).json();
+      const created = await (await postAgent({}, testCliToken)).json();
 
-      const response = await deleteAgent(
-        created.agentId,
-        testCliToken,
-      );
+      const response = await deleteAgent(created.agentId, testCliToken);
       expect(response.status).toBe(204);
     });
 
     it("should return 404 on GET after delete", async () => {
-      const created = await (
-        await postAgent({}, testCliToken)
-      ).json();
+      const created = await (await postAgent({}, testCliToken)).json();
 
       await deleteAgent(created.agentId, testCliToken);
 
-      const getResponse = await getAgent(
-        created.agentId,
-        testCliToken,
-      );
+      const getResponse = await getAgent(created.agentId, testCliToken);
       expect(getResponse.status).toBe(404);
     });
 
@@ -879,9 +848,7 @@ describe("Zero Agents API", () => {
 
     it("should delete agent with linked Slack thread sessions and pending questions", async () => {
       // Create an agent
-      const created = await (
-        await postAgent({}, testCliToken)
-      ).json();
+      const created = await (await postAgent({}, testCliToken)).json();
 
       // Create an agent session linked to this compose
       const session = await createTestSessionWithConversation(
@@ -920,17 +887,11 @@ describe("Zero Agents API", () => {
       });
 
       // Delete the agent — this would fail with FK constraint before the fix
-      const response = await deleteAgent(
-        created.agentId,
-        testCliToken,
-      );
+      const response = await deleteAgent(created.agentId, testCliToken);
       expect(response.status).toBe(204);
 
       // Verify agent is gone
-      const getResponse = await getAgent(
-        created.agentId,
-        testCliToken,
-      );
+      const getResponse = await getAgent(created.agentId, testCliToken);
       expect(getResponse.status).toBe(404);
     });
 
@@ -973,9 +934,7 @@ describe("Zero Agents API", () => {
     });
 
     it("should return 409 when agent has running runs", async () => {
-      const created = await (
-        await postAgent({}, testCliToken)
-      ).json();
+      const created = await (await postAgent({}, testCliToken)).json();
 
       // Create a running run for this agent
       await createTestRunInDb(user.userId, created.agentId, {
@@ -983,10 +942,7 @@ describe("Zero Agents API", () => {
       });
 
       // Try to delete — should get 409
-      const response = await deleteAgent(
-        created.agentId,
-        testCliToken,
-      );
+      const response = await deleteAgent(created.agentId, testCliToken);
       expect(response.status).toBe(409);
       const data = await response.json();
       expect(data.error.code).toBe("CONFLICT");
@@ -1011,11 +967,7 @@ describe("Zero Agents API", () => {
     });
 
     it("PUT should return 400 for invalid UUID", async () => {
-      const response = await putAgent(
-        "not-a-uuid",
-        {},
-        testCliToken,
-      );
+      const response = await putAgent("not-a-uuid", {}, testCliToken);
       expect(response.status).toBe(400);
       const data = await response.json();
       expect(data.error.code).toBe("BAD_REQUEST");
@@ -1033,20 +985,14 @@ describe("Zero Agents API", () => {
     });
 
     it("DELETE should return 400 for invalid UUID", async () => {
-      const response = await deleteAgent(
-        "not-a-uuid",
-        testCliToken,
-      );
+      const response = await deleteAgent("not-a-uuid", testCliToken);
       expect(response.status).toBe(400);
       const data = await response.json();
       expect(data.error.code).toBe("BAD_REQUEST");
     });
 
     it("GET instructions should return 400 for invalid UUID", async () => {
-      const response = await getAgentInstructions(
-        "not-a-uuid",
-        testCliToken,
-      );
+      const response = await getAgentInstructions("not-a-uuid", testCliToken);
       expect(response.status).toBe(400);
       const data = await response.json();
       expect(data.error.code).toBe("BAD_REQUEST");
@@ -1255,10 +1201,7 @@ describe("Zero Agents API", () => {
       await clearOrgMembersCacheEntry(orgId, user.userId);
       const memberToken = await createTestCliToken(user.userId);
 
-      const response = await deleteAgent(
-        created.agentId,
-        memberToken,
-      );
+      const response = await deleteAgent(created.agentId, memberToken);
       expect(response.status).toBe(403);
       const data = await response.json();
       expect(data.error.code).toBe("FORBIDDEN");
@@ -1290,14 +1233,11 @@ describe("Zero Agents API", () => {
 
       // 3. Execute the schedule — should succeed
       const response = await runSchedule(
-        createTestRequest(
-          `http://localhost:3000/api/zero/schedules/run`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ scheduleId: schedule.id }),
-          },
-        ),
+        createTestRequest(`http://localhost:3000/api/zero/schedules/run`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scheduleId: schedule.id }),
+        }),
       );
       const data = await response.json();
 
