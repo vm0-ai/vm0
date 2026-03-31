@@ -24,7 +24,7 @@ function parsePayload(payload: unknown): ChatCallbackPayload | null {
   if (typeof p.threadId !== "string" || typeof p.agentId !== "string") {
     return null;
   }
-  return p as unknown as ChatCallbackPayload;
+  return { threadId: p.threadId, agentId: p.agentId };
 }
 
 /**
@@ -77,15 +77,7 @@ async function handleCompleted(
   threadId: string,
 ): Promise<void> {
   // Query Axiom for result text and summaries
-  let resultText: string | null = null;
-  let summaries: SummaryEntry[] = [];
-  try {
-    const axiomResult = await queryRunEventsForChat(runId);
-    resultText = axiomResult.resultText;
-    summaries = axiomResult.summaries;
-  } catch (err) {
-    log.error("Failed to query Axiom for chat events", { err });
-  }
+  const { resultText, summaries } = await queryRunEventsForChat(runId);
 
   // Persist chat messages to session
   if (sessionId) {
@@ -109,12 +101,11 @@ async function handleCompleted(
     await updateThreadSessionId(threadId, sessionId);
   }
 
-  // Generate and update chat thread title
+  // Generate and update chat thread title (best-effort — title is non-critical)
   try {
-    const previousMessages: TitleContextMessage[] = [];
-    if (resultText) {
-      previousMessages.push({ role: "assistant", content: resultText });
-    }
+    const previousMessages: TitleContextMessage[] = resultText
+      ? [{ role: "assistant", content: resultText }]
+      : [];
     const title = await generateChatTitle(
       prompt,
       previousMessages.length > 0 ? previousMessages : undefined,
