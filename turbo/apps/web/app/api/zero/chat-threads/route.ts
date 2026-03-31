@@ -112,7 +112,6 @@ const router = tsr.router(chatThreadsContract, {
         threads: threads.map((t) => ({
           id: t.id,
           title: t.title,
-          preview: t.preview,
           agentId: query.agentId,
           createdAt: t.createdAt.toISOString(),
           updatedAt: t.updatedAt.toISOString(),

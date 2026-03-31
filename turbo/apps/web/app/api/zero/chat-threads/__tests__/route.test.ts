@@ -220,7 +220,6 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
     expect(response.status).toBe(200);
     expect(data.threads).toHaveLength(1);
     expect(data.threads[0].title).toBe("Listed thread");
-    expect(data.threads[0].preview).toBe("Listed thread");
     expect(data.threads[0].id).toBeDefined();
     expect(data.threads[0].createdAt).toBeDefined();
     expect(data.threads[0].updatedAt).toBeDefined();

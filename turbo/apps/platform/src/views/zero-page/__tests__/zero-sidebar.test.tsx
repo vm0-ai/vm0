@@ -15,7 +15,6 @@ function mockAPIs({
     {
       id: "thread-1",
       title: "First chat",
-      preview: "Hello world",
       agentId: "c0000000-0000-4000-a000-000000000001",
       createdAt: "2026-03-10T00:00:00Z",
       updatedAt: "2026-03-10T00:00:00Z",
@@ -23,7 +22,6 @@ function mockAPIs({
     {
       id: "thread-2",
       title: "Second chat",
-      preview: "Goodbye moon",
       agentId: "c0000000-0000-4000-a000-000000000001",
       createdAt: "2026-03-09T00:00:00Z",
       updatedAt: "2026-03-09T00:00:00Z",
@@ -33,7 +31,6 @@ function mockAPIs({
   threads?: {
     id: string;
     title: string;
-    preview: string;
     agentId: string;
     createdAt: string;
     updatedAt: string;
@@ -89,7 +86,6 @@ function mockAPIsWithSubagents() {
           {
             id: "thread-main",
             title: "Main agent chat",
-            preview: "Hello from main",
             agentId: "c0000000-0000-4000-a000-000000000001",
             createdAt: "2026-03-10T00:00:00Z",
             updatedAt: "2026-03-10T00:00:00Z",
@@ -97,7 +93,6 @@ function mockAPIsWithSubagents() {
           {
             id: "thread-sub",
             title: "Sub agent chat",
-            preview: "Hello from sub",
             agentId: "sub-agent-id",
             createdAt: "2026-03-09T00:00:00Z",
             updatedAt: "2026-03-09T00:00:00Z",
@@ -147,9 +142,9 @@ describe("zero sidebar", () => {
 
     // Wait for chat threads to render
     await waitFor(() => {
-      expect(screen.getByText("Hello world")).toBeInTheDocument();
+      expect(screen.getByText("First chat")).toBeInTheDocument();
     });
-    expect(screen.getByText("Goodbye moon")).toBeInTheDocument();
+    expect(screen.getByText("Second chat")).toBeInTheDocument();
 
     // Click search button
     const searchButton = screen.getByRole("button", { name: "Search chats" });
@@ -158,11 +153,11 @@ describe("zero sidebar", () => {
     // Type search query
     const searchInput = screen.getByPlaceholderText("Search chat with Zero");
     await user.clear(searchInput);
-    await user.type(searchInput, "Hello");
+    await user.type(searchInput, "First");
 
     // Only matching thread should be visible
-    expect(screen.getByText("Hello world")).toBeInTheDocument();
-    expect(screen.queryByText("Goodbye moon")).not.toBeInTheDocument();
+    expect(screen.getByText("First chat")).toBeInTheDocument();
+    expect(screen.queryByText("Second chat")).not.toBeInTheDocument();
   });
 
   it("should close search and reset filter", async () => {
@@ -172,7 +167,7 @@ describe("zero sidebar", () => {
 
     // Wait for chat threads to render
     await waitFor(() => {
-      expect(screen.getByText("Hello world")).toBeInTheDocument();
+      expect(screen.getByText("First chat")).toBeInTheDocument();
     });
 
     // Open search
@@ -182,9 +177,9 @@ describe("zero sidebar", () => {
     // Type search query that filters out one thread
     const searchInput = screen.getByPlaceholderText("Search chat with Zero");
     await user.clear(searchInput);
-    await user.type(searchInput, "Hello");
+    await user.type(searchInput, "First");
 
-    expect(screen.queryByText("Goodbye moon")).not.toBeInTheDocument();
+    expect(screen.queryByText("Second chat")).not.toBeInTheDocument();
 
     // Close search
     const closeButton = screen.getByRole("button", { name: "Close search" });
@@ -192,9 +187,9 @@ describe("zero sidebar", () => {
 
     // Both threads should be visible again (search term was reset)
     await waitFor(() => {
-      expect(screen.getByText("Hello world")).toBeInTheDocument();
+      expect(screen.getByText("First chat")).toBeInTheDocument();
     });
-    expect(screen.getByText("Goodbye moon")).toBeInTheDocument();
+    expect(screen.getByText("Second chat")).toBeInTheDocument();
   });
 
   it("should only show main agent chats on default route", async () => {
@@ -203,11 +198,11 @@ describe("zero sidebar", () => {
 
     // Wait for main agent chat to render
     await waitFor(() => {
-      expect(screen.getByText("Hello from main")).toBeInTheDocument();
+      expect(screen.getByText("Main agent chat")).toBeInTheDocument();
     });
 
     // Sub-agent chat should not appear in the default view
-    expect(screen.queryByText("Hello from sub")).not.toBeInTheDocument();
+    expect(screen.queryByText("Sub agent chat")).not.toBeInTheDocument();
   });
 
   it("should show sub-agent chats when navigating to /talk/:name", async () => {
@@ -216,10 +211,10 @@ describe("zero sidebar", () => {
 
     // Wait for sub-agent chat to render
     await waitFor(() => {
-      expect(screen.getByText("Hello from sub")).toBeInTheDocument();
+      expect(screen.getByText("Sub agent chat")).toBeInTheDocument();
     });
 
     // Main agent chat should not appear in the sub-agent view
-    expect(screen.queryByText("Hello from main")).not.toBeInTheDocument();
+    expect(screen.queryByText("Main agent chat")).not.toBeInTheDocument();
   });
 });

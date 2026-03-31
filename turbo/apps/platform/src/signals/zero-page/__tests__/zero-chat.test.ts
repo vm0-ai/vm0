@@ -53,16 +53,14 @@ describe("zero-chat signals", () => {
             threads: [
               {
                 id: "t1",
-                title: null,
-                preview: "Hello",
+                title: "Hello",
                 agentId: "c0000000-0000-4000-a000-000000000001",
                 createdAt: "2026-03-10T00:00:00Z",
                 updatedAt: "2026-03-10T00:00:00Z",
               },
               {
                 id: "t2",
-                title: null,
-                preview: "World",
+                title: "World",
                 agentId: "c0000000-0000-4000-a000-000000000001",
                 createdAt: "2026-03-10T01:00:00Z",
                 updatedAt: "2026-03-10T01:00:00Z",
@@ -77,7 +75,7 @@ describe("zero-chat signals", () => {
       const threads = await context.store.get(zeroSessionList$);
       expect(threads).toHaveLength(2);
       expect(threads[0]?.id).toBe("t1");
-      expect(threads[1]?.preview).toBe("World");
+      expect(threads[1]?.title).toBe("World");
       expect(context.store.get(zeroSessionListLoading$)).toBeFalsy();
       expect(context.store.get(zeroSessionListError$)).toBeNull();
     });

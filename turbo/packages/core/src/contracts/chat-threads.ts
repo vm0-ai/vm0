@@ -8,7 +8,6 @@ const c = initContract();
 const chatThreadListItemSchema = z.object({
   id: z.string(),
   title: z.string().nullable(),
-  preview: z.string().nullable(),
   agentId: z.string(),
   createdAt: z.string(),
   updatedAt: z.string(),

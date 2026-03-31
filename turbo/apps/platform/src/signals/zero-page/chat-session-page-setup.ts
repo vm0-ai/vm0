@@ -36,13 +36,13 @@ export const setupChatSessionPage$ = command(
       set(ensureDraft$, threadId);
     }
 
-    // Update title with session preview
+    // Update title with session name
     const sessionId = get(chatThreadId$);
     if (sessionId) {
       const sessions = await get(zeroSessionList$);
       signal.throwIfAborted();
       const session = sessions.find((s: { id: string }) => s.id === sessionId);
-      const sessionTitle = session?.preview ?? "New chat";
+      const sessionTitle = session?.title ?? "New chat";
       set(updateDocumentTitle$, sessionTitle);
     }
 

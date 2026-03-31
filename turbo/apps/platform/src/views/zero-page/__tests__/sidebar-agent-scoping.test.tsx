@@ -17,7 +17,6 @@ function mockTwoAgents() {
     {
       id: "thread-alpha-1",
       title: "Alpha thread",
-      preview: "Hello from Alpha",
       agentId: "agent-alpha",
       createdAt: "2026-03-10T00:00:00Z",
       updatedAt: "2026-03-10T00:00:00Z",
@@ -25,7 +24,6 @@ function mockTwoAgents() {
     {
       id: "thread-beta-1",
       title: "Beta thread",
-      preview: "Hello from Beta",
       agentId: "agent-beta",
       createdAt: "2026-03-09T00:00:00Z",
       updatedAt: "2026-03-09T00:00:00Z",
@@ -82,22 +80,22 @@ describe("sidebar agent scoping (#7239)", () => {
 
     // Alpha thread should be visible
     await waitFor(() => {
-      expect(screen.getByText("Hello from Alpha")).toBeInTheDocument();
+      expect(screen.getByText("Alpha thread")).toBeInTheDocument();
     });
     expect(screen.getByText("Chats with Alpha Bot")).toBeInTheDocument();
     // Beta thread must NOT appear
-    expect(screen.queryByText("Hello from Beta")).not.toBeInTheDocument();
+    expect(screen.queryByText("Beta thread")).not.toBeInTheDocument();
 
     // Navigate to Beta agent within the same session
     await context.store.set(navigate$, "/talk/agent-beta", {}, context.signal);
 
     // Beta thread should now be visible
     await waitFor(() => {
-      expect(screen.getByText("Hello from Beta")).toBeInTheDocument();
+      expect(screen.getByText("Beta thread")).toBeInTheDocument();
     });
     expect(screen.getByText("Chats with Beta Bot")).toBeInTheDocument();
     // Alpha thread must NOT appear
-    expect(screen.queryByText("Hello from Alpha")).not.toBeInTheDocument();
+    expect(screen.queryByText("Alpha thread")).not.toBeInTheDocument();
   }, 15_000);
 
   it("should switch back to first agent after visiting second agent", async () => {
@@ -105,21 +103,21 @@ describe("sidebar agent scoping (#7239)", () => {
     await setupPage({ context, path: "/talk/agent-alpha" });
 
     await waitFor(() => {
-      expect(screen.getByText("Hello from Alpha")).toBeInTheDocument();
+      expect(screen.getByText("Alpha thread")).toBeInTheDocument();
     });
 
     // Navigate Alpha → Beta → Alpha
     await context.store.set(navigate$, "/talk/agent-beta", {}, context.signal);
     await waitFor(() => {
-      expect(screen.getByText("Hello from Beta")).toBeInTheDocument();
+      expect(screen.getByText("Beta thread")).toBeInTheDocument();
     });
 
     await context.store.set(navigate$, "/talk/agent-alpha", {}, context.signal);
 
     await waitFor(() => {
-      expect(screen.getByText("Hello from Alpha")).toBeInTheDocument();
+      expect(screen.getByText("Alpha thread")).toBeInTheDocument();
     });
-    expect(screen.queryByText("Hello from Beta")).not.toBeInTheDocument();
+    expect(screen.queryByText("Beta thread")).not.toBeInTheDocument();
   }, 15_000);
 
   it("should retain agent scope when navigating to a non-chat page and back", async () => {
@@ -128,9 +126,9 @@ describe("sidebar agent scoping (#7239)", () => {
 
     // Verify Beta threads are shown
     await waitFor(() => {
-      expect(screen.getByText("Hello from Beta")).toBeInTheDocument();
+      expect(screen.getByText("Beta thread")).toBeInTheDocument();
     });
-    expect(screen.queryByText("Hello from Alpha")).not.toBeInTheDocument();
+    expect(screen.queryByText("Alpha thread")).not.toBeInTheDocument();
 
     // Navigate to a non-chat page (activity logs)
     await context.store.set(navigate$, "/activity", {}, context.signal);
@@ -139,8 +137,8 @@ describe("sidebar agent scoping (#7239)", () => {
     await waitFor(() => {
       expect(screen.getByText("Chats with Beta Bot")).toBeInTheDocument();
     });
-    expect(screen.getByText("Hello from Beta")).toBeInTheDocument();
-    expect(screen.queryByText("Hello from Alpha")).not.toBeInTheDocument();
+    expect(screen.getByText("Beta thread")).toBeInTheDocument();
+    expect(screen.queryByText("Alpha thread")).not.toBeInTheDocument();
   }, 15_000);
 
   it("should update sidebar to show agent chats when navigating to /team/:agentId profile page", async () => {
@@ -149,7 +147,7 @@ describe("sidebar agent scoping (#7239)", () => {
     // Start with Alpha's chat view — sidebar remembers Alpha
     await setupPage({ context, path: "/talk/agent-alpha" });
     await waitFor(() => {
-      expect(screen.getByText("Hello from Alpha")).toBeInTheDocument();
+      expect(screen.getByText("Alpha thread")).toBeInTheDocument();
     });
 
     // Navigate to Beta's profile page (/team/:agentId)
@@ -161,7 +159,7 @@ describe("sidebar agent scoping (#7239)", () => {
     await waitFor(() => {
       expect(screen.getByText("Chats with Beta Bot")).toBeInTheDocument();
     });
-    expect(screen.getByText("Hello from Beta")).toBeInTheDocument();
-    expect(screen.queryByText("Hello from Alpha")).not.toBeInTheDocument();
+    expect(screen.getByText("Beta thread")).toBeInTheDocument();
+    expect(screen.queryByText("Alpha thread")).not.toBeInTheDocument();
   }, 15_000);
 });

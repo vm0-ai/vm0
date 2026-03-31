@@ -126,12 +126,11 @@ describe("chat completion", () => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
 
-    // Set thread list so the sidebar shows a preview after completion
+    // Set thread list so the sidebar shows a title after completion
     ctrl.setThreadList([
       {
         id: "thread-test-1",
         title: "My conversation",
-        preview: "Hello",
         agentId: "c0000000-0000-4000-a000-000000000001",
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:00Z",
@@ -140,13 +139,14 @@ describe("chat completion", () => {
 
     ctrl.completeRun("Done");
 
-    // The sidebar renders session.preview as the visible text
+    // The sidebar renders session.title as the visible text
     await waitFor(() => {
-      // Look for the sidebar preview text (not the user message bubble)
+      // Look for the sidebar title text (not the user message bubble)
       const links = document.querySelectorAll("a");
       const sidebarLink = Array.from(links).find(
         (a) =>
-          a.textContent === "Hello" && a.getAttribute("href")?.includes("chat"),
+          a.textContent === "My conversation" &&
+          a.getAttribute("href")?.includes("chat"),
       );
       expect(sidebarLink).toBeTruthy();
     });
