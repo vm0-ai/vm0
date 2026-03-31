@@ -3626,7 +3626,7 @@ export const connectorTypeSchema = z.enum(
  */
 export function getConnectorAuthMethods(
   type: ConnectorType,
-): Record<string, ConnectorAuthMethodConfig> {
+): Partial<Record<ConnectorAuthMethodType, ConnectorAuthMethodConfig>> {
   return CONNECTOR_TYPES[type].authMethods;
 }
 
