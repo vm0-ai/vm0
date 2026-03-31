@@ -154,6 +154,7 @@ export function mockChatLifecycle(options?: {
         modelProvider: null,
         selectedModel: null,
         triggerSource: "web",
+        triggerAgentName: null,
         scheduleId: null,
         status: runStatus,
         prompt: "Hello",

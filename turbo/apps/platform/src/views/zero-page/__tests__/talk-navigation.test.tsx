@@ -64,6 +64,7 @@ function mockChatAPIs() {
         modelProvider: null,
         selectedModel: null,
         triggerSource: "web",
+        triggerAgentName: null,
         scheduleId: null,
         status: "completed",
         prompt: "Hello",
