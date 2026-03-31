@@ -45,6 +45,13 @@ export {
 
 const L = logger("ZeroChat");
 
+/**
+ * Delay before refreshing sidebar/thread to pick up async title generation.
+ * Title is generated server-side in a fire-and-forget manner, so the client
+ * schedules a delayed refresh to fetch the updated title.
+ */
+const TITLE_REFRESH_DELAY_MS = 3000;
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -932,6 +939,15 @@ export const sendNewThreadMessage$ = command(
       set(reloadChatThreadList$, (n) => {
         return n + 1;
       });
+
+      // Title is generated async on the server — refresh after a short delay
+      delay(TITLE_REFRESH_DELAY_MS, { signal })
+        .then(() => {
+          set(reloadChatThreadList$, (n) => {
+            return n + 1;
+          });
+        })
+        .catch(() => {});
     } catch (error) {
       throwIfAbort(error);
       L.error("Chat send error:", error);
@@ -996,10 +1012,24 @@ export const sendExistingThreadMessage$ = command(
 
       const { runId } = result.body;
 
-      // Refresh sidebar after run is associated (has preview now)
+      // Refresh sidebar and current thread — title is generated async,
+      // so schedule a delayed refresh to pick it up
       set(reloadChatThreadList$, (n) => {
         return n + 1;
       });
+      set(reloadCurrentThread$, (n) => {
+        return n + 1;
+      });
+      delay(TITLE_REFRESH_DELAY_MS, { signal })
+        .then(() => {
+          set(reloadChatThreadList$, (n) => {
+            return n + 1;
+          });
+          set(reloadCurrentThread$, (n) => {
+            return n + 1;
+          });
+        })
+        .catch(() => {});
 
       // Create reactive assistant message with its own runLoop
       const { assistantMessage } = createActiveRunMessage(runId, prompt);

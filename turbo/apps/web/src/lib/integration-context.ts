@@ -60,6 +60,7 @@ export function buildAgentToolsPrompt(): string {
     "- When you need to ask the user a question, use `zero ask-user question --help`.",
     "- Your replies are automatically sent to the originating thread. Only use `zero slack message send` when you need to message a different channel or thread. Never use SLACK_TOKEN to send messages directly — it's a user OAuth token.",
     "- When you encounter a missing token or environment variable error, run `zero doctor missing-token <TOKEN_NAME>` to diagnose the issue and get remediation steps for the user.",
+    '- When you encounter a 403 error with "firewall_permission_denied", run `zero doctor firewall-deny <FIREWALL_REF> --method <METHOD> --path <PATH>` using the "firewall", "method", and "path" fields from the JSON error response to get remediation steps for the user.',
     "- When you need to update your own configuration (description, tone, or instructions), use `zero agent edit --help`. Use `zero agent view $ZERO_AGENT_ID --instructions` to review your current settings first.",
   ].join("\n");
 }
