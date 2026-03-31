@@ -3,75 +3,53 @@ import {
   createHandler,
   createSafeErrorHandler,
   tsr,
-} from "../../../../../../../src/lib/ts-rest-handler";
+} from "../../../../../src/lib/ts-rest-handler";
 import {
-  zeroAgentSkillsDetailContract,
+  zeroSkillsDetailContract,
   getCustomSkillStorageName,
   VOLUME_ORG_USER_ID,
 } from "@vm0/core";
-import { initServices } from "../../../../../../../src/lib/init-services";
+import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,
   isAuthError,
-} from "../../../../../../../src/lib/auth/require-auth";
-import { resolveOrg } from "../../../../../../../src/lib/org/resolve-org";
-import { serverSideCompose } from "../../../../../../../src/lib/compose/server-side-compose";
-import { zeroAgents } from "../../../../../../../src/db/schema/zero-agent";
-import { zeroSkills } from "../../../../../../../src/db/schema/zero-skill";
-import { agentComposes } from "../../../../../../../src/db/schema/agent-compose";
+} from "../../../../../src/lib/auth/require-auth";
+import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
+import { serverSideCompose } from "../../../../../src/lib/compose/server-side-compose";
+import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
+import { zeroSkills } from "../../../../../src/db/schema/zero-skill";
+import { agentComposes } from "../../../../../src/db/schema/agent-compose";
 import {
   storages,
   storageVersions,
-} from "../../../../../../../src/db/schema/storage";
+} from "../../../../../src/db/schema/storage";
 import { eq, and, sql } from "drizzle-orm";
-import { buildComposeContent } from "../../../../../../../src/lib/zero/build-compose-content";
-import { requireAdminForDefaultAgent } from "../../../../../../../src/lib/zero/require-admin";
+import { buildComposeContent } from "../../../../../src/lib/zero/build-compose-content";
 import {
   uploadSkillServerSide,
   deleteSkillServerSide,
-} from "../../../../../../../src/lib/storage/skill-upload";
+} from "../../../../../src/lib/storage/skill-upload";
 import {
   downloadManifest,
   downloadS3Buffer,
-} from "../../../../../../../src/lib/s3/s3-client";
-import { extractFileFromTar } from "../../../../../../../src/lib/tar";
-import { env } from "../../../../../../../src/env";
-import { logger } from "../../../../../../../src/lib/logger";
+} from "../../../../../src/lib/s3/s3-client";
+import { extractFileFromTar } from "../../../../../src/lib/tar";
+import { env } from "../../../../../src/env";
+import { logger } from "../../../../../src/lib/logger";
 
-const log = logger("api:zero-agents:skills:detail");
+const log = logger("api:zero-skills:detail");
 
 const SKILL_FILENAME = "SKILL.md";
 
-const router = tsr.router(zeroAgentSkillsDetailContract, {
+const router = tsr.router(zeroSkillsDetailContract, {
   get: async ({ params, headers }, { request }) => {
     initServices();
 
-    const authCtx = await requireAuth(headers.authorization, {
-      requiredCapability: "agent:read",
-    });
+    const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
     const { org } = await resolveOrg(authCtx, orgSlug);
-
-    // Look up agent
-    const [agent] = await globalThis.services.db
-      .select()
-      .from(zeroAgents)
-      .where(and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.id, params.id)))
-      .limit(1);
-
-    if (!agent) {
-      return {
-        status: 404 as const,
-        body: {
-          error: {
-            message: `Agent not found: ${params.id}`,
-            code: "NOT_FOUND",
-          },
-        },
-      };
-    }
 
     // Look up skill metadata
     const [skill] = await globalThis.services.db
@@ -181,41 +159,11 @@ const router = tsr.router(zeroAgentSkillsDetailContract, {
   update: async ({ params, body, headers }, { request }) => {
     initServices();
 
-    const authCtx = await requireAuth(headers.authorization, {
-      requiredCapability: "agent:write",
-    });
+    const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org, member } = await resolveOrg(authCtx, orgSlug);
-
-    // Look up agent
-    const [agent] = await globalThis.services.db
-      .select()
-      .from(zeroAgents)
-      .where(and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.id, params.id)))
-      .limit(1);
-
-    if (!agent) {
-      return {
-        status: 404 as const,
-        body: {
-          error: {
-            message: `Agent not found: ${params.id}`,
-            code: "NOT_FOUND",
-          },
-        },
-      };
-    }
-
-    // Only admins can modify the default agent's skills
-    const forbidden = await requireAdminForDefaultAgent(
-      org.orgId,
-      agent.id,
-      member.role,
-      "skills",
-    );
-    if (forbidden) return forbidden;
+    const { org } = await resolveOrg(authCtx, orgSlug);
 
     // Look up skill
     const [skill] = await globalThis.services.db
@@ -238,7 +186,7 @@ const router = tsr.router(zeroAgentSkillsDetailContract, {
       };
     }
 
-    // Upload new content (creates new VAS version, no compose rebuild needed)
+    // Upload new content (creates new version, no compose rebuild needed)
     await uploadSkillServerSide({
       orgId: org.orgId,
       skillName: params.name,
@@ -267,54 +215,14 @@ const router = tsr.router(zeroAgentSkillsDetailContract, {
   delete: async ({ params, headers }, { request }) => {
     initServices();
 
-    const authCtx = await requireAuth(headers.authorization, {
-      requiredCapability: "agent:write",
-    });
+    const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org, member } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx, orgSlug);
 
-    // Look up agent + compose name (need for compose rebuild)
-    const [existing] = await globalThis.services.db
-      .select({
-        id: agentComposes.id,
-        name: agentComposes.name,
-        customSkills: zeroAgents.customSkills,
-      })
-      .from(agentComposes)
-      .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
-      .where(
-        and(
-          eq(agentComposes.orgId, org.orgId),
-          eq(agentComposes.id, params.id),
-        ),
-      )
-      .limit(1);
-
-    if (!existing) {
-      return {
-        status: 404 as const,
-        body: {
-          error: {
-            message: `Agent not found: ${params.id}`,
-            code: "NOT_FOUND",
-          },
-        },
-      };
-    }
-
-    // Only admins can modify the default agent's skills
-    const forbidden = await requireAdminForDefaultAgent(
-      org.orgId,
-      existing.id,
-      member.role,
-      "skills",
-    );
-    if (forbidden) return forbidden;
-
-    // Verify skill exists
+    // Look up skill
     const [skill] = await globalThis.services.db
       .select({ id: zeroSkills.id })
       .from(zeroSkills)
@@ -335,65 +243,75 @@ const router = tsr.router(zeroAgentSkillsDetailContract, {
       };
     }
 
-    // Remove skill from this agent's customSkills
-    const updatedSkills = (existing.customSkills ?? []).filter(
-      (s) => s !== params.name,
-    );
-    await globalThis.services.db
-      .update(zeroAgents)
-      .set({ customSkills: updatedSkills, updatedAt: new Date() })
-      .where(eq(zeroAgents.id, params.id));
-
-    // Check if any other agent in the org still references this skill
-    const [refCount] = await globalThis.services.db
-      .select({ count: sql<number>`count(*)` })
-      .from(zeroAgents)
+    // Find all agents in the org that reference this skill
+    const affectedAgents = await globalThis.services.db
+      .select({
+        id: agentComposes.id,
+        name: agentComposes.name,
+        customSkills: zeroAgents.customSkills,
+      })
+      .from(agentComposes)
+      .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
       .where(
         and(
-          eq(zeroAgents.orgId, org.orgId),
+          eq(agentComposes.orgId, org.orgId),
           sql`${zeroAgents.customSkills} @> ${JSON.stringify([params.name])}::jsonb`,
         ),
       );
 
-    if ((refCount?.count ?? 0) === 0) {
-      // No other agent references this skill — full cleanup
+    // Remove skill from each affected agent and rebuild compose
+    for (const agent of affectedAgents) {
+      const updatedSkills = (agent.customSkills ?? []).filter(
+        (s) => s !== params.name,
+      );
       await globalThis.services.db
-        .delete(zeroSkills)
-        .where(
-          and(
-            eq(zeroSkills.orgId, org.orgId),
-            eq(zeroSkills.name, params.name),
-          ),
+        .update(zeroAgents)
+        .set({ customSkills: updatedSkills, updatedAt: new Date() })
+        .where(eq(zeroAgents.id, agent.id));
+
+      // Rebuild compose (best-effort — skill deletion proceeds even if compose rebuild fails)
+      const content = buildComposeContent(
+        agent.name,
+        updatedSkills.map((name) => ({ name })),
+      );
+
+      try {
+        await serverSideCompose({
+          userId,
+          orgId: org.orgId,
+          orgSlug: org.slug,
+          content,
+        });
+      } catch (e) {
+        log.warn(
+          `Failed to rebuild compose for agent ${agent.name} after skill deletion: ${e}`,
         );
-      await deleteSkillServerSide({
-        orgId: org.orgId,
-        skillName: params.name,
-      });
+      }
     }
 
-    // Rebuild compose (remove volume declaration)
-    const content = buildComposeContent(
-      existing.name,
-      updatedSkills.map((name) => ({ name })),
-    );
+    // Delete from zero_skills
+    await globalThis.services.db
+      .delete(zeroSkills)
+      .where(
+        and(eq(zeroSkills.orgId, org.orgId), eq(zeroSkills.name, params.name)),
+      );
 
-    await serverSideCompose({
-      userId,
+    // Delete S3 storage
+    await deleteSkillServerSide({
       orgId: org.orgId,
-      orgSlug: org.slug,
-      content,
+      skillName: params.name,
     });
 
     log.info(
-      `Deleted custom skill "${params.name}" from agent ${existing.name}`,
+      `Deleted custom skill "${params.name}" from org ${org.orgId} (unbound from ${affectedAgents.length} agents)`,
     );
 
     return { status: 204 as const, body: undefined };
   },
 });
 
-const handler = createHandler(zeroAgentSkillsDetailContract, router, {
-  errorHandler: createSafeErrorHandler("zero-agents:skills:detail"),
+const handler = createHandler(zeroSkillsDetailContract, router, {
+  errorHandler: createSafeErrorHandler("zero-skills:detail"),
 });
 
 export { handler as GET, handler as PUT, handler as DELETE };

@@ -107,14 +107,14 @@ export {
   setZeroAgentUserConnectors,
 } from "./domains/zero-agents";
 
-// Domain modules - Zero Agent Skills
+// Domain modules - Zero Skills (org-level)
 export {
-  listAgentSkills,
-  createAgentSkill,
-  getAgentSkill,
-  updateAgentSkill,
-  deleteAgentSkill,
-} from "./domains/zero-agent-skills";
+  listSkills,
+  createSkill,
+  getSkill,
+  updateSkill,
+  deleteSkill,
+} from "./domains/zero-skills";
 
 // Domain modules - Zero Connectors
 export {
