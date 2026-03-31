@@ -148,7 +148,7 @@ const createRouter = tsr.router(firewallAccessRequestsCreateContract, {
 
 // --- GET: List Requests ---
 const listRouter = tsr.router(firewallAccessRequestsListContract, {
-  list: async ({ headers }, { request }) => {
+  list: async ({ headers, query }, { request }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -156,24 +156,10 @@ const listRouter = tsr.router(firewallAccessRequestsListContract, {
     });
     if (isAuthError(authCtx)) return authCtx;
 
-    const url = new URL(request.url);
-    const orgSlug = url.searchParams.get("org");
+    const orgSlug = new URL(request.url).searchParams.get("org");
     const { org, member } = await resolveOrg(authCtx, orgSlug);
 
-    const agentId = url.searchParams.get("agentId");
-    if (!agentId) {
-      return {
-        status: 400 as const,
-        body: {
-          error: {
-            message: "agentId query parameter is required",
-            code: "BAD_REQUEST",
-          },
-        },
-      };
-    }
-
-    const status = url.searchParams.get("status");
+    const { agentId, status } = query;
 
     // Build conditions
     const conditions = [
