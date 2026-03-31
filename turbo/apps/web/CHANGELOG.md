@@ -1,5 +1,23 @@
 # Changelog
 
+## [12.174.0](https://github.com/vm0-ai/vm0/compare/web-v12.173.0...web-v12.174.0) (2026-03-31)
+
+
+### Features
+
+* add custom skills binding to agent create and edit flow ([#7324](https://github.com/vm0-ai/vm0/issues/7324)) ([b3882df](https://github.com/vm0-ai/vm0/commit/b3882dfeea8a48fb1dea669f889207aa8bf32fa6))
+* add firewall_access_requests database table ([#7321](https://github.com/vm0-ai/vm0/issues/7321)) ([a455ff1](https://github.com/vm0-ai/vm0/commit/a455ff15e175af343f65c40ea86445806f04a2a6))
+* add run execution context page for debugging ([#7325](https://github.com/vm0-ai/vm0/issues/7325)) ([e3e56e8](https://github.com/vm0-ai/vm0/commit/e3e56e8dfd685badc10fcbdd144f952afe74fca4))
+* add selected model tooltip to activity log detail ([#7319](https://github.com/vm0-ai/vm0/issues/7319)) ([4ec0f43](https://github.com/vm0-ai/vm0/commit/4ec0f43759c01bf8a41c3225189192698d031d31))
+* show parent agent display name for delegated runs in activity log ([#7184](https://github.com/vm0-ai/vm0/issues/7184)) ([100ce19](https://github.com/vm0-ai/vm0/commit/100ce19543169be0a1a420217d26fcff67f97a38))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.130.0
+
 ## [12.173.0](https://github.com/vm0-ai/vm0/compare/web-v12.172.0...web-v12.173.0) (2026-03-31)
 
 

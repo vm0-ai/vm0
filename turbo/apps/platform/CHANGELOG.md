@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.168.0](https://github.com/vm0-ai/vm0/compare/app-v0.167.0...app-v0.168.0) (2026-03-31)
+
+
+### Features
+
+* add run execution context page for debugging ([#7325](https://github.com/vm0-ai/vm0/issues/7325)) ([e3e56e8](https://github.com/vm0-ai/vm0/commit/e3e56e8dfd685badc10fcbdd144f952afe74fca4))
+* add selected model tooltip to activity log detail ([#7319](https://github.com/vm0-ai/vm0/issues/7319)) ([4ec0f43](https://github.com/vm0-ai/vm0/commit/4ec0f43759c01bf8a41c3225189192698d031d31))
+* show parent agent display name for delegated runs in activity log ([#7184](https://github.com/vm0-ai/vm0/issues/7184)) ([100ce19](https://github.com/vm0-ai/vm0/commit/100ce19543169be0a1a420217d26fcff67f97a38))
+
+
+### Bug Fixes
+
+* **connector:** notify parent window on oauth completion via broadcast channel ([#7279](https://github.com/vm0-ai/vm0/issues/7279)) ([4924ffd](https://github.com/vm0-ai/vm0/commit/4924ffd76fee36160833cbb917a9ef745ed211d5))
+
+
+### Refactoring
+
+* **platform:** extract per-thread chat draft state ([#7326](https://github.com/vm0-ai/vm0/issues/7326)) ([599476c](https://github.com/vm0-ai/vm0/commit/599476c100dfbb4a5082910ae5a7e70bdc0a018a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.130.0
+
 ## [0.167.0](https://github.com/vm0-ai/vm0/compare/app-v0.166.0...app-v0.167.0) (2026-03-31)
 
 
