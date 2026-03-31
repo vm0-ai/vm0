@@ -12,7 +12,7 @@ function makeGithubConnectorResponse(): ConnectorListResponse {
   return {
     connectors: [
       {
-        id: "conn-12345",
+        id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
         type: "github",
         authMethod: "oauth",
         externalId: "12345",
