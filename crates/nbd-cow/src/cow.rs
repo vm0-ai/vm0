@@ -321,7 +321,10 @@ impl CowLayer {
         // crashes mid-write, the old bitmap (or no bitmap) remains intact.
         let tmp_path = PathBuf::from(format!("{}.tmp", path.display()));
         std::fs::write(&tmp_path, &data)?;
-        std::fs::rename(&tmp_path, path)?;
+        if let Err(e) = std::fs::rename(&tmp_path, path) {
+            let _ = std::fs::remove_file(&tmp_path);
+            return Err(e.into());
+        }
         Ok(())
     }
 

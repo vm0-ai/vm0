@@ -77,18 +77,28 @@ impl NbdCowDevice {
             let mut client_fds = Vec::with_capacity(NUM_CONNECTIONS);
             let mut server_handles = Vec::with_capacity(NUM_CONNECTIONS);
 
-            for _ in 0..NUM_CONNECTIONS {
-                let (client_fd, server_fd) = netlink::create_socketpair()?;
-                client_fds.push(client_fd);
+            let setup_err = (|| -> Result<()> {
+                for _ in 0..NUM_CONNECTIONS {
+                    let (client_fd, server_fd) = netlink::create_socketpair()?;
+                    client_fds.push(client_fd);
 
-                let cow = cow_layer.clone();
-                let token = shutdown.clone();
-                let handle = tokio::spawn(async move {
-                    if let Err(e) = server::dispatch(server_fd, cow, token).await {
-                        tracing::error!("NBD dispatch error: {e}");
-                    }
-                });
-                server_handles.push(handle);
+                    let cow = cow_layer.clone();
+                    let token = shutdown.clone();
+                    let handle = tokio::spawn(async move {
+                        if let Err(e) = server::dispatch(server_fd, cow, token).await {
+                            tracing::error!("NBD dispatch error: {e}");
+                        }
+                    });
+                    server_handles.push(handle);
+                }
+                Ok(())
+            })();
+            if let Err(e) = setup_err {
+                shutdown.cancel();
+                for handle in server_handles {
+                    handle.abort();
+                }
+                return Err(e);
             }
 
             // Atomically find a free device and connect — retries on EBUSY so
