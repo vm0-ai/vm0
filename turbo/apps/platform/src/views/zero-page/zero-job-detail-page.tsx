@@ -19,6 +19,7 @@ import {
   IconMessageCircle,
 } from "@tabler/icons-react";
 import {
+  Button,
   Tabs,
   TabsList,
   TabsTrigger,
@@ -733,15 +734,16 @@ export function ZeroJobDetailPage({ agentId }: ZeroJobDetailPageProps) {
               onTabChange={setActiveTab}
               showProfileAndInstructions={!hideProfileAndInstructions}
             />
-            <button
-              type="button"
+            <Button
+              variant="outline"
+              size="sm"
+              className="ml-auto zero-btn-morandi gap-1.5"
               onClick={() => nav("/talk/:agentId", { pathParams: { agentId } })}
               aria-label={`Chat with ${displayName}`}
-              className="ml-auto flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
             >
-              <IconMessageCircle size={16} stroke={1.5} />
-              Chat
-            </button>
+              <IconMessageCircle size={14} stroke={2} />
+              Chat with {displayName}
+            </Button>
           </div>
         </div>
       </header>
