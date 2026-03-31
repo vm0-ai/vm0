@@ -58,7 +58,7 @@
       become: true
 
     - name: Load nbd kernel module
-      shell: modprobe nbd nbds_max=256
+      shell: modprobe nbd nbds_max=4096
       become: true
       changed_when: false
 
@@ -72,7 +72,7 @@
     - name: Persist nbd module options across reboots
       copy:
         dest: /etc/modprobe.d/nbd.conf
-        content: "options nbd nbds_max=256\n"
+        content: "options nbd nbds_max=4096\n"
         mode: '0644'
       become: true
 
