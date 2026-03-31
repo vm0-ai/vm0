@@ -58,13 +58,7 @@ function ScheduleListRow<T extends ScheduleEntry>({
       role={clickable ? "link" : undefined}
       tabIndex={clickable ? 0 : undefined}
       aria-label={clickable ? `Open schedule ${entry.prompt}` : undefined}
-      onClick={
-        clickable
-          ? () => {
-              return onOpenDetails(entry);
-            }
-          : undefined
-      }
+      onClick={clickable ? () => onOpenDetails(entry) : undefined}
       onKeyDown={
         clickable
           ? (e) => {
@@ -112,9 +106,7 @@ function ScheduleListRow<T extends ScheduleEntry>({
       {onToggle && (
         <td
           className="py-2.5 px-3 align-middle w-16"
-          onClick={(e) => {
-            return e.stopPropagation();
-          }}
+          onClick={(e) => e.stopPropagation()}
         >
           <div className="flex justify-center">
             <LoadingSwitch
@@ -130,61 +122,193 @@ function ScheduleListRow<T extends ScheduleEntry>({
       )}
       <td
         className="py-2.5 pl-2 align-middle text-right w-10"
-        onClick={(e) => {
-          return e.stopPropagation();
-        }}
+        onClick={(e) => e.stopPropagation()}
       >
         <div className="inline-flex justify-end">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
-                aria-label={`More actions for ${entry.time}`}
-              >
-                <IconDotsVertical size={14} stroke={1.5} />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
-              {onRunNow && (
-                <DropdownMenuItem
-                  disabled={running || !entry.prompt.trim()}
-                  className="gap-2"
-                  onClick={() => {
-                    onRunNow(entry);
-                  }}
-                >
-                  <IconPlayerPlay size={14} stroke={1.5} />
-                  {running ? "Starting\u2026" : "Run now"}
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuItem
-                className="gap-2"
-                onClick={() => {
-                  return onEdit(entry);
-                }}
-              >
-                <IconPencil size={14} stroke={1.5} />
-                Edit
-              </DropdownMenuItem>
-              {onDelete && entry.name !== undefined && (
-                <DropdownMenuItem
-                  className="gap-2 text-destructive focus:text-destructive"
-                  onClick={() => {
-                    return onDelete(entry);
-                  }}
-                >
-                  <IconTrash size={14} stroke={1.5} />
-                  Delete
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <RowActions
+            entry={entry}
+            running={running}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            onRunNow={onRunNow}
+          />
         </div>
       </td>
     </tr>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Shared actions dropdown
+// ---------------------------------------------------------------------------
+
+function RowActions<T extends ScheduleEntry>({
+  entry,
+  running,
+  onEdit,
+  onDelete,
+  onRunNow,
+}: {
+  entry: T;
+  running: boolean;
+  onEdit: (entry: T) => void;
+  onDelete?: (entry: T) => void;
+  onRunNow?: (entry: T) => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
+          aria-label={`More actions for ${entry.time}`}
+        >
+          <IconDotsVertical size={14} stroke={1.5} />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        {onRunNow && (
+          <DropdownMenuItem
+            disabled={running || !entry.prompt.trim()}
+            className="gap-2"
+            onClick={() => {
+              onRunNow(entry);
+            }}
+          >
+            <IconPlayerPlay size={14} stroke={1.5} />
+            {running ? "Starting\u2026" : "Run now"}
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuItem className="gap-2" onClick={() => onEdit(entry)}>
+          <IconPencil size={14} stroke={1.5} />
+          Edit
+        </DropdownMenuItem>
+        {onDelete && entry.name !== undefined && (
+          <DropdownMenuItem
+            className="gap-2 text-destructive focus:text-destructive"
+            onClick={() => onDelete(entry)}
+          >
+            <IconTrash size={14} stroke={1.5} />
+            Delete
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Mobile card row
+// ---------------------------------------------------------------------------
+
+function ScheduleListCard<T extends ScheduleEntry>({
+  entry,
+  toggling,
+  running,
+  showAgent,
+  agentLabel,
+  onEdit,
+  onToggle,
+  onDelete,
+  onRunNow,
+  onOpenDetails,
+}: {
+  entry: T;
+  toggling: boolean;
+  running: boolean;
+  showAgent: boolean;
+  agentLabel?: string;
+  onEdit: (entry: T) => void;
+  onToggle?: (entry: T, enabled: boolean) => void;
+  onDelete?: (entry: T) => void;
+  onRunNow?: (entry: T) => void;
+  onOpenDetails?: (entry: T) => void;
+}) {
+  const dimmed = entry.enabled === false;
+  const clickable = !!onOpenDetails;
+
+  return (
+    <div
+      className={cn(
+        "flex flex-col gap-1.5 px-4 py-3 border-b border-border/50 last:border-0 transition-colors",
+        clickable && "cursor-pointer hover:bg-muted/25",
+        dimmed && "opacity-75",
+      )}
+      role={clickable ? "button" : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      aria-label={clickable ? `Open schedule ${entry.prompt}` : undefined}
+      onClick={clickable ? () => onOpenDetails(entry) : undefined}
+      onKeyDown={
+        clickable
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onOpenDetails(entry);
+              }
+            }
+          : undefined
+      }
+    >
+      {/* Top row: instruction + actions */}
+      <div className="flex items-start justify-between gap-2 min-w-0">
+        <div className="min-w-0 flex-1">
+          {showAgent && (
+            <span className="block text-xs text-muted-foreground truncate mb-0.5">
+              {agentLabel}
+            </span>
+          )}
+          <span
+            className={cn(
+              "block text-sm font-medium text-foreground leading-snug truncate",
+              dimmed && "text-muted-foreground",
+            )}
+          >
+            {entry.description || entry.prompt}
+          </span>
+        </div>
+        <div onClick={(e) => e.stopPropagation()}>
+          <RowActions
+            entry={entry}
+            running={running}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            onRunNow={onRunNow}
+          />
+        </div>
+      </div>
+
+      {/* Bottom row: schedule time + status toggle */}
+      <div className="flex items-center justify-between gap-2">
+        <span
+          className={cn(
+            "text-xs text-muted-foreground tabular-nums truncate",
+            dimmed && "text-muted-foreground/70",
+          )}
+        >
+          {entry.time}
+          {entry.timezone && (
+            <span className="text-muted-foreground/60">
+              {" "}
+              · {entry.timezone.replace(/_/g, " ")}
+            </span>
+          )}
+        </span>
+        {onToggle && (
+          <div onClick={(e) => e.stopPropagation()}>
+            <LoadingSwitch
+              checked={entry.enabled !== false}
+              loading={toggling}
+              onCheckedChange={(checked) => {
+                onToggle(entry, checked);
+              }}
+              ariaLabel={`${entry.enabled !== false ? "Disable" : "Enable"} ${entry.time}`}
+            />
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -249,46 +373,66 @@ export function ScheduleListView<T extends ScheduleEntry>({
   const showAgent = !!getAgentLabel;
 
   return (
-    <div className="w-full overflow-x-auto">
-      <table className="w-full text-sm border-collapse [&_tr>:first-child]:pl-5 [&_tr>:last-child]:pr-5">
-        <thead>
-          <tr className="border-b border-border/40 bg-card text-left text-sm text-muted-foreground">
-            {showAgent && (
+    <>
+      {/* Mobile: card list */}
+      <div className="sm:hidden">
+        {entries.map((entry) => (
+          <ScheduleListCard
+            key={entry.id}
+            entry={entry}
+            toggling={togglingIds.has(entry.id)}
+            running={runningIds?.has(entry.id) ?? false}
+            showAgent={showAgent}
+            agentLabel={getAgentLabel?.(entry)}
+            onEdit={onEdit}
+            onToggle={onToggle}
+            onDelete={onDelete}
+            onRunNow={onRunNow}
+            onOpenDetails={onOpenDetails}
+          />
+        ))}
+      </div>
+
+      {/* Desktop: table */}
+      <div className="hidden sm:block w-full overflow-x-auto">
+        <table className="w-full text-sm border-collapse [&_tr>:first-child]:pl-5 [&_tr>:last-child]:pr-5">
+          <thead>
+            <tr className="border-b border-border/40 bg-card text-left text-sm text-muted-foreground">
+              {showAgent && (
+                <th
+                  className="py-3 pr-2 w-[5rem] align-middle font-medium"
+                  scope="col"
+                >
+                  Agent
+                </th>
+              )}
               <th
-                className="py-3 pr-2 w-[5rem] align-middle font-medium"
+                className="py-3 pr-4 min-w-0 align-middle font-medium"
                 scope="col"
               >
-                Agent
+                Instruction
               </th>
-            )}
-            <th
-              className="py-3 pr-4 min-w-0 align-middle font-medium"
-              scope="col"
-            >
-              Instruction
-            </th>
-            <th
-              className="py-3 px-2 min-w-[6.5rem] max-w-[9rem] align-middle font-medium"
-              scope="col"
-            >
-              Schedule at
-            </th>
-            {onToggle && (
               <th
-                className="py-3 px-3 w-16 text-center align-middle font-medium"
+                className="py-3 px-2 min-w-[6.5rem] max-w-[9rem] align-middle font-medium"
                 scope="col"
               >
-                Status
+                Schedule at
               </th>
-            )}
-            <th className="w-10 py-3 pl-2 align-middle" scope="col">
-              <span className="sr-only">Actions</span>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {entries.map((entry) => {
-            return (
+              {onToggle && (
+                <th
+                  className="py-3 px-3 w-16 text-center align-middle font-medium"
+                  scope="col"
+                >
+                  Status
+                </th>
+              )}
+              <th className="w-10 py-3 pl-2 align-middle" scope="col">
+                <span className="sr-only">Actions</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {entries.map((entry) => (
               <ScheduleListRow
                 key={entry.id}
                 entry={entry}
@@ -302,10 +446,10 @@ export function ScheduleListView<T extends ScheduleEntry>({
                 onRunNow={onRunNow}
                 onOpenDetails={onOpenDetails}
               />
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
