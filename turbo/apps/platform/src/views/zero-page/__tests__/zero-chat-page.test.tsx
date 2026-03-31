@@ -281,7 +281,7 @@ describe("zero chat page - connector label casing", () => {
         return HttpResponse.json({
           connectors: [
             {
-              id: "conn-axiom",
+              id: crypto.randomUUID(),
               authMethod: "api-token",
               externalId: null,
               externalUsername: null,

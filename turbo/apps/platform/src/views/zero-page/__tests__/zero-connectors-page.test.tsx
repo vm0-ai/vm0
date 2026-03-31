@@ -29,7 +29,7 @@ function mockConnectors(
     http.get("*/api/zero/connectors", () => {
       return HttpResponse.json({
         connectors: connectors.map((c) => ({
-          id: `conn-${c.type}`,
+          id: crypto.randomUUID(),
           type: c.type,
           authMethod: "oauth",
           externalId: null,
