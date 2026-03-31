@@ -220,7 +220,7 @@ async fn run_snapshot_workflow(
     // Guard: ensure process and bind mount cleanup on any exit path.
     let result = run_with_firecracker(config, paths, sock_paths, output, &mut cow_device).await;
 
-    // Kill Firecracker first — it holds the dm device fd open.
+    // Kill Firecracker first — it holds the NBD device fd open.
     kill_process_group(&child);
     let _ = child.wait().await;
 
@@ -231,11 +231,11 @@ async fn run_snapshot_workflow(
         tracing::warn!(error = %e, "failed to release netns");
     }
 
-    // Tear down: umount bind mount, then remove dm-snapshot.
+    // Tear down: umount bind mount, then destroy NBD COW device.
     //
     // Both steps may fail transiently because kill_process_group + child.wait()
     // only waits for the outer sudo — the inner Firecracker (inside netns via
-    // sudo -u) may still be exiting, holding the dm device fd and bind mount
+    // sudo -u) may still be exiting, holding the NBD device fd and bind mount
     // reference open. Retry both in a loop until Firecracker fully terminates.
     let drive_bind_str = paths.cow_device_bind().display().to_string();
 
@@ -273,7 +273,7 @@ async fn run_snapshot_workflow(
         tokio::fs::rename(&cow_file, &output.cow()).await?;
         // Also move the bitmap sidecar if it exists (for snapshot restore).
         let bitmap_src = std::path::PathBuf::from(format!("{}.bitmap", cow_file.display()));
-        if bitmap_src.exists() {
+        if tokio::fs::try_exists(&bitmap_src).await.unwrap_or(false) {
             let bitmap_dst = std::path::PathBuf::from(format!("{}.bitmap", output.cow().display()));
             tokio::fs::rename(&bitmap_src, &bitmap_dst).await?;
         }

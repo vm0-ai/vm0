@@ -46,8 +46,14 @@ pub(crate) struct PrewarmedSlot {
     pub id: String,
     /// Path to the workspace directory: `{workspaces_dir}/{id}/`.
     pub workspace: PathBuf,
-    /// Path to the pre-created sparse COW file inside the workspace.
-    pub cow_file: PathBuf,
+}
+
+impl PrewarmedSlot {
+    /// Path to the COW file inside the workspace.
+    #[cfg(test)]
+    fn cow_file(&self) -> PathBuf {
+        self.workspace.join("cow.img")
+    }
 }
 
 impl std::fmt::Debug for PrewarmedSlot {
@@ -249,11 +255,7 @@ fn create_slot(config: &CowPoolConfig) -> Result<PrewarmedSlot, CowPoolError> {
         return Err(e);
     }
 
-    Ok(PrewarmedSlot {
-        id,
-        workspace,
-        cow_file,
-    })
+    Ok(PrewarmedSlot { id, workspace })
 }
 
 /// Create the COW file: sparse-copy from golden image or allocate fresh.
@@ -420,8 +422,9 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let config = test_config(tmp.path());
         let slot = create_slot(&config).unwrap();
-        assert!(slot.cow_file.exists(), "COW file should be created");
-        let meta = std::fs::metadata(&slot.cow_file).unwrap();
+        let cow_file = slot.cow_file();
+        assert!(cow_file.exists(), "COW file should be created");
+        let meta = std::fs::metadata(&cow_file).unwrap();
         assert_eq!(meta.len(), 64 * 1024 * 1024, "COW file should be 64 MiB");
         // Cleanup
         destroy_slot(slot);

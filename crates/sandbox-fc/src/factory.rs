@@ -260,7 +260,7 @@ impl SandboxFactory for FirecrackerFactory {
         let sock_paths = SockPaths::new(self.runtime_paths.sock_dir(&id));
 
         // Acquire a pre-warmed COW slot from the pool.
-        // The slot provides: workspace dir (already created), cow file, loop device.
+        // The slot provides: workspace dir (already created) and cow file.
         let slot = self
             .cow_pool()
             .lock()
@@ -286,6 +286,8 @@ impl SandboxFactory for FirecrackerFactory {
         }
 
         let sandbox_paths = SandboxPaths::new(target_workspace);
+        // Recompute cow_file path after rename (slot.cow_file points to the old location).
+        let cow_file = sandbox_paths.workspace().join("cow.img");
 
         // Clean stale sock dir and create vsock directory.
         if sock_paths.dir().exists()
@@ -319,7 +321,7 @@ impl SandboxFactory for FirecrackerFactory {
             .as_ref()
             .ok_or_else(|| SandboxError::CreationFailed("factory not started".into()))?;
         let cow_device =
-            match NbdCowDevice::create(base_image, &slot.cow_file, self.base_image_size).await {
+            match NbdCowDevice::create(base_image, &cow_file, self.base_image_size).await {
                 Ok(d) => d,
                 Err(e) => {
                     // Roll back: return netns to pool and clean up directories.
