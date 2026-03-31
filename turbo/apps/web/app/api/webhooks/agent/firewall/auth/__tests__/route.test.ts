@@ -621,6 +621,58 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       expect(data.error.connectors).toEqual(["close"]);
     });
 
+    it("should use DB refresh token instead of stale encrypted refresh token", async () => {
+      // Simulate: token is expired and needs refresh, but the refresh token
+      // in encryptedSecrets is stale (rotated by a concurrent request).
+      // DB has the current refresh token. The endpoint must use the DB value.
+      const expiredAt = new Date(Date.now() - 60 * 1000);
+      await setupNotionConnector({
+        tokenExpiresAt: expiredAt,
+        refreshToken: "current-db-refresh-token",
+      });
+
+      // Track which refresh token the provider receives
+      let receivedRefreshToken: string | undefined;
+      server.use(
+        mswHttp.post(NOTION_TOKEN_URL, async ({ request }) => {
+          const body = await request.json();
+          receivedRefreshToken =
+            (body as Record<string, string>).grant_type === "refresh_token"
+              ? (body as Record<string, string>).refresh_token
+              : undefined;
+          return HttpResponse.json({
+            access_token: "new-access-token",
+            expires_in: 3600,
+          });
+        }),
+      );
+
+      // encryptedSecrets has a STALE refresh token
+      const encrypted = encryptTestSecrets({
+        NOTION_ACCESS_TOKEN: "old-access-token",
+        NOTION_REFRESH_TOKEN: "stale-encrypted-refresh-token",
+      });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: "Bearer ${{ secrets.NOTION_ACCESS_TOKEN }}",
+            },
+            secretConnectorMap: { NOTION_ACCESS_TOKEN: "notion" },
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.headers.Authorization).toBe("Bearer new-access-token");
+      // Must have used the DB refresh token, not the stale encrypted one
+      expect(receivedRefreshToken).toBe("current-db-refresh-token");
+    });
+
     it("should use current DB token when another request already refreshed", async () => {
       // Simulate race condition: token was recently refreshed by another request.
       // DB has fresh expiry (30 min) and fresh token in secrets table,
