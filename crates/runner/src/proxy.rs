@@ -268,6 +268,17 @@ pub(crate) async fn spawn_mitmdump(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
 
+    // SAFETY: `set_pdeathsig` calls `prctl(PR_SET_PDEATHSIG)` which is
+    // async-signal-safe. This ensures the kernel sends SIGKILL to the
+    // mitmdump child when the parent runner process dies, preventing
+    // orphaned processes after runner crashes or restarts.
+    unsafe {
+        cmd.pre_exec(|| {
+            nix::sys::prctl::set_pdeathsig(nix::sys::signal::Signal::SIGKILL)
+                .map_err(std::io::Error::from)
+        });
+    }
+
     info!(port, bin = %config.mitmdump_bin.display(), "starting mitmdump");
 
     let mut child = cmd
