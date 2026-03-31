@@ -177,6 +177,11 @@ impl NbdCowDevice {
 
     /// Destroy the device but keep the COW file for snapshot persistence.
     ///
+    /// The caller must ensure all data is synced to the COW file before
+    /// calling this method (e.g., via the kernel `sync` command). The
+    /// dispatch tasks are not given a chance to flush because the device
+    /// is disconnected first to avoid kernel reconnect issues.
+    ///
     /// Saves the dirty bitmap as a sidecar file (`{cow_file}.bitmap`)
     /// so that a future `create()` call with the same paths can restore
     /// the dirty state and serve reads from the COW file correctly.
@@ -185,26 +190,33 @@ impl NbdCowDevice {
     }
 
     async fn shutdown_inner(&mut self, save_bitmap: bool) -> Result<()> {
-        // Signal all dispatch tasks to stop
-        self.shutdown.cancel();
+        // Disconnect via netlink FIRST — while dispatch tasks (and their
+        // server-side sockets) are still alive. This ensures the kernel
+        // processes the disconnect cleanly. If we cancel the tasks first,
+        // their server sockets close before the explicit disconnect, causing
+        // the kernel to detect dead connections and enter a state where the
+        // next connect may not properly set the device capacity.
+        if let Err(e) = netlink::disconnect(self.device_index) {
+            tracing::warn!("NBD disconnect failed for nbd{}: {e}", self.device_index);
+        }
+        self.disconnected = true;
 
-        // Wait for all tasks to complete (they will flush on shutdown)
+        // Now cancel and wait for tasks. They will see socket errors from
+        // the kernel-side shutdown and exit. The cancel token ensures we
+        // don't hang if a task is blocked elsewhere.
+        self.shutdown.cancel();
         for handle in self.server_handles.drain(..) {
             let _ = handle.await;
         }
 
         // Tasks are stopped — we have exclusive logical access to the COW layer.
-        // Save bitmap before disconnecting if keeping the COW file.
+        // Save bitmap if keeping the COW file.
+        // NOTE: The caller must sync data before calling destroy_keep_cow().
+        // The graceful task flush is skipped because we disconnect first.
         if save_bitmap {
             let cow = self.cow.read().await;
             cow.save_bitmap(&self.bitmap_path())?;
         }
-
-        // Disconnect via netlink (after tasks are done)
-        if let Err(e) = netlink::disconnect(self.device_index) {
-            tracing::warn!("NBD disconnect failed for nbd{}: {e}", self.device_index);
-        }
-        self.disconnected = true;
 
         // Wait for kernel to release the device (poll pid file)
         let pid_path = format!("/sys/block/nbd{}/pid", self.device_index);
