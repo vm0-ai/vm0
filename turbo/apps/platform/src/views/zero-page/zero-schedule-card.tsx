@@ -147,11 +147,7 @@ function parseWeeklyDays(timeStr: string): string {
     return "1";
   }
   const names = weekDayMatch[1].split(/,\s*/);
-  return names
-    .map((n) => {
-      return DAY_NAME_TO_CRON[n] ?? "1";
-    })
-    .join(",");
+  return names.map((n) => DAY_NAME_TO_CRON[n] ?? "1").join(",");
 }
 
 export function parseScheduleTimeString(timeStr: string): ParsedScheduleTime {
@@ -276,9 +272,7 @@ export function ZeroScheduleCard({
   const setTogglingIds = useSet(setTogglingIds$);
 
   const editingEntry = editingScheduleId
-    ? (scheduleList.find((e) => {
-        return e.id === editingScheduleId;
-      }) ?? null)
+    ? (scheduleList.find((e) => e.id === editingScheduleId) ?? null)
     : null;
 
   const openAddSchedule = () => {
@@ -301,9 +295,7 @@ export function ZeroScheduleCard({
           return;
         }
         const id = entry.id;
-        setTogglingIds((prev) => {
-          return new Set([...prev, id]);
-        });
+        setTogglingIds((prev) => new Set([...prev, id]));
         detach(
           onToggleEnabled({ name: entry.name, enabled }).finally(() => {
             setTogglingIds((prev) => {
@@ -328,9 +320,7 @@ export function ZeroScheduleCard({
   const handleRunNow = onRunNow
     ? async (entry: ScheduleEntry) => {
         const id = entry.id;
-        setRunningIds((prev) => {
-          return new Set([...prev, id]);
-        });
+        setRunningIds((prev) => new Set([...prev, id]));
         try {
           await onRunNow(entry);
         } finally {
@@ -398,16 +388,14 @@ export function ZeroScheduleCard({
       loopMinutes:
         values.freq === "every_n_minutes" ? values.loopMinutes : undefined,
     });
-    setScheduleList((prev) => {
-      return [
-        ...prev,
-        {
-          id: String(Date.now()),
-          time: timeStr,
-          prompt: values.prompt.trim(),
-        },
-      ];
-    });
+    setScheduleList((prev) => [
+      ...prev,
+      {
+        id: String(Date.now()),
+        time: timeStr,
+        prompt: values.prompt.trim(),
+      },
+    ]);
     detach(setAddScheduleOpen(false, signal), Reason.DomCallback);
   };
 
@@ -459,13 +447,13 @@ export function ZeroScheduleCard({
         loopMinutes:
           values.freq === "every_n_minutes" ? values.loopMinutes : undefined,
       });
-      setScheduleList((prev) => {
-        return prev.map((e) => {
-          return e.id === editingScheduleId
+      setScheduleList((prev) =>
+        prev.map((e) =>
+          e.id === editingScheduleId
             ? { ...e, time: timeStr, prompt: values.prompt.trim() }
-            : e;
-        });
-      });
+            : e,
+        ),
+      );
       detach(setEditingScheduleId(null, signal), Reason.DomCallback);
     }
   };
@@ -473,11 +461,14 @@ export function ZeroScheduleCard({
   return (
     <Card className="zero-card">
       <CardContent className="py-5 flex flex-col gap-6">
-        <header className="flex flex-col gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <h2 className="text-lg font-semibold tracking-tight text-foreground flex-1 min-w-0 truncate">
+        <header className="flex flex-wrap items-end justify-between gap-4">
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold tracking-tight text-foreground">
               {title}
             </h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">{subtitle}</p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
             <Button
               type="button"
               variant="outline"
@@ -488,32 +479,31 @@ export function ZeroScheduleCard({
               <IconPlus size={14} stroke={2} />
               Add schedule
             </Button>
+            <Tabs
+              value={scheduleViewMode}
+              onValueChange={(v) =>
+                setScheduleViewMode(v as "list" | "calendar")
+              }
+              className="shrink-0"
+            >
+              <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
+                <TabsTrigger
+                  value="list"
+                  className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+                >
+                  <IconList size={14} stroke={1.5} />
+                  List
+                </TabsTrigger>
+                <TabsTrigger
+                  value="calendar"
+                  className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+                >
+                  <IconLayoutGrid size={14} stroke={1.5} />
+                  Calendar
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
           </div>
-          <p className="text-sm text-muted-foreground">{subtitle}</p>
-          <Tabs
-            value={scheduleViewMode}
-            onValueChange={(v) => {
-              return setScheduleViewMode(v as "list" | "calendar");
-            }}
-            className="shrink-0"
-          >
-            <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
-              <TabsTrigger
-                value="list"
-                className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-              >
-                <IconList size={14} stroke={1.5} />
-                List
-              </TabsTrigger>
-              <TabsTrigger
-                value="calendar"
-                className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-              >
-                <IconLayoutGrid size={14} stroke={1.5} />
-                Calendar
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
         </header>
 
         {scheduleViewMode === "list" && (
@@ -545,9 +535,9 @@ export function ZeroScheduleCard({
 
       <ScheduleFormDialog
         open={addScheduleOpen}
-        onClose={() => {
-          return detach(setAddScheduleOpen(false, signal), Reason.DomCallback);
-        }}
+        onClose={() =>
+          detach(setAddScheduleOpen(false, signal), Reason.DomCallback)
+        }
         onSave={handleCreateSave}
         saving={!!saving}
         mode="create"
@@ -555,9 +545,9 @@ export function ZeroScheduleCard({
       />
       <ScheduleFormDialog
         open={editingScheduleId !== null}
-        onClose={() => {
-          return detach(setEditingScheduleId(null, signal), Reason.DomCallback);
-        }}
+        onClose={() =>
+          detach(setEditingScheduleId(null, signal), Reason.DomCallback)
+        }
         onSave={handleEditSave}
         saving={!!saving}
         mode="edit"
@@ -603,12 +593,7 @@ export function ZeroScheduleCard({
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                return setPendingDelete(null);
-              }}
-            >
+            <Button variant="outline" onClick={() => setPendingDelete(null)}>
               Cancel
             </Button>
             <Button variant="destructive" onClick={confirmDelete}>
