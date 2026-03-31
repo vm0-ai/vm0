@@ -846,6 +846,9 @@ export const sendNewThreadMessage$ = command(
       throwIfAbort(error);
       // Clear optimistic messages so stale user input does not persist in the UI
       set(internalLocalMessages$, []);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to send message",
+      );
       throw error;
     }
   },
@@ -924,6 +927,9 @@ export const sendExistingThreadMessage$ = command(
       throwIfAbort(error);
       // Clear optimistic messages so stale user input does not persist in the UI
       set(internalLocalMessages$, []);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to send message",
+      );
       throw error;
     }
   },
