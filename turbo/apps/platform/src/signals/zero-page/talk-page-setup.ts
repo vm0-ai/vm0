@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { ZeroTalkPage } from "../../views/zero-page/zero-talk-page.tsx";
+import { ZeroChatPage } from "../../views/zero-page/zero-chat-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { searchParams$, updateSearchParams$ } from "../route.ts";
@@ -15,7 +15,7 @@ import { setSidebarChatAgent$ } from "./zero-nav.ts";
 
 export const setupTalkPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    set(updatePage$, createElement(ZeroTalkPage));
+    set(updatePage$, createElement(ZeroChatPage));
     set(updateDocumentTitle$, "Chat");
 
     // Reset the talk draft on entrance
