@@ -234,7 +234,10 @@ describe("zero-chat signals", () => {
       expect(context.store.get(chatThreadId$)).toBe("url-thread");
       const messages = await context.store.get(zeroChatMessages$);
       expect(messages).toHaveLength(1);
-      expect(messages[0]?.content).toBe("From URL");
+      expect(messages[0]?.role).toBe("user");
+      if (messages[0]?.role === "user") {
+        expect(messages[0].content).toBe("From URL");
+      }
     });
 
     it("should return null for URL without session ID", async () => {

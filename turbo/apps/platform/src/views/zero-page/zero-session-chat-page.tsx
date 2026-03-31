@@ -3,6 +3,7 @@ import {
   useSet,
   useLoadable,
   useLastLoadable,
+  useLastResolved,
   useResolved,
 } from "ccstate-react";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -648,7 +649,7 @@ interface AssistantMessageProps {
 
 function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
   // Delegate to reactive variant when the message carries its own runLoop signals
-  if (message.result$) {
+  if (message.runLoop) {
     return (
       <ReactiveAssistantMessage
         message={message}
@@ -661,13 +662,27 @@ function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
   );
 }
 
+function failedRunErrorMessage(
+  status: string | undefined,
+  error: string | null | undefined,
+): string {
+  if (error) {
+    return error;
+  }
+  if (status === "timeout") {
+    return "Run timed out";
+  }
+  if (status === "cancelled") {
+    return "Run cancelled.";
+  }
+  return "Run failed";
+}
+
 /** Assistant message with reactive result$/summaries$/detail$ from runLoop. */
 function ReactiveAssistantMessage({
   message,
   zeroAvatarSrc,
 }: AssistantMessageProps) {
-  const resultLoadable = useLastLoadable(message.result$!);
-  const content = resultLoadable.state === "hasData" ? resultLoadable.data : "";
   const summariesLoadable = useLastLoadable(message.summaries$!);
   const summaries =
     summariesLoadable.state === "hasData" ? summariesLoadable.data : [];
@@ -678,20 +693,15 @@ function ReactiveAssistantMessage({
     detail?.status === "failed" ||
     detail?.status === "timeout" ||
     detail?.status === "cancelled";
+  const isTerminal = isFailed || detail?.status === "completed";
 
   // Build an enriched message with reactive content for the static renderer
   const enrichedMessage: AssistantChatMessage = {
     ...message,
-    content,
     summaries: summaries.length > 0 ? summaries : message.summaries,
     status: detail?.status ?? undefined,
     error: isFailed
-      ? (detail?.error ??
-        (detail?.status === "timeout"
-          ? "Run timed out"
-          : detail?.status === "cancelled"
-            ? "Run cancelled."
-            : "Run failed"))
+      ? failedRunErrorMessage(detail?.status, detail?.error)
       : undefined,
   };
   return (
@@ -699,7 +709,7 @@ function ReactiveAssistantMessage({
       message={enrichedMessage}
       zeroAvatarSrc={zeroAvatarSrc}
       renderActivityLine={
-        !isFailed ? <MessageRunActivityLine message={message} /> : undefined
+        !isTerminal ? <MessageRunActivityLine message={message} /> : undefined
       }
     />
   );
@@ -713,6 +723,7 @@ function StaticAssistantMessage({
   const setOrgManageOpen = useSet(setOrgManageDialogOpen$);
   const setTab = useSet(setActiveTab$);
   const pageSignal = useGet(pageSignal$);
+  const content = useLastResolved(message.result$) ?? "";
   const avatar = (
     <div className="h-9 w-9 shrink-0 mt-0.5 overflow-hidden rounded-xl">
       <img
@@ -731,10 +742,10 @@ function StaticAssistantMessage({
   const copyMessage = useSet(copyMessageContent$);
 
   const handleCopy = () => {
-    if (!message.content) {
+    if (!content) {
       return;
     }
-    detach(copyMessage(message.id, message.content), Reason.DomCallback);
+    detach(copyMessage(message.id, content), Reason.DomCallback);
   };
 
   const logButton = message.legacyRunId ? (
@@ -756,7 +767,7 @@ function StaticAssistantMessage({
             <TooltipContent side="bottom">View activity logs</TooltipContent>
           </Tooltip>
         </TooltipProvider>
-        {message.content && (
+        {content && (
           <TooltipProvider delayDuration={300}>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -861,7 +872,7 @@ function StaticAssistantMessage({
     );
   }
 
-  if (message.content) {
+  if (content) {
     return (
       <div className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
         <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 -ml-[38px] sm:-ml-[46px] items-start">
@@ -873,12 +884,15 @@ function StaticAssistantMessage({
                 messageId={message.id}
               />
             )}
-            <Markdown source={message.content} />
+            <Markdown source={content} />
             {message.cancelled && (
               <div className="mt-3 pt-3 border-t flex items-center gap-1.5 text-xs text-muted-foreground">
                 <IconPlayerStop size={12} />
                 <span>Cancelled</span>
               </div>
+            )}
+            {renderActivityLine && (
+              <div className="mt-3 pt-3 border-t">{renderActivityLine}</div>
             )}
           </div>
         </div>

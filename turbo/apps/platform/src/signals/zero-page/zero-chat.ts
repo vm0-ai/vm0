@@ -83,15 +83,14 @@ export interface UserChatMessage {
 export interface AssistantChatMessage {
   id: string;
   role: "assistant";
-  content: string;
+  /** Reactive result content — always present. For static (historical) messages this resolves immediately. */
+  result$: Computed<Promise<string>>;
   legacyRunId?: string;
   status?: LogStatus;
   error?: string;
   cancelled?: boolean;
   summaries?: string[];
   runLoop?: ReturnType<typeof createRunLoop>;
-  /** Reactive result content derived from runLoop events. */
-  result$?: Computed<Promise<string>>;
   /** Reactive summaries derived from runLoop events. */
   summaries$?: Computed<Promise<string[]>>;
   /** Command to start the polling loop for this run. */
@@ -403,7 +402,6 @@ function createActiveRunMessage(
     assistantMessage: {
       id: crypto.randomUUID(),
       role: "assistant",
-      content: "",
       legacyRunId: runId,
       runLoop,
       result$,
@@ -436,7 +434,7 @@ function unsavedRunsToMessages(unsavedRuns: ChatThreadData["unsavedRuns"]): {
       messages.push({
         id: crypto.randomUUID(),
         role: "assistant",
-        content: "",
+        result$: computed(() => Promise.resolve("")),
         legacyRunId: run.runId,
         status: "failed",
         error: isCancelled
@@ -535,12 +533,24 @@ const currentChatMessages$ = computed(
             })
           : undefined;
 
-      return {
+      const base = {
         id: crypto.randomUUID(),
-        role: m.role,
-        content: m.content,
-        legacyRunId: m.runId,
         ...(summaries && summaries.length > 0 ? { summaries } : {}),
+      };
+
+      if (m.role === "user") {
+        return {
+          ...base,
+          role: "user" as const,
+          content: m.content,
+        };
+      }
+
+      return {
+        ...base,
+        role: "assistant" as const,
+        result$: computed(() => Promise.resolve(m.content)),
+        legacyRunId: m.runId,
         ...(m.error ? { status: "failed" as const, error: m.error } : {}),
       };
     });
