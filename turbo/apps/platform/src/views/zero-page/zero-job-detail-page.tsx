@@ -30,6 +30,11 @@ import {
   Card,
   CardContent,
   cn,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@vm0/ui";
 import { ZeroScheduleTab } from "./zero-schedule-tab.tsx";
 import { ZeroInstructionsTab } from "./zero-instructions-tab.tsx";
@@ -226,19 +231,24 @@ function AgentTabNav({
       onValueChange={onTabChange}
       className="flex-1 min-w-0"
     >
-      {/* Mobile: native select */}
-      <select
-        className="sm:hidden h-9 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground"
-        value={activeTab}
-        onChange={(e) => onTabChange(e.target.value)}
-      >
-        <option value="authorization">Authorization</option>
-        <option value="schedule">Scheduled</option>
-        {showProfileAndInstructions && <option value="profile">Profile</option>}
-        {showProfileAndInstructions && (
-          <option value="instructions">Instructions</option>
-        )}
-      </select>
+      {/* Mobile: Select dropdown */}
+      <div className="sm:hidden">
+        <Select value={activeTab} onValueChange={onTabChange}>
+          <SelectTrigger className="h-9 w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="authorization">Authorization</SelectItem>
+            <SelectItem value="schedule">Scheduled</SelectItem>
+            {showProfileAndInstructions && (
+              <SelectItem value="profile">Profile</SelectItem>
+            )}
+            {showProfileAndInstructions && (
+              <SelectItem value="instructions">Instructions</SelectItem>
+            )}
+          </SelectContent>
+        </Select>
+      </div>
       {/* Desktop: tab list */}
       <TabsList className="zero-tabs hidden sm:inline-flex h-9 gap-1 px-1 py-1">
         <TabsTrigger value="authorization" className={TAB_TRIGGER_CLASS}>

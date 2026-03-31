@@ -959,25 +959,30 @@ function ScheduleDetailView({
             </div>
 
             <div className="mt-4 flex flex-col gap-2 sm:mt-6 sm:flex-row sm:h-9 sm:items-center">
-              {/* Mobile: native select */}
-              <select
-                className="sm:hidden h-9 w-full rounded-lg border border-input bg-card px-3 text-sm text-foreground"
-                value={activeTab}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (
-                    v === "settings" ||
-                    v === "instructions" ||
-                    v === "history"
-                  ) {
-                    setActiveTab(v);
-                  }
-                }}
-              >
-                <option value="settings">Settings</option>
-                <option value="instructions">Instructions</option>
-                <option value="history">Run History</option>
-              </select>
+              {/* Mobile: Select dropdown */}
+              <div className="sm:hidden w-full">
+                <Select
+                  value={activeTab}
+                  onValueChange={(v) => {
+                    if (
+                      v === "settings" ||
+                      v === "instructions" ||
+                      v === "history"
+                    ) {
+                      setActiveTab(v);
+                    }
+                  }}
+                >
+                  <SelectTrigger className="h-9 w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="settings">Settings</SelectItem>
+                    <SelectItem value="instructions">Instructions</SelectItem>
+                    <SelectItem value="history">Run History</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               {/* Desktop: tab list */}
               <TabsList className="zero-tabs hidden sm:inline-flex h-9 gap-1 px-1 py-1">
                 <TabsTrigger
