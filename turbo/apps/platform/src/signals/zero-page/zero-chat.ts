@@ -300,9 +300,6 @@ export const zeroSessionList$ = computed(async (get) => {
   return await get(chatThreadListResponse$);
 });
 
-export const zeroSessionListLoading$ = computed(() => false);
-export const zeroSessionListError$ = computed(() => null as string | null);
-
 // ---------------------------------------------------------------------------
 // Session snapshot — async computed derived from URL
 // ---------------------------------------------------------------------------

@@ -9,8 +9,6 @@ import {
   allFinished$,
   zeroChatInput$,
   zeroSessionList$,
-  zeroSessionListLoading$,
-  zeroSessionListError$,
   zeroSessionError$,
   setZeroChatInput$,
   clearZeroChatInput$,
@@ -133,8 +131,6 @@ describe("zero-chat signals", () => {
       expect(threads).toHaveLength(2);
       expect(threads[0]?.id).toBe("t1");
       expect(threads[1]?.preview).toBe("World");
-      expect(context.store.get(zeroSessionListLoading$)).toBeFalsy();
-      expect(context.store.get(zeroSessionListError$)).toBeNull();
     });
 
     it("should pass agentId as query parameter", async () => {
