@@ -4,6 +4,7 @@ pub mod netlink;
 pub mod protocol;
 pub mod server;
 
+use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -95,22 +96,23 @@ impl NbdCowDevice {
         };
         let device_path = PathBuf::from(format!("/dev/nbd{device_index}"));
 
-        // Wait for the kernel to finish setting up the device.
-        // On reconnect (disconnect + connect to the same index), the kernel
-        // may briefly report size=0 before the new capacity propagates to the
-        // block layer.
-        let size_path = format!("/sys/block/nbd{device_index}/size");
-        for _ in 0..20 {
-            match std::fs::read_to_string(&size_path) {
-                Ok(content) => {
-                    let sectors: u64 = content.trim().parse().unwrap_or(0);
-                    if sectors > 0 {
-                        break;
-                    }
-                }
-                Err(_) => break,
-            }
-            std::thread::sleep(std::time::Duration::from_millis(50));
+        // Force-set the device size via ioctl.
+        // On some kernels, reconnecting to a previously-used device index via
+        // netlink does not properly propagate the size to the block layer,
+        // leaving the device at 0 bytes. The NBD_SET_SIZE ioctl forces the
+        // kernel to update the block device capacity.
+        //
+        // NBD_SET_SIZE = _IO(0xab, 2) = 0xab02
+        const NBD_SET_SIZE: libc::c_ulong = 0xab02;
+        let dev_fd = std::fs::File::open(&device_path)?;
+        let ret = unsafe { libc::ioctl(dev_fd.as_raw_fd(), NBD_SET_SIZE, size as libc::c_ulong) };
+        drop(dev_fd);
+        if ret < 0 {
+            tracing::warn!(
+                device_index,
+                "NBD_SET_SIZE ioctl failed: {}",
+                std::io::Error::last_os_error()
+            );
         }
 
         Ok(Self {
