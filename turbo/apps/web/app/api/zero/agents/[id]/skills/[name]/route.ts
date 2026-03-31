@@ -282,7 +282,6 @@ const router = tsr.router(zeroAgentSkillsDetailContract, {
         id: agentComposes.id,
         name: agentComposes.name,
         customSkills: zeroAgents.customSkills,
-        connectors: zeroAgents.connectors,
       })
       .from(agentComposes)
       .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
@@ -375,7 +374,6 @@ const router = tsr.router(zeroAgentSkillsDetailContract, {
     // Rebuild compose (remove volume declaration)
     const content = buildComposeContent(
       existing.name,
-      existing.connectors ?? [],
       updatedSkills.map((name) => ({ name })),
     );
 
