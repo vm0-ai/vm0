@@ -124,7 +124,36 @@ export const zeroChatMessages$ = computed(async (get) => {
   const snapshot = await get(chatSessionSnapshot$);
   const serverMessages = snapshot?.messages ?? [];
   const localMessages = get(internalLocalMessages$);
-  return [...serverMessages, ...localMessages];
+
+  // Deduplicate: if the server already has a message for a given runId,
+  // drop the local copy (server is the canonical source after persistence).
+  const serverRunIds = new Set(
+    serverMessages
+      .filter(
+        (m): m is AssistantChatMessage =>
+          m.role === "assistant" && !!m.legacyRunId,
+      )
+      .map((m) => m.legacyRunId),
+  );
+
+  const skipIndices = new Set<number>();
+  for (let i = 0; i < localMessages.length; i++) {
+    const m = localMessages[i];
+    if (
+      m.role === "assistant" &&
+      m.legacyRunId &&
+      serverRunIds.has(m.legacyRunId)
+    ) {
+      skipIndices.add(i);
+      // Also skip the paired user message immediately before
+      if (i > 0 && localMessages[i - 1].role === "user") {
+        skipIndices.add(i - 1);
+      }
+    }
+  }
+
+  const filteredLocal = localMessages.filter((_, i) => !skipIndices.has(i));
+  return [...serverMessages, ...filteredLocal];
 });
 
 /** Whether all runs have finished (no in-flight runs). */

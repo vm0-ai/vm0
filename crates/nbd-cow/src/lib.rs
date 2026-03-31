@@ -5,8 +5,10 @@ pub mod protocol;
 pub mod server;
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
-use error::{NbdCowError, Result};
+use error::Result;
+use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
@@ -31,6 +33,8 @@ pub struct NbdCowDevice {
     device_path: PathBuf,
     /// Path to the sparse COW file.
     cow_file: PathBuf,
+    /// Shared COW layer (also held by dispatch tasks).
+    cow: Arc<RwLock<cow::CowLayer>>,
     /// Background server task handles (one per connection).
     server_handles: Vec<JoinHandle<()>>,
     /// Shutdown signal for all server tasks.
@@ -47,8 +51,6 @@ impl NbdCowDevice {
     /// 3. Spawns dispatch tasks for each connection
     /// 4. Connects via netlink
     pub async fn create(base_image: &Path, cow_file: &Path, size: u64) -> Result<Self> {
-        let shutdown = CancellationToken::new();
-
         // Create COW layer
         let cow_layer = cow::CowLayer::new(
             base_image,
@@ -57,48 +59,99 @@ impl NbdCowDevice {
             BLOCK_SIZE,
             DEFAULT_FLUSH_THRESHOLD,
         )?;
-        let cow_layer = std::sync::Arc::new(tokio::sync::RwLock::new(cow_layer));
+        let cow_layer = Arc::new(RwLock::new(cow_layer));
 
-        // Create socketpairs and spawn server tasks
-        let mut client_fds = Vec::with_capacity(NUM_CONNECTIONS);
-        let mut server_handles = Vec::with_capacity(NUM_CONNECTIONS);
+        // Retry loop: on reconnect (same device index after a recent disconnect),
+        // the kernel may still be tearing down the old connection. The netlink
+        // CONNECT succeeds but set_capacity may not take effect (device size = 0).
+        // When detected, disconnect, recreate socketpairs + tasks, and retry.
+        // Fresh sockets and tasks are needed each attempt because the kernel may
+        // have started the NBD protocol on the old sockets; after disconnect the
+        // dispatch tasks exit and drop their server-side fds, making reuse unsafe.
+        const MAX_CONNECT_RETRIES: u32 = 5;
+        let mut last_err_idx: u32 = 0;
 
-        for _ in 0..NUM_CONNECTIONS {
-            let (client_fd, server_fd) = netlink::create_socketpair()?;
-            client_fds.push(client_fd);
+        for attempt in 0..=MAX_CONNECT_RETRIES {
+            // Fresh shutdown token and socketpairs for each attempt
+            let shutdown = CancellationToken::new();
+            let mut client_fds = Vec::with_capacity(NUM_CONNECTIONS);
+            let mut server_handles = Vec::with_capacity(NUM_CONNECTIONS);
 
-            let cow = cow_layer.clone();
-            let token = shutdown.clone();
-            let handle = tokio::spawn(async move {
-                if let Err(e) = server::dispatch(server_fd, cow, token).await {
-                    tracing::error!("NBD dispatch error: {e}");
+            let setup_err = (|| -> Result<()> {
+                for _ in 0..NUM_CONNECTIONS {
+                    let (client_fd, server_fd) = netlink::create_socketpair()?;
+                    client_fds.push(client_fd);
+
+                    let cow = cow_layer.clone();
+                    let token = shutdown.clone();
+                    let handle = tokio::spawn(async move {
+                        if let Err(e) = server::dispatch(server_fd, cow, token).await {
+                            tracing::error!("NBD dispatch error: {e}");
+                        }
+                    });
+                    server_handles.push(handle);
                 }
-            });
-            server_handles.push(handle);
-        }
-
-        // Atomically find a free device and connect — retries on EBUSY so
-        // concurrent runners don't race for the same device index.
-        let device_index = match netlink::find_and_connect(&client_fds, size, BLOCK_SIZE as u64) {
-            Ok(idx) => idx,
-            Err(e) => {
+                Ok(())
+            })();
+            if let Err(e) = setup_err {
                 shutdown.cancel();
                 for handle in server_handles {
                     handle.abort();
                 }
                 return Err(e);
             }
-        };
-        let device_path = PathBuf::from(format!("/dev/nbd{device_index}"));
 
-        Ok(Self {
-            device_index,
-            device_path,
-            cow_file: cow_file.to_path_buf(),
-            server_handles,
-            shutdown,
-            disconnected: false,
-        })
+            // Atomically find a free device and connect — retries on EBUSY so
+            // concurrent runners don't race for the same device index.
+            let device_index = match netlink::find_and_connect(&client_fds, size, BLOCK_SIZE as u64)
+            {
+                Ok(idx) => idx,
+                Err(e) => {
+                    shutdown.cancel();
+                    for handle in server_handles {
+                        handle.abort();
+                    }
+                    return Err(e);
+                }
+            };
+
+            // Verify the device got the correct size via sysfs.
+            if netlink::verify_device_size(device_index, size) {
+                let device_path = PathBuf::from(format!("/dev/nbd{device_index}"));
+                return Ok(Self {
+                    device_index,
+                    device_path,
+                    cow_file: cow_file.to_path_buf(),
+                    cow: cow_layer,
+                    server_handles,
+                    shutdown,
+                    disconnected: false,
+                });
+            }
+
+            // Size is wrong — disconnect, clean up tasks, and retry.
+            tracing::debug!(
+                device_index,
+                attempt = attempt + 1,
+                "device size 0 after connect, disconnecting and retrying"
+            );
+            let _ = netlink::disconnect(device_index);
+            shutdown.cancel();
+            for handle in server_handles {
+                handle.abort();
+            }
+            last_err_idx = device_index;
+
+            if attempt < MAX_CONNECT_RETRIES {
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+        }
+
+        Err(error::NbdCowError::Io(std::io::Error::other(format!(
+            "device size stuck at 0 after {MAX_CONNECT_RETRIES} connect retries \
+             on nbd{last_err_idx} — kernel may not have finished releasing \
+             the previous connection",
+        ))))
     }
 
     /// Path to the block device (e.g., `/dev/nbd0`).
@@ -111,30 +164,70 @@ impl NbdCowDevice {
         &self.cow_file
     }
 
-    /// Destroy the device, removing the COW file.
-    pub async fn destroy(&mut self) -> Result<()> {
-        self.shutdown_inner().await?;
+    /// Log COW device status for debugging.
+    pub async fn log_status(&self) {
+        let cow = self.cow.read().await;
+        tracing::info!(
+            device_index = self.device_index,
+            device_path = %self.device_path.display(),
+            dirty_blocks = cow.dirty_block_count(),
+            buffered_blocks = cow.buffered_block_count(),
+            buffer_bytes = cow.buffer_bytes(),
+            "NBD COW device status"
+        );
+    }
 
-        // Remove COW file
-        if self.cow_file.exists() {
-            std::fs::remove_file(&self.cow_file).map_err(NbdCowError::Io)?;
+    /// Mark the device as abandoned without performing cleanup.
+    ///
+    /// Use as a last resort when netlink disconnect fails. Cancels tasks
+    /// and marks the device as disconnected so Drop becomes a no-op.
+    /// The kernel will eventually timeout and release the device.
+    pub fn abandon(&mut self) {
+        tracing::warn!(
+            device_index = self.device_index,
+            "NBD device abandoned — relying on kernel timeout for cleanup"
+        );
+        self.shutdown.cancel();
+        for handle in self.server_handles.drain(..) {
+            handle.abort();
         }
+        self.disconnected = true;
+    }
+
+    /// Destroy the device, removing the COW file and bitmap.
+    pub async fn destroy(&mut self) -> Result<()> {
+        self.shutdown_inner(false).await?;
+
+        // Remove COW file and bitmap
+        let _ = std::fs::remove_file(&self.cow_file);
+        let _ = std::fs::remove_file(self.bitmap_path());
 
         Ok(())
     }
 
     /// Destroy the device but keep the COW file for snapshot persistence.
+    ///
+    /// Saves the dirty bitmap as a sidecar file (`{cow_file}.bitmap`)
+    /// so that a future `create()` call with the same paths can restore
+    /// the dirty state and serve reads from the COW file correctly.
     pub async fn destroy_keep_cow(&mut self) -> Result<()> {
-        self.shutdown_inner().await
+        self.shutdown_inner(true).await
     }
 
-    async fn shutdown_inner(&mut self) -> Result<()> {
+    async fn shutdown_inner(&mut self, save_bitmap: bool) -> Result<()> {
         // Signal all dispatch tasks to stop
         self.shutdown.cancel();
 
         // Wait for all tasks to complete (they will flush on shutdown)
         for handle in self.server_handles.drain(..) {
             let _ = handle.await;
+        }
+
+        // Tasks are stopped — we have exclusive logical access to the COW layer.
+        // Save bitmap before disconnecting if keeping the COW file.
+        if save_bitmap {
+            let cow = self.cow.read().await;
+            cow.save_bitmap(&self.bitmap_path())?;
         }
 
         // Disconnect via netlink (after tasks are done)
@@ -159,6 +252,10 @@ impl NbdCowDevice {
         }
 
         Ok(())
+    }
+
+    fn bitmap_path(&self) -> PathBuf {
+        cow::bitmap_path_for(&self.cow_file)
     }
 }
 

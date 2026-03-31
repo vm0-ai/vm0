@@ -22,6 +22,7 @@ import {
 import {
   COMMON_TIMEZONES,
   getTodayDateLocal,
+  getTimezoneLabel,
 } from "../../signals/zero-page/cron.ts";
 import { slackOrgData$ } from "../../signals/zero-page/zero-slack.ts";
 import { slackChannels$ } from "../../signals/zero-page/slack-channels.ts";
@@ -398,7 +399,7 @@ function ScheduleTimingFields({
               ).map((tz) => {
                 return (
                   <SelectItem key={tz} value={tz}>
-                    {tz.replace(/_/g, " ")}
+                    {getTimezoneLabel(tz)}
                   </SelectItem>
                 );
               })}

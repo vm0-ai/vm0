@@ -132,6 +132,27 @@ pub fn find_and_connect(client_fds: &[OwnedFd], size: u64, block_size: u64) -> R
     Err(NbdCowError::NoFreeDevice)
 }
 
+/// Check whether the device has the expected size via sysfs.
+///
+/// Returns `true` if the size matches within a brief polling window.
+/// On reconnect (same index after a recent disconnect), the kernel may
+/// briefly report the old (zero) capacity before the new config takes
+/// effect. A few milliseconds of polling handles this.
+pub fn verify_device_size(device_index: u32, expected_size: u64) -> bool {
+    let expected_sectors = expected_size / 512;
+    let size_path = format!("/sys/block/nbd{device_index}/size");
+    for _ in 0..5 {
+        if let Ok(content) = std::fs::read_to_string(&size_path) {
+            let sectors: u64 = content.trim().parse().unwrap_or(0);
+            if sectors == expected_sectors {
+                return true;
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    false
+}
+
 /// Disconnect an NBD device via generic netlink.
 pub fn disconnect(device_index: u32) -> Result<()> {
     let sock = open_genl_socket()?;
@@ -165,6 +186,25 @@ fn open_genl_socket() -> Result<GenlSocket> {
             std::os::unix::io::AsRawFd::as_raw_fd(&fd),
             std::ptr::from_ref(&addr).cast(),
             std::mem::size_of::<libc::sockaddr_nl>() as u32,
+        )
+    };
+    if ret < 0 {
+        return Err(NbdCowError::Io(std::io::Error::last_os_error()));
+    }
+
+    // Set a receive timeout so recv() doesn't block forever if the
+    // kernel never sends an ACK (e.g., nbd module unloaded mid-call).
+    let timeout = libc::timeval {
+        tv_sec: 5,
+        tv_usec: 0,
+    };
+    let ret = unsafe {
+        libc::setsockopt(
+            std::os::unix::io::AsRawFd::as_raw_fd(&fd),
+            libc::SOL_SOCKET,
+            libc::SO_RCVTIMEO,
+            std::ptr::from_ref(&timeout).cast(),
+            std::mem::size_of::<libc::timeval>() as u32,
         )
     };
     if ret < 0 {
@@ -289,18 +329,24 @@ fn send_genl_msg_raw(
 }
 
 fn recv_nl(sock: &GenlSocket, buf: &mut [u8]) -> Result<usize> {
-    let n = unsafe {
-        libc::recv(
-            std::os::unix::io::AsRawFd::as_raw_fd(&sock.fd),
-            buf.as_mut_ptr().cast(),
-            buf.len(),
-            0,
-        )
-    };
-    if n < 0 {
-        return Err(NbdCowError::Io(std::io::Error::last_os_error()));
+    loop {
+        let n = unsafe {
+            libc::recv(
+                std::os::unix::io::AsRawFd::as_raw_fd(&sock.fd),
+                buf.as_mut_ptr().cast(),
+                buf.len(),
+                0,
+            )
+        };
+        if n >= 0 {
+            return Ok(n as usize);
+        }
+        let err = std::io::Error::last_os_error();
+        if err.kind() != std::io::ErrorKind::Interrupted {
+            return Err(NbdCowError::Io(err));
+        }
+        // EINTR — retry
     }
-    Ok(n as usize)
 }
 
 fn recv_genl_ack(sock: &GenlSocket) -> Result<()> {
@@ -356,6 +402,7 @@ fn build_sockets_nla(client_fds: &[OwnedFd]) -> Vec<u8> {
 /// Build a netlink attribute (NLA).
 fn build_nla(nla_type: u16, payload: &[u8]) -> Vec<u8> {
     let nla_len = 4 + payload.len();
+    debug_assert!(nla_len <= u16::MAX as usize, "NLA payload too large");
     let aligned_len = (nla_len + 3) & !3;
     let mut buf = vec![0u8; aligned_len];
     if let Some(header) = buf.get_mut(..4) {

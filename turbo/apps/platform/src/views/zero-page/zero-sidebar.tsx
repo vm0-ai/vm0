@@ -1050,7 +1050,7 @@ export function ZeroSidebar() {
   };
   const selectedRecentId = useGet(chatThreadId$);
   const onAccountAction = useSet(handleZeroAccountAction$);
-  const recentSessionsLoadable = useLoadable(zeroSessionList$);
+  const recentSessionsLoadable = useLastLoadable(zeroSessionList$);
   const recentSessions =
     recentSessionsLoadable.state === "hasData"
       ? recentSessionsLoadable.data

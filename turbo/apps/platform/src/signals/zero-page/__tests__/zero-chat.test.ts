@@ -185,6 +185,132 @@ describe("zero-chat signals", () => {
       // finalizeCompletedRun$ must have invalidated the thread (at least one reload)
       expect(threadReloadCount).toBeGreaterThan(1);
     });
+
+    it("should not duplicate messages after run completes and server persists them", async () => {
+      const RUN_ID = "a0000000-0000-4000-a000-000000000099";
+      let threadLoadCount = 0;
+
+      server.use(
+        http.get("*/api/zero/chat-threads", () => {
+          return HttpResponse.json({ threads: [] });
+        }),
+        http.get("*/api/zero/chat-threads/:id", () => {
+          threadLoadCount++;
+          // After initial load (empty), subsequent loads return persisted messages
+          // simulating the server having persisted the session callback
+          if (threadLoadCount <= 1) {
+            return HttpResponse.json({
+              id: "thread-dedup",
+              title: null,
+              agentId: "c0000000-0000-4000-a000-000000000001",
+              chatMessages: [],
+              latestSessionId: "session-dedup",
+              unsavedRuns: [],
+              createdAt: "2026-03-10T00:00:00Z",
+              updatedAt: "2026-03-10T00:00:00Z",
+            });
+          }
+          // After run completes, server returns persisted messages
+          return HttpResponse.json({
+            id: "thread-dedup",
+            title: null,
+            agentId: "c0000000-0000-4000-a000-000000000001",
+            chatMessages: [
+              {
+                role: "user",
+                content: "Hello dedup",
+                createdAt: "2026-03-10T00:00:00Z",
+              },
+              {
+                role: "assistant",
+                content: "Hi there!",
+                runId: RUN_ID,
+                createdAt: "2026-03-10T00:00:01Z",
+              },
+            ],
+            latestSessionId: "session-dedup",
+            unsavedRuns: [],
+            createdAt: "2026-03-10T00:00:00Z",
+            updatedAt: "2026-03-10T00:00:01Z",
+          });
+        }),
+        http.post("*/api/zero/chat/messages", () => {
+          return HttpResponse.json(
+            {
+              runId: RUN_ID,
+              threadId: "thread-dedup",
+              status: "running",
+              createdAt: "2026-03-10T00:00:00Z",
+            },
+            { status: 201 },
+          );
+        }),
+        http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
+          return HttpResponse.json({
+            events: [
+              {
+                id: "evt-1",
+                sequenceNumber: 1,
+                eventType: "result",
+                eventData: { result: "Hi there!" },
+                createdAt: "2026-03-10T00:00:01Z",
+              },
+            ],
+            hasMore: false,
+            framework: "claude-code",
+          });
+        }),
+        http.get("*/api/zero/logs/:runId", () => {
+          return HttpResponse.json({
+            id: RUN_ID,
+            sessionId: "session-dedup",
+            agentId: "zero",
+            displayName: null,
+            framework: "claude-code",
+            modelProvider: null,
+            selectedModel: null,
+            triggerSource: "web",
+            triggerAgentName: null,
+            scheduleId: null,
+            status: "completed",
+            prompt: "Hello dedup",
+            appendSystemPrompt: null,
+            error: null,
+            createdAt: "2026-03-10T00:00:00Z",
+            startedAt: "2026-03-10T00:00:00Z",
+            completedAt: "2026-03-10T00:00:01Z",
+            artifact: { name: null, version: null },
+          });
+        }),
+      );
+
+      await setupPage({
+        context,
+        path: "/chat/thread-dedup",
+        withoutRender: true,
+      });
+
+      await context.store.set(
+        sendExistingThreadMessage$,
+        "Hello dedup",
+        undefined,
+        context.signal,
+      );
+
+      await expect(context.store.get(allFinished$)).resolves.toBeTruthy();
+
+      // After run completes, finalizeCompletedRun$ reloads the thread.
+      // Server now returns persisted messages. The local optimistic messages
+      // should be deduplicated against the server messages.
+      const messages = await context.store.get(zeroChatMessages$);
+      const userMessages = messages.filter((m) => m.role === "user");
+      const assistantMessages = messages.filter((m) => m.role === "assistant");
+
+      // There should be exactly one user message and one assistant message,
+      // not duplicates from both server and local sources.
+      expect(userMessages).toHaveLength(1);
+      expect(assistantMessages).toHaveLength(1);
+    });
   });
 
   describe("startNewZeroSession$", () => {

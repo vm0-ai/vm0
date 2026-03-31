@@ -31,7 +31,10 @@ import {
 import { ScheduleCalendarView } from "./schedule-calendar-view.tsx";
 import { ScheduleListView } from "./schedule-list-view.tsx";
 import { agents$ } from "../../signals/zero-page/agents-list.ts";
-import { COMMON_TIMEZONES } from "../../signals/zero-page/cron.ts";
+import {
+  COMMON_TIMEZONES,
+  getTimezoneLabel,
+} from "../../signals/zero-page/cron.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   allOrgScheduleEntries$,
@@ -285,7 +288,7 @@ export function ScheduleEditFields({
               {COMMON_TIMEZONES.map((tz) => {
                 return (
                   <SelectItem key={tz} value={tz}>
-                    {tz.replace(/_/g, " ")}
+                    {getTimezoneLabel(tz)}
                   </SelectItem>
                 );
               })}

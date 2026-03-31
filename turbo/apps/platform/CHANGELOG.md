@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.169.0](https://github.com/vm0-ai/vm0/compare/app-v0.168.0...app-v0.169.0) (2026-03-31)
+
+
+### Features
+
+* **platform:** add error state handling for activity page ([#7363](https://github.com/vm0-ai/vm0/issues/7363)) ([306a2ae](https://github.com/vm0-ai/vm0/commit/306a2ae0b0733ec4a3e2d2006c56e72254821b00))
+
+
+### Bug Fixes
+
+* **platform:** deduplicate local messages against server-persisted messages ([#7366](https://github.com/vm0-ai/vm0/issues/7366)) ([19f0269](https://github.com/vm0-ai/vm0/commit/19f02696b44d14b6e63ce157a6752fb8cabb9f82))
+* **platform:** improve timezone selector with auto-detect and GMT offset labels ([#7298](https://github.com/vm0-ai/vm0/issues/7298)) ([ccf3563](https://github.com/vm0-ai/vm0/commit/ccf3563860877e51503f3a93a015463b908b9dff))
+* **platform:** prevent stale empty events from skipping activity skeleton ([#7358](https://github.com/vm0-ai/vm0/issues/7358)) ([c79581a](https://github.com/vm0-ai/vm0/commit/c79581ab88b40f133e267811fae65dce4b4b741a))
+* prevent sidebar session list flicker during refresh ([#7375](https://github.com/vm0-ai/vm0/issues/7375)) ([62199eb](https://github.com/vm0-ai/vm0/commit/62199eb7210c294253346a0072cdcbc3e01bb11f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.130.1
+
 ## [0.168.0](https://github.com/vm0-ai/vm0/compare/app-v0.167.0...app-v0.168.0) (2026-03-31)
 
 
