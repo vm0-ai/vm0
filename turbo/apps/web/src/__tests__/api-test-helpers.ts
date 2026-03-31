@@ -3547,9 +3547,8 @@ export async function seedTestSkill(
  * Feature-flagged connectors are excluded to match buildComposeContent behaviour.
  */
 export async function seedSeedSkills(): Promise<void> {
-  const { SEED_SKILLS, buildSeedSkillValues } = await import(
-    "../lib/zero/seed-skills"
-  );
+  const { SEED_SKILLS, buildSeedSkillValues } =
+    await import("../lib/zero/seed-skills");
   const { CONNECTOR_TYPES } = await import("@vm0/core");
   initServices();
   const gaConnectorTypes = Object.entries(CONNECTOR_TYPES)
