@@ -473,23 +473,23 @@ export function ZeroScheduleCard({
   return (
     <Card className="zero-card">
       <CardContent className="py-5 flex flex-col gap-6">
-        <header className="flex w-full flex-wrap items-center gap-4">
-          <div className="min-w-0 flex-1">
-            <h2 className="text-lg font-semibold tracking-tight text-foreground">
+        <header className="flex flex-col gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <h2 className="text-lg font-semibold tracking-tight text-foreground flex-1 min-w-0 truncate">
               {title}
             </h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">{subtitle}</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
+              onClick={openAddSchedule}
+            >
+              <IconPlus size={14} stroke={2} />
+              Add schedule
+            </Button>
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
-            onClick={openAddSchedule}
-          >
-            <IconPlus size={14} stroke={2} />
-            Add schedule
-          </Button>
+          <p className="text-sm text-muted-foreground">{subtitle}</p>
           <Tabs
             value={scheduleViewMode}
             onValueChange={(v) => {
