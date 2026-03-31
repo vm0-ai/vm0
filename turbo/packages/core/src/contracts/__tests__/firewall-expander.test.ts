@@ -493,6 +493,18 @@ describe("validateBaseUrl", () => {
       "scheme must not contain parameters",
     );
   });
+
+  it("should reject partial param in host segment", () => {
+    expect(() =>
+      validateBaseUrl("https://api-{version}.example.com", "fw"),
+    ).toThrow('host segment "api-{version}" contains "{"');
+  });
+
+  it("should reject partial param in path segment", () => {
+    expect(() =>
+      validateBaseUrl("https://api.example.com/v1-{version}", "fw"),
+    ).toThrow('path segment "v1-{version}" contains "{"');
+  });
 });
 
 describe("hasBaseUrlParams", () => {

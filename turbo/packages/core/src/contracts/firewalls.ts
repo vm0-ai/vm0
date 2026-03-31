@@ -196,8 +196,18 @@ function validateHostParams(
   }
   let hasStatic = false;
   for (let i = 0; i < segments.length; i++) {
-    const match = PARAM_SEGMENT_PATTERN.exec(segments[i]!);
+    const seg = segments[i]!;
+    const match = PARAM_SEGMENT_PATTERN.exec(seg);
     if (!match) {
+      if (seg.includes("{") || seg.includes("}")) {
+        throw new Error(
+          errMsg(
+            base,
+            svc,
+            `host segment "${seg}" contains "{" or "}" but is not a valid parameter (use "{name}" for the full segment)`,
+          ),
+        );
+      }
       hasStatic = true;
       continue;
     }
@@ -238,7 +248,18 @@ function validatePathParams(
 ): void {
   for (const seg of segments) {
     const match = PARAM_SEGMENT_PATTERN.exec(seg);
-    if (!match) continue;
+    if (!match) {
+      if (seg.includes("{") || seg.includes("}")) {
+        throw new Error(
+          errMsg(
+            base,
+            svc,
+            `path segment "${seg}" contains "{" or "}" but is not a valid parameter (use "{name}" for the full segment)`,
+          ),
+        );
+      }
+      continue;
+    }
     const name = match[1]!;
     if (!name) {
       throw new Error(errMsg(base, svc, "empty parameter name in path"));
