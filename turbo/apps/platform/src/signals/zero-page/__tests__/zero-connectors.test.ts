@@ -135,7 +135,7 @@ describe("zero connectors — agent switch discards local draft", () => {
 
     // Agent A should have github as seeded connector
     const initialConnectors = await context.store.get(zeroAddedConnectors$);
-    expect(initialConnectors).toEqual(["github"]);
+    expect(initialConnectors).toStrictEqual(["github"]);
 
     // Add a local connector for agent A
     await context.store.set(addZeroConnector$, "notion", context.signal);
@@ -149,7 +149,7 @@ describe("zero connectors — agent switch discards local draft", () => {
 
     // Local draft should be discarded; agent B's seeded connectors should show
     const agentBConnectors = await context.store.get(zeroAddedConnectors$);
-    expect(agentBConnectors).toEqual(["slack"]);
+    expect(agentBConnectors).toStrictEqual(["slack"]);
     expect(agentBConnectors).not.toContain("notion");
   });
 });
