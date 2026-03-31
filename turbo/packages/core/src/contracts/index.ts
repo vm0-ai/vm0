@@ -582,6 +582,7 @@ export {
   type ZeroRunsQueueContract,
   type ZeroRunAgentEventsContract,
   type ZeroRunContextContract,
+  type RunContextResponse,
 } from "./zero-runs";
 export {
   zeroSchedulesMainContract,

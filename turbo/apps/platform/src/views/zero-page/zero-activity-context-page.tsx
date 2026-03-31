@@ -70,7 +70,12 @@ function StorageTable({
   items,
   columns,
 }: {
-  items: { mountPath: string; vasStorageName: string; vasVersionId: string; name?: string }[];
+  items: {
+    mountPath: string;
+    vasStorageName: string;
+    vasVersionId: string;
+    name?: string;
+  }[];
   columns: string[];
 }) {
   if (items.length === 0) {
@@ -91,8 +96,12 @@ function StorageTable({
             {item.name !== undefined && (
               <TableCell className="font-mono text-xs">{item.name}</TableCell>
             )}
-            <TableCell className="font-mono text-xs">{item.mountPath}</TableCell>
-            <TableCell className="font-mono text-xs">{item.vasStorageName}</TableCell>
+            <TableCell className="font-mono text-xs">
+              {item.mountPath}
+            </TableCell>
+            <TableCell className="font-mono text-xs">
+              {item.vasStorageName}
+            </TableCell>
             <TableCell className="font-mono text-xs truncate max-w-[200px]">
               {item.vasVersionId}
             </TableCell>
@@ -111,7 +120,10 @@ export function ZeroActivityContextPage() {
   const currentRunId = useGet(currentRunId$);
   const contextLoadable = useLastLoadable(zeroActivityContext$);
 
-  if (contextLoadable.state === "loading" || contextLoadable.state === "hasError") {
+  if (
+    contextLoadable.state === "loading" ||
+    contextLoadable.state === "hasError"
+  ) {
     return <ContextSkeleton runId={currentRunId} />;
   }
 
@@ -267,8 +279,8 @@ function ContextNotAvailable({ runId }: { runId: string | null }) {
           Context not available
         </h2>
         <p className="text-sm text-muted-foreground text-center max-w-sm">
-          Execution context is not available for this run. It may be an older run
-          created before context snapshots were enabled.
+          Execution context is not available for this run. It may be an older
+          run created before context snapshots were enabled.
         </p>
         {runId && (
           <Link

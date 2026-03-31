@@ -327,8 +327,6 @@ export function ZeroActivityDetailPage() {
   const stepSearch = useGet(zeroActivityStepSearch$);
   const setStepSearch = useSet(setZeroActivityStepSearch$);
   const features = useLastResolved(featureSwitch$);
-  const showSystemPrompt =
-    features?.[FeatureSwitchKey.ShowSystemPrompt] ?? false;
 
   // Skeleton until both detail and initial events are loaded
   const eventsReady = eventsLoadable.state === "hasData";

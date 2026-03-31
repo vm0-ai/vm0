@@ -6,10 +6,7 @@ import {
 import { eq } from "drizzle-orm";
 import { agentRuns } from "../../../db/schema/agent-run";
 import { runnerJobQueue } from "../../../db/schema/runner-job-queue";
-import {
-  ingestRunContext,
-  type RunContextSnapshot,
-} from "../../axiom/client";
+import { ingestRunContext, type RunContextSnapshot } from "../../axiom/client";
 import { encryptSecretsMap } from "../../crypto/secrets-encryption";
 import { isOfficialRunnerGroup } from "../../org/org-service";
 import { forbidden } from "../../errors";

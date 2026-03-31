@@ -1,6 +1,7 @@
 import "server-only";
 import type { Axiom } from "@axiomhq/js";
 import { Entry } from "@axiomhq/js";
+import type { RunContextResponse } from "@vm0/core";
 import { env } from "../../env";
 import { logger } from "../logger";
 import { getDatasetName, DATASETS, isSessionsDataset } from "./datasets";
@@ -185,43 +186,18 @@ export function ingestRequestLog(entry: RequestLogEntry): void {
 
 // ── Run context snapshot ────────────────────────────────────────────────
 
-interface RunContextVolume {
-  name: string;
-  mountPath: string;
-  vasStorageName: string;
-  vasVersionId: string;
-}
-
-interface RunContextArtifact {
-  mountPath: string;
-  vasStorageName: string;
-  vasVersionId: string;
-}
-
-interface RunContextFirewall {
-  name: string;
-  ref: string;
-  apis: {
-    base: string;
-    permissions?: { name: string; description?: string; rules: string[] }[];
-  }[];
-}
-
 /**
- * Snapshot of dynamically-computed execution context fields.
- * Static fields (prompt, vars, secretNames) come from agent_runs at query time.
+ * Snapshot of dynamically-computed execution context fields stored in Axiom.
+ * Derived from the API response shape (defined by Zod schema in @vm0/core)
+ * but excludes `vars` (which comes from agent_runs at query time) and adds
+ * Axiom-only fields (runId, userId) that are not exposed to clients.
+ *
+ * This keeps the Axiom storage type and the API response type in sync —
+ * changes to the Zod schema in zero-runs.ts are automatically reflected here.
  */
-export interface RunContextSnapshot {
+export interface RunContextSnapshot extends Omit<RunContextResponse, "vars"> {
   runId: string;
   userId: string;
-  prompt: string;
-  appendSystemPrompt: string | null;
-  secretNames: string[];
-  environment: Record<string, string>;
-  firewalls: RunContextFirewall[];
-  volumes: RunContextVolume[];
-  artifact: RunContextArtifact | null;
-  memory: RunContextArtifact | null;
 }
 
 /**

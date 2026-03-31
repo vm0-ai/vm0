@@ -8,9 +8,15 @@ import { getDatasetName, DATASETS } from "../axiom/datasets";
 export async function queryRunContext(
   runId: string,
 ): Promise<RunContextSnapshot | null> {
+  // Sanitize runId to prevent APL injection — only allow alphanumeric, hyphens, and underscores
+  const sanitizedRunId = runId.replace(/[^a-zA-Z0-9_-]/g, "");
+  if (sanitizedRunId !== runId) {
+    return null;
+  }
+
   const dataset = getDatasetName(DATASETS.RUN_CONTEXT);
   const apl = `['${dataset}']
-| where runId == "${runId}"
+| where runId == "${sanitizedRunId}"
 | limit 1`;
 
   const results = await queryAxiom<RunContextSnapshot>(apl);

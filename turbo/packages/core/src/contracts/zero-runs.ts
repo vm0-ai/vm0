@@ -217,6 +217,9 @@ export const zeroRunContextContract = c.router({
   },
 });
 
+// Inferred types from Zod schemas
+export type RunContextResponse = z.infer<typeof runContextResponseSchema>;
+
 // Type exports
 export type ZeroRunsMainContract = typeof zeroRunsMainContract;
 export type ZeroRunsByIdContract = typeof zeroRunsByIdContract;
