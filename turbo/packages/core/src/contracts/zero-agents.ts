@@ -372,6 +372,7 @@ export const firewallAccessRequestResponseSchema = z.object({
   reason: z.string().nullable(),
   status: firewallAccessRequestStatusSchema,
   requesterUserId: z.string(),
+  requesterName: z.string().nullable(),
   resolvedBy: z.string().nullable(),
   resolvedAt: z.string().nullable(),
   createdAt: z.string(),
@@ -420,11 +421,17 @@ export const firewallAccessRequestsCreateContract = c.router({
 /**
  * Contract for GET /api/zero/firewall-access-requests (list)
  */
+const firewallAccessRequestsListQuerySchema = z.object({
+  agentId: z.string(),
+  status: z.string().optional(),
+});
+
 export const firewallAccessRequestsListContract = c.router({
   list: {
     method: "GET",
     path: "/api/zero/firewall-access-requests",
     headers: authHeadersSchema,
+    query: firewallAccessRequestsListQuerySchema,
     responses: {
       200: z.array(firewallAccessRequestResponseSchema),
       400: apiErrorSchema,

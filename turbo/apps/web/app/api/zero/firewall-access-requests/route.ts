@@ -19,11 +19,15 @@ import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { zeroAgents } from "../../../../src/db/schema/zero-agent";
 import { firewallAccessRequests } from "../../../../src/db/schema/firewall-access-request";
 import { eq, and } from "drizzle-orm";
+import { clerkClient } from "@clerk/nextjs/server";
 import { logger } from "../../../../src/lib/logger";
 
 const log = logger("api:zero:firewall-access-requests");
 
-function formatRequest(row: typeof firewallAccessRequests.$inferSelect) {
+function formatRequest(
+  row: typeof firewallAccessRequests.$inferSelect,
+  nameMap?: Map<string, string>,
+) {
   return {
     id: row.id,
     agentId: row.agentId,
@@ -34,10 +38,31 @@ function formatRequest(row: typeof firewallAccessRequests.$inferSelect) {
     reason: row.reason ?? null,
     status: row.status as "pending" | "approved" | "rejected",
     requesterUserId: row.requesterUserId,
+    requesterName: nameMap?.get(row.requesterUserId) ?? null,
     resolvedBy: row.resolvedBy ?? null,
     resolvedAt: row.resolvedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
   };
+}
+
+async function resolveUserNames(
+  userIds: string[],
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  if (userIds.length === 0) return map;
+  const unique = [...new Set(userIds)];
+  const client = await clerkClient();
+  const users = await client.users.getUserList({
+    userId: unique,
+    limit: unique.length,
+  });
+  for (const u of users.data) {
+    const name = [u.firstName, u.lastName].filter(Boolean).join(" ");
+    if (name) {
+      map.set(u.id, name);
+    }
+  }
+  return map;
 }
 
 // --- POST: Create Request ---
@@ -148,7 +173,7 @@ const createRouter = tsr.router(firewallAccessRequestsCreateContract, {
 
 // --- GET: List Requests ---
 const listRouter = tsr.router(firewallAccessRequestsListContract, {
-  list: async ({ headers }, { request }) => {
+  list: async ({ headers, query }, { request }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -156,24 +181,10 @@ const listRouter = tsr.router(firewallAccessRequestsListContract, {
     });
     if (isAuthError(authCtx)) return authCtx;
 
-    const url = new URL(request.url);
-    const orgSlug = url.searchParams.get("org");
+    const orgSlug = new URL(request.url).searchParams.get("org");
     const { org, member } = await resolveOrg(authCtx, orgSlug);
 
-    const agentId = url.searchParams.get("agentId");
-    if (!agentId) {
-      return {
-        status: 400 as const,
-        body: {
-          error: {
-            message: "agentId query parameter is required",
-            code: "BAD_REQUEST",
-          },
-        },
-      };
-    }
-
-    const status = url.searchParams.get("status");
+    const { agentId, status } = query;
 
     // Build conditions
     const conditions = [
@@ -197,9 +208,11 @@ const listRouter = tsr.router(firewallAccessRequestsListContract, {
       .from(firewallAccessRequests)
       .where(and(...conditions));
 
+    const nameMap = await resolveUserNames(rows.map((r) => r.requesterUserId));
+
     return {
       status: 200 as const,
-      body: rows.map(formatRequest),
+      body: rows.map((r) => formatRequest(r, nameMap)),
     };
   },
 });

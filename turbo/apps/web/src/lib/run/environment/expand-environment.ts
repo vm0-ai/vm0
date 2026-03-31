@@ -66,7 +66,8 @@ function buildFirewallPlaceholders(
     const secretNames = extractSecretNamesFromApis(fw.apis);
     for (const secretName of secretNames) {
       placeholders[secretName] =
-        fw.placeholders?.[secretName] ?? `VM0_PLACEHOLDER_${secretName}`;
+        fw.placeholders?.[secretName] ??
+        "c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe";
     }
     // Connector firewalls carry expanded placeholders that cover raw OAuth
     // secret names and aliased env vars beyond what auth templates reference.
