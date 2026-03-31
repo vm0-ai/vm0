@@ -269,41 +269,45 @@ const resolveRouter = tsr.router(firewallAccessRequestsResolveContract, {
     const now = new Date();
     const newStatus = body.action === "approve" ? "approved" : "rejected";
 
-    // On approve: also update the agent's firewallPolicies
-    if (body.action === "approve") {
-      const [agent] = await globalThis.services.db
-        .select({ firewallPolicies: zeroAgents.firewallPolicies })
-        .from(zeroAgents)
-        .where(eq(zeroAgents.id, existing.agentId))
-        .limit(1);
+    const db = globalThis.services.db;
 
-      const currentPolicies =
-        (agent?.firewallPolicies as FirewallPolicies | null) ?? {};
-      const refPolicies = currentPolicies[existing.firewallRef] ?? {};
-      const updatedPolicies: FirewallPolicies = {
-        ...currentPolicies,
-        [existing.firewallRef]: {
-          ...refPolicies,
-          [existing.permission]: "allow",
-        },
-      };
+    const [updated] = await db.transaction(async (tx) => {
+      // On approve: also update the agent's firewallPolicies
+      if (body.action === "approve") {
+        const [agent] = await tx
+          .select({ firewallPolicies: zeroAgents.firewallPolicies })
+          .from(zeroAgents)
+          .where(eq(zeroAgents.id, existing.agentId))
+          .limit(1);
 
-      await globalThis.services.db
-        .update(zeroAgents)
-        .set({ firewallPolicies: updatedPolicies, updatedAt: now })
-        .where(eq(zeroAgents.id, existing.agentId));
-    }
+        const currentPolicies =
+          (agent?.firewallPolicies as FirewallPolicies | null) ?? {};
+        const refPolicies = currentPolicies[existing.firewallRef] ?? {};
+        const updatedPolicies: FirewallPolicies = {
+          ...currentPolicies,
+          [existing.firewallRef]: {
+            ...refPolicies,
+            [existing.permission]: "allow",
+          },
+        };
 
-    // Update request status
-    const [updated] = await globalThis.services.db
-      .update(firewallAccessRequests)
-      .set({
-        status: newStatus,
-        resolvedBy: member.userId,
-        resolvedAt: now,
-      })
-      .where(eq(firewallAccessRequests.id, body.requestId))
-      .returning();
+        await tx
+          .update(zeroAgents)
+          .set({ firewallPolicies: updatedPolicies, updatedAt: now })
+          .where(eq(zeroAgents.id, existing.agentId));
+      }
+
+      // Update request status
+      return tx
+        .update(firewallAccessRequests)
+        .set({
+          status: newStatus,
+          resolvedBy: member.userId,
+          resolvedAt: now,
+        })
+        .where(eq(firewallAccessRequests.id, body.requestId))
+        .returning();
+    });
 
     log.info(
       `Resolved firewall access request: ${body.requestId} as ${newStatus}`,

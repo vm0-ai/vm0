@@ -89,24 +89,24 @@ function resolveAccessRequest(
   );
 }
 
-describe("POST /api/zero/firewall-access-requests", () => {
-  beforeEach(async () => {
-    context.setupMocks();
-    await clearSkillsData();
-    await seedSeedSkills();
-    const user = await context.setupUser();
-    testUserId = user.userId;
-    testOrgId = user.orgId;
-    testCliToken = await createTestCliToken(user.userId);
-    testOrgSlug = `org-${user.userId.slice(-8)}`;
+beforeEach(async () => {
+  context.setupMocks();
+  await clearSkillsData();
+  await seedSeedSkills();
+  const user = await context.setupUser();
+  testUserId = user.userId;
+  testOrgId = user.orgId;
+  testCliToken = await createTestCliToken(user.userId);
+  testOrgSlug = `org-${user.userId.slice(-8)}`;
 
-    await insertOrgMembersCacheEntry({
-      orgId: testOrgId,
-      userId: testUserId,
-      role: "admin",
-    });
+  await insertOrgMembersCacheEntry({
+    orgId: testOrgId,
+    userId: testUserId,
+    role: "admin",
   });
+});
 
+describe("POST /api/zero/firewall-access-requests", () => {
   it("should create a firewall access request", async () => {
     const agent = await (await createAgent(testCliToken, testOrgSlug)).json();
 
@@ -243,23 +243,6 @@ describe("POST /api/zero/firewall-access-requests", () => {
 });
 
 describe("GET /api/zero/firewall-access-requests", () => {
-  beforeEach(async () => {
-    context.setupMocks();
-    await clearSkillsData();
-    await seedSeedSkills();
-    const user = await context.setupUser();
-    testUserId = user.userId;
-    testOrgId = user.orgId;
-    testCliToken = await createTestCliToken(user.userId);
-    testOrgSlug = `org-${user.userId.slice(-8)}`;
-
-    await insertOrgMembersCacheEntry({
-      orgId: testOrgId,
-      userId: testUserId,
-      role: "admin",
-    });
-  });
-
   it("should list access requests for an agent", async () => {
     const agent = await (await createAgent(testCliToken, testOrgSlug)).json();
 
@@ -382,23 +365,6 @@ describe("GET /api/zero/firewall-access-requests", () => {
 });
 
 describe("PUT /api/zero/firewall-access-requests", () => {
-  beforeEach(async () => {
-    context.setupMocks();
-    await clearSkillsData();
-    await seedSeedSkills();
-    const user = await context.setupUser();
-    testUserId = user.userId;
-    testOrgId = user.orgId;
-    testCliToken = await createTestCliToken(user.userId);
-    testOrgSlug = `org-${user.userId.slice(-8)}`;
-
-    await insertOrgMembersCacheEntry({
-      orgId: testOrgId,
-      userId: testUserId,
-      role: "admin",
-    });
-  });
-
   it("should approve a request and update firewall policies", async () => {
     const agent = await (await createAgent(testCliToken, testOrgSlug)).json();
 
