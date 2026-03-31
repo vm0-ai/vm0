@@ -72,13 +72,17 @@ export default [
       "ccstate/no-getter-setter-params": "error",
     },
   },
-  // Allow new AbortController in signal infrastructure and signal test helpers
+  // Allow new AbortController in signal infrastructure, test helpers, and
+  // views that need a controller outliving the page signal (e.g. post-navigate
+  // async work).
   {
     files: [
       "src/signals/utils.ts",
       "src/polyfill.ts",
       "src/signals/__tests__/test-helpers.ts",
       "src/signals/__tests__/utils.test.ts",
+      "src/signals/zero-page/__tests__/poll-slack-connection.test.ts",
+      "src/views/zero-page/zero-onboarding.tsx",
     ],
     rules: {
       "ccstate/no-new-abort-controller": "off",

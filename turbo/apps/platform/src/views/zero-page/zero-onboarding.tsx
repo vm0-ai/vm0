@@ -1,5 +1,3 @@
-/* eslint-disable ccstate/no-new-abort-controller */
-// TODO(@ethan): refactor to use pageSignal$/resetSignal() instead of new AbortController()
 import { useState } from "react";
 import {
   useGet,
