@@ -30,6 +30,10 @@ export const zeroAgents = pgTable(
     avatarUrl: varchar("avatar_url", { length: 1024 }),
     firewallPolicies: jsonb("firewall_policies").$type<FirewallPolicies>(),
     connectors: jsonb("connectors").$type<string[]>().notNull().default([]),
+    customSkills: jsonb("custom_skills")
+      .$type<string[]>()
+      .notNull()
+      .default([]),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

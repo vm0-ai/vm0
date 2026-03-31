@@ -6,7 +6,7 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { upsertOAuthConnector } from "../../../../../src/lib/connector/connector-service";
 import {
   resolveTestUserId,
-  isTestVariant,
+  DEFAULT_TEST_EMAIL,
 } from "../../../../../src/lib/auth/test-user";
 import { orgMembersCache } from "../../../../../src/db/schema/org-members-cache";
 import { getOrgDataOrNull } from "../../../../../src/lib/org/resolve-org";
@@ -45,7 +45,7 @@ function isAllowed(request: Request): boolean {
  * Used by E2E tests to verify proxy-side token replacement.
  *
  * Body: { connectorName: string, accessToken: string }
- * Query: ?variant=serial|runner (default: serial)
+ * Query: ?email=<email> (default: dev+clerk_test+serial@vm0-e2e.ai)
  */
 export async function POST(request: Request) {
   if (!isAllowed(request)) {
@@ -80,18 +80,8 @@ export async function POST(request: Request) {
   const connectorType = connectorParsed.data;
 
   const url = new URL(request.url);
-  const variant = url.searchParams.get("variant") ?? "serial";
-  if (!isTestVariant(variant)) {
-    return NextResponse.json(
-      { error: `Unknown test variant: ${variant}` },
-      { status: 400 },
-    );
-  }
-
-  const userId = await resolveTestUserId(variant);
-  if (!userId) {
-    return NextResponse.json({ error: "Test user not found" }, { status: 500 });
-  }
+  const email = url.searchParams.get("email") ?? DEFAULT_TEST_EMAIL;
+  const userId = await resolveTestUserId(email);
 
   // Look up test user's org from org_members_cache (populated by test-token endpoint)
   const [cached] = await globalThis.services.db

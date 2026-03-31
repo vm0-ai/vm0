@@ -45,6 +45,7 @@ function mockAgentResponse() {
     avatarUrl: null,
     connectors: ["search"],
     firewallPolicies: null,
+    customSkills: [],
   };
 }
 

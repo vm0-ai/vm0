@@ -63,7 +63,7 @@ describe("buildHelpMessage", () => {
       (b) =>
         b.type === "section" &&
         "text" in b &&
-        b.text?.text?.includes("/zero settings"),
+        b.text?.text?.includes("/zero connect"),
     );
     expect(commandsBlock).toBeDefined();
 
@@ -75,7 +75,7 @@ describe("buildHelpMessage", () => {
     expect(usageBlock).toBeDefined();
   });
 
-  it("should list connect, disconnect, and settings commands", () => {
+  it("should list connect and disconnect commands", () => {
     const blocks = buildHelpMessage();
 
     const commandsBlock = blocks.find(
@@ -89,7 +89,6 @@ describe("buildHelpMessage", () => {
     const text = (commandsBlock as SectionBlock).text?.text ?? "";
     expect(text).toContain("Connect to Zero");
     expect(text).toContain("Disconnect from Zero");
-    expect(text).toContain("/zero settings");
   });
 });
 

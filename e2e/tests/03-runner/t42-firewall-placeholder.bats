@@ -56,7 +56,15 @@ create_artifact() {
 setup_test_connector() {
     local connector_name="$1"
     local access_token="$2"
-    local variant="${3:-runner}"
+
+    if [[ -z "${E2E_RUNNER_EMAIL:-}" ]]; then
+        echo "E2E_RUNNER_EMAIL not set" >&2
+        return 1
+    fi
+
+    # URL-encode the email (handle + and @)
+    local encoded_email
+    encoded_email=$(printf '%s' "$E2E_RUNNER_EMAIL" | sed 's/+/%2B/g; s/@/%40/g')
 
     local curl_args=(-s -w "\n%{http_code}" -X POST)
     curl_args+=(-H "Content-Type: application/json")
@@ -67,7 +75,7 @@ setup_test_connector() {
 
     local response
     response=$(curl "${curl_args[@]}" \
-        "${VM0_API_URL}/api/cli/auth/test-connector?variant=${variant}")
+        "${VM0_API_URL}/api/cli/auth/test-connector?email=${encoded_email}")
 
     local http_code
     http_code=$(echo "$response" | tail -n1)

@@ -10,10 +10,13 @@
  * Environment variables:
  *   WEB_URL                          – Web app origin (for sign-in flow)
  *   APP_URL                          – App origin (audit target)
+ *   E2E_SERIAL_EMAIL                 – Test user email (provisioned by CI)
  *   VERCEL_AUTOMATION_BYPASS_SECRET  – Vercel protection bypass token
  */
 
-const TEST_EMAIL = "e2e+clerk_test@vm0.ai";
+const TEST_EMAIL = process.env.E2E_SERIAL_EMAIL;
+if (!TEST_EMAIL)
+  throw new Error("E2E_SERIAL_EMAIL environment variable is required");
 const TEST_OTP = "424242";
 
 /** Wait for a selector to appear and return the element handle. */
@@ -76,33 +79,47 @@ module.exports = async (browser, context) => {
   const continueBtn = await waitFor(page, ".cl-formButtonPrimary");
   await continueBtn.click();
 
-  // Wait for factor-one page with "Use another method" link
-  await page.waitForFunction(
-    () =>
-      [...document.querySelectorAll("a, button")].some((el) =>
-        el.textContent?.includes("Use another method"),
-      ),
+  // After clicking continue, Clerk shows one of two flows depending on the
+  // account configuration:
+  //   A) OTP input appears directly (passwordless accounts)
+  //   B) "Use another method" link appears first (accounts with password set)
+  // Race both conditions and follow whichever path wins.
+  const flowResult = await page.waitForFunction(
+    () => {
+      const hasOtp = !!document.querySelector('input[data-input-otp="true"]');
+      const hasAltMethod = [...document.querySelectorAll("a, button")].some(
+        (el) => el.textContent?.includes("Use another method"),
+      );
+      if (hasOtp) return "otp";
+      if (hasAltMethod) return "alt";
+      return false;
+    },
     { timeout: 15000 },
   );
 
-  // Switch to email code method
-  await clickByText(page, "a, button", "Use another method");
+  const flow = await flowResult.jsonValue();
 
-  // Wait for method selection and choose email code
-  await page.waitForFunction(
-    () =>
-      [...document.querySelectorAll("button")].some((b) =>
-        b.textContent?.includes("Email code"),
-      ),
-    { timeout: 10000 },
-  );
-  await clickByText(page, "button", "Email code");
+  if (flow === "alt") {
+    // Switch to email code method
+    await clickByText(page, "a, button", "Use another method");
 
-  // Wait for OTP input and enter code
-  await page.waitForSelector('input[data-input-otp="true"]', {
-    visible: true,
-    timeout: 15000,
-  });
+    // Wait for method selection and choose email code
+    await page.waitForFunction(
+      () =>
+        [...document.querySelectorAll("button")].some((b) =>
+          b.textContent?.includes("Email code"),
+        ),
+      { timeout: 10000 },
+    );
+    await clickByText(page, "button", "Email code");
+
+    // Wait for OTP input after selecting email code
+    await page.waitForSelector('input[data-input-otp="true"]', {
+      visible: true,
+      timeout: 15000,
+    });
+  }
+  // If flow === "otp", the OTP input is already visible
 
   // Enter OTP with retry
   for (let attempt = 0; attempt < 3; attempt++) {

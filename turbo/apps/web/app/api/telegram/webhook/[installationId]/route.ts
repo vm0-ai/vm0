@@ -10,7 +10,6 @@ import { handleNewSessionCommand } from "../../../../../src/lib/telegram/handler
 import {
   handleConnectCommand,
   handleDisconnectCommand,
-  handleSettingsCommand,
   handleHelpCommand,
 } from "../../../../../src/lib/telegram/handlers/commands";
 import { storeTelegramMessage } from "../../../../../src/lib/telegram/handlers/shared";
@@ -34,7 +33,6 @@ interface TelegramWebhookUpdate {
  * - /new_session command → handleNewSessionCommand
  * - /connect command → handleConnectCommand
  * - /disconnect command → handleDisconnectCommand
- * - /settings command → handleSettingsCommand
  * - /help command → handleHelpCommand
  * - Private chat (DM) → handleTelegramDirectMessage
  * - Bot @mention in group → handleTelegramMention
@@ -109,11 +107,6 @@ export async function POST(
 
       if (command === "disconnect") {
         await handleDisconnectCommand({ message }, installationId);
-        return;
-      }
-
-      if (command === "settings") {
-        await handleSettingsCommand({ message }, installationId);
         return;
       }
 

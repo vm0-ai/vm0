@@ -644,6 +644,21 @@ export async function getConnectorExpiry(
 }
 
 /**
+ * Read the current access token for a connector type from the secrets store.
+ * Does NOT trigger a refresh — returns the latest persisted value.
+ */
+export async function getConnectorAccessToken(
+  connectorType: string,
+  orgId: string,
+  userId: string,
+): Promise<string | null> {
+  const handler =
+    PROVIDER_HANDLERS[connectorType as keyof typeof PROVIDER_HANDLERS];
+  if (!handler) return null;
+  return getSecretValue(orgId, userId, handler.getSecretName(), "connector");
+}
+
+/**
  * Create or update a connector secret (e.g., refresh token)
  */
 async function upsertConnectorSecret(

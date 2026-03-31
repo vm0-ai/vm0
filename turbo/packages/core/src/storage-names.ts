@@ -38,3 +38,14 @@ export function getInstructionsStorageName(agentName: string): string {
 export function getSkillStorageName(fullPath: string): string {
   return `agent-skills@${fullPath}`;
 }
+
+/**
+ * Generate the storage name for a custom skill.
+ * Format: custom-skill@{skillName}
+ *
+ * @param skillName - Name of the custom skill (e.g., "my-skill")
+ * @returns Storage name for the custom skill
+ */
+export function getCustomSkillStorageName(skillName: string): string {
+  return `custom-skill@${skillName}`;
+}

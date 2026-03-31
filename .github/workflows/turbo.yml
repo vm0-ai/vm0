@@ -924,16 +924,61 @@ jobs:
           deployment-id: ${{ steps.deployment.outputs.deployment_id }}
           deployment-env: ${{ steps.deployment.outputs.env }}
 
-      # Step 6: Generate test tokens for E2E tests (one per test user)
+      # Step 6: Provision ephemeral E2E test accounts in Clerk
+      - name: Provision E2E test accounts
+        env:
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+        run: |
+          # Delete existing users matching JOB_REF+clerk_test
+          users=$(curl -sS -X GET \
+            "https://api.clerk.com/v1/users?query=${JOB_REF}%2Bclerk_test&limit=100" \
+            -H "Authorization: Bearer ${CLERK_SECRET_KEY}")
+          ids=$(echo "$users" | jq -r '.[].id' 2>/dev/null || true)
+          for uid in $ids; do
+            curl -sS -X DELETE "https://api.clerk.com/v1/users/${uid}" \
+              -H "Authorization: Bearer ${CLERK_SECRET_KEY}" > /dev/null
+          done
+
+          # Create test users + orgs (browser is created via UI sign-up flow)
+          for variant in serial runner; do
+            email="${JOB_REF}+clerk_test+${variant}@vm0-e2e.ai"
+            user=$(curl -sS -X POST "https://api.clerk.com/v1/users" \
+              -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
+              -H "Content-Type: application/json" \
+              -d "{\"email_address\":[\"${email}\"],\"skip_password_requirement\":true}")
+            user_id=$(echo "$user" | jq -r '.id')
+            if [[ "$user_id" == "null" || -z "$user_id" ]]; then
+              echo "Error: Failed to create user ${email}"
+              echo "Clerk response: ${user}"
+              exit 1
+            fi
+            echo "Created user ${email} -> ${user_id}"
+
+            org=$(curl -sS -X POST "https://api.clerk.com/v1/organizations" \
+              -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
+              -H "Content-Type: application/json" \
+              -d "{\"name\":\"e2e-${variant}-${JOB_REF}\",\"created_by\":\"${user_id}\"}")
+            org_id=$(echo "$org" | jq -r '.id')
+            if [[ "$org_id" == "null" || -z "$org_id" ]]; then
+              echo "Error: Failed to create org for user ${email}"
+              echo "Clerk response: ${org}"
+              exit 1
+            fi
+            echo "Created org -> ${org_id}"
+          done
+
+      # Step 7: Generate test tokens for E2E tests (one per test user)
       - name: Generate E2E test tokens
         run: |
-          for variant in serial runner; do
-            e2e/scripts/generate-test-token.sh "$variant"
-            cp ~/.vm0/config.json "/tmp/e2e-token-${variant}.json"
-          done
+          e2e/scripts/generate-test-token.sh "${JOB_REF}+clerk_test+serial@vm0-e2e.ai"
+          cp ~/.vm0/config.json "/tmp/e2e-token-serial.json"
+          e2e/scripts/generate-test-token.sh "${JOB_REF}+clerk_test+runner@vm0-e2e.ai"
+          cp ~/.vm0/config.json "/tmp/e2e-token-runner.json"
         env:
           VM0_API_URL: ${{ steps.alias.outputs.url || steps.deploy.outputs.url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
 
       - name: Upload E2E test tokens
         uses: actions/upload-artifact@v7
@@ -1089,7 +1134,7 @@ jobs:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          E2E_ACCOUNT: ${{ needs.prepare.outputs.job-ref }}+clerk_test@vm0-e2e.ai
+          E2E_ACCOUNT: ${{ needs.prepare.outputs.job-ref }}+clerk_test+browser@vm0-e2e.ai
       - name: Cleanup test accounts
         if: always()
         env:
@@ -1097,14 +1142,14 @@ jobs:
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
         run: |
           echo "Cleaning up Clerk test accounts..."
-          # List users whose email contains the JOB_REF prefix (created by brw-t01-auth sign-up)
+          # List users whose email contains the JOB_REF prefix
           users=$(curl -sS -X GET \
             "https://api.clerk.com/v1/users?query=${JOB_REF}%2Bclerk_test&limit=100" \
             -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
             -H "Content-Type: application/json")
 
-          # Extract user IDs, skipping the persistent e2e test account
-          ids=$(echo "$users" | jq -r '.[] | select((.email_addresses[]?.email_address != "e2e+clerk_test@vm0.ai") and (.email_addresses[]?.email_address != "e2e_02+clerk_test@vm0.ai")) | .id' 2>/dev/null || true)
+          # Delete all matching users (no exclusions — all accounts are ephemeral)
+          ids=$(echo "$users" | jq -r '.[].id' 2>/dev/null || true)
 
           if [ -z "$ids" ]; then
             echo "No test accounts to clean up"
@@ -1680,7 +1725,6 @@ jobs:
         run: mkdir -p ~/.vm0 && cp /tmp/e2e-token-runner.json ~/.vm0/config.json
       - name: Bootstrap test account
         run: |
-          zero org set "e2e-runner" --force
           zero org model-provider setup --type "claude-code-oauth-token" --secret "mock-oauth-token-for-e2e"
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
@@ -1771,6 +1815,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           CI_GITHUB_TOKEN: ${{ github.token }}
+          E2E_RUNNER_EMAIL: ${{ needs.prepare.outputs.job-ref }}+clerk_test+runner@vm0-e2e.ai
 
       - name: Print E2E trace log
         if: always()
@@ -1935,6 +1980,7 @@ jobs:
           WEB_URL: ${{ needs.deploy-web.outputs.preview-url }}
           APP_URL: ${{ needs.prepare.outputs.app-preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          E2E_SERIAL_EMAIL: ${{ needs.prepare.outputs.job-ref }}+clerk_test+serial@vm0-e2e.ai
       - name: Locate LHCI output (app)
         id: lhci-dir-app
         if: always()

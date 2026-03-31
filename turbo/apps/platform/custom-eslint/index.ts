@@ -17,6 +17,7 @@
  * - no-non-zero-api: Enforce that platform app only calls /api/zero/ endpoints
  * - command-async-signal: Async commands must accept AbortSignal as last param
  * - no-getter-setter-params: Functions must not accept ccstate Getter/Setter — use command()
+ * - no-new-abort-controller: Disallow new AbortController() — use signal hierarchy
  */
 
 import signalDollarSuffix from "./rules/signal-dollar-suffix.ts";
@@ -35,6 +36,7 @@ import noUseCCStateInViews from "./rules/no-use-ccstate-in-views.ts";
 import noNonZeroApi from "./rules/no-non-zero-api.ts";
 import commandAsyncSignal from "./rules/command-async-signal.ts";
 import noGetterSetterParams from "./rules/no-getter-setter-params.ts";
+import noNewAbortController from "./rules/no-new-abort-controller.ts";
 
 const plugin = {
   meta: {
@@ -58,6 +60,7 @@ const plugin = {
     "no-non-zero-api": noNonZeroApi,
     "command-async-signal": commandAsyncSignal,
     "no-getter-setter-params": noGetterSetterParams,
+    "no-new-abort-controller": noNewAbortController,
   },
 };
 

@@ -5,18 +5,20 @@ import { clerkClient } from "@clerk/nextjs/server";
 import { initServices } from "../../../../../src/lib/init-services";
 import { cliTokens } from "../../../../../src/db/schema/cli-tokens";
 import { orgCache } from "../../../../../src/db/schema/org-cache";
-import { orgMetadata } from "../../../../../src/db/schema/org-metadata";
 import { orgMembersCache } from "../../../../../src/db/schema/org-members-cache";
 import {
-  getOrgData,
   getOrgBySlug,
+  getOrgData,
 } from "../../../../../src/lib/org/org-cache-service";
 import { generateCliToken } from "../../../../../src/lib/auth/sandbox-token";
 import {
   resolveTestUserId,
-  isTestVariant,
+  DEFAULT_TEST_EMAIL,
 } from "../../../../../src/lib/auth/test-user";
 import { env } from "../../../../../src/env";
+import { logger } from "../../../../../src/lib/logger";
+
+const log = logger("api:test-token");
 
 /**
  * Check if test-token endpoint is allowed based on environment.
@@ -49,8 +51,7 @@ function isTestTokenAllowed(request: Request): boolean {
  * Queries Clerk API directly to find the user's org membership,
  * then pre-populates org_members_cache for fast verification.
  *
- * If the user has no Clerk org yet, creates org_cache and org_members_cache
- * entries with a sentinel orgId.
+ * Throws if the user has no Clerk org with a matching org_cache entry.
  */
 async function ensureTestOrg(userId: string): Promise<{ slug: string }> {
   // Query Clerk API directly for user's org memberships
@@ -60,62 +61,48 @@ async function ensureTestOrg(userId: string): Promise<{ slug: string }> {
   });
 
   // Use a far-future cachedAt so org_cache TTL checks never expire these
-  // entries and trigger a Clerk API refresh (sentinel orgs don't exist in Clerk).
+  // entries during E2E test runs (avoids Clerk API calls + 429 rate limits).
   const farFuture = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
 
-  // Find first org with a matching org_cache entry
+  // Find first org: check org_cache first, populate from Clerk if missing
   for (const membership of memberships.data) {
     const orgId = membership.organization.id;
-    try {
+    let [cached] = await globalThis.services.db
+      .select({ slug: orgCache.slug })
+      .from(orgCache)
+      .where(eq(orgCache.orgId, orgId))
+      .limit(1);
+
+    if (!cached) {
+      // Org was just created in Clerk by CI but not yet in org_cache.
+      // Populate the cache from Clerk so subsequent lookups are fast.
+      log.info(
+        `org ${orgId} not in org_cache, populating from Clerk for user ${userId}`,
+      );
       const orgData = await getOrgData(orgId);
-      const role = membership.role === "org:admin" ? "admin" : "member";
-      // Pre-populate caches with far-future timestamps to prevent TTL expiry
-      // during E2E test runs (avoids Clerk API calls + 429 rate limits)
-      await globalThis.services.db
-        .insert(orgMembersCache)
-        .values({
-          orgId,
-          userId,
-          role,
-          cachedAt: farFuture,
-        })
-        .onConflictDoNothing();
-      await globalThis.services.db
-        .update(orgCache)
-        .set({ cachedAt: farFuture })
-        .where(eq(orgCache.orgId, orgId));
-      return { slug: orgData.slug };
-    } catch {
-      // Org not in org_cache — try next membership
-      continue;
+      cached = { slug: orgData.slug };
     }
+
+    const role = membership.role === "org:admin" ? "admin" : "member";
+    // Pre-populate caches with far-future timestamps to prevent TTL expiry
+    // during E2E test runs (avoids Clerk API calls + 429 rate limits)
+    await globalThis.services.db
+      .insert(orgMembersCache)
+      .values({
+        orgId,
+        userId,
+        role,
+        cachedAt: farFuture,
+      })
+      .onConflictDoNothing();
+    await globalThis.services.db
+      .update(orgCache)
+      .set({ cachedAt: farFuture })
+      .where(eq(orgCache.orgId, orgId));
+    return { slug: cached.slug };
   }
 
-  // User has no Clerk org — use sentinel orgId with org_cache + membership cache
-  const sentinelOrgId = `org_test_${userId}`;
-  const slug = "test-org";
-  await globalThis.services.db
-    .insert(orgCache)
-    .values({
-      orgId: sentinelOrgId,
-      slug,
-      cachedAt: farFuture,
-    })
-    .onConflictDoNothing();
-  await globalThis.services.db
-    .insert(orgMetadata)
-    .values({ orgId: sentinelOrgId })
-    .onConflictDoNothing();
-  await globalThis.services.db
-    .insert(orgMembersCache)
-    .values({
-      orgId: sentinelOrgId,
-      userId,
-      role: "admin",
-      cachedAt: farFuture,
-    })
-    .onConflictDoNothing();
-  return { slug };
+  throw new Error(`Test user ${userId} has no organization in org_cache`);
 }
 
 /**
@@ -133,19 +120,10 @@ export async function POST(request: Request) {
   initServices();
 
   const url = new URL(request.url);
-  const variant = url.searchParams.get("variant") ?? "serial";
-  if (!isTestVariant(variant)) {
-    return NextResponse.json(
-      { error: `Unknown test variant: ${variant}` },
-      { status: 400 },
-    );
-  }
-  const userId = await resolveTestUserId(variant);
-  if (!userId) {
-    return NextResponse.json({ error: "Test user not found" }, { status: 500 });
-  }
+  const email = url.searchParams.get("email") ?? DEFAULT_TEST_EMAIL;
+  const userId = await resolveTestUserId(email);
 
-  // Auto-create org if user doesn't have one (creates real Clerk org or sentinel)
+  // Ensure user has an org in org_cache (provisioned by CI)
   const { slug: orgSlug } = await ensureTestOrg(userId);
 
   // Resolve orgId from slug (ensureTestOrg creates org_cache entry, so this is a cache hit)

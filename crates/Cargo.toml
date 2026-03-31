@@ -8,6 +8,7 @@ members = [
     "guest-download",
     "guest-init",
     "guest-mock-claude",
+    "nbd-cow",
     "runner",
     "sandbox",
     "sandbox-fc",
@@ -31,6 +32,7 @@ guest-common = { path = "guest-common" }
 guest-download = { path = "guest-download" }
 guest-init = { path = "guest-init" }
 guest-mock-claude = { path = "guest-mock-claude" }
+nbd-cow = { path = "nbd-cow" }
 reqeast = { path = "reqeast" }
 sandbox = { path = "sandbox" }
 sandbox-fc = { path = "sandbox-fc" }
@@ -42,6 +44,7 @@ vsock-proto = { path = "vsock-proto" }
 # External dependencies
 async-trait = "0.1"
 base64 = "0.22"
+bitvec = "1"
 bytes = "1"
 chrono = { version = "0.4", default-features = false }
 clap = "4"

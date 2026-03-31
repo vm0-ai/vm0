@@ -76,6 +76,7 @@ import { loopsFirewall } from "./loops.generated";
 import { makeFirewall } from "./make.generated";
 import { mailsacFirewall } from "./mailsac.generated";
 import { mercuryFirewall } from "./mercury.generated";
+import { metabaseFirewall } from "./metabase.generated";
 import { metaAdsFirewall } from "./meta-ads.generated";
 import { minimaxFirewall } from "./minimax.generated";
 import { mondayFirewall } from "./monday.generated";
@@ -94,6 +95,7 @@ import { posthogFirewall } from "./posthog.generated";
 import { productlaneFirewall } from "./productlane.generated";
 import { prismaPostgresFirewall } from "./prisma-postgres.generated";
 import { pushinatorFirewall } from "./pushinator.generated";
+import { qdrantFirewall } from "./qdrant.generated";
 import { qiitaFirewall } from "./qiita.generated";
 import { redditFirewall } from "./reddit.generated";
 import { reporteiFirewall } from "./reportei.generated";
@@ -192,6 +194,7 @@ const CONNECTOR_FIREWALLS = {
   make: makeFirewall,
   mailsac: mailsacFirewall,
   mercury: mercuryFirewall,
+  metabase: metabaseFirewall,
   "meta-ads": metaAdsFirewall,
   minimax: minimaxFirewall,
   monday: mondayFirewall,
@@ -210,6 +213,7 @@ const CONNECTOR_FIREWALLS = {
   "prisma-postgres": prismaPostgresFirewall,
   productlane: productlaneFirewall,
   pushinator: pushinatorFirewall,
+  qdrant: qdrantFirewall,
   qiita: qiitaFirewall,
   reddit: redditFirewall,
   reportei: reporteiFirewall,
@@ -325,9 +329,6 @@ export type PermissionNamesOf<T extends FirewallConfig> =
  * that already has a firewall config.
  */
 export type NonFirewallConnectorType =
-  // Self-hosted / dynamic base URL — needs ${{ vars.X }} template + connector variable addition
-  | "metabase" // self-hosted, auth: x-api-key header, needs BASE_URL variable
-  | "qdrant" // self-hosted, auth: api-key header or Bearer, needs BASE_URL variable
   // Datacenter-specific — feasible with static enumeration, needs connector variable addition
   | "mailchimp" // ~20 datacenter domains (usX.api.mailchimp.com), auth: Bearer works
   // Basic Auth — proxy cannot do base64 encoding at runtime

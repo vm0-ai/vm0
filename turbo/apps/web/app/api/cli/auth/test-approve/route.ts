@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { deviceCodes } from "../../../../../src/db/schema/device-codes";
-import { resolveTestUserId } from "../../../../../src/lib/auth/test-user";
+import {
+  resolveTestUserId,
+  DEFAULT_TEST_EMAIL,
+} from "../../../../../src/lib/auth/test-user";
 import { env } from "../../../../../src/env";
 
 /**
@@ -56,10 +59,9 @@ export async function POST(req: Request) {
     );
   }
 
-  const testUserId = await resolveTestUserId();
-  if (!testUserId) {
-    return NextResponse.json({ error: "Test user not found" }, { status: 500 });
-  }
+  const url = new URL(req.url);
+  const email = url.searchParams.get("email") ?? DEFAULT_TEST_EMAIL;
+  const testUserId = await resolveTestUserId(email);
 
   await globalThis.services.db
     .update(deviceCodes)

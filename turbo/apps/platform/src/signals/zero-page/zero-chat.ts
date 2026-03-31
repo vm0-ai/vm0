@@ -83,15 +83,14 @@ export interface UserChatMessage {
 export interface AssistantChatMessage {
   id: string;
   role: "assistant";
-  content: string;
+  /** Reactive result content — always present. For static (historical) messages this resolves immediately. */
+  result$: Computed<Promise<string>>;
   legacyRunId?: string;
   status?: LogStatus;
   error?: string;
   cancelled?: boolean;
   summaries?: string[];
   runLoop?: ReturnType<typeof createRunLoop>;
-  /** Reactive result content derived from runLoop events. */
-  result$?: Computed<Promise<string>>;
   /** Reactive summaries derived from runLoop events. */
   summaries$?: Computed<Promise<string[]>>;
   /** Command to start the polling loop for this run. */
@@ -403,7 +402,6 @@ function createActiveRunMessage(
     assistantMessage: {
       id: crypto.randomUUID(),
       role: "assistant",
-      content: "",
       legacyRunId: runId,
       runLoop,
       result$,
@@ -436,7 +434,7 @@ function unsavedRunsToMessages(unsavedRuns: ChatThreadData["unsavedRuns"]): {
       messages.push({
         id: crypto.randomUUID(),
         role: "assistant",
-        content: "",
+        result$: computed(() => Promise.resolve("")),
         legacyRunId: run.runId,
         status: "failed",
         error: isCancelled
@@ -535,12 +533,24 @@ const currentChatMessages$ = computed(
             })
           : undefined;
 
-      return {
+      const base = {
         id: crypto.randomUUID(),
-        role: m.role,
-        content: m.content,
-        legacyRunId: m.runId,
         ...(summaries && summaries.length > 0 ? { summaries } : {}),
+      };
+
+      if (m.role === "user") {
+        return {
+          ...base,
+          role: "user" as const,
+          content: m.content,
+        };
+      }
+
+      return {
+        ...base,
+        role: "assistant" as const,
+        result$: computed(() => Promise.resolve(m.content)),
+        legacyRunId: m.runId,
         ...(m.error ? { status: "failed" as const, error: m.error } : {}),
       };
     });
@@ -551,7 +561,7 @@ const currentChatMessages$ = computed(
  * Composes the full session snapshot from thread data + transformed messages.
  * Loading/error states are derived automatically via `useLoadable` in the view.
  */
-export const chatSessionSnapshot$ = computed(
+const chatSessionSnapshot$ = computed(
   async (get): Promise<ChatSessionSnapshotData | null> => {
     const thread = await get(currentChatThread$);
     if (!thread) {
@@ -572,19 +582,6 @@ export const chatSessionSnapshot$ = computed(
     };
   },
 );
-
-/**
- * @deprecated Use `useLoadable(chatSessionSnapshot$)` in views instead.
- * Kept for test backward compatibility — will be removed.
- */
-export const prepareSessionSwitch$ = command(({ set }) => {
-  set(internalLocalMessages$, []);
-});
-
-/**
- * @deprecated Derive from `useLoadable(chatSessionSnapshot$).state === "hasError"`.
- */
-export const zeroSessionError$ = computed(() => null as string | null);
 
 // Chat input
 const internalChatInput$ = state("");
@@ -751,16 +748,6 @@ export const loadSessionFromSnapshot$ = command(
     }
   },
 );
-
-/**
- * Switch to a different chat session. Resets interaction state and navigates.
- * Session data loading is handled by `chatSessionSnapshot$` (async computed)
- * which auto-fetches when the URL changes.
- */
-export const switchZeroSession$ = command(({ set }, threadId: string) => {
-  set(navigateToChat$, threadId);
-  set(internalLocalMessages$, []);
-});
 
 export const startNewZeroSession$ = command(({ set }) => {
   // Abort any in-flight send/polling from the previous session

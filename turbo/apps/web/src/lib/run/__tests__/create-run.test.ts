@@ -789,7 +789,6 @@ describe("createRun()", () => {
           artifactName: "artifact",
           memoryName: "memory",
           orgId: orgClerkOrgId,
-          orgSlug: uniqueId("org"), // slug used for S3 prefix (mocked in tests)
         }),
       );
 

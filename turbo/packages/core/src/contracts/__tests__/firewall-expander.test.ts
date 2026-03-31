@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   validateBaseUrl,
+  hasBaseUrlParams,
   hasBaseUrlVars,
   resolveFirewallBaseUrlVars,
 } from "../firewalls";
@@ -395,6 +396,143 @@ describe("validateBaseUrl", () => {
         "zendesk",
       ),
     ).not.toThrow();
+  });
+
+  it("should accept base URL with single host param", () => {
+    expect(() =>
+      validateBaseUrl("https://{subdomain}.zendesk.com", "zendesk"),
+    ).not.toThrow();
+  });
+
+  it("should accept base URL with greedy host param in first position", () => {
+    expect(() =>
+      validateBaseUrl("https://{sub+}.example.com", "fw"),
+    ).not.toThrow();
+    expect(() =>
+      validateBaseUrl("https://{sub*}.example.com", "fw"),
+    ).not.toThrow();
+  });
+
+  it("should accept base URL with single path param", () => {
+    expect(() =>
+      validateBaseUrl("https://api.example.com/v1/{org}", "fw"),
+    ).not.toThrow();
+    expect(() =>
+      validateBaseUrl("https://api.example.com/v1/{org}/projects", "fw"),
+    ).not.toThrow();
+  });
+
+  it("should accept base URL with host and path params", () => {
+    expect(() =>
+      validateBaseUrl("https://{sub}.example.com/v1/{org}", "fw"),
+    ).not.toThrow();
+  });
+
+  it("should reject greedy host param not in first position", () => {
+    expect(() =>
+      validateBaseUrl("https://api.{sub+}.example.com", "fw"),
+    ).toThrow("{sub+} must be the first host segment");
+    expect(() =>
+      validateBaseUrl("https://api.{sub*}.example.com", "fw"),
+    ).toThrow("{sub*} must be the first host segment");
+  });
+
+  it("should reject greedy path param in base URL", () => {
+    expect(() =>
+      validateBaseUrl("https://api.example.com/{path+}", "fw"),
+    ).toThrow("greedy parameter {path+} is not allowed in base URL path");
+    expect(() =>
+      validateBaseUrl("https://api.example.com/{path*}", "fw"),
+    ).toThrow("greedy parameter {path*} is not allowed in base URL path");
+  });
+
+  it("should reject host with no static segments", () => {
+    expect(() => validateBaseUrl("https://{a}.{b}", "fw")).toThrow(
+      "must have at least one static segment",
+    );
+  });
+
+  it("should reject empty param name in host", () => {
+    expect(() => validateBaseUrl("https://{}.example.com", "fw")).toThrow(
+      "empty parameter name in host",
+    );
+  });
+
+  it("should reject empty param name in path", () => {
+    expect(() => validateBaseUrl("https://api.example.com/{}", "fw")).toThrow(
+      "empty parameter name in path",
+    );
+  });
+
+  it("should reject duplicate param names in host", () => {
+    expect(() =>
+      validateBaseUrl("https://{sub}.{sub}.example.com", "fw"),
+    ).toThrow('duplicate parameter name "{sub}" in host');
+  });
+
+  it("should reject duplicate param names across host and path", () => {
+    expect(() =>
+      validateBaseUrl("https://{org}.example.com/{org}", "fw"),
+    ).toThrow('duplicate parameter name "{org}"');
+  });
+
+  it("should reject query string in parameterized base URL", () => {
+    expect(() =>
+      validateBaseUrl("https://{sub}.example.com?key=val", "fw"),
+    ).toThrow("must not contain query string");
+  });
+
+  it("should reject fragment in parameterized base URL", () => {
+    expect(() =>
+      validateBaseUrl("https://{sub}.example.com#section", "fw"),
+    ).toThrow("must not contain fragment");
+  });
+
+  it("should reject param in scheme", () => {
+    expect(() => validateBaseUrl("{proto}://api.example.com", "fw")).toThrow(
+      "scheme must not contain parameters",
+    );
+  });
+
+  it("should reject partial param in host segment", () => {
+    expect(() =>
+      validateBaseUrl("https://api-{version}.example.com", "fw"),
+    ).toThrow('host segment "api-{version}" contains "{"');
+  });
+
+  it("should reject partial param in path segment", () => {
+    expect(() =>
+      validateBaseUrl("https://api.example.com/v1-{version}", "fw"),
+    ).toThrow('path segment "v1-{version}" contains "{"');
+  });
+});
+
+describe("hasBaseUrlParams", () => {
+  it("returns true for host params", () => {
+    expect(hasBaseUrlParams("https://{sub}.zendesk.com")).toBe(true);
+  });
+
+  it("returns true for path params", () => {
+    expect(hasBaseUrlParams("https://api.example.com/v1/{org}")).toBe(true);
+  });
+
+  it("returns false for static URLs", () => {
+    expect(hasBaseUrlParams("https://api.github.com")).toBe(false);
+  });
+
+  it("returns false for template vars", () => {
+    expect(hasBaseUrlParams("https://${{ vars.X }}.example.com")).toBe(false);
+  });
+
+  it("returns true when both template vars and params present", () => {
+    expect(hasBaseUrlParams("https://${{ vars.X }}.{region}.example.com")).toBe(
+      true,
+    );
+  });
+
+  it("handles adversarial input with many ${{ without closing }}", () => {
+    const adversarial = "https://" + "${{".repeat(1000) + ".example.com";
+    expect(hasBaseUrlParams(adversarial)).toBe(false);
   });
 });
 

@@ -131,7 +131,6 @@ export async function createZeroRun(
     vars: { ZERO_AGENT_ID: params.agentId },
     firewallPolicies: agent.firewallPolicies ?? undefined,
     agentName: resolved.agentName,
-    orgSlug: orgData.slug,
     orgId: resolved.orgId,
     orgTier,
   };
@@ -174,7 +173,6 @@ export async function createZeroRun(
       secrets: { ...runParams.secrets, ZERO_TOKEN: zeroToken },
     },
     composeContent: record.composeContent,
-    orgSlug: record.orgSlug,
     orgId: record.orgId,
     apiStartTime: record.apiStartTime,
     authorizeTime: record.authorizeTime,

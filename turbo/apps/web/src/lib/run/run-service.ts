@@ -465,7 +465,6 @@ export interface CreateRunParams {
   debugNoMockClaude?: boolean;
   checkEnv?: boolean;
   // Caller-resolved org context for variable/storage resolution.
-  orgSlug?: string;
   orgId: string;
   // Caller-resolved org tier for concurrency limit derivation.
   orgTier?: OrgTier;
@@ -726,7 +725,6 @@ export async function buildAndDispatchRun(opts: {
   params: CreateRunParams;
   composeContent: AgentComposeYaml;
   apiStartTime: number;
-  orgSlug: string | undefined;
   orgId: string;
   authorizeTime: number;
   transactionTime: number;
@@ -742,7 +740,6 @@ export async function buildAndDispatchRun(opts: {
     params,
     composeContent,
     apiStartTime,
-    orgSlug,
     orgId,
     authorizeTime,
     transactionTime,
@@ -803,7 +800,6 @@ export async function buildAndDispatchRun(opts: {
       checkEnv: params.checkEnv,
       firewallPolicies: params.firewallPolicies,
       apiStartTime,
-      orgSlug,
       orgId,
     });
     const buildContextTime = Date.now();
@@ -1084,7 +1080,6 @@ export async function startRun(
     debugNoMockClaude: params.debugNoMockClaude,
     checkEnv: params.checkEnv,
     firewallPolicies: params.firewallPolicies,
-    orgSlug: orgData.slug,
     orgId: authOrgId,
     orgTier,
   });
@@ -1097,7 +1092,6 @@ export async function startRun(
 interface CreateRunRecordResult {
   run: { id: string; createdAt: Date };
   composeContent: AgentComposeYaml;
-  orgSlug: string | undefined;
   orgId: string;
   apiStartTime: number;
   authorizeTime: number;
@@ -1156,7 +1150,6 @@ export async function createRunRecord(
   }
 
   // Org context for the run record and storage (required from caller)
-  const orgSlug = params.orgSlug;
   const orgId = params.orgId;
 
   // Step 5: Concurrency check + INSERT in a transaction with advisory lock
@@ -1212,7 +1205,6 @@ export async function createRunRecord(
   return {
     run: { id: run.id, createdAt: run.createdAt },
     composeContent,
-    orgSlug,
     orgId,
     apiStartTime,
     authorizeTime,
@@ -1251,7 +1243,6 @@ export async function createRun(
     params,
     composeContent: record.composeContent,
     apiStartTime: record.apiStartTime,
-    orgSlug: record.orgSlug,
     orgId: record.orgId,
     authorizeTime: record.authorizeTime,
     transactionTime: record.transactionTime,
@@ -1316,7 +1307,6 @@ export async function dispatchQueuedRun(
     params,
     composeContent,
     apiStartTime,
-    orgSlug: params.orgSlug,
     orgId: params.orgId,
     authorizeTime,
     transactionTime,

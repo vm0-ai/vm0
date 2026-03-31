@@ -10,19 +10,22 @@
 #   - VERCEL_AUTOMATION_BYPASS_SECRET for Vercel bypass
 #   - USE_MOCK_CLAUDE must be "true" on the server
 #
-# Usage: ./generate-test-token.sh [variant]
-#   variant: "serial" (default) or "runner" — selects which test user
+# Usage: ./generate-test-token.sh <email>
+#   email: test user email (default: dev+clerk_test+serial@vm0-e2e.ai)
 
 set -euo pipefail
 
-# Test user variant (serial or runner)
-VARIANT="${1:-serial}"
+# Test user email
+EMAIL="${1:-dev+clerk_test+serial@vm0-e2e.ai}"
+
+# URL-encode the email (handle + and @)
+ENCODED_EMAIL=$(printf '%s' "$EMAIL" | sed 's/+/%2B/g; s/@/%40/g')
 
 # Retry configuration
 MAX_RETRIES=5
 INITIAL_DELAY=2
 
-echo "=== Generating Test CLI Token (variant: ${VARIANT}) ==="
+echo "=== Generating Test CLI Token (email: ${EMAIL}) ==="
 
 # Validate environment
 if [[ -z "${VM0_API_URL:-}" ]]; then
@@ -74,7 +77,7 @@ call_test_token_endpoint() {
     response=$(curl -s -w "\n%{http_code}" \
       "${CURL_HEADERS[@]}" \
       -X POST \
-      "${VM0_API_URL}/api/cli/auth/test-token?variant=${VARIANT}" 2>&1) || true
+      "${VM0_API_URL}/api/cli/auth/test-token?email=${ENCODED_EMAIL}" 2>&1) || true
 
     http_code=$(echo "$response" | tail -n1)
     body=$(echo "$response" | head -n-1)

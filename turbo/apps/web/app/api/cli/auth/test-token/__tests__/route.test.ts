@@ -1,13 +1,18 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { POST } from "../route";
-import { createTestRequest } from "../../../../../../src/__tests__/api-test-helpers";
+import { DEFAULT_TEST_EMAIL } from "../../../../../../src/lib/auth/test-user";
+import {
+  createTestRequest,
+  insertOrgCacheEntry,
+  deleteOrgCacheEntry,
+  ensureOrgRow,
+} from "../../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
 import { reloadEnv } from "../../../../../../src/env";
 
 // Mock Clerk Server API
 const mockGetUserList = vi.fn();
 const mockGetOrganizationMembershipList = vi.fn();
-const mockCreateOrganization = vi.fn();
 const mockGetOrganization = vi.fn();
 vi.mock("@clerk/nextjs/server", () => ({
   clerkClient: vi.fn(async () => ({
@@ -16,7 +21,6 @@ vi.mock("@clerk/nextjs/server", () => ({
       getOrganizationMembershipList: mockGetOrganizationMembershipList,
     },
     organizations: {
-      createOrganization: mockCreateOrganization,
       getOrganization: mockGetOrganization,
     },
   })),
@@ -26,18 +30,17 @@ vi.mock("@clerk/nextjs/server", () => ({
 const context = testContext();
 
 describe("/api/cli/auth/test-token", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     context.setupMocks();
     vi.stubEnv("CLERK_SECRET_KEY", "test-secret-key");
     reloadEnv();
     mockGetUserList.mockReset();
     mockGetOrganizationMembershipList.mockReset();
-    mockCreateOrganization.mockReset();
     mockGetOrganization.mockReset();
     mockGetUserList.mockResolvedValue({
       data: [{ id: "user_test123" }],
     });
-    // Return a Clerk org membership so ensureDefaultOrg can discover/create a local org
+    // Return a Clerk org membership so ensureTestOrg can discover a local org
     mockGetOrganizationMembershipList.mockResolvedValue({
       data: [
         {
@@ -51,21 +54,18 @@ describe("/api/cli/auth/test-token", () => {
         },
       ],
     });
-    mockCreateOrganization.mockResolvedValue({ id: "org_mock_test" });
-    mockGetOrganization.mockImplementation(
-      (params: { organizationId?: string; slug?: string }) => {
-        const orgId = params.organizationId;
-        if (orgId === "org_test_token") {
-          return Promise.resolve({
-            id: "org_test_token",
-            slug: "test-token-org",
-            name: "test-token-org",
-            publicMetadata: {},
-          });
-        }
-        return Promise.reject(new Error(`Organization ${orgId} not found`));
-      },
-    );
+    // Mock getOrganization for cache-miss fallback path (getOrgData)
+    mockGetOrganization.mockResolvedValue({
+      id: "org_test_token",
+      slug: "test-token-org",
+      name: "test-token-org",
+    });
+    // Pre-populate org_cache so ensureTestOrg() finds a matching entry
+    await insertOrgCacheEntry({
+      orgId: "org_test_token",
+      slug: "test-token-org",
+    });
+    await ensureOrgRow("org_test_token");
   });
 
   describe("environment-based access control", () => {
@@ -208,7 +208,7 @@ describe("/api/cli/auth/test-token", () => {
       expect(data.org_slug).toBe("test-token-org");
     });
 
-    it("returns 500 when test user is not found", async () => {
+    it("throws when test user is not found", async () => {
       mockGetUserList.mockResolvedValue({ data: [] });
 
       const request = createTestRequest(
@@ -216,14 +216,12 @@ describe("/api/cli/auth/test-token", () => {
         { method: "POST" },
       );
 
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(500);
-      expect(data.error).toBe("Test user not found");
+      await expect(POST(request)).rejects.toThrow(
+        "Test user not found for email:",
+      );
     });
 
-    it("calls Clerk with correct email address", async () => {
+    it("calls Clerk with default email address", async () => {
       const request = createTestRequest(
         "http://localhost:3000/api/cli/auth/test-token",
         { method: "POST" },
@@ -232,7 +230,41 @@ describe("/api/cli/auth/test-token", () => {
       await POST(request);
 
       expect(mockGetUserList).toHaveBeenCalledWith({
-        emailAddress: ["e2e+clerk_test@vm0.ai"],
+        emailAddress: [DEFAULT_TEST_EMAIL],
+      });
+    });
+
+    it("populates org_cache from Clerk when entry is missing", async () => {
+      // Clear org_cache — simulate CI scenario where org was just
+      // created in Clerk but no cache entry exists yet
+      await deleteOrgCacheEntry("org_test_token");
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/cli/auth/test-token",
+        { method: "POST" },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const data = await response.json();
+      expect(data.org_slug).toBe("test-token-org");
+      // Verify getOrganization was called to populate the cache
+      expect(mockGetOrganization).toHaveBeenCalledWith({
+        organizationId: "org_test_token",
+      });
+    });
+
+    it("calls Clerk with custom email via query param", async () => {
+      const request = createTestRequest(
+        "http://localhost:3000/api/cli/auth/test-token?email=custom%40test.com",
+        { method: "POST" },
+      );
+
+      await POST(request);
+
+      expect(mockGetUserList).toHaveBeenCalledWith({
+        emailAddress: ["custom@test.com"],
       });
     });
   });

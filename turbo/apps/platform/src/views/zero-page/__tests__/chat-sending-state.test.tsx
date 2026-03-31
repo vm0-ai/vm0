@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor, act } from "@testing-library/react";
-import { delay } from "signal-timers";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import {
@@ -127,14 +126,16 @@ describe("chat sending state", () => {
     );
 
     // Type a new message and press Enter while still sending
-    sendMessageInUI(activeTextarea, "Second message");
-
-    // Give any potential second request time to fire
-    await act(async () => {
-      await delay(100);
+    act(() => {
+      sendMessageInUI(activeTextarea, "Second message");
     });
 
-    // The run creation endpoint should have been called only once
+    // The sending state is still active (Stop button visible), so the run
+    // creation endpoint should have been called only once — no artificial
+    // delay is needed because the state is already observable.
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
     expect(runCreateCount).toBe(1);
 
     ctrl.completeRun();

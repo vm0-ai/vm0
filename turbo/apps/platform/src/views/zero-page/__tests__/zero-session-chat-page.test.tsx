@@ -4,6 +4,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
+import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const context = testContext();
 
@@ -185,5 +186,92 @@ describe("agent avatar link", () => {
       "href",
       "/team/c0000000-0000-4000-a000-000000000001",
     );
+  });
+});
+
+describe("chat message activity line", () => {
+  it("should keep activity line visible when result arrives but run is still running", async () => {
+    const lifecycle = mockChatLifecycle({
+      threadId: "thread-activity-running",
+      unsavedRuns: [
+        {
+          runId: "run-activity-1",
+          status: "running",
+          prompt: "Do something",
+          error: null,
+        },
+      ],
+    });
+
+    // Provide a result event while keeping the run status as "running"
+    lifecycle.setEvents([
+      {
+        sequenceNumber: 1,
+        eventType: "result",
+        eventData: { result: "Here is the partial result" },
+        createdAt: "2026-03-10T00:00:10Z",
+      },
+    ]);
+
+    await setupPage({ context, path: "/chat/thread-activity-running" });
+
+    // The result content should be rendered
+    await waitFor(() => {
+      expect(
+        screen.getByText("Here is the partial result"),
+      ).toBeInTheDocument();
+    });
+
+    // The activity line (spinner) should still be visible since the run is not terminal
+    await waitFor(() => {
+      const shimmer = document.querySelector(".zero-shimmer-text");
+      expect(shimmer).toBeInTheDocument();
+    });
+  });
+
+  it("should hide activity line after run reaches terminal status", async () => {
+    const lifecycle = mockChatLifecycle({
+      threadId: "thread-activity-done",
+      unsavedRuns: [
+        {
+          runId: "run-activity-2",
+          status: "running",
+          prompt: "Do something else",
+          error: null,
+        },
+      ],
+    });
+
+    // Start with a result event while still running
+    lifecycle.setEvents([
+      {
+        sequenceNumber: 1,
+        eventType: "result",
+        eventData: { result: "Final answer" },
+        createdAt: "2026-03-10T00:00:10Z",
+      },
+    ]);
+
+    await setupPage({ context, path: "/chat/thread-activity-done" });
+
+    // Wait for content to appear
+    await waitFor(() => {
+      expect(screen.getByText("Final answer")).toBeInTheDocument();
+    });
+
+    // Activity line should be visible while running
+    await waitFor(() => {
+      const shimmer = document.querySelector(".zero-shimmer-text");
+      expect(shimmer).toBeInTheDocument();
+    });
+
+    // Now complete the run
+    lifecycle.completeRun("Final answer");
+
+    // Activity line should disappear after reaching terminal status
+    await waitFor(() => {
+      const shimmer = document.querySelector(".zero-shimmer-text");
+      expect(shimmer).not.toBeInTheDocument();
+    });
   });
 });

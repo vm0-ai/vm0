@@ -23,7 +23,6 @@ export function buildAppHomeView(options: {
   userEmail?: string;
   agentName?: string;
   loginUrl?: string;
-  isAdmin?: boolean;
 }): View {
   const blocks: (Block | KnownBlock)[] = [
     {
@@ -158,10 +157,6 @@ export function buildAppHomeView(options: {
 
   blocks.push({ type: "divider" });
 
-  const settingsDesc = options.isAdmin
-    ? "Configure secrets, variables, and select the workspace agent"
-    : "Configure secrets and variables";
-
   // Help section
   blocks.push({
     type: "section",
@@ -175,7 +170,7 @@ export function buildAppHomeView(options: {
     type: "section",
     text: {
       type: "mrkdwn",
-      text: `*Commands*\n\u2022 \`/zero connect\` - Connect to Zero\n\u2022 \`/zero disconnect\` - Disconnect from Zero\n\u2022 \`/zero settings\` - ${settingsDesc}`,
+      text: `*Commands*\n\u2022 \`/zero connect\` - Connect to Zero\n\u2022 \`/zero disconnect\` - Disconnect from Zero`,
     },
   });
 
@@ -328,13 +323,7 @@ export function buildWelcomeMessage(
  *
  * @returns Block Kit blocks
  */
-export function buildHelpMessage(options?: {
-  isAdmin?: boolean;
-}): (Block | KnownBlock)[] {
-  const settingsDesc = options?.isAdmin
-    ? "Configure secrets, variables, and select the workspace agent"
-    : "Configure secrets and variables";
-
+export function buildHelpMessage(): (Block | KnownBlock)[] {
   return [
     {
       type: "section",
@@ -350,7 +339,7 @@ export function buildHelpMessage(options?: {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `*Commands*\n\u2022 \`/zero connect\` - Connect to Zero\n\u2022 \`/zero disconnect\` - Disconnect from Zero\n\u2022 \`/zero settings\` - ${settingsDesc}`,
+        text: `*Commands*\n\u2022 \`/zero connect\` - Connect to Zero\n\u2022 \`/zero disconnect\` - Disconnect from Zero`,
       },
     },
     {

@@ -1,28 +1,23 @@
 import { clerkClient } from "@clerk/nextjs/server";
 
-const TEST_USER_EMAILS = {
-  serial: "e2e+clerk_test@vm0.ai",
-  runner: "e2e_02+clerk_test@vm0.ai",
-} as const;
-
-type TestVariant = keyof typeof TEST_USER_EMAILS;
-
-export function isTestVariant(value: string): value is TestVariant {
-  return value in TEST_USER_EMAILS;
-}
+export const DEFAULT_TEST_EMAIL = "dev+clerk_test+serial@vm0-e2e.ai";
 
 /**
  * Resolve the test user ID by querying Clerk Backend API for the e2e test user.
+ * Throws if the user is not found (accounts must be pre-provisioned by CI).
  *
- * @param variant - which test user to resolve ("serial" or "runner")
+ * @param email - the email address of the test user to look up
  */
 export async function resolveTestUserId(
-  variant: TestVariant = "serial",
-): Promise<string | null> {
-  const email = TEST_USER_EMAILS[variant];
+  email: string = DEFAULT_TEST_EMAIL,
+): Promise<string> {
   const clerk = await clerkClient();
   const { data: users } = await clerk.users.getUserList({
     emailAddress: [email],
   });
-  return users[0]?.id ?? null;
+  const userId = users[0]?.id;
+  if (!userId) {
+    throw new Error(`Test user not found for email: ${email}`);
+  }
+  return userId;
 }

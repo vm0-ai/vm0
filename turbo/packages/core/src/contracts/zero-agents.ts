@@ -16,6 +16,7 @@ export const zeroAgentResponseSchema = z.object({
   avatarUrl: z.string().nullable(),
   connectors: z.array(z.string()),
   firewallPolicies: firewallPoliciesSchema.nullable(),
+  customSkills: z.array(z.string()).default([]),
 });
 
 /**
@@ -211,6 +212,139 @@ export const zeroAgentInstructionsContract = c.router({
   },
 });
 
+/**
+ * Custom skill name validation regex.
+ * Must be lowercase alphanumeric with hyphens, no leading/trailing hyphens.
+ * Minimum 2 characters.
+ */
+export const zeroAgentCustomSkillNameSchema = z
+  .string()
+  .min(2)
+  .max(64)
+  .regex(/^[a-z0-9][a-z0-9-]*[a-z0-9]$/);
+
+/**
+ * Custom skill metadata schema
+ */
+export const zeroAgentCustomSkillSchema = z.object({
+  name: zeroAgentCustomSkillNameSchema,
+  displayName: z.string().max(256).nullable(),
+  description: z.string().max(1024).nullable(),
+});
+
+/**
+ * Skill content request schema (create/update)
+ */
+export const zeroAgentSkillContentRequestSchema = z.object({
+  content: z.string(),
+});
+
+/**
+ * Skill content response schema (get with content)
+ */
+export const zeroAgentSkillContentResponseSchema = z.object({
+  name: z.string(),
+  displayName: z.string().nullable(),
+  description: z.string().nullable(),
+  content: z.string().nullable(),
+});
+
+/**
+ * Skill list response schema
+ */
+export const zeroAgentSkillListResponseSchema = z.array(
+  zeroAgentCustomSkillSchema,
+);
+
+/**
+ * Contract for /api/zero/agents/:id/skills endpoints
+ */
+export const zeroAgentSkillsContract = c.router({
+  list: {
+    method: "GET",
+    path: "/api/zero/agents/:id/skills",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.string().uuid() }),
+    responses: {
+      200: zeroAgentSkillListResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "List custom skills for agent",
+  },
+  create: {
+    method: "POST",
+    path: "/api/zero/agents/:id/skills",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.string().uuid() }),
+    body: zeroAgentSkillContentRequestSchema.extend({
+      name: zeroAgentCustomSkillNameSchema,
+      displayName: z.string().max(256).optional(),
+      description: z.string().max(1024).optional(),
+    }),
+    responses: {
+      201: zeroAgentCustomSkillSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+    },
+    summary: "Create custom skill for agent",
+  },
+  get: {
+    method: "GET",
+    path: "/api/zero/agents/:id/skills/:name",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      id: z.string().uuid(),
+      name: zeroAgentCustomSkillNameSchema,
+    }),
+    responses: {
+      200: zeroAgentSkillContentResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get custom skill with content",
+  },
+  update: {
+    method: "PUT",
+    path: "/api/zero/agents/:id/skills/:name",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      id: z.string().uuid(),
+      name: zeroAgentCustomSkillNameSchema,
+    }),
+    body: zeroAgentSkillContentRequestSchema,
+    responses: {
+      200: zeroAgentSkillContentResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Update custom skill content",
+  },
+  delete: {
+    method: "DELETE",
+    path: "/api/zero/agents/:id/skills/:name",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      id: z.string().uuid(),
+      name: zeroAgentCustomSkillNameSchema,
+    }),
+    body: c.noBody(),
+    responses: {
+      204: c.noBody(),
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Delete custom skill",
+  },
+});
+
 // Export types
 export type ZeroAgentResponse = z.infer<typeof zeroAgentResponseSchema>;
 export type ZeroAgentRequest = z.infer<typeof zeroAgentRequestSchema>;
@@ -233,3 +367,11 @@ export type ZeroAgentInstructionsContract =
   typeof zeroAgentInstructionsContract;
 export type ZeroAgentFirewallPoliciesContract =
   typeof zeroAgentFirewallPoliciesContract;
+export type ZeroAgentCustomSkill = z.infer<typeof zeroAgentCustomSkillSchema>;
+export type ZeroAgentSkillContentRequest = z.infer<
+  typeof zeroAgentSkillContentRequestSchema
+>;
+export type ZeroAgentSkillContentResponse = z.infer<
+  typeof zeroAgentSkillContentResponseSchema
+>;
+export type ZeroAgentSkillsContract = typeof zeroAgentSkillsContract;

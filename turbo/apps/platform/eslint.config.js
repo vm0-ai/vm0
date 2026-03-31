@@ -36,6 +36,7 @@ export default [
       "ccstate/no-side-effect-in-render": "error",
       "ccstate/no-use-ccstate-in-views": "error",
       "ccstate/no-non-zero-api": "error",
+      "ccstate/no-new-abort-controller": "error",
     },
   },
   // Type-aware rules (only for TypeScript files)
@@ -69,6 +70,22 @@ export default [
       "ccstate/no-store-in-params": "error",
       "ccstate/command-async-signal": "error",
       "ccstate/no-getter-setter-params": "error",
+    },
+  },
+  // Allow new AbortController in signal infrastructure, test helpers, and
+  // views that need a controller outliving the page signal (e.g. post-navigate
+  // async work).
+  {
+    files: [
+      "src/signals/utils.ts",
+      "src/polyfill.ts",
+      "src/signals/__tests__/test-helpers.ts",
+      "src/signals/__tests__/utils.test.ts",
+      "src/signals/zero-page/__tests__/poll-slack-connection.test.ts",
+      "src/views/zero-page/zero-onboarding.tsx",
+    ],
+    rules: {
+      "ccstate/no-new-abort-controller": "off",
     },
   },
   {
