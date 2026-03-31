@@ -6,6 +6,7 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
+import { FeatureSwitchKey } from "@vm0/core";
 
 const context = testContext();
 
@@ -56,7 +57,11 @@ describe("talk to activity agent retention", () => {
     mockTwoAgents();
 
     // Navigate to non-default agent (bar)
-    await setupPage({ context, path: "/talk/agent-bar-id" });
+    await setupPage({
+      context,
+      path: "/talk/agent-bar-id",
+      featureSwitches: { [FeatureSwitchKey.ActivityLogList]: true },
+    });
 
     // Wait for sidebar to show "bar" as the active chat agent
     await waitFor(
