@@ -36,7 +36,6 @@ export async function createChatThread(
 
 /**
  * List chat threads for a user + agent compose, ordered by updatedAt desc.
- * Derives preview from the first run's prompt.
  */
 export async function listChatThreads(
   userId: string,
@@ -45,7 +44,6 @@ export async function listChatThreads(
   Array<{
     id: string;
     title: string | null;
-    preview: string | null;
     createdAt: Date;
     updatedAt: Date;
   }>
@@ -66,12 +64,7 @@ export async function listChatThreads(
     )
     .orderBy(desc(chatThreads.updatedAt));
 
-  return threads.map((thread) => {
-    return {
-      ...thread,
-      preview: thread.title,
-    };
-  });
+  return threads;
 }
 
 /**

@@ -15,12 +15,7 @@ import {
   forbidden,
   concurrentRunLimit,
   isConcurrentRunLimit,
-  insufficientCredits,
-  noModelProvider,
 } from "../errors";
-import { orgMetadata } from "../../db/schema/org-metadata";
-import { orgMembersMetadata } from "../../db/schema/org-members-metadata";
-import { modelProviders } from "../../db/schema/model-provider";
 import { enqueueRun, drainOrgQueue } from "./run-queue-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { logger } from "../logger";
@@ -31,11 +26,9 @@ import { getAgentSessionWithConversation } from "../agent-session";
 import { prepareForExecution } from "./context/execution-preparer";
 import { executeRunnerJob } from "./executors/runner-executor";
 import type { ExecutorResult, PreparedContext } from "./executors/types";
-import {
-  buildExecutionContext as buildContext,
-  MODEL_PROVIDER_ENV_VARS,
-} from "./build-context";
 import { generateSandboxToken } from "../auth/sandbox-token";
+import type { ExecutionContext, RuntimeOrg } from "./types";
+import { buildZeroExecutionContext } from "../zero/build-zero-context";
 import { recordSandboxOperation } from "../metrics";
 import { extractTemplateVars } from "../config-validator";
 import { canAccessCompose } from "../agent/compose-access";
@@ -135,139 +128,6 @@ export async function checkRunConcurrencyLimit(
       `Org ${orgId} has ${activeRunCount} active runs, limit is ${effectiveLimit}`,
     );
     throw concurrentRunLimit();
-  }
-}
-
-/**
- * Check if the org has sufficient credits for a VM0 provider run.
- *
- * Only blocks runs using the VM0 managed provider (where the platform
- * bears API costs). Runs using the org's own API key are not affected.
- *
- * Uses lazy resolution: the org default provider is only queried
- * when modelProvider is null AND credits are already depleted.
- * The query runs within the caller's transaction to preserve
- * advisory lock guarantees.
- */
-async function checkOrgCredits(
-  orgId: string,
-  userId: string,
-  modelProvider: string | null | undefined,
-  db: Database,
-): Promise<void> {
-  // Explicit non-VM0 provider — skip check entirely
-  if (modelProvider && modelProvider !== "vm0") {
-    return;
-  }
-
-  // Determine if this is a VM0 run
-  let isVm0 = modelProvider === "vm0";
-
-  if (!isVm0 && !modelProvider) {
-    // Resolve org default provider to determine if this is a VM0 run
-    const [defaultProvider] = await db
-      .select({ type: modelProviders.type })
-      .from(modelProviders)
-      .where(
-        and(
-          eq(modelProviders.orgId, orgId),
-          eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-          eq(modelProviders.isDefault, true),
-        ),
-      )
-      .limit(1);
-    isVm0 = defaultProvider?.type === "vm0";
-  }
-
-  // Per-member credit cap check — only for VM0 runs
-  if (isVm0) {
-    const [memberRow] = await db
-      .select({ creditEnabled: orgMembersMetadata.creditEnabled })
-      .from(orgMembersMetadata)
-      .where(
-        and(
-          eq(orgMembersMetadata.orgId, orgId),
-          eq(orgMembersMetadata.userId, userId),
-        ),
-      )
-      .limit(1);
-
-    if (memberRow?.creditEnabled === false) {
-      throw insufficientCredits();
-    }
-  }
-
-  // Read credits from org_metadata
-  const [orgRow] = await db
-    .select({ credits: orgMetadata.credits })
-    .from(orgMetadata)
-    .where(eq(orgMetadata.orgId, orgId))
-    .limit(1);
-
-  // No org row → treat as sufficient (new org, default 10000 credits)
-  if (!orgRow) {
-    return;
-  }
-
-  // Credits > 0 → sufficient for any provider
-  if (orgRow.credits > 0) {
-    return;
-  }
-
-  // Credits <= 0 and VM0 run — insufficient
-  if (isVm0) {
-    throw insufficientCredits();
-  }
-
-  // Effective provider is not VM0 — skip check
-}
-
-/**
- * Pre-INSERT check: ensure the org has a model provider configured.
- * Skips the check when:
- * - The compose has explicit model provider env vars (e.g. ANTHROPIC_API_KEY)
- * - An explicit modelProvider param is provided (validated later in build-context)
- * - The framework doesn't use model providers (non-claude-code)
- */
-async function checkModelProviderConfigured(
-  orgId: string,
-  modelProvider: string | null | undefined,
-  composeContent: AgentComposeYaml,
-  db: Database,
-): Promise<void> {
-  // Explicit modelProvider param provided — skip (will be validated in build-context)
-  if (modelProvider) return;
-
-  // Extract framework and environment from first agent
-  const firstAgent = composeContent.agents
-    ? Object.values(composeContent.agents)[0]
-    : undefined;
-  const framework = firstAgent?.framework || "claude-code";
-
-  // Only claude-code framework needs provider resolution
-  if (framework !== "claude-code") return;
-
-  // If compose has explicit model provider env vars, skip check
-  const hasExplicitConfig = MODEL_PROVIDER_ENV_VARS.some((v) => {
-    return firstAgent?.environment?.[v] !== undefined;
-  });
-  if (hasExplicitConfig) return;
-
-  // Check if org has a default model provider (within transaction)
-  const [defaultProvider] = await db
-    .select({ type: modelProviders.type })
-    .from(modelProviders)
-    .where(
-      and(
-        eq(modelProviders.orgId, orgId),
-        eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-        eq(modelProviders.isDefault, true),
-      ),
-    )
-    .limit(1);
-
-  if (!defaultProvider) {
-    throw noModelProvider();
   }
 }
 
@@ -533,7 +393,7 @@ export interface CreateRunResult {
  * @returns composeContent and compose record
  * @throws NotFoundError - version or compose not found
  */
-async function loadCompose(
+export async function loadCompose(
   agentComposeVersionId: string,
   callerComposeId?: string,
 ): Promise<{
@@ -607,7 +467,7 @@ async function loadCompose(
   };
 }
 
-function authorizeCompose(
+export function authorizeCompose(
   userId: string,
   orgId: string,
   compose: { id: string; userId: string; orgId: string },
@@ -626,7 +486,7 @@ function authorizeCompose(
  *
  * @throws BadRequestError - missing required template variables (only when checkEnv is true)
  */
-async function validateComposeRequirements(
+export async function validateComposeRequirements(
   userId: string,
   composeContent: AgentComposeYaml,
   orgId: string,
@@ -661,7 +521,7 @@ async function validateComposeRequirements(
 /**
  * Register run callbacks with encrypted secrets.
  */
-async function registerCallbacks(
+export async function registerCallbacks(
   runId: string,
   callbacks: Array<{ url: string; secret: string; payload: unknown }>,
 ): Promise<void> {
@@ -689,7 +549,7 @@ async function registerCallbacks(
  * @param drain - Optional queue drain function. Injected by callers to release
  *   concurrency slots when a run that occupied one fails during dispatch.
  */
-async function markRunFailed(
+export async function markRunFailed(
   runId: string,
   createdAt: Date,
   error: unknown,
@@ -728,11 +588,18 @@ export async function buildAndDispatchRun(opts: {
   runId: string;
   createdAt: Date;
   params: CreateRunParams;
-  composeContent: AgentComposeYaml;
+  // Pre-built execution context (caller resolves all secrets/providers/firewalls)
+  context: ExecutionContext;
+  runtimeOrg: RuntimeOrg;
+  resolvedModelProvider?: string;
+  selectedModel?: string;
+  buildContextTimings: { resolveSourceAndOrg: number; resolveSecrets: number };
+  // Timing anchors
   apiStartTime: number;
   orgId: string;
   authorizeTime: number;
   transactionTime: number;
+  tokenTime: number;
   queueDispatcher?: (
     runId: string,
     createdAt: Date,
@@ -743,71 +610,24 @@ export async function buildAndDispatchRun(opts: {
     runId,
     createdAt,
     params,
-    composeContent,
+    context,
+    runtimeOrg,
+    resolvedModelProvider,
+    selectedModel,
+    buildContextTimings,
     apiStartTime,
     orgId,
     authorizeTime,
     transactionTime,
+    tokenTime,
   } = opts;
-  const {
-    userId,
-    agentComposeVersionId,
-    prompt,
-    appendSystemPrompt,
-    disallowedTools,
-    tools,
-    settings,
-  } = params;
 
   try {
-    // Register callbacks and generate sandbox token in parallel (independent operations)
-    const [, sandboxToken] = await Promise.all([
-      params.callbacks && params.callbacks.length > 0
-        ? registerCallbacks(runId, params.callbacks)
-        : null,
-      generateSandboxToken(userId, runId),
-    ]);
+    // Register callbacks (sandbox token already generated by caller)
+    if (params.callbacks && params.callbacks.length > 0) {
+      await registerCallbacks(runId, params.callbacks);
+    }
 
-    const tokenTime = Date.now();
-
-    // Build execution context
-    const {
-      context,
-      runtimeOrg,
-      timings: buildContextTimings,
-      resolvedModelProvider,
-      selectedModel,
-    } = await buildContext({
-      checkpointId: params.checkpointId,
-      sessionId: params.sessionId,
-      conversationId: params.conversationId,
-      agentComposeVersionId,
-      artifactName: params.artifactName,
-      artifactVersion: params.artifactVersion,
-      memoryName: params.memoryName,
-      vars: params.vars,
-      secrets: params.secrets,
-      volumeVersions: params.volumeVersions,
-      agentCompose: composeContent,
-      prompt,
-      appendSystemPrompt,
-      disallowedTools,
-      tools,
-      settings,
-      runId,
-      sandboxToken,
-      userId,
-      agentName: params.agentName,
-      resumedFromCheckpointId: params.resumedFromCheckpointId,
-      continuedFromSessionId: params.sessionId,
-      debugNoMockClaude: params.debugNoMockClaude,
-      modelProvider: params.modelProvider,
-      checkEnv: params.checkEnv,
-      firewallPolicies: params.firewallPolicies,
-      apiStartTime,
-      orgId,
-      allowedConnectorTypes: params.allowedConnectorTypes,
-    });
     const buildContextTime = Date.now();
 
     // Refresh heartbeat after the heaviest pipeline step to prevent the
@@ -1173,17 +993,6 @@ export async function createRunRecord(
     // Check concurrent run limit within the serialized transaction
     await checkRunConcurrencyLimit(orgId, params.orgTier ?? "free", tx);
 
-    // Check credit balance for VM0 provider runs
-    await checkOrgCredits(orgId, userId, params.modelProvider, tx);
-
-    // Check model provider is configured (pre-INSERT to avoid ghost run records)
-    await checkModelProviderConfigured(
-      orgId,
-      params.modelProvider,
-      composeContent,
-      tx,
-    );
-
     // INSERT within the same transaction
     const [newRun] = await tx
       .insert(agentRuns)
@@ -1248,23 +1057,54 @@ export async function createRun(
     throw error;
   }
 
-  const result = await buildAndDispatchRun({
-    runId: record.run.id,
-    createdAt: record.run.createdAt,
-    params,
-    composeContent: record.composeContent,
-    apiStartTime: record.apiStartTime,
-    orgId: record.orgId,
-    authorizeTime: record.authorizeTime,
-    transactionTime: record.transactionTime,
-  });
+  const sandboxToken = await generateSandboxToken(params.userId, record.run.id);
+  const tokenTime = Date.now();
 
-  return {
-    runId: record.run.id,
-    status: result.status,
-    sandboxId: result.sandboxId,
-    createdAt: record.run.createdAt,
-  };
+  try {
+    // Register callbacks early so they persist even if context building fails
+    if (params.callbacks && params.callbacks.length > 0) {
+      await registerCallbacks(record.run.id, params.callbacks);
+    }
+
+    const contextResult = await buildZeroExecutionContext({
+      ...params,
+      sandboxToken,
+      runId: record.run.id,
+      agentCompose: record.composeContent,
+      continuedFromSessionId: params.sessionId,
+    });
+
+    const result = await buildAndDispatchRun({
+      runId: record.run.id,
+      createdAt: record.run.createdAt,
+      params: { ...params, callbacks: undefined },
+      context: contextResult.context,
+      runtimeOrg: contextResult.runtimeOrg,
+      resolvedModelProvider: contextResult.resolvedModelProvider,
+      selectedModel: contextResult.selectedModel,
+      buildContextTimings: contextResult.timings,
+      apiStartTime: record.apiStartTime,
+      orgId: record.orgId,
+      authorizeTime: record.authorizeTime,
+      transactionTime: record.transactionTime,
+      tokenTime,
+    });
+
+    return {
+      runId: record.run.id,
+      status: result.status,
+      sandboxId: result.sandboxId,
+      createdAt: record.run.createdAt,
+    };
+  } catch (error) {
+    // Mark run as failed when context building or dispatch fails.
+    // buildAndDispatchRun may have already called markRunFailed — the
+    // second call is a safe no-op (transitionRunStatus guards on status).
+    await markRunFailed(record.run.id, record.run.createdAt, error, () => {
+      return drainOrgQueue(record.orgId, dispatchQueuedRun);
+    });
+    throw error;
+  }
 }
 
 /**
@@ -1312,17 +1152,46 @@ export async function dispatchQueuedRun(
     );
   }
 
-  await buildAndDispatchRun({
-    runId,
-    createdAt,
-    params,
-    composeContent,
-    apiStartTime,
-    orgId: params.orgId,
-    authorizeTime,
-    transactionTime,
-    queueDispatcher,
-  });
+  const sandboxToken = await generateSandboxToken(params.userId, runId);
+  const tokenTime = Date.now();
+
+  try {
+    // Register callbacks early so they persist even if context building fails
+    if (params.callbacks && params.callbacks.length > 0) {
+      await registerCallbacks(runId, params.callbacks);
+    }
+
+    const contextResult = await buildZeroExecutionContext({
+      ...params,
+      sandboxToken,
+      runId,
+      agentCompose: composeContent,
+      continuedFromSessionId: params.sessionId,
+    });
+
+    await buildAndDispatchRun({
+      runId,
+      createdAt,
+      params: { ...params, callbacks: undefined },
+      context: contextResult.context,
+      runtimeOrg: contextResult.runtimeOrg,
+      resolvedModelProvider: contextResult.resolvedModelProvider,
+      selectedModel: contextResult.selectedModel,
+      buildContextTimings: contextResult.timings,
+      apiStartTime,
+      orgId: params.orgId,
+      authorizeTime,
+      transactionTime,
+      tokenTime,
+      queueDispatcher,
+    });
+  } catch (error) {
+    const dispatcher = queueDispatcher ?? dispatchQueuedRun;
+    await markRunFailed(runId, createdAt, error, () => {
+      return drainOrgQueue(params.orgId, dispatcher);
+    });
+    throw error;
+  }
 }
 
 /**

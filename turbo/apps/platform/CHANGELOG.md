@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.171.2](https://github.com/vm0-ai/vm0/compare/app-v0.171.1...app-v0.171.2) (2026-03-31)
+
+
+### Refactoring
+
+* **platform:** migrate tests from fire-event to user-event ([#7416](https://github.com/vm0-ai/vm0/issues/7416)) ([2e98272](https://github.com/vm0-ai/vm0/commit/2e98272b85a5561e4493ee9b78d77a44814443f2))
+* remove redundant preview field from chat thread list items ([#7418](https://github.com/vm0-ai/vm0/issues/7418)) ([1b3bbee](https://github.com/vm0-ai/vm0/commit/1b3bbeec9aa0d7ff8ae18d446f63e4966108ee9e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.131.2
+
 ## [0.171.1](https://github.com/vm0-ai/vm0/compare/app-v0.171.0...app-v0.171.1) (2026-03-31)
 
 

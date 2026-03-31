@@ -83,8 +83,8 @@ describe("POST /api/zero/runs", () => {
         }),
       );
 
-      expect(response.status).toBe(201);
       const data = await response.json();
+      expect(response.status).toBe(201);
       expect(data.runId).toBeTruthy();
     });
 

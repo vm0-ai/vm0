@@ -11,13 +11,29 @@ import {
   createRunRecord,
   buildAndDispatchRun,
   resolveStartRunCompose,
+  loadCompose,
+  markRunFailed,
+  registerCallbacks,
   type CreateRunResult,
   type CreateRunParams,
 } from "../run";
-import { enqueueRun } from "../run/run-queue-service";
-import { generateZeroToken } from "../auth/sandbox-token";
+import { enqueueRun, drainOrgQueue } from "../run/run-queue-service";
+import { generateZeroToken, generateSandboxToken } from "../auth/sandbox-token";
+import {
+  buildZeroExecutionContext,
+  MODEL_PROVIDER_ENV_VARS,
+} from "./build-zero-context";
 import { getOrgData } from "../org/org-cache-service";
-import { isConcurrentRunLimit } from "../errors";
+import {
+  isConcurrentRunLimit,
+  insufficientCredits,
+  noModelProvider,
+} from "../errors";
+import { modelProviders } from "../../db/schema/model-provider";
+import { orgMetadata } from "../../db/schema/org-metadata";
+import { orgMembersMetadata } from "../../db/schema/org-members-metadata";
+import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
+import type { AgentComposeYaml } from "../../types/agent-compose";
 import {
   DISALLOWED_TOOLS,
   buildAgentToolsPrompt,
@@ -48,6 +64,130 @@ interface ZeroRunParams {
 }
 
 /**
+ * Pre-flight check: ensure the org has sufficient credits for VM0 runs.
+ * Skips for non-VM0 provider runs. Queries orgMetadata + orgMembersMetadata.
+ */
+async function checkOrgCredits(
+  orgId: string,
+  userId: string,
+  modelProvider: string | null | undefined,
+): Promise<void> {
+  const db = globalThis.services.db;
+
+  // Explicit non-VM0 provider — skip check entirely
+  if (modelProvider && modelProvider !== "vm0") {
+    return;
+  }
+
+  // Determine if this is a VM0 run
+  let isVm0 = modelProvider === "vm0";
+
+  if (!isVm0 && !modelProvider) {
+    // Resolve org default provider to determine if this is a VM0 run
+    const [defaultProvider] = await db
+      .select({ type: modelProviders.type })
+      .from(modelProviders)
+      .where(
+        and(
+          eq(modelProviders.orgId, orgId),
+          eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+          eq(modelProviders.isDefault, true),
+        ),
+      )
+      .limit(1);
+    isVm0 = defaultProvider?.type === "vm0";
+  }
+
+  // Per-member credit cap check — only for VM0 runs
+  if (isVm0) {
+    const [memberRow] = await db
+      .select({ creditEnabled: orgMembersMetadata.creditEnabled })
+      .from(orgMembersMetadata)
+      .where(
+        and(
+          eq(orgMembersMetadata.orgId, orgId),
+          eq(orgMembersMetadata.userId, userId),
+        ),
+      )
+      .limit(1);
+
+    if (memberRow?.creditEnabled === false) {
+      throw insufficientCredits();
+    }
+  }
+
+  // Read credits from org_metadata
+  const [orgRow] = await db
+    .select({ credits: orgMetadata.credits })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .limit(1);
+
+  // No org row → treat as sufficient (new org, default 10000 credits)
+  if (!orgRow) {
+    return;
+  }
+
+  // Credits > 0 → sufficient for any provider
+  if (orgRow.credits > 0) {
+    return;
+  }
+
+  // Credits <= 0 and VM0 run — insufficient
+  if (isVm0) {
+    throw insufficientCredits();
+  }
+
+  // Effective provider is not VM0 — skip check
+}
+
+/**
+ * Pre-flight check: ensure the org has a model provider configured.
+ * Skips when compose has explicit env vars, an explicit modelProvider param
+ * is provided, or the framework doesn't use model providers.
+ */
+async function checkModelProviderConfigured(
+  orgId: string,
+  modelProvider: string | null | undefined,
+  composeContent: AgentComposeYaml,
+): Promise<void> {
+  // Explicit modelProvider param provided — skip (will be validated in build-context)
+  if (modelProvider) return;
+
+  // Extract framework and environment from first agent
+  const firstAgent = composeContent.agents
+    ? Object.values(composeContent.agents)[0]
+    : undefined;
+  const framework = firstAgent?.framework || "claude-code";
+
+  // Only claude-code framework needs provider resolution
+  if (framework !== "claude-code") return;
+
+  // If compose has explicit model provider env vars, skip check
+  const hasExplicitConfig = MODEL_PROVIDER_ENV_VARS.some((v) => {
+    return firstAgent?.environment?.[v] !== undefined;
+  });
+  if (hasExplicitConfig) return;
+
+  // Check if org has a default model provider
+  const [defaultProvider] = await globalThis.services.db
+    .select({ type: modelProviders.type })
+    .from(modelProviders)
+    .where(
+      and(
+        eq(modelProviders.orgId, orgId),
+        eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+        eq(modelProviders.isDefault, true),
+      ),
+    )
+    .limit(1);
+
+  if (!defaultProvider) {
+    throw noModelProvider();
+  }
+}
+
+/**
  * Create an agent run with zero-layer defaults.
  *
  * agentId is the composeId (single UUID). Fetches agent metadata from
@@ -55,8 +195,8 @@ interface ZeroRunParams {
  * and disallowedTools so that every zero trigger path gets consistent
  * identity, memory persistence, artifact storage, and cron-tool restrictions.
  *
- * Token generation happens between createRunRecord() and buildAndDispatchRun()
- * so that infra never needs to know about ZERO_TOKEN.
+ * Pre-flight checks (credits, model provider) run before createRunRecord()
+ * so they apply to both direct and queued paths.
  */
 export async function createZeroRun(
   params: ZeroRunParams,
@@ -174,7 +314,21 @@ export async function createZeroRun(
     orgTier,
   };
 
-  // 3. Create run record (may throw ConcurrentRunLimitError)
+  // 3. Pre-flight checks: credits + model provider (before createRunRecord)
+  const { composeContent: preflightCompose } = await loadCompose(
+    resolved.agentComposeVersionId,
+    resolved.composeId,
+  );
+  await Promise.all([
+    checkOrgCredits(resolved.orgId, params.userId, params.modelProvider),
+    checkModelProviderConfigured(
+      resolved.orgId,
+      params.modelProvider,
+      preflightCompose,
+    ),
+  ]);
+
+  // 4. Create run record (may throw ConcurrentRunLimitError)
   let record;
   try {
     record = await createRunRecord(runParams);
@@ -197,41 +351,71 @@ export async function createZeroRun(
     throw error;
   }
 
-  // 4. Generate ZERO_TOKEN (now we have runId)
-  const zeroToken = await generateZeroToken(
-    params.userId,
-    record.run.id,
-    resolved.orgId,
-  );
+  // Steps 5-8 run after createRunRecord — wrap in try-catch so that
+  // failures (e.g. session framework mismatch, provider resolution) are
+  // recorded against the run and the route handler can return 201 + failed.
+  try {
+    // 5. Register callbacks early so they persist even if context building fails
+    if (runParams.callbacks && runParams.callbacks.length > 0) {
+      await registerCallbacks(record.run.id, runParams.callbacks);
+    }
 
-  // 5. Dispatch with token in secrets
-  const result = await buildAndDispatchRun({
-    runId: record.run.id,
-    createdAt: record.run.createdAt,
-    params: {
+    // 6. Generate ZERO_TOKEN + sandbox token (now we have runId)
+    const [zeroToken, sandboxToken] = await Promise.all([
+      generateZeroToken(params.userId, record.run.id, resolved.orgId),
+      generateSandboxToken(params.userId, record.run.id),
+    ]);
+    const tokenTime = Date.now();
+
+    // 7. Build zero execution context (resolves secrets, model provider, firewalls)
+    const paramsWithToken: CreateRunParams = {
       ...runParams,
       secrets: { ...runParams.secrets, ZERO_TOKEN: zeroToken },
-    },
-    composeContent: record.composeContent,
-    orgId: record.orgId,
-    apiStartTime: record.apiStartTime,
-    authorizeTime: record.authorizeTime,
-    transactionTime: record.transactionTime,
-    queueDispatcher: dispatchQueuedZeroRun,
-  });
+    };
+    const contextResult = await buildZeroExecutionContext({
+      ...paramsWithToken,
+      sandboxToken,
+      runId: record.run.id,
+      agentCompose: record.composeContent,
+      agentName: runParams.agentName,
+    });
 
-  // 6. Persist zero-layer metadata (triggerSource + schedule + trigger agent association)
-  await globalThis.services.db.insert(zeroRuns).values({
-    id: record.run.id,
-    triggerSource: params.triggerSource,
-    scheduleId: params.scheduleId ?? null,
-    triggerAgentId: params.triggerAgentId ?? null,
-  });
+    // 8. Dispatch with pre-built context (callbacks already registered above)
+    const result = await buildAndDispatchRun({
+      runId: record.run.id,
+      createdAt: record.run.createdAt,
+      params: { ...paramsWithToken, callbacks: undefined },
+      context: contextResult.context,
+      runtimeOrg: contextResult.runtimeOrg,
+      resolvedModelProvider: contextResult.resolvedModelProvider,
+      selectedModel: contextResult.selectedModel,
+      buildContextTimings: contextResult.timings,
+      orgId: record.orgId,
+      apiStartTime: record.apiStartTime,
+      authorizeTime: record.authorizeTime,
+      transactionTime: record.transactionTime,
+      tokenTime,
+      queueDispatcher: dispatchQueuedZeroRun,
+    });
 
-  return {
-    runId: record.run.id,
-    status: result.status,
-    sandboxId: result.sandboxId,
-    createdAt: record.run.createdAt,
-  };
+    // 9. Persist zero-layer metadata (triggerSource + schedule + trigger agent association)
+    await globalThis.services.db.insert(zeroRuns).values({
+      id: record.run.id,
+      triggerSource: params.triggerSource,
+      scheduleId: params.scheduleId ?? null,
+      triggerAgentId: params.triggerAgentId ?? null,
+    });
+
+    return {
+      runId: record.run.id,
+      status: result.status,
+      sandboxId: result.sandboxId,
+      createdAt: record.run.createdAt,
+    };
+  } catch (error) {
+    await markRunFailed(record.run.id, record.run.createdAt, error, () => {
+      return drainOrgQueue(resolved.orgId, dispatchQueuedZeroRun);
+    });
+    throw error;
+  }
 }

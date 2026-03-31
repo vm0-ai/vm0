@@ -34,7 +34,6 @@ export function makeToolUseEvent(
 interface ThreadListItem {
   id: string;
   title: string | null;
-  preview: string | null;
   agentId: string;
   createdAt: string;
   updatedAt: string;

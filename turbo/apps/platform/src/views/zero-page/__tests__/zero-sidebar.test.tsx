@@ -15,7 +15,6 @@ function mockAPIs({
     {
       id: "thread-1",
       title: "First chat",
-      preview: "Hello world",
       agentId: "c0000000-0000-4000-a000-000000000001",
       createdAt: "2026-03-10T00:00:00Z",
       updatedAt: "2026-03-10T00:00:00Z",
@@ -23,7 +22,6 @@ function mockAPIs({
     {
       id: "thread-2",
       title: "Second chat",
-      preview: "Goodbye moon",
       agentId: "c0000000-0000-4000-a000-000000000001",
       createdAt: "2026-03-09T00:00:00Z",
       updatedAt: "2026-03-09T00:00:00Z",
@@ -33,7 +31,6 @@ function mockAPIs({
   threads?: {
     id: string;
     title: string;
-    preview: string;
     agentId: string;
     createdAt: string;
     updatedAt: string;
@@ -89,7 +86,6 @@ function mockAPIsWithSubagents() {
           {
             id: "thread-main",
             title: "Main agent chat",
-            preview: "Hello from main",
             agentId: "c0000000-0000-4000-a000-000000000001",
             createdAt: "2026-03-10T00:00:00Z",
             updatedAt: "2026-03-10T00:00:00Z",
@@ -97,7 +93,6 @@ function mockAPIsWithSubagents() {
           {
             id: "thread-sub",
             title: "Sub agent chat",
-            preview: "Hello from sub",
             agentId: "sub-agent-id",
             createdAt: "2026-03-09T00:00:00Z",
             updatedAt: "2026-03-09T00:00:00Z",

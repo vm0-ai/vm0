@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.131.2](https://github.com/vm0-ai/vm0/compare/core-v8.131.1...core-v8.131.2) (2026-03-31)
+
+
+### Refactoring
+
+* remove redundant preview field from chat thread list items ([#7418](https://github.com/vm0-ai/vm0/issues/7418)) ([1b3bbee](https://github.com/vm0-ai/vm0/commit/1b3bbeec9aa0d7ff8ae18d446f63e4966108ee9e))
+
 ## [8.131.1](https://github.com/vm0-ai/vm0/compare/core-v8.131.0...core-v8.131.1) (2026-03-31)
 
 

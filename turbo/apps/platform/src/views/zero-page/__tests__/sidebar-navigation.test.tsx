@@ -14,7 +14,6 @@ function mockSubagentAPIs() {
   const threads: {
     id: string;
     title: string | null;
-    preview: string | null;
     agentId: string;
     createdAt: string;
     updatedAt: string;
@@ -22,7 +21,6 @@ function mockSubagentAPIs() {
     {
       id: "thread-sub-1",
       title: "Subagent thread",
-      preview: "Hello from subagent",
       agentId: "subagent-compose-id",
       createdAt: "2026-03-10T00:00:00Z",
       updatedAt: "2026-03-10T00:00:00Z",
@@ -87,7 +85,6 @@ function mockSubagentAPIs() {
       const newThread = {
         id: "new-thread-id",
         title: body.title ?? null,
-        preview: body.title ?? null,
         agentId: body.agentId,
         createdAt: now,
         updatedAt: now,
@@ -225,7 +222,7 @@ describe("sidebar new chat navigation", () => {
 
     // Override list and detail endpoints to include the newly created thread.
     // fetchZeroSessionList$ is always called after navigation so the list must
-    // include the new thread (preview: null) for "New chat" to appear in the sidebar.
+    // include the new thread (title: null) for "New chat" to appear in the sidebar.
     server.use(
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({
@@ -233,7 +230,6 @@ describe("sidebar new chat navigation", () => {
             {
               id: "new-thread-id",
               title: null,
-              preview: null,
               agentId: "c0000000-0000-4000-a000-000000000001",
               createdAt: "2026-03-10T00:00:00Z",
               updatedAt: "2026-03-10T00:00:00Z",

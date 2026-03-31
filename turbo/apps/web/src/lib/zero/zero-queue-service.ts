@@ -22,15 +22,21 @@ import {
   PENDING_RUN_TTL_MS,
   getEffectiveConcurrencyLimit,
   dispatchQueuedRun,
+  buildAndDispatchRun,
+  loadCompose,
+  authorizeCompose,
+  validateComposeRequirements,
 } from "../run/run-service";
 import type { CreateRunParams } from "../run/run-service";
-import { generateZeroToken } from "../auth/sandbox-token";
+import { generateZeroToken, generateSandboxToken } from "../auth/sandbox-token";
+import { buildZeroExecutionContext } from "./build-zero-context";
 import type { OrgTier, QueueResponse, TriggerSource } from "@vm0/core";
 
 /**
  * Zero-layer dispatch wrapper for queued runs.
- * If the run has ZERO_AGENT_ID in vars, generates a fresh ZERO_TOKEN before dispatch.
- * For non-zero runs, delegates directly to the infra dispatcher unchanged.
+ * For zero runs (ZERO_AGENT_ID in vars): generates tokens, builds zero context
+ * (secrets, model provider, firewalls), and dispatches with pre-built context.
+ * For non-zero runs: delegates directly to the infra dispatcher unchanged.
  */
 export async function dispatchQueuedZeroRun(
   runId: string,
@@ -38,21 +44,69 @@ export async function dispatchQueuedZeroRun(
   params: CreateRunParams,
 ): Promise<void> {
   if (params.vars?.ZERO_AGENT_ID) {
+    const apiStartTime = Date.now();
+
+    // Generate fresh ZERO_TOKEN for queued dispatch
     const zeroToken = await generateZeroToken(
       params.userId,
       runId,
       params.orgId,
     );
-    return dispatchQueuedRun(
+    const updatedParams: CreateRunParams = {
+      ...params,
+      secrets: { ...params.secrets, ZERO_TOKEN: zeroToken },
+    };
+
+    // Load compose + authorize (same validation as direct path)
+    const { composeContent, compose } = await loadCompose(
+      params.agentComposeVersionId,
+      params.composeId,
+    );
+    authorizeCompose(params.userId, params.orgId, compose);
+    const authorizeTime = Date.now();
+
+    // Validate compose requirements for new runs only
+    if (!params.checkpointId && !params.sessionId) {
+      await validateComposeRequirements(
+        params.userId,
+        composeContent,
+        params.orgId,
+        params.vars,
+        params.checkEnv,
+      );
+    }
+
+    // Generate sandbox token + build zero context
+    const sandboxToken = await generateSandboxToken(params.userId, runId);
+    const tokenTime = Date.now();
+    const contextResult = await buildZeroExecutionContext({
+      ...updatedParams,
+      sandboxToken,
+      agentCompose: composeContent,
+      runId,
+      agentName: params.agentName,
+    });
+
+    await buildAndDispatchRun({
       runId,
       createdAt,
-      {
-        ...params,
-        secrets: { ...params.secrets, ZERO_TOKEN: zeroToken },
-      },
-      dispatchQueuedZeroRun,
-    );
+      params: { ...updatedParams, callbacks: undefined },
+      context: contextResult.context,
+      runtimeOrg: contextResult.runtimeOrg,
+      resolvedModelProvider: contextResult.resolvedModelProvider,
+      selectedModel: contextResult.selectedModel,
+      buildContextTimings: contextResult.timings,
+      apiStartTime,
+      orgId: params.orgId,
+      authorizeTime,
+      transactionTime: apiStartTime,
+      tokenTime,
+      queueDispatcher: dispatchQueuedZeroRun,
+    });
+    return;
   }
+
+  // Non-zero path — delegate to infra dispatcher
   return dispatchQueuedRun(runId, createdAt, params, dispatchQueuedZeroRun);
 }
 
