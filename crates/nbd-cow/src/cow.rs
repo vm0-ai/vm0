@@ -239,11 +239,14 @@ impl CowLayer {
         let mut buf = vec![0u8; self.block_size];
         let offset = block_idx * self.block_size as u64;
 
-        if self.is_dirty(block_idx)
-            && let Some(ref cow_fd) = self.cow_fd
-        {
-            cow_fd.read_at(&mut buf, offset)?;
-            return Ok(buf);
+        if self.is_dirty(block_idx) {
+            if let Some(ref cow_fd) = self.cow_fd {
+                cow_fd.read_at(&mut buf, offset)?;
+                return Ok(buf);
+            }
+            return Err(NbdCowError::Io(std::io::Error::other(
+                "dirty bit set but COW file not open",
+            )));
         }
 
         self.base_fd.read_at(&mut buf, offset)?;
