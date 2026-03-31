@@ -6,6 +6,8 @@ import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 import mitm_addon
 
 
@@ -739,6 +741,18 @@ class TestFirewallHeaderCache:
             result = await mitm_addon.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
 
         assert result == {"Authorization": "Bearer fresh"}
+
+    async def test_fetch_failure_does_not_cache(self):
+        """Failed fetch should not populate cache; next caller retries independently."""
+
+        def failing_fetch(*args, **kwargs):
+            raise ConnectionError("server unreachable")
+
+        with patch.object(mitm_addon, "_fetch_firewall_headers_sync", side_effect=failing_fetch):
+            with pytest.raises(ConnectionError):
+                await mitm_addon.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
+
+        assert ("run-1", "api-1") not in mitm_addon._firewall_header_cache
 
     def test_registry_eviction_cleans_locks(self, tmp_path):
         """When a run is evicted from registry, its locks should be cleaned up too."""
