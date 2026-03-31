@@ -199,12 +199,6 @@ export function isInsufficientCredits(
   return e instanceof Error && e.name === "InsufficientCreditsError";
 }
 
-export function isProviderIncompatible(
-  e: unknown,
-): e is ProviderIncompatibleError {
-  return e instanceof Error && e.name === "ProviderIncompatibleError";
-}
-
 export function isNoModelProvider(e: unknown): e is NoModelProviderError {
   return e instanceof Error && e.name === "NoModelProviderError";
 }

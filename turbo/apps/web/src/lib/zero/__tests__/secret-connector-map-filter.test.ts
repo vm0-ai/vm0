@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { filterSecretConnectorMap } from "../build-context";
+import { filterSecretConnectorMap } from "../build-zero-context";
 
 describe("filterSecretConnectorMap", () => {
   it("returns undefined when input is undefined", () => {

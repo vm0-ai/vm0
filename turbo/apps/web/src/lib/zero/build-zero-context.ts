@@ -25,17 +25,22 @@ import {
   resolveFirewallBaseUrlVars,
 } from "@vm0/core";
 import { agentComposeVersions } from "../../db/schema/agent-compose";
-import { badRequest, notFound, providerIncompatible } from "../errors";
+import {
+  badRequest,
+  notFound,
+  noModelProvider,
+  providerIncompatible,
+} from "../errors";
 import { logger } from "../logger";
-import type { ExecutionContext, ResumeSession, RuntimeOrg } from "./types";
+import type { ExecutionContext, ResumeSession, RuntimeOrg } from "../run/types";
 import type { ArtifactSnapshot } from "../checkpoint/types";
 import {
   resolveCheckpoint,
   resolveSession,
   resolveDirectConversation,
   type ConversationResolution,
-} from "./resolvers";
-import { expandEnvironmentFromCompose } from "./environment";
+} from "../run/resolvers";
+import { expandEnvironmentFromCompose } from "../run/environment";
 import { getUserPreferences } from "../user/user-preferences-service";
 import { getSecretValue, getSecretValues } from "../secret/secret-service";
 import { getVariableValues } from "../variable/variable-service";
@@ -49,7 +54,7 @@ import {
   refreshConnectorAccessToken,
 } from "../connector/connector-service";
 
-const log = logger("run:build-context");
+const log = logger("zero:build-context");
 
 /**
  * Model provider environment variables that indicate explicit configuration.
@@ -99,11 +104,7 @@ function resolveProviderType(
   } else if (defaultProvider?.type) {
     providerType = defaultProvider.type;
   } else {
-    throw badRequest(
-      "No model provider configured. " +
-        "Run 'zero org model-provider setup' to configure one, " +
-        "or add environment variables to your vm0.yaml.",
-    );
+    throw noModelProvider();
   }
 
   const providerFramework = getFrameworkForType(providerType);
@@ -623,9 +624,11 @@ async function fetchAndMergeVariables(
 }
 
 /**
- * Parameters for building execution context
+ * Parameters for building Zero execution context.
+ * Contains all fields needed to resolve secrets, model providers, connectors,
+ * and build the final ExecutionContext for sandbox dispatch.
  */
-interface BuildContextParams {
+interface BuildZeroContextParams {
   // Shortcuts (mutually exclusive)
   checkpointId?: string;
   sessionId?: string;
@@ -676,7 +679,7 @@ interface BuildContextParams {
  * Returns ConversationResolution if a source is found, null for new runs
  */
 async function resolveSource(
-  params: BuildContextParams,
+  params: BuildZeroContextParams,
 ): Promise<ConversationResolution | null> {
   if (params.checkpointId) {
     log.debug(`Resolving checkpoint ${params.checkpointId}`);
@@ -721,7 +724,6 @@ async function loadAgentComposeForNewRun(
 
 /**
  * Resolve all secrets (user, model provider, connector) and expand environment.
- * Extracted from buildExecutionContext to reduce complexity.
  */
 async function resolveSecretsAndEnvironment(
   orgId: string,
@@ -862,7 +864,7 @@ async function resolveSecretsAndEnvironment(
  * Params override resolution values (explicit CLI args win).
  */
 function applyResolutionDefaults(
-  params: BuildContextParams,
+  params: BuildZeroContextParams,
   resolution: ConversationResolution,
 ): {
   agentComposeVersionId: string;
@@ -905,34 +907,15 @@ function applyResolutionDefaults(
   };
 }
 
-/**
- * Resolve the Runtime Org for this execution.
- *
- * The Runtime Org (orgId + userId) determines secrets, variables,
- * connectors, model providers, artifacts, and memories.
- * See docs/resource-model.md for the full resource model.
- *
- * When params.orgId is not provided, the user's default org is used.
- */
-function resolveOrgs(params: BuildContextParams): {
-  runtimeClerkOrgId: string;
-  pendingRuntimeScope: RuntimeOrg;
-} {
-  return {
-    runtimeClerkOrgId: params.orgId,
-    pendingRuntimeScope: { orgId: params.orgId },
-  };
-}
-
-interface BuildContextTimings {
+interface BuildZeroContextTimings {
   resolveSourceAndOrg: number;
   resolveSecrets: number;
 }
 
-interface BuildContextResult {
+interface BuildZeroContextResult {
   context: ExecutionContext;
   runtimeOrg: RuntimeOrg;
-  timings: BuildContextTimings;
+  timings: BuildZeroContextTimings;
   /** The resolved model provider type, if provider resolution ran during context build. */
   resolvedModelProvider: ModelProviderType | undefined;
   /** The logical model name selected by the user, for credit usage billing. */
@@ -1044,18 +1027,22 @@ function applyConnectorPolicies(
 }
 
 /**
- * Build unified execution context from various parameter sources.
- * Supports: new run, checkpoint resume, session continue.
+ * Build Zero execution context from various parameter sources.
+ * Handles: new run, checkpoint resume, session continue.
+ *
+ * This is the Zero layer's context builder — it resolves all business data
+ * (model providers, secrets, connectors, variables, user preferences, firewalls)
+ * and builds the final ExecutionContext for sandbox dispatch.
  *
  * Parameter expansion:
  * - checkpointId: Expands to checkpoint snapshot (config, conversation, artifact, volumes)
  * - sessionId: Expands to session data (config, conversation, artifact=latest)
  * - Explicit parameters override expanded values
  */
-export async function buildExecutionContext(
-  params: BuildContextParams,
-): Promise<BuildContextResult> {
-  log.debug(`Building execution context for ${params.runId}`);
+export async function buildZeroExecutionContext(
+  params: BuildZeroContextParams,
+): Promise<BuildZeroContextResult> {
+  log.debug(`Building zero execution context for ${params.runId}`);
   log.debug(`params.volumeVersions=${JSON.stringify(params.volumeVersions)}`);
 
   // Initialize context variables
@@ -1070,12 +1057,9 @@ export async function buildExecutionContext(
   let resumeSession: ResumeSession | undefined;
   let resumeArtifact: ArtifactSnapshot | undefined;
 
-  // Step 1: Resolve source and orgs in parallel (independent operations).
-  // resolveSource loads checkpoint/session/conversation data.
-  // resolveOrgs resolves the runtime org for secrets and storage.
+  // Step 1: Resolve source (checkpoint/session/conversation).
   const resolveStart = Date.now();
-  const [resolution, { runtimeClerkOrgId, pendingRuntimeScope }] =
-    await Promise.all([resolveSource(params), resolveOrgs(params)]);
+  const resolution = await resolveSource(params);
   const resolveEnd = Date.now();
 
   // Step 2: Apply resolution defaults and build resumeSession (unified path)
@@ -1125,12 +1109,11 @@ export async function buildExecutionContext(
     ? Object.values(compose.agents)[0]
     : undefined;
 
-  // Step 4: Resolve secrets, user preferences, and runtime scope in parallel.
-  // pendingRuntimeScope may already be resolved (when orgId was not explicit).
+  // Step 4: Resolve secrets, user preferences in parallel.
   const resolveSecretsStart = Date.now();
-  const [secretsResult, userPrefs, runtimeOrg] = await Promise.all([
+  const [secretsResult, userPrefs] = await Promise.all([
     resolveSecretsAndEnvironment(
-      runtimeClerkOrgId,
+      params.orgId,
       agentCompose,
       firstAgent,
       vars,
@@ -1141,9 +1124,8 @@ export async function buildExecutionContext(
       params.allowedConnectorTypes,
     ),
     params.userId
-      ? getUserPreferences(runtimeClerkOrgId, params.userId)
+      ? getUserPreferences(params.orgId, params.userId)
       : Promise.resolve(null),
-    Promise.resolve(pendingRuntimeScope),
   ]);
   const resolveSecretsEnd = Date.now();
 
@@ -1187,15 +1169,9 @@ export async function buildExecutionContext(
     mergedVars,
   );
 
-  // Disallowed tools from run-time params (not compose)
-  const disallowedTools = params.disallowedTools;
-
-  // Tools to make available from run-time params (not compose)
-  const tools = params.tools;
-
   // Build final execution context
   return {
-    runtimeOrg,
+    runtimeOrg: { orgId: params.orgId },
     context: {
       runId: params.runId,
       userId: params.userId,
@@ -1214,8 +1190,8 @@ export async function buildExecutionContext(
       environment,
       userTimezone,
       experimentalFirewalls,
-      disallowedTools,
-      tools,
+      disallowedTools: params.disallowedTools,
+      tools: params.tools,
       settings: params.settings,
       resumeSession,
       resumeArtifact,

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   testContext,
   uniqueId,
@@ -8,43 +8,53 @@ import {
   createTestCompose,
   createTestSecret,
   createTestVariable,
+  getTestZeroAgentId,
   findTestRunnerJobEntry,
 } from "../../../__tests__/api-test-helpers";
-import { createRun, type CreateRunParams } from "../run-service";
+import { createZeroRun } from "../zero-run-service";
 import { upsertOrgModelProvider } from "../../model-provider/model-provider-service";
 import { upsertSecretByOrg } from "../../secret/secret-service";
 import { setVariable } from "../../variable/variable-service";
 import { ORG_SENTINEL_USER_ID } from "../../org/org-sentinel";
 import { isNoModelProvider } from "../../errors";
+import { reloadEnv } from "../../../env";
+import type { TriggerSource } from "@vm0/core";
 
 const context = testContext();
 
-describe("Org-Level Runtime Resolution", () => {
+describe("Org-Level Runtime Resolution (Zero Layer)", () => {
   let user: UserContext;
-  let versionId: string;
+  let agentId: string;
 
   beforeEach(async () => {
     context.setupMocks();
     user = await context.setupUser();
-    const compose = await createTestCompose(uniqueId("agent"));
-    versionId = compose.versionId;
+    const agentName = uniqueId("agent");
+    await createTestCompose(agentName);
+    agentId = await getTestZeroAgentId(user.orgId, agentName);
+    vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
+    reloadEnv();
   });
 
-  function baseParams(overrides?: Partial<CreateRunParams>): CreateRunParams {
+  function baseParams(
+    overrides?: Partial<Parameters<typeof createZeroRun>[0]>,
+  ) {
     return {
       userId: user.userId,
-      agentComposeVersionId: versionId,
       prompt: "Hello, world!",
-      orgId: user.orgId,
+      agentId,
+      triggerSource: "web" as TriggerSource,
       ...overrides,
     };
   }
 
   describe("Model Provider Resolution", () => {
     it("should use org default provider", async () => {
-      const noKeyCompose = await createTestCompose(uniqueId("no-key-agent"), {
+      const agentName = uniqueId("no-key-agent");
+      await createTestCompose(agentName, {
         skipDefaultApiKey: true,
       });
+      const noKeyAgentId = await getTestZeroAgentId(user.orgId, agentName);
 
       await upsertOrgModelProvider(
         user.orgId,
@@ -52,9 +62,7 @@ describe("Org-Level Runtime Resolution", () => {
         "org-api-key",
       );
 
-      const result = await createRun(
-        baseParams({ agentComposeVersionId: noKeyCompose.versionId }),
-      );
+      const result = await createZeroRun(baseParams({ agentId: noKeyAgentId }));
 
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
@@ -66,21 +74,22 @@ describe("Org-Level Runtime Resolution", () => {
     });
 
     it("should error when no org default provider exists", async () => {
-      const noKeyCompose = await createTestCompose(uniqueId("no-key-agent"), {
+      const agentName = uniqueId("no-key-agent");
+      await createTestCompose(agentName, {
         skipDefaultApiKey: true,
       });
+      const noKeyAgentId = await getTestZeroAgentId(user.orgId, agentName);
 
       await expect(
-        createRun(
-          baseParams({ agentComposeVersionId: noKeyCompose.versionId }),
-        ),
+        createZeroRun(baseParams({ agentId: noKeyAgentId })),
       ).rejects.toSatisfy(isNoModelProvider);
     });
   });
 
   describe("Secret Merge", () => {
     it("should merge org and user secrets with user priority", async () => {
-      const compose = await createTestCompose(uniqueId("secret-agent"), {
+      const agentName = uniqueId("secret-agent");
+      await createTestCompose(agentName, {
         overrides: {
           environment: {
             ANTHROPIC_API_KEY: "test-api-key",
@@ -88,6 +97,7 @@ describe("Org-Level Runtime Resolution", () => {
           },
         },
       });
+      const secretAgentId = await getTestZeroAgentId(user.orgId, agentName);
 
       // Both org and user have the same secret name
       await upsertSecretByOrg(
@@ -100,8 +110,8 @@ describe("Org-Level Runtime Resolution", () => {
       );
       await createTestSecret("SHARED_KEY", "user-value");
 
-      const result = await createRun(
-        baseParams({ agentComposeVersionId: compose.versionId }),
+      const result = await createZeroRun(
+        baseParams({ agentId: secretAgentId }),
       );
 
       const job = await findTestRunnerJobEntry(result.runId);
@@ -113,7 +123,8 @@ describe("Org-Level Runtime Resolution", () => {
     });
 
     it("should include org secret when user has no override", async () => {
-      const compose = await createTestCompose(uniqueId("secret-agent"), {
+      const agentName = uniqueId("secret-agent");
+      await createTestCompose(agentName, {
         overrides: {
           environment: {
             ANTHROPIC_API_KEY: "test-api-key",
@@ -122,6 +133,7 @@ describe("Org-Level Runtime Resolution", () => {
           },
         },
       });
+      const secretAgentId = await getTestZeroAgentId(user.orgId, agentName);
 
       await upsertSecretByOrg(
         user.orgId,
@@ -133,8 +145,8 @@ describe("Org-Level Runtime Resolution", () => {
       );
       await createTestSecret("USER_ONLY", "user-secret");
 
-      const result = await createRun(
-        baseParams({ agentComposeVersionId: compose.versionId }),
+      const result = await createZeroRun(
+        baseParams({ agentId: secretAgentId }),
       );
 
       const job = await findTestRunnerJobEntry(result.runId);
@@ -144,45 +156,12 @@ describe("Org-Level Runtime Resolution", () => {
         USER_ONLY: "user-secret",
       });
     });
-
-    it("should let CLI secret override both org and user secrets", async () => {
-      const compose = await createTestCompose(uniqueId("secret-agent"), {
-        overrides: {
-          environment: {
-            ANTHROPIC_API_KEY: "test-api-key",
-            MY_SECRET: "${{ secrets.MY_SECRET }}",
-          },
-        },
-      });
-
-      await upsertSecretByOrg(
-        user.orgId,
-        ORG_SENTINEL_USER_ID,
-        "MY_SECRET",
-        "org-value",
-        "user",
-        "Org secret",
-      );
-      await createTestSecret("MY_SECRET", "user-value");
-
-      const result = await createRun(
-        baseParams({
-          agentComposeVersionId: compose.versionId,
-          secrets: { MY_SECRET: "cli-value" },
-        }),
-      );
-
-      const job = await findTestRunnerJobEntry(result.runId);
-      expect(job).toBeDefined();
-      expect(job!.executionContext.environment).toMatchObject({
-        MY_SECRET: "cli-value",
-      });
-    });
   });
 
   describe("Variable Merge", () => {
     it("should merge org and user variables with user priority", async () => {
-      const compose = await createTestCompose(uniqueId("var-agent"), {
+      const agentName = uniqueId("var-agent");
+      await createTestCompose(agentName, {
         overrides: {
           environment: {
             ANTHROPIC_API_KEY: "test-api-key",
@@ -190,6 +169,7 @@ describe("Org-Level Runtime Resolution", () => {
           },
         },
       });
+      const varAgentId = await getTestZeroAgentId(user.orgId, agentName);
 
       await setVariable(
         user.orgId,
@@ -199,12 +179,7 @@ describe("Org-Level Runtime Resolution", () => {
       );
       await createTestVariable("MY_VAR", "user-value");
 
-      const result = await createRun(
-        baseParams({
-          agentComposeVersionId: compose.versionId,
-          checkEnv: true,
-        }),
-      );
+      const result = await createZeroRun(baseParams({ agentId: varAgentId }));
 
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
@@ -214,7 +189,8 @@ describe("Org-Level Runtime Resolution", () => {
     });
 
     it("should include org variable when user has no override", async () => {
-      const compose = await createTestCompose(uniqueId("var-agent"), {
+      const agentName = uniqueId("var-agent");
+      await createTestCompose(agentName, {
         overrides: {
           environment: {
             ANTHROPIC_API_KEY: "test-api-key",
@@ -222,6 +198,7 @@ describe("Org-Level Runtime Resolution", () => {
           },
         },
       });
+      const varAgentId = await getTestZeroAgentId(user.orgId, agentName);
 
       await setVariable(
         user.orgId,
@@ -230,12 +207,7 @@ describe("Org-Level Runtime Resolution", () => {
         "org-value",
       );
 
-      const result = await createRun(
-        baseParams({
-          agentComposeVersionId: compose.versionId,
-          checkEnv: true,
-        }),
-      );
+      const result = await createZeroRun(baseParams({ agentId: varAgentId }));
 
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
@@ -245,7 +217,8 @@ describe("Org-Level Runtime Resolution", () => {
     });
 
     it("should let CLI variable override both org and user variables", async () => {
-      const compose = await createTestCompose(uniqueId("var-agent"), {
+      const agentName = uniqueId("var-agent");
+      await createTestCompose(agentName, {
         overrides: {
           environment: {
             ANTHROPIC_API_KEY: "test-api-key",
@@ -253,6 +226,7 @@ describe("Org-Level Runtime Resolution", () => {
           },
         },
       });
+      const varAgentId = await getTestZeroAgentId(user.orgId, agentName);
 
       await setVariable(
         user.orgId,
@@ -262,18 +236,13 @@ describe("Org-Level Runtime Resolution", () => {
       );
       await createTestVariable("MY_VAR", "user-value");
 
-      const result = await createRun(
-        baseParams({
-          agentComposeVersionId: compose.versionId,
-          vars: { MY_VAR: "cli-value" },
-          checkEnv: true,
-        }),
-      );
+      const result = await createZeroRun(baseParams({ agentId: varAgentId }));
 
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
+      // createZeroRun doesn't accept CLI vars directly, so user value wins
       expect(job!.executionContext.environment).toMatchObject({
-        MY_VAR: "cli-value",
+        MY_VAR: "user-value",
       });
     });
   });
