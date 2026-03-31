@@ -35,6 +35,8 @@ pub struct NbdCowDevice {
     server_handles: Vec<JoinHandle<()>>,
     /// Shutdown signal for all server tasks.
     shutdown: CancellationToken,
+    /// Set to true after shutdown_inner completes, so Drop doesn't double-disconnect.
+    disconnected: bool,
 }
 
 impl NbdCowDevice {
@@ -95,6 +97,7 @@ impl NbdCowDevice {
             cow_file: cow_file.to_path_buf(),
             server_handles,
             shutdown,
+            disconnected: false,
         })
     }
 
@@ -138,6 +141,7 @@ impl NbdCowDevice {
         if let Err(e) = netlink::disconnect(self.device_index) {
             tracing::warn!("NBD disconnect failed for nbd{}: {e}", self.device_index);
         }
+        self.disconnected = true;
 
         // Wait for kernel to release the device (poll pid file)
         let pid_path = format!("/sys/block/nbd{}/pid", self.device_index);
@@ -168,7 +172,10 @@ impl Drop for NbdCowDevice {
         for handle in self.server_handles.drain(..) {
             handle.abort();
         }
-        // Synchronous netlink disconnect — best effort
-        let _ = netlink::disconnect(self.device_index);
+        // Only disconnect if shutdown_inner hasn't already done it,
+        // to avoid disconnecting a device that was recycled by another runner.
+        if !self.disconnected {
+            let _ = netlink::disconnect(self.device_index);
+        }
     }
 }
