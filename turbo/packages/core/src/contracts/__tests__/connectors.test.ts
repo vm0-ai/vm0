@@ -141,9 +141,13 @@ describe("getConnectorEnvironmentMapping", () => {
               s.includes(`${prefix}_REFRESH_TOKEN`),
       );
 
-      // environmentMapping: all values point to $secrets.XXX_ACCESS_TOKEN
+      // environmentMapping: must contain XXX_TOKEN, all values -> $secrets.XXX_ACCESS_TOKEN
       const mapping = getConnectorEnvironmentMapping(type);
       const expectedRef = `$secrets.${prefix}_ACCESS_TOKEN`;
+      expect(
+        mapping[`${prefix}_TOKEN`],
+        `${type}: environmentMapping must include ${prefix}_TOKEN`,
+      ).toBe(expectedRef);
       for (const [key, value] of Object.entries(mapping)) {
         expect(
           value,
