@@ -12,7 +12,7 @@ import { writeOutput } from "./codegen";
 const DOCS_URL = "https://docs.perplexity.ai/docs/admin/api-key-management";
 // Format: pplx- + 48 alphanumeric (gitleaks: perplexity-api-key)
 const PLACEHOLDER_VALUE =
-  "pplx-Vm0PlaceHolder0000000000000000000000000000000000";
+  "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";
 
 function generateTypeScript(): string {
   const lines: string[] = [

@@ -11,7 +11,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://developer.close.com/";
 // OAuth access token — opaque string, no fixed prefix
-const PLACEHOLDER_VALUE = "Vm0PlaceHolder00000000000000000000000000000000a";
+const PLACEHOLDER_VALUE = "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalC";
 
 function generateTypeScript(): string {
   const lines: string[] = [

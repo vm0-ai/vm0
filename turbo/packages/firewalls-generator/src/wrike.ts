@@ -12,7 +12,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://developers.wrike.com/overview/";
 // Wrike permanent access tokens are opaque alphanumeric strings
-const PLACEHOLDER_VALUE = "wrkTkn_Vm0PlaceHolder000000000000000000000000000000";
+const PLACEHOLDER_VALUE = "wrkTkn_CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoca";
 
 const WRIKE_DOMAINS = [
   "www.wrike.com",

@@ -12,7 +12,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://developer.zendesk.com/api-reference/";
 // Format: Zendesk API tokens are 40-char alphanumeric
-const PLACEHOLDER_VALUE = "zkTkn_Vm0PlaceHolder000000000000000000000000";
+const PLACEHOLDER_VALUE = "zkTkn_CoffeeSafeLocalCoffeeSafeLocalCoffeeSa";
 
 function generateTypeScript(): string {
   const lines: string[] = [

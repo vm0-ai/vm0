@@ -11,7 +11,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://docs.dify.ai/";
 // Format: app- + 24 alphanumeric chars (total 28)
-const PLACEHOLDER_VALUE = "app-Vm0PlaceHolder000000000";
+const PLACEHOLDER_VALUE = "app-CoffeeSafeLocalCoffeeSa";
 
 function generateTypeScript(): string {
   const lines: string[] = [

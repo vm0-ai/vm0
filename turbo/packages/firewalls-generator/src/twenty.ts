@@ -12,7 +12,7 @@ import { writeOutput } from "./codegen";
 const DOCS_URL = "https://docs.twenty.com/developers/api-and-webhooks/api";
 // Format: JWT token (~200 chars). Use a realistic-length placeholder.
 const PLACEHOLDER_VALUE =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJWbTBQbGFjZUhvbGRlcjAwMDAwMDAwMDAwMDAwMDAwMCIsInR5cGUiOiJBUElfS0VZIiwid29ya3NwYWNlSWQiOiJWbTBQbGFjZUhvbGRlcjAwIn0.Vm0PlaceHolder0000000000000000000000000000000";
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJDb2ZmZWVTYWZlTG9jYWxDb2ZmZWVTYWZlTG9jYWxDbyIsInR5cGUiOiJBUElfS0VZIiwid29ya3NwYWNlSWQiOiJDb2ZmZWVTYWZlTG9jYWxDb2YifQ.CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLo";
 
 function generateTypeScript(): string {
   const lines: string[] = [

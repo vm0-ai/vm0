@@ -10,7 +10,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://nla.zapier.com/docs/authentication/";
 // Token format not publicly documented; using generic alphanumeric placeholder
-const PLACEHOLDER_VALUE = "Vm0PlaceHolder0000000000000000000000000000";
+const PLACEHOLDER_VALUE = "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLo";
 
 function generateTypeScript(): string {
   const lines: string[] = [

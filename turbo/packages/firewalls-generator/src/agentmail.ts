@@ -10,7 +10,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://docs.agentmail.to/api-reference";
 // Format: am_ + 32 hex chars (e.g. am_6064766aebe42477b7686ffd76374d68)
-const PLACEHOLDER_VALUE = "am_00000000000000000000000000000000";
+const PLACEHOLDER_VALUE = "am_c0ffee5afe10ca1c0ffee5afe10ca1c0";
 
 function generateTypeScript(): string {
   const lines: string[] = [

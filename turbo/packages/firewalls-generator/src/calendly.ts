@@ -12,7 +12,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://developer.calendly.com/getting-started";
 // Token format: opaque alphanumeric string ~40 chars
-const PLACEHOLDER_VALUE = "Vm0PlaceHolder0000000000000000000000000000";
+const PLACEHOLDER_VALUE = "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafe00";
 
 function generateTypeScript(): string {
   const lines: string[] = [

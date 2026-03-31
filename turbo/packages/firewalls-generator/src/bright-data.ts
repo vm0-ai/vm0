@@ -13,7 +13,7 @@ import { writeOutput } from "./codegen";
 const DOCS_URL = "https://docs.brightdata.com/api-reference";
 // Token is a 64-char hex string; using a realistic-looking placeholder
 const PLACEHOLDER_VALUE =
-  "b5648e10vm0placeholder0000000000000000000000000000000000000000abcd";
+  "c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe10ca1c0ff";
 
 function generateTypeScript(): string {
   const lines: string[] = [

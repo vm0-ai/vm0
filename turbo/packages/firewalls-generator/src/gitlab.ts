@@ -11,7 +11,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://docs.gitlab.com/api/rest/authentication/";
 // Format: glpat- + [\w-]{20} (gitleaks: gitlab-pat)
-const PLACEHOLDER_VALUE = "glpat-Vm0PlaceHolder000000";
+const PLACEHOLDER_VALUE = "glpat-CoffeeSafeLocalCoffe";
 
 function generateTypeScript(): string {
   const lines: string[] = [
