@@ -68,6 +68,7 @@ import {
   setZeroJobActiveTab$,
   zeroJobFirewallPolicies$,
   setZeroJobFirewallPolicies$,
+  getInitialConnectorSearch,
 } from "../../signals/zero-page/zero-job-detail.ts";
 import type { AgentDetail } from "../../signals/zero-page/agent-types.ts";
 import { runScheduleNow$ } from "../../signals/zero-page/zero-schedule.ts";
@@ -381,8 +382,10 @@ function JobPermissionsTab({
   const setFirewallPolicies = useSet(setZeroJobFirewallPolicies$);
   const saveFirewallPol = useSet(saveFirewallPolicies$);
   const [firewallType, setFirewallType] = useState<ConnectorType | null>(null);
-  const [search, setSearch] = useState("");
-  const [searchActive, setSearchActive] = useState(false);
+  const [search, setSearch] = useState(getInitialConnectorSearch);
+  const [searchActive, setSearchActive] = useState(
+    () => getInitialConnectorSearch().length > 0,
+  );
   const [savingType, setSavingType] = useState<string | null>(null);
 
   const adminLoadable = useLoadable(isOrgAdmin$);
@@ -396,9 +399,12 @@ function JobPermissionsTab({
 
   const connectedConnectors = allConnectors.filter((c) => c.connected);
   const filteredConnectors = search
-    ? connectedConnectors.filter((c) =>
-        c.label.toLowerCase().includes(search.toLowerCase()),
-      )
+    ? connectedConnectors.filter((c) => {
+        const q = search.toLowerCase();
+        return (
+          c.label.toLowerCase().includes(q) || c.type.toLowerCase().includes(q)
+        );
+      })
     : connectedConnectors;
   const addedSet = new Set(addedConnectors);
 

@@ -104,7 +104,7 @@ describe("zero doctor missing-token command", () => {
       );
       expect(logCalls).toContain("not authorized");
       expect(logCalls).toContain(
-        "[Authorize GitHub](https://app.vm0.ai/team/agent-abc-123?tab=authorization)",
+        "[Authorize GitHub](https://app.vm0.ai/team/agent-abc-123?tab=authorization&connector=github)",
       );
     });
   });

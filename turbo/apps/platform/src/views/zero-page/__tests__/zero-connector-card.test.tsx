@@ -12,6 +12,35 @@ import {
 
 const context = testContext();
 
+async function renderTeamPageWithConnectorParam(
+  orgConnectors: ConnectorResponse[],
+  enabledTypes: string[],
+  connectorParam: string,
+) {
+  mockConnectors(orgConnectors);
+  server.use(
+    http.get("*/api/zero/agents/zero", () => {
+      return HttpResponse.json({
+        name: "zero",
+        agentId: "compose-1",
+        description: null,
+        displayName: null,
+        sound: null,
+        avatarUrl: null,
+        firewallPolicies: null,
+      });
+    }),
+    http.get("*/api/zero/agents/compose-1/user-connectors", () => {
+      return HttpResponse.json({ enabledTypes });
+    }),
+  );
+
+  await setupPage({
+    context,
+    path: `/team/zero?tab=authorization&connector=${connectorParam}`,
+  });
+}
+
 function connectorUuid(type: string): string {
   const map: Record<string, string> = {
     github: "a0000000-0000-4000-a000-000000000001",
@@ -253,5 +282,40 @@ describe("zero authorization tab — member on default agent", () => {
     expect(
       screen.getByRole("switch", { name: "Revoke GitHub access" }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("zero authorization tab — connector query param pre-fill", () => {
+  it("filters to matching connector when connector query param is set", async () => {
+    await renderTeamPageWithConnectorParam(
+      [
+        makeConnector({ type: "github", oauthScopes: ["repo"] }),
+        makeConnector({ type: "slack" }),
+      ],
+      ["github"],
+      "github",
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Slack")).not.toBeInTheDocument();
+  });
+
+  it("shows search input pre-filled with connector query param value", async () => {
+    await renderTeamPageWithConnectorParam(
+      [makeConnector({ type: "github", oauthScopes: ["repo"] })],
+      [],
+      "github",
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByPlaceholderText("Search connectors..."),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByPlaceholderText("Search connectors...")).toHaveValue(
+      "github",
+    );
   });
 });

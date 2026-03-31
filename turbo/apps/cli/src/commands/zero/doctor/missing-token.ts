@@ -66,7 +66,7 @@ Notes:
       } else if (!hasPermission) {
         // Connected but not authorized for this agent — direct to authorization tab
         const path = agentId ? `/team/${agentId}` : "/team";
-        const url = `${platformUrl.origin}${path}?tab=authorization`;
+        const url = `${platformUrl.origin}${path}?tab=authorization&connector=${connectorType}`;
         console.log(
           `The ${label} connector is connected but not authorized for this agent. Ask the user to enable it at: [Authorize ${label}](${url})`,
         );

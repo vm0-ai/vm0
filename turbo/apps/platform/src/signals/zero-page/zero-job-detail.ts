@@ -54,6 +54,11 @@ function getInitialTab(): string {
   return isValidTab(tab) ? tab : "authorization";
 }
 
+export function getInitialConnectorSearch(): string {
+  const params = new URLSearchParams(search());
+  return params.get("connector") ?? "";
+}
+
 const internalActiveTab$ = state("authorization");
 
 export const zeroJobActiveTab$ = computed((get) => get(internalActiveTab$));
