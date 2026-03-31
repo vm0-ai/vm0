@@ -99,10 +99,8 @@ async fn handle_read(
     writer: &mut tokio::net::unix::OwnedWriteHalf,
 ) -> Result<()> {
     if request.length > MAX_REQUEST_LENGTH {
-        return Err(NbdCowError::Io(std::io::Error::other(format!(
-            "read request too large: {} bytes (max {})",
-            request.length, MAX_REQUEST_LENGTH
-        ))));
+        send_error_reply(writer, request.handle, libc::EIO as u32).await?;
+        return Ok(());
     }
     let mut data = vec![0u8; request.length as usize];
     {
@@ -127,10 +125,10 @@ async fn handle_write(
     writer: &mut tokio::net::unix::OwnedWriteHalf,
 ) -> Result<()> {
     if request.length > MAX_REQUEST_LENGTH {
-        return Err(NbdCowError::Io(std::io::Error::other(format!(
-            "write request too large: {} bytes (max {})",
-            request.length, MAX_REQUEST_LENGTH
-        ))));
+        // Must consume the payload to keep the protocol stream in sync
+        discard_bytes(reader, request.length as u64).await?;
+        send_error_reply(writer, request.handle, libc::EIO as u32).await?;
+        return Ok(());
     }
     // Read the write payload from the socket
     let mut data = vec![0u8; request.length as usize];
@@ -171,6 +169,31 @@ async fn handle_flush(
 async fn send_reply(writer: &mut tokio::net::unix::OwnedWriteHalf, reply: &NbdReply) -> Result<()> {
     let buf = protocol::serialize_reply(reply);
     writer.write_all(&buf).await?;
+    Ok(())
+}
+
+async fn send_error_reply(
+    writer: &mut tokio::net::unix::OwnedWriteHalf,
+    handle: u64,
+    error: u32,
+) -> Result<()> {
+    send_reply(writer, &NbdReply { error, handle }).await
+}
+
+/// Discard `n` bytes from the reader to keep the protocol stream in sync.
+async fn discard_bytes(
+    reader: &mut tokio::net::unix::OwnedReadHalf,
+    mut remaining: u64,
+) -> Result<()> {
+    let mut buf = [0u8; 4096];
+    while remaining > 0 {
+        let to_read = (remaining as usize).min(buf.len());
+        let dest = buf
+            .get_mut(..to_read)
+            .ok_or_else(|| NbdCowError::Io(std::io::Error::other("discard slice error")))?;
+        reader.read_exact(dest).await?;
+        remaining -= to_read as u64;
+    }
     Ok(())
 }
 

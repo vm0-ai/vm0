@@ -15,8 +15,9 @@ use crate::error::{NbdCowError, Result};
 pub struct CowLayer {
     /// Read-only base image file.
     base_fd: File,
-    /// Sparse COW file for persisting dirty blocks (created on first flush).
-    cow_path: Option<std::path::PathBuf>,
+    /// Path for the sparse COW file (created on first flush).
+    cow_path: std::path::PathBuf,
+    /// Open file handle for the COW file (lazily opened on first flush).
     cow_fd: Option<File>,
     /// 1 bit per block: set if the block has been written (and flushed to COW file).
     dirty: BitVec,
@@ -52,7 +53,7 @@ impl CowLayer {
 
         Ok(Self {
             base_fd,
-            cow_path: Some(cow_path.to_path_buf()),
+            cow_path: cow_path.to_path_buf(),
             cow_fd: None,
             dirty: bitvec![0; num_blocks],
             write_buffer: HashMap::new(),
@@ -121,7 +122,7 @@ impl CowLayer {
             let to_write = remaining_in_block.min(data.len() - pos);
 
             if !self.write_buffer.contains_key(&block_idx) {
-                let full_block = self.read_full_block(block_idx);
+                let full_block = self.read_full_block(block_idx)?;
                 self.write_buffer.insert(block_idx, full_block);
             }
             let block_data = self
@@ -225,35 +226,29 @@ impl CowLayer {
     }
 
     /// Read a full block, preferring COW file if dirty, otherwise base image.
-    fn read_full_block(&self, block_idx: u64) -> Vec<u8> {
+    fn read_full_block(&self, block_idx: u64) -> Result<Vec<u8>> {
         let mut buf = vec![0u8; self.block_size];
         let offset = block_idx * self.block_size as u64;
 
         if self.is_dirty(block_idx)
             && let Some(ref cow_fd) = self.cow_fd
         {
-            let _ = cow_fd.read_at(&mut buf, offset);
-            return buf;
+            cow_fd.read_at(&mut buf, offset)?;
+            return Ok(buf);
         }
 
-        let _ = self.base_fd.read_at(&mut buf, offset);
-        buf
+        self.base_fd.read_at(&mut buf, offset)?;
+        Ok(buf)
     }
 
     fn ensure_cow_fd(&mut self) -> Result<()> {
         if self.cow_fd.is_none() {
-            let path = self.cow_path.as_ref().ok_or_else(|| {
-                NbdCowError::Io(std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    "no COW file path configured",
-                ))
-            })?;
             let fd = File::options()
                 .read(true)
                 .write(true)
                 .create(true)
                 .truncate(false)
-                .open(path)?;
+                .open(&self.cow_path)?;
             self.cow_fd = Some(fd);
         }
         Ok(())
