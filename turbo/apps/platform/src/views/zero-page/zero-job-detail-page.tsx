@@ -16,6 +16,7 @@ import {
   IconAdjustmentsHorizontal,
   IconSearch,
   IconX,
+  IconMessageCircle,
 } from "@tabler/icons-react";
 import {
   Tabs,
@@ -704,18 +705,34 @@ export function ZeroJobDetailPage({ agentId }: ZeroJobDetailPageProps) {
       <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-6 pb-3">
         <div className="mx-auto max-w-[900px]">
           <div className="flex items-center gap-4">
-            {currentAvatar ? (
-              <img
-                src={currentAvatar}
-                alt={displayName}
-                className="h-14 w-14 shrink-0 rounded-full object-cover object-top sm:h-16 sm:w-16"
-              />
-            ) : (
-              <div
-                className="h-14 w-14 shrink-0 rounded-full bg-muted sm:h-16 sm:w-16"
-                aria-hidden
-              />
-            )}
+            <div className="relative shrink-0">
+              {currentAvatar ? (
+                <img
+                  src={currentAvatar}
+                  alt={displayName}
+                  className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
+                />
+              ) : (
+                <div
+                  className="h-14 w-14 rounded-full bg-muted sm:h-16 sm:w-16"
+                  aria-hidden
+                />
+              )}
+              <button
+                type="button"
+                onClick={() =>
+                  nav("/talk/:agentId", { pathParams: { agentId } })
+                }
+                aria-label={`Chat with ${displayName}`}
+                className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-background zero-border shadow-sm hover:bg-accent transition-colors"
+              >
+                <IconMessageCircle
+                  size={13}
+                  stroke={1.5}
+                  className="text-foreground"
+                />
+              </button>
+            </div>
             <div className="min-w-0">
               <h1 className="text-xl font-semibold tracking-tight text-foreground">
                 {displayName}
