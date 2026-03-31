@@ -504,7 +504,7 @@ export function ZeroScheduleCard({
       </header>
 
       <Card className="zero-card">
-        <CardContent className="py-5 flex flex-col gap-6">
+        <CardContent className="p-0 flex flex-col">
           {scheduleViewMode === "list" && (
             <ScheduleListView
               entries={scheduleList}
