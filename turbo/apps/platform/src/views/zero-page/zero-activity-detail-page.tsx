@@ -331,8 +331,12 @@ export function ZeroActivityDetailPage() {
   const setStepSearch = useSet(setZeroActivityStepSearch$);
   const features = useLastResolved(featureSwitch$);
 
-  // Skeleton until both detail and initial events are loaded
-  const eventsReady = eventsLoadable.state === "hasData";
+  // Skeleton until both detail and initial events are loaded.
+  // Events signal returns null when the run loop hasn't been set up yet;
+  // useLastLoadable would keep the stale null as "hasData" which correctly
+  // prevents the page from rendering with an empty steps list.
+  const eventsReady =
+    eventsLoadable.state === "hasData" && eventsLoadable.data !== null;
   if (!detail || isStale || !eventsReady) {
     if (detailLoadable.state === "hasError") {
       return <ActivityNotFound />;
@@ -340,7 +344,7 @@ export function ZeroActivityDetailPage() {
     return <ActivitySkeleton />;
   }
 
-  const events: AgentEvent[] = eventsLoadable.data;
+  const events: AgentEvent[] = eventsLoadable.data ?? [];
 
   const allMessages = groupEventsIntoMessages(events);
 
