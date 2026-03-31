@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { gzipSync } from "node:zlib";
 import { POST as postSkill, GET as listSkills } from "../route";
 import {
@@ -9,6 +9,7 @@ import {
 import {
   createTestRequest,
   createTestCliToken,
+  seedSeedSkills,
   setDefaultAgentByComposeId,
   clearOrgMembersCacheEntry,
   bindCustomSkillToAgent,
@@ -20,14 +21,6 @@ import {
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 import { createSingleFileTar } from "../../../../../../../src/lib/tar";
-
-// Mock serverSideCompose to avoid dependency on global skills table,
-// which parallel test files (sync-skills) may clear during execution.
-vi.mock("../../../../../../../src/lib/compose/server-side-compose", () => ({
-  serverSideCompose: vi
-    .fn()
-    .mockResolvedValue({ composeId: "mock", versionId: "mock" }),
-}));
 
 const context = testContext();
 
@@ -150,12 +143,14 @@ function mockSkillContent(content: string) {
 describe("Zero Agent Skills API", () => {
   beforeEach(async () => {
     context.setupMocks();
+    // Seed skills table for serverSideCompose (uses onConflictDoNothing)
+    await seedSeedSkills();
     user = await context.setupUser();
     testCliToken = await createTestCliToken(user.userId);
     testOrgSlug = `org-${user.userId.slice(-8)}`;
 
-    // Seed agent directly in DB to avoid serverSideCompose dependency
-    // on the global skills table (which parallel test files may clear).
+    // Seed agent directly in DB to avoid API-level serverSideCompose call
+    // during setup (reduces exposure to parallel test interference).
     const orgId = `org_mock_${user.userId}`;
     const result = await seedTestCompose({
       userId: user.userId,
