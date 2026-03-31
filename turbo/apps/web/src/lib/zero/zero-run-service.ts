@@ -14,7 +14,12 @@ import {
   type CreateRunResult,
   type CreateRunParams,
 } from "../run";
-import { enqueueRun } from "../run/run-queue-service";
+import {
+  checkRunConcurrencyLimit,
+  checkOrgCredits,
+  checkModelProviderConfigured,
+} from "./zero-preflight";
+import { enqueueZeroRun, drainOrgQueue } from "./zero-queue-service";
 import { generateZeroToken } from "../auth/sandbox-token";
 import { getOrgData } from "../org/org-cache-service";
 import { isConcurrentRunLimit } from "../errors";
@@ -26,7 +31,6 @@ import { formatAgentIdentityPrompt } from "../agent-identity";
 import type { CallbackPayload } from "../callback/callback-payloads";
 import { zeroAgents } from "../../db/schema/zero-agent";
 import { zeroRuns } from "../../db/schema/zero-run";
-import { dispatchQueuedZeroRun } from "./zero-queue-service";
 import { userConnectors } from "../../db/schema/user-connector";
 
 /**
@@ -53,6 +57,9 @@ interface ZeroRunParams {
  * zero_agents, then injects agent identity, memoryName, artifactName,
  * and disallowedTools so that every zero trigger path gets consistent
  * identity, memory persistence, artifact storage, and cron-tool restrictions.
+ *
+ * Pre-flight checks (concurrency, credits, model provider) run before
+ * record creation so that infra remains a pure execution engine.
  *
  * Token generation happens between createRunRecord() and buildAndDispatchRun()
  * so that infra never needs to know about ZERO_TOKEN.
@@ -167,15 +174,14 @@ export async function createZeroRun(
     orgTier,
   };
 
-  // 3. Create run record (may throw ConcurrentRunLimitError)
-  let record;
+  // 3. Pre-flight checks (zero-layer concern)
   try {
-    record = await createRunRecord(runParams);
+    await checkRunConcurrencyLimit(resolved.orgId, orgTier);
   } catch (error) {
     if (isConcurrentRunLimit(error)) {
-      // Enqueue without token — dispatchQueuedZeroRun generates a fresh
+      // Enqueue without token — drainOrgQueue generates a fresh
       // token at dispatch time.
-      const queueResult = await enqueueRun(runParams);
+      const queueResult = await enqueueZeroRun(runParams);
 
       // Persist zero-layer metadata
       await globalThis.services.db.insert(zeroRuns).values({
@@ -188,15 +194,26 @@ export async function createZeroRun(
     }
     throw error;
   }
+  await checkOrgCredits(resolved.orgId, params.userId, params.modelProvider);
 
-  // 4. Generate ZERO_TOKEN (now we have runId)
+  // 4. Create run record (pre-flight checks already passed)
+  const record = await createRunRecord(runParams);
+
+  // 5. Check model provider (needs compose content from record)
+  await checkModelProviderConfigured(
+    resolved.orgId,
+    params.modelProvider,
+    record.composeContent,
+  );
+
+  // 6. Generate ZERO_TOKEN (now we have runId)
   const zeroToken = await generateZeroToken(
     params.userId,
     record.run.id,
     resolved.orgId,
   );
 
-  // 5. Dispatch with token in secrets
+  // 7. Dispatch with token in secrets
   const result = await buildAndDispatchRun({
     runId: record.run.id,
     createdAt: record.run.createdAt,
@@ -209,10 +226,10 @@ export async function createZeroRun(
     apiStartTime: record.apiStartTime,
     authorizeTime: record.authorizeTime,
     transactionTime: record.transactionTime,
-    queueDispatcher: dispatchQueuedZeroRun,
+    drain: () => drainOrgQueue(resolved.orgId),
   });
 
-  // 6. Persist zero-layer metadata (triggerSource + schedule association)
+  // 8. Persist zero-layer metadata (triggerSource + schedule association)
   await globalThis.services.db.insert(zeroRuns).values({
     id: record.run.id,
     triggerSource: params.triggerSource,

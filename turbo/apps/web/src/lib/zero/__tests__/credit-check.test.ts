@@ -7,21 +7,19 @@ import {
 import {
   createTestCompose,
   findTestRunRecord,
-  findTestRunsByUserAndPrompt,
   findTestQueueEntry,
   markRunningRunsAsCompleted,
   setOrgCredits,
   deleteOrgRow,
   insertOrgDefaultModelProvider,
   insertOrgMembersEntry,
+  createTestRunInDb,
+  deleteOrgModelProviders,
 } from "../../../__tests__/api-test-helpers";
 import { reloadEnv } from "../../../env";
-import {
-  createRun,
-  dispatchQueuedRun,
-  type CreateRunParams,
-} from "../run-service";
-import { drainOrgQueue, enqueueRun } from "../run-queue-service";
+import type { CreateRunParams } from "../../run/run-service";
+import { checkOrgCredits } from "../zero-preflight";
+import { enqueueZeroRun, drainOrgQueue } from "../zero-queue-service";
 import { isInsufficientCredits } from "../../errors";
 
 const context = testContext();
@@ -29,12 +27,14 @@ const context = testContext();
 describe("credit check", () => {
   let user: UserContext;
   let versionId: string;
+  let composeId: string;
 
   beforeEach(async () => {
     context.setupMocks();
     user = await context.setupUser();
     const compose = await createTestCompose(uniqueId("agent"));
     versionId = compose.versionId;
+    composeId = compose.composeId;
   });
 
   function baseParams(overrides?: Partial<CreateRunParams>): CreateRunParams {
@@ -47,21 +47,19 @@ describe("credit check", () => {
     };
   }
 
-  describe("createRun() path", () => {
+  describe("checkOrgCredits()", () => {
     it("should allow VM0 run when credits > 0", async () => {
       await setOrgCredits(user.orgId, 100);
 
-      const result = await createRun(baseParams({ modelProvider: "vm0" }));
-
-      expect(result.status).toBe("pending");
-      expect(result.runId).toBeDefined();
+      // Should not throw
+      await checkOrgCredits(user.orgId, user.userId, "vm0");
     });
 
     it("should reject VM0 run when credits = 0", async () => {
       await setOrgCredits(user.orgId, 0);
 
       await expect(
-        createRun(baseParams({ modelProvider: "vm0" })),
+        checkOrgCredits(user.orgId, user.userId, "vm0"),
       ).rejects.toSatisfy(isInsufficientCredits);
     });
 
@@ -69,65 +67,47 @@ describe("credit check", () => {
       await setOrgCredits(user.orgId, -500);
 
       await expect(
-        createRun(baseParams({ modelProvider: "vm0" })),
+        checkOrgCredits(user.orgId, user.userId, "vm0"),
       ).rejects.toSatisfy(isInsufficientCredits);
     });
 
     it("should allow non-VM0 run when credits = 0", async () => {
       await setOrgCredits(user.orgId, 0);
 
-      const result = await createRun(
-        baseParams({ modelProvider: "anthropic" }),
-      );
-
-      expect(result.status).toBe("pending");
+      // Should not throw
+      await checkOrgCredits(user.orgId, user.userId, "anthropic");
     });
 
     it("should reject when org default is VM0 and credits = 0", async () => {
       await setOrgCredits(user.orgId, 0);
       await insertOrgDefaultModelProvider(user.orgId, "vm0");
 
-      await expect(createRun(baseParams())).rejects.toSatisfy(
-        isInsufficientCredits,
-      );
+      await expect(
+        checkOrgCredits(user.orgId, user.userId, undefined),
+      ).rejects.toSatisfy(isInsufficientCredits);
     });
 
     it("should allow when org default is non-VM0 and credits = 0", async () => {
       await setOrgCredits(user.orgId, 0);
-      await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
 
-      const result = await createRun(baseParams());
-
-      expect(result.status).toBe("pending");
+      // anthropic-api-key already set in beforeEach
+      await checkOrgCredits(user.orgId, user.userId, undefined);
     });
 
     it("should allow when no org default provider and credits = 0", async () => {
       await setOrgCredits(user.orgId, 0);
 
-      const result = await createRun(baseParams());
+      // Remove the default provider set in beforeEach
+      await deleteOrgModelProviders(user.orgId);
 
-      expect(result.status).toBe("pending");
+      await checkOrgCredits(user.orgId, user.userId, undefined);
     });
 
     it("should allow when org_metadata row is missing", async () => {
       await deleteOrgRow(user.orgId);
 
-      const result = await createRun(baseParams({ modelProvider: "vm0" }));
-
-      expect(result.status).toBe("pending");
-    });
-
-    it("should not enqueue a rejected VM0 run", async () => {
-      await setOrgCredits(user.orgId, 0);
-
-      const prompt = "Rejected VM0 run - no enqueue";
-      await expect(
-        createRun(baseParams({ modelProvider: "vm0", prompt })),
-      ).rejects.toSatisfy(isInsufficientCredits);
-
-      // Verify no run record was created (credit check rejects before INSERT)
-      const runs = await findTestRunsByUserAndPrompt(user.userId, prompt);
-      expect(runs).toHaveLength(0);
+      // Should not throw
+      await checkOrgCredits(user.orgId, user.userId, "vm0");
     });
   });
 
@@ -145,7 +125,7 @@ describe("credit check", () => {
       });
 
       await expect(
-        createRun(baseParams({ modelProvider: "vm0" })),
+        checkOrgCredits(user.orgId, user.userId, "vm0"),
       ).rejects.toSatisfy(isInsufficientCredits);
     });
 
@@ -160,10 +140,8 @@ describe("credit check", () => {
         creditEnabled: false,
       });
 
-      const result = await createRun(
-        baseParams({ modelProvider: "anthropic" }),
-      );
-      expect(result.status).toBe("pending");
+      // Should not throw
+      await checkOrgCredits(user.orgId, user.userId, "anthropic");
     });
 
     it("should allow VM0 run when creditEnabled is true with cap set", async () => {
@@ -178,8 +156,8 @@ describe("credit check", () => {
         creditEnabled: true,
       });
 
-      const result = await createRun(baseParams({ modelProvider: "vm0" }));
-      expect(result.status).toBe("pending");
+      // Should not throw
+      await checkOrgCredits(user.orgId, user.userId, "vm0");
     });
 
     it("should reject VM0 run when default provider is vm0 and creditEnabled is false", async () => {
@@ -195,20 +173,28 @@ describe("credit check", () => {
       });
 
       // No explicit modelProvider — falls back to org default (vm0)
-      await expect(createRun(baseParams())).rejects.toSatisfy(
-        isInsufficientCredits,
-      );
+      await expect(
+        checkOrgCredits(user.orgId, user.userId, undefined),
+      ).rejects.toSatisfy(isInsufficientCredits);
     });
   });
 
   describe("dequeueNextAtomic() path", () => {
+    beforeEach(async () => {
+      // Drain tests need a model provider for createRun during dispatch
+      await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
+    });
+
     it("should fail queued VM0 run when credits depleted at drain time", async () => {
       vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
       reloadEnv();
 
       // Create a running run + a queued VM0 run
-      await createRun(baseParams({ prompt: "Running" }));
-      const queued = await enqueueRun(
+      await createTestRunInDb(user.userId, composeId, {
+        status: "running",
+        prompt: "Running",
+      });
+      const queued = await enqueueZeroRun(
         baseParams({ prompt: "Queued VM0", modelProvider: "vm0" }),
       );
 
@@ -219,7 +205,7 @@ describe("credit check", () => {
       await markRunningRunsAsCompleted(user.userId);
 
       // Drain queue
-      await drainOrgQueue(user.orgId, dispatchQueuedRun);
+      await drainOrgQueue(user.orgId);
 
       // Queued run should be marked as failed
       const run = await findTestRunRecord(queued.runId);
@@ -236,8 +222,11 @@ describe("credit check", () => {
       reloadEnv();
 
       // Create a running run + a queued non-VM0 run
-      await createRun(baseParams({ prompt: "Running" }));
-      const queued = await enqueueRun(
+      await createTestRunInDb(user.userId, composeId, {
+        status: "running",
+        prompt: "Running",
+      });
+      const queued = await enqueueZeroRun(
         baseParams({ prompt: "Queued Anthropic", modelProvider: "anthropic" }),
       );
 
@@ -248,7 +237,7 @@ describe("credit check", () => {
       await markRunningRunsAsCompleted(user.userId);
 
       // Drain queue
-      await drainOrgQueue(user.orgId, dispatchQueuedRun);
+      await drainOrgQueue(user.orgId);
 
       // Non-VM0 run should be dequeued normally
       const run = await findTestRunRecord(queued.runId);
@@ -260,13 +249,16 @@ describe("credit check", () => {
       reloadEnv();
 
       // Create a running run
-      await createRun(baseParams({ prompt: "Running" }));
+      await createTestRunInDb(user.userId, composeId, {
+        status: "running",
+        prompt: "Running",
+      });
 
       // Enqueue two runs: first VM0, then non-VM0
-      const vm0Run = await enqueueRun(
+      const vm0Run = await enqueueZeroRun(
         baseParams({ prompt: "VM0 run", modelProvider: "vm0" }),
       );
-      const nonVm0Run = await enqueueRun(
+      const nonVm0Run = await enqueueZeroRun(
         baseParams({ prompt: "Anthropic run", modelProvider: "anthropic" }),
       );
 
@@ -277,7 +269,7 @@ describe("credit check", () => {
       await markRunningRunsAsCompleted(user.userId);
 
       // Drain queue
-      await drainOrgQueue(user.orgId, dispatchQueuedRun);
+      await drainOrgQueue(user.orgId);
 
       // VM0 run should be failed
       const vm0 = await findTestRunRecord(vm0Run.runId);

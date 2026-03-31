@@ -6,6 +6,7 @@
 export {
   validateAgentSession,
   startRun,
+  createRun,
   createRunRecord,
   buildAndDispatchRun,
   resolveStartRunCompose,

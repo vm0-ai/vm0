@@ -12,6 +12,7 @@ import {
   findTestRunCallbacks,
   setTestRunStatus,
   getOrgCacheEntry,
+  insertOrgDefaultModelProvider,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import { generateSandboxToken } from "../../../../../../../src/lib/auth/sandbox-token";
 import {
@@ -21,19 +22,23 @@ import {
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 import { reloadEnv } from "../../../../../../../src/env";
+import { enqueueZeroRun } from "../../../../../../../src/lib/zero/zero-queue-service";
+import type { CreateRunParams } from "../../../../../../../src/lib/run/run-service";
 
 const context = testContext();
 
 describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
   let user: UserContext;
   let testComposeId: string;
+  let testVersionId: string;
 
   beforeEach(async () => {
     context.setupMocks();
     user = await context.setupUser();
 
-    const { composeId } = await createTestCompose(uniqueId("agent"));
+    const { composeId, versionId } = await createTestCompose(uniqueId("agent"));
     testComposeId = composeId;
+    testVersionId = versionId;
   });
 
   describe("Successful Cancellation", () => {
@@ -56,15 +61,23 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
   });
 
   describe("Cancel Queued Run", () => {
+    function queueParams(
+      overrides?: Partial<CreateRunParams>,
+    ): CreateRunParams {
+      return {
+        userId: user.userId,
+        agentComposeVersionId: testVersionId,
+        prompt: "Queued run",
+        orgId: user.orgId,
+        ...overrides,
+      };
+    }
+
     it("should cancel a queued run and remove queue entry", async () => {
-      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
-      reloadEnv();
-
-      // Create a running run (claims the slot)
-      await createTestRun(testComposeId, "Running run");
-
-      // Create a second run that gets queued
-      const queued = await createTestRun(testComposeId, "Queued run");
+      // Directly enqueue a run (bypasses concurrency — tests cancel behavior)
+      const queued = await enqueueZeroRun(
+        queueParams({ prompt: "Queued run" }),
+      );
       expect(queued.status).toBe("queued");
 
       // Verify queue entry exists
@@ -91,12 +104,17 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
       vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
       reloadEnv();
 
+      // Model provider needed for drain → createRun path
+      await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
+
       // Create a running run (claims the slot)
       const running = await createTestRun(testComposeId, "Running run");
       expect(running.status).toBe("pending");
 
-      // Create a second run that gets queued
-      const queued = await createTestRun(testComposeId, "Queued run");
+      // Directly enqueue a second run
+      const queued = await enqueueZeroRun(
+        queueParams({ prompt: "Queued run" }),
+      );
       expect(queued.status).toBe("queued");
 
       // Cancel the running run (frees the concurrency slot)

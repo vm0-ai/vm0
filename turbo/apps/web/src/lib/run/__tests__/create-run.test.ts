@@ -13,7 +13,6 @@ import {
   createTestSandboxToken,
   createTestRun,
   createTestOrgModelProvider,
-  insertStalePendingRun,
   findTestRunRecord,
   findTestRunCallbacks,
   findTestStorage,
@@ -149,118 +148,6 @@ describe("createRun()", () => {
       const run = await findTestRunRecord(result.runId);
 
       expect(run!.secretNames).toEqual(["API_KEY", "DB_PASS"]);
-    });
-  });
-
-  describe("Concurrent Run Limit", () => {
-    it("should enqueue run when free tier limit reached", async () => {
-      // Free tier (default) allows only 1 concurrent run
-      await createRun(baseParams({ prompt: "First run" }));
-
-      // Second run should be queued (not rejected)
-      const result = await createRun(baseParams({ prompt: "Second run" }));
-
-      expect(result.status).toBe("queued");
-      expect(result.runId).toBeDefined();
-
-      // Verify queued run record in DB
-      const run = await findTestRunRecord(result.runId);
-      expect(run).toBeDefined();
-      expect(run!.status).toBe("queued");
-      expect(run!.prompt).toBe("Second run");
-    });
-
-    it("should allow 2 concurrent runs for pro tier", async () => {
-      const run1 = await createRun(
-        baseParams({ prompt: "Pro run 1", orgTier: "pro" }),
-      );
-      const run2 = await createRun(
-        baseParams({ prompt: "Pro run 2", orgTier: "pro" }),
-      );
-
-      expect(run1.status).toBe("pending");
-      expect(run2.status).toBe("pending");
-    });
-
-    it("should queue 3rd concurrent run for pro tier", async () => {
-      await createRun(baseParams({ prompt: "Pro run 1", orgTier: "pro" }));
-      await createRun(baseParams({ prompt: "Pro run 2", orgTier: "pro" }));
-
-      const run3 = await createRun(
-        baseParams({ prompt: "Pro run 3", orgTier: "pro" }),
-      );
-      expect(run3.status).toBe("queued");
-    });
-
-    it("should allow multiple concurrent runs for team tier", async () => {
-      // Create 3 concurrent runs to verify team tier allows more than pro tier (which allows 2)
-      const run1 = await createRun(
-        baseParams({ prompt: "Team run 1", orgTier: "team" }),
-      );
-      const run2 = await createRun(
-        baseParams({ prompt: "Team run 2", orgTier: "team" }),
-      );
-      const run3 = await createRun(
-        baseParams({ prompt: "Team run 3", orgTier: "team" }),
-      );
-
-      expect(run1.status).toBe("pending");
-      expect(run2.status).toBe("pending");
-      expect(run3.status).toBe("pending");
-    });
-
-    it("should allow unlimited runs when CONCURRENT_RUN_LIMIT_CAP is 0", async () => {
-      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "0");
-      reloadEnv();
-
-      const run1 = await createRun(baseParams({ prompt: "Run 1" }));
-      const run2 = await createRun(baseParams({ prompt: "Run 2" }));
-
-      expect(run1.status).toBe("pending");
-      expect(run2.status).toBe("pending");
-    });
-
-    it("should not count stale pending runs", async () => {
-      // Free tier limit is 1; stale pending run should not count
-      await insertStalePendingRun(user.userId, versionId);
-
-      const result = await createRun(baseParams());
-      expect(result.status).toBe("pending");
-    });
-
-    it("should enqueue second run when concurrency limit reached", async () => {
-      // Free tier limit is 1 — advisory lock should serialize them
-      const results = await Promise.allSettled([
-        createRun(baseParams({ prompt: "Concurrent A" })),
-        createRun(baseParams({ prompt: "Concurrent B" })),
-      ]);
-
-      // Both should succeed: one runs, one gets queued
-      const fulfilled = results.filter((r) => r.status === "fulfilled");
-      expect(fulfilled).toHaveLength(2);
-
-      const statuses = fulfilled.map(
-        (r) => r.status === "fulfilled" && r.value.status,
-      );
-      expect(statuses).toContain("queued");
-    });
-
-    it("should enforce limit per-org, not per-user", async () => {
-      // Create a run in the default org (fills its free-tier slot)
-      await createRun(baseParams({ prompt: "Org 1 run" }));
-
-      // Create a second user with a different org
-      const otherUser = await context.setupUser({ prefix: "org-user" });
-      const otherCompose = await createTestCompose(uniqueId("other-agent"));
-
-      // Run in the other org should succeed (separate org, separate limit)
-      const result = await createRun({
-        userId: otherUser.userId,
-        agentComposeVersionId: otherCompose.versionId,
-        prompt: "Org 2 run",
-        orgId: otherUser.orgId,
-      });
-      expect(result.status).toBe("pending");
     });
   });
 

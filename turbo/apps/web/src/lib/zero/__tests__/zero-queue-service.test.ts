@@ -12,31 +12,35 @@ import {
   expireQueueEntry,
   setTestRunStatus,
   updateOrgTier,
+  createTestRunInDb,
+  insertOrgDefaultModelProvider,
 } from "../../../__tests__/api-test-helpers";
 import { reloadEnv } from "../../../env";
+import type { CreateRunParams } from "../../run/run-service";
 import {
-  createRun,
-  dispatchQueuedRun,
-  type CreateRunParams,
-} from "../run-service";
-import {
-  enqueueRun,
+  enqueueZeroRun,
   drainOrgQueue,
   drainStaleQueues,
   cleanupExpiredQueueEntries,
-} from "../run-queue-service";
+} from "../zero-queue-service";
 
 const context = testContext();
 
-describe("run-queue-service", () => {
+describe("zero-queue-service", () => {
   let user: UserContext;
   let versionId: string;
+  let composeId: string;
 
   beforeEach(async () => {
     context.setupMocks();
     user = await context.setupUser();
     const compose = await createTestCompose(uniqueId("agent"));
     versionId = compose.versionId;
+    composeId = compose.composeId;
+
+    // Queue tests need a model provider configured (checkModelProviderConfigured
+    // runs during drain → createRun → createRunRecord → buildAndDispatchRun)
+    await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
   });
 
   function baseParams(overrides?: Partial<CreateRunParams>): CreateRunParams {
@@ -49,9 +53,9 @@ describe("run-queue-service", () => {
     };
   }
 
-  describe("enqueueRun", () => {
+  describe("enqueueZeroRun", () => {
     it("should create a queued run and queue entry", async () => {
-      const result = await enqueueRun(baseParams({ prompt: "Queued run" }));
+      const result = await enqueueZeroRun(baseParams({ prompt: "Queued run" }));
 
       expect(result.status).toBe("queued");
       expect(result.runId).toBeDefined();
@@ -73,7 +77,7 @@ describe("run-queue-service", () => {
 
     it("should store encrypted params that can be decrypted", async () => {
       const secrets = { API_KEY: "sk-secret-123" };
-      const result = await enqueueRun(
+      const result = await enqueueZeroRun(
         baseParams({ prompt: "With secrets", secrets }),
       );
 
@@ -87,45 +91,29 @@ describe("run-queue-service", () => {
     });
   });
 
-  describe("createRun with queue", () => {
-    it("should enqueue second run when concurrency limit hit", async () => {
-      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
-      reloadEnv();
-
-      // First run succeeds normally
-      const run1 = await createRun(baseParams({ prompt: "Run 1" }));
-      expect(run1.status).toBe("pending");
-
-      // Second run gets queued
-      const run2 = await createRun(baseParams({ prompt: "Run 2" }));
-      expect(run2.status).toBe("queued");
-
-      // Third run also gets queued
-      const run3 = await createRun(baseParams({ prompt: "Run 3" }));
-      expect(run3.status).toBe("queued");
-    });
-  });
-
   describe("drainOrgQueue", () => {
     it("should be a no-op when queue is empty", async () => {
       // Should not throw
-      await drainOrgQueue(user.orgId, dispatchQueuedRun);
+      await drainOrgQueue(user.orgId);
     });
 
     it("should dequeue and execute the oldest entry", async () => {
       vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
       reloadEnv();
 
-      // Create a running run and a queued run
-      await createRun(baseParams({ prompt: "Running" }));
-      const queued = await createRun(baseParams({ prompt: "Queued" }));
+      // Create a running run directly (claims the slot)
+      await createTestRunInDb(user.userId, composeId, {
+        status: "running",
+        prompt: "Running",
+      });
+      const queued = await enqueueZeroRun(baseParams({ prompt: "Queued" }));
       expect(queued.status).toBe("queued");
 
       // Simulate completion: mark running runs as completed
       await markRunningRunsAsCompleted(user.userId);
 
       // Drain queue by orgId
-      await drainOrgQueue(user.orgId, dispatchQueuedRun);
+      await drainOrgQueue(user.orgId);
 
       // Queued run should now be dispatched (pending)
       const run = await findTestRunRecord(queued.runId);
@@ -136,57 +124,20 @@ describe("run-queue-service", () => {
       expect(queueEntry).toBeUndefined();
     });
 
-    it("should drain across users in the same org", async () => {
-      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
-      reloadEnv();
-
-      // Alice creates a run → pending
-      await createRun(baseParams({ prompt: "Alice run", orgId: user.orgId }));
-
-      // Bob is a different user in the same org
-      const bob = await context.setupUser({ prefix: "test-bob" });
-
-      // Bob's run gets queued (enqueue directly to bypass authorization)
-      const bobRun = await enqueueRun(
-        baseParams({
-          userId: bob.userId,
-          orgId: user.orgId,
-          prompt: "Bob run",
-        }),
-      );
-      expect(bobRun.status).toBe("queued");
-
-      // Alice's run completes
-      await markRunningRunsAsCompleted(user.userId);
-
-      // Track which runs the dispatcher was called with
-      const dispatchedRunIds: string[] = [];
-      const mockDispatcher = async (runId: string) => {
-        dispatchedRunIds.push(runId);
-      };
-
-      // Drain org queue — should dequeue Bob's run from Alice's org
-      await drainOrgQueue(user.orgId, mockDispatcher);
-
-      // Dispatcher should have been called with Bob's run
-      expect(dispatchedRunIds).toContain(bobRun.runId);
-
-      // Queue entry should be deleted
-      const queueEntry = await findTestQueueEntry(bobRun.runId);
-      expect(queueEntry).toBeUndefined();
-    });
-
     it("should not dequeue when concurrency limit is reached", async () => {
       vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
       reloadEnv();
 
       // Create a running run and a queued run
-      await createRun(baseParams({ prompt: "Running" }));
-      const queued = await createRun(baseParams({ prompt: "Queued" }));
+      await createTestRunInDb(user.userId, composeId, {
+        status: "running",
+        prompt: "Running",
+      });
+      const queued = await enqueueZeroRun(baseParams({ prompt: "Queued" }));
       expect(queued.status).toBe("queued");
 
       // Drain without completing the running run — concurrency limit blocks dequeue
-      await drainOrgQueue(user.orgId, dispatchQueuedRun);
+      await drainOrgQueue(user.orgId);
 
       // Queue entry should still exist (nothing was dequeued)
       const queueEntry = await findTestQueueEntry(queued.runId);
@@ -202,49 +153,18 @@ describe("run-queue-service", () => {
       reloadEnv();
 
       // Enqueue two runs
-      const run1 = await enqueueRun(baseParams({ prompt: "Run 1" }));
-      const run2 = await enqueueRun(baseParams({ prompt: "Run 2" }));
+      const run1 = await enqueueZeroRun(baseParams({ prompt: "Run 1" }));
+      const run2 = await enqueueZeroRun(baseParams({ prompt: "Run 2" }));
 
       // Cancel the first run (simulates cancel handler race)
       await setTestRunStatus(run1.runId, "cancelled");
 
-      // Track dispatched runs
-      const dispatchedRunIds: string[] = [];
-      const mockDispatcher = async (runId: string) => {
-        dispatchedRunIds.push(runId);
-      };
-
       // Drain should skip run1 (cancelled) and dispatch run2
-      await drainOrgQueue(user.orgId, mockDispatcher);
+      await drainOrgQueue(user.orgId);
 
-      expect(dispatchedRunIds).toContain(run2.runId);
-      expect(dispatchedRunIds).not.toContain(run1.runId);
-    });
-
-    it("should try next entry when dispatch fails", async () => {
-      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "2");
-      reloadEnv();
-
-      // Enqueue two runs
-      const run1 = await enqueueRun(baseParams({ prompt: "Will fail" }));
-      await enqueueRun(baseParams({ prompt: "Will succeed" }));
-
-      // Dispatcher fails on first call, succeeds on second
-      let callCount = 0;
-      const mockDispatcher = async () => {
-        callCount++;
-        if (callCount === 1) throw new Error("Sandbox creation failed");
-      };
-
-      await drainOrgQueue(user.orgId, mockDispatcher);
-
-      // First run should be marked failed
-      const r1 = await findTestRunRecord(run1.runId);
-      expect(r1!.status).toBe("failed");
-      expect(r1!.error).toContain("Sandbox creation failed");
-
-      // Second run should have been dispatched (status set to pending by dequeue)
-      expect(callCount).toBe(2);
+      // Run2 should be dispatched (pending)
+      const r2 = await findTestRunRecord(run2.runId);
+      expect(r2!.status).toBe("pending");
     });
 
     it("should use org tier from cache for concurrency limit", async () => {
@@ -256,18 +176,18 @@ describe("run-queue-service", () => {
       await updateOrgTier(user.orgId, "pro");
 
       // Create 1 running run — fills free limit but not pro limit
-      await createRun(baseParams({ prompt: "Running" }));
-      const queued = await enqueueRun(baseParams({ prompt: "Queued" }));
+      await createTestRunInDb(user.userId, composeId, {
+        status: "running",
+        prompt: "Running",
+      });
+      const queued = await enqueueZeroRun(baseParams({ prompt: "Queued" }));
 
       // With pro tier (limit=2), drain should succeed despite 1 active run
-      const dispatchedRunIds: string[] = [];
-      const mockDispatcher = async (runId: string) => {
-        dispatchedRunIds.push(runId);
-      };
+      await drainOrgQueue(user.orgId);
 
-      await drainOrgQueue(user.orgId, mockDispatcher);
-
-      expect(dispatchedRunIds).toContain(queued.runId);
+      // Queued run should be dequeued (pending)
+      const run = await findTestRunRecord(queued.runId);
+      expect(run!.status).toBe("pending");
 
       // Queue entry should be consumed
       const queueEntry = await findTestQueueEntry(queued.runId);
@@ -280,7 +200,9 @@ describe("run-queue-service", () => {
       // Drain any pre-existing expired entries from other test suites
       await cleanupExpiredQueueEntries();
 
-      const result = await enqueueRun(baseParams({ prompt: "Will expire" }));
+      const result = await enqueueZeroRun(
+        baseParams({ prompt: "Will expire" }),
+      );
 
       // Manually set expiresAt to the past
       await expireQueueEntry(result.runId);
@@ -299,7 +221,9 @@ describe("run-queue-service", () => {
     });
 
     it("should not affect non-expired entries", async () => {
-      const result = await enqueueRun(baseParams({ prompt: "Not expired" }));
+      const result = await enqueueZeroRun(
+        baseParams({ prompt: "Not expired" }),
+      );
 
       await cleanupExpiredQueueEntries();
 
@@ -316,7 +240,9 @@ describe("run-queue-service", () => {
       // Drain any pre-existing expired entries from other test suites
       await cleanupExpiredQueueEntries();
 
-      const result = await enqueueRun(baseParams({ prompt: "Will expire" }));
+      const result = await enqueueZeroRun(
+        baseParams({ prompt: "Will expire" }),
+      );
 
       // Simulate a concurrent completion: mark the run as completed
       await setTestRunStatus(result.runId, "completed");
@@ -339,17 +265,17 @@ describe("run-queue-service", () => {
       vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
       reloadEnv();
 
-      // user1 creates a run first (before changing Clerk mock)
-      const run1 = await createRun(
-        baseParams({ prompt: "User1 running", orgId: user.orgId }),
-      );
-      expect(run1.status).toBe("pending");
+      // user1 creates a running run directly
+      await createTestRunInDb(user.userId, composeId, {
+        status: "running",
+        prompt: "User1 running",
+      });
 
       // Create second user sharing user1's org
       const user2 = await context.setupUser({ prefix: "test-user-2" });
 
       // user2's run gets queued in the same org
-      const run2 = await enqueueRun(
+      const run2 = await enqueueZeroRun(
         baseParams({
           userId: user2.userId,
           orgId: user.orgId,
@@ -359,7 +285,7 @@ describe("run-queue-service", () => {
       expect(run2.status).toBe("queued");
 
       // drainStaleQueues should NOT drain user2's queue (org has an active run)
-      await drainStaleQueues(dispatchQueuedRun);
+      await drainStaleQueues();
 
       // Queue entry should still exist — org-level concurrency prevented drain
       const queueEntry = await findTestQueueEntry(run2.runId);
@@ -374,16 +300,17 @@ describe("run-queue-service", () => {
       vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
       reloadEnv();
 
-      // user1 creates a run first (before changing Clerk mock)
-      await createRun(
-        baseParams({ prompt: "User1 running", orgId: user.orgId }),
-      );
+      // user1 creates a running run directly
+      await createTestRunInDb(user.userId, composeId, {
+        status: "running",
+        prompt: "User1 running",
+      });
 
       // Create second user sharing user1's org
       const user2 = await context.setupUser({ prefix: "test-user-2" });
 
       // user2's run gets queued in the same org
-      const run2 = await enqueueRun(
+      const run2 = await enqueueZeroRun(
         baseParams({
           userId: user2.userId,
           orgId: user.orgId,
@@ -395,7 +322,7 @@ describe("run-queue-service", () => {
       await markRunningRunsAsCompleted(user.userId);
 
       // drainStaleQueues should drain user2's queue
-      const drained = await drainStaleQueues(dispatchQueuedRun);
+      const drained = await drainStaleQueues();
       expect(drained).toBeGreaterThanOrEqual(1);
 
       // Queue entry should be consumed

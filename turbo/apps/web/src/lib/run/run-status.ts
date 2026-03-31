@@ -49,7 +49,7 @@ export async function transitionRunStatus(
  * 2. Concurrency slots are released via queue drain
  *
  * @param drain - Optional queue drain function. Injected by callers to avoid
- *   circular dependency with run-queue-service. Omit when callbacks are not
+ *   circular dependency with zero-queue-service. Omit when callbacks are not
  *   yet registered (e.g., markQueuedRunFailed for runs that never dispatched).
  */
 export async function dispatchTerminalSideEffects(
