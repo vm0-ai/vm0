@@ -774,7 +774,9 @@ export function ZeroJobDetailPage({ agentId }: ZeroJobDetailPageProps) {
               variant="outline"
               size="sm"
               className="ml-auto zero-btn-morandi gap-1.5"
-              onClick={() => nav("/talk/:agentId", { pathParams: { agentId } })}
+              onClick={() => {
+                nav("/talk/:agentId", { pathParams: { agentId } });
+              }}
               aria-label={`Chat with ${displayName}`}
             >
               <IconMessageCircle size={14} stroke={2} />
