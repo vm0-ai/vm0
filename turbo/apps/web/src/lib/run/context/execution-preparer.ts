@@ -15,7 +15,6 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../db/schema/agent-compose";
-import { getOrgData } from "../../org/org-cache-service";
 import { extractCliAgentType } from "../utils";
 
 const log = logger("context:preparer");
@@ -113,11 +112,7 @@ export async function prepareForExecution(
     throw badRequest("Agent compose not found");
   }
 
-  const agentOrgData = await getOrgData(agentComposeInfo.orgId);
-  const agentOrgInfo = {
-    orgId: agentComposeInfo.orgId,
-    orgSlug: agentOrgData.slug,
-  };
+  const agentOrgId = agentComposeInfo.orgId;
 
   // Auto-create artifact and memory storages if they don't exist yet
   const ensureStart = Date.now();
@@ -148,7 +143,7 @@ export async function prepareForExecution(
   const storageManifest = await prepareStorageManifest(
     context.agentCompose as AgentComposeYaml,
     context.vars || {},
-    agentOrgInfo.orgId,
+    agentOrgId,
     runtimeOrg.orgId,
     userId,
     context.artifactName,
@@ -161,7 +156,7 @@ export async function prepareForExecution(
   const storageEnd = Date.now();
 
   log.debug(
-    `Storage manifest prepared with dual orgs: agentClerkOrgId=${agentOrgInfo.orgId}, runtimeClerkOrgId=${runtimeOrg.orgId}, ${storageManifest.storages.length} storages, ${storageManifest.artifact ? "1 artifact" : "no artifact"}`,
+    `Storage manifest prepared with dual orgs: agentClerkOrgId=${agentOrgId}, runtimeClerkOrgId=${runtimeOrg.orgId}, ${storageManifest.storages.length} storages, ${storageManifest.artifact ? "1 artifact" : "no artifact"}`,
   );
 
   // Build PreparedContext

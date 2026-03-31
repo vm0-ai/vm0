@@ -26,7 +26,6 @@ import {
 } from "@vm0/core";
 import { agentComposeVersions } from "../../db/schema/agent-compose";
 import { badRequest, notFound, providerIncompatible } from "../errors";
-import { getOrgData } from "../org/org-cache-service";
 import { logger } from "../logger";
 import type { ExecutionContext, ResumeSession, RuntimeOrg } from "./types";
 import type { ArtifactSnapshot } from "../checkpoint/types";
@@ -650,7 +649,6 @@ interface BuildContextParams {
   // Per-permission firewall policies from zero agent configuration.
   firewallPolicies?: FirewallPolicies;
   // Caller-resolved org context for secret/variable/storage resolution.
-  orgSlug?: string;
   orgId: string;
 }
 
@@ -888,27 +886,13 @@ function applyResolutionDefaults(
  *
  * When params.orgId is not provided, the user's default org is used.
  */
-async function resolveOrgs(params: BuildContextParams): Promise<{
+function resolveOrgs(params: BuildContextParams): {
   runtimeClerkOrgId: string;
-  pendingRuntimeScope: Promise<RuntimeOrg> | RuntimeOrg;
-}> {
-  if (params.orgSlug) {
-    return {
-      runtimeClerkOrgId: params.orgId,
-      pendingRuntimeScope: {
-        slug: params.orgSlug,
-        orgId: params.orgId,
-      },
-    };
-  }
-  // Have orgId but no slug — resolve slug from org cache
-  const orgData = await getOrgData(params.orgId);
+  pendingRuntimeScope: RuntimeOrg;
+} {
   return {
     runtimeClerkOrgId: params.orgId,
-    pendingRuntimeScope: {
-      slug: orgData.slug,
-      orgId: params.orgId,
-    },
+    pendingRuntimeScope: { orgId: params.orgId },
   };
 }
 
