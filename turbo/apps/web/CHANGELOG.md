@@ -1,5 +1,29 @@
 # Changelog
 
+## [12.175.0](https://github.com/vm0-ai/vm0/compare/web-v12.174.0...web-v12.175.0) (2026-03-31)
+
+
+### Features
+
+* support zero-token auth with agent:read on connector GET endpoint ([#7359](https://github.com/vm0-ai/vm0/issues/7359)) ([2c4abce](https://github.com/vm0-ai/vm0/commit/2c4abced0e05f8eb67c423569a0cbf138ff9c733))
+
+
+### Bug Fixes
+
+* add zero skills schema to db exports ([#7367](https://github.com/vm0-ai/vm0/issues/7367)) ([045ebcb](https://github.com/vm0-ai/vm0/commit/045ebcba4054c6c16586e58d4d7ee5c9396a05b3))
+
+
+### Refactoring
+
+* **core:** unify connector environment mapping to single top-level field ([#7349](https://github.com/vm0-ai/vm0/issues/7349)) ([2f82753](https://github.com/vm0-ai/vm0/commit/2f82753fae318b2cf166d323eff8d656c49fcb4e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.130.1
+
 ## [12.174.0](https://github.com/vm0-ai/vm0/compare/web-v12.173.0...web-v12.174.0) (2026-03-31)
 
 
