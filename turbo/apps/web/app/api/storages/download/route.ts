@@ -23,7 +23,7 @@ import { logger } from "../../../../src/lib/logger";
 const log = logger("api:storages:download");
 
 const router = tsr.router(storagesDownloadContract, {
-  download: async ({ query, headers }, { request }) => {
+  download: async ({ query, headers }) => {
     initServices();
 
     const { name: storageName, type: storageType, version: versionId } = query;
@@ -54,8 +54,7 @@ const router = tsr.router(storagesDownloadContract, {
       }
       runtimeOrg = await getOrgData(run.orgId);
     } else {
-      const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org } = await resolveOrg(authCtx, orgSlug);
+      const { org } = await resolveOrg(authCtx);
       runtimeOrg = org;
     }
 

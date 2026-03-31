@@ -1,12 +1,5 @@
-import {
-  forbidden,
-  badRequest,
-  isBadRequest,
-  notFound,
-  isNotFound,
-  isForbidden,
-} from "../errors";
-import { getOrgBySlug, getOrgData } from "./org-cache-service";
+import { forbidden, badRequest, isBadRequest, isNotFound } from "../errors";
+import { getOrgData } from "./org-cache-service";
 import { verifyMembershipCached } from "./org-membership-cache";
 import type { AuthContext } from "../auth/get-auth-context";
 
@@ -110,13 +103,9 @@ async function verifyMembership(
 /**
  * Resolve org from request context using org_cache + org table.
  *
- * Requires explicit org context — either an orgSlug (?org= query param),
- * an explicit orgId, or an AuthContext with active org. Does NOT guess
- * the user's org from cache or Clerk API.
- *
- * Resolution order:
- * 1. orgSlug (?org=<slug> query param) -> org_cache lookup, verify membership
- * 2. orgId (explicit param or AuthContext) -> org_cache lookup, verify membership
+ * Requires explicit org context — either an explicit orgId or an
+ * AuthContext with active org. Does NOT guess the user's org from
+ * cache or Clerk API.
  *
  * Tier is always read from the org table (source of truth).
  *
@@ -124,19 +113,8 @@ async function verifyMembership(
  */
 export async function resolveOrg(
   authCtx: AuthContext,
-  orgSlug?: string | null,
   orgId?: string | null,
 ): Promise<{ org: ResolvedOrg; member: ResolvedMember }> {
-  // 1. Explicit org selection via ?org= query param (highest priority)
-  if (orgSlug) {
-    const orgData = await getOrgBySlug(orgSlug);
-    if (!orgData) throw notFound("Org not found");
-
-    const member = await verifyMembership(orgData, authCtx);
-    return { org: orgData, member };
-  }
-
-  // 2. Explicit orgId — use provided value or auto-detect from AuthContext.
   const effectiveOrgId = orgId ?? authCtx.orgId ?? null;
   if (effectiveOrgId) {
     const orgData = await getOrgData(effectiveOrgId);
@@ -144,9 +122,8 @@ export async function resolveOrg(
     return { org: orgData, member };
   }
 
-  // No explicit org context available — require callers to provide one
   throw badRequest(
-    "Explicit org context required — pass ?org= query parameter or ensure active org in session",
+    "Explicit org context required — ensure active org in session",
   );
 }
 
@@ -159,35 +136,12 @@ export async function resolveOrg(
  */
 export async function resolveOrgOrNull(
   authCtx: AuthContext,
-  orgSlug?: string | null,
 ): Promise<ResolvedOrg | null> {
   try {
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
     return org;
   } catch (error) {
     if (isNotFound(error) || isBadRequest(error)) return null;
-    throw error;
-  }
-}
-
-/**
- * Resolve the caller's org ID from the request's ?org= query parameter.
- *
- * Returns null if the org cannot be resolved (not found, forbidden, or user
- * is not a member). Use this in endpoints that need to compare the caller's
- * org against a resource's org without leaking information about whether the
- * resource exists.
- */
-export async function resolveCallerOrgId(
-  authCtx: AuthContext,
-  request: Request,
-): Promise<string | null> {
-  const orgSlug = new URL(request.url).searchParams.get("org");
-  try {
-    const { org } = await resolveOrg(authCtx, orgSlug);
-    return org.orgId;
-  } catch (error) {
-    if (isNotFound(error) || isForbidden(error)) return null;
     throw error;
   }
 }

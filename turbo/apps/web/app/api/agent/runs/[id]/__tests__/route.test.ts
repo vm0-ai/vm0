@@ -11,7 +11,10 @@ import {
   insertOrgMembersCacheEntry,
   getOrgCacheEntry,
 } from "../../../../../../src/__tests__/api-test-helpers";
-import { generateSandboxToken } from "../../../../../../src/lib/auth/sandbox-token";
+import {
+  generateSandboxToken,
+  generateZeroToken,
+} from "../../../../../../src/lib/auth/sandbox-token";
 import {
   testContext,
   uniqueId,
@@ -168,7 +171,7 @@ describe("GET /api/agent/runs/:id - Get Run By ID", () => {
       });
 
       const request = createTestRequest(
-        `http://localhost:3000/api/agent/runs/${runId}?org=${orgEntry!.slug}`,
+        `http://localhost:3000/api/agent/runs/${runId}`,
       );
       const response = await GET(request);
       const data = await response.json();
@@ -196,11 +199,10 @@ describe("GET /api/agent/runs/:id - Get Run By ID", () => {
       });
 
       mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, run.runId);
+      const token = await generateZeroToken(user.userId, run.runId, user.orgId);
 
-      const orgEntry = await getOrgCacheEntry(user.orgId);
       const request = createTestRequest(
-        `http://localhost:3000/api/agent/runs/${run.runId}?org=${orgEntry!.slug}`,
+        `http://localhost:3000/api/agent/runs/${run.runId}`,
         { headers: { authorization: `Bearer ${token}` } },
       );
       const response = await GET(request);

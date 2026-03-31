@@ -14,7 +14,7 @@ import { deleteSchedule } from "../../../../../src/lib/schedule";
 import { isNotFound } from "../../../../../src/lib/errors";
 
 const router = tsr.router(zeroSchedulesByNameContract, {
-  delete: async ({ params, query, headers }, { request }) => {
+  delete: async ({ params, query, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -24,10 +24,9 @@ const router = tsr.router(zeroSchedulesByNameContract, {
     const { userId } = authCtx;
 
     try {
-      const orgSlug = new URL(request.url).searchParams.get("org");
       const {
         org: { orgId },
-      } = await resolveOrg(authCtx, orgSlug);
+      } = await resolveOrg(authCtx);
 
       await deleteSchedule(userId, orgId, query.agentId, params.name);
 

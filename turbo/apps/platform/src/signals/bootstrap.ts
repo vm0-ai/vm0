@@ -29,6 +29,7 @@ import { setupOnboardingPage$ } from "./onboarding-page/onboarding-page-setup.ts
 import { setupIdeationPage$ } from "./zero-page/ideation-page-setup.ts";
 import { setupConnectorsPage$ } from "./connectors-page/connectors-page-setup.ts";
 import { setupSignInTokenPage$ } from "./sign-in-token-setup.ts";
+import { setupFirewallAllowPage$ } from "./firewall-allow/firewall-allow-page-setup.ts";
 
 /**
  * Catch-all fallback — redirects unknown paths to /.
@@ -112,6 +113,10 @@ const ROUTE_CONFIG = [
   {
     path: "/usage",
     setup: setupAuthPageWrapper(setupUsagePage$),
+  },
+  {
+    path: "/firewall-allow/:agentId",
+    setup: setupAuthPageWrapper(setupFirewallAllowPage$),
   },
   {
     path: "/onboarding",

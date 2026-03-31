@@ -20,8 +20,8 @@ async function setupOrg(userId: string) {
   return { slug, orgId };
 }
 
-function connectorsUrl(slug: string): string {
-  return `http://localhost:3000/api/zero/connectors?org=${slug}`;
+function connectorsUrl(): string {
+  return `http://localhost:3000/api/zero/connectors`;
 }
 
 describe("GET /api/zero/connectors", () => {
@@ -31,9 +31,9 @@ describe("GET /api/zero/connectors", () => {
 
   it("should return empty connectors list", async () => {
     const userId = uniqueId("zcon-list");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
 
-    const response = await GET(createTestRequest(connectorsUrl(slug)));
+    const response = await GET(createTestRequest(connectorsUrl()));
     expect(response.status).toBe(200);
 
     const data = await response.json();
@@ -44,10 +44,10 @@ describe("GET /api/zero/connectors", () => {
 
   it("should return connectors when present", async () => {
     const userId = uniqueId("zcon-has");
-    const { slug, orgId } = await setupOrg(userId);
+    const { orgId } = await setupOrg(userId);
     await context.createConnector(orgId, { userId, type: "github" });
 
-    const response = await GET(createTestRequest(connectorsUrl(slug)));
+    const response = await GET(createTestRequest(connectorsUrl()));
     expect(response.status).toBe(200);
 
     const data = await response.json();
@@ -61,7 +61,7 @@ describe("GET /api/zero/connectors", () => {
     mockClerk({ userId: null });
 
     const response = await GET(
-      createTestRequest("http://localhost:3000/api/zero/connectors?org=test"),
+      createTestRequest("http://localhost:3000/api/zero/connectors"),
     );
     expect(response.status).toBe(401);
   });

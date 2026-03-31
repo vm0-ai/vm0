@@ -38,7 +38,7 @@ function agentResponseBody(
 }
 
 const router = tsr.router(zeroAgentsByIdContract, {
-  get: async ({ params, headers }, { request }) => {
+  get: async ({ params, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -46,8 +46,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
     });
     if (isAuthError(authCtx)) return authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
 
     // Look up agent directly — params.id is the composeId which is also the PK
     const [agent] = await globalThis.services.db
@@ -74,7 +73,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
     };
   },
 
-  update: async ({ params, body, headers }, { request }) => {
+  update: async ({ params, body, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -83,8 +82,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org, member } = await resolveOrg(authCtx, orgSlug);
+    const { org, member } = await resolveOrg(authCtx);
 
     // Verify agent exists — need compose name for serverSideCompose
     // Join zeroAgents to get customSkills in the same query
@@ -138,7 +136,6 @@ const router = tsr.router(zeroAgentsByIdContract, {
     const result = await serverSideCompose({
       userId,
       orgId: org.orgId,
-      orgSlug: org.slug,
       content,
     });
 
@@ -204,7 +201,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
     };
   },
 
-  updateMetadata: async ({ params, body, headers }, { request }) => {
+  updateMetadata: async ({ params, body, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -212,8 +209,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
     });
     if (isAuthError(authCtx)) return authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org, member } = await resolveOrg(authCtx, orgSlug);
+    const { org, member } = await resolveOrg(authCtx);
 
     // Look up agent directly by id
     const [existing] = await globalThis.services.db
@@ -277,7 +273,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
     };
   },
 
-  delete: async ({ params, headers }, { request }) => {
+  delete: async ({ params, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -285,8 +281,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
     });
     if (isAuthError(authCtx)) return authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org, member } = await resolveOrg(authCtx, orgSlug);
+    const { org, member } = await resolveOrg(authCtx);
 
     // Verify agent exists
     const [agent] = await globalThis.services.db

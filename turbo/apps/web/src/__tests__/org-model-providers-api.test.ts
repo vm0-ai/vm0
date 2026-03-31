@@ -23,8 +23,8 @@ async function setupOrg(userId: string, role: "org:admin" | "org:member") {
   return { slug, orgId };
 }
 
-function orgUrl(path: string, slug: string): string {
-  return `http://localhost:3000/api/zero/model-providers${path}?org=${slug}`;
+function orgUrl(path: string): string {
+  return `http://localhost:3000/api/zero/model-providers${path}`;
 }
 
 describe("Org model-provider API", () => {
@@ -35,9 +35,9 @@ describe("Org model-provider API", () => {
   describe("GET /api/zero/model-providers", () => {
     it("should return empty list initially", async () => {
       const userId = uniqueId("omp-list");
-      const { slug } = await setupOrg(userId, "org:admin");
+      await setupOrg(userId, "org:admin");
 
-      const response = await GET(createTestRequest(orgUrl("", slug)));
+      const response = await GET(createTestRequest(orgUrl("")));
       expect(response.status).toBe(200);
 
       const data = await response.json();
@@ -46,9 +46,9 @@ describe("Org model-provider API", () => {
 
     it("should allow member to list org providers", async () => {
       const userId = uniqueId("omp-member-list");
-      const { slug } = await setupOrg(userId, "org:member");
+      await setupOrg(userId, "org:member");
 
-      const response = await GET(createTestRequest(orgUrl("", slug)));
+      const response = await GET(createTestRequest(orgUrl("")));
       expect(response.status).toBe(200);
 
       const data = await response.json();
@@ -59,9 +59,7 @@ describe("Org model-provider API", () => {
       mockClerk({ userId: null });
 
       const response = await GET(
-        createTestRequest(
-          "http://localhost:3000/api/zero/model-providers?org=test",
-        ),
+        createTestRequest("http://localhost:3000/api/zero/model-providers"),
       );
       expect(response.status).toBe(401);
     });
@@ -70,10 +68,10 @@ describe("Org model-provider API", () => {
   describe("POST /api/zero/model-providers", () => {
     it("should create org provider as admin", async () => {
       const userId = uniqueId("omp-create");
-      const { slug } = await setupOrg(userId, "org:admin");
+      await setupOrg(userId, "org:admin");
 
       const response = await POST(
-        createTestRequest(orgUrl("", slug), {
+        createTestRequest(orgUrl(""), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -93,11 +91,11 @@ describe("Org model-provider API", () => {
 
     it("should update existing org provider", async () => {
       const userId = uniqueId("omp-update");
-      const { slug } = await setupOrg(userId, "org:admin");
+      await setupOrg(userId, "org:admin");
 
       // Create
       await POST(
-        createTestRequest(orgUrl("", slug), {
+        createTestRequest(orgUrl(""), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -109,7 +107,7 @@ describe("Org model-provider API", () => {
 
       // Update
       const response = await POST(
-        createTestRequest(orgUrl("", slug), {
+        createTestRequest(orgUrl(""), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -126,10 +124,10 @@ describe("Org model-provider API", () => {
 
     it("should return 403 for non-admin member", async () => {
       const userId = uniqueId("omp-member-put");
-      const { slug } = await setupOrg(userId, "org:member");
+      await setupOrg(userId, "org:member");
 
       const response = await POST(
-        createTestRequest(orgUrl("", slug), {
+        createTestRequest(orgUrl(""), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -148,17 +146,14 @@ describe("Org model-provider API", () => {
       mockClerk({ userId: null });
 
       const response = await POST(
-        createTestRequest(
-          "http://localhost:3000/api/zero/model-providers?org=test",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              type: "anthropic-api-key",
-              secret: "test-key",
-            }),
-          },
-        ),
+        createTestRequest("http://localhost:3000/api/zero/model-providers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "anthropic-api-key",
+            secret: "test-key",
+          }),
+        }),
       );
       expect(response.status).toBe(401);
     });
@@ -167,11 +162,11 @@ describe("Org model-provider API", () => {
   describe("DELETE /api/zero/model-providers/:type", () => {
     it("should delete org provider as admin", async () => {
       const userId = uniqueId("omp-delete");
-      const { slug } = await setupOrg(userId, "org:admin");
+      await setupOrg(userId, "org:admin");
 
       // Create first
       await POST(
-        createTestRequest(orgUrl("", slug), {
+        createTestRequest(orgUrl(""), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -183,24 +178,24 @@ describe("Org model-provider API", () => {
 
       // Delete
       const response = await DELETE(
-        createTestRequest(orgUrl("/anthropic-api-key", slug), {
+        createTestRequest(orgUrl("/anthropic-api-key"), {
           method: "DELETE",
         }),
       );
       expect(response.status).toBe(204);
 
       // Verify deletion
-      const listRes = await GET(createTestRequest(orgUrl("", slug)));
+      const listRes = await GET(createTestRequest(orgUrl("")));
       const listData = await listRes.json();
       expect(listData.modelProviders).toEqual([]);
     });
 
     it("should return 404 for non-existent provider", async () => {
       const userId = uniqueId("omp-del-404");
-      const { slug } = await setupOrg(userId, "org:admin");
+      await setupOrg(userId, "org:admin");
 
       const response = await DELETE(
-        createTestRequest(orgUrl("/anthropic-api-key", slug), {
+        createTestRequest(orgUrl("/anthropic-api-key"), {
           method: "DELETE",
         }),
       );
@@ -209,10 +204,10 @@ describe("Org model-provider API", () => {
 
     it("should return 403 for non-admin member", async () => {
       const userId = uniqueId("omp-del-member");
-      const { slug } = await setupOrg(userId, "org:member");
+      await setupOrg(userId, "org:member");
 
       const response = await DELETE(
-        createTestRequest(orgUrl("/anthropic-api-key", slug), {
+        createTestRequest(orgUrl("/anthropic-api-key"), {
           method: "DELETE",
         }),
       );
@@ -223,11 +218,11 @@ describe("Org model-provider API", () => {
   describe("POST /api/zero/model-providers/:type/default", () => {
     it("should set org provider as default", async () => {
       const userId = uniqueId("omp-default");
-      const { slug } = await setupOrg(userId, "org:admin");
+      await setupOrg(userId, "org:admin");
 
       // Create two providers
       await POST(
-        createTestRequest(orgUrl("", slug), {
+        createTestRequest(orgUrl(""), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -237,7 +232,7 @@ describe("Org model-provider API", () => {
         }),
       );
       await POST(
-        createTestRequest(orgUrl("", slug), {
+        createTestRequest(orgUrl(""), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -249,7 +244,7 @@ describe("Org model-provider API", () => {
 
       // Set second as default
       const response = await setDefaultRoute(
-        createTestRequest(orgUrl("/claude-code-oauth-token/default", slug), {
+        createTestRequest(orgUrl("/claude-code-oauth-token/default"), {
           method: "POST",
         }),
       );
@@ -260,7 +255,7 @@ describe("Org model-provider API", () => {
       expect(data.type).toBe("claude-code-oauth-token");
 
       // Verify first is no longer default
-      const listRes = await GET(createTestRequest(orgUrl("", slug)));
+      const listRes = await GET(createTestRequest(orgUrl("")));
       const listData = await listRes.json();
       const anthropic = listData.modelProviders.find(
         (p: { type: string }) => p.type === "anthropic-api-key",
@@ -271,10 +266,10 @@ describe("Org model-provider API", () => {
 
     it("should return 403 for non-admin member", async () => {
       const userId = uniqueId("omp-def-member");
-      const { slug } = await setupOrg(userId, "org:member");
+      await setupOrg(userId, "org:member");
 
       const response = await setDefaultRoute(
-        createTestRequest(orgUrl("/anthropic-api-key/default", slug), {
+        createTestRequest(orgUrl("/anthropic-api-key/default"), {
           method: "POST",
         }),
       );
@@ -285,11 +280,11 @@ describe("Org model-provider API", () => {
   describe("list after CRUD operations", () => {
     it("should list created org providers", async () => {
       const userId = uniqueId("omp-listcrud");
-      const { slug } = await setupOrg(userId, "org:admin");
+      await setupOrg(userId, "org:admin");
 
       // Create a provider
       await POST(
-        createTestRequest(orgUrl("", slug), {
+        createTestRequest(orgUrl(""), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -299,7 +294,7 @@ describe("Org model-provider API", () => {
         }),
       );
 
-      const response = await GET(createTestRequest(orgUrl("", slug)));
+      const response = await GET(createTestRequest(orgUrl("")));
       expect(response.status).toBe(200);
 
       const data = await response.json();

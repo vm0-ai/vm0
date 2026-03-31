@@ -6,6 +6,7 @@
 # - GitHub CLI (gh)
 # - agent-browser (Chromium browser automation)
 # - Google Workspace CLI (@googleworkspace/cli)
+# - xurl (X/Twitter official CLI)
 #
 # Build: docker build -t vm0-rootfs .
 # Export: See build-rootfs.sh
@@ -79,6 +80,10 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
 # Install Google Workspace CLI for Google Workspace service access
 ARG GWS_CLI_VERSION=0.22.0
 RUN npm install -g @googleworkspace/cli@${GWS_CLI_VERSION}
+
+# Install xurl (X/Twitter official CLI) for X API access
+ARG XURL_VERSION=1.0.3
+RUN npm install -g @xdevplatform/xurl@${XURL_VERSION}
 
 # Create 'user' account (UID 1000) matching E2B sandbox default
 # - Home directory at /home/user

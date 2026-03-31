@@ -1,13 +1,11 @@
 #!/usr/bin/env bats
 
-# Test VM0 compose with org support (E2E happy path only)
-# Tests the org/name:version naming convention for agent composes
+# Test VM0 compose (E2E happy path only)
+# Tests the name:version naming convention for agent composes
 #
-# This test covers issue #757: Add org support to agent compose
-#
-# Note: Identifier format parsing and error handling (org/name, org/name:version, name:version,
-# backward compat, org errors) are tested via CLI Command Integration Tests
-# (see run/__tests__/index.test.ts, "org error handling" section).
+# Note: Identifier format parsing and error handling (name:version,
+# backward compat) are tested via CLI Command Integration Tests
+# (see run/__tests__/index.test.ts).
 
 load '../../helpers/setup'
 
@@ -28,7 +26,7 @@ teardown() {
 # vm0 compose displays org/name format
 # ============================================
 
-@test "t22-1: vm0 compose shows org/name:version in run instructions" {
+@test "t22-1: vm0 compose shows name:version in run instructions" {
     echo "# Creating config file..."
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
@@ -44,35 +42,31 @@ EOF
     run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
     assert_success
 
-    echo "# Verifying output contains org/name format..."
-    # Output should show something like "Compose created: user-abc12345/e2e-org-compose-xxxx"
-    assert_output --regexp "Compose (created|version exists): [a-z0-9-]+/$AGENT_NAME"
+    echo "# Verifying output contains agent name..."
+    # Output should show something like "Compose created: e2e-org-compose-xxxx"
+    assert_output --regexp "Compose (created|version exists): $AGENT_NAME"
 
     echo "# Verifying output contains version..."
     assert_output --partial "Version:"
     assert_output --regexp "Version:[ ]+[0-9a-f]{8}"
 
-    echo "# Verifying run instructions include org/name:version format..."
-    # Output should show: vm0 run org/name:version
-    assert_output --regexp "vm0 run [a-z0-9-]+/$AGENT_NAME:[0-9a-f]{8}"
+    echo "# Verifying run instructions include name:version format..."
+    # Output should show: vm0 run name:version
+    assert_output --regexp "vm0 run $AGENT_NAME:[0-9a-f]{8}"
 }
 
 # ============================================
 # vm0 run with org/name format (E2E happy path)
 # ============================================
 
-@test "t22-2: vm0 run with org/name format resolves agent correctly" {
-    # This test verifies the end-to-end happy path for org/name format.
-    # Other identifier formats (org/name:version, name:version, backward compat)
-    # are tested via CLI Command Integration Tests in run/__tests__/index.test.ts.
-
+@test "t22-2: vm0 run with name format resolves agent correctly" {
     echo "# Step 1: Creating agent config..."
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
 agents:
   $AGENT_NAME:
-    description: "Test agent for org/name run"
+    description: "Test agent for name run"
     framework: claude-code
     working_dir: /home/user/workspace
 EOF
@@ -81,17 +75,6 @@ EOF
     run $VM0_CLI compose "$TEST_DIR/vm0.yaml"
     assert_success
 
-    # Extract org from compose output (format: "Compose created: org/agent-name")
-    # This ensures we use the same org that compose actually used, avoiding race conditions
-    USER_ORG=$(echo "$output" | grep -oP '(created|exists): \K[a-z0-9-]+(?=/)' | head -1)
-    echo "# Org from compose output: $USER_ORG"
-
-    [ -n "$USER_ORG" ] || {
-        echo "# Failed to extract org from compose output"
-        echo "# Output was: $output"
-        return 1
-    }
-
     echo "# Step 3: Setting up artifact..."
     mkdir -p "$TEST_DIR/$ARTIFACT_NAME"
     cd "$TEST_DIR/$ARTIFACT_NAME"
@@ -99,13 +82,13 @@ EOF
     run $VM0_CLI artifact push
     assert_success
 
-    echo "# Step 4: Running with org/name format..."
-    run $VM0_CLI run "$USER_ORG/$AGENT_NAME" \
+    echo "# Step 4: Running with name format..."
+    run $VM0_CLI run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
-        "echo hello from org test"
+        "echo hello from name test"
     assert_success
     assert_output --partial "● Bash("
-    assert_output --partial "hello from org test"
+    assert_output --partial "hello from name test"
 }
 
 # ============================================
@@ -135,6 +118,6 @@ EOF
     assert_success
 
     echo "# Verifying compose succeeded with default vm0.yaml..."
-    assert_output --regexp "Compose (created|version exists): [a-z0-9-]+/$AGENT_NAME"
+    assert_output --regexp "Compose (created|version exists): $AGENT_NAME"
     assert_output --partial "Version:"
 }

@@ -420,21 +420,18 @@ describe("run command", () => {
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
-    it("should parse org/name format", async () => {
-      let capturedQueryParams:
-        | { name: string | null; org: string | null }
-        | undefined;
+    it("should treat slash in identifier as part of name", async () => {
+      let capturedQueryParams: { name: string | null } | undefined;
       let capturedBody: unknown;
       server.use(
         http.get("http://localhost:3000/api/agent/composes", ({ request }) => {
           const url = new URL(request.url);
           capturedQueryParams = {
             name: url.searchParams.get("name"),
-            org: url.searchParams.get("org"),
           };
           return HttpResponse.json({
             id: "550e8400-e29b-41d4-a716-446655440000",
-            name: "my-agent",
+            name: "user-abc123/my-agent",
             headVersionId:
               "abc12345def67890abc12345def67890abc12345def67890abc12345def67890",
             content: { version: "1", agents: { main: { provider: "claude" } } },
@@ -478,8 +475,7 @@ describe("run command", () => {
       ]);
 
       expect(capturedQueryParams).toEqual({
-        name: "my-agent",
-        org: "user-abc123",
+        name: "user-abc123/my-agent",
       });
       expect(capturedBody).toEqual(
         expect.objectContaining({

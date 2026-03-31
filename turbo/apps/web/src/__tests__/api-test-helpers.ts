@@ -229,7 +229,7 @@ export async function createTestCliToken(
   // Generate CLI JWT containing userId, orgId, and tokenId for revocation checks
   const token = await generateCliToken(
     userId,
-    orgId ?? "org_test_default",
+    orgId ?? `org_mock_${userId}`,
     tokenId,
   );
 
@@ -4947,4 +4947,18 @@ export async function bindCustomSkillToAgent(
     .update(zeroAgents)
     .set({ customSkills: updated })
     .where(eq(zeroAgents.id, agentId));
+}
+
+/**
+ * Get the customSkills array for a given agent.
+ */
+export async function getAgentCustomSkills(agentId: string): Promise<string[]> {
+  initServices();
+  const [agent] = await globalThis.services.db
+    .select({ customSkills: zeroAgents.customSkills })
+    .from(zeroAgents)
+    .where(eq(zeroAgents.id, agentId))
+    .limit(1);
+  if (!agent) throw new Error(`Agent not found: ${agentId}`);
+  return agent.customSkills;
 }

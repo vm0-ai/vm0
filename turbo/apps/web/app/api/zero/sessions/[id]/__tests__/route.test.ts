@@ -23,8 +23,8 @@ async function setupOrg(userId: string) {
   return { slug, orgId };
 }
 
-function sessionUrl(slug: string, sessionId: string): string {
-  return `http://localhost:3000/api/zero/sessions/${sessionId}?org=${slug}`;
+function sessionUrl(sessionId: string): string {
+  return `http://localhost:3000/api/zero/sessions/${sessionId}`;
 }
 
 describe("GET /api/zero/sessions/:id", () => {
@@ -34,11 +34,11 @@ describe("GET /api/zero/sessions/:id", () => {
 
   it("should return session details", async () => {
     const userId = uniqueId("zsess-get");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
     const compose = await createTestCompose(`agent-${uniqueId("zsess")}`);
     const session = await createTestAgentSession(userId, compose.composeId);
 
-    const response = await GET(createTestRequest(sessionUrl(slug, session.id)));
+    const response = await GET(createTestRequest(sessionUrl(session.id)));
     expect(response.status).toBe(200);
 
     const data = await response.json();
@@ -50,11 +50,9 @@ describe("GET /api/zero/sessions/:id", () => {
 
   it("should return 404 when session not found", async () => {
     const userId = uniqueId("zsess-nf");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
 
-    const response = await GET(
-      createTestRequest(sessionUrl(slug, randomUUID())),
-    );
+    const response = await GET(createTestRequest(sessionUrl(randomUUID())));
     expect(response.status).toBe(404);
   });
 
@@ -62,9 +60,7 @@ describe("GET /api/zero/sessions/:id", () => {
     mockClerk({ userId: null });
 
     const response = await GET(
-      createTestRequest(
-        "http://localhost:3000/api/zero/sessions/some-id?org=test",
-      ),
+      createTestRequest("http://localhost:3000/api/zero/sessions/some-id"),
     );
     expect(response.status).toBe(401);
   });

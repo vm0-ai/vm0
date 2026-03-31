@@ -30,13 +30,12 @@ const context = testContext();
  */
 async function createDueSchedule(
   agentId: string,
-  slug: string,
   name: string,
   options: { notifyEmail: boolean; notifySlack: boolean },
 ): Promise<string> {
   // Create schedule via zero API with notification settings
   const createReq = createTestRequest(
-    `http://localhost:3000/api/zero/schedules?org=${slug}`,
+    `http://localhost:3000/api/zero/schedules`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -57,7 +56,7 @@ async function createDueSchedule(
 
   // Enable the schedule
   const enableReq = createTestRequest(
-    `http://localhost:3000/api/zero/schedules/${encodeURIComponent(name)}/enable?org=${slug}`,
+    `http://localhost:3000/api/zero/schedules/${encodeURIComponent(name)}/enable`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -86,7 +85,7 @@ describe("Schedule notification control - per-schedule settings", () => {
     context.mocks.date.setSystemTime(new Date("2025-01-15T08:00:00Z"));
     user = await context.setupUser();
 
-    // Set up org with explicit slug for zero schedule routes
+    // Set up org
     slug = uniqueId("notify");
     mockClerk({ userId: user.userId, orgId: user.orgId, orgRole: "org:admin" });
     await createTestOrg(slug);
@@ -110,7 +109,7 @@ describe("Schedule notification control - per-schedule settings", () => {
   });
 
   it("should register both email and slack callbacks when schedule has both enabled", async () => {
-    const scheduleId = await createDueSchedule(agentId, slug, "both-on", {
+    const scheduleId = await createDueSchedule(agentId, "both-on", {
       notifyEmail: true,
       notifySlack: true,
     });
@@ -132,7 +131,7 @@ describe("Schedule notification control - per-schedule settings", () => {
   });
 
   it("should NOT register email callback when schedule notifyEmail is false", async () => {
-    const scheduleId = await createDueSchedule(agentId, slug, "email-off", {
+    const scheduleId = await createDueSchedule(agentId, "email-off", {
       notifyEmail: false,
       notifySlack: true,
     });
@@ -154,7 +153,7 @@ describe("Schedule notification control - per-schedule settings", () => {
   });
 
   it("should NOT register slack callback when schedule notifySlack is false", async () => {
-    const scheduleId = await createDueSchedule(agentId, slug, "slack-off", {
+    const scheduleId = await createDueSchedule(agentId, "slack-off", {
       notifyEmail: true,
       notifySlack: false,
     });
@@ -176,7 +175,7 @@ describe("Schedule notification control - per-schedule settings", () => {
   });
 
   it("should NOT register any notification callbacks when both are off", async () => {
-    const scheduleId = await createDueSchedule(agentId, slug, "silent", {
+    const scheduleId = await createDueSchedule(agentId, "silent", {
       notifyEmail: false,
       notifySlack: false,
     });
@@ -214,7 +213,7 @@ describe("Schedule notification control - per-schedule settings", () => {
     const agentId2 = await getTestZeroAgentId(user2.orgId, agentName2);
 
     const createReq = createTestRequest(
-      `http://localhost:3000/api/zero/schedules?org=${slug2}`,
+      `http://localhost:3000/api/zero/schedules`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -252,7 +251,7 @@ describe("Schedule notification control - per-schedule settings", () => {
     const agentId2 = await getTestZeroAgentId(user2.orgId, agentName2);
 
     const createReq = createTestRequest(
-      `http://localhost:3000/api/zero/schedules?org=${slug2}`,
+      `http://localhost:3000/api/zero/schedules`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },

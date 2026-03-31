@@ -22,7 +22,6 @@ import { eq, and } from "drizzle-orm";
 import { computeComposeVersionId } from "../../../../src/lib/agent-compose/content-hash";
 import { getComposeByName } from "../../../../src/lib/agent-compose/compose-service";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
-import { getOrgBySlug } from "../../../../src/lib/org/org-cache-service";
 import {
   isNotFound,
   isForbidden,
@@ -38,23 +37,10 @@ const router = tsr.router(composesMainContract, {
     });
     if (isAuthError(authCtx)) return authCtx;
 
-    // Resolve org and verify membership. For cross-org lookups (?org=),
-    // resolveOrg verifies the caller is a member of the target org,
-    // replacing the previous canAccessCompose authorization.
-    // ?org= supports both slug and orgId formats.
     let orgId: string;
     try {
-      if (query.org) {
-        // Try slug first, fall back to orgId (callers may pass either via ?org=)
-        const orgBySlug = await getOrgBySlug(query.org);
-        const { org } = orgBySlug
-          ? await resolveOrg(authCtx, query.org)
-          : await resolveOrg(authCtx, undefined, query.org);
-        orgId = org.orgId;
-      } else {
-        const { org } = await resolveOrg(authCtx);
-        orgId = org.orgId;
-      }
+      const { org } = await resolveOrg(authCtx);
+      orgId = org.orgId;
     } catch (error) {
       if (isNotFound(error) || isForbidden(error) || isBadRequest(error)) {
         return {
@@ -86,7 +72,7 @@ const router = tsr.router(composesMainContract, {
     return { status: 200 as const, body: compose };
   },
 
-  create: async ({ body, headers }, { request }) => {
+  create: async ({ body, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -199,8 +185,7 @@ const router = tsr.router(composesMainContract, {
     const versionId = computeComposeVersionId(resolvedContent);
 
     // Get user's org (required for compose creation)
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
 
     // Check compose and version existence in parallel
     const [existingComposes, existingVersions] = await Promise.all([

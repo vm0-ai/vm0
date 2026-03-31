@@ -14,7 +14,7 @@ import {
   type UserContext,
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
-import { generateSandboxToken } from "../../../../../src/lib/auth/sandbox-token";
+import { generateZeroToken } from "../../../../../src/lib/auth/sandbox-token";
 
 const context = testContext();
 
@@ -38,13 +38,13 @@ describe("Sandbox capability enforcement on compose routes", () => {
         role: "admin",
       });
 
-      // Switch to sandbox auth
-      const orgSlug = `org-${user.userId.slice(-8)}`;
-      mockClerk({ userId: null, orgId: user.orgId });
-      const token = await generateSandboxToken(user.userId, "run-123");
+      // Switch to sandbox auth (no Clerk session)
+      mockClerk({ userId: null });
+      // Zero token carries orgId so resolveOrg can resolve the org
+      const token = await generateZeroToken(user.userId, "run-123", user.orgId);
 
       const request = createTestRequest(
-        `http://localhost:3000/api/agent/composes?name=${agentName}&org=${orgSlug}`,
+        `http://localhost:3000/api/agent/composes?name=${agentName}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         },
@@ -67,12 +67,11 @@ describe("Sandbox capability enforcement on compose routes", () => {
         role: "admin",
       });
 
-      const orgSlug = `org-${user.userId.slice(-8)}`;
-      mockClerk({ userId: null, orgId: user.orgId });
-      const token = await generateSandboxToken(user.userId, "run-123");
+      mockClerk({ userId: null });
+      const token = await generateZeroToken(user.userId, "run-123", user.orgId);
 
       const request = createTestRequest(
-        `http://localhost:3000/api/agent/composes?name=${agentName}&org=${orgSlug}`,
+        `http://localhost:3000/api/agent/composes?name=${agentName}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         },
@@ -97,12 +96,11 @@ describe("Sandbox capability enforcement on compose routes", () => {
         role: "admin",
       });
 
-      const orgSlug = `org-${user.userId.slice(-8)}`;
-      mockClerk({ userId: null, orgId: user.orgId });
-      const token = await generateSandboxToken(user.userId, "run-123");
+      mockClerk({ userId: null });
+      const token = await generateZeroToken(user.userId, "run-123", user.orgId);
 
       const request = createTestRequest(
-        `http://localhost:3000/api/agent/composes?org=${orgSlug}`,
+        "http://localhost:3000/api/agent/composes",
         {
           method: "POST",
           headers: {
@@ -136,12 +134,11 @@ describe("Sandbox capability enforcement on compose routes", () => {
         role: "admin",
       });
 
-      const orgSlug = `org-${user.userId.slice(-8)}`;
-      mockClerk({ userId: null, orgId: user.orgId });
-      const token = await generateSandboxToken(user.userId, "run-123");
+      mockClerk({ userId: null });
+      const token = await generateZeroToken(user.userId, "run-123", user.orgId);
 
       const request = createTestRequest(
-        `http://localhost:3000/api/agent/composes?org=${orgSlug}`,
+        "http://localhost:3000/api/agent/composes",
         {
           method: "POST",
           headers: {
@@ -176,12 +173,11 @@ describe("Sandbox capability enforcement on compose routes", () => {
         role: "admin",
       });
 
-      const orgSlug = `org-${user.userId.slice(-8)}`;
-      mockClerk({ userId: null, orgId: user.orgId });
-      const token = await generateSandboxToken(user.userId, "run-123");
+      mockClerk({ userId: null });
+      const token = await generateZeroToken(user.userId, "run-123", user.orgId);
 
       const request = createTestRequest(
-        `http://localhost:3000/api/agent/composes/list?org=${orgSlug}`,
+        "http://localhost:3000/api/agent/composes/list",
         {
           headers: { Authorization: `Bearer ${token}` },
         },
@@ -202,7 +198,7 @@ describe("Sandbox capability enforcement on compose routes", () => {
       const { composeId } = await createTestCompose(agentName);
 
       mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, "run-123");
+      const token = await generateZeroToken(user.userId, "run-123", user.orgId);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/composes/${composeId}`,
@@ -225,7 +221,7 @@ describe("Sandbox capability enforcement on compose routes", () => {
       const { composeId } = await createTestCompose(agentName);
 
       mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, "run-123");
+      const token = await generateZeroToken(user.userId, "run-123", user.orgId);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/composes/${composeId}`,
@@ -247,7 +243,7 @@ describe("Sandbox capability enforcement on compose routes", () => {
       const { composeId } = await createTestCompose(agentName);
 
       mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, "run-123");
+      const token = await generateZeroToken(user.userId, "run-123", user.orgId);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/composes/${composeId}`,
@@ -268,7 +264,7 @@ describe("Sandbox capability enforcement on compose routes", () => {
       const { composeId, versionId } = await createTestCompose(agentName);
 
       mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, "run-123");
+      const token = await generateZeroToken(user.userId, "run-123", user.orgId);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/composes/versions?composeId=${composeId}&version=latest`,
@@ -291,7 +287,7 @@ describe("Sandbox capability enforcement on compose routes", () => {
       const { composeId } = await createTestCompose(agentName);
 
       mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, "run-123");
+      const token = await generateZeroToken(user.userId, "run-123", user.orgId);
 
       const request = createTestRequest(
         `http://localhost:3000/api/agent/composes/${composeId}/instructions`,

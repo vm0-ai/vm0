@@ -528,11 +528,6 @@ describe("compose command", () => {
         path.join(tempDir, "config.yaml"),
         `version: "1.0"\nagents:\n  test:\n    framework: claude-code`,
       );
-      server.use(
-        http.get("http://localhost:3000/api/zero/org", () => {
-          return HttpResponse.json(orgResponse);
-        }),
-      );
     });
 
     it("should display loading message", async () => {
@@ -571,7 +566,7 @@ describe("compose command", () => {
       await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("Compose created: user-abc12345/test-agent"),
+        expect.stringContaining("Compose created: test-agent"),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
         expect.stringContaining("Version: a1b2c3d4"),
@@ -594,9 +589,7 @@ describe("compose command", () => {
       await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "Compose version exists: user-abc12345/test-agent",
-        ),
+        expect.stringContaining("Compose version exists: test-agent"),
       );
     });
 
@@ -616,7 +609,7 @@ describe("compose command", () => {
       await composeCommand.parseAsync(["node", "cli", "config.yaml"]);
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("vm0 run user-abc12345/test"),
+        expect.stringContaining("vm0 run test"),
       );
     });
   });
@@ -1372,13 +1365,12 @@ agents:
       expect(allLogs.some((log) => log.includes("Approve"))).toBe(false);
     });
 
-    it("should not call getZeroOrg or checkMissingItems in --json mode", async () => {
+    it("should not call checkMissingItems in --json mode", async () => {
       await fs.writeFile(
         path.join(tempDir, "vm0.yaml"),
         `version: "1.0"\nagents:\n  test-agent:\n    framework: claude-code`,
       );
 
-      let orgCalled = false;
       let secretsCalled = false;
       let variablesCalled = false;
       let connectorsCalled = false;
@@ -1392,10 +1384,6 @@ agents:
               "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
             action: "created",
           });
-        }),
-        http.get("http://localhost:3000/api/zero/org", () => {
-          orgCalled = true;
-          return HttpResponse.json(orgResponse);
         }),
         http.get("http://localhost:3000/api/zero/secrets", () => {
           secretsCalled = true;
@@ -1417,7 +1405,6 @@ agents:
 
       await composeCommand.parseAsync(["node", "cli", "--json"]);
 
-      expect(orgCalled).toBe(false);
       expect(secretsCalled).toBe(false);
       expect(variablesCalled).toBe(false);
       expect(connectorsCalled).toBe(false);
@@ -1667,9 +1654,6 @@ agents:
           action: "created",
         });
       }),
-      http.get("http://localhost:3000/api/zero/org", () => {
-        return HttpResponse.json(orgResponse);
-      }),
     );
 
     await composeCommand.parseAsync([
@@ -1682,7 +1666,7 @@ agents:
       expect.stringContaining("Downloading from GitHub"),
     );
     expect(mockConsoleLog).toHaveBeenCalledWith(
-      expect.stringContaining("Compose created: user-abc12345/intro"),
+      expect.stringContaining("Compose created: intro"),
     );
   });
 

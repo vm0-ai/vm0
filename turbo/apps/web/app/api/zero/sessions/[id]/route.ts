@@ -14,15 +14,14 @@ import { getSessionResponse } from "../../../../../src/lib/agent-session/agent-s
 import { isNotFound, isForbidden } from "../../../../../src/lib/errors";
 
 const router = tsr.router(zeroSessionsByIdContract, {
-  getById: async ({ params, headers }, { request }) => {
+  getById: async ({ params, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
 
     try {
       const { agentComposeId, ...rest } = await getSessionResponse(

@@ -14,7 +14,7 @@ import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import { downgradeSubscription } from "../../../../../src/lib/billing/billing-service";
 
 const router = tsr.router(zeroBillingDowngradeContract, {
-  create: async ({ body, headers }, { request }) => {
+  create: async ({ body, headers }) => {
     initServices();
 
     const { STRIPE_SECRET_KEY } = env();
@@ -29,8 +29,7 @@ const router = tsr.router(zeroBillingDowngradeContract, {
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org, member } = await resolveOrg(authCtx, orgSlug);
+    const { org, member } = await resolveOrg(authCtx);
     if (member.role !== "admin") {
       return createErrorResponse(
         "FORBIDDEN",

@@ -20,8 +20,8 @@ async function setupOrg(userId: string) {
   return { slug, orgId };
 }
 
-function orgUrl(slug: string): string {
-  return `http://localhost:3000/api/zero/org?org=${slug}`;
+function orgUrl(): string {
+  return `http://localhost:3000/api/zero/org`;
 }
 
 describe("GET /api/zero/org", () => {
@@ -33,7 +33,7 @@ describe("GET /api/zero/org", () => {
     const userId = uniqueId("zorg-get");
     const { slug } = await setupOrg(userId);
 
-    const response = await GET(createTestRequest(orgUrl(slug)));
+    const response = await GET(createTestRequest(orgUrl()));
     expect(response.status).toBe(200);
 
     const data = await response.json();
@@ -44,11 +44,14 @@ describe("GET /api/zero/org", () => {
 
   it("should return 404 when org not found", async () => {
     const userId = uniqueId("zorg-nf");
-    mockClerk({ userId, orgId: `org_mock_${userId}`, orgRole: "org:admin" });
+    mockClerk({
+      userId,
+      orgId: `org_mock_${userId}`,
+      orgRole: "org:admin",
+      clerkOrgs: [],
+    });
 
-    const response = await GET(
-      createTestRequest(orgUrl("nonexistent-org-slug")),
-    );
+    const response = await GET(createTestRequest(orgUrl()));
     expect(response.status).toBe(404);
   });
 
@@ -56,7 +59,7 @@ describe("GET /api/zero/org", () => {
     mockClerk({ userId: null });
 
     const response = await GET(
-      createTestRequest("http://localhost:3000/api/zero/org?org=test"),
+      createTestRequest("http://localhost:3000/api/zero/org"),
     );
     expect(response.status).toBe(401);
   });
@@ -69,10 +72,10 @@ describe("PUT /api/zero/org", () => {
 
   it("should update org name and return 200", async () => {
     const userId = uniqueId("zorg-upd");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
 
     const response = await PUT(
-      createTestRequest(orgUrl(slug), {
+      createTestRequest(orgUrl(), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: "Updated Org Name" }),
@@ -88,10 +91,10 @@ describe("PUT /api/zero/org", () => {
 
   it("should return 400 when changing slug without force", async () => {
     const userId = uniqueId("zorg-noforce");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
 
     const response = await PUT(
-      createTestRequest(orgUrl(slug), {
+      createTestRequest(orgUrl(), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ slug: "new-slug-name" }),
@@ -104,7 +107,7 @@ describe("PUT /api/zero/org", () => {
     mockClerk({ userId: null });
 
     const response = await PUT(
-      createTestRequest("http://localhost:3000/api/zero/org?org=test", {
+      createTestRequest("http://localhost:3000/api/zero/org", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: "Test" }),
@@ -115,10 +118,15 @@ describe("PUT /api/zero/org", () => {
 
   it("should return 404 when org not found", async () => {
     const userId = uniqueId("zorg-upd-nf");
-    mockClerk({ userId, orgId: `org_mock_${userId}`, orgRole: "org:admin" });
+    mockClerk({
+      userId,
+      orgId: `org_mock_${userId}`,
+      orgRole: "org:admin",
+      clerkOrgs: [],
+    });
 
     const response = await PUT(
-      createTestRequest(orgUrl("nonexistent-org-slug"), {
+      createTestRequest(orgUrl(), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: "Test" }),

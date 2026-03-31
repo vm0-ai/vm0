@@ -82,6 +82,12 @@ export async function deleteSkillServerSide(params: {
   }
 
   // 3. Delete DB records after successful S3 cleanup
+  //    Clear headVersionId first to avoid FK violation (storages.headVersionId → storageVersions.id)
+  await db
+    .update(storages)
+    .set({ headVersionId: null })
+    .where(eq(storages.id, storage.id));
+
   await db
     .delete(storageVersions)
     .where(eq(storageVersions.storageId, storage.id));

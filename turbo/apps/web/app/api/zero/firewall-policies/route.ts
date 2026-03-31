@@ -47,7 +47,7 @@ function validatePolicies(policies: FirewallPolicies): string | null {
 }
 
 const router = tsr.router(zeroAgentFirewallPoliciesContract, {
-  update: async ({ body, headers }, { request }) => {
+  update: async ({ body, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -55,8 +55,7 @@ const router = tsr.router(zeroAgentFirewallPoliciesContract, {
     });
     if (isAuthError(authCtx)) return authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org, member } = await resolveOrg(authCtx, orgSlug);
+    const { org, member } = await resolveOrg(authCtx);
 
     if (member.role !== "admin") {
       return {

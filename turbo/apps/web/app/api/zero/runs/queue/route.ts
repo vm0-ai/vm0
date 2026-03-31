@@ -13,7 +13,7 @@ import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import { getRunQueueStatus } from "../../../../../src/lib/zero/zero-queue-service";
 
 const router = tsr.router(zeroRunsQueueContract, {
-  getQueue: async ({ headers }, { request }) => {
+  getQueue: async ({ headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -22,8 +22,7 @@ const router = tsr.router(zeroRunsQueueContract, {
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
     const orgTier = orgTierSchema.parse(org.tier);
 
     const result = await getRunQueueStatus(userId, org.orgId, orgTier);

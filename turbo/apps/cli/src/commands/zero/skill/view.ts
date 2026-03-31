@@ -1,30 +1,21 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { getAgentSkill } from "../../../lib/api";
+import { getSkill } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 
 export const viewCommand = new Command()
   .name("view")
   .description("View a custom skill")
   .argument("<name>", "Skill name")
-  .option("--agent <id>", "Agent ID (defaults to $ZERO_AGENT_ID)")
   .addHelpText(
     "after",
     `
 Examples:
-  zero skill view my-skill
-  zero skill view my-skill --agent <id>`,
+  zero skill view my-skill`,
   )
   .action(
-    withErrorHandler(async (name: string, options: { agent?: string }) => {
-      const agentId = options.agent ?? process.env.ZERO_AGENT_ID;
-      if (!agentId) {
-        throw new Error(
-          "Agent ID required: use --agent <id> or set $ZERO_AGENT_ID",
-        );
-      }
-
-      const skill = await getAgentSkill(agentId, name);
+    withErrorHandler(async (name: string) => {
+      const skill = await getSkill(name);
 
       console.log(chalk.bold(skill.name));
       if (skill.displayName) console.log(chalk.dim(skill.displayName));

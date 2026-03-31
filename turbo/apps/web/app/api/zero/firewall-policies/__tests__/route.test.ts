@@ -15,18 +15,12 @@ import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 const context = testContext();
 
 let testCliToken: string;
-let testOrgSlug: string;
 let testOrgId: string;
 let testUserId: string;
 
-function postAgent(
-  body: Record<string, unknown>,
-  token: string,
-  orgSlug?: string,
-) {
-  const orgParam = orgSlug ? `?org=${orgSlug}` : "";
+function postAgent(body: Record<string, unknown>, token: string) {
   return POST(
-    createTestRequest(`http://localhost:3000/api/zero/agents${orgParam}`, {
+    createTestRequest("http://localhost:3000/api/zero/agents", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -37,16 +31,12 @@ function postAgent(
   );
 }
 
-function getAgent(name: string, token: string, orgSlug?: string) {
-  const orgParam = orgSlug ? `?org=${orgSlug}` : "";
+function getAgent(name: string, token: string) {
   return GET(
-    createTestRequest(
-      `http://localhost:3000/api/zero/agents/${name}${orgParam}`,
-      {
-        method: "GET",
-        headers: { Authorization: `Bearer ${token}` },
-      },
-    ),
+    createTestRequest(`http://localhost:3000/api/zero/agents/${name}`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+    }),
   );
 }
 
@@ -54,21 +44,16 @@ function putPolicies(
   agentId: string,
   body: Record<string, unknown>,
   token: string,
-  orgSlug?: string,
 ) {
-  const orgParam = orgSlug ? `?org=${orgSlug}` : "";
   return putFirewallPolicies(
-    createTestRequest(
-      `http://localhost:3000/api/zero/firewall-policies${orgParam}`,
-      {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ agentId, ...body }),
+    createTestRequest("http://localhost:3000/api/zero/firewall-policies", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
       },
-    ),
+      body: JSON.stringify({ agentId, ...body }),
+    }),
   );
 }
 
@@ -81,7 +66,6 @@ describe("PUT /api/zero/firewall-policies", () => {
     testUserId = user.userId;
     testOrgId = user.orgId;
     testCliToken = await createTestCliToken(user.userId);
-    testOrgSlug = `org-${user.userId.slice(-8)}`;
 
     // Default test user is admin
     await insertOrgMembersCacheEntry({
@@ -92,7 +76,7 @@ describe("PUT /api/zero/firewall-policies", () => {
   });
 
   it("should persist firewall policies for an agent", async () => {
-    const createRes = await postAgent({}, testCliToken, testOrgSlug);
+    const createRes = await postAgent({}, testCliToken);
     expect(createRes.status).toBe(201);
     const created = await createRes.json();
 
@@ -104,7 +88,6 @@ describe("PUT /api/zero/firewall-policies", () => {
       created.agentId,
       { policies },
       testCliToken,
-      testOrgSlug,
     );
 
     expect(response.status).toBe(200);
@@ -114,42 +97,32 @@ describe("PUT /api/zero/firewall-policies", () => {
   });
 
   it("should persist policies across reads", async () => {
-    const created = await (
-      await postAgent({}, testCliToken, testOrgSlug)
-    ).json();
+    const created = await (await postAgent({}, testCliToken)).json();
 
     const policies = {
       slack: { "channels:read": "allow", "chat:write": "ask" },
     };
 
-    await putPolicies(created.agentId, { policies }, testCliToken, testOrgSlug);
+    await putPolicies(created.agentId, { policies }, testCliToken);
 
     // Read back via GET
-    const getRes = await getAgent(created.agentId, testCliToken, testOrgSlug);
+    const getRes = await getAgent(created.agentId, testCliToken);
     expect(getRes.status).toBe(200);
     const fetched = await getRes.json();
     expect(fetched.firewallPolicies).toStrictEqual(policies);
   });
 
   it("should overwrite previous policies", async () => {
-    const created = await (
-      await postAgent({}, testCliToken, testOrgSlug)
-    ).json();
+    const created = await (await postAgent({}, testCliToken)).json();
 
     const first = { github: { "issues:read": "allow" } };
-    await putPolicies(
-      created.agentId,
-      { policies: first },
-      testCliToken,
-      testOrgSlug,
-    );
+    await putPolicies(created.agentId, { policies: first }, testCliToken);
 
     const second = { slack: { "channels:read": "deny" } };
     const response = await putPolicies(
       created.agentId,
       { policies: second },
       testCliToken,
-      testOrgSlug,
     );
 
     expect(response.status).toBe(200);
@@ -158,13 +131,15 @@ describe("PUT /api/zero/firewall-policies", () => {
   });
 
   it("should return 403 for non-admin users", async () => {
-    const created = await (
-      await postAgent({}, testCliToken, testOrgSlug)
-    ).json();
+    const created = await (await postAgent({}, testCliToken)).json();
 
     // Create a non-admin user
     const member = await context.setupUser({ prefix: "member-user" });
-    const memberToken = await createTestCliToken(member.userId);
+    const memberToken = await createTestCliToken(
+      member.userId,
+      undefined,
+      testOrgId,
+    );
 
     // Grant member role in the same org
     await insertOrgMembersCacheEntry({
@@ -177,7 +152,6 @@ describe("PUT /api/zero/firewall-policies", () => {
       created.agentId,
       { policies: { github: { "issues:read": "allow" } } },
       memberToken,
-      testOrgSlug,
     );
 
     expect(response.status).toBe(403);
@@ -186,15 +160,12 @@ describe("PUT /api/zero/firewall-policies", () => {
   });
 
   it("should return 400 for unknown firewall ref", async () => {
-    const created = await (
-      await postAgent({}, testCliToken, testOrgSlug)
-    ).json();
+    const created = await (await postAgent({}, testCliToken)).json();
 
     const response = await putPolicies(
       created.agentId,
       { policies: { "nonexistent-firewall": { "perm:read": "allow" } } },
       testCliToken,
-      testOrgSlug,
     );
 
     expect(response.status).toBe(400);
@@ -204,15 +175,12 @@ describe("PUT /api/zero/firewall-policies", () => {
   });
 
   it("should return 400 for unknown permission name", async () => {
-    const created = await (
-      await postAgent({}, testCliToken, testOrgSlug)
-    ).json();
+    const created = await (await postAgent({}, testCliToken)).json();
 
     const response = await putPolicies(
       created.agentId,
       { policies: { github: { "totally-fake-permission": "allow" } } },
       testCliToken,
-      testOrgSlug,
     );
 
     expect(response.status).toBe(400);
@@ -226,7 +194,6 @@ describe("PUT /api/zero/firewall-policies", () => {
       "00000000-0000-0000-0000-000000000000",
       { policies: { github: { "issues:read": "allow" } } },
       testCliToken,
-      testOrgSlug,
     );
 
     expect(response.status).toBe(404);
@@ -247,15 +214,12 @@ describe("PUT /api/zero/firewall-policies", () => {
   });
 
   it("should accept empty policies", async () => {
-    const created = await (
-      await postAgent({}, testCliToken, testOrgSlug)
-    ).json();
+    const created = await (await postAgent({}, testCliToken)).json();
 
     const response = await putPolicies(
       created.agentId,
       { policies: {} },
       testCliToken,
-      testOrgSlug,
     );
 
     expect(response.status).toBe(200);
@@ -264,23 +228,20 @@ describe("PUT /api/zero/firewall-policies", () => {
   });
 
   it("should return firewallPolicies as null for new agents", async () => {
-    const createRes = await postAgent({}, testCliToken, testOrgSlug);
+    const createRes = await postAgent({}, testCliToken);
     expect(createRes.status).toBe(201);
     const data = await createRes.json();
     expect(data.firewallPolicies).toBeNull();
   });
 
   it("should return full agent response shape", async () => {
-    const created = await (
-      await postAgent({}, testCliToken, testOrgSlug)
-    ).json();
+    const created = await (await postAgent({}, testCliToken)).json();
 
     const policies = { github: { "issues:read": "allow" } };
     const response = await putPolicies(
       created.agentId,
       { policies },
       testCliToken,
-      testOrgSlug,
     );
 
     expect(response.status).toBe(200);
@@ -295,31 +256,17 @@ describe("PUT /api/zero/firewall-policies", () => {
   });
 
   it("should isolate policies between different agents", async () => {
-    const agent1 = await (
-      await postAgent({}, testCliToken, testOrgSlug)
-    ).json();
-    const agent2 = await (
-      await postAgent({}, testCliToken, testOrgSlug)
-    ).json();
+    const agent1 = await (await postAgent({}, testCliToken)).json();
+    const agent2 = await (await postAgent({}, testCliToken)).json();
 
     const policies1 = { github: { "issues:read": "allow" } };
     const policies2 = { slack: { "channels:read": "deny" } };
 
-    await putPolicies(
-      agent1.agentId,
-      { policies: policies1 },
-      testCliToken,
-      testOrgSlug,
-    );
-    await putPolicies(
-      agent2.agentId,
-      { policies: policies2 },
-      testCliToken,
-      testOrgSlug,
-    );
+    await putPolicies(agent1.agentId, { policies: policies1 }, testCliToken);
+    await putPolicies(agent2.agentId, { policies: policies2 }, testCliToken);
 
-    const get1 = await getAgent(agent1.agentId, testCliToken, testOrgSlug);
-    const get2 = await getAgent(agent2.agentId, testCliToken, testOrgSlug);
+    const get1 = await getAgent(agent1.agentId, testCliToken);
+    const get2 = await getAgent(agent2.agentId, testCliToken);
 
     expect((await get1.json()).firewallPolicies).toStrictEqual(policies1);
     expect((await get2.json()).firewallPolicies).toStrictEqual(policies2);

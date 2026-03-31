@@ -24,7 +24,10 @@ import {
   updateOrgTier,
   findTestRunnerJobEntry,
 } from "../../../../../src/__tests__/api-test-helpers";
-import { generateSandboxToken } from "../../../../../src/lib/auth/sandbox-token";
+import {
+  generateSandboxToken,
+  generateZeroToken,
+} from "../../../../../src/lib/auth/sandbox-token";
 import {
   testContext,
   uniqueId,
@@ -568,9 +571,8 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
     });
 
     it("should authenticate with valid CLI token", async () => {
-      const orgSlug = `org-${user.userId.slice(-8)}`;
       const request = createTestRequest(
-        `http://localhost:3000/api/agent/runs?org=${orgSlug}`,
+        "http://localhost:3000/api/agent/runs",
         {
           method: "POST",
           headers: {
@@ -1594,11 +1596,10 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       // Now switch to sandbox auth (no Clerk session)
       mockClerk({ userId: null });
 
-      const token = await generateSandboxToken(user.userId, runId);
+      const token = await generateZeroToken(user.userId, runId, user.orgId);
 
-      const orgEntry = await getOrgCacheEntry(user.orgId);
       const request = createTestRequest(
-        `http://localhost:3000/api/agent/runs?limit=10&org=${orgEntry!.slug}`,
+        "http://localhost:3000/api/agent/runs?limit=10",
         { headers: { authorization: `Bearer ${token}` } },
       );
       const response = await GET(request);
@@ -1620,11 +1621,10 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       });
 
       mockClerk({ userId: null });
-      const token = await generateSandboxToken(user.userId, "run-1");
+      const token = await generateZeroToken(user.userId, "run-1", user.orgId);
 
-      const orgEntry = await getOrgCacheEntry(user.orgId);
       const request = createTestRequest(
-        `http://localhost:3000/api/agent/runs?limit=10&org=${orgEntry!.slug}`,
+        "http://localhost:3000/api/agent/runs?limit=10",
         { headers: { authorization: `Bearer ${token}` } },
       );
       const response = await GET(request);
@@ -1763,7 +1763,7 @@ describe("GET /api/agent/runs - List Runs", () => {
     });
 
     const request = createTestRequest(
-      `http://localhost:3000/api/agent/runs?status=running&limit=50&org=${orgEntry!.slug}`,
+      "http://localhost:3000/api/agent/runs?status=running&limit=50",
     );
     const response = await GET(request);
     const data = await response.json();

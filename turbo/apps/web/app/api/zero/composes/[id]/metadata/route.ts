@@ -30,8 +30,7 @@ export async function PATCH(
   }
   const { userId } = authCtx;
 
-  const orgSlug = new URL(request.url).searchParams.get("org") ?? undefined;
-  const { org } = await resolveOrg(authCtx, orgSlug);
+  const { org } = await resolveOrg(authCtx);
 
   const body = await request.json();
 

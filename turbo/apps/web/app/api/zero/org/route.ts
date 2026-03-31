@@ -18,16 +18,14 @@ import {
 } from "../../../../src/lib/errors";
 
 const router = tsr.router(zeroOrgContract, {
-  get: async ({ headers }, { request }) => {
+  get: async ({ headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-
     try {
-      const { org: resolvedOrg, member } = await resolveOrg(authCtx, orgSlug);
+      const { org: resolvedOrg, member } = await resolveOrg(authCtx);
 
       return {
         status: 200 as const,
@@ -47,17 +45,15 @@ const router = tsr.router(zeroOrgContract, {
     }
   },
 
-  update: async ({ body, headers }, { request }) => {
+  update: async ({ body, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-
     try {
-      const { org: resolvedOrg } = await resolveOrg(authCtx, orgSlug);
+      const { org: resolvedOrg } = await resolveOrg(authCtx);
       const updatedOrg = await updateOrg(resolvedOrg.orgId, userId, {
         slug: body.slug,
         name: body.name,

@@ -201,7 +201,7 @@ describe("GET /api/zero/billing/status", () => {
     });
 
     const request = createTestRequest(
-      `http://localhost:3000/api/zero/billing/status?org=${newSlug}`,
+      `http://localhost:3000/api/zero/billing/status`,
     );
     const response = await GET(request);
 

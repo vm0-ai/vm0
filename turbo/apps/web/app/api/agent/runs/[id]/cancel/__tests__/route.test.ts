@@ -189,7 +189,7 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
       });
 
       const request = createTestRequest(
-        `http://localhost:3000/api/agent/runs/${runId}/cancel?org=${orgEntry!.slug}`,
+        `http://localhost:3000/api/agent/runs/${runId}/cancel`,
         { method: "POST" },
       );
       const response = await POST(request);

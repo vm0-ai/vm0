@@ -6,7 +6,6 @@ import {
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
-  uniqueId,
   type UserContext,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
@@ -37,12 +36,8 @@ describe("GET /api/agent/composes/list", () => {
   });
 
   it("should return no own composes when none exist in org", async () => {
-    // Use explicit org param to only get own agents (excludes shared)
-    const uniqueSuffix = user.userId.replace("test-user-", "");
-    const orgSlug = `org-${uniqueSuffix}`;
-
     const request = createTestRequest(
-      `http://localhost:3000/api/agent/composes/list?org=${orgSlug}`,
+      "http://localhost:3000/api/agent/composes/list",
     );
     const response = await GET(request);
     const data = await response.json();
@@ -59,12 +54,8 @@ describe("GET /api/agent/composes/list", () => {
     await createTestCompose(agentName1);
     await createTestCompose(agentName2);
 
-    // Use explicit org param to get only own agents
-    const uniqueSuffix = user.userId.replace("test-user-", "");
-    const orgSlug = `org-${uniqueSuffix}`;
-
     const request = createTestRequest(
-      `http://localhost:3000/api/agent/composes/list?org=${orgSlug}`,
+      "http://localhost:3000/api/agent/composes/list",
     );
     const response = await GET(request);
     const data = await response.json();
@@ -125,57 +116,14 @@ describe("GET /api/agent/composes/list", () => {
     expect(otherNames).not.toContain(userAgentName);
   });
 
-  it("should return 400 for non-existent org", async () => {
-    const request = createTestRequest(
-      "http://localhost:3000/api/agent/composes/list?org=nonexistent-org",
-    );
-    const response = await GET(request);
-    const data = await response.json();
-
-    expect(response.status).toBe(400);
-    expect(data.error.code).toBe("BAD_REQUEST");
-  });
-
-  it("should return 403 when user tries to access another user's org", async () => {
-    // Create another user with their own org
-    const otherUser = await context.setupUser({ prefix: "forbidden-user" });
-
-    // Create a compose for the other user
-    await createTestCompose(uniqueId("forbidden-compose"));
-
-    // Derive the other user's org slug from their userId
-    // userId format: {prefix}-{timestamp}-{uuid}
-    // org slug format: org-{timestamp}-{uuid}
-    const uniqueSuffix = otherUser.userId.replace("forbidden-user-", "");
-    const otherOrgSlug = `org-${uniqueSuffix}`;
-
-    // Switch back to original user and try to access the other user's org
-    mockClerk({ userId: user.userId });
-    const request = createTestRequest(
-      `http://localhost:3000/api/agent/composes/list?org=${otherOrgSlug}`,
-    );
-    const response = await GET(request);
-    const data = await response.json();
-
-    expect(response.status).toBe(403);
-    expect(data.error.code).toBe("FORBIDDEN");
-    expect(data.error.message).toContain("don't have access");
-  });
-
   it("should list composes by specified org slug", async () => {
     // Create a compose first
     const agentName = `test-org-agent-${Date.now()}`;
     await createTestCompose(agentName);
 
-    // Derive the user's org slug from their userId
-    // userId format: test-user-{timestamp}-{uuid}
-    // org slug format: org-{timestamp}-{uuid}
-    const uniqueSuffix = user.userId.replace("test-user-", "");
-    const orgSlug = `org-${uniqueSuffix}`;
-
     // List by org slug
     const request = createTestRequest(
-      `http://localhost:3000/api/agent/composes/list?org=${orgSlug}`,
+      "http://localhost:3000/api/agent/composes/list",
     );
     const response = await GET(request);
     const data = await response.json();

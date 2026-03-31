@@ -29,8 +29,7 @@ export async function POST(request: Request) {
   const { userId } = ctx;
 
   // Resolve orgId via resolveOrg (works for both Clerk sessions and CLI tokens)
-  const orgSlug = new URL(request.url).searchParams.get("org");
-  const { org } = await resolveOrg(ctx, orgSlug);
+  const { org } = await resolveOrg(ctx);
   const resolvedOrgId = org.orgId;
 
   const db = globalThis.services.db;

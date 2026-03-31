@@ -16,8 +16,6 @@ import { server } from "../../../../mocks/server";
 import { createCommand } from "../create";
 import chalk from "chalk";
 
-const AGENT_ID = "550e8400-e29b-41d4-a716-446655440000";
-
 const mockSkill = {
   name: "my-skill",
   displayName: "My Skill",
@@ -53,11 +51,11 @@ describe("zero skill create command", () => {
   });
 
   describe("successful create", () => {
-    it("should create skill with --agent flag", async () => {
+    it("should create skill at org level", async () => {
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
         http.post(
-          `http://localhost:3000/api/zero/agents/${AGENT_ID}/skills`,
+          "http://localhost:3000/api/zero/skills",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json(mockSkill, { status: 201 });
@@ -71,8 +69,6 @@ describe("zero skill create command", () => {
         "my-skill",
         "--dir",
         skillDir,
-        "--agent",
-        AGENT_ID,
         "--display-name",
         "My Skill",
         "--description",
@@ -85,30 +81,6 @@ describe("zero skill create command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("my-skill");
-      expect(logCalls).toContain("created");
-    });
-
-    it("should use $ZERO_AGENT_ID when --agent not provided", async () => {
-      vi.stubEnv("ZERO_AGENT_ID", AGENT_ID);
-
-      server.use(
-        http.post(
-          `http://localhost:3000/api/zero/agents/${AGENT_ID}/skills`,
-          () => {
-            return HttpResponse.json(mockSkill, { status: 201 });
-          },
-        ),
-      );
-
-      await createCommand.parseAsync([
-        "node",
-        "cli",
-        "my-skill",
-        "--dir",
-        skillDir,
-      ]);
-
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("created");
     });
   });
@@ -125,8 +97,6 @@ describe("zero skill create command", () => {
           "my-skill",
           "--dir",
           emptyDir,
-          "--agent",
-          AGENT_ID,
         ]);
       }).rejects.toThrow("process.exit called");
 
@@ -137,35 +107,14 @@ describe("zero skill create command", () => {
       rmSync(emptyDir, { recursive: true, force: true });
     });
 
-    it("should fail when no agent ID available", async () => {
-      vi.stubEnv("ZERO_AGENT_ID", "");
-
-      await expect(async () => {
-        await createCommand.parseAsync([
-          "node",
-          "cli",
-          "my-skill",
-          "--dir",
-          skillDir,
-        ]);
-      }).rejects.toThrow("process.exit called");
-
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Agent ID required"),
-      );
-    });
-
     it("should handle authentication error", async () => {
       server.use(
-        http.post(
-          `http://localhost:3000/api/zero/agents/${AGENT_ID}/skills`,
-          () => {
-            return HttpResponse.json(
-              { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
-              { status: 401 },
-            );
-          },
-        ),
+        http.post("http://localhost:3000/api/zero/skills", () => {
+          return HttpResponse.json(
+            { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
+            { status: 401 },
+          );
+        }),
       );
 
       await expect(async () => {
@@ -175,8 +124,6 @@ describe("zero skill create command", () => {
           "my-skill",
           "--dir",
           skillDir,
-          "--agent",
-          AGENT_ID,
         ]);
       }).rejects.toThrow("process.exit called");
 

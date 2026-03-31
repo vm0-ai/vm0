@@ -139,6 +139,24 @@ export async function addRunToThread(
 }
 
 /**
+ * Delete a chat thread with ownership check.
+ * Cascade deletes handle chat_thread_runs cleanup.
+ */
+export async function deleteChatThread(
+  threadId: string,
+  userId: string,
+): Promise<void> {
+  const deleted = await globalThis.services.db
+    .delete(chatThreads)
+    .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)))
+    .returning({ id: chatThreads.id });
+
+  if (deleted.length === 0) {
+    throw notFound("Chat thread not found");
+  }
+}
+
+/**
  * Update a chat thread's title.
  */
 export async function updateChatThreadTitle(

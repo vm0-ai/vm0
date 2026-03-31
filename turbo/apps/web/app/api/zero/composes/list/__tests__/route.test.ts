@@ -21,8 +21,8 @@ async function setupOrg(userId: string) {
   return { slug, orgId };
 }
 
-function listUrl(slug: string): string {
-  return `http://localhost:3000/api/zero/composes/list?org=${slug}`;
+function listUrl(): string {
+  return `http://localhost:3000/api/zero/composes/list`;
 }
 
 describe("GET /api/zero/composes/list", () => {
@@ -32,9 +32,9 @@ describe("GET /api/zero/composes/list", () => {
 
   it("should return empty list", async () => {
     const userId = uniqueId("zlist-empty");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
 
-    const response = await GET(createTestRequest(listUrl(slug)));
+    const response = await GET(createTestRequest(listUrl()));
     expect(response.status).toBe(200);
 
     const data = await response.json();
@@ -43,10 +43,10 @@ describe("GET /api/zero/composes/list", () => {
 
   it("should return list with composes", async () => {
     const userId = uniqueId("zlist-has");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
     await createTestCompose(`agent-${uniqueId("zlist")}`);
 
-    const response = await GET(createTestRequest(listUrl(slug)));
+    const response = await GET(createTestRequest(listUrl()));
     expect(response.status).toBe(200);
 
     const data = await response.json();
@@ -58,9 +58,7 @@ describe("GET /api/zero/composes/list", () => {
     mockClerk({ userId: null });
 
     const response = await GET(
-      createTestRequest(
-        "http://localhost:3000/api/zero/composes/list?org=test",
-      ),
+      createTestRequest("http://localhost:3000/api/zero/composes/list"),
     );
     expect(response.status).toBe(401);
   });

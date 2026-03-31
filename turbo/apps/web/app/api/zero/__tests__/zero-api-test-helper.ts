@@ -19,17 +19,14 @@ export async function onboardNewOrgAndUser(context: TestContext): Promise<{
 
   // 2. Upsert model provider
   const providerRes = await upsertModelProviderRoute(
-    new NextRequest(
-      `http://localhost:3000/api/zero/model-providers?org=${orgSlug}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "anthropic-api-key",
-          secret: "sk-ant-test-key",
-        }),
-      },
-    ),
+    new NextRequest(`http://localhost:3000/api/zero/model-providers`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "anthropic-api-key",
+        secret: "sk-ant-test-key",
+      }),
+    }),
   );
   if (!providerRes.ok) {
     throw new Error(
@@ -39,7 +36,7 @@ export async function onboardNewOrgAndUser(context: TestContext): Promise<{
 
   // 3. Create agent
   const agentRes = await createAgentRoute(
-    new NextRequest(`http://localhost:3000/api/zero/agents?org=${orgSlug}`, {
+    new NextRequest(`http://localhost:3000/api/zero/agents`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -59,7 +56,7 @@ export async function onboardNewOrgAndUser(context: TestContext): Promise<{
   // 4. Upload instructions
   const instructionsRes = await updateInstructionsRoute(
     new NextRequest(
-      `http://localhost:3000/api/zero/agents/${agent.agentId}/instructions?org=${orgSlug}`,
+      `http://localhost:3000/api/zero/agents/${agent.agentId}/instructions`,
       {
         method: "PUT",
         headers: { "Content-Type": "application/json" },

@@ -59,6 +59,8 @@ let mockUserIds: string[] = [];
 export function mockClerk(options: {
   userId: string | null;
   email?: string;
+  firstName?: string | null;
+  lastName?: string | null;
   orgId?: string | null;
   orgSlug?: string | null;
   orgRole?: string | null;
@@ -140,8 +142,8 @@ export function mockClerk(options: {
                     id: options.userId,
                     emailAddresses: [{ id: "email_1", emailAddress: email }],
                     primaryEmailAddressId: "email_1",
-                    firstName: null,
-                    lastName: null,
+                    firstName: options.firstName ?? null,
+                    lastName: options.lastName ?? null,
                     imageUrl: "",
                   },
                 ],
@@ -155,8 +157,8 @@ export function mockClerk(options: {
                   id: uid,
                   emailAddresses: [{ id: "email_1", emailAddress: email }],
                   primaryEmailAddressId: "email_1",
-                  firstName: null,
-                  lastName: null,
+                  firstName: options.firstName ?? null,
+                  lastName: options.lastName ?? null,
                   imageUrl: "",
                 }));
               return Promise.resolve({ data: matchedUsers });

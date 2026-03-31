@@ -24,8 +24,8 @@ async function setupOrg(userId: string) {
   return { slug, orgId };
 }
 
-function runUrl(slug: string, runId: string): string {
-  return `http://localhost:3000/api/zero/runs/${runId}?org=${slug}`;
+function runUrl(runId: string): string {
+  return `http://localhost:3000/api/zero/runs/${runId}`;
 }
 
 describe("GET /api/zero/runs/:id", () => {
@@ -35,14 +35,14 @@ describe("GET /api/zero/runs/:id", () => {
 
   it("should return run details", async () => {
     const userId = uniqueId("zrun-get");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
     const compose = await createTestCompose(`agent-${uniqueId("zrun")}`);
     const { runId } = await createTestRunInDb(userId, compose.composeId, {
       status: "running",
       prompt: "test prompt",
     });
 
-    const response = await GET(createTestRequest(runUrl(slug, runId)));
+    const response = await GET(createTestRequest(runUrl(runId)));
     expect(response.status).toBe(200);
 
     const data = await response.json();
@@ -53,9 +53,9 @@ describe("GET /api/zero/runs/:id", () => {
 
   it("should return 404 when run not found", async () => {
     const userId = uniqueId("zrun-nf");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
 
-    const response = await GET(createTestRequest(runUrl(slug, randomUUID())));
+    const response = await GET(createTestRequest(runUrl(randomUUID())));
     expect(response.status).toBe(404);
   });
 
@@ -63,7 +63,7 @@ describe("GET /api/zero/runs/:id", () => {
     mockClerk({ userId: null });
 
     const response = await GET(
-      createTestRequest("http://localhost:3000/api/zero/runs/some-id?org=test"),
+      createTestRequest("http://localhost:3000/api/zero/runs/some-id"),
     );
     expect(response.status).toBe(401);
   });
@@ -73,12 +73,9 @@ describe("GET /api/zero/runs/:id", () => {
     const token = await generateSandboxToken("user-1", "run-1");
 
     const response = await GET(
-      createTestRequest(
-        "http://localhost:3000/api/zero/runs/some-id?org=test",
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      ),
+      createTestRequest("http://localhost:3000/api/zero/runs/some-id", {
+        headers: { Authorization: `Bearer ${token}` },
+      }),
     );
     expect(response.status).toBe(403);
 

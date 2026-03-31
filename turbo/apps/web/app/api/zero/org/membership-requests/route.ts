@@ -20,15 +20,14 @@ import {
 import { isBadRequest, isForbidden } from "../../../../../src/lib/errors";
 
 const router = tsr.router(zeroOrgMembershipRequestsContract, {
-  accept: async ({ headers, body }, { request }) => {
+  accept: async ({ headers, body }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
 
     try {
-      const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org, member } = await resolveOrg(authCtx, orgSlug);
+      const { org, member } = await resolveOrg(authCtx);
       await acceptMembershipRequest(org.orgId, member.role, body.requestId);
       return {
         status: 200 as const,
@@ -45,15 +44,14 @@ const router = tsr.router(zeroOrgMembershipRequestsContract, {
     }
   },
 
-  reject: async ({ headers, body }, { request }) => {
+  reject: async ({ headers, body }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
 
     try {
-      const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org, member } = await resolveOrg(authCtx, orgSlug);
+      const { org, member } = await resolveOrg(authCtx);
       await rejectMembershipRequest(org.orgId, member.role, body.requestId);
       return {
         status: 200 as const,

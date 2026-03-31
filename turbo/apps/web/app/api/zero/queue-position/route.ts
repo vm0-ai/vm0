@@ -35,8 +35,7 @@ export async function GET(request: Request) {
     );
   }
 
-  const orgSlug = url.searchParams.get("org");
-  const org = await resolveOrgOrNull(authCtx, orgSlug);
+  const org = await resolveOrgOrNull(authCtx);
 
   // Verify the run belongs to this user and org
   const [run] = await globalThis.services.db

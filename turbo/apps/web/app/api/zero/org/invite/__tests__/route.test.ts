@@ -20,8 +20,8 @@ async function setupOrg(userId: string) {
   return { slug, orgId };
 }
 
-function inviteUrl(slug: string): string {
-  return `http://localhost:3000/api/zero/org/invite?org=${slug}`;
+function inviteUrl(): string {
+  return `http://localhost:3000/api/zero/org/invite`;
 }
 
 describe("POST /api/zero/org/invite (invite)", () => {
@@ -31,10 +31,10 @@ describe("POST /api/zero/org/invite (invite)", () => {
 
   it("should invite a member for an admin", async () => {
     const userId = uniqueId("inv-ok");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
 
     const response = await POST(
-      createTestRequest(inviteUrl(slug), {
+      createTestRequest(inviteUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: "newuser@example.com" }),
@@ -54,7 +54,7 @@ describe("POST /api/zero/org/invite (invite)", () => {
     await createTestOrg(slug);
 
     const response = await POST(
-      createTestRequest(inviteUrl(slug), {
+      createTestRequest(inviteUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: "newuser@example.com" }),
@@ -68,7 +68,7 @@ describe("POST /api/zero/org/invite (invite)", () => {
     mockClerk({ userId: null });
 
     const response = await POST(
-      createTestRequest(inviteUrl("any-org"), {
+      createTestRequest(inviteUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: "newuser@example.com" }),
@@ -86,10 +86,10 @@ describe("DELETE /api/zero/org/invite (revoke)", () => {
 
   it("should revoke an invitation for an admin", async () => {
     const userId = uniqueId("rev-ok");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
 
     const response = await DELETE(
-      createTestRequest(inviteUrl(slug), {
+      createTestRequest(inviteUrl(), {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ invitationId: "inv_test123" }),
@@ -109,7 +109,7 @@ describe("DELETE /api/zero/org/invite (revoke)", () => {
     await createTestOrg(slug);
 
     const response = await DELETE(
-      createTestRequest(inviteUrl(slug), {
+      createTestRequest(inviteUrl(), {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ invitationId: "inv_test123" }),
@@ -123,7 +123,7 @@ describe("DELETE /api/zero/org/invite (revoke)", () => {
     mockClerk({ userId: null });
 
     const response = await DELETE(
-      createTestRequest(inviteUrl("any-org"), {
+      createTestRequest(inviteUrl(), {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ invitationId: "inv_test123" }),
@@ -135,10 +135,15 @@ describe("DELETE /api/zero/org/invite (revoke)", () => {
 
   it("should return 404 when org not found", async () => {
     const userId = uniqueId("rev-nf");
-    mockClerk({ userId, orgId: `org_mock_${userId}`, orgRole: "org:admin" });
+    mockClerk({
+      userId,
+      orgId: `org_mock_${userId}`,
+      orgRole: "org:admin",
+      clerkOrgs: [],
+    });
 
     const response = await DELETE(
-      createTestRequest(inviteUrl("nonexistent-org-slug"), {
+      createTestRequest(inviteUrl(), {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ invitationId: "inv_test123" }),

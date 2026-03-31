@@ -229,7 +229,7 @@ const router = tsr.router(logsListContract, {
     // Resolve active org — always scope logs to the user's current org
     let orgId: string;
     try {
-      const { org } = await resolveOrg(authCtx, query.org);
+      const { org } = await resolveOrg(authCtx);
       orgId = org.orgId;
     } catch (error) {
       if (isNotFound(error) || isForbidden(error)) {

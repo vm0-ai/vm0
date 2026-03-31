@@ -27,7 +27,6 @@ async function setupOrg(userId: string) {
 }
 
 describe("DELETE /api/zero/schedules/:name", () => {
-  let slug: string;
   let orgId: string;
   let testComposeId: string;
   let testZeroAgentId: string;
@@ -36,7 +35,6 @@ describe("DELETE /api/zero/schedules/:name", () => {
     context.setupMocks();
     const user = await context.setupUser();
     const org = await setupOrg(user.userId);
-    slug = org.slug;
     orgId = org.orgId;
 
     const agentName = `zero-sched-del-${Date.now()}`;
@@ -54,7 +52,7 @@ describe("DELETE /api/zero/schedules/:name", () => {
 
     const response = await DELETE(
       createTestRequest(
-        `http://localhost:3000/api/zero/schedules/to-delete?agentId=${testZeroAgentId}&org=${slug}`,
+        `http://localhost:3000/api/zero/schedules/to-delete?agentId=${testZeroAgentId}`,
         { method: "DELETE" },
       ),
     );
@@ -65,7 +63,7 @@ describe("DELETE /api/zero/schedules/:name", () => {
   it("should return 404 for non-existent schedule", async () => {
     const response = await DELETE(
       createTestRequest(
-        `http://localhost:3000/api/zero/schedules/non-existent?agentId=${testZeroAgentId}&org=${slug}`,
+        `http://localhost:3000/api/zero/schedules/non-existent?agentId=${testZeroAgentId}`,
         { method: "DELETE" },
       ),
     );
@@ -83,7 +81,7 @@ describe("DELETE /api/zero/schedules/:name", () => {
 
     const response = await DELETE(
       createTestRequest(
-        `http://localhost:3000/api/zero/schedules/del-agent-id?agentId=${testComposeId}&org=${slug}`,
+        `http://localhost:3000/api/zero/schedules/del-agent-id?agentId=${testComposeId}`,
         { method: "DELETE" },
       ),
     );
@@ -96,7 +94,7 @@ describe("DELETE /api/zero/schedules/:name", () => {
 
     const response = await DELETE(
       createTestRequest(
-        `http://localhost:3000/api/zero/schedules/any?agentId=${testZeroAgentId}&org=${slug}`,
+        `http://localhost:3000/api/zero/schedules/any?agentId=${testZeroAgentId}`,
         { method: "DELETE" },
       ),
     );
