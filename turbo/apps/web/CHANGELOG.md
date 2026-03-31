@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.177.0](https://github.com/vm0-ai/vm0/compare/web-v12.176.0...web-v12.177.0) (2026-03-31)
+
+
+### Features
+
+* add chat thread deletion ([#7372](https://github.com/vm0-ai/vm0/issues/7372)) ([c3f8932](https://github.com/vm0-ai/vm0/commit/c3f8932847f40a3de1c5f4279b225e10fe64a73a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.131.0
+
 ## [12.176.0](https://github.com/vm0-ai/vm0/compare/web-v12.175.0...web-v12.176.0) (2026-03-31)
 
 
