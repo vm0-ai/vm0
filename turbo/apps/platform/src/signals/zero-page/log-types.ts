@@ -59,6 +59,7 @@ export interface LogDetail {
   displayName: string | null;
   framework: string | null;
   modelProvider: string | null;
+  selectedModel: string | null;
   triggerSource: TriggerSource | null;
   scheduleId: string | null;
   status: LogStatus;

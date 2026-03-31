@@ -149,6 +149,7 @@ describe("zero-chat signals", () => {
             displayName: null,
             framework: "claude-code",
             modelProvider: null,
+            selectedModel: null,
             triggerSource: "web",
             scheduleId: null,
             status: "completed",

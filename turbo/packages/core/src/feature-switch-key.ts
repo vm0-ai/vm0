@@ -39,5 +39,6 @@ export enum FeatureSwitchKey {
   Usage = "usage",
   ConcurrentAddOn = "concurrentAddOn",
   CreditAddOn = "creditAddOn",
+  ModelDetail = "modelDetail",
   RunContext = "runContext",
 }

@@ -135,6 +135,7 @@ function buildLogDetailBody(result: {
     displayName: agentDisplayName ?? null,
     framework: extractFramework(composeContent),
     modelProvider: run.modelProvider ?? null,
+    selectedModel: run.selectedModel ?? null,
     triggerSource: (triggerSource ?? "cli") as TriggerSource,
     scheduleId: scheduleId ?? null,
     status: run.status as

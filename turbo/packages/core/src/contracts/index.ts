@@ -418,6 +418,11 @@ export {
 } from "./firewall-expander";
 
 export {
+  matchFirewallPath,
+  findMatchingPermissions,
+} from "./firewall-rule-matcher";
+
+export {
   userPreferencesResponseSchema,
   updateUserPreferencesRequestSchema,
   type UserPreferencesResponse,

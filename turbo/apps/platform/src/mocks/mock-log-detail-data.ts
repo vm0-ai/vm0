@@ -36,6 +36,7 @@ export const mockLogDetail: LogDetail = {
   displayName: null,
   framework: "claude-code",
   modelProvider: null,
+  selectedModel: null,
   triggerSource: "slack",
   scheduleId: null,
   status: "completed",

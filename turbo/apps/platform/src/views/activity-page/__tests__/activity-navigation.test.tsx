@@ -36,6 +36,7 @@ function mockActivityAPIs() {
     displayName: "Test Agent",
     framework: "claude-code",
     modelProvider: null,
+    selectedModel: null,
     triggerSource: "web",
     scheduleId: null,
     status: "completed",
