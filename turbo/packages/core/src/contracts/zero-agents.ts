@@ -26,6 +26,7 @@ export const zeroAgentRequestSchema = z.object({
   displayName: z.string().optional(),
   sound: z.string().optional(),
   avatarUrl: z.string().optional(),
+  customSkills: z.array(z.string()).optional(),
 });
 
 /**
