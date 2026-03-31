@@ -366,9 +366,6 @@ async fn snapshot_restore_round_trip() {
         let dev_path = device.device_path().to_owned();
         device.log_status().await;
 
-        // Brief wait for kernel to finish setting up the reconnected device
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-
         // Read first 4K block from the device
         let output = Command::new("dd")
             .args([

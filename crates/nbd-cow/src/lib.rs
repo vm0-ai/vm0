@@ -95,6 +95,24 @@ impl NbdCowDevice {
         };
         let device_path = PathBuf::from(format!("/dev/nbd{device_index}"));
 
+        // Wait for the kernel to finish setting up the device.
+        // On reconnect (disconnect + connect to the same index), the kernel
+        // may briefly report size=0 before the new capacity propagates to the
+        // block layer.
+        let size_path = format!("/sys/block/nbd{device_index}/size");
+        for _ in 0..20 {
+            match std::fs::read_to_string(&size_path) {
+                Ok(content) => {
+                    let sectors: u64 = content.trim().parse().unwrap_or(0);
+                    if sectors > 0 {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+
         Ok(Self {
             device_index,
             device_path,
