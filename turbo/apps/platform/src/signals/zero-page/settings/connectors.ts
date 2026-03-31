@@ -300,25 +300,6 @@ export const connectConnector$ = command(
 
     set(internalPollingType$, type);
 
-    // Listen for OAuth completion via BroadcastChannel so the UI updates
-    // immediately — without waiting for the user to close the popup.
-    const channel =
-      typeof BroadcastChannel !== "undefined"
-        ? new BroadcastChannel("vm0:connector-oauth")
-        : null;
-    let channelNotified = false;
-
-    if (channel) {
-      channel.addEventListener("message", (event: MessageEvent) => {
-        if (
-          event.data?.connectorType === type &&
-          event.data?.status === "success"
-        ) {
-          channelNotified = true;
-        }
-      });
-    }
-
     const authWindow = window.open(
       `${baseUrl}/api/zero/connectors/${type}/authorize`,
       "_blank",
@@ -326,32 +307,30 @@ export const connectConnector$ = command(
     );
 
     if (!authWindow) {
-      channel?.close();
       throw new Error("Failed to open authorization window");
     }
 
-    try {
-      while (true) {
-        await delay(500, { signal });
+    // Poll the API until the connector appears or the popup is closed.
+    // The platform and OAuth callback page live on different origins
+    // (app.* vs www.*), so BroadcastChannel cannot be used.
+    let freshConnectors: ConnectorResponse[] = [];
+    while (true) {
+      await delay(2000, { signal });
 
-        if (!channelNotified && !authWindow.closed) {
-          continue;
-        }
+      set(reloadConnectors$);
+      const { connectors: polled } = await get(connectors$);
+      signal.throwIfAborted();
 
+      if (polled.some((c) => c.type === type)) {
+        freshConnectors = polled;
         break;
       }
-    } finally {
-      channel?.close();
-    }
 
-    // Auto-close popup if it's still open (notified via BroadcastChannel)
-    if (!authWindow.closed) {
-      authWindow.close();
+      if (authWindow.closed) {
+        freshConnectors = polled;
+        break;
+      }
     }
-
-    set(reloadConnectors$);
-    const { connectors: freshConnectors } = await get(connectors$);
-    signal.throwIfAborted();
 
     // Mark as optimistically connected before clearing polling so the UI
     // transitions directly from "Connecting…" to "Connected" without flash.

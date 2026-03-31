@@ -4,7 +4,7 @@ import { useTheme } from "../../components/ThemeProvider";
 import Image from "next/image";
 import { IconCheck, IconX } from "@tabler/icons-react";
 import { useSearchParams } from "next/navigation";
-import { use, useEffect } from "react";
+import { use } from "react";
 
 interface PageProps {
   params: Promise<{ status: string }>;
@@ -22,23 +22,6 @@ export default function ConnectorStatusPage({
   const errorMessage = searchParams.get("message");
 
   const isSuccess = status === "success";
-
-  useEffect(() => {
-    if (typeof BroadcastChannel === "undefined") {
-      return;
-    }
-    const channel = new BroadcastChannel("vm0:connector-oauth");
-    channel.postMessage({
-      connectorType,
-      status: isSuccess ? "success" : "error",
-    });
-    channel.close();
-    // Yield to the event loop so the parent window's BroadcastChannel listener
-    // processes the message before the popup closes. postMessage dispatches
-    // asynchronously, so a single macrotask yield is sufficient.
-    const timer = setTimeout(() => window.close(), 0);
-    return () => clearTimeout(timer);
-  }, [connectorType, isSuccess]);
   const connectorLabel =
     connectorType === "github" ? "GitHub" : connectorType.toUpperCase();
 

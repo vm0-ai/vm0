@@ -25,7 +25,7 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { ScopeReviewModal } from "./components/settings/scope-review-modal.tsx";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import { detach, Reason } from "../../signals/utils.ts";
+import { detach, Reason, throwIfAbort } from "../../signals/utils.ts";
 import {
   Button,
   DropdownMenu,
@@ -268,9 +268,18 @@ export function ZeroConnectorsPage() {
   };
 
   const disconnectHandler = (type: ConnectorType) => {
-    detach(disconnect(type, signal), Reason.DomCallback);
     const label = allConnectors.find((c) => c.type === type)?.label ?? type;
-    toast.success(`${label} disconnected`);
+    const toastId = toast.loading(`Disconnecting ${label}...`);
+    detach(
+      disconnect(type, signal).then(
+        () => toast.success(`${label} disconnected`, { id: toastId }),
+        (error: unknown) => {
+          throwIfAbort(error);
+          toast.error(`Failed to disconnect ${label}`, { id: toastId });
+        },
+      ),
+      Reason.DomCallback,
+    );
   };
 
   const getEffective = (c: ConnectorTypeWithStatus) =>

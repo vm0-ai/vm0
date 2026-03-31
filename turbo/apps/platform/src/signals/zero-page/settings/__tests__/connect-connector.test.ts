@@ -8,6 +8,14 @@ import type { ConnectorListResponse } from "@vm0/core";
 
 const context = testContext();
 
+function makeEmptyConnectorResponse(): ConnectorListResponse {
+  return {
+    connectors: [],
+    configuredTypes: [],
+    connectorProvidedSecretNames: [],
+  };
+}
+
 function makeGithubConnectorResponse(): ConnectorListResponse {
   return {
     connectors: [
@@ -34,18 +42,25 @@ describe("connectConnector$", () => {
     vi.useRealTimers();
   });
 
-  it("exits polling when BroadcastChannel message arrives", async () => {
+  it("detects connector via API polling while popup is open", async () => {
     await setupPage({ context, path: "/", withoutRender: true });
 
     const mockWindow = { closed: false, close: vi.fn() };
     vi.spyOn(window, "open").mockReturnValue(mockWindow as unknown as Window);
 
-    // After BroadcastChannel notification, API returns the connected connector
+    let pollCount = 0;
     server.use(
       http.get("*/api/zero/connectors", () => {
+        pollCount++;
+        // First poll returns empty, second returns connected
+        if (pollCount <= 1) {
+          return HttpResponse.json(makeEmptyConnectorResponse());
+        }
         return HttpResponse.json(makeGithubConnectorResponse());
       }),
     );
+
+    vi.useFakeTimers();
 
     const connectPromise = context.store.set(
       connectConnector$,
@@ -53,22 +68,21 @@ describe("connectConnector$", () => {
       context.signal,
     );
 
-    // Simulate OAuth success via BroadcastChannel
-    const channel = new BroadcastChannel("vm0:connector-oauth");
-    channel.postMessage({ connectorType: "github", status: "success" });
-    channel.close();
+    // Advance past first polling interval (2s) — connector not yet connected
+    await vi.advanceTimersByTimeAsync(2000);
+    // Advance past second polling interval — connector now connected
+    await vi.advanceTimersByTimeAsync(2000);
 
     const result = await connectPromise;
 
     expect(result).toBeTruthy();
-    expect(mockWindow.close).toHaveBeenCalledWith();
+    expect(pollCount).toBeGreaterThanOrEqual(2);
 
-    // Polling state should be cleared
     const polling = context.store.get(pollingConnectorType$);
     expect(polling).toBeNull();
   });
 
-  it("falls back to authWindow.closed when BroadcastChannel is unavailable", async () => {
+  it("exits when popup is closed even if connector not found", async () => {
     await setupPage({ context, path: "/", withoutRender: true });
 
     const mockWindow = { closed: false, close: vi.fn() };
@@ -76,41 +90,27 @@ describe("connectConnector$", () => {
 
     server.use(
       http.get("*/api/zero/connectors", () => {
-        return HttpResponse.json(makeGithubConnectorResponse());
+        return HttpResponse.json(makeEmptyConnectorResponse());
       }),
     );
 
-    // Hide BroadcastChannel to test fallback
-    const OriginalBC = globalThis.BroadcastChannel;
-    Object.defineProperty(globalThis, "BroadcastChannel", {
-      value: undefined,
-      writable: true,
-      configurable: true,
-    });
+    vi.useFakeTimers();
 
-    try {
-      vi.useFakeTimers();
+    const connectPromise = context.store.set(
+      connectConnector$,
+      "github",
+      context.signal,
+    );
 
-      const connectPromise = context.store.set(
-        connectConnector$,
-        "github",
-        context.signal,
-      );
+    // Advance one poll interval, then close popup
+    await vi.advanceTimersByTimeAsync(2000);
+    mockWindow.closed = true;
+    await vi.advanceTimersByTimeAsync(2000);
 
-      // Advance past the first polling interval, then simulate popup closing
-      await vi.advanceTimersByTimeAsync(500);
-      mockWindow.closed = true;
-      await vi.advanceTimersByTimeAsync(500);
+    const result = await connectPromise;
+    expect(result).toBeFalsy();
 
-      const result = await connectPromise;
-      expect(result).toBeTruthy();
-    } finally {
-      vi.useRealTimers();
-      Object.defineProperty(globalThis, "BroadcastChannel", {
-        value: OriginalBC,
-        writable: true,
-        configurable: true,
-      });
-    }
+    const polling = context.store.get(pollingConnectorType$);
+    expect(polling).toBeNull();
   });
 });
