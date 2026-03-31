@@ -477,13 +477,13 @@ class TestErrorHandler:
 
         assert "flow-err-1" not in mitm_addon._request_start_times
 
-    def test_skips_log_when_no_metadata(self, tmp_path):
-        flow = MagicMock()
-        flow.id = "flow-err-2"
-        flow.metadata = {}
+    def test_skips_log_when_no_metadata(self):
+        flow = _make_http_flow()
+        flow.error = MagicMock()
+        flow.error.msg = "connection reset"
 
         with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
-            mitm_addon.error(flow)  # Should not raise
+            mitm_addon.error(flow)  # Should not raise, no JSONL written
 
     def test_logs_error_to_jsonl(self, tmp_path):
         flow = _make_http_flow(host="slack.com", path="/api/chat.postMessage")
