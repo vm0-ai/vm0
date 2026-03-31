@@ -1,6 +1,6 @@
 {
-  "id": "0211_remove_schedule_artifact_columns",
-  "prevId": "0210_unify_notification_defaults",
+  "id": "708875bc-17f4-42a8-8264-1a91074f59b7",
+  "prevId": "1253c8f0-ae2b-435a-acd5-a1d38eff73da",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -5807,6 +5807,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "artifact_name": {
+          "name": "artifact_name",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "artifact_version": {
+          "name": "artifact_version",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
         "volume_versions": {
           "name": "volume_versions",
           "type": "jsonb",
@@ -5818,14 +5830,14 @@
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
-          "default": false
+          "default": true
         },
         "notify_slack": {
           "name": "notify_slack",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
-          "default": false
+          "default": true
         },
         "slack_channel_id": {
           "name": "slack_channel_id",
