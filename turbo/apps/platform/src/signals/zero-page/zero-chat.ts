@@ -623,8 +623,6 @@ export const loadSessionFromSnapshot$ = command(
 
     set(internalReloadChatThreads$, (n) => n + 1);
     set(reloadCurrentThread$, (n) => n + 1);
-
-    await Promise.all(assistantMessages.filter((m) => m.legacyRunId));
   },
 );
 
