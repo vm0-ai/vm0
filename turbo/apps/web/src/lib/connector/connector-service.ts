@@ -659,6 +659,25 @@ export async function getConnectorAccessToken(
 }
 
 /**
+ * Read the current refresh token for a connector type from the secrets store.
+ * Does NOT trigger a refresh — returns the latest persisted value.
+ * Returns null if the connector has no refresh token support or no stored value.
+ */
+export async function getConnectorRefreshToken(
+  connectorType: string,
+  orgId: string,
+  userId: string,
+): Promise<{ secretName: string; token: string } | null> {
+  const handler =
+    PROVIDER_HANDLERS[connectorType as keyof typeof PROVIDER_HANDLERS];
+  if (!handler?.getRefreshSecretName) return null;
+  const secretName = handler.getRefreshSecretName();
+  const token = await getSecretValue(orgId, userId, secretName, "connector");
+  if (!token) return null;
+  return { secretName, token };
+}
+
+/**
  * Create or update a connector secret (e.g., refresh token)
  */
 async function upsertConnectorSecret(
