@@ -49,9 +49,9 @@ async function renderChatPage(sendMode: "enter" | "cmd-enter" = "enter") {
 }
 
 function getTextarea(): Promise<HTMLTextAreaElement> {
-  return waitFor(
-    () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-  );
+  return waitFor(() => {
+    return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+  });
 }
 
 describe("send-key behavior — enter mode", () => {

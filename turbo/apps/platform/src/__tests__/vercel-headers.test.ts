@@ -15,11 +15,15 @@ const entries =
   (vercelConfig as { headers?: VercelHeaderEntry[] }).headers ?? [];
 
 function findHeaderEntry(source: string): VercelHeaderEntry | undefined {
-  return entries.find((e) => e.source === source);
+  return entries.find((e) => {
+    return e.source === source;
+  });
 }
 
 function findHeader(headers: HeaderPair[], name: string): string | undefined {
-  return headers.find((h) => h.key === name)?.value;
+  return headers.find((h) => {
+    return h.key === name;
+  })?.value;
 }
 
 describe("app vercel.json headers", () => {
@@ -49,8 +53,12 @@ describe("app vercel.json headers", () => {
   });
 
   it("should place asset cache rule before catch-all so it takes priority", () => {
-    const assetIndex = entries.findIndex((e) => e.source === "/assets/(.*)");
-    const catchAllIndex = entries.findIndex((e) => e.source === "/(.*)");
+    const assetIndex = entries.findIndex((e) => {
+      return e.source === "/assets/(.*)";
+    });
+    const catchAllIndex = entries.findIndex((e) => {
+      return e.source === "/(.*)";
+    });
 
     expect(assetIndex).toBeGreaterThanOrEqual(0);
     expect(catchAllIndex).toBeGreaterThanOrEqual(0);

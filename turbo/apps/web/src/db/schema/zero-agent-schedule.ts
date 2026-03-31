@@ -35,7 +35,12 @@ export const zeroAgentSchedules = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     agentId: uuid("agent_id")
       .notNull()
-      .references(() => agentComposes.id, { onDelete: "cascade" }),
+      .references(
+        () => {
+          return agentComposes.id;
+        },
+        { onDelete: "cascade" },
+      ),
     userId: text("user_id").notNull(),
     orgId: text("org_id").notNull(),
     name: varchar("name", { length: 64 }).notNull(),
@@ -70,9 +75,14 @@ export const zeroAgentSchedules = pgTable(
     enabled: boolean("enabled").default(true).notNull(),
     nextRunAt: timestamp("next_run_at"),
     lastRunAt: timestamp("last_run_at"),
-    lastRunId: uuid("last_run_id").references(() => agentRuns.id, {
-      onDelete: "set null",
-    }),
+    lastRunId: uuid("last_run_id").references(
+      () => {
+        return agentRuns.id;
+      },
+      {
+        onDelete: "set null",
+      },
+    ),
     // Tracks when retry cycle started for concurrency failures (null = not retrying)
     retryStartedAt: timestamp("retry_started_at"),
     // Tracks consecutive failures for loop schedules (auto-disable after 3)
@@ -82,21 +92,23 @@ export const zeroAgentSchedules = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (table) => [
-    // Index for finding schedules by agent
-    index("idx_zero_agent_schedules_zero_agent").on(table.agentId),
-    index("idx_zero_agent_schedules_org").on(table.orgId),
-    uniqueIndex("idx_zero_agent_schedules_agent_name_org_user").on(
-      table.agentId,
-      table.name,
-      table.orgId,
-      table.userId,
-    ),
-    // Partial index for efficient cron polling: enabled schedules with due next_run_at
-    index("idx_zero_agent_schedules_next_run")
-      .on(table.nextRunAt)
-      .where(sql`enabled = true`),
-    // Index for user schedule listing (listSchedules filters by userId + optional orgId)
-    index("idx_zero_agent_schedules_user_org").on(table.userId, table.orgId),
-  ],
+  (table) => {
+    return [
+      // Index for finding schedules by agent
+      index("idx_zero_agent_schedules_zero_agent").on(table.agentId),
+      index("idx_zero_agent_schedules_org").on(table.orgId),
+      uniqueIndex("idx_zero_agent_schedules_agent_name_org_user").on(
+        table.agentId,
+        table.name,
+        table.orgId,
+        table.userId,
+      ),
+      // Partial index for efficient cron polling: enabled schedules with due next_run_at
+      index("idx_zero_agent_schedules_next_run")
+        .on(table.nextRunAt)
+        .where(sql`enabled = true`),
+      // Index for user schedule listing (listSchedules filters by userId + optional orgId)
+      index("idx_zero_agent_schedules_user_org").on(table.userId, table.orgId),
+    ];
+  },
 );

@@ -33,17 +33,17 @@ describe("uploadInstructionsServerSide", () => {
     expect(context.mocks.s3.putS3Object).toHaveBeenCalledTimes(2);
 
     // Verify archive upload
-    const archiveCall = context.mocks.s3.putS3Object.mock.calls.find(
-      (c) => typeof c[1] === "string" && c[1].endsWith("/archive.tar.gz"),
-    );
+    const archiveCall = context.mocks.s3.putS3Object.mock.calls.find((c) => {
+      return typeof c[1] === "string" && c[1].endsWith("/archive.tar.gz");
+    });
     expect(archiveCall).toBeDefined();
     expect(archiveCall![2]).toBeInstanceOf(Buffer);
     expect(archiveCall![3]).toBe("application/gzip");
 
     // Verify manifest upload
-    const manifestCall = context.mocks.s3.putS3Object.mock.calls.find(
-      (c) => typeof c[1] === "string" && c[1].endsWith("/manifest.json"),
-    );
+    const manifestCall = context.mocks.s3.putS3Object.mock.calls.find((c) => {
+      return typeof c[1] === "string" && c[1].endsWith("/manifest.json");
+    });
     expect(manifestCall).toBeDefined();
     expect(manifestCall![3]).toBe("application/json");
 
@@ -67,9 +67,9 @@ describe("uploadInstructionsServerSide", () => {
     expect(result.storageName).toBe("agent-instructions@meta-agent");
 
     // Extract the archive content and verify no metadata was injected
-    const archiveCall = context.mocks.s3.putS3Object.mock.calls.find(
-      (c) => typeof c[1] === "string" && c[1].endsWith("/archive.tar.gz"),
-    );
+    const archiveCall = context.mocks.s3.putS3Object.mock.calls.find((c) => {
+      return typeof c[1] === "string" && c[1].endsWith("/archive.tar.gz");
+    });
     expect(archiveCall).toBeDefined();
 
     const archiveBuffer = archiveCall![2] as Buffer;

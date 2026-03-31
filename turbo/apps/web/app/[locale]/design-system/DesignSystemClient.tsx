@@ -228,20 +228,26 @@ function Sidebar({
   return (
     <aside className="sticky top-24 h-fit w-64 shrink-0">
       <nav className="space-y-1">
-        {TOP_NAV_ITEMS.map(({ section, label }) => (
-          <NavItem
-            key={section}
-            active={activeSection === section}
-            onClick={() => setActiveSection(section)}
-          >
-            {label}
-          </NavItem>
-        ))}
+        {TOP_NAV_ITEMS.map(({ section, label }) => {
+          return (
+            <NavItem
+              key={section}
+              active={activeSection === section}
+              onClick={() => {
+                return setActiveSection(section);
+              }}
+            >
+              {label}
+            </NavItem>
+          );
+        })}
 
         {/* Components Section with Submenu */}
         <div>
           <button
-            onClick={() => setComponentsExpanded(!componentsExpanded)}
+            onClick={() => {
+              return setComponentsExpanded(!componentsExpanded);
+            }}
             className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-muted ${
               activeSection.startsWith("components-")
                 ? "text-primary"
@@ -255,22 +261,28 @@ function Sidebar({
           </button>
           {componentsExpanded && (
             <div className="ml-3 mt-1 space-y-1 border-l border-divider pl-3">
-              {COMPONENT_NAV_ITEMS.map(({ section, label }) => (
-                <SubNavItem
-                  key={section}
-                  active={activeSection === section}
-                  onClick={() => setActiveSection(section)}
-                >
-                  {label}
-                </SubNavItem>
-              ))}
+              {COMPONENT_NAV_ITEMS.map(({ section, label }) => {
+                return (
+                  <SubNavItem
+                    key={section}
+                    active={activeSection === section}
+                    onClick={() => {
+                      return setActiveSection(section);
+                    }}
+                  >
+                    {label}
+                  </SubNavItem>
+                );
+              })}
             </div>
           )}
         </div>
 
         <NavItem
           active={activeSection === "tokens"}
-          onClick={() => setActiveSection("tokens")}
+          onClick={() => {
+            return setActiveSection("tokens");
+          }}
         >
           Design Tokens
         </NavItem>
@@ -469,9 +481,9 @@ function ColorsSection() {
           </p>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {primaryColors.map((color) => (
-            <ColorCard key={color.name} {...color} />
-          ))}
+          {primaryColors.map((color) => {
+            return <ColorCard key={color.name} {...color} />;
+          })}
         </div>
       </div>
 
@@ -486,9 +498,9 @@ function ColorsSection() {
           </p>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {grayColors.map((color) => (
-            <ColorCard key={color.name} {...color} />
-          ))}
+          {grayColors.map((color) => {
+            return <ColorCard key={color.name} {...color} />;
+          })}
         </div>
       </div>
 
@@ -967,33 +979,35 @@ function TokensSection() {
               Primary color scale (orange)
             </h4>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
-              {primaryColorTokens.map((token) => (
-                <div key={token.name} className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <div className="relative group/color">
-                      <div
-                        className="h-10 w-10 rounded-md border border-border cursor-pointer"
-                        style={{ backgroundColor: token.light }}
-                      />
-                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/color:opacity-100 transition-opacity">
-                        <CopyButton text={token.light} />
+              {primaryColorTokens.map((token) => {
+                return (
+                  <div key={token.name} className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <div className="relative group/color">
+                        <div
+                          className="h-10 w-10 rounded-md border border-border cursor-pointer"
+                          style={{ backgroundColor: token.light }}
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/color:opacity-100 transition-opacity">
+                          <CopyButton text={token.light} />
+                        </div>
+                      </div>
+                      <div className="relative group/color">
+                        <div
+                          className="h-10 w-10 rounded-md border border-border cursor-pointer"
+                          style={{ backgroundColor: token.dark }}
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/color:opacity-100 transition-opacity">
+                          <CopyButton text={token.dark} />
+                        </div>
                       </div>
                     </div>
-                    <div className="relative group/color">
-                      <div
-                        className="h-10 w-10 rounded-md border border-border cursor-pointer"
-                        style={{ backgroundColor: token.dark }}
-                      />
-                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/color:opacity-100 transition-opacity">
-                        <CopyButton text={token.dark} />
-                      </div>
-                    </div>
+                    <code className="rounded bg-primary-50 px-1.5 py-0.5 text-xs text-primary-700 border border-primary-200">
+                      {token.name}
+                    </code>
                   </div>
-                  <code className="rounded bg-primary-50 px-1.5 py-0.5 text-xs text-primary-700 border border-primary-200">
-                    {token.name}
-                  </code>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -1003,33 +1017,35 @@ function TokensSection() {
               Gray color scale (neutral)
             </h4>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
-              {grayColorTokens.map((token) => (
-                <div key={token.name} className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <div className="relative group/color">
-                      <div
-                        className="h-10 w-10 rounded-md border border-border cursor-pointer"
-                        style={{ backgroundColor: token.light }}
-                      />
-                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/color:opacity-100 transition-opacity">
-                        <CopyButton text={token.light} />
+              {grayColorTokens.map((token) => {
+                return (
+                  <div key={token.name} className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <div className="relative group/color">
+                        <div
+                          className="h-10 w-10 rounded-md border border-border cursor-pointer"
+                          style={{ backgroundColor: token.light }}
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/color:opacity-100 transition-opacity">
+                          <CopyButton text={token.light} />
+                        </div>
+                      </div>
+                      <div className="relative group/color">
+                        <div
+                          className="h-10 w-10 rounded-md border border-border cursor-pointer"
+                          style={{ backgroundColor: token.dark }}
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/color:opacity-100 transition-opacity">
+                          <CopyButton text={token.dark} />
+                        </div>
                       </div>
                     </div>
-                    <div className="relative group/color">
-                      <div
-                        className="h-10 w-10 rounded-md border border-border cursor-pointer"
-                        style={{ backgroundColor: token.dark }}
-                      />
-                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/color:opacity-100 transition-opacity">
-                        <CopyButton text={token.dark} />
-                      </div>
-                    </div>
+                    <code className="rounded bg-primary-50 px-1.5 py-0.5 text-xs text-primary-700 border border-primary-200">
+                      {token.name}
+                    </code>
                   </div>
-                  <code className="rounded bg-primary-50 px-1.5 py-0.5 text-xs text-primary-700 border border-primary-200">
-                    {token.name}
-                  </code>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -1039,33 +1055,35 @@ function TokensSection() {
               Theme-aware colors
             </h4>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
-              {themeAwareTokens.map((token) => (
-                <div key={token.name} className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <div className="relative group/color">
-                      <div
-                        className="h-10 w-10 rounded-md border border-border cursor-pointer"
-                        style={{ backgroundColor: token.light }}
-                      />
-                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/color:opacity-100 transition-opacity">
-                        <CopyButton text={token.light} />
+              {themeAwareTokens.map((token) => {
+                return (
+                  <div key={token.name} className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <div className="relative group/color">
+                        <div
+                          className="h-10 w-10 rounded-md border border-border cursor-pointer"
+                          style={{ backgroundColor: token.light }}
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/color:opacity-100 transition-opacity">
+                          <CopyButton text={token.light} />
+                        </div>
+                      </div>
+                      <div className="relative group/color">
+                        <div
+                          className="h-10 w-10 rounded-md border border-border cursor-pointer"
+                          style={{ backgroundColor: token.dark }}
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/color:opacity-100 transition-opacity">
+                          <CopyButton text={token.dark} />
+                        </div>
                       </div>
                     </div>
-                    <div className="relative group/color">
-                      <div
-                        className="h-10 w-10 rounded-md border border-border cursor-pointer"
-                        style={{ backgroundColor: token.dark }}
-                      />
-                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/color:opacity-100 transition-opacity">
-                        <CopyButton text={token.dark} />
-                      </div>
-                    </div>
+                    <code className="rounded bg-primary-50 px-1.5 py-0.5 text-xs text-primary-700 border border-primary-200">
+                      {token.name}
+                    </code>
                   </div>
-                  <code className="rounded bg-primary-50 px-1.5 py-0.5 text-xs text-primary-700 border border-primary-200">
-                    {token.name}
-                  </code>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
@@ -1091,23 +1109,25 @@ function TokensSection() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {semanticTokens.map((token) => (
-              <TableRow key={token.name}>
-                <TableCell>
-                  <code className="rounded bg-primary-50 px-2 py-0.5 text-xs text-primary-700 border border-primary-200">
-                    {token.name}
-                  </code>
-                </TableCell>
-                <TableCell>
-                  <code className="rounded bg-muted px-2 py-0.5 text-xs">
-                    {token.maps}
-                  </code>
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {token.usage}
-                </TableCell>
-              </TableRow>
-            ))}
+            {semanticTokens.map((token) => {
+              return (
+                <TableRow key={token.name}>
+                  <TableCell>
+                    <code className="rounded bg-primary-50 px-2 py-0.5 text-xs text-primary-700 border border-primary-200">
+                      {token.name}
+                    </code>
+                  </TableCell>
+                  <TableCell>
+                    <code className="rounded bg-muted px-2 py-0.5 text-xs">
+                      {token.maps}
+                    </code>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {token.usage}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </div>
@@ -1123,39 +1143,43 @@ function TokensSection() {
           </p>
         </div>
         <div className="space-y-6">
-          {tailwindUtilities.map((category) => (
-            <div key={category.category}>
-              <h4 className="mb-3 text-sm font-semibold text-foreground">
-                {category.category}
-              </h4>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Token</TableHead>
-                    <TableHead>Value</TableHead>
-                    <TableHead>Usage</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {category.tokens.map((token) => (
-                    <TableRow key={token.name}>
-                      <TableCell>
-                        <code className="rounded bg-muted px-2 py-0.5 text-xs text-foreground">
-                          {token.name}
-                        </code>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {token.value}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {token.usage}
-                      </TableCell>
+          {tailwindUtilities.map((category) => {
+            return (
+              <div key={category.category}>
+                <h4 className="mb-3 text-sm font-semibold text-foreground">
+                  {category.category}
+                </h4>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Token</TableHead>
+                      <TableHead>Value</TableHead>
+                      <TableHead>Usage</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          ))}
+                  </TableHeader>
+                  <TableBody>
+                    {category.tokens.map((token) => {
+                      return (
+                        <TableRow key={token.name}>
+                          <TableCell>
+                            <code className="rounded bg-muted px-2 py-0.5 text-xs text-foreground">
+                              {token.name}
+                            </code>
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {token.value}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {token.usage}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            );
+          })}
         </div>
       </div>
     </section>
@@ -1418,44 +1442,47 @@ function ButtonComponentPage() {
                 hover: "underline",
                 active: "opacity 80%",
               },
-            ].map((item) => (
-              <div
-                key={item.name}
-                className="rounded-xl border border-border bg-card p-6"
-              >
-                <h4 className="text-sm font-semibold text-foreground mb-4">
-                  {item.name}
-                </h4>
-                <Button
-                  variant={
-                    item.variant as
-                      | "default"
-                      | "destructive"
-                      | "outline"
-                      | "secondary"
-                      | "ghost"
-                      | "link"
-                  }
-                  className="w-full mb-4"
+            ].map((item) => {
+              return (
+                <div
+                  key={item.name}
+                  className="rounded-xl border border-border bg-card p-6"
                 >
-                  Hover & Click Me
-                </Button>
-                <div className="space-y-1.5 text-xs text-muted-foreground">
-                  <div className="flex items-start gap-2">
-                    <span className="text-muted-foreground/50">•</span>
-                    <span>
-                      <span className="font-medium">Hover:</span> {item.hover}
-                    </span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="text-muted-foreground/50">•</span>
-                    <span>
-                      <span className="font-medium">Active:</span> {item.active}
-                    </span>
+                  <h4 className="text-sm font-semibold text-foreground mb-4">
+                    {item.name}
+                  </h4>
+                  <Button
+                    variant={
+                      item.variant as
+                        | "default"
+                        | "destructive"
+                        | "outline"
+                        | "secondary"
+                        | "ghost"
+                        | "link"
+                    }
+                    className="w-full mb-4"
+                  >
+                    Hover & Click Me
+                  </Button>
+                  <div className="space-y-1.5 text-xs text-muted-foreground">
+                    <div className="flex items-start gap-2">
+                      <span className="text-muted-foreground/50">•</span>
+                      <span>
+                        <span className="font-medium">Hover:</span> {item.hover}
+                      </span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="text-muted-foreground/50">•</span>
+                      <span>
+                        <span className="font-medium">Active:</span>{" "}
+                        {item.active}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Focus State */}
@@ -1876,27 +1903,31 @@ function InputComponentPage() {
               disabled: false,
               description: "Input with existing text content",
             },
-          ].map((item) => (
-            <div
-              key={item.name}
-              className="rounded-xl border border-border bg-card p-6"
-            >
-              <h4 className="text-sm font-semibold text-foreground mb-4">
-                {item.name}
-              </h4>
-              <Input
-                placeholder={
-                  item.name === "With Value" ? "" : `${item.name} state`
-                }
-                disabled={item.disabled}
-                defaultValue={item.name === "With Value" ? "Example text" : ""}
-                className="mb-4"
-              />
-              <p className="text-xs text-muted-foreground">
-                {item.description}
-              </p>
-            </div>
-          ))}
+          ].map((item) => {
+            return (
+              <div
+                key={item.name}
+                className="rounded-xl border border-border bg-card p-6"
+              >
+                <h4 className="text-sm font-semibold text-foreground mb-4">
+                  {item.name}
+                </h4>
+                <Input
+                  placeholder={
+                    item.name === "With Value" ? "" : `${item.name} state`
+                  }
+                  disabled={item.disabled}
+                  defaultValue={
+                    item.name === "With Value" ? "Example text" : ""
+                  }
+                  className="mb-4"
+                />
+                <p className="text-xs text-muted-foreground">
+                  {item.description}
+                </p>
+              </div>
+            );
+          })}
         </div>
 
         {/* State Specifications */}

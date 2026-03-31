@@ -68,7 +68,9 @@ const SINGLE_ORG_ID = args["org-id"];
 const THROTTLE_MS = 100;
 
 function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => {
+    return setTimeout(resolve, ms);
+  });
 }
 
 interface OrgDataSummary {
@@ -204,7 +206,11 @@ async function cleanupOrphanedOrg(
   );
   if (storageRows.length > 0) {
     console.log(
-      `    S3 prefixes to clean manually: ${storageRows.map((r) => r.s3_prefix).join(", ")}`,
+      `    S3 prefixes to clean manually: ${storageRows
+        .map((r) => {
+          return r.s3_prefix;
+        })
+        .join(", ")}`,
     );
   }
 
@@ -215,7 +221,11 @@ async function cleanupOrphanedOrg(
   );
   if (exportRows.length > 0) {
     console.log(
-      `    Export S3 keys to clean manually: ${exportRows.map((r) => r.s3_key).join(", ")}`,
+      `    Export S3 keys to clean manually: ${exportRows
+        .map((r) => {
+          return r.s3_key;
+        })
+        .join(", ")}`,
     );
   }
 
@@ -338,9 +348,9 @@ async function main(): Promise<void> {
     console.log(`  Found ${clerkOrgIds.size} organizations in Clerk\n`);
 
     // Step 3: Find orphans (in DB but not in Clerk, excluding system org IDs)
-    const orphanedOrgIds = [...dbOrgIds].filter(
-      (id) => !clerkOrgIds.has(id) && !SYSTEM_ORG_IDS.has(id),
-    );
+    const orphanedOrgIds = [...dbOrgIds].filter((id) => {
+      return !clerkOrgIds.has(id) && !SYSTEM_ORG_IDS.has(id);
+    });
     console.log(`Found ${orphanedOrgIds.length} orphaned org(s)\n`);
 
     if (orphanedOrgIds.length === 0) {

@@ -10,7 +10,9 @@ const internalStatus$ = state<
 const internalErrorMsg$ = state("");
 
 // Exported reads
-export const slackConnectStatus$ = computed((get) => get(internalStatus$));
+export const slackConnectStatus$ = computed((get) => {
+  return get(internalStatus$);
+});
 
 // Derived state combining URL params and signals
 export const effectiveStatus$ = computed((get) => {

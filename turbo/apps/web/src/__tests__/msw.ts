@@ -74,6 +74,8 @@ export function handlers<
   }
   return {
     mocked: mocks,
-    handlers: Object.values(mockedHandlers).map((h) => h.handler),
+    handlers: Object.values(mockedHandlers).map((h) => {
+      return h.handler;
+    }),
   };
 }

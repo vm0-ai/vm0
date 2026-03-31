@@ -488,10 +488,12 @@ export function buildAskUserQuestionBlocks(
   // Cap questions and options to stay well within limits.
   const MAX_QUESTIONS = 10;
   const MAX_OPTIONS = 10;
-  const cappedQuestions = questions.slice(0, MAX_QUESTIONS).map((q) => ({
-    ...q,
-    options: q.options?.slice(0, MAX_OPTIONS),
-  }));
+  const cappedQuestions = questions.slice(0, MAX_QUESTIONS).map((q) => {
+    return {
+      ...q,
+      options: q.options?.slice(0, MAX_OPTIONS),
+    };
+  });
 
   // Single question + single-select → buttons submit directly on click
   const directSubmit =
@@ -526,22 +528,26 @@ export function buildAskUserQuestionBlocks(
       continue;
     }
 
-    const options: Option[] = q.options.map((opt, oIdx) => ({
-      text: { type: "plain_text" as const, text: opt.label },
-      description: opt.description
-        ? { type: "plain_text" as const, text: opt.description }
-        : undefined,
-      value: `q${qIdx}_o${oIdx}`,
-    }));
+    const options: Option[] = q.options.map((opt, oIdx) => {
+      return {
+        text: { type: "plain_text" as const, text: opt.label },
+        description: opt.description
+          ? { type: "plain_text" as const, text: opt.description }
+          : undefined,
+        value: `q${qIdx}_o${oIdx}`,
+      };
+    });
 
     if (directSubmit) {
       // Single question + single-select: buttons that submit on click
-      const buttons: Button[] = q.options.map((opt, oIdx) => ({
-        type: "button" as const,
-        text: { type: "plain_text" as const, text: opt.label },
-        action_id: `ask_user_pick_q${qIdx}_o${oIdx}`,
-        value: pendingId,
-      }));
+      const buttons: Button[] = q.options.map((opt, oIdx) => {
+        return {
+          type: "button" as const,
+          text: { type: "plain_text" as const, text: opt.label },
+          action_id: `ask_user_pick_q${qIdx}_o${oIdx}`,
+          value: pendingId,
+        };
+      });
 
       blocks.push({
         type: "actions",

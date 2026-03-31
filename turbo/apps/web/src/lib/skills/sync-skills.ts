@@ -95,7 +95,9 @@ export async function syncSkills(): Promise<SyncResult> {
   for (let i = 0; i < extractedSkills.length; i += BATCH_SIZE) {
     const batch = extractedSkills.slice(i, i + BATCH_SIZE);
     const results = await Promise.allSettled(
-      batch.map((extracted) => syncSingleSkill(db, extracted, headSha)),
+      batch.map((extracted) => {
+        return syncSingleSkill(db, extracted, headSha);
+      }),
     );
 
     for (let j = 0; j < results.length; j++) {
@@ -161,17 +163,21 @@ async function syncSingleSkill(
   const storageName = getSkillStorageName(fullPath);
 
   // Parse SKILL.md frontmatter
-  const skillMd = files.find((f) => f.path === "SKILL.md");
+  const skillMd = files.find((f) => {
+    return f.path === "SKILL.md";
+  });
   const frontmatter: SkillFrontmatter = skillMd
     ? parseSkillFrontmatter(skillMd.content.toString("utf-8"))
     : {};
 
   // Compute file hashes for version hash
-  const fileEntries: FileEntryWithHash[] = files.map((f) => ({
-    path: f.path,
-    hash: f.hash,
-    size: f.size,
-  }));
+  const fileEntries: FileEntryWithHash[] = files.map((f) => {
+    return {
+      path: f.path,
+      hash: f.hash,
+      size: f.size,
+    };
+  });
   const versionHash = computeSystemSkillHash(skillUrl, fileEntries);
 
   // Check if skill already exists with same version hash
@@ -264,7 +270,9 @@ async function syncSingleSkill(
 
   // Upsert skills record
   const displayName = frontmatter.name || skillName;
-  const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+  const totalSize = files.reduce((sum, f) => {
+    return sum + f.size;
+  }, 0);
 
   await db
     .insert(skills)
@@ -325,7 +333,9 @@ async function removeOrphanedSkills(
   extractedSkills: ExtractedSkill[],
 ): Promise<number> {
   const tarballUrls = new Set(
-    extractedSkills.map((e) => buildSkillUrl(e.skillName)),
+    extractedSkills.map((e) => {
+      return buildSkillUrl(e.skillName);
+    }),
   );
 
   // Find all official skills in DB
@@ -335,13 +345,21 @@ async function removeOrphanedSkills(
     .from(skills)
     .where(like(skills.url, `${urlPrefix}%`));
 
-  const orphans = existingSkills.filter((s) => !tarballUrls.has(s.url));
+  const orphans = existingSkills.filter((s) => {
+    return !tarballUrls.has(s.url);
+  });
   if (orphans.length === 0) return 0;
 
-  const orphanIds = orphans.map((o) => o.id);
+  const orphanIds = orphans.map((o) => {
+    return o.id;
+  });
   const orphanStorageIds = orphans
-    .map((o) => o.storageId)
-    .filter((id): id is string => id !== null);
+    .map((o) => {
+      return o.storageId;
+    })
+    .filter((id): id is string => {
+      return id !== null;
+    });
 
   // Get S3 prefixes before deleting DB records
   let orphanStorages: { id: string; s3Prefix: string }[] = [];
@@ -368,7 +386,9 @@ async function removeOrphanedSkills(
       if (objects.length > 0) {
         await deleteS3Objects(
           bucketName,
-          objects.map((o) => o.key),
+          objects.map((o) => {
+            return o.key;
+          }),
         );
       }
     } catch (error) {
@@ -381,7 +401,9 @@ async function removeOrphanedSkills(
 
   log.info("Removed orphaned skills", {
     removed: orphans.length,
-    skillUrls: orphans.map((o) => o.url),
+    skillUrls: orphans.map((o) => {
+      return o.url;
+    }),
   });
 
   return orphans.length;
@@ -392,12 +414,20 @@ async function removeOrphanedSkills(
  * Emits log.error for any seed skills that reference deleted skills.
  */
 function validateSeedSkills(extractedSkills: ExtractedSkill[]): void {
-  const tarballNames = new Set(extractedSkills.map((e) => e.skillName));
-  const missingSkills = SEED_SKILLS.filter((name) => !tarballNames.has(name));
+  const tarballNames = new Set(
+    extractedSkills.map((e) => {
+      return e.skillName;
+    }),
+  );
+  const missingSkills = SEED_SKILLS.filter((name) => {
+    return !tarballNames.has(name);
+  });
 
   if (missingSkills.length > 0) {
     log.error("SEED_SKILLS references skills not found in repository", {
-      missingSkills: missingSkills.map((name) => resolveSkillRef(name)),
+      missingSkills: missingSkills.map((name) => {
+        return resolveSkillRef(name);
+      }),
     });
   }
 }
@@ -426,7 +456,9 @@ async function createSkillArchive(
 
     // Create tar.gz asynchronously
     const tarPath = join(tmpDir, "__archive.tar.gz");
-    const filePaths = files.map((f) => f.path);
+    const filePaths = files.map((f) => {
+      return f.path;
+    });
 
     await tar.create(
       {
@@ -442,11 +474,13 @@ async function createSkillArchive(
     // Create manifest
     const manifest = {
       version: 1,
-      files: files.map((f) => ({
-        path: f.path,
-        hash: f.hash,
-        size: f.size,
-      })),
+      files: files.map((f) => {
+        return {
+          path: f.path,
+          hash: f.hash,
+          size: f.size,
+        };
+      }),
       createdAt: new Date().toISOString(),
     };
     const manifestBuffer = Buffer.from(JSON.stringify(manifest, null, 2));

@@ -27,9 +27,15 @@ export const asanaHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.ASANA_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.ASANA_OAUTH_CLIENT_SECRET,
+  getClientId: (e) => {
+    return e.ASANA_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.ASANA_OAUTH_CLIENT_SECRET;
+  },
   getSecretName: getAsanaSecretName,
-  getRefreshSecretName: () => "ASANA_REFRESH_TOKEN",
+  getRefreshSecretName: () => {
+    return "ASANA_REFRESH_TOKEN";
+  },
   refreshToken: refreshAsanaToken,
 };

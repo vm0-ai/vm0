@@ -11,7 +11,13 @@ export const discordWebhookHandler: ProviderHandler = {
       "Discord Webhook does not support OAuth — use API token auth",
     );
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "DISCORD_WEBHOOK_URL",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "DISCORD_WEBHOOK_URL";
+  },
 };

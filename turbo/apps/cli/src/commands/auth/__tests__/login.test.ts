@@ -23,7 +23,9 @@ vi.mock("os", async (importOriginal) => {
   const original = await importOriginal<typeof import("os")>();
   return {
     ...original,
-    homedir: () => TEST_HOME,
+    homedir: () => {
+      return TEST_HOME;
+    },
   };
 });
 
@@ -37,7 +39,9 @@ describe("auth login", () => {
     .mockImplementation(() => {});
   const mockStdoutWrite = vi
     .spyOn(process.stdout, "write")
-    .mockImplementation(() => true);
+    .mockImplementation(() => {
+      return true;
+    });
 
   beforeEach(async () => {
     chalk.level = 0;

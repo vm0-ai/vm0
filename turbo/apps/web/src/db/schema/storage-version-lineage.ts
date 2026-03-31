@@ -17,24 +17,36 @@ export const storageVersionLineage = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     storageId: uuid("storage_id")
       .notNull()
-      .references(() => storages.id, { onDelete: "cascade" }),
+      .references(
+        () => {
+          return storages.id;
+        },
+        { onDelete: "cascade" },
+      ),
     versionId: varchar("version_id", { length: 64 }).notNull(),
     parentVersionId: varchar("parent_version_id", { length: 64 }).notNull(),
     runId: uuid("run_id")
       .notNull()
-      .references(() => agentRuns.id, { onDelete: "cascade" }),
+      .references(
+        () => {
+          return agentRuns.id;
+        },
+        { onDelete: "cascade" },
+      ),
     storageType: varchar("storage_type", { length: 16 }).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
-  (table) => [
-    index("idx_storage_version_lineage_storage_version").on(
-      table.storageId,
-      table.versionId,
-    ),
-    index("idx_storage_version_lineage_storage_parent").on(
-      table.storageId,
-      table.parentVersionId,
-    ),
-    index("idx_storage_version_lineage_run").on(table.runId),
-  ],
+  (table) => {
+    return [
+      index("idx_storage_version_lineage_storage_version").on(
+        table.storageId,
+        table.versionId,
+      ),
+      index("idx_storage_version_lineage_storage_parent").on(
+        table.storageId,
+        table.parentVersionId,
+      ),
+      index("idx_storage_version_lineage_run").on(table.runId),
+    ];
+  },
 );

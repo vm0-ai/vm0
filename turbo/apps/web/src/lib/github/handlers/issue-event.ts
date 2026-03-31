@@ -120,7 +120,9 @@ export async function handleIssuesEvent(
 
   // For "opened" action, check if issue has the app slug label
   if (action === "opened") {
-    const hasLabel = issue.labels.some((l) => l.name === appSlug);
+    const hasLabel = issue.labels.some((l) => {
+      return l.name === appSlug;
+    });
     if (!hasLabel) {
       log.debug("Ignoring opened issue without app slug label", {
         expected: appSlug,
@@ -340,7 +342,9 @@ async function handleDispatchError(
   const quotePrefix = commentBody
     ? commentBody
         .split("\n")
-        .map((line) => `> ${line}`)
+        .map((line) => {
+          return `> ${line}`;
+        })
         .join("\n") + "\n\n"
     : "";
 
@@ -588,12 +592,14 @@ function formatIssueContext(
   // Filter to only new comments when continuing a session,
   // and exclude the triggering comment (it's already in the user prompt)
   let relevantComments = lastCommentId
-    ? comments.filter((c) => c.id > Number(lastCommentId))
+    ? comments.filter((c) => {
+        return c.id > Number(lastCommentId);
+      })
     : comments;
   if (currentCommentId) {
-    relevantComments = relevantComments.filter(
-      (c) => String(c.id) !== currentCommentId,
-    );
+    relevantComments = relevantComments.filter((c) => {
+      return String(c.id) !== currentCommentId;
+    });
   }
 
   if (relevantComments.length === 0 && lastCommentId) {

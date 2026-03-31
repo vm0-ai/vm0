@@ -38,9 +38,9 @@ describe("secrets-encryption", () => {
     });
 
     it("should throw when key not provided", () => {
-      expect(() => encryptSecretsMap({ KEY: "value" }, undefined)).toThrow(
-        "SECRETS_ENCRYPTION_KEY is required",
-      );
+      expect(() => {
+        return encryptSecretsMap({ KEY: "value" }, undefined);
+      }).toThrow("SECRETS_ENCRYPTION_KEY is required");
     });
   });
 
@@ -79,9 +79,9 @@ describe("secrets-encryption", () => {
     it("should throw when key not provided", () => {
       const encrypted = encryptSecretsMap({ KEY: "value" }, TEST_KEY);
 
-      expect(() => decryptSecretsMap(encrypted, undefined)).toThrow(
-        "SECRETS_ENCRYPTION_KEY is required",
-      );
+      expect(() => {
+        return decryptSecretsMap(encrypted, undefined);
+      }).toThrow("SECRETS_ENCRYPTION_KEY is required");
     });
 
     it("should throw for tampered data", () => {
@@ -90,7 +90,9 @@ describe("secrets-encryption", () => {
       parts[2] = "dGFtcGVyZWQ=";
       const tampered = parts.join(":");
 
-      expect(() => decryptSecretsMap(tampered, TEST_KEY)).toThrow();
+      expect(() => {
+        return decryptSecretsMap(tampered, TEST_KEY);
+      }).toThrow();
     });
   });
 });

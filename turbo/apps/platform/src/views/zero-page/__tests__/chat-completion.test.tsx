@@ -20,9 +20,9 @@ describe("chat completion", () => {
       path: "/talk/c0000000-0000-4000-a000-000000000001",
     });
 
-    const textarea = await waitFor(
-      () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-    );
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
 
     sendMessageInUI(textarea, "Hello");
 
@@ -45,9 +45,9 @@ describe("chat completion", () => {
       path: "/talk/c0000000-0000-4000-a000-000000000001",
     });
 
-    const textarea = await waitFor(
-      () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-    );
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
 
     sendMessageInUI(textarea, "Hello");
 
@@ -71,9 +71,9 @@ describe("chat completion", () => {
       path: "/talk/c0000000-0000-4000-a000-000000000001",
     });
 
-    const textarea = await waitFor(
-      () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-    );
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
 
     sendMessageInUI(textarea, "Hello");
 
@@ -111,9 +111,9 @@ describe("chat completion", () => {
       path: "/talk/c0000000-0000-4000-a000-000000000001",
     });
 
-    const textarea = await waitFor(
-      () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-    );
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
 
     sendMessageInUI(textarea, "Hello");
 
@@ -139,10 +139,11 @@ describe("chat completion", () => {
     await waitFor(() => {
       // Look for the sidebar preview text (not the user message bubble)
       const links = document.querySelectorAll("a");
-      const sidebarLink = Array.from(links).find(
-        (a) =>
-          a.textContent === "Hello" && a.getAttribute("href")?.includes("chat"),
-      );
+      const sidebarLink = Array.from(links).find((a) => {
+        return (
+          a.textContent === "Hello" && a.getAttribute("href")?.includes("chat")
+        );
+      });
       expect(sidebarLink).toBeTruthy();
     });
   });

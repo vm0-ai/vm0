@@ -181,8 +181,8 @@ describe("POST /api/internal/callbacks/chat", () => {
     // Create a matching session
     await createTestAgentSession(user.userId, agentId);
 
-    const makeRequest = () =>
-      createCallbackRequest(
+    const makeRequest = () => {
+      return createCallbackRequest(
         {
           runId,
           status: "completed",
@@ -190,6 +190,7 @@ describe("POST /api/internal/callbacks/chat", () => {
         },
         secret,
       );
+    };
 
     const response1 = await POST(makeRequest());
     expect(response1.status).toBe(200);

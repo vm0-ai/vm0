@@ -201,15 +201,21 @@ function useAccountSessions() {
 
   const currentSessionId = clerk?.session?.id;
   const accounts: SessionAccount[] = (clerk?.client?.sessions ?? [])
-    .filter((s) => s.status === "active")
-    .map((s) => ({
-      sessionId: s.id,
-      name: s.user?.fullName ?? "User",
-      email: s.user?.primaryEmailAddress?.emailAddress ?? "",
-      initial: s.user?.fullName ? s.user.fullName.charAt(0).toUpperCase() : "U",
-      imageUrl: s.user?.imageUrl,
-      isActive: s.id === currentSessionId,
-    }));
+    .filter((s) => {
+      return s.status === "active";
+    })
+    .map((s) => {
+      return {
+        sessionId: s.id,
+        name: s.user?.fullName ?? "User",
+        email: s.user?.primaryEmailAddress?.emailAddress ?? "",
+        initial: s.user?.fullName
+          ? s.user.fullName.charAt(0).toUpperCase()
+          : "U",
+        imageUrl: s.user?.imageUrl,
+        isActive: s.id === currentSessionId,
+      };
+    });
 
   return { user, clerk, accounts };
 }
@@ -229,8 +235,12 @@ function AccountDropdown({
   const accountEmail = user?.primaryEmailAddress?.emailAddress ?? "";
   const accountInitial = accountName.charAt(0).toUpperCase();
 
-  const current = accounts.find((a) => a.isActive);
-  const others = accounts.filter((a) => !a.isActive);
+  const current = accounts.find((a) => {
+    return a.isActive;
+  });
+  const others = accounts.filter((a) => {
+    return !a.isActive;
+  });
   const hasOthers = others.length > 0;
 
   const handleAccountAction = (action: ZeroAccountAction) => {
@@ -250,7 +260,9 @@ function AccountDropdown({
     detach(
       clerk?.setActive({
         session: sessionId,
-        beforeEmit: () => window.location.reload(),
+        beforeEmit: () => {
+          return window.location.reload();
+        },
       }),
       Reason.DomCallback,
     );
@@ -322,7 +334,9 @@ function AccountDropdown({
 
         {/* Preferences (standalone) */}
         <DropdownMenuItem
-          onClick={() => handleAccountAction("preferences")}
+          onClick={() => {
+            return handleAccountAction("preferences");
+          }}
           className="gap-3 px-3 py-2.5 rounded-lg"
         >
           <IconAdjustmentsHorizontal
@@ -351,27 +365,31 @@ function AccountDropdown({
               />
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent className="w-[220px]">
-              {others.map((account) => (
-                <DropdownMenuItem
-                  key={account.sessionId}
-                  onClick={() => handleSwitchSession(account.sessionId)}
-                  className="gap-3 px-3 py-2.5 rounded-lg"
-                >
-                  <AccountAvatar
-                    imageUrl={account.imageUrl}
-                    name={account.name}
-                    initial={account.initial}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-foreground truncate">
-                      {account.name}
+              {others.map((account) => {
+                return (
+                  <DropdownMenuItem
+                    key={account.sessionId}
+                    onClick={() => {
+                      return handleSwitchSession(account.sessionId);
+                    }}
+                    className="gap-3 px-3 py-2.5 rounded-lg"
+                  >
+                    <AccountAvatar
+                      imageUrl={account.imageUrl}
+                      name={account.name}
+                      initial={account.initial}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-foreground truncate">
+                        {account.name}
+                      </div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        {account.email}
+                      </div>
                     </div>
-                    <div className="text-xs text-muted-foreground truncate">
-                      {account.email}
-                    </div>
-                  </div>
-                </DropdownMenuItem>
-              ))}
+                  </DropdownMenuItem>
+                );
+              })}
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={handleAddAccount}
@@ -400,7 +418,9 @@ function AccountDropdown({
           </DropdownMenuItem>
         )}
         <DropdownMenuItem
-          onClick={() => handleAccountAction("manage")}
+          onClick={() => {
+            return handleAccountAction("manage");
+          }}
           className="gap-3 px-3 py-2.5 rounded-lg"
         >
           <IconUser size={18} stroke={1.5} className="text-muted-foreground" />
@@ -408,7 +428,9 @@ function AccountDropdown({
         </DropdownMenuItem>
         {showExportData && (
           <DropdownMenuItem
-            onClick={() => window.open(`${apiBase}/export`, "_blank")}
+            onClick={() => {
+              return window.open(`${apiBase}/export`, "_blank");
+            }}
             className="gap-3 px-3 py-2.5 rounded-lg"
           >
             <IconDatabaseExport
@@ -421,7 +443,9 @@ function AccountDropdown({
         )}
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          onClick={() => handleAccountAction("signout")}
+          onClick={() => {
+            return handleAccountAction("signout");
+          }}
           className="gap-3 px-3 py-2.5 rounded-lg"
         >
           <IconLogout
@@ -466,22 +490,34 @@ function RecentChatSection({
   const [collapsed, setCollapsed] = useState(false);
 
   // Filter sessions by current agent
-  const subagentIds = new Set(subagents.map((a) => a.id));
+  const subagentIds = new Set(
+    subagents.map((a) => {
+      return a.id;
+    }),
+  );
   const agentSessions = currentChatAgentId
-    ? recentSessions.filter((s) => s.agentId === currentChatAgentId)
-    : recentSessions.filter((s) => !subagentIds.has(s.agentId));
+    ? recentSessions.filter((s) => {
+        return s.agentId === currentChatAgentId;
+      })
+    : recentSessions.filter((s) => {
+        return !subagentIds.has(s.agentId);
+      });
 
   const agentLabel = currentChatAgentId
-    ? (subagents.find((a) => a.id === currentChatAgentId)?.displayName ??
-      subagents.find((a) => a.id === currentChatAgentId)?.id ??
+    ? (subagents.find((a) => {
+        return a.id === currentChatAgentId;
+      })?.displayName ??
+      subagents.find((a) => {
+        return a.id === currentChatAgentId;
+      })?.id ??
       displayName)
     : displayName;
 
   const trimmedTerm = searchTerm.trim().toLowerCase();
   const filteredSessions = trimmedTerm
-    ? agentSessions.filter((s) =>
-        (s.preview ?? "").toLowerCase().includes(trimmedTerm),
-      )
+    ? agentSessions.filter((s) => {
+        return (s.preview ?? "").toLowerCase().includes(trimmedTerm);
+      })
     : agentSessions;
 
   const handleNewChat = onNewChat
@@ -509,7 +545,9 @@ function RecentChatSection({
           <input
             type="text"
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => {
+              return setSearchTerm(e.target.value);
+            }}
             placeholder={`Search chat with ${agentLabel}`}
             autoFocus
             className="flex-1 min-w-0 bg-transparent text-sm leading-5 text-sidebar-foreground placeholder:text-sidebar-foreground/50 focus:outline-none"
@@ -530,7 +568,9 @@ function RecentChatSection({
       ) : (
         <div
           className="zero-nav-recent-label group flex h-8 shrink-0 cursor-pointer items-center justify-between rounded-lg pl-2 pr-0 hover:bg-sidebar-accent/50 transition-colors"
-          onClick={() => setCollapsed(!collapsed)}
+          onClick={() => {
+            return setCollapsed(!collapsed);
+          }}
         >
           <span className="flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-sidebar-foreground/50 group-hover:text-sidebar-foreground transition-colors">
             Chats with {agentLabel}
@@ -594,11 +634,16 @@ function RecentChatSection({
           <div className="flex flex-col gap-1">
             {recentSessionsLoading && recentSessions.length === 0 ? (
               <>
-                {["w-3/4", "w-1/2", "w-2/3"].map((w) => (
-                  <div key={w} className="flex h-8 items-center rounded-lg p-2">
-                    <Skeleton className={`h-4 ${w}`} />
-                  </div>
-                ))}
+                {["w-3/4", "w-1/2", "w-2/3"].map((w) => {
+                  return (
+                    <div
+                      key={w}
+                      className="flex h-8 items-center rounded-lg p-2"
+                    >
+                      <Skeleton className={`h-4 ${w}`} />
+                    </div>
+                  );
+                })}
               </>
             ) : recentSessionsError ? (
               <p className="px-2 py-2 text-xs text-destructive">
@@ -611,29 +656,31 @@ function RecentChatSection({
                   : "Start a conversation and it'll show up here"}
               </p>
             ) : (
-              filteredSessions.map((session) => (
-                <Link
-                  key={session.id}
-                  pathname="/chat/:chatThreadId"
-                  options={{ pathParams: { chatThreadId: session.id } }}
-                  onClick={(e) => {
-                    if (e.metaKey || e.ctrlKey || e.shiftKey) {
-                      return;
-                    }
-                    e.preventDefault();
-                    onRecentSelect?.(session.id);
-                  }}
-                  className={`flex h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors ${
-                    selectedRecentId === session.id
-                      ? "bg-gray-200 text-gray-900 font-medium"
-                      : "text-sidebar-foreground hover:bg-sidebar-accent"
-                  }`}
-                >
-                  <span className="truncate min-w-0 flex-1">
-                    {session.preview ?? "New chat"}
-                  </span>
-                </Link>
-              ))
+              filteredSessions.map((session) => {
+                return (
+                  <Link
+                    key={session.id}
+                    pathname="/chat/:chatThreadId"
+                    options={{ pathParams: { chatThreadId: session.id } }}
+                    onClick={(e) => {
+                      if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                        return;
+                      }
+                      e.preventDefault();
+                      onRecentSelect?.(session.id);
+                    }}
+                    className={`flex h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors ${
+                      selectedRecentId === session.id
+                        ? "bg-gray-200 text-gray-900 font-medium"
+                        : "text-sidebar-foreground hover:bg-sidebar-accent"
+                    }`}
+                  >
+                    <span className="truncate min-w-0 flex-1">
+                      {session.preview ?? "New chat"}
+                    </span>
+                  </Link>
+                );
+              })
             )}
           </div>
         </div>
@@ -677,7 +724,9 @@ function TalkToSection({
     <div className="shrink-0">
       <div
         className="group flex h-8 cursor-pointer items-center justify-between rounded-lg pl-2 pr-0 hover:bg-sidebar-accent/50 transition-colors"
-        onClick={() => setCollapsed(!collapsed)}
+        onClick={() => {
+          return setCollapsed(!collapsed);
+        }}
       >
         <span className="flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-sidebar-foreground/50 group-hover:text-sidebar-foreground transition-colors">
           Pinned
@@ -793,7 +842,9 @@ function TalkToSection({
                             e.preventDefault();
                             e.stopPropagation();
                             onPinnedIdsChange(
-                              pinnedIds.filter((id) => id !== agent.id),
+                              pinnedIds.filter((id) => {
+                                return id !== agent.id;
+                              }),
                             );
                           }}
                           className={`flex h-6 w-6 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible transition-opacity duration-150 ${
@@ -856,7 +907,9 @@ function OverlayScrollArea({
     const el = e.currentTarget;
     const { scrollTop, scrollHeight, clientHeight } = el;
     if (scrollHeight <= clientHeight) {
-      setThumbStyle((prev) => ({ ...prev, visible: false }));
+      setThumbStyle((prev) => {
+        return { ...prev, visible: false };
+      });
       return;
     }
     const ratio = clientHeight / scrollHeight;
@@ -871,8 +924,12 @@ function OverlayScrollArea({
   return (
     <div
       className={`relative ${className ?? ""}`}
-      onMouseEnter={() => setHovering(true)}
-      onMouseLeave={() => setHovering(false)}
+      onMouseEnter={() => {
+        return setHovering(true);
+      }}
+      onMouseLeave={() => {
+        return setHovering(false);
+      }}
     >
       <div
         className="h-full overflow-y-auto overflow-x-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
@@ -973,18 +1030,24 @@ export function ZeroSidebar() {
   const subagentsLoadable = useLastLoadable(zeroSubagents$);
   const subagents: SubagentInfo[] =
     subagentsLoadable.state === "hasData"
-      ? subagentsLoadable.data.map((a) => ({
-          id: a.id,
-          displayName: a.displayName,
-        }))
+      ? subagentsLoadable.data.map((a) => {
+          return {
+            id: a.id,
+            displayName: a.displayName,
+          };
+        })
       : [];
   const currentChatAgentId = useGet(sidebarChatAgentId$);
   const collapsed = useGet(zeroSidebarCollapsed$);
   const setSidebarCollapsed = useSet(setZeroSidebarCollapsed$);
-  const onCollapse = () => setSidebarCollapsed(!collapsed);
+  const onCollapse = () => {
+    return setSidebarCollapsed(!collapsed);
+  };
   const onSelect = useSet(handleZeroNavSelect$);
   const navigateToChat = useSet(navigateToChat$);
-  const onRecentSelect = (chatThreadId: string) => navigateToChat(chatThreadId);
+  const onRecentSelect = (chatThreadId: string) => {
+    return navigateToChat(chatThreadId);
+  };
   const selectedRecentId = useGet(chatThreadId$);
   const onAccountAction = useSet(handleZeroAccountAction$);
   const recentSessionsLoadable = useLoadable(zeroSessionList$);
@@ -1022,10 +1085,16 @@ export function ZeroSidebar() {
   const slackScopeMismatch = useGet(slackOrgScopeMismatch$);
 
   // Compute selectedAgentIdFromChat for grey highlight
-  const subagentIds = new Set(subagents.map((a) => a.id));
+  const subagentIds = new Set(
+    subagents.map((a) => {
+      return a.id;
+    }),
+  );
   const selectedAgentIdFromChat: string | null | undefined = selectedRecentId
     ? (() => {
-        const thread = recentSessions.find((s) => s.id === selectedRecentId);
+        const thread = recentSessions.find((s) => {
+          return s.id === selectedRecentId;
+        });
         if (!thread) {
           return undefined;
         }
@@ -1035,24 +1104,36 @@ export function ZeroSidebar() {
 
   // Pinned agents resolved from IDs
   const pinnedAgents = pinnedIds
-    .map((id) => subagents.find((a) => a.id === id))
-    .filter((a): a is SubagentInfo => a !== undefined);
+    .map((id) => {
+      return subagents.find((a) => {
+        return a.id === id;
+      });
+    })
+    .filter((a): a is SubagentInfo => {
+      return a !== undefined;
+    });
 
-  const manageNav = MANAGE_NAV.map((item) => ({
-    ...item,
-    label: item.label.replace("Zero", displayName),
-  }));
-  const footerNav = FOOTER_NAV.filter(
-    (item) => !item.featureGate || features?.[item.featureGate],
-  ).map((item) => ({
-    ...item,
-    label: item.label.replace("Zero", displayName),
-  }));
+  const manageNav = MANAGE_NAV.map((item) => {
+    return {
+      ...item,
+      label: item.label.replace("Zero", displayName),
+    };
+  });
+  const footerNav = FOOTER_NAV.filter((item) => {
+    return !item.featureGate || features?.[item.featureGate];
+  }).map((item) => {
+    return {
+      ...item,
+      label: item.label.replace("Zero", displayName),
+    };
+  });
 
   const allNavItems = [
     ...manageNav,
     { id: "chat" as const, label: "New chat", icon: IconEdit as NavIcon },
-    ...footerNav.map(({ id, label, icon }) => ({ id, label, icon })),
+    ...footerNav.map(({ id, label, icon }) => {
+      return { id, label, icon };
+    }),
   ];
 
   if (collapsed) {
@@ -1086,57 +1167,61 @@ export function ZeroSidebar() {
           {/* Icon-only nav: one centered column; inline-flex links never stretch */}
           <nav className="flex min-h-0 w-full min-w-0 flex-1 flex-col items-center gap-1 pb-2 pt-0">
             <TooltipProvider delayDuration={100}>
-              {allNavItems.map(({ id, label, icon: Icon }) => (
-                <div key={id} className="flex w-full shrink-0 justify-center">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Link
-                        pathname={
-                          id === "chat"
-                            ? "/"
-                            : id === "team"
-                              ? "/team"
-                              : id === "connectors"
-                                ? "/connectors"
-                                : "/:tab"
-                        }
-                        options={
-                          id === "chat" || id === "team" || id === "connectors"
-                            ? undefined
-                            : { pathParams: { tab: id } }
-                        }
-                        onClick={(e) => {
-                          if (e.metaKey || e.ctrlKey || e.shiftKey) {
-                            return;
+              {allNavItems.map(({ id, label, icon: Icon }) => {
+                return (
+                  <div key={id} className="flex w-full shrink-0 justify-center">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Link
+                          pathname={
+                            id === "chat"
+                              ? "/"
+                              : id === "team"
+                                ? "/team"
+                                : id === "connectors"
+                                  ? "/connectors"
+                                  : "/:tab"
                           }
-                          e.preventDefault();
-                          if (id === "chat") {
-                            onSelect("chat");
-                            onNewChat?.(null);
-                          } else {
-                            onSelect(id);
+                          options={
+                            id === "chat" ||
+                            id === "team" ||
+                            id === "connectors"
+                              ? undefined
+                              : { pathParams: { tab: id } }
                           }
-                        }}
-                        className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
-                          activeId === id
-                            ? "bg-gray-200 text-gray-900"
-                            : "text-sidebar-foreground hover:bg-sidebar-accent"
-                        }`}
-                      >
-                        <span className="relative inline-flex">
-                          <Icon size={16} className="shrink-0" />
-                          {id === "works" && slackScopeMismatch && (
-                            <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500" />
-                          )}
-                        </span>
-                      </Link>
-                    </TooltipTrigger>
-                    <TooltipContent side="right">
-                      <p className="text-xs">{label}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-              ))}
+                          onClick={(e) => {
+                            if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                              return;
+                            }
+                            e.preventDefault();
+                            if (id === "chat") {
+                              onSelect("chat");
+                              onNewChat?.(null);
+                            } else {
+                              onSelect(id);
+                            }
+                          }}
+                          className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
+                            activeId === id
+                              ? "bg-gray-200 text-gray-900"
+                              : "text-sidebar-foreground hover:bg-sidebar-accent"
+                          }`}
+                        >
+                          <span className="relative inline-flex">
+                            <Icon size={16} className="shrink-0" />
+                            {id === "works" && slackScopeMismatch && (
+                              <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500" />
+                            )}
+                          </span>
+                        </Link>
+                      </TooltipTrigger>
+                      <TooltipContent side="right">
+                        <p className="text-xs">{label}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                );
+              })}
             </TooltipProvider>
           </nav>
 
@@ -1186,45 +1271,49 @@ export function ZeroSidebar() {
               </span>
             </div>
             <div className="flex flex-col gap-1">
-              {manageNav.map(({ id, label, icon: Icon }) => (
-                <Link
-                  key={id}
-                  pathname={
-                    id === "team"
-                      ? "/team"
-                      : id === "connectors"
-                        ? "/connectors"
-                        : "/:tab"
-                  }
-                  options={
-                    id === "team" || id === "connectors"
-                      ? undefined
-                      : { pathParams: { tab: id } }
-                  }
-                  onClick={(e) => {
-                    if (e.metaKey || e.ctrlKey || e.shiftKey) {
-                      return;
+              {manageNav.map(({ id, label, icon: Icon }) => {
+                return (
+                  <Link
+                    key={id}
+                    pathname={
+                      id === "team"
+                        ? "/team"
+                        : id === "connectors"
+                          ? "/connectors"
+                          : "/:tab"
                     }
-                    e.preventDefault();
-                    onSelect(id);
-                  }}
-                  className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
-                    activeId === id
-                      ? "bg-gray-200 text-gray-900 font-medium"
-                      : "text-sidebar-foreground hover:bg-sidebar-accent"
-                  }`}
-                >
-                  <Icon size={16} className="shrink-0" />
-                  <span className="truncate">{label}</span>
-                </Link>
-              ))}
+                    options={
+                      id === "team" || id === "connectors"
+                        ? undefined
+                        : { pathParams: { tab: id } }
+                    }
+                    onClick={(e) => {
+                      if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                        return;
+                      }
+                      e.preventDefault();
+                      onSelect(id);
+                    }}
+                    className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
+                      activeId === id
+                        ? "bg-gray-200 text-gray-900 font-medium"
+                        : "text-sidebar-foreground hover:bg-sidebar-accent"
+                    }`}
+                  >
+                    <Icon size={16} className="shrink-0" />
+                    <span className="truncate">{label}</span>
+                  </Link>
+                );
+              })}
             </div>
           </div>
 
           {/* Scrollable: Pinned + Recent chats */}
           <OverlayScrollArea
             className="flex-1 min-h-0 -mx-2 px-2 mt-2 pt-2"
-            onScroll={(e) => setIsScrolled(e.currentTarget.scrollTop > 0)}
+            onScroll={(e) => {
+              return setIsScrolled(e.currentTarget.scrollTop > 0);
+            }}
             style={{
               boxShadow: isScrolled
                 ? "0 -1px 0 0 hsl(var(--border) / 0.4)"
@@ -1271,41 +1360,43 @@ export function ZeroSidebar() {
         {/* Footer nav */}
         <div className="p-2">
           <div className="flex flex-col gap-1">
-            {footerNav.map(({ id, label, icon: Icon, iconImg }) => (
-              <Link
-                key={id}
-                pathname="/:tab"
-                options={{ pathParams: { tab: id } }}
-                onClick={(e) => {
-                  if (e.metaKey || e.ctrlKey || e.shiftKey) {
-                    return;
-                  }
-                  e.preventDefault();
-                  onSelect(id);
-                }}
-                className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
-                  activeId === id
-                    ? "bg-gray-200 text-gray-900 font-medium"
-                    : "text-sidebar-foreground hover:bg-sidebar-accent"
-                }`}
-              >
-                {iconImg ? (
-                  <img
-                    src={iconImg}
-                    alt=""
-                    className="h-3.5 w-3.5 shrink-0"
-                    width={14}
-                    height={14}
-                  />
-                ) : (
-                  <Icon size={16} className="shrink-0" />
-                )}
-                <span className="truncate flex-1">{label}</span>
-                {id === "works" && slackScopeMismatch && (
-                  <span className="h-2 w-2 shrink-0 rounded-full bg-red-500" />
-                )}
-              </Link>
-            ))}
+            {footerNav.map(({ id, label, icon: Icon, iconImg }) => {
+              return (
+                <Link
+                  key={id}
+                  pathname="/:tab"
+                  options={{ pathParams: { tab: id } }}
+                  onClick={(e) => {
+                    if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                      return;
+                    }
+                    e.preventDefault();
+                    onSelect(id);
+                  }}
+                  className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
+                    activeId === id
+                      ? "bg-gray-200 text-gray-900 font-medium"
+                      : "text-sidebar-foreground hover:bg-sidebar-accent"
+                  }`}
+                >
+                  {iconImg ? (
+                    <img
+                      src={iconImg}
+                      alt=""
+                      className="h-3.5 w-3.5 shrink-0"
+                      width={14}
+                      height={14}
+                    />
+                  ) : (
+                    <Icon size={16} className="shrink-0" />
+                  )}
+                  <span className="truncate flex-1">{label}</span>
+                  {id === "works" && slackScopeMismatch && (
+                    <span className="h-2 w-2 shrink-0 rounded-full bg-red-500" />
+                  )}
+                </Link>
+              );
+            })}
             <div className="h-px bg-border/30 mx-1 my-1" />
             {/* Account dropdown */}
             <AccountDropdown onAccountAction={onAccountAction} />

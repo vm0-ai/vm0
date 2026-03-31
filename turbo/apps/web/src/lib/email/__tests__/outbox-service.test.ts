@@ -87,7 +87,9 @@ describe("outbox-service", () => {
 
       // Find our specific item by subject (avoid count-based assertions)
       const pending = await findTestOutboxItems("pending");
-      const ours = pending.find((i) => i.subject === uniqueSubject);
+      const ours = pending.find((i) => {
+        return i.subject === uniqueSubject;
+      });
       expect(ours).toBeDefined();
       expect(ours!.attempts).toBe(1);
       expect(ours!.lastError).toContain("Too many requests");

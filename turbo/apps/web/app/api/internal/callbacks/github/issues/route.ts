@@ -151,7 +151,9 @@ function formatGitHubComment(opts: {
   if (triggerCommentBody) {
     const quoted = triggerCommentBody
       .split("\n")
-      .map((line) => `> ${line}`)
+      .map((line) => {
+        return `> ${line}`;
+      })
       .join("\n");
     parts.push(quoted, "");
   }

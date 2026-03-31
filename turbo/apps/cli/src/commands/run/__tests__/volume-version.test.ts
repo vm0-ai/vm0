@@ -134,7 +134,9 @@ describe("--volume-version option", () => {
     );
 
     // Default spawn mock - succeeds immediately
-    mockSpawn.mockImplementation(() => createMockChildProcess(0) as never);
+    mockSpawn.mockImplementation(() => {
+      return createMockChildProcess(0) as never;
+    });
   });
 
   afterEach(() => {
@@ -161,21 +163,21 @@ describe("--volume-version option", () => {
     });
 
     it("should reject empty volume name", () => {
-      expect(() => collectVolumeVersions("=abc123", {})).toThrow(
-        "Invalid volume-version format: =abc123",
-      );
+      expect(() => {
+        return collectVolumeVersions("=abc123", {});
+      }).toThrow("Invalid volume-version format: =abc123");
     });
 
     it("should reject empty version", () => {
-      expect(() => collectVolumeVersions("test-volume=", {})).toThrow(
-        "Invalid volume-version format: test-volume=",
-      );
+      expect(() => {
+        return collectVolumeVersions("test-volume=", {});
+      }).toThrow("Invalid volume-version format: test-volume=");
     });
 
     it("should reject missing equals sign", () => {
-      expect(() => collectVolumeVersions("test-volume", {})).toThrow(
-        "Invalid volume-version format: test-volume",
-      );
+      expect(() => {
+        return collectVolumeVersions("test-volume", {});
+      }).toThrow("Invalid volume-version format: test-volume");
     });
   });
 

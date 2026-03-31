@@ -3843,8 +3843,12 @@ export function getConnectorDerivedNames(
     // Find all env var names that reference this secret
     const mapping = getConnectorEnvironmentMapping(type);
     const envVarNames = Object.entries(mapping)
-      .filter(([, valueRef]) => valueRef === `$secrets.${secretName}`)
-      .map(([envVar]) => envVar);
+      .filter(([, valueRef]) => {
+        return valueRef === `$secrets.${secretName}`;
+      })
+      .map(([envVar]) => {
+        return envVar;
+      });
 
     if (envVarNames.length > 0) {
       return { connectorLabel: config.label, envVarNames };
@@ -3904,7 +3908,9 @@ export function hasRequiredScopes(
   if (oauthConfig.scopes.length === 0) return true;
   if (!storedScopes) return false;
   const storedSet = new Set(storedScopes);
-  return oauthConfig.scopes.every((s) => storedSet.has(s));
+  return oauthConfig.scopes.every((s) => {
+    return storedSet.has(s);
+  });
 }
 
 /**
@@ -3928,8 +3934,12 @@ export function getScopeDiff(
   const currentSet = new Set(currentScopes);
 
   return {
-    addedScopes: currentScopes.filter((s) => !storedSet.has(s)),
-    removedScopes: stored.filter((s) => !currentSet.has(s)),
+    addedScopes: currentScopes.filter((s) => {
+      return !storedSet.has(s);
+    }),
+    removedScopes: stored.filter((s) => {
+      return !currentSet.has(s);
+    }),
     currentScopes,
     storedScopes: stored,
   };
@@ -4003,8 +4013,12 @@ export function getApiTokenRequiredSecretNames(
   if (!apiTokenConfig) return null;
 
   return Object.entries(apiTokenConfig.secrets)
-    .filter(([, cfg]) => cfg.required)
-    .map(([name]) => name);
+    .filter(([, cfg]) => {
+      return cfg.required;
+    })
+    .map(([name]) => {
+      return name;
+    });
 }
 
 /**
@@ -4050,8 +4064,12 @@ export function deriveApiTokenConnectedTypes(
     const fields = getApiTokenFieldsByType(type);
     if (!fields) continue;
     if (fields.secrets.length === 0 && fields.variables.length === 0) continue;
-    const secretsOk = fields.secrets.every((name) => userSecretNames.has(name));
-    const variablesOk = fields.variables.every((name) => varNames.has(name));
+    const secretsOk = fields.secrets.every((name) => {
+      return userSecretNames.has(name);
+    });
+    const variablesOk = fields.variables.every((name) => {
+      return varNames.has(name);
+    });
     if (secretsOk && variablesOk) {
       connected.push(type);
     }

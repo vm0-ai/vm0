@@ -27,9 +27,9 @@ export function pickBestPhoto<T extends PhotoSizeLike>(
   }
 
   // Sort by area descending, pick first that fits size limit
-  const sorted = [...photos].sort(
-    (a, b) => b.width * b.height - a.width * a.height,
-  );
+  const sorted = [...photos].sort((a, b) => {
+    return b.width * b.height - a.width * a.height;
+  });
 
   for (const photo of sorted) {
     if (!photo.file_size || photo.file_size <= MAX_FILE_SIZE_BYTES) {

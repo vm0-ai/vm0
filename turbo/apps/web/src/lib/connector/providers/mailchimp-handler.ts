@@ -25,7 +25,11 @@ export const mailchimpHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
   getSecretName: getMailchimpSecretName,
 };

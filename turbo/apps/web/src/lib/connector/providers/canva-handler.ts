@@ -31,9 +31,15 @@ export const canvaHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.CANVA_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.CANVA_OAUTH_CLIENT_SECRET,
+  getClientId: (e) => {
+    return e.CANVA_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.CANVA_OAUTH_CLIENT_SECRET;
+  },
   getSecretName: getCanvaSecretName,
-  getRefreshSecretName: () => "CANVA_REFRESH_TOKEN",
+  getRefreshSecretName: () => {
+    return "CANVA_REFRESH_TOKEN";
+  },
   refreshToken: refreshCanvaToken,
 };

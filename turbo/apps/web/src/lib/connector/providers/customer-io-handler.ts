@@ -7,7 +7,13 @@ export const customerIoHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Customer.io does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "CUSTOMERIO_APP_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "CUSTOMERIO_APP_TOKEN";
+  },
 };

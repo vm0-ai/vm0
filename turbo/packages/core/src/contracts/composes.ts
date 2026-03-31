@@ -104,11 +104,11 @@ const agentDefinitionSchema = z.object({
   instructions: z
     .string()
     .min(1, "Instructions path cannot be empty")
-    .refine(
-      (val) =>
-        !val.includes("..") && !val.startsWith("/") && !val.startsWith("\\"),
-      "Instructions path must be a relative path without '..' segments",
-    )
+    .refine((val) => {
+      return (
+        !val.includes("..") && !val.startsWith("/") && !val.startsWith("\\")
+      );
+    }, "Instructions path must be a relative path without '..' segments")
     .optional(),
   /**
    * Array of GitHub tree URLs for agent skills.

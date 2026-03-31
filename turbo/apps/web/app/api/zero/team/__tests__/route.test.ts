@@ -79,7 +79,9 @@ describe("GET /api/zero/team", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    const ids = data.map((c: { id: string }) => c.id);
+    const ids = data.map((c: { id: string }) => {
+      return c.id;
+    });
     expect(ids).toHaveLength(1);
     expect(ids[0]).toBeDefined();
   });

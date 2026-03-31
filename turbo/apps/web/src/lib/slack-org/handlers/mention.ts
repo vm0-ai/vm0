@@ -236,7 +236,9 @@ export async function handleOrgMention(
     }
 
     await setThreadStatus(client, context.channelId, threadTs, "").catch(
-      (err) => log.warn("Failed to clear thread status", { error: err }),
+      (err) => {
+        return log.warn("Failed to clear thread status", { error: err });
+      },
     );
   }
 }

@@ -32,5 +32,7 @@ export const SLACK_BOT_SCOPES: readonly string[] = [
 export function hasAllBotScopes(storedScopes: string[] | null): boolean {
   if (storedScopes === null) return false;
   const stored = new Set(storedScopes);
-  return SLACK_BOT_SCOPES.every((s) => stored.has(s));
+  return SLACK_BOT_SCOPES.every((s) => {
+    return stored.has(s);
+  });
 }

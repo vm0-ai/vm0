@@ -242,7 +242,9 @@ export async function cleanupWorkspaceInstallation(
     .where(eq(slackOrgConnections.slackWorkspaceId, workspaceId));
 
   if (connections.length > 0) {
-    const connectionIds = connections.map((c) => c.id);
+    const connectionIds = connections.map((c) => {
+      return c.id;
+    });
     await db
       .delete(slackOrgPendingQuestions)
       .where(inArray(slackOrgPendingQuestions.connectionId, connectionIds));

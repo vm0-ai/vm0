@@ -111,7 +111,9 @@ function getDebugPatterns(): string[] {
 
   // If VM0_DEBUG is explicitly set, use it
   if (debug) {
-    return debug.split(",").map((p) => p.trim());
+    return debug.split(",").map((p) => {
+      return p.trim();
+    });
   }
 
   // Auto-enable all debug in development/preview

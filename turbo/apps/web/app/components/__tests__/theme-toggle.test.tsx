@@ -17,17 +17,19 @@ function renderToggle() {
 function mockMatchMedia(prefersDark: boolean) {
   const listeners: Array<() => void> = [];
   Object.defineProperty(window, "matchMedia", {
-    value: (query: string) => ({
-      matches:
-        query === "(prefers-color-scheme: dark)" ? prefersDark : !prefersDark,
-      addEventListener: (_event: string, cb: () => void) => {
-        listeners.push(cb);
-      },
-      removeEventListener: (_event: string, cb: () => void) => {
-        const idx = listeners.indexOf(cb);
-        if (idx >= 0) listeners.splice(idx, 1);
-      },
-    }),
+    value: (query: string) => {
+      return {
+        matches:
+          query === "(prefers-color-scheme: dark)" ? prefersDark : !prefersDark,
+        addEventListener: (_event: string, cb: () => void) => {
+          listeners.push(cb);
+        },
+        removeEventListener: (_event: string, cb: () => void) => {
+          const idx = listeners.indexOf(cb);
+          if (idx >= 0) listeners.splice(idx, 1);
+        },
+      };
+    },
     configurable: true,
     writable: true,
   });
@@ -44,7 +46,9 @@ describe("ThemeToggle", () => {
     renderToggle();
 
     // After mount, theme resolves to "light" (OS preference)
-    await act(() => Promise.resolve());
+    await act(() => {
+      return Promise.resolve();
+    });
 
     const button = screen.getByRole("button", {
       name: /switch to dark mode/i,
@@ -59,7 +63,9 @@ describe("ThemeToggle", () => {
     localStorage.setItem("theme", "dark");
 
     renderToggle();
-    await act(() => Promise.resolve());
+    await act(() => {
+      return Promise.resolve();
+    });
 
     const button = screen.getByRole("button", {
       name: /switch to light mode/i,
@@ -72,7 +78,9 @@ describe("ThemeToggle", () => {
 
   it("should persist theme preference to localStorage", async () => {
     renderToggle();
-    await act(() => Promise.resolve());
+    await act(() => {
+      return Promise.resolve();
+    });
 
     const button = screen.getByRole("button");
     await userEvent.click(button);

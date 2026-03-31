@@ -22,7 +22,12 @@ export const agentRunCallbacks = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     runId: uuid("run_id")
       .notNull()
-      .references(() => agentRuns.id, { onDelete: "cascade" }),
+      .references(
+        () => {
+          return agentRuns.id;
+        },
+        { onDelete: "cascade" },
+      ),
     url: text("url").notNull(),
     // Secret encrypted with AES-256-GCM for HMAC signature verification
     encryptedSecret: text("encrypted_secret").notNull(),
@@ -36,10 +41,12 @@ export const agentRunCallbacks = pgTable(
     deliveredAt: timestamp("delivered_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
-  (table) => [
-    index("idx_agent_run_callbacks_run_id").on(table.runId),
-    index("idx_agent_run_callbacks_pending")
-      .on(table.status)
-      .where(sql`status = 'pending'`),
-  ],
+  (table) => {
+    return [
+      index("idx_agent_run_callbacks_run_id").on(table.runId),
+      index("idx_agent_run_callbacks_pending")
+        .on(table.status)
+        .where(sql`status = 'pending'`),
+    ];
+  },
 );

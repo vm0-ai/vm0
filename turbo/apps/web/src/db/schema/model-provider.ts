@@ -24,9 +24,14 @@ export const modelProviders = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     type: varchar("type", { length: 50 }).notNull(),
     // Legacy single secret FK - null for multi-auth providers
-    secretId: uuid("secret_id").references(() => secrets.id, {
-      onDelete: "cascade",
-    }),
+    secretId: uuid("secret_id").references(
+      () => {
+        return secrets.id;
+      },
+      {
+        onDelete: "cascade",
+      },
+    ),
     // Auth method for multi-auth providers (e.g., "api-key", "access-keys")
     authMethod: varchar("auth_method", { length: 50 }),
     isDefault: boolean("is_default").notNull().default(false),
@@ -36,13 +41,15 @@ export const modelProviders = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (table) => [
-    index("idx_model_providers_secret").on(table.secretId),
-    index("idx_model_providers_org").on(table.orgId),
-    uniqueIndex("idx_model_providers_org_user_type").on(
-      table.orgId,
-      table.userId,
-      table.type,
-    ),
-  ],
+  (table) => {
+    return [
+      index("idx_model_providers_secret").on(table.secretId),
+      index("idx_model_providers_org").on(table.orgId),
+      uniqueIndex("idx_model_providers_org_user_type").on(
+        table.orgId,
+        table.userId,
+        table.type,
+      ),
+    ];
+  },
 );

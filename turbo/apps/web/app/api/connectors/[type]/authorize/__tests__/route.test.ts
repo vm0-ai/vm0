@@ -89,9 +89,9 @@ describe("GET /api/connectors/:type/authorize - OAuth Authorize", () => {
     });
 
     const cookies = response.headers.getSetCookie();
-    const stateCookie = cookies.find((c) =>
-      c.startsWith("connector_oauth_state="),
-    );
+    const stateCookie = cookies.find((c) => {
+      return c.startsWith("connector_oauth_state=");
+    });
     expect(stateCookie).toBeDefined();
     expect(stateCookie).toContain("HttpOnly");
     expect(stateCookie).toContain("SameSite=Lax");
@@ -108,9 +108,9 @@ describe("GET /api/connectors/:type/authorize - OAuth Authorize", () => {
     });
 
     const cookies = response.headers.getSetCookie();
-    const sessionCookie = cookies.find((c) =>
-      c.startsWith("connector_oauth_session="),
-    );
+    const sessionCookie = cookies.find((c) => {
+      return c.startsWith("connector_oauth_session=");
+    });
     expect(sessionCookie).toBeDefined();
     expect(sessionCookie).toContain("test-session-id");
   });
@@ -126,9 +126,9 @@ describe("GET /api/connectors/:type/authorize - OAuth Authorize", () => {
     });
 
     const cookies = response.headers.getSetCookie();
-    const sessionCookie = cookies.find((c) =>
-      c.startsWith("connector_oauth_session="),
-    );
+    const sessionCookie = cookies.find((c) => {
+      return c.startsWith("connector_oauth_session=");
+    });
     expect(sessionCookie).toBeUndefined();
   });
 
@@ -246,9 +246,9 @@ describe("GET /api/connectors/:type/authorize - OAuth Authorize", () => {
       });
 
       const cookies = response.headers.getSetCookie();
-      const stateCookie = cookies.find((c) =>
-        c.startsWith("connector_oauth_state="),
-      );
+      const stateCookie = cookies.find((c) => {
+        return c.startsWith("connector_oauth_state=");
+      });
       expect(stateCookie).toBeDefined();
       expect(stateCookie).toContain("HttpOnly");
       expect(stateCookie).toContain("SameSite=Lax");

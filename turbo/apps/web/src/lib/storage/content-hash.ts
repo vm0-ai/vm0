@@ -83,7 +83,11 @@ export function computeContentHashFromHashes(
   }
 
   // Create sorted list of "path:hash" entries
-  const entries = files.map((file) => `${file.path}:${file.hash}`).sort();
+  const entries = files
+    .map((file) => {
+      return `${file.path}:${file.hash}`;
+    })
+    .sort();
 
   // Include storageId prefix and combine with file entries
   const combined = `storage:${storageId}\n${entries.join("\n")}`;
@@ -110,7 +114,11 @@ export function computeSystemSkillHash(
       .digest("hex");
   }
 
-  const entries = files.map((file) => `${file.path}:${file.hash}`).sort();
+  const entries = files
+    .map((file) => {
+      return `${file.path}:${file.hash}`;
+    })
+    .sort();
   const combined = `system-skill:${skillUrl}\n${entries.join("\n")}`;
   return createHash("sha256").update(combined).digest("hex");
 }

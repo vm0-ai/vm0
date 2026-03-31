@@ -26,14 +26,16 @@ export const secrets = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (table) => [
-    index("idx_secrets_type").on(table.type),
-    index("idx_secrets_org").on(table.orgId),
-    uniqueIndex("idx_secrets_org_user_name_type").on(
-      table.orgId,
-      table.userId,
-      table.name,
-      table.type,
-    ),
-  ],
+  (table) => {
+    return [
+      index("idx_secrets_type").on(table.type),
+      index("idx_secrets_org").on(table.orgId),
+      uniqueIndex("idx_secrets_org_user_name_type").on(
+        table.orgId,
+        table.userId,
+        table.name,
+        table.type,
+      ),
+    ];
+  },
 );

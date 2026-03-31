@@ -67,7 +67,11 @@ async function mergeWithBaseVersion(
   );
 
   // Create map of current files from client
-  const currentFilesMap = new Map(files.map((f) => [f.path, f]));
+  const currentFilesMap = new Map(
+    files.map((f) => {
+      return [f.path, f];
+    }),
+  );
 
   // Start with base manifest files, excluding deleted ones
   const deletedSet = new Set(changes.deleted || []);
@@ -113,7 +117,9 @@ const router = tsr.router(storagesPrepareContract, {
 
     // Validate total declared file size (100MB per-file limit is enforced by schema)
     const totalDeclaredSize = files.reduce(
-      (sum: number, f: { size: number }) => sum + f.size,
+      (sum: number, f: { size: number }) => {
+        return sum + f.size;
+      },
       0,
     );
     if (totalDeclaredSize > MAX_FILE_SIZE_BYTES) {

@@ -21,7 +21,9 @@ export async function GET(
 }
 
 export function generateStaticParams() {
-  return source.getPages().map((page) => ({
-    slug: [...page.slugs, "og.png"],
-  }));
+  return source.getPages().map((page) => {
+    return {
+      slug: [...page.slugs, "og.png"],
+    };
+  });
 }

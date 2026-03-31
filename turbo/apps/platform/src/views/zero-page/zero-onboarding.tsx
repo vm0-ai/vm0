@@ -66,14 +66,16 @@ function ProgressBar({
 }) {
   return (
     <div className="flex items-center gap-1.5 w-full">
-      {Array.from({ length: totalSteps }, (_, i) => (
-        <div
-          key={i}
-          className={`h-1 flex-1 rounded-full transition-colors duration-300 ${
-            i <= currentStep ? "bg-foreground" : "bg-muted"
-          }`}
-        />
-      ))}
+      {Array.from({ length: totalSteps }, (_, i) => {
+        return (
+          <div
+            key={i}
+            className={`h-1 flex-1 rounded-full transition-colors duration-300 ${
+              i <= currentStep ? "bg-foreground" : "bg-muted"
+            }`}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -142,9 +144,9 @@ function SelectConnectorsContent({
 
   const needle = search.trim().toLowerCase();
   const filtered = needle
-    ? connectorEntries.filter(([, config]) =>
-        config.label.toLowerCase().includes(needle),
-      )
+    ? connectorEntries.filter(([, config]) => {
+        return config.label.toLowerCase().includes(needle);
+      })
     : connectorEntries;
 
   const selectedSet = new Set(selectedConnectors);
@@ -167,21 +169,27 @@ function SelectConnectorsContent({
           type="text"
           placeholder="Search connectors..."
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => {
+            return setSearch(e.target.value);
+          }}
           className="h-9 w-full pl-9 rounded-lg"
         />
       </div>
       <div className="w-full grid grid-cols-3 gap-3">
-        {filtered.map(([type, config]) => (
-          <OnboardingConnectorCard
-            key={type}
-            type={type}
-            label={config.label}
-            isSelected={selectedSet.has(type)}
-            isPolling={false}
-            onClick={() => toggleConnector(type)}
-          />
-        ))}
+        {filtered.map(([type, config]) => {
+          return (
+            <OnboardingConnectorCard
+              key={type}
+              type={type}
+              label={config.label}
+              isSelected={selectedSet.has(type)}
+              isPolling={false}
+              onClick={() => {
+                return toggleConnector(type);
+              }}
+            />
+          );
+        })}
         {filtered.length === 0 && (
           <p className="col-span-3 text-sm text-muted-foreground py-4">
             No connectors match your search.
@@ -208,9 +216,19 @@ function ConnectStepContent({
     connectorTypesLoadable.state === "hasData"
       ? connectorTypesLoadable.data
       : [];
-  const connectorMap = new Map(allConnectors.map((c) => [c.type, c]));
+  const connectorMap = new Map(
+    allConnectors.map((c) => {
+      return [c.type, c];
+    }),
+  );
   const connectedSet = new Set(
-    allConnectors.filter((c) => c.connected).map((c) => c.type),
+    allConnectors
+      .filter((c) => {
+        return c.connected;
+      })
+      .map((c) => {
+        return c.type;
+      }),
   );
 
   const selectedEntries = (
@@ -218,7 +236,9 @@ function ConnectStepContent({
       ConnectorType,
       (typeof CONNECTOR_TYPES)[ConnectorType],
     ][]
-  ).filter(([type]) => selectedConnectors.includes(type));
+  ).filter(([type]) => {
+    return selectedConnectors.includes(type);
+  });
 
   const handleConnect = (type: ConnectorType) => {
     const connector = connectorMap.get(type);
@@ -286,7 +306,9 @@ function ConnectStepContent({
                     size="sm"
                     variant="outline"
                     className="rounded-lg text-xs h-8"
-                    onClick={() => handleConnect(type)}
+                    onClick={() => {
+                      return handleConnect(type);
+                    }}
                   >
                     Connect
                   </Button>
@@ -511,7 +533,9 @@ function OrbitIllustration({
       ConnectorType,
       (typeof CONNECTOR_TYPES)[ConnectorType],
     ][]
-  ).filter(([type]) => selectedConnectors.includes(type));
+  ).filter(([type]) => {
+    return selectedConnectors.includes(type);
+  });
 
   const innerRadius = 110;
   const outerRadius = 175;
@@ -841,7 +865,9 @@ function WorkspaceStep({
           type="text"
           placeholder="e.g. Acme Corp"
           value={workspaceName}
-          onChange={(e) => setWorkspaceName(e.target.value)}
+          onChange={(e) => {
+            return setWorkspaceName(e.target.value);
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && workspaceName.trim()) {
               onNext();
@@ -1022,14 +1048,18 @@ export function ZeroOnboarding({
     connectorTypesLoadable.state === "hasData"
       ? connectorTypesLoadable.data
       : [];
-  const connectorTypeSet = new Set(allConnectorsList.map((c) => c.type));
+  const connectorTypeSet = new Set(
+    allConnectorsList.map((c) => {
+      return c.type;
+    }),
+  );
 
   const memberConnectorTypes = isAdmin
     ? []
     : (Object.keys(CONNECTOR_TYPES) as ConnectorType[]).filter((type) => {
-        const isInAgent = defaultAgentSkillUrls.some((url) =>
-          url.endsWith(`/${type}`),
-        );
+        const isInAgent = defaultAgentSkillUrls.some((url) => {
+          return url.endsWith(`/${type}`);
+        });
         return isInAgent && connectorTypeSet.has(type);
       });
   const hasMemberConnectors = memberConnectorTypes.length > 0;
@@ -1061,7 +1091,9 @@ export function ZeroOnboarding({
       {isAdmin && effectiveStep === "1" && (
         <WorkspaceStep
           zeroAvatarSrc={zeroAvatarSrc}
-          onNext={() => setStep("2")}
+          onNext={() => {
+            return setStep("2");
+          }}
         />
       )}
 
@@ -1075,8 +1107,12 @@ export function ZeroOnboarding({
           selectedConnectors={adminSelectedConnectors}
           showBack
           showNext
-          onBack={() => setStep("1")}
-          onNext={() => setStep("3")}
+          onBack={() => {
+            return setStep("1");
+          }}
+          onNext={() => {
+            return setStep("3");
+          }}
         >
           <SelectConnectorsContent
             selectedConnectors={adminSelectedConnectors}
@@ -1094,8 +1130,16 @@ export function ZeroOnboarding({
           selectedConnectors={effectiveConnectors}
           showBack={isAdmin}
           showNext
-          onBack={isAdmin ? () => setStep("2") : undefined}
-          onNext={() => setStep("4")}
+          onBack={
+            isAdmin
+              ? () => {
+                  return setStep("2");
+                }
+              : undefined
+          }
+          onNext={() => {
+            return setStep("4");
+          }}
         >
           <ConnectStepContent selectedConnectors={effectiveConnectors} />
         </OnboardingPage>
@@ -1103,7 +1147,9 @@ export function ZeroOnboarding({
 
       {selectedConnectorType && (
         <ConnectModal
-          onClose={() => setSelected(null)}
+          onClose={() => {
+            return setSelected(null);
+          }}
           onSuccess={() => {
             /* connector list refreshes automatically */
           }}
@@ -1119,7 +1165,9 @@ export function ZeroOnboarding({
           zeroAvatarSrc={zeroAvatarSrc}
           showBack={isAdmin || hasMemberConnectors}
           showNext={false}
-          onBack={() => setStep("3")}
+          onBack={() => {
+            return setStep("3");
+          }}
         >
           <WhereToWorkContent
             name={name}

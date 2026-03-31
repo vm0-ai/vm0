@@ -15,9 +15,15 @@ function makeAuth(overrides?: Partial<TelegramAuthData>): TelegramAuthData {
 
   // Build data-check-string exactly as Telegram specifies
   const checkString = Object.entries(base)
-    .filter(([, value]) => value !== undefined)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, value]) => `${key}=${value}`)
+    .filter(([, value]) => {
+      return value !== undefined;
+    })
+    .sort(([a], [b]) => {
+      return a.localeCompare(b);
+    })
+    .map(([key, value]) => {
+      return `${key}=${value}`;
+    })
     .join("\n");
 
   const secretKey = createHash("sha256").update(BOT_TOKEN).digest();

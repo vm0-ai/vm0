@@ -295,9 +295,9 @@ describe("GET /api/usage", () => {
       expect(response.status).toBe(200);
 
       const twoDaysAgoStr = twoDaysAgo.toISOString().split("T")[0]!;
-      const partialDay = data.daily.find(
-        (d: { date: string }) => d.date === twoDaysAgoStr,
-      );
+      const partialDay = data.daily.find((d: { date: string }) => {
+        return d.date === twoDaysAgoStr;
+      });
       expect(partialDay).toBeDefined();
       expect(partialDay.run_count).toBe(1);
       expect(partialDay.run_time_ms).toBe(5000);

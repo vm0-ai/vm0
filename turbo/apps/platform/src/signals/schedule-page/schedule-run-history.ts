@@ -12,9 +12,9 @@ import { searchParams$, updateSearchParams$ } from "../route.ts";
 
 const internalScheduleId$ = state<string | null>(null);
 
-const scheduleRunHistoryScheduleId$ = computed((get) =>
-  get(internalScheduleId$),
-);
+const scheduleRunHistoryScheduleId$ = computed((get) => {
+  return get(internalScheduleId$);
+});
 
 /** Set the schedule ID to fetch run history for. */
 export const setScheduleRunHistoryScheduleId$ = command(

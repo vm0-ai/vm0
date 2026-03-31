@@ -202,7 +202,9 @@ export function createCursorPagination(config: CursorPaginationConfig) {
   const refreshTick$ = state(0);
 
   const refresh$ = command(({ set }) => {
-    set(refreshTick$, (n) => n + 1);
+    set(refreshTick$, (n) => {
+      return n + 1;
+    });
   });
 
   const data$ = computed(async (get) => {
@@ -238,7 +240,9 @@ export function createCursorPagination(config: CursorPaginationConfig) {
     }
   });
 
-  const hasPrev$ = computed((get) => get(cursor$) !== null);
+  const hasPrev$ = computed((get) => {
+    return get(cursor$) !== null;
+  });
 
   const currentPage$ = computed((get) => {
     const cursor = get(cursor$);

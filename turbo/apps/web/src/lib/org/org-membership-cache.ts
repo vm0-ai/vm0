@@ -38,7 +38,9 @@ export async function verifyMembershipCached(
     userId,
     limit: 100,
   });
-  const membership = memberships.data.find((m) => m.organization.id === orgId);
+  const membership = memberships.data.find((m) => {
+    return m.organization.id === orgId;
+  });
 
   if (!membership) {
     // Not a member — delete stale cache entry if exists

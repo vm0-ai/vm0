@@ -49,7 +49,11 @@ function isGitHubUrl(input: string): boolean {
  */
 export function getSecretsFromComposeContent(content: unknown): Set<string> {
   const grouped = extractAndGroupVariables(content);
-  return new Set(grouped.secrets.map((r) => r.name));
+  return new Set(
+    grouped.secrets.map((r) => {
+      return r.name;
+    }),
+  );
 }
 
 /**
@@ -58,7 +62,11 @@ export function getSecretsFromComposeContent(content: unknown): Set<string> {
  */
 function getVarsFromComposeContent(content: unknown): Set<string> {
   const grouped = extractAndGroupVariables(content);
-  return new Set(grouped.vars.map((r) => r.name));
+  return new Set(
+    grouped.vars.map((r) => {
+      return r.name;
+    }),
+  );
 }
 
 interface AgentConfig {
@@ -234,10 +242,14 @@ async function checkAndPromptMissingItems(
     ]);
 
   const existingSecretNames = new Set(
-    secretsResponse.secrets.map((s) => s.name),
+    secretsResponse.secrets.map((s) => {
+      return s.name;
+    }),
   );
   const existingVarNames = new Set(
-    variablesResponse.variables.map((v) => v.name),
+    variablesResponse.variables.map((v) => {
+      return v.name;
+    }),
   );
 
   // Connector-provided secrets (e.g., GH_TOKEN from GitHub connector)
@@ -246,12 +258,12 @@ async function checkAndPromptMissingItems(
     connectorsResponse.connectorProvidedSecretNames,
   );
 
-  const missingSecrets = [...requiredSecrets].filter(
-    (name) => !existingSecretNames.has(name) && !connectorProvided.has(name),
-  );
-  const missingVars = [...requiredVars].filter(
-    (name) => !existingVarNames.has(name),
-  );
+  const missingSecrets = [...requiredSecrets].filter((name) => {
+    return !existingSecretNames.has(name) && !connectorProvided.has(name);
+  });
+  const missingVars = [...requiredVars].filter((name) => {
+    return !existingVarNames.has(name);
+  });
 
   if (missingSecrets.length === 0 && missingVars.length === 0) {
     return { missingSecrets: [], missingVars: [] };

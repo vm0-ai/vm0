@@ -189,9 +189,9 @@ describe("POST /api/zero/chat/messages", () => {
       );
       expect(threadResponse.status).toBe(200);
       const threadData = await threadResponse.json();
-      const allRunIds = threadData.unsavedRuns.map(
-        (r: { runId: string }) => r.runId,
-      );
+      const allRunIds = threadData.unsavedRuns.map((r: { runId: string }) => {
+        return r.runId;
+      });
       expect(allRunIds).toContain(data.runId);
     });
 

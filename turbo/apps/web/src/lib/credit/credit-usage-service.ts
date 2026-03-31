@@ -41,16 +41,21 @@ function extractModel(events: EventData[]): string | undefined {
 
 function extractAllResults(events: EventData[]): ResultEventData[] {
   return events
-    .filter((e) => e.type === "result")
-    .map((e) => ({
-      uuid: e.uuid,
-      inputTokens: e.usage?.input_tokens ?? 0,
-      outputTokens: e.usage?.output_tokens ?? 0,
-      cacheReadInputTokens: e.usage?.cache_read_input_tokens ?? 0,
-      cacheCreationInputTokens: e.usage?.cache_creation_input_tokens ?? 0,
-      webSearchRequests: e.usage?.server_tool_use?.web_search_requests ?? 0,
-      costUsd: e.total_cost_usd !== undefined ? String(e.total_cost_usd) : null,
-    }));
+    .filter((e) => {
+      return e.type === "result";
+    })
+    .map((e) => {
+      return {
+        uuid: e.uuid,
+        inputTokens: e.usage?.input_tokens ?? 0,
+        outputTokens: e.usage?.output_tokens ?? 0,
+        cacheReadInputTokens: e.usage?.cache_read_input_tokens ?? 0,
+        cacheCreationInputTokens: e.usage?.cache_creation_input_tokens ?? 0,
+        webSearchRequests: e.usage?.server_tool_use?.web_search_requests ?? 0,
+        costUsd:
+          e.total_cost_usd !== undefined ? String(e.total_cost_usd) : null,
+      };
+    });
 }
 
 /**

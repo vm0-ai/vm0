@@ -8,14 +8,18 @@ import { reloadEnv } from "../../../../../../src/env";
 
 // Mock Clerk Server API
 const mockGetUserList = vi.fn();
-vi.mock("@clerk/nextjs/server", () => ({
-  clerkClient: vi.fn(async () => ({
-    users: {
-      getUserList: mockGetUserList,
-    },
-  })),
-  auth: vi.fn(),
-}));
+vi.mock("@clerk/nextjs/server", () => {
+  return {
+    clerkClient: vi.fn(async () => {
+      return {
+        users: {
+          getUserList: mockGetUserList,
+        },
+      };
+    }),
+    auth: vi.fn(),
+  };
+});
 
 const context = testContext();
 

@@ -389,7 +389,9 @@ function useExportStatus() {
 
     const interval = setInterval(refresh, POLL_INTERVAL_MS);
 
-    return () => clearInterval(interval);
+    return () => {
+      return clearInterval(interval);
+    };
   }, [data?.job?.status, refresh]);
 
   const handleTrigger = useCallback(() => {

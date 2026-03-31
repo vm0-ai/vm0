@@ -64,13 +64,15 @@ const router = tsr.router(webhookEventsContract, {
         type: string;
         sequenceNumber: number;
         [key: string]: unknown;
-      }) => ({
-        runId: body.runId,
-        userId,
-        sequenceNumber: event.sequenceNumber,
-        eventType: event.type,
-        eventData: event, // Already masked by client
-      }),
+      }) => {
+        return {
+          runId: body.runId,
+          userId,
+          sequenceNumber: event.sequenceNumber,
+          eventType: event.type,
+          eventData: event, // Already masked by client
+        };
+      },
     );
 
     // Buffer events for Axiom (flushed at response boundary)

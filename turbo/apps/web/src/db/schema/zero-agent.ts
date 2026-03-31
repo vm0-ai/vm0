@@ -21,7 +21,12 @@ export const zeroAgents = pgTable(
   {
     id: uuid("id")
       .primaryKey()
-      .references(() => agentComposes.id, { onDelete: "cascade" }),
+      .references(
+        () => {
+          return agentComposes.id;
+        },
+        { onDelete: "cascade" },
+      ),
     orgId: text("org_id").notNull(),
     name: varchar("name", { length: 64 }).notNull(),
     displayName: varchar("display_name", { length: 256 }),
@@ -36,11 +41,13 @@ export const zeroAgents = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (table) => ({
-    orgNameIdx: uniqueIndex("idx_zero_agents_org_name").on(
-      table.orgId,
-      table.name,
-    ),
-    orgIdx: index("idx_zero_agents_org").on(table.orgId),
-  }),
+  (table) => {
+    return {
+      orgNameIdx: uniqueIndex("idx_zero_agents_org_name").on(
+        table.orgId,
+        table.name,
+      ),
+      orgIdx: index("idx_zero_agents_org").on(table.orgId),
+    };
+  },
 );

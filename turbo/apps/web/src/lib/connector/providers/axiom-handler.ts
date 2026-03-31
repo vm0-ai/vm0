@@ -7,7 +7,13 @@ export const axiomHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Axiom does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "AXIOM_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "AXIOM_TOKEN";
+  },
 };

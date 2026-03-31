@@ -58,7 +58,9 @@ function isOperationalError(error: unknown): boolean {
   }
 
   const message = error.message;
-  return OPERATIONAL_ERROR_PATTERNS.some((pattern) => pattern.test(message));
+  return OPERATIONAL_ERROR_PATTERNS.some((pattern) => {
+    return pattern.test(message);
+  });
 }
 
 if (DSN) {

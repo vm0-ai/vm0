@@ -27,9 +27,15 @@ export const mercuryHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.MERCURY_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.MERCURY_OAUTH_CLIENT_SECRET,
+  getClientId: (e) => {
+    return e.MERCURY_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.MERCURY_OAUTH_CLIENT_SECRET;
+  },
   getSecretName: getMercurySecretName,
-  getRefreshSecretName: () => "MERCURY_REFRESH_TOKEN",
+  getRefreshSecretName: () => {
+    return "MERCURY_REFRESH_TOKEN";
+  },
   refreshToken: refreshMercuryToken,
 };

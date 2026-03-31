@@ -7,7 +7,13 @@ export const huggingFaceHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Hugging Face does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "HUGGING_FACE_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "HUGGING_FACE_TOKEN";
+  },
 };

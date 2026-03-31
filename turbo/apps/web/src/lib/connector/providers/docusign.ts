@@ -48,7 +48,9 @@ async function computeCodeChallenge(codeVerifier: string): Promise<string> {
  * Base64url encode a byte array (RFC 7636).
  */
 function base64UrlEncode(bytes: Uint8Array): string {
-  const binString = Array.from(bytes, (b) => String.fromCharCode(b)).join("");
+  const binString = Array.from(bytes, (b) => {
+    return String.fromCharCode(b);
+  }).join("");
   return btoa(binString)
     .replace(/\+/g, "-")
     .replace(/\//g, "_")

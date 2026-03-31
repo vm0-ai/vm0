@@ -277,7 +277,9 @@ function ActivityHeaderCard({
           variant="ghost"
           size="sm"
           className="h-8 shrink-0 gap-1 rounded-lg text-sm text-muted-foreground hover:text-foreground ml-auto"
-          onClick={() => downloadCsv(events, detail.id)}
+          onClick={() => {
+            return downloadCsv(events, detail.id);
+          }}
         >
           <IconDownload size={14} stroke={1.5} />
           Download
@@ -329,13 +331,13 @@ export function ZeroActivityDetailPage() {
   const allMessages = groupEventsIntoMessages(events);
 
   // Filter out text-only assistant messages right before result (redundant)
-  const visibleMessages = allMessages.filter((message, index) =>
-    isVisibleMessage(message, allMessages[index + 1]),
-  );
+  const visibleMessages = allMessages.filter((message, index) => {
+    return isVisibleMessage(message, allMessages[index + 1]);
+  });
 
-  const messages = visibleMessages.filter((m) =>
-    groupedMessageMatchesSearch(m, stepSearch.trim()),
-  );
+  const messages = visibleMessages.filter((m) => {
+    return groupedMessageMatchesSearch(m, stepSearch.trim());
+  });
 
   const showModelDetail = features?.[FeatureSwitchKey.ModelDetail] ?? false;
 
@@ -389,7 +391,9 @@ export function ZeroActivityDetailPage() {
                     <Input
                       placeholder="Search steps"
                       value={stepSearch}
-                      onChange={(e) => setStepSearch(e.target.value)}
+                      onChange={(e) => {
+                        return setStepSearch(e.target.value);
+                      }}
                       className="pl-9"
                     />
                   </div>
@@ -441,21 +445,23 @@ function ActivitySkeleton() {
               <div className="h-5 w-12 rounded bg-muted/50 animate-pulse" />
             </div>
             <div className="flex flex-col gap-3">
-              {["sk-1", "sk-2", "sk-3"].map((id) => (
-                <div
-                  key={id}
-                  className="rounded-lg border border-border/40 p-4"
-                >
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="h-2 w-2 rounded-full bg-muted/50 animate-pulse" />
-                    <div className="h-4 w-16 rounded bg-muted/50 animate-pulse" />
+              {["sk-1", "sk-2", "sk-3"].map((id) => {
+                return (
+                  <div
+                    key={id}
+                    className="rounded-lg border border-border/40 p-4"
+                  >
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="h-2 w-2 rounded-full bg-muted/50 animate-pulse" />
+                      <div className="h-4 w-16 rounded bg-muted/50 animate-pulse" />
+                    </div>
+                    <div className="space-y-2 ml-4">
+                      <div className="h-3 w-full rounded bg-muted/30 animate-pulse" />
+                      <div className="h-3 w-3/4 rounded bg-muted/30 animate-pulse" />
+                    </div>
                   </div>
-                  <div className="space-y-2 ml-4">
-                    <div className="h-3 w-full rounded bg-muted/30 animate-pulse" />
-                    <div className="h-3 w-3/4 rounded bg-muted/30 animate-pulse" />
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
@@ -509,14 +515,16 @@ function StepsList({
           No events available
         </div>
       ) : (
-        messages.map((message, index) => (
-          <GroupedMessageCard
-            key={`${message.type}-${message.sequenceNumber}-${message.createdAt}`}
-            message={message}
-            searchTerm={stepSearch}
-            showConnector={index < messages.length - 1}
-          />
-        ))
+        messages.map((message, index) => {
+          return (
+            <GroupedMessageCard
+              key={`${message.type}-${message.sequenceNumber}-${message.createdAt}`}
+              message={message}
+              searchTerm={stepSearch}
+              showConnector={index < messages.length - 1}
+            />
+          );
+        })
       )}
     </div>
   );
@@ -531,14 +539,14 @@ function escapeCsvField(value: string): string {
 
 function downloadCsv(events: AgentEvent[], logId: string) {
   const header = "sequenceNumber,eventType,eventData,createdAt";
-  const rows = events.map((e) =>
-    [
+  const rows = events.map((e) => {
+    return [
       String(e.sequenceNumber),
       escapeCsvField(e.eventType),
       escapeCsvField(JSON.stringify(e.eventData)),
       escapeCsvField(e.createdAt),
-    ].join(","),
-  );
+    ].join(",");
+  });
   const csv = [header, ...rows].join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
@@ -563,7 +571,12 @@ function summarizePrompt(prompt: string): string {
       return line.length > 80 ? `${line.slice(0, 77)}...` : line;
     }
   }
-  const first = lines.find((l) => l.trim().length > 0)?.trim() ?? "";
+  const first =
+    lines
+      .find((l) => {
+        return l.trim().length > 0;
+      })
+      ?.trim() ?? "";
   return first.length > 80 ? `${first.slice(0, 77)}...` : first;
 }
 

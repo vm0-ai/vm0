@@ -27,9 +27,15 @@ export const neonHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.NEON_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.NEON_OAUTH_CLIENT_SECRET,
+  getClientId: (e) => {
+    return e.NEON_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.NEON_OAUTH_CLIENT_SECRET;
+  },
   getSecretName: getNeonSecretName,
-  getRefreshSecretName: () => "NEON_REFRESH_TOKEN",
+  getRefreshSecretName: () => {
+    return "NEON_REFRESH_TOKEN";
+  },
   refreshToken: refreshNeonToken,
 };

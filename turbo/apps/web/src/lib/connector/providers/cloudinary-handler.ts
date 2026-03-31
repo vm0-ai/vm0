@@ -7,7 +7,13 @@ export const cloudinaryHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Cloudinary does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "CLOUDINARY_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "CLOUDINARY_TOKEN";
+  },
 };

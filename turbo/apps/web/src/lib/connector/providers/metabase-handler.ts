@@ -7,7 +7,13 @@ export const metabaseHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Metabase does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "METABASE_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "METABASE_TOKEN";
+  },
 };

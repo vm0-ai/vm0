@@ -3,9 +3,15 @@ import { NextRequest, NextResponse } from "next/server";
 
 // Mock next-intl/middleware to avoid ESM resolution issues in test environment.
 // This is an external dependency mock (not internal code), which is acceptable.
-vi.mock("next-intl/middleware", () => ({
-  default: () => () => NextResponse.next(),
-}));
+vi.mock("next-intl/middleware", () => {
+  return {
+    default: () => {
+      return () => {
+        return NextResponse.next();
+      };
+    },
+  };
+});
 
 import { localeGuardLayer, runLayers } from "../proxy.layers";
 

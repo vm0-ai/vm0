@@ -247,7 +247,9 @@ export async function deleteComputerConnector(
   // Delete ngrok resources (ignore 404 errors if already deleted)
   if (apiKey && connector.externalUsername) {
     await safeDeleteNgrokResource(
-      () => deleteCredential(apiKey, connector.externalUsername!),
+      () => {
+        return deleteCredential(apiKey, connector.externalUsername!);
+      },
       "Credential",
       connector.externalUsername,
     );
@@ -255,7 +257,9 @@ export async function deleteComputerConnector(
 
   if (apiKey && connector.externalEmail) {
     await safeDeleteNgrokResource(
-      () => deleteCloudEndpoint(apiKey, connector.externalEmail!),
+      () => {
+        return deleteCloudEndpoint(apiKey, connector.externalEmail!);
+      },
       "Cloud endpoint",
       connector.externalEmail,
     );
@@ -284,7 +288,9 @@ export async function deleteComputerConnector(
       );
 
       await safeDeleteNgrokResource(
-        () => deleteReservedDomain(apiKey, domainId),
+        () => {
+          return deleteReservedDomain(apiKey, domainId);
+        },
         "Reserved domain",
         domainId,
       );

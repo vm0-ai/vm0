@@ -20,11 +20,18 @@ export const slackOrgThreadSessions = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     connectionId: uuid("connection_id")
       .notNull()
-      .references(() => slackOrgConnections.id, { onDelete: "cascade" }),
+      .references(
+        () => {
+          return slackOrgConnections.id;
+        },
+        { onDelete: "cascade" },
+      ),
     slackChannelId: varchar("slack_channel_id", { length: 255 }).notNull(),
     slackThreadTs: varchar("slack_thread_ts", { length: 255 }).notNull(),
     agentSessionId: uuid("agent_session_id").references(
-      () => agentSessions.id,
+      () => {
+        return agentSessions.id;
+      },
       { onDelete: "set null" },
     ),
     lastProcessedMessageTs: varchar("last_processed_message_ts", {
@@ -33,12 +40,14 @@ export const slackOrgThreadSessions = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (table) => [
-    uniqueIndex("idx_slack_org_thread_sessions_conn_channel_thread").on(
-      table.connectionId,
-      table.slackChannelId,
-      table.slackThreadTs,
-    ),
-    index("idx_slack_org_thread_sessions_connection").on(table.connectionId),
-  ],
+  (table) => {
+    return [
+      uniqueIndex("idx_slack_org_thread_sessions_conn_channel_thread").on(
+        table.connectionId,
+        table.slackChannelId,
+        table.slackThreadTs,
+      ),
+      index("idx_slack_org_thread_sessions_connection").on(table.connectionId),
+    ];
+  },
 );

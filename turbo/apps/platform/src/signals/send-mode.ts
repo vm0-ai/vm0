@@ -10,7 +10,9 @@ export const sendMode$ = computed(async (get): Promise<SendMode> => {
 
 /** Whether an IME composition session is active in the chat composer. */
 const internalComposing$ = state(false);
-export const composing$ = computed((get) => get(internalComposing$));
+export const composing$ = computed((get) => {
+  return get(internalComposing$);
+});
 
 /** Mark IME composition as started. */
 export const compositionStart$ = command(({ set }) => {

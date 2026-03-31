@@ -15,9 +15,9 @@ export function hasFirewallPermissions(type: ConnectorType): boolean {
     return false;
   }
   const config = getConnectorFirewall(type);
-  return config.apis.some(
-    (api) => api.permissions && api.permissions.length > 0,
-  );
+  return config.apis.some((api) => {
+    return api.permissions && api.permissions.length > 0;
+  });
 }
 
 // ---------------------------------------------------------------------------

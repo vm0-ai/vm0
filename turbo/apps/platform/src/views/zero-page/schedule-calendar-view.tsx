@@ -73,9 +73,15 @@ function CalendarEntryPopover<T extends ScheduleEntry>({
       <PopoverTrigger asChild>
         <button
           type="button"
-          onMouseEnter={() => setOpen(true)}
-          onMouseLeave={() => setOpen(false)}
-          onDoubleClick={() => onEdit(entry)}
+          onMouseEnter={() => {
+            return setOpen(true);
+          }}
+          onMouseLeave={() => {
+            return setOpen(false);
+          }}
+          onDoubleClick={() => {
+            return onEdit(entry);
+          }}
           className={cn(
             "w-full min-h-0 rounded px-1.5 py-0.5 text-[11px] leading-tight line-clamp-2 break-words border text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             cellClass,
@@ -89,14 +95,20 @@ function CalendarEntryPopover<T extends ScheduleEntry>({
         align="start"
         sideOffset={0}
         className="w-80 p-3 flex flex-col gap-3"
-        onMouseEnter={() => setOpen(true)}
-        onMouseLeave={() => setOpen(false)}
+        onMouseEnter={() => {
+          return setOpen(true);
+        }}
+        onMouseLeave={() => {
+          return setOpen(false);
+        }}
       >
         <div className="relative flex flex-col gap-1.5 pr-8">
           <div className="absolute top-0 right-0">
             <button
               type="button"
-              onClick={() => onEdit(entry)}
+              onClick={() => {
+                return onEdit(entry);
+              }}
               className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
               aria-label={`Edit ${entry.time}`}
             >
@@ -136,21 +148,23 @@ export function ScheduleCalendarView<T extends ScheduleEntry>({
   getAgentLabel?: (entry: T) => string;
   onEdit: (entry: T) => void;
 }) {
-  const enabledEntries = entries.filter((e) => e.enabled !== false);
+  const enabledEntries = entries.filter((e) => {
+    return e.enabled !== false;
+  });
   const calendarSlots = buildCalendarTimeSlots(enabledEntries);
   const [selectedDay, setSelectedDay] = useState(
     new Date().getDay() === 0 ? 6 : new Date().getDay() - 1,
   );
 
-  const loopEntries = enabledEntries.filter((e) =>
-    e.time.match(/Every \d+ (minutes?|seconds?)/),
-  );
-  const onceEntries = enabledEntries.filter((e) =>
-    e.time.startsWith("Once on"),
-  );
-  const monthlyEntries = enabledEntries.filter((e) =>
-    e.time.startsWith("Every month"),
-  );
+  const loopEntries = enabledEntries.filter((e) => {
+    return e.time.match(/Every \d+ (minutes?|seconds?)/);
+  });
+  const onceEntries = enabledEntries.filter((e) => {
+    return e.time.startsWith("Once on");
+  });
+  const monthlyEntries = enabledEntries.filter((e) => {
+    return e.time.startsWith("Every month");
+  });
 
   const sections: { title: string; entries: T[] }[] = [
     { title: "Loop", entries: loopEntries },
@@ -173,12 +187,12 @@ export function ScheduleCalendarView<T extends ScheduleEntry>({
                   <TooltipTrigger asChild>
                     <button
                       type="button"
-                      onClick={() =>
-                        setSelectedDay(
+                      onClick={() => {
+                        return setSelectedDay(
                           (selectedDay - 1 + WEEKDAY_LABELS.length) %
                             WEEKDAY_LABELS.length,
-                        )
-                      }
+                        );
+                      }}
                       className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
                       aria-label="Previous day"
                     >
@@ -198,11 +212,11 @@ export function ScheduleCalendarView<T extends ScheduleEntry>({
                   <TooltipTrigger asChild>
                     <button
                       type="button"
-                      onClick={() =>
-                        setSelectedDay(
+                      onClick={() => {
+                        return setSelectedDay(
                           (selectedDay + 1) % WEEKDAY_LABELS.length,
-                        )
-                      }
+                        );
+                      }}
                       className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
                       aria-label="Next day"
                     >
@@ -246,15 +260,17 @@ export function ScheduleCalendarView<T extends ScheduleEntry>({
                       </span>
                     ) : (
                       <div className="w-full min-h-[44px] rounded-lg p-1.5 flex flex-col gap-0.5 text-left">
-                        {cellEntries.map((entry) => (
-                          <CalendarEntryPopover
-                            key={entry.id}
-                            entry={entry}
-                            agentOrder={agentOrder}
-                            getAgentLabel={getAgentLabel}
-                            onEdit={onEdit}
-                          />
-                        ))}
+                        {cellEntries.map((entry) => {
+                          return (
+                            <CalendarEntryPopover
+                              key={entry.id}
+                              entry={entry}
+                              agentOrder={agentOrder}
+                              getAgentLabel={getAgentLabel}
+                              onEdit={onEdit}
+                            />
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -266,78 +282,86 @@ export function ScheduleCalendarView<T extends ScheduleEntry>({
           <div className="hidden md:block">
             <div className="grid grid-cols-8 text-sm">
               <div className="bg-muted/50 p-2 border-b border-r border-border/60 font-medium text-muted-foreground text-xs uppercase tracking-wider" />
-              {WEEKDAY_LABELS.map((d, dayIndex) => (
-                <div
-                  key={d}
-                  className={cn(
-                    "bg-muted/50 p-2 border-b border-border/60 font-medium text-muted-foreground text-center",
-                    dayIndex < WEEKDAY_LABELS.length - 1 &&
-                      "border-r border-border/60",
-                  )}
-                >
-                  {d}
-                </div>
-              ))}
-              {calendarSlots.map((timeLabel, timeIndex) => (
-                <div key={timeLabel} className="contents">
+              {WEEKDAY_LABELS.map((d, dayIndex) => {
+                return (
                   <div
+                    key={d}
                     className={cn(
-                      "bg-muted/30 p-2 border-r border-border/60 text-muted-foreground text-xs flex items-center",
-                      timeIndex < calendarSlots.length - 1 &&
-                        "border-b border-border/60",
+                      "bg-muted/50 p-2 border-b border-border/60 font-medium text-muted-foreground text-center",
+                      dayIndex < WEEKDAY_LABELS.length - 1 &&
+                        "border-r border-border/60",
                     )}
                   >
-                    {timeLabel}
+                    {d}
                   </div>
-                  {WEEKDAY_LABELS.map((dayLabel, dayIndex) => {
-                    const cellEntries = getEntriesInCell(
-                      enabledEntries,
-                      dayIndex,
-                      timeLabel,
-                    ) as T[];
-                    const isEmpty = cellEntries.length === 0;
-                    const isLastRow = timeIndex === calendarSlots.length - 1;
-                    const isLastCol = dayIndex === WEEKDAY_LABELS.length - 1;
-                    return (
-                      <div
-                        key={`${timeLabel}-${dayLabel}`}
-                        className={cn(
-                          "min-h-[52px] p-1.5 border-border/60 flex items-center justify-center",
-                          !isLastCol && "border-r border-border/60",
-                          !isLastRow && "border-b border-border/60",
-                          isEmpty && "bg-background/50",
-                        )}
-                      >
-                        {isEmpty ? (
-                          <span className="text-muted-foreground/40 text-xs">
-                            —
-                          </span>
-                        ) : (
-                          <div className="w-full h-full min-h-[44px] rounded-lg p-1.5 flex flex-col gap-0.5 text-left">
-                            {cellEntries.map((entry) => (
-                              <CalendarEntryPopover
-                                key={entry.id}
-                                entry={entry}
-                                agentOrder={agentOrder}
-                                getAgentLabel={getAgentLabel}
-                                onEdit={onEdit}
-                              />
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
+                );
+              })}
+              {calendarSlots.map((timeLabel, timeIndex) => {
+                return (
+                  <div key={timeLabel} className="contents">
+                    <div
+                      className={cn(
+                        "bg-muted/30 p-2 border-r border-border/60 text-muted-foreground text-xs flex items-center",
+                        timeIndex < calendarSlots.length - 1 &&
+                          "border-b border-border/60",
+                      )}
+                    >
+                      {timeLabel}
+                    </div>
+                    {WEEKDAY_LABELS.map((dayLabel, dayIndex) => {
+                      const cellEntries = getEntriesInCell(
+                        enabledEntries,
+                        dayIndex,
+                        timeLabel,
+                      ) as T[];
+                      const isEmpty = cellEntries.length === 0;
+                      const isLastRow = timeIndex === calendarSlots.length - 1;
+                      const isLastCol = dayIndex === WEEKDAY_LABELS.length - 1;
+                      return (
+                        <div
+                          key={`${timeLabel}-${dayLabel}`}
+                          className={cn(
+                            "min-h-[52px] p-1.5 border-border/60 flex items-center justify-center",
+                            !isLastCol && "border-r border-border/60",
+                            !isLastRow && "border-b border-border/60",
+                            isEmpty && "bg-background/50",
+                          )}
+                        >
+                          {isEmpty ? (
+                            <span className="text-muted-foreground/40 text-xs">
+                              —
+                            </span>
+                          ) : (
+                            <div className="w-full h-full min-h-[44px] rounded-lg p-1.5 flex flex-col gap-0.5 text-left">
+                              {cellEntries.map((entry) => {
+                                return (
+                                  <CalendarEntryPopover
+                                    key={entry.id}
+                                    entry={entry}
+                                    agentOrder={agentOrder}
+                                    getAgentLabel={getAgentLabel}
+                                    onEdit={onEdit}
+                                  />
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
       </div>
-      {sections.some((s) => s.entries.length > 0) && (
+      {sections.some((s) => {
+        return s.entries.length > 0;
+      }) && (
         <div className="flex flex-col gap-8">
-          {sections.map((section) =>
-            section.entries.length > 0 ? (
+          {sections.map((section) => {
+            return section.entries.length > 0 ? (
               <div key={section.title} className="flex flex-col gap-1.5">
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   {section.title}
@@ -358,7 +382,9 @@ export function ScheduleCalendarView<T extends ScheduleEntry>({
                         <span className="text-foreground">{entry.time}</span>
                         <button
                           type="button"
-                          onClick={() => onEdit(entry)}
+                          onClick={() => {
+                            return onEdit(entry);
+                          }}
                           className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
                           aria-label={`Edit ${entry.time}`}
                         >
@@ -369,8 +395,8 @@ export function ScheduleCalendarView<T extends ScheduleEntry>({
                   })}
                 </div>
               </div>
-            ) : null,
-          )}
+            ) : null;
+          })}
         </div>
       )}
     </section>

@@ -73,7 +73,9 @@ async function uploadLogo(
     body: formData,
   });
   if (!resp.ok) {
-    const data = (await resp.json().catch(() => null)) as {
+    const data = (await resp.json().catch(() => {
+      return null;
+    })) as {
       error?: { message?: string };
     } | null;
     toast.error(data?.error?.message ?? "Failed to upload logo");
@@ -199,7 +201,9 @@ function ProfileSection({
     }
     setLogoLoaded(true);
     fetchFn("/api/zero/org/logo")
-      .then((r) => r.json())
+      .then((r) => {
+        return r.json();
+      })
       .then((data: { logoUrl: string | null }) => {
         if (data.logoUrl) {
           setLogoUrl(data.logoUrl);
@@ -288,7 +292,9 @@ function ProfileSection({
             <Input
               id="org-name"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                return setName(e.target.value);
+              }}
               placeholder="Workspace name"
               className="w-[220px] shrink-0"
             />
@@ -311,7 +317,9 @@ function ProfileSection({
             <Input
               id="org-slug"
               value={slug}
-              onChange={(e) => setSlug(e.target.value)}
+              onChange={(e) => {
+                return setSlug(e.target.value);
+              }}
               placeholder="organization-slug"
               className="w-[220px] shrink-0"
             />
@@ -329,7 +337,9 @@ function ProfileSection({
             <Button
               size="sm"
               className="rounded-lg"
-              onClick={() => detach(handleSave(), Reason.DomCallback)}
+              onClick={() => {
+                return detach(handleSave(), Reason.DomCallback);
+              }}
               disabled={saving}
             >
               {saving ? "Saving..." : "Save changes"}
@@ -460,7 +470,9 @@ function DangerZoneSection({
                     <Button
                       variant="destructive"
                       size="sm"
-                      onClick={() => detach(handleLeave(), Reason.DomCallback)}
+                      onClick={() => {
+                        return detach(handleLeave(), Reason.DomCallback);
+                      }}
                       disabled={leaving}
                     >
                       {leaving ? "Leaving..." : "Leave"}
@@ -510,7 +522,9 @@ function DangerZoneSection({
                   <Input
                     placeholder={org.slug}
                     value={deleteConfirm}
-                    onChange={(e) => setDeleteConfirm(e.target.value)}
+                    onChange={(e) => {
+                      return setDeleteConfirm(e.target.value);
+                    }}
                   />
                   <DialogFooter>
                     <DialogClose asChild>
@@ -521,7 +535,9 @@ function DangerZoneSection({
                     <Button
                       variant="destructive"
                       size="sm"
-                      onClick={() => detach(handleDelete(), Reason.DomCallback)}
+                      onClick={() => {
+                        return detach(handleDelete(), Reason.DomCallback);
+                      }}
                       disabled={deleting || deleteConfirm !== org.slug}
                     >
                       {deleting ? "Deleting..." : "Delete workspace"}

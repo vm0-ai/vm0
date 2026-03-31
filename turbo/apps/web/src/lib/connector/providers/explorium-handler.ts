@@ -7,7 +7,13 @@ export const exploriumHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Explorium does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "EXPLORIUM_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "EXPLORIUM_TOKEN";
+  },
 };

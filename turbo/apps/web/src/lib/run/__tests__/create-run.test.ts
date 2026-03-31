@@ -236,12 +236,14 @@ describe("createRun()", () => {
       ]);
 
       // Both should succeed: one runs, one gets queued
-      const fulfilled = results.filter((r) => r.status === "fulfilled");
+      const fulfilled = results.filter((r) => {
+        return r.status === "fulfilled";
+      });
       expect(fulfilled).toHaveLength(2);
 
-      const statuses = fulfilled.map(
-        (r) => r.status === "fulfilled" && r.value.status,
-      );
+      const statuses = fulfilled.map((r) => {
+        return r.status === "fulfilled" && r.value.status;
+      });
       expect(statuses).toContain("queued");
     });
 
@@ -1217,7 +1219,9 @@ describe("createRun()", () => {
       // Verify firewall is constructed for the api-token connector
       const firewalls = job!.executionContext.experimentalFirewalls;
       expect(firewalls).toBeDefined();
-      const figmaFirewall = firewalls!.find((fw) => fw.name === "figma");
+      const figmaFirewall = firewalls!.find((fw) => {
+        return fw.name === "figma";
+      });
       expect(figmaFirewall).toBeDefined();
       expect(figmaFirewall!.apis[0]!.base).toBe("https://api.figma.com");
     });

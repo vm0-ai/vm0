@@ -7,7 +7,13 @@ export const wixHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Wix does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "WIX_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "WIX_TOKEN";
+  },
 };

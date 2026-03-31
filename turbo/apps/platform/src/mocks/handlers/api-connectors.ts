@@ -34,7 +34,9 @@ export const apiConnectorsHandlers = [
   // DELETE /api/zero/connectors/:type - Disconnect a connector (zero proxy)
   http.delete("*/api/zero/connectors/:type", ({ params }) => {
     const type = params.type as string;
-    const existing = mockConnectors.find((c) => c.type === type);
+    const existing = mockConnectors.find((c) => {
+      return c.type === type;
+    });
 
     if (!existing) {
       return HttpResponse.json(
@@ -43,7 +45,9 @@ export const apiConnectorsHandlers = [
       );
     }
 
-    mockConnectors = mockConnectors.filter((c) => c.type !== type);
+    mockConnectors = mockConnectors.filter((c) => {
+      return c.type !== type;
+    });
     return new HttpResponse(null, { status: 204 });
   }),
 ];

@@ -11,7 +11,9 @@ export const useCommand = new Command()
   .action(
     withErrorHandler(async (slug: string) => {
       const orgList = await listZeroOrgs();
-      const target = orgList.orgs.find((s) => s.slug === slug);
+      const target = orgList.orgs.find((s) => {
+        return s.slug === slug;
+      });
       if (!target) {
         throw new Error(`Organization '${slug}' not found or not accessible.`);
       }

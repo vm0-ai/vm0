@@ -127,15 +127,17 @@ const router = tsr.router(zeroAgentsMainContract, {
 
     return {
       status: 200 as const,
-      body: rows.map((row) => ({
-        agentId: row.agentId,
-        displayName: row.displayName ?? null,
-        description: row.description ?? null,
-        sound: row.sound ?? null,
-        avatarUrl: row.avatarUrl ?? null,
-        firewallPolicies: row.firewallPolicies ?? null,
-        customSkills: row.customSkills,
-      })),
+      body: rows.map((row) => {
+        return {
+          agentId: row.agentId,
+          displayName: row.displayName ?? null,
+          description: row.description ?? null,
+          sound: row.sound ?? null,
+          avatarUrl: row.avatarUrl ?? null,
+          firewallPolicies: row.firewallPolicies ?? null,
+          customSkills: row.customSkills,
+        };
+      }),
     };
   },
 });

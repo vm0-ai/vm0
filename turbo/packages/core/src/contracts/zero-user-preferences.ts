@@ -27,10 +27,13 @@ export const updateUserPreferencesRequestSchema = z
     sendMode: sendModeSchema.optional(),
   })
   .refine(
-    (data) =>
-      data.timezone !== undefined ||
-      data.pinnedAgentIds !== undefined ||
-      data.sendMode !== undefined,
+    (data) => {
+      return (
+        data.timezone !== undefined ||
+        data.pinnedAgentIds !== undefined ||
+        data.sendMode !== undefined
+      );
+    },
     {
       message: "At least one preference must be provided",
     },

@@ -55,7 +55,9 @@ function parseStatusFilter(options: ListOptions): string | undefined {
   }
 
   if (options.status) {
-    const values = options.status.split(",").map((s) => s.trim());
+    const values = options.status.split(",").map((s) => {
+      return s.trim();
+    });
     for (const v of values) {
       if (!ALL_RUN_STATUSES.includes(v as RunStatus)) {
         throw new Error(`Invalid status "${v}"`, {
@@ -106,8 +108,18 @@ function parseLimit(value: string | undefined): number | undefined {
  */
 function displayRuns(runs: RunListItem[]): void {
   // Calculate column widths
-  const agentWidth = Math.max(5, ...runs.map((r) => r.agentName.length));
-  const statusWidth = Math.max(6, ...runs.map((r) => r.status.length));
+  const agentWidth = Math.max(
+    5,
+    ...runs.map((r) => {
+      return r.agentName.length;
+    }),
+  );
+  const statusWidth = Math.max(
+    6,
+    ...runs.map((r) => {
+      return r.status.length;
+    }),
+  );
 
   // Print header
   const header = [

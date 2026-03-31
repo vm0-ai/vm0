@@ -59,7 +59,9 @@ export const overrideFeatureSwitch$ = command(
     }
     parsed = { ...parsed, ...overrides };
     set(set$, JSON.stringify(parsed));
-    set(internalReload$, (v) => v + 1);
+    set(internalReload$, (v) => {
+      return v + 1;
+    });
   },
 );
 

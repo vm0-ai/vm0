@@ -105,7 +105,9 @@ describe("zero-nav", () => {
       context.store.set(setRootSignal$, context.signal);
       createPushStateMock(context.signal);
       mockLocation({ pathname, search: "" }, context.signal);
-      const noop$ = command(() => void 0);
+      const noop$ = command(() => {
+        return void 0;
+      });
       await context.store.set(
         initRoutes$,
         [
@@ -199,7 +201,9 @@ describe("zero-nav", () => {
       context.store.set(setRootSignal$, context.signal);
       const pushStateMock = createPushStateMock(context.signal);
       mockLocation({ pathname: "/", search: "" }, context.signal);
-      const noop$ = command(() => void 0);
+      const noop$ = command(() => {
+        return void 0;
+      });
       await context.store.set(
         initRoutes$,
         [
@@ -218,7 +222,9 @@ describe("zero-nav", () => {
       context.store.set(setRootSignal$, context.signal);
       createPushStateMock(context.signal);
       mockLocation({ pathname: "/", search: "" }, context.signal);
-      const noop$ = command(() => void 0);
+      const noop$ = command(() => {
+        return void 0;
+      });
       await context.store.set(
         initRoutes$,
         [

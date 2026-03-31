@@ -7,7 +7,13 @@ export const imgurHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Imgur does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "IMGUR_CLIENT_ID",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "IMGUR_CLIENT_ID";
+  },
 };

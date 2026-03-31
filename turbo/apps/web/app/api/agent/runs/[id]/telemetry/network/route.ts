@@ -104,27 +104,29 @@ ${sinceFilter}
     const hasMore = events.length > limit;
     const records = hasMore ? events.slice(0, limit) : events;
 
-    const networkLogs = records.map((e) => ({
-      timestamp: e._time,
-      type: e.type,
-      action: e.action,
-      host: e.host,
-      port: e.port,
-      method: e.method,
-      url: e.url,
-      status: e.status,
-      latency_ms: e.latency_ms,
-      request_size: e.request_size,
-      response_size: e.response_size,
-      firewall_base: e.firewall_base,
-      firewall_name: e.firewall_name,
-      firewall_ref: e.firewall_ref,
-      firewall_permission: e.firewall_permission,
-      firewall_rule_match: e.firewall_rule_match,
-      firewall_params: e.firewall_params,
-      firewall_error: e.firewall_error,
-      error: e.error,
-    }));
+    const networkLogs = records.map((e) => {
+      return {
+        timestamp: e._time,
+        type: e.type,
+        action: e.action,
+        host: e.host,
+        port: e.port,
+        method: e.method,
+        url: e.url,
+        status: e.status,
+        latency_ms: e.latency_ms,
+        request_size: e.request_size,
+        response_size: e.response_size,
+        firewall_base: e.firewall_base,
+        firewall_name: e.firewall_name,
+        firewall_ref: e.firewall_ref,
+        firewall_permission: e.firewall_permission,
+        firewall_rule_match: e.firewall_rule_match,
+        firewall_params: e.firewall_params,
+        firewall_error: e.firewall_error,
+        error: e.error,
+      };
+    });
 
     return {
       status: 200 as const,

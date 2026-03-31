@@ -62,10 +62,12 @@ export async function listChatThreads(
     )
     .orderBy(desc(chatThreads.updatedAt));
 
-  return threads.map((thread) => ({
-    ...thread,
-    preview: thread.title,
-  }));
+  return threads.map((thread) => {
+    return {
+      ...thread,
+      preview: thread.title,
+    };
+  });
 }
 
 /**
@@ -278,13 +280,17 @@ export async function getChatThreadMessages(
 
   // Collect runs not reflected in chatMessages (active, failed, pending, etc.)
   const unsavedRuns: UnsavedRun[] = runs
-    .filter((r) => !savedRunIds.has(r.runId))
-    .map((r) => ({
-      runId: r.runId,
-      status: r.status,
-      prompt: r.prompt,
-      error: r.error,
-    }));
+    .filter((r) => {
+      return !savedRunIds.has(r.runId);
+    })
+    .map((r) => {
+      return {
+        runId: r.runId,
+        status: r.status,
+        prompt: r.prompt,
+        error: r.error,
+      };
+    });
 
   return {
     chatMessages: enrichedMessages,

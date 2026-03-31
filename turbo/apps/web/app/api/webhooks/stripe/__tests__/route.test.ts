@@ -20,39 +20,43 @@ import type { StripeMockFns } from "../../../../../src/__tests__/stripe-mock";
 import { reloadEnv } from "../../../../../src/env";
 
 // Mock stripe module (external dependency)
-const stripeMocks = vi.hoisted<StripeMockFns>(() => ({
-  subscriptionsRetrieve: vi.fn(),
-  subscriptionsUpdate: vi.fn(),
-  subscriptionsCancel: vi.fn(),
-  invoicesRetrieve: vi.fn(),
-  invoicesList: vi.fn(),
-  customersCreate: vi.fn(),
-  checkoutSessionsCreate: vi.fn(),
-  billingPortalSessionsCreate: vi.fn(),
-  constructEvent: vi.fn(),
-}));
+const stripeMocks = vi.hoisted<StripeMockFns>(() => {
+  return {
+    subscriptionsRetrieve: vi.fn(),
+    subscriptionsUpdate: vi.fn(),
+    subscriptionsCancel: vi.fn(),
+    invoicesRetrieve: vi.fn(),
+    invoicesList: vi.fn(),
+    customersCreate: vi.fn(),
+    checkoutSessionsCreate: vi.fn(),
+    billingPortalSessionsCreate: vi.fn(),
+    constructEvent: vi.fn(),
+  };
+});
 
-vi.mock("stripe", () => ({
-  default: function MockStripe() {
-    return {
-      subscriptions: {
-        retrieve: stripeMocks.subscriptionsRetrieve,
-        update: stripeMocks.subscriptionsUpdate,
-        cancel: stripeMocks.subscriptionsCancel,
-      },
-      invoices: {
-        retrieve: stripeMocks.invoicesRetrieve,
-        list: stripeMocks.invoicesList,
-      },
-      customers: { create: stripeMocks.customersCreate },
-      checkout: { sessions: { create: stripeMocks.checkoutSessionsCreate } },
-      billingPortal: {
-        sessions: { create: stripeMocks.billingPortalSessionsCreate },
-      },
-      webhooks: { constructEvent: stripeMocks.constructEvent },
-    };
-  },
-}));
+vi.mock("stripe", () => {
+  return {
+    default: function MockStripe() {
+      return {
+        subscriptions: {
+          retrieve: stripeMocks.subscriptionsRetrieve,
+          update: stripeMocks.subscriptionsUpdate,
+          cancel: stripeMocks.subscriptionsCancel,
+        },
+        invoices: {
+          retrieve: stripeMocks.invoicesRetrieve,
+          list: stripeMocks.invoicesList,
+        },
+        customers: { create: stripeMocks.customersCreate },
+        checkout: { sessions: { create: stripeMocks.checkoutSessionsCreate } },
+        billingPortal: {
+          sessions: { create: stripeMocks.billingPortalSessionsCreate },
+        },
+        webhooks: { constructEvent: stripeMocks.constructEvent },
+      };
+    },
+  };
+});
 
 // Import route handler AFTER mocks are set up
 import { POST } from "../route";
@@ -642,7 +646,9 @@ describe("POST /api/webhooks/stripe", () => {
 
       // Old record should be settled
       const records = await findCreditExpiresRecords(user.orgId);
-      const oldRecord = records.find((r) => r.stripeInvoiceId !== invId);
+      const oldRecord = records.find((r) => {
+        return r.stripeInvoiceId !== invId;
+      });
       expect(oldRecord?.remaining).toBe(0);
     });
 

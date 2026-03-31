@@ -74,7 +74,9 @@ import { reloadEnv } from "../env";
 
 // Mock server-only package (no-op in tests)
 // This package throws when imported outside of a server component
-vi.mock("server-only", () => ({}));
+vi.mock("server-only", () => {
+  return {};
+});
 
 // Mock Next.js after() to capture callbacks for controlled execution in tests.
 // Tests can drain the queue with context.mocks.flushAfter().
@@ -88,35 +90,43 @@ vi.mock("next/server", async (importOriginal) => {
         globalThis.nextAfterCallbacks.push(fnOrPromise);
       } else {
         // Wrap promise in a function for consistent handling in flushAfter()
-        globalThis.nextAfterCallbacks.push(() => fnOrPromise);
+        globalThis.nextAfterCallbacks.push(() => {
+          return fnOrPromise;
+        });
       }
     },
   };
 });
 
 // Mock Clerk authentication
-vi.mock("@clerk/nextjs/server", () => ({
-  auth: vi.fn(),
-  clerkClient: vi.fn(),
-  clerkMiddleware: vi.fn(),
-  createRouteMatcher: vi.fn(),
-}));
+vi.mock("@clerk/nextjs/server", () => {
+  return {
+    auth: vi.fn(),
+    clerkClient: vi.fn(),
+    clerkMiddleware: vi.fn(),
+    createRouteMatcher: vi.fn(),
+  };
+});
 
 // Mock AWS S3
-vi.mock("@aws-sdk/client-s3", () => ({
-  S3Client: vi.fn().mockImplementation(function () {
-    return { send: vi.fn() };
-  }),
-  ListObjectsV2Command: vi.fn(),
-  GetObjectCommand: vi.fn(),
-  PutObjectCommand: vi.fn(),
-  DeleteObjectsCommand: vi.fn(),
-  HeadObjectCommand: vi.fn(),
-}));
+vi.mock("@aws-sdk/client-s3", () => {
+  return {
+    S3Client: vi.fn().mockImplementation(function () {
+      return { send: vi.fn() };
+    }),
+    ListObjectsV2Command: vi.fn(),
+    GetObjectCommand: vi.fn(),
+    PutObjectCommand: vi.fn(),
+    DeleteObjectsCommand: vi.fn(),
+    HeadObjectCommand: vi.fn(),
+  };
+});
 
-vi.mock("@aws-sdk/s3-request-presigner", () => ({
-  getSignedUrl: vi.fn(),
-}));
+vi.mock("@aws-sdk/s3-request-presigner", () => {
+  return {
+    getSignedUrl: vi.fn(),
+  };
+});
 
 // Mock Slack Web API — singleton pattern: every `new WebClient()` returns the same mock object.
 // `clearMocks: true` in vitest config only clears mock.calls/mock.results between tests,
@@ -166,15 +176,17 @@ vi.mock("@slack/web-api", () => {
 });
 
 // Mock Svix webhook verification (used by Resend inbound webhooks)
-vi.mock("svix", () => ({
-  Webhook: vi.fn().mockImplementation(function () {
-    return {
-      verify: vi
-        .fn()
-        .mockImplementation((payload: string) => JSON.parse(payload)),
-    };
-  }),
-}));
+vi.mock("svix", () => {
+  return {
+    Webhook: vi.fn().mockImplementation(function () {
+      return {
+        verify: vi.fn().mockImplementation((payload: string) => {
+          return JSON.parse(payload);
+        }),
+      };
+    }),
+  };
+});
 
 // Mock Resend email service
 vi.mock("resend", () => {
@@ -220,20 +232,26 @@ vi.mock("resend", () => {
 
 // Mock Axiom packages
 // The @axiomhq/logging Logger class needs proper method implementations
-vi.mock("@axiomhq/js", () => ({
-  Axiom: vi.fn(),
-}));
+vi.mock("@axiomhq/js", () => {
+  return {
+    Axiom: vi.fn(),
+  };
+});
 
-vi.mock("@axiomhq/logging", () => ({
-  Logger: vi.fn().mockImplementation(() => ({
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    flush: vi.fn().mockResolvedValue(undefined),
-  })),
-  AxiomJSTransport: vi.fn(),
-}));
+vi.mock("@axiomhq/logging", () => {
+  return {
+    Logger: vi.fn().mockImplementation(() => {
+      return {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        flush: vi.fn().mockResolvedValue(undefined),
+      };
+    }),
+    AxiomJSTransport: vi.fn(),
+  };
+});
 
 // MSW server lifecycle
 beforeAll(() => {

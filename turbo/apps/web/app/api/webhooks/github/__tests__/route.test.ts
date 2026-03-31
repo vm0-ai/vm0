@@ -170,15 +170,18 @@ describe("POST /api/webhooks/github", () => {
     server.use(
       http.post(
         "https://api.github.com/app/installations/:id/access_tokens",
-        () =>
-          HttpResponse.json({
+        () => {
+          return HttpResponse.json({
             token: "ghs_test",
             expires_at: "2099-01-01T00:00:00Z",
-          }),
+          });
+        },
       ),
       http.get(
         "https://api.github.com/repos/:owner/:repo/issues/:num/comments",
-        () => HttpResponse.json([]),
+        () => {
+          return HttpResponse.json([]);
+        },
       ),
     );
 

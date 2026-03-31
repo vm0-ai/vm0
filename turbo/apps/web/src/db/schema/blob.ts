@@ -24,8 +24,10 @@ export const blobs = pgTable(
     /** Timestamp when the blob was first uploaded */
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
-  (table) => [
-    // Index for garbage collection queries
-    index("idx_blobs_ref_count").on(table.refCount),
-  ],
+  (table) => {
+    return [
+      // Index for garbage collection queries
+      index("idx_blobs_ref_count").on(table.refCount),
+    ];
+  },
 );

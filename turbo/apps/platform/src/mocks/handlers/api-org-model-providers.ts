@@ -40,7 +40,9 @@ export const apiOrgModelProvidersHandlers = [
     };
 
     const now = new Date().toISOString();
-    const existing = mockOrgModelProviders.find((p) => p.type === body.type);
+    const existing = mockOrgModelProviders.find((p) => {
+      return p.type === body.type;
+    });
     const created = !existing;
 
     const provider: ModelProviderResponse = {
@@ -61,9 +63,9 @@ export const apiOrgModelProvidersHandlers = [
     };
 
     if (existing) {
-      mockOrgModelProviders = mockOrgModelProviders.map((p) =>
-        p.type === body.type ? provider : p,
-      );
+      mockOrgModelProviders = mockOrgModelProviders.map((p) => {
+        return p.type === body.type ? provider : p;
+      });
     } else {
       mockOrgModelProviders.push(provider);
     }
@@ -77,7 +79,9 @@ export const apiOrgModelProvidersHandlers = [
   // POST /api/zero/model-providers/:type/default - Set default provider
   http.post("*/api/zero/model-providers/:type/default", ({ params }) => {
     const type = params.type as ModelProviderResponse["type"];
-    const existing = mockOrgModelProviders.find((p) => p.type === type);
+    const existing = mockOrgModelProviders.find((p) => {
+      return p.type === type;
+    });
 
     if (!existing) {
       return HttpResponse.json(
@@ -86,10 +90,12 @@ export const apiOrgModelProvidersHandlers = [
       );
     }
 
-    mockOrgModelProviders = mockOrgModelProviders.map((p) => ({
-      ...p,
-      isDefault: p.type === type,
-    }));
+    mockOrgModelProviders = mockOrgModelProviders.map((p) => {
+      return {
+        ...p,
+        isDefault: p.type === type,
+      };
+    });
 
     return HttpResponse.json({ ...existing, isDefault: true });
   }),
@@ -97,7 +103,9 @@ export const apiOrgModelProvidersHandlers = [
   // DELETE /api/zero/model-providers/:type - Delete org model provider
   http.delete("*/api/zero/model-providers/:type", ({ params }) => {
     const type = params.type as ModelProviderResponse["type"];
-    const existing = mockOrgModelProviders.find((p) => p.type === type);
+    const existing = mockOrgModelProviders.find((p) => {
+      return p.type === type;
+    });
 
     if (!existing) {
       return HttpResponse.json(
@@ -106,9 +114,9 @@ export const apiOrgModelProvidersHandlers = [
       );
     }
 
-    mockOrgModelProviders = mockOrgModelProviders.filter(
-      (p) => p.type !== type,
-    );
+    mockOrgModelProviders = mockOrgModelProviders.filter((p) => {
+      return p.type !== type;
+    });
     return new HttpResponse(null, { status: 204 });
   }),
 ];

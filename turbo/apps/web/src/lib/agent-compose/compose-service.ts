@@ -168,7 +168,9 @@ export async function deleteComposeById(
     if (objects.length > 0) {
       await deleteS3Objects(
         bucketName,
-        objects.map((o) => o.key),
+        objects.map((o) => {
+          return o.key;
+        }),
       );
     }
   }
@@ -284,15 +286,17 @@ export async function listComposes(
     .where(eq(agentComposes.orgId, orgId))
     .orderBy(desc(agentComposes.updatedAt));
 
-  const composes = ownComposes.map((c) => ({
-    id: c.id,
-    name: c.name,
-    displayName: c.displayName ?? null,
-    description: c.description ?? null,
-    sound: c.sound ?? null,
-    headVersionId: c.headVersionId,
-    updatedAt: c.updatedAt.toISOString(),
-  }));
+  const composes = ownComposes.map((c) => {
+    return {
+      id: c.id,
+      name: c.name,
+      displayName: c.displayName ?? null,
+      description: c.description ?? null,
+      sound: c.sound ?? null,
+      headVersionId: c.headVersionId,
+      updatedAt: c.updatedAt.toISOString(),
+    };
+  });
 
   return { composes };
 }

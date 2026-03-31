@@ -45,7 +45,9 @@ export function MultiSelectCombobox({
   const scrollContainerRef = React.useCallback(
     (node: HTMLDivElement | null) => {
       if (!node) return;
-      const stop = (e: Event) => e.stopPropagation();
+      const stop = (e: Event) => {
+        return e.stopPropagation();
+      };
       node.addEventListener("wheel", stop);
       node.addEventListener("touchmove", stop);
     },
@@ -55,14 +57,22 @@ export function MultiSelectCombobox({
   const filtered = React.useMemo(() => {
     if (!search) return options;
     const lower = search.toLowerCase();
-    return options.filter((o) => o.label.toLowerCase().includes(lower));
+    return options.filter((o) => {
+      return o.label.toLowerCase().includes(lower);
+    });
   }, [options, search]);
 
-  const selectedSet = React.useMemo(() => new Set(selected), [selected]);
+  const selectedSet = React.useMemo(() => {
+    return new Set(selected);
+  }, [selected]);
 
   function toggle(value: string) {
     if (selectedSet.has(value)) {
-      onChange(selected.filter((v) => v !== value));
+      onChange(
+        selected.filter((v) => {
+          return v !== value;
+        }),
+      );
     } else {
       onChange([...selected, value]);
     }
@@ -70,16 +80,24 @@ export function MultiSelectCombobox({
 
   function remove(value: string, e: React.SyntheticEvent) {
     e.stopPropagation();
-    onChange(selected.filter((v) => v !== value));
+    onChange(
+      selected.filter((v) => {
+        return v !== value;
+      }),
+    );
   }
 
-  const selectedOptions = React.useMemo(
-    () =>
-      selected
-        .map((v) => options.find((o) => o.value === v))
-        .filter((o): o is ComboboxOption => o !== undefined),
-    [selected, options],
-  );
+  const selectedOptions = React.useMemo(() => {
+    return selected
+      .map((v) => {
+        return options.find((o) => {
+          return o.value === v;
+        });
+      })
+      .filter((o): o is ComboboxOption => {
+        return o !== undefined;
+      });
+  }, [selected, options]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -95,32 +113,36 @@ export function MultiSelectCombobox({
         >
           <div className="flex flex-1 flex-wrap items-center gap-1">
             {selectedOptions.length > 0 ? (
-              selectedOptions.map((opt) => (
-                <span
-                  key={opt.value}
-                  className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-1.5 py-0.5 text-xs font-medium"
-                >
-                  {opt.icon && (
-                    <OptionIcon src={opt.icon} alt={opt.label} size={14} />
-                  )}
-                  {opt.label}
+              selectedOptions.map((opt) => {
+                return (
                   <span
-                    role="button"
-                    tabIndex={0}
-                    className="ml-0.5 rounded-sm text-muted-foreground hover:text-foreground"
-                    onClick={(e) => remove(opt.value, e)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        remove(opt.value, e);
-                      }
-                    }}
-                    aria-label={`Remove ${opt.label}`}
+                    key={opt.value}
+                    className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-1.5 py-0.5 text-xs font-medium"
                   >
-                    <IconX size={12} />
+                    {opt.icon && (
+                      <OptionIcon src={opt.icon} alt={opt.label} size={14} />
+                    )}
+                    {opt.label}
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      className="ml-0.5 rounded-sm text-muted-foreground hover:text-foreground"
+                      onClick={(e) => {
+                        return remove(opt.value, e);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          remove(opt.value, e);
+                        }
+                      }}
+                      aria-label={`Remove ${opt.label}`}
+                    >
+                      <IconX size={12} />
+                    </span>
                   </span>
-                </span>
-              ))
+                );
+              })
             ) : (
               <span className="text-muted-foreground">{placeholder}</span>
             )}
@@ -149,7 +171,9 @@ export function MultiSelectCombobox({
             ref={searchInputRef}
             type="text"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              return setSearch(e.target.value);
+            }}
             placeholder={searchPlaceholder}
             className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
           />
@@ -169,7 +193,9 @@ export function MultiSelectCombobox({
                   role="option"
                   aria-selected={isSelected}
                   className="flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-foreground outline-none transition-colors hover:bg-accent hover:text-accent-foreground"
-                  onClick={() => toggle(opt.value)}
+                  onClick={() => {
+                    return toggle(opt.value);
+                  }}
                 >
                   {opt.icon && (
                     <OptionIcon src={opt.icon} alt={opt.label} size={16} />
@@ -208,7 +234,9 @@ function OptionIcon({
       width={size}
       height={size}
       className="shrink-0 object-contain"
-      onError={() => setError(true)}
+      onError={() => {
+        return setError(true);
+      }}
     />
   );
 }

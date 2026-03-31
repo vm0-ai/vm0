@@ -21,9 +21,9 @@ describe("chat message lifecycle", () => {
       path: "/talk/c0000000-0000-4000-a000-000000000001",
     });
 
-    const textarea = await waitFor(
-      () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-    );
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
 
     sendMessageInUI(textarea, "What can you do?");
 
@@ -51,12 +51,12 @@ describe("chat message lifecycle", () => {
   it("should stay on talk page when run creation fails", async () => {
     mockChatLifecycle();
     server.use(
-      http.post("*/api/zero/chat/messages", () =>
-        HttpResponse.json(
+      http.post("*/api/zero/chat/messages", () => {
+        return HttpResponse.json(
           { error: { message: "Some API error", code: "BAD_REQUEST" } },
           { status: 400 },
-        ),
-      ),
+        );
+      }),
     );
 
     await setupPage({
@@ -64,9 +64,9 @@ describe("chat message lifecycle", () => {
       path: "/talk/c0000000-0000-4000-a000-000000000001",
     });
 
-    const textarea = await waitFor(
-      () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-    );
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
 
     sendMessageInUI(textarea, "Hello");
 
@@ -79,8 +79,8 @@ describe("chat message lifecycle", () => {
   it("should stay on talk page when message sending fails", async () => {
     mockChatLifecycle();
     server.use(
-      http.post("*/api/zero/chat/messages", () =>
-        HttpResponse.json(
+      http.post("*/api/zero/chat/messages", () => {
+        return HttpResponse.json(
           {
             error: {
               message: "Internal server error",
@@ -88,8 +88,8 @@ describe("chat message lifecycle", () => {
             },
           },
           { status: 500 },
-        ),
-      ),
+        );
+      }),
     );
 
     await setupPage({
@@ -97,9 +97,9 @@ describe("chat message lifecycle", () => {
       path: "/talk/c0000000-0000-4000-a000-000000000001",
     });
 
-    const textarea = await waitFor(
-      () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-    );
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
 
     sendMessageInUI(textarea, "Hello");
 
@@ -117,9 +117,9 @@ describe("chat message lifecycle", () => {
       path: "/talk/c0000000-0000-4000-a000-000000000001",
     });
 
-    const textarea = await waitFor(
-      () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-    );
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
 
     sendMessageInUI(textarea, "   ");
 

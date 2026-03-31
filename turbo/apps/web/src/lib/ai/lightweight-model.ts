@@ -47,7 +47,9 @@ async function generateText(messages: ChatMessage[]): Promise<string | null> {
   });
 
   if (!response.ok) {
-    const text = await response.text().catch(() => "unknown error");
+    const text = await response.text().catch(() => {
+      return "unknown error";
+    });
     throw new Error(`OpenRouter request failed: ${response.status} ${text}`);
   }
 

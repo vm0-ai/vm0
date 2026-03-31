@@ -26,12 +26,14 @@ export default function BlogContent({
   const t = useTranslations("blog");
 
   const filteredPosts = categoryFilter
-    ? posts.filter(
-        (post) => post.category.toLowerCase() === categoryFilter.toLowerCase(),
-      )
+    ? posts.filter((post) => {
+        return post.category.toLowerCase() === categoryFilter.toLowerCase();
+      })
     : posts;
 
-  const regularPosts = filteredPosts.filter((post) => !post.featured);
+  const regularPosts = filteredPosts.filter((post) => {
+    return !post.featured;
+  });
 
   return (
     <>
@@ -102,19 +104,21 @@ export default function BlogContent({
             >
               {t("allPosts")}
             </Link>
-            {categories.map((category) => (
-              <Link
-                key={category}
-                href={`/blog?category=${category.toLowerCase()}`}
-                className={`category-btn ${
-                  categoryFilter?.toLowerCase() === category.toLowerCase()
-                    ? "active"
-                    : ""
-                }`}
-              >
-                {category}
-              </Link>
-            ))}
+            {categories.map((category) => {
+              return (
+                <Link
+                  key={category}
+                  href={`/blog?category=${category.toLowerCase()}`}
+                  className={`category-btn ${
+                    categoryFilter?.toLowerCase() === category.toLowerCase()
+                      ? "active"
+                      : ""
+                  }`}
+                >
+                  {category}
+                </Link>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -131,77 +135,82 @@ export default function BlogContent({
             </h2>
           )}
           <div className="blog-grid">
-            {regularPosts.map((post) => (
-              <Link
-                key={post.slug}
-                href={`/blog/posts/${post.slug}`}
-                style={{ textDecoration: "none" }}
-              >
-                <article className="blog-card">
-                  <div className="blog-card-cover">
-                    <Image
-                      src={post.cover}
-                      alt={post.title}
-                      fill
-                      style={{ objectFit: "cover" }}
-                    />
-                  </div>
-                  <div className="blog-card-body">
-                    <div className="blog-card-meta">
-                      <span className="blog-card-category">
-                        {post.category}
-                      </span>
-                      <span className="blog-card-date">
-                        {new Date(post.publishedAt).toLocaleDateString(locale, {
-                          month: "short",
-                          day: "numeric",
-                          year: "numeric",
-                        })}
-                      </span>
+            {regularPosts.map((post) => {
+              return (
+                <Link
+                  key={post.slug}
+                  href={`/blog/posts/${post.slug}`}
+                  style={{ textDecoration: "none" }}
+                >
+                  <article className="blog-card">
+                    <div className="blog-card-cover">
+                      <Image
+                        src={post.cover}
+                        alt={post.title}
+                        fill
+                        style={{ objectFit: "cover" }}
+                      />
                     </div>
-                    <h3 className="blog-card-title">{post.title}</h3>
-                    <p className="blog-card-excerpt">{post.excerpt}</p>
-                    <div className="blog-card-footer">
-                      <div className="blog-card-author">
-                        <div className="blog-card-avatar">
-                          {post.author.avatar ? (
-                            <Image
-                              src={post.author.avatar}
-                              alt={post.author.name}
-                              width={32}
-                              height={32}
-                              style={{
-                                width: "100%",
-                                height: "100%",
-                                objectFit: "cover",
-                                borderRadius: "50%",
-                              }}
-                            />
-                          ) : (
-                            post.author.name.charAt(0)
+                    <div className="blog-card-body">
+                      <div className="blog-card-meta">
+                        <span className="blog-card-category">
+                          {post.category}
+                        </span>
+                        <span className="blog-card-date">
+                          {new Date(post.publishedAt).toLocaleDateString(
+                            locale,
+                            {
+                              month: "short",
+                              day: "numeric",
+                              year: "numeric",
+                            },
                           )}
-                        </div>
-                        <span className="blog-card-author-name">
-                          {post.author.name}
                         </span>
                       </div>
-                      <span className="blog-card-read-more">
-                        {t("readMore")}
-                        <svg
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                        >
-                          <line x1="5" y1="12" x2="19" y2="12" />
-                          <polyline points="12 5 19 12 12 19" />
-                        </svg>
-                      </span>
+                      <h3 className="blog-card-title">{post.title}</h3>
+                      <p className="blog-card-excerpt">{post.excerpt}</p>
+                      <div className="blog-card-footer">
+                        <div className="blog-card-author">
+                          <div className="blog-card-avatar">
+                            {post.author.avatar ? (
+                              <Image
+                                src={post.author.avatar}
+                                alt={post.author.name}
+                                width={32}
+                                height={32}
+                                style={{
+                                  width: "100%",
+                                  height: "100%",
+                                  objectFit: "cover",
+                                  borderRadius: "50%",
+                                }}
+                              />
+                            ) : (
+                              post.author.name.charAt(0)
+                            )}
+                          </div>
+                          <span className="blog-card-author-name">
+                            {post.author.name}
+                          </span>
+                        </div>
+                        <span className="blog-card-read-more">
+                          {t("readMore")}
+                          <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                          >
+                            <line x1="5" y1="12" x2="19" y2="12" />
+                            <polyline points="12 5 19 12 12 19" />
+                          </svg>
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                </article>
-              </Link>
-            ))}
+                  </article>
+                </Link>
+              );
+            })}
           </div>
         </div>
       </section>

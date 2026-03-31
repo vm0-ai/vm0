@@ -659,14 +659,16 @@ export async function getOrgInvoices(orgId: string): Promise<{
     limit: 24,
   });
 
-  const invoices = result.data.map((inv) => ({
-    id: inv.id,
-    number: inv.number ?? null,
-    date: inv.created,
-    amount: inv.amount_paid ?? 0,
-    status: inv.status ?? null,
-    hostedInvoiceUrl: inv.hosted_invoice_url ?? null,
-  }));
+  const invoices = result.data.map((inv) => {
+    return {
+      id: inv.id,
+      number: inv.number ?? null,
+      date: inv.created,
+      amount: inv.amount_paid ?? 0,
+      status: inv.status ?? null,
+      hostedInvoiceUrl: inv.hosted_invoice_url ?? null,
+    };
+  });
 
   return { invoices };
 }

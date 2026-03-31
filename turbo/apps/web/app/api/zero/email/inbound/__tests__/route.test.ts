@@ -198,9 +198,9 @@ describe("POST /api/zero/email/inbound", () => {
     const callbacks = await findTestCallbacksByRunId(run.id);
     expect(callbacks.length).toBeGreaterThanOrEqual(1);
 
-    const emailReplyCallback = callbacks.find((c) =>
-      c.url.includes("/email/callbacks/reply"),
-    );
+    const emailReplyCallback = callbacks.find((c) => {
+      return c.url.includes("/email/callbacks/reply");
+    });
     expect(emailReplyCallback).toBeDefined();
     expect(emailReplyCallback!.payload).toEqual({
       emailThreadSessionId: expect.any(String),
@@ -575,9 +575,9 @@ describe("POST /api/zero/email/inbound", () => {
       const callbacks = await findTestCallbacksByRunId(run.id);
       expect(callbacks.length).toBeGreaterThanOrEqual(1);
 
-      const triggerCallback = callbacks.find((c) =>
-        c.url.includes("/email/callbacks/trigger"),
-      );
+      const triggerCallback = callbacks.find((c) => {
+        return c.url.includes("/email/callbacks/trigger");
+      });
       expect(triggerCallback).toBeDefined();
       expect(triggerCallback!.payload).toMatchObject({
         senderEmail,

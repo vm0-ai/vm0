@@ -76,7 +76,9 @@ describe("artifact pull", () => {
           file: tarPath,
           cwd: tmpDir,
         },
-        files.map((f) => f.name),
+        files.map((f) => {
+          return f.name;
+        }),
       );
 
       return await fs.readFile(tarPath);

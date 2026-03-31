@@ -7,7 +7,13 @@ export const loopsHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Loops does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "LOOPS_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "LOOPS_TOKEN";
+  },
 };

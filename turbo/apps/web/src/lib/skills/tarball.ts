@@ -77,7 +77,9 @@ function extractSkillsFromTarball(gzipped: Buffer): Promise<ExtractedSkill[]> {
         const relativePath = parts.slice(2).join("/");
 
         const chunks: Buffer[] = [];
-        entry.on("data", (chunk: Buffer) => chunks.push(chunk));
+        entry.on("data", (chunk: Buffer) => {
+          return chunks.push(chunk);
+        });
         entry.on("end", () => {
           const content = Buffer.concat(chunks);
           const hash = createHash("sha256").update(content).digest("hex");
@@ -99,7 +101,11 @@ function extractSkillsFromTarball(gzipped: Buffer): Promise<ExtractedSkill[]> {
       // Only include directories that contain a SKILL.md file
       const skills: ExtractedSkill[] = [];
       for (const [skillName, files] of filesBySkill) {
-        if (files.some((f) => f.path === "SKILL.md")) {
+        if (
+          files.some((f) => {
+            return f.path === "SKILL.md";
+          })
+        ) {
           skills.push({ skillName, files });
         }
       }

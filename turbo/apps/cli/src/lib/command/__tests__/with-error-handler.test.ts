@@ -15,9 +15,9 @@ describe("withErrorHandler", () => {
   let mockConsoleError: MockInstance;
 
   beforeEach(() => {
-    mockExit = vi
-      .spyOn(process, "exit")
-      .mockImplementation(() => undefined as never);
+    mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
+      return undefined as never;
+    });
     mockConsoleError = vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
@@ -33,7 +33,11 @@ describe("withErrorHandler", () => {
 
     await handler();
 
-    const output = mockConsoleError.mock.calls.map((c) => c[0]).join("\n");
+    const output = mockConsoleError.mock.calls
+      .map((c) => {
+        return c[0];
+      })
+      .join("\n");
     expect(output).toContain("Not authenticated");
     expect(output).toContain("vm0 auth login");
     expect(output).not.toContain("ZERO_TOKEN");
@@ -49,7 +53,11 @@ describe("withErrorHandler", () => {
 
     await handler();
 
-    const output = mockConsoleError.mock.calls.map((c) => c[0]).join("\n");
+    const output = mockConsoleError.mock.calls
+      .map((c) => {
+        return c[0];
+      })
+      .join("\n");
     expect(output).toContain("Authentication failed");
     expect(output).toContain("ZERO_TOKEN is invalid or expired");
     expect(output).not.toContain("vm0 auth login");
@@ -63,7 +71,11 @@ describe("withErrorHandler", () => {
 
     await handler();
 
-    const output = mockConsoleError.mock.calls.map((c) => c[0]).join("\n");
+    const output = mockConsoleError.mock.calls
+      .map((c) => {
+        return c[0];
+      })
+      .join("\n");
     expect(output).toContain("500");
     expect(output).toContain("Something went wrong");
     expect(mockExit).toHaveBeenCalledWith(1);
@@ -76,7 +88,11 @@ describe("withErrorHandler", () => {
 
     await handler();
 
-    const output = mockConsoleError.mock.calls.map((c) => c[0]).join("\n");
+    const output = mockConsoleError.mock.calls
+      .map((c) => {
+        return c[0];
+      })
+      .join("\n");
     expect(output).toContain("Plain error message");
     expect(mockExit).toHaveBeenCalledWith(1);
   });
@@ -88,7 +104,11 @@ describe("withErrorHandler", () => {
 
     await handler();
 
-    const output = mockConsoleError.mock.calls.map((c) => c[0]).join("\n");
+    const output = mockConsoleError.mock.calls
+      .map((c) => {
+        return c[0];
+      })
+      .join("\n");
     expect(output).toContain("Main error");
     expect(output).toContain("Root cause");
     expect(mockExit).toHaveBeenCalledWith(1);

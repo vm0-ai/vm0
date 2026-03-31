@@ -262,14 +262,16 @@ export async function fetchConversationContexts(
 
   // Exclude the current message (it's already sent as the prompt)
   const contextMessages = currentMessageTs
-    ? allMessages.filter((m) => m.ts !== currentMessageTs)
+    ? allMessages.filter((m) => {
+        return m.ts !== currentMessageTs;
+      })
     : allMessages;
 
   // Resolve user info for all senders and mentioned users
   const allContextMessages = [...channelMessages, ...allMessages];
-  const senderIds = allContextMessages.flatMap((m) =>
-    m.user && !m.bot_id ? [m.user] : [],
-  );
+  const senderIds = allContextMessages.flatMap((m) => {
+    return m.user && !m.bot_id ? [m.user] : [];
+  });
   const mentionedIds = extractMentionedUserIds(allContextMessages);
   const userIds = [...senderIds, ...mentionedIds];
   const userInfoMap = await fetchSlackUserInfoMap(client, userIds);
@@ -298,7 +300,9 @@ export async function fetchConversationContexts(
 
   // Filter to only new messages for execution context
   const executionMessages = lastProcessedMessageTs
-    ? contextMessages.filter((m) => !m.ts || m.ts > lastProcessedMessageTs)
+    ? contextMessages.filter((m) => {
+        return !m.ts || m.ts > lastProcessedMessageTs;
+      })
     : contextMessages;
 
   // Format execution context with images (only uploads images for new messages)

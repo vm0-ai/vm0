@@ -7,7 +7,13 @@ export const zapierHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Zapier does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "ZAPIER_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "ZAPIER_TOKEN";
+  },
 };

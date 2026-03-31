@@ -72,16 +72,26 @@ async function renderChatPage() {
 }
 
 describe("zero chat page - suggested prompts", () => {
-  const allUseCases = getCategories().flatMap((c) => c.cases);
-  const allTitles = new Set(allUseCases.map((u) => u.title));
-  const promptByTitle = new Map(allUseCases.map((u) => [u.title, u.prompt]));
+  const allUseCases = getCategories().flatMap((c) => {
+    return c.cases;
+  });
+  const allTitles = new Set(
+    allUseCases.map((u) => {
+      return u.title;
+    }),
+  );
+  const promptByTitle = new Map(
+    allUseCases.map((u) => {
+      return [u.title, u.prompt];
+    }),
+  );
 
   it("should render suggested prompt cards from the use case dataset", async () => {
     await renderChatPage();
 
-    const exploreButton = await waitFor(() =>
-      screen.getByRole("button", { name: /Ideas & use cases/ }),
-    );
+    const exploreButton = await waitFor(() => {
+      return screen.getByRole("button", { name: /Ideas & use cases/ });
+    });
     expect(exploreButton).toBeInTheDocument();
 
     // The prompt grid is the parent of the "Ideas & use cases" button
@@ -97,7 +107,9 @@ describe("zero chat page - suggested prompts", () => {
       if (text.includes("Ideas & use cases")) {
         continue;
       }
-      const matchesDataset = allUseCases.some((u) => text.includes(u.title));
+      const matchesDataset = allUseCases.some((u) => {
+        return text.includes(u.title);
+      });
       expect(matchesDataset).toBeTruthy();
     }
   });
@@ -105,21 +117,21 @@ describe("zero chat page - suggested prompts", () => {
   it("should populate composer with the correct prompt when a card is clicked", async () => {
     await renderChatPage();
 
-    const exploreButton = await waitFor(() =>
-      screen.getByRole("button", { name: /Ideas & use cases/ }),
-    );
+    const exploreButton = await waitFor(() => {
+      return screen.getByRole("button", { name: /Ideas & use cases/ });
+    });
     const promptGrid = exploreButton.parentElement!;
     const gridButtons = within(promptGrid).getAllByRole("button");
 
     // Find the first random prompt card (not "Ideas & use cases")
-    const promptCard = gridButtons.find(
-      (btn) => !btn.textContent?.includes("Ideas & use cases"),
-    )!;
+    const promptCard = gridButtons.find((btn) => {
+      return !btn.textContent?.includes("Ideas & use cases");
+    })!;
 
     // Identify which use case this card represents
-    const cardTitle = [...allTitles].find((title) =>
-      promptCard.textContent?.includes(title),
-    )!;
+    const cardTitle = [...allTitles].find((title) => {
+      return promptCard.textContent?.includes(title);
+    })!;
     const expectedPrompt = promptByTitle.get(cardTitle)!;
 
     fireEvent.click(promptCard);
@@ -184,11 +196,11 @@ describe("zero chat page - composer", () => {
   it("should enable Send button when input has text", async () => {
     await renderChatPage();
 
-    const textarea = await waitFor(() =>
-      screen.getByPlaceholderText(
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(
         "Ask me to automate workflows, manage tasks...",
-      ),
-    );
+      );
+    });
 
     fireEvent.change(textarea, { target: { value: "Hello" } });
 
@@ -202,9 +214,9 @@ describe("zero chat page - file input ref", () => {
   it("should open file picker when Attach button is clicked", async () => {
     await renderChatPage();
 
-    const attachButton = await waitFor(() =>
-      screen.getByRole("button", { name: "Attach" }),
-    );
+    const attachButton = await waitFor(() => {
+      return screen.getByRole("button", { name: "Attach" });
+    });
 
     // The hidden file input should exist in the DOM
     const fileInput =
@@ -228,15 +240,15 @@ describe("zero chat page - connectors popover", () => {
   it("should navigate to connectors page when clicking Manage connectors in popover", async () => {
     await renderChatPage();
 
-    const connectorsButton = await waitFor(() =>
-      screen.getByRole("button", { name: "Connectors" }),
-    );
+    const connectorsButton = await waitFor(() => {
+      return screen.getByRole("button", { name: "Connectors" });
+    });
 
     fireEvent.click(connectorsButton);
 
-    const manageButton = await waitFor(() =>
-      screen.getByText("Manage connectors"),
-    );
+    const manageButton = await waitFor(() => {
+      return screen.getByText("Manage connectors");
+    });
 
     fireEvent.click(manageButton);
 
@@ -301,9 +313,9 @@ describe("zero chat page - connector label casing", () => {
     mockChatAPI();
     await setupPage({ context, path: "/" });
 
-    const connectorsButton = await waitFor(() =>
-      screen.getByRole("button", { name: "Connectors" }),
-    );
+    const connectorsButton = await waitFor(() => {
+      return screen.getByRole("button", { name: "Connectors" });
+    });
 
     fireEvent.click(connectorsButton);
 
@@ -328,9 +340,9 @@ describe("zero chat page - agent avatar and greeting", () => {
   it("should link avatar to team detail page", async () => {
     await renderChatPage();
 
-    const link = await waitFor(() =>
-      screen.getByRole("link", { name: "View agent profile" }),
-    );
+    const link = await waitFor(() => {
+      return screen.getByRole("link", { name: "View agent profile" });
+    });
     expect(link).toHaveAttribute(
       "href",
       "/team/c0000000-0000-4000-a000-000000000001",

@@ -25,7 +25,9 @@ describe("prompt query parameter injection", () => {
 
     // Should redirect to /talk/:id and show the prompt in the input
     const textarea = await waitFor(
-      () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
+      () => {
+        return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+      },
       { timeout: 5000 },
     );
 
@@ -40,7 +42,9 @@ describe("prompt query parameter injection", () => {
     });
 
     const textarea = await waitFor(
-      () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
+      () => {
+        return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+      },
       { timeout: 5000 },
     );
 
@@ -73,7 +77,9 @@ describe("prompt query parameter injection", () => {
     });
 
     const textarea = await waitFor(
-      () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
+      () => {
+        return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+      },
       { timeout: 5000 },
     );
 

@@ -362,7 +362,9 @@ async function showAgentEvents(
         });
         return { items: response.events, hasMore: response.hasMore };
       },
-      getTimestamp: (event) => new Date(event.createdAt).getTime(),
+      getTimestamp: (event) => {
+        return new Date(event.createdAt).getTime();
+      },
       targetCount:
         options.targetCount === "all"
           ? "all"
@@ -482,7 +484,9 @@ async function showMetrics(
         });
         return { items: response.metrics, hasMore: response.hasMore };
       },
-      getTimestamp: (metric) => new Date(metric.ts).getTime(),
+      getTimestamp: (metric) => {
+        return new Date(metric.ts).getTime();
+      },
       targetCount:
         options.targetCount === "all"
           ? "all"
@@ -567,7 +571,9 @@ async function showNetworkLogs(
         });
         return { items: response.networkLogs, hasMore: response.hasMore };
       },
-      getTimestamp: (entry) => new Date(entry.timestamp).getTime(),
+      getTimestamp: (entry) => {
+        return new Date(entry.timestamp).getTime();
+      },
       targetCount:
         options.targetCount === "all"
           ? "all"

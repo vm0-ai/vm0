@@ -15,40 +15,54 @@ const context = testContext();
 const TEST_BOT_TOKEN = "123456:ABC-test-token";
 
 function telegramGetMe(botId: string, username: string) {
-  return http.post(`https://api.telegram.org/bot${TEST_BOT_TOKEN}/getMe`, () =>
-    HttpResponse.json({
-      ok: true,
-      result: { id: Number(botId), is_bot: true, first_name: "Bot", username },
-    }),
+  return http.post(
+    `https://api.telegram.org/bot${TEST_BOT_TOKEN}/getMe`,
+    () => {
+      return HttpResponse.json({
+        ok: true,
+        result: {
+          id: Number(botId),
+          is_bot: true,
+          first_name: "Bot",
+          username,
+        },
+      });
+    },
   );
 }
 
 function telegramGetMeFail() {
-  return http.post(`https://api.telegram.org/bot${TEST_BOT_TOKEN}/getMe`, () =>
-    HttpResponse.json(
-      { ok: false, description: "Unauthorized" },
-      { status: 401 },
-    ),
+  return http.post(
+    `https://api.telegram.org/bot${TEST_BOT_TOKEN}/getMe`,
+    () => {
+      return HttpResponse.json(
+        { ok: false, description: "Unauthorized" },
+        { status: 401 },
+      );
+    },
   );
 }
 
 function telegramSetWebhook(succeed = true) {
   return http.post(
     `https://api.telegram.org/bot${TEST_BOT_TOKEN}/setWebhook`,
-    () =>
-      succeed
+    () => {
+      return succeed
         ? HttpResponse.json({ ok: true, result: true })
         : HttpResponse.json(
             { ok: false, description: "Webhook failed" },
             { status: 400 },
-          ),
+          );
+    },
   );
 }
 
 function telegramSetMyCommands() {
   return http.post(
     `https://api.telegram.org/bot${TEST_BOT_TOKEN}/setMyCommands`,
-    () => HttpResponse.json({ ok: true, result: true }),
+    () => {
+      return HttpResponse.json({ ok: true, result: true });
+    },
   );
 }
 

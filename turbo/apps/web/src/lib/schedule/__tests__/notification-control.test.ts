@@ -121,7 +121,9 @@ describe("Schedule notification control - per-schedule settings", () => {
     expect(schedule?.lastRunId).toBeDefined();
 
     const callbacks = await findTestRunCallbacks(schedule!.lastRunId!);
-    const callbackUrls = callbacks.map((c) => c.url);
+    const callbackUrls = callbacks.map((c) => {
+      return c.url;
+    });
 
     expect(callbackUrls).toContainEqual(
       expect.stringContaining("/email/callbacks/schedule"),
@@ -143,7 +145,9 @@ describe("Schedule notification control - per-schedule settings", () => {
     expect(schedule?.lastRunId).toBeDefined();
 
     const callbacks = await findTestRunCallbacks(schedule!.lastRunId!);
-    const callbackUrls = callbacks.map((c) => c.url);
+    const callbackUrls = callbacks.map((c) => {
+      return c.url;
+    });
 
     expect(callbackUrls).not.toContainEqual(
       expect.stringContaining("/email/callbacks/schedule"),
@@ -165,7 +169,9 @@ describe("Schedule notification control - per-schedule settings", () => {
     expect(schedule?.lastRunId).toBeDefined();
 
     const callbacks = await findTestRunCallbacks(schedule!.lastRunId!);
-    const callbackUrls = callbacks.map((c) => c.url);
+    const callbackUrls = callbacks.map((c) => {
+      return c.url;
+    });
 
     expect(callbackUrls).toContainEqual(
       expect.stringContaining("/email/callbacks/schedule"),
@@ -187,7 +193,9 @@ describe("Schedule notification control - per-schedule settings", () => {
     expect(schedule?.lastRunId).toBeDefined();
 
     const callbacks = await findTestRunCallbacks(schedule!.lastRunId!);
-    const callbackUrls = callbacks.map((c) => c.url);
+    const callbackUrls = callbacks.map((c) => {
+      return c.url;
+    });
 
     expect(callbackUrls).not.toContainEqual(
       expect.stringContaining("/email/callbacks/schedule"),

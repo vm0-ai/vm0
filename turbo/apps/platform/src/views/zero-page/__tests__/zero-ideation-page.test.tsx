@@ -159,9 +159,9 @@ describe("ideation page - search", () => {
   it("should filter use cases by title", async () => {
     await renderIdeationPage();
 
-    const searchInput = await waitFor(() =>
-      screen.getByRole("searchbox", { name: "Search use cases" }),
-    );
+    const searchInput = await waitFor(() => {
+      return screen.getByRole("searchbox", { name: "Search use cases" });
+    });
 
     fireEvent.change(searchInput, { target: { value: "Daily standup" } });
 
@@ -176,9 +176,9 @@ describe("ideation page - search", () => {
   it("should show empty message when no use cases match", async () => {
     await renderIdeationPage();
 
-    const searchInput = await waitFor(() =>
-      screen.getByRole("searchbox", { name: "Search use cases" }),
-    );
+    const searchInput = await waitFor(() => {
+      return screen.getByRole("searchbox", { name: "Search use cases" });
+    });
 
     fireEvent.change(searchInput, {
       target: { value: "xyznonexistentquery" },
@@ -241,9 +241,9 @@ describe("ideation page - navigation", () => {
   it("should navigate to /talk/:id when Chat breadcrumb is clicked", async () => {
     await renderIdeationPage();
 
-    const chatBreadcrumb = await waitFor(
-      () => screen.getByText("Chat").closest("button")!,
-    );
+    const chatBreadcrumb = await waitFor(() => {
+      return screen.getByText("Chat").closest("button")!;
+    });
 
     await act(() => {
       fireEvent.click(chatBreadcrumb!);

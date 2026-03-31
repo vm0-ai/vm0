@@ -21,14 +21,23 @@ export const listCommand = new Command()
       }
 
       // Calculate column widths
-      const nameWidth = Math.max(4, ...items.map((i) => i.name.length));
+      const nameWidth = Math.max(
+        4,
+        ...items.map((i) => {
+          return i.name.length;
+        }),
+      );
       const sizeWidth = Math.max(
         4,
-        ...items.map((i) => formatBytes(i.size).length),
+        ...items.map((i) => {
+          return formatBytes(i.size).length;
+        }),
       );
       const filesWidth = Math.max(
         5,
-        ...items.map((i) => i.fileCount.toString().length),
+        ...items.map((i) => {
+          return i.fileCount.toString().length;
+        }),
       );
 
       // Print header

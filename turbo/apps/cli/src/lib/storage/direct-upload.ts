@@ -39,8 +39,12 @@ async function hashFileStream(filePath: string): Promise<string> {
     const hash = createHash("sha256");
     const stream = fs.createReadStream(filePath);
 
-    stream.on("data", (chunk) => hash.update(chunk));
-    stream.on("end", () => resolve(hash.digest("hex")));
+    stream.on("data", (chunk) => {
+      return hash.update(chunk);
+    });
+    stream.on("end", () => {
+      return resolve(hash.digest("hex"));
+    });
     stream.on("error", reject);
   });
 }
@@ -118,7 +122,9 @@ async function createArchive(cwd: string, files: string[]): Promise<Buffer> {
   const tarPath = path.join(tmpDir, "archive.tar.gz");
 
   try {
-    const relativePaths = files.map((file) => path.relative(cwd, file));
+    const relativePaths = files.map((file) => {
+      return path.relative(cwd, file);
+    });
 
     if (relativePaths.length > 0) {
       await tar.create(
@@ -169,7 +175,9 @@ function createManifest(files: FileEntryWithHash[]): Buffer {
  * Sleep for a given number of milliseconds
  */
 function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => {
+    return setTimeout(resolve, ms);
+  });
 }
 
 /**

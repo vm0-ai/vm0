@@ -7,7 +7,13 @@ export const bitrixHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Bitrix does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "BITRIX_WEBHOOK_URL",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "BITRIX_WEBHOOK_URL";
+  },
 };

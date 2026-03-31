@@ -69,7 +69,9 @@ export async function deleteUserData(userId: string): Promise<void> {
     .where(eq(slackOrgConnections.vm0UserId, userId));
 
   if (connections.length > 0) {
-    const connectionIds = connections.map((c) => c.id);
+    const connectionIds = connections.map((c) => {
+      return c.id;
+    });
     await db
       .delete(slackOrgPendingQuestions)
       .where(inArray(slackOrgPendingQuestions.connectionId, connectionIds));

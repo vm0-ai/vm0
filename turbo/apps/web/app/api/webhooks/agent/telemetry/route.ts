@@ -88,16 +88,18 @@ const router = tsr.router(webhookTelemetryContract, {
           mem_total: number;
           disk_used: number;
           disk_total: number;
-        }) => ({
-          _time: metric.ts,
-          runId: body.runId,
-          userId: auth.userId,
-          cpu: metric.cpu,
-          mem_used: metric.mem_used,
-          mem_total: metric.mem_total,
-          disk_used: metric.disk_used,
-          disk_total: metric.disk_total,
-        }),
+        }) => {
+          return {
+            _time: metric.ts,
+            runId: body.runId,
+            userId: auth.userId,
+            cpu: metric.cpu,
+            mem_used: metric.mem_used,
+            mem_total: metric.mem_total,
+            disk_used: metric.disk_used,
+            disk_total: metric.disk_total,
+          };
+        },
       );
       ingestToAxiom(axiomDataset, axiomEvents);
     }
@@ -105,12 +107,14 @@ const router = tsr.router(webhookTelemetryContract, {
     if (body.networkLogs && body.networkLogs.length > 0) {
       const axiomDataset = getDatasetName(DATASETS.SANDBOX_TELEMETRY_NETWORK);
       const axiomEvents = body.networkLogs.map(
-        ({ timestamp, ...rest }: Record<string, unknown>) => ({
-          ...rest,
-          _time: timestamp,
-          runId: body.runId,
-          userId: auth.userId,
-        }),
+        ({ timestamp, ...rest }: Record<string, unknown>) => {
+          return {
+            ...rest,
+            _time: timestamp,
+            runId: body.runId,
+            userId: auth.userId,
+          };
+        },
       );
       ingestToAxiom(axiomDataset, axiomEvents);
     }

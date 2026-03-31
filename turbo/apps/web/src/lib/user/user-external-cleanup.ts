@@ -20,12 +20,29 @@ export async function cleanupUserExternalServices(
   userId: string,
 ): Promise<void> {
   const steps = [
-    { name: "connector tokens", fn: () => revokeUserConnectorTokens(userId) },
-    { name: "github links", fn: () => deleteGitHubUserLinks(userId) },
-    { name: "telegram links", fn: () => deleteTelegramUserLinks(userId) },
+    {
+      name: "connector tokens",
+      fn: () => {
+        return revokeUserConnectorTokens(userId);
+      },
+    },
+    {
+      name: "github links",
+      fn: () => {
+        return deleteGitHubUserLinks(userId);
+      },
+    },
+    {
+      name: "telegram links",
+      fn: () => {
+        return deleteTelegramUserLinks(userId);
+      },
+    },
     {
       name: "slack connections",
-      fn: () => deleteUserSlackConnections(userId),
+      fn: () => {
+        return deleteUserSlackConnections(userId);
+      },
     },
   ];
 
@@ -107,7 +124,9 @@ async function deleteUserSlackConnections(userId: string): Promise<void> {
 
   if (connections.length === 0) return;
 
-  const connectionIds = connections.map((c) => c.id);
+  const connectionIds = connections.map((c) => {
+    return c.id;
+  });
 
   // Delete pending questions first (FK constraint: connectionId references slack_org_connections)
   for (const connectionId of connectionIds) {

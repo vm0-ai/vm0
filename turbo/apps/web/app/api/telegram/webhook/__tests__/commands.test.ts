@@ -539,9 +539,9 @@ describe("Telegram bot commands", () => {
       await flushAfterCallbacks();
 
       // Queued notification edits the thinking message (not a new sendMessage)
-      const queuedMsg = editMsg.calls.find((c) =>
-        c.text.includes("Run queued"),
-      );
+      const queuedMsg = editMsg.calls.find((c) => {
+        return c.text.includes("Run queued");
+      });
       expect(queuedMsg).toBeDefined();
       expect(queuedMsg?.text).toContain("concurrency limit reached");
     });
@@ -575,9 +575,9 @@ describe("Telegram bot commands", () => {
       await flushAfterCallbacks();
 
       // Queued notification edits the thinking message (not a new sendMessage)
-      const queuedMsg = editMsg.calls.find((c) =>
-        c.text.includes("Run queued"),
-      );
+      const queuedMsg = editMsg.calls.find((c) => {
+        return c.text.includes("Run queued");
+      });
       expect(queuedMsg).toBeDefined();
       expect(queuedMsg?.text).toContain("concurrency limit reached");
     });

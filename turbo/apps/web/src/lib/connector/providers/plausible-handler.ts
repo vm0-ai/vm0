@@ -7,7 +7,13 @@ export const plausibleHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Plausible does not support OAuth — use API key auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "PLAUSIBLE_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "PLAUSIBLE_TOKEN";
+  },
 };

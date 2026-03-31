@@ -75,7 +75,12 @@ export function extractFileFromTar(
     const header = tarBuffer.subarray(offset, offset + BLOCK_SIZE);
 
     // End of archive: two consecutive zero blocks
-    if (header.every((b) => b === 0)) break;
+    if (
+      header.every((b) => {
+        return b === 0;
+      })
+    )
+      break;
 
     // File name: bytes 0-99, null-terminated
     const nameEnd = header.indexOf(0);

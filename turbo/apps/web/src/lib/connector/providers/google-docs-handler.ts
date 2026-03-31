@@ -6,8 +6,14 @@ import {
 } from "./google-oauth";
 
 export const googleDocsHandler: ProviderHandler = {
-  buildAuthUrl: (clientId, redirectUri, state) =>
-    buildGoogleAuthorizationUrl("google-docs", clientId, redirectUri, state),
+  buildAuthUrl: (clientId, redirectUri, state) => {
+    return buildGoogleAuthorizationUrl(
+      "google-docs",
+      clientId,
+      redirectUri,
+      state,
+    );
+  },
   async exchangeCode(clientId, clientSecret, code, redirectUri) {
     const result = await exchangeGoogleOAuthCode(
       "google-docs",
@@ -28,10 +34,24 @@ export const googleDocsHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.GOOGLE_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.GOOGLE_OAUTH_CLIENT_SECRET,
-  getSecretName: () => "GOOGLE_DOCS_ACCESS_TOKEN",
-  getRefreshSecretName: () => "GOOGLE_DOCS_REFRESH_TOKEN",
-  refreshToken: (clientId, clientSecret, refreshToken) =>
-    refreshGoogleToken("google-docs", clientId, clientSecret, refreshToken),
+  getClientId: (e) => {
+    return e.GOOGLE_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.GOOGLE_OAUTH_CLIENT_SECRET;
+  },
+  getSecretName: () => {
+    return "GOOGLE_DOCS_ACCESS_TOKEN";
+  },
+  getRefreshSecretName: () => {
+    return "GOOGLE_DOCS_REFRESH_TOKEN";
+  },
+  refreshToken: (clientId, clientSecret, refreshToken) => {
+    return refreshGoogleToken(
+      "google-docs",
+      clientId,
+      clientSecret,
+      refreshToken,
+    );
+  },
 };

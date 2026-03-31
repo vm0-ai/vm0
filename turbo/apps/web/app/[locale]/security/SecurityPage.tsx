@@ -60,19 +60,21 @@ export default function SecurityPage() {
           </p>
 
           <div className="mt-12 space-y-10">
-            {SECTIONS.map(({ title, description, detail }) => (
-              <div key={title}>
-                <h2 className="text-[15px] font-semibold text-[hsl(var(--foreground))]">
-                  {title}
-                </h2>
-                <p className="mt-2 text-[15px] leading-relaxed text-[hsl(var(--muted-foreground))]">
-                  {description}
-                </p>
-                <p className="mt-2 text-[13px] leading-relaxed text-[hsl(var(--muted-foreground))]/50">
-                  {detail}
-                </p>
-              </div>
-            ))}
+            {SECTIONS.map(({ title, description, detail }) => {
+              return (
+                <div key={title}>
+                  <h2 className="text-[15px] font-semibold text-[hsl(var(--foreground))]">
+                    {title}
+                  </h2>
+                  <p className="mt-2 text-[15px] leading-relaxed text-[hsl(var(--muted-foreground))]">
+                    {description}
+                  </p>
+                  <p className="mt-2 text-[13px] leading-relaxed text-[hsl(var(--muted-foreground))]/50">
+                    {detail}
+                  </p>
+                </div>
+              );
+            })}
           </div>
 
           <div className="mt-16 border-t border-[hsl(var(--gray-200))] pt-8">

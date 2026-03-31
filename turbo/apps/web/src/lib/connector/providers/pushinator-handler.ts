@@ -7,7 +7,13 @@ export const pushinatorHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Pushinator does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "PUSHINATOR_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "PUSHINATOR_TOKEN";
+  },
 };

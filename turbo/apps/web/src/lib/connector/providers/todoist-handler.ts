@@ -25,7 +25,11 @@ export const todoistHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.TODOIST_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.TODOIST_OAUTH_CLIENT_SECRET,
+  getClientId: (e) => {
+    return e.TODOIST_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.TODOIST_OAUTH_CLIENT_SECRET;
+  },
   getSecretName: getTodoistSecretName,
 };

@@ -7,9 +7,13 @@ export type IconSize = (typeof ICON_SIZES)[number];
 
 const internalIconSize$ = state<IconSize>(128);
 
-export const iconSize$ = computed((get) => get(internalIconSize$));
+export const iconSize$ = computed((get) => {
+  return get(internalIconSize$);
+});
 
-export const iconSizes$ = computed(() => ICON_SIZES);
+export const iconSizes$ = computed(() => {
+  return ICON_SIZES;
+});
 
 export const setIconSize$ = command(({ set }, size: IconSize) => {
   set(internalIconSize$, size);
@@ -17,8 +21,9 @@ export const setIconSize$ = command(({ set }, size: IconSize) => {
 
 export const setupInternalConnectorLogos$ = command(
   async ({ set }, _signal: AbortSignal) => {
-    const { InternalConnectorLogos } =
-      await import("../views/internal-connector-logos.tsx");
+    const { InternalConnectorLogos } = await import(
+      "../views/internal-connector-logos.tsx"
+    );
     set(updatePage$, createElement(InternalConnectorLogos));
   },
 );

@@ -36,7 +36,9 @@ describe("link component new-tab behavior", () => {
   it("should open new tab on ctrl+click instead of navigating via pushState", async () => {
     mockQueuePage();
 
-    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => {
+      return null;
+    });
 
     await setupPage({ context, path: "/queue" });
 

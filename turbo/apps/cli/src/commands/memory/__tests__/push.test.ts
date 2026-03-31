@@ -232,7 +232,11 @@ describe("memory push", () => {
 
       expect(filesInRequest).toHaveLength(1);
       expect(filesInRequest[0]?.path).toBe("data.txt");
-      expect(filesInRequest.some((f) => f.path.startsWith(".vm0"))).toBe(false);
+      expect(
+        filesInRequest.some((f) => {
+          return f.path.startsWith(".vm0");
+        }),
+      ).toBe(false);
     });
   });
 

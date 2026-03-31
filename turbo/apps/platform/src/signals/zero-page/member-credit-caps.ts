@@ -72,7 +72,9 @@ export const setMemberCreditCap$ = command(
     const createClient = get(zeroClient$);
     const client = createClient(zeroMemberCreditCapContract);
     await client.set({ body: params });
-    set(memberCreditCapsReload$, (x) => x + 1);
+    set(memberCreditCapsReload$, (x) => {
+      return x + 1;
+    });
   },
 );
 
@@ -102,7 +104,9 @@ function createMemberCapSetting(
   const editMode$ = state(false);
   const value$ = state(creditCap?.toString() ?? "");
   const internalSavingPromise$ = state<Promise<unknown> | null>(null);
-  const savingPromise$ = computed((get) => get(internalSavingPromise$));
+  const savingPromise$ = computed((get) => {
+    return get(internalSavingPromise$);
+  });
 
   const save$ = command(async ({ get, set }, _signal: AbortSignal) => {
     const rawValue = get(value$);

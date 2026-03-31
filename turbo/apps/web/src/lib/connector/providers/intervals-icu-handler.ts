@@ -20,7 +20,11 @@ export const intervalsIcuHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.INTERVALS_ICU_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.INTERVALS_ICU_OAUTH_CLIENT_SECRET,
+  getClientId: (e) => {
+    return e.INTERVALS_ICU_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.INTERVALS_ICU_OAUTH_CLIENT_SECRET;
+  },
   getSecretName: getIntervalsIcuSecretName,
 };

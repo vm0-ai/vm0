@@ -1035,10 +1035,14 @@ describe("org schedule signals", () => {
       const entries = context.store.get(allOrgScheduleEntries$);
       expect(entries).toHaveLength(3);
 
-      const zeroEntry = entries.find((e) => e.name === "morning-briefing");
+      const zeroEntry = entries.find((e) => {
+        return e.name === "morning-briefing";
+      });
       expect(zeroEntry?.agentId).toBe("c0000000-0000-4000-a000-000000000001");
 
-      const otherEntry = entries.find((e) => e.name === "other-schedule");
+      const otherEntry = entries.find((e) => {
+        return e.name === "other-schedule";
+      });
       expect(otherEntry?.agentId).toBe("a0000001-0000-4000-a000-000000000020");
     });
   });

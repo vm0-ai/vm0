@@ -140,9 +140,9 @@ describe("VM0 managed model provider", () => {
     });
 
     it("should throw for unknown models", () => {
-      expect(() => getVm0ConcreteProviderType("unknown-model")).toThrow(
-        'Unknown VM0 model "unknown-model"',
-      );
+      expect(() => {
+        return getVm0ConcreteProviderType("unknown-model");
+      }).toThrow('Unknown VM0 model "unknown-model"');
     });
 
     it("should have all VM0 provider models mapped", () => {

@@ -48,7 +48,12 @@ export function OrgProviderDialog() {
 
   if (!dialog.providerType) {
     return (
-      <Dialog open={dialog.open} onOpenChange={() => close()}>
+      <Dialog
+        open={dialog.open}
+        onOpenChange={() => {
+          return close();
+        }}
+      >
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="font-normal leading-7">
@@ -91,7 +96,12 @@ export function OrgProviderDialog() {
         : `Add a workspace-level ${label}${subtitleSuffix} for all members`;
 
   return (
-    <Dialog open={dialog.open} onOpenChange={() => close()}>
+    <Dialog
+      open={dialog.open}
+      onOpenChange={() => {
+        return close();
+      }}
+    >
       <DialogContent className={isMultiAuth ? "max-w-3xl" : "max-w-2xl"}>
         <DialogHeader>
           <DialogTitle className="font-normal leading-7">
@@ -157,7 +167,9 @@ export function OrgProviderDialog() {
         <DialogFooter>
           <Button
             variant="outline"
-            onClick={() => close()}
+            onClick={() => {
+              return close();
+            }}
             disabled={isLoading}
           >
             Cancel

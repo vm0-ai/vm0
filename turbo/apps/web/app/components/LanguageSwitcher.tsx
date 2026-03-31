@@ -30,7 +30,9 @@ export default function LanguageSwitcher({
     }
 
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    return () => {
+      return document.removeEventListener("mousedown", handleClickOutside);
+    };
   }, []);
 
   const handleLanguageChange = (newLocale: Locale) => {
@@ -44,7 +46,9 @@ export default function LanguageSwitcher({
     <div className="language-switcher" ref={dropdownRef}>
       <button
         className="language-switcher-button"
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => {
+          return setIsOpen(!isOpen);
+        }}
         aria-label="Switch language"
         title={languageNames[locale as Locale]}
       >
@@ -83,34 +87,38 @@ export default function LanguageSwitcher({
         <div
           className={`language-switcher-dropdown ${openDirection === "up" ? "dropdown-up" : ""}`}
         >
-          {locales.map((loc) => (
-            <button
-              key={loc}
-              onClick={() => handleLanguageChange(loc)}
-              className={`language-switcher-option ${
-                locale === loc ? "active" : ""
-              }`}
-            >
-              {languageNames[loc]}
-              {locale === loc && (
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 16 16"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    d="M13.3333 4L6 11.3333L2.66666 8"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              )}
-            </button>
-          ))}
+          {locales.map((loc) => {
+            return (
+              <button
+                key={loc}
+                onClick={() => {
+                  return handleLanguageChange(loc);
+                }}
+                className={`language-switcher-option ${
+                  locale === loc ? "active" : ""
+                }`}
+              >
+                {languageNames[loc]}
+                {locale === loc && (
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      d="M13.3333 4L6 11.3333L2.66666 8"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                )}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>

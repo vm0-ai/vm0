@@ -60,13 +60,19 @@ async function cleanupExportJobs(
 
   if (expiredExports.length > 0) {
     const s3Keys = expiredExports
-      .map((e) => e.s3Key)
-      .filter((k): k is string => k !== null);
+      .map((e) => {
+        return e.s3Key;
+      })
+      .filter((k): k is string => {
+        return k !== null;
+      });
     if (s3Keys.length > 0) {
       await deleteS3Objects(env().R2_USER_STORAGES_BUCKET_NAME, s3Keys);
     }
 
-    const expiredIds = expiredExports.map((e) => e.id);
+    const expiredIds = expiredExports.map((e) => {
+      return e.id;
+    });
     await globalThis.services.db
       .delete(exportJobs)
       .where(inArray(exportJobs.id, expiredIds));
@@ -234,7 +240,9 @@ const router = tsr.router(cronCleanupSandboxesContract, {
             run.id,
             "timeout",
             timeoutReason,
-            () => drainOrgQueue(run.orgId, dispatchQueuedZeroRun),
+            () => {
+              return drainOrgQueue(run.orgId, dispatchQueuedZeroRun);
+            },
           );
 
           await processOrgCredits(run.orgId);
@@ -273,8 +281,12 @@ const router = tsr.router(cronCleanupSandboxesContract, {
     return {
       status: 200 as const,
       body: {
-        cleaned: results.filter((r) => r.status === "cleaned").length,
-        errors: results.filter((r) => r.status === "error").length,
+        cleaned: results.filter((r) => {
+          return r.status === "cleaned";
+        }).length,
+        errors: results.filter((r) => {
+          return r.status === "error";
+        }).length,
         results,
         exportJobsCleaned,
         exportJobsStuck,

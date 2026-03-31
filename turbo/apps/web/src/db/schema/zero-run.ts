@@ -19,17 +19,26 @@ export const zeroRuns = pgTable(
   {
     id: uuid("id")
       .primaryKey()
-      .references(() => agentRuns.id, { onDelete: "cascade" }),
+      .references(
+        () => {
+          return agentRuns.id;
+        },
+        { onDelete: "cascade" },
+      ),
     triggerSource: varchar("trigger_source", { length: 20 }).notNull(),
     // References zero_agent_schedules.id if this run was triggered by a schedule
     scheduleId: uuid("schedule_id").references(
-      (): AnyPgColumn => zeroAgentSchedules.id,
+      (): AnyPgColumn => {
+        return zeroAgentSchedules.id;
+      },
       { onDelete: "set null" },
     ),
   },
-  (table) => [
-    index("idx_zero_runs_schedule")
-      .on(table.scheduleId)
-      .where(sql`schedule_id IS NOT NULL`),
-  ],
+  (table) => {
+    return [
+      index("idx_zero_runs_schedule")
+        .on(table.scheduleId)
+        .where(sql`schedule_id IS NOT NULL`),
+    ];
+  },
 );

@@ -21,9 +21,11 @@ export const emailSuppressions = pgTable(
     resendEmailId: text("resend_email_id"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
-  (table) => [
-    uniqueIndex("email_suppressions_email_lower_idx").on(
-      sql`lower(${table.emailAddress})`,
-    ),
-  ],
+  (table) => {
+    return [
+      uniqueIndex("email_suppressions_email_lower_idx").on(
+        sql`lower(${table.emailAddress})`,
+      ),
+    ];
+  },
 );

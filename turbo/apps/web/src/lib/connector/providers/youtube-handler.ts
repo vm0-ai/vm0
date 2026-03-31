@@ -7,7 +7,13 @@ export const youtubeHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("YouTube does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "YOUTUBE_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "YOUTUBE_TOKEN";
+  },
 };

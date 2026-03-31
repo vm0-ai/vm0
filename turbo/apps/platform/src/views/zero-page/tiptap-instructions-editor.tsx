@@ -46,10 +46,9 @@ function buildDecorations(
   doc: Parameters<typeof findChildren>[0],
 ): DecorationSet {
   const decorations: Decoration[] = [];
-  for (const block of findChildren(
-    doc,
-    (node) => node.type.name === "codeBlock",
-  )) {
+  for (const block of findChildren(doc, (node) => {
+    return node.type.name === "codeBlock";
+  })) {
     let from = block.pos + 1;
     const language: string | null = block.node.attrs.language;
     const result =
@@ -194,7 +193,9 @@ export function TiptapInstructionsEditor({
           className="z-50 flex items-center gap-1 rounded-lg zero-border bg-popover px-1.5 py-1 shadow-lg"
         >
           <ToolbarButton
-            onAction={() => editor.chain().focus().toggleBold().run()}
+            onAction={() => {
+              return editor.chain().focus().toggleBold().run();
+            }}
             active={editor.isActive("bold")}
             disabled={disabled}
             title="Bold"
@@ -202,7 +203,9 @@ export function TiptapInstructionsEditor({
             <IconBold size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>
           <ToolbarButton
-            onAction={() => editor.chain().focus().toggleItalic().run()}
+            onAction={() => {
+              return editor.chain().focus().toggleItalic().run();
+            }}
             active={editor.isActive("italic")}
             disabled={disabled}
             title="Italic"
@@ -210,7 +213,9 @@ export function TiptapInstructionsEditor({
             <IconItalic size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>
           <ToolbarButton
-            onAction={() => editor.chain().focus().toggleStrike().run()}
+            onAction={() => {
+              return editor.chain().focus().toggleStrike().run();
+            }}
             active={editor.isActive("strike")}
             disabled={disabled}
             title="Strikethrough"
@@ -218,7 +223,9 @@ export function TiptapInstructionsEditor({
             <IconStrikethrough size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>
           <ToolbarButton
-            onAction={() => editor.chain().focus().toggleCode().run()}
+            onAction={() => {
+              return editor.chain().focus().toggleCode().run();
+            }}
             active={editor.isActive("code")}
             disabled={disabled}
             title="Inline code"
@@ -229,9 +236,9 @@ export function TiptapInstructionsEditor({
           <ToolbarDivider />
 
           <ToolbarButton
-            onAction={() =>
-              editor.chain().focus().toggleHeading({ level: 1 }).run()
-            }
+            onAction={() => {
+              return editor.chain().focus().toggleHeading({ level: 1 }).run();
+            }}
             active={editor.isActive("heading", { level: 1 })}
             disabled={disabled}
             title="Heading 1"
@@ -239,9 +246,9 @@ export function TiptapInstructionsEditor({
             <IconH1 size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>
           <ToolbarButton
-            onAction={() =>
-              editor.chain().focus().toggleHeading({ level: 2 }).run()
-            }
+            onAction={() => {
+              return editor.chain().focus().toggleHeading({ level: 2 }).run();
+            }}
             active={editor.isActive("heading", { level: 2 })}
             disabled={disabled}
             title="Heading 2"
@@ -249,9 +256,9 @@ export function TiptapInstructionsEditor({
             <IconH2 size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>
           <ToolbarButton
-            onAction={() =>
-              editor.chain().focus().toggleHeading({ level: 3 }).run()
-            }
+            onAction={() => {
+              return editor.chain().focus().toggleHeading({ level: 3 }).run();
+            }}
             active={editor.isActive("heading", { level: 3 })}
             disabled={disabled}
             title="Heading 3"
@@ -262,7 +269,9 @@ export function TiptapInstructionsEditor({
           <ToolbarDivider />
 
           <ToolbarButton
-            onAction={() => editor.chain().focus().toggleBulletList().run()}
+            onAction={() => {
+              return editor.chain().focus().toggleBulletList().run();
+            }}
             active={editor.isActive("bulletList")}
             disabled={disabled}
             title="Bullet list"
@@ -270,7 +279,9 @@ export function TiptapInstructionsEditor({
             <IconList size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>
           <ToolbarButton
-            onAction={() => editor.chain().focus().toggleOrderedList().run()}
+            onAction={() => {
+              return editor.chain().focus().toggleOrderedList().run();
+            }}
             active={editor.isActive("orderedList")}
             disabled={disabled}
             title="Ordered list"
@@ -278,7 +289,9 @@ export function TiptapInstructionsEditor({
             <IconListNumbers size={ICON_SIZE} stroke={ICON_STROKE} />
           </ToolbarButton>
           <ToolbarButton
-            onAction={() => editor.chain().focus().toggleBlockquote().run()}
+            onAction={() => {
+              return editor.chain().focus().toggleBlockquote().run();
+            }}
             active={editor.isActive("blockquote")}
             disabled={disabled}
             title="Blockquote"

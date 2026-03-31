@@ -84,7 +84,9 @@ async function exchangeToken(
 }
 
 function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => {
+    return setTimeout(resolve, ms);
+  });
 }
 
 export async function authenticate(apiUrl?: string): Promise<void> {

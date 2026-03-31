@@ -17,7 +17,11 @@ export const listCommand = new Command()
   .action(
     withErrorHandler(async () => {
       const result = await listZeroConnectors();
-      const connectedMap = new Map(result.connectors.map((c) => [c.type, c]));
+      const connectedMap = new Map(
+        result.connectors.map((c) => {
+          return [c.type, c];
+        }),
+      );
       const orgId = await getActiveOrg();
 
       const allTypesRaw = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
@@ -36,7 +40,12 @@ export const listCommand = new Command()
       }
 
       // Calculate column widths
-      const typeWidth = Math.max(4, ...allTypes.map((t) => t.length));
+      const typeWidth = Math.max(
+        4,
+        ...allTypes.map((t) => {
+          return t.length;
+        }),
+      );
       const statusText = "STATUS";
       const statusWidth = statusText.length;
 

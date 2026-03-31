@@ -46,14 +46,16 @@ export const emailOutbox = pgTable(
 
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
-  (table) => [
-    // Drain query: pending items ready to send, FIFO order
-    index("email_outbox_drain_idx").on(
-      table.status,
-      table.nextRetryAt,
-      table.createdAt,
-    ),
-    // TTL cleanup
-    index("email_outbox_created_at_idx").on(table.createdAt),
-  ],
+  (table) => {
+    return [
+      // Drain query: pending items ready to send, FIFO order
+      index("email_outbox_drain_idx").on(
+        table.status,
+        table.nextRetryAt,
+        table.createdAt,
+      ),
+      // TTL cleanup
+      index("email_outbox_created_at_idx").on(table.createdAt),
+    ];
+  },
 );

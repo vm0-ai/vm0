@@ -14,7 +14,9 @@ export function useAgentAvatar(id: string): string | null {
   if (!id || resolved === undefined) {
     return null;
   }
-  const agent = resolved.find((a) => a.id === id);
+  const agent = resolved.find((a) => {
+    return a.id === id;
+  });
   const dbAvatar = resolveAvatarUrl(agent?.avatarUrl);
   return dbAvatar ?? avatar1Img;
 }

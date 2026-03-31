@@ -41,7 +41,9 @@ function getCookie(request: Request, name: string): string | undefined {
   const cookieHeader = request.headers.get("cookie");
   if (!cookieHeader) return undefined;
 
-  const cookies = cookieHeader.split(";").map((c) => c.trim());
+  const cookies = cookieHeader.split(";").map((c) => {
+    return c.trim();
+  });
   for (const cookie of cookies) {
     const [cookieName, ...rest] = cookie.split("=");
     if (cookieName === name) {

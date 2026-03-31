@@ -62,7 +62,9 @@ export function ImageLightbox({ url }: { url: string }) {
     >
       <button
         type="button"
-        onClick={() => closeLightbox(null)}
+        onClick={() => {
+          return closeLightbox(null);
+        }}
         className="absolute top-4 right-4 p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
         aria-label="Close"
       >
@@ -138,7 +140,9 @@ function AttachmentChip({
         {isImage ? (
           <button
             type="button"
-            onClick={() => url && setLightboxUrlFn(url)}
+            onClick={() => {
+              return url && setLightboxUrlFn(url);
+            }}
             disabled={!url}
             className="group relative h-9 w-9 rounded-lg overflow-hidden border border-foreground/10 hover:border-foreground/25 transition-colors"
           >
@@ -209,13 +213,17 @@ export function AttachmentChips({
 }) {
   return (
     <div className="flex flex-wrap gap-2 px-4 pt-3">
-      {attachments.map((a) => (
-        <AttachmentChip
-          key={String(a.fileInfo$)}
-          attachment={a}
-          onRemove={() => onRemove(a)}
-        />
-      ))}
+      {attachments.map((a) => {
+        return (
+          <AttachmentChip
+            key={String(a.fileInfo$)}
+            attachment={a}
+            onRemove={() => {
+              return onRemove(a);
+            }}
+          />
+        );
+      })}
     </div>
   );
 }

@@ -56,7 +56,9 @@ describe("throwOAuthError", () => {
     const response = makeResponse(400, longBody);
 
     const error = await throwOAuthError("Notion", "refresh", response).catch(
-      (e: Error) => e,
+      (e: Error) => {
+        return e;
+      },
     );
 
     expect(error.message).toContain("Notion token refresh failed: 400 ");

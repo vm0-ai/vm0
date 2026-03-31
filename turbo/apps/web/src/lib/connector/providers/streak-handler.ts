@@ -7,7 +7,13 @@ export const streakHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Streak does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "STREAK_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "STREAK_TOKEN";
+  },
 };

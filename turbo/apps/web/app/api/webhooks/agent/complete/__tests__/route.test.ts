@@ -476,12 +476,16 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(chatMessages.length).toBeGreaterThanOrEqual(2);
 
       // Verify user message from prompt
-      const userMsg = chatMessages.find((m) => m.role === "user");
+      const userMsg = chatMessages.find((m) => {
+        return m.role === "user";
+      });
       expect(userMsg).toBeDefined();
       expect(userMsg!.content).toBe("Test prompt");
 
       // Verify assistant message from Axiom result
-      const assistantMsg = chatMessages.find((m) => m.role === "assistant");
+      const assistantMsg = chatMessages.find((m) => {
+        return m.role === "assistant";
+      });
       expect(assistantMsg).toBeDefined();
       expect(assistantMsg!.content).toBe("Here is the agent response.");
       expect(assistantMsg!.runId).toBe(testRunId);
@@ -646,7 +650,9 @@ describe("POST /api/webhooks/agent/complete", () => {
       )) as StoredMessage[];
       expect(chatMessages.length).toBeGreaterThanOrEqual(2);
 
-      const assistantMsg = chatMessages.find((m) => m.role === "assistant");
+      const assistantMsg = chatMessages.find((m) => {
+        return m.role === "assistant";
+      });
       expect(assistantMsg).toBeDefined();
       expect(assistantMsg!.content).toBe("Done. Created 3 files.");
       // Last text event is skipped — only tool_use entries are extracted
@@ -739,7 +745,9 @@ describe("POST /api/webhooks/agent/complete", () => {
         checkpointData.agentSessionId,
       )) as StoredMessage[];
 
-      const assistantMsg = chatMessages.find((m) => m.role === "assistant");
+      const assistantMsg = chatMessages.find((m) => {
+        return m.role === "assistant";
+      });
       expect(assistantMsg).toBeDefined();
       // First text event included, last text event skipped
       expect(assistantMsg!.summaries).toEqual([
@@ -832,7 +840,9 @@ describe("POST /api/webhooks/agent/complete", () => {
         checkpointData.agentSessionId,
       )) as StoredMessage[];
 
-      const assistantMsg = chatMessages.find((m) => m.role === "assistant");
+      const assistantMsg = chatMessages.find((m) => {
+        return m.role === "assistant";
+      });
       expect(assistantMsg).toBeDefined();
       expect(assistantMsg!.summaries).toHaveLength(1);
       const entry = assistantMsg!.summaries![0] as {
@@ -908,7 +918,9 @@ describe("POST /api/webhooks/agent/complete", () => {
         checkpointData.agentSessionId,
       )) as StoredMessage[];
 
-      const assistantMsg = chatMessages.find((m) => m.role === "assistant");
+      const assistantMsg = chatMessages.find((m) => {
+        return m.role === "assistant";
+      });
       expect(assistantMsg).toBeDefined();
       expect(assistantMsg!.content).toBe("All good.");
       // summaries should be undefined (not included when empty)
@@ -968,10 +980,11 @@ describe("POST /api/webhooks/agent/complete", () => {
     function mockOpenRouter(title: string) {
       const { handler, mocked } = http.post(
         "https://openrouter.ai/api/v1/chat/completions",
-        () =>
-          HttpResponse.json({
+        () => {
+          return HttpResponse.json({
             choices: [{ message: { content: title } }],
-          }),
+          });
+        },
       );
       server.use(handler);
       return mocked;
@@ -983,7 +996,9 @@ describe("POST /api/webhooks/agent/complete", () => {
     function mockOpenRouterError(status: number) {
       const { handler, mocked } = http.post(
         "https://openrouter.ai/api/v1/chat/completions",
-        () => new HttpResponse("Internal Server Error", { status }),
+        () => {
+          return new HttpResponse("Internal Server Error", { status });
+        },
       );
       server.use(handler);
       return mocked;
@@ -1812,7 +1827,11 @@ describe("POST /api/webhooks/agent/complete", () => {
       // Verify both callbacks were dispatched (attempted)
       const callbacks = await findTestCallbacksByRunId(runId);
       expect(callbacks).toHaveLength(2);
-      expect(callbacks.every((c) => c.attempts === 1)).toBe(true);
+      expect(
+        callbacks.every((c) => {
+          return c.attempts === 1;
+        }),
+      ).toBe(true);
     });
   });
 });

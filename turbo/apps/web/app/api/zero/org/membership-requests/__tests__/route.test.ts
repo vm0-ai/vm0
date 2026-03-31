@@ -38,7 +38,9 @@ describe("POST /api/zero/org/membership-requests (accept)", () => {
     server.use(
       http.post(
         `https://api.clerk.com/v1/organizations/${orgId}/membership_requests/req_test123/accept`,
-        () => HttpResponse.json({}),
+        () => {
+          return HttpResponse.json({});
+        },
       ),
     );
 
@@ -62,7 +64,9 @@ describe("POST /api/zero/org/membership-requests (accept)", () => {
     server.use(
       http.post(
         `https://api.clerk.com/v1/organizations/${orgId}/membership_requests/req_invalid/accept`,
-        () => HttpResponse.json({ error: "Not found" }, { status: 404 }),
+        () => {
+          return HttpResponse.json({ error: "Not found" }, { status: 404 });
+        },
       ),
     );
 
@@ -122,7 +126,9 @@ describe("DELETE /api/zero/org/membership-requests (reject)", () => {
     server.use(
       http.post(
         `https://api.clerk.com/v1/organizations/${orgId}/membership_requests/req_test456/reject`,
-        () => HttpResponse.json({}),
+        () => {
+          return HttpResponse.json({});
+        },
       ),
     );
 
@@ -146,7 +152,9 @@ describe("DELETE /api/zero/org/membership-requests (reject)", () => {
     server.use(
       http.post(
         `https://api.clerk.com/v1/organizations/${orgId}/membership_requests/req_invalid/reject`,
-        () => HttpResponse.json({ error: "Not found" }, { status: 404 }),
+        () => {
+          return HttpResponse.json({ error: "Not found" }, { status: 404 });
+        },
       ),
     );
 

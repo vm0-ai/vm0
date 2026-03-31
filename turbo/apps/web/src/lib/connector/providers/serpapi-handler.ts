@@ -7,7 +7,13 @@ export const serpapiHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("SerpApi does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "SERPAPI_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "SERPAPI_TOKEN";
+  },
 };

@@ -25,7 +25,9 @@ export const orgSlugSchema = z
     /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]{1,2}$/,
     "Org slug must contain only lowercase letters, numbers, and hyphens, and must start and end with an alphanumeric character",
   )
-  .transform((s) => s.toLowerCase());
+  .transform((s) => {
+    return s.toLowerCase();
+  });
 
 /**
  * Org response schema

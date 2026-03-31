@@ -7,7 +7,13 @@ export const browserlessHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Browserless does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "BROWSERLESS_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "BROWSERLESS_TOKEN";
+  },
 };

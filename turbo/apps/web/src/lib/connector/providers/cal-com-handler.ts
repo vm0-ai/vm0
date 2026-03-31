@@ -7,7 +7,13 @@ export const calComHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Cal.com does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "CALCOM_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "CALCOM_TOKEN";
+  },
 };

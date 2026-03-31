@@ -61,10 +61,12 @@ export async function listSecrets(
     .where(and(eq(secrets.orgId, orgId), eq(secrets.userId, userId)))
     .orderBy(secrets.name);
 
-  return result.map((row) => ({
-    ...row,
-    type: row.type as SecretType,
-  }));
+  return result.map((row) => {
+    return {
+      ...row,
+      type: row.type as SecretType,
+    };
+  });
 }
 
 /**

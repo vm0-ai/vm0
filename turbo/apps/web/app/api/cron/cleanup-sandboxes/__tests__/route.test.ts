@@ -120,9 +120,9 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       const data = await response.json();
 
       // Our specific run should not be in the cleaned results
-      const cleanedRunIds = data.results.map(
-        (r: { runId: string }) => r.runId,
-      ) as string[];
+      const cleanedRunIds = data.results.map((r: { runId: string }) => {
+        return r.runId;
+      }) as string[];
       expect(cleanedRunIds).not.toContain(runId);
     });
 
@@ -151,9 +151,9 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       const data = await response.json();
 
       // Our specific run should be in the cleaned results
-      const cleanedResult = data.results.find(
-        (r: { runId: string }) => r.runId === runId,
-      );
+      const cleanedResult = data.results.find((r: { runId: string }) => {
+        return r.runId === runId;
+      });
       expect(cleanedResult).toBeDefined();
       expect(cleanedResult.status).toBe("cleaned");
     });
@@ -185,9 +185,9 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       const data = await response.json();
 
       // Our completed run should not be in the cleaned results
-      const cleanedRunIds = data.results.map(
-        (r: { runId: string }) => r.runId,
-      ) as string[];
+      const cleanedRunIds = data.results.map((r: { runId: string }) => {
+        return r.runId;
+      }) as string[];
       expect(cleanedRunIds).not.toContain(runId);
     });
 
@@ -231,9 +231,9 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       const data = await response.json();
 
       // Both runs should be in the cleaned results
-      const cleanedRunIds = data.results.map(
-        (r: { runId: string }) => r.runId,
-      ) as string[];
+      const cleanedRunIds = data.results.map((r: { runId: string }) => {
+        return r.runId;
+      }) as string[];
       expect(cleanedRunIds).toContain(runId1);
       expect(cleanedRunIds).toContain(runId2);
     });
@@ -263,9 +263,9 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       const data = await response.json();
 
       // Find our run in the results
-      const cleanedResult = data.results.find(
-        (r: { runId: string }) => r.runId === runId,
-      );
+      const cleanedResult = data.results.find((r: { runId: string }) => {
+        return r.runId === runId;
+      });
       expect(cleanedResult).toBeDefined();
       expect(cleanedResult.reason).toBe(
         "Run timed out while pending (never started)",

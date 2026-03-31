@@ -7,7 +7,13 @@ export const heygenHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("HeyGen does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "HEYGEN_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "HEYGEN_TOKEN";
+  },
 };

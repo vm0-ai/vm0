@@ -7,7 +7,13 @@ export const devtoHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Dev.to does not support OAuth — use API key auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "DEVTO_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "DEVTO_TOKEN";
+  },
 };

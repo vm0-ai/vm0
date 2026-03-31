@@ -155,10 +155,12 @@ const router = tsr.router(composesInstructionsContract, {
 
     // Derive the canonical filename from the agent's framework.
     const canonicalFilename = getInstructionsFilename(agentDef?.framework);
-    const normalize = (p: string) => (p.startsWith("./") ? p.slice(2) : p);
-    const instructionFile = manifest.files.find(
-      (f) => normalize(f.path) === normalize(canonicalFilename),
-    );
+    const normalize = (p: string) => {
+      return p.startsWith("./") ? p.slice(2) : p;
+    };
+    const instructionFile = manifest.files.find((f) => {
+      return normalize(f.path) === normalize(canonicalFilename);
+    });
 
     if (!instructionFile) {
       return {

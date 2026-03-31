@@ -87,7 +87,9 @@ export async function GET(request: Request) {
       orgId: org.orgId,
       channelId,
       threadTs,
-    }).catch((e) => log.warn("Failed to notify connect success", { error: e }));
+    }).catch((e) => {
+      return log.warn("Failed to notify connect success", { error: e });
+    });
     return NextResponse.redirect(`${appUrl}/slack/connect?status=connected`);
   }
 
@@ -153,6 +155,8 @@ export async function GET(request: Request) {
     orgId: org.orgId,
     channelId,
     threadTs,
-  }).catch((e) => log.warn("Failed to notify connect success", { error: e }));
+  }).catch((e) => {
+    return log.warn("Failed to notify connect success", { error: e });
+  });
   return NextResponse.redirect(`${appUrl}/slack/connect?status=connected`);
 }

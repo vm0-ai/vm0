@@ -7,7 +7,13 @@ export const revenuecatHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("RevenueCat does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "REVENUECAT_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "REVENUECAT_TOKEN";
+  },
 };

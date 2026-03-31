@@ -117,15 +117,15 @@ export function mockChatLifecycle(options?: {
         updatedAt: "2026-03-10T00:00:00Z",
       });
     }),
-    http.get("*/api/zero/chat-threads", () =>
-      HttpResponse.json({ threads: threadList }),
-    ),
-    http.post("*/api/zero/chat-threads", () =>
-      HttpResponse.json(
+    http.get("*/api/zero/chat-threads", () => {
+      return HttpResponse.json({ threads: threadList });
+    }),
+    http.post("*/api/zero/chat-threads", () => {
+      return HttpResponse.json(
         { id: threadId, title: null, createdAt: "2026-03-10T00:00:00Z" },
         { status: 201 },
-      ),
-    ),
+      );
+    }),
     // Unified chat message endpoint (creates thread + run + association)
     http.post("*/api/zero/chat/messages", async ({ request }) => {
       const body = (await request.json()) as { prompt?: string };
@@ -144,8 +144,8 @@ export function mockChatLifecycle(options?: {
         { status: 201 },
       );
     }),
-    http.get("*/api/zero/logs/:id", () =>
-      HttpResponse.json({
+    http.get("*/api/zero/logs/:id", () => {
+      return HttpResponse.json({
         id: "a0000000-0000-4000-a000-000000000001",
         sessionId: "session-1",
         agentId: "zero",
@@ -163,20 +163,24 @@ export function mockChatLifecycle(options?: {
         startedAt: "2026-03-10T00:00:01Z",
         completedAt: null,
         artifact: { name: null, version: null },
-      }),
-    ),
-    http.get("*/api/zero/runs/:id/telemetry/agent", () =>
-      HttpResponse.json({ events, hasMore: false, framework: "claude-code" }),
-    ),
-    http.post("*/api/zero/runs/:id/cancel", () =>
-      HttpResponse.json({
+      });
+    }),
+    http.get("*/api/zero/runs/:id/telemetry/agent", () => {
+      return HttpResponse.json({
+        events,
+        hasMore: false,
+        framework: "claude-code",
+      });
+    }),
+    http.post("*/api/zero/runs/:id/cancel", () => {
+      return HttpResponse.json({
         id: "a0000000-0000-4000-a000-000000000001",
         status: "cancelled",
         message: "Run cancelled",
-      }),
-    ),
-    http.get("*/api/zero/runs/:id", () =>
-      HttpResponse.json({
+      });
+    }),
+    http.get("*/api/zero/runs/:id", () => {
+      return HttpResponse.json({
         runId: "a0000000-0000-4000-a000-000000000001",
         agentComposeVersionId: null,
         status: runStatus,
@@ -184,11 +188,11 @@ export function mockChatLifecycle(options?: {
         appendSystemPrompt: null,
         result: { agentSessionId: "session-1", output: resultContent },
         createdAt: "2026-03-10T00:00:00Z",
-      }),
-    ),
-    http.get("*/api/zero/queue-position", () =>
-      HttpResponse.json({ position: queuePosition }),
-    ),
+      });
+    }),
+    http.get("*/api/zero/queue-position", () => {
+      return HttpResponse.json({ position: queuePosition });
+    }),
   );
 
   return {

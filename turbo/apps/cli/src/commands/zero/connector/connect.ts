@@ -23,7 +23,9 @@ import {
 import { promptSelect, promptPassword } from "../../../lib/utils/prompt-utils";
 
 function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => {
+    return setTimeout(resolve, ms);
+  });
 }
 
 /**
@@ -31,14 +33,15 @@ function delay(ms: number): Promise<void> {
  */
 function renderHelpText(text: string): string {
   return text
-    .replace(
-      /\[([^\]]+)\]\(([^)]+)\)/g,
-      (_m, label: string, url: string) => `${label} (${chalk.cyan(url)})`,
-    )
-    .replace(/\*\*([^*]+)\*\*/g, (_m, content: string) => chalk.bold(content))
-    .replace(/^> (.+)$/gm, (_m, content: string) =>
-      chalk.yellow(`  ${content}`),
-    );
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, label: string, url: string) => {
+      return `${label} (${chalk.cyan(url)})`;
+    })
+    .replace(/\*\*([^*]+)\*\*/g, (_m, content: string) => {
+      return chalk.bold(content);
+    })
+    .replace(/^> (.+)$/gm, (_m, content: string) => {
+      return chalk.yellow(`  ${content}`);
+    });
 }
 
 /**

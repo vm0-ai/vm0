@@ -7,7 +7,13 @@ export const qiitaHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Qiita does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "QIITA_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "QIITA_TOKEN";
+  },
 };

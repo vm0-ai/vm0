@@ -327,7 +327,9 @@ function PermissionRow({
                 .replace(/^Connect your \w+ account to /i, "")
                 .replace(/^access /i, "")
                 .replace(/^create /i, "Create ")
-                .replace(/^./, (c) => c.toUpperCase())}
+                .replace(/^./, (c) => {
+                  return c.toUpperCase();
+                })}
             </p>
           )}
         </div>
@@ -413,11 +415,13 @@ function JobPermissionsTab({
   const allConnectors =
     allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
 
-  const connectedConnectors = allConnectors.filter((c) => c.connected);
+  const connectedConnectors = allConnectors.filter((c) => {
+    return c.connected;
+  });
   const filteredConnectors = search
-    ? connectedConnectors.filter((c) =>
-        c.label.toLowerCase().includes(search.toLowerCase()),
-      )
+    ? connectedConnectors.filter((c) => {
+        return c.label.toLowerCase().includes(search.toLowerCase());
+      })
     : connectedConnectors;
   const addedSet = new Set(addedConnectors);
 
@@ -491,11 +495,15 @@ function JobPermissionsTab({
                     className="shrink-0 text-muted-foreground"
                   />
                   <input
-                    ref={(el) => el?.focus()}
+                    ref={(el) => {
+                      return el?.focus();
+                    }}
                     type="text"
                     placeholder="Search connectors..."
                     value={search}
-                    onChange={(e) => setSearch(e.target.value)}
+                    onChange={(e) => {
+                      return setSearch(e.target.value);
+                    }}
                     onKeyDown={(e) => {
                       if (e.key === "Escape") {
                         setSearch("");
@@ -520,7 +528,9 @@ function JobPermissionsTab({
               {!searchActive && (
                 <button
                   type="button"
-                  onClick={() => setSearchActive(true)}
+                  onClick={() => {
+                    return setSearchActive(true);
+                  }}
                   className="absolute right-3 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                   aria-label="Search connectors"
                 >
@@ -529,18 +539,24 @@ function JobPermissionsTab({
               )}
             </div>
             {filteredConnectors.length > 0 ? (
-              filteredConnectors.map((c, i) => (
-                <PermissionRow
-                  key={c.type}
-                  connector={c}
-                  enabled={addedSet.has(c.type)}
-                  onToggle={(checked) => handleToggle(c.type, checked)}
-                  readOnly={readOnly}
-                  showManage={isAdmin && hasFirewallPermissions(c.type)}
-                  onManage={() => setFirewallType(c.type)}
-                  isLast={i === filteredConnectors.length - 1}
-                />
-              ))
+              filteredConnectors.map((c, i) => {
+                return (
+                  <PermissionRow
+                    key={c.type}
+                    connector={c}
+                    enabled={addedSet.has(c.type)}
+                    onToggle={(checked) => {
+                      return handleToggle(c.type, checked);
+                    }}
+                    readOnly={readOnly}
+                    showManage={isAdmin && hasFirewallPermissions(c.type)}
+                    onManage={() => {
+                      return setFirewallType(c.type);
+                    }}
+                    isLast={i === filteredConnectors.length - 1}
+                  />
+                );
+              })
             ) : (
               <p className="px-5 py-4 text-sm text-muted-foreground">
                 No results for &ldquo;{search}&rdquo;
@@ -564,16 +580,20 @@ function JobPermissionsTab({
                 }
                 toast.success("Permissions updated");
               }}
-              onClose={() => setFirewallType(null)}
+              onClose={() => {
+                return setFirewallType(null);
+              }}
             />
           )}
 
           {!readOnly && (connectorsDirty || connectorsSaving) && (
             <ZeroUnsavedBar
-              onDiscard={() => discardConnectors()}
-              onSave={() =>
-                detach(saveConnectors(pageSignal), Reason.DomCallback)
-              }
+              onDiscard={() => {
+                return discardConnectors();
+              }}
+              onSave={() => {
+                return detach(saveConnectors(pageSignal), Reason.DomCallback);
+              }}
               saving={connectorsSaving}
             />
           )}
@@ -609,9 +629,15 @@ function JobScheduleTab({ displayName }: { displayName: string }) {
       displayName={displayName}
       entries={entries}
       scheduleError={scheduleError}
-      onSave={(params) => saveSchedule(params, pageSignal)}
-      onDelete={(name) => deleteSchedule(name, pageSignal)}
-      onToggleEnabled={(params) => toggleEnabled(params, pageSignal)}
+      onSave={(params) => {
+        return saveSchedule(params, pageSignal);
+      }}
+      onDelete={(name) => {
+        return deleteSchedule(name, pageSignal);
+      }}
+      onToggleEnabled={(params) => {
+        return toggleEnabled(params, pageSignal);
+      }}
       onRunNow={handleRunNow}
       onOpenDetails={handleOpenDetails}
     />
@@ -660,7 +686,9 @@ function JobInstructionsTab() {
       buildError={buildError}
       onEdit={setEdited}
       onDiscard={discard}
-      onBuild={() => detach(build(pageSignal), Reason.DomCallback)}
+      onBuild={() => {
+        return detach(build(pageSignal), Reason.DomCallback);
+      }}
     />
   );
 }
@@ -673,7 +701,9 @@ export function ZeroJobDetailPage({ agentId }: ZeroJobDetailPageProps) {
   const detail = useGet(zeroJobDetail$);
   const error = useGet(zeroJobDetailError$);
   const agents = useLastResolved(agents$) ?? [];
-  const listItem = agents.find((a) => a.id === agentId);
+  const listItem = agents.find((a) => {
+    return a.id === agentId;
+  });
 
   const { description, displayName, sound, avatarUrl } = extractAgentFields(
     detail,

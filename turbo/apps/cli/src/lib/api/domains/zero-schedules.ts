@@ -146,16 +146,24 @@ export async function resolveZeroScheduleByAgent(
 
   const { schedules } = await listZeroSchedules();
 
-  const agentSchedules = schedules.filter((s) => s.agentId === compose.id);
+  const agentSchedules = schedules.filter((s) => {
+    return s.agentId === compose.id;
+  });
 
   if (agentSchedules.length === 0) {
     throw new Error(`No schedule found for agent "${agentIdentifier}"`);
   }
 
   if (scheduleName) {
-    const match = agentSchedules.find((s) => s.name === scheduleName);
+    const match = agentSchedules.find((s) => {
+      return s.name === scheduleName;
+    });
     if (!match) {
-      const available = agentSchedules.map((s) => s.name).join(", ");
+      const available = agentSchedules
+        .map((s) => {
+          return s.name;
+        })
+        .join(", ");
       throw new Error(
         `Schedule "${scheduleName}" not found for agent "${agentIdentifier}". Available schedules: ${available}`,
       );
@@ -167,7 +175,11 @@ export async function resolveZeroScheduleByAgent(
     return agentSchedules[0]!;
   }
 
-  const available = agentSchedules.map((s) => s.name).join(", ");
+  const available = agentSchedules
+    .map((s) => {
+      return s.name;
+    })
+    .join(", ");
   throw new Error(
     `Agent "${agentIdentifier}" has multiple schedules. Use --name to specify which one: ${available}`,
   );

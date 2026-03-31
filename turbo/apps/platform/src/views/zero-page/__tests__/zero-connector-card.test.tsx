@@ -227,9 +227,9 @@ describe("zero authorization tab — readOnly behavior (member on default agent)
       ["github"],
     );
 
-    const toggleRow = await waitFor(() =>
-      screen.getByRole("button", { name: "Revoke GitHub" }),
-    );
+    const toggleRow = await waitFor(() => {
+      return screen.getByRole("button", { name: "Revoke GitHub" });
+    });
     expect(toggleRow).toBeDisabled();
   });
 

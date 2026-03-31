@@ -7,7 +7,13 @@ export const scrapeninjaHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("ScrapeNinja does not support OAuth — use API key auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "SCRAPENINJA_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "SCRAPENINJA_TOKEN";
+  },
 };

@@ -17,7 +17,12 @@ import { server } from "../../../mocks/server";
 const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "test-auth-proxy-home-"));
 vi.mock("os", async (importOriginal) => {
   const original = await importOriginal<typeof import("os")>();
-  return { ...original, homedir: () => TEST_HOME };
+  return {
+    ...original,
+    homedir: () => {
+      return TEST_HOME;
+    },
+  };
 });
 
 describe("auth login: proxy configuration", () => {
@@ -28,7 +33,9 @@ describe("auth login: proxy configuration", () => {
   const mockConsoleError = vi
     .spyOn(console, "error")
     .mockImplementation(() => {});
-  vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+  vi.spyOn(process.stdout, "write").mockImplementation(() => {
+    return true;
+  });
 
   beforeEach(async () => {
     vi.resetModules();
@@ -48,29 +55,30 @@ describe("auth login: proxy configuration", () => {
 
   function setupSuccessfulAuth() {
     server.use(
-      http.post("http://localhost:3000/api/cli/auth/device", () =>
-        HttpResponse.json({
+      http.post("http://localhost:3000/api/cli/auth/device", () => {
+        return HttpResponse.json({
           device_code: "test-device-code",
           user_code: "TEST-CODE",
           verification_path: "/auth/device",
           expires_in: 300,
           interval: 5,
-        }),
-      ),
-      http.post("http://localhost:3000/api/cli/auth/token", () =>
-        HttpResponse.json({
+        });
+      }),
+      http.post("http://localhost:3000/api/cli/auth/token", () => {
+        return HttpResponse.json({
           access_token: "test-access-token",
           token_type: "bearer",
-        }),
-      ),
+        });
+      }),
     );
   }
 
   it("completes login when no proxy env vars are set", async () => {
     setupSuccessfulAuth();
 
-    const { configureGlobalProxyFromEnv } =
-      await import("../../../lib/network/proxy");
+    const { configureGlobalProxyFromEnv } = await import(
+      "../../../lib/network/proxy"
+    );
     const { loginCommand } = await import("../login");
 
     configureGlobalProxyFromEnv();
@@ -84,8 +92,9 @@ describe("auth login: proxy configuration", () => {
   it("reports error when http_proxy is set to unreachable address", async () => {
     vi.stubEnv("http_proxy", "http://127.0.0.1:59999");
 
-    const { configureGlobalProxyFromEnv } =
-      await import("../../../lib/network/proxy");
+    const { configureGlobalProxyFromEnv } = await import(
+      "../../../lib/network/proxy"
+    );
     const { loginCommand } = await import("../login");
 
     configureGlobalProxyFromEnv();

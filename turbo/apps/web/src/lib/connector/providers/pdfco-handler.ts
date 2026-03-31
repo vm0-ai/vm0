@@ -7,7 +7,13 @@ export const pdfcoHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("PDF.co does not support OAuth — use API key auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "PDFCO_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "PDFCO_TOKEN";
+  },
 };

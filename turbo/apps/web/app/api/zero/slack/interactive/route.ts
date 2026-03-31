@@ -396,9 +396,9 @@ async function updateCardWithError(
 async function handleAskUserSubmit(
   payload: SlackInteractivePayload,
 ): Promise<void> {
-  const action = payload.actions?.find(
-    (a) => a.action_id === "ask_user_submit",
-  );
+  const action = payload.actions?.find((a) => {
+    return a.action_id === "ask_user_submit";
+  });
   const pendingId = action?.value;
 
   if (!pendingId) {

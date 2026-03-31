@@ -13,7 +13,9 @@ import { setupRouter } from "./views/main.tsx";
 initSentry();
 
 setLogErrorHandler((loggerName, args) => {
-  const error = args.find((a): a is Error => a instanceof Error);
+  const error = args.find((a): a is Error => {
+    return a instanceof Error;
+  });
   if (error) {
     Sentry.captureException(error, {
       tags: { logger: loggerName },

@@ -6,13 +6,14 @@ import {
 } from "./microsoft-oauth";
 
 export const outlookCalendarHandler: ProviderHandler = {
-  buildAuthUrl: (clientId, redirectUri, state) =>
-    buildMicrosoftAuthorizationUrl(
+  buildAuthUrl: (clientId, redirectUri, state) => {
+    return buildMicrosoftAuthorizationUrl(
       "outlook-calendar",
       clientId,
       redirectUri,
       state,
-    ),
+    );
+  },
   async exchangeCode(clientId, clientSecret, code, redirectUri) {
     const result = await exchangeMicrosoftOAuthCode(
       "outlook-calendar",
@@ -33,15 +34,24 @@ export const outlookCalendarHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.MICROSOFT_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.MICROSOFT_OAUTH_CLIENT_SECRET,
-  getSecretName: () => "OUTLOOK_CALENDAR_ACCESS_TOKEN",
-  getRefreshSecretName: () => "OUTLOOK_CALENDAR_REFRESH_TOKEN",
-  refreshToken: (clientId, clientSecret, refreshToken) =>
-    refreshMicrosoftToken(
+  getClientId: (e) => {
+    return e.MICROSOFT_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.MICROSOFT_OAUTH_CLIENT_SECRET;
+  },
+  getSecretName: () => {
+    return "OUTLOOK_CALENDAR_ACCESS_TOKEN";
+  },
+  getRefreshSecretName: () => {
+    return "OUTLOOK_CALENDAR_REFRESH_TOKEN";
+  },
+  refreshToken: (clientId, clientSecret, refreshToken) => {
+    return refreshMicrosoftToken(
       "outlook-calendar",
       clientId,
       clientSecret,
       refreshToken,
-    ),
+    );
+  },
 };

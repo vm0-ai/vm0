@@ -67,15 +67,19 @@ export function OrgAddProviderDialog({
 }) {
   const configuredProviders = useLastResolved(orgConfiguredProviders$);
   const openAdd = useSet(orgOpenAddDialog$);
-  const configuredSet = new Set(configuredProviders?.map((p) => p.type) ?? []);
+  const configuredSet = new Set(
+    configuredProviders?.map((p) => {
+      return p.type;
+    }) ?? [],
+  );
 
   const handleAdd = (type: ModelProviderType) => {
     openAdd(type);
   };
 
-  const availableTypes = getProviderTypes().filter(
-    (type) => !configuredSet.has(type),
-  );
+  const availableTypes = getProviderTypes().filter((type) => {
+    return !configuredSet.has(type);
+  });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -91,13 +95,17 @@ export function OrgAddProviderDialog({
               </p>
             ) : (
               <div className="grid grid-cols-2 gap-3">
-                {availableTypes.map((type) => (
-                  <ProviderCardInDialog
-                    key={type}
-                    type={type}
-                    onAdd={() => handleAdd(type)}
-                  />
-                ))}
+                {availableTypes.map((type) => {
+                  return (
+                    <ProviderCardInDialog
+                      key={type}
+                      type={type}
+                      onAdd={() => {
+                        return handleAdd(type);
+                      }}
+                    />
+                  );
+                })}
               </div>
             )}
           </div>

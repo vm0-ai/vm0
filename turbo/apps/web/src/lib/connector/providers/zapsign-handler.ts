@@ -7,7 +7,13 @@ export const zapsignHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("ZapSign does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "ZAPSIGN_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "ZAPSIGN_TOKEN";
+  },
 };

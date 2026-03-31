@@ -6,11 +6,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
 
   const pages = source.getPages();
 
-  const urls: MetadataRoute.Sitemap = pages.map((page) => ({
-    url: `${baseUrl}${page.url}`,
-    changeFrequency: "weekly",
-    priority: page.slugs.length === 0 ? 1.0 : 0.8,
-  }));
+  const urls: MetadataRoute.Sitemap = pages.map((page) => {
+    return {
+      url: `${baseUrl}${page.url}`,
+      changeFrequency: "weekly",
+      priority: page.slugs.length === 0 ? 1.0 : 0.8,
+    };
+  });
 
   return urls;
 }

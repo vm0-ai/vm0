@@ -87,33 +87,33 @@ describe("resolveSystemImageToE2b", () => {
 
   describe("error cases", () => {
     it("throws for unknown system image", () => {
-      expect(() => resolveSystemImageToE2b("unknown-image")).toThrow(
-        "Unknown system image: vm0/unknown-image",
-      );
+      expect(() => {
+        return resolveSystemImageToE2b("unknown-image");
+      }).toThrow("Unknown system image: vm0/unknown-image");
     });
 
     it("error message lists available images", () => {
-      expect(() => resolveSystemImageToE2b("unknown-image")).toThrow(
-        "vm0/claude-code",
-      );
+      expect(() => {
+        return resolveSystemImageToE2b("unknown-image");
+      }).toThrow("vm0/claude-code");
     });
 
     it("throws for :dev tag (no longer supported)", () => {
-      expect(() => resolveSystemImageToE2b("claude-code", "dev")).toThrow(
-        'Invalid tag ":dev" for system image',
-      );
+      expect(() => {
+        return resolveSystemImageToE2b("claude-code", "dev");
+      }).toThrow('Invalid tag ":dev" for system image');
     });
 
     it("throws for hash version tag", () => {
-      expect(() => resolveSystemImageToE2b("claude-code", "a1b2c3d4")).toThrow(
-        'Invalid tag ":a1b2c3d4" for system image',
-      );
+      expect(() => {
+        return resolveSystemImageToE2b("claude-code", "a1b2c3d4");
+      }).toThrow('Invalid tag ":a1b2c3d4" for system image');
     });
 
     it("throws for arbitrary tag", () => {
-      expect(() => resolveSystemImageToE2b("claude-code", "v1.0")).toThrow(
-        'Invalid tag ":v1.0" for system image',
-      );
+      expect(() => {
+        return resolveSystemImageToE2b("claude-code", "v1.0");
+      }).toThrow('Invalid tag ":v1.0" for system image');
     });
   });
 });

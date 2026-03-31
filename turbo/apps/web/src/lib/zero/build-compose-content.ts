@@ -31,11 +31,17 @@ export function buildComposeContent(
   }
 
   const gaConnectorTypes = Object.entries(CONNECTOR_TYPES)
-    .filter(([, config]) => !config.featureFlag)
-    .map(([type]) => type);
+    .filter(([, config]) => {
+      return !config.featureFlag;
+    })
+    .map(([type]) => {
+      return type;
+    });
 
   const allSkillNames = [...new Set([...SEED_SKILLS, ...gaConnectorTypes])];
-  const skills = allSkillNames.map((name) => resolveSkillRef(name));
+  const skills = allSkillNames.map((name) => {
+    return resolveSkillRef(name);
+  });
 
   const environment: Record<string, string> = {
     ZERO_AGENT_ID: "${{ vars.ZERO_AGENT_ID }}",

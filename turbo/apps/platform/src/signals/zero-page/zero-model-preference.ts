@@ -27,7 +27,9 @@ function modelStorageKey(agentId: string | null): string {
 const internalSelectedModel$ = state("default");
 
 /** Currently selected model provider for the active agent. */
-export const selectedModel$ = computed((get) => get(internalSelectedModel$));
+export const selectedModel$ = computed((get) => {
+  return get(internalSelectedModel$);
+});
 
 /** Set the selected model provider. */
 export const setSelectedModel$ = command(({ set }, value: string) => {

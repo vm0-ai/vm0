@@ -52,7 +52,9 @@ export const resolveAgentById$ = command(
       return;
     }
 
-    const agent = subagents.find((a) => a.id === agentId);
+    const agent = subagents.find((a) => {
+      return a.id === agentId;
+    });
     if (!agent) {
       // Unknown agent → redirect to default
       if (rawDefaultName) {

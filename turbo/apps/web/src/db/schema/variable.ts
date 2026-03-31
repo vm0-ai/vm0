@@ -25,12 +25,14 @@ export const variables = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (table) => [
-    index("idx_variables_org").on(table.orgId),
-    uniqueIndex("idx_variables_org_user_name").on(
-      table.orgId,
-      table.userId,
-      table.name,
-    ),
-  ],
+  (table) => {
+    return [
+      index("idx_variables_org").on(table.orgId),
+      uniqueIndex("idx_variables_org_user_name").on(
+        table.orgId,
+        table.userId,
+        table.name,
+      ),
+    ];
+  },
 );

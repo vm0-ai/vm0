@@ -302,7 +302,9 @@ export function testContext(): TestContext {
     try {
       const mocked = vi.mocked(Axiom);
       if (typeof mocked.mockImplementation === "function") {
-        mocked.mockImplementation(() => axiomMocks as unknown as Axiom);
+        mocked.mockImplementation(() => {
+          return axiomMocks as unknown as Axiom;
+        });
       }
     } catch {
       // Axiom not mocked, skip
@@ -334,7 +336,9 @@ export function testContext(): TestContext {
               );
             },
             {
-              now: () => date.getTime(),
+              now: () => {
+                return date.getTime();
+              },
               parse: RealDate.parse.bind(RealDate),
               UTC: RealDate.UTC.bind(RealDate),
               prototype: RealDate.prototype,
@@ -356,7 +360,11 @@ export function testContext(): TestContext {
       async flushAfter() {
         const callbacks = [...globalThis.nextAfterCallbacks];
         globalThis.nextAfterCallbacks = [];
-        await Promise.all(callbacks.map((fn) => fn()));
+        await Promise.all(
+          callbacks.map((fn) => {
+            return fn();
+          }),
+        );
       },
     };
     mockHelpers = helpers;

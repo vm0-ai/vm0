@@ -534,7 +534,13 @@ export async function listSchedules(
   }
 
   // Load agent compose data (with displayName) for all schedules
-  const agentIds = [...new Set(userSchedules.map((s) => s.agentId))];
+  const agentIds = [
+    ...new Set(
+      userSchedules.map((s) => {
+        return s.agentId;
+      }),
+    ),
+  ];
   const agentRows = await globalThis.services.db
     .select({
       id: agentComposes.id,
@@ -543,10 +549,20 @@ export async function listSchedules(
     .from(agentComposes)
     .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
     .where(inArray(agentComposes.id, agentIds));
-  const agentMap = new Map(agentRows.map((r) => [r.id, r]));
+  const agentMap = new Map(
+    agentRows.map((r) => {
+      return [r.id, r];
+    }),
+  );
 
   // Load org data in batch (2 DB queries instead of 2N)
-  const uniqueClerkOrgIds = [...new Set(userSchedules.map((s) => s.orgId))];
+  const uniqueClerkOrgIds = [
+    ...new Set(
+      userSchedules.map((s) => {
+        return s.orgId;
+      }),
+    ),
+  ];
   const orgDataMap = await batchGetOrgData(uniqueClerkOrgIds);
 
   return userSchedules
@@ -619,13 +635,15 @@ export async function getScheduleRecentRuns(
     .orderBy(desc(agentRuns.createdAt))
     .limit(limit);
 
-  return runs.map((run) => ({
-    id: run.id,
-    status: run.status as RunSummary["status"],
-    createdAt: run.createdAt.toISOString(),
-    completedAt: run.completedAt?.toISOString() ?? null,
-    error: run.error,
-  }));
+  return runs.map((run) => {
+    return {
+      id: run.id,
+      status: run.status as RunSummary["status"],
+      createdAt: run.createdAt.toISOString(),
+      completedAt: run.completedAt?.toISOString() ?? null,
+      error: run.error,
+    };
+  });
 }
 
 /**

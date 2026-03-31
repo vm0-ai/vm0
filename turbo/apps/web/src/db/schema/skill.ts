@@ -24,7 +24,9 @@ export const skills = pgTable(
     url: text("url").unique().notNull(),
     name: text("name").notNull(),
     fullPath: text("full_path").notNull(),
-    storageId: uuid("storage_id").references(() => storages.id),
+    storageId: uuid("storage_id").references(() => {
+      return storages.id;
+    }),
     versionHash: varchar("version_hash", { length: 64 }),
     commitSha: varchar("commit_sha", { length: 40 }),
     frontmatter: jsonb("frontmatter"),
@@ -35,8 +37,10 @@ export const skills = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (table) => [
-    index("idx_skills_name").on(table.name),
-    index("idx_skills_storage_id").on(table.storageId),
-  ],
+  (table) => {
+    return [
+      index("idx_skills_name").on(table.name),
+      index("idx_skills_storage_id").on(table.storageId),
+    ];
+  },
 );

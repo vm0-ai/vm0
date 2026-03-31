@@ -12,9 +12,9 @@ import {
 
 const internalOrgManageDialogOpen$ = state(false);
 
-export const orgManageDialogOpen$ = computed((get) =>
-  get(internalOrgManageDialogOpen$),
-);
+export const orgManageDialogOpen$ = computed((get) => {
+  return get(internalOrgManageDialogOpen$);
+});
 
 export const setOrgManageDialogOpen$ = command(
   async ({ set }, open: boolean, signal: AbortSignal) => {

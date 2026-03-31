@@ -150,7 +150,9 @@ describe("splitMessage", () => {
     const text = "intro text\n\n```\ncode line 1\ncode line 2\n```";
     const chunks = splitMessage(text, maxLen);
     // The code block should be in a single chunk
-    const codeChunk = chunks.find((c) => c.includes("```"));
+    const codeChunk = chunks.find((c) => {
+      return c.includes("```");
+    });
     expect(codeChunk).toBeDefined();
     const backtickCount = (codeChunk!.match(/```/g) ?? []).length;
     expect(backtickCount % 2).toBe(0);
