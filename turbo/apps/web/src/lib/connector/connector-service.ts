@@ -1,6 +1,7 @@
 import { eq, and, inArray } from "drizzle-orm";
 import {
   CONNECTOR_TYPES,
+  type ConnectorAuthMethodType,
   type ConnectorType,
   type ConnectorResponse,
   connectorTypeSchema,
@@ -424,7 +425,8 @@ export async function deleteConnector(
 
     const secretNames: string[] = [];
     const config = CONNECTOR_TYPES[type];
-    const authMethodConfig = config.authMethods[existing.authMethod];
+    const authMethodConfig =
+      config.authMethods[existing.authMethod as ConnectorAuthMethodType];
     if (authMethodConfig) {
       secretNames.push(...Object.keys(authMethodConfig.secrets));
     }

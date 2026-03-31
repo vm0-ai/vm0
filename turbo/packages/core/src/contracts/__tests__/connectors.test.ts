@@ -5,6 +5,8 @@ import {
   getConnectorTypeForSecretName,
   getConnectorEnvironmentMapping,
   getConnectorProvidedSecretNames,
+  getConnectorAuthMethods,
+  getConnectorOAuthConfig,
   connectorTypeSchema,
 } from "../connectors";
 
@@ -108,6 +110,85 @@ describe("getConnectorEnvironmentMapping", () => {
       GH_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",
       GITHUB_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",
     });
+  });
+
+  it("OAuth connectors have consistent secrets and environmentMapping naming", () => {
+    // All naming derives from a single prefix XXX:
+    //   oauth secrets:      XXX_ACCESS_TOKEN (required), XXX_REFRESH_TOKEN (optional)
+    //   environmentMapping: all values -> $secrets.XXX_ACCESS_TOKEN
+    //   api-token secrets:  XXX_TOKEN (if api-token auth method exists)
+    for (const type of connectorTypeSchema.options) {
+      if (!getConnectorOAuthConfig(type)) continue;
+      const authMethods = getConnectorAuthMethods(type);
+      if (!authMethods["oauth"]) continue;
+
+      const oauthSecrets = Object.keys(authMethods["oauth"].secrets);
+      const prefix = oauthSecrets
+        .find((s) => s.endsWith("_ACCESS_TOKEN"))
+        ?.replace(/_ACCESS_TOKEN$/, "");
+      expect(
+        prefix,
+        `${type}: oauth secrets must include an _ACCESS_TOKEN key`,
+      ).toBeDefined();
+
+      // oauth secrets: exactly [XXX_ACCESS_TOKEN] or [XXX_ACCESS_TOKEN, XXX_REFRESH_TOKEN]
+      expect(oauthSecrets, `${type}: unexpected oauth secrets`).toSatisfy(
+        (s: string[]) =>
+          s.length === 1
+            ? s[0] === `${prefix}_ACCESS_TOKEN`
+            : s.length === 2 &&
+              s.includes(`${prefix}_ACCESS_TOKEN`) &&
+              s.includes(`${prefix}_REFRESH_TOKEN`),
+      );
+
+      // environmentMapping: must contain XXX_TOKEN, all values -> $secrets.XXX_ACCESS_TOKEN
+      const mapping = getConnectorEnvironmentMapping(type);
+      const expectedRef = `$secrets.${prefix}_ACCESS_TOKEN`;
+      expect(
+        mapping[`${prefix}_TOKEN`],
+        `${type}: environmentMapping must include ${prefix}_TOKEN`,
+      ).toBe(expectedRef);
+      for (const [key, value] of Object.entries(mapping)) {
+        expect(
+          value,
+          `${type}: environmentMapping["${key}"] must be ${expectedRef}`,
+        ).toBe(expectedRef);
+      }
+
+      // api-token (if exists): exactly one secret XXX_TOKEN
+      if (authMethods["api-token"]) {
+        expect(
+          Object.keys(authMethods["api-token"].secrets),
+          `${type}: api-token must have exactly ["${prefix}_TOKEN"]`,
+        ).toEqual([`${prefix}_TOKEN`]);
+      }
+    }
+  });
+
+  it("api-token-only connectors expose all secrets via environmentMapping with same name", () => {
+    for (const type of connectorTypeSchema.options) {
+      const authMethods = getConnectorAuthMethods(type);
+      if (authMethods["oauth"] || !authMethods["api-token"]) continue;
+      if (getConnectorOAuthConfig(type)) continue;
+
+      const secrets = Object.keys(authMethods["api-token"].secrets);
+      const mapping = getConnectorEnvironmentMapping(type);
+      const mapKeys = Object.keys(mapping);
+
+      // mapping keys must be exactly the same set as secrets
+      expect(
+        mapKeys.sort(),
+        `${type}: environmentMapping keys must match api-token secrets`,
+      ).toEqual(secrets.sort());
+
+      // each mapping value must be $secrets.KEY or $vars.KEY (same name)
+      for (const key of secrets) {
+        expect(
+          mapping[key] === `$secrets.${key}` || mapping[key] === `$vars.${key}`,
+          `${type}: environmentMapping["${key}"] = "${mapping[key]}", expected $secrets.${key} or $vars.${key}`,
+        ).toBe(true);
+      }
+    }
   });
 
   it("all mapping values use $secrets. or $vars. prefix", () => {

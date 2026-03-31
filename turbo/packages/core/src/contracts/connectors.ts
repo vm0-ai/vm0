@@ -24,21 +24,14 @@ export interface ConnectorAuthMethodConfig {
 
 /**
  * OAuth configuration for connectors that support OAuth flow.
- *
- * `environmentMapping` lives here because it only applies to the OAuth path:
- * OAuth stores secrets under internal names (e.g. `FIGMA_ACCESS_TOKEN`) that
- * need to be mapped to the env var names skills expect (e.g. `FIGMA_TOKEN`).
- * API-token connectors store secrets directly under the target name, so they
- * don't need any mapping.
- *
- * `$secrets.X` in mapping values looks up secret X from the connector's secrets.
  */
 export interface ConnectorOAuthConfig {
   authorizationUrl?: string;
   tokenUrl: string;
   scopes: string[];
-  environmentMapping: Record<string, string>;
 }
+
+export type ConnectorAuthMethodType = "oauth" | "api-token" | "api";
 
 /**
  * Base configuration shape for all connector types.
@@ -47,13 +40,13 @@ export interface ConnectorConfig {
   readonly label: string;
   readonly helpText: string;
   readonly featureFlag?: FeatureSwitchKey;
-  readonly authMethods: Record<string, ConnectorAuthMethodConfig>;
-  readonly defaultAuthMethod?: string;
-  /** Non-OAuth environment mapping (e.g. computer connector bridge credentials). */
-  readonly bridgeMapping?: Record<string, string>;
+  readonly authMethods: Partial<
+    Record<ConnectorAuthMethodType, ConnectorAuthMethodConfig>
+  >;
+  readonly defaultAuthMethod?: ConnectorAuthMethodType;
   readonly oauth?: ConnectorOAuthConfig;
-  /** Top-level environment mapping declaring which env vars this connector provides. */
-  readonly environmentMapping?: Record<string, string>;
+  /** Environment mapping declaring which env vars this connector provides. */
+  readonly environmentMapping: Record<string, string>;
 }
 
 /**
@@ -123,9 +116,6 @@ const CONNECTOR_TYPES_DEF = {
       authorizationUrl: "https://app.ahrefs.com/api/auth",
       tokenUrl: "https://app.ahrefs.com/api/token",
       scopes: ["api"],
-      environmentMapping: {
-        AHREFS_TOKEN: "$secrets.AHREFS_ACCESS_TOKEN",
-      },
     },
   },
   agentmail: {
@@ -187,9 +177,6 @@ const CONNECTOR_TYPES_DEF = {
         "schema.bases:write",
         "user.email:read",
       ],
-      environmentMapping: {
-        AIRTABLE_TOKEN: "$secrets.AIRTABLE_ACCESS_TOKEN",
-      },
     },
   },
   github: {
@@ -217,10 +204,6 @@ const CONNECTOR_TYPES_DEF = {
       authorizationUrl: "https://github.com/login/oauth/authorize",
       tokenUrl: "https://github.com/login/oauth/access_token",
       scopes: ["repo", "project"],
-      environmentMapping: {
-        GH_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",
-        GITHUB_TOKEN: "$secrets.GITHUB_ACCESS_TOKEN",
-      },
     },
   },
   notion: {
@@ -250,9 +233,6 @@ const CONNECTOR_TYPES_DEF = {
       authorizationUrl: "https://api.notion.com/v1/oauth/authorize",
       tokenUrl: "https://api.notion.com/v1/oauth/token",
       scopes: [],
-      environmentMapping: {
-        NOTION_TOKEN: "$secrets.NOTION_ACCESS_TOKEN",
-      },
     },
   },
   gmail: {
@@ -282,9 +262,6 @@ const CONNECTOR_TYPES_DEF = {
       authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
       tokenUrl: "https://oauth2.googleapis.com/token",
       scopes: ["https://www.googleapis.com/auth/gmail.modify"],
-      environmentMapping: {
-        GMAIL_TOKEN: "$secrets.GMAIL_ACCESS_TOKEN",
-      },
     },
   },
   "google-sheets": {
@@ -317,9 +294,6 @@ const CONNECTOR_TYPES_DEF = {
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/userinfo.email",
       ],
-      environmentMapping: {
-        GOOGLE_SHEETS_TOKEN: "$secrets.GOOGLE_SHEETS_ACCESS_TOKEN",
-      },
     },
   },
   "google-docs": {
@@ -352,9 +326,6 @@ const CONNECTOR_TYPES_DEF = {
         "https://www.googleapis.com/auth/documents",
         "https://www.googleapis.com/auth/userinfo.email",
       ],
-      environmentMapping: {
-        GOOGLE_DOCS_TOKEN: "$secrets.GOOGLE_DOCS_ACCESS_TOKEN",
-      },
     },
   },
   "google-drive": {
@@ -387,9 +358,6 @@ const CONNECTOR_TYPES_DEF = {
         "https://www.googleapis.com/auth/drive",
         "https://www.googleapis.com/auth/userinfo.email",
       ],
-      environmentMapping: {
-        GOOGLE_DRIVE_TOKEN: "$secrets.GOOGLE_DRIVE_ACCESS_TOKEN",
-      },
     },
   },
   "google-calendar": {
@@ -423,9 +391,6 @@ const CONNECTOR_TYPES_DEF = {
         "https://www.googleapis.com/auth/calendar",
         "https://www.googleapis.com/auth/userinfo.email",
       ],
-      environmentMapping: {
-        GOOGLE_CALENDAR_TOKEN: "$secrets.GOOGLE_CALENDAR_ACCESS_TOKEN",
-      },
     },
   },
   close: {
@@ -457,9 +422,6 @@ const CONNECTOR_TYPES_DEF = {
       authorizationUrl: "https://app.close.com/oauth2/authorize/",
       tokenUrl: "https://api.close.com/oauth2/token/",
       scopes: ["all.full_access", "offline_access"],
-      environmentMapping: {
-        CLOSE_TOKEN: "$secrets.CLOSE_ACCESS_TOKEN",
-      },
     },
   },
   "hugging-face": {
@@ -569,9 +531,6 @@ const CONNECTOR_TYPES_DEF = {
         "crm.schemas.contacts.read",
         "settings.users.read",
       ],
-      environmentMapping: {
-        HUBSPOT_TOKEN: "$secrets.HUBSPOT_ACCESS_TOKEN",
-      },
     },
   },
   computer: {
@@ -605,11 +564,6 @@ const CONNECTOR_TYPES_DEF = {
       },
     },
     defaultAuthMethod: "api",
-    bridgeMapping: {
-      COMPUTER_CONNECTOR_BRIDGE_TOKEN:
-        "$secrets.COMPUTER_CONNECTOR_BRIDGE_TOKEN",
-      COMPUTER_CONNECTOR_DOMAIN: "$secrets.COMPUTER_CONNECTOR_DOMAIN",
-    },
   },
   slack: {
     label: "Slack",
@@ -675,9 +629,6 @@ const CONNECTOR_TYPES_DEF = {
         // Custom emoji (low priority)
         "emoji:read",
       ],
-      environmentMapping: {
-        SLACK_TOKEN: "$secrets.SLACK_ACCESS_TOKEN",
-      },
     },
   },
   docusign: {
@@ -709,9 +660,6 @@ const CONNECTOR_TYPES_DEF = {
       authorizationUrl: "https://account.docusign.com/oauth/auth",
       tokenUrl: "https://account.docusign.com/oauth/token",
       scopes: ["signature", "extended", "openid"],
-      environmentMapping: {
-        DOCUSIGN_TOKEN: "$secrets.DOCUSIGN_ACCESS_TOKEN",
-      },
     },
   },
   dropbox: {
@@ -756,9 +704,6 @@ const CONNECTOR_TYPES_DEF = {
         "files.metadata.read",
         "files.content.read",
       ],
-      environmentMapping: {
-        DROPBOX_TOKEN: "$secrets.DROPBOX_ACCESS_TOKEN",
-      },
     },
   },
   linear: {
@@ -794,9 +739,6 @@ const CONNECTOR_TYPES_DEF = {
         "comments:create",
         "timeSchedule:write",
       ],
-      environmentMapping: {
-        LINEAR_TOKEN: "$secrets.LINEAR_ACCESS_TOKEN",
-      },
     },
   },
   intercom: {
@@ -1087,9 +1029,6 @@ const CONNECTOR_TYPES_DEF = {
         "invoice-adjustments:read",
         "invoice-adjustments:write",
       ],
-      environmentMapping: {
-        DEEL_TOKEN: "$secrets.DEEL_ACCESS_TOKEN",
-      },
     },
   },
   deepseek: {
@@ -1305,9 +1244,6 @@ const CONNECTOR_TYPES_DEF = {
         "library_assets:read",
         "library_content:read",
       ],
-      environmentMapping: {
-        FIGMA_TOKEN: "$secrets.FIGMA_ACCESS_TOKEN",
-      },
     },
   },
   mercury: {
@@ -1351,9 +1287,6 @@ const CONNECTOR_TYPES_DEF = {
       authorizationUrl: "https://oauth2.mercury.com/oauth2/auth",
       tokenUrl: "https://oauth2.mercury.com/oauth2/token",
       scopes: ["offline_access"],
-      environmentMapping: {
-        MERCURY_TOKEN: "$secrets.MERCURY_ACCESS_TOKEN",
-      },
     },
   },
   minimax: {
@@ -1478,9 +1411,6 @@ const CONNECTOR_TYPES_DEF = {
       authorizationUrl: "https://www.reddit.com/api/v1/authorize",
       tokenUrl: "https://www.reddit.com/api/v1/access_token",
       scopes: ["identity", "read"],
-      environmentMapping: {
-        REDDIT_TOKEN: "$secrets.REDDIT_ACCESS_TOKEN",
-      },
     },
   },
   strava: {
@@ -1516,9 +1446,6 @@ const CONNECTOR_TYPES_DEF = {
         "activity:read_all",
         "activity:write",
       ],
-      environmentMapping: {
-        STRAVA_TOKEN: "$secrets.STRAVA_ACCESS_TOKEN",
-      },
     },
   },
   x: {
@@ -1573,9 +1500,6 @@ const CONNECTOR_TYPES_DEF = {
         "dm.write", // Send and manage Direct Messages for you.
         "media.write", // Upload media.
       ],
-      environmentMapping: {
-        X_TOKEN: "$secrets.X_ACCESS_TOKEN",
-      },
     },
   },
   neon: {
@@ -1624,9 +1548,6 @@ const CONNECTOR_TYPES_DEF = {
         "urn:neoncloud:projects:update",
         "urn:neoncloud:projects:delete",
       ],
-      environmentMapping: {
-        NEON_TOKEN: "$secrets.NEON_ACCESS_TOKEN",
-      },
     },
   },
   gamma: {
@@ -1681,9 +1602,6 @@ const CONNECTOR_TYPES_DEF = {
       authorizationUrl: "https://connect.garmin.com/oauth2Confirm",
       tokenUrl: "https://diauth.garmin.com/di-oauth2-service/oauth/token",
       scopes: [],
-      environmentMapping: {
-        GARMIN_CONNECT_TOKEN: "$secrets.GARMIN_CONNECT_ACCESS_TOKEN",
-      },
     },
   },
   vercel: {
@@ -1709,9 +1627,6 @@ const CONNECTOR_TYPES_DEF = {
     oauth: {
       tokenUrl: "https://api.vercel.com/v2/oauth/access_token",
       scopes: [],
-      environmentMapping: {
-        VERCEL_TOKEN: "$secrets.VERCEL_ACCESS_TOKEN",
-      },
     },
   },
   sentry: {
@@ -1749,9 +1664,6 @@ const CONNECTOR_TYPES_DEF = {
         "event:read",
         "event:write",
       ],
-      environmentMapping: {
-        SENTRY_TOKEN: "$secrets.SENTRY_ACCESS_TOKEN",
-      },
     },
   },
   posthog: {
@@ -1818,9 +1730,6 @@ const CONNECTOR_TYPES_DEF = {
         "survey:write",
         "error_tracking:read",
       ],
-      environmentMapping: {
-        POSTHOG_TOKEN: "$secrets.POSTHOG_ACCESS_TOKEN",
-      },
     },
   },
   productlane: {
@@ -1846,6 +1755,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   "intervals-icu": {
     label: "Intervals.icu",
+    environmentMapping: {
+      INTERVALS_ICU_TOKEN: "$secrets.INTERVALS_ICU_ACCESS_TOKEN",
+    },
     helpText:
       "Connect your Intervals.icu account to access training, activity, wellness, and calendar data",
     authMethods: {
@@ -1865,9 +1777,6 @@ const CONNECTOR_TYPES_DEF = {
       authorizationUrl: "https://intervals.icu/oauth/authorize",
       tokenUrl: "https://intervals.icu/api/oauth/token",
       scopes: ["ACTIVITY", "WELLNESS", "CALENDAR", "SETTINGS", "LIBRARY"],
-      environmentMapping: {
-        INTERVALS_ICU_TOKEN: "$secrets.INTERVALS_ICU_ACCESS_TOKEN",
-      },
     },
   },
   monday: {
@@ -1913,9 +1822,6 @@ const CONNECTOR_TYPES_DEF = {
         "tags:read",
         "teams:read",
       ],
-      environmentMapping: {
-        MONDAY_TOKEN: "$secrets.MONDAY_ACCESS_TOKEN",
-      },
     },
   },
   calendly: {
@@ -1983,9 +1889,6 @@ const CONNECTOR_TYPES_DEF = {
         "folder:write",
         "profile:read",
       ],
-      environmentMapping: {
-        CANVA_TOKEN: "$secrets.CANVA_ACCESS_TOKEN",
-      },
     },
   },
   "cal-com": {
@@ -2062,9 +1965,6 @@ const CONNECTOR_TYPES_DEF = {
         "assets",
         "projects",
       ],
-      environmentMapping: {
-        XERO_TOKEN: "$secrets.XERO_ACCESS_TOKEN",
-      },
     },
   },
   supabase: {
@@ -2119,9 +2019,6 @@ const CONNECTOR_TYPES_DEF = {
         "environment:read",
         "domains:read",
       ],
-      environmentMapping: {
-        SUPABASE_TOKEN: "$secrets.SUPABASE_ACCESS_TOKEN",
-      },
     },
   },
   todoist: {
@@ -2148,9 +2045,6 @@ const CONNECTOR_TYPES_DEF = {
       authorizationUrl: "https://todoist.com/oauth/authorize",
       tokenUrl: "https://todoist.com/oauth/access_token",
       scopes: ["data:read_write", "data:delete", "project:delete"],
-      environmentMapping: {
-        TODOIST_TOKEN: "$secrets.TODOIST_ACCESS_TOKEN",
-      },
     },
   },
   webflow: {
@@ -2204,9 +2098,6 @@ const CONNECTOR_TYPES_DEF = {
         "custom_code:read",
         "custom_code:write",
       ],
-      environmentMapping: {
-        WEBFLOW_TOKEN: "$secrets.WEBFLOW_ACCESS_TOKEN",
-      },
     },
   },
   wrike: {
@@ -2258,9 +2149,6 @@ const CONNECTOR_TYPES_DEF = {
         "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
       tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
       scopes: ["Mail.ReadWrite", "Mail.Send", "User.Read", "offline_access"],
-      environmentMapping: {
-        OUTLOOK_MAIL_TOKEN: "$secrets.OUTLOOK_MAIL_ACCESS_TOKEN",
-      },
     },
   },
   "outlook-calendar": {
@@ -2293,9 +2181,6 @@ const CONNECTOR_TYPES_DEF = {
         "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
       tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
       scopes: ["Calendars.ReadWrite", "User.Read", "offline_access"],
-      environmentMapping: {
-        OUTLOOK_CALENDAR_TOKEN: "$secrets.OUTLOOK_CALENDAR_ACCESS_TOKEN",
-      },
     },
   },
   asana: {
@@ -2326,9 +2211,6 @@ const CONNECTOR_TYPES_DEF = {
       authorizationUrl: "https://app.asana.com/-/oauth_authorize",
       tokenUrl: "https://app.asana.com/-/oauth_token",
       scopes: [],
-      environmentMapping: {
-        ASANA_TOKEN: "$secrets.ASANA_ACCESS_TOKEN",
-      },
     },
   },
   atlassian: {
@@ -2397,9 +2279,6 @@ const CONNECTOR_TYPES_DEF = {
       authorizationUrl: "https://www.facebook.com/v22.0/dialog/oauth",
       tokenUrl: "https://graph.facebook.com/v22.0/oauth/access_token",
       scopes: ["ads_management", "ads_read", "business_management"],
-      environmentMapping: {
-        META_ADS_TOKEN: "$secrets.META_ADS_ACCESS_TOKEN",
-      },
     },
   },
   stripe: {
@@ -2431,9 +2310,6 @@ const CONNECTOR_TYPES_DEF = {
       authorizationUrl: "https://connect.stripe.com/oauth/authorize",
       tokenUrl: "https://connect.stripe.com/oauth/token",
       scopes: ["read_write"],
-      environmentMapping: {
-        STRIPE_TOKEN: "$secrets.STRIPE_ACCESS_TOKEN",
-      },
     },
   },
   openai: {
@@ -2556,10 +2432,6 @@ const CONNECTOR_TYPES_DEF = {
       authorizationUrl: "https://login.mailchimp.com/oauth2/authorize",
       tokenUrl: "https://login.mailchimp.com/oauth2/token",
       scopes: [],
-      environmentMapping: {
-        MAILCHIMP_TOKEN: "$secrets.MAILCHIMP_ACCESS_TOKEN",
-        MAILCHIMP_DC: "$vars.MAILCHIMP_DC",
-      },
     },
   },
   chatwoot: {
@@ -3599,6 +3471,9 @@ const CONNECTOR_TYPES_DEF = {
   },
   spotify: {
     label: "Spotify",
+    environmentMapping: {
+      SPOTIFY_TOKEN: "$secrets.SPOTIFY_ACCESS_TOKEN",
+    },
     featureFlag: FeatureSwitchKey.SpotifyConnector,
     helpText:
       "Connect your Spotify account to manage playlists, control playback, and access music data",
@@ -3643,9 +3518,6 @@ const CONNECTOR_TYPES_DEF = {
         "user-read-email",
         "user-read-private",
       ],
-      environmentMapping: {
-        SPOTIFY_TOKEN: "$secrets.SPOTIFY_ACCESS_TOKEN",
-      },
     },
   },
   "slack-webhook": {
@@ -3763,7 +3635,7 @@ export function getConnectorAuthMethods(
  */
 export function getConnectorDefaultAuthMethod(
   type: ConnectorType,
-): string | undefined {
+): ConnectorAuthMethodType | undefined {
   return CONNECTOR_TYPES[type].defaultAuthMethod;
 }
 
@@ -3772,7 +3644,7 @@ export function getConnectorDefaultAuthMethod(
  */
 export function getConnectorSecretsForAuthMethod(
   type: ConnectorType,
-  authMethod: string,
+  authMethod: ConnectorAuthMethodType,
 ): Record<string, ConnectorSecretConfig> | undefined {
   const authMethods = getConnectorAuthMethods(type);
   return authMethods[authMethod]?.secrets;
@@ -3783,7 +3655,7 @@ export function getConnectorSecretsForAuthMethod(
  */
 export function getConnectorSecretNames(
   type: ConnectorType,
-  authMethod: string,
+  authMethod: ConnectorAuthMethodType,
 ): string[] {
   const secrets = getConnectorSecretsForAuthMethod(type, authMethod);
   return secrets ? Object.keys(secrets) : [];
@@ -3791,20 +3663,11 @@ export function getConnectorSecretNames(
 
 /**
  * Get environment mapping for a connector type.
- *
- * Reads from top-level `environmentMapping` first, then falls back to
- * `oauth.environmentMapping` and `bridgeMapping` for backward compatibility.
  */
 export function getConnectorEnvironmentMapping(
   type: ConnectorType,
 ): Record<string, string> {
-  const config = CONNECTOR_TYPES[type];
-  return (
-    config.environmentMapping ??
-    config.oauth?.environmentMapping ??
-    config.bridgeMapping ??
-    {}
-  );
+  return CONNECTOR_TYPES[type].environmentMapping;
 }
 
 /**
