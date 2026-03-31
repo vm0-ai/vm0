@@ -1499,6 +1499,13 @@
       "when": 1774940000001,
       "tag": "0213_big_meteorite",
       "breakpoints": true
+    },
+    {
+      "idx": 214,
+      "version": "7",
+      "when": 1774940000002,
+      "tag": "0214_loud_synch",
+      "breakpoints": true
     }
   ]
 }

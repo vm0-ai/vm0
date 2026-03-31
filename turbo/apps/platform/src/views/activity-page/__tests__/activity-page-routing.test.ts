@@ -22,6 +22,7 @@ function mockActivityAPIs() {
       framework: "claude-code",
       status: "completed",
       triggerSource: "web",
+      triggerAgentName: null,
       scheduleId: null,
       createdAt: "2026-03-10T14:56:00Z",
       startedAt: "2026-03-10T14:56:01Z",
@@ -38,6 +39,7 @@ function mockActivityAPIs() {
     modelProvider: null,
     selectedModel: null,
     triggerSource: "web",
+    triggerAgentName: null,
     scheduleId: null,
     status: "completed",
     prompt: "Summarize today",
@@ -167,6 +169,60 @@ describe("activity page routing", () => {
       expect(
         screen.getByRole("heading", { name: "Activity" }),
       ).toBeInTheDocument();
+    });
+  }, 10_000);
+
+  it("should display 'Agent (displayName)' for delegated runs with triggerAgentName", async () => {
+    server.use(
+      http.get("*/api/zero/composes/list", () => {
+        return HttpResponse.json({
+          composes: [
+            {
+              id: "c0000000-0000-4000-a000-000000000001",
+              name: "child-agent",
+              displayName: "Child Agent",
+              headVersionId: null,
+              updatedAt: "2026-03-10T00:00:00Z",
+            },
+          ],
+        });
+      }),
+      http.get("*/api/zero/logs", () => {
+        return HttpResponse.json({
+          data: [
+            {
+              id: "b0000000-0000-4000-a000-000000000001",
+              sessionId: "session-delegated",
+              agentId: "child-agent",
+              displayName: "Child Agent",
+              orgSlug: "test",
+              framework: "claude-code",
+              status: "completed",
+              triggerSource: "agent",
+              triggerAgentName: "Parent Bot",
+              scheduleId: null,
+              createdAt: "2026-03-10T15:00:00Z",
+              startedAt: "2026-03-10T15:00:01Z",
+              completedAt: "2026-03-10T15:00:05Z",
+            },
+          ],
+          pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
+          filters: { statuses: [], sources: [], agents: [] },
+        });
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/activity",
+    });
+
+    // The source column should show "Agent (Parent Bot)" for the delegated run
+    await waitFor(() => {
+      expect(screen.getByText("Agent (Parent Bot)")).toBeInTheDocument();
     });
   }, 10_000);
 });

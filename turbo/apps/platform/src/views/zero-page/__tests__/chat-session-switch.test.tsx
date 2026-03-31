@@ -74,6 +74,7 @@ describe("chat session switch", () => {
           modelProvider: null,
           selectedModel: null,
           triggerSource: "web",
+          triggerAgentName: null,
           scheduleId: null,
           status: "running",
           prompt: "Active task prompt",

@@ -1,7 +1,7 @@
 import { IconChevronRight, IconClock, IconLoader2 } from "@tabler/icons-react";
 import { cn } from "@vm0/ui";
 import {
-  TRIGGER_SOURCE_LABELS,
+  getTriggerSourceLabel,
   type LogEntry,
   type LogStatus,
 } from "../../../../signals/zero-page/log-types.ts";
@@ -29,7 +29,7 @@ export const STATUS_LABELS: Readonly<Record<LogStatus, string>> = {
 
 /** With source column (activity page) */
 const GRID_WITH_SOURCE =
-  "grid grid-cols-[1fr_5rem_1fr_8rem_5rem_2.5rem] gap-x-6 items-center";
+  "grid grid-cols-[minmax(6rem,1fr)_minmax(8rem,1.5fr)_6rem_8rem_5rem_2.5rem] gap-x-6 items-center";
 
 /** Without source column (schedule history) */
 const GRID_WITHOUT_SOURCE =
@@ -62,9 +62,12 @@ function LogRow({
           {agentName}
         </div>
         {showSource && (
-          <div className="text-left text-sm text-muted-foreground">
+          <div className="text-left text-sm text-muted-foreground truncate">
             {entry.triggerSource
-              ? TRIGGER_SOURCE_LABELS[entry.triggerSource]
+              ? getTriggerSourceLabel(
+                  entry.triggerSource,
+                  entry.triggerAgentName,
+                )
               : "\u2014"}
           </div>
         )}

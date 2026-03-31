@@ -47,6 +47,7 @@ function logsResponse(
         framework: null,
         status: "completed",
         triggerSource: "schedule",
+        triggerAgentName: null,
         scheduleId: "sched-123",
         createdAt: "2026-03-20T10:00:00Z",
         startedAt: "2026-03-20T10:00:01Z",

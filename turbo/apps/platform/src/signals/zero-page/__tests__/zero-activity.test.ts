@@ -20,6 +20,7 @@ function logDefaults() {
   return {
     displayName: null,
     triggerSource: "web" as const,
+    triggerAgentName: null,
     scheduleId: null,
     startedAt: null,
     completedAt: null,
@@ -73,6 +74,7 @@ function createMockLogDetail() {
     modelProvider: null,
     selectedModel: null,
     triggerSource: "web" as const,
+    triggerAgentName: null,
     scheduleId: null,
     status: "completed",
     prompt: "Summarize today's activity",

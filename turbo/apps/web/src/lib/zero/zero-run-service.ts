@@ -44,6 +44,7 @@ interface ZeroRunParams {
   modelProvider?: string;
   callbacks?: Array<{ url: string; secret: string; payload: CallbackPayload }>;
   scheduleId?: string;
+  triggerAgentId?: string;
 }
 
 /**
@@ -182,6 +183,7 @@ export async function createZeroRun(
         id: queueResult.runId,
         triggerSource: params.triggerSource,
         scheduleId: params.scheduleId ?? null,
+        triggerAgentId: params.triggerAgentId ?? null,
       });
 
       return queueResult;
@@ -212,11 +214,12 @@ export async function createZeroRun(
     queueDispatcher: dispatchQueuedZeroRun,
   });
 
-  // 6. Persist zero-layer metadata (triggerSource + schedule association)
+  // 6. Persist zero-layer metadata (triggerSource + schedule + trigger agent association)
   await globalThis.services.db.insert(zeroRuns).values({
     id: record.run.id,
     triggerSource: params.triggerSource,
     scheduleId: params.scheduleId ?? null,
+    triggerAgentId: params.triggerAgentId ?? null,
   });
 
   return {

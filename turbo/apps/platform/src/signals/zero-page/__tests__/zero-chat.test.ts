@@ -151,6 +151,7 @@ describe("zero-chat signals", () => {
             modelProvider: null,
             selectedModel: null,
             triggerSource: "web",
+            triggerAgentName: null,
             scheduleId: null,
             status: "completed",
             prompt: "test",

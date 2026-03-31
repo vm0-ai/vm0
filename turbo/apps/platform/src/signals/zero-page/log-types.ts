@@ -16,6 +16,20 @@ export const TRIGGER_SOURCE_LABELS: Readonly<Record<TriggerSource, string>> = {
   agent: "Agent",
 };
 
+/**
+ * Build a display label for a trigger source.
+ * For "agent" sources with a known parent agent name, returns "Agent (name)".
+ */
+export function getTriggerSourceLabel(
+  source: TriggerSource,
+  triggerAgentName?: string | null,
+): string {
+  if (source === "agent" && triggerAgentName) {
+    return `Agent (${triggerAgentName})`;
+  }
+  return TRIGGER_SOURCE_LABELS[source];
+}
+
 // List response - contains basic fields for list display
 export interface LogEntry {
   id: string;
@@ -25,6 +39,7 @@ export interface LogEntry {
   orgSlug: string | null;
   framework: string | null;
   triggerSource: TriggerSource | null;
+  triggerAgentName: string | null;
   scheduleId: string | null;
   status: LogStatus;
   createdAt: string;
@@ -61,6 +76,7 @@ export interface LogDetail {
   modelProvider: string | null;
   selectedModel: string | null;
   triggerSource: TriggerSource | null;
+  triggerAgentName: string | null;
   scheduleId: string | null;
   status: LogStatus;
   prompt: string;

@@ -5,6 +5,7 @@ import {
   createTestCompose,
   getTestZeroAgentId,
   createTestSessionWithConversation,
+  createTestRunInDb,
   findTestZeroRun,
   insertOrgDefaultModelProvider,
 } from "../../../../../src/__tests__/api-test-helpers";
@@ -181,6 +182,65 @@ describe("POST /api/zero/runs", () => {
       const zeroRun = await findTestZeroRun(data.runId);
       expect(zeroRun).toBeDefined();
       expect(zeroRun!.triggerSource).toBe("web");
+    });
+
+    it("should set triggerAgentId to parent compose ID for ZERO_TOKEN callers", async () => {
+      // Create a parent agent compose and a run for it (simulates the parent agent)
+      // Must happen before mockClerk({ userId: null }) since createTestCompose needs auth
+      const parentCompose = await createTestCompose(uniqueId("parent-agent"));
+      const parentRun = await createTestRunInDb(
+        user.userId,
+        parentCompose.composeId,
+        { status: "running" },
+      );
+
+      mockClerk({ userId: null });
+
+      // Generate a ZERO_TOKEN as if from the parent run's sandbox
+      const token = await generateZeroToken(
+        user.userId,
+        parentRun.runId,
+        user.orgId,
+      );
+
+      const response = await POST(
+        createTestRequest(URL, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            agentId,
+            prompt: "delegated from parent",
+          }),
+        }),
+      );
+
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      const zeroRun = await findTestZeroRun(data.runId);
+      expect(zeroRun).toBeDefined();
+      expect(zeroRun!.triggerAgentId).toBe(parentCompose.composeId);
+    });
+
+    it("should leave triggerAgentId null for web callers", async () => {
+      const response = await POST(
+        createTestRequest(URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentId,
+            prompt: "web task no parent",
+          }),
+        }),
+      );
+
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      const zeroRun = await findTestZeroRun(data.runId);
+      expect(zeroRun).toBeDefined();
+      expect(zeroRun!.triggerAgentId).toBeNull();
     });
   });
 });
