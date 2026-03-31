@@ -459,79 +459,79 @@ export function ZeroScheduleCard({
   };
 
   return (
-    <Card className="zero-card">
-      <CardContent className="py-5 flex flex-col gap-6">
-        <header className="flex flex-wrap items-end justify-between gap-4">
-          <div className="min-w-0">
-            <h2 className="text-lg font-semibold tracking-tight text-foreground">
-              {title}
-            </h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">{subtitle}</p>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
-              onClick={openAddSchedule}
-            >
-              <IconPlus size={14} stroke={2} />
-              Add schedule
-            </Button>
-            <Tabs
-              value={scheduleViewMode}
-              onValueChange={(v) =>
-                setScheduleViewMode(v as "list" | "calendar")
+    <div className="flex flex-col gap-4">
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold tracking-tight text-foreground">
+            {title}
+          </h2>
+          <p className="mt-0.5 text-sm text-muted-foreground">{subtitle}</p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
+            onClick={openAddSchedule}
+          >
+            <IconPlus size={14} stroke={2} />
+            Add schedule
+          </Button>
+          <Tabs
+            value={scheduleViewMode}
+            onValueChange={(v) => setScheduleViewMode(v as "list" | "calendar")}
+            className="shrink-0"
+          >
+            <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
+              <TabsTrigger
+                value="list"
+                className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+              >
+                <IconList size={14} stroke={1.5} />
+                List
+              </TabsTrigger>
+              <TabsTrigger
+                value="calendar"
+                className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+              >
+                <IconLayoutGrid size={14} stroke={1.5} />
+                Calendar
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+      </header>
+
+      <Card className="zero-card">
+        <CardContent className="py-5 flex flex-col gap-6">
+          {scheduleViewMode === "list" && (
+            <ScheduleListView
+              entries={scheduleList}
+              togglingIds={togglingIds}
+              runningIds={runningIds}
+              onEdit={openEditSchedule}
+              onToggle={handleToggle}
+              onDelete={handleDelete}
+              onRunNow={
+                handleRunNow
+                  ? (entry) => {
+                      handleRunNow(entry).catch(() => {});
+                    }
+                  : undefined
               }
-              className="shrink-0"
-            >
-              <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
-                <TabsTrigger
-                  value="list"
-                  className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-                >
-                  <IconList size={14} stroke={1.5} />
-                  List
-                </TabsTrigger>
-                <TabsTrigger
-                  value="calendar"
-                  className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-                >
-                  <IconLayoutGrid size={14} stroke={1.5} />
-                  Calendar
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-          </div>
-        </header>
+              onOpenDetails={onOpenDetails}
+            />
+          )}
 
-        {scheduleViewMode === "list" && (
-          <ScheduleListView
-            entries={scheduleList}
-            togglingIds={togglingIds}
-            runningIds={runningIds}
-            onEdit={openEditSchedule}
-            onToggle={handleToggle}
-            onDelete={handleDelete}
-            onRunNow={
-              handleRunNow
-                ? (entry) => {
-                    handleRunNow(entry).catch(() => {});
-                  }
-                : undefined
-            }
-            onOpenDetails={onOpenDetails}
-          />
-        )}
-
-        {scheduleViewMode === "calendar" && (
-          <ScheduleCalendarView
-            entries={scheduleList}
-            onEdit={openEditSchedule}
-          />
-        )}
-      </CardContent>
+          {scheduleViewMode === "calendar" && (
+            <ScheduleCalendarView
+              entries={scheduleList}
+              onEdit={openEditSchedule}
+            />
+          )}
+        </CardContent>
+      </Card>
 
       <ScheduleFormDialog
         open={addScheduleOpen}
@@ -602,6 +602,6 @@ export function ZeroScheduleCard({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </Card>
+    </div>
   );
 }
