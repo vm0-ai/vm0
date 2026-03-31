@@ -9,6 +9,7 @@ import { getUserId } from "../../../../../src/lib/auth/get-auth-context";
 import {
   getChatThread,
   getChatThreadMessages,
+  deleteChatThread,
 } from "../../../../../src/lib/chat-thread";
 import { isNotFound } from "../../../../../src/lib/errors";
 
@@ -56,10 +57,38 @@ const router = tsr.router(chatThreadByIdContract, {
       throw error;
     }
   },
+  delete: async ({ params, headers }) => {
+    initServices();
+
+    const userId = await getUserId(headers.authorization);
+    if (!userId) {
+      return {
+        status: 401 as const,
+        body: {
+          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+        },
+      };
+    }
+
+    try {
+      await deleteChatThread(params.id, userId);
+      return { status: 204 as const, body: undefined };
+    } catch (error) {
+      if (isNotFound(error)) {
+        return {
+          status: 404 as const,
+          body: {
+            error: { message: "Chat thread not found", code: "NOT_FOUND" },
+          },
+        };
+      }
+      throw error;
+    }
+  },
 });
 
 const handler = createHandler(chatThreadByIdContract, router, {
   errorHandler: createSafeErrorHandler("zero-chat-thread-by-id"),
 });
 
-export { handler as GET };
+export { handler as GET, handler as DELETE };

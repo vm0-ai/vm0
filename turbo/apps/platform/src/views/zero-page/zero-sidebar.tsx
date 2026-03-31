@@ -25,6 +25,7 @@ import {
   IconLayoutSidebarLeftCollapse,
   IconDatabaseExport,
   IconPlug,
+  IconTrash,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey, type ChatThreadListItem } from "@vm0/core";
 import {
@@ -65,6 +66,7 @@ import {
   zeroSessionList$,
   createNewChatSession$,
   creatingNewSession$,
+  deleteChatThread$,
 } from "../../signals/zero-page/zero-chat.ts";
 import {
   pinnedAgentIds$,
@@ -436,6 +438,56 @@ function AccountDropdown({
   );
 }
 
+function ChatThreadItem({
+  session,
+  isSelected,
+  onSelect,
+}: {
+  session: ChatThreadListItem;
+  isSelected: boolean;
+  onSelect?: (id: string) => void;
+}) {
+  const setDelete = useSet(deleteChatThread$);
+  const pageSignal = useGet(pageSignal$);
+
+  function handleDelete(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    detach(setDelete(session.id, pageSignal), Reason.DomCallback);
+  }
+
+  return (
+    <Link
+      pathname="/chat/:chatThreadId"
+      options={{ pathParams: { chatThreadId: session.id } }}
+      onClick={(e) => {
+        if (e.metaKey || e.ctrlKey || e.shiftKey) {
+          return;
+        }
+        e.preventDefault();
+        onSelect?.(session.id);
+      }}
+      className={`group/thread flex h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors ${
+        isSelected
+          ? "bg-gray-200 text-gray-900 font-medium"
+          : "text-sidebar-foreground hover:bg-sidebar-accent"
+      }`}
+    >
+      <span className="truncate min-w-0 flex-1">
+        {session.preview ?? "New chat"}
+      </span>
+      <button
+        type="button"
+        onClick={handleDelete}
+        className="shrink-0 hidden group-hover/thread:flex items-center justify-center h-5 w-5 rounded text-sidebar-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-colors"
+        aria-label="Delete chat"
+      >
+        <IconTrash size={13} stroke={2} />
+      </button>
+    </Link>
+  );
+}
+
 function RecentChatSection({
   currentChatAgentId,
   displayName,
@@ -612,27 +664,12 @@ function RecentChatSection({
               </p>
             ) : (
               filteredSessions.map((session) => (
-                <Link
+                <ChatThreadItem
                   key={session.id}
-                  pathname="/chat/:chatThreadId"
-                  options={{ pathParams: { chatThreadId: session.id } }}
-                  onClick={(e) => {
-                    if (e.metaKey || e.ctrlKey || e.shiftKey) {
-                      return;
-                    }
-                    e.preventDefault();
-                    onRecentSelect?.(session.id);
-                  }}
-                  className={`flex h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors ${
-                    selectedRecentId === session.id
-                      ? "bg-gray-200 text-gray-900 font-medium"
-                      : "text-sidebar-foreground hover:bg-sidebar-accent"
-                  }`}
-                >
-                  <span className="truncate min-w-0 flex-1">
-                    {session.preview ?? "New chat"}
-                  </span>
-                </Link>
+                  session={session}
+                  isSelected={selectedRecentId === session.id}
+                  onSelect={onRecentSelect}
+                />
               ))
             )}
           </div>

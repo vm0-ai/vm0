@@ -2,6 +2,7 @@ import { command, computed, state, type Computed } from "ccstate";
 import { delay } from "signal-timers";
 import type { AgentEvent, LogStatus } from "./log-types.ts";
 import { throwIfAbort, resetSignal } from "../utils.ts";
+import { detachedNavigateTo$ } from "../route.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { logger } from "../log.ts";
 import {
@@ -314,6 +315,34 @@ export const zeroSessionList$ = computed(async (get) => {
 
 export const zeroSessionListLoading$ = computed(() => false);
 export const zeroSessionListError$ = computed(() => null as string | null);
+
+/** Delete a chat thread and refresh the sidebar list. */
+export const deleteChatThread$ = command(
+  async ({ get, set }, threadId: string, signal: AbortSignal) => {
+    const client = get(zeroClient$)(chatThreadByIdContract);
+    const result = await client.delete({
+      params: { id: threadId },
+      body: undefined,
+    });
+    signal.throwIfAborted();
+
+    if (result.status !== 204) {
+      const msg =
+        result.status === 401 || result.status === 404
+          ? result.body.error.message
+          : `status ${result.status}`;
+      throw new Error(`Delete failed: ${msg}`);
+    }
+
+    toast.success("Chat deleted");
+    set(reloadChatThreadList$, (n) => n + 1);
+
+    // If the user is viewing the deleted thread, navigate to landing page
+    if (get(chatThreadId$) === threadId) {
+      set(detachedNavigateTo$, "/");
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Session snapshot — async computed derived from URL
