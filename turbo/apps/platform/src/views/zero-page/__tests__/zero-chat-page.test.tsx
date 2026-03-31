@@ -270,9 +270,12 @@ describe("zero chat page - connector label casing", () => {
           firewallPolicies: null,
         });
       }),
-      http.get("*/api/zero/agents/c0000000-0000-4000-a000-000000000001/user-connectors", () => {
-        return HttpResponse.json({ enabledTypes: ["axiom"] });
-      }),
+      http.get(
+        "*/api/zero/agents/c0000000-0000-4000-a000-000000000001/user-connectors",
+        () => {
+          return HttpResponse.json({ enabledTypes: ["axiom"] });
+        },
+      ),
       // Axiom must be connected at org level for it to appear in the popover
       http.get("*/api/zero/connectors", () => {
         return HttpResponse.json({
