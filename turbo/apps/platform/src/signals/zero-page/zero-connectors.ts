@@ -7,6 +7,7 @@ import { logger } from "../log.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { currentAgentId$ } from "./agent.ts";
 import { defaultAgentId$ } from "./zero-agent-name.ts";
+import { currentChatThread$ } from "./zero-chat.ts";
 
 const L = logger("ZeroConnectors");
 
@@ -18,6 +19,10 @@ const zeroAgentId$ = computed(async (get) => {
   const agentId = get(currentAgentId$);
   if (agentId !== null) {
     return agentId;
+  }
+  const thread = await get(currentChatThread$);
+  if (thread?.agentId) {
+    return thread.agentId;
   }
   return await get(defaultAgentId$);
 });
@@ -45,7 +50,7 @@ const zeroAgent$ = computed(async (get) => {
 
 const internalSaving$ = state(false);
 
-// Local draft tagged with the agent it belongs to; discarded on agent switch.
+// Draft is keyed by agentId so it's automatically invalidated when the agent changes.
 const internalAddedConnectors$ = state<{
   agentId: string;
   connectors: string[];
@@ -79,15 +84,12 @@ export const zeroAddedConnectors$ = computed(async (get) => {
 export const addZeroConnector$ = command(
   async ({ get, set }, name: string, _signal: AbortSignal) => {
     const agentId = await get(zeroAgentId$);
-    const local = get(internalAddedConnectors$);
+    const draft = get(internalAddedConnectors$);
     const base =
-      local !== null && local.agentId === agentId
-        ? local.connectors
+      draft !== null && draft.agentId === agentId
+        ? draft.connectors
         : await get(seededConnectors$);
-    set(internalAddedConnectors$, {
-      agentId: agentId ?? "",
-      connectors: [...base, name],
-    });
+    set(internalAddedConnectors$, { agentId, connectors: [...base, name] });
   },
 );
 
@@ -95,10 +97,10 @@ export const addZeroConnector$ = command(
 export const removeZeroConnector$ = command(
   async ({ get, set }, name: string, _signal: AbortSignal) => {
     const agentId = await get(zeroAgentId$);
-    const local = get(internalAddedConnectors$);
+    const draft = get(internalAddedConnectors$);
     const base =
-      local !== null && local.agentId === agentId
-        ? local.connectors
+      draft !== null && draft.agentId === agentId
+        ? draft.connectors
         : await get(seededConnectors$);
     set(internalAddedConnectors$, {
       agentId: agentId ?? "",
@@ -113,13 +115,15 @@ export const removeZeroConnector$ = command(
 export const saveZeroConnectors$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(internalSaving$, true);
+    const agentId = await get(zeroAgentId$);
     try {
-      const local = get(internalAddedConnectors$);
-      const newConnectors = local?.connectors ?? [];
+      const draft = get(internalAddedConnectors$);
+      const newConnectors =
+        draft !== null && draft.agentId === agentId ? draft.connectors : [];
       await set(syncConnectorsToCompose$, newConnectors, signal);
       // Reset to null so seeded picks up the new agent state
       set(internalAddedConnectors$, null);
-      toast.success("Connectors saved");
+      toast.success("Connectors saved", { id: "connector-authorized" });
     } catch (error) {
       throwIfAbort(error);
       L.error("Failed to save connectors:", error);

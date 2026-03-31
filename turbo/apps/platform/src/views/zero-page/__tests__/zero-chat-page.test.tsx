@@ -236,7 +236,7 @@ describe("zero chat page - file input ref", () => {
 });
 
 describe("zero chat page - connectors popover", () => {
-  it("should navigate to connectors page when clicking Manage connectors in popover", async () => {
+  it("should open add connectors dialog when clicking Add connectors in popover", async () => {
     const user = userEvent.setup();
     await renderChatPage();
 
@@ -246,17 +246,15 @@ describe("zero chat page - connectors popover", () => {
 
     await user.click(connectorsButton);
 
-    const manageButton = await waitFor(() => {
-      return screen.getByText("Manage connectors");
+    const addButton = await waitFor(() => {
+      return screen.getByText("Add connectors");
     });
 
-    await user.click(manageButton);
+    await user.click(addButton);
 
     await waitFor(() => {
       expect(
-        screen.getByText(
-          "Connect third-party services for your agents to use.",
-        ),
+        screen.getByPlaceholderText("Search connectors..."),
       ).toBeInTheDocument();
     });
   });
