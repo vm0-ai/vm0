@@ -468,7 +468,7 @@ export default function PricingPage() {
                   />
                   <TableRow
                     feature="Full audit trail"
-                    description="HTTP/HTTPS logs with SHA-256 integrity per run"
+                    description="Agent HTTP/HTTPS traffic logged with SHA-256 integrity per run"
                     free={true}
                     pro={true}
                     team={true}
@@ -573,7 +573,7 @@ export default function PricingPage() {
               />
               <FAQItem
                 question="How secure is VM0?"
-                answer="Every agent run executes in an isolated Firecracker microVM with hardware-level KVM isolation. Credentials are injected at the network layer and never exposed to agent code. All HTTP/HTTPS traffic is logged with SHA-256 integrity."
+                answer="Every agent run executes in an isolated Firecracker microVM with hardware-level KVM isolation. Credentials are injected at the network layer and never exposed to agent code. All agent HTTP/HTTPS traffic is logged with SHA-256 integrity per run."
               />
               <FAQItem
                 question="Do you offer annual billing or discounts?"
