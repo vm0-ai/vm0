@@ -331,17 +331,17 @@ export type PermissionNamesOf<T extends FirewallConfig> =
  * that already has a firewall config.
  */
 export type NonFirewallConnectorType =
-  // Basic Auth — proxy cannot do base64 encoding at runtime
-  | "cloudinary" // Basic Auth (api_key:api_secret), also supports OAuth Bearer
+  // Basic Auth — proxy cannot do base64 encoding at runtime (#7137)
   | "htmlcsstoimage" // Basic Auth (user_id:api_key)
-  | "jira" // Basic Auth (email:api_token), no Bearer alternative
-  | "streak" // Basic Auth (api_key as username)
-  // Webhook URL / non-header auth — token embedded in URL, not auth header
+  | "jira" // Basic Auth (email:api_token)
+  | "streak" // Basic Auth (api_key as username, empty password)
+  // Signature-based auth — requires computing signatures, not simple header injection
+  | "cloudinary" // SHA signature in form body + api_key param
+  | "minio" // AWS Signature V4
+  // Webhook URL — token embedded in URL, not auth header
   | "bitrix" // token in URL path (/rest/{user_id}/{token}/)
   | "discord-webhook" // DISCORD_WEBHOOK_URL
   | "slack-webhook" // SLACK_WEBHOOK_URL
-  // Non-standard auth mechanism
-  | "minio" // AWS Signature V4 (not simple header replacement)
   // Other
   | "computer" // not an API connector
   | "jam"; // no public REST API
