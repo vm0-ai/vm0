@@ -69,9 +69,8 @@ describe("auth login: proxy configuration", () => {
   it("completes login when no proxy env vars are set", async () => {
     setupSuccessfulAuth();
 
-    const { configureGlobalProxyFromEnv } = await import(
-      "../../../lib/network/proxy"
-    );
+    const { configureGlobalProxyFromEnv } =
+      await import("../../../lib/network/proxy");
     const { loginCommand } = await import("../login");
 
     configureGlobalProxyFromEnv();
@@ -85,9 +84,8 @@ describe("auth login: proxy configuration", () => {
   it("reports error when http_proxy is set to unreachable address", async () => {
     vi.stubEnv("http_proxy", "http://127.0.0.1:59999");
 
-    const { configureGlobalProxyFromEnv } = await import(
-      "../../../lib/network/proxy"
-    );
+    const { configureGlobalProxyFromEnv } =
+      await import("../../../lib/network/proxy");
     const { loginCommand } = await import("../login");
 
     configureGlobalProxyFromEnv();

@@ -14,6 +14,17 @@ function mockChatAPI() {
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
     }),
+    http.post("*/api/zero/chat/messages", () => {
+      return HttpResponse.json(
+        {
+          runId: "run-test-1",
+          threadId: "thread-test-1",
+          status: "pending",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+        { status: 201 },
+      );
+    }),
   );
 }
 

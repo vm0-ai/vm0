@@ -902,30 +902,38 @@ export const sendNewThreadMessage$ = command(
     const { fullPrompt } = await set(prepareUserMessage$, prompt, signal);
     signal.throwIfAborted();
 
-    const modelProvider = resolveModelProvider(options?.modelProvider);
-    const client = get(zeroClient$)(chatMessagesContract);
-    const result = await client.send({
-      body: {
-        agentId,
-        prompt: fullPrompt,
-        ...(modelProvider && { modelProvider }),
-      },
-    });
-    signal.throwIfAborted();
+    try {
+      const modelProvider = resolveModelProvider(options?.modelProvider);
+      const client = get(zeroClient$)(chatMessagesContract);
+      const result = await client.send({
+        body: {
+          agentId,
+          prompt: fullPrompt,
+          ...(modelProvider && { modelProvider }),
+        },
+      });
+      signal.throwIfAborted();
 
-    if (result.status !== 201) {
-      if (
-        result.status === 400 ||
-        result.status === 403 ||
-        result.status === 404
-      ) {
-        handleSendError(result);
+      if (result.status !== 201) {
+        if (
+          result.status === 400 ||
+          result.status === 403 ||
+          result.status === 404
+        ) {
+          handleSendError(result);
+        }
+        throw new Error(`Failed to send message (${result.status})`);
       }
-      throw new Error(`Failed to send message (${result.status})`);
-    }
 
-    set(navigateToChat$, result.body.threadId);
-    set(reloadChatThreadList$, (n) => n + 1);
+      set(navigateToChat$, result.body.threadId);
+      set(reloadChatThreadList$, (n) => n + 1);
+    } catch (error) {
+      throwIfAbort(error);
+      L.error("Chat send error:", error);
+      // Clear the optimistic user message since the send failed.
+      // The user stays on /talk/ with their input preserved for retry.
+      set(internalLocalMessages$, []);
+    }
   },
 );
 
