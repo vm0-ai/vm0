@@ -36,11 +36,13 @@ impl CowLayer {
     /// Create a new COW layer.
     ///
     /// `base_path`: read-only base image file
+    /// `cow_path`: path for the sparse COW file (created on first flush)
     /// `size`: total device size in bytes
     /// `block_size`: block size (typically 4096)
     /// `flush_threshold`: flush write buffer when it exceeds this size in bytes
     pub fn new(
         base_path: &Path,
+        cow_path: &Path,
         size: u64,
         block_size: usize,
         flush_threshold: usize,
@@ -50,7 +52,7 @@ impl CowLayer {
 
         Ok(Self {
             base_fd,
-            cow_path: None,
+            cow_path: Some(cow_path.to_path_buf()),
             cow_fd: None,
             dirty: bitvec![0; num_blocks],
             write_buffer: HashMap::new(),
@@ -61,16 +63,11 @@ impl CowLayer {
         })
     }
 
-    /// Set the COW file path. The file is created on first flush.
-    pub fn set_cow_path(&mut self, path: &Path) {
-        self.cow_path = Some(path.to_path_buf());
-    }
-
     /// Read `buf.len()` bytes starting at `offset`.
     ///
     /// Read path: write buffer -> COW file (if dirty) -> base image.
     pub fn read(&self, offset: u64, buf: &mut [u8]) -> Result<()> {
-        self.check_bounds(offset, buf.len() as u32)?;
+        self.check_bounds(offset, buf.len() as u64)?;
 
         let mut pos = 0usize;
         while pos < buf.len() {
@@ -113,7 +110,7 @@ impl CowLayer {
 
     /// Write `data` at `offset`. Returns `true` if the buffer needs flushing.
     pub fn write(&mut self, offset: u64, data: &[u8]) -> Result<bool> {
-        self.check_bounds(offset, data.len() as u32)?;
+        self.check_bounds(offset, data.len() as u64)?;
 
         let mut pos = 0usize;
         while pos < data.len() {
@@ -141,14 +138,6 @@ impl CowLayer {
                 NbdCowError::Io(std::io::Error::other("data src slice out of bounds"))
             })?;
             dest_slice.copy_from_slice(src_slice);
-
-            // Only count newly added blocks toward buffer size
-            if block_data.len() == self.block_size
-                && block_offset == 0
-                && to_write == self.block_size
-            {
-                // Full block overwrite -- already counted if existing, count if new
-            }
 
             pos += to_write;
         }
@@ -210,8 +199,8 @@ impl CowLayer {
         self.buffer_bytes
     }
 
-    fn check_bounds(&self, offset: u64, length: u32) -> Result<()> {
-        if offset + u64::from(length) > self.size {
+    fn check_bounds(&self, offset: u64, length: u64) -> Result<()> {
+        if offset.saturating_add(length) > self.size {
             return Err(NbdCowError::OutOfBounds {
                 offset,
                 length,
@@ -284,11 +273,20 @@ mod tests {
         f
     }
 
+    fn make_cow(
+        base: &NamedTempFile,
+        cow_file: &NamedTempFile,
+        size: u64,
+        flush_threshold: usize,
+    ) -> CowLayer {
+        CowLayer::new(base.path(), cow_file.path(), size, 4096, flush_threshold).unwrap()
+    }
+
     #[test]
     fn read_from_base_when_no_writes() {
-        let base_data = vec![0xAA; 8192]; // 2 blocks
-        let base = create_base_image(&base_data);
-        let cow = CowLayer::new(base.path(), 8192, 4096, 1024 * 1024).unwrap();
+        let base = create_base_image(&vec![0xAA; 8192]);
+        let cow_file = NamedTempFile::new().unwrap();
+        let cow = make_cow(&base, &cow_file, 8192, 1024 * 1024);
 
         let mut buf = vec![0u8; 4096];
         cow.read(0, &mut buf).unwrap();
@@ -300,12 +298,11 @@ mod tests {
 
     #[test]
     fn write_then_read_returns_written_data() {
-        let base_data = vec![0x00; 8192];
-        let base = create_base_image(&base_data);
-        let mut cow = CowLayer::new(base.path(), 8192, 4096, 1024 * 1024).unwrap();
+        let base = create_base_image(&vec![0x00; 8192]);
+        let cow_file = NamedTempFile::new().unwrap();
+        let mut cow = make_cow(&base, &cow_file, 8192, 1024 * 1024);
 
-        let write_data = vec![0xBB; 4096];
-        cow.write(0, &write_data).unwrap();
+        cow.write(0, &vec![0xBB; 4096]).unwrap();
 
         let mut buf = vec![0u8; 4096];
         cow.read(0, &mut buf).unwrap();
@@ -318,15 +315,12 @@ mod tests {
 
     #[test]
     fn partial_block_write() {
-        let base_data = vec![0xAA; 4096];
-        let base = create_base_image(&base_data);
-        let mut cow = CowLayer::new(base.path(), 4096, 4096, 1024 * 1024).unwrap();
+        let base = create_base_image(&vec![0xAA; 4096]);
+        let cow_file = NamedTempFile::new().unwrap();
+        let mut cow = make_cow(&base, &cow_file, 4096, 1024 * 1024);
 
-        // Write 10 bytes at offset 100
-        let write_data = vec![0xFF; 10];
-        cow.write(100, &write_data).unwrap();
+        cow.write(100, &[0xFF; 10]).unwrap();
 
-        // Read full block -- should have base data with our write in the middle
         let mut buf = vec![0u8; 4096];
         cow.read(0, &mut buf).unwrap();
         assert!(buf[..100].iter().all(|&b| b == 0xAA));
@@ -336,15 +330,11 @@ mod tests {
 
     #[test]
     fn flush_writes_to_cow_file() {
-        let base_data = vec![0x00; 8192];
-        let base = create_base_image(&base_data);
+        let base = create_base_image(&vec![0x00; 8192]);
         let cow_file = NamedTempFile::new().unwrap();
+        let mut cow = make_cow(&base, &cow_file, 8192, 1024 * 1024);
 
-        let mut cow = CowLayer::new(base.path(), 8192, 4096, 1024 * 1024).unwrap();
-        cow.set_cow_path(cow_file.path());
-
-        let write_data = vec![0xCC; 4096];
-        cow.write(0, &write_data).unwrap();
+        cow.write(0, &vec![0xCC; 4096]).unwrap();
         assert_eq!(cow.buffered_block_count(), 1);
 
         cow.flush().unwrap();
@@ -359,21 +349,20 @@ mod tests {
 
     #[test]
     fn buffer_threshold_triggers_flush_signal() {
-        let base_data = vec![0x00; 8192];
-        let base = create_base_image(&base_data);
+        let base = create_base_image(&vec![0x00; 8192]);
+        let cow_file = NamedTempFile::new().unwrap();
         // Threshold: 1 block (4096 bytes)
-        let mut cow = CowLayer::new(base.path(), 8192, 4096, 4096).unwrap();
+        let mut cow = make_cow(&base, &cow_file, 8192, 4096);
 
-        let write_data = vec![0xDD; 4096];
-        let needs_flush = cow.write(0, &write_data).unwrap();
+        let needs_flush = cow.write(0, &vec![0xDD; 4096]).unwrap();
         assert!(needs_flush, "should signal flush when threshold reached");
     }
 
     #[test]
     fn out_of_bounds_error() {
-        let base_data = vec![0x00; 4096];
-        let base = create_base_image(&base_data);
-        let cow = CowLayer::new(base.path(), 4096, 4096, 1024 * 1024).unwrap();
+        let base = create_base_image(&vec![0x00; 4096]);
+        let cow_file = NamedTempFile::new().unwrap();
+        let cow = make_cow(&base, &cow_file, 4096, 1024 * 1024);
 
         let mut buf = vec![0u8; 4096];
         let err = cow.read(4096, &mut buf);
@@ -382,17 +371,15 @@ mod tests {
 
     #[test]
     fn cross_block_read_write() {
-        let base_data = vec![0xAA; 8192]; // 2 blocks
-        let base = create_base_image(&base_data);
-        let mut cow = CowLayer::new(base.path(), 8192, 4096, 1024 * 1024).unwrap();
+        let base = create_base_image(&vec![0xAA; 8192]);
+        let cow_file = NamedTempFile::new().unwrap();
+        let mut cow = make_cow(&base, &cow_file, 8192, 1024 * 1024);
 
-        // Write across block boundary
-        let write_data = vec![0xEE; 100];
-        cow.write(4090, &write_data).unwrap();
+        cow.write(4090, &[0xEE; 100]).unwrap();
 
         let mut buf = vec![0u8; 100];
         cow.read(4090, &mut buf).unwrap();
         assert!(buf.iter().all(|&b| b == 0xEE));
-        assert_eq!(cow.buffered_block_count(), 2); // spans 2 blocks
+        assert_eq!(cow.buffered_block_count(), 2);
     }
 }

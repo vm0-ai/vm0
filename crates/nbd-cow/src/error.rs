@@ -11,7 +11,7 @@ pub enum NbdCowError {
     #[error("offset {offset} + length {length} exceeds device size {device_size}")]
     OutOfBounds {
         offset: u64,
-        length: u32,
+        length: u64,
         device_size: u64,
     },
 

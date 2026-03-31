@@ -3,20 +3,29 @@ use std::sync::Arc;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 
 use crate::cow::CowLayer;
-use crate::error::Result;
+use crate::error::{NbdCowError, Result};
 use crate::protocol::{self, Command, NbdReply, NbdRequest, REQUEST_HEADER_SIZE};
+
+/// Maximum allowed request length (32 MB). Requests exceeding this are rejected
+/// with an I/O error to prevent OOM from malformed requests.
+const MAX_REQUEST_LENGTH: u32 = 32 * 1024 * 1024;
 
 /// Run the NBD dispatch loop on a Unix stream.
 ///
 /// Reads NBD requests from the socket, dispatches to the COW layer,
 /// and sends replies back. Handles graceful shutdown via the cancellation token.
+///
+/// NOTE: CowLayer uses synchronous file I/O (pread/pwrite) while holding the
+/// mutex lock. This briefly blocks the tokio worker thread. For our workload
+/// (4KB blocks, fast NVMe/EBS storage) this is acceptable. If latency becomes
+/// an issue, consider `spawn_blocking` or async file I/O.
 pub async fn dispatch(
     socket_fd: OwnedFd,
-    cow: Arc<Mutex<CowLayer>>,
+    cow: Arc<RwLock<CowLayer>>,
     shutdown: CancellationToken,
 ) -> Result<()> {
     let raw_fd = std::os::unix::io::AsRawFd::as_raw_fd(&socket_fd);
@@ -36,7 +45,7 @@ pub async fn dispatch(
             biased;
             () = shutdown.cancelled() => {
                 // Graceful shutdown: flush remaining data
-                let mut cow = cow.lock().await;
+                let mut cow = cow.write().await;
                 cow.sync()?;
                 return Ok(());
             }
@@ -76,7 +85,7 @@ pub async fn dispatch(
                 .await?;
             }
             Command::Disconnect => {
-                let mut cow = cow.lock().await;
+                let mut cow = cow.write().await;
                 cow.sync()?;
                 return Ok(());
             }
@@ -86,12 +95,18 @@ pub async fn dispatch(
 
 async fn handle_read(
     request: &NbdRequest,
-    cow: &Arc<Mutex<CowLayer>>,
+    cow: &Arc<RwLock<CowLayer>>,
     writer: &mut tokio::net::unix::OwnedWriteHalf,
 ) -> Result<()> {
+    if request.length > MAX_REQUEST_LENGTH {
+        return Err(NbdCowError::Io(std::io::Error::other(format!(
+            "read request too large: {} bytes (max {})",
+            request.length, MAX_REQUEST_LENGTH
+        ))));
+    }
     let mut data = vec![0u8; request.length as usize];
     {
-        let cow = cow.lock().await;
+        let cow = cow.read().await;
         cow.read(request.offset, &mut data)?;
     }
 
@@ -108,21 +123,25 @@ async fn handle_read(
 async fn handle_write(
     request: &NbdRequest,
     reader: &mut tokio::net::unix::OwnedReadHalf,
-    cow: &Arc<Mutex<CowLayer>>,
+    cow: &Arc<RwLock<CowLayer>>,
     writer: &mut tokio::net::unix::OwnedWriteHalf,
 ) -> Result<()> {
+    if request.length > MAX_REQUEST_LENGTH {
+        return Err(NbdCowError::Io(std::io::Error::other(format!(
+            "write request too large: {} bytes (max {})",
+            request.length, MAX_REQUEST_LENGTH
+        ))));
+    }
     // Read the write payload from the socket
     let mut data = vec![0u8; request.length as usize];
     reader.read_exact(&mut data).await?;
 
-    let needs_flush = {
-        let mut cow = cow.lock().await;
-        cow.write(request.offset, &data)?
-    };
-
-    if needs_flush {
-        let mut cow = cow.lock().await;
-        cow.flush()?;
+    {
+        let mut cow = cow.write().await;
+        let needs_flush = cow.write(request.offset, &data)?;
+        if needs_flush {
+            cow.flush()?;
+        }
     }
 
     let reply = NbdReply {
@@ -134,11 +153,11 @@ async fn handle_write(
 
 async fn handle_flush(
     request: &NbdRequest,
-    cow: &Arc<Mutex<CowLayer>>,
+    cow: &Arc<RwLock<CowLayer>>,
     writer: &mut tokio::net::unix::OwnedWriteHalf,
 ) -> Result<()> {
     {
-        let mut cow = cow.lock().await;
+        let mut cow = cow.write().await;
         cow.sync()?;
     }
 
@@ -169,9 +188,14 @@ mod tests {
         base.write_all(base_data).unwrap();
         base.flush().unwrap();
         let cow_file = NamedTempFile::new().unwrap();
-        let mut cow =
-            CowLayer::new(base.path(), base_data.len() as u64, 4096, 4 * 1024 * 1024).unwrap();
-        cow.set_cow_path(cow_file.path());
+        let cow = CowLayer::new(
+            base.path(),
+            cow_file.path(),
+            base_data.len() as u64,
+            4096,
+            4 * 1024 * 1024,
+        )
+        .unwrap();
         (base, cow_file, cow)
     }
 
@@ -179,7 +203,7 @@ mod tests {
     async fn dispatch_read_write_disconnect() {
         let base_data = vec![0xAA; 8192];
         let (_base, _cow_file, cow) = create_test_cow(&base_data);
-        let cow = Arc::new(Mutex::new(cow));
+        let cow = Arc::new(RwLock::new(cow));
         let shutdown = CancellationToken::new();
 
         // Create a socketpair
@@ -297,7 +321,7 @@ mod tests {
 
     /// Helper: create socketpair, spawn dispatch, return client stream halves.
     async fn setup_dispatch(
-        cow: Arc<Mutex<CowLayer>>,
+        cow: Arc<RwLock<CowLayer>>,
     ) -> (
         tokio::net::unix::OwnedReadHalf,
         tokio::net::unix::OwnedWriteHalf,
@@ -351,7 +375,7 @@ mod tests {
     async fn dispatch_flush_persists_to_cow_file() {
         let base_data = vec![0x00; 8192];
         let (_base, cow_file, cow) = create_test_cow(&base_data);
-        let cow = Arc::new(Mutex::new(cow));
+        let cow = Arc::new(RwLock::new(cow));
 
         let (mut reader, mut writer, task, _shutdown) = setup_dispatch(cow.clone()).await;
 
@@ -384,7 +408,7 @@ mod tests {
 
         // Verify data was flushed to COW file
         {
-            let cow = cow.lock().await;
+            let cow = cow.read().await;
             assert_eq!(
                 cow.buffered_block_count(),
                 0,
@@ -419,7 +443,7 @@ mod tests {
     async fn dispatch_trim_succeeds() {
         let base_data = vec![0xAA; 8192];
         let (_base, _cow_file, cow) = create_test_cow(&base_data);
-        let cow = Arc::new(Mutex::new(cow));
+        let cow = Arc::new(RwLock::new(cow));
 
         let (mut reader, mut writer, task, _shutdown) = setup_dispatch(cow).await;
 
@@ -450,7 +474,7 @@ mod tests {
     async fn dispatch_shutdown_flushes_data() {
         let base_data = vec![0x00; 8192];
         let (_base, _cow_file, cow) = create_test_cow(&base_data);
-        let cow = Arc::new(Mutex::new(cow));
+        let cow = Arc::new(RwLock::new(cow));
 
         let (mut reader, mut writer, task, shutdown) = setup_dispatch(cow.clone()).await;
 
@@ -472,7 +496,7 @@ mod tests {
 
         // Verify data is in buffer
         {
-            let cow = cow.lock().await;
+            let cow = cow.read().await;
             assert_eq!(cow.buffered_block_count(), 1);
         }
 
@@ -482,7 +506,7 @@ mod tests {
 
         // After shutdown, buffer should be flushed
         {
-            let cow = cow.lock().await;
+            let cow = cow.read().await;
             assert_eq!(
                 cow.buffered_block_count(),
                 0,

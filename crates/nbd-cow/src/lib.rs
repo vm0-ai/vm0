@@ -53,10 +53,14 @@ impl NbdCowDevice {
         let shutdown = CancellationToken::new();
 
         // Create COW layer
-        let mut cow_layer =
-            cow::CowLayer::new(base_image, size, BLOCK_SIZE, DEFAULT_FLUSH_THRESHOLD)?;
-        cow_layer.set_cow_path(cow_file);
-        let cow_layer = std::sync::Arc::new(tokio::sync::Mutex::new(cow_layer));
+        let cow_layer = cow::CowLayer::new(
+            base_image,
+            cow_file,
+            size,
+            BLOCK_SIZE,
+            DEFAULT_FLUSH_THRESHOLD,
+        )?;
+        let cow_layer = std::sync::Arc::new(tokio::sync::RwLock::new(cow_layer));
 
         // Create socketpairs and spawn server tasks
         let mut client_fds = Vec::with_capacity(NUM_CONNECTIONS);
