@@ -247,14 +247,12 @@ def match_base_url(url: str, base: str) -> tuple[str, dict] | None:
     url_host_with_port = url_rest if url_slash == -1 else url_rest[:url_slash]
     url_path = "" if url_slash == -1 else url_rest[url_slash:]
 
-    # Strip port from URL host for matching
-    if ":" in url_host_with_port:
-        url_host = url_host_with_port.rsplit(":", 1)[0]
-    else:
-        url_host = url_host_with_port
-
-    # Match host
-    host_params = match_host(url_host, base_host)
+    # Match host directly — do NOT strip port. Non-standard ports (e.g., :8443)
+    # are included in URLs by get_original_url() and must NOT match base patterns
+    # without an explicit port, otherwise auth headers could leak to rogue servers.
+    # Standard ports (443 for https, 80 for http) are omitted from URLs by
+    # get_original_url(), so they match naturally.
+    host_params = match_host(url_host_with_port, base_host)
     if host_params is None:
         return None
 

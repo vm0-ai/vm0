@@ -686,22 +686,21 @@ class TestMatchFirewallRequest:
         assert isinstance(result, FirewallAllow)
         assert result.match_info["params"]["sub"] == "acme"
 
-    def test_parameterized_host_with_port_in_url(self):
-        """URL with explicit port still matches parameterized base."""
+    def test_parameterized_host_rejects_nonstandard_port(self):
+        """Non-standard port must NOT match — prevents auth header leaking to rogue server."""
         fw_configs = _wrap_firewalls(
             [
                 {
                     "base": "https://{sub}.zendesk.com",
                     "auth": {"headers": {}},
-                    "permissions": [{"name": "p", "rules": ["GET /api"]}],
+                    "permissions": [{"name": "p", "rules": ["ANY /{path+}"]}],
                 }
             ]
         )
         result = mitm_addon.match_firewall_request(
-            "https://acme.zendesk.com:443/api", "GET", fw_configs
+            "https://acme.zendesk.com:8443/api", "GET", fw_configs
         )
-        assert isinstance(result, FirewallAllow)
-        assert result.match_info["params"]["sub"] == "acme"
+        assert result is None
 
 
 # =========================================================================
@@ -863,6 +862,25 @@ class TestMatchBaseUrl:
         rel_path, params = result
         assert rel_path == "/"
         assert params == {"sub": "acme"}
+
+    def test_nonstandard_port_rejected(self):
+        """Non-standard port in URL must not match base without port."""
+        result = match_base_url(
+            "https://acme.zendesk.com:8443/api",
+            "https://{sub}.zendesk.com",
+        )
+        assert result is None
+
+    def test_base_with_port_matches_url_with_same_port(self):
+        """Base with explicit port matches URL with same port."""
+        result = match_base_url(
+            "https://internal.example.com:8443/api",
+            "https://{sub}.example.com:8443",
+        )
+        assert result is not None
+        rel_path, params = result
+        assert rel_path == "/api"
+        assert params == {"sub": "internal"}
 
 
 # =========================================================================
