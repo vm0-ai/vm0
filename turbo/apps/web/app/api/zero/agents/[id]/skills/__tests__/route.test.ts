@@ -10,8 +10,6 @@ import { POST as postAgent } from "../../../route";
 import {
   createTestRequest,
   createTestCliToken,
-  seedSeedSkills,
-  clearSkillsData,
   getTestComposeVersionContent,
   setDefaultAgentByComposeId,
   clearOrgMembersCacheEntry,
@@ -163,8 +161,6 @@ function mockSkillContent(content: string) {
 describe("Zero Agent Skills API", () => {
   beforeEach(async () => {
     context.setupMocks();
-    await clearSkillsData();
-    await seedSeedSkills();
     user = await context.setupUser();
     testCliToken = await createTestCliToken(user.userId);
     testOrgSlug = `org-${user.userId.slice(-8)}`;
