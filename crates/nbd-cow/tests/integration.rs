@@ -48,7 +48,7 @@ fn create_test_base_image(path: &Path) {
 // Full device lifecycle tests (require root + nbd module)
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[ignore]
 async fn create_and_destroy() {
     require_root!();
@@ -76,7 +76,7 @@ async fn create_and_destroy() {
     assert!(!cow.exists(), "COW file should be removed after destroy");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[ignore]
 async fn destroy_keep_cow_preserves_file() {
     require_root!();
@@ -96,7 +96,7 @@ async fn destroy_keep_cow_preserves_file() {
     assert!(cow.exists(), "COW file should be preserved");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[ignore]
 async fn write_and_read_back_via_block_device() {
     require_root!();
@@ -160,7 +160,7 @@ async fn write_and_read_back_via_block_device() {
     device.destroy().await.expect("destroy");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[ignore]
 async fn cow_file_is_sparse() {
     require_root!();
@@ -208,7 +208,7 @@ async fn cow_file_is_sparse() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[ignore]
 async fn device_path_format() {
     require_root!();
@@ -233,7 +233,7 @@ async fn device_path_format() {
     device.destroy().await.expect("destroy");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[ignore]
 async fn multiple_devices_from_same_base() {
     require_root!();
