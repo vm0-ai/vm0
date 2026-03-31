@@ -12,6 +12,7 @@ import {
   seedSeedSkills,
   bindCustomSkillToAgent,
   seedTestCompose,
+  getAgentCustomSkills,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -163,7 +164,7 @@ describe("Zero Skills API (org-level)", () => {
 
     it("should not bind skill to any agent", async () => {
       const orgId = `org_mock_${user.userId}`;
-      const result = await seedTestCompose({
+      const { agentId } = await seedTestCompose({
         userId: user.userId,
         name: `test-agent-${user.userId.slice(-8)}`,
         orgId,
@@ -182,9 +183,9 @@ describe("Zero Skills API (org-level)", () => {
         skills.some((s: { name: string }) => s.name === "unbound-skill"),
       ).toBe(true);
 
-      // Agent should not have the skill (seedTestCompose creates agent with empty customSkills)
-      // This is verified by the fact that create doesn't touch zero_agents at all
-      void result;
+      // Verify agent's customSkills is still empty after skill creation
+      const agentSkills = await getAgentCustomSkills(agentId);
+      expect(agentSkills).toEqual([]);
     });
 
     it("should reject duplicate skill name with 409", async () => {

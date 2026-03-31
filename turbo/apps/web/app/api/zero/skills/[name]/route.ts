@@ -45,7 +45,9 @@ const router = tsr.router(zeroSkillsDetailContract, {
   get: async ({ params, headers }, { request }) => {
     initServices();
 
-    const authCtx = await requireAuth(headers.authorization);
+    const authCtx = await requireAuth(headers.authorization, {
+      requiredCapability: "agent:read",
+    });
     if (isAuthError(authCtx)) return authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
@@ -159,7 +161,9 @@ const router = tsr.router(zeroSkillsDetailContract, {
   update: async ({ params, body, headers }, { request }) => {
     initServices();
 
-    const authCtx = await requireAuth(headers.authorization);
+    const authCtx = await requireAuth(headers.authorization, {
+      requiredCapability: "agent:write",
+    });
     if (isAuthError(authCtx)) return authCtx;
 
     const orgSlug = new URL(request.url).searchParams.get("org");
@@ -215,7 +219,9 @@ const router = tsr.router(zeroSkillsDetailContract, {
   delete: async ({ params, headers }, { request }) => {
     initServices();
 
-    const authCtx = await requireAuth(headers.authorization);
+    const authCtx = await requireAuth(headers.authorization, {
+      requiredCapability: "agent:write",
+    });
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 

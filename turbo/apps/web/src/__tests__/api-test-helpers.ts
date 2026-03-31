@@ -4948,3 +4948,17 @@ export async function bindCustomSkillToAgent(
     .set({ customSkills: updated })
     .where(eq(zeroAgents.id, agentId));
 }
+
+/**
+ * Get the customSkills array for a given agent.
+ */
+export async function getAgentCustomSkills(agentId: string): Promise<string[]> {
+  initServices();
+  const [agent] = await globalThis.services.db
+    .select({ customSkills: zeroAgents.customSkills })
+    .from(zeroAgents)
+    .where(eq(zeroAgents.id, agentId))
+    .limit(1);
+  if (!agent) throw new Error(`Agent not found: ${agentId}`);
+  return agent.customSkills;
+}
