@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.177.3](https://github.com/vm0-ai/vm0/compare/web-v12.177.2...web-v12.177.3) (2026-03-31)
+
+
+### Bug Fixes
+
+* **web:** exclude raw oauth connector secrets from build context ([#7417](https://github.com/vm0-ai/vm0/issues/7417)) ([f72b5b5](https://github.com/vm0-ai/vm0/commit/f72b5b5ad76f92e75dec83fa0ed9ca6ca38ff9b6)), closes [#7365](https://github.com/vm0-ai/vm0/issues/7365)
+
 ## [12.177.2](https://github.com/vm0-ai/vm0/compare/web-v12.177.1...web-v12.177.2) (2026-03-31)
 
 
