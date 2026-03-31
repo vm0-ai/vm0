@@ -327,8 +327,10 @@ export async function getChatThreadContext(
     .limit(1);
 
   const messages = session?.chatMessages ?? [];
-  return messages.slice(-10).map((m) => ({
-    role: m.role,
-    content: m.content,
-  }));
+  return messages.slice(-10).map((m) => {
+    return {
+      role: m.role,
+      content: m.content,
+    };
+  });
 }
