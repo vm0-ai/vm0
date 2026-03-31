@@ -77,7 +77,9 @@ export const addZeroConnector$ = command(
     if (get(internalAddedConnectors$) === null) {
       set(internalAddedConnectors$, await get(seededConnectors$));
     }
-    set(internalAddedConnectors$, (prev) => {return [...(prev ?? []), name]});
+    set(internalAddedConnectors$, (prev) => {
+      return [...(prev ?? []), name];
+    });
   },
 );
 
@@ -87,9 +89,11 @@ export const removeZeroConnector$ = command(
     if (get(internalAddedConnectors$) === null) {
       set(internalAddedConnectors$, await get(seededConnectors$));
     }
-    set(internalAddedConnectors$, (prev) =>
-      {return (prev ?? []).filter((n) => {return n !== name})},
-    );
+    set(internalAddedConnectors$, (prev) => {
+      return (prev ?? []).filter((n) => {
+        return n !== name;
+      });
+    });
   },
 );
 
@@ -141,6 +145,8 @@ const syncConnectorsToCompose$ = command(
 
     await set(reloadOnboardingStatus$);
     signal.throwIfAborted();
-    set(internalComposeReload$, (x) => {return x + 1});
+    set(internalComposeReload$, (x) => {
+      return x + 1;
+    });
   },
 );

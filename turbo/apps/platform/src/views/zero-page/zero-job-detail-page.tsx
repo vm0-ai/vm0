@@ -301,7 +301,9 @@ function PermissionRow({
       <button
         type="button"
         disabled={readOnly}
-        onClick={() => {return onToggle(!enabled)}}
+        onClick={() => {
+          return onToggle(!enabled);
+        }}
         className={cn(
           "flex items-center gap-3 px-5 py-4 w-full text-left transition-colors",
           !readOnly && "hover:bg-muted/40 cursor-pointer",
@@ -364,10 +366,17 @@ function PermissionRow({
               </Tooltip>
             </TooltipProvider>
           )}
-          <span onClick={(e) => {return e.stopPropagation()}} className="inline-flex">
+          <span
+            onClick={(e) => {
+              return e.stopPropagation();
+            }}
+            className="inline-flex"
+          >
             <Switch
               checked={enabled}
-              onCheckedChange={(checked) => {return onToggle(checked)}}
+              onCheckedChange={(checked) => {
+                return onToggle(checked);
+              }}
               disabled={readOnly}
               size="sm"
               aria-label={`${enabled ? "Revoke" : "Grant"} ${connector.label} access`}
@@ -437,22 +446,24 @@ function JobPermissionsTab({
     return (
       <div className="mx-auto max-w-[900px]">
         <div className="rounded-[var(--zero-card-radius)] border-[0.7px] border-[hsl(var(--gray-400))] bg-card animate-pulse">
-          {Array.from({ length: 4 }, (_, i) => {return (
-            <div
-              key={i}
-              className={cn(
-                "flex items-center gap-3 px-5 py-4",
-                i < 3 && "border-b border-border/50",
-              )}
-            >
-              <span className="h-5 w-5 shrink-0 rounded bg-muted/50" />
-              <div className="flex-1 space-y-1.5">
-                <span className="block h-4 w-24 rounded bg-muted/50" />
-                <span className="block h-3 w-48 rounded bg-muted/30" />
+          {Array.from({ length: 4 }, (_, i) => {
+            return (
+              <div
+                key={i}
+                className={cn(
+                  "flex items-center gap-3 px-5 py-4",
+                  i < 3 && "border-b border-border/50",
+                )}
+              >
+                <span className="h-5 w-5 shrink-0 rounded bg-muted/50" />
+                <div className="flex-1 space-y-1.5">
+                  <span className="block h-4 w-24 rounded bg-muted/50" />
+                  <span className="block h-3 w-48 rounded bg-muted/30" />
+                </div>
+                <span className="h-4 w-7 rounded-full bg-muted/50" />
               </div>
-              <span className="h-4 w-7 rounded-full bg-muted/50" />
-            </div>
-          )})}
+            );
+          })}
         </div>
       </div>
     );

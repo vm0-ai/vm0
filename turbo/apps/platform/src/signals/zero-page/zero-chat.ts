@@ -135,9 +135,9 @@ export const cancelActiveRun$ = command(
     const local = get(internalLocalMessages$);
     const activeMsg = [...local]
       .reverse()
-      .find(
-        (m): m is AssistantChatMessage => {return m.role === "assistant" && !!m.runLoop},
-      );
+      .find((m): m is AssistantChatMessage => {
+        return m.role === "assistant" && !!m.runLoop;
+      });
     if (!activeMsg?.runLoop) {
       return;
     }
@@ -163,7 +163,9 @@ function getEventContent(event: AgentEvent): EventContent[] {
 }
 
 function hasTextBlock(event: AgentEvent): boolean {
-  return getEventContent(event).some((b) => {return b.type === "text" && b.text});
+  return getEventContent(event).some((b) => {
+    return b.type === "text" && b.text;
+  });
 }
 
 function basename(filepath: string): string {
@@ -184,36 +186,58 @@ function domainFromUrl(url: string): string {
 const TOOL_LABELS: Readonly<
   Record<string, (input: Record<string, unknown> | undefined) => string>
 > = {
-  Bash: () => {return "Running a command..."},
-  Read: (i) =>
-    {return i?.file_path
+  Bash: () => {
+    return "Running a command...";
+  },
+  Read: (i) => {
+    return i?.file_path
       ? `Reading ${basename(String(i.file_path))}`
-      : "Peeking at a file..."},
-  Write: (i) =>
-    {return i?.file_path
+      : "Peeking at a file...";
+  },
+  Write: (i) => {
+    return i?.file_path
       ? `Writing ${basename(String(i.file_path))}`
-      : "Jotting things down..."},
-  Edit: (i) =>
-    {return i?.file_path
+      : "Jotting things down...";
+  },
+  Edit: (i) => {
+    return i?.file_path
       ? `Tweaking ${basename(String(i.file_path))}`
-      : "Making some edits..."},
-  Search: () => {return "Searching for info..."},
-  Grep: () => {return "Digging through the code..."},
-  Glob: () => {return "Scouting for files..."},
-  Skill: (i) =>
-    {return i?.skill ? `Using ${String(i.skill)}` : "Pulling out a trick..."},
-  WebSearch: (i) =>
-    {return i?.query
+      : "Making some edits...";
+  },
+  Search: () => {
+    return "Searching for info...";
+  },
+  Grep: () => {
+    return "Digging through the code...";
+  },
+  Glob: () => {
+    return "Scouting for files...";
+  },
+  Skill: (i) => {
+    return i?.skill ? `Using ${String(i.skill)}` : "Pulling out a trick...";
+  },
+  WebSearch: (i) => {
+    return i?.query
       ? `Looking up "${truncate(String(i.query), 40)}"`
-      : "Browsing the web..."},
-  WebFetch: (i) =>
-    {return i?.url
+      : "Browsing the web...";
+  },
+  WebFetch: (i) => {
+    return i?.url
       ? `Checking out ${domainFromUrl(String(i.url))}`
-      : "Grabbing a page..."},
-  Agent: () => {return "Delegating to a helper..."},
-  ToolSearch: () => {return "Finding the right tool..."},
-  CodeSearch: () => {return "Searching through code..."},
-  FileSearch: () => {return "Looking for files..."},
+      : "Grabbing a page...";
+  },
+  Agent: () => {
+    return "Delegating to a helper...";
+  },
+  ToolSearch: () => {
+    return "Finding the right tool...";
+  },
+  CodeSearch: () => {
+    return "Searching through code...";
+  },
+  FileSearch: () => {
+    return "Looking for files...";
+  },
 };
 
 function humanizeToolUse(
@@ -266,7 +290,9 @@ const reloadChatThreadList$ = state(0);
 
 export const fetchZeroSessionList$ = command(
   ({ set }, _signal: AbortSignal) => {
-    set(reloadChatThreadList$, (n) => {return n + 1});
+    set(reloadChatThreadList$, (n) => {
+      return n + 1;
+    });
   },
 );
 
@@ -295,8 +321,12 @@ export const zeroSessionList$ = computed(async (get) => {
   return await get(chatThreadListResponse$);
 });
 
-export const zeroSessionListLoading$ = computed(() => {return false});
-export const zeroSessionListError$ = computed(() => {return null as string | null});
+export const zeroSessionListLoading$ = computed(() => {
+  return false;
+});
+export const zeroSessionListError$ = computed(() => {
+  return null as string | null;
+});
 
 // ---------------------------------------------------------------------------
 // Session snapshot — async computed derived from URL
@@ -430,7 +460,9 @@ function unsavedRunsToMessages(unsavedRuns: ChatThreadData["unsavedRuns"]): {
       messages.push({
         id: crypto.randomUUID(),
         role: "assistant",
-        result$: computed(() => {return Promise.resolve("")}),
+        result$: computed(() => {
+          return Promise.resolve("");
+        }),
         legacyRunId: run.runId,
         status: "failed",
         error: isCancelled
@@ -545,7 +577,9 @@ const currentChatMessages$ = computed(
       return {
         ...base,
         role: "assistant" as const,
-        result$: computed(() => {return Promise.resolve(m.content)}),
+        result$: computed(() => {
+          return Promise.resolve(m.content);
+        }),
         legacyRunId: m.runId,
         ...(m.error ? { status: "failed" as const, error: m.error } : {}),
       };
@@ -581,7 +615,9 @@ const chatSessionSnapshot$ = computed(
 
 // Chat input
 const internalChatInput$ = state("");
-export const zeroChatInput$ = computed((get) => {return get(internalChatInput$)});
+export const zeroChatInput$ = computed((get) => {
+  return get(internalChatInput$);
+});
 
 export const setZeroChatInput$ = command(({ set }, value: string) => {
   set(internalChatInput$, value);
@@ -642,7 +678,9 @@ function createChatAttachment(file: File): ZeroChatAttachment {
     signal.throwIfAborted();
 
     if (!res.ok) {
-      const err = (await res.json().catch(() => {return null})) as {
+      const err = (await res.json().catch(() => {
+        return null;
+      })) as {
         error?: { message?: string };
       } | null;
       throw new Error(
@@ -672,12 +710,14 @@ function createChatAttachment(file: File): ZeroChatAttachment {
 }
 
 const internalAttachments$ = state<ZeroChatAttachment[]>([]);
-export const zeroChatAttachments$ = computed((get) =>
-  {return get(internalAttachments$)},
-);
+export const zeroChatAttachments$ = computed((get) => {
+  return get(internalAttachments$);
+});
 
 const internalDragOver$ = state(false);
-export const zeroDragOver$ = computed((get) => {return get(internalDragOver$)});
+export const zeroDragOver$ = computed((get) => {
+  return get(internalDragOver$);
+});
 export const setZeroDragOver$ = command(({ set }, value: boolean) => {
   set(internalDragOver$, value);
 });
@@ -685,7 +725,9 @@ export const setZeroDragOver$ = command(({ set }, value: boolean) => {
 export const uploadZeroAttachment$ = command(
   async ({ set }, file: File, signal: AbortSignal) => {
     const attachment = createChatAttachment(file);
-    set(internalAttachments$, (prev) => {return [...prev, attachment]});
+    set(internalAttachments$, (prev) => {
+      return [...prev, attachment];
+    });
 
     try {
       await set(attachment.upload$, signal);
@@ -693,7 +735,11 @@ export const uploadZeroAttachment$ = command(
       throwIfAbort(error);
       L.error("Upload failed:", error);
       set(attachment.cancel$);
-      set(internalAttachments$, (prev) => {return prev.filter((a) => {return a !== attachment})});
+      set(internalAttachments$, (prev) => {
+        return prev.filter((a) => {
+          return a !== attachment;
+        });
+      });
     }
   },
 );
@@ -701,7 +747,11 @@ export const uploadZeroAttachment$ = command(
 export const removeZeroAttachment$ = command(
   ({ set }, attachment: ZeroChatAttachment) => {
     set(attachment.cancel$);
-    set(internalAttachments$, (prev) => {return prev.filter((a) => {return a !== attachment})});
+    set(internalAttachments$, (prev) => {
+      return prev.filter((a) => {
+        return a !== attachment;
+      });
+    });
   },
 );
 
@@ -724,8 +774,9 @@ export const loadSessionFromSnapshot$ = command(
       set(internalLocalMessages$, snapshot.activeRunMessages);
 
       const assistantMessages = snapshot.activeRunMessages.filter(
-        (m): m is AssistantChatMessage =>
-          {return m.role === "assistant" && !!m.beginLoop$},
+        (m): m is AssistantChatMessage => {
+          return m.role === "assistant" && !!m.beginLoop$;
+        },
       );
 
       await Promise.all(
@@ -738,8 +789,12 @@ export const loadSessionFromSnapshot$ = command(
       // Finalize each completed run (persist session ID, refresh sidebar)
       await Promise.all(
         assistantMessages
-          .filter((m) => {return m.legacyRunId})
-          .map(() => {return set(finalizeCompletedRun$, signal)}),
+          .filter((m) => {
+            return m.legacyRunId;
+          })
+          .map(() => {
+            return set(finalizeCompletedRun$, signal);
+          }),
       );
     }
   },
@@ -779,7 +834,9 @@ const internalCreateNewChatSession$ = command(
       const createClient = get(zeroClient$);
       const thread = await createChatThread(createClient, resolvedComposeId);
 
-      set(reloadChatThreadList$, (n) => {return n + 1});
+      set(reloadChatThreadList$, (n) => {
+        return n + 1;
+      });
       set(navigateToChat$, thread.id);
     } catch (error) {
       throwIfAbort(error);
@@ -809,24 +866,26 @@ const prepareUserMessage$ = command(
   ): Promise<{ fullPrompt: string }> => {
     const allAttachments = get(internalAttachments$);
     const allInfos = await Promise.all(
-      allAttachments.map((a) => {return get(a.fileInfo$)}),
+      allAttachments.map((a) => {
+        return get(a.fileInfo$);
+      }),
     );
     signal.throwIfAborted();
 
     // Pair attachments with resolved file info, dropping any that failed or haven't started
     const ready = allAttachments
-      .map((a, i) => {return { attachment: a, info: allInfos[i] }})
-      .filter(
-        (r): r is { attachment: ZeroChatAttachment; info: FileInfo } =>
-          {return r.info !== null},
-      );
+      .map((a, i) => {
+        return { attachment: a, info: allInfos[i] };
+      })
+      .filter((r): r is { attachment: ZeroChatAttachment; info: FileInfo } => {
+        return r.info !== null;
+      });
 
     let fullPrompt = prompt.trim();
     if (ready.length > 0) {
-      const lines = ready.map(
-        (r) =>
-          {return `[Attached file: ${r.attachment.filename}](${r.info.url})\nDownload with: curl -sL -o "${r.attachment.filename}" "${r.info.url}"`},
-      );
+      const lines = ready.map((r) => {
+        return `[Attached file: ${r.attachment.filename}](${r.info.url})\nDownload with: curl -sL -o "${r.attachment.filename}" "${r.info.url}"`;
+      });
       fullPrompt = `${fullPrompt}\n\n${lines.join("\n")}`;
     }
 
@@ -836,15 +895,19 @@ const prepareUserMessage$ = command(
       content: prompt.trim(),
       attachments:
         ready.length > 0
-          ? ready.map((r) => {return {
-              filename: r.attachment.filename,
-              contentType: r.attachment.contentType,
-              size: r.attachment.size,
-              url: r.info.url,
-            }})
+          ? ready.map((r) => {
+              return {
+                filename: r.attachment.filename,
+                contentType: r.attachment.contentType,
+                size: r.attachment.size,
+                url: r.info.url,
+              };
+            })
           : undefined,
     };
-    set(internalLocalMessages$, (prev) => {return [...prev, userMessage]});
+    set(internalLocalMessages$, (prev) => {
+      return [...prev, userMessage];
+    });
     set(internalAttachments$, []);
 
     return { fullPrompt };
@@ -855,11 +918,17 @@ const prepareUserMessage$ = command(
 const finalizeCompletedRun$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     // Refresh session list (messages are persisted server-side via webhook)
-    set(reloadChatThreadList$, (n) => {return n + 1});
+    set(reloadChatThreadList$, (n) => {
+      return n + 1;
+    });
     await delay(get(poolInterval$), { signal });
-    set(reloadChatThreadList$, (n) => {return n + 1});
+    set(reloadChatThreadList$, (n) => {
+      return n + 1;
+    });
     // Invalidate the current thread so latestSessionId and messages are fresh
-    set(reloadCurrentThread$, (n) => {return n + 1});
+    set(reloadCurrentThread$, (n) => {
+      return n + 1;
+    });
   },
 );
 
@@ -936,7 +1005,9 @@ export const sendNewThreadMessage$ = command(
       }
 
       set(navigateToChat$, result.body.threadId);
-      set(reloadChatThreadList$, (n) => {return n + 1});
+      set(reloadChatThreadList$, (n) => {
+        return n + 1;
+      });
     } catch (error) {
       throwIfAbort(error);
       L.error("Chat send error:", error);
@@ -1002,11 +1073,15 @@ export const sendExistingThreadMessage$ = command(
       const { runId } = result.body;
 
       // Refresh sidebar after run is associated (has preview now)
-      set(reloadChatThreadList$, (n) => {return n + 1});
+      set(reloadChatThreadList$, (n) => {
+        return n + 1;
+      });
 
       // Create reactive assistant message with its own runLoop
       const { assistantMessage } = createActiveRunMessage(runId, prompt);
-      set(internalLocalMessages$, (prev) => {return [...prev, assistantMessage]});
+      set(internalLocalMessages$, (prev) => {
+        return [...prev, assistantMessage];
+      });
 
       const runLoop = assistantMessage.runLoop;
       if (!runLoop) {
@@ -1036,9 +1111,9 @@ export const sendExistingThreadMessage$ = command(
 const internalComposerFileInput$ = state<HTMLElement | null>(null);
 
 /** The file input element used by the composer attach button. */
-export const composerFileInput$ = computed((get) =>
-  {return get(internalComposerFileInput$)},
-);
+export const composerFileInput$ = computed((get) => {
+  return get(internalComposerFileInput$);
+});
 
 /** Store a reference to the composer file input element. */
 export const setComposerFileInput$ = command(
