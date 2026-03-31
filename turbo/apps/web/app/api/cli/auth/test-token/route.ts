@@ -6,7 +6,10 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { cliTokens } from "../../../../../src/db/schema/cli-tokens";
 import { orgCache } from "../../../../../src/db/schema/org-cache";
 import { orgMembersCache } from "../../../../../src/db/schema/org-members-cache";
-import { getOrgBySlug } from "../../../../../src/lib/org/org-cache-service";
+import {
+  getOrgBySlug,
+  getOrgData,
+} from "../../../../../src/lib/org/org-cache-service";
 import { generateCliToken } from "../../../../../src/lib/auth/sandbox-token";
 import {
   resolveTestUserId,
@@ -61,19 +64,23 @@ async function ensureTestOrg(userId: string): Promise<{ slug: string }> {
   // entries during E2E test runs (avoids Clerk API calls + 429 rate limits).
   const farFuture = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
 
-  // Find first org with a matching org_cache entry (query DB directly to avoid
-  // catching unrelated errors from getOrgData's Clerk API fallback path)
+  // Find first org: check org_cache first, populate from Clerk if missing
   for (const membership of memberships.data) {
     const orgId = membership.organization.id;
-    const [cached] = await globalThis.services.db
+    let [cached] = await globalThis.services.db
       .select({ slug: orgCache.slug })
       .from(orgCache)
       .where(eq(orgCache.orgId, orgId))
       .limit(1);
 
     if (!cached) {
-      log.warn(`skipping org ${orgId} for user ${userId}: not in org_cache`);
-      continue;
+      // Org was just created in Clerk by CI but not yet in org_cache.
+      // Populate the cache from Clerk so subsequent lookups are fast.
+      log.info(
+        `org ${orgId} not in org_cache, populating from Clerk for user ${userId}`,
+      );
+      const orgData = await getOrgData(orgId);
+      cached = { slug: orgData.slug };
     }
 
     const role = membership.role === "org:admin" ? "admin" : "member";

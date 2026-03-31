@@ -4,6 +4,7 @@ import { DEFAULT_TEST_EMAIL } from "../../../../../../src/lib/auth/test-user";
 import {
   createTestRequest,
   insertOrgCacheEntry,
+  deleteOrgCacheEntry,
   ensureOrgRow,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
@@ -12,11 +13,15 @@ import { reloadEnv } from "../../../../../../src/env";
 // Mock Clerk Server API
 const mockGetUserList = vi.fn();
 const mockGetOrganizationMembershipList = vi.fn();
+const mockGetOrganization = vi.fn();
 vi.mock("@clerk/nextjs/server", () => ({
   clerkClient: vi.fn(async () => ({
     users: {
       getUserList: mockGetUserList,
       getOrganizationMembershipList: mockGetOrganizationMembershipList,
+    },
+    organizations: {
+      getOrganization: mockGetOrganization,
     },
   })),
   auth: vi.fn(async () => ({ userId: null, orgId: null, orgRole: null })),
@@ -31,6 +36,7 @@ describe("/api/cli/auth/test-token", () => {
     reloadEnv();
     mockGetUserList.mockReset();
     mockGetOrganizationMembershipList.mockReset();
+    mockGetOrganization.mockReset();
     mockGetUserList.mockResolvedValue({
       data: [{ id: "user_test123" }],
     });
@@ -47,6 +53,12 @@ describe("/api/cli/auth/test-token", () => {
           publicUserData: { userId: "user_test123" },
         },
       ],
+    });
+    // Mock getOrganization for cache-miss fallback path (getOrgData)
+    mockGetOrganization.mockResolvedValue({
+      id: "org_test_token",
+      slug: "test-token-org",
+      name: "test-token-org",
     });
     // Pre-populate org_cache so ensureTestOrg() finds a matching entry
     await insertOrgCacheEntry({
@@ -219,6 +231,27 @@ describe("/api/cli/auth/test-token", () => {
 
       expect(mockGetUserList).toHaveBeenCalledWith({
         emailAddress: [DEFAULT_TEST_EMAIL],
+      });
+    });
+
+    it("populates org_cache from Clerk when entry is missing", async () => {
+      // Clear org_cache — simulate CI scenario where org was just
+      // created in Clerk but no cache entry exists yet
+      await deleteOrgCacheEntry("org_test_token");
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/cli/auth/test-token",
+        { method: "POST" },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const data = await response.json();
+      expect(data.org_slug).toBe("test-token-org");
+      // Verify getOrganization was called to populate the cache
+      expect(mockGetOrganization).toHaveBeenCalledWith({
+        organizationId: "org_test_token",
       });
     });
 
