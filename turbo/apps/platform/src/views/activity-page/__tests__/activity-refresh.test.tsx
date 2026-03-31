@@ -5,6 +5,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
+import { FeatureSwitchKey } from "@vm0/core";
 
 const context = testContext();
 
@@ -81,7 +82,11 @@ describe("activity list refresh on navigation", () => {
     );
 
     // Navigate to activity page
-    await setupPage({ context, path: "/activity" });
+    await setupPage({
+      context,
+      path: "/activity",
+      featureSwitches: { [FeatureSwitchKey.ActivityLogList]: true },
+    });
 
     // Wait for the activity heading and list data to render
     await waitFor(() => {
