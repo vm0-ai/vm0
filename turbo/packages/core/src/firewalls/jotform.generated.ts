@@ -11,7 +11,7 @@ export const jotformFirewall: FirewallConfig = {
   description: "Jotform API",
   placeholders: {
     JOTFORM_TOKEN:
-      "vm0placeholder00000000000000000000000000000000000000000000000000a",
+      "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffe",
   },
   apis: [
     {

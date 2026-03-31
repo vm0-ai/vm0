@@ -10,7 +10,7 @@ export const zendeskFirewall: FirewallConfig = {
   name: "zendesk",
   description: "Zendesk Support API",
   placeholders: {
-    ZENDESK_API_TOKEN: "zkTkn_Vm0PlaceHolder000000000000000000000000",
+    ZENDESK_API_TOKEN: "zkTkn_CoffeeSafeLocalCoffeeSafeLocalCoffeeSa",
   },
   apis: [
     {

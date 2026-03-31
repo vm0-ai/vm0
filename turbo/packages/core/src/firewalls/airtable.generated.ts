@@ -11,7 +11,7 @@ export const airtableFirewall: FirewallConfig = {
   description: "Airtable API",
   placeholders: {
     AIRTABLE_TOKEN:
-      "patVm0PlaceHolder.0000000000000000000000000000000000000000000000000000000000000000",
+      "patCoffeeSafeL0.c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe10ca1c0ff",
   },
   apis: [
     {

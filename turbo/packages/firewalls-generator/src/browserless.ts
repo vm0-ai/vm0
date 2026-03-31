@@ -13,7 +13,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://docs.browserless.io/rest-apis/intro";
 // Token is UUID v4; using a realistic-looking placeholder
-const PLACEHOLDER_VALUE = "094632bb-vm00-0000-0000-vm0placeholder";
+const PLACEHOLDER_VALUE = "c0ffee5a-fe10-ca1c-0ffe-e5afe10ca1c0";
 
 const REGIONS = ["sfo", "lon", "ams"] as const;
 

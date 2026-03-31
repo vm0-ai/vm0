@@ -12,7 +12,7 @@ import { writeOutput } from "./codegen";
 const DOCS_URL =
   "https://docs.tavily.com/documentation/api-reference/introduction";
 // Format: tvly- prefix + alphanumeric; exact length not documented
-const PLACEHOLDER_VALUE = "tvly-Vm0PlaceHolder0000000000000000000";
+const PLACEHOLDER_VALUE = "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";
 
 function generateTypeScript(): string {
   const lines: string[] = [

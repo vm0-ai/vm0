@@ -15,7 +15,7 @@ import { writeOutput } from "./codegen";
 const DOCS_URL = "https://www.dropbox.com/developers/reference/auth-types";
 // Format: sl. + ~130 alphanumeric chars
 const PLACEHOLDER_VALUE =
-  "sl.Vm0PlaceHolder000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a";
+  "sl.CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafe";
 
 function generateTypeScript(): string {
   const lines: string[] = [

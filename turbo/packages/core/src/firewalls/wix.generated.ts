@@ -10,7 +10,7 @@ export const wixFirewall: FirewallConfig = {
   name: "wix",
   description: "Wix REST API",
   placeholders: {
-    WIX_TOKEN: "vm0placeholderWixToken0000000000000000000000000000000a",
+    WIX_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSaf",
   },
   apis: [
     {

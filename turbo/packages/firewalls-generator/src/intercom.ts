@@ -14,7 +14,7 @@ const DOCS_URL =
   "https://developers.intercom.com/docs/build-an-integration/learn-more/authentication";
 // Token format: dG9rOi (base64 "tok:") + base64 chars, ~70 chars total
 const PLACEHOLDER_VALUE =
-  "dG9rOiVm0PlaceHolder000000000000000000000000000000000000000000000000a";
+  "dG9rOiCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCof";
 
 function generateTypeScript(): string {
   const lines: string[] = [

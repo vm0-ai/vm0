@@ -13,7 +13,7 @@ import { writeOutput } from "./codegen";
 const DOCS_URL = "https://github.com/reddit-archive/reddit/wiki/OAuth2";
 // OAuth token; using generic placeholder
 const PLACEHOLDER_VALUE =
-  "vm0placeholder00000000000000000000000000000000000000000000000000a";
+  "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffe";
 
 function generateTypeScript(): string {
   const lines: string[] = [

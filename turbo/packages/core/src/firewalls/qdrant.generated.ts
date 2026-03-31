@@ -10,7 +10,7 @@ export const qdrantFirewall: FirewallConfig = {
   name: "qdrant",
   description: "Qdrant Vector Database API",
   placeholders: {
-    QDRANT_TOKEN: "Vm0PlaceHolder0000000000000000000000000000",
+    QDRANT_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLo",
   },
   apis: [
     {

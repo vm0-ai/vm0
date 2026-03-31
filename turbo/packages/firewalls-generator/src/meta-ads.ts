@@ -3,7 +3,7 @@ import { writeOutput } from "./codegen";
 const DOCS_URL =
   "https://developers.facebook.com/docs/marketing-apis/overview/authentication";
 const PLACEHOLDER_VALUE =
-  "vm0placeholderMetaAdsToken0000000000000000000000000000a";
+  "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafe";
 
 function generateTypeScript(): string {
   const lines: string[] = [

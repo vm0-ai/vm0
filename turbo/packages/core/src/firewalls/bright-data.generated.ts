@@ -11,7 +11,7 @@ export const brightDataFirewall: FirewallConfig = {
   description: "Bright Data API",
   placeholders: {
     BRIGHTDATA_TOKEN:
-      "b5648e10vm0placeholder0000000000000000000000000000000000000000abcd",
+      "c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe10ca1c0ff",
   },
   apis: [
     {

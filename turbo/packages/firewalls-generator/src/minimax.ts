@@ -14,7 +14,7 @@ const DOCS_URL =
   "https://platform.minimax.io/docs/guides/quickstart-preparation";
 // API key format not documented; using generic placeholder
 const PLACEHOLDER_VALUE =
-  "eyJhbGciOiJSUzI1NiJ9.vm0placeholder000000000000000000000000000000a";
+  "eyJhbGciOiJSUzI1NiJ9.CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocal";
 
 function generateTypeScript(): string {
   const lines: string[] = [

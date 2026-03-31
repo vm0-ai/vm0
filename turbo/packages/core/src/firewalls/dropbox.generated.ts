@@ -11,7 +11,7 @@ export const dropboxFirewall: FirewallConfig = {
   description: "Dropbox API",
   placeholders: {
     DROPBOX_TOKEN:
-      "sl.Vm0PlaceHolder000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a",
+      "sl.CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafe",
   },
   apis: [
     {

@@ -2,7 +2,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://learn.microsoft.com/en-us/graph/auth/auth-concepts";
 const PLACEHOLDER_VALUE =
-  "vm0placeholderOutlookMailToken0000000000000000000000a";
+  "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa";
 
 function generateTypeScript(): string {
   const lines: string[] = [

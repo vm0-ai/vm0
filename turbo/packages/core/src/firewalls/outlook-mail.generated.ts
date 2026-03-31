@@ -10,7 +10,7 @@ export const outlookMailFirewall: FirewallConfig = {
   name: "outlook-mail",
   description: "Microsoft Graph API (Outlook Mail)",
   placeholders: {
-    OUTLOOK_MAIL_TOKEN: "vm0placeholderOutlookMailToken0000000000000000000000a",
+    OUTLOOK_MAIL_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa",
   },
   apis: [
     {

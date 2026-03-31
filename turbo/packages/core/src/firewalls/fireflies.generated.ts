@@ -10,7 +10,7 @@ export const firefliesFirewall: FirewallConfig = {
   name: "fireflies",
   description: "Fireflies.ai API",
   placeholders: {
-    FIREFLIES_TOKEN: "Vm0PlaceHolder00000000000000000000000000000000a",
+    FIREFLIES_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalC",
   },
   apis: [
     {

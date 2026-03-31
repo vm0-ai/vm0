@@ -10,7 +10,7 @@ export const heygenFirewall: FirewallConfig = {
   name: "heygen",
   description: "HeyGen API",
   placeholders: {
-    HEYGEN_TOKEN: "Vm0PlaceHolder00000000000000000000000000000000a",
+    HEYGEN_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalC",
   },
   apis: [
     {

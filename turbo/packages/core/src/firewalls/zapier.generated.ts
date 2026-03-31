@@ -10,7 +10,7 @@ export const zapierFirewall: FirewallConfig = {
   name: "zapier",
   description: "Zapier NLA API",
   placeholders: {
-    ZAPIER_TOKEN: "Vm0PlaceHolder0000000000000000000000000000",
+    ZAPIER_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLo",
   },
   apis: [
     {

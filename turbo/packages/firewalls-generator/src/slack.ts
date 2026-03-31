@@ -161,7 +161,7 @@ const DEFAULT_ALLOWED: string[] = [
 function generateTypeScript(permissions: PermissionGroup[]): string {
   // Slack bot token format: xoxb-[0-9]{10,13}-[0-9]{10,13}[a-zA-Z0-9-]*
   const placeholder =
-    "xoxb-000000000000-0000000000000-Vm0PlaceHolder0000000000";
+    "xoxb-100100100100-1001001001001-CoffeeSafeLocalCoffeeSaf";
 
   const lines: string[] = [
     "// Auto-generated from Slack API method-to-scope mappings.",

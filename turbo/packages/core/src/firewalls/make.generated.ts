@@ -10,7 +10,7 @@ export const makeFirewall: FirewallConfig = {
   name: "make",
   description: "Make (formerly Integromat) Automation API",
   placeholders: {
-    MAKE_TOKEN: "mkTkn-Vm0PlaceHolder-0000-0000-000000000000",
+    MAKE_TOKEN: "mkTkn-CoffeeSafeLoca-lCof-feeS-afeLocalCoff",
   },
   apis: [
     {

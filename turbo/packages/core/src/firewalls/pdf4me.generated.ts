@@ -10,7 +10,7 @@ export const pdf4meFirewall: FirewallConfig = {
   name: "pdf4me",
   description: "PDF4me Document API",
   placeholders: {
-    PDF4ME_TOKEN: "vm0placeholderPdf4meToken000000000000000000000000000a",
+    PDF4ME_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa",
   },
   apis: [
     {

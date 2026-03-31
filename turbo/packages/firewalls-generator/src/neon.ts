@@ -11,7 +11,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://api-docs.neon.tech/reference/authentication";
 // OAuth access token; format not documented
-const PLACEHOLDER_VALUE = "Vm0PlaceHolder00000000000000000a";
+const PLACEHOLDER_VALUE = "CoffeeSafeLocalCoffeeSafeLocalCo";
 
 function generateTypeScript(): string {
   const lines: string[] = [

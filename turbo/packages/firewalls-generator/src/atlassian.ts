@@ -46,7 +46,7 @@ const SPECS: SpecSource[] = [
 // Atlassian API token placeholder.
 // Format: ATATT3[A-Za-z0-9_\-=]{186} (192 chars total)
 const PLACEHOLDER_VALUE =
-  "ATATT3xVm0PlaceHolder000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+  "ATATT3xCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocal00Cof";
 
 // ── Grouping ─────────────────────────────────────────────────────────────
 

@@ -10,7 +10,7 @@ export const closeFirewall: FirewallConfig = {
   name: "close",
   description: "Close CRM API",
   placeholders: {
-    CLOSE_TOKEN: "Vm0PlaceHolder00000000000000000000000000000000a",
+    CLOSE_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalC",
   },
   apis: [
     {

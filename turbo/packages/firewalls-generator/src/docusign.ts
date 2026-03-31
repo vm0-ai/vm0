@@ -16,7 +16,7 @@ const DOCS_URL =
 // DocuSign access tokens are JWTs (eyJ...), typically 600-900+ chars.
 // Use a shortened JWT-like placeholder.
 const PLACEHOLDER_VALUE =
-  "eyJ0eXAiOiJNVCIsImFsZyI6IlJTMjU2In0.Vm0PlaceHolder000000000000000000.signature";
+  "eyJ0eXAiOiJNVCIsImFsZyI6IlJTMjU2In0.CoffeeSafeLocalCoffeeSafeLocal.CoffeeSaf";
 
 // All known DocuSign API server domains (production + demo).
 // See: https://developers.docusign.com/platform/api-endpoint-base-paths/
