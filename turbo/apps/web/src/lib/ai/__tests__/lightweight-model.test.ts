@@ -126,7 +126,7 @@ describe("generateChatTitle", () => {
     );
   });
 
-  it("should include assistant message when provided", async () => {
+  it("should include previous context when provided", async () => {
     vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     reloadEnv();
 
@@ -139,16 +139,45 @@ describe("generateChatTitle", () => {
 
     const { generateChatTitle } = await import("../lightweight-model");
 
-    await generateChatTitle("Fix my bug", "Here is the solution");
+    await generateChatTitle("Fix my bug", [
+      { role: "user", content: "Hello" },
+      { role: "assistant", content: "Hi, how can I help?" },
+    ]);
 
     const body = capturedBody as {
       messages: Array<{ role: string; content: string }>;
     };
-    expect(body.messages).toHaveLength(3);
-    expect(body.messages[2]).toEqual({
-      role: "assistant",
-      content: "Here is the solution",
+    expect(body.messages).toHaveLength(2);
+    expect(body.messages[1]!.content).toContain("Previous conversation:");
+    expect(body.messages[1]!.content).toContain("Current message: Fix my bug");
+  });
+
+  it("should strip surrounding quotes from title", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    reloadEnv();
+
+    const handler = http.post(OPENROUTER_URL, () => {
+      return HttpResponse.json(openRouterResponse('"Some Quoted Title"'));
     });
+    server.use(handler.handler);
+
+    const { generateChatTitle } = await import("../lightweight-model");
+
+    expect(await generateChatTitle("msg")).toBe("Some Quoted Title");
+  });
+
+  it("should strip horizontal rules from title", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    reloadEnv();
+
+    const handler = http.post(OPENROUTER_URL, () => {
+      return HttpResponse.json(openRouterResponse("---\nSome Title"));
+    });
+    server.use(handler.handler);
+
+    const { generateChatTitle } = await import("../lightweight-model");
+
+    expect(await generateChatTitle("msg")).toBe("Some Title");
   });
 });
 

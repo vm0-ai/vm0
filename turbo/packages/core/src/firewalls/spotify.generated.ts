@@ -10,7 +10,7 @@ export const spotifyFirewall: FirewallConfig = {
   name: "spotify",
   description: "Spotify Web API",
   placeholders: {
-    SPOTIFY_TOKEN: "vm0placeholderSpotifyToken000000000000000000000000000000a",
+    SPOTIFY_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLo",
   },
   apis: [
     {

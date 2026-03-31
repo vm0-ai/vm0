@@ -10,7 +10,7 @@ export const browserbaseFirewall: FirewallConfig = {
   name: "browserbase",
   description: "Browserbase API",
   placeholders: {
-    BROWSERBASE_TOKEN: "bb_vm0placeholder_000000000000000000000000000000a",
+    BROWSERBASE_TOKEN: "bb_CoffeeSafeLocal_CoffeeSafeLocalCoffeeSafeLocal",
   },
   apis: [
     {

@@ -12,7 +12,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://developers.make.com/api-documentation";
 // Format: Make API tokens are UUIDs or long hex strings
-const PLACEHOLDER_VALUE = "mkTkn-Vm0PlaceHolder-0000-0000-000000000000";
+const PLACEHOLDER_VALUE = "mkTkn-CoffeeSafeLoca-lCof-feeS-afeLocalCoff";
 
 const MAKE_DOMAINS = [
   "eu1.make.com",

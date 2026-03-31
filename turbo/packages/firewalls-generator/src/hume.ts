@@ -13,7 +13,7 @@ import { writeOutput } from "./codegen";
 const DOCS_URL = "https://dev.hume.ai/docs/introduction/api-key";
 // API key format not documented; using generic placeholder
 const PLACEHOLDER_VALUE =
-  "vm0placeholder00000000000000000000000000000000000000000000000000a";
+  "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeL";
 
 function generateTypeScript(): string {
   const lines: string[] = [

@@ -11,7 +11,7 @@ export const slackFirewall = {
   name: "slack",
   description: "Slack API",
   placeholders: {
-    SLACK_TOKEN: "xoxb-000000000000-0000000000000-Vm0PlaceHolder0000000000",
+    SLACK_TOKEN: "xoxb-100100100100-1001001001001-CoffeeSafeLocalCoffeeSaf",
   },
   apis: [
     {

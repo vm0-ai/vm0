@@ -10,8 +10,8 @@ export const githubFirewall: FirewallConfig = {
   name: "github",
   description: "GitHub API",
   placeholders: {
-    GITHUB_TOKEN: "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",
-    GH_TOKEN: "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",
+    GITHUB_TOKEN: "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",
+    GH_TOKEN: "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",
   },
   apis: [
     {
@@ -22,6 +22,16 @@ export const githubFirewall: FirewallConfig = {
         },
       },
       permissions: [
+        {
+          name: "enterprise_copilot_metrics:read",
+          description: "Enterprise Copilot metrics",
+          rules: [
+            "GET /enterprises/{enterprise}/copilot/metrics/reports/enterprise-1-day",
+            "GET /enterprises/{enterprise}/copilot/metrics/reports/enterprise-28-day/latest",
+            "GET /enterprises/{enterprise}/copilot/metrics/reports/users-1-day",
+            "GET /enterprises/{enterprise}/copilot/metrics/reports/users-28-day/latest",
+          ],
+        },
         {
           name: "enterprise_teams:read",
           description: "Enterprise teams",
@@ -428,6 +438,16 @@ export const githubFirewall: FirewallConfig = {
             "POST /orgs/{org}/settings/network-configurations",
             "PATCH /orgs/{org}/settings/network-configurations/{network_configuration_id}",
             "DELETE /orgs/{org}/settings/network-configurations/{network_configuration_id}",
+          ],
+        },
+        {
+          name: "organization_copilot_metrics:read",
+          description: "Organization Copilot metrics",
+          rules: [
+            "GET /orgs/{org}/copilot/metrics/reports/organization-1-day",
+            "GET /orgs/{org}/copilot/metrics/reports/organization-28-day/latest",
+            "GET /orgs/{org}/copilot/metrics/reports/users-1-day",
+            "GET /orgs/{org}/copilot/metrics/reports/users-28-day/latest",
           ],
         },
         {

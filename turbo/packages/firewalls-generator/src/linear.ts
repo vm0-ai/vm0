@@ -11,7 +11,7 @@ import { writeOutput } from "./codegen";
 const DOCS_URL =
   "https://developers.linear.app/docs/graphql/working-with-the-graphql-api";
 // Format: lin_api_ + 40 alphanumeric (gitleaks: linear-api-key)
-const PLACEHOLDER_VALUE = "lin_api_Vm0PlaceHolder00000000000000000000000000";
+const PLACEHOLDER_VALUE = "lin_api_CoffeeSafeLocalCoffeeSafeLocalCoffeeSafe";
 
 function generateTypeScript(): string {
   const lines: string[] = [

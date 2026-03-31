@@ -26,7 +26,7 @@ const OPENAPI_URL =
 
 // Sentry API token placeholder.
 // No documented format; generic 32-char alphanumeric
-const PLACEHOLDER_VALUE = "Vm0PlaceHolder00000000000000000a";
+const PLACEHOLDER_VALUE = "CoffeeSafeLocalCoffeeSafeLocalCo";
 
 // ── OpenAPI types ────────────────────────────────────────────────────────
 

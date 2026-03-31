@@ -12,7 +12,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://docs.apify.com/api/v2";
 // Token format not publicly documented; using generic placeholder
-const PLACEHOLDER_VALUE = "apify_api_Vm0PlaceHolder0000000000000000000000a";
+const PLACEHOLDER_VALUE = "apify_api_CoffeeSafeLocalCoffeeSafeLocalCoffee0";
 
 function generateTypeScript(): string {
   const lines: string[] = [

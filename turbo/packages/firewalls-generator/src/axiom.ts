@@ -10,7 +10,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://axiom.co/docs/reference/tokens";
 // Format: xaat- prefix + UUID (8-4-4-4-12 hex) = 41 total
-const PLACEHOLDER_VALUE = "xaat-00000000-0000-0000-0000-000000000000";
+const PLACEHOLDER_VALUE = "xaat-c0ffee5a-fe10-ca1c-0ffe-e5afe10ca1c0";
 
 function generateTypeScript(): string {
   const lines: string[] = [

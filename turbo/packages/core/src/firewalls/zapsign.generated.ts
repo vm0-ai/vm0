@@ -10,7 +10,7 @@ export const zapsignFirewall: FirewallConfig = {
   name: "zapsign",
   description: "ZapSign API",
   placeholders: {
-    ZAPSIGN_TOKEN: "00000000-0000-0000-0000-00000000",
+    ZAPSIGN_TOKEN: "c0ffee5a-fe10-ca1c-0ffe-e5afe10c",
   },
   apis: [
     {

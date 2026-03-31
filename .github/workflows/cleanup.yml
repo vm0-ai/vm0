@@ -115,7 +115,7 @@ jobs:
             EMAIL=$(echo "$user" | jq -r '.email_addresses[0].email_address // "unknown"')
 
             # Verify email actually matches this PR (Clerk query is fuzzy)
-            if [[ "$EMAIL" != "${JOB_REF}+clerk_test@"* ]]; then
+            if [[ "$EMAIL" != "${JOB_REF}+clerk_test"* ]]; then
               echo "Skipping $USER_ID ($EMAIL) — does not match ${JOB_REF}"
               continue
             fi

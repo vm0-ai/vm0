@@ -17,13 +17,19 @@ import {
   createChatThread,
   getChatThread,
   addRunToThread,
+  updateChatThreadTitle,
+  getChatThreadContext,
 } from "../../../../../src/lib/chat-thread/chat-thread-service";
+import { generateChatTitle } from "../../../../../src/lib/ai/lightweight-model";
 import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
 import {
   getApiUrl,
   generateCallbackSecret,
 } from "../../../../../src/lib/callback";
 import type { ChatCallbackPayload } from "../../../../../src/lib/callback/callback-payloads";
+import { logger } from "../../../../../src/lib/logger";
+
+const log = logger("zero:chat-messages");
 
 const router = tsr.router(chatMessagesContract, {
   send: async ({ body, headers }) => {
@@ -55,21 +61,37 @@ const router = tsr.router(chatMessagesContract, {
     try {
       // Resolve or create thread
       let sessionId: string | undefined;
+      let previousContext: Awaited<ReturnType<typeof getChatThreadContext>> =
+        [];
 
       if (body.threadId) {
         const thread = await getChatThread(body.threadId, authCtx.userId);
         threadId = thread.id;
         sessionId = thread.sessionId ?? undefined;
+        previousContext = await getChatThreadContext(thread.id, authCtx.userId);
       } else {
-        const title = body.prompt.trim().slice(0, 100);
-        const thread = await createChatThread(
-          authCtx.userId,
-          body.agentId,
-          title,
-        );
+        const thread = await createChatThread(authCtx.userId, body.agentId);
         threadId = thread.id;
         sessionId = undefined;
       }
+
+      // Generate AI title in the background — don't block the response
+      const capturedThreadId = threadId;
+      void generateChatTitle(
+        body.prompt,
+        previousContext.length > 0 ? previousContext : undefined,
+      )
+        .then((title) => {
+          if (title) {
+            return updateChatThreadTitle(capturedThreadId, title);
+          }
+        })
+        .catch((err: unknown) => {
+          log.warn("Chat title generation failed", {
+            threadId: capturedThreadId,
+            err,
+          });
+        });
 
       // Build callback for session persistence
       const chatCallback: {

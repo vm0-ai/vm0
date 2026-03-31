@@ -12,7 +12,7 @@ import { writeOutput } from "./codegen";
 const DOCS_URL = "https://fal.ai/docs/reference/platform-apis/authentication";
 // Format: key_id:key_secret where key_secret has sk_live_ prefix
 const PLACEHOLDER_VALUE =
-  "Vm0PlaceHolder00:sk_live_Vm0PlaceHolder00000000000000";
+  "CoffeeSafeLocalC:sk_live_CoffeeSafeLocalCoffeeSafeLo";
 
 function generateTypeScript(): string {
   const lines: string[] = [

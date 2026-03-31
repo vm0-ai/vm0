@@ -11,7 +11,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://developers.forem.com/api/v0";
 // Token format: 24 alphanumeric chars [a-zA-Z0-9]
-const PLACEHOLDER_VALUE = "Vm0PlaceHolder0000000000";
+const PLACEHOLDER_VALUE = "CoffeeSafeLocalCoffeeSaf";
 
 function generateTypeScript(): string {
   const lines: string[] = [

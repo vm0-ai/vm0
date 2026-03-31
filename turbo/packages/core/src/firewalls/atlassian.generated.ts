@@ -13,7 +13,7 @@ export const atlassianFirewall: FirewallConfig = {
   description: "Atlassian (Jira + Confluence) API",
   placeholders: {
     ATLASSIAN_TOKEN:
-      "ATATT3xVm0PlaceHolder000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "ATATT3xCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocal00Cof",
   },
   apis: [
     {

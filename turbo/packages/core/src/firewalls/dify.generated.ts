@@ -10,7 +10,7 @@ export const difyFirewall: FirewallConfig = {
   name: "dify",
   description: "Dify API",
   placeholders: {
-    DIFY_TOKEN: "app-Vm0PlaceHolder000000000",
+    DIFY_TOKEN: "app-CoffeeSafeLocalCoffeeSa",
   },
   apis: [
     {

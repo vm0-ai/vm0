@@ -780,7 +780,7 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
         env.insert("VM0_RESUME_SESSION_ID".into(), session.session_id.clone());
     }
 
-    // Note: Connector placeholder env vars (e.g., GITHUB_TOKEN=gho_vm0placeholder...)
+    // Note: Connector placeholder env vars (e.g., GITHUB_TOKEN=gho_CoffeeSafeLocal...)
     // are injected by the web API into `context.environment` directly.
 
     // Secret values (base64-encoded, comma-separated)

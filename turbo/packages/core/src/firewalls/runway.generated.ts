@@ -10,7 +10,7 @@ export const runwayFirewall: FirewallConfig = {
   name: "runway",
   description: "Runway API",
   placeholders: {
-    RUNWAY_TOKEN: "Vm0PlaceHolder00000000000000000000000000000000a",
+    RUNWAY_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalC",
   },
   apis: [
     {

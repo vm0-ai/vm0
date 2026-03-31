@@ -10,7 +10,7 @@ export const similarwebFirewall: FirewallConfig = {
   name: "similarweb",
   description: "SimilarWeb API",
   placeholders: {
-    SIMILARWEB_TOKEN: "vm0placeholderSimilarwebToken00000000000000000000000a",
+    SIMILARWEB_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa",
   },
   apis: [
     {

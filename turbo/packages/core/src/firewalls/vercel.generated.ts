@@ -11,7 +11,7 @@ export const vercelFirewall: FirewallConfig = {
   description: "Vercel API",
   placeholders: {
     VERCEL_TOKEN:
-      "vcp_Vm0PlaceHolder000000000000000000000000000000000000000000",
+      "vcp_CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeL",
   },
   apis: [
     {
@@ -60,6 +60,16 @@ export const vercelFirewall: FirewallConfig = {
           ],
         },
         {
+          name: "api-observability:read",
+          rules: ["GET /v1/observability/manage/configuration/projects"],
+        },
+        {
+          name: "api-observability:write",
+          rules: [
+            "PUT /v1/observability/manage/configuration/projects/{projectIdOrName}",
+          ],
+        },
+        {
           name: "artifacts:read",
           rules: [
             "GET /v8/artifacts/status",
@@ -77,7 +87,7 @@ export const vercelFirewall: FirewallConfig = {
         },
         {
           name: "authentication:read",
-          rules: ["GET /v5/user/tokens", "GET /v5/user/tokens/{tokenId}"],
+          rules: ["GET /v5/user/tokens/{tokenId}", "GET /v6/user/tokens"],
         },
         {
           name: "authentication:write",
@@ -496,6 +506,38 @@ export const vercelFirewall: FirewallConfig = {
             "POST /v1/projects/{idOrName}/rolling-release/complete",
             "PATCH /v1/projects/{idOrName}/rolling-release/config",
             "DELETE /v1/projects/{idOrName}/rolling-release/config",
+          ],
+        },
+        {
+          name: "sandboxes-v2-beta:read",
+          rules: [
+            "GET /v2/sandboxes",
+            "GET /v2/sandboxes/sessions",
+            "GET /v2/sandboxes/sessions/{sessionId}",
+            "GET /v2/sandboxes/sessions/{sessionId}/cmd",
+            "GET /v2/sandboxes/sessions/{sessionId}/cmd/{cmdId}",
+            "GET /v2/sandboxes/sessions/{sessionId}/cmd/{cmdId}/logs",
+            "GET /v2/sandboxes/snapshots",
+            "GET /v2/sandboxes/snapshots/{snapshotId}",
+            "GET /v2/sandboxes/{name}",
+          ],
+        },
+        {
+          name: "sandboxes-v2-beta:write",
+          rules: [
+            "POST /v2/sandboxes",
+            "POST /v2/sandboxes/sessions/{sessionId}/cmd",
+            "POST /v2/sandboxes/sessions/{sessionId}/cmd/{cmdId}/kill",
+            "POST /v2/sandboxes/sessions/{sessionId}/extend-timeout",
+            "POST /v2/sandboxes/sessions/{sessionId}/fs/mkdir",
+            "POST /v2/sandboxes/sessions/{sessionId}/fs/read",
+            "POST /v2/sandboxes/sessions/{sessionId}/fs/write",
+            "POST /v2/sandboxes/sessions/{sessionId}/network-policy",
+            "POST /v2/sandboxes/sessions/{sessionId}/snapshot",
+            "POST /v2/sandboxes/sessions/{sessionId}/stop",
+            "DELETE /v2/sandboxes/snapshots/{snapshotId}",
+            "PATCH /v2/sandboxes/{name}",
+            "DELETE /v2/sandboxes/{name}",
           ],
         },
         {

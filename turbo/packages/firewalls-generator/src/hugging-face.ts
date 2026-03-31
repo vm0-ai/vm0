@@ -13,7 +13,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://huggingface.co/docs/hub/security-tokens";
 // Token format: hf_ + alphanumeric, ~34 chars after prefix
-const PLACEHOLDER_VALUE = "hf_Vm0PlaceHolder0000000000000000000a";
+const PLACEHOLDER_VALUE = "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";
 
 function generateTypeScript(): string {
   const lines: string[] = [

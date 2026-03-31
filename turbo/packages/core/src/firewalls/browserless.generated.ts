@@ -10,7 +10,7 @@ export const browserlessFirewall: FirewallConfig = {
   name: "browserless",
   description: "Browserless API",
   placeholders: {
-    BROWSERLESS_TOKEN: "094632bb-vm00-0000-0000-vm0placeholder",
+    BROWSERLESS_TOKEN: "c0ffee5a-fe10-ca1c-0ffe-e5afe10ca1c0",
   },
   apis: [
     {

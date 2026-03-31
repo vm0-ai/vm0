@@ -12,7 +12,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://docs.browserbase.com/reference/api/overview";
 // Token format not publicly documented; using generic placeholder
-const PLACEHOLDER_VALUE = "bb_vm0placeholder_000000000000000000000000000000a";
+const PLACEHOLDER_VALUE = "bb_CoffeeSafeLocal_CoffeeSafeLocalCoffeeSafeLocal";
 
 function generateTypeScript(): string {
   const lines: string[] = [

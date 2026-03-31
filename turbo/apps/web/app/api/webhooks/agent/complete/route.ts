@@ -24,9 +24,6 @@ import { drainOrgQueue } from "../../../../../src/lib/run/run-queue-service";
 import { dispatchQueuedZeroRun } from "../../../../../src/lib/zero/zero-queue-service";
 import { processOrgCredits } from "../../../../../src/lib/credit/credit-service";
 import { appendChatMessages } from "../../../../../src/lib/agent-session/agent-session-service";
-import { chatThreadRuns } from "../../../../../src/db/schema/chat-thread";
-import { updateChatThreadTitle } from "../../../../../src/lib/chat-thread";
-import { generateChatTitle } from "../../../../../src/lib/ai/lightweight-model";
 import {
   queryAxiom,
   getDatasetName,
@@ -150,7 +147,7 @@ async function persistChatMessages(
   sessionId: string,
   userId: string,
   prompt: string,
-): Promise<string | null> {
+): Promise<void> {
   const { resultText, summaries } = await queryRunEventsForChat(runId);
 
   const messages: Array<{
@@ -171,7 +168,6 @@ async function persistChatMessages(
 
   await appendChatMessages(sessionId, userId, messages);
   log.debug(`Persisted ${messages.length} chat messages for run ${runId}`);
-  return resultText;
 }
 
 /**
@@ -357,38 +353,17 @@ const router = tsr.router(webhookCompleteContract, {
       finalStatus = "completed";
       log.debug(`Run ${body.runId} completed successfully`);
 
-      // Persist chat messages and regenerate thread title (non-blocking)
+      // Persist chat messages (non-blocking)
       if (session) {
         after(async () => {
-          const assistantResult = await persistChatMessages(
+          await persistChatMessages(
             body.runId,
             session.id,
             userId,
             run.prompt,
           ).catch((err) => {
             log.error("Failed to persist chat messages", { err });
-            return null;
           });
-
-          // Regenerate chat thread title from full context
-          const [threadRun] = await globalThis.services.db
-            .select({ chatThreadId: chatThreadRuns.chatThreadId })
-            .from(chatThreadRuns)
-            .where(eq(chatThreadRuns.runId, body.runId))
-            .limit(1);
-
-          if (threadRun) {
-            const title = await generateChatTitle(
-              run.prompt,
-              assistantResult,
-            ).catch((err: unknown) => {
-              log.warn("Failed to generate chat title", { err });
-              return null;
-            });
-            if (title) {
-              await updateChatThreadTitle(threadRun.chatThreadId, title);
-            }
-          }
         });
       }
     } else {

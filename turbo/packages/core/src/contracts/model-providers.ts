@@ -419,7 +419,7 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Record<
   "anthropic-api-key": mpFirewall(
     "anthropic-api-key",
     { name: "x-api-key" },
-    "sk-ant-api03-vm0placeholder0000000000000000000000000000000000000000000000000000000000000000000000000000000AA",
+    "sk-ant-api03-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCofAA",
   ),
   // Placeholder: sk-ant-oat01-{93 word/hyphen chars}AA (108 chars total)
   // Source: same structure as API key; prefix from claude setup-token output
@@ -428,7 +428,7 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Record<
   "claude-code-oauth-token": mpFirewall(
     "claude-code-oauth-token",
     { name: "Authorization", valuePrefix: "Bearer" },
-    "sk-ant-oat01-vm0placeholder0000000000000000000000000000000000000000000000000000000000000000000000000000000AA",
+    "sk-ant-oat01-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCofAA",
   ),
   // Placeholder: sk-or-v1-{64 hex chars} (73 chars total)
   // Source: real key observed in GitHub issue
@@ -437,14 +437,14 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Record<
   "openrouter-api-key": mpFirewall(
     "openrouter-api-key",
     { name: "Authorization", valuePrefix: "Bearer" },
-    "sk-or-v1-vm0placeholder00000000000000000000000000000000000000000000000000",
+    "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",
   ),
   // Placeholder: sk-{32 chars} (35 chars total)
   // Source: no authoritative format documentation found; using generic sk- prefix
   "moonshot-api-key": mpFirewall(
     "moonshot-api-key",
     { name: "Authorization", valuePrefix: "Bearer" },
-    "sk-vm0placeholder000000000000000000",
+    "sk-CoffeeSafeLocalCoffeeSafeLocalCo",
   ),
   // Placeholder: eyJ... (JWT-style, variable length)
   // Source: no authoritative format documentation found; MiniMax docs do not disclose key format
@@ -452,7 +452,7 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Record<
   "minimax-api-key": mpFirewall(
     "minimax-api-key",
     { name: "Authorization", valuePrefix: "Bearer" },
-    "eyvm0placeholder000000000000000000000000000000000000",
+    "eyCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffe",
   ),
   // Placeholder: sk-{32 hex chars} (35 chars total)
   // Source: Semgrep regex \bsk-[a-f0-9]{32}\b
@@ -460,21 +460,21 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Record<
   "deepseek-api-key": mpFirewall(
     "deepseek-api-key",
     { name: "Authorization", valuePrefix: "Bearer" },
-    "sk-vm0placeholder000000000000000000",
+    "sk-c0ffee5afe10ca1c0ffee5afe10ca1c0",
   ),
   // Placeholder: sk-{32 chars} (35 chars total)
   // Source: no authoritative format documentation found; using generic sk- prefix
   "zai-api-key": mpFirewall(
     "zai-api-key",
     { name: "Authorization", valuePrefix: "Bearer" },
-    "sk-vm0placeholder000000000000000000",
+    "sk-CoffeeSafeLocalCoffeeSafeLocalCo",
   ),
   // Placeholder: sk-{32 chars} (35 chars total)
   // Source: no authoritative format documentation found; Vercel gateway proxies upstream providers
   "vercel-ai-gateway": mpFirewall(
     "vercel-ai-gateway",
     { name: "Authorization", valuePrefix: "Bearer" },
-    "sk-vm0placeholder000000000000000000",
+    "sk-CoffeeSafeLocalCoffeeSafeLocalCo",
   ),
 };
 

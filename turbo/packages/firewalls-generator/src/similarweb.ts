@@ -3,7 +3,7 @@ import { writeOutput } from "./codegen";
 const DOCS_URL =
   "https://docs.similarweb.com/api-v5/getting-started/authentication";
 const PLACEHOLDER_VALUE =
-  "vm0placeholderSimilarwebToken00000000000000000000000a";
+  "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa";
 
 function generateTypeScript(): string {
   const lines: string[] = [

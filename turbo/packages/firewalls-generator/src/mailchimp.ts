@@ -11,7 +11,7 @@
 import { writeOutput } from "./codegen";
 
 // Mailchimp API key format: [0-9a-f]{32}-us[0-9]{1,2}
-const PLACEHOLDER_VALUE = "ae54fcc23ade65fa404a65e78c56f898-us6";
+const PLACEHOLDER_VALUE = "c0ffee5afe10ca1c0ffee5afe10ca1c0-us6";
 
 function generateTypeScript(): string {
   const lines: string[] = [

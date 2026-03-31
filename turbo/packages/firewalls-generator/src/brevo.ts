@@ -13,7 +13,7 @@ import { writeOutput } from "./codegen";
 const DOCS_URL = "https://developers.brevo.com/docs/authentication-schemes";
 // Token format: xkeysib- prefix + hex-like string
 const PLACEHOLDER_VALUE =
-  "xkeysib-Vm0PlaceHolder0000000000000000000000000000000000000000000000a";
+  "xkeysib-c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe10ca1a";
 
 function generateTypeScript(): string {
   const lines: string[] = [

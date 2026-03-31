@@ -10,7 +10,7 @@ export const hubspotFirewall: FirewallConfig = {
   name: "hubspot",
   description: "HubSpot API",
   placeholders: {
-    HUBSPOT_TOKEN: "Vm0PlaceHolder00000000000000000a",
+    HUBSPOT_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCo",
   },
   apis: [
     {

@@ -10,7 +10,7 @@ export const larkFirewall: FirewallConfig = {
   name: "lark",
   description: "Lark Open Platform API",
   placeholders: {
-    LARK_TOKEN: "vm0placeholderLarkToken000000000000000000000000000000a",
+    LARK_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSaf",
   },
   apis: [
     {

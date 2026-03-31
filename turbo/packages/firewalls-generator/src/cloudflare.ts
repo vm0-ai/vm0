@@ -12,7 +12,7 @@ import { writeOutput } from "./codegen";
 const DOCS_URL =
   "https://developers.cloudflare.com/fundamentals/api/how-to/make-api-calls/";
 // Format: [A-Za-z0-9_-]{40} (gitleaks: cloudflare-api-key)
-const PLACEHOLDER_VALUE = "Vm0PlaceHolder000000000000000000000000aB";
+const PLACEHOLDER_VALUE = "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafe";
 
 function generateTypeScript(): string {
   const lines: string[] = [

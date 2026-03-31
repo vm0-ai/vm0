@@ -10,7 +10,7 @@ export const lineFirewall: FirewallConfig = {
   name: "line",
   description: "LINE Messaging API",
   placeholders: {
-    LINE_TOKEN: "vm0placeholderLineToken000000000000000000000000000000a",
+    LINE_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSaf",
   },
   apis: [
     {

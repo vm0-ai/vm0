@@ -10,7 +10,7 @@ export const podchaserFirewall: FirewallConfig = {
   name: "podchaser",
   description: "Podchaser Podcast API",
   placeholders: {
-    PODCHASER_TOKEN: "vm0placeholderPodchaserToken00000000000000000000000000a",
+    PODCHASER_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafe",
   },
   apis: [
     {

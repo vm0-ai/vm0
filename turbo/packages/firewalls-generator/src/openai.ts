@@ -15,7 +15,7 @@ const DOCS_URL = "https://platform.openai.com/docs/api-reference/introduction";
 // Format: sk-proj- + [A-Za-z0-9_-]{74} + T3BlbkFJ + [A-Za-z0-9_-]{74}
 // (gitleaks: openai-api-key)
 const PLACEHOLDER_VALUE =
-  "sk-proj-Vm0PlaceHolder000000000000000000000000000000000000000000000000000000000000T3BlbkFJVm0PlaceHolder000000000000000000000000000000000000000000000000000000000000";
+  "sk-proj-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocaT3BlbkFJCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoca";
 
 function generateTypeScript(): string {
   const lines: string[] = [

@@ -10,7 +10,7 @@ export const gammaFirewall: FirewallConfig = {
   name: "gamma",
   description: "Gamma API",
   placeholders: {
-    GAMMA_TOKEN: "sk-gamma-Vm0PlaceHolder000000000000a",
+    GAMMA_TOKEN: "sk-gamma-CoffeeSafeLocalCoffeeSafeLo",
   },
   apis: [
     {

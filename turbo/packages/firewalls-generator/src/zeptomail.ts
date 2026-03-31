@@ -11,7 +11,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://www.zoho.com/zeptomail/help/api/email-sending.html";
 // Format: 32 lowercase alphanumeric chars (e.g. uxvst6gadzc32bjd6a7g89g21f725bd3)
-const PLACEHOLDER_VALUE = "vm0placeholder00000000000000000a";
+const PLACEHOLDER_VALUE = "CoffeeSafeLocalCoffeeSafeLocalCo";
 
 function generateTypeScript(): string {
   const lines: string[] = [

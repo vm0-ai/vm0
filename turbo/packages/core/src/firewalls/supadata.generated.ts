@@ -10,7 +10,7 @@ export const supadataFirewall: FirewallConfig = {
   name: "supadata",
   description: "Supadata API",
   placeholders: {
-    SUPADATA_TOKEN: "vm0placeholderSupadataToken00000000000000000000000000a",
+    SUPADATA_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSaf",
   },
   apis: [
     {

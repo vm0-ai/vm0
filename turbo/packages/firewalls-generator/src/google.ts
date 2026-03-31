@@ -320,7 +320,7 @@ async function generateGoogleFirewall(
 // ── Service configs ──────────────────────────────────────────────────────
 
 const PLACEHOLDER_VALUE =
-  "ya29.A0Vm0PlaceHolder-Vm0_PlaceHolder00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+  "ya29.A0CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa";
 
 const CONFIGS: Record<string, GoogleFirewallConfig> = {
   gmail: {

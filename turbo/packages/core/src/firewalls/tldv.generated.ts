@@ -10,7 +10,7 @@ export const tldvFirewall: FirewallConfig = {
   name: "tldv",
   description: "tl;dv API",
   placeholders: {
-    TLDV_TOKEN: "vm0placeholderTldvToken000000000000000000000000000000a",
+    TLDV_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSaf",
   },
   apis: [
     {

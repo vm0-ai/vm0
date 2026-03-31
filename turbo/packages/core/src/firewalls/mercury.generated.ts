@@ -10,7 +10,7 @@ export const mercuryFirewall: FirewallConfig = {
   name: "mercury",
   description: "Mercury API",
   placeholders: {
-    MERCURY_TOKEN: "vm0placeholderMercuryToken0000000000000000000000000000a",
+    MERCURY_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafe",
   },
   apis: [
     {

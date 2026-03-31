@@ -13,7 +13,7 @@ import { writeOutput } from "./codegen";
 const DOCS_URL = "https://loops.so/docs/api-reference/intro";
 // Token format: 32-char hex string
 // e.g. d2d561f5ff80136f69b4b5a31b9fb3c9
-const PLACEHOLDER_VALUE = "d2d561f5ff80136f69b4b5a31b9fb3c9";
+const PLACEHOLDER_VALUE = "c0ffee5afe10ca1c0ffee5afe10ca1c0";
 
 function generateTypeScript(): string {
   const lines: string[] = [

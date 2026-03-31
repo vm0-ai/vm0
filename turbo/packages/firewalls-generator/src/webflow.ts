@@ -13,7 +13,7 @@ import { writeOutput } from "./codegen";
 const DOCS_URL = "https://developers.webflow.com/data/reference/authentication";
 // Token format not publicly documented; using generic placeholder
 const PLACEHOLDER_VALUE =
-  "vm0placeholder00000000000000000000000000000000000000000000000000a";
+  "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffe";
 
 function generateTypeScript(): string {
   const lines: string[] = [

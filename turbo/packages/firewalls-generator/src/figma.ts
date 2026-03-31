@@ -27,7 +27,7 @@ const OPENAPI_URL =
 
 // Figma personal access token placeholder.
 // Format: figd_[A-Za-z0-9_-]{40} (45 chars total)
-const PLACEHOLDER_VALUE = "figd_Vm0PlaceHolder00000000000000000000000000";
+const PLACEHOLDER_VALUE = "figd_CoffeeSafeLocalCoffeeSafeLocalCoffeeSafe";
 
 const OAUTH_SCHEME_KEYS = new Set(["OAuth2", "OrgOAuth2"]);
 

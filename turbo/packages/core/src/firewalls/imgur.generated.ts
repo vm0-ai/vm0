@@ -10,7 +10,7 @@ export const imgurFirewall: FirewallConfig = {
   name: "imgur",
   description: "Imgur API",
   placeholders: {
-    IMGUR_CLIENT_ID: "vm0placeholder0",
+    IMGUR_CLIENT_ID: "CoffeeSafeLocal",
   },
   apis: [
     {

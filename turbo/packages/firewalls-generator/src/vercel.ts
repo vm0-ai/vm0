@@ -27,7 +27,7 @@ const OPENAPI_URL = "https://openapi.vercel.sh/";
 // Vercel API token placeholder.
 // Format: vcp_[A-Za-z0-9]{56} (60 chars total)
 const PLACEHOLDER_VALUE =
-  "vcp_Vm0PlaceHolder000000000000000000000000000000000000000000";
+  "vcp_CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeL";
 
 // ── OpenAPI types ────────────────────────────────────────────────────────
 

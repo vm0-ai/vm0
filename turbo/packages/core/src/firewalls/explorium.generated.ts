@@ -10,7 +10,7 @@ export const exploriumFirewall: FirewallConfig = {
   name: "explorium",
   description: "Explorium API",
   placeholders: {
-    EXPLORIUM_TOKEN: "vm0placeholderExploriumToken0000000000000000000000000a",
+    EXPLORIUM_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafe",
   },
   apis: [
     {
