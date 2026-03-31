@@ -59,9 +59,6 @@ export const zeroAgentSchedules = pgTable(
     // Secrets encrypted with AES-256-GCM (same pattern as runner_job_queue)
     encryptedSecrets: text("encrypted_secrets"),
 
-    // Artifact configuration
-    artifactName: varchar("artifact_name", { length: 255 }),
-    artifactVersion: varchar("artifact_version", { length: 64 }),
     volumeVersions: jsonb("volume_versions").$type<Record<string, string>>(),
 
     // Per-schedule notification control (overrides user global preferences)

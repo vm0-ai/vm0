@@ -1478,6 +1478,13 @@
       "when": 1774927812944,
       "tag": "0210_unify_notification_defaults",
       "breakpoints": true
+    },
+    {
+      "idx": 211,
+      "version": "7",
+      "when": 1774927812945,
+      "tag": "0211_remove_schedule_artifact_columns",
+      "breakpoints": true
     }
   ]
 }

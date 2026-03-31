@@ -48,8 +48,6 @@ const router = tsr.router(zeroSchedulesMainContract, {
         notifyEmail: body.notifyEmail,
         notifySlack: body.notifySlack,
         slackChannelId: body.slackChannelId,
-        artifactName: body.artifactName,
-        artifactVersion: body.artifactVersion,
         volumeVersions: body.volumeVersions,
       });
 

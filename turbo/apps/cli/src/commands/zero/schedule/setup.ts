@@ -128,7 +128,6 @@ interface SetupOptions {
   interval?: string;
   timezone?: string;
   prompt?: string;
-  artifactName: string;
   enable?: boolean;
   notifyEmail?: boolean;
   notifySlack?: boolean;
@@ -517,7 +516,6 @@ async function buildAndDeploy(params: {
   intervalSeconds: number | undefined;
   timezone: string;
   prompt: string;
-  artifactName: string;
   notifyEmail?: boolean;
   notifySlack?: boolean;
 }): Promise<DeployResult> {
@@ -548,7 +546,6 @@ async function buildAndDeploy(params: {
     intervalSeconds: params.intervalSeconds,
     timezone: params.timezone,
     prompt: params.prompt,
-    artifactName: params.artifactName,
     ...(params.notifyEmail !== undefined && {
       notifyEmail: params.notifyEmail,
     }),
@@ -672,7 +669,6 @@ export const setupCommand = new Command()
   .option("-i, --interval <seconds>", "Interval in seconds for loop mode")
   .option("-z, --timezone <tz>", "IANA timezone")
   .option("-p, --prompt <text>", "Prompt to run")
-  .option("--artifact-name <name>", "Artifact name", "artifact")
   .option("-e, --enable", "Enable schedule immediately after creation")
   .option("--notify-email", "Enable email notifications (default: false)")
   .option("--no-notify-email", "Disable email notifications")
@@ -778,7 +774,6 @@ Notes:
         intervalSeconds,
         timezone,
         prompt: promptText_,
-        artifactName: options.artifactName,
         notifyEmail,
         notifySlack,
       });

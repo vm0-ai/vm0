@@ -62,13 +62,6 @@ function printRunConfiguration(schedule: ScheduleResponse): void {
     console.log(`${"Secrets:".padEnd(16)}${schedule.secretNames.join(", ")}`);
   }
 
-  if (schedule.artifactName) {
-    const artifactInfo = schedule.artifactVersion
-      ? `${schedule.artifactName}:${schedule.artifactVersion}`
-      : schedule.artifactName;
-    console.log(`${"Artifact:".padEnd(16)}${artifactInfo}`);
-  }
-
   if (
     schedule.volumeVersions &&
     Object.keys(schedule.volumeVersions).length > 0

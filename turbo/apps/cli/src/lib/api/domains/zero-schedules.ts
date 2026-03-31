@@ -25,8 +25,6 @@ export async function deployZeroSchedule(body: {
   prompt: string;
   description?: string;
   appendSystemPrompt?: string;
-  artifactName?: string;
-  artifactVersion?: string;
   volumeVersions?: Record<string, string>;
   enabled?: boolean;
   notifyEmail?: boolean;

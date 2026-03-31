@@ -42,8 +42,6 @@ export interface ScheduleResponse {
   appendSystemPrompt: string | null;
   vars: Record<string, string> | null;
   secretNames: string[] | null;
-  artifactName: string | null;
-  artifactVersion: string | null;
   volumeVersions: Record<string, string> | null;
   enabled: boolean;
   notifyEmail: boolean;
@@ -87,8 +85,6 @@ interface DeployScheduleRequest {
   notifySlack?: boolean;
   slackChannelId?: string | null;
   // vars and secrets removed - now managed via server-side tables
-  artifactName?: string;
-  artifactVersion?: string;
   volumeVersions?: Record<string, string>;
 }
 
@@ -154,8 +150,6 @@ function toResponse(
     appendSystemPrompt: schedule.appendSystemPrompt,
     vars: schedule.vars,
     secretNames,
-    artifactName: schedule.artifactName,
-    artifactVersion: schedule.artifactVersion,
     volumeVersions: schedule.volumeVersions,
     enabled: schedule.enabled,
     notifyEmail: schedule.notifyEmail,
@@ -287,8 +281,6 @@ async function updateExistingSchedule(
       appendSystemPrompt: request.appendSystemPrompt ?? null,
       vars: null,
       encryptedSecrets: null,
-      artifactName: request.artifactName ?? null,
-      artifactVersion: request.artifactVersion ?? null,
       volumeVersions: request.volumeVersions ?? null,
       ...(request.notifyEmail !== undefined && {
         notifyEmail: request.notifyEmail,
@@ -341,8 +333,6 @@ async function insertNewSchedule(
       appendSystemPrompt: request.appendSystemPrompt ?? null,
       vars: null,
       encryptedSecrets: null,
-      artifactName: request.artifactName ?? null,
-      artifactVersion: request.artifactVersion ?? null,
       volumeVersions: request.volumeVersions ?? null,
       enabled: request.enabled ?? false,
       notifyEmail: request.notifyEmail ?? false,

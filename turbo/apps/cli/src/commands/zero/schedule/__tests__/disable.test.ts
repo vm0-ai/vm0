@@ -38,8 +38,6 @@ const mockSchedule = {
   appendSystemPrompt: null,
   vars: null,
   secretNames: null,
-  artifactName: null,
-  artifactVersion: null,
   volumeVersions: null,
   enabled: false,
   notifyEmail: true,
