@@ -63,6 +63,7 @@ export function ZeroActivityPage() {
       ? dataLoadable.data.pagination.totalPages
       : undefined;
   const isLoading = dataLoadable.state === "loading";
+  const hasError = dataLoadable.state === "hasError";
 
   // Agent filter options: only agents with activity records
   const agentOptions = [
@@ -170,41 +171,57 @@ export function ZeroActivityPage() {
       {/* Scrollable table + pagination area */}
       <div className="flex-1 min-h-0 overflow-auto px-4 sm:px-6 pt-4">
         <div className="mx-auto max-w-[900px]">
-          <div className="zero-card overflow-hidden pb-3">
-            <LogTable
-              logs={logs}
-              isLoading={isLoading}
-              rowsPerPage={rowsPerPage}
-              showSource
-              hasActiveFilter={
-                agentFilter !== "all" ||
-                statusFilter !== "all" ||
-                sourceFilter !== "all"
-              }
-            />
-          </div>
-          {(totalPages === undefined || totalPages > 1) && (
-            <div className="py-4">
-              <Pagination
-                currentPage={currentPage}
-                totalPages={totalPages}
-                rowsPerPage={rowsPerPage}
-                hasNext={hasNext}
-                hasPrev={hasPrev}
-                isLoading={isLoading}
-                labelClassName="font-normal text-muted-foreground"
-                buttonClassName="bg-transparent border-border/70"
-                onNextPage={() =>
-                  detach(goToNext(pageSignal), Reason.DomCallback)
-                }
-                onPrevPage={() => goToPrev()}
-                onForwardTwoPages={() =>
-                  detach(goForwardTwo(pageSignal), Reason.DomCallback)
-                }
-                onBackTwoPages={() => goBackTwo()}
-                onRowsPerPageChange={(limit) => setRowsPerPage(limit)}
-              />
+          {hasError ? (
+            <div
+              role="alert"
+              className="zero-card flex flex-col items-center justify-center gap-2 py-16 text-center"
+            >
+              <p className="text-sm font-medium text-destructive">
+                Failed to load activity data
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Something went wrong. Please try again later.
+              </p>
             </div>
+          ) : (
+            <>
+              <div className="zero-card overflow-hidden pb-3">
+                <LogTable
+                  logs={logs}
+                  isLoading={isLoading}
+                  rowsPerPage={rowsPerPage}
+                  showSource
+                  hasActiveFilter={
+                    agentFilter !== "all" ||
+                    statusFilter !== "all" ||
+                    sourceFilter !== "all"
+                  }
+                />
+              </div>
+              {(totalPages === undefined || totalPages > 1) && (
+                <div className="py-4">
+                  <Pagination
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    rowsPerPage={rowsPerPage}
+                    hasNext={hasNext}
+                    hasPrev={hasPrev}
+                    isLoading={isLoading}
+                    labelClassName="font-normal text-muted-foreground"
+                    buttonClassName="bg-transparent border-border/70"
+                    onNextPage={() =>
+                      detach(goToNext(pageSignal), Reason.DomCallback)
+                    }
+                    onPrevPage={() => goToPrev()}
+                    onForwardTwoPages={() =>
+                      detach(goForwardTwo(pageSignal), Reason.DomCallback)
+                    }
+                    onBackTwoPages={() => goBackTwo()}
+                    onRowsPerPageChange={(limit) => setRowsPerPage(limit)}
+                  />
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
