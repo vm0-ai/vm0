@@ -411,13 +411,8 @@ export function BillingDialog() {
   };
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(v) => {
-        return !v && close();
-      }}
-    >
-      <DialogContent className="sm:max-w-[600px]">
+    <Dialog open={open} onOpenChange={(v) => !v && close()}>
+      <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-[600px]">
         <DialogHeader>
           <DialogTitle>Choose your plan</DialogTitle>
           <DialogDescription>

@@ -699,7 +699,7 @@ function ScheduleFormDialogInner({
   return (
     <>
       <DialogContent
-        className="sm:max-w-lg gap-6 [&>button[aria-label=Close]:last-child]:hidden"
+        className="w-[calc(100vw-2rem)] sm:max-w-lg gap-6 [&>button[aria-label=Close]:last-child]:hidden"
         onEscapeKeyDown={(e) => {
           e.preventDefault();
           requestClose();
