@@ -489,7 +489,8 @@ export {
   zeroAgentInstructionsResponseSchema,
   zeroAgentInstructionsRequestSchema,
   zeroAgentFirewallPoliciesRequestSchema,
-  zeroAgentSkillsContract,
+  zeroAgentSkillsCollectionContract,
+  zeroAgentSkillsDetailContract,
   zeroAgentCustomSkillNameSchema,
   zeroAgentCustomSkillSchema,
   zeroAgentSkillContentRequestSchema,
@@ -508,7 +509,8 @@ export {
   type ZeroAgentCustomSkill,
   type ZeroAgentSkillContentRequest,
   type ZeroAgentSkillContentResponse,
-  type ZeroAgentSkillsContract,
+  type ZeroAgentSkillsCollectionContract,
+  type ZeroAgentSkillsDetailContract,
 } from "./zero-agents";
 export {
   zeroConnectorsMainContract,
