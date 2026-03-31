@@ -82,20 +82,20 @@ Notes:
         // Connector not connected at all — direct to connectors page
         const url = `${platformUrl.origin}/connectors`;
         console.log(
-          `The ${label} connector is not connected. Ask the user to connect it at: ${url}`,
+          `The ${label} connector is not connected. Ask the user to connect it at: [Connect ${label}](${url})`,
         );
       } else if (!hasPermission) {
         // Connected but not authorized for this agent — direct to authorization tab
         const path = agentId ? `/team/${agentId}` : "/team";
         const url = `${platformUrl.origin}${path}?tab=authorization`;
         console.log(
-          `The ${label} connector is connected but not authorized for this agent. Ask the user to enable it at: ${url}`,
+          `The ${label} connector is connected but not authorized for this agent. Ask the user to enable it at: [Authorize ${label}](${url})`,
         );
       } else {
         // Both connected and authorized — something else is wrong
         const url = `${platformUrl.origin}/connectors`;
         console.log(
-          `The ${label} connector is connected and authorized, but the token is still missing. Ask the user to check the connector status at: ${url}`,
+          `The ${label} connector is connected and authorized, but the token is still missing. Ask the user to check the connector status at: [Check ${label} status](${url})`,
         );
       }
     }),

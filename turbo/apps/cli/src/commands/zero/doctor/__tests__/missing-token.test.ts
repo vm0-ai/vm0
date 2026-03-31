@@ -73,7 +73,9 @@ describe("zero doctor missing-token command", () => {
         "GH_TOKEN is provided by the GitHub connector",
       );
       expect(logCalls).toContain("not connected");
-      expect(logCalls).toContain("https://app.vm0.ai/connectors");
+      expect(logCalls).toContain(
+        "[Connect GitHub](https://app.vm0.ai/connectors)",
+      );
     });
   });
 
@@ -102,7 +104,7 @@ describe("zero doctor missing-token command", () => {
       );
       expect(logCalls).toContain("not authorized");
       expect(logCalls).toContain(
-        "https://app.vm0.ai/team/agent-abc-123?tab=authorization",
+        "[Authorize GitHub](https://app.vm0.ai/team/agent-abc-123?tab=authorization)",
       );
     });
   });
@@ -129,6 +131,9 @@ describe("zero doctor missing-token command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("connected and authorized");
       expect(logCalls).toContain("still missing");
+      expect(logCalls).toContain(
+        "[Check GitHub status](https://app.vm0.ai/connectors)",
+      );
     });
   });
 
