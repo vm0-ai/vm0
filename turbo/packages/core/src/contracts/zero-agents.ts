@@ -16,7 +16,7 @@ export const zeroAgentResponseSchema = z.object({
   avatarUrl: z.string().nullable(),
   connectors: z.array(z.string()),
   firewallPolicies: firewallPoliciesSchema.nullable(),
-  customSkills: z.array(z.string()),
+  customSkills: z.array(z.string()).default([]),
 });
 
 /**
