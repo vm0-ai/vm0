@@ -1,27 +1,19 @@
-import { fireEvent } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
+import { userEvent } from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import type { AgentEvent } from "../../../signals/zero-page/log-types.ts";
-import { act } from "react";
 import type { SummaryEntry } from "@vm0/core";
 
 export const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
 
-export function sendMessageInUI(
+export async function sendMessageInUI(
   textarea: HTMLTextAreaElement,
   text: string,
-): void {
-  fireEvent.change(textarea, { target: { value: text } });
-  act(() => {
-    textarea.dispatchEvent(
-      Object.assign(
-        new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
-        {
-          preventDefault: () => {},
-        },
-      ),
-    );
-  });
+): Promise<void> {
+  const user = userEvent.setup();
+  await user.click(textarea);
+  await user.type(textarea, text);
+  await user.keyboard("{Enter}");
 }
 
 export function makeToolUseEvent(

@@ -27,7 +27,7 @@ describe("chat queue state", () => {
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
     );
 
-    sendMessageInUI(textarea, "Hello");
+    await sendMessageInUI(textarea, "Hello");
 
     await waitFor(() => {
       expect(screen.getByText(/In queue/)).toBeInTheDocument();
@@ -54,7 +54,7 @@ describe("chat queue state", () => {
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
     );
 
-    sendMessageInUI(textarea, "Hello");
+    await sendMessageInUI(textarea, "Hello");
 
     // Wait for queue state
     await waitFor(() => {

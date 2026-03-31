@@ -1,7 +1,6 @@
 import {
   useGet,
   useSet,
-  useLoadable,
   useLastLoadable,
   useLastResolved,
   useResolved,
@@ -83,23 +82,22 @@ function AvatarOrPlaceholder({
 // ZeroSessionChatPage — real conversation backed by agent runs
 // ---------------------------------------------------------------------------
 
-interface ZeroSessionChatPageProps {
+interface ZeroChatThreadPageProps {
   zeroAvatarSrc?: string | null;
   onNavigateToSchedule?: () => void;
-  /** Agent ID used to build the avatar link to the team detail page. */
   avatarAgentId?: string;
   chatAgentName?: string;
 }
 
-export function ZeroSessionChatPage({
+export function ZeroChatThreadPage({
   zeroAvatarSrc,
   onNavigateToSchedule,
   avatarAgentId,
   chatAgentName,
-}: ZeroSessionChatPageProps) {
+}: ZeroChatThreadPageProps) {
   const defaultDisplayName = useResolved(agentDisplayName$) ?? "Zero";
   const displayName = chatAgentName ?? defaultDisplayName;
-  const messagesLoadable = useLoadable(zeroChatMessages$);
+  const messagesLoadable = useLastLoadable(zeroChatMessages$);
   const messages =
     messagesLoadable.state === "hasData" ? messagesLoadable.data : [];
   const allFinishedLoadable = useLastLoadable(allFinished$);

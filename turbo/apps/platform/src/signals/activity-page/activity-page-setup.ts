@@ -5,7 +5,7 @@ import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
-import { fetchZeroSessionList$ } from "../zero-page/zero-chat.ts";
+import { reloadChatThreads$ } from "../zero-page/zero-chat.ts";
 import { initZeroActivity$, refreshZeroActivity$ } from "./activity-signals.ts";
 
 export const setupActivityPage$ = command(
@@ -23,6 +23,6 @@ export const setupActivityPage$ = command(
       return;
     }
 
-    await set(fetchZeroSessionList$, signal);
+    await set(reloadChatThreads$, signal);
   },
 );

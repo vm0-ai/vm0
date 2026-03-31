@@ -6,7 +6,7 @@ import { updatePage$ } from "../react-router.ts";
 import {
   loadSessionFromSnapshot$,
   resetLocalMessages$,
-  zeroSessionList$,
+  chatThreads$,
 } from "./zero-chat.ts";
 import { chatThreadId$, setSidebarChatAgent$ } from "./zero-nav.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
@@ -39,7 +39,7 @@ export const setupChatSessionPage$ = command(
     // Update title with session preview
     const sessionId = get(chatThreadId$);
     if (sessionId) {
-      const sessions = await get(zeroSessionList$);
+      const sessions = await get(chatThreads$);
       signal.throwIfAborted();
       const session = sessions.find((s: { id: string }) => s.id === sessionId);
       const sessionTitle = session?.preview ?? "New chat";

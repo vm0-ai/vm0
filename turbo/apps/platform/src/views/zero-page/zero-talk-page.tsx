@@ -1,4 +1,4 @@
-import { useSet, useLastLoadable } from "ccstate-react";
+import { useSet, useLastLoadable, useGet } from "ccstate-react";
 import { SidebarLayout } from "./sidebar-layout.tsx";
 import { ZeroChatPage } from "./zero-chat-page.tsx";
 import { useAgentAvatar } from "./zero-sidebar.tsx";
@@ -9,11 +9,11 @@ import {
   defaultAgentId$,
 } from "../../signals/zero-page/zero-agent-name.ts";
 import {
-  resetTalkSendSignal$,
   sendNewThreadMessage$,
   startNewZeroSession$,
 } from "../../signals/zero-page/zero-chat.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 
 export function ZeroTalkPage() {
   const chatAgentLoadable = useLastLoadable(zeroChatAgentId$);
@@ -45,7 +45,7 @@ export function ZeroTalkPage() {
 
   const sendNewThread = useSet(sendNewThreadMessage$);
   const startNewSession = useSet(startNewZeroSession$);
-  const resetTalkSendSignal = useSet(resetTalkSendSignal$);
+  const pageSignal = useGet(pageSignal$);
 
   const handleSendMessage = (
     message: string,
@@ -55,13 +55,9 @@ export function ZeroTalkPage() {
       return;
     }
     startNewSession();
-    // Use a dedicated reset signal instead of pageSignal because the send
-    // flow navigates from /talk/ to /chat/:chatThreadId, which would abort the
-    // page signal.  resetTalkSendSignal$ is reset by startNewZeroSession$
-    // above, so each send gets a fresh signal and previous sends are aborted.
-    const talkSignal = resetTalkSendSignal();
+
     detach(
-      sendNewThread(resolvedAgentId, message, options, talkSignal),
+      sendNewThread(resolvedAgentId, message, options, pageSignal),
       Reason.DomCallback,
     );
   };

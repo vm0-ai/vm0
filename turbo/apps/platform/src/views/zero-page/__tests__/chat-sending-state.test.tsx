@@ -25,7 +25,7 @@ describe("chat sending state", () => {
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
     );
 
-    sendMessageInUI(textarea, "Hello");
+    await sendMessageInUI(textarea, "Hello");
 
     await waitFor(() => {
       expect(screen.getByText("Hello")).toBeInTheDocument();
@@ -50,7 +50,7 @@ describe("chat sending state", () => {
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
     );
 
-    sendMessageInUI(textarea, "Hello");
+    await sendMessageInUI(textarea, "Hello");
 
     await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
@@ -79,7 +79,7 @@ describe("chat sending state", () => {
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
     );
 
-    sendMessageInUI(textarea, "Hello");
+    await sendMessageInUI(textarea, "Hello");
 
     // The thinking message cycles through various texts; the shimmer class
     // is applied to the element. We check for the shimmer class presence.
@@ -112,7 +112,7 @@ describe("chat sending state", () => {
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
     );
 
-    sendMessageInUI(textarea, "Hello");
+    await sendMessageInUI(textarea, "Hello");
 
     // Wait for the first run to be created and sending state to be active
     await waitFor(() => {
@@ -160,7 +160,7 @@ describe("chat sending state", () => {
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
     );
 
-    sendMessageInUI(textarea, "Hello");
+    await sendMessageInUI(textarea, "Hello");
 
     // Wait for thinking state
     await waitFor(() => {

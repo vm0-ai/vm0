@@ -24,7 +24,7 @@ describe("chat completion", () => {
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
     );
 
-    sendMessageInUI(textarea, "Hello");
+    await sendMessageInUI(textarea, "Hello");
 
     await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
@@ -49,7 +49,7 @@ describe("chat completion", () => {
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
     );
 
-    sendMessageInUI(textarea, "Hello");
+    await sendMessageInUI(textarea, "Hello");
 
     await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
@@ -75,7 +75,7 @@ describe("chat completion", () => {
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
     );
 
-    sendMessageInUI(textarea, "Hello");
+    await sendMessageInUI(textarea, "Hello");
 
     // Wait for running state
     await waitFor(() => {
@@ -115,7 +115,7 @@ describe("chat completion", () => {
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
     );
 
-    sendMessageInUI(textarea, "Hello");
+    await sendMessageInUI(textarea, "Hello");
 
     await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();

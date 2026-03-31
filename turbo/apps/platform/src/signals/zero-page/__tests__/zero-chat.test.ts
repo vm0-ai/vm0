@@ -8,9 +8,7 @@ import {
   zeroChatMessages$,
   allFinished$,
   zeroChatInput$,
-  zeroSessionList$,
-  zeroSessionListLoading$,
-  zeroSessionListError$,
+  chatThreads$,
   setZeroChatInput$,
   clearZeroChatInput$,
   startNewZeroSession$,
@@ -74,12 +72,10 @@ describe("zero-chat signals", () => {
 
       await setup();
 
-      const threads = await context.store.get(zeroSessionList$);
+      const threads = await context.store.get(chatThreads$);
       expect(threads).toHaveLength(2);
       expect(threads[0]?.id).toBe("t1");
       expect(threads[1]?.preview).toBe("World");
-      expect(context.store.get(zeroSessionListLoading$)).toBeFalsy();
-      expect(context.store.get(zeroSessionListError$)).toBeNull();
     });
 
     it("should pass agentId as query parameter", async () => {
@@ -93,7 +89,7 @@ describe("zero-chat signals", () => {
 
       await setup();
 
-      await context.store.get(zeroSessionList$);
+      await context.store.get(chatThreads$);
 
       const url = new URL(capturedUrl);
       expect(url.searchParams.get("agentId")).toBe(

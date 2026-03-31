@@ -6,7 +6,7 @@ import { updatePage$ } from "../react-router.ts";
 import { pathParams$ } from "../route.ts";
 import { agents$ } from "../zero-page/agents-list.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
-import { fetchZeroSessionList$ } from "../zero-page/zero-chat.ts";
+import { reloadChatThreads$ } from "../zero-page/zero-chat.ts";
 import { fetchZeroJobData$ } from "../zero-page/zero-job-detail.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
 import { initSlackOrg$ } from "../zero-page/zero-slack.ts";
@@ -45,6 +45,6 @@ export const setupTeamDetailPage$ = command(
       set(updateDocumentTitle$, displayName);
     }
 
-    await set(fetchZeroSessionList$, signal);
+    set(reloadChatThreads$);
   },
 );

@@ -1,6 +1,6 @@
 import { useSet, useLastLoadable } from "ccstate-react";
 import { SidebarLayout } from "./sidebar-layout.tsx";
-import { ZeroSessionChatPage } from "./zero-session-chat-page.tsx";
+import { ZeroChatThreadPage } from "./zero-chat-thread-page.tsx";
 import { useAgentAvatar } from "./zero-sidebar.tsx";
 import { zeroChatAgentId$ } from "../../signals/zero-page/zero-active-agent.ts";
 import { zeroSubagents$ } from "../../signals/zero-page/zero-agents.ts";
@@ -51,7 +51,7 @@ export function ZeroChatSessionPageWrapper() {
 
   return (
     <SidebarLayout>
-      <ZeroSessionChatPage
+      <ZeroChatThreadPage
         zeroAvatarSrc={chatAvatarSrc}
         chatAgentName={chatAgentName}
         onNavigateToSchedule={handleNavigateToSchedule}
