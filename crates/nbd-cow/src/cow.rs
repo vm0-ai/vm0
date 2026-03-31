@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::os::unix::fs::FileExt;
 use std::path::Path;
@@ -22,7 +22,7 @@ pub struct CowLayer {
     /// 1 bit per block: set if the block has been written (and flushed to COW file).
     dirty: BitVec,
     /// Pending writes: block index -> block data.
-    write_buffer: HashMap<u64, Vec<u8>>,
+    write_buffer: BTreeMap<u64, Vec<u8>>,
     /// Current buffer usage in bytes.
     buffer_bytes: usize,
     /// Flush when buffer_bytes exceeds this threshold.
@@ -56,7 +56,7 @@ impl CowLayer {
             cow_path: cow_path.to_path_buf(),
             cow_fd: None,
             dirty: bitvec![0; num_blocks],
-            write_buffer: HashMap::new(),
+            write_buffer: BTreeMap::new(),
             buffer_bytes: 0,
             flush_threshold,
             block_size,
@@ -151,7 +151,7 @@ impl CowLayer {
 
     /// Flush the write buffer to the COW file.
     ///
-    /// Sorts dirty blocks by offset and writes them sequentially via pwrite.
+    /// BTreeMap iterates in key order, giving sequential I/O for free.
     pub fn flush(&mut self) -> Result<()> {
         if self.write_buffer.is_empty() {
             return Ok(());
@@ -159,9 +159,8 @@ impl CowLayer {
 
         self.ensure_cow_fd()?;
 
-        // Sort blocks by index for sequential I/O
-        let mut blocks: Vec<(u64, Vec<u8>)> = self.write_buffer.drain().collect();
-        blocks.sort_by_key(|(idx, _)| *idx);
+        // BTreeMap iterates in sorted order — no explicit sort needed
+        let blocks = std::mem::take(&mut self.write_buffer);
 
         let block_size = self.block_size;
         for (block_idx, data) in &blocks {

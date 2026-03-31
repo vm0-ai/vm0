@@ -1,4 +1,4 @@
-use std::os::unix::io::{FromRawFd, OwnedFd};
+use std::os::unix::io::{FromRawFd, IntoRawFd, OwnedFd};
 use std::sync::Arc;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -28,12 +28,10 @@ pub async fn dispatch(
     cow: Arc<RwLock<CowLayer>>,
     shutdown: CancellationToken,
 ) -> Result<()> {
-    let raw_fd = std::os::unix::io::AsRawFd::as_raw_fd(&socket_fd);
+    let raw_fd = socket_fd.into_raw_fd();
     let std_stream = unsafe { std::os::unix::net::UnixStream::from_raw_fd(raw_fd) };
     std_stream.set_nonblocking(true)?;
     let stream = UnixStream::from_std(std_stream)?;
-    // Prevent double-close: the UnixStream now owns the fd
-    std::mem::forget(socket_fd);
 
     let (mut reader, mut writer) = stream.into_split();
 
@@ -227,34 +225,9 @@ mod tests {
         let base_data = vec![0xAA; 8192];
         let (_base, _cow_file, cow) = create_test_cow(&base_data);
         let cow = Arc::new(RwLock::new(cow));
-        let shutdown = CancellationToken::new();
 
-        // Create a socketpair
-        let (client_fd, server_fd) = {
-            let mut fds = [0i32; 2];
-            let ret =
-                unsafe { libc::socketpair(libc::AF_UNIX, libc::SOCK_STREAM, 0, fds.as_mut_ptr()) };
-            assert_eq!(ret, 0);
-            unsafe { (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])) }
-        };
-
-        // Spawn the dispatch task
-        let cow_clone = cow.clone();
-        let shutdown_clone = shutdown.clone();
-        let server_task =
-            tokio::spawn(async move { dispatch(server_fd, cow_clone, shutdown_clone).await });
-
-        // Use the client side
-        let client_std = unsafe {
-            std::os::unix::net::UnixStream::from_raw_fd(std::os::unix::io::AsRawFd::as_raw_fd(
-                &client_fd,
-            ))
-        };
-        client_std.set_nonblocking(true).unwrap();
-        let client_stream = UnixStream::from_std(client_std).unwrap();
-        std::mem::forget(client_fd);
-
-        let (mut client_reader, mut client_writer) = client_stream.into_split();
+        let (mut client_reader, mut client_writer, server_task, _shutdown) =
+            setup_dispatch(cow).await;
 
         // 1. Send a READ request for first block
         let read_req = NbdRequest {
@@ -365,14 +338,10 @@ mod tests {
         let task =
             tokio::spawn(async move { dispatch(server_fd, cow_clone, shutdown_clone).await });
 
-        let client_std = unsafe {
-            std::os::unix::net::UnixStream::from_raw_fd(std::os::unix::io::AsRawFd::as_raw_fd(
-                &client_fd,
-            ))
-        };
+        let client_std =
+            unsafe { std::os::unix::net::UnixStream::from_raw_fd(client_fd.into_raw_fd()) };
         client_std.set_nonblocking(true).unwrap();
         let client_stream = UnixStream::from_std(client_std).unwrap();
-        std::mem::forget(client_fd);
 
         let (reader, writer) = client_stream.into_split();
         (reader, writer, task, shutdown)

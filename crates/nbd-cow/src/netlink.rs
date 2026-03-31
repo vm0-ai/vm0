@@ -199,27 +199,26 @@ fn resolve_nbd_family(sock: &GenlSocket) -> Result<u16> {
     // Parse attributes to find CTRL_ATTR_FAMILY_ID
     let mut offset = 20;
     while offset + 4 <= msg.len() {
-        let nla_len = u16::from_ne_bytes([
-            *msg.get(offset)
-                .ok_or_else(|| NbdCowError::Netlink("truncated nla".into()))?,
-            *msg.get(offset + 1)
-                .ok_or_else(|| NbdCowError::Netlink("truncated nla".into()))?,
-        ]) as usize;
-        let nla_type = u16::from_ne_bytes([
-            *msg.get(offset + 2)
-                .ok_or_else(|| NbdCowError::Netlink("truncated nla".into()))?,
-            *msg.get(offset + 3)
-                .ok_or_else(|| NbdCowError::Netlink("truncated nla".into()))?,
-        ]);
+        let nla_len_bytes: [u8; 2] = msg
+            .get(offset..offset + 2)
+            .ok_or_else(|| NbdCowError::Netlink("truncated nla".into()))?
+            .try_into()
+            .map_err(|_| NbdCowError::Netlink("nla len conversion".into()))?;
+        let nla_type_bytes: [u8; 2] = msg
+            .get(offset + 2..offset + 4)
+            .ok_or_else(|| NbdCowError::Netlink("truncated nla".into()))?
+            .try_into()
+            .map_err(|_| NbdCowError::Netlink("nla type conversion".into()))?;
+        let nla_len = u16::from_ne_bytes(nla_len_bytes) as usize;
+        let nla_type = u16::from_ne_bytes(nla_type_bytes);
 
         if nla_type == CTRL_ATTR_FAMILY_ID && nla_len >= 6 {
-            let id = u16::from_ne_bytes([
-                *msg.get(offset + 4)
-                    .ok_or_else(|| NbdCowError::Netlink("truncated id".into()))?,
-                *msg.get(offset + 5)
-                    .ok_or_else(|| NbdCowError::Netlink("truncated id".into()))?,
-            ]);
-            return Ok(id);
+            let id_bytes: [u8; 2] = msg
+                .get(offset + 4..offset + 6)
+                .ok_or_else(|| NbdCowError::Netlink("truncated family id".into()))?
+                .try_into()
+                .map_err(|_| NbdCowError::Netlink("id conversion".into()))?;
+            return Ok(u16::from_ne_bytes(id_bytes));
         }
 
         // Advance to next attribute (4-byte aligned)
@@ -253,39 +252,30 @@ fn send_genl_msg_raw(
     let total_len = 16 + 4 + attrs.len();
     let mut msg = vec![0u8; total_len];
 
-    // nlmsghdr
-    let len_bytes = (total_len as u32).to_ne_bytes();
-    // Safe: msg is at least 20 bytes (16 + 4)
-    let header = msg
-        .get_mut(..20)
-        .ok_or_else(|| NbdCowError::Netlink("msg buffer too small for header".into()))?;
-    header
-        .get_mut(..4)
-        .ok_or_else(|| NbdCowError::Netlink("msg buffer too small".into()))?
-        .copy_from_slice(&len_bytes);
-    header
-        .get_mut(4..6)
-        .ok_or_else(|| NbdCowError::Netlink("msg buffer too small".into()))?
-        .copy_from_slice(&msg_type.to_ne_bytes());
-    header
-        .get_mut(6..8)
-        .ok_or_else(|| NbdCowError::Netlink("msg buffer too small".into()))?
-        .copy_from_slice(&(NLM_F_REQUEST | NLM_F_ACK).to_ne_bytes());
+    // nlmsghdr: length(4) + type(2) + flags(2) + seq(4) + pid(4)
+    if let Some(s) = msg.get_mut(..4) {
+        s.copy_from_slice(&(total_len as u32).to_ne_bytes());
+    }
+    if let Some(s) = msg.get_mut(4..6) {
+        s.copy_from_slice(&msg_type.to_ne_bytes());
+    }
+    if let Some(s) = msg.get_mut(6..8) {
+        s.copy_from_slice(&(NLM_F_REQUEST | NLM_F_ACK).to_ne_bytes());
+    }
     // seq and pid left as 0
 
-    // genlmsghdr
-    if let Some(b) = header.get_mut(16) {
+    // genlmsghdr: cmd(1) + version(1) + reserved(2)
+    if let Some(b) = msg.get_mut(16) {
         *b = cmd;
     }
-    if let Some(b) = header.get_mut(17) {
+    if let Some(b) = msg.get_mut(17) {
         *b = version;
     }
-    // reserved (2 bytes) = 0
 
     // attributes
-    msg.get_mut(20..)
-        .ok_or_else(|| NbdCowError::Netlink("msg buffer too small for attrs".into()))?
-        .copy_from_slice(attrs);
+    if let Some(dest) = msg.get_mut(20..) {
+        dest.copy_from_slice(attrs);
+    }
 
     let ret = unsafe {
         libc::send(
@@ -325,27 +315,23 @@ fn recv_genl_ack(sock: &GenlSocket) -> Result<()> {
         return Err(NbdCowError::Netlink("ack response too short".into()));
     }
 
-    let msg_type = u16::from_ne_bytes([
-        *buf.get(4)
-            .ok_or_else(|| NbdCowError::Netlink("ack too short for msg_type".into()))?,
-        *buf.get(5)
-            .ok_or_else(|| NbdCowError::Netlink("ack too short for msg_type".into()))?,
-    ]);
+    let type_bytes: [u8; 2] = buf
+        .get(4..6)
+        .ok_or_else(|| NbdCowError::Netlink("ack too short for msg_type".into()))?
+        .try_into()
+        .map_err(|_| NbdCowError::Netlink("msg_type conversion".into()))?;
+    let msg_type = u16::from_ne_bytes(type_bytes);
     if msg_type == NLMSG_ERROR {
         // Error message: nlmsghdr (16) + error code (4 bytes as i32)
         if n < 20 {
             return Err(NbdCowError::Netlink("error response too short".into()));
         }
-        let error = i32::from_ne_bytes([
-            *buf.get(16)
-                .ok_or_else(|| NbdCowError::Netlink("error response truncated".into()))?,
-            *buf.get(17)
-                .ok_or_else(|| NbdCowError::Netlink("error response truncated".into()))?,
-            *buf.get(18)
-                .ok_or_else(|| NbdCowError::Netlink("error response truncated".into()))?,
-            *buf.get(19)
-                .ok_or_else(|| NbdCowError::Netlink("error response truncated".into()))?,
-        ]);
+        let err_bytes: [u8; 4] = buf
+            .get(16..20)
+            .ok_or_else(|| NbdCowError::Netlink("error response truncated".into()))?
+            .try_into()
+            .map_err(|_| NbdCowError::Netlink("error code conversion".into()))?;
+        let error = i32::from_ne_bytes(err_bytes);
         if error == 0 {
             return Ok(()); // ACK (error=0 means success)
         }

@@ -25,8 +25,6 @@ pub const DEFAULT_FLUSH_THRESHOLD: usize = 4 * 1024 * 1024;
 /// Writes go to an in-memory buffer that is periodically flushed to a sparse COW file.
 /// Reads check the buffer, then COW file, then base image.
 pub struct NbdCowDevice {
-    /// Unique identifier for this device.
-    pub id: String,
     /// NBD device index (N in /dev/nbdN).
     device_index: u32,
     /// Path to the block device (e.g., /dev/nbd0).
@@ -47,7 +45,6 @@ impl NbdCowDevice {
     /// 3. Spawns dispatch tasks for each connection
     /// 4. Connects via netlink
     pub async fn create(base_image: &Path, cow_file: &Path, size: u64) -> Result<Self> {
-        let id = uuid::Uuid::new_v4().to_string();
         let device_index = netlink::find_free_device()?;
         let device_path = PathBuf::from(format!("/dev/nbd{device_index}"));
         let shutdown = CancellationToken::new();
@@ -84,7 +81,6 @@ impl NbdCowDevice {
         netlink::connect(device_index, &client_fds, size, BLOCK_SIZE as u64)?;
 
         Ok(Self {
-            id,
             device_index,
             device_path,
             cow_file: cow_file.to_path_buf(),
@@ -134,8 +130,20 @@ impl NbdCowDevice {
             tracing::warn!("NBD disconnect failed for nbd{}: {e}", self.device_index);
         }
 
-        // Wait for kernel to release the device
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        // Wait for kernel to release the device (poll pid file)
+        let pid_path = format!("/sys/block/nbd{}/pid", self.device_index);
+        for _ in 0..10 {
+            match std::fs::read_to_string(&pid_path) {
+                Ok(content) => {
+                    let pid = content.trim();
+                    if pid == "-1" || pid == "0" || pid.is_empty() {
+                        break;
+                    }
+                }
+                Err(_) => break, // pid file gone means device released
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
 
         Ok(())
     }

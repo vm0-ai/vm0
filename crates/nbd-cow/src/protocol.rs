@@ -158,7 +158,8 @@ pub fn serialize_reply(reply: &NbdReply) -> [u8; REPLY_HEADER_SIZE] {
 }
 
 /// Serialize a 28-byte NBD request header (for testing).
-pub fn serialize_request(req: &NbdRequest) -> [u8; REQUEST_HEADER_SIZE] {
+#[cfg(test)]
+pub(crate) fn serialize_request(req: &NbdRequest) -> [u8; REQUEST_HEADER_SIZE] {
     let mut buf = [0u8; REQUEST_HEADER_SIZE];
     let mut cursor = Cursor::new(buf.as_mut_slice());
     // All writes fit within the 28-byte buffer, so write_all cannot fail.
