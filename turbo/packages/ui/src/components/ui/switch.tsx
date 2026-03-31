@@ -18,8 +18,9 @@ const SIZES = {
   },
 } as const;
 
-interface SwitchProps
-  extends React.ComponentPropsWithoutRef<typeof SwitchPrimitives.Root> {
+interface SwitchProps extends React.ComponentPropsWithoutRef<
+  typeof SwitchPrimitives.Root
+> {
   size?: keyof typeof SIZES;
 }
 
