@@ -5,6 +5,7 @@ import { agentSessions } from "../../db/schema/agent-session";
 import { zeroAgentSessions } from "../../db/schema/zero-agent-session";
 import { notFound } from "../errors";
 import type { SummaryEntry } from "@vm0/core";
+import type { TitleContextMessage } from "../ai/lightweight-model";
 
 /**
  * Create a new chat thread.
@@ -291,4 +292,46 @@ export async function getChatThreadMessages(
     latestSessionId: sessionId,
     unsavedRuns,
   };
+}
+
+/**
+ * Get previous conversation messages for a thread, suitable for title generation.
+ * Returns up to 10 recent messages (role + content only).
+ */
+export async function getChatThreadContext(
+  threadId: string,
+  userId: string,
+): Promise<TitleContextMessage[]> {
+  const [threadRow] = await globalThis.services.db
+    .select({ sessionId: chatThreads.sessionId })
+    .from(chatThreads)
+    .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)))
+    .limit(1);
+
+  if (!threadRow?.sessionId) {
+    return [];
+  }
+
+  type StoredMessage = {
+    role: "user" | "assistant";
+    content: string;
+  };
+
+  const [session] = await globalThis.services.db
+    .select({ chatMessages: zeroAgentSessions.chatMessages })
+    .from(agentSessions)
+    .leftJoin(zeroAgentSessions, eq(agentSessions.id, zeroAgentSessions.id))
+    .where(
+      and(
+        eq(agentSessions.id, threadRow.sessionId),
+        eq(agentSessions.userId, userId),
+      ),
+    )
+    .limit(1);
+
+  const messages = (session?.chatMessages ?? []) as StoredMessage[];
+  return messages.slice(-10).map((m) => ({
+    role: m.role,
+    content: m.content,
+  }));
 }

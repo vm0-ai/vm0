@@ -17,7 +17,10 @@ import {
   createChatThread,
   getChatThread,
   addRunToThread,
+  updateChatThreadTitle,
+  getChatThreadContext,
 } from "../../../../../src/lib/chat-thread/chat-thread-service";
+import { generateChatTitle } from "../../../../../src/lib/ai/lightweight-model";
 import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
 import {
   getApiUrl,
@@ -55,20 +58,27 @@ const router = tsr.router(chatMessagesContract, {
     try {
       // Resolve or create thread
       let sessionId: string | undefined;
+      let previousContext: Awaited<ReturnType<typeof getChatThreadContext>> =
+        [];
 
       if (body.threadId) {
         const thread = await getChatThread(body.threadId, authCtx.userId);
         threadId = thread.id;
         sessionId = thread.sessionId ?? undefined;
+        previousContext = await getChatThreadContext(thread.id, authCtx.userId);
       } else {
-        const title = body.prompt.trim().slice(0, 100);
-        const thread = await createChatThread(
-          authCtx.userId,
-          body.agentId,
-          title,
-        );
+        const thread = await createChatThread(authCtx.userId, body.agentId);
         threadId = thread.id;
         sessionId = undefined;
+      }
+
+      // Generate AI title synchronously from context + current prompt
+      const title = await generateChatTitle(
+        body.prompt,
+        previousContext.length > 0 ? previousContext : undefined,
+      ).catch(() => null);
+      if (title) {
+        await updateChatThreadTitle(threadId, title);
       }
 
       // Build callback for session persistence

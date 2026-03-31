@@ -72,38 +72,57 @@ function stripMarkdown(text: string): string {
       .replace(/(\*{1,3}|_{1,3})(.+?)\1/g, "$2")
       // Headings: # text
       .replace(/^#{1,6}\s+/gm, "")
+      // Horizontal rules: ---, ***, ___
+      .replace(/^[-*_]{3,}\s*$/gm, "")
       // Inline code: `text`
       .replace(/`([^`]+)`/g, "$1")
       // Links: [text](url)
       .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+      // Surrounding quotes: "title" or 'title'
+      .replace(/^["'](.+)["']$/, "$1")
       .trim()
   );
 }
 
 /**
+ * A single turn in the conversation history used for title generation.
+ */
+export interface TitleContextMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+/**
  * Generate a short title for a chat thread from conversation context.
  *
- * Accepts the user prompt and (optionally) the assistant's response so the
- * title can reflect the actual outcome rather than just the question.
- *
+ * Accepts previous conversation history and the current user prompt.
  * Returns null if the lightweight model is unavailable.
  */
 export async function generateChatTitle(
-  userMessage: string,
-  assistantMessage?: string | null,
+  currentPrompt: string,
+  previousMessages?: TitleContextMessage[],
 ): Promise<string | null> {
-  const messages: ChatMessage[] = [
+  let context = "";
+  if (previousMessages && previousMessages.length > 0) {
+    // Include up to the last 10 messages for context, truncated to keep input small
+    const recent = previousMessages.slice(-10);
+    context = recent
+      .map((m) => `${m.role}: ${m.content.slice(0, 200)}`)
+      .join("\n");
+    context = `Previous conversation:\n${context}\n\n`;
+  }
+
+  return generateText([
     {
       role: "system",
       content:
-        "Generate a short, descriptive title (max 60 chars) for a chat conversation based on the messages below. Return only the title as plain text — no markdown, no quotes, no special formatting.",
+        "Generate a short, descriptive title (max 60 chars) for a chat conversation. Return only the title as plain text. Do not use any markdown syntax such as #, *, **, _, ---, ``` or quotes. Just plain text.",
     },
-    { role: "user", content: userMessage },
-  ];
-  if (assistantMessage) {
-    messages.push({ role: "assistant", content: assistantMessage });
-  }
-  return generateText(messages);
+    {
+      role: "user",
+      content: `${context}Current message: ${currentPrompt}`,
+    },
+  ]);
 }
 
 /**
