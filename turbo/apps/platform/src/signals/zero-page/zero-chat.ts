@@ -789,7 +789,9 @@ const prepareUserMessage$ = command(
             })
           : undefined,
     };
-    set(internalLocalMessages$, (prev) => [...prev, userMessage]);
+    set(internalLocalMessages$, (prev) => {
+      return [...prev, userMessage];
+    });
 
     // Clear the draft after preparing the message
     if (draft) {
