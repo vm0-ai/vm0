@@ -1340,6 +1340,7 @@ version = "0.1.0"
 dependencies = [
  "bitvec",
  "libc",
+ "nix",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
