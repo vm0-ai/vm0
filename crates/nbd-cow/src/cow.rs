@@ -152,6 +152,7 @@ impl CowLayer {
     /// Flush the write buffer to the COW file.
     ///
     /// BTreeMap iterates in key order, giving sequential I/O for free.
+    /// On I/O failure, unwritten blocks are restored to the buffer so no data is lost.
     pub fn flush(&mut self) -> Result<()> {
         if self.write_buffer.is_empty() {
             return Ok(());
@@ -159,16 +160,24 @@ impl CowLayer {
 
         self.ensure_cow_fd()?;
 
-        // BTreeMap iterates in sorted order — no explicit sort needed
-        let blocks = std::mem::take(&mut self.write_buffer);
+        // Take ownership; on failure we put unwritten blocks back.
+        let blocks: Vec<(u64, Vec<u8>)> =
+            std::mem::take(&mut self.write_buffer).into_iter().collect();
 
         let block_size = self.block_size;
-        for (block_idx, data) in &blocks {
-            let offset = block_idx * block_size as u64;
-            if let Some(ref cow_fd) = self.cow_fd {
-                cow_fd.write_at(data, offset)?;
+        for (i, entry) in blocks.iter().enumerate() {
+            let offset = entry.0 * block_size as u64;
+            if let Some(ref cow_fd) = self.cow_fd
+                && let Err(e) = cow_fd.write_at(&entry.1, offset)
+            {
+                // Restore unwritten blocks back to the buffer
+                for (idx, buf) in blocks.into_iter().skip(i) {
+                    self.write_buffer.insert(idx, buf);
+                }
+                self.buffer_bytes = self.write_buffer.len() * self.block_size;
+                return Err(e.into());
             }
-            self.set_dirty(*block_idx);
+            self.set_dirty(entry.0);
         }
 
         self.buffer_bytes = 0;

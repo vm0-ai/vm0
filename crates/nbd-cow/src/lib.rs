@@ -77,8 +77,15 @@ impl NbdCowDevice {
             server_handles.push(handle);
         }
 
-        // Connect via netlink
-        netlink::connect(device_index, &client_fds, size, BLOCK_SIZE as u64)?;
+        // Connect via netlink — on failure, abort spawned tasks so they don't
+        // leak as detached (they would exit on EOF anyway, but this is cleaner).
+        if let Err(e) = netlink::connect(device_index, &client_fds, size, BLOCK_SIZE as u64) {
+            shutdown.cancel();
+            for handle in server_handles {
+                handle.abort();
+            }
+            return Err(e);
+        }
 
         Ok(Self {
             device_index,
