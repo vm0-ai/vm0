@@ -7,6 +7,12 @@ use bitvec::prelude::*;
 
 use crate::error::{NbdCowError, Result};
 
+// Bitmap serialization assumes usize == u64 (bitvec stores usize words).
+const _: () = assert!(
+    std::mem::size_of::<usize>() == 8,
+    "nbd-cow requires a 64-bit target"
+);
+
 /// COW (Copy-on-Write) layer with write buffering.
 ///
 /// Reads check: write buffer -> dirty COW file -> base image.

@@ -132,61 +132,25 @@ pub fn find_and_connect(client_fds: &[OwnedFd], size: u64, block_size: u64) -> R
     Err(NbdCowError::NoFreeDevice)
 }
 
-/// Find a free NBD device, connect it, and verify the device size.
+/// Check whether the device has the expected size via sysfs.
 ///
-/// On reconnect (same index after a recent disconnect), the kernel may still
-/// be tearing down the old connection. The netlink CONNECT succeeds but
-/// `set_capacity` may not take effect, leaving the device at 0 bytes.
-/// When this is detected, the device is disconnected, we wait briefly for
-/// the old teardown to complete, and retry the connect.
-pub fn find_connect_with_size_check(
-    client_fds: &[OwnedFd],
-    size: u64,
-    block_size: u64,
-) -> Result<u32> {
-    let expected_sectors = size / 512;
-    let max_retries = 5;
-
-    for attempt in 0..=max_retries {
-        let idx = find_and_connect(client_fds, size, block_size)?;
-
-        // Verify the device got the correct size
-        let size_path = format!("/sys/block/nbd{idx}/size");
-        let mut size_ok = false;
-        // Brief poll: the kernel connect is synchronous so the size should
-        // be set immediately, but give it a few ms just in case.
-        for _ in 0..5 {
-            if let Ok(content) = std::fs::read_to_string(&size_path) {
-                let sectors: u64 = content.trim().parse().unwrap_or(0);
-                if sectors == expected_sectors {
-                    size_ok = true;
-                    break;
-                }
+/// Returns `true` if the size matches within a brief polling window.
+/// On reconnect (same index after a recent disconnect), the kernel may
+/// briefly report the old (zero) capacity before the new config takes
+/// effect. A few milliseconds of polling handles this.
+pub fn verify_device_size(device_index: u32, expected_size: u64) -> bool {
+    let expected_sectors = expected_size / 512;
+    let size_path = format!("/sys/block/nbd{device_index}/size");
+    for _ in 0..5 {
+        if let Ok(content) = std::fs::read_to_string(&size_path) {
+            let sectors: u64 = content.trim().parse().unwrap_or(0);
+            if sectors == expected_sectors {
+                return true;
             }
-            std::thread::sleep(std::time::Duration::from_millis(10));
         }
-
-        if size_ok {
-            return Ok(idx);
-        }
-
-        // Size is wrong — old disconnect hasn't finished. Disconnect this
-        // connection, wait for cleanup, and retry.
-        tracing::debug!(
-            device_index = idx,
-            attempt = attempt + 1,
-            "device size 0 after connect, disconnecting and retrying"
-        );
-        let _ = disconnect(idx);
-
-        if attempt < max_retries {
-            std::thread::sleep(std::time::Duration::from_millis(200));
-        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
     }
-
-    Err(NbdCowError::Io(std::io::Error::other(
-        "device size stuck at 0 after connect retries — kernel may not have finished releasing the previous connection",
-    )))
+    false
 }
 
 /// Disconnect an NBD device via generic netlink.
@@ -413,6 +377,7 @@ fn build_sockets_nla(client_fds: &[OwnedFd]) -> Vec<u8> {
 /// Build a netlink attribute (NLA).
 fn build_nla(nla_type: u16, payload: &[u8]) -> Vec<u8> {
     let nla_len = 4 + payload.len();
+    debug_assert!(nla_len <= u16::MAX as usize, "NLA payload too large");
     let aligned_len = (nla_len + 3) & !3;
     let mut buf = vec![0u8; aligned_len];
     if let Some(header) = buf.get_mut(..4) {

@@ -51,8 +51,6 @@ impl NbdCowDevice {
     /// 3. Spawns dispatch tasks for each connection
     /// 4. Connects via netlink
     pub async fn create(base_image: &Path, cow_file: &Path, size: u64) -> Result<Self> {
-        let shutdown = CancellationToken::new();
-
         // Create COW layer
         let cow_layer = cow::CowLayer::new(
             base_image,
@@ -63,33 +61,40 @@ impl NbdCowDevice {
         )?;
         let cow_layer = Arc::new(RwLock::new(cow_layer));
 
-        // Create socketpairs and spawn server tasks
-        let mut client_fds = Vec::with_capacity(NUM_CONNECTIONS);
-        let mut server_handles = Vec::with_capacity(NUM_CONNECTIONS);
+        // Retry loop: on reconnect (same device index after a recent disconnect),
+        // the kernel may still be tearing down the old connection. The netlink
+        // CONNECT succeeds but set_capacity may not take effect (device size = 0).
+        // When detected, disconnect, recreate socketpairs + tasks, and retry.
+        // Fresh sockets and tasks are needed each attempt because the kernel may
+        // have started the NBD protocol on the old sockets; after disconnect the
+        // dispatch tasks exit and drop their server-side fds, making reuse unsafe.
+        const MAX_CONNECT_RETRIES: u32 = 5;
+        let mut last_err_idx: u32 = 0;
 
-        for _ in 0..NUM_CONNECTIONS {
-            let (client_fd, server_fd) = netlink::create_socketpair()?;
-            client_fds.push(client_fd);
+        for attempt in 0..=MAX_CONNECT_RETRIES {
+            // Fresh shutdown token and socketpairs for each attempt
+            let shutdown = CancellationToken::new();
+            let mut client_fds = Vec::with_capacity(NUM_CONNECTIONS);
+            let mut server_handles = Vec::with_capacity(NUM_CONNECTIONS);
 
-            let cow = cow_layer.clone();
-            let token = shutdown.clone();
-            let handle = tokio::spawn(async move {
-                if let Err(e) = server::dispatch(server_fd, cow, token).await {
-                    tracing::error!("NBD dispatch error: {e}");
-                }
-            });
-            server_handles.push(handle);
-        }
+            for _ in 0..NUM_CONNECTIONS {
+                let (client_fd, server_fd) = netlink::create_socketpair()?;
+                client_fds.push(client_fd);
 
-        // Atomically find a free device and connect — retries on EBUSY so
-        // concurrent runners don't race for the same device index.
-        //
-        // On reconnect (same index after a recent disconnect), the kernel may
-        // still be tearing down the old connection. The netlink CONNECT succeeds
-        // but set_capacity may not take effect, leaving the device at 0 bytes.
-        // When this happens, disconnect, wait for cleanup, and retry.
-        let device_index =
-            match netlink::find_connect_with_size_check(&client_fds, size, BLOCK_SIZE as u64) {
+                let cow = cow_layer.clone();
+                let token = shutdown.clone();
+                let handle = tokio::spawn(async move {
+                    if let Err(e) = server::dispatch(server_fd, cow, token).await {
+                        tracing::error!("NBD dispatch error: {e}");
+                    }
+                });
+                server_handles.push(handle);
+            }
+
+            // Atomically find a free device and connect — retries on EBUSY so
+            // concurrent runners don't race for the same device index.
+            let device_index = match netlink::find_and_connect(&client_fds, size, BLOCK_SIZE as u64)
+            {
                 Ok(idx) => idx,
                 Err(e) => {
                     shutdown.cancel();
@@ -99,17 +104,44 @@ impl NbdCowDevice {
                     return Err(e);
                 }
             };
-        let device_path = PathBuf::from(format!("/dev/nbd{device_index}"));
 
-        Ok(Self {
-            device_index,
-            device_path,
-            cow_file: cow_file.to_path_buf(),
-            cow: cow_layer,
-            server_handles,
-            shutdown,
-            disconnected: false,
-        })
+            // Verify the device got the correct size via sysfs.
+            if netlink::verify_device_size(device_index, size) {
+                let device_path = PathBuf::from(format!("/dev/nbd{device_index}"));
+                return Ok(Self {
+                    device_index,
+                    device_path,
+                    cow_file: cow_file.to_path_buf(),
+                    cow: cow_layer,
+                    server_handles,
+                    shutdown,
+                    disconnected: false,
+                });
+            }
+
+            // Size is wrong — disconnect, clean up tasks, and retry.
+            tracing::debug!(
+                device_index,
+                attempt = attempt + 1,
+                "device size 0 after connect, disconnecting and retrying"
+            );
+            let _ = netlink::disconnect(device_index);
+            shutdown.cancel();
+            for handle in server_handles {
+                handle.abort();
+            }
+            last_err_idx = device_index;
+
+            if attempt < MAX_CONNECT_RETRIES {
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+        }
+
+        Err(error::NbdCowError::Io(std::io::Error::other(format!(
+            "device size stuck at 0 after {MAX_CONNECT_RETRIES} connect retries \
+             on nbd{last_err_idx} — kernel may not have finished releasing \
+             the previous connection",
+        ))))
     }
 
     /// Path to the block device (e.g., `/dev/nbd0`).
