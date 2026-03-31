@@ -334,7 +334,10 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     it("should skip refresh for valid token and return its expiresAt", async () => {
       // Token valid for another 30 minutes — well outside the 60s buffer
       const validExpiry = new Date(Date.now() + 30 * 60 * 1000);
-      await setupNotionConnector({ tokenExpiresAt: validExpiry });
+      await setupNotionConnector({
+        tokenExpiresAt: validExpiry,
+        accessToken: "valid-notion-token",
+      });
 
       const encrypted = encryptTestSecrets({
         NOTION_ACCESS_TOKEN: "valid-notion-token",
@@ -365,7 +368,10 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
 
     it("should return null expiresAt for non-expiring token", async () => {
       // tokenExpiresAt = null means non-expiring
-      await setupNotionConnector({ tokenExpiresAt: null });
+      await setupNotionConnector({
+        tokenExpiresAt: null,
+        accessToken: "permanent-notion-token",
+      });
 
       const encrypted = encryptTestSecrets({
         NOTION_ACCESS_TOKEN: "permanent-notion-token",
@@ -613,6 +619,115 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       const data = await response.json();
       expect(data.error.code).toBe("TOKEN_REFRESH_FAILED");
       expect(data.error.connectors).toEqual(["close"]);
+    });
+
+    it("should use current DB token when another request already refreshed", async () => {
+      // Simulate race condition: token was recently refreshed by another request.
+      // DB has fresh expiry (30 min) and fresh token in secrets table,
+      // but encryptedSecrets still has the stale build-time token.
+      const validExpiry = new Date(Date.now() + 30 * 60 * 1000);
+      await setupNotionConnector({
+        tokenExpiresAt: validExpiry,
+        accessToken: "fresh-db-token",
+      });
+
+      // encryptedSecrets has the STALE build-time token
+      const encrypted = encryptTestSecrets({
+        NOTION_ACCESS_TOKEN: "stale-build-time-token",
+        NOTION_REFRESH_TOKEN: "notion-refresh-token",
+      });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: "Bearer ${{ secrets.NOTION_ACCESS_TOKEN }}",
+            },
+            secretConnectorMap: { NOTION_ACCESS_TOKEN: "notion" },
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      // Must use the fresh DB token, NOT the stale encryptedSecrets token
+      expect(data.headers.Authorization).toBe("Bearer fresh-db-token");
+      expect(data.expiresAt).toBeTypeOf("number");
+    });
+
+    it("should sync skipped connector tokens when only some need refresh", async () => {
+      const expiredAt = new Date(Date.now() - 60 * 1000);
+
+      // Notion: expired, will be refreshed via provider
+      await setupNotionConnector({ tokenExpiresAt: expiredAt });
+
+      // GitHub: valid (recently refreshed by another request), DB has fresh token
+      vi.stubEnv("GITHUB_OAUTH_CLIENT_ID", "test-github-client-id");
+      vi.stubEnv("GITHUB_OAUTH_CLIENT_SECRET", "test-github-client-secret");
+      const { reloadEnv } = await import("../../../../../../../src/env");
+      reloadEnv();
+
+      await context.createConnector(user.orgId, {
+        userId: user.userId,
+        type: "github",
+        authMethod: "oauth",
+        tokenExpiresAt: new Date(Date.now() + 30 * 60 * 1000),
+      });
+      await insertTestConnectorSecret(
+        user.orgId,
+        user.userId,
+        "GITHUB_ACCESS_TOKEN",
+        "fresh-github-token",
+      );
+      await insertTestConnectorSecret(
+        user.orgId,
+        user.userId,
+        "GITHUB_REFRESH_TOKEN",
+        "github-refresh-token",
+      );
+
+      // MSW for Notion refresh
+      server.use(
+        mswHttp.post(NOTION_TOKEN_URL, () =>
+          HttpResponse.json({
+            access_token: "fresh-notion-token",
+            expires_in: 3600,
+          }),
+        ),
+      );
+
+      const encrypted = encryptTestSecrets({
+        NOTION_ACCESS_TOKEN: "stale-notion-token",
+        NOTION_REFRESH_TOKEN: "notion-refresh-token",
+        GITHUB_ACCESS_TOKEN: "stale-github-token",
+        GITHUB_REFRESH_TOKEN: "github-refresh-token",
+      });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              "X-Notion": "Bearer ${{ secrets.NOTION_ACCESS_TOKEN }}",
+              "X-Github": "token ${{ secrets.GITHUB_ACCESS_TOKEN }}",
+            },
+            secretConnectorMap: {
+              NOTION_ACCESS_TOKEN: "notion",
+              GITHUB_ACCESS_TOKEN: "github",
+            },
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      // Notion: refreshed via provider
+      expect(data.headers["X-Notion"]).toBe("Bearer fresh-notion-token");
+      // GitHub: synced from DB (not refreshed, but DB has fresh token)
+      expect(data.headers["X-Github"]).toBe("token fresh-github-token");
     });
   });
 });
