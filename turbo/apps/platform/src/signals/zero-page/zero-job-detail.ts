@@ -398,7 +398,7 @@ const fetchZeroJobUserConnectors$ = command(
 const internalAddedConnectors$ = state<string[] | null>(null);
 
 const seededConnectors$ = computed(
-  (get) => get(userConnectorPermissionsState$).enabledTypes,
+  (get) => {return get(userConnectorPermissionsState$).enabledTypes},
 );
 
 export const zeroJobAddedConnectors$ = computed((get) => {

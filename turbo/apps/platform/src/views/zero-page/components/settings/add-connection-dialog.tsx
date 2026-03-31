@@ -89,7 +89,7 @@ function ApiTokenForm({
 
   const secretEntries = Object.entries(apiTokenConfig.secrets);
   const allFilled = secretEntries.every(
-    ([name, cfg]) => !cfg.required || secretValues[name],
+    ([name, cfg]) => {return !cfg.required || secretValues[name]},
   );
 
   const handleSubmit = () => {
@@ -125,7 +125,7 @@ function ApiTokenForm({
           }}
         />
       )}
-      {secretEntries.map(([name, secretConfig]) => (
+      {secretEntries.map(([name, secretConfig]) => {return (
         <div key={name} className="flex flex-col gap-1.5">
           <label className="text-sm font-medium text-foreground">
             {secretConfig.label}
@@ -134,10 +134,10 @@ function ApiTokenForm({
             type="password"
             placeholder={secretConfig.placeholder}
             value={secretValues[name] ?? ""}
-            onChange={(e) => setFormValue(type, name, e.target.value)}
+            onChange={(e) => {return setFormValue(type, name, e.target.value)}}
           />
         </div>
-      ))}
+      )})}
       <Button
         onClick={handleSubmit}
         disabled={!allFilled || submitting}
@@ -180,7 +180,7 @@ function ConnectModalContent({
         <Button
           variant="outline"
           onClick={() =>
-            detach(
+            {return detach(
               (async () => {
                 const connected = await connect(item.type, pageSignal);
                 if (connected) {
@@ -188,7 +188,7 @@ function ConnectModalContent({
                 }
               })(),
               Reason.DomCallback,
-            )
+            )}
           }
           className="w-full"
         >
@@ -228,7 +228,7 @@ export function ConnectModal({
   const selectedType = useGet(selectedConnectorType$);
   const connectorTypes = useLastResolved(allConnectorTypes$);
 
-  const item = connectorTypes?.find((c) => c.type === selectedType);
+  const item = connectorTypes?.find((c) => {return c.type === selectedType});
 
   if (!selectedType || !item) {
     return null;
@@ -237,7 +237,7 @@ export function ConnectModal({
   const config = CONNECTOR_TYPES[selectedType];
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
+    <Dialog open onOpenChange={(open) => {return !open && onClose()}}>
       <DialogContent className="max-w-md" aria-describedby={undefined}>
         <DialogHeader>
           <div className="flex items-center gap-3">

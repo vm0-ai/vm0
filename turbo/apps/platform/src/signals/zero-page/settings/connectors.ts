@@ -49,7 +49,7 @@ export interface ConnectorTypeWithStatus {
 
 export const allConnectorTypes$ = computed(async (get) => {
   const { connectors } = await get(connectors$);
-  const connectorMap = new Map(connectors.map((c) => [c.type, c]));
+  const connectorMap = new Map(connectors.map((c) => {return [c.type, c]}));
   const features = await get(featureSwitch$);
 
   const items = (Object.keys(CONNECTOR_TYPES) as ConnectorType[])
@@ -124,7 +124,7 @@ const hiddenConnectorTypes$ = computed((get): Set<ConnectorType> => {
 
 const internalSelectedConnectorType$ = state<ConnectorType | null>(null);
 export const selectedConnectorType$ = computed((get) =>
-  get(internalSelectedConnectorType$),
+  {return get(internalSelectedConnectorType$)},
 );
 export const setSelectedConnectorType$ = command(
   ({ set }, type: ConnectorType | null) => {
@@ -140,15 +140,15 @@ const L = logger("ScopeReviewModal");
 
 const internalScopeReviewType$ = state<ConnectorType | null>(null);
 export const scopeReviewType$ = computed((get) =>
-  get(internalScopeReviewType$),
+  {return get(internalScopeReviewType$)},
 );
 
 const internalScopeDiff$ = state<ScopeDiff | null>(null);
-export const scopeDiff$ = computed((get) => get(internalScopeDiff$));
+export const scopeDiff$ = computed((get) => {return get(internalScopeDiff$)});
 
 const internalScopeReviewLoading$ = state(false);
 export const scopeReviewLoading$ = computed((get) =>
-  get(internalScopeReviewLoading$),
+  {return get(internalScopeReviewLoading$)},
 );
 
 const loadScopeDiff$ = command(
@@ -188,7 +188,7 @@ export const setScopeReviewType$ = command(
 
 const tokenFormValues$ = state<Record<string, Record<string, string>>>({});
 export const tokenFormSubmitting$ = computed((get) =>
-  get(internalTokenFormSubmitting$),
+  {return get(internalTokenFormSubmitting$)},
 );
 const internalTokenFormSubmitting$ = state<string | null>(null);
 
@@ -210,7 +210,7 @@ export const clearTokenForm$ = command(({ get, set }, type: string) => {
 });
 
 export const tokenFormValuesFor$ = (type: string) =>
-  computed((get) => get(tokenFormValues$)[type] ?? {});
+  {return computed((get) => {return get(tokenFormValues$)[type] ?? {}})};
 
 export const setTokenFormSubmitting$ = command(
   ({ set }, value: string | null) => {
@@ -254,7 +254,7 @@ export const submitApiToken$ = command(
       }
     }
     signal.throwIfAborted();
-    set(internalJustConnectedTypes$, (prev) => new Set([...prev, type]));
+    set(internalJustConnectedTypes$, (prev) => {return new Set([...prev, type])});
     set(reloadConnectors$);
     // Show in connections list
     const hidden = new Set(get(hiddenConnectorTypes$));
@@ -271,7 +271,7 @@ export const submitApiToken$ = command(
 const internalPollingType$ = state<ConnectorType | null>(null);
 
 export const pollingConnectorType$ = computed((get) =>
-  get(internalPollingType$),
+  {return get(internalPollingType$)},
 );
 
 // ---------------------------------------------------------------------------
@@ -283,7 +283,7 @@ const internalJustConnectedTypes$ = state<Set<string>>(new Set());
 
 /** Types that were just connected but may not yet be reflected in allConnectorTypes$. */
 export const justConnectedTypes$ = computed((get) =>
-  get(internalJustConnectedTypes$),
+  {return get(internalJustConnectedTypes$)},
 );
 
 export const clearJustConnectedTypes$ = command(({ set }) => {
@@ -323,9 +323,9 @@ export const connectConnector$ = command(
 
       // Mark as optimistically connected before clearing polling so the UI
       // transitions directly from "Connecting…" to "Connected" without flash.
-      const isConnected = freshConnectors.some((c) => c.type === type);
+      const isConnected = freshConnectors.some((c) => {return c.type === type});
       if (isConnected) {
-        set(internalJustConnectedTypes$, (prev) => new Set([...prev, type]));
+        set(internalJustConnectedTypes$, (prev) => {return new Set([...prev, type])});
       }
       set(internalPollingType$, null);
       // Show in connections list again when user connects

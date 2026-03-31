@@ -28,7 +28,7 @@ function mockConnectors(
   server.use(
     http.get("*/api/zero/connectors", () => {
       return HttpResponse.json({
-        connectors: connectors.map((c) => ({
+        connectors: connectors.map((c) => {return {
           id: crypto.randomUUID(),
           type: c.type,
           authMethod: "oauth",
@@ -39,7 +39,7 @@ function mockConnectors(
           needsReconnect: c.needsReconnect ?? false,
           createdAt: "2026-01-01T00:00:00Z",
           updatedAt: "2026-01-01T00:00:00Z",
-        })),
+        }}),
         configuredTypes: Object.keys(CONNECTOR_TYPES),
         connectorProvidedSecretNames: [],
       });
