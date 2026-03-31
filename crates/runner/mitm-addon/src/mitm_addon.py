@@ -60,6 +60,9 @@ _request_start_times = {}
 # Cache for firewall auth headers: (run_id, api_id) -> {"headers": dict}
 _firewall_header_cache = {}
 
+# Per-key locks to coalesce concurrent fetches for the same (run_id, api_id)
+_cache_locks: dict[tuple, asyncio.Lock] = {}
+
 
 def load_registry() -> dict:
     """Load the proxy registry from file, with stat-based cache invalidation."""
@@ -79,6 +82,7 @@ def load_registry() -> dict:
         stale = [k for k in _firewall_header_cache if k[0] not in active_run_ids]
         for k in stale:
             _firewall_header_cache.pop(k, None)
+            _cache_locks.pop(k, None)
 
         _registry_cache = new_registry
         _registry_cache_key = key
@@ -481,25 +485,42 @@ async def get_firewall_headers(
 ) -> dict:
     """Get firewall auth headers with TTL-based caching.
 
+    Uses per-key locking so that concurrent requests for the same
+    (run_id, api_id) coalesce into a single HTTP fetch.
+
     Cache is evicted when:
     - The run is removed from the registry (see load_registry)
     - A 401 response is received (see response handler)
     - The expiresAt timestamp from the auth endpoint has passed
     """
     cache_key = (run_id, api_id)
+
+    # Fast path: cache hit (no lock needed — single-threaded event loop)
     cached = _firewall_header_cache.get(cache_key)
     if cached:
         expires_at = cached.get("expiresAt")
         if expires_at is None or time.time() < expires_at:
             return cached["headers"]
-        # Token expired — evict and re-fetch
 
-    result = await fetch_firewall_headers(
-        encrypted_secrets, auth_headers, sandbox_token, secret_connector_map
-    )
-    headers = result["headers"]
-    _firewall_header_cache[cache_key] = {"headers": headers, "expiresAt": result.get("expiresAt")}
-    return headers
+    # Slow path: acquire per-key lock so only one coroutine fetches
+    lock = _cache_locks.setdefault(cache_key, asyncio.Lock())
+    async with lock:
+        # Double-check: another coroutine may have populated cache while we waited
+        cached = _firewall_header_cache.get(cache_key)
+        if cached:
+            expires_at = cached.get("expiresAt")
+            if expires_at is None or time.time() < expires_at:
+                return cached["headers"]
+
+        result = await fetch_firewall_headers(
+            encrypted_secrets, auth_headers, sandbox_token, secret_connector_map
+        )
+        headers = result["headers"]
+        _firewall_header_cache[cache_key] = {
+            "headers": headers,
+            "expiresAt": result.get("expiresAt"),
+        }
+        return headers
 
 
 async def handle_firewall_request(
