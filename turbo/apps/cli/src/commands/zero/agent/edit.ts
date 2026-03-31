@@ -18,6 +18,10 @@ export const editCommand = new Command()
     "--sound <tone>",
     "New tone: professional, friendly, direct, supportive",
   )
+  .option(
+    "--skills <items>",
+    "Comma-separated custom skill names to attach (replaces existing)",
+  )
   .option("--instructions-file <path>", "Path to new instructions file")
   .addHelpText(
     "after",
@@ -25,6 +29,7 @@ export const editCommand = new Command()
 Examples:
   Update description:      zero agent edit <agent-id> --description "new role"
   Update tone:             zero agent edit <agent-id> --sound friendly
+  Update skills:           zero agent edit <agent-id> --skills my-skill,other-skill
   Update instructions:     zero agent edit <agent-id> --instructions-file ./instructions.md
   Update yourself:         zero agent edit $ZERO_AGENT_ID --description "new role"
 
@@ -40,22 +45,28 @@ Notes:
           displayName?: string;
           description?: string;
           sound?: string;
+          skills?: string;
           instructionsFile?: string;
         },
       ) => {
         const hasAgentUpdate =
           options.displayName !== undefined ||
           options.description !== undefined ||
-          options.sound !== undefined;
+          options.sound !== undefined ||
+          options.skills !== undefined;
 
         if (!hasAgentUpdate && !options.instructionsFile) {
           throw new Error(
-            "At least one option is required (--display-name, --description, --sound, --instructions-file)",
+            "At least one option is required (--display-name, --description, --sound, --skills, --instructions-file)",
           );
         }
 
         if (hasAgentUpdate) {
           const current = await getZeroAgent(agentId);
+
+          const customSkills = options.skills
+            ? options.skills.split(",").map((s) => s.trim())
+            : undefined;
 
           await updateZeroAgent(agentId, {
             displayName:
@@ -70,6 +81,7 @@ Notes:
               options.sound !== undefined
                 ? options.sound
                 : (current.sound ?? undefined),
+            customSkills,
           });
         }
 

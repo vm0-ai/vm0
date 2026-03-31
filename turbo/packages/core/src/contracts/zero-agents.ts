@@ -6,6 +6,17 @@ import { firewallPoliciesSchema } from "./firewalls";
 const c = initContract();
 
 /**
+ * Custom skill name validation regex.
+ * Must be lowercase alphanumeric with hyphens, no leading/trailing hyphens.
+ * Minimum 2 characters.
+ */
+export const zeroAgentCustomSkillNameSchema = z
+  .string()
+  .min(2)
+  .max(64)
+  .regex(/^[a-z0-9][a-z0-9-]*[a-z0-9]$/);
+
+/**
  * Zero agent response schema
  */
 export const zeroAgentResponseSchema = z.object({
@@ -26,6 +37,7 @@ export const zeroAgentRequestSchema = z.object({
   displayName: z.string().optional(),
   sound: z.string().optional(),
   avatarUrl: z.string().optional(),
+  customSkills: z.array(zeroAgentCustomSkillNameSchema).optional(),
 });
 
 /**
@@ -209,17 +221,6 @@ export const zeroAgentInstructionsContract = c.router({
     summary: "Update zero agent instructions",
   },
 });
-
-/**
- * Custom skill name validation regex.
- * Must be lowercase alphanumeric with hyphens, no leading/trailing hyphens.
- * Minimum 2 characters.
- */
-export const zeroAgentCustomSkillNameSchema = z
-  .string()
-  .min(2)
-  .max(64)
-  .regex(/^[a-z0-9][a-z0-9-]*[a-z0-9]$/);
 
 /**
  * Custom skill metadata schema

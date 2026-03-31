@@ -146,9 +146,84 @@ export const zeroRunAgentEventsContract = c.router({
   },
 });
 
+/**
+ * Run context snapshot — sanitized execution context for debugging.
+ * Dynamic fields (environment, firewalls, volumes, artifact) are stored in Axiom.
+ * Static fields (prompt, vars, secretNames) are merged from agent_runs at query time.
+ */
+const runContextVolumeSchema = z.object({
+  name: z.string(),
+  mountPath: z.string(),
+  vasStorageName: z.string(),
+  vasVersionId: z.string(),
+});
+
+const runContextArtifactSchema = z.object({
+  mountPath: z.string(),
+  vasStorageName: z.string(),
+  vasVersionId: z.string(),
+});
+
+const runContextFirewallSchema = z.object({
+  name: z.string(),
+  ref: z.string(),
+  apis: z.array(
+    z.object({
+      base: z.string(),
+      permissions: z
+        .array(
+          z.object({
+            name: z.string(),
+            description: z.string().optional(),
+            rules: z.array(z.string()),
+          }),
+        )
+        .optional(),
+    }),
+  ),
+});
+
+const runContextResponseSchema = z.object({
+  prompt: z.string(),
+  appendSystemPrompt: z.string().nullable(),
+  secretNames: z.array(z.string()),
+  vars: z.record(z.string(), z.string()).nullable(),
+  environment: z.record(z.string(), z.string()),
+  firewalls: z.array(runContextFirewallSchema),
+  volumes: z.array(runContextVolumeSchema),
+  artifact: runContextArtifactSchema.nullable(),
+  memory: runContextArtifactSchema.nullable(),
+});
+
+/**
+ * Zero run context contract (GET /api/zero/runs/:id/context)
+ * Returns sanitized execution context snapshot for debugging
+ */
+export const zeroRunContextContract = c.router({
+  getContext: {
+    method: "GET",
+    path: "/api/zero/runs/:id/context",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      id: z.string().min(1, "Run ID is required"),
+    }),
+    responses: {
+      200: runContextResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get run execution context snapshot for debugging",
+  },
+});
+
+// Inferred types from Zod schemas
+export type RunContextResponse = z.infer<typeof runContextResponseSchema>;
+
 // Type exports
 export type ZeroRunsMainContract = typeof zeroRunsMainContract;
 export type ZeroRunsByIdContract = typeof zeroRunsByIdContract;
 export type ZeroRunsCancelContract = typeof zeroRunsCancelContract;
 export type ZeroRunsQueueContract = typeof zeroRunsQueueContract;
 export type ZeroRunAgentEventsContract = typeof zeroRunAgentEventsContract;
+export type ZeroRunContextContract = typeof zeroRunContextContract;

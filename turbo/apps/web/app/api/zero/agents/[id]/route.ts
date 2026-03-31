@@ -125,10 +125,13 @@ const router = tsr.router(zeroAgentsByIdContract, {
     );
     if (forbidden) return forbidden;
 
+    // Use provided customSkills if present, otherwise keep existing
+    const customSkills = body.customSkills ?? existing.customSkills ?? [];
+
     // Build compose content (all connector skills included, plus custom skills)
     const content = buildComposeContent(
       existing.name,
-      (existing.customSkills ?? []).map((name) => {
+      customSkills.map((name) => {
         return { name };
       }),
     );
@@ -166,6 +169,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
         description: body.description ?? null,
         sound: body.sound ?? null,
         avatarUrl: body.avatarUrl ?? null,
+        customSkills,
       })
       .onConflictDoUpdate({
         target: [zeroAgents.orgId, zeroAgents.name],
@@ -180,6 +184,9 @@ const router = tsr.router(zeroAgentsByIdContract, {
           ...(body.sound !== undefined && { sound: body.sound }),
           ...(body.avatarUrl !== undefined && {
             avatarUrl: body.avatarUrl,
+          }),
+          ...(body.customSkills !== undefined && {
+            customSkills: body.customSkills,
           }),
         },
       });

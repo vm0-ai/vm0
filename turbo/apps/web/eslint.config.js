@@ -1,4 +1,4 @@
-import { nextJsConfig } from "@vm0/eslint-config/next-js";
+import { nextJsConfig, oxlint } from "@vm0/eslint-config/next-js";
 import webPlugin from "./custom-eslint/index.ts";
 
 const classRestrictions = [
@@ -85,4 +85,5 @@ export default [
       "scripts/migrations/004-backfill-default-agent/**",
     ],
   },
+  ...oxlint.buildFromOxlintConfigFile("./.oxlintrc.json"),
 ];

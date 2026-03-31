@@ -4,7 +4,9 @@ import tseslint from "typescript-eslint";
 import pluginReactHooks from "eslint-plugin-react-hooks";
 import pluginReact from "eslint-plugin-react";
 import globals from "globals";
-import { config as baseConfig } from "./base.js";
+import { config as baseConfig, oxlint } from "./base.js";
+
+export { oxlint };
 
 /**
  * A custom ESLint configuration for libraries that use React.

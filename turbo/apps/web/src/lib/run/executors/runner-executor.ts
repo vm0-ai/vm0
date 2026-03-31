@@ -1,7 +1,12 @@
-import { DEFAULT_PROFILE, type StoredExecutionContext } from "@vm0/core";
+import {
+  DEFAULT_PROFILE,
+  type StoredExecutionContext,
+  type ExperimentalFirewalls,
+} from "@vm0/core";
 import { eq } from "drizzle-orm";
 import { agentRuns } from "../../../db/schema/agent-run";
 import { runnerJobQueue } from "../../../db/schema/runner-job-queue";
+import { ingestRunContext, type RunContextSnapshot } from "../../axiom/client";
 import { encryptSecretsMap } from "../../crypto/secrets-encryption";
 import { isOfficialRunnerGroup } from "../../org/org-service";
 import { forbidden } from "../../errors";
@@ -74,6 +79,9 @@ export async function executeRunnerJob(
     memoryName: context.memoryName ?? undefined,
   };
 
+  // Ingest sanitized context snapshot to Axiom for debugging
+  ingestRunContext(buildRunContextSnapshot(context));
+
   // Insert into runner job queue
   // TTL: 2 hours for job expiration
   const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000);
@@ -112,4 +120,78 @@ export async function executeRunnerJob(
     createdAt: new Date().toISOString(),
     sandboxType: "runner",
   };
+}
+
+/**
+ * Build a sanitized context snapshot for Axiom ingestion.
+ * - Secret values in environment are masked as "***"
+ * - Firewall auth headers are stripped entirely
+ * - Presigned URLs are omitted from storage entries
+ */
+function buildRunContextSnapshot(context: PreparedContext): RunContextSnapshot {
+  const secretValues = new Set(
+    context.secrets ? Object.values(context.secrets) : [],
+  );
+
+  // Mask environment values that match any secret value
+  const environment: Record<string, string> = {};
+  if (context.environment) {
+    for (const [key, value] of Object.entries(context.environment)) {
+      environment[key] = secretValues.has(value) ? "***" : value;
+    }
+  }
+
+  // Strip auth headers from firewalls
+  const firewalls = sanitizeFirewalls(context.experimentalFirewalls);
+
+  // Extract volume/artifact metadata without presigned URLs
+  const manifest = context.storageManifest;
+
+  return {
+    runId: context.runId,
+    userId: context.userId,
+    prompt: context.prompt,
+    appendSystemPrompt: context.appendSystemPrompt,
+    secretNames: context.secrets ? Object.keys(context.secrets) : [],
+    environment,
+    firewalls,
+    volumes: (manifest?.storages ?? []).map((s) => ({
+      name: s.name,
+      mountPath: s.mountPath,
+      vasStorageName: s.vasStorageName,
+      vasVersionId: s.vasVersionId,
+    })),
+    artifact: manifest?.artifact
+      ? {
+          mountPath: manifest.artifact.mountPath,
+          vasStorageName: manifest.artifact.vasStorageName,
+          vasVersionId: manifest.artifact.vasVersionId,
+        }
+      : null,
+    memory: manifest?.memory
+      ? {
+          mountPath: manifest.memory.mountPath,
+          vasStorageName: manifest.memory.vasStorageName,
+          vasVersionId: manifest.memory.vasVersionId,
+        }
+      : null,
+  };
+}
+
+function sanitizeFirewalls(
+  firewalls: ExperimentalFirewalls | null,
+): RunContextSnapshot["firewalls"] {
+  if (!firewalls) return [];
+  return firewalls.map((fw) => ({
+    name: fw.name,
+    ref: fw.ref,
+    apis: fw.apis.map((api) => ({
+      base: api.base,
+      permissions: api.permissions?.map((p) => ({
+        name: p.name,
+        description: p.description,
+        rules: p.rules,
+      })),
+    })),
+  }));
 }

@@ -1,6 +1,7 @@
 import "server-only";
 import type { Axiom } from "@axiomhq/js";
 import { Entry } from "@axiomhq/js";
+import type { RunContextResponse } from "@vm0/core";
 import { env } from "../../env";
 import { logger } from "../logger";
 import { getDatasetName, DATASETS, isSessionsDataset } from "./datasets";
@@ -183,6 +184,42 @@ export function ingestRequestLog(entry: RequestLogEntry): void {
     },
   ]);
   // Don't await flush - let it batch automatically
+}
+
+// ── Run context snapshot ────────────────────────────────────────────────
+
+/**
+ * Snapshot of dynamically-computed execution context fields stored in Axiom.
+ * Derived from the API response shape (defined by Zod schema in @vm0/core)
+ * but excludes `vars` (which comes from agent_runs at query time) and adds
+ * Axiom-only fields (runId, userId) that are not exposed to clients.
+ *
+ * This keeps the Axiom storage type and the API response type in sync —
+ * changes to the Zod schema in zero-runs.ts are automatically reflected here.
+ */
+export interface RunContextSnapshot extends Omit<RunContextResponse, "vars"> {
+  runId: string;
+  userId: string;
+}
+
+/**
+ * Ingest run execution context snapshot to Axiom.
+ * The snapshot must already be sanitized (secrets masked, auth headers stripped).
+ * Fire-and-forget - doesn't block the response.
+ */
+export function ingestRunContext(snapshot: RunContextSnapshot): void {
+  const client = getTelemetryInstance(env().AXIOM_TOKEN_TELEMETRY);
+  if (!client) {
+    return;
+  }
+
+  const dataset = getDatasetName(DATASETS.RUN_CONTEXT);
+  client.ingest(dataset, [
+    {
+      _time: new Date().toISOString(),
+      ...snapshot,
+    },
+  ]);
 }
 
 interface SandboxOpLogEntry {

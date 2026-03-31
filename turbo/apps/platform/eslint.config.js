@@ -1,4 +1,4 @@
-import { config as baseConfig } from "@vm0/eslint-config/base";
+import { config as baseConfig, oxlint } from "@vm0/eslint-config/base";
 import pluginReactHooks from "eslint-plugin-react-hooks";
 import pluginReact from "eslint-plugin-react";
 import ccstatePlugin from "./custom-eslint/index.ts";
@@ -98,4 +98,5 @@ export default [
       "src/__tests__/**",
     ],
   },
+  ...oxlint.buildFromOxlintConfigFile("../../.oxlintrc.json"),
 ];

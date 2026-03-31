@@ -240,6 +240,32 @@ describe("Zero Agents API", () => {
       expect(agentEnv.GITHUB_TOKEN).toBe("${{ secrets.GITHUB_TOKEN }}");
     });
 
+    it("should create an agent with custom skills and include them in response and compose", async () => {
+      const response = await postAgent(
+        { customSkills: ["my-skill", "data-tool"] },
+        testCliToken,
+        testOrgSlug,
+      );
+
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      expect(data.customSkills).toEqual(["my-skill", "data-tool"]);
+
+      // Verify compose content includes custom skill volumes
+      const content = await getTestComposeVersionContent(data.agentId);
+      const volumes = content?.volumes as
+        | Record<string, { name: string; version: string }>
+        | undefined;
+      expect(volumes?.["custom-skill-my-skill"]).toEqual({
+        name: "custom-skill@my-skill",
+        version: "latest",
+      });
+      expect(volumes?.["custom-skill-data-tool"]).toEqual({
+        name: "custom-skill@data-tool",
+        version: "latest",
+      });
+    });
+
     it("should return 422 when skills are not cached", async () => {
       await clearSkillsData();
 
@@ -386,6 +412,60 @@ describe("Zero Agents API", () => {
       expect(agentEnv.GITHUB_TOKEN).toBe("${{ secrets.GITHUB_TOKEN }}");
       expect(agentEnv.ZERO_AGENT_ID).toBe("${{ vars.ZERO_AGENT_ID }}");
       expect(agentEnv.ZERO_TOKEN).toBe("${{ secrets.ZERO_TOKEN }}");
+    });
+
+    it("should update custom skills and reflect in compose volumes", async () => {
+      const created = await (
+        await postAgent({}, testCliToken, testOrgSlug)
+      ).json();
+
+      const response = await putAgent(
+        created.agentId,
+        { customSkills: ["my-skill", "data-tool"] },
+        testCliToken,
+        testOrgSlug,
+      );
+      expect(response.status).toBe(200);
+
+      // Verify skills are persisted
+      const getRes = await getAgent(created.agentId, testCliToken, testOrgSlug);
+      const fetched = await getRes.json();
+      expect(fetched.customSkills).toEqual(["my-skill", "data-tool"]);
+
+      // Verify compose content includes custom skill volumes
+      const content = await getTestComposeVersionContent(created.agentId);
+      const volumes = content?.volumes as
+        | Record<string, { name: string; version: string }>
+        | undefined;
+      expect(volumes?.["custom-skill-my-skill"]).toEqual({
+        name: "custom-skill@my-skill",
+        version: "latest",
+      });
+    });
+
+    it("should preserve existing custom skills when not provided in update", async () => {
+      // Create with custom skills
+      const created = await (
+        await postAgent(
+          { customSkills: ["my-skill"] },
+          testCliToken,
+          testOrgSlug,
+        )
+      ).json();
+
+      // Update without customSkills field
+      const response = await putAgent(
+        created.agentId,
+        { displayName: "Updated" },
+        testCliToken,
+        testOrgSlug,
+      );
+      expect(response.status).toBe(200);
+
+      // Verify skills are preserved
+      const getRes = await getAgent(created.agentId, testCliToken, testOrgSlug);
+      const fetched = await getRes.json();
+      expect(fetched.customSkills).toEqual(["my-skill"]);
     });
 
     it("should return 404 for unknown agent", async () => {

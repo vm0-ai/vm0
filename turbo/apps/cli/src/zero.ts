@@ -96,9 +96,9 @@ program
     `
 Examples:
   Missing a token?       zero doctor missing-token <TOKEN_NAME>
-  Delegate to teammate?  zero run <agent-id> "your task"
-  Send a Slack message?  zero slack message send -c <channel> -t "text"
-  Set up a schedule?     zero schedule setup <agent-id>
+  Delegate to teammate?  zero run --help
+  Send a Slack message?  zero slack message send --help
+  Set up a schedule?     zero schedule setup --help
   Update yourself?       zero agent --help
   Check your identity?   zero whoami`,
   );

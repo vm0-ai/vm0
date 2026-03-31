@@ -34,8 +34,13 @@ const router = tsr.router(zeroAgentsMainContract, {
     // Generate UUID agent name
     const agentName = crypto.randomUUID();
 
+    const customSkills = body.customSkills ?? [];
+
     // Build compose content (always includes all connector skills)
-    const content = buildComposeContent(agentName);
+    const content = buildComposeContent(
+      agentName,
+      customSkills.map((name) => ({ name })),
+    );
 
     // Run synchronous compose (pass empty instructions so the
     // agent-instructions storage record is created — without it,
@@ -72,6 +77,7 @@ const router = tsr.router(zeroAgentsMainContract, {
         description: body.description ?? null,
         sound: body.sound ?? null,
         avatarUrl: body.avatarUrl ?? null,
+        customSkills,
       })
       .onConflictDoUpdate({
         target: [zeroAgents.orgId, zeroAgents.name],
@@ -80,6 +86,7 @@ const router = tsr.router(zeroAgentsMainContract, {
           description: body.description ?? null,
           sound: body.sound ?? null,
           avatarUrl: body.avatarUrl ?? null,
+          customSkills,
           updatedAt: new Date(),
         },
       });
@@ -95,7 +102,7 @@ const router = tsr.router(zeroAgentsMainContract, {
         sound: body.sound ?? null,
         avatarUrl: body.avatarUrl ?? null,
         firewallPolicies: null,
-        customSkills: [],
+        customSkills,
       },
     };
   },

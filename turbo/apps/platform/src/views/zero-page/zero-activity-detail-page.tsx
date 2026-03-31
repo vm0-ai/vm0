@@ -9,6 +9,7 @@ import {
   IconLoader2,
   IconDownload,
   IconChartLine,
+  IconFileAnalytics,
 } from "@tabler/icons-react";
 import {
   Button,
@@ -158,6 +159,7 @@ function ActivityHeaderCard({
   duration,
   time,
   events,
+  showContextLink,
   showModelDetail,
 }: {
   displayName: string;
@@ -175,6 +177,7 @@ function ActivityHeaderCard({
   duration: string | null | undefined;
   time: string;
   events: AgentEvent[];
+  showContextLink?: boolean;
   showModelDetail: boolean;
 }) {
   return (
@@ -276,6 +279,16 @@ function ActivityHeaderCard({
           </div>
         </div>
         <div className="flex-1 min-w-0" />
+        {showContextLink && (
+          <Link
+            pathname="/activity/:runId/context"
+            options={{ pathParams: { runId: detail.id } }}
+            className="inline-flex items-center h-8 shrink-0 gap-1 rounded-lg px-3 text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors no-underline"
+          >
+            <IconFileAnalytics size={14} stroke={1.5} />
+            Context
+          </Link>
+        )}
         <Button
           variant="ghost"
           size="sm"
@@ -372,6 +385,7 @@ export function ZeroActivityDetailPage() {
             duration={duration}
             time={time}
             events={events}
+            showContextLink={features?.[FeatureSwitchKey.RunContext]}
             showModelDetail={showModelDetail}
           />
 

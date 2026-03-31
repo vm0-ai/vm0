@@ -1506,6 +1506,13 @@
       "when": 1774940000002,
       "tag": "0214_loud_synch",
       "breakpoints": true
+    },
+    {
+      "idx": 215,
+      "version": "7",
+      "when": 1774940000003,
+      "tag": "0215_add_firewall_access_requests",
+      "breakpoints": true
     }
   ]
 }
