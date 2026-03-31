@@ -32,6 +32,9 @@ Examples:
         const connectors = await getZeroAgentUserConnectors(agentId);
         if (connectors.length > 0)
           console.log(`Connectors:   ${connectors.join(", ")}`);
+        if (agent.customSkills?.length > 0) {
+          console.log(`Skills:       ${agent.customSkills.join(", ")}`);
+        }
         if (agent.description)
           console.log(`Description:  ${agent.description}`);
         if (agent.sound) console.log(`Sound:        ${agent.sound}`);

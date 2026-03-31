@@ -20,7 +20,9 @@ const router = tsr.router(zeroConnectorsByTypeContract, {
   get: async ({ params, headers }, { request }) => {
     initServices();
 
-    const authCtx = await requireAuth(headers.authorization);
+    const authCtx = await requireAuth(headers.authorization, {
+      requiredCapability: "agent:read",
+    });
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
