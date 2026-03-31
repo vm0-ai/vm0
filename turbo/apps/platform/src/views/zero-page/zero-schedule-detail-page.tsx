@@ -902,7 +902,7 @@ function ScheduleDetailView({
               )}
             >
               <div
-                className="self-stretch w-[54px] shrink-0 flex items-center justify-center rounded-xl bg-muted/60 text-muted-foreground"
+                className="self-stretch aspect-square shrink-0 flex items-center justify-center rounded-xl bg-muted/60 text-muted-foreground"
                 aria-hidden
               >
                 <IconCalendar
