@@ -363,33 +363,6 @@ describe("Telegram bot commands", () => {
     });
   });
 
-  describe("/settings command", () => {
-    it("should send settings link with admin context", async () => {
-      const sendMsg = telegramSendMessage();
-      server.use(sendMsg.handler);
-
-      const request = createWebhookRequest({
-        update_id: 1,
-        message: {
-          message_id: 1,
-          chat: { id: TELEGRAM_USER_ID, type: "private" },
-          from: { id: TELEGRAM_USER_ID, username: "testuser" },
-          text: "/settings",
-        },
-      });
-
-      const response = await POST(request, {
-        params: Promise.resolve({ installationId }),
-      });
-      expect(response.status).toBe(200);
-      await flushAfterCallbacks();
-
-      expect(sendMsg.mocked).toHaveBeenCalled();
-      expect(sendMsg.calls[0]?.text).toContain("Settings");
-      expect(sendMsg.calls[0]?.text).toContain("works");
-    });
-  });
-
   describe("/help command", () => {
     it("should list available commands", async () => {
       const sendMsg = telegramSendMessage();
@@ -416,7 +389,6 @@ describe("Telegram bot commands", () => {
       expect(text).toContain("/new_session");
       expect(text).toContain("/connect");
       expect(text).toContain("/disconnect");
-      expect(text).toContain("/settings");
       expect(text).toContain("/help");
     });
 

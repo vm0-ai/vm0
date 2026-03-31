@@ -6,7 +6,6 @@ import { env } from "../../../env";
 import { createTelegramClient, sendMessage } from "../client";
 import { resolveUserLink, getWorkspaceAgent, buildConnectUrl } from "./shared";
 import { escapeHtml } from "../format";
-import { getAppUrl } from "../../url";
 import { logger } from "../../logger";
 import type { TelegramHandlerUpdate } from "./types";
 
@@ -149,81 +148,6 @@ export async function handleDisconnectCommand(
 }
 
 /**
- * Handle /settings command
- *
- * Sends a link to the platform settings page with admin-aware description.
- */
-export async function handleSettingsCommand(
-  update: TelegramHandlerUpdate,
-  installationId: string,
-): Promise<void> {
-  const { SECRETS_ENCRYPTION_KEY } = env();
-  const message = update.message;
-  const chatId = String(message.chat.id);
-  const fromUserId = String(message.from?.id ?? 0);
-
-  const [installation] = await globalThis.services.db
-    .select()
-    .from(telegramInstallations)
-    .where(eq(telegramInstallations.id, installationId))
-    .limit(1);
-
-  if (!installation) {
-    return;
-  }
-
-  const botToken = decryptSecretValue(
-    installation.encryptedBotToken,
-    SECRETS_ENCRYPTION_KEY,
-  );
-  const client = createTelegramClient(botToken);
-
-  const userLink = await resolveUserLink(installationId, fromUserId);
-
-  const replyOptions =
-    message.chat.type !== "private"
-      ? { replyToMessageId: message.message_id }
-      : undefined;
-
-  if (!userLink) {
-    if (message.chat.type !== "private") {
-      await sendMessage(
-        client,
-        chatId,
-        `🔗 Please <a href="https://t.me/${escapeHtml(installation.botUsername ?? "")}?start=connect">send me /connect</a> in a private message to connect your account.`,
-        replyOptions,
-      );
-    } else {
-      const connectUrl = buildConnectUrl(
-        installationId,
-        installation.telegramBotId,
-        fromUserId,
-        botToken,
-      );
-      await sendMessage(
-        client,
-        chatId,
-        `🔗 Connect your account to get started:\n\n<a href="${escapeHtml(connectUrl)}">Open Platform</a>`,
-      );
-    }
-    return;
-  }
-
-  const isAdmin = userLink.vm0UserId === installation.adminUserId;
-  const appUrl = getAppUrl();
-  const desc = isAdmin
-    ? "Configure secrets, variables, and select the workspace agent on the VM0 platform."
-    : "Configure your environment variables and secrets on the VM0 platform.";
-
-  await sendMessage(
-    client,
-    chatId,
-    `⚙️ <b>Settings</b>\n\n${escapeHtml(desc)}\n\n<a href="${escapeHtml(appUrl)}/works">Open Platform</a>`,
-    replyOptions,
-  );
-}
-
-/**
  * Handle /help command
  *
  * Lists available commands and usage info.
@@ -266,7 +190,6 @@ export async function handleHelpCommand(
   helpText += `/new_session - Start a new conversation\n`;
   helpText += `/connect - Connect your VM0 account\n`;
   helpText += `/disconnect - Disconnect your account\n`;
-  helpText += `/settings - Open platform settings\n`;
   helpText += `/help - Show this help message\n`;
   helpText += `\nMention @${escapeHtml(botUsername)} in a group or send a DM to chat with the agent.`;
 
