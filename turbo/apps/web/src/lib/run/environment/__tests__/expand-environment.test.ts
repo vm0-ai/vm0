@@ -26,7 +26,7 @@ const githubService: ExpandedFirewallConfig = {
       },
     },
   ],
-  placeholders: { GITHUB_TOKEN: "gho_vm0placeholder0000000000000000000000" },
+  placeholders: { GITHUB_TOKEN: "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" },
 };
 
 const slackService: ExpandedFirewallConfig = {
@@ -38,7 +38,7 @@ const slackService: ExpandedFirewallConfig = {
       auth: { headers: { Authorization: "Bearer ${{ secrets.SLACK_TOKEN }}" } },
     },
   ],
-  placeholders: { SLACK_TOKEN: "xoxb-0000-0000-vm0placeholder" },
+  placeholders: { SLACK_TOKEN: "xoxb-100100100100-1001001001001-CoffeeSaf" },
 };
 
 const airtableService: ExpandedFirewallConfig = {
@@ -72,9 +72,9 @@ describe("expandEnvironmentFromCompose — firewall env vars", () => {
 
     expect(environment).toBeDefined();
     expect(environment!.GH_TOKEN).toBe(
-      "gho_vm0placeholder0000000000000000000000",
+      "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",
     );
-    expect(environment!.MY_GH).toBe("gho_vm0placeholder0000000000000000000000");
+    expect(environment!.MY_GH).toBe("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");
   });
 
   it("does not inject placeholders when no firewalls provided", () => {
@@ -110,9 +110,11 @@ describe("expandEnvironmentFromCompose — firewall env vars", () => {
 
     expect(environment).toBeDefined();
     expect(environment!.GH_TOKEN).toBe(
-      "gho_vm0placeholder0000000000000000000000",
+      "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",
     );
-    expect(environment!.SLACK_TOKEN).toBe("xoxb-0000-0000-vm0placeholder");
+    expect(environment!.SLACK_TOKEN).toBe(
+      "xoxb-100100100100-1001001001001-CoffeeSaf",
+    );
   });
 
   it("firewall placeholder takes precedence over passed secrets", () => {
@@ -131,7 +133,7 @@ describe("expandEnvironmentFromCompose — firewall env vars", () => {
 
     expect(environment).toBeDefined();
     expect(environment!.GH_TOKEN).toBe(
-      "gho_vm0placeholder0000000000000000000000",
+      "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",
     );
   });
 
@@ -208,7 +210,7 @@ describe("expandEnvironmentFromCompose — additionalEnvironment", () => {
     expect(environment!.MY_VAR).toBe("hello");
     // Firewall placeholder should replace the real value
     expect(environment!.GH_TOKEN).toBe(
-      "gho_vm0placeholder0000000000000000000000",
+      "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",
     );
   });
 
