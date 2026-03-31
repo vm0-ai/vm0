@@ -36,6 +36,12 @@ pub struct CowLayer {
 impl CowLayer {
     /// Create a new COW layer.
     ///
+    /// If a bitmap sidecar file (`{cow_path}.bitmap`) exists, the dirty bitmap
+    /// is restored from it and the COW file is opened eagerly. This enables
+    /// snapshot restore: a previous `save_bitmap()` + `destroy_keep_cow()` cycle
+    /// preserves the COW state, and a subsequent `new()` with the same paths
+    /// picks it up automatically.
+    ///
     /// `base_path`: read-only base image file
     /// `cow_path`: path for the sparse COW file (created on first flush)
     /// `size`: total device size in bytes
