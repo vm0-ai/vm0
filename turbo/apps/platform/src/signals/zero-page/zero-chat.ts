@@ -551,7 +551,7 @@ const currentChatMessages$ = computed(
  * Composes the full session snapshot from thread data + transformed messages.
  * Loading/error states are derived automatically via `useLoadable` in the view.
  */
-export const chatSessionSnapshot$ = computed(
+const chatSessionSnapshot$ = computed(
   async (get): Promise<ChatSessionSnapshotData | null> => {
     const thread = await get(currentChatThread$);
     if (!thread) {
@@ -572,19 +572,6 @@ export const chatSessionSnapshot$ = computed(
     };
   },
 );
-
-/**
- * @deprecated Use `useLoadable(chatSessionSnapshot$)` in views instead.
- * Kept for test backward compatibility — will be removed.
- */
-export const prepareSessionSwitch$ = command(({ set }) => {
-  set(internalLocalMessages$, []);
-});
-
-/**
- * @deprecated Derive from `useLoadable(chatSessionSnapshot$).state === "hasError"`.
- */
-export const zeroSessionError$ = computed(() => null as string | null);
 
 // Chat input
 const internalChatInput$ = state("");
@@ -751,16 +738,6 @@ export const loadSessionFromSnapshot$ = command(
     }
   },
 );
-
-/**
- * Switch to a different chat session. Resets interaction state and navigates.
- * Session data loading is handled by `chatSessionSnapshot$` (async computed)
- * which auto-fetches when the URL changes.
- */
-export const switchZeroSession$ = command(({ set }, threadId: string) => {
-  set(navigateToChat$, threadId);
-  set(internalLocalMessages$, []);
-});
 
 export const startNewZeroSession$ = command(({ set }) => {
   // Abort any in-flight send/polling from the previous session

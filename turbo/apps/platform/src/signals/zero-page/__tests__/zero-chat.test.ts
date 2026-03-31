@@ -11,15 +11,11 @@ import {
   zeroSessionList$,
   zeroSessionListLoading$,
   zeroSessionListError$,
-  zeroSessionError$,
   setZeroChatInput$,
   clearZeroChatInput$,
-  switchZeroSession$,
   startNewZeroSession$,
   sendZeroChatMessage$,
-  prepareSessionSwitch$,
   loadSessionFromSnapshot$,
-  chatSessionSnapshot$,
   zeroChatAttachments$,
   uploadZeroAttachment$,
   removeZeroAttachment$,
@@ -34,57 +30,6 @@ async function setup() {
     path: "/",
     withoutRender: true,
   });
-}
-
-/** Default chat-threads handlers used by most send tests. */
-function useChatThreadHandlers() {
-  let messageSent = false;
-
-  server.use(
-    http.post("*/api/zero/chat-threads", () => {
-      return HttpResponse.json(
-        { id: "thread-1", title: null, createdAt: "2026-03-10T00:00:00Z" },
-        { status: 201 },
-      );
-    }),
-    // Unified chat message endpoint (creates thread + run + association)
-    http.post("*/api/zero/chat/messages", () => {
-      messageSent = true;
-      return HttpResponse.json(
-        {
-          runId: "run-1",
-          threadId: "thread-1",
-          status: "pending",
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-        { status: 201 },
-      );
-    }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
-    http.get("*/api/zero/chat-threads/:id", () => {
-      return HttpResponse.json({
-        id: "thread-1",
-        title: null,
-        agentId: "c0000000-0000-4000-a000-000000000001",
-        chatMessages: [],
-        latestSessionId: null,
-        unsavedRuns: messageSent
-          ? [
-              {
-                runId: "run-1",
-                status: "running",
-                prompt: "Hello",
-                error: null,
-              },
-            ]
-          : [],
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-10T00:00:00Z",
-      });
-    }),
-  );
 }
 
 describe("zero-chat signals", () => {
@@ -154,175 +99,6 @@ describe("zero-chat signals", () => {
       expect(url.searchParams.get("agentId")).toBe(
         "c0000000-0000-4000-a000-000000000001",
       );
-    });
-  });
-
-  describe("switchZeroSession$", () => {
-    it("should set thread id and load messages from thread API", async () => {
-      server.use(
-        http.get("*/api/zero/chat-threads/:id", () => {
-          return HttpResponse.json({
-            id: "thread-abc",
-            title: null,
-            agentId: "c0000000-0000-4000-a000-000000000001",
-            chatMessages: [
-              {
-                role: "user",
-                content: "Hi there",
-                createdAt: "2026-03-10T00:00:00Z",
-              },
-              {
-                role: "assistant",
-                content: "Hello!",
-                runId: "run-1",
-                createdAt: "2026-03-10T00:00:01Z",
-              },
-            ],
-            latestSessionId: "session-abc",
-            unsavedRuns: [],
-            createdAt: "2026-03-10T00:00:00Z",
-            updatedAt: "2026-03-10T00:00:01Z",
-          });
-        }),
-      );
-
-      await setup();
-      context.store.set(switchZeroSession$, "thread-abc");
-      await context.store.set(loadSessionFromSnapshot$, context.signal);
-
-      expect(context.store.get(chatThreadId$)).toBe("thread-abc");
-
-      const messages = await context.store.get(zeroChatMessages$);
-      expect(messages).toHaveLength(2);
-      expect(messages[0]?.role).toBe("user");
-      expect(messages[0]?.content).toBe("Hi there");
-      expect(messages[1]?.role).toBe("assistant");
-      expect(messages[1]?.content).toBe("Hello!");
-      expect(context.store.get(zeroSessionError$)).toBeNull();
-    });
-
-    it("should set error on API failure", async () => {
-      server.use(
-        http.get("*/api/zero/chat-threads/:id", () => {
-          return HttpResponse.json(
-            { error: { message: "Not found", code: "NOT_FOUND" } },
-            { status: 404 },
-          );
-        }),
-        http.get("*/api/zero/sessions/:id", () => {
-          return HttpResponse.json(
-            { error: { message: "Not found", code: "NOT_FOUND" } },
-            { status: 404 },
-          );
-        }),
-        http.get("*/api/zero/chat-threads", () => {
-          return HttpResponse.json({ threads: [] });
-        }),
-      );
-
-      await setup();
-      context.store.set(switchZeroSession$, "bad-thread");
-
-      // Snapshot returns null when both APIs fail (no throw, to avoid unhandled rejections)
-      const snapshot = await context.store.get(chatSessionSnapshot$);
-      expect(snapshot).toBeNull();
-      await expect(context.store.get(zeroChatMessages$)).resolves.toHaveLength(
-        0,
-      );
-    });
-
-    it("should clear previous messages when switching", async () => {
-      server.use(
-        http.get("*/api/zero/chat-threads/:id", () => {
-          return HttpResponse.json({
-            id: "thread-1",
-            title: null,
-            agentId: "c0000000-0000-4000-a000-000000000001",
-            chatMessages: [],
-            latestSessionId: null,
-            unsavedRuns: [],
-            createdAt: "2026-03-10T00:00:00Z",
-            updatedAt: "2026-03-10T00:00:00Z",
-          });
-        }),
-      );
-
-      await setup();
-
-      context.store.set(setZeroChatInput$, "draft");
-      context.store.set(switchZeroSession$, "thread-1");
-
-      await expect(context.store.get(zeroChatMessages$)).resolves.toHaveLength(
-        0,
-      );
-      await expect(context.store.get(allFinished$)).resolves.toBeTruthy();
-    });
-  });
-
-  describe("prepareSessionSwitch$", () => {
-    it("should clear messages and session error", async () => {
-      useChatThreadHandlers();
-      server.use(
-        http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
-          return HttpResponse.json({
-            events: [],
-            hasMore: false,
-            framework: "claude-code",
-          });
-        }),
-        http.get("*/api/zero/logs/:runId", () => {
-          return HttpResponse.json({
-            id: "a0000000-0000-4000-a000-000000000097",
-            sessionId: "session-1",
-            agentId: "zero",
-            displayName: null,
-            framework: "claude-code",
-            modelProvider: null,
-            triggerSource: "web",
-            scheduleId: null,
-            status: "completed",
-            prompt: "test",
-            appendSystemPrompt: null,
-            error: null,
-            createdAt: "2026-03-10T00:00:00Z",
-            startedAt: "2026-03-10T00:00:01Z",
-            completedAt: "2026-03-10T00:00:02Z",
-            artifact: { name: null, version: null },
-          });
-        }),
-        http.get("*/api/zero/runs/:runId", () => {
-          return HttpResponse.json({
-            runId: "run-1",
-            agentComposeVersionId: null,
-            status: "completed",
-            prompt: "Hello",
-            appendSystemPrompt: null,
-            result: { agentSessionId: "s1" },
-            createdAt: "2026-03-10T00:00:00Z",
-          });
-        }),
-      );
-
-      await setup();
-
-      // Send a message to populate messages
-      await context.store.set(
-        sendZeroChatMessage$,
-        "Hello",
-        undefined,
-        context.signal,
-      );
-      await delay(50);
-      expect(
-        (await context.store.get(zeroChatMessages$)).length,
-      ).toBeGreaterThan(0);
-
-      context.store.set(prepareSessionSwitch$);
-
-      await expect(context.store.get(zeroChatMessages$)).resolves.toHaveLength(
-        0,
-      );
-      expect(context.store.get(zeroSessionError$)).toBeNull();
     });
   });
 
