@@ -915,8 +915,8 @@ function ScheduleDetailView({
                 <h1 className="min-w-0 text-base sm:text-lg font-semibold tracking-tight text-foreground leading-tight truncate">
                   {summaryTitle}
                 </h1>
-                <div className="flex items-center gap-x-2 overflow-hidden whitespace-nowrap text-xs text-muted-foreground leading-tight">
-                  <span className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground leading-tight">
+                  <span className="flex items-center gap-2 whitespace-nowrap">
                     <span
                       className={cn(
                         "h-2 w-2 shrink-0 rounded-full",
@@ -939,14 +939,16 @@ function ScheduleDetailView({
                   >
                     |
                   </span>
-                  <span className="text-foreground/90">{entry.time}</span>
+                  <span className="text-foreground/90 whitespace-nowrap">
+                    {entry.time}
+                  </span>
                   <span
                     className="text-muted-foreground/50 select-none"
                     aria-hidden
                   >
                     |
                   </span>
-                  <span className="truncate min-w-0">
+                  <span className="whitespace-nowrap">
                     <span className="font-medium text-foreground/90">
                       Next run
                     </span>{" "}
