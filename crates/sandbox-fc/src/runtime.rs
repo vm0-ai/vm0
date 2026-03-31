@@ -14,11 +14,10 @@ use crate::paths::{RuntimePaths, SandboxPaths, SnapshotOutputPaths, SockPaths};
 
 /// Firecracker-backed sandbox runtime.
 ///
-/// Manages shared resources ([`NetnsPool`], [`BaseLoopCache`](block_cow::BaseLoopCache))
-/// and creates [`FirecrackerFactory`] instances that share them.
+/// Manages shared resources ([`NetnsPool`]) and creates
+/// [`FirecrackerFactory`] instances that share them.
 pub struct FirecrackerRuntime {
     netns_pool: Arc<tokio::sync::Mutex<NetnsPool>>,
-    base_cache: Arc<std::sync::Mutex<block_cow::BaseLoopCache>>,
     proxy_port: Option<u16>,
 }
 
@@ -42,7 +41,6 @@ impl FirecrackerRuntime {
 
         Ok(Self {
             netns_pool: Arc::new(tokio::sync::Mutex::new(netns_pool)),
-            base_cache: Arc::new(std::sync::Mutex::new(block_cow::BaseLoopCache::new())),
             proxy_port: config.proxy_port,
         })
     }
@@ -82,12 +80,8 @@ impl SandboxRuntime for FirecrackerRuntime {
         config: FactoryConfig,
     ) -> sandbox::Result<Box<dyn SandboxFactory>> {
         let fc_config = self.to_firecracker_config(config);
-        let mut factory = FirecrackerFactory::new(
-            fc_config,
-            Some(Arc::clone(&self.netns_pool)),
-            Arc::clone(&self.base_cache),
-        )
-        .await?;
+        let mut factory =
+            FirecrackerFactory::new(fc_config, Some(Arc::clone(&self.netns_pool))).await?;
         factory.startup().await?;
         Ok(Box::new(factory))
     }
@@ -99,15 +93,6 @@ impl SandboxRuntime for FirecrackerRuntime {
             warn!(error = %e, "failed to cleanup shared netns pool");
         }
         drop(pool);
-
-        // Clean up base image cache — detach any remaining loop devices.
-        self.base_cache
-            .lock()
-            .unwrap_or_else(|e| {
-                warn!("base_cache mutex poisoned, recovering for cleanup");
-                e.into_inner()
-            })
-            .cleanup();
 
         info!("runtime shutdown complete");
     }

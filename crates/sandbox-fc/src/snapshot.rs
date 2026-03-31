@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use tokio::io::AsyncBufReadExt;
 use tracing::info;
 
-use block_cow::{BaseLoopCache, CowDevice, CowDeviceConfig};
+use nbd_cow::NbdCowDevice;
 use sandbox::{SnapshotCreateConfig, SnapshotOutput, SnapshotProvider};
 
 use crate::api::{ApiClient, ApiError};
@@ -44,7 +44,7 @@ pub enum SnapshotError {
 ///
 /// This is the Rust equivalent of the TS `commands/snapshot.ts` workflow:
 ///  1. Create work directory
-///  2. Acquire base image loop from cache, create dm-snapshot COW device
+///  2. Create NBD COW device backed by the rootfs image
 ///  3. Create network namespace
 ///  4. Spawn Firecracker with `--api-sock`
 ///  5. Wait for API socket ready
@@ -102,38 +102,26 @@ pub async fn create_snapshot(
 
     info!(work_dir = %paths.workspace().display(), "starting snapshot creation");
 
-    // 2. Acquire base image loop and create dm-snapshot COW device.
-    //    Both acquire and CowDevice::create call synchronous subprocess
-    //    commands (losetup, blockdev, dmsetup) — use spawn_blocking.
-    let base_cache = std::sync::Arc::new(std::sync::Mutex::new(BaseLoopCache::new()));
-    let rootfs_path = config.rootfs_path.clone();
-    let pool_for_acquire = base_cache.clone();
-    let base_handle = tokio::task::spawn_blocking(move || {
-        let mut cache = pool_for_acquire.lock().unwrap_or_else(|e| e.into_inner());
-        cache
-            .acquire(&rootfs_path)
-            .map_err(|e| SnapshotError::Setup(format!("acquire base image: {e}")))
-    })
-    .await
-    .map_err(|e| SnapshotError::Setup(format!("join: {e}")))??;
-
+    // 2. Create NBD COW device backed by the rootfs image.
     let cow_file = paths.workspace().join("cow.img");
-    let base_loop = base_handle.loop_path.clone();
-    let base_sectors = base_handle.sectors;
-    let cow_device = tokio::task::spawn_blocking({
-        let cow_file = cow_file.clone();
-        move || {
-            block_cow::init_cow_file(&cow_file, base_sectors)
-                .map_err(|e| SnapshotError::Setup(format!("init COW file: {e}")))?;
-            let cow_config = CowDeviceConfig { cow_file };
-            CowDevice::create(&base_loop, base_sectors, &cow_config)
-                .map_err(|e| SnapshotError::Setup(format!("create COW device: {e}")))
-        }
-    })
-    .await
-    .map_err(|e| SnapshotError::Setup(format!("join: {e}")))??;
+    let base_size = tokio::fs::metadata(&config.rootfs_path)
+        .await
+        .map_err(|e| SnapshotError::Setup(format!("base image metadata: {e}")))?
+        .len();
 
-    info!(device = %cow_device.device_path().display(), "COW device created");
+    // Create sparse COW file.
+    {
+        let f = std::fs::File::create(&cow_file)
+            .map_err(|e| SnapshotError::Setup(format!("create COW file: {e}")))?;
+        f.set_len(base_size)
+            .map_err(|e| SnapshotError::Setup(format!("set COW file size: {e}")))?;
+    }
+
+    let cow_device = NbdCowDevice::create(&config.rootfs_path, &cow_file, base_size)
+        .await
+        .map_err(|e| SnapshotError::Setup(format!("create NBD COW device: {e}")))?;
+
+    info!(device = %cow_device.device_path().display(), "NBD COW device created");
 
     // 3. Create network namespace (pool of 1, index auto-allocated via flock).
     let mut netns_pool = NetnsPool::create(NetnsPoolConfig { proxy_port: None })
@@ -156,16 +144,6 @@ pub async fn create_snapshot(
         tracing::warn!(error = %e, "failed to cleanup netns pool");
     }
 
-    // Release base image — detaches the loop device (pool of 1, so refcount → 0).
-    let base_key = base_handle.base_key().to_owned();
-    let _ = tokio::task::spawn_blocking(move || {
-        let mut pool = base_cache.lock().unwrap_or_else(|e| e.into_inner());
-        if let Err(e) = pool.release(&base_key) {
-            tracing::warn!(error = %e, "failed to release base image");
-        }
-    })
-    .await;
-
     // Cleanup runtime socket directory.
     if let Err(e) = tokio::fs::remove_dir_all(&sock_dir).await {
         tracing::warn!(error = %e, "failed to cleanup sock dir");
@@ -181,7 +159,7 @@ async fn run_snapshot_workflow(
     sock_paths: &SockPaths,
     output: &SnapshotOutputPaths,
     netns_pool: &mut NetnsPool,
-    mut cow_device: CowDevice,
+    mut cow_device: NbdCowDevice,
 ) -> Result<SnapshotConfig, SnapshotError> {
     let network = netns_pool
         .acquire()
@@ -268,7 +246,7 @@ async fn run_snapshot_workflow(
             // Umount the bind mount first (may fail if FC still holds a ref).
             command::exec_ignore_errors("umount", &[drive_bind_str.as_str()]).await;
 
-            match cow_device.destroy_keep_cow() {
+            match cow_device.destroy_keep_cow().await {
                 Ok(()) => {
                     last_err = None;
                     break;
@@ -288,14 +266,17 @@ async fn run_snapshot_workflow(
             }
         }
         if last_err.is_some() {
-            // Last resort: schedule deferred removal. The kernel removes the
-            // target when Firecracker releases the fd.
-            if let Err(e) = cow_device.destroy_deferred_keep_cow() {
-                cow_device.abandon();
-                return Err(SnapshotError::Setup(format!("destroy_keep_cow: {e}")));
-            }
+            // Last resort: abandon the device. The kernel will timeout and
+            // release the NBD device. abandon() does NOT delete the COW file.
+            cow_device.abandon();
         }
         tokio::fs::rename(&cow_file, &output.cow()).await?;
+        // Also move the bitmap sidecar if it exists (for snapshot restore).
+        let bitmap_src = std::path::PathBuf::from(format!("{}.bitmap", cow_file.display()));
+        if bitmap_src.exists() {
+            let bitmap_dst = std::path::PathBuf::from(format!("{}.bitmap", output.cow().display()));
+            tokio::fs::rename(&bitmap_src, &bitmap_dst).await?;
+        }
     } else {
         // Error path: best-effort umount before Drop cleans up the device.
         command::exec_ignore_errors("umount", &[drive_bind_str.as_str()]).await;
@@ -311,7 +292,7 @@ async fn run_with_firecracker(
     paths: &SandboxPaths,
     sock_paths: &SockPaths,
     output: &SnapshotOutputPaths,
-    cow_device: &mut CowDevice,
+    cow_device: &mut NbdCowDevice,
 ) -> Result<SnapshotConfig, SnapshotError> {
     // 5. Wait for API socket ready.
     let api_sock = sock_paths.api_sock();
@@ -321,7 +302,7 @@ async fn run_with_firecracker(
     info!("firecracker API ready");
 
     // Bind mount the COW device to a deterministic path so the snapshot
-    // records this path (not the ephemeral /dev/mapper/cow-<uuid>).
+    // records this path (not the ephemeral /dev/nbdN).
     // On restore, the same path is used as the bind mount target.
     let drive_bind = paths.cow_device_bind();
     tokio::fs::write(&drive_bind, b"").await?;

@@ -76,10 +76,8 @@ fn check_required_commands(_config: &PrerequisiteConfig<'_>, errors: &mut Vec<St
         "iptables-save",
         "sysctl",
         "pgrep",
-        // Required by block-cow (dm-snapshot COW devices).
-        "dmsetup",
-        "losetup",
-        "blockdev",
+        // Required by cow_pool (sparse copy for golden snapshots).
+        "cp",
     ];
     for cmd in &commands {
         if which::which(cmd).is_err() {

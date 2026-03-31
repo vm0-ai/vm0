@@ -3,7 +3,7 @@ use sandbox::{Sandbox, SandboxConfig, SandboxError, SandboxFactory};
 use sha2::{Digest, Sha256};
 use tracing::{info, warn};
 
-use block_cow::{BaseHandle, BaseLoopCache, CowDevice};
+use nbd_cow::NbdCowDevice;
 
 use crate::config::FirecrackerConfig;
 
@@ -91,7 +91,7 @@ impl InvariantConfig {
                 stats_polling_interval_s: 5,
             },
             prewarm_script: PREWARM_SCRIPT,
-            drive_layout: "dm-snapshot-v2",
+            drive_layout: "nbd-cow-v1",
         }
     }
 }
@@ -119,10 +119,10 @@ pub struct FirecrackerFactory {
     factory_paths: FactoryPaths,
     runtime_paths: RuntimePaths,
     netns_pool: Option<std::sync::Arc<tokio::sync::Mutex<NetnsPool>>>,
-    base_cache: std::sync::Arc<std::sync::Mutex<BaseLoopCache>>,
-    /// Handle to the shared base loop device for this factory's rootfs.
-    base_loop: Option<BaseHandle>,
-    /// Pre-warming pool for COW files + loop devices.
+    /// Base image path and size (bytes), populated during startup.
+    base_image_path: Option<std::path::PathBuf>,
+    base_image_size: u64,
+    /// Pre-warming pool for COW files.
     cow_pool: Option<tokio::sync::Mutex<crate::cow_pool::CowPool>>,
     started: bool,
 }
@@ -133,13 +133,9 @@ impl FirecrackerFactory {
     ///
     /// When `netns_pool` is provided, the factory shares it instead of
     /// creating a new one in `startup()` (used for multi-profile runners).
-    ///
-    /// `base_cache` is shared across factories so that multiple profiles
-    /// using the same rootfs share a single read-only loop device.
     pub async fn new(
         config: FirecrackerConfig,
         netns_pool: Option<std::sync::Arc<tokio::sync::Mutex<NetnsPool>>>,
-        base_cache: std::sync::Arc<std::sync::Mutex<BaseLoopCache>>,
     ) -> Result<Self, SandboxError> {
         let t = std::time::Instant::now();
         prerequisites::check_prerequisites(&prerequisites::PrerequisiteConfig {
@@ -162,8 +158,8 @@ impl FirecrackerFactory {
             factory_paths,
             runtime_paths,
             netns_pool,
-            base_cache,
-            base_loop: None,
+            base_image_path: None,
+            base_image_size: 0,
             cow_pool: None,
             started: false,
         })
@@ -179,13 +175,6 @@ impl FirecrackerFactory {
     #[allow(clippy::expect_used)]
     fn netns_pool(&self) -> &std::sync::Arc<tokio::sync::Mutex<NetnsPool>> {
         self.netns_pool.as_ref().expect("factory not started")
-    }
-
-    /// # Panics
-    /// Panics if called before `startup()` — this is a programming error.
-    #[allow(clippy::expect_used)]
-    fn base_loop(&self) -> &BaseHandle {
-        self.base_loop.as_ref().expect("factory not started")
     }
 
     /// # Panics
@@ -228,30 +217,26 @@ impl SandboxFactory for FirecrackerFactory {
             self.netns_pool = Some(std::sync::Arc::new(tokio::sync::Mutex::new(netns_pool)));
         }
 
-        // Acquire a shared base loop device for this factory's rootfs.
-        // Uses spawn_blocking because losetup/blockdev are synchronous.
-        let rootfs = self.config.rootfs_path.clone();
-        let pool = self.base_cache.clone();
-        let base_loop = tokio::task::spawn_blocking(move || {
-            let mut pool = pool.lock().unwrap_or_else(|e| e.into_inner());
-            pool.acquire(&rootfs)
-                .map_err(|e| SandboxError::CreationFailed(format!("base loop cache: {e}")))
-        })
-        .await
-        .map_err(|e| SandboxError::CreationFailed(format!("join: {e}")))??;
+        // Determine base image size from file metadata.
+        let rootfs = &self.config.rootfs_path;
+        let base_size = tokio::fs::metadata(rootfs)
+            .await
+            .map_err(|e| SandboxError::CreationFailed(format!("base image metadata: {e}")))?
+            .len();
 
         info!(
-            loop_dev = %base_loop.loop_path.display(),
-            sectors = base_loop.sectors,
-            "base image acquired from cache"
+            rootfs = %rootfs.display(),
+            base_size,
+            "base image size determined"
         );
 
-        self.base_loop = Some(base_loop);
+        self.base_image_path = Some(rootfs.clone());
+        self.base_image_size = base_size;
 
         // Initialize COW pool with base image info.
         let cow_pool_config = crate::cow_pool::CowPoolConfig {
             workspaces_dir: self.factory_paths.workspaces(),
-            base_sectors: self.base_loop().sectors,
+            base_size,
             golden_cow: self.config.snapshot.as_ref().map(|s| s.cow_path.clone()),
         };
         let mut cow_pool = crate::cow_pool::CowPool::new(cow_pool_config);
@@ -293,21 +278,14 @@ impl SandboxFactory for FirecrackerFactory {
             warn!(id = %id, error = %e, "failed to clean stale workspace dir");
         }
         if let Err(e) = tokio::fs::rename(&slot.workspace, &target_workspace).await {
-            // Rollback: destroy the entire slot (detach loop, remove files).
-            // Fire-and-forget: tokio guarantees spawn_blocking tasks run to
-            // completion even when the JoinHandle is dropped.
-            tokio::task::spawn_blocking(|| crate::cow_pool::destroy_slot(slot));
+            // Rollback: remove the slot workspace and COW file.
+            crate::cow_pool::destroy_slot(slot);
             return Err(SandboxError::CreationFailed(format!(
                 "rename workspace: {e}"
             )));
         }
 
-        // From here, workspace is at target_workspace and slot.loop_device
-        // is still valid (rename only moves the directory, not the Rust struct).
-        // We need to clean up both the loop device AND the renamed workspace
-        // on any subsequent failure before create_from_loop consumes the slot.
         let sandbox_paths = SandboxPaths::new(target_workspace);
-        let cow_file = sandbox_paths.workspace().join("cow.img");
 
         // Clean stale sock dir and create vsock directory.
         if sock_paths.dir().exists()
@@ -316,12 +294,7 @@ impl SandboxFactory for FirecrackerFactory {
             warn!(id = %id, error = %e, "failed to clean stale sock dir");
         }
         if let Err(e) = tokio::fs::create_dir_all(sock_paths.vsock_dir()).await {
-            // Rollback: detach the loop device and remove workspace.
             let ws = sandbox_paths.workspace().to_owned();
-            tokio::task::spawn_blocking(move || {
-                let mut ld = slot.loop_device;
-                let _ = ld.detach();
-            });
             let _ = tokio::fs::remove_dir_all(&ws).await;
             return Err(SandboxError::CreationFailed(format!(
                 "mkdir vsock dir: {e}"
@@ -332,50 +305,35 @@ impl SandboxFactory for FirecrackerFactory {
         let network = match self.netns_pool().lock().await.acquire().await {
             Ok(n) => n,
             Err(e) => {
-                // Rollback: detach the loop device and remove directories.
                 let ws = sandbox_paths.workspace().to_owned();
                 let sd = sock_paths.dir().to_owned();
-                tokio::task::spawn_blocking(move || {
-                    let mut ld = slot.loop_device;
-                    let _ = ld.detach();
-                });
                 let _ = tokio::fs::remove_dir_all(&ws).await;
                 let _ = tokio::fs::remove_dir_all(&sd).await;
                 return Err(SandboxError::CreationFailed(format!("acquire netns: {e}")));
             }
         };
 
-        // Create dm-snapshot with correct cow-{sandbox_id} name.
-        // Only this step runs `sudo dmsetup create` on the hot path.
-        let base_loop = self.base_loop().loop_path.clone();
-        let base_sectors = self.base_loop().sectors;
-        let sandbox_id = id.clone();
-        let cow_result = tokio::task::spawn_blocking(move || {
-            CowDevice::create_from_loop(
-                sandbox_id,
-                slot.loop_device,
-                cow_file,
-                &base_loop,
-                base_sectors,
-            )
-        })
-        .await
-        .map_err(|e| SandboxError::CreationFailed(format!("join: {e}")))?
-        .map_err(|e| SandboxError::CreationFailed(format!("create COW device: {e}")));
-
-        let cow_device = match cow_result {
-            Ok(d) => d,
-            Err(e) => {
-                // Roll back: return netns to pool and clean up directories.
-                let mut netns_pool = self.netns_pool().lock().await;
-                if let Err(rel_err) = netns_pool.release(network).await {
-                    warn!(error = %rel_err, "failed to release netns during rollback");
+        // Create NBD COW device (~15ms via netlink, no subprocess).
+        let base_image = self
+            .base_image_path
+            .as_ref()
+            .ok_or_else(|| SandboxError::CreationFailed("factory not started".into()))?;
+        let cow_device =
+            match NbdCowDevice::create(base_image, &slot.cow_file, self.base_image_size).await {
+                Ok(d) => d,
+                Err(e) => {
+                    // Roll back: return netns to pool and clean up directories.
+                    let mut netns_pool = self.netns_pool().lock().await;
+                    if let Err(rel_err) = netns_pool.release(network).await {
+                        warn!(error = %rel_err, "failed to release netns during rollback");
+                    }
+                    let _ = tokio::fs::remove_dir_all(sandbox_paths.workspace()).await;
+                    let _ = tokio::fs::remove_dir_all(sock_paths.dir()).await;
+                    return Err(SandboxError::CreationFailed(format!(
+                        "create NBD COW device: {e}"
+                    )));
                 }
-                let _ = tokio::fs::remove_dir_all(sandbox_paths.workspace()).await;
-                let _ = tokio::fs::remove_dir_all(sock_paths.dir()).await;
-                return Err(e);
-            }
-        };
+            };
 
         info!(id = %id, device = %cow_device.device_path().display(), "sandbox created");
 
@@ -413,21 +371,18 @@ impl SandboxFactory for FirecrackerFactory {
         let sock_dir = sandbox.sock_paths.dir().to_owned();
         let workspace = sandbox.sandbox_paths.workspace().to_owned();
 
-        // Log dm-snapshot stats before teardown for performance debugging.
-        sandbox.cow_device.log_status();
+        // Log NBD COW stats before teardown for performance debugging.
+        sandbox.cow_device.log_status().await;
 
-        // Destroy the COW device (removes dm target, detaches cow loop, deletes COW file).
+        // Destroy the NBD COW device (flushes data, disconnects, removes COW file).
         //
         // The inner Firecracker process (inside netns via sudo -u) may still
         // be exiting after kill_process_group + child.wait() — the outer sudo
         // exits first while the inner process releases file descriptors.
         // Retry a few times to let it finish.
-        // Destroy runs synchronous subprocesses (dmsetup remove, losetup -d)
-        // without spawn_blocking.  Unlike create (hot path, concurrent), destroy
-        // runs after the sandbox is dead — blocking ~100ms per attempt is acceptable.
         let mut cow_destroyed = false;
         for attempt in 0..DESTROY_RETRIES {
-            match sandbox.cow_device.destroy() {
+            match sandbox.cow_device.destroy().await {
                 Ok(()) => {
                     cow_destroyed = true;
                     break;
@@ -436,21 +391,10 @@ impl SandboxFactory for FirecrackerFactory {
                     if attempt + 1 < DESTROY_RETRIES {
                         tokio::time::sleep(DESTROY_RETRY_DELAY).await;
                     } else {
-                        // Last resort: schedule deferred removal. The kernel
-                        // removes the target when Firecracker releases the fd.
-                        // Note: cow_destroyed stays false — deferred means the
-                        // dm target and loop device are NOT yet gone, so we must
-                        // keep the workspace (and its cow.img) intact.  Deleting
-                        // the backing file while the loop device still references
-                        // it creates an orphaned loop pointing at "(deleted)".
-                        warn!(id = %sandbox_id, error = %e, "destroy failed after retries, trying deferred removal");
-                        match sandbox.cow_device.destroy_deferred() {
-                            Ok(()) => {}
-                            Err(e) => {
-                                warn!(id = %sandbox_id, error = %e, "deferred removal also failed — relying on GC");
-                                sandbox.cow_device.abandon();
-                            }
-                        }
+                        // Last resort: abandon the device. The kernel will
+                        // timeout and release the NBD device.
+                        warn!(id = %sandbox_id, error = %e, "destroy failed after retries — abandoning");
+                        sandbox.cow_device.abandon();
                     }
                 }
             }
@@ -470,11 +414,8 @@ impl SandboxFactory for FirecrackerFactory {
         }
 
         // Delete the workspace directory only if the COW device was fully torn
-        // down.  When destroy() failed, the dm-snapshot target still references
-        // the COW file inside the workspace via a loop device — deleting the
-        // workspace would remove the backing file from the directory tree while
-        // the kernel still has it open (safe on Linux, but makes debugging and
-        // GC harder).
+        // down.  When destroy() failed, the NBD device may still reference
+        // the COW file — keep the workspace intact for debugging.
         if cow_destroyed && let Err(e) = tokio::fs::remove_dir_all(&workspace).await {
             warn!(id = %sandbox_id, error = %e, "failed to delete workspace");
         }
@@ -483,25 +424,13 @@ impl SandboxFactory for FirecrackerFactory {
     }
 
     async fn shutdown(&mut self) {
-        // Clean up COW pool (detach pre-warmed loop devices, delete cow files).
+        // Clean up COW pool (delete pre-warmed COW files).
         if let Some(pool_mutex) = self.cow_pool.take() {
             let mut pool = pool_mutex.into_inner();
             pool.cleanup().await;
         }
 
-        // Release the base image handle back to the shared cache.
-        if let Some(handle) = self.base_loop.take() {
-            let pool = self.base_cache.clone();
-            let base_key = handle.base_key().to_owned();
-            // spawn_blocking because losetup -d is synchronous.
-            let _ = tokio::task::spawn_blocking(move || {
-                let mut pool = pool.lock().unwrap_or_else(|e| e.into_inner());
-                if let Err(e) = pool.release(&base_key) {
-                    warn!(error = %e, "failed to release base image");
-                }
-            })
-            .await;
-        }
+        self.base_image_path = None;
 
         // Clean up netns pool only if we hold the last reference.
         // When shared across multiple factories, the caller manages cleanup.

@@ -1,8 +1,8 @@
 //! COW Device Pool for Firecracker VMs
 //!
-//! Pre-warms COW files and loop devices in the background to reduce
-//! sandbox creation latency. On acquire, only `dmsetup create` remains
-//! on the hot path (~10-50ms, 1 sudo call).
+//! Pre-warms COW files in the background to reduce sandbox creation latency.
+//! On acquire, only `NbdCowDevice::create()` remains on the hot path (~15ms,
+//! netlink connect — no subprocess calls).
 //!
 //! Follows the [`NetnsPool`](crate::network::NetnsPool) pattern:
 //! - Fixed buffer of pre-warmed slots
@@ -18,7 +18,7 @@ use tracing::{error, info, warn};
 /// Number of pre-warmed COW slots to maintain in the queue.
 const BUFFER_SIZE: usize = 4;
 
-/// Maximum slots a single pool can allocate (prevents runaway loop device
+/// Maximum slots a single pool can allocate (prevents runaway NBD device
 /// consumption). Matches [`NetnsPool`]'s `MAX_NAMESPACES`.
 const MAX_SLOTS: u32 = 256;
 
@@ -31,23 +31,23 @@ const MAX_SLOTS: u32 = 256;
 pub(crate) struct CowPoolConfig {
     /// Base directory for workspaces (e.g., `{base_dir}/workspaces`).
     pub workspaces_dir: PathBuf,
-    /// Base image size in 512-byte sectors (for `init_cow_file` in fresh mode).
-    pub base_sectors: u64,
+    /// Base image size in bytes (for creating sparse COW files in fresh mode).
+    pub base_size: u64,
     /// Snapshot golden COW file path (`None` = fresh mode).
     pub golden_cow: Option<PathBuf>,
 }
 
-/// A pre-warmed slot: COW file created + loop device attached.
+/// A pre-warmed slot: workspace directory + COW file created.
 ///
-/// The caller must create the dm-snapshot target on acquire
-/// via [`CowDevice::create_from_loop`](block_cow::CowDevice::create_from_loop).
+/// The caller must create the NBD device on acquire via
+/// [`NbdCowDevice::create()`](nbd_cow::NbdCowDevice::create).
 pub(crate) struct PrewarmedSlot {
     /// Unique slot ID (UUID). Used as workspace directory name.
     pub id: String,
     /// Path to the workspace directory: `{workspaces_dir}/{id}/`.
     pub workspace: PathBuf,
-    /// The attached loop device. Ownership transfers to `CowDevice` on acquire.
-    pub loop_device: block_cow::LoopDevice,
+    /// Path to the pre-created sparse COW file inside the workspace.
+    pub cow_file: PathBuf,
 }
 
 impl std::fmt::Debug for PrewarmedSlot {
@@ -64,8 +64,6 @@ impl std::fmt::Debug for PrewarmedSlot {
 pub(crate) enum CowPoolError {
     #[error("COW file creation failed: {0}")]
     CowFileCreation(String),
-    #[error("loop device attach failed: {0}")]
-    LoopAttach(String),
     #[error("slot limit reached (max {max})")]
     SlotLimitReached { max: u32 },
     #[error("pool is not active")]
@@ -76,11 +74,11 @@ pub(crate) enum CowPoolError {
 // CowPool
 // ---------------------------------------------------------------------------
 
-/// Pre-warming pool for COW device resources.
+/// Pre-warming pool for COW file resources.
 ///
-/// Maintains a buffer of pre-created COW files with attached loop devices.
-/// On [`acquire`](Self::acquire), pops a slot and the caller creates the
-/// dm-snapshot target with the correct `cow-{sandbox_id}` name.
+/// Maintains a buffer of pre-created COW files. On [`acquire`](Self::acquire),
+/// pops a slot and the caller creates the NBD device with
+/// [`NbdCowDevice::create()`](nbd_cow::NbdCowDevice::create).
 pub(crate) struct CowPool {
     active: bool,
     queue: VecDeque<PrewarmedSlot>,
@@ -178,17 +176,17 @@ impl CowPool {
         Ok(slot)
     }
 
-    /// Shut down the pool: abort pending tasks, destroy all queued slots.
+    /// Shut down the pool: wait for pending tasks, destroy all queued slots.
     pub async fn cleanup(&mut self) {
         if !self.active {
             return;
         }
         self.active = false;
 
-        // Wait for in-flight spawn_blocking tasks (at most 1) to complete.
+        // Wait for in-flight spawn_blocking tasks to complete.
         // Unlike async tasks, spawn_blocking tasks cannot be cancelled —
         // abort_all would mark them as Cancelled, discarding the created
-        // slot and leaking its loop device. So we wait instead (~50-250ms).
+        // slot and leaking its COW file. So we wait instead.
         while let Some(result) = self.pending.join_next().await {
             match result {
                 Ok(Ok(slot)) => self.queue.push_back(slot),
@@ -200,14 +198,8 @@ impl CowPool {
         let count = self.queue.len();
         info!(count, "cleaning up COW pool");
 
-        let mut teardown = tokio::task::JoinSet::new();
         while let Some(slot) = self.queue.pop_front() {
-            teardown.spawn_blocking(move || destroy_slot(slot));
-        }
-        while let Some(result) = teardown.join_next().await {
-            if let Err(e) = result {
-                error!(error = %e, "slot teardown panicked");
-            }
+            destroy_slot(slot);
         }
         info!("COW pool cleanup complete");
     }
@@ -245,33 +237,22 @@ impl CowPool {
 // Slot creation / destruction (runs in spawn_blocking)
 // ---------------------------------------------------------------------------
 
-/// Create a pre-warmed slot: COW file + loop device.
+/// Create a pre-warmed slot: workspace directory + COW file.
 fn create_slot(config: &CowPoolConfig) -> Result<PrewarmedSlot, CowPoolError> {
     let id = uuid::Uuid::new_v4().to_string();
     let workspace = config.workspaces_dir.join(&id);
     let cow_file = workspace.join("cow.img");
 
-    // 1. Create COW file.
     if let Err(e) = create_cow_file(config, &workspace, &cow_file) {
         // Best-effort cleanup: remove any partially-created workspace.
         let _ = std::fs::remove_dir_all(&workspace);
         return Err(e);
     }
 
-    // 2. Attach loop device.
-    let loop_device = match block_cow::losetup_attach(&cow_file, false) {
-        Ok(ld) => ld,
-        Err(e) => {
-            let _ = std::fs::remove_file(&cow_file);
-            let _ = std::fs::remove_dir_all(&workspace);
-            return Err(CowPoolError::LoopAttach(e.to_string()));
-        }
-    };
-
     Ok(PrewarmedSlot {
         id,
         workspace,
-        loop_device,
+        cow_file,
     })
 }
 
@@ -281,14 +262,21 @@ fn create_cow_file(
     workspace: &Path,
     cow_file: &Path,
 ) -> Result<(), CowPoolError> {
+    std::fs::create_dir_all(workspace).map_err(|e| CowPoolError::CowFileCreation(e.to_string()))?;
     match &config.golden_cow {
         Some(golden) => {
-            std::fs::create_dir_all(workspace)
-                .map_err(|e| CowPoolError::CowFileCreation(e.to_string()))?;
             sparse_copy(golden, cow_file)?;
+            // Also copy the bitmap sidecar if it exists (for snapshot restore).
+            let golden_bitmap = PathBuf::from(format!("{}.bitmap", golden.display()));
+            if golden_bitmap.exists() {
+                let cow_bitmap = PathBuf::from(format!("{}.bitmap", cow_file.display()));
+                sparse_copy(&golden_bitmap, &cow_bitmap)?;
+            }
         }
         None => {
-            block_cow::init_cow_file(cow_file, config.base_sectors)
+            let f = std::fs::File::create(cow_file)
+                .map_err(|e| CowPoolError::CowFileCreation(e.to_string()))?;
+            f.set_len(config.base_size)
                 .map_err(|e| CowPoolError::CowFileCreation(e.to_string()))?;
         }
     }
@@ -314,12 +302,8 @@ fn sparse_copy(src: &Path, dst: &Path) -> Result<(), CowPoolError> {
 
 /// Best-effort teardown of a pre-warmed slot.
 ///
-/// Detaches the loop device first (so the backing file is released), then
-/// removes the workspace directory (which contains the cow file).
-pub(crate) fn destroy_slot(mut slot: PrewarmedSlot) {
-    if let Err(e) = slot.loop_device.detach() {
-        warn!(id = %slot.id, error = %e, "failed to detach pool loop device");
-    }
+/// Removes the workspace directory (which contains the COW file).
+pub(crate) fn destroy_slot(slot: PrewarmedSlot) {
     if let Err(e) = std::fs::remove_dir_all(&slot.workspace) {
         warn!(id = %slot.id, error = %e, "failed to delete pool workspace dir");
     }
@@ -336,7 +320,7 @@ mod tests {
     fn test_config(dir: &Path) -> CowPoolConfig {
         CowPoolConfig {
             workspaces_dir: dir.to_owned(),
-            base_sectors: 131072, // 64 MiB
+            base_size: 64 * 1024 * 1024, // 64 MiB
             golden_cow: None,
         }
     }
@@ -372,7 +356,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let config = CowPoolConfig {
             workspaces_dir: tmp.path().to_owned(),
-            base_sectors: 131072,
+            base_size: 64 * 1024 * 1024,
             golden_cow: Some(PathBuf::from("/nonexistent/golden.img")),
         };
         let mut pool = CowPool::new(config);
@@ -385,12 +369,10 @@ mod tests {
 
     #[tokio::test]
     async fn acquire_exhausted_with_bad_config_returns_error() {
-        // No golden cow, but base_sectors=0 is fine for init_cow_file.
-        // However losetup will fail (no root), so all tiers fail.
         let tmp = tempfile::tempdir().unwrap();
         let config = CowPoolConfig {
             workspaces_dir: tmp.path().to_owned(),
-            base_sectors: 131072,
+            base_size: 64 * 1024 * 1024,
             golden_cow: Some(PathBuf::from("/nonexistent/golden.img")),
         };
         let mut pool = CowPool::new(config);
@@ -416,7 +398,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let config = CowPoolConfig {
             workspaces_dir: tmp.path().to_owned(),
-            base_sectors: 131072,
+            base_size: 64 * 1024 * 1024,
             golden_cow: Some(PathBuf::from("/nonexistent/golden.img")),
         };
         let err = create_slot(&config).unwrap_err();
@@ -435,20 +417,24 @@ mod tests {
 
     #[test]
     fn create_slot_fresh_mode_creates_cow_file() {
-        // In fresh mode, init_cow_file creates the cow file (no root needed).
-        // losetup_attach will fail without root, but the cow file should exist
-        // before the error.
         let tmp = tempfile::tempdir().unwrap();
         let config = test_config(tmp.path());
-        let result = create_slot(&config);
-        // Expected: losetup fails (no root), returns LoopAttach error.
-        let err = result.unwrap_err();
-        assert!(
-            matches!(err, CowPoolError::LoopAttach(_)),
-            "expected LoopAttach, got {err}"
-        );
-        // Error path should have cleaned up the cow file and workspace dir.
-        let entries: Vec<_> = std::fs::read_dir(tmp.path()).unwrap().collect();
-        assert_eq!(entries.len(), 0, "workspace dir should be cleaned up");
+        let slot = create_slot(&config).unwrap();
+        assert!(slot.cow_file.exists(), "COW file should be created");
+        let meta = std::fs::metadata(&slot.cow_file).unwrap();
+        assert_eq!(meta.len(), 64 * 1024 * 1024, "COW file should be 64 MiB");
+        // Cleanup
+        destroy_slot(slot);
+    }
+
+    #[test]
+    fn destroy_slot_removes_workspace() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = test_config(tmp.path());
+        let slot = create_slot(&config).unwrap();
+        let ws = slot.workspace.clone();
+        assert!(ws.exists());
+        destroy_slot(slot);
+        assert!(!ws.exists(), "workspace should be removed");
     }
 }
