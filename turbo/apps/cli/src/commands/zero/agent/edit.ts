@@ -65,7 +65,9 @@ Notes:
           const current = await getZeroAgent(agentId);
 
           const customSkills = options.skills
-            ? options.skills.split(",").map((s) => s.trim())
+            ? options.skills.split(",").map((s) => {
+                return s.trim();
+              })
             : undefined;
 
           await updateZeroAgent(agentId, {

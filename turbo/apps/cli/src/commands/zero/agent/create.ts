@@ -46,7 +46,9 @@ Examples:
         instructionsFile?: string;
       }) => {
         const customSkills = options.skills
-          ? options.skills.split(",").map((s) => s.trim())
+          ? options.skills.split(",").map((s) => {
+              return s.trim();
+            })
           : undefined;
 
         const agent = await createZeroAgent({
