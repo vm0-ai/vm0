@@ -303,17 +303,6 @@ async fn snapshot_restore_round_trip() {
 
         let dev_path = device.device_path().to_owned();
 
-        // Diagnostic: check Phase 1 device size
-        let dev_name = dev_path.file_name().unwrap().to_string_lossy();
-        let size_path = format!("/sys/block/{dev_name}/size");
-        let sysfs_size = fs::read_to_string(&size_path).unwrap_or_else(|e| format!("ERR:{e}"));
-        eprintln!(
-            "Phase 1: device={} sysfs_sectors={} expected_sectors={}",
-            dev_path.display(),
-            sysfs_size.trim(),
-            size / 512
-        );
-
         // Write a full 4K block with the marker at the start (block-aligned I/O)
         let mut write_buf = vec![0u8; 4096];
         write_buf[..marker.len()].copy_from_slice(marker);
@@ -347,23 +336,6 @@ async fn snapshot_restore_round_trip() {
         device.destroy_keep_cow().await.expect("destroy_keep_cow");
     }
 
-    // Diagnostic: kernel version and device state after Phase 1
-    let uname = Command::new("uname")
-        .arg("-r")
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-        .unwrap_or_default();
-    let pid_after =
-        fs::read_to_string("/sys/block/nbd0/pid").unwrap_or_else(|e| format!("ERR:{e}"));
-    let size_after =
-        fs::read_to_string("/sys/block/nbd0/size").unwrap_or_else(|e| format!("ERR:{e}"));
-    eprintln!(
-        "After Phase 1 destroy: kernel={} nbd0_pid={} nbd0_size={}",
-        uname,
-        pid_after.trim(),
-        size_after.trim()
-    );
-
     // Verify COW file and bitmap exist
     assert!(cow.exists(), "COW file should be preserved");
     let mut bitmap_name = cow.as_os_str().to_os_string();
@@ -385,20 +357,6 @@ async fn snapshot_restore_round_trip() {
         );
     }
 
-    // Wait for kernel to fully release the device before reconnecting
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-
-    // Diagnostic: device state after wait
-    let pid_before_p2 =
-        fs::read_to_string("/sys/block/nbd0/pid").unwrap_or_else(|e| format!("ERR:{e}"));
-    let size_before_p2 =
-        fs::read_to_string("/sys/block/nbd0/size").unwrap_or_else(|e| format!("ERR:{e}"));
-    eprintln!(
-        "Before Phase 2: nbd0_pid={} nbd0_size={}",
-        pid_before_p2.trim(),
-        size_before_p2.trim()
-    );
-
     // Phase 2: create new device with same base + COW — data should persist
     {
         let mut device = nbd_cow::NbdCowDevice::create(&base, &cow, size)
@@ -407,17 +365,6 @@ async fn snapshot_restore_round_trip() {
 
         let dev_path = device.device_path().to_owned();
         device.log_status().await;
-
-        // Diagnostic: check device size via sysfs
-        let dev_name = dev_path.file_name().unwrap().to_string_lossy();
-        let size_path = format!("/sys/block/{dev_name}/size");
-        let sysfs_size = fs::read_to_string(&size_path).unwrap_or_else(|e| format!("ERR:{e}"));
-        eprintln!(
-            "Phase 2: device={} sysfs_sectors={} expected_sectors={}",
-            dev_path.display(),
-            sysfs_size.trim(),
-            size / 512
-        );
 
         // Read first 4K block from the device
         let output = Command::new("dd")

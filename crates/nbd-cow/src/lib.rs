@@ -95,22 +95,30 @@ impl NbdCowDevice {
         };
         let device_path = PathBuf::from(format!("/dev/nbd{device_index}"));
 
-        // Verify the kernel set the device size correctly after connect.
-        // On reconnect (same index after disconnect), the kernel zeros capacity
-        // during disconnect and re-sets it in nbd_start_device. Log a warning if
-        // the size is not yet visible via sysfs.
+        // Wait for the kernel to finish setting up the device capacity.
+        // On reconnect (same index after a recent disconnect), the kernel may
+        // still be tearing down the old connection when we connect. The netlink
+        // CONNECT succeeds but set_capacity may not take effect until the old
+        // config is fully released. Poll sysfs until the size is correct.
         let size_path = format!("/sys/block/nbd{device_index}/size");
-        if let Ok(content) = std::fs::read_to_string(&size_path) {
-            let sectors: u64 = content.trim().parse().unwrap_or(0);
-            let expected_sectors = size / 512;
-            if sectors != expected_sectors {
-                tracing::warn!(
-                    device_index,
-                    sectors,
-                    expected_sectors,
-                    "device size mismatch after connect"
-                );
+        let expected_sectors = size / 512;
+        let mut size_ok = false;
+        for _ in 0..50 {
+            if let Ok(content) = std::fs::read_to_string(&size_path) {
+                let sectors: u64 = content.trim().parse().unwrap_or(0);
+                if sectors == expected_sectors {
+                    size_ok = true;
+                    break;
+                }
             }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        if !size_ok {
+            tracing::warn!(
+                device_index,
+                expected_sectors,
+                "device size not set after connect — reconnect may have raced with disconnect"
+            );
         }
 
         Ok(Self {
