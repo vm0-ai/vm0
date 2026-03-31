@@ -233,16 +233,16 @@ function ScheduleNotificationSettings({
   setNotifyEmail,
   notifySlack,
   setNotifySlack,
-  slackChannelId,
-  setSlackChannelId,
+  notifySlackChannelId,
+  setNotifySlackChannelId,
   disabled,
 }: {
   notifyEmail: boolean;
   setNotifyEmail: (v: boolean) => void;
   notifySlack: boolean;
   setNotifySlack: (v: boolean) => void;
-  slackChannelId: string | null;
-  setSlackChannelId: (v: string | null) => void;
+  notifySlackChannelId: string | null;
+  setNotifySlackChannelId: (v: string | null) => void;
   disabled: boolean;
 }) {
   const slackData = useLoadable(slackOrgData$);
@@ -293,9 +293,9 @@ function ScheduleNotificationSettings({
         >
           <div className={SCHEDULE_DETAIL_CONTROL_WIDTH}>
             <Select
-              value={slackChannelId ?? "__dm__"}
+              value={notifySlackChannelId ?? "__dm__"}
               onValueChange={(v) => {
-                setSlackChannelId(v === "__dm__" ? null : v);
+                setNotifySlackChannelId(v === "__dm__" ? null : v);
               }}
               disabled={disabled}
             >
@@ -329,7 +329,7 @@ type ScheduleSettingsSnapshot = {
   description: string;
   notifyEmail: boolean;
   notifySlack: boolean;
-  slackChannelId: string | null;
+  notifySlackChannelId: string | null;
   dayOfWeek: string;
   dayOfMonth: string;
 };
@@ -349,7 +349,7 @@ function buildSettingsSnapshot(
     description: entry.description ?? "",
     notifyEmail: entry.notifyEmail ?? false,
     notifySlack: entry.notifySlack ?? false,
-    slackChannelId: entry.slackChannelId ?? null,
+    notifySlackChannelId: entry.notifySlackChannelId ?? null,
     dayOfWeek: parsed.dayOfWeek ?? "1",
     dayOfMonth: parsed.dayOfMonth ?? "1",
   };
@@ -370,7 +370,7 @@ function isSettingsChanged(
     a.description !== b.description ||
     a.notifyEmail !== b.notifyEmail ||
     a.notifySlack !== b.notifySlack ||
-    a.slackChannelId !== b.slackChannelId
+    a.notifySlackChannelId !== b.notifySlackChannelId
   );
 }
 
@@ -407,7 +407,9 @@ function ScheduleSettingsForm({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [notifyEmail, setNotifyEmail] = useState(initial.notifyEmail);
   const [notifySlack, setNotifySlack] = useState(initial.notifySlack);
-  const [slackChannelId, setSlackChannelId] = useState(initial.slackChannelId);
+  const [notifySlackChannelId, setNotifySlackChannelId] = useState(
+    initial.notifySlackChannelId,
+  );
   const [dayOfWeek] = useState(initial.dayOfWeek);
   const [dayOfMonth] = useState(initial.dayOfMonth);
 
@@ -424,7 +426,7 @@ function ScheduleSettingsForm({
     description,
     notifyEmail,
     notifySlack,
-    slackChannelId,
+    notifySlackChannelId,
     dayOfWeek,
     dayOfMonth,
   };
@@ -441,7 +443,7 @@ function ScheduleSettingsForm({
     setDescription(savedState.description);
     setNotifyEmail(savedState.notifyEmail);
     setNotifySlack(savedState.notifySlack);
-    setSlackChannelId(savedState.slackChannelId);
+    setNotifySlackChannelId(savedState.notifySlackChannelId);
   };
 
   const handleSave = async () => {
@@ -461,7 +463,7 @@ function ScheduleSettingsForm({
       agentId,
       notifyEmail,
       notifySlack,
-      slackChannelId,
+      notifySlackChannelId,
       ...(freq === "every_week" ? { dayOfWeek } : {}),
       ...(freq === "every_month" ? { dayOfMonth } : {}),
     });
@@ -561,8 +563,8 @@ function ScheduleSettingsForm({
             setNotifyEmail={setNotifyEmail}
             notifySlack={notifySlack}
             setNotifySlack={setNotifySlack}
-            slackChannelId={slackChannelId}
-            setSlackChannelId={setSlackChannelId}
+            notifySlackChannelId={notifySlackChannelId}
+            setNotifySlackChannelId={setNotifySlackChannelId}
             disabled={saving}
           />
         </CardContent>
@@ -1087,7 +1089,7 @@ export function ZeroScheduleDetailPage() {
           agentId: entry.agentId,
           notifyEmail: entry.notifyEmail,
           notifySlack: entry.notifySlack,
-          slackChannelId: entry.slackChannelId,
+          notifySlackChannelId: entry.notifySlackChannelId,
         },
         pageSignal,
       ).finally(() => {

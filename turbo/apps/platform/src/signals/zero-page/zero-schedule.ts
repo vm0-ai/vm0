@@ -126,7 +126,7 @@ interface ZeroScheduleEntry {
   enabled: boolean;
   notifyEmail: boolean;
   notifySlack: boolean;
-  slackChannelId: string | null;
+  notifySlackChannelId: string | null;
   /** Original schedule name for API operations */
   name: string;
   /** IANA timezone stored on the server */
@@ -148,7 +148,7 @@ export const zeroScheduleEntries$ = computed((get) => {
         enabled: s.enabled,
         notifyEmail: s.notifyEmail,
         notifySlack: s.notifySlack,
-        slackChannelId: s.slackChannelId,
+        notifySlackChannelId: s.notifySlackChannelId,
         name: s.name,
         timezone: s.timezone,
         intervalSeconds: s.intervalSeconds,
@@ -216,8 +216,8 @@ function buildScheduleBody(
     ...(params.notifySlack !== undefined && {
       notifySlack: params.notifySlack,
     }),
-    ...(params.slackChannelId !== undefined && {
-      slackChannelId: params.slackChannelId,
+    ...(params.notifySlackChannelId !== undefined && {
+      notifySlackChannelId: params.notifySlackChannelId,
     }),
   };
 
@@ -276,7 +276,7 @@ export interface ZeroScheduleSaveParams {
   editName?: string;
   notifyEmail?: boolean;
   notifySlack?: boolean;
-  slackChannelId?: string | null;
+  notifySlackChannelId?: string | null;
 }
 
 export const saveZeroSchedule$ = command(
@@ -390,7 +390,7 @@ export interface OrgScheduleEntry {
   enabled: boolean;
   notifyEmail: boolean;
   notifySlack: boolean;
-  slackChannelId: string | null;
+  notifySlackChannelId: string | null;
   name: string;
   /** IANA timezone stored on the server */
   timezone: string;
@@ -422,7 +422,7 @@ export const allOrgScheduleEntries$ = computed((get) => {
         enabled: s.enabled,
         notifyEmail: s.notifyEmail,
         notifySlack: s.notifySlack,
-        slackChannelId: s.slackChannelId,
+        notifySlackChannelId: s.notifySlackChannelId,
         name: s.name,
         timezone: s.timezone,
         intervalSeconds: s.intervalSeconds,

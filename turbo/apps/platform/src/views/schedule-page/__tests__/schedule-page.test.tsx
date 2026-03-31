@@ -51,7 +51,7 @@ describe("schedule page", () => {
               artifactName: null,
               artifactVersion: null,
               volumeVersions: null,
-              slackChannelId: null,
+              notifySlackChannelId: null,
               retryStartedAt: null,
               consecutiveFailures: 0,
             },

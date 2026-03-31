@@ -13,7 +13,7 @@ function makeEntry(
     enabled: true,
     notifyEmail: false,
     notifySlack: false,
-    slackChannelId: null,
+    notifySlackChannelId: null,
     name: "my-schedule",
     timezone: "UTC",
     intervalSeconds: null,

@@ -30,7 +30,7 @@ interface OrgScheduleCallbackPayload {
   agentName: string;
   userId: string;
   orgId: string;
-  slackChannelId?: string | null;
+  notifySlackChannelId?: string | null;
 }
 
 function createCallbackRequest(
@@ -118,7 +118,7 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
     expect(response.status).toBe(400);
   });
 
-  it("sends notification to channel when slackChannelId is set", async () => {
+  it("sends notification to channel when notifySlackChannelId is set", async () => {
     await setupSlackOrg(user);
     mockClerk({ userId: user.userId });
 
@@ -134,7 +134,7 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
       agentName: "sched-agent",
       userId: user.userId,
       orgId: user.orgId,
-      slackChannelId: "C-TARGET-CHANNEL",
+      notifySlackChannelId: "C-TARGET-CHANNEL",
     };
 
     const { secret } = await createTestCallback({
@@ -184,7 +184,7 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
     });
   });
 
-  it("falls back to user DM when slackChannelId is not set", async () => {
+  it("falls back to user DM when notifySlackChannelId is not set", async () => {
     const { slackUserId } = await setupSlackOrg(user);
     mockClerk({ userId: user.userId });
 
@@ -200,7 +200,7 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
       agentName: "sched-agent",
       userId: user.userId,
       orgId: user.orgId,
-      // slackChannelId not set — should fall back to DM
+      // notifySlackChannelId not set — should fall back to DM
     };
 
     const { secret } = await createTestCallback({
@@ -247,7 +247,7 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
       agentName: "sched-agent",
       userId: user.userId,
       orgId: user.orgId,
-      slackChannelId: "C-FAIL-CHANNEL",
+      notifySlackChannelId: "C-FAIL-CHANNEL",
     };
 
     const { secret } = await createTestCallback({
@@ -314,7 +314,7 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
       agentName: "sched-agent",
       userId: user.userId,
       orgId: user.orgId,
-      slackChannelId: "C-ATTR-CHANNEL",
+      notifySlackChannelId: "C-ATTR-CHANNEL",
     };
 
     const { secret } = await createTestCallback({
@@ -372,7 +372,7 @@ describe("POST /api/internal/callbacks/slack/org/schedule", () => {
       agentName: "sched-agent",
       userId: user.userId,
       orgId: user.orgId,
-      slackChannelId: "C-ATTR-FAIL",
+      notifySlackChannelId: "C-ATTR-FAIL",
     };
 
     const { secret } = await createTestCallback({

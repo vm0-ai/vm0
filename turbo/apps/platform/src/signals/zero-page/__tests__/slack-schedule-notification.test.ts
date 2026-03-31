@@ -18,7 +18,7 @@ import {
 const context = testContext();
 
 function createMockScheduleWithSlack(overrides?: {
-  slackChannelId?: string | null;
+  notifySlackChannelId?: string | null;
   notifySlack?: boolean;
 }) {
   return {
@@ -44,7 +44,7 @@ function createMockScheduleWithSlack(overrides?: {
     enabled: true,
     notifyEmail: false,
     notifySlack: overrides?.notifySlack ?? true,
-    slackChannelId: overrides?.slackChannelId ?? null,
+    notifySlackChannelId: overrides?.notifySlackChannelId ?? null,
     nextRunAt: null,
     lastRunAt: null,
     retryStartedAt: null,
@@ -117,13 +117,13 @@ describe("slack schedule notification signals", () => {
     });
   });
 
-  describe("slackChannelId in schedule entries", () => {
-    it("should map slackChannelId from API response", async () => {
+  describe("notifySlackChannelId in schedule entries", () => {
+    it("should map notifySlackChannelId from API response", async () => {
       server.use(
         http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json({
             schedules: [
-              createMockScheduleWithSlack({ slackChannelId: "C-ALERTS" }),
+              createMockScheduleWithSlack({ notifySlackChannelId: "C-ALERTS" }),
             ],
           });
         }),
@@ -134,18 +134,18 @@ describe("slack schedule notification signals", () => {
 
       const entries = context.store.get(allOrgScheduleEntries$);
       expect(entries).toHaveLength(1);
-      expect(entries[0]?.slackChannelId).toBe("C-ALERTS");
+      expect(entries[0]?.notifySlackChannelId).toBe("C-ALERTS");
       expect(entries[0]?.notifySlack).toBeTruthy();
     });
 
-    it("should map null slackChannelId for DM notifications", async () => {
+    it("should map null notifySlackChannelId for DM notifications", async () => {
       server.use(
         http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json({
             schedules: [
               createMockScheduleWithSlack({
                 notifySlack: true,
-                slackChannelId: null,
+                notifySlackChannelId: null,
               }),
             ],
           });
@@ -157,7 +157,7 @@ describe("slack schedule notification signals", () => {
 
       const entries = context.store.get(allOrgScheduleEntries$);
       expect(entries[0]?.notifySlack).toBeTruthy();
-      expect(entries[0]?.slackChannelId).toBeNull();
+      expect(entries[0]?.notifySlackChannelId).toBeNull();
     });
   });
 
@@ -333,8 +333,8 @@ describe("slack schedule notification signals", () => {
     });
   });
 
-  describe("saveOrgSchedule$ with slackChannelId", () => {
-    it("should send slackChannelId in POST body", async () => {
+  describe("saveOrgSchedule$ with notifySlackChannelId", () => {
+    it("should send notifySlackChannelId in POST body", async () => {
       const captured: { body: Record<string, unknown> | null } = {
         body: null,
       };
@@ -367,17 +367,17 @@ describe("slack schedule notification signals", () => {
           intervalSeconds: 0,
           agentId: "e0000000-0000-4000-a000-000000000010",
           notifySlack: true,
-          slackChannelId: "C-ALERTS",
+          notifySlackChannelId: "C-ALERTS",
         },
         context.signal,
       );
 
       expect(captured.body).not.toBeNull();
       expect(captured.body?.notifySlack).toBeTruthy();
-      expect(captured.body?.slackChannelId).toBe("C-ALERTS");
+      expect(captured.body?.notifySlackChannelId).toBe("C-ALERTS");
     });
 
-    it("should send null slackChannelId for DM", async () => {
+    it("should send null notifySlackChannelId for DM", async () => {
       const captured: { body: Record<string, unknown> | null } = {
         body: null,
       };
@@ -410,17 +410,17 @@ describe("slack schedule notification signals", () => {
           intervalSeconds: 0,
           agentId: "e0000000-0000-4000-a000-000000000010",
           notifySlack: true,
-          slackChannelId: null,
+          notifySlackChannelId: null,
         },
         context.signal,
       );
 
       expect(captured.body).not.toBeNull();
       expect(captured.body?.notifySlack).toBeTruthy();
-      expect(captured.body?.slackChannelId).toBeNull();
+      expect(captured.body?.notifySlackChannelId).toBeNull();
     });
 
-    it("should omit slackChannelId when not provided", async () => {
+    it("should omit notifySlackChannelId when not provided", async () => {
       const captured: { body: Record<string, unknown> | null } = {
         body: null,
       };
@@ -457,7 +457,7 @@ describe("slack schedule notification signals", () => {
       );
 
       expect(captured.body).not.toBeNull();
-      expect(captured.body).not.toHaveProperty("slackChannelId");
+      expect(captured.body).not.toHaveProperty("notifySlackChannelId");
     });
   });
 });

@@ -107,7 +107,7 @@ export interface ScheduleFormValues {
   dayOfMonth: string;
   notifyEmail: boolean;
   notifySlack: boolean;
-  slackChannelId: string | null;
+  notifySlackChannelId: string | null;
 }
 
 interface SlackChannelOption {
@@ -443,8 +443,8 @@ function ScheduleNotificationFields({
   slackHasBot,
   slackIsInstalled,
   slackChannels,
-  slackChannelId,
-  setSlackChannelId,
+  notifySlackChannelId,
+  setNotifySlackChannelId,
 }: {
   notifyEmail: boolean;
   setNotifyEmail: (v: boolean) => void;
@@ -453,8 +453,8 @@ function ScheduleNotificationFields({
   slackHasBot: boolean;
   slackIsInstalled: boolean;
   slackChannels: SlackChannelOption[];
-  slackChannelId: string | null;
-  setSlackChannelId: (v: string | null) => void;
+  notifySlackChannelId: string | null;
+  setNotifySlackChannelId: (v: string | null) => void;
 }) {
   return (
     <div className="flex flex-col gap-2">
@@ -489,8 +489,10 @@ function ScheduleNotificationFields({
             Channel
           </label>
           <Select
-            value={slackChannelId ?? "__dm__"}
-            onValueChange={(v) => setSlackChannelId(v === "__dm__" ? null : v)}
+            value={notifySlackChannelId ?? "__dm__"}
+            onValueChange={(v) =>
+              setNotifySlackChannelId(v === "__dm__" ? null : v)
+            }
           >
             <SelectTrigger id="schedule-dialog-slack-channel" className="h-9">
               <SelectValue />
@@ -534,7 +536,7 @@ function buildDefaults(
     dayOfMonth: "1",
     notifyEmail: false,
     notifySlack: false,
-    slackChannelId: null,
+    notifySlackChannelId: null,
   };
   return { ...defaults, ...initialValues };
 }
@@ -561,7 +563,7 @@ function checkDirty(
     current.dayOfMonth !== init.dayOfMonth ||
     current.notifyEmail !== init.notifyEmail ||
     current.notifySlack !== init.notifySlack ||
-    current.slackChannelId !== init.slackChannelId ||
+    current.notifySlackChannelId !== init.notifySlackChannelId ||
     (opts.hasAgents && current.agentId !== init.agentId)
   );
 }
@@ -613,7 +615,9 @@ function ScheduleFormDialogInner({
   const [dayOfMonth, setDayOfMonth] = useState(init.dayOfMonth);
   const [notifyEmail, setNotifyEmail] = useState(init.notifyEmail);
   const [notifySlack, setNotifySlack] = useState(init.notifySlack);
-  const [slackChannelId, setSlackChannelId] = useState(init.slackChannelId);
+  const [notifySlackChannelId, setNotifySlackChannelId] = useState(
+    init.notifySlackChannelId,
+  );
   const [showConfirm, setShowConfirm] = useState(false);
 
   const current: ScheduleFormValues = {
@@ -630,7 +634,7 @@ function ScheduleFormDialogInner({
     dayOfMonth,
     notifyEmail,
     notifySlack,
-    slackChannelId,
+    notifySlackChannelId,
   };
 
   const isDirty = checkDirty(current, init, mode, {
@@ -778,8 +782,8 @@ function ScheduleFormDialogInner({
               slackHasBot={slackHasBot}
               slackIsInstalled={slackIsInstalled}
               slackChannels={slackChannels}
-              slackChannelId={slackChannelId}
-              setSlackChannelId={setSlackChannelId}
+              notifySlackChannelId={notifySlackChannelId}
+              setNotifySlackChannelId={setNotifySlackChannelId}
             />
           )}
         </div>

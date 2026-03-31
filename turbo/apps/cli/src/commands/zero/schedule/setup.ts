@@ -131,6 +131,7 @@ interface SetupOptions {
   enable?: boolean;
   notifyEmail?: boolean;
   notifySlack?: boolean;
+  notifySlackChannelId?: string;
 }
 
 interface ExistingScheduleDefaults {
@@ -152,6 +153,7 @@ interface ScheduleListItem {
   enabled?: boolean;
   notifyEmail?: boolean;
   notifySlack?: boolean;
+  notifySlackChannelId?: string | null;
 }
 
 function getExistingDefaults(
@@ -366,12 +368,18 @@ async function gatherPromptText(
 async function gatherNotificationPreferences(
   optionNotifyEmail: boolean | undefined,
   optionNotifySlack: boolean | undefined,
+  optionNotifySlackChannelId: string | undefined,
   existingSchedule: ScheduleListItem | undefined,
-): Promise<{ notifyEmail?: boolean; notifySlack?: boolean }> {
+): Promise<{
+  notifyEmail?: boolean;
+  notifySlack?: boolean;
+  notifySlackChannelId?: string;
+}> {
   if (optionNotifyEmail !== undefined && optionNotifySlack !== undefined) {
     return {
       notifyEmail: optionNotifyEmail,
       notifySlack: optionNotifySlack,
+      notifySlackChannelId: optionNotifySlackChannelId,
     };
   }
 
@@ -379,6 +387,7 @@ async function gatherNotificationPreferences(
     return {
       notifyEmail: optionNotifyEmail,
       notifySlack: optionNotifySlack,
+      notifySlackChannelId: optionNotifySlackChannelId,
     };
   }
 
@@ -396,7 +405,19 @@ async function gatherNotificationPreferences(
       existingSchedule?.notifySlack ?? false,
     ));
 
-  return { notifyEmail, notifySlack };
+  let notifySlackChannelId = optionNotifySlackChannelId;
+  if (notifySlackChannelId === undefined && notifySlack) {
+    const defaultChannel = existingSchedule?.notifySlackChannelId ?? "";
+    const channelInput = await promptText(
+      "Slack channel ID (leave empty for DM)",
+      defaultChannel,
+    );
+    if (channelInput) {
+      notifySlackChannelId = channelInput;
+    }
+  }
+
+  return { notifyEmail, notifySlack, notifySlackChannelId };
 }
 
 async function gatherInterval(
@@ -518,6 +539,7 @@ async function buildAndDeploy(params: {
   prompt: string;
   notifyEmail?: boolean;
   notifySlack?: boolean;
+  notifySlackChannelId?: string;
 }): Promise<DeployResult> {
   let cronExpression: string | undefined;
   let atTimeISO: string | undefined;
@@ -551,6 +573,9 @@ async function buildAndDeploy(params: {
     }),
     ...(params.notifySlack !== undefined && {
       notifySlack: params.notifySlack,
+    }),
+    ...(params.notifySlackChannelId !== undefined && {
+      notifySlackChannelId: params.notifySlackChannelId,
     }),
   });
 
@@ -674,6 +699,10 @@ export const setupCommand = new Command()
   .option("--no-notify-email", "Disable email notifications")
   .option("--notify-slack", "Enable Slack notifications (default: false)")
   .option("--no-notify-slack", "Disable Slack notifications")
+  .option(
+    "--notify-slack-channel-id <channel-id>",
+    "Slack channel ID for notifications (default: DM)",
+  )
   .addHelpText(
     "after",
     `
@@ -756,11 +785,13 @@ Notes:
       }
 
       // 7. Gather notification preferences
-      const { notifyEmail, notifySlack } = await gatherNotificationPreferences(
-        options.notifyEmail,
-        options.notifySlack,
-        existingSchedule,
-      );
+      const { notifyEmail, notifySlack, notifySlackChannelId } =
+        await gatherNotificationPreferences(
+          options.notifyEmail,
+          options.notifySlack,
+          options.notifySlackChannelId,
+          existingSchedule,
+        );
 
       // 8. Build trigger and deploy
       const deployResult = await buildAndDeploy({
@@ -776,6 +807,7 @@ Notes:
         prompt: promptText_,
         notifyEmail,
         notifySlack,
+        notifySlackChannelId,
       });
 
       // 9. Display deployment result

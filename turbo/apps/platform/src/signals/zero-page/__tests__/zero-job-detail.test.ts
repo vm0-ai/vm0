@@ -69,7 +69,7 @@ function scheduleBase() {
     volumeVersions: null,
     notifyEmail: false,
     notifySlack: false,
-    slackChannelId: null,
+    notifySlackChannelId: null,
     nextRunAt: null,
     lastRunAt: null,
     retryStartedAt: null,

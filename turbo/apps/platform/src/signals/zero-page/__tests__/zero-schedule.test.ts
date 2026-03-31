@@ -60,7 +60,7 @@ function scheduleDefaults() {
     volumeVersions: null,
     notifyEmail: false,
     notifySlack: false,
-    slackChannelId: null,
+    notifySlackChannelId: null,
     retryStartedAt: null,
     consecutiveFailures: 0,
   };
@@ -93,7 +93,7 @@ function createMockSchedules() {
       artifactName: null,
       artifactVersion: null,
       volumeVersions: null,
-      slackChannelId: null,
+      notifySlackChannelId: null,
       retryStartedAt: null,
       consecutiveFailures: 0,
     },
@@ -122,7 +122,7 @@ function createMockSchedules() {
       artifactName: null,
       artifactVersion: null,
       volumeVersions: null,
-      slackChannelId: null,
+      notifySlackChannelId: null,
       retryStartedAt: null,
       consecutiveFailures: 0,
     },
@@ -151,7 +151,7 @@ function createMockSchedules() {
       artifactName: null,
       artifactVersion: null,
       volumeVersions: null,
-      slackChannelId: null,
+      notifySlackChannelId: null,
       retryStartedAt: null,
       consecutiveFailures: 0,
     },
@@ -500,7 +500,7 @@ describe("zero-schedule signals", () => {
           intervalSeconds: 0,
           notifyEmail: false,
           notifySlack: true,
-          slackChannelId: "C999",
+          notifySlackChannelId: "C999",
         },
         context.signal,
       );
@@ -508,7 +508,7 @@ describe("zero-schedule signals", () => {
       expect(captured.body).not.toBeNull();
       expect(captured.body?.notifyEmail).toBeFalsy();
       expect(captured.body?.notifySlack).toBeTruthy();
-      expect(captured.body?.slackChannelId).toBe("C999");
+      expect(captured.body?.notifySlackChannelId).toBe("C999");
     });
 
     it("should include description in POST body when provided", async () => {
@@ -762,7 +762,7 @@ describe("zero-schedule signals", () => {
                 enabled: true,
                 notifyEmail: true,
                 notifySlack: true,
-                slackChannelId: null,
+                notifySlackChannelId: null,
                 nextRunAt: null,
                 lastRunAt: null,
                 createdAt: "2026-03-01T00:00:00Z",
@@ -802,7 +802,7 @@ describe("zero-schedule signals", () => {
                 enabled: true,
                 notifyEmail: true,
                 notifySlack: true,
-                slackChannelId: null,
+                notifySlackChannelId: null,
                 nextRunAt: null,
                 lastRunAt: null,
                 createdAt: "2026-03-01T00:00:00Z",
@@ -841,7 +841,7 @@ describe("zero-schedule signals", () => {
                 enabled: true,
                 notifyEmail: true,
                 notifySlack: true,
-                slackChannelId: null,
+                notifySlackChannelId: null,
                 nextRunAt: null,
                 lastRunAt: null,
                 createdAt: "2026-03-01T00:00:00Z",
@@ -880,7 +880,7 @@ describe("zero-schedule signals", () => {
                 enabled: true,
                 notifyEmail: true,
                 notifySlack: true,
-                slackChannelId: null,
+                notifySlackChannelId: null,
                 nextRunAt: null,
                 lastRunAt: null,
                 createdAt: "2026-03-01T00:00:00Z",
@@ -919,7 +919,7 @@ describe("zero-schedule signals", () => {
                 enabled: true,
                 notifyEmail: true,
                 notifySlack: true,
-                slackChannelId: null,
+                notifySlackChannelId: null,
                 nextRunAt: null,
                 lastRunAt: null,
                 createdAt: "2026-03-01T00:00:00Z",
@@ -958,7 +958,7 @@ describe("zero-schedule signals", () => {
                 enabled: true,
                 notifyEmail: false,
                 notifySlack: true,
-                slackChannelId: "C123",
+                notifySlackChannelId: "C123",
                 nextRunAt: null,
                 lastRunAt: null,
                 createdAt: "2026-03-01T00:00:00Z",
@@ -975,7 +975,7 @@ describe("zero-schedule signals", () => {
       const entries = context.store.get(zeroScheduleEntries$);
       expect(entries[0]?.notifyEmail).toBeFalsy();
       expect(entries[0]?.notifySlack).toBeTruthy();
-      expect(entries[0]?.slackChannelId).toBe("C123");
+      expect(entries[0]?.notifySlackChannelId).toBe("C123");
     });
   });
 
