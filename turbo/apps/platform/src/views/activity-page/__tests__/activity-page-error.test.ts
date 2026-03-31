@@ -1,0 +1,40 @@
+import { describe, expect, it } from "vitest";
+import { screen, waitFor } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../mocks/server.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { setupPage } from "../../../__tests__/page-helper.ts";
+
+const context = testContext();
+
+describe("activity page error", () => {
+  it("should show error state when /api/zero/logs returns 500", async () => {
+    server.use(
+      http.get("*/api/zero/logs", () => {
+        return HttpResponse.json(
+          { error: { message: "Internal Server Error", code: "INTERNAL" } },
+          { status: 500 },
+        );
+      }),
+      http.get("*/api/zero/composes/list", () => {
+        return HttpResponse.json({ composes: [] });
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+
+    await setupPage({ context, path: "/activity" });
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByText("Failed to load activity data"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Something went wrong. Please try again later."),
+    ).toBeInTheDocument();
+  }, 10_000);
+});
