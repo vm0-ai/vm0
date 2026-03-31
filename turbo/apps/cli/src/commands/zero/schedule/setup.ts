@@ -717,7 +717,8 @@ Examples:
 Notes:
   - Re-running setup with the same agent updates the existing "default" schedule
   - Use -n to manage multiple named schedules for the same agent
-  - All flags are required in non-interactive mode; interactive mode prompts for missing values`,
+  - All flags are required in non-interactive mode; interactive mode prompts for missing values
+  - When --notify-slack is enabled, run results are automatically posted to the Slack channel specified by --notify-slack-channel-id (or as a DM if not set). No need to include Slack delivery instructions in your prompt.`,
   )
   .action(
     withErrorHandler(async (agentIdentifier: string, options: SetupOptions) => {
