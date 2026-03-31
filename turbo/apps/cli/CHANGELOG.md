@@ -1,5 +1,29 @@
 # Changelog
 
+## [9.89.0](https://github.com/vm0-ai/vm0/compare/cli-v9.88.0...cli-v9.89.0) (2026-03-31)
+
+
+### Features
+
+* add custom skills binding to agent create and edit flow ([#7324](https://github.com/vm0-ai/vm0/issues/7324)) ([b3882df](https://github.com/vm0-ai/vm0/commit/b3882dfeea8a48fb1dea669f889207aa8bf32fa6))
+
+
+### Bug Fixes
+
+* use --help in cli help text examples instead of inline args ([#7341](https://github.com/vm0-ai/vm0/issues/7341)) ([0c186d8](https://github.com/vm0-ai/vm0/commit/0c186d88171fa2d05fe971a31ff87b74c6e76d93))
+
+
+### Documentation
+
+* **cli:** simplify schedule help to reference setup --help ([#7343](https://github.com/vm0-ai/vm0/issues/7343)) ([60f2d76](https://github.com/vm0-ai/vm0/commit/60f2d76515bc93e7b3f8532a87f38d5edffac44b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.130.0
+
 ## [9.88.0](https://github.com/vm0-ai/vm0/compare/cli-v9.87.1...cli-v9.88.0) (2026-03-31)
 
 

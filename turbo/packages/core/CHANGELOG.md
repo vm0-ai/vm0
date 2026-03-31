@@ -1,5 +1,15 @@
 # Changelog
 
+## [8.130.0](https://github.com/vm0-ai/vm0/compare/core-v8.129.0...core-v8.130.0) (2026-03-31)
+
+
+### Features
+
+* add custom skills binding to agent create and edit flow ([#7324](https://github.com/vm0-ai/vm0/issues/7324)) ([b3882df](https://github.com/vm0-ai/vm0/commit/b3882dfeea8a48fb1dea669f889207aa8bf32fa6))
+* add run execution context page for debugging ([#7325](https://github.com/vm0-ai/vm0/issues/7325)) ([e3e56e8](https://github.com/vm0-ai/vm0/commit/e3e56e8dfd685badc10fcbdd144f952afe74fca4))
+* add selected model tooltip to activity log detail ([#7319](https://github.com/vm0-ai/vm0/issues/7319)) ([4ec0f43](https://github.com/vm0-ai/vm0/commit/4ec0f43759c01bf8a41c3225189192698d031d31))
+* show parent agent display name for delegated runs in activity log ([#7184](https://github.com/vm0-ai/vm0/issues/7184)) ([100ce19](https://github.com/vm0-ai/vm0/commit/100ce19543169be0a1a420217d26fcff67f97a38))
+
 ## [8.129.0](https://github.com/vm0-ai/vm0/compare/core-v8.128.0...core-v8.129.0) (2026-03-31)
 
 

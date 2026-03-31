@@ -401,6 +401,10 @@ const seededConnectors$ = computed((get) => {
   return get(userConnectorPermissionsState$).enabledTypes;
 });
 
+export const zeroJobConnectorsLoading$ = computed(
+  (get) => get(userConnectorPermissionsState$).loading,
+);
+
 export const zeroJobAddedConnectors$ = computed((get) => {
   const local = get(internalAddedConnectors$);
   if (local !== null) {

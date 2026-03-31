@@ -11,6 +11,7 @@ import {
   refreshConnectorAccessToken,
   getConnectorExpiry,
   getConnectorAccessToken,
+  getConnectorRefreshToken,
 } from "../../../../../../src/lib/connector/connector-service";
 
 const bodySchema = z.object({
@@ -23,6 +24,29 @@ const log = logger("webhook:firewall-auth");
 
 /** Matches ${{ secrets.KEY_NAME }} template placeholders in auth header values. */
 const SECRET_TEMPLATE_RE = /\$\{\{\s*secrets\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
+
+/**
+ * Sync latest refresh tokens from DB into the secrets map.
+ * The secrets map originates from a build-time encrypted snapshot and may
+ * contain stale refresh tokens rotated by a concurrent request (#7339).
+ * Mutates `secrets` in place.
+ */
+async function syncRefreshTokensFromDb(
+  connectorTypes: string[],
+  orgId: string,
+  userId: string,
+  secrets: Record<string, string>,
+): Promise<void> {
+  if (connectorTypes.length === 0) return;
+  const results = await Promise.all(
+    connectorTypes.map((ct) => getConnectorRefreshToken(ct, orgId, userId)),
+  );
+  for (const result of results) {
+    if (result) {
+      secrets[result.secretName] = result.token;
+    }
+  }
+}
 
 /**
  * Refresh expired OAuth tokens referenced by auth templates.
@@ -87,6 +111,11 @@ async function refreshExpiredTokens(
     arr.push(envVar);
     envVarsByConnector.set(ct, arr);
   }
+
+  // Sync latest refresh tokens from DB into secrets before refreshing.
+  // The secrets map was decrypted from a build-time snapshot and may contain
+  // stale refresh tokens that were rotated by a concurrent request (#7339).
+  await syncRefreshTokensFromDb(toRefresh, run.orgId, auth.userId, secrets);
 
   const refreshResults = await Promise.all(
     toRefresh.map(async (connectorType) => {
