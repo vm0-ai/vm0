@@ -114,27 +114,6 @@ export const chatThreadByIdContract = c.router({
 });
 
 /**
- * Chat thread runs route contract (/api/chat-threads/[id]/runs)
- */
-export const chatThreadRunsContract = c.router({
-  addRun: {
-    method: "POST",
-    path: "/api/zero/chat-threads/:id/runs",
-    headers: authHeadersSchema,
-    pathParams: z.object({ id: z.string() }),
-    body: z.object({
-      runId: z.string().min(1),
-    }),
-    responses: {
-      204: c.noBody(),
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Associate a run to a chat thread",
-  },
-});
-
-/**
  * Chat messages contract (/api/zero/chat/messages)
  * Unified endpoint: create thread (if needed) + run + association in one call.
  */
@@ -167,7 +146,6 @@ export const chatMessagesContract = c.router({
 
 export type ChatThreadsContract = typeof chatThreadsContract;
 export type ChatThreadByIdContract = typeof chatThreadByIdContract;
-export type ChatThreadRunsContract = typeof chatThreadRunsContract;
 export type ChatMessagesContract = typeof chatMessagesContract;
 
 export { chatThreadListItemSchema, chatThreadDetailSchema, summaryEntrySchema };

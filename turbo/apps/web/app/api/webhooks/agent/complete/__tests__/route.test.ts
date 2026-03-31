@@ -35,8 +35,8 @@ import { generateReplyToken } from "../../../../../../src/lib/email/handlers/sha
 import { http } from "../../../../../../src/__tests__/msw";
 import { server } from "../../../../../../src/mocks/server";
 import { POST as createThreadHandler } from "../../../../zero/chat-threads/route";
-import { POST as addRunToThreadHandler } from "../../../../zero/chat-threads/[id]/runs/route";
 import { GET as getThreadDetailHandler } from "../../../../zero/chat-threads/[id]/route";
+import { addRunToThread } from "../../../../../../src/lib/chat-thread";
 
 const context = testContext();
 
@@ -943,6 +943,7 @@ describe("POST /api/webhooks/agent/complete", () => {
     async function createThreadAndLinkRun(
       composeId: string,
       runId: string,
+      userId: string,
     ): Promise<string> {
       const createRes = await createThreadHandler(
         createTestRequest("http://localhost:3000/api/zero/chat-threads", {
@@ -956,16 +957,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       );
       const { id: threadId } = (await createRes.json()) as { id: string };
 
-      await addRunToThreadHandler(
-        createTestRequest(
-          `http://localhost:3000/api/zero/chat-threads/${threadId}/runs`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ runId }),
-          },
-        ),
-      );
+      await addRunToThread(threadId, runId, userId);
 
       return threadId;
     }
@@ -1004,7 +996,11 @@ describe("POST /api/webhooks/agent/complete", () => {
       const { composeId } = await createTestCompose(uniqueId("title-agent"));
       const { runId } = await createTestRun(composeId, "How do I debug Node?");
       const token = await createTestSandboxToken(titleUser.userId, runId);
-      const threadId = await createThreadAndLinkRun(composeId, runId);
+      const threadId = await createThreadAndLinkRun(
+        composeId,
+        runId,
+        titleUser.userId,
+      );
 
       // Create checkpoint
       mockClerk({ userId: null });
@@ -1075,7 +1071,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       const { composeId } = await createTestCompose(uniqueId("body-agent"));
       const { runId } = await createTestRun(composeId, "Fix my CSS layout");
       const token = await createTestSandboxToken(titleUser.userId, runId);
-      await createThreadAndLinkRun(composeId, runId);
+      await createThreadAndLinkRun(composeId, runId, titleUser.userId);
 
       mockClerk({ userId: null });
       const cpRes = await checkpointWebhook(
@@ -1206,7 +1202,11 @@ describe("POST /api/webhooks/agent/complete", () => {
       const { composeId } = await createTestCompose(uniqueId("nokey-agent"));
       const { runId } = await createTestRun(composeId, "Test prompt");
       const token = await createTestSandboxToken(titleUser.userId, runId);
-      const threadId = await createThreadAndLinkRun(composeId, runId);
+      const threadId = await createThreadAndLinkRun(
+        composeId,
+        runId,
+        titleUser.userId,
+      );
 
       mockClerk({ userId: null });
       const cpRes = await checkpointWebhook(
@@ -1263,7 +1263,11 @@ describe("POST /api/webhooks/agent/complete", () => {
       const { composeId } = await createTestCompose(uniqueId("err-agent"));
       const { runId } = await createTestRun(composeId, "Test prompt");
       const token = await createTestSandboxToken(titleUser.userId, runId);
-      const threadId = await createThreadAndLinkRun(composeId, runId);
+      const threadId = await createThreadAndLinkRun(
+        composeId,
+        runId,
+        titleUser.userId,
+      );
 
       mockClerk({ userId: null });
       const cpRes = await checkpointWebhook(
@@ -1325,7 +1329,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       const { composeId } = await createTestCompose(uniqueId("fail-agent"));
       const { runId } = await createTestRun(composeId, "Test prompt");
       const token = await createTestSandboxToken(titleUser.userId, runId);
-      await createThreadAndLinkRun(composeId, runId);
+      await createThreadAndLinkRun(composeId, runId, titleUser.userId);
 
       mockClerk({ userId: null });
 
@@ -1361,7 +1365,11 @@ describe("POST /api/webhooks/agent/complete", () => {
       const { composeId } = await createTestCompose(uniqueId("noresult-agent"));
       const { runId } = await createTestRun(composeId, "Deploy to production");
       const token = await createTestSandboxToken(titleUser.userId, runId);
-      const threadId = await createThreadAndLinkRun(composeId, runId);
+      const threadId = await createThreadAndLinkRun(
+        composeId,
+        runId,
+        titleUser.userId,
+      );
 
       mockClerk({ userId: null });
       const cpRes = await checkpointWebhook(

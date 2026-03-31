@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { GET } from "../route";
 import { GET as listThreads, POST } from "../../route";
-import { POST as POST_RUN } from "../runs/route";
 import {
   createTestRequest,
   createTestCompose,
@@ -14,7 +13,10 @@ import {
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { appendChatMessages } from "../../../../../../src/lib/agent-session/agent-session-service";
-import { updateChatThreadTitle } from "../../../../../../src/lib/chat-thread";
+import {
+  addRunToThread,
+  updateChatThreadTitle,
+} from "../../../../../../src/lib/chat-thread";
 
 const context = testContext();
 
@@ -132,16 +134,7 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
     ]);
 
     // 5. Link run to thread
-    await POST_RUN(
-      createTestRequest(
-        `http://localhost:3000/api/zero/chat-threads/${threadId}/runs`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ runId }),
-        },
-      ),
-    );
+    await addRunToThread(threadId, runId, testUserId);
 
     // 6. GET thread detail — summaries should be present
     const response = await GET(

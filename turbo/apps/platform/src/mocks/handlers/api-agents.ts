@@ -111,11 +111,6 @@ export const apiAgentsHandlers = [
     );
   }),
 
-  // POST /api/zero/chat-threads/:id/runs (associate run)
-  http.post("*/api/zero/chat-threads/:id/runs", () => {
-    return new HttpResponse(null, { status: 204 });
-  }),
-
   // GET /api/zero/chat-threads/:id (thread detail)
   http.get("*/api/zero/chat-threads/:id", () => {
     return HttpResponse.json({
