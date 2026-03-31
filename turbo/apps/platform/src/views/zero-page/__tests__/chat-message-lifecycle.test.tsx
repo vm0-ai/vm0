@@ -47,4 +47,25 @@ describe("chat message lifecycle", () => {
       ).toBeInTheDocument();
     });
   });
+
+  it("should not send empty messages", async () => {
+    const user = userEvent.setup();
+    mockChatLifecycle();
+
+    await setupPage({
+      context,
+      path: "/talk/c0000000-0000-4000-a000-000000000001",
+    });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+
+    await sendMessageInUI(user, textarea, "   ");
+
+    // Empty message is ignored — user stays on /talk/ with composer available
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+    });
+  });
 });
