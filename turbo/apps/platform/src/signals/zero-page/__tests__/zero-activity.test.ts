@@ -71,6 +71,7 @@ function createMockLogDetail() {
     displayName: null,
     framework: "claude-code",
     modelProvider: null,
+    selectedModel: null,
     triggerSource: "web" as const,
     scheduleId: null,
     status: "completed",

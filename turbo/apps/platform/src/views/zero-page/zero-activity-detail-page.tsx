@@ -10,7 +10,14 @@ import {
   IconDownload,
   IconChartLine,
 } from "@tabler/icons-react";
-import { Button, Input } from "@vm0/ui";
+import {
+  Button,
+  Input,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@vm0/ui";
 import {
   MODEL_PROVIDER_TYPES,
   FeatureSwitchKey,
@@ -149,6 +156,7 @@ function ActivityHeaderCard({
   duration,
   time,
   events,
+  showModelDetail,
 }: {
   displayName: string;
   status: LogStatus;
@@ -156,6 +164,7 @@ function ActivityHeaderCard({
   detail: {
     id: string;
     modelProvider?: string | null;
+    selectedModel?: string | null;
     framework?: string | null;
     error?: string | null;
     scheduleId?: string | null;
@@ -163,6 +172,7 @@ function ActivityHeaderCard({
   duration: string | null | undefined;
   time: string;
   events: AgentEvent[];
+  showModelDetail: boolean;
 }) {
   return (
     <div className="zero-card shrink-0 px-4 py-3">
@@ -213,13 +223,33 @@ function ActivityHeaderCard({
             <>
               <div className="flex items-center gap-1.5 pl-3 pr-3">
                 <span className="text-muted-foreground shrink-0">Model</span>
-                <span className="text-foreground whitespace-nowrap">
-                  {detail.modelProvider
-                    ? (MODEL_PROVIDER_TYPES[
-                        detail.modelProvider as ModelProviderType
-                      ]?.label ?? detail.modelProvider)
-                    : detail.framework}
-                </span>
+                {showModelDetail && detail.selectedModel ? (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="text-foreground whitespace-nowrap cursor-default">
+                          {detail.selectedModel}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {detail.selectedModel} provided by{" "}
+                        {detail.modelProvider
+                          ? (MODEL_PROVIDER_TYPES[
+                              detail.modelProvider as ModelProviderType
+                            ]?.label ?? detail.modelProvider)
+                          : detail.framework}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                ) : (
+                  <span className="text-foreground whitespace-nowrap">
+                    {detail.modelProvider
+                      ? (MODEL_PROVIDER_TYPES[
+                          detail.modelProvider as ModelProviderType
+                        ]?.label ?? detail.modelProvider)
+                      : detail.framework}
+                  </span>
+                )}
               </div>
               <span
                 className="w-px h-3.5 shrink-0 bg-border self-center"
@@ -260,6 +290,16 @@ function ActivityHeaderCard({
   );
 }
 
+function resolveDisplayName(
+  detail: { displayName: string | null; agentId: string | null } | null,
+  isStale: boolean,
+): string {
+  if (!detail || isStale) {
+    return "Agent";
+  }
+  return detail.displayName ?? detail.agentId ?? "Agent";
+}
+
 export function ZeroActivityDetailPage() {
   const currentRunId = useGet(currentRunId$);
   const detailLoadable = useLastLoadable(zeroActivityDetail$);
@@ -269,10 +309,7 @@ export function ZeroActivityDetailPage() {
     detailLoadable.state === "hasData" ? detailLoadable.data : null;
   // Detect stale detail from previous navigation (useLastLoadable keeps old data)
   const isStale = detail !== null && detail.id !== currentRunId;
-  const displayName =
-    detail && !isStale
-      ? (detail.displayName ?? detail.agentId ?? "Agent")
-      : "Agent";
+  const displayName = resolveDisplayName(detail, isStale);
 
   const stepSearch = useGet(zeroActivityStepSearch$);
   const setStepSearch = useSet(setZeroActivityStepSearch$);
@@ -300,13 +337,13 @@ export function ZeroActivityDetailPage() {
     groupedMessageMatchesSearch(m, stepSearch.trim()),
   );
 
-  const showSystemPrompt =
-    features?.[FeatureSwitchKey.ShowSystemPrompt] ?? false;
+  const showModelDetail = features?.[FeatureSwitchKey.ModelDetail] ?? false;
 
   const prompt = detail.prompt ?? "";
   const appendSystemPrompt = detail.appendSystemPrompt ?? "";
-  const hasSystemPrompt =
-    showSystemPrompt && appendSystemPrompt.trim().length > 0;
+  const showSystemPrompt =
+    (features?.[FeatureSwitchKey.ShowSystemPrompt] ?? false) &&
+    appendSystemPrompt.trim().length > 0;
   const status: LogStatus = detail.status;
   const time = formatLogTime(detail.createdAt);
   const duration = formatDuration(detail.startedAt, detail.completedAt);
@@ -329,6 +366,7 @@ export function ZeroActivityDetailPage() {
             duration={duration}
             time={time}
             events={events}
+            showModelDetail={showModelDetail}
           />
 
           {/* Steps section */}
@@ -360,7 +398,7 @@ export function ZeroActivityDetailPage() {
 
               <StepsList
                 prompt={prompt}
-                appendSystemPrompt={hasSystemPrompt ? appendSystemPrompt : ""}
+                appendSystemPrompt={showSystemPrompt ? appendSystemPrompt : ""}
                 messages={messages}
                 stepSearch={stepSearch}
                 isLoading={false}

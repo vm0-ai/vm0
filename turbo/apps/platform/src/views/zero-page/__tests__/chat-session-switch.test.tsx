@@ -72,6 +72,7 @@ describe("chat session switch", () => {
           displayName: null,
           framework: "claude-code",
           modelProvider: null,
+          selectedModel: null,
           triggerSource: "web",
           scheduleId: null,
           status: "running",

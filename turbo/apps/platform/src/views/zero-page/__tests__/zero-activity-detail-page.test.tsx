@@ -20,6 +20,7 @@ function mockActivityDetailAPI() {
     displayName: "Test Agent",
     framework: "claude-code",
     modelProvider: null,
+    selectedModel: null,
     triggerSource: "web",
     scheduleId: null,
     status: "completed",
@@ -92,6 +93,7 @@ describe("zeroActivityDetailPage", () => {
       displayName: "Scheduled Agent",
       framework: "claude-code",
       modelProvider: null,
+      selectedModel: null,
       triggerSource: "schedule",
       scheduleId: "sched-abc-123",
       status: "completed",
@@ -145,6 +147,7 @@ describe("zeroActivityDetailPage", () => {
       displayName: "Scheduled Agent No ID",
       framework: "claude-code",
       modelProvider: null,
+      selectedModel: null,
       triggerSource: "schedule",
       scheduleId: null,
       status: "completed",
@@ -216,6 +219,7 @@ describe("zeroActivityDetailPage", () => {
       displayName: "Test Agent",
       framework: "claude-code",
       modelProvider: null,
+      selectedModel: null,
       triggerSource: "web",
       scheduleId: null,
       status: "completed",
@@ -267,5 +271,165 @@ describe("zeroActivityDetailPage", () => {
         screen.getAllByText(/This line must not be lost/).length,
       ).toBeGreaterThan(0);
     });
+  }, 10_000);
+
+  it("should display selectedModel when ModelDetail feature is enabled", async () => {
+    const logDetail: LogDetail = {
+      id: "a0000000-0000-4000-a000-000000000005",
+      sessionId: "session_model",
+      agentId: "test-agent",
+      displayName: "Model Detail Agent",
+      framework: "claude-code",
+      modelProvider: "anthropic-api-key",
+      selectedModel: "claude-sonnet-4.5",
+      triggerSource: "web",
+      scheduleId: null,
+      status: "completed",
+      prompt: "Hello",
+      appendSystemPrompt: null,
+      error: null,
+      createdAt: "2026-03-10T14:56:00Z",
+      startedAt: "2026-03-10T14:56:01Z",
+      completedAt: "2026-03-10T14:56:10Z",
+      artifact: { name: null, version: null },
+    };
+
+    server.use(
+      http.get("*/api/zero/logs/:id", () => {
+        return HttpResponse.json(logDetail);
+      }),
+      http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
+        return HttpResponse.json({
+          events: [],
+          hasMore: false,
+          framework: "claude-code",
+        });
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/activity/a0000000-0000-4000-a000-000000000005",
+      featureSwitches: { [FeatureSwitchKey.ModelDetail]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Model Detail Agent" }),
+      ).toBeInTheDocument();
+    });
+
+    // selectedModel should be displayed as the model label
+    expect(screen.getByText("claude-sonnet-4.5")).toBeInTheDocument();
+  }, 10_000);
+
+  it("should display provider label when ModelDetail feature is disabled", async () => {
+    const logDetail: LogDetail = {
+      id: "a0000000-0000-4000-a000-000000000006",
+      sessionId: "session_no_model",
+      agentId: "test-agent",
+      displayName: "No Model Detail Agent",
+      framework: "claude-code",
+      modelProvider: "anthropic-api-key",
+      selectedModel: "claude-sonnet-4.5",
+      triggerSource: "web",
+      scheduleId: null,
+      status: "completed",
+      prompt: "Hello",
+      appendSystemPrompt: null,
+      error: null,
+      createdAt: "2026-03-10T14:56:00Z",
+      startedAt: "2026-03-10T14:56:01Z",
+      completedAt: "2026-03-10T14:56:10Z",
+      artifact: { name: null, version: null },
+    };
+
+    server.use(
+      http.get("*/api/zero/logs/:id", () => {
+        return HttpResponse.json(logDetail);
+      }),
+      http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
+        return HttpResponse.json({
+          events: [],
+          hasMore: false,
+          framework: "claude-code",
+        });
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/activity/a0000000-0000-4000-a000-000000000006",
+      featureSwitches: { [FeatureSwitchKey.ModelDetail]: false },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "No Model Detail Agent" }),
+      ).toBeInTheDocument();
+    });
+
+    // Provider label should be displayed, not selectedModel
+    expect(screen.getByText("Anthropic API Key")).toBeInTheDocument();
+    expect(screen.queryByText("claude-sonnet-4.5")).toBeNull();
+  }, 10_000);
+
+  it("should fallback to provider label when ModelDetail is enabled but selectedModel is null", async () => {
+    const logDetail: LogDetail = {
+      id: "a0000000-0000-4000-a000-000000000007",
+      sessionId: "session_null_model",
+      agentId: "test-agent",
+      displayName: "Null Model Agent",
+      framework: "claude-code",
+      modelProvider: "anthropic-api-key",
+      selectedModel: null,
+      triggerSource: "web",
+      scheduleId: null,
+      status: "completed",
+      prompt: "Hello",
+      appendSystemPrompt: null,
+      error: null,
+      createdAt: "2026-03-10T14:56:00Z",
+      startedAt: "2026-03-10T14:56:01Z",
+      completedAt: "2026-03-10T14:56:10Z",
+      artifact: { name: null, version: null },
+    };
+
+    server.use(
+      http.get("*/api/zero/logs/:id", () => {
+        return HttpResponse.json(logDetail);
+      }),
+      http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
+        return HttpResponse.json({
+          events: [],
+          hasMore: false,
+          framework: "claude-code",
+        });
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/activity/a0000000-0000-4000-a000-000000000007",
+      featureSwitches: { [FeatureSwitchKey.ModelDetail]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Null Model Agent" }),
+      ).toBeInTheDocument();
+    });
+
+    // Should fallback to provider label when selectedModel is null
+    expect(screen.getByText("Anthropic API Key")).toBeInTheDocument();
   }, 10_000);
 });
