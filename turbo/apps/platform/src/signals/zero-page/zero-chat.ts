@@ -409,7 +409,9 @@ export const deleteChatThread$ = command(
       set(detachedNavigateTo$, "/");
     }
 
-    set(reloadChatThreadList$, (n) => n + 1);
+    set(reloadChatThreadList$, (n) => {
+      return n + 1;
+    });
   },
 );
 

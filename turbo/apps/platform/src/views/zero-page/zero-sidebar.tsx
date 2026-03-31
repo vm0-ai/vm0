@@ -565,7 +565,12 @@ function ChatThreadItem({
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setConfirmOpen(false);
+              }}
+            >
               Cancel
             </Button>
             <Button variant="destructive" onClick={confirmDelete}>
@@ -774,14 +779,16 @@ function RecentChatSection({
                   : "Start a conversation and it'll show up here"}
               </p>
             ) : (
-              filteredSessions.map((session) => (
-                <ChatThreadItem
-                  key={session.id}
-                  session={session}
-                  isSelected={selectedRecentId === session.id}
-                  onSelect={onRecentSelect}
-                />
-              ))
+              filteredSessions.map((session) => {
+                return (
+                  <ChatThreadItem
+                    key={session.id}
+                    session={session}
+                    isSelected={selectedRecentId === session.id}
+                    onSelect={onRecentSelect}
+                  />
+                );
+              })
             )}
           </div>
         </div>
