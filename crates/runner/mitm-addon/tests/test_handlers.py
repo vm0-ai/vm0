@@ -768,7 +768,8 @@ class TestFirewallHeaderCache:
             )
 
         assert fetch_count == 1
-        assert all(r == {"Authorization": "Bearer token"} for r in results)
+        assert all(r["headers"] == {"Authorization": "Bearer token"} for r in results)
+        assert all(r["cache_hit"] is False or r["cache_hit"] is True for r in results)
 
     async def test_different_keys_fetch_independently(self):
         """Different (run_id, api_id) pairs should fetch independently."""
@@ -801,7 +802,10 @@ class TestFirewallHeaderCache:
             result = await mitm_addon.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
 
         mock_fetch.assert_not_called()
-        assert result == {"Authorization": "Bearer cached"}
+        assert result["headers"] == {"Authorization": "Bearer cached"}
+        assert result["cache_hit"] is True
+        assert result["refreshed_connectors"] == []
+        assert result["refreshed_secrets"] == []
 
     async def test_expired_cache_triggers_fetch(self):
         """Expired cache entry should trigger a new fetch."""
@@ -819,7 +823,8 @@ class TestFirewallHeaderCache:
         with patch.object(mitm_addon, "_fetch_firewall_headers_sync", side_effect=fresh_fetch):
             result = await mitm_addon.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
 
-        assert result == {"Authorization": "Bearer fresh"}
+        assert result["headers"] == {"Authorization": "Bearer fresh"}
+        assert result["cache_hit"] is False
 
     async def test_fetch_failure_does_not_cache(self):
         """Failed fetch should not populate cache; next caller retries independently."""

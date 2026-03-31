@@ -11,7 +11,7 @@ export const redditFirewall: FirewallConfig = {
   description: "Reddit API",
   placeholders: {
     REDDIT_TOKEN:
-      "vm0placeholder00000000000000000000000000000000000000000000000000a",
+      "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffe",
   },
   apis: [
     {

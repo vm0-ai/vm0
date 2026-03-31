@@ -2,9 +2,9 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://www.cronlytic.com/api-documentation";
 const PLACEHOLDER_API_KEY =
-  "vm0placeholderCronlyticApiKey000000000000000000000000a";
+  "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafe";
 const PLACEHOLDER_USER_ID =
-  "vm0placeholderCronlyticUserId000000000000000000000000a";
+  "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSaf0";
 
 function generateTypeScript(): string {
   const lines: string[] = [

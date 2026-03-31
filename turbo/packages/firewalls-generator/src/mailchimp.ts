@@ -5,13 +5,13 @@
  *
  * Mailchimp Marketing API v3.0. Base URL is datacenter-specific:
  * https://{dc}.api.mailchimp.com/3.0
- * The datacenter is provided as a variable (${{ vars.MAILCHIMP_DC }}).
+ * The datacenter is matched via a {dc} host parameter.
  */
 
 import { writeOutput } from "./codegen";
 
 // Mailchimp API key format: [0-9a-f]{32}-us[0-9]{1,2}
-const PLACEHOLDER_VALUE = "ae54fcc23ade65fa404a65e78c56f898-us6";
+const PLACEHOLDER_VALUE = "c0ffee5afe10ca1c0ffee5afe10ca1c0-us6";
 
 function generateTypeScript(): string {
   const lines: string[] = [
@@ -31,7 +31,7 @@ function generateTypeScript(): string {
     "  },",
     "  apis: [",
     "    {",
-    '      base: "https://${{ vars.MAILCHIMP_DC }}.api.mailchimp.com",',
+    '      base: "https://{dc}.api.mailchimp.com",',
     "      auth: {",
     "        headers: {",
     '          Authorization: "Bearer ${{ secrets.MAILCHIMP_TOKEN }}",',

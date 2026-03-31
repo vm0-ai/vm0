@@ -58,5 +58,5 @@ EOF
 
     assert_success
     # Token is replaced with a firewall placeholder (proxy injects real token at runtime).
-    assert_output --partial "INJECTED=sk-ant-oat01-vm0placeholder"
+    assert_output --partial "INJECTED=sk-ant-oat01-CoffeeSafeLocal"
 }

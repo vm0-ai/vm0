@@ -11,7 +11,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://plausible.io/docs/stats-api";
 // Token format not publicly documented; using generic placeholder
-const PLACEHOLDER_VALUE = "Vm0PlaceHolder00000000000000000000000000000000a";
+const PLACEHOLDER_VALUE = "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalC";
 
 function generateTypeScript(): string {
   const lines: string[] = [

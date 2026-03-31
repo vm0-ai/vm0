@@ -11,7 +11,7 @@ export const webflowFirewall: FirewallConfig = {
   description: "Webflow API",
   placeholders: {
     WEBFLOW_TOKEN:
-      "vm0placeholder00000000000000000000000000000000000000000000000000a",
+      "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffe",
   },
   apis: [
     {

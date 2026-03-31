@@ -2,7 +2,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://developer.deel.com/api/authentication";
 const PLACEHOLDER_VALUE =
-  "vm0placeholderDeelToken000000000000000000000000000000a";
+  "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafe";
 
 function generateTypeScript(): string {
   const lines: string[] = [

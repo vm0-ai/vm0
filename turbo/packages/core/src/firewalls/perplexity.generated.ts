@@ -10,7 +10,7 @@ export const perplexityFirewall: FirewallConfig = {
   name: "perplexity",
   description: "Perplexity API",
   placeholders: {
-    PERPLEXITY_TOKEN: "pplx-Vm0PlaceHolder0000000000000000000000000000000000",
+    PERPLEXITY_TOKEN: "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",
   },
   apis: [
     {

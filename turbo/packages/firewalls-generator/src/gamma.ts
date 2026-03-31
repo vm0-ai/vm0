@@ -12,7 +12,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://developers.gamma.app";
 // Token prefix: sk-gamma- (character set and length undocumented)
-const PLACEHOLDER_VALUE = "sk-gamma-Vm0PlaceHolder000000000000a";
+const PLACEHOLDER_VALUE = "sk-gamma-CoffeeSafeLocalCoffeeSafeLo";
 
 function generateTypeScript(): string {
   const lines: string[] = [

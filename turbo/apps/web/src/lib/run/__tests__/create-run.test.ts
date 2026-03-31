@@ -862,7 +862,7 @@ describe("createRun()", () => {
       expect(job).toBeDefined();
       // Model provider token is replaced with placeholder (firewall gateway protects it)
       expect(job!.executionContext.environment).toMatchObject({
-        ANTHROPIC_AUTH_TOKEN: "sk-vm0placeholder000000000000000000",
+        ANTHROPIC_AUTH_TOKEN: "sk-CoffeeSafeLocalCoffeeSafeLocalCo",
         ANTHROPIC_BASE_URL: "https://ai-gateway.vercel.sh",
         ANTHROPIC_API_KEY: "",
         ANTHROPIC_MODEL: "anthropic/claude-sonnet-4.6",
@@ -1042,7 +1042,7 @@ describe("createRun()", () => {
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
       expect(job!.executionContext.environment).toMatchObject({
-        FIGMA_TOKEN: "figd_Vm0PlaceHolder00000000000000000000000000",
+        FIGMA_TOKEN: "figd_CoffeeSafeLocalCoffeeSafeLocalCoffeeSafe",
       });
     });
 
@@ -1081,7 +1081,7 @@ describe("createRun()", () => {
       expect(job).toBeDefined();
       expect(job!.executionContext.environment).toMatchObject({
         PRODUCTLANE_TOKEN:
-          "vm0placeholderProductlaneToken0000000000000000000000a",
+          "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa",
       });
     });
 
@@ -1115,7 +1115,7 @@ describe("createRun()", () => {
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
       expect(job!.executionContext.environment).toMatchObject({
-        GH_TOKEN: "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",
+        GH_TOKEN: "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",
       });
     });
 
@@ -1151,7 +1151,7 @@ describe("createRun()", () => {
       expect(job).toBeDefined();
       // Raw secret name gets the same placeholder as the mapped env var
       expect(job!.executionContext.environment).toMatchObject({
-        GITHUB_ACCESS_TOKEN: "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",
+        GITHUB_ACCESS_TOKEN: "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",
       });
     });
 
@@ -1183,7 +1183,7 @@ describe("createRun()", () => {
       // With linear firewall config, the real token is replaced by a placeholder
       // (the proxy resolves the real secret at runtime)
       expect(job!.executionContext.environment).toMatchObject({
-        LINEAR_TOKEN: "lin_api_Vm0PlaceHolder00000000000000000000000000",
+        LINEAR_TOKEN: "lin_api_CoffeeSafeLocalCoffeeSafeLocalCoffeeSafe",
       });
     });
 

@@ -12,7 +12,7 @@ import { writeOutput } from "./codegen";
 const DOCS_URL =
   "https://resend.com/docs/api-reference/api-keys/create-api-key";
 // Format: re_ + ~33 alphanumeric chars (e.g. re_c1tpEyD8_NKFusih9vKVQknRAQfmFcWCv)
-const PLACEHOLDER_VALUE = "re_Vm0PlaceHolder000000000000000000";
+const PLACEHOLDER_VALUE = "re_CoffeeSafeLocalCoffeeSafeLocalCof";
 
 function generateTypeScript(): string {
   const lines: string[] = [

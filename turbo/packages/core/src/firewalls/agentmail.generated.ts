@@ -10,7 +10,7 @@ export const agentmailFirewall: FirewallConfig = {
   name: "agentmail",
   description: "AgentMail API",
   placeholders: {
-    AGENTMAIL_TOKEN: "am_00000000000000000000000000000000",
+    AGENTMAIL_TOKEN: "am_c0ffee5afe10ca1c0ffee5afe10ca1c0",
   },
   apis: [
     {

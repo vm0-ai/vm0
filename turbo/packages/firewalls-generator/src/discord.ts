@@ -13,7 +13,7 @@ const DOCS_URL = "https://discord.com/developers/docs/reference#authentication";
 // Format: 3 base64 parts separated by dots (userId.timestamp.hmac)
 // e.g. OTM1NTY2MjUwNTg1NzYzODgw.YIz98g.ffPyQbZQGxQ3tmunQx2i86AWT-M
 const PLACEHOLDER_VALUE =
-  "Vm0PlaceHolder0000000000.000000.Vm0PlaceHolder0000000000000";
+  "CoffeeSafeLocalCoffeeSaf.Coffee.CoffeeSafeLocalCoffeeSafeLo";
 
 function generateTypeScript(): string {
   const lines: string[] = [

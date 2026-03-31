@@ -119,8 +119,8 @@ EOF
     assert_success
     assert_output --partial "Run completed successfully"
 
-    assert_output --partial "GITHUB_TOKEN=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"
-    assert_output --partial "SLACK_TOKEN=xoxb-000000000000-0000000000000-Vm0PlaceHolder0000000000"
+    assert_output --partial "GITHUB_TOKEN=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"
+    assert_output --partial "SLACK_TOKEN=xoxb-100100100100-1001001001001-CoffeeSafeLocalCoffeeSaf"
 }
 
 @test "firewall: connector auto-adds firewall without experimental_firewalls" {
@@ -155,7 +155,19 @@ EOF
     assert_output --partial "Run completed successfully"
 
     # Token should be the placeholder (proxy will replace it with real token)
-    assert_output --partial "PLACEHOLDER=gho_Vm0"
+    assert_output --partial "PLACEHOLDER=gho_Cof"
     # API call should succeed (proxy replaced placeholder with real token)
     assert_output --partial "API_STATUS=200"
+
+    # Verify token replacement details appear in network logs.
+    # The CLI renders: ↔ GITHUB_TOKEN with optional (cached)/(refreshed) suffix.
+    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
+    [ -n "$RUN_ID" ] || {
+        echo "# Failed to extract Run ID"
+        return 1
+    }
+
+    run $VM0_CLI logs "$RUN_ID" --network --all
+    assert_success
+    assert_output --partial "GITHUB_TOKEN"
 }

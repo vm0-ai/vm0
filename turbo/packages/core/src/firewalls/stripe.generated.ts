@@ -10,7 +10,7 @@ export const stripeFirewall: FirewallConfig = {
   name: "stripe",
   description: "Stripe API",
   placeholders: {
-    STRIPE_TOKEN: "sk_live_Vm0PlaceHolder00000000000000000000",
+    STRIPE_TOKEN: "sk_live_CoffeeSafeLocalCoffeeSafeLocalCoff",
   },
   apis: [
     {

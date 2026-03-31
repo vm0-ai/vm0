@@ -56,7 +56,7 @@ function crc32(data: string): number {
 
 function makeGitHubPlaceholder(
   prefix = "gho_",
-  entropy = "Vm0PlaceHolder0000000000000000",
+  entropy = "CoffeeSafeLocalCoffeeSafeLocal",
 ): string {
   return `${prefix}${entropy}${base62Encode(crc32(entropy))}`;
 }

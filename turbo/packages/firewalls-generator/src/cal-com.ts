@@ -12,7 +12,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://cal.com/docs/api-reference/v2/introduction";
 // Token prefix: cal_live_
-const PLACEHOLDER_VALUE = "cal_live_vm0placeholder000000000000000000000a";
+const PLACEHOLDER_VALUE = "cal_live_CoffeeSafeLocalCoffeeSafeLocalCof00a";
 
 function generateTypeScript(): string {
   const lines: string[] = [

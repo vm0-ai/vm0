@@ -3,7 +3,7 @@ import { writeOutput } from "./codegen";
 const DOCS_URL =
   "https://open.larksuite.com/document/home/introduction-to-scope-and-authorization/access-credentials";
 const PLACEHOLDER_VALUE =
-  "vm0placeholderLarkToken000000000000000000000000000000a";
+  "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSaf";
 
 function generateTypeScript(): string {
   const lines: string[] = [

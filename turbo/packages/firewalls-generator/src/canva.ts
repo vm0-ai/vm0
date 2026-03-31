@@ -2,7 +2,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://www.canva.dev/docs/connect/authentication/";
 const PLACEHOLDER_VALUE =
-  "vm0placeholderCanvaToken00000000000000000000000000000a";
+  "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa0";
 
 function generateTypeScript(): string {
   const lines: string[] = [

@@ -13,7 +13,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://apidocs.imgur.com/";
 // Client ID format: 15-char alphanumeric string
-const PLACEHOLDER_VALUE = "vm0placeholder0";
+const PLACEHOLDER_VALUE = "CoffeeSafeLocal";
 
 function generateTypeScript(): string {
   const lines: string[] = [

@@ -11,7 +11,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://elevenlabs.io/docs/api-reference/authentication";
 // Format: 32-char hex string [a-f0-9]
-const PLACEHOLDER_VALUE = "vm0p1aceh01der000000000000000000";
+const PLACEHOLDER_VALUE = "c0ffee5afe10ca1c0ffee5afe10ca1c0";
 
 function generateTypeScript(): string {
   const lines: string[] = [

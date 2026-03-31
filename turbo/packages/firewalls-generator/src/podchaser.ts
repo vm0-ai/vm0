@@ -2,7 +2,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://api-docs.podchaser.com/docs/authorization/";
 const PLACEHOLDER_VALUE =
-  "vm0placeholderPodchaserToken00000000000000000000000000a";
+  "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafe";
 
 function generateTypeScript(): string {
   const lines: string[] = [

@@ -13,7 +13,7 @@ import { writeOutput } from "./codegen";
 const DOCS_URL = "https://developer.clickup.com/docs/authentication";
 // Format: pk_{numericId}_{32 uppercase alphanumeric}
 // e.g. pk_4753994_EXP7MPOJ7XQM5UJDV2M45MPF0YHH5YHO
-const PLACEHOLDER_VALUE = "pk_0000000_VM0PLACEHOLDER0000000000000000000A";
+const PLACEHOLDER_VALUE = "pk_1001001_COFFEESAFELOCALCOFFEESAFELOCALCOFF";
 
 function generateTypeScript(): string {
   const lines: string[] = [

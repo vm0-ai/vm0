@@ -10,7 +10,7 @@ export const instagramFirewall: FirewallConfig = {
   name: "instagram",
   description: "Instagram Graph API",
   placeholders: {
-    INSTAGRAM_TOKEN: "vm0placeholderInstagramAccessToken00000000000000000000a",
+    INSTAGRAM_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeL",
   },
   apis: [
     {

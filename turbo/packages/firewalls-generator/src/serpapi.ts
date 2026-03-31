@@ -11,7 +11,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://serpapi.com/search-api";
 // No documented key format; generic alphanumeric
-const PLACEHOLDER_VALUE = "Vm0PlaceHolder00000000000000000000000000000000000a";
+const PLACEHOLDER_VALUE = "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCof";
 
 function generateTypeScript(): string {
   const lines: string[] = [

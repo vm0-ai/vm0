@@ -10,7 +10,7 @@ export const linearFirewall: FirewallConfig = {
   name: "linear",
   description: "Linear API",
   placeholders: {
-    LINEAR_TOKEN: "lin_api_Vm0PlaceHolder00000000000000000000000000",
+    LINEAR_TOKEN: "lin_api_CoffeeSafeLocalCoffeeSafeLocalCoffeeSafe",
   },
   apis: [
     {

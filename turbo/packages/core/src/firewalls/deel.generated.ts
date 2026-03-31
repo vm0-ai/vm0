@@ -10,7 +10,7 @@ export const deelFirewall: FirewallConfig = {
   name: "deel",
   description: "Deel API",
   placeholders: {
-    DEEL_TOKEN: "vm0placeholderDeelToken000000000000000000000000000000a",
+    DEEL_TOKEN: "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafe",
   },
   apis: [
     {

@@ -12,7 +12,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://www.kommo.com/developers/content/api/";
 // Format: Kommo API keys are long alphanumeric strings
-const PLACEHOLDER_VALUE = "kmApiKey_Vm0PlaceHolder0000000000000000000000";
+const PLACEHOLDER_VALUE = "kmApiKey_CoffeeSafeLocalCoffeeSafeLocalCoffee";
 
 function generateTypeScript(): string {
   const lines: string[] = [

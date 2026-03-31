@@ -11,8 +11,8 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://developers.google.com/youtube/v3/getting-started";
 // Format: AIza + 35 word chars (gitleaks: gcp-api-key)
-// e.g. AIzaSyBVm0PlaceHolder00000000000000000
-const PLACEHOLDER_VALUE = "AIzaSyBVm0PlaceHolder000000000000000000";
+// e.g. AIzaSyBCoffeeSafeLocalCoffeeSafeLocalCo
+const PLACEHOLDER_VALUE = "AIzaSyBCoffeeSafeLocalCoffeeSafeLocalCo";
 
 function generateTypeScript(): string {
   const lines: string[] = [

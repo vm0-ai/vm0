@@ -136,6 +136,9 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       expect(data.headers).toEqual({
         Authorization: "Bearer ghp_test_token_123",
       });
+      expect(data.resolvedSecrets).toEqual(["GITHUB_TOKEN"]);
+      expect(data.refreshedConnectors).toEqual([]);
+      expect(data.refreshedSecrets).toEqual([]);
       expect(data.expiresIn).toBeUndefined();
     });
 
@@ -164,6 +167,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         "X-Api-Key": "key-123",
         "X-Api-Secret": "secret-456",
       });
+      expect(data.resolvedSecrets).toEqual(["API_KEY", "API_SECRET"]);
     });
 
     it("should resolve unknown secret to empty string", async () => {
@@ -184,6 +188,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.headers.Authorization).toBe("Bearer ");
+      expect(data.resolvedSecrets).toEqual(["UNKNOWN_KEY"]);
     });
 
     it("should pass through headers without template syntax", async () => {
@@ -202,6 +207,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.headers["X-Static"]).toBe("plain-value");
+      expect(data.resolvedSecrets).toEqual([]);
     });
   });
 
@@ -285,6 +291,9 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       const data = await response.json();
       // Should use refreshed token in resolved header
       expect(data.headers.Authorization).toBe("Bearer fresh-notion-token");
+      expect(data.resolvedSecrets).toEqual(["NOTION_ACCESS_TOKEN"]);
+      expect(data.refreshedConnectors).toEqual(["notion"]);
+      expect(data.refreshedSecrets).toEqual(["NOTION_ACCESS_TOKEN"]);
       // expiresAt should be close to now + 3600 (from provider's expires_in)
       expect(data.expiresAt).toBeTypeOf("number");
       const nowEpoch = Math.floor(Date.now() / 1000);
@@ -328,6 +337,8 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       const data = await response.json();
       // Should have proactively refreshed
       expect(data.headers.Authorization).toBe("Bearer proactive-fresh-token");
+      expect(data.refreshedConnectors).toEqual(["notion"]);
+      expect(data.refreshedSecrets).toEqual(["NOTION_ACCESS_TOKEN"]);
       expect(data.expiresAt).toBeTypeOf("number");
     });
 
@@ -361,6 +372,8 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       const data = await response.json();
       // Should use the existing token (no refresh)
       expect(data.headers.Authorization).toBe("Bearer valid-notion-token");
+      expect(data.refreshedConnectors).toEqual([]);
+      expect(data.refreshedSecrets).toEqual([]);
       // expiresAt should match the stored value
       const expectedExpiry = Math.floor(validExpiry.getTime() / 1000);
       expect(data.expiresAt).toBe(expectedExpiry);
@@ -394,6 +407,8 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.headers.Authorization).toBe("Bearer permanent-notion-token");
+      expect(data.refreshedConnectors).toEqual([]);
+      expect(data.refreshedSecrets).toEqual([]);
       expect(data.expiresAt).toBeNull();
     });
 
@@ -417,6 +432,9 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.headers.Authorization).toBe("Bearer ghp_test_token_123");
+      expect(data.resolvedSecrets).toEqual(["GITHUB_TOKEN"]);
+      expect(data.refreshedConnectors).toEqual([]);
+      expect(data.refreshedSecrets).toEqual([]);
       expect(data.expiresAt).toBeNull();
     });
 
@@ -507,6 +525,9 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       const data = await response.json();
       // The mapped env var should have the refreshed token
       expect(data.headers.Authorization).toBe("Bearer fresh-mapped-token");
+      expect(data.resolvedSecrets).toEqual(["NOTION_TOKEN"]);
+      expect(data.refreshedConnectors).toEqual(["notion"]);
+      expect(data.refreshedSecrets).toEqual(["NOTION_TOKEN"]);
       expect(data.expiresAt).toBeTypeOf("number");
     });
 
@@ -706,6 +727,8 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       const data = await response.json();
       // Must use the fresh DB token, NOT the stale encryptedSecrets token
       expect(data.headers.Authorization).toBe("Bearer fresh-db-token");
+      expect(data.refreshedConnectors).toEqual([]);
+      expect(data.refreshedSecrets).toEqual([]);
       expect(data.expiresAt).toBeTypeOf("number");
     });
 
@@ -780,6 +803,12 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       expect(data.headers["X-Notion"]).toBe("Bearer fresh-notion-token");
       // GitHub: synced from DB (not refreshed, but DB has fresh token)
       expect(data.headers["X-Github"]).toBe("token fresh-github-token");
+      expect(data.refreshedConnectors).toEqual(["notion"]);
+      expect(data.refreshedSecrets).toEqual(["NOTION_ACCESS_TOKEN"]);
+      expect(data.resolvedSecrets).toEqual([
+        "GITHUB_ACCESS_TOKEN",
+        "NOTION_ACCESS_TOKEN",
+      ]);
     });
   });
 });

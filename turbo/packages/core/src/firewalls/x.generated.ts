@@ -11,7 +11,7 @@ export const xFirewall: FirewallConfig = {
   description: "X (Twitter) API",
   placeholders: {
     X_TOKEN:
-      "AAAAAAAAAAAAAAAAAAAAAAVm0PlaceHolder0000000000000000000000000000000000000000000000000000000000000000000000",
+      "AAAAAAAAAAAAAAAAAAAAAACoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffe",
   },
   apis: [
     {
@@ -104,6 +104,7 @@ export const xFirewall: FirewallConfig = {
             "POST /2/activity/subscriptions",
             "GET /2/chat/conversations",
             "GET /2/chat/conversations/{id}",
+            "GET /2/dm_conversations/media/{dm_id}/{media_id}/{resource_id}",
             "GET /2/dm_conversations/with/{participant_id}/dm_events",
             "GET /2/dm_conversations/{id}/dm_events",
             "GET /2/dm_events",

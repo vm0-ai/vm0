@@ -13,7 +13,7 @@ import { writeOutput } from "./codegen";
 const DOCS_URL = "https://developers.strava.com/docs/reference/";
 // OAuth token; using generic placeholder
 const PLACEHOLDER_VALUE =
-  "vm0placeholder00000000000000000000000000000000000000000000000000a";
+  "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffe";
 
 function generateTypeScript(): string {
   const lines: string[] = [

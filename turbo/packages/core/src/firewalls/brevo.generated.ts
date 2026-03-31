@@ -11,7 +11,7 @@ export const brevoFirewall: FirewallConfig = {
   description: "Brevo API",
   placeholders: {
     BREVO_TOKEN:
-      "xkeysib-Vm0PlaceHolder0000000000000000000000000000000000000000000000a",
+      "xkeysib-c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe10ca1a",
   },
   apis: [
     {

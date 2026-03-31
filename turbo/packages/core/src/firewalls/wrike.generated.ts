@@ -10,7 +10,7 @@ export const wrikeFirewall: FirewallConfig = {
   name: "wrike",
   description: "Wrike Project Management API",
   placeholders: {
-    WRIKE_TOKEN: "wrkTkn_Vm0PlaceHolder000000000000000000000000000000",
+    WRIKE_TOKEN: "wrkTkn_CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoca",
   },
   apis: [
     {

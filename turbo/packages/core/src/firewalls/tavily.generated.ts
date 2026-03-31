@@ -10,7 +10,7 @@ export const tavilyFirewall: FirewallConfig = {
   name: "tavily",
   description: "Tavily API",
   placeholders: {
-    TAVILY_TOKEN: "tvly-Vm0PlaceHolder0000000000000000000",
+    TAVILY_TOKEN: "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",
   },
   apis: [
     {

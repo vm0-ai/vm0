@@ -14,7 +14,7 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://qdrant.tech/documentation/interfaces/#api-reference";
 // Format: alphanumeric string, ~40 chars
-const PLACEHOLDER_VALUE = "Vm0PlaceHolder0000000000000000000000000000";
+const PLACEHOLDER_VALUE = "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLo";
 
 function generateTypeScript(): string {
   const lines: string[] = [

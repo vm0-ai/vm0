@@ -10,7 +10,7 @@ export const figmaFirewall: FirewallConfig = {
   name: "figma",
   description: "Figma API",
   placeholders: {
-    FIGMA_TOKEN: "figd_Vm0PlaceHolder00000000000000000000000000",
+    FIGMA_TOKEN: "figd_CoffeeSafeLocalCoffeeSafeLocalCoffeeSafe",
   },
   apis: [
     {
@@ -73,7 +73,7 @@ export const figmaFirewall: FirewallConfig = {
         {
           name: "file_metadata:read",
           description: "Read metadata of files.",
-          rules: ["GET /v1/files/{file_key}/meta"],
+          rules: ["GET /v1/files/{file_key}/meta", "GET /v1/oembed"],
         },
         {
           name: "file_variables:read",

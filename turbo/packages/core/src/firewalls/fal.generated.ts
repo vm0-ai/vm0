@@ -10,7 +10,7 @@ export const falFirewall: FirewallConfig = {
   name: "fal",
   description: "fal.ai API",
   placeholders: {
-    FAL_TOKEN: "Vm0PlaceHolder00:sk_live_Vm0PlaceHolder00000000000000",
+    FAL_TOKEN: "CoffeeSafeLocalC:sk_live_CoffeeSafeLocalCoffeeSafeLo",
   },
   apis: [
     {

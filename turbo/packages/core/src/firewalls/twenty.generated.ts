@@ -11,7 +11,7 @@ export const twentyFirewall: FirewallConfig = {
   description: "Twenty CRM API",
   placeholders: {
     TWENTY_TOKEN:
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJWbTBQbGFjZUhvbGRlcjAwMDAwMDAwMDAwMDAwMDAwMCIsInR5cGUiOiJBUElfS0VZIiwid29ya3NwYWNlSWQiOiJWbTBQbGFjZUhvbGRlcjAwIn0.Vm0PlaceHolder0000000000000000000000000000000",
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJDb2ZmZWVTYWZlTG9jYWxDb2ZmZWVTYWZlTG9jYWxDbyIsInR5cGUiOiJBUElfS0VZIiwid29ya3NwYWNlSWQiOiJDb2ZmZWVTYWZlTG9jYWxDb2YifQ.CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLo",
   },
   apis: [
     {

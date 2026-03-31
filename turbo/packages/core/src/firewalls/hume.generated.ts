@@ -11,7 +11,7 @@ export const humeFirewall: FirewallConfig = {
   description: "Hume AI API",
   placeholders: {
     HUME_TOKEN:
-      "vm0placeholder00000000000000000000000000000000000000000000000000a",
+      "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeL",
   },
   apis: [
     {

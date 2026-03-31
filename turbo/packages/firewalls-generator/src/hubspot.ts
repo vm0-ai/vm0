@@ -15,7 +15,7 @@ const DOCS_URL =
   "https://developers.hubspot.com/docs/api-reference/auth-oauth-v1/guide";
 // OAuth access token: base64 string, up to 512 chars
 // No fixed prefix; generic alphanumeric placeholder
-const PLACEHOLDER_VALUE = "Vm0PlaceHolder00000000000000000a";
+const PLACEHOLDER_VALUE = "CoffeeSafeLocalCoffeeSafeLocalCo";
 
 function generateTypeScript(): string {
   const lines: string[] = [

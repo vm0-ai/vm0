@@ -7,7 +7,7 @@ import { writeOutput } from "./codegen";
 const DOCS_URL = "https://supabase.com/docs/reference/api/introduction";
 
 // sbp_oauth_ (10) + 40 hex chars = 50 chars total
-const PLACEHOLDER_VALUE = "sbp_oauth_0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b";
+const PLACEHOLDER_VALUE = "sbp_oauth_c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe";
 
 function generateTypeScript(): string {
   const lines: string[] = [

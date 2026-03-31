@@ -19,7 +19,7 @@ const CUSTOM_GIT_YAML = `
 name: custom-git
 description: Custom Git API
 placeholders:
-  GIT_TOKEN: "gho_Vm0PlaceHolder0000000000000000000000"
+  GIT_TOKEN: "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"
 apis:
   - base: https://api.custom-git.com
     auth:
@@ -48,7 +48,7 @@ apis:
 const CUSTOM_CHAT_YAML = `
 name: custom-chat
 placeholders:
-  CHAT_TOKEN: "xoxb-0000-0000-Vm0PlaceHolder0000000000"
+  CHAT_TOKEN: "xoxb-100100100100-1001001001001-CoffeeSaf"
 apis:
   - base: https://custom-chat.com/api
     auth:
@@ -120,7 +120,7 @@ describe("resolveFirewallSelections", () => {
     );
 
     expect(expanded[0]!.placeholders).toEqual({
-      GIT_TOKEN: "gho_Vm0PlaceHolder0000000000000000000000",
+      GIT_TOKEN: "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",
     });
     expect(expanded[0]!.description).toBe("Custom Git API");
   });

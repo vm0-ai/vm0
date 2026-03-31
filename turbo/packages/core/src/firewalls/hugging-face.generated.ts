@@ -10,7 +10,7 @@ export const huggingFaceFirewall: FirewallConfig = {
   name: "hugging-face",
   description: "Hugging Face API",
   placeholders: {
-    HUGGING_FACE_TOKEN: "hf_Vm0PlaceHolder0000000000000000000a",
+    HUGGING_FACE_TOKEN: "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",
   },
   apis: [
     {

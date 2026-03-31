@@ -3,7 +3,7 @@ import { writeOutput } from "./codegen";
 const DOCS_URL =
   "https://www.prisma.io/docs/postgres/introduction/management-api";
 const PLACEHOLDER_VALUE =
-  "vm0placeholderPrismaPostgresToken0000000000000000000a";
+  "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa";
 
 function generateTypeScript(): string {
   const lines: string[] = [

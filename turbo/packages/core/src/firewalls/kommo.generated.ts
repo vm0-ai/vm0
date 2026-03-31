@@ -10,7 +10,7 @@ export const kommoFirewall: FirewallConfig = {
   name: "kommo",
   description: "Kommo CRM API",
   placeholders: {
-    KOMMO_API_KEY: "kmApiKey_Vm0PlaceHolder0000000000000000000000",
+    KOMMO_API_KEY: "kmApiKey_CoffeeSafeLocalCoffeeSafeLocalCoffee",
   },
   apis: [
     {
