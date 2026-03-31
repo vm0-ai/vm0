@@ -32,7 +32,7 @@
         "crates/ably-subscriber": {
             "release-type": "rust"
         },
-        "crates/block-cow": {
+        "crates/nbd-cow": {
             "release-type": "rust"
         },
         "crates/guest-agent": {
