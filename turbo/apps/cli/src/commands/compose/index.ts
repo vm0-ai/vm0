@@ -8,7 +8,6 @@ import { extractAndGroupVariables, resolveSkillRef } from "@vm0/core";
 import {
   getComposeByName,
   createOrUpdateCompose,
-  getZeroOrg,
   listZeroSecrets,
   listZeroVariables,
   listZeroConnectors,
@@ -302,10 +301,7 @@ async function finalizeCompose(
   const response = await createOrUpdateCompose({ content: config });
 
   const shortVersionId = response.versionId.slice(0, 8);
-  // In --json mode, skip getOrg() — the org prefix in displayName is for human display only
-  const displayName = options.json
-    ? response.name
-    : `${(await getZeroOrg()).slug}/${response.name}`;
+  const displayName = response.name;
 
   // Build result
   const result: ComposeResult = {
