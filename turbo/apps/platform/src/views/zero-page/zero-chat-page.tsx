@@ -229,7 +229,7 @@ export function ZeroChatPage({
 
       <main className="flex flex-1 flex-col justify-center overflow-auto px-4 sm:px-6 py-12">
         <div className="mx-auto w-full max-w-[900px] flex flex-col items-stretch gap-8 -mt-24">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-4 w-full">
+          <div className="flex flex-col gap-3 w-full">
             <div className="relative shrink-0">
               {avatarAgentId ? (
                 <TooltipProvider delayDuration={200}>
