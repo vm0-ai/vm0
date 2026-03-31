@@ -4,14 +4,13 @@
  */
 
 export {
-  validateCheckpoint,
   validateAgentSession,
   startRun,
   createRunRecord,
   buildAndDispatchRun,
+  resolveStartRunCompose,
   isRunDispatchError,
   type RunDispatchError,
-  type StartRunParams,
+  type CreateRunParams,
   type CreateRunResult,
-  type CreateRunRecordResult,
 } from "./run-service";

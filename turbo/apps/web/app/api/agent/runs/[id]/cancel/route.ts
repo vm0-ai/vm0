@@ -14,6 +14,7 @@ import {
   cancelRun,
   dispatchCancelSideEffects,
 } from "../../../../../../src/lib/run/run-service";
+import { dispatchQueuedZeroRun } from "../../../../../../src/lib/zero/zero-queue-service";
 import { isNotFound, isBadRequest } from "../../../../../../src/lib/errors";
 import { logger } from "../../../../../../src/lib/logger";
 import { after } from "next/server";
@@ -60,7 +61,7 @@ const router = tsr.router(runsCancelContract, {
     try {
       const result = await cancelRun(runId, userId, orgId);
 
-      after(() => dispatchCancelSideEffects(result));
+      after(() => dispatchCancelSideEffects(result, dispatchQueuedZeroRun));
 
       log.debug(
         `Run ${runId} cancelled by user ${userId}, sandbox: ${result.sandboxId ?? "none"}`,

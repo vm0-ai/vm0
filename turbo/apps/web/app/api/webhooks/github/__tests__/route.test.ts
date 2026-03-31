@@ -15,14 +15,14 @@ import {
 } from "../../../../../src/__tests__/api-test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { POST } from "../route";
-import * as runModule from "../../../../../src/lib/run";
+import * as zeroRunModule from "../../../../../src/lib/zero/zero-run-service";
 import { reloadEnv } from "../../../../../src/env";
 
-// Note: startRun is spied on (rather than exercised with real DB + executor)
+// Note: createZeroRun is spied on (rather than exercised with real DB + executor)
 // because this test file focuses on the webhook routing layer: signature
 // verification, event routing, trigger conditions, and callback context
 // construction.  Real run creation integration is covered by its own dedicated
-// tests in src/lib/run/__tests__/create-run.test.ts.
+// tests in src/lib/zero/__tests__/zero-run-service.test.ts.
 
 // Mock Next.js after() to capture callbacks for controlled execution
 const afterPromises: Promise<unknown>[] = [];
@@ -153,7 +153,7 @@ function buildIssueCommentPayload(overrides?: CommentPayloadOverrides) {
 }
 
 describe("POST /api/webhooks/github", () => {
-  let startRunSpy: ReturnType<typeof vi.spyOn>;
+  let createZeroRunSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     afterPromises.length = 0;
@@ -182,12 +182,14 @@ describe("POST /api/webhooks/github", () => {
       ),
     );
 
-    // Mock startRun to prevent actual sandbox dispatch
-    startRunSpy = vi.spyOn(runModule, "startRun").mockResolvedValue({
-      runId: "test-run-id",
-      status: "running",
-      createdAt: new Date(),
-    });
+    // Mock createZeroRun to prevent actual sandbox dispatch
+    createZeroRunSpy = vi
+      .spyOn(zeroRunModule, "createZeroRun")
+      .mockResolvedValue({
+        runId: "test-run-id",
+        status: "running",
+        createdAt: new Date(),
+      });
   });
 
   describe("Signature Verification", () => {
@@ -260,8 +262,8 @@ describe("POST /api/webhooks/github", () => {
       await flushAfterCallbacks();
 
       // Then createRun should have been called
-      expect(startRunSpy).toHaveBeenCalledTimes(1);
-      const callArgs = startRunSpy.mock.calls[0]![0] as {
+      expect(createZeroRunSpy).toHaveBeenCalledTimes(1);
+      const callArgs = createZeroRunSpy.mock.calls[0]![0] as {
         prompt: string;
         appendSystemPrompt: string;
         callbacks: Array<{ payload: { issueNumber: number } }>;
@@ -295,7 +297,7 @@ describe("POST /api/webhooks/github", () => {
 
       await flushAfterCallbacks();
 
-      expect(startRunSpy).toHaveBeenCalledTimes(1);
+      expect(createZeroRunSpy).toHaveBeenCalledTimes(1);
     });
 
     it("should NOT trigger agent for opened issue without app slug label", async () => {
@@ -316,7 +318,7 @@ describe("POST /api/webhooks/github", () => {
 
       await flushAfterCallbacks();
 
-      expect(startRunSpy).not.toHaveBeenCalled();
+      expect(createZeroRunSpy).not.toHaveBeenCalled();
     });
 
     it("should NOT trigger agent when a non-app slug label is added", async () => {
@@ -341,7 +343,7 @@ describe("POST /api/webhooks/github", () => {
 
       await flushAfterCallbacks();
 
-      expect(startRunSpy).not.toHaveBeenCalled();
+      expect(createZeroRunSpy).not.toHaveBeenCalled();
     });
 
     it("should ignore closed/edited/other issue actions", async () => {
@@ -349,7 +351,7 @@ describe("POST /api/webhooks/github", () => {
         await givenGitHubInstallation();
 
       for (const action of ["closed", "edited", "reopened", "deleted"]) {
-        startRunSpy.mockClear();
+        createZeroRunSpy.mockClear();
 
         const request = createGitHubWebhookRequest(
           "issues",
@@ -365,7 +367,7 @@ describe("POST /api/webhooks/github", () => {
 
         await flushAfterCallbacks();
 
-        expect(startRunSpy).not.toHaveBeenCalled();
+        expect(createZeroRunSpy).not.toHaveBeenCalled();
       }
     });
 
@@ -388,8 +390,8 @@ describe("POST /api/webhooks/github", () => {
 
       await flushAfterCallbacks();
 
-      expect(startRunSpy).toHaveBeenCalledTimes(1);
-      const callArgs = startRunSpy.mock.calls[0]![0] as {
+      expect(createZeroRunSpy).toHaveBeenCalledTimes(1);
+      const callArgs = createZeroRunSpy.mock.calls[0]![0] as {
         prompt: string;
         appendSystemPrompt: string;
       };
@@ -421,7 +423,7 @@ describe("POST /api/webhooks/github", () => {
       await flushAfterCallbacks();
 
       // Label alone should NOT trigger — bot mention is required
-      expect(startRunSpy).not.toHaveBeenCalled();
+      expect(createZeroRunSpy).not.toHaveBeenCalled();
     });
 
     it("should trigger agent for comment mentioning @bot", async () => {
@@ -442,7 +444,7 @@ describe("POST /api/webhooks/github", () => {
 
       await flushAfterCallbacks();
 
-      expect(startRunSpy).toHaveBeenCalledTimes(1);
+      expect(createZeroRunSpy).toHaveBeenCalledTimes(1);
     });
 
     it("should NOT trigger for comment without label or mention", async () => {
@@ -463,7 +465,7 @@ describe("POST /api/webhooks/github", () => {
 
       await flushAfterCallbacks();
 
-      expect(startRunSpy).not.toHaveBeenCalled();
+      expect(createZeroRunSpy).not.toHaveBeenCalled();
     });
 
     it("should prevent self-triggering from bot comments", async () => {
@@ -486,7 +488,7 @@ describe("POST /api/webhooks/github", () => {
 
       await flushAfterCallbacks();
 
-      expect(startRunSpy).not.toHaveBeenCalled();
+      expect(createZeroRunSpy).not.toHaveBeenCalled();
     });
 
     it("should ignore non-created comment actions", async () => {
@@ -494,7 +496,7 @@ describe("POST /api/webhooks/github", () => {
         await givenGitHubInstallation();
 
       for (const action of ["edited", "deleted"]) {
-        startRunSpy.mockClear();
+        createZeroRunSpy.mockClear();
 
         const request = createGitHubWebhookRequest(
           "issue_comment",
@@ -510,7 +512,7 @@ describe("POST /api/webhooks/github", () => {
 
         await flushAfterCallbacks();
 
-        expect(startRunSpy).not.toHaveBeenCalled();
+        expect(createZeroRunSpy).not.toHaveBeenCalled();
       }
     });
   });
@@ -531,7 +533,7 @@ describe("POST /api/webhooks/github", () => {
       // The error thrown in dispatchAgentRun is caught by the .catch() in route.ts
       await flushAfterCallbacks();
 
-      expect(startRunSpy).not.toHaveBeenCalled();
+      expect(createZeroRunSpy).not.toHaveBeenCalled();
     });
   });
 
@@ -692,8 +694,8 @@ describe("POST /api/webhooks/github", () => {
 
       await flushAfterCallbacks();
 
-      expect(startRunSpy).toHaveBeenCalledTimes(1);
-      const callArgs = startRunSpy.mock.calls[0]![0] as {
+      expect(createZeroRunSpy).toHaveBeenCalledTimes(1);
+      const callArgs = createZeroRunSpy.mock.calls[0]![0] as {
         callbacks: Array<{
           url: string;
           secret: string;
