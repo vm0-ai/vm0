@@ -321,37 +321,43 @@ export const connectConnector$ = command(
       throw new Error("Failed to open authorization window");
     }
 
+    // Poll the API until the connector appears or the popup is closed.
+    // The platform and OAuth callback page live on different origins
+    // (app.* vs www.*), so BroadcastChannel cannot be used.
+    let freshConnectors: ConnectorResponse[] = [];
     while (true) {
-      await delay(500, { signal });
-
-      if (!authWindow.closed) {
-        continue;
-      }
+      await delay(2000, { signal });
 
       set(reloadConnectors$);
-      const { connectors: freshConnectors } = await get(connectors$);
+      const { connectors: polled } = await get(connectors$);
       signal.throwIfAborted();
 
-      // Mark as optimistically connected before clearing polling so the UI
-      // transitions directly from "Connecting…" to "Connected" without flash.
-      const isConnected = freshConnectors.some((c) => {
-        return c.type === type;
-      });
-      if (isConnected) {
-        set(internalJustConnectedTypes$, (prev) => {
-          return new Set([...prev, type]);
-        });
+      if (polled.some((c) => c.type === type)) {
+        freshConnectors = polled;
+        break;
       }
-      set(internalPollingType$, null);
-      // Show in connections list again when user connects
-      const hidden = new Set(get(hiddenConnectorTypes$));
-      hidden.delete(type);
-      set(setHiddenConnectorTypes$, JSON.stringify([...hidden]));
-      // Close connect modal on OAuth success
-      if (isConnected) {
-        set(internalSelectedConnectorType$, null);
+
+      if (authWindow.closed) {
+        freshConnectors = polled;
+        break;
       }
-      return isConnected;
     }
+
+    // Mark as optimistically connected before clearing polling so the UI
+    // transitions directly from "Connecting…" to "Connected" without flash.
+    const isConnected = freshConnectors.some((c) => c.type === type);
+    if (isConnected) {
+      set(internalJustConnectedTypes$, (prev) => new Set([...prev, type]));
+    }
+    set(internalPollingType$, null);
+    // Show in connections list again when user connects
+    const hidden = new Set(get(hiddenConnectorTypes$));
+    hidden.delete(type);
+    set(setHiddenConnectorTypes$, JSON.stringify([...hidden]));
+    // Close connect modal on OAuth success
+    if (isConnected) {
+      set(internalSelectedConnectorType$, null);
+    }
+    return isConnected;
   },
 );

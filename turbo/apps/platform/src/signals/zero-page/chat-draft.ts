@@ -1,0 +1,287 @@
+import { command, computed, state, type Command, type Computed } from "ccstate";
+import { throwIfAbort, resetSignal, createDeferredPromise } from "../utils.ts";
+import { logger } from "../log.ts";
+import { chatThreadId$ } from "./zero-nav.ts";
+import { fetch$ } from "../fetch.ts";
+
+const L = logger("ChatDraft");
+
+// ---------------------------------------------------------------------------
+// Attachment types (moved from zero-chat.ts)
+// ---------------------------------------------------------------------------
+
+interface FileInfo {
+  id: string;
+  url: string;
+}
+
+export interface ZeroChatAttachment {
+  filename: string;
+  contentType: string;
+  size: number;
+  /** Reactive file info (id + url) — loading while uploading, hasData when done. */
+  fileInfo$: Computed<Promise<FileInfo | null>>;
+  /** Cancel the in-flight upload. Always safe to call (no-op if already completed). */
+  cancel$: Command<void, []>;
+  /** Start the upload. Accepts an external signal for cascade abort (e.g. page navigation). */
+  upload$: Command<Promise<void>, [AbortSignal]>;
+}
+
+function createChatAttachment(file: File): ZeroChatAttachment {
+  const resetSignal$ = resetSignal();
+  const internalPromise$ = state<Promise<FileInfo> | null>(null);
+
+  const fileInfo$ = computed(async (get) => {
+    const promise = get(internalPromise$);
+    if (promise === null) {
+      return null;
+    }
+    return await promise;
+  });
+
+  const cancel$ = command(({ set }) => {
+    set(resetSignal$);
+  });
+
+  const upload$ = command(async ({ get, set }, signal: AbortSignal) => {
+    const fetchFn = get(fetch$);
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const uploadSignal = set(resetSignal$, signal);
+    const deferred = createDeferredPromise<FileInfo>(uploadSignal);
+    set(internalPromise$, deferred.promise);
+
+    const res = await fetchFn("/api/zero/uploads", {
+      method: "POST",
+      body: formData,
+      signal: uploadSignal,
+    });
+    signal.throwIfAborted();
+
+    if (!res.ok) {
+      const err = (await res.json().catch(() => null)) as {
+        error?: { message?: string };
+      } | null;
+      throw new Error(
+        err?.error?.message ?? `Upload failed: ${res.statusText}`,
+      );
+    }
+
+    const data = (await res.json()) as {
+      id: string;
+      filename: string;
+      contentType: string;
+      size: number;
+      url: string;
+    };
+
+    deferred.resolve({ id: data.id, url: data.url });
+  });
+
+  return {
+    filename: file.name,
+    contentType: file.type,
+    size: file.size,
+    fileInfo$,
+    cancel$,
+    upload$,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// DraftSignals — encapsulates per-thread composer state
+// ---------------------------------------------------------------------------
+
+interface DraftSignals {
+  input$: Computed<string>;
+  setInput$: Command<void, [string]>;
+  attachments$: Computed<ZeroChatAttachment[]>;
+  uploadAttachment$: Command<Promise<void>, [File, AbortSignal]>;
+  removeAttachment$: Command<void, [ZeroChatAttachment]>;
+  selectedModel$: Computed<string>;
+  setSelectedModel$: Command<void, [string]>;
+  dragOver$: Computed<boolean>;
+  setDragOver$: Command<void, [boolean]>;
+  /** Reset all draft state (input, attachments, model). Called after send. */
+  clear$: Command<void, []>;
+}
+
+function createDraftSignals(): DraftSignals {
+  const internalInput$ = state("");
+  const internalAttachments$ = state<ZeroChatAttachment[]>([]);
+  const internalSelectedModel$ = state("default");
+  const internalDragOver$ = state(false);
+
+  const input$ = computed((get) => get(internalInput$));
+  const setInput$ = command(({ set }, value: string) => {
+    set(internalInput$, value);
+  });
+
+  const attachments$ = computed((get) => get(internalAttachments$));
+
+  const uploadAttachment$ = command(
+    async ({ set }, file: File, signal: AbortSignal) => {
+      const attachment = createChatAttachment(file);
+      set(internalAttachments$, (prev) => [...prev, attachment]);
+
+      try {
+        await set(attachment.upload$, signal);
+      } catch (error) {
+        throwIfAbort(error);
+        L.error("Upload failed:", error);
+        set(attachment.cancel$);
+        set(internalAttachments$, (prev) =>
+          prev.filter((a) => a !== attachment),
+        );
+      }
+    },
+  );
+
+  const removeAttachment$ = command(
+    ({ set }, attachment: ZeroChatAttachment) => {
+      set(attachment.cancel$);
+      set(internalAttachments$, (prev) => prev.filter((a) => a !== attachment));
+    },
+  );
+
+  const selectedModel$ = computed((get) => get(internalSelectedModel$));
+  const setSelectedModel$ = command(({ set }, value: string) => {
+    set(internalSelectedModel$, value);
+  });
+
+  const dragOver$ = computed((get) => get(internalDragOver$));
+  const setDragOver$ = command(({ set }, value: boolean) => {
+    set(internalDragOver$, value);
+  });
+
+  const clear$ = command(({ get, set }) => {
+    set(internalInput$, "");
+    // Cancel all pending uploads before clearing
+    for (const attachment of get(internalAttachments$)) {
+      set(attachment.cancel$);
+    }
+    set(internalAttachments$, []);
+    set(internalSelectedModel$, "default");
+    set(internalDragOver$, false);
+  });
+
+  return {
+    input$,
+    setInput$,
+    attachments$,
+    uploadAttachment$,
+    removeAttachment$,
+    selectedModel$,
+    setSelectedModel$,
+    dragOver$,
+    setDragOver$,
+    clear$,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Draft storage — per-thread map + talk-page singleton
+// ---------------------------------------------------------------------------
+
+const internalDraftMap$ = state<Record<string, DraftSignals>>({});
+
+const internalTalkDraft$ = state(createDraftSignals());
+
+export const talkDraft$ = computed((get) => get(internalTalkDraft$));
+
+export const ensureDraft$ = command(
+  ({ get, set }, threadId: string): DraftSignals => {
+    const map = get(internalDraftMap$);
+    const existing = map[threadId];
+    if (existing) {
+      return existing;
+    }
+    const draft = createDraftSignals();
+    set(internalDraftMap$, { ...map, [threadId]: draft });
+    return draft;
+  },
+);
+
+/**
+ * The current draft for the active route.
+ * Returns `talkDraft$` when there is no chatThreadId (talk page / landing),
+ * or the thread's draft from the map (null if `ensureDraft$` hasn't been called yet).
+ */
+export const currentDraft$ = computed((get) => {
+  const threadId = get(chatThreadId$);
+  if (!threadId) {
+    return get(talkDraft$);
+  }
+  return get(internalDraftMap$)[threadId] ?? null;
+});
+
+// ---------------------------------------------------------------------------
+// Convenience signals — backward-compatible API
+// ---------------------------------------------------------------------------
+
+export const zeroChatInput$ = computed((get) => {
+  const draft = get(currentDraft$);
+  return draft ? get(draft.input$) : "";
+});
+
+export const setZeroChatInput$ = command(({ get, set }, value: string) => {
+  const draft = get(currentDraft$);
+  if (draft) {
+    set(draft.setInput$, value);
+  }
+});
+
+export const clearZeroChatInput$ = command(({ get, set }) => {
+  const draft = get(currentDraft$);
+  if (draft) {
+    set(draft.setInput$, "");
+  }
+});
+
+export const zeroChatAttachments$ = computed((get) => {
+  const draft = get(currentDraft$);
+  return draft ? get(draft.attachments$) : [];
+});
+
+export const uploadZeroAttachment$ = command(
+  async ({ get, set }, file: File, signal: AbortSignal) => {
+    const draft = get(currentDraft$);
+    if (draft) {
+      await set(draft.uploadAttachment$, file, signal);
+    }
+  },
+);
+
+export const removeZeroAttachment$ = command(
+  ({ get, set }, attachment: ZeroChatAttachment) => {
+    const draft = get(currentDraft$);
+    if (draft) {
+      set(draft.removeAttachment$, attachment);
+    }
+  },
+);
+
+export const zeroDragOver$ = computed((get) => {
+  const draft = get(currentDraft$);
+  return draft ? get(draft.dragOver$) : false;
+});
+
+export const setZeroDragOver$ = command(({ get, set }, value: boolean) => {
+  const draft = get(currentDraft$);
+  if (draft) {
+    set(draft.setDragOver$, value);
+  }
+});
+
+export const draftSelectedModel$ = computed((get) => {
+  const draft = get(currentDraft$);
+  return draft ? get(draft.selectedModel$) : "default";
+});
+
+export const setDraftSelectedModel$ = command(({ get, set }, value: string) => {
+  const draft = get(currentDraft$);
+  if (draft) {
+    set(draft.setSelectedModel$, value);
+  }
+});

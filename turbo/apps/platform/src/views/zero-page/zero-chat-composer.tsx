@@ -49,6 +49,7 @@ import {
   clearJustConnectedTypes$,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { rootSignal$ } from "../../signals/root-signal.ts";
 import {
   zeroAddedConnectors$,
   addZeroConnector$,
@@ -271,6 +272,9 @@ export function ZeroChatComposer({
   const { modelOptions, selectedModel, setSelectedModel, persistSelection } =
     useModelSelection();
 
+  // Upload signal — uses rootSignal so uploads survive page navigation
+  const { signal: rootSignal } = useGet(rootSignal$);
+
   // Connectors
   const allTypesLoadable = useLastLoadable(allConnectorTypes$);
   const addedConnectorsLoadable = useLastLoadable(zeroAddedConnectors$);
@@ -381,7 +385,7 @@ export function ZeroChatComposer({
       return;
     }
     for (const file of files) {
-      detach(uploadAttachment(file, pageSignal), Reason.DomCallback);
+      detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
     }
     e.target.value = "";
   };

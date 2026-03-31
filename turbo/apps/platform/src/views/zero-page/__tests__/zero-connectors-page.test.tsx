@@ -121,4 +121,84 @@ describe("connectors page", () => {
       expect(screen.getByText(/No connectors matching/)).toBeInTheDocument();
     });
   });
+
+  it("shows loading toast then success toast on disconnect", async () => {
+    mockConnectors([{ type: "github", externalUsername: "testuser" }]);
+
+    let deleteResolve: () => void;
+    const deletePromise = new Promise<void>((resolve) => {
+      deleteResolve = resolve;
+    });
+
+    server.use(
+      http.delete("*/api/zero/connectors/:type", async () => {
+        await deletePromise;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    await setupPage({ context, path: "/connectors" });
+
+    // Wait for the connected GitHub card to appear
+    await waitFor(() => {
+      expect(screen.getByText(/Connected \(/)).toBeInTheDocument();
+    });
+
+    // Radix DropdownMenu opens on pointerDown
+    const moreButton = screen.getByRole("button", { name: "More options" });
+    fireEvent.pointerDown(moreButton, { button: 0, ctrlKey: false });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("menuitem", { name: "Disconnect" }),
+      ).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Disconnect" }));
+
+    // Loading toast should appear while API is in-flight
+    await waitFor(() => {
+      expect(screen.getByText("Disconnecting GitHub...")).toBeInTheDocument();
+    });
+
+    // Resolve the API call
+    deleteResolve!();
+
+    // Success toast should replace the loading toast
+    await waitFor(() => {
+      expect(screen.getByText("GitHub disconnected")).toBeInTheDocument();
+    });
+  });
+
+  it("shows error toast when disconnect fails", async () => {
+    mockConnectors([{ type: "github", externalUsername: "testuser" }]);
+
+    server.use(
+      http.delete("*/api/zero/connectors/:type", () => {
+        return new HttpResponse(null, { status: 500 });
+      }),
+    );
+
+    await setupPage({ context, path: "/connectors" });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Connected \(/)).toBeInTheDocument();
+    });
+
+    // Radix DropdownMenu opens on pointerDown
+    const moreButton = screen.getByRole("button", { name: "More options" });
+    fireEvent.pointerDown(moreButton, { button: 0, ctrlKey: false });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("menuitem", { name: "Disconnect" }),
+      ).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Disconnect" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Failed to disconnect GitHub"),
+      ).toBeInTheDocument();
+    });
+  });
 });
