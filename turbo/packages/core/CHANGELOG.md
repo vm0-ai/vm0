@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.130.1](https://github.com/vm0-ai/vm0/compare/core-v8.130.0...core-v8.130.1) (2026-03-31)
+
+
+### Refactoring
+
+* **core:** unify connector environment mapping to single top-level field ([#7349](https://github.com/vm0-ai/vm0/issues/7349)) ([2f82753](https://github.com/vm0-ai/vm0/commit/2f82753fae318b2cf166d323eff8d656c49fcb4e))
+
 ## [8.130.0](https://github.com/vm0-ai/vm0/compare/core-v8.129.0...core-v8.130.0) (2026-03-31)
 
 

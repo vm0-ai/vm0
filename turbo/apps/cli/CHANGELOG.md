@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.90.0](https://github.com/vm0-ai/vm0/compare/cli-v9.89.0...cli-v9.90.0) (2026-03-31)
+
+
+### Features
+
+* **cli:** add zero doctor firewall-deny command ([#7355](https://github.com/vm0-ai/vm0/issues/7355)) ([3726d95](https://github.com/vm0-ai/vm0/commit/3726d952a9d2367d603750452639674879a73c3c))
+* **cli:** add zero skill command group for custom skill management ([#7296](https://github.com/vm0-ai/vm0/issues/7296)) ([a3aa8ce](https://github.com/vm0-ai/vm0/commit/a3aa8ce80aadcc945c8b34a811f901ae0159191d))
+* support zero-token auth with agent:read on connector GET endpoint ([#7359](https://github.com/vm0-ai/vm0/issues/7359)) ([2c4abce](https://github.com/vm0-ai/vm0/commit/2c4abced0e05f8eb67c423569a0cbf138ff9c733))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.130.1
+
 ## [9.89.0](https://github.com/vm0-ai/vm0/compare/cli-v9.88.0...cli-v9.89.0) (2026-03-31)
 
 
