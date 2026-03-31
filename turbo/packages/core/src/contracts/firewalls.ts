@@ -163,8 +163,16 @@ const PARAM_SEGMENT_PATTERN = /^\{([^}]*)\}$/;
  * (as opposed to `${{ vars.X }}` template references).
  */
 export function hasBaseUrlParams(base: string): boolean {
-  // Strip ${{ ... }} template references first, then check for remaining { }
-  const stripped = base.replace(/\$\{\{[^}]*\}\}/g, "");
+  // Strip ${{ ... }} template references, then check for remaining { }.
+  // Uses string iteration instead of regex to avoid ReDoS risk.
+  let stripped = base;
+  let start = stripped.indexOf("${{");
+  while (start !== -1) {
+    const end = stripped.indexOf("}}", start + 3);
+    if (end === -1) break;
+    stripped = stripped.slice(0, start) + stripped.slice(end + 2);
+    start = stripped.indexOf("${{");
+  }
   return stripped.includes("{") && stripped.includes("}");
 }
 
