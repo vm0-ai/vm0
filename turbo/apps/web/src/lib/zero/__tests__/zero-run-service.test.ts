@@ -58,13 +58,12 @@ describe("createZeroRun()", () => {
       expect(job!.executionContext.memoryName).toBe("memory");
     });
 
-    it("should inject artifact into storage manifest", async () => {
+    it("should not inject artifact into storage manifest", async () => {
       const result = await createZeroRun(baseParams());
 
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
-      expect(job!.executionContext.storageManifest).not.toBeNull();
-      expect(job!.executionContext.storageManifest!.artifact).not.toBeNull();
+      expect(job!.executionContext.storageManifest?.artifact).toBeNull();
     });
 
     it("should inject memory into storage manifest", async () => {

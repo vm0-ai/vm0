@@ -126,7 +126,6 @@ export async function createZeroRun(
     modelProvider: params.modelProvider,
     callbacks: params.callbacks,
     memoryName: "memory",
-    artifactName: "artifact",
     disallowedTools: [...DISALLOWED_TOOLS],
     vars: { ZERO_AGENT_ID: params.agentId },
     firewallPolicies: agent.firewallPolicies ?? undefined,
