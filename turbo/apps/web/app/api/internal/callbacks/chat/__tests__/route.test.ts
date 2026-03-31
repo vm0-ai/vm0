@@ -291,12 +291,16 @@ describe("POST /api/internal/callbacks/chat", () => {
       expect(chatMessages).toHaveLength(2);
 
       // Verify user message from prompt
-      const userMsg = chatMessages.find((m) => m.role === "user");
+      const userMsg = chatMessages.find((m) => {
+        return m.role === "user";
+      });
       expect(userMsg).toBeDefined();
       expect(userMsg!.content).toBe("test prompt");
 
       // Verify assistant message from Axiom result
-      const assistantMsg = chatMessages.find((m) => m.role === "assistant");
+      const assistantMsg = chatMessages.find((m) => {
+        return m.role === "assistant";
+      });
       expect(assistantMsg).toBeDefined();
       expect(assistantMsg!.content).toBe("Done. Created 3 files.");
       expect(assistantMsg!.runId).toBe(runId);
@@ -369,7 +373,9 @@ describe("POST /api/internal/callbacks/chat", () => {
         sessionId,
       )) as StoredMessage[];
 
-      const assistantMsg = chatMessages.find((m) => m.role === "assistant");
+      const assistantMsg = chatMessages.find((m) => {
+        return m.role === "assistant";
+      });
       expect(assistantMsg).toBeDefined();
       expect(assistantMsg!.content).toBe("All good.");
       // summaries should be undefined (not included when empty)
@@ -427,7 +433,9 @@ describe("POST /api/internal/callbacks/chat", () => {
         sessionId,
       )) as StoredMessage[];
 
-      const assistantMsg = chatMessages.find((m) => m.role === "assistant");
+      const assistantMsg = chatMessages.find((m) => {
+        return m.role === "assistant";
+      });
       expect(assistantMsg).toBeDefined();
       expect(assistantMsg!.summaries).toHaveLength(1);
       const entry = assistantMsg!.summaries![0] as {
@@ -468,11 +476,15 @@ describe("POST /api/internal/callbacks/chat", () => {
       )) as StoredMessage[];
       expect(chatMessages).toHaveLength(2);
 
-      const userMsg = chatMessages.find((m) => m.role === "user");
+      const userMsg = chatMessages.find((m) => {
+        return m.role === "user";
+      });
       expect(userMsg).toBeDefined();
       expect(userMsg!.content).toBe("test prompt");
 
-      const assistantMsg = chatMessages.find((m) => m.role === "assistant");
+      const assistantMsg = chatMessages.find((m) => {
+        return m.role === "assistant";
+      });
       expect(assistantMsg).toBeDefined();
       expect(assistantMsg!.content).toBe("Agent crashed");
       expect(assistantMsg!.runId).toBe(runId);
@@ -506,10 +518,11 @@ describe("POST /api/internal/callbacks/chat", () => {
     function mockOpenRouter(title: string) {
       const { handler, mocked } = http.post(
         "https://openrouter.ai/api/v1/chat/completions",
-        () =>
-          HttpResponse.json({
+        () => {
+          return HttpResponse.json({
             choices: [{ message: { content: title } }],
-          }),
+          });
+        },
       );
       server.use(handler);
       return mocked;
@@ -518,7 +531,9 @@ describe("POST /api/internal/callbacks/chat", () => {
     function mockOpenRouterError(status: number) {
       const { handler, mocked } = http.post(
         "https://openrouter.ai/api/v1/chat/completions",
-        () => new HttpResponse("Internal Server Error", { status }),
+        () => {
+          return new HttpResponse("Internal Server Error", { status });
+        },
       );
       server.use(handler);
       return mocked;

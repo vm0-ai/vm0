@@ -269,9 +269,9 @@ const router = tsr.router(zeroSkillsDetailContract, {
 
     // Remove skill from each affected agent and rebuild compose
     for (const agent of affectedAgents) {
-      const updatedSkills = (agent.customSkills ?? []).filter(
-        (s) => s !== params.name,
-      );
+      const updatedSkills = (agent.customSkills ?? []).filter((s) => {
+        return s !== params.name;
+      });
       await globalThis.services.db
         .update(zeroAgents)
         .set({ customSkills: updatedSkills, updatedAt: new Date() })
@@ -280,7 +280,9 @@ const router = tsr.router(zeroSkillsDetailContract, {
       // Rebuild compose (best-effort — skill deletion proceeds even if compose rebuild fails)
       const content = buildComposeContent(
         agent.name,
-        updatedSkills.map((name) => ({ name })),
+        updatedSkills.map((name) => {
+          return { name };
+        }),
       );
 
       try {
