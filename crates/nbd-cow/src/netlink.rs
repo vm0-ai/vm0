@@ -172,24 +172,21 @@ pub fn find_connect_with_size_check(
 
         // Size is wrong — old disconnect hasn't finished. Disconnect this
         // connection, wait for cleanup, and retry.
+        tracing::debug!(
+            device_index = idx,
+            attempt = attempt + 1,
+            "device size 0 after connect, disconnecting and retrying"
+        );
+        let _ = disconnect(idx);
+
         if attempt < max_retries {
-            tracing::debug!(
-                device_index = idx,
-                attempt = attempt + 1,
-                "device size 0 after connect, disconnecting and retrying"
-            );
-            let _ = disconnect(idx);
             std::thread::sleep(std::time::Duration::from_millis(200));
-        } else {
-            tracing::warn!(
-                device_index = idx,
-                "device size still 0 after {max_retries} retries"
-            );
-            return Ok(idx);
         }
     }
 
-    Err(NbdCowError::NoFreeDevice)
+    Err(NbdCowError::Io(std::io::Error::other(
+        "device size stuck at 0 after connect retries — kernel may not have finished releasing the previous connection",
+    )))
 }
 
 /// Disconnect an NBD device via generic netlink.
