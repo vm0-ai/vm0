@@ -621,6 +621,7 @@ export const loadSessionFromSnapshot$ = command(
     );
     signal.throwIfAborted();
 
+    set(internalReloadChatThreads$, (n) => n + 1);
     set(reloadCurrentThread$, (n) => n + 1);
 
     await Promise.all(assistantMessages.filter((m) => m.legacyRunId));
@@ -843,6 +844,7 @@ export const sendExistingThreadMessage$ = command(
     }
 
     await set(runLoop.beginLoop$, signal);
+    set(internalReloadChatThreads$, (n) => n + 1);
     set(reloadCurrentThread$, (n) => n + 1);
   },
 );
