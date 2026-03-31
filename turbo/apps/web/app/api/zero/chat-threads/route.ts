@@ -10,12 +10,11 @@ import {
   createChatThread,
   listChatThreads,
 } from "../../../../src/lib/chat-thread";
-import { resolveCallerOrgId } from "../../../../src/lib/org/resolve-org";
 import { agentComposes } from "../../../../src/db/schema/agent-compose";
 import { eq } from "drizzle-orm";
 
 const router = tsr.router(chatThreadsContract, {
-  create: async ({ body, headers }, { request }) => {
+  create: async ({ body, headers }) => {
     initServices();
 
     const authCtx = await getAuthContext(headers.authorization);
@@ -44,7 +43,7 @@ const router = tsr.router(chatThreadsContract, {
       };
     }
 
-    const callerOrgId = await resolveCallerOrgId(authCtx, request);
+    const callerOrgId = authCtx.orgId ?? null;
     if (callerOrgId !== compose.orgId) {
       return {
         status: 404 as const,
@@ -66,7 +65,7 @@ const router = tsr.router(chatThreadsContract, {
     };
   },
 
-  list: async ({ query, headers }, { request }) => {
+  list: async ({ query, headers }) => {
     initServices();
 
     const authCtx = await getAuthContext(headers.authorization);
@@ -95,7 +94,7 @@ const router = tsr.router(chatThreadsContract, {
       };
     }
 
-    const callerOrgId = await resolveCallerOrgId(authCtx, request);
+    const callerOrgId = authCtx.orgId ?? null;
     if (callerOrgId !== compose.orgId) {
       return {
         status: 404 as const,

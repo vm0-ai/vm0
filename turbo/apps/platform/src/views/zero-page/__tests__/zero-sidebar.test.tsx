@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers";
 import { setupPage } from "../../../__tests__/page-helper";
-import { act, screen, waitFor, fireEvent } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { featureSwitch$ } from "../../../signals/external/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core";
 import { http, HttpResponse } from "msw";
@@ -140,6 +141,7 @@ describe("zero sidebar", () => {
   });
 
   it("should filter chat sessions when searching", async () => {
+    const user = userEvent.setup();
     mockAPIs();
     await setupPage({ context, path: "/" });
 
@@ -151,15 +153,12 @@ describe("zero sidebar", () => {
 
     // Click search button
     const searchButton = screen.getByRole("button", { name: "Search chats" });
-    await act(() => {
-      searchButton.click();
-    });
+    await user.click(searchButton);
 
     // Type search query
     const searchInput = screen.getByPlaceholderText("Search chat with Zero");
-    await act(() => {
-      fireEvent.change(searchInput, { target: { value: "Hello" } });
-    });
+    await user.clear(searchInput);
+    await user.type(searchInput, "Hello");
 
     // Only matching thread should be visible
     expect(screen.getByText("Hello world")).toBeInTheDocument();
@@ -167,6 +166,7 @@ describe("zero sidebar", () => {
   });
 
   it("should close search and reset filter", async () => {
+    const user = userEvent.setup();
     mockAPIs();
     await setupPage({ context, path: "/" });
 
@@ -177,23 +177,18 @@ describe("zero sidebar", () => {
 
     // Open search
     const searchButton = screen.getByRole("button", { name: "Search chats" });
-    await act(() => {
-      searchButton.click();
-    });
+    await user.click(searchButton);
 
     // Type search query that filters out one thread
     const searchInput = screen.getByPlaceholderText("Search chat with Zero");
-    await act(() => {
-      fireEvent.change(searchInput, { target: { value: "Hello" } });
-    });
+    await user.clear(searchInput);
+    await user.type(searchInput, "Hello");
 
     expect(screen.queryByText("Goodbye moon")).not.toBeInTheDocument();
 
     // Close search
     const closeButton = screen.getByRole("button", { name: "Close search" });
-    await act(() => {
-      closeButton.click();
-    });
+    await user.click(closeButton);
 
     // Both threads should be visible again (search term was reset)
     await waitFor(() => {

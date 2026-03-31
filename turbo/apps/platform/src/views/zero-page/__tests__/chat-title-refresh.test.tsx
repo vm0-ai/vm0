@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -14,6 +15,7 @@ const context = testContext();
 
 describe("chat title refresh", () => {
   it("should refresh sidebar after sending a message in existing thread", async () => {
+    const user = userEvent.setup();
     let threadListFetchCount = 0;
 
     const ctrl = mockChatLifecycle({ threadTitle: "Old Title" });
@@ -50,7 +52,7 @@ describe("chat title refresh", () => {
 
     const fetchCountBeforeSend = threadListFetchCount;
 
-    sendMessageInUI(textarea, "Follow-up question");
+    await sendMessageInUI(user, textarea, "Follow-up question");
 
     // Wait for sidebar to be refetched (title is generated async on the server;
     // the client schedules a delayed refresh to pick up the updated title)
@@ -66,6 +68,7 @@ describe("chat title refresh", () => {
   });
 
   it("should refresh current thread data after sending a message in existing thread", async () => {
+    const user = userEvent.setup();
     let threadDetailFetchCount = 0;
 
     const ctrl = mockChatLifecycle({ threadTitle: "Old Title" });
@@ -109,7 +112,7 @@ describe("chat title refresh", () => {
 
     const fetchCountBeforeSend = threadDetailFetchCount;
 
-    sendMessageInUI(textarea, "Follow-up question");
+    await sendMessageInUI(user, textarea, "Follow-up question");
 
     // The current thread should be re-fetched after message send
     // so the updated title is available

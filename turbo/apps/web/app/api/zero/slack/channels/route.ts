@@ -25,8 +25,7 @@ export async function GET(request: Request) {
     );
   }
 
-  const orgSlug = new URL(request.url).searchParams.get("org");
-  const { org } = await resolveOrg(authCtx, orgSlug);
+  const { org } = await resolveOrg(authCtx);
 
   const db = globalThis.services.db;
 

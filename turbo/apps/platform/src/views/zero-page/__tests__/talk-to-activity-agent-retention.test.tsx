@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor, fireEvent } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -51,6 +52,7 @@ function mockTwoAgents() {
 
 describe("talk to activity agent retention", () => {
   it("should retain non-default agent in sidebar after navigating from /talk/:agentId to /activity", async () => {
+    const user = userEvent.setup();
     mockTwoAgents();
 
     // Navigate to non-default agent (bar)
@@ -68,7 +70,7 @@ describe("talk to activity agent retention", () => {
     const activityNavLink = screen.getByRole("link", {
       name: "Activity logs",
     });
-    fireEvent.click(activityNavLink);
+    await user.click(activityNavLink);
 
     // Wait for navigation to /activity to complete
     await waitFor(

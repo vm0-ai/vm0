@@ -27,7 +27,6 @@ async function setupOrg(userId: string) {
 }
 
 describe("POST /api/zero/schedules/run", () => {
-  let slug: string;
   let orgId: string;
   let testComposeId: string;
 
@@ -35,7 +34,6 @@ describe("POST /api/zero/schedules/run", () => {
     context.setupMocks();
     const user = await context.setupUser();
     const org = await setupOrg(user.userId);
-    slug = org.slug;
     orgId = org.orgId;
 
     const agentName = uniqueId("run-agent");
@@ -52,14 +50,11 @@ describe("POST /api/zero/schedules/run", () => {
     await enableTestSchedule(testComposeId, "run-test");
 
     const response = await POST(
-      createTestRequest(
-        `http://localhost:3000/api/zero/schedules/run?org=${slug}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ scheduleId: schedule.id }),
-        },
-      ),
+      createTestRequest(`http://localhost:3000/api/zero/schedules/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scheduleId: schedule.id }),
+      }),
     );
     const data = await response.json();
 
@@ -70,16 +65,13 @@ describe("POST /api/zero/schedules/run", () => {
 
   it("should return 404 for non-existent schedule", async () => {
     const response = await POST(
-      createTestRequest(
-        `http://localhost:3000/api/zero/schedules/run?org=${slug}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            scheduleId: "00000000-0000-0000-0000-000000000000",
-          }),
-        },
-      ),
+      createTestRequest(`http://localhost:3000/api/zero/schedules/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scheduleId: "00000000-0000-0000-0000-000000000000",
+        }),
+      }),
     );
     const data = await response.json();
 
@@ -96,27 +88,21 @@ describe("POST /api/zero/schedules/run", () => {
 
     // Execute once to create a run and set lastRunId
     const firstResponse = await POST(
-      createTestRequest(
-        `http://localhost:3000/api/zero/schedules/run?org=${slug}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ scheduleId: schedule.id }),
-        },
-      ),
+      createTestRequest(`http://localhost:3000/api/zero/schedules/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scheduleId: schedule.id }),
+      }),
     );
     expect(firstResponse.status).toBe(201);
 
     // Try to run again while previous run is still active (pending/running)
     const secondResponse = await POST(
-      createTestRequest(
-        `http://localhost:3000/api/zero/schedules/run?org=${slug}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ scheduleId: schedule.id }),
-        },
-      ),
+      createTestRequest(`http://localhost:3000/api/zero/schedules/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scheduleId: schedule.id }),
+      }),
     );
     const data = await secondResponse.json();
 
@@ -126,14 +112,11 @@ describe("POST /api/zero/schedules/run", () => {
 
   it("should return 400 for invalid body (missing scheduleId)", async () => {
     const response = await POST(
-      createTestRequest(
-        `http://localhost:3000/api/zero/schedules/run?org=${slug}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}),
-        },
-      ),
+      createTestRequest(`http://localhost:3000/api/zero/schedules/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }),
     );
     const data = await response.json();
 
@@ -143,14 +126,11 @@ describe("POST /api/zero/schedules/run", () => {
 
   it("should return 400 for invalid scheduleId format", async () => {
     const response = await POST(
-      createTestRequest(
-        `http://localhost:3000/api/zero/schedules/run?org=${slug}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ scheduleId: "not-a-uuid" }),
-        },
-      ),
+      createTestRequest(`http://localhost:3000/api/zero/schedules/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scheduleId: "not-a-uuid" }),
+      }),
     );
     const data = await response.json();
 
@@ -162,16 +142,13 @@ describe("POST /api/zero/schedules/run", () => {
     mockClerk({ userId: null });
 
     const response = await POST(
-      createTestRequest(
-        `http://localhost:3000/api/zero/schedules/run?org=${slug}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            scheduleId: "00000000-0000-0000-0000-000000000000",
-          }),
-        },
-      ),
+      createTestRequest(`http://localhost:3000/api/zero/schedules/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scheduleId: "00000000-0000-0000-0000-000000000000",
+        }),
+      }),
     );
 
     expect(response.status).toBe(401);

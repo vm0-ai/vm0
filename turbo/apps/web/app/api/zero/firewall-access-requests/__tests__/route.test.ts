@@ -14,13 +14,12 @@ import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 const context = testContext();
 
 let testCliToken: string;
-let testOrgSlug: string;
 let testOrgId: string;
 let testUserId: string;
 
-function createAgent(token: string, orgSlug: string) {
+function createAgent(token: string) {
   return postAgent(
-    createTestRequest(`http://localhost:3000/api/zero/agents?org=${orgSlug}`, {
+    createTestRequest(`http://localhost:3000/api/zero/agents`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -31,14 +30,10 @@ function createAgent(token: string, orgSlug: string) {
   );
 }
 
-function createAccessRequest(
-  body: Record<string, unknown>,
-  token: string,
-  orgSlug: string,
-) {
+function createAccessRequest(body: Record<string, unknown>, token: string) {
   return POST(
     createTestRequest(
-      `http://localhost:3000/api/zero/firewall-access-requests?org=${orgSlug}`,
+      `http://localhost:3000/api/zero/firewall-access-requests`,
       {
         method: "POST",
         headers: {
@@ -51,16 +46,11 @@ function createAccessRequest(
   );
 }
 
-function listAccessRequests(
-  agentId: string,
-  token: string,
-  orgSlug: string,
-  status?: string,
-) {
+function listAccessRequests(agentId: string, token: string, status?: string) {
   const statusParam = status ? `&status=${status}` : "";
   return GET(
     createTestRequest(
-      `http://localhost:3000/api/zero/firewall-access-requests?org=${orgSlug}&agentId=${agentId}${statusParam}`,
+      `http://localhost:3000/api/zero/firewall-access-requests?agentId=${agentId}${statusParam}`,
       {
         method: "GET",
         headers: { Authorization: `Bearer ${token}` },
@@ -69,14 +59,10 @@ function listAccessRequests(
   );
 }
 
-function resolveAccessRequest(
-  body: Record<string, unknown>,
-  token: string,
-  orgSlug: string,
-) {
+function resolveAccessRequest(body: Record<string, unknown>, token: string) {
   return PUT(
     createTestRequest(
-      `http://localhost:3000/api/zero/firewall-access-requests?org=${orgSlug}`,
+      `http://localhost:3000/api/zero/firewall-access-requests`,
       {
         method: "PUT",
         headers: {
@@ -97,7 +83,6 @@ beforeEach(async () => {
   testUserId = user.userId;
   testOrgId = user.orgId;
   testCliToken = await createTestCliToken(user.userId);
-  testOrgSlug = `org-${user.userId.slice(-8)}`;
 
   await insertOrgMembersCacheEntry({
     orgId: testOrgId,
@@ -108,7 +93,7 @@ beforeEach(async () => {
 
 describe("POST /api/zero/firewall-access-requests", () => {
   it("should create a firewall access request", async () => {
-    const agent = await (await createAgent(testCliToken, testOrgSlug)).json();
+    const agent = await (await createAgent(testCliToken)).json();
 
     const response = await createAccessRequest(
       {
@@ -118,7 +103,6 @@ describe("POST /api/zero/firewall-access-requests", () => {
         reason: "Need to read issues",
       },
       testCliToken,
-      testOrgSlug,
     );
 
     expect(response.status).toBe(201);
@@ -134,7 +118,7 @@ describe("POST /api/zero/firewall-access-requests", () => {
   });
 
   it("should dedup pending requests by updating reason", async () => {
-    const agent = await (await createAgent(testCliToken, testOrgSlug)).json();
+    const agent = await (await createAgent(testCliToken)).json();
 
     const first = await (
       await createAccessRequest(
@@ -145,7 +129,6 @@ describe("POST /api/zero/firewall-access-requests", () => {
           reason: "First reason",
         },
         testCliToken,
-        testOrgSlug,
       )
     ).json();
 
@@ -158,7 +141,6 @@ describe("POST /api/zero/firewall-access-requests", () => {
           reason: "Updated reason",
         },
         testCliToken,
-        testOrgSlug,
       )
     ).json();
 
@@ -168,7 +150,7 @@ describe("POST /api/zero/firewall-access-requests", () => {
   });
 
   it("should return 400 for unknown firewall ref", async () => {
-    const agent = await (await createAgent(testCliToken, testOrgSlug)).json();
+    const agent = await (await createAgent(testCliToken)).json();
 
     const response = await createAccessRequest(
       {
@@ -177,7 +159,6 @@ describe("POST /api/zero/firewall-access-requests", () => {
         permission: "read",
       },
       testCliToken,
-      testOrgSlug,
     );
 
     expect(response.status).toBe(400);
@@ -193,7 +174,6 @@ describe("POST /api/zero/firewall-access-requests", () => {
         permission: "issues:read",
       },
       testCliToken,
-      testOrgSlug,
     );
 
     expect(response.status).toBe(404);
@@ -209,17 +189,20 @@ describe("POST /api/zero/firewall-access-requests", () => {
         permission: "issues:read",
       },
       "no-token",
-      testOrgSlug,
     );
 
     expect(response.status).toBe(401);
   });
 
   it("should allow non-admin members to create requests", async () => {
-    const agent = await (await createAgent(testCliToken, testOrgSlug)).json();
+    const agent = await (await createAgent(testCliToken)).json();
 
     const member = await context.setupUser({ prefix: "member" });
-    const memberToken = await createTestCliToken(member.userId);
+    const memberToken = await createTestCliToken(
+      member.userId,
+      undefined,
+      testOrgId,
+    );
     await insertOrgMembersCacheEntry({
       orgId: testOrgId,
       userId: member.userId,
@@ -233,7 +216,6 @@ describe("POST /api/zero/firewall-access-requests", () => {
         permission: "issues:read",
       },
       memberToken,
-      testOrgSlug,
     );
 
     expect(response.status).toBe(201);
@@ -244,7 +226,7 @@ describe("POST /api/zero/firewall-access-requests", () => {
 
 describe("GET /api/zero/firewall-access-requests", () => {
   it("should list access requests for an agent", async () => {
-    const agent = await (await createAgent(testCliToken, testOrgSlug)).json();
+    const agent = await (await createAgent(testCliToken)).json();
 
     await createAccessRequest(
       {
@@ -253,14 +235,9 @@ describe("GET /api/zero/firewall-access-requests", () => {
         permission: "issues:read",
       },
       testCliToken,
-      testOrgSlug,
     );
 
-    const response = await listAccessRequests(
-      agent.agentId,
-      testCliToken,
-      testOrgSlug,
-    );
+    const response = await listAccessRequests(agent.agentId, testCliToken);
 
     expect(response.status).toBe(200);
     const data = await response.json();
@@ -269,7 +246,7 @@ describe("GET /api/zero/firewall-access-requests", () => {
   });
 
   it("should filter by status", async () => {
-    const agent = await (await createAgent(testCliToken, testOrgSlug)).json();
+    const agent = await (await createAgent(testCliToken)).json();
 
     await createAccessRequest(
       {
@@ -278,14 +255,12 @@ describe("GET /api/zero/firewall-access-requests", () => {
         permission: "issues:read",
       },
       testCliToken,
-      testOrgSlug,
     );
 
     // No approved requests yet
     const response = await listAccessRequests(
       agent.agentId,
       testCliToken,
-      testOrgSlug,
       "approved",
     );
 
@@ -297,7 +272,7 @@ describe("GET /api/zero/firewall-access-requests", () => {
   it("should return 400 when agentId is missing", async () => {
     const response = await GET(
       createTestRequest(
-        `http://localhost:3000/api/zero/firewall-access-requests?org=${testOrgSlug}`,
+        `http://localhost:3000/api/zero/firewall-access-requests`,
         {
           method: "GET",
           headers: { Authorization: `Bearer ${testCliToken}` },
@@ -311,7 +286,7 @@ describe("GET /api/zero/firewall-access-requests", () => {
   });
 
   it("members should only see own requests", async () => {
-    const agent = await (await createAgent(testCliToken, testOrgSlug)).json();
+    const agent = await (await createAgent(testCliToken)).json();
 
     // Admin creates a request
     await createAccessRequest(
@@ -321,12 +296,15 @@ describe("GET /api/zero/firewall-access-requests", () => {
         permission: "issues:read",
       },
       testCliToken,
-      testOrgSlug,
     );
 
     // Member creates a request
     const member = await context.setupUser({ prefix: "member" });
-    const memberToken = await createTestCliToken(member.userId);
+    const memberToken = await createTestCliToken(
+      member.userId,
+      undefined,
+      testOrgId,
+    );
     await insertOrgMembersCacheEntry({
       orgId: testOrgId,
       userId: member.userId,
@@ -340,31 +318,22 @@ describe("GET /api/zero/firewall-access-requests", () => {
         permission: "channels:read",
       },
       memberToken,
-      testOrgSlug,
     );
 
     // Member should only see their own request
-    const memberList = await listAccessRequests(
-      agent.agentId,
-      memberToken,
-      testOrgSlug,
-    );
+    const memberList = await listAccessRequests(agent.agentId, memberToken);
     const memberData = await memberList.json();
     expect(memberData).toHaveLength(1);
     expect(memberData[0].firewallRef).toBe("slack");
 
     // Admin should see all requests
-    const adminList = await listAccessRequests(
-      agent.agentId,
-      testCliToken,
-      testOrgSlug,
-    );
+    const adminList = await listAccessRequests(agent.agentId, testCliToken);
     const adminData = await adminList.json();
     expect(adminData).toHaveLength(2);
   });
 
   it("should include requesterName from Clerk user data", async () => {
-    const agent = await (await createAgent(testCliToken, testOrgSlug)).json();
+    const agent = await (await createAgent(testCliToken)).json();
 
     // Override Clerk mock to return user with a name
     mockClerk({
@@ -380,14 +349,9 @@ describe("GET /api/zero/firewall-access-requests", () => {
         permission: "issues:read",
       },
       testCliToken,
-      testOrgSlug,
     );
 
-    const response = await listAccessRequests(
-      agent.agentId,
-      testCliToken,
-      testOrgSlug,
-    );
+    const response = await listAccessRequests(agent.agentId, testCliToken);
 
     expect(response.status).toBe(200);
     const data = await response.json();
@@ -396,7 +360,7 @@ describe("GET /api/zero/firewall-access-requests", () => {
   });
 
   it("should return null requesterName when Clerk has no name data", async () => {
-    const agent = await (await createAgent(testCliToken, testOrgSlug)).json();
+    const agent = await (await createAgent(testCliToken)).json();
 
     await createAccessRequest(
       {
@@ -405,14 +369,9 @@ describe("GET /api/zero/firewall-access-requests", () => {
         permission: "issues:read",
       },
       testCliToken,
-      testOrgSlug,
     );
 
-    const response = await listAccessRequests(
-      agent.agentId,
-      testCliToken,
-      testOrgSlug,
-    );
+    const response = await listAccessRequests(agent.agentId, testCliToken);
 
     expect(response.status).toBe(200);
     const data = await response.json();
@@ -423,7 +382,7 @@ describe("GET /api/zero/firewall-access-requests", () => {
 
 describe("PUT /api/zero/firewall-access-requests", () => {
   it("should approve a request and update firewall policies", async () => {
-    const agent = await (await createAgent(testCliToken, testOrgSlug)).json();
+    const agent = await (await createAgent(testCliToken)).json();
 
     const created = await (
       await createAccessRequest(
@@ -434,14 +393,12 @@ describe("PUT /api/zero/firewall-access-requests", () => {
           reason: "Need access",
         },
         testCliToken,
-        testOrgSlug,
       )
     ).json();
 
     const response = await resolveAccessRequest(
       { requestId: created.id, action: "approve" },
       testCliToken,
-      testOrgSlug,
     );
 
     expect(response.status).toBe(200);
@@ -454,7 +411,7 @@ describe("PUT /api/zero/firewall-access-requests", () => {
     const { GET: getAgentById } = await import("../../agents/[id]/route");
     const agentRes = await getAgentById(
       createTestRequest(
-        `http://localhost:3000/api/zero/agents/${agent.agentId}?org=${testOrgSlug}`,
+        `http://localhost:3000/api/zero/agents/${agent.agentId}`,
         {
           method: "GET",
           headers: { Authorization: `Bearer ${testCliToken}` },
@@ -468,7 +425,7 @@ describe("PUT /api/zero/firewall-access-requests", () => {
   });
 
   it("should reject a request without updating policies", async () => {
-    const agent = await (await createAgent(testCliToken, testOrgSlug)).json();
+    const agent = await (await createAgent(testCliToken)).json();
 
     const created = await (
       await createAccessRequest(
@@ -478,14 +435,12 @@ describe("PUT /api/zero/firewall-access-requests", () => {
           permission: "issues:read",
         },
         testCliToken,
-        testOrgSlug,
       )
     ).json();
 
     const response = await resolveAccessRequest(
       { requestId: created.id, action: "reject" },
       testCliToken,
-      testOrgSlug,
     );
 
     expect(response.status).toBe(200);
@@ -496,7 +451,7 @@ describe("PUT /api/zero/firewall-access-requests", () => {
     const { GET: getAgentById } = await import("../../agents/[id]/route");
     const agentRes = await getAgentById(
       createTestRequest(
-        `http://localhost:3000/api/zero/agents/${agent.agentId}?org=${testOrgSlug}`,
+        `http://localhost:3000/api/zero/agents/${agent.agentId}`,
         {
           method: "GET",
           headers: { Authorization: `Bearer ${testCliToken}` },
@@ -508,7 +463,7 @@ describe("PUT /api/zero/firewall-access-requests", () => {
   });
 
   it("should return 403 for non-admin users", async () => {
-    const agent = await (await createAgent(testCliToken, testOrgSlug)).json();
+    const agent = await (await createAgent(testCliToken)).json();
 
     const created = await (
       await createAccessRequest(
@@ -518,12 +473,15 @@ describe("PUT /api/zero/firewall-access-requests", () => {
           permission: "issues:read",
         },
         testCliToken,
-        testOrgSlug,
       )
     ).json();
 
     const member = await context.setupUser({ prefix: "member" });
-    const memberToken = await createTestCliToken(member.userId);
+    const memberToken = await createTestCliToken(
+      member.userId,
+      undefined,
+      testOrgId,
+    );
     await insertOrgMembersCacheEntry({
       orgId: testOrgId,
       userId: member.userId,
@@ -533,7 +491,6 @@ describe("PUT /api/zero/firewall-access-requests", () => {
     const response = await resolveAccessRequest(
       { requestId: created.id, action: "approve" },
       memberToken,
-      testOrgSlug,
     );
 
     expect(response.status).toBe(403);
@@ -548,14 +505,13 @@ describe("PUT /api/zero/firewall-access-requests", () => {
         action: "approve",
       },
       testCliToken,
-      testOrgSlug,
     );
 
     expect(response.status).toBe(404);
   });
 
   it("should return 400 for already resolved request", async () => {
-    const agent = await (await createAgent(testCliToken, testOrgSlug)).json();
+    const agent = await (await createAgent(testCliToken)).json();
 
     const created = await (
       await createAccessRequest(
@@ -565,7 +521,6 @@ describe("PUT /api/zero/firewall-access-requests", () => {
           permission: "issues:read",
         },
         testCliToken,
-        testOrgSlug,
       )
     ).json();
 
@@ -573,14 +528,12 @@ describe("PUT /api/zero/firewall-access-requests", () => {
     await resolveAccessRequest(
       { requestId: created.id, action: "approve" },
       testCliToken,
-      testOrgSlug,
     );
 
     // Try to reject the same request
     const response = await resolveAccessRequest(
       { requestId: created.id, action: "reject" },
       testCliToken,
-      testOrgSlug,
     );
 
     expect(response.status).toBe(400);
@@ -589,25 +542,22 @@ describe("PUT /api/zero/firewall-access-requests", () => {
   });
 
   it("should preserve existing firewall policies when approving", async () => {
-    const agent = await (await createAgent(testCliToken, testOrgSlug)).json();
+    const agent = await (await createAgent(testCliToken)).json();
 
     // Set initial policies via firewall-policies endpoint
     const { PUT: putPolicies } = await import("../../firewall-policies/route");
     await putPolicies(
-      createTestRequest(
-        `http://localhost:3000/api/zero/firewall-policies?org=${testOrgSlug}`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${testCliToken}`,
-          },
-          body: JSON.stringify({
-            agentId: agent.agentId,
-            policies: { slack: { "channels:read": "allow" } },
-          }),
+      createTestRequest(`http://localhost:3000/api/zero/firewall-policies`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${testCliToken}`,
         },
-      ),
+        body: JSON.stringify({
+          agentId: agent.agentId,
+          policies: { slack: { "channels:read": "allow" } },
+        }),
+      }),
     );
 
     // Create and approve a github request
@@ -619,21 +569,19 @@ describe("PUT /api/zero/firewall-access-requests", () => {
           permission: "issues:read",
         },
         testCliToken,
-        testOrgSlug,
       )
     ).json();
 
     await resolveAccessRequest(
       { requestId: created.id, action: "approve" },
       testCliToken,
-      testOrgSlug,
     );
 
     // Verify both policies exist
     const { GET: getAgentById } = await import("../../agents/[id]/route");
     const agentRes = await getAgentById(
       createTestRequest(
-        `http://localhost:3000/api/zero/agents/${agent.agentId}?org=${testOrgSlug}`,
+        `http://localhost:3000/api/zero/agents/${agent.agentId}`,
         {
           method: "GET",
           headers: { Authorization: `Bearer ${testCliToken}` },

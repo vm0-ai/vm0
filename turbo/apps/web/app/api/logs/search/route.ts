@@ -183,7 +183,7 @@ function toRunEvent(event: AxiomAgentEvent): RunEvent {
 }
 
 const router = tsr.router(logsSearchContract, {
-  searchLogs: async ({ query, headers }, { request }) => {
+  searchLogs: async ({ query, headers }) => {
     initServices();
 
     const authCtx = await getAuthContext(headers.authorization);
@@ -197,8 +197,7 @@ const router = tsr.router(logsSearchContract, {
     }
     const { userId } = authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
 
     const { keyword, agent, runId, limit, before, after } = query;
     const since = query.since ?? Date.now() - SEVEN_DAYS_MS;

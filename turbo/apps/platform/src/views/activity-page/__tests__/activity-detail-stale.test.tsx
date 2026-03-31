@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor, fireEvent } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -141,6 +142,7 @@ function mockAPIs() {
 
 describe("activity detail stale data", () => {
   it("should show skeleton instead of previous activity when navigating between details", async () => {
+    const user = userEvent.setup();
     mockAPIs();
 
     // Start on the first activity detail page
@@ -159,7 +161,7 @@ describe("activity detail stale data", () => {
     // Navigate back to the list via breadcrumb
     const breadcrumb = screen.getByText("Activity").closest("a");
     expect(breadcrumb).not.toBeNull();
-    fireEvent.click(breadcrumb!);
+    await user.click(breadcrumb!);
 
     // Wait for the list to render
     await waitFor(() => {
@@ -171,7 +173,7 @@ describe("activity detail stale data", () => {
     // Navigate to the second activity
     const row = screen.getByText("Agent Two").closest("a");
     expect(row).not.toBeNull();
-    fireEvent.click(row!);
+    await user.click(row!);
 
     // The old "Agent One" heading must NOT be visible — we should see skeleton or new data
     await waitFor(() => {

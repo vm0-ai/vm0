@@ -21,15 +21,14 @@ import {
 } from "../../../../../src/lib/errors";
 
 const router = tsr.router(zeroOrgInviteContract, {
-  invite: async ({ headers, body }, { request }) => {
+  invite: async ({ headers, body }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
 
     try {
-      const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org, member } = await resolveOrg(authCtx, orgSlug);
+      const { org, member } = await resolveOrg(authCtx);
       await inviteMember(authCtx.userId, org.orgId, member.role, body.email);
       return {
         status: 200 as const,
@@ -49,15 +48,14 @@ const router = tsr.router(zeroOrgInviteContract, {
     }
   },
 
-  revoke: async ({ headers, body }, { request }) => {
+  revoke: async ({ headers, body }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
 
     try {
-      const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org, member } = await resolveOrg(authCtx, orgSlug);
+      const { org, member } = await resolveOrg(authCtx);
       await revokeInvitation(org.orgId, member.role, body.invitationId);
       return {
         status: 200 as const,

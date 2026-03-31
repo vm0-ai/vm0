@@ -17,15 +17,14 @@ import { listConnectors } from "../../../../src/lib/connector/connector-service"
 import { getConfiguredConnectorTypes } from "../../../../src/lib/connector/provider-registry";
 
 const router = tsr.router(zeroConnectorsMainContract, {
-  list: async ({ headers }, { request }) => {
+  list: async ({ headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
     const connectorList = await listConnectors(org.orgId, userId);
     const configuredTypes = getConfiguredConnectorTypes(
       globalThis.services.env,

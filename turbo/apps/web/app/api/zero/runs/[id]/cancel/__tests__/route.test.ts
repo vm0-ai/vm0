@@ -24,8 +24,8 @@ async function setupOrg(userId: string) {
   return { slug, orgId };
 }
 
-function cancelUrl(slug: string, runId: string): string {
-  return `http://localhost:3000/api/zero/runs/${runId}/cancel?org=${slug}`;
+function cancelUrl(runId: string): string {
+  return `http://localhost:3000/api/zero/runs/${runId}/cancel`;
 }
 
 describe("POST /api/zero/runs/:id/cancel", () => {
@@ -35,14 +35,14 @@ describe("POST /api/zero/runs/:id/cancel", () => {
 
   it("should cancel a running run", async () => {
     const userId = uniqueId("zcanc-ok");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
     const compose = await createTestCompose(`agent-${uniqueId("zcanc")}`);
     const { runId } = await createTestRunInDb(userId, compose.composeId, {
       status: "running",
     });
 
     const response = await POST(
-      createTestRequest(cancelUrl(slug, runId), { method: "POST" }),
+      createTestRequest(cancelUrl(runId), { method: "POST" }),
     );
     expect(response.status).toBe(200);
 
@@ -53,7 +53,7 @@ describe("POST /api/zero/runs/:id/cancel", () => {
 
   it("should return 400 when run already completed", async () => {
     const userId = uniqueId("zcanc-done");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
     const compose = await createTestCompose(`agent-${uniqueId("zcanc")}`);
     const { runId } = await createTestRunInDb(userId, compose.composeId, {
       status: "completed",
@@ -61,17 +61,17 @@ describe("POST /api/zero/runs/:id/cancel", () => {
     });
 
     const response = await POST(
-      createTestRequest(cancelUrl(slug, runId), { method: "POST" }),
+      createTestRequest(cancelUrl(runId), { method: "POST" }),
     );
     expect(response.status).toBe(400);
   });
 
   it("should return 404 when run not found", async () => {
     const userId = uniqueId("zcanc-nf");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
 
     const response = await POST(
-      createTestRequest(cancelUrl(slug, randomUUID()), {
+      createTestRequest(cancelUrl(randomUUID()), {
         method: "POST",
       }),
     );
@@ -82,10 +82,9 @@ describe("POST /api/zero/runs/:id/cancel", () => {
     mockClerk({ userId: null });
 
     const response = await POST(
-      createTestRequest(
-        "http://localhost:3000/api/zero/runs/some-id/cancel?org=test",
-        { method: "POST" },
-      ),
+      createTestRequest("http://localhost:3000/api/zero/runs/some-id/cancel", {
+        method: "POST",
+      }),
     );
     expect(response.status).toBe(401);
   });
@@ -95,13 +94,10 @@ describe("POST /api/zero/runs/:id/cancel", () => {
     const token = await generateSandboxToken("user-1", "run-1");
 
     const response = await POST(
-      createTestRequest(
-        "http://localhost:3000/api/zero/runs/some-id/cancel?org=test",
-        {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      ),
+      createTestRequest("http://localhost:3000/api/zero/runs/some-id/cancel", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      }),
     );
     expect(response.status).toBe(403);
 

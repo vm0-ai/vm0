@@ -72,6 +72,12 @@ export default [
       "ccstate/no-getter-setter-params": "error",
     },
   },
+  {
+    files: ["**/__tests__/**/*.{ts,tsx}"],
+    rules: {
+      "ccstate/prefer-user-event": "error",
+    },
+  },
   // Allow new AbortController in signal infrastructure, test helpers, and
   // views that need a controller outliving the page signal (e.g. post-navigate
   // async work).

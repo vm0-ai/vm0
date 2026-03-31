@@ -16,7 +16,6 @@ export const zeroComposesMainContract = c.router({
     headers: authHeadersSchema,
     query: z.object({
       name: z.string().min(1, "Missing name query parameter"),
-      org: z.string().optional(),
     }),
     responses: {
       200: composeResponseSchema,
@@ -76,9 +75,7 @@ export const zeroComposesListContract = c.router({
     method: "GET",
     path: "/api/zero/composes/list",
     headers: authHeadersSchema,
-    query: z.object({
-      org: z.string().optional(),
-    }),
+    query: z.object({}),
     responses: {
       200: z.object({
         composes: z.array(composeListItemSchema),

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { screen, waitFor, act, fireEvent } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -99,6 +100,7 @@ describe("org billing tab - plan display", () => {
 
 describe("org billing tab - pricing sub-page navigation", () => {
   it("should navigate to pricing page when clicking Compare all plans", async () => {
+    const user = userEvent.setup();
     mockAPIs();
     setMockBillingStatus({ tier: "free", credits: 10_000 });
 
@@ -108,9 +110,7 @@ describe("org billing tab - pricing sub-page navigation", () => {
       expect(screen.getByText("Free plan")).toBeInTheDocument();
     });
 
-    await act(() => {
-      fireEvent.click(screen.getByText("Compare all plans"));
-    });
+    await user.click(screen.getByText("Compare all plans"));
 
     await waitFor(() => {
       expect(screen.getByText("Compare plans")).toBeInTheDocument();
@@ -123,6 +123,7 @@ describe("org billing tab - pricing sub-page navigation", () => {
   });
 
   it("should navigate back from pricing page via Back button", async () => {
+    const user = userEvent.setup();
     mockAPIs();
     setMockBillingStatus({ tier: "free", credits: 10_000 });
 
@@ -132,18 +133,14 @@ describe("org billing tab - pricing sub-page navigation", () => {
       expect(screen.getByText("Free plan")).toBeInTheDocument();
     });
 
-    await act(() => {
-      fireEvent.click(screen.getByText("Compare all plans"));
-    });
+    await user.click(screen.getByText("Compare all plans"));
 
     await waitFor(() => {
       expect(screen.getByText("Compare plans")).toBeInTheDocument();
     });
 
     const backButton = screen.getByRole("button", { name: /Back/i });
-    await act(() => {
-      fireEvent.click(backButton);
-    });
+    await user.click(backButton);
 
     await waitFor(() => {
       expect(screen.getByText("Free plan")).toBeInTheDocument();
@@ -151,6 +148,7 @@ describe("org billing tab - pricing sub-page navigation", () => {
   });
 
   it("should mark current plan as disabled on pricing page", async () => {
+    const user = userEvent.setup();
     mockAPIs();
     setMockBillingStatus({
       tier: "pro",
@@ -165,9 +163,7 @@ describe("org billing tab - pricing sub-page navigation", () => {
       expect(screen.getByText("Pro plan")).toBeInTheDocument();
     });
 
-    await act(() => {
-      fireEvent.click(screen.getByText("Compare all plans"));
-    });
+    await user.click(screen.getByText("Compare all plans"));
 
     await waitFor(() => {
       expect(screen.getByText("Compare plans")).toBeInTheDocument();
@@ -279,6 +275,7 @@ describe("org billing tab - auto-recharge section", () => {
   });
 
   it("should enable toggle when clicked with no prior threshold/amount config", async () => {
+    const user = userEvent.setup();
     mockAPIs();
     setMockBillingStatus({
       tier: "pro",
@@ -299,9 +296,7 @@ describe("org billing tab - auto-recharge section", () => {
     });
     expect(toggle).toHaveAttribute("data-state", "unchecked");
 
-    await act(() => {
-      fireEvent.click(toggle);
-    });
+    await user.click(toggle);
 
     await waitFor(() => {
       expect(toggle).toHaveAttribute("data-state", "checked");
@@ -317,6 +312,7 @@ describe("org billing tab - auto-recharge section", () => {
   });
 
   it("should save correct data after enabling toggle with no prior config", async () => {
+    const user = userEvent.setup();
     let capturedBody: unknown = null;
     server.use(
       http.put("*/api/zero/billing/auto-recharge", async ({ request }) => {
@@ -348,9 +344,7 @@ describe("org billing tab - auto-recharge section", () => {
       name: /enable auto-recharge/i,
     });
 
-    await act(() => {
-      fireEvent.click(toggle);
-    });
+    await user.click(toggle);
 
     await waitFor(() => {
       expect(toggle).toHaveAttribute("data-state", "checked");
@@ -364,15 +358,11 @@ describe("org billing tab - auto-recharge section", () => {
       /auto-recharge credit amount in credits/i,
     );
 
-    await act(() => {
-      fireEvent.change(thresholdInput, { target: { value: "2000" } });
-    });
-    await act(() => {
-      fireEvent.change(amountInput, { target: { value: "10000" } });
-    });
-    await act(() => {
-      fireEvent.blur(thresholdInput);
-    });
+    await user.clear(thresholdInput);
+    await user.type(thresholdInput, "2000");
+    await user.clear(amountInput);
+    await user.type(amountInput, "10000");
+    await user.tab();
 
     await waitFor(() => {
       expect(capturedBody).toStrictEqual({
@@ -384,6 +374,7 @@ describe("org billing tab - auto-recharge section", () => {
   });
 
   it("should send correct data when saving auto-recharge config", async () => {
+    const user = userEvent.setup();
     let capturedBody: unknown = null;
     server.use(
       http.put("*/api/zero/billing/auto-recharge", async ({ request }) => {
@@ -421,12 +412,9 @@ describe("org billing tab - auto-recharge section", () => {
     });
 
     // Change threshold and blur to trigger save
-    await act(() => {
-      fireEvent.change(thresholdInput, { target: { value: "3000" } });
-    });
-    await act(() => {
-      fireEvent.blur(thresholdInput);
-    });
+    await user.clear(thresholdInput);
+    await user.type(thresholdInput, "3000");
+    await user.tab();
 
     await waitFor(() => {
       expect(capturedBody).toStrictEqual({
@@ -605,6 +593,7 @@ describe("org billing tab - downgrade flow", () => {
   });
 
   it("should open downgrade dialog on Downgrade button click for pro user", async () => {
+    const user = userEvent.setup();
     mockAPIs();
     setMockBillingStatus({
       tier: "pro",
@@ -619,9 +608,7 @@ describe("org billing tab - downgrade flow", () => {
       expect(screen.getByText("Pro plan")).toBeInTheDocument();
     });
 
-    await act(() => {
-      fireEvent.click(screen.getByRole("button", { name: /Downgrade/i }));
-    });
+    await user.click(screen.getByRole("button", { name: /Downgrade/i }));
 
     await waitFor(() => {
       expect(screen.getByText("Downgrade plan")).toBeInTheDocument();
@@ -634,6 +621,7 @@ describe("org billing tab - downgrade flow", () => {
   });
 
   it("should open downgrade dialog with plan selection for team user", async () => {
+    const user = userEvent.setup();
     mockAPIs();
     setMockBillingStatus({
       tier: "team",
@@ -648,9 +636,7 @@ describe("org billing tab - downgrade flow", () => {
       expect(screen.getByText("Team plan")).toBeInTheDocument();
     });
 
-    await act(() => {
-      fireEvent.click(screen.getByRole("button", { name: /Downgrade/i }));
-    });
+    await user.click(screen.getByRole("button", { name: /Downgrade/i }));
 
     await waitFor(() => {
       expect(screen.getByText("Downgrade plan")).toBeInTheDocument();
@@ -663,6 +649,7 @@ describe("org billing tab - downgrade flow", () => {
   });
 
   it("should call downgrade API with correct targetTier on confirm", async () => {
+    const user = userEvent.setup();
     let capturedBody: unknown = null;
     server.use(
       http.post("*/api/zero/billing/downgrade", async ({ request }) => {
@@ -685,19 +672,15 @@ describe("org billing tab - downgrade flow", () => {
       expect(screen.getByText("Pro plan")).toBeInTheDocument();
     });
 
-    await act(() => {
-      fireEvent.click(screen.getByRole("button", { name: /Downgrade/i }));
-    });
+    await user.click(screen.getByRole("button", { name: /Downgrade/i }));
 
     await waitFor(() => {
       expect(screen.getByText("Downgrade plan")).toBeInTheDocument();
     });
 
-    await act(() => {
-      fireEvent.click(
-        screen.getByRole("button", { name: /Downgrade to Free/i }),
-      );
-    });
+    await user.click(
+      screen.getByRole("button", { name: /Downgrade to Free/i }),
+    );
 
     await waitFor(() => {
       expect(capturedBody).toStrictEqual({ targetTier: "free" });
@@ -705,6 +688,7 @@ describe("org billing tab - downgrade flow", () => {
   });
 
   it("should close dialog on cancel without calling API", async () => {
+    const user = userEvent.setup();
     let apiCalled = false;
     server.use(
       http.post("*/api/zero/billing/downgrade", () => {
@@ -727,17 +711,13 @@ describe("org billing tab - downgrade flow", () => {
       expect(screen.getByText("Pro plan")).toBeInTheDocument();
     });
 
-    await act(() => {
-      fireEvent.click(screen.getByRole("button", { name: /Downgrade/i }));
-    });
+    await user.click(screen.getByRole("button", { name: /Downgrade/i }));
 
     await waitFor(() => {
       expect(screen.getByText("Downgrade plan")).toBeInTheDocument();
     });
 
-    await act(() => {
-      fireEvent.click(screen.getByRole("button", { name: /Cancel/i }));
-    });
+    await user.click(screen.getByRole("button", { name: /Cancel/i }));
 
     await waitFor(() => {
       expect(screen.queryByText("Downgrade plan")).not.toBeInTheDocument();
@@ -747,6 +727,7 @@ describe("org billing tab - downgrade flow", () => {
   });
 
   it("should route pricing page downgrade through dialog", async () => {
+    const user = userEvent.setup();
     mockAPIs();
     setMockBillingStatus({
       tier: "pro",
@@ -762,9 +743,7 @@ describe("org billing tab - downgrade flow", () => {
     });
 
     // Navigate to pricing page
-    await act(() => {
-      fireEvent.click(screen.getByText("Compare all plans"));
-    });
+    await user.click(screen.getByText("Compare all plans"));
 
     await waitFor(() => {
       expect(screen.getByText("Compare plans")).toBeInTheDocument();
@@ -776,9 +755,7 @@ describe("org billing tab - downgrade flow", () => {
     });
     expect(manageButtons.length).toBeGreaterThanOrEqual(1);
 
-    await act(() => {
-      fireEvent.click(manageButtons[0]!);
-    });
+    await user.click(manageButtons[0]!);
 
     // Should open downgrade dialog instead of redirecting to Stripe
     await waitFor(() => {

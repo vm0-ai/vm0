@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.177.1](https://github.com/vm0-ai/vm0/compare/web-v12.177.0...web-v12.177.1) (2026-03-31)
+
+
+### Refactoring
+
+* remove redundant ?org=slug query param from all routes ([#7301](https://github.com/vm0-ai/vm0/issues/7301)) ([96d6b6c](https://github.com/vm0-ai/vm0/commit/96d6b6ced9bb5770bce51301ceabea226bcc22f4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.131.1
+
 ## [12.177.0](https://github.com/vm0-ai/vm0/compare/web-v12.176.0...web-v12.177.0) (2026-03-31)
 
 

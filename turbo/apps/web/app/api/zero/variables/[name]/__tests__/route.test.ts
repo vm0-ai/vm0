@@ -26,12 +26,12 @@ async function setupOrg(userId: string) {
   return { slug, orgId };
 }
 
-function variableUrl(slug: string): string {
-  return `http://localhost:3000/api/zero/variables?org=${slug}`;
+function variableUrl(): string {
+  return `http://localhost:3000/api/zero/variables`;
 }
 
-function variableByNameUrl(slug: string, name: string): string {
-  return `http://localhost:3000/api/zero/variables/${name}?org=${slug}`;
+function variableByNameUrl(name: string): string {
+  return `http://localhost:3000/api/zero/variables/${name}`;
 }
 
 describe("DELETE /api/zero/variables/:name", () => {
@@ -41,11 +41,11 @@ describe("DELETE /api/zero/variables/:name", () => {
 
   it("should delete variable successfully", async () => {
     const userId = uniqueId("zvar-del-ok");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
 
     // Create a variable
     await POST(
-      createTestRequest(variableUrl(slug), {
+      createTestRequest(variableUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -57,14 +57,14 @@ describe("DELETE /api/zero/variables/:name", () => {
 
     // Verify it exists via GET list
     const listResponse = await GET(
-      createTestRequest(variableUrl(slug), { method: "GET" }),
+      createTestRequest(variableUrl(), { method: "GET" }),
     );
     const listData = await listResponse.json();
     expect(listData.variables).toHaveLength(1);
 
     // Delete it
     const deleteResponse = await DELETE(
-      createTestRequest(variableByNameUrl(slug, "DELETE_ME"), {
+      createTestRequest(variableByNameUrl("DELETE_ME"), {
         method: "DELETE",
       }),
     );
@@ -72,7 +72,7 @@ describe("DELETE /api/zero/variables/:name", () => {
 
     // Verify it's gone
     const listResponse2 = await GET(
-      createTestRequest(variableUrl(slug), { method: "GET" }),
+      createTestRequest(variableUrl(), { method: "GET" }),
     );
     const listData2 = await listResponse2.json();
     expect(listData2.variables).toEqual([]);
@@ -80,10 +80,10 @@ describe("DELETE /api/zero/variables/:name", () => {
 
   it("should return 404 for nonexistent variable", async () => {
     const userId = uniqueId("zvar-del-404");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
 
     const response = await DELETE(
-      createTestRequest(variableByNameUrl(slug, "NONEXISTENT"), {
+      createTestRequest(variableByNameUrl("NONEXISTENT"), {
         method: "DELETE",
       }),
     );
@@ -97,10 +97,9 @@ describe("DELETE /api/zero/variables/:name", () => {
     mockClerk({ userId: null });
 
     const response = await DELETE(
-      createTestRequest(
-        "http://localhost:3000/api/zero/variables/ANY_VAR?org=test",
-        { method: "DELETE" },
-      ),
+      createTestRequest("http://localhost:3000/api/zero/variables/ANY_VAR", {
+        method: "DELETE",
+      }),
     );
     expect(response.status).toBe(401);
   });

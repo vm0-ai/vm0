@@ -33,7 +33,6 @@ export async function GET(request: Request) {
   }
 
   const url = new URL(request.url);
-  const orgSlug = url.searchParams.get("org");
   const userId = url.searchParams.get("userId");
 
   if (!userId) {
@@ -43,7 +42,7 @@ export async function GET(request: Request) {
     );
   }
 
-  const { org } = await resolveOrg(authResult, orgSlug);
+  const { org } = await resolveOrg(authResult);
   const result = await getMemberCreditCap(org.orgId, userId);
 
   return NextResponse.json({
@@ -69,8 +68,7 @@ export async function PUT(request: Request) {
     return NextResponse.json(authResult.body, { status: authResult.status });
   }
 
-  const orgSlug = new URL(request.url).searchParams.get("org");
-  const { org, member } = await resolveOrg(authResult, orgSlug);
+  const { org, member } = await resolveOrg(authResult);
 
   // Only admins can update credit caps
   if (member.role !== "admin") {

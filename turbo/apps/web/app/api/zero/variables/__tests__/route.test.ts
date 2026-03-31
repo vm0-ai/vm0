@@ -25,8 +25,8 @@ async function setupOrg(userId: string) {
   return { slug, orgId };
 }
 
-function variableUrl(slug: string): string {
-  return `http://localhost:3000/api/zero/variables?org=${slug}`;
+function variableUrl(): string {
+  return `http://localhost:3000/api/zero/variables`;
 }
 
 describe("GET /api/zero/variables", () => {
@@ -36,10 +36,10 @@ describe("GET /api/zero/variables", () => {
 
   it("should return empty array when no variables exist", async () => {
     const userId = uniqueId("zvar-empty");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
 
     const response = await GET(
-      createTestRequest(variableUrl(slug), { method: "GET" }),
+      createTestRequest(variableUrl(), { method: "GET" }),
     );
     expect(response.status).toBe(200);
 
@@ -49,11 +49,11 @@ describe("GET /api/zero/variables", () => {
 
   it("should list variables for authenticated user", async () => {
     const userId = uniqueId("zvar-list");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
 
     // Create a variable first
     await POST(
-      createTestRequest(variableUrl(slug), {
+      createTestRequest(variableUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -65,7 +65,7 @@ describe("GET /api/zero/variables", () => {
     );
 
     const response = await GET(
-      createTestRequest(variableUrl(slug), { method: "GET" }),
+      createTestRequest(variableUrl(), { method: "GET" }),
     );
     expect(response.status).toBe(200);
 
@@ -83,7 +83,7 @@ describe("GET /api/zero/variables", () => {
     mockClerk({ userId: null });
 
     const response = await GET(
-      createTestRequest("http://localhost:3000/api/zero/variables?org=test", {
+      createTestRequest("http://localhost:3000/api/zero/variables", {
         method: "GET",
       }),
     );
@@ -98,10 +98,10 @@ describe("POST /api/zero/variables", () => {
 
   it("should create a variable as admin", async () => {
     const userId = uniqueId("zvar-create");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
 
     const response = await POST(
-      createTestRequest(variableUrl(slug), {
+      createTestRequest(variableUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -124,11 +124,11 @@ describe("POST /api/zero/variables", () => {
 
   it("should update an existing variable", async () => {
     const userId = uniqueId("zvar-update");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
 
     // Create
     await POST(
-      createTestRequest(variableUrl(slug), {
+      createTestRequest(variableUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -140,7 +140,7 @@ describe("POST /api/zero/variables", () => {
 
     // Update
     const response = await POST(
-      createTestRequest(variableUrl(slug), {
+      createTestRequest(variableUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -162,7 +162,7 @@ describe("POST /api/zero/variables", () => {
     mockClerk({ userId: null });
 
     const response = await POST(
-      createTestRequest("http://localhost:3000/api/zero/variables?org=test", {
+      createTestRequest("http://localhost:3000/api/zero/variables", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -176,10 +176,10 @@ describe("POST /api/zero/variables", () => {
 
   it("should reject invalid variable name", async () => {
     const userId = uniqueId("zvar-invalid");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
 
     const response = await POST(
-      createTestRequest(variableUrl(slug), {
+      createTestRequest(variableUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

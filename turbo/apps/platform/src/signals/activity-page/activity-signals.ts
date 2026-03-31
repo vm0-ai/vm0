@@ -44,7 +44,7 @@ const orgAgents$ = computed((get) => {
 
 const fetchOrgAgents$ = command(async ({ get, set }, _signal: AbortSignal) => {
   const client = get(zeroClient$)(zeroComposesListContract);
-  const result = await client.list();
+  const result = await client.list({ query: {} });
   if (result.status !== 200) {
     throw new Error(`Failed to fetch org agents (${result.status})`);
   }

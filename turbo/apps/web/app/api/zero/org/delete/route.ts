@@ -18,15 +18,14 @@ import {
 } from "../../../../../src/lib/errors";
 
 const router = tsr.router(zeroOrgDeleteContract, {
-  delete: async ({ headers, body }, { request }) => {
+  delete: async ({ headers, body }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
 
     try {
-      const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org, member } = await resolveOrg(authCtx, orgSlug);
+      const { org, member } = await resolveOrg(authCtx);
 
       // Verify the slug matches as a safety check
       if (body.slug !== org.slug) {

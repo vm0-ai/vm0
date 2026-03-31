@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.171.1](https://github.com/vm0-ai/vm0/compare/app-v0.171.0...app-v0.171.1) (2026-03-31)
+
+
+### Refactoring
+
+* inline ZeroTalkPage wrapper into ZeroChatPage ([#7413](https://github.com/vm0-ai/vm0/issues/7413)) ([55c67e6](https://github.com/vm0-ai/vm0/commit/55c67e684dae2b35597dfa2214d9dc81aa887ae1)), closes [#7411](https://github.com/vm0-ai/vm0/issues/7411)
+* remove redundant ?org=slug query param from all routes ([#7301](https://github.com/vm0-ai/vm0/issues/7301)) ([96d6b6c](https://github.com/vm0-ai/vm0/commit/96d6b6ced9bb5770bce51301ceabea226bcc22f4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.131.1
+
 ## [0.171.0](https://github.com/vm0-ai/vm0/compare/app-v0.170.0...app-v0.171.0) (2026-03-31)
 
 

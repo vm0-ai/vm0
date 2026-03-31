@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { screen, waitFor, fireEvent, act } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -37,14 +38,14 @@ function mockTeamWithSubagent() {
   );
 }
 
-async function openCreateDialog() {
+async function openCreateDialog(user: ReturnType<typeof userEvent.setup>) {
   await setupPage({ context, path: "/team" });
 
   await waitFor(() => {
     expect(screen.getByText("Research Agent")).toBeInTheDocument();
   });
 
-  fireEvent.click(screen.getByText("Create teammate"));
+  await user.click(screen.getByText("Create teammate"));
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
@@ -52,8 +53,9 @@ async function openCreateDialog() {
 
 describe("create teammate dialog - avatar", () => {
   it("should show a preset avatar when dialog opens", async () => {
+    const user = userEvent.setup();
     mockTeamWithSubagent();
-    await openCreateDialog();
+    await openCreateDialog(user);
 
     const avatar = screen.getByAltText("New teammate");
     expect(avatar).toBeInTheDocument();
@@ -62,16 +64,18 @@ describe("create teammate dialog - avatar", () => {
   });
 
   it("should show upload overlay on hover", async () => {
+    const user = userEvent.setup();
     mockTeamWithSubagent();
-    await openCreateDialog();
+    await openCreateDialog(user);
 
     const uploadBtn = screen.getByRole("button", { name: "Upload avatar" });
     expect(uploadBtn).toBeInTheDocument();
   });
 
   it("should trigger file input when upload button is clicked", async () => {
+    const user = userEvent.setup();
     mockTeamWithSubagent();
-    await openCreateDialog();
+    await openCreateDialog(user);
 
     const dialog = screen.getByRole("dialog");
     const fileInput =
@@ -81,27 +85,26 @@ describe("create teammate dialog - avatar", () => {
     const clickSpy = vi.fn();
     fileInput!.click = clickSpy;
 
-    fireEvent.click(screen.getByRole("button", { name: "Upload avatar" }));
+    await user.click(screen.getByRole("button", { name: "Upload avatar" }));
     expect(clickSpy).toHaveBeenCalledOnce();
   });
 
   it("should show custom avatar after upload and switch to delete button", async () => {
+    const user = userEvent.setup();
     mockTeamWithSubagent();
     server.use(
       http.post("*/api/zero/uploads", () => {
         return HttpResponse.json({ url: "https://cdn.example.com/custom.png" });
       }),
     );
-    await openCreateDialog();
+    await openCreateDialog(user);
 
     const dialog = screen.getByRole("dialog");
     const fileInput =
       dialog.querySelector<HTMLInputElement>('input[type="file"]');
     const file = new File(["img"], "avatar.png", { type: "image/png" });
 
-    await act(() => {
-      fireEvent.change(fileInput!, { target: { files: [file] } });
-    });
+    await user.upload(fileInput!, file);
 
     // After upload, avatar should show custom URL
     await waitFor(() => {
@@ -118,22 +121,21 @@ describe("create teammate dialog - avatar", () => {
   });
 
   it("should revert to a preset avatar after removing custom upload", async () => {
+    const user = userEvent.setup();
     mockTeamWithSubagent();
     server.use(
       http.post("*/api/zero/uploads", () => {
         return HttpResponse.json({ url: "https://cdn.example.com/custom.png" });
       }),
     );
-    await openCreateDialog();
+    await openCreateDialog(user);
 
     const dialog = screen.getByRole("dialog");
     const fileInput =
       dialog.querySelector<HTMLInputElement>('input[type="file"]');
     const file = new File(["img"], "avatar.png", { type: "image/png" });
 
-    await act(() => {
-      fireEvent.change(fileInput!, { target: { files: [file] } });
-    });
+    await user.upload(fileInput!, file);
 
     await waitFor(() => {
       expect(
@@ -142,7 +144,7 @@ describe("create teammate dialog - avatar", () => {
     });
 
     // Click delete — should revert to preset avatar
-    fireEvent.click(
+    await user.click(
       screen.getByRole("button", { name: "Remove custom avatar" }),
     );
 
@@ -161,6 +163,7 @@ describe("create teammate dialog - avatar", () => {
   });
 
   it("should send chosen avatar when creating agent", async () => {
+    const user = userEvent.setup();
     let capturedPayload: Record<string, unknown> | null = null;
 
     mockTeamWithSubagent();
@@ -195,11 +198,12 @@ describe("create teammate dialog - avatar", () => {
       }),
     );
 
-    await openCreateDialog();
+    await openCreateDialog(user);
 
     const input = screen.getByPlaceholderText("e.g. Research Assistant");
-    fireEvent.change(input, { target: { value: "My New Agent" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    await user.clear(input);
+    await user.type(input, "My New Agent");
+    await user.click(screen.getByRole("button", { name: "Create" }));
 
     await waitFor(() => {
       expect(capturedPayload).toBeTruthy();
@@ -211,6 +215,7 @@ describe("create teammate dialog - avatar", () => {
   });
 
   it("should send custom avatar URL when creating agent after upload", async () => {
+    const user = userEvent.setup();
     let capturedPayload: Record<string, unknown> | null = null;
 
     mockTeamWithSubagent();
@@ -250,7 +255,7 @@ describe("create teammate dialog - avatar", () => {
       }),
     );
 
-    await openCreateDialog();
+    await openCreateDialog(user);
 
     // Upload a custom avatar
     const dialog = screen.getByRole("dialog");
@@ -258,9 +263,7 @@ describe("create teammate dialog - avatar", () => {
       dialog.querySelector<HTMLInputElement>('input[type="file"]');
     const file = new File(["img"], "avatar.png", { type: "image/png" });
 
-    await act(() => {
-      fireEvent.change(fileInput!, { target: { files: [file] } });
-    });
+    await user.upload(fileInput!, file);
 
     await waitFor(() => {
       expect(
@@ -270,8 +273,9 @@ describe("create teammate dialog - avatar", () => {
 
     // Fill name and create
     const input = screen.getByPlaceholderText("e.g. Research Assistant");
-    fireEvent.change(input, { target: { value: "Custom Avatar Agent" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    await user.clear(input);
+    await user.type(input, "Custom Avatar Agent");
+    await user.click(screen.getByRole("button", { name: "Create" }));
 
     await waitFor(() => {
       expect(capturedPayload).toBeTruthy();
@@ -283,6 +287,7 @@ describe("create teammate dialog - avatar", () => {
   });
 
   it("should submit via Enter key with avatar", async () => {
+    const user = userEvent.setup();
     let capturedPayload: Record<string, unknown> | null = null;
 
     mockTeamWithSubagent();
@@ -317,11 +322,12 @@ describe("create teammate dialog - avatar", () => {
       }),
     );
 
-    await openCreateDialog();
+    await openCreateDialog(user);
 
     const input = screen.getByPlaceholderText("e.g. Research Assistant");
-    fireEvent.change(input, { target: { value: "Enter Agent" } });
-    fireEvent.keyDown(input, { key: "Enter" });
+    await user.clear(input);
+    await user.type(input, "Enter Agent");
+    await user.keyboard("{Enter}");
 
     await waitFor(() => {
       expect(capturedPayload).toBeTruthy();

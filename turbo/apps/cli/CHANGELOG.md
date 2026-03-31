@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.90.3](https://github.com/vm0-ai/vm0/compare/cli-v9.90.2...cli-v9.90.3) (2026-03-31)
+
+
+### Refactoring
+
+* remove redundant ?org=slug query param from all routes ([#7301](https://github.com/vm0-ai/vm0/issues/7301)) ([96d6b6c](https://github.com/vm0-ai/vm0/commit/96d6b6ced9bb5770bce51301ceabea226bcc22f4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.131.1
+
 ## [9.90.2](https://github.com/vm0-ai/vm0/compare/cli-v9.90.1...cli-v9.90.2) (2026-03-31)
 
 

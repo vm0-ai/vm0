@@ -36,8 +36,8 @@ async function setupOrg(
   return { slug: orgSlug, orgId };
 }
 
-function orgUrl(slug: string): string {
-  return `http://localhost:3000/api/zero/model-providers?org=${slug}`;
+function orgUrl(): string {
+  return `http://localhost:3000/api/zero/model-providers`;
 }
 
 describe("VM0 managed model provider", () => {
@@ -48,10 +48,10 @@ describe("VM0 managed model provider", () => {
   describe("API route: org slug check", () => {
     it("should create vm0 provider for vm0 org without secret", async () => {
       const userId = uniqueId("vm0-create");
-      const { slug } = await setupOrg(userId, "org:admin", "vm0");
+      await setupOrg(userId, "org:admin", "vm0");
 
       const response = await POST(
-        createTestRequest(orgUrl(slug), {
+        createTestRequest(orgUrl(), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -72,10 +72,10 @@ describe("VM0 managed model provider", () => {
 
     it("should create vm0 provider for any org without secret", async () => {
       const userId = uniqueId("vm0-any-org");
-      const { slug } = await setupOrg(userId, "org:admin", "my-org");
+      await setupOrg(userId, "org:admin", "my-org");
 
       const response = await POST(
-        createTestRequest(orgUrl(slug), {
+        createTestRequest(orgUrl(), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

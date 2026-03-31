@@ -22,7 +22,7 @@ import { after } from "next/server";
 const log = logger("api:runs:cancel");
 
 const router = tsr.router(runsCancelContract, {
-  cancel: async ({ params, headers }, { request }) => {
+  cancel: async ({ params, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -53,8 +53,7 @@ const router = tsr.router(runsCancelContract, {
       }
       orgId = (await getOrgData(sandboxRun.orgId)).orgId;
     } else {
-      const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org } = await resolveOrg(authCtx, orgSlug);
+      const { org } = await resolveOrg(authCtx);
       orgId = org.orgId;
     }
 

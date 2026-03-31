@@ -13,14 +13,13 @@ import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import { getOrgInvoices } from "../../../../../src/lib/billing/billing-service";
 
 const router = tsr.router(zeroBillingInvoicesContract, {
-  get: async ({ headers }, { request }) => {
+  get: async ({ headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org, member } = await resolveOrg(authCtx, orgSlug);
+    const { org, member } = await resolveOrg(authCtx);
     if (member.role !== "admin") {
       return createErrorResponse(
         "FORBIDDEN",

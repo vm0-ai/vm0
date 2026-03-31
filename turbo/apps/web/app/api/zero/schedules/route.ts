@@ -19,7 +19,7 @@ import {
 } from "../../../../src/lib/errors";
 
 const router = tsr.router(zeroSchedulesMainContract, {
-  deploy: async ({ body, headers }, { request }) => {
+  deploy: async ({ body, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -29,10 +29,9 @@ const router = tsr.router(zeroSchedulesMainContract, {
     const { userId } = authCtx;
 
     try {
-      const orgSlug = new URL(request.url).searchParams.get("org");
       const {
         org: { orgId },
-      } = await resolveOrg(authCtx, orgSlug);
+      } = await resolveOrg(authCtx);
 
       const result = await deploySchedule(userId, orgId, {
         name: body.name,
@@ -87,7 +86,7 @@ const router = tsr.router(zeroSchedulesMainContract, {
     }
   },
 
-  list: async ({ headers }, { request }) => {
+  list: async ({ headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -96,10 +95,9 @@ const router = tsr.router(zeroSchedulesMainContract, {
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
     let orgId: string;
     try {
-      const { org } = await resolveOrg(authCtx, orgSlug);
+      const { org } = await resolveOrg(authCtx);
       orgId = org.orgId;
     } catch (error) {
       if (isNotFound(error) || isForbidden(error) || isBadRequest(error)) {

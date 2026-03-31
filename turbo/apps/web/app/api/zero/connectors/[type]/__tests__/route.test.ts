@@ -23,8 +23,8 @@ async function setupOrg(userId: string) {
   return { slug, orgId };
 }
 
-function connectorUrl(slug: string, type: string): string {
-  return `http://localhost:3000/api/zero/connectors/${type}?org=${slug}`;
+function connectorUrl(type: string): string {
+  return `http://localhost:3000/api/zero/connectors/${type}`;
 }
 
 describe("GET /api/zero/connectors/:type", () => {
@@ -34,10 +34,10 @@ describe("GET /api/zero/connectors/:type", () => {
 
   it("should return connector when present", async () => {
     const userId = uniqueId("zcget-ok");
-    const { slug, orgId } = await setupOrg(userId);
+    const { orgId } = await setupOrg(userId);
     await context.createConnector(orgId, { userId, type: "github" });
 
-    const response = await GET(createTestRequest(connectorUrl(slug, "github")));
+    const response = await GET(createTestRequest(connectorUrl("github")));
     expect(response.status).toBe(200);
 
     const data = await response.json();
@@ -46,18 +46,16 @@ describe("GET /api/zero/connectors/:type", () => {
 
   it("should return 404 when connector not found", async () => {
     const userId = uniqueId("zcget-nf");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
 
-    const response = await GET(createTestRequest(connectorUrl(slug, "github")));
+    const response = await GET(createTestRequest(connectorUrl("github")));
     expect(response.status).toBe(404);
   });
 
   it("should return 401 when not authenticated", async () => {
     mockClerk({ userId: null });
 
-    const response = await GET(
-      createTestRequest(connectorUrl("test", "github")),
-    );
+    const response = await GET(createTestRequest(connectorUrl("github")));
     expect(response.status).toBe(401);
   });
 
@@ -69,7 +67,6 @@ describe("GET /api/zero/connectors/:type", () => {
       type: "github",
     });
 
-    const orgSlug = `org-${user.userId.slice(-8)}`;
     const zeroToken = await generateZeroToken(
       user.userId,
       randomUUID(),
@@ -77,7 +74,7 @@ describe("GET /api/zero/connectors/:type", () => {
     );
 
     const response = await GET(
-      new NextRequest(connectorUrl(orgSlug, "github"), {
+      new NextRequest(connectorUrl("github"), {
         headers: { Authorization: `Bearer ${zeroToken}` },
       }),
     );
@@ -95,21 +92,21 @@ describe("DELETE /api/zero/connectors/:type", () => {
 
   it("should delete a connector and return 204", async () => {
     const userId = uniqueId("zcdel-ok");
-    const { slug, orgId } = await setupOrg(userId);
+    const { orgId } = await setupOrg(userId);
     await context.createConnector(orgId, { userId, type: "github" });
 
     const response = await DELETE(
-      createTestRequest(connectorUrl(slug, "github"), { method: "DELETE" }),
+      createTestRequest(connectorUrl("github"), { method: "DELETE" }),
     );
     expect(response.status).toBe(204);
   });
 
   it("should return 404 when connector not found", async () => {
     const userId = uniqueId("zcdel-nf");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
 
     const response = await DELETE(
-      createTestRequest(connectorUrl(slug, "github"), { method: "DELETE" }),
+      createTestRequest(connectorUrl("github"), { method: "DELETE" }),
     );
     expect(response.status).toBe(404);
   });
@@ -118,7 +115,7 @@ describe("DELETE /api/zero/connectors/:type", () => {
     mockClerk({ userId: null });
 
     const response = await DELETE(
-      createTestRequest(connectorUrl("test", "github"), { method: "DELETE" }),
+      createTestRequest(connectorUrl("github"), { method: "DELETE" }),
     );
     expect(response.status).toBe(401);
   });

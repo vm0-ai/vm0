@@ -32,7 +32,7 @@ function isSlackPlatformError(
 }
 
 const router = tsr.router(integrationsSlackMessageContract, {
-  sendMessage: async ({ body, headers }, { request }) => {
+  sendMessage: async ({ body, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -63,8 +63,7 @@ const router = tsr.router(integrationsSlackMessageContract, {
       }
       orgId = sandboxRun.orgId;
     } else {
-      const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org } = await resolveOrg(authCtx, orgSlug);
+      const { org } = await resolveOrg(authCtx);
       orgId = org.orgId;
     }
 

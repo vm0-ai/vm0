@@ -42,7 +42,7 @@ const log = logger("api:zero-skills:detail");
 const SKILL_FILENAME = "SKILL.md";
 
 const router = tsr.router(zeroSkillsDetailContract, {
-  get: async ({ params, headers }, { request }) => {
+  get: async ({ params, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -50,8 +50,7 @@ const router = tsr.router(zeroSkillsDetailContract, {
     });
     if (isAuthError(authCtx)) return authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
 
     // Look up skill metadata
     const [skill] = await globalThis.services.db
@@ -160,7 +159,7 @@ const router = tsr.router(zeroSkillsDetailContract, {
     };
   },
 
-  update: async ({ params, body, headers }, { request }) => {
+  update: async ({ params, body, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -168,8 +167,7 @@ const router = tsr.router(zeroSkillsDetailContract, {
     });
     if (isAuthError(authCtx)) return authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
 
     // Look up skill
     const [skill] = await globalThis.services.db
@@ -218,7 +216,7 @@ const router = tsr.router(zeroSkillsDetailContract, {
     };
   },
 
-  delete: async ({ params, headers }, { request }) => {
+  delete: async ({ params, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -227,8 +225,7 @@ const router = tsr.router(zeroSkillsDetailContract, {
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
 
     // Look up skill
     const [skill] = await globalThis.services.db
@@ -289,7 +286,6 @@ const router = tsr.router(zeroSkillsDetailContract, {
         await serverSideCompose({
           userId,
           orgId: org.orgId,
-          orgSlug: org.slug,
           content,
         });
       } catch (e) {

@@ -17,13 +17,11 @@ const context = testContext();
 
 let user: UserContext;
 let testCliToken: string;
-let testOrgSlug: string;
 
 /** Create an agent via the API, returning its agentId (= UUID). */
 async function createAgent(): Promise<string> {
-  const orgParam = `?org=${testOrgSlug}`;
   const res = await postAgentRoute(
-    createTestRequest(`http://localhost:3000/api/zero/agents${orgParam}`, {
+    createTestRequest(`http://localhost:3000/api/zero/agents`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -37,11 +35,10 @@ async function createAgent(): Promise<string> {
   return data.agentId as string;
 }
 
-function getUserConnectors(agentId: string, token: string, orgSlug?: string) {
-  const orgParam = orgSlug ? `?org=${orgSlug}` : "";
+function getUserConnectors(agentId: string, token: string) {
   return GET(
     createTestRequest(
-      `http://localhost:3000/api/zero/agents/${agentId}/user-connectors${orgParam}`,
+      `http://localhost:3000/api/zero/agents/${agentId}/user-connectors`,
       {
         method: "GET",
         headers: { Authorization: `Bearer ${token}` },
@@ -54,12 +51,10 @@ function putUserConnectors(
   agentId: string,
   body: { enabledTypes: string[] },
   token: string,
-  orgSlug?: string,
 ) {
-  const orgParam = orgSlug ? `?org=${orgSlug}` : "";
   return PUT(
     createTestRequest(
-      `http://localhost:3000/api/zero/agents/${agentId}/user-connectors${orgParam}`,
+      `http://localhost:3000/api/zero/agents/${agentId}/user-connectors`,
       {
         method: "PUT",
         headers: {
@@ -79,14 +74,13 @@ describe("User Connectors API", () => {
     await seedSeedSkills();
     user = await context.setupUser();
     testCliToken = await createTestCliToken(user.userId);
-    testOrgSlug = `org-${user.userId.slice(-8)}`;
   });
 
   describe("GET /api/zero/agents/:id/user-connectors", () => {
     it("should return empty enabledTypes for new agent", async () => {
       const agentId = await createAgent();
 
-      const res = await getUserConnectors(agentId, testCliToken, testOrgSlug);
+      const res = await getUserConnectors(agentId, testCliToken);
 
       expect(res.status).toBe(200);
       const data = await res.json();
@@ -96,7 +90,7 @@ describe("User Connectors API", () => {
     it("should return 404 for non-existent agent", async () => {
       const fakeId = "00000000-0000-0000-0000-000000000000";
 
-      const res = await getUserConnectors(fakeId, testCliToken, testOrgSlug);
+      const res = await getUserConnectors(fakeId, testCliToken);
 
       expect(res.status).toBe(404);
     });
@@ -105,7 +99,7 @@ describe("User Connectors API", () => {
       const agentId = await createAgent();
 
       mockClerk({ userId: null });
-      const res = await getUserConnectors(agentId, "no-token", testOrgSlug);
+      const res = await getUserConnectors(agentId, "no-token");
 
       expect(res.status).toBe(401);
     });
@@ -119,7 +113,6 @@ describe("User Connectors API", () => {
         agentId,
         { enabledTypes: ["github", "slack"] },
         testCliToken,
-        testOrgSlug,
       );
 
       expect(res.status).toBe(200);
@@ -127,11 +120,7 @@ describe("User Connectors API", () => {
       expect(data.enabledTypes).toEqual(["github", "slack"]);
 
       // Verify via GET
-      const getRes = await getUserConnectors(
-        agentId,
-        testCliToken,
-        testOrgSlug,
-      );
+      const getRes = await getUserConnectors(agentId, testCliToken);
       const getData = await getRes.json();
       expect(getData.enabledTypes).toEqual(
         expect.arrayContaining(["github", "slack"]),
@@ -147,7 +136,6 @@ describe("User Connectors API", () => {
         agentId,
         { enabledTypes: ["github", "slack"] },
         testCliToken,
-        testOrgSlug,
       );
 
       // Replace with different set
@@ -155,7 +143,6 @@ describe("User Connectors API", () => {
         agentId,
         { enabledTypes: ["linear"] },
         testCliToken,
-        testOrgSlug,
       );
 
       expect(res.status).toBe(200);
@@ -163,11 +150,7 @@ describe("User Connectors API", () => {
       expect(data.enabledTypes).toEqual(["linear"]);
 
       // Verify old ones are removed
-      const getRes = await getUserConnectors(
-        agentId,
-        testCliToken,
-        testOrgSlug,
-      );
+      const getRes = await getUserConnectors(agentId, testCliToken);
       const getData = await getRes.json();
       expect(getData.enabledTypes).toEqual(["linear"]);
     });
@@ -180,7 +163,6 @@ describe("User Connectors API", () => {
         agentId,
         { enabledTypes: ["github"] },
         testCliToken,
-        testOrgSlug,
       );
 
       // Clear all
@@ -188,7 +170,6 @@ describe("User Connectors API", () => {
         agentId,
         { enabledTypes: [] },
         testCliToken,
-        testOrgSlug,
       );
 
       expect(res.status).toBe(200);
@@ -196,11 +177,7 @@ describe("User Connectors API", () => {
       expect(data.enabledTypes).toEqual([]);
 
       // Verify via GET that permissions are cleared
-      const getRes = await getUserConnectors(
-        agentId,
-        testCliToken,
-        testOrgSlug,
-      );
+      const getRes = await getUserConnectors(agentId, testCliToken);
       const getData = await getRes.json();
       expect(getData.enabledTypes).toEqual([]);
     });
@@ -212,7 +189,6 @@ describe("User Connectors API", () => {
         fakeId,
         { enabledTypes: ["github"] },
         testCliToken,
-        testOrgSlug,
       );
 
       expect(res.status).toBe(404);
@@ -226,7 +202,6 @@ describe("User Connectors API", () => {
         agentId,
         { enabledTypes: ["github"] },
         "no-token",
-        testOrgSlug,
       );
 
       expect(res.status).toBe(401);
@@ -240,46 +215,31 @@ describe("User Connectors API", () => {
         agentId,
         { enabledTypes: ["github", "slack"] },
         testCliToken,
-        testOrgSlug,
       );
 
       // Create user 2 in the same org
       const user2 = await context.setupUser({ prefix: "test-user2" });
       const token2 = await createTestCliToken(user2.userId);
-      const orgSlug2 = `org-${user2.userId.slice(-8)}`;
 
       // User 2 sets different permissions on their own agent
       const agentId2 = await (async () => {
-        const orgParam = `?org=${orgSlug2}`;
         const res = await postAgentRoute(
-          createTestRequest(
-            `http://localhost:3000/api/zero/agents${orgParam}`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token2}`,
-              },
-              body: JSON.stringify({}),
+          createTestRequest(`http://localhost:3000/api/zero/agents`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token2}`,
             },
-          ),
+            body: JSON.stringify({}),
+          }),
         );
         return ((await res.json()) as { agentId: string }).agentId;
       })();
 
-      await putUserConnectors(
-        agentId2,
-        { enabledTypes: ["linear"] },
-        token2,
-        orgSlug2,
-      );
+      await putUserConnectors(agentId2, { enabledTypes: ["linear"] }, token2);
 
       // Verify user 1's permissions unchanged
-      const getRes = await getUserConnectors(
-        agentId,
-        testCliToken,
-        testOrgSlug,
-      );
+      const getRes = await getUserConnectors(agentId, testCliToken);
       const getData = await getRes.json();
       expect(getData.enabledTypes).toEqual(
         expect.arrayContaining(["github", "slack"]),
@@ -287,7 +247,7 @@ describe("User Connectors API", () => {
       expect(getData.enabledTypes).toHaveLength(2);
 
       // Verify user 2's permissions are separate
-      const getRes2 = await getUserConnectors(agentId2, token2, orgSlug2);
+      const getRes2 = await getUserConnectors(agentId2, token2);
       const getData2 = await getRes2.json();
       expect(getData2.enabledTypes).toEqual(["linear"]);
     });

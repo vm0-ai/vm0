@@ -10,7 +10,6 @@ import {
   isAuthError,
 } from "../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
-import { getOrgBySlug } from "../../../../src/lib/org/org-cache-service";
 import { getComposeByName } from "../../../../src/lib/agent-compose/compose-service";
 import {
   isNotFound,
@@ -27,16 +26,8 @@ const router = tsr.router(zeroComposesMainContract, {
 
     let orgId: string;
     try {
-      if (query.org) {
-        const orgBySlug = await getOrgBySlug(query.org);
-        const { org } = orgBySlug
-          ? await resolveOrg(authCtx, query.org)
-          : await resolveOrg(authCtx, undefined, query.org);
-        orgId = org.orgId;
-      } else {
-        const { org } = await resolveOrg(authCtx);
-        orgId = org.orgId;
-      }
+      const { org } = await resolveOrg(authCtx);
+      orgId = org.orgId;
     } catch (error) {
       if (isNotFound(error) || isForbidden(error) || isBadRequest(error)) {
         return {

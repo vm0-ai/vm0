@@ -3,7 +3,6 @@ import { GET } from "../route";
 import {
   createTestRequest,
   createTestCompose,
-  getOrgCacheEntry,
   insertOrgMembersCacheEntry,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
@@ -142,14 +141,11 @@ describe("GET /api/agent/composes?name=<name>", () => {
     expect(getData.error.message).toContain("Not authenticated");
   });
 
-  it("should return org member agent via cross-org lookup with ?org=", async () => {
+  it("should return org member agent via cross-org lookup", async () => {
     const agentName = `test-org-member-agent-${Date.now()}`;
 
     // Create compose as owner
     const { composeId } = await createTestCompose(agentName);
-
-    // Get the owner's org slug
-    const ownerOrg = (await getOrgCacheEntry(user.orgId))!;
 
     // Switch to recipient user who is a member of the owner's org
     const recipient = await context.setupUser({ prefix: "recipient" });
@@ -158,11 +154,12 @@ describe("GET /api/agent/composes?name=<name>", () => {
       userId: recipient.userId,
       cachedAt: new Date(),
     });
-    mockClerk({ userId: recipient.userId });
+    // Recipient accesses the owner's org as their active org
+    mockClerk({ userId: recipient.userId, orgId: user.orgId });
 
-    // Access the agent via cross-org lookup
+    // Access the agent via the owner's org (set as active org in session)
     const getRequest = createTestRequest(
-      `http://localhost:3000/api/agent/composes?name=${agentName}&org=${ownerOrg.slug}`,
+      `http://localhost:3000/api/agent/composes?name=${agentName}`,
       { method: "GET" },
     );
 
@@ -180,15 +177,12 @@ describe("GET /api/agent/composes?name=<name>", () => {
     // Create compose as owner (no permission granted)
     await createTestCompose(agentName);
 
-    // Get the owner's org slug
-    const ownerOrg = (await getOrgCacheEntry(user.orgId))!;
-
     // Switch to another user with no permission
     await context.setupUser({ prefix: "unauthorized" });
 
     // Try to access via cross-org lookup
     const getRequest = createTestRequest(
-      `http://localhost:3000/api/agent/composes?name=${agentName}&org=${ownerOrg.slug}`,
+      `http://localhost:3000/api/agent/composes?name=${agentName}`,
       { method: "GET" },
     );
 
@@ -219,15 +213,11 @@ describe("GET /api/agent/composes?name=<name>", () => {
     expect(getData.name).toBe(agentName);
   });
 
-  it("should return org member agent via cross-org lookup with ?org= using orgId", async () => {
+  it("should return org member agent via cross-org lookup using orgId in session", async () => {
     const agentName = `test-shared-org-${Date.now()}`;
 
     // Create compose as owner
     const { composeId } = await createTestCompose(agentName);
-
-    // Get the owner's org slug to derive orgId
-    const ownerOrg = (await getOrgCacheEntry(user.orgId))!;
-    const ownerOrgId = ownerOrg.orgId;
 
     // Switch to recipient user who is a member of the owner's org
     const recipient = await context.setupUser({ prefix: "recipient-org" });
@@ -236,11 +226,12 @@ describe("GET /api/agent/composes?name=<name>", () => {
       userId: recipient.userId,
       cachedAt: new Date(),
     });
-    mockClerk({ userId: recipient.userId });
+    // Recipient accesses the owner's org as their active org (orgId in session)
+    mockClerk({ userId: recipient.userId, orgId: user.orgId });
 
-    // Access the agent via cross-org lookup using ?org=
+    // Access the agent using owner's org as the active org in session
     const getRequest = createTestRequest(
-      `http://localhost:3000/api/agent/composes?name=${agentName}&org=${ownerOrgId}`,
+      `http://localhost:3000/api/agent/composes?name=${agentName}`,
       { method: "GET" },
     );
 
@@ -258,16 +249,12 @@ describe("GET /api/agent/composes?name=<name>", () => {
     // Create compose as owner (no permission granted)
     await createTestCompose(agentName);
 
-    // Get the owner's org slug to derive orgId
-    const ownerOrg = (await getOrgCacheEntry(user.orgId))!;
-    const ownerOrgId = ownerOrg.orgId;
-
     // Switch to another user with no permission
     await context.setupUser({ prefix: "unauthorized-org" });
 
-    // Try to access via cross-org lookup using ?org=
+    // Try to access via cross-org lookup
     const getRequest = createTestRequest(
-      `http://localhost:3000/api/agent/composes?name=${agentName}&org=${ownerOrgId}`,
+      `http://localhost:3000/api/agent/composes?name=${agentName}`,
       { method: "GET" },
     );
 
@@ -280,7 +267,7 @@ describe("GET /api/agent/composes?name=<name>", () => {
 
   it("should return 404 for invalid org slug in cross-org lookup", async () => {
     const getRequest = createTestRequest(
-      "http://localhost:3000/api/agent/composes?name=any-agent&org=nonexistent-org",
+      "http://localhost:3000/api/agent/composes?name=any-agent",
       { method: "GET" },
     );
 

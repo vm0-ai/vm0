@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor, fireEvent } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -107,6 +108,7 @@ function mockActivityAPIs() {
 
 describe("activity page routing", () => {
   it("should load detail view when clicking an activity row from the list", async () => {
+    const user = userEvent.setup();
     mockActivityAPIs();
 
     await setupPage({
@@ -122,7 +124,7 @@ describe("activity page routing", () => {
     // Click the activity row — this navigates to /activity/a0000000-0000-4000-a000-000000000001
     const row = screen.getByText("Test Agent").closest("a");
     expect(row).not.toBeNull();
-    fireEvent.click(row!);
+    await user.click(row!);
 
     // The detail page should render with the agent name heading
     await waitFor(() => {
@@ -136,6 +138,7 @@ describe("activity page routing", () => {
   }, 10_000);
 
   it("should navigate back to list from detail breadcrumb", async () => {
+    const user = userEvent.setup();
     mockActivityAPIs();
 
     await setupPage({
@@ -150,7 +153,7 @@ describe("activity page routing", () => {
 
     // Navigate to detail
     const row = screen.getByText("Test Agent").closest("a");
-    fireEvent.click(row!);
+    await user.click(row!);
 
     // Wait for detail
     await waitFor(() => {
@@ -162,7 +165,7 @@ describe("activity page routing", () => {
     // Click the "Activity" breadcrumb to go back
     const breadcrumb = screen.getByText("Activity").closest("a");
     expect(breadcrumb).not.toBeNull();
-    fireEvent.click(breadcrumb!);
+    await user.click(breadcrumb!);
 
     // Should be back on the list page with the "Activity" heading
     await waitFor(() => {
