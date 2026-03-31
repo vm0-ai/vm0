@@ -133,21 +133,22 @@ describe("getConnectorEnvironmentMapping", () => {
         `${type}: oauth secrets must have exactly one _ACCESS_TOKEN key, got: ${secretNames.join(", ")}`,
       ).toBe(1);
 
-      // If refresh token exists, must be exactly one with matching prefix
+      // OAuth secrets must only be XXX_ACCESS_TOKEN and optionally XXX_REFRESH_TOKEN
       const prefix = accessTokens[0]!.replace(/_ACCESS_TOKEN$/, "");
-      const refreshTokens = secretNames.filter((s) =>
-        s.endsWith("_REFRESH_TOKEN"),
-      );
-      expect(
-        refreshTokens.length,
-        `${type}: must have 0 or 1 _REFRESH_TOKEN, got: ${refreshTokens.join(", ")}`,
-      ).toBeLessThanOrEqual(1);
-      if (refreshTokens.length === 1) {
+      const allowed = new Set([
+        `${prefix}_ACCESS_TOKEN`,
+        `${prefix}_REFRESH_TOKEN`,
+      ]);
+      for (const name of secretNames) {
         expect(
-          refreshTokens[0],
-          `${type}: refresh token must be ${prefix}_REFRESH_TOKEN`,
-        ).toBe(`${prefix}_REFRESH_TOKEN`);
+          allowed.has(name),
+          `${type}: unexpected oauth secret "${name}", allowed: ${[...allowed].join(", ")}`,
+        ).toBe(true);
       }
+      expect(
+        secretNames.length,
+        `${type}: oauth secrets must have 1 or 2 entries, got: ${secretNames.join(", ")}`,
+      ).toBeLessThanOrEqual(2);
 
       // environmentMapping must map XXX_TOKEN -> $secrets.XXX_ACCESS_TOKEN (same prefix)
       expect(
