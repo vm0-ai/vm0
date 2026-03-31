@@ -25,9 +25,11 @@ import {
 } from "../../../../../../../src/db/schema/storage";
 import { eq, and, sql } from "drizzle-orm";
 import { buildComposeContent } from "../../../../../../../src/lib/zero/build-compose-content";
-import { isDefaultAgentCompose } from "../../../../../../../src/lib/zero/resolve-default-agent";
-import { uploadSkillServerSide } from "../../../../../../../src/lib/storage/skill-upload";
-import { deleteSkillServerSide } from "../../../../../../../src/lib/storage/skill-upload";
+import { requireAdminForDefaultAgent } from "../../../../../../../src/lib/zero/require-admin";
+import {
+  uploadSkillServerSide,
+  deleteSkillServerSide,
+} from "../../../../../../../src/lib/storage/skill-upload";
 import {
   downloadManifest,
   downloadS3Buffer,
@@ -39,30 +41,6 @@ import { logger } from "../../../../../../../src/lib/logger";
 const log = logger("api:zero-agents:skills:detail");
 
 const SKILL_FILENAME = "SKILL.md";
-
-type ForbiddenResponse = {
-  status: 403;
-  body: { error: { message: string; code: string } };
-};
-
-async function requireAdminForDefaultAgent(
-  orgId: string,
-  composeId: string,
-  memberRole: string,
-): Promise<ForbiddenResponse | null> {
-  if (memberRole === "admin") return null;
-  const isDefault = await isDefaultAgentCompose(orgId, composeId);
-  if (!isDefault) return null;
-  return {
-    status: 403 as const,
-    body: {
-      error: {
-        message: "Only org admins can modify the default agent's skills",
-        code: "FORBIDDEN",
-      },
-    },
-  };
-}
 
 const router = tsr.router(zeroAgentSkillsDetailContract, {
   get: async ({ params, headers }, { request }) => {
@@ -235,6 +213,7 @@ const router = tsr.router(zeroAgentSkillsDetailContract, {
       org.orgId,
       agent.id,
       member.role,
+      "skills",
     );
     if (forbidden) return forbidden;
 
@@ -332,6 +311,7 @@ const router = tsr.router(zeroAgentSkillsDetailContract, {
       org.orgId,
       existing.id,
       member.role,
+      "skills",
     );
     if (forbidden) return forbidden;
 

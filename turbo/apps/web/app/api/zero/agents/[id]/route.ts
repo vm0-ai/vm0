@@ -15,17 +15,12 @@ import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
 import { agentComposes } from "../../../../../src/db/schema/agent-compose";
 import { eq, and } from "drizzle-orm";
 import { buildComposeContent } from "../../../../../src/lib/zero/build-compose-content";
-import { isDefaultAgentCompose } from "../../../../../src/lib/zero/resolve-default-agent";
+import { requireAdminForDefaultAgent } from "../../../../../src/lib/zero/require-admin";
 import { deleteComposeById } from "../../../../../src/lib/agent-compose/compose-service";
 import { isConflict } from "../../../../../src/lib/errors";
 import { logger } from "../../../../../src/lib/logger";
 
 const log = logger("api:zero-agents:id");
-
-type ForbiddenResponse = {
-  status: 403;
-  body: { error: { message: string; code: string } };
-};
 
 function agentResponseBody(
   agent: typeof zeroAgents.$inferSelect | undefined,
@@ -40,26 +35,6 @@ function agentResponseBody(
     connectors: fallback.connectors ?? agent?.connectors ?? [],
     firewallPolicies: agent?.firewallPolicies ?? null,
     customSkills: agent?.customSkills ?? [],
-  };
-}
-
-async function requireAdminForDefaultAgent(
-  orgId: string,
-  composeId: string,
-  memberRole: string,
-  label: string,
-): Promise<ForbiddenResponse | null> {
-  if (memberRole === "admin") return null;
-  const isDefault = await isDefaultAgentCompose(orgId, composeId);
-  if (!isDefault) return null;
-  return {
-    status: 403 as const,
-    body: {
-      error: {
-        message: `Only org admins can update the default agent's ${label}`,
-        code: "FORBIDDEN",
-      },
-    },
   };
 }
 
