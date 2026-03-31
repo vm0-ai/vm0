@@ -152,7 +152,7 @@ export function ZeroChatThreadPage({
     <div className="flex flex-1 flex-col min-h-0 bg-transparent">
       {/* Header */}
       <header className="shrink-0 bg-transparent px-4 sm:px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col items-start gap-0.5">
           <div className="relative shrink-0">
             {avatarAgentId ? (
               <TooltipProvider delayDuration={200}>
