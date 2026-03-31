@@ -1279,6 +1279,11 @@ export async function dispatchQueuedRun(
   runId: string,
   createdAt: Date,
   params: CreateRunParams,
+  queueDispatcher?: (
+    runId: string,
+    createdAt: Date,
+    params: CreateRunParams,
+  ) => Promise<void>,
 ): Promise<void> {
   const apiStartTime = Date.now();
   const { userId, agentComposeVersionId } = params;
@@ -1315,6 +1320,7 @@ export async function dispatchQueuedRun(
     orgId: params.orgId,
     authorizeTime,
     transactionTime,
+    queueDispatcher,
   });
 }
 

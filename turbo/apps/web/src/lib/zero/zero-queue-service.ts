@@ -43,12 +43,17 @@ export async function dispatchQueuedZeroRun(
       runId,
       params.orgId,
     );
-    return dispatchQueuedRun(runId, createdAt, {
-      ...params,
-      secrets: { ...params.secrets, ZERO_TOKEN: zeroToken },
-    });
+    return dispatchQueuedRun(
+      runId,
+      createdAt,
+      {
+        ...params,
+        secrets: { ...params.secrets, ZERO_TOKEN: zeroToken },
+      },
+      dispatchQueuedZeroRun,
+    );
   }
-  return dispatchQueuedRun(runId, createdAt, params);
+  return dispatchQueuedRun(runId, createdAt, params, dispatchQueuedZeroRun);
 }
 
 const RECENT_RUNS_FOR_ETA = 20;
