@@ -457,7 +457,9 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       // Set User B's active org to owner's org (simulates org selection in Clerk)
       mockClerk({ userId: runnerUser.userId, orgId: ownerUser.orgId });
 
-      // User B runs the org member agent — pre-INSERT check rejects with 422
+      // User B runs the org member agent — run is created but fails during
+      // buildContext() because no model provider is configured.
+      // Returns 201 with status "failed" (post-INSERT failure).
       const request = createTestRequest(
         "http://localhost:3000/api/agent/runs",
         {
@@ -472,9 +474,9 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const response = await POST(request);
       const data = await response.json();
 
-      expect(response.status).toBe(422);
-      expect(data.error.code).toBe("NO_MODEL_PROVIDER");
-      expect(data.error.message).toMatch(/model provider/i);
+      expect(response.status).toBe(201);
+      expect(data.status).toBe("failed");
+      expect(data.error).toMatch(/model provider/i);
 
       // Switch back to owner for cleanup
       mockClerk({ userId: ownerUser.userId });
@@ -759,13 +761,14 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(data.status).toBe("pending");
     });
 
-    it("should reject run when no model provider and no API key in compose", async () => {
+    it("should fail run when no model provider and no API key in compose", async () => {
       // Create compose without API key and no environment block
       const { composeId } = await createTestCompose(uniqueId("no-mp"), {
         noEnvironmentBlock: true,
       });
 
-      // Pre-INSERT check rejects with structured error (no run record created)
+      // Run is created but fails during buildContext() because no model
+      // provider is configured. Returns 201 with status "failed".
       const request = createTestRequest(
         "http://localhost:3000/api/agent/runs",
         {
@@ -780,9 +783,9 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const response = await POST(request);
       const data = await response.json();
 
-      expect(response.status).toBe(422);
-      expect(data.error.code).toBe("NO_MODEL_PROVIDER");
-      expect(data.error.message).toMatch(/model provider/i);
+      expect(response.status).toBe(201);
+      expect(data.status).toBe("failed");
+      expect(data.error).toMatch(/model provider/i);
     });
 
     it("should skip injection when compose has explicit ANTHROPIC_API_KEY", async () => {
