@@ -10,6 +10,7 @@ import { fetchZeroSessionList$ } from "../zero-page/zero-chat.ts";
 import { fetchZeroJobData$ } from "../zero-page/zero-job-detail.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
 import { initSlackOrg$ } from "../zero-page/zero-slack.ts";
+import { setSidebarChatAgent$ } from "../zero-page/zero-nav.ts";
 
 export const setupTeamDetailPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -27,6 +28,11 @@ export const setupTeamDetailPage$ = command(
 
     if (await set(onboardGuard$, signal)) {
       return;
+    }
+
+    // Sync sidebar: show this agent's chats when viewing their profile.
+    if (agentId) {
+      set(setSidebarChatAgent$, agentId);
     }
 
     // Update title with agent display name
