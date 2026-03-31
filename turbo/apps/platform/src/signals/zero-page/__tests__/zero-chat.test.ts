@@ -14,7 +14,7 @@ import {
   setZeroChatInput$,
   clearZeroChatInput$,
   startNewZeroSession$,
-  sendZeroChatMessage$,
+  sendExistingThreadMessage$,
   loadSessionFromSnapshot$,
   zeroChatAttachments$,
   uploadZeroAttachment$,
@@ -102,7 +102,7 @@ describe("zero-chat signals", () => {
     });
   });
 
-  describe("submitAndPollRun$ on existing thread", () => {
+  describe("sendExistingThreadMessage$", () => {
     it("should send message on existing thread, poll to completion, and reload thread", async () => {
       let threadReloadCount = 0;
 
@@ -171,7 +171,7 @@ describe("zero-chat signals", () => {
       });
 
       await context.store.set(
-        sendZeroChatMessage$,
+        sendExistingThreadMessage$,
         "Hello",
         undefined,
         context.signal,

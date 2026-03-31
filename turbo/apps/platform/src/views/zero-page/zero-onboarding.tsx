@@ -30,7 +30,7 @@ import {
   zeroOnboardingStatus$,
 } from "../../signals/zero-page/zero-onboarding.ts";
 import {
-  sendZeroChatMessage$,
+  sendNewThreadMessage$,
   startNewZeroSession$,
 } from "../../signals/zero-page/zero-chat.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
@@ -890,7 +890,7 @@ function useOnboardingHandlers(isAdmin: boolean) {
   const completeOnboarding = useSet(completeZeroOnboarding$);
   const completeMember = useSet(completeMemberOnboarding$);
   const dismissOnboarding = useSet(dismissZeroOnboarding$);
-  const sendMessage = useSet(sendZeroChatMessage$);
+  const sendNewThread = useSet(sendNewThreadMessage$);
   const startNewSession = useSet(startNewZeroSession$);
   const navigate = useSet(detachedNavigateTo$);
   const clearOnboardingError = useSet(clearZeroOnboardingError$);
@@ -938,8 +938,8 @@ function useOnboardingHandlers(isAdmin: boolean) {
     if (isAdmin) {
       detach(
         (async () => {
-          const result = await completeOnboarding(controller.signal);
-          if (!result) {
+          const agentId = await completeOnboarding(controller.signal);
+          if (!agentId) {
             return;
           }
           reloadBilling();
@@ -947,9 +947,10 @@ function useOnboardingHandlers(isAdmin: boolean) {
           startNewSession();
           // Use controller.signal instead of pageSignal: navigate("/") aborts
           // the onboarding page signal via resetRouteSignal$, so pageSignal is
-          // already dead by the time sendMessage runs.
+          // already dead by the time sendNewThread runs.
           detach(
-            sendMessage(
+            sendNewThread(
+              agentId,
               "Who are you and what can you do?",
               undefined,
               controller.signal,
@@ -963,11 +964,15 @@ function useOnboardingHandlers(isAdmin: boolean) {
     } else {
       detach(
         (async () => {
-          await completeMember(controller.signal);
+          const agentId = await completeMember(controller.signal);
+          if (!agentId) {
+            return;
+          }
           navigate("/");
           startNewSession();
           detach(
-            sendMessage(
+            sendNewThread(
+              agentId,
               "Who are you and what can you do?",
               undefined,
               controller.signal,

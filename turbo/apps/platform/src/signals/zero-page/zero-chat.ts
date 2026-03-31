@@ -16,7 +16,6 @@ import {
   chatThreadId$,
   sidebarChatAgentId$,
 } from "./zero-nav.ts";
-import { currentAgentId$ } from "./agent.ts";
 import {
   RUN_ERROR_GUIDANCE,
   chatMessagesContract,
@@ -26,7 +25,6 @@ import {
   type SummaryEntry,
 } from "@vm0/core";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
-import { defaultAgentId$ } from "./zero-agent-name.ts";
 
 const L = logger("ZeroChat");
 
@@ -273,12 +271,10 @@ export const fetchZeroSessionList$ = command(
   },
 );
 
-// NOTE: Intentional divergence from sendZeroChatMessage$.
-// The thread list in the sidebar must reflect the *last visited* agent (sidebarChatAgentId$),
+// NOTE: The thread list in the sidebar reflects the *last visited* agent (sidebarChatAgentId$),
 // which persists across non-chat pages (e.g. /activity) so the user always sees the
-// threads for the agent they were talking to.  sendZeroChatMessage$ re-derives the agent
-// from the URL / thread at send time because it needs to know the authoritative agent
-// for the run being created, not what the sidebar is showing.
+// threads for the agent they were talking to.  The send commands receive agentId explicitly
+// (or derive it from the thread) rather than reading sidebarChatAgentId$.
 const chatThreadListResponse$ = computed(async (get) => {
   get(reloadChatThreadList$);
   const sidebarAgentId = get(sidebarChatAgentId$);
@@ -857,38 +853,62 @@ const finalizeCompletedRun$ = command(
   },
 );
 
+// ---------------------------------------------------------------------------
+// Helpers: shared API call + error handling
+// ---------------------------------------------------------------------------
+
+function resolveModelProvider(
+  modelProvider: string | undefined,
+): string | undefined {
+  return modelProvider && modelProvider !== "default"
+    ? modelProvider
+    : undefined;
+}
+
+function handleSendError(result: {
+  status: number;
+  body: { error: { message: string; code?: string } };
+}): never {
+  const code = result.body.error.code;
+  const guidance = code ? RUN_ERROR_GUIDANCE[code] : undefined;
+  const message = guidance
+    ? `${guidance.title}: ${guidance.guidance}`
+    : result.body.error.message;
+  throw new Error(message);
+}
+
+// ---------------------------------------------------------------------------
+// Commands: send message (new thread)
+// ---------------------------------------------------------------------------
+
 /**
- * Create a run, associate it with a thread, poll until terminal, and handle completion.
- * Uses the unified POST /api/zero/chat/messages endpoint — a single HTTP call
- * replaces the previous 3-call orchestration (create thread + create run + add run to thread).
+ * Send a message that creates a new chat thread.
+ * Used by the talk page and onboarding flow.
+ * After the API call, navigates to the new chat thread and refreshes the sidebar.
+ * Polling is deferred to the chat page via `loadSessionFromSnapshot$`.
  */
-const submitAndPollRun$ = command(
+export const sendNewThreadMessage$ = command(
   async (
     { get, set },
-    args: {
-      composeId: string;
-      prompt: string;
-      fullPrompt: string;
-      modelProvider?: string;
-    },
+    agentId: string,
+    prompt: string,
+    options: { modelProvider?: string } | undefined,
     signal: AbortSignal,
   ) => {
-    const createClient = get(zeroClient$);
-    const existingThreadId = get(chatThreadId$);
+    if (!prompt.trim()) {
+      return;
+    }
 
-    const modelProvider =
-      args.modelProvider && args.modelProvider !== "default"
-        ? args.modelProvider
-        : undefined;
+    const { fullPrompt } = await set(prepareUserMessage$, prompt, signal);
+    signal.throwIfAborted();
 
-    // Single API call: create thread (if needed) + run + association
-    const client = createClient(chatMessagesContract);
+    const modelProvider = resolveModelProvider(options?.modelProvider);
+    const client = get(zeroClient$)(chatMessagesContract);
     const result = await client.send({
       body: {
-        agentId: args.composeId,
-        prompt: args.fullPrompt,
-        ...(existingThreadId ? { threadId: existingThreadId } : {}),
-        ...(modelProvider ? { modelProvider } : {}),
+        agentId,
+        prompt: fullPrompt,
+        ...(modelProvider && { modelProvider }),
       },
     });
     signal.throwIfAborted();
@@ -899,31 +919,74 @@ const submitAndPollRun$ = command(
         result.status === 403 ||
         result.status === 404
       ) {
-        const code = result.body.error.code;
-        const guidance = code ? RUN_ERROR_GUIDANCE[code] : undefined;
-        const message = guidance
-          ? `${guidance.title}: ${guidance.guidance}`
-          : result.body.error.message;
-        throw new Error(message);
+        handleSendError(result);
       }
       throw new Error(`Failed to send message (${result.status})`);
     }
 
-    const { runId, threadId } = result.body;
+    set(navigateToChat$, result.body.threadId);
+    set(reloadChatThreadList$, (n) => n + 1);
+  },
+);
 
-    // For new threads, navigate after server state is ready. The snapshot
-    // reconstructs messages from unsavedRuns and resumes polling.
-    if (!existingThreadId) {
-      set(navigateToChat$, threadId);
-      set(reloadChatThreadList$, (n) => n + 1);
+// ---------------------------------------------------------------------------
+// Commands: send message (existing thread)
+// ---------------------------------------------------------------------------
+
+/**
+ * Send a message within an existing chat thread.
+ * Used by the chat page. Reads agentId from the current thread.
+ * Creates an assistant message with a polling runLoop and waits for completion.
+ */
+export const sendExistingThreadMessage$ = command(
+  async (
+    { get, set },
+    prompt: string,
+    options: { modelProvider?: string } | undefined,
+    signal: AbortSignal,
+  ) => {
+    const threadId = get(chatThreadId$);
+    const thread = await get(currentChatThread$);
+    signal.throwIfAborted();
+    const agentId = thread?.agentId;
+
+    if (!threadId || !agentId || !prompt.trim()) {
       return;
     }
+
+    const { fullPrompt } = await set(prepareUserMessage$, prompt, signal);
+    signal.throwIfAborted();
+
+    const modelProvider = resolveModelProvider(options?.modelProvider);
+    const client = get(zeroClient$)(chatMessagesContract);
+    const result = await client.send({
+      body: {
+        agentId,
+        prompt: fullPrompt,
+        threadId,
+        ...(modelProvider && { modelProvider }),
+      },
+    });
+    signal.throwIfAborted();
+
+    if (result.status !== 201) {
+      if (
+        result.status === 400 ||
+        result.status === 403 ||
+        result.status === 404
+      ) {
+        handleSendError(result);
+      }
+      throw new Error(`Failed to send message (${result.status})`);
+    }
+
+    const { runId } = result.body;
 
     // Refresh sidebar after run is associated (has preview now)
     set(reloadChatThreadList$, (n) => n + 1);
 
     // Create reactive assistant message with its own runLoop
-    const { assistantMessage } = createActiveRunMessage(runId, args.prompt);
+    const { assistantMessage } = createActiveRunMessage(runId, prompt);
     set(internalLocalMessages$, (prev) => [...prev, assistantMessage]);
 
     const runLoop = assistantMessage.runLoop;
@@ -934,47 +997,6 @@ const submitAndPollRun$ = command(
     await set(runLoop.beginLoop$, signal);
 
     await set(finalizeCompletedRun$, signal);
-  },
-);
-
-export const sendZeroChatMessage$ = command(
-  async (
-    { get, set },
-    prompt: string,
-    options: { modelProvider?: string } | undefined,
-    signal: AbortSignal,
-  ) => {
-    // Derive effective agent: URL agent (talk page), thread agent (chat page), or default
-    const pathAgentId = get(currentAgentId$);
-    const thread = pathAgentId === null ? await get(currentChatThread$) : null;
-    const composeId =
-      pathAgentId ?? thread?.agentId ?? (await get(defaultAgentId$));
-    signal.throwIfAborted();
-    if (!composeId || !prompt.trim()) {
-      return;
-    }
-
-    const { fullPrompt } = await set(prepareUserMessage$, prompt, signal);
-    signal.throwIfAborted();
-
-    try {
-      await set(
-        submitAndPollRun$,
-        {
-          composeId,
-          prompt,
-          fullPrompt,
-          modelProvider: options?.modelProvider,
-        },
-        signal,
-      );
-    } catch (error) {
-      throwIfAbort(error);
-      L.error("Chat send error:", error);
-      // Clear the optimistic user message since the send failed.
-      // The user stays on /talk/ with their input preserved for retry.
-      set(internalLocalMessages$, []);
-    }
   },
 );
 

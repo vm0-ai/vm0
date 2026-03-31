@@ -58,14 +58,17 @@ export const zeroNeedsMemberOnboarding$ = computed(async (get) => {
  * Mark member onboarding as complete.
  * Writes to Clerk membership metadata, then reloads onboarding status
  * so the dialog disappears (server reads Clerk API directly, no JWT needed).
+ * Returns the default agent ID so callers can pass it to sendNewThreadMessage$.
  */
 export const completeMemberOnboarding$ = command(
-  async ({ get, set }, _signal: AbortSignal) => {
+  async ({ get, set }, _signal: AbortSignal): Promise<string | undefined> => {
     set(internalSaving$, true);
     try {
       const client = get(zeroClient$)(onboardingCompleteContract);
       await client.complete();
       set(internalReload$, (x) => x + 1);
+      const status = await get(zeroOnboardingStatus$);
+      return status.defaultAgentId ?? undefined;
     } finally {
       set(internalSaving$, false);
     }

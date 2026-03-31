@@ -246,7 +246,7 @@ describe("talk navigation", () => {
     // Click "Continue in web" which triggers:
     // 1. completeZeroOnboarding$ (create agent, set default)
     // 2. navigate("/") → setupChatPage$ redirects to /talk/zero
-    // 3. sendZeroChatMessage$("Who are you and what can you do?")
+    // 3. sendNewThreadMessage$(agentId, "Who are you and what can you do?")
     //    → POST /api/zero/chat/messages → navigates to /chat/:threadId
     const continueButton = screen.getByRole("button", {
       name: /Continue in web/,
