@@ -48,7 +48,7 @@ describe("/api/cli/auth/test-token", () => {
         },
       ],
     });
-    // Pre-populate org_cache so getOrgData() resolves without hitting Clerk API
+    // Pre-populate org_cache so ensureTestOrg() finds a matching entry
     await insertOrgCacheEntry({
       orgId: "org_test_token",
       slug: "test-token-org",

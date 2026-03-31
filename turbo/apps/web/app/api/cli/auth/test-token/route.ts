@@ -6,10 +6,7 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { cliTokens } from "../../../../../src/db/schema/cli-tokens";
 import { orgCache } from "../../../../../src/db/schema/org-cache";
 import { orgMembersCache } from "../../../../../src/db/schema/org-members-cache";
-import {
-  getOrgData,
-  getOrgBySlug,
-} from "../../../../../src/lib/org/org-cache-service";
+import { getOrgBySlug } from "../../../../../src/lib/org/org-cache-service";
 import { generateCliToken } from "../../../../../src/lib/auth/sandbox-token";
 import {
   resolveTestUserId,
@@ -64,33 +61,38 @@ async function ensureTestOrg(userId: string): Promise<{ slug: string }> {
   // entries during E2E test runs (avoids Clerk API calls + 429 rate limits).
   const farFuture = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
 
-  // Find first org with a matching org_cache entry
+  // Find first org with a matching org_cache entry (query DB directly to avoid
+  // catching unrelated errors from getOrgData's Clerk API fallback path)
   for (const membership of memberships.data) {
     const orgId = membership.organization.id;
-    try {
-      const orgData = await getOrgData(orgId);
-      const role = membership.role === "org:admin" ? "admin" : "member";
-      // Pre-populate caches with far-future timestamps to prevent TTL expiry
-      // during E2E test runs (avoids Clerk API calls + 429 rate limits)
-      await globalThis.services.db
-        .insert(orgMembersCache)
-        .values({
-          orgId,
-          userId,
-          role,
-          cachedAt: farFuture,
-        })
-        .onConflictDoNothing();
-      await globalThis.services.db
-        .update(orgCache)
-        .set({ cachedAt: farFuture })
-        .where(eq(orgCache.orgId, orgId));
-      return { slug: orgData.slug };
-    } catch (error) {
-      // Org not in org_cache — try next membership
-      log.warn(`skipping org ${orgId} for user ${userId}`, error);
+    const [cached] = await globalThis.services.db
+      .select({ slug: orgCache.slug })
+      .from(orgCache)
+      .where(eq(orgCache.orgId, orgId))
+      .limit(1);
+
+    if (!cached) {
+      log.warn(`skipping org ${orgId} for user ${userId}: not in org_cache`);
       continue;
     }
+
+    const role = membership.role === "org:admin" ? "admin" : "member";
+    // Pre-populate caches with far-future timestamps to prevent TTL expiry
+    // during E2E test runs (avoids Clerk API calls + 429 rate limits)
+    await globalThis.services.db
+      .insert(orgMembersCache)
+      .values({
+        orgId,
+        userId,
+        role,
+        cachedAt: farFuture,
+      })
+      .onConflictDoNothing();
+    await globalThis.services.db
+      .update(orgCache)
+      .set({ cachedAt: farFuture })
+      .where(eq(orgCache.orgId, orgId));
+    return { slug: cached.slug };
   }
 
   throw new Error(`Test user ${userId} has no organization in org_cache`);
