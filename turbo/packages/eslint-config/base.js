@@ -1,7 +1,10 @@
 import js from "@eslint/js";
 import eslintConfigPrettier from "eslint-config-prettier";
+import oxlint from "eslint-plugin-oxlint";
 import turboPlugin from "eslint-plugin-turbo";
 import tseslint from "typescript-eslint";
+
+export { oxlint };
 
 const vm0Plugin = {
   rules: {

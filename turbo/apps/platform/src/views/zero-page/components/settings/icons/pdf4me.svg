@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
 <path d="M128 32h192l128 128v288c0 17.7-14.3 32-32 32H128c-17.7 0-32-14.3-32-32V64c0-17.7 14.3-32 32-32z" fill="#E53935"/>
 <path d="M320 32l128 128H352c-17.7 0-32-14.3-32-32V32z" fill="#EF9A9A"/>
-<text x="256" y="340" text-anchor="middle" font-family="Arial,sans-serif" font-weight="bold" font-size="120" fill="white">PDF</text>
+<text x="256" y="340" textAnchor="middle" fontFamily="Arial,sans-serif" fontWeight="bold" fontSize="120" fill="white">PDF</text>
 </svg>
