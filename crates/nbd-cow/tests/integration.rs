@@ -331,7 +331,9 @@ async fn snapshot_restore_round_trip() {
 
     // Verify COW file and bitmap exist
     assert!(cow.exists(), "COW file should be preserved");
-    let bitmap = cow.with_extension("img.bitmap");
+    let mut bitmap_name = cow.as_os_str().to_os_string();
+    bitmap_name.push(".bitmap");
+    let bitmap = std::path::PathBuf::from(bitmap_name);
     assert!(bitmap.exists(), "bitmap file should be created");
 
     // Phase 2: create new device with same base + COW — data should persist

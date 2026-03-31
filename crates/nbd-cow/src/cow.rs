@@ -344,6 +344,12 @@ impl CowLayer {
             offset += word_size;
         }
         let mut bv = BitVec::from_vec(words);
+        if bv.len() < num_blocks {
+            return Err(NbdCowError::Io(std::io::Error::other(format!(
+                "bitmap data too short: got {} bits, expected {num_blocks}",
+                bv.len()
+            ))));
+        }
         bv.truncate(num_blocks);
         Ok(bv)
     }
