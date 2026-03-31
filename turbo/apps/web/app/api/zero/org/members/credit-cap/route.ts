@@ -82,7 +82,11 @@ export async function PUT(request: Request) {
   if (!parsed.success) {
     return NextResponse.json(
       {
-        error: `Invalid body — ${parsed.error.issues.map((i) => i.message).join(", ")}`,
+        error: `Invalid body — ${parsed.error.issues
+          .map((i) => {
+            return i.message;
+          })
+          .join(", ")}`,
       },
       { status: 400 },
     );

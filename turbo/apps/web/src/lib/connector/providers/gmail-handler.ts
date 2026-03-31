@@ -27,10 +27,17 @@ export const gmailHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.GOOGLE_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.GOOGLE_OAUTH_CLIENT_SECRET,
+  getClientId: (e) => {
+    return e.GOOGLE_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.GOOGLE_OAUTH_CLIENT_SECRET;
+  },
   getSecretName: getGmailSecretName,
-  getRefreshSecretName: () => "GMAIL_REFRESH_TOKEN",
-  refreshToken: (clientId, clientSecret, refreshToken) =>
-    refreshGoogleToken("gmail", clientId, clientSecret, refreshToken),
+  getRefreshSecretName: () => {
+    return "GMAIL_REFRESH_TOKEN";
+  },
+  refreshToken: (clientId, clientSecret, refreshToken) => {
+    return refreshGoogleToken("gmail", clientId, clientSecret, refreshToken);
+  },
 };

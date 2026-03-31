@@ -159,16 +159,18 @@ export function OrgDomainsTab() {
         )}
 
         {!isLoading &&
-          domains.map((domain, i) => (
-            <div key={domain.id}>
-              {i > 0 && <div className="h-px bg-border/40 mx-5" />}
-              <DomainRow
-                domain={domain}
-                onRemove={handleRemove}
-                onSetVerified={handleSetVerified}
-              />
-            </div>
-          ))}
+          domains.map((domain, i) => {
+            return (
+              <div key={domain.id}>
+                {i > 0 && <div className="h-px bg-border/40 mx-5" />}
+                <DomainRow
+                  domain={domain}
+                  onRemove={handleRemove}
+                  onSetVerified={handleSetVerified}
+                />
+              </div>
+            );
+          })}
       </div>
     </div>
   );
@@ -241,14 +243,18 @@ function AddDomainDialog({
               placeholder="example.com"
               value={name}
               disabled={adding}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                return setName(e.target.value);
+              }}
             />
           </div>
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium">Enrollment mode</label>
             <Select
               value={enrollmentMode}
-              onValueChange={(v) => setEnrollmentMode(v as OrgEnrollmentMode)}
+              onValueChange={(v) => {
+                return setEnrollmentMode(v as OrgEnrollmentMode);
+              }}
               disabled={adding}
             >
               <SelectTrigger>
@@ -260,16 +266,18 @@ function AddDomainDialog({
                     OrgEnrollmentMode,
                     string,
                   ][]
-                ).map(([mode, label]) => (
-                  <SelectItem key={mode} value={mode}>
-                    <div className="flex flex-col">
-                      <span>{label}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {ENROLLMENT_MODE_DESCRIPTIONS[mode]}
-                      </span>
-                    </div>
-                  </SelectItem>
-                ))}
+                ).map(([mode, label]) => {
+                  return (
+                    <SelectItem key={mode} value={mode}>
+                      <div className="flex flex-col">
+                        <span>{label}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {ENROLLMENT_MODE_DESCRIPTIONS[mode]}
+                        </span>
+                      </div>
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
           </div>
@@ -278,7 +286,9 @@ function AddDomainDialog({
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setOpen(false)}
+            onClick={() => {
+              return setOpen(false);
+            }}
             disabled={adding}
           >
             Cancel
@@ -329,7 +339,9 @@ function DomainRow({
     setSettingVerified(true);
     detach(
       onSetVerified(domain.id, verified).then(
-        () => setSettingVerified(false),
+        () => {
+          return setSettingVerified(false);
+        },
         (error: unknown) => {
           setSettingVerified(false);
           const message =
@@ -397,7 +409,9 @@ function DomainRow({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem
-                onClick={() => handleSetVerified(!isVerified)}
+                onClick={() => {
+                  return handleSetVerified(!isVerified);
+                }}
                 disabled={settingVerified}
               >
                 {isVerified ? (
@@ -409,7 +423,9 @@ function DomainRow({
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="text-destructive focus:text-destructive"
-                onClick={() => setRemoveOpen(true)}
+                onClick={() => {
+                  return setRemoveOpen(true);
+                }}
               >
                 <IconTrash size={14} stroke={1.5} className="mr-2" />
                 Remove
@@ -428,7 +444,9 @@ function DomainRow({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setRemoveOpen(false)}
+                onClick={() => {
+                  return setRemoveOpen(false);
+                }}
                 disabled={removing}
               >
                 Cancel

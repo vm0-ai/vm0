@@ -53,34 +53,36 @@ function PolicyPill({
 }) {
   return (
     <span className="inline-flex shrink-0 rounded-md overflow-hidden text-xs font-medium zero-border">
-      {POLICY_OPTIONS.map((opt, idx) => (
-        <button
-          key={opt.value}
-          type="button"
-          disabled={disabled}
-          style={
-            idx > 0
-              ? { borderLeft: "0.7px solid hsl(var(--gray-400))" }
-              : undefined
-          }
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onChange?.(opt.value);
-          }}
-          className={`flex items-center gap-1 px-2.5 py-1.5 transition-colors ${
-            policy === opt.value
-              ? "bg-muted text-foreground"
-              : disabled
-                ? "text-muted-foreground/50"
-                : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-          } ${disabled ? "cursor-default" : "cursor-pointer"}`}
-        >
-          {opt.value === "allow" && <IconCheck size={12} stroke={2.5} />}
-          {opt.value === "deny" && <IconBan size={12} stroke={2.5} />}
-          {opt.label}
-        </button>
-      ))}
+      {POLICY_OPTIONS.map((opt, idx) => {
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            disabled={disabled}
+            style={
+              idx > 0
+                ? { borderLeft: "0.7px solid hsl(var(--gray-400))" }
+                : undefined
+            }
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onChange?.(opt.value);
+            }}
+            className={`flex items-center gap-1 px-2.5 py-1.5 transition-colors ${
+              policy === opt.value
+                ? "bg-muted text-foreground"
+                : disabled
+                  ? "text-muted-foreground/50"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+            } ${disabled ? "cursor-default" : "cursor-pointer"}`}
+          >
+            {opt.value === "allow" && <IconCheck size={12} stroke={2.5} />}
+            {opt.value === "deny" && <IconBan size={12} stroke={2.5} />}
+            {opt.label}
+          </button>
+        );
+      })}
     </span>
   );
 }
@@ -133,8 +135,12 @@ function AdminFocusedView({
     setSaved(false);
     detach(
       setSavePolicies(agentId, fullPolicies, pageSignal)
-        .then(() => setSaved(true))
-        .finally(() => setSaving(false)),
+        .then(() => {
+          setSaved(true);
+        })
+        .finally(() => {
+          setSaving(false);
+        }),
       Reason.DomCallback,
     );
   };
@@ -148,7 +154,9 @@ function AdminFocusedView({
             setPolicy("allow");
           }
         })
-        .finally(() => setResolvingId(null)),
+        .finally(() => {
+          setResolvingId(null);
+        }),
       Reason.DomCallback,
     );
   };
@@ -205,43 +213,49 @@ function AdminFocusedView({
               Pending Requests ({requests.length})
             </h3>
           </div>
-          {requests.map((req, idx) => (
-            <div key={req.id}>
-              {idx > 0 && <div className="border-t border-border/40" />}
-              <div className="flex items-center gap-2 px-3 py-2">
-                <div className="min-w-0 flex-1">
-                  <span className="text-xs text-foreground">
-                    {req.requesterName ?? req.requesterUserId}
-                  </span>
-                  {req.reason && (
-                    <span className="text-xs text-muted-foreground">
-                      {" "}
-                      &mdash; <span className="italic">{req.reason}</span>
+          {requests.map((req, idx) => {
+            return (
+              <div key={req.id}>
+                {idx > 0 && <div className="border-t border-border/40" />}
+                <div className="flex items-center gap-2 px-3 py-2">
+                  <div className="min-w-0 flex-1">
+                    <span className="text-xs text-foreground">
+                      {req.requesterName ?? req.requesterUserId}
                     </span>
-                  )}
-                </div>
-                <div className="flex gap-1.5 shrink-0">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleResolve(req.id, "reject")}
-                    disabled={resolvingId === req.id}
-                  >
-                    <IconBan size={12} />
-                    Reject
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={() => handleResolve(req.id, "approve")}
-                    disabled={resolvingId === req.id}
-                  >
-                    <IconCheck size={12} />
-                    Approve
-                  </Button>
+                    {req.reason && (
+                      <span className="text-xs text-muted-foreground">
+                        {" "}
+                        &mdash; <span className="italic">{req.reason}</span>
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex gap-1.5 shrink-0">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        return handleResolve(req.id, "reject");
+                      }}
+                      disabled={resolvingId === req.id}
+                    >
+                      <IconBan size={12} />
+                      Reject
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        return handleResolve(req.id, "approve");
+                      }}
+                      disabled={resolvingId === req.id}
+                    >
+                      <IconCheck size={12} />
+                      Approve
+                    </Button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -284,7 +298,9 @@ function MemberFocusedView({
 
   const requests =
     requestsLoadable.state === "hasData" ? requestsLoadable.data : [];
-  const isPending = requests.some((r) => r.permission === permission.name);
+  const isPending = requests.some((r) => {
+    return r.permission === permission.name;
+  });
 
   const handleSubmit = () => {
     setSubmitting(true);
@@ -304,7 +320,9 @@ function MemberFocusedView({
           setShowForm(false);
           setReason("");
         })
-        .finally(() => setSubmitting(false)),
+        .finally(() => {
+          setSubmitting(false);
+        }),
       Reason.DomCallback,
     );
   };
@@ -349,7 +367,9 @@ function MemberFocusedView({
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => setShowForm(true)}
+                  onClick={() => {
+                    return setShowForm(true);
+                  }}
                 >
                   Request Access
                 </Button>
@@ -363,7 +383,9 @@ function MemberFocusedView({
             <textarea
               placeholder="Reason for access (optional)"
               value={reason}
-              onChange={(e) => setReason(e.target.value)}
+              onChange={(e) => {
+                return setReason(e.target.value);
+              }}
               rows={2}
               className="text-sm w-full rounded-md border border-input bg-background px-3 py-2 ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             />
@@ -433,9 +455,9 @@ function AdminListView({
     };
     setSaving(true);
     detach(
-      setSavePolicies(agentId, fullPolicies, pageSignal).finally(() =>
-        setSaving(false),
-      ),
+      setSavePolicies(agentId, fullPolicies, pageSignal).finally(() => {
+        setSaving(false);
+      }),
       Reason.DomCallback,
     );
   };
@@ -450,29 +472,33 @@ function AdminListView({
       </div>
 
       <div className="zero-border rounded-lg overflow-hidden">
-        {permissions.map((perm, idx) => (
-          <div key={perm.name}>
-            {idx > 0 && <div className="border-t border-border/40" />}
-            <div className="flex items-center gap-2.5 px-3 py-2 hover:bg-muted/50 transition-colors">
-              <div className="min-w-0 flex-1">
-                <code className="text-xs font-medium text-foreground truncate block">
-                  {perm.name}
-                </code>
-                {perm.description && (
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {perm.description}
-                  </p>
-                )}
+        {permissions.map((perm, idx) => {
+          return (
+            <div key={perm.name}>
+              {idx > 0 && <div className="border-t border-border/40" />}
+              <div className="flex items-center gap-2.5 px-3 py-2 hover:bg-muted/50 transition-colors">
+                <div className="min-w-0 flex-1">
+                  <code className="text-xs font-medium text-foreground truncate block">
+                    {perm.name}
+                  </code>
+                  {perm.description && (
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {perm.description}
+                    </p>
+                  )}
+                </div>
+                <PolicyPill
+                  policy={policies[perm.name] ?? "allow"}
+                  onChange={(p) => {
+                    return setPolicies((prev) => {
+                      return { ...prev, [perm.name]: p };
+                    });
+                  }}
+                />
               </div>
-              <PolicyPill
-                policy={policies[perm.name] ?? "allow"}
-                onChange={(p) =>
-                  setPolicies((prev) => ({ ...prev, [perm.name]: p }))
-                }
-              />
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -600,7 +626,9 @@ export function FirewallAllowPage() {
   // Find the specific permission if URL specifies one
   const allPermissions = extractPermissions(ref);
   const focusedPermission = highlightPermission
-    ? (allPermissions.find((p) => p.name === highlightPermission) ?? null)
+    ? (allPermissions.find((p) => {
+        return p.name === highlightPermission;
+      }) ?? null)
     : null;
 
   return (

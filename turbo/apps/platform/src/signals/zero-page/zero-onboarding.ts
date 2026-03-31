@@ -23,7 +23,9 @@ const internalReload$ = state(0);
 
 /** Trigger a refresh of the onboarding status from the API. */
 export const reloadOnboardingStatus$ = command(({ set }) => {
-  set(internalReload$, (x) => x + 1);
+  set(internalReload$, (x) => {
+    return x + 1;
+  });
 });
 
 export const zeroOnboardingStatus$ = computed(async (get) => {
@@ -67,7 +69,9 @@ export const completeMemberOnboarding$ = command(
     try {
       const client = get(zeroClient$)(onboardingCompleteContract);
       await client.complete();
-      set(internalReload$, (x) => x + 1);
+      set(internalReload$, (x) => {
+        return x + 1;
+      });
       const status = await get(zeroOnboardingStatus$);
       return status.defaultAgentId ?? undefined;
     } finally {
@@ -110,18 +114,22 @@ export const zeroOnboardingStep$ = computed(async (get) => {
   }
   return await get(initialOnboardingStep$);
 });
-export const zeroAgentName$ = computed((get) => get(internalAgentName$));
-export const zeroWorkspaceName$ = computed((get) =>
-  get(internalWorkspaceName$),
-);
-export const zeroSaving$ = computed((get) => get(internalSaving$));
-export const zeroSelectedConnectors$ = computed((get) =>
-  get(internalSelectedConnectors$),
-);
+export const zeroAgentName$ = computed((get) => {
+  return get(internalAgentName$);
+});
+export const zeroWorkspaceName$ = computed((get) => {
+  return get(internalWorkspaceName$);
+});
+export const zeroSaving$ = computed((get) => {
+  return get(internalSaving$);
+});
+export const zeroSelectedConnectors$ = computed((get) => {
+  return get(internalSelectedConnectors$);
+});
 
-export const zeroOnboardingError$ = computed((get) =>
-  get(internalOnboardingError$),
-);
+export const zeroOnboardingError$ = computed((get) => {
+  return get(internalOnboardingError$);
+});
 
 export const clearZeroOnboardingError$ = command(({ set }) => {
   set(internalOnboardingError$, null);
@@ -145,11 +153,13 @@ export const setZeroWorkspaceName$ = command(({ set }, name: string) => {
 
 export const toggleZeroConnector$ = command(
   ({ set }, connectorValue: string) => {
-    set(internalSelectedConnectors$, (prev) =>
-      prev.includes(connectorValue)
-        ? prev.filter((s) => s !== connectorValue)
-        : [...prev, connectorValue],
-    );
+    set(internalSelectedConnectors$, (prev) => {
+      return prev.includes(connectorValue)
+        ? prev.filter((s) => {
+            return s !== connectorValue;
+          })
+        : [...prev, connectorValue];
+    });
   },
 );
 
@@ -250,7 +260,9 @@ export const completeZeroOnboarding$ = command(
       signal.throwIfAborted();
 
       // Reload status (caller dismisses via dismissZeroOnboarding$)
-      set(internalReload$, (x) => x + 1);
+      set(internalReload$, (x) => {
+        return x + 1;
+      });
 
       return agent.agentId;
     } catch (error) {

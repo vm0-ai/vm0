@@ -21,9 +21,15 @@ export const stripeHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.STRIPE_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.STRIPE_OAUTH_CLIENT_SECRET,
+  getClientId: (e) => {
+    return e.STRIPE_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.STRIPE_OAUTH_CLIENT_SECRET;
+  },
   getSecretName: getStripeSecretName,
-  getRefreshSecretName: () => "STRIPE_REFRESH_TOKEN",
+  getRefreshSecretName: () => {
+    return "STRIPE_REFRESH_TOKEN";
+  },
   refreshToken: refreshStripeToken,
 };

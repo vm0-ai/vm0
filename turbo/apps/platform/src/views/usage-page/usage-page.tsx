@@ -89,31 +89,33 @@ export function UsagePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.members.map((member) => (
-                    <tr
-                      key={member.userId}
-                      className="border-b border-border last:border-0 hover:bg-muted/10"
-                    >
-                      <td className="px-4 py-3 text-foreground">
-                        {member.email}
-                      </td>
-                      <td className="px-4 py-3 text-right tabular-nums text-foreground">
-                        {formatNumber(member.inputTokens)}
-                      </td>
-                      <td className="px-4 py-3 text-right tabular-nums text-foreground">
-                        {formatNumber(member.outputTokens)}
-                      </td>
-                      <td className="px-4 py-3 text-right tabular-nums text-foreground">
-                        {formatNumber(
-                          member.cacheReadInputTokens +
-                            member.cacheCreationInputTokens,
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-right tabular-nums font-medium text-foreground">
-                        {formatNumber(member.creditsCharged)}
-                      </td>
-                    </tr>
-                  ))}
+                  {data.members.map((member) => {
+                    return (
+                      <tr
+                        key={member.userId}
+                        className="border-b border-border last:border-0 hover:bg-muted/10"
+                      >
+                        <td className="px-4 py-3 text-foreground">
+                          {member.email}
+                        </td>
+                        <td className="px-4 py-3 text-right tabular-nums text-foreground">
+                          {formatNumber(member.inputTokens)}
+                        </td>
+                        <td className="px-4 py-3 text-right tabular-nums text-foreground">
+                          {formatNumber(member.outputTokens)}
+                        </td>
+                        <td className="px-4 py-3 text-right tabular-nums text-foreground">
+                          {formatNumber(
+                            member.cacheReadInputTokens +
+                              member.cacheCreationInputTokens,
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right tabular-nums font-medium text-foreground">
+                          {formatNumber(member.creditsCharged)}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

@@ -25,10 +25,17 @@ Examples:
         return;
       }
 
-      const nameWidth = Math.max(4, ...skills.map((s) => s.name.length));
+      const nameWidth = Math.max(
+        4,
+        ...skills.map((s) => {
+          return s.name.length;
+        }),
+      );
       const displayWidth = Math.max(
         12,
-        ...skills.map((s) => (s.displayName ?? "").length),
+        ...skills.map((s) => {
+          return (s.displayName ?? "").length;
+        }),
       );
 
       const header = [

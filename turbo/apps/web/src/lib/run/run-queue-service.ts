@@ -331,7 +331,9 @@ export async function cleanupExpiredQueueEntries(): Promise<number> {
     return 0;
   }
 
-  const runIds = deleted.map((e) => e.runId);
+  const runIds = deleted.map((e) => {
+    return e.runId;
+  });
 
   // Mark associated runs as timeout (only if still queued)
   await globalThis.services.db

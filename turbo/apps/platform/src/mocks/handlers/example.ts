@@ -33,7 +33,9 @@ export const exampleHandlers = [
   // GET /api/users/:id - Get user by ID
   http.get("/api/users/:id", ({ params }) => {
     const { id } = params;
-    const user = mockUsers.find((u) => u.id === id);
+    const user = mockUsers.find((u) => {
+      return u.id === id;
+    });
 
     if (!user) {
       return HttpResponse.json(

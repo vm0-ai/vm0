@@ -21,23 +21,35 @@ export const agentSessions = pgTable(
     userId: text("user_id").notNull(),
     orgId: text("org_id").notNull(),
     agentComposeId: uuid("agent_compose_id")
-      .references(() => agentComposes.id, { onDelete: "cascade" })
+      .references(
+        () => {
+          return agentComposes.id;
+        },
+        { onDelete: "cascade" },
+      )
       .notNull(),
-    conversationId: uuid("conversation_id").references(() => conversations.id, {
-      onDelete: "set null",
-    }),
+    conversationId: uuid("conversation_id").references(
+      () => {
+        return conversations.id;
+      },
+      {
+        onDelete: "set null",
+      },
+    ),
     artifactName: varchar("artifact_name", { length: 255 }),
     memoryName: varchar("memory_name", { length: 255 }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (table) => [
-    // Composite index for findOrCreate pattern
-    index("idx_agent_sessions_user_compose_artifact").on(
-      table.userId,
-      table.agentComposeId,
-      table.artifactName,
-    ),
-    index("idx_agent_sessions_org").on(table.orgId),
-  ],
+  (table) => {
+    return [
+      // Composite index for findOrCreate pattern
+      index("idx_agent_sessions_user_compose_artifact").on(
+        table.userId,
+        table.agentComposeId,
+        table.artifactName,
+      ),
+      index("idx_agent_sessions_org").on(table.orgId),
+    ];
+  },
 );

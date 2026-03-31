@@ -6,8 +6,14 @@ import {
 } from "./google-oauth";
 
 export const googleSheetsHandler: ProviderHandler = {
-  buildAuthUrl: (clientId, redirectUri, state) =>
-    buildGoogleAuthorizationUrl("google-sheets", clientId, redirectUri, state),
+  buildAuthUrl: (clientId, redirectUri, state) => {
+    return buildGoogleAuthorizationUrl(
+      "google-sheets",
+      clientId,
+      redirectUri,
+      state,
+    );
+  },
   async exchangeCode(clientId, clientSecret, code, redirectUri) {
     const result = await exchangeGoogleOAuthCode(
       "google-sheets",
@@ -28,10 +34,24 @@ export const googleSheetsHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.GOOGLE_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.GOOGLE_OAUTH_CLIENT_SECRET,
-  getSecretName: () => "GOOGLE_SHEETS_ACCESS_TOKEN",
-  getRefreshSecretName: () => "GOOGLE_SHEETS_REFRESH_TOKEN",
-  refreshToken: (clientId, clientSecret, refreshToken) =>
-    refreshGoogleToken("google-sheets", clientId, clientSecret, refreshToken),
+  getClientId: (e) => {
+    return e.GOOGLE_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.GOOGLE_OAUTH_CLIENT_SECRET;
+  },
+  getSecretName: () => {
+    return "GOOGLE_SHEETS_ACCESS_TOKEN";
+  },
+  getRefreshSecretName: () => {
+    return "GOOGLE_SHEETS_REFRESH_TOKEN";
+  },
+  refreshToken: (clientId, clientSecret, refreshToken) => {
+    return refreshGoogleToken(
+      "google-sheets",
+      clientId,
+      clientSecret,
+      refreshToken,
+    );
+  },
 };

@@ -94,7 +94,9 @@ describe("resolveFirewallSelections", () => {
     expect(expanded[0]!.name).toBe("custom-git");
     expect(expanded[0]!.ref).toBe("custom-git");
     expect(expanded[0]!.apis).toHaveLength(1);
-    const permNames = expanded[0]!.apis[0]!.permissions!.map((p) => p.name);
+    const permNames = expanded[0]!.apis[0]!.permissions!.map((p) => {
+      return p.name;
+    });
     expect(permNames).toContain("repo-read");
     expect(permNames).toContain("issues-read");
     expect(permNames).toContain("search");
@@ -108,7 +110,9 @@ describe("resolveFirewallSelections", () => {
 
     expect(expanded).toHaveLength(1);
     expect(expanded[0]!.apis[0]!.permissions).toHaveLength(2);
-    const permNames = expanded[0]!.apis[0]!.permissions!.map((p) => p.name);
+    const permNames = expanded[0]!.apis[0]!.permissions!.map((p) => {
+      return p.name;
+    });
     expect(permNames).toContain("issues-read");
     expect(permNames).toContain("issues-write");
   });
@@ -135,7 +139,9 @@ describe("resolveFirewallSelections", () => {
     );
 
     expect(expanded).toHaveLength(2);
-    const names = expanded.map((s) => s.name);
+    const names = expanded.map((s) => {
+      return s.name;
+    });
     expect(names).toContain("custom-git");
     expect(names).toContain("custom-chat");
   });
@@ -184,7 +190,11 @@ describe("resolveFirewallSelections", () => {
     expect(expanded).toHaveLength(1);
     expect(expanded[0]!.apis).toHaveLength(2);
     for (const api of expanded[0]!.apis) {
-      expect(api.permissions!.map((p) => p.name)).toEqual(["full-access"]);
+      expect(
+        api.permissions!.map((p) => {
+          return p.name;
+        }),
+      ).toEqual(["full-access"]);
     }
   });
 
@@ -249,261 +259,277 @@ apis:
 
 describe("validateRule", () => {
   it("should accept valid rules", () => {
-    expect(() =>
-      validateRule("GET /repos/{owner}/{repo}", "p", "fw"),
-    ).not.toThrow();
-    expect(() =>
-      validateRule("POST /chat.postMessage", "p", "fw"),
-    ).not.toThrow();
-    expect(() => validateRule("ANY /{path+}", "p", "fw")).not.toThrow();
-    expect(() =>
-      validateRule("DELETE /repos/{owner}/{repo}", "p", "fw"),
-    ).not.toThrow();
-    expect(() =>
-      validateRule("PUT /repos/{owner}/{repo}/contents/{path+}", "p", "fw"),
-    ).not.toThrow();
-    expect(() =>
-      validateRule("PATCH /repos/{owner}/{repo}/pulls/{number}", "p", "fw"),
-    ).not.toThrow();
-    expect(() => validateRule("GET /", "p", "fw")).not.toThrow();
+    expect(() => {
+      return validateRule("GET /repos/{owner}/{repo}", "p", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateRule("POST /chat.postMessage", "p", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateRule("ANY /{path+}", "p", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateRule("DELETE /repos/{owner}/{repo}", "p", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateRule(
+        "PUT /repos/{owner}/{repo}/contents/{path+}",
+        "p",
+        "fw",
+      );
+    }).not.toThrow();
+    expect(() => {
+      return validateRule(
+        "PATCH /repos/{owner}/{repo}/pulls/{number}",
+        "p",
+        "fw",
+      );
+    }).not.toThrow();
+    expect(() => {
+      return validateRule("GET /", "p", "fw");
+    }).not.toThrow();
   });
 
   it("should reject missing path", () => {
-    expect(() => validateRule("GET", "read", "github")).toThrow(
-      'must be "METHOD /path"',
-    );
+    expect(() => {
+      return validateRule("GET", "read", "github");
+    }).toThrow('must be "METHOD /path"');
   });
 
   it("should reject empty string", () => {
-    expect(() => validateRule("", "read", "github")).toThrow(
-      'must be "METHOD /path"',
-    );
+    expect(() => {
+      return validateRule("", "read", "github");
+    }).toThrow('must be "METHOD /path"');
   });
 
   it("should reject unknown method", () => {
-    expect(() => validateRule("INVALID /foo", "read", "github")).toThrow(
-      'unknown method "INVALID"',
-    );
+    expect(() => {
+      return validateRule("INVALID /foo", "read", "github");
+    }).toThrow('unknown method "INVALID"');
   });
 
   it("should reject lowercase method", () => {
-    expect(() => validateRule("get /foo", "read", "github")).toThrow(
-      "must be uppercase",
-    );
+    expect(() => {
+      return validateRule("get /foo", "read", "github");
+    }).toThrow("must be uppercase");
   });
 
   it("should reject path with query string", () => {
-    expect(() => validateRule("GET /foo?bar=1", "read", "github")).toThrow(
-      "must not contain query string or fragment",
-    );
+    expect(() => {
+      return validateRule("GET /foo?bar=1", "read", "github");
+    }).toThrow("must not contain query string or fragment");
   });
 
   it("should reject path with fragment", () => {
-    expect(() => validateRule("GET /foo#section", "read", "github")).toThrow(
-      "must not contain query string or fragment",
-    );
+    expect(() => {
+      return validateRule("GET /foo#section", "read", "github");
+    }).toThrow("must not contain query string or fragment");
   });
 
   it("should reject path without leading slash", () => {
-    expect(() => validateRule("GET foo", "read", "github")).toThrow(
-      'path must start with "/"',
-    );
+    expect(() => {
+      return validateRule("GET foo", "read", "github");
+    }).toThrow('path must start with "/"');
   });
 
   it("should reject {param+} not in last segment", () => {
-    expect(() =>
-      validateRule("GET /foo/{path+}/bar", "read", "github"),
-    ).toThrow("{path+} must be the last segment");
+    expect(() => {
+      return validateRule("GET /foo/{path+}/bar", "read", "github");
+    }).toThrow("{path+} must be the last segment");
   });
 
   it("should accept {param+} in last segment", () => {
-    expect(() =>
-      validateRule("GET /repos/{owner}/{path+}", "p", "fw"),
-    ).not.toThrow();
+    expect(() => {
+      return validateRule("GET /repos/{owner}/{path+}", "p", "fw");
+    }).not.toThrow();
   });
 
   it("should accept {param*} in last segment", () => {
-    expect(() => validateRule("ANY /{path*}", "p", "fw")).not.toThrow();
-    expect(() =>
-      validateRule("GET /repos/{owner}/{path*}", "p", "fw"),
-    ).not.toThrow();
+    expect(() => {
+      return validateRule("ANY /{path*}", "p", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateRule("GET /repos/{owner}/{path*}", "p", "fw");
+    }).not.toThrow();
   });
 
   it("should reject {param*} not in last segment", () => {
-    expect(() =>
-      validateRule("GET /foo/{path*}/bar", "read", "github"),
-    ).toThrow("{path*} must be the last segment");
+    expect(() => {
+      return validateRule("GET /foo/{path*}/bar", "read", "github");
+    }).toThrow("{path*} must be the last segment");
   });
 
   it("should reject duplicate parameter names", () => {
-    expect(() => validateRule("GET /repos/{owner}/{owner}", "p", "fw")).toThrow(
-      'duplicate parameter name "{owner}"',
-    );
+    expect(() => {
+      return validateRule("GET /repos/{owner}/{owner}", "p", "fw");
+    }).toThrow('duplicate parameter name "{owner}"');
   });
 
   it("should reject empty parameter name", () => {
-    expect(() => validateRule("GET /repos/{}", "p", "fw")).toThrow(
-      "empty parameter name",
-    );
+    expect(() => {
+      return validateRule("GET /repos/{}", "p", "fw");
+    }).toThrow("empty parameter name");
   });
 
   it("should reject empty greedy parameter name", () => {
-    expect(() => validateRule("GET /repos/{+}", "p", "fw")).toThrow(
-      "empty parameter name",
-    );
+    expect(() => {
+      return validateRule("GET /repos/{+}", "p", "fw");
+    }).toThrow("empty parameter name");
   });
 
   it("should reject empty star parameter name", () => {
-    expect(() => validateRule("GET /repos/{*}", "p", "fw")).toThrow(
-      "empty parameter name",
-    );
+    expect(() => {
+      return validateRule("GET /repos/{*}", "p", "fw");
+    }).toThrow("empty parameter name");
   });
 });
 
 describe("validateBaseUrl", () => {
   it("should accept valid URLs", () => {
-    expect(() =>
-      validateBaseUrl("https://api.github.com", "github"),
-    ).not.toThrow();
-    expect(() =>
-      validateBaseUrl("https://slack.com/api", "slack"),
-    ).not.toThrow();
-    expect(() =>
-      validateBaseUrl("https://us1.api.mailchimp.com/3.0", "mailchimp"),
-    ).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://api.github.com", "github");
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://slack.com/api", "slack");
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://us1.api.mailchimp.com/3.0", "mailchimp");
+    }).not.toThrow();
   });
 
   it("should reject invalid URLs", () => {
-    expect(() => validateBaseUrl("not-a-url", "fw")).toThrow("not a valid URL");
+    expect(() => {
+      return validateBaseUrl("not-a-url", "fw");
+    }).toThrow("not a valid URL");
   });
 
   it("should reject URLs with query string", () => {
-    expect(() =>
-      validateBaseUrl("https://api.example.com?key=val", "fw"),
-    ).toThrow("must not contain query string");
+    expect(() => {
+      return validateBaseUrl("https://api.example.com?key=val", "fw");
+    }).toThrow("must not contain query string");
   });
 
   it("should reject URLs with fragment", () => {
-    expect(() =>
-      validateBaseUrl("https://api.example.com#section", "fw"),
-    ).toThrow("must not contain fragment");
+    expect(() => {
+      return validateBaseUrl("https://api.example.com#section", "fw");
+    }).toThrow("must not contain fragment");
   });
 
   it("should skip template base URLs", () => {
-    expect(() =>
-      validateBaseUrl(
+    expect(() => {
+      return validateBaseUrl(
         "https://${{ vars.ZENDESK_SUBDOMAIN }}.zendesk.com",
         "zendesk",
-      ),
-    ).not.toThrow();
+      );
+    }).not.toThrow();
   });
 
   it("should accept base URL with single host param", () => {
-    expect(() =>
-      validateBaseUrl("https://{subdomain}.zendesk.com", "zendesk"),
-    ).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://{subdomain}.zendesk.com", "zendesk");
+    }).not.toThrow();
   });
 
   it("should accept base URL with greedy host param in first position", () => {
-    expect(() =>
-      validateBaseUrl("https://{sub+}.example.com", "fw"),
-    ).not.toThrow();
-    expect(() =>
-      validateBaseUrl("https://{sub*}.example.com", "fw"),
-    ).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://{sub+}.example.com", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://{sub*}.example.com", "fw");
+    }).not.toThrow();
   });
 
   it("should accept base URL with single path param", () => {
-    expect(() =>
-      validateBaseUrl("https://api.example.com/v1/{org}", "fw"),
-    ).not.toThrow();
-    expect(() =>
-      validateBaseUrl("https://api.example.com/v1/{org}/projects", "fw"),
-    ).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://api.example.com/v1/{org}", "fw");
+    }).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://api.example.com/v1/{org}/projects", "fw");
+    }).not.toThrow();
   });
 
   it("should accept base URL with host and path params", () => {
-    expect(() =>
-      validateBaseUrl("https://{sub}.example.com/v1/{org}", "fw"),
-    ).not.toThrow();
+    expect(() => {
+      return validateBaseUrl("https://{sub}.example.com/v1/{org}", "fw");
+    }).not.toThrow();
   });
 
   it("should reject greedy host param not in first position", () => {
-    expect(() =>
-      validateBaseUrl("https://api.{sub+}.example.com", "fw"),
-    ).toThrow("{sub+} must be the first host segment");
-    expect(() =>
-      validateBaseUrl("https://api.{sub*}.example.com", "fw"),
-    ).toThrow("{sub*} must be the first host segment");
+    expect(() => {
+      return validateBaseUrl("https://api.{sub+}.example.com", "fw");
+    }).toThrow("{sub+} must be the first host segment");
+    expect(() => {
+      return validateBaseUrl("https://api.{sub*}.example.com", "fw");
+    }).toThrow("{sub*} must be the first host segment");
   });
 
   it("should reject greedy path param in base URL", () => {
-    expect(() =>
-      validateBaseUrl("https://api.example.com/{path+}", "fw"),
-    ).toThrow("greedy parameter {path+} is not allowed in base URL path");
-    expect(() =>
-      validateBaseUrl("https://api.example.com/{path*}", "fw"),
-    ).toThrow("greedy parameter {path*} is not allowed in base URL path");
+    expect(() => {
+      return validateBaseUrl("https://api.example.com/{path+}", "fw");
+    }).toThrow("greedy parameter {path+} is not allowed in base URL path");
+    expect(() => {
+      return validateBaseUrl("https://api.example.com/{path*}", "fw");
+    }).toThrow("greedy parameter {path*} is not allowed in base URL path");
   });
 
   it("should reject host with no static segments", () => {
-    expect(() => validateBaseUrl("https://{a}.{b}", "fw")).toThrow(
-      "must have at least one static segment",
-    );
+    expect(() => {
+      return validateBaseUrl("https://{a}.{b}", "fw");
+    }).toThrow("must have at least one static segment");
   });
 
   it("should reject empty param name in host", () => {
-    expect(() => validateBaseUrl("https://{}.example.com", "fw")).toThrow(
-      "empty parameter name in host",
-    );
+    expect(() => {
+      return validateBaseUrl("https://{}.example.com", "fw");
+    }).toThrow("empty parameter name in host");
   });
 
   it("should reject empty param name in path", () => {
-    expect(() => validateBaseUrl("https://api.example.com/{}", "fw")).toThrow(
-      "empty parameter name in path",
-    );
+    expect(() => {
+      return validateBaseUrl("https://api.example.com/{}", "fw");
+    }).toThrow("empty parameter name in path");
   });
 
   it("should reject duplicate param names in host", () => {
-    expect(() =>
-      validateBaseUrl("https://{sub}.{sub}.example.com", "fw"),
-    ).toThrow('duplicate parameter name "{sub}" in host');
+    expect(() => {
+      return validateBaseUrl("https://{sub}.{sub}.example.com", "fw");
+    }).toThrow('duplicate parameter name "{sub}" in host');
   });
 
   it("should reject duplicate param names across host and path", () => {
-    expect(() =>
-      validateBaseUrl("https://{org}.example.com/{org}", "fw"),
-    ).toThrow('duplicate parameter name "{org}"');
+    expect(() => {
+      return validateBaseUrl("https://{org}.example.com/{org}", "fw");
+    }).toThrow('duplicate parameter name "{org}"');
   });
 
   it("should reject query string in parameterized base URL", () => {
-    expect(() =>
-      validateBaseUrl("https://{sub}.example.com?key=val", "fw"),
-    ).toThrow("must not contain query string");
+    expect(() => {
+      return validateBaseUrl("https://{sub}.example.com?key=val", "fw");
+    }).toThrow("must not contain query string");
   });
 
   it("should reject fragment in parameterized base URL", () => {
-    expect(() =>
-      validateBaseUrl("https://{sub}.example.com#section", "fw"),
-    ).toThrow("must not contain fragment");
+    expect(() => {
+      return validateBaseUrl("https://{sub}.example.com#section", "fw");
+    }).toThrow("must not contain fragment");
   });
 
   it("should reject param in scheme", () => {
-    expect(() => validateBaseUrl("{proto}://api.example.com", "fw")).toThrow(
-      "scheme must not contain parameters",
-    );
+    expect(() => {
+      return validateBaseUrl("{proto}://api.example.com", "fw");
+    }).toThrow("scheme must not contain parameters");
   });
 
   it("should reject partial param in host segment", () => {
-    expect(() =>
-      validateBaseUrl("https://api-{version}.example.com", "fw"),
-    ).toThrow('host segment "api-{version}" contains "{"');
+    expect(() => {
+      return validateBaseUrl("https://api-{version}.example.com", "fw");
+    }).toThrow('host segment "api-{version}" contains "{"');
   });
 
   it("should reject partial param in path segment", () => {
-    expect(() =>
-      validateBaseUrl("https://api.example.com/v1-{version}", "fw"),
-    ).toThrow('path segment "v1-{version}" contains "{"');
+    expect(() => {
+      return validateBaseUrl("https://api.example.com/v1-{version}", "fw");
+    }).toThrow('path segment "v1-{version}" contains "{"');
   });
 });
 
@@ -607,23 +633,23 @@ describe("resolveFirewallBaseUrlVars", () => {
   });
 
   it("throws when required variable is missing", () => {
-    expect(() => resolveFirewallBaseUrlVars([zendeskFirewall], {})).toThrow(
-      'requires variable "ZENDESK_SUBDOMAIN"',
-    );
+    expect(() => {
+      return resolveFirewallBaseUrlVars([zendeskFirewall], {});
+    }).toThrow('requires variable "ZENDESK_SUBDOMAIN"');
   });
 
   it("throws when vars is undefined", () => {
-    expect(() =>
-      resolveFirewallBaseUrlVars([zendeskFirewall], undefined),
-    ).toThrow('requires variable "ZENDESK_SUBDOMAIN"');
+    expect(() => {
+      return resolveFirewallBaseUrlVars([zendeskFirewall], undefined);
+    }).toThrow('requires variable "ZENDESK_SUBDOMAIN"');
   });
 
   it("validates resolved URL is well-formed", () => {
-    expect(() =>
-      resolveFirewallBaseUrlVars([zendeskFirewall], {
+    expect(() => {
+      return resolveFirewallBaseUrlVars([zendeskFirewall], {
         ZENDESK_SUBDOMAIN: "bad value with spaces",
-      }),
-    ).toThrow("not a valid URL");
+      });
+    }).toThrow("not a valid URL");
   });
 
   it("preserves auth headers unchanged", () => {

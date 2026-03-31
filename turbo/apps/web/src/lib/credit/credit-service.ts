@@ -44,7 +44,9 @@ export async function processOrgCredits(orgId: string): Promise<void> {
     // Fetch all pricing records and build lookup map keyed by "model|modelProvider"
     const pricingRecords = await tx.select().from(creditPricing);
     const pricingByKey = new Map(
-      pricingRecords.map((p) => [`${p.model}|${p.modelProvider}`, p]),
+      pricingRecords.map((p) => {
+        return [`${p.model}|${p.modelProvider}`, p];
+      }),
     );
 
     let totalCredits = 0;

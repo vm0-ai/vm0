@@ -27,9 +27,15 @@ export const spotifyHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.SPOTIFY_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.SPOTIFY_OAUTH_CLIENT_SECRET,
+  getClientId: (e) => {
+    return e.SPOTIFY_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.SPOTIFY_OAUTH_CLIENT_SECRET;
+  },
   getSecretName: getSpotifySecretName,
-  getRefreshSecretName: () => "SPOTIFY_REFRESH_TOKEN",
+  getRefreshSecretName: () => {
+    return "SPOTIFY_REFRESH_TOKEN";
+  },
   refreshToken: refreshSpotifyToken,
 };

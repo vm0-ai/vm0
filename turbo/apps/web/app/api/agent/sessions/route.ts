@@ -52,13 +52,15 @@ const router = tsr.router(sessionsContract, {
     return {
       status: 200 as const,
       body: {
-        sessions: sessions.map((s) => ({
-          id: s.id,
-          createdAt: s.createdAt.toISOString(),
-          updatedAt: s.updatedAt.toISOString(),
-          messageCount: s.messageCount,
-          preview: s.preview,
-        })),
+        sessions: sessions.map((s) => {
+          return {
+            id: s.id,
+            createdAt: s.createdAt.toISOString(),
+            updatedAt: s.updatedAt.toISOString(),
+            messageCount: s.messageCount,
+            preview: s.preview,
+          };
+        }),
       },
     };
   },

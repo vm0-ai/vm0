@@ -53,14 +53,16 @@ function KeyValueTable({
         </TableRow>
       </TableHeader>
       <TableBody>
-        {entries.map(([key, value]) => (
-          <TableRow key={key}>
-            <TableCell className="font-mono text-xs">{key}</TableCell>
-            <TableCell className="font-mono text-xs break-all">
-              {value}
-            </TableCell>
-          </TableRow>
-        ))}
+        {entries.map(([key, value]) => {
+          return (
+            <TableRow key={key}>
+              <TableCell className="font-mono text-xs">{key}</TableCell>
+              <TableCell className="font-mono text-xs break-all">
+                {value}
+              </TableCell>
+            </TableRow>
+          );
+        })}
       </TableBody>
     </Table>
   );
@@ -85,28 +87,30 @@ function StorageTable({
     <Table>
       <TableHeader>
         <TableRow>
-          {columns.map((col) => (
-            <TableHead key={col}>{col}</TableHead>
-          ))}
+          {columns.map((col) => {
+            return <TableHead key={col}>{col}</TableHead>;
+          })}
         </TableRow>
       </TableHeader>
       <TableBody>
-        {items.map((item) => (
-          <TableRow key={`${item.vasStorageName}-${item.vasVersionId}`}>
-            {item.name !== undefined && (
-              <TableCell className="font-mono text-xs">{item.name}</TableCell>
-            )}
-            <TableCell className="font-mono text-xs">
-              {item.mountPath}
-            </TableCell>
-            <TableCell className="font-mono text-xs">
-              {item.vasStorageName}
-            </TableCell>
-            <TableCell className="font-mono text-xs truncate max-w-[200px]">
-              {item.vasVersionId}
-            </TableCell>
-          </TableRow>
-        ))}
+        {items.map((item) => {
+          return (
+            <TableRow key={`${item.vasStorageName}-${item.vasVersionId}`}>
+              {item.name !== undefined && (
+                <TableCell className="font-mono text-xs">{item.name}</TableCell>
+              )}
+              <TableCell className="font-mono text-xs">
+                {item.mountPath}
+              </TableCell>
+              <TableCell className="font-mono text-xs">
+                {item.vasStorageName}
+              </TableCell>
+              <TableCell className="font-mono text-xs truncate max-w-[200px]">
+                {item.vasVersionId}
+              </TableCell>
+            </TableRow>
+          );
+        })}
       </TableBody>
     </Table>
   );
@@ -156,14 +160,16 @@ export function ZeroActivityContextPage() {
             <SectionHeader title="Secrets" />
             {context.secretNames.length > 0 ? (
               <div className="flex flex-wrap gap-1.5">
-                {context.secretNames.map((name) => (
-                  <span
-                    key={name}
-                    className="inline-flex items-center rounded-md border bg-muted/50 px-2 py-0.5 text-xs font-mono"
-                  >
-                    {name}
-                  </span>
-                ))}
+                {context.secretNames.map((name) => {
+                  return (
+                    <span
+                      key={name}
+                      className="inline-flex items-center rounded-md border bg-muted/50 px-2 py-0.5 text-xs font-mono"
+                    >
+                      {name}
+                    </span>
+                  );
+                })}
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">None</p>
@@ -302,12 +308,14 @@ function ContextSkeleton({ runId }: { runId: string | null }) {
       <Breadcrumb runId={runId} />
       <div className="mx-auto w-full max-w-[900px] px-4 sm:px-6 pt-4 pb-8 flex flex-col gap-6">
         {["prompt", "system-prompt", "environment", "firewalls", "volumes"].map(
-          (section) => (
-            <div key={section} className="flex flex-col gap-2">
-              <Skeleton className="h-4 w-24" />
-              <Skeleton className="h-20 w-full" />
-            </div>
-          ),
+          (section) => {
+            return (
+              <div key={section} className="flex flex-col gap-2">
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-20 w-full" />
+              </div>
+            );
+          },
         )}
       </div>
     </div>

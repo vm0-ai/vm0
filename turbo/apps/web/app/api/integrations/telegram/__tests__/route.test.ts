@@ -16,9 +16,9 @@ import { http } from "../../../../../src/__tests__/msw";
 const context = testContext();
 
 function telegramDeleteWebhook() {
-  return http.post(/api\.telegram\.org\/bot.*\/deleteWebhook/, () =>
-    HttpResponse.json({ ok: true, result: true }),
-  );
+  return http.post(/api\.telegram\.org\/bot.*\/deleteWebhook/, () => {
+    return HttpResponse.json({ ok: true, result: true });
+  });
 }
 
 describe("/api/integrations/telegram", () => {

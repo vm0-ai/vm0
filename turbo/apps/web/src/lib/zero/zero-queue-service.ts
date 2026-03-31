@@ -175,8 +175,12 @@ export async function getRunQueueStatus(
   // Resolve user emails in parallel (for both queued and running)
   const allUserIds = [
     ...new Set([
-      ...queuedRuns.map((r) => r.runUserId),
-      ...runningRuns.map((r) => r.runUserId),
+      ...queuedRuns.map((r) => {
+        return r.runUserId;
+      }),
+      ...runningRuns.map((r) => {
+        return r.runUserId;
+      }),
     ]),
   ];
   const userMap = new Map<string, string>();

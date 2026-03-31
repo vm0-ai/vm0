@@ -27,12 +27,14 @@ export const creditExpiresRecord = pgTable(
     expiresAt: timestamp("expires_at").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
-  (table) => [
-    index("idx_credit_expires_org_active")
-      .on(table.orgId, table.expiresAt)
-      .where(sql`remaining > 0`),
-    uniqueIndex("uq_credit_expires_invoice")
-      .on(table.orgId, table.stripeInvoiceId)
-      .where(sql`stripe_invoice_id IS NOT NULL`),
-  ],
+  (table) => {
+    return [
+      index("idx_credit_expires_org_active")
+        .on(table.orgId, table.expiresAt)
+        .where(sql`remaining > 0`),
+      uniqueIndex("uq_credit_expires_invoice")
+        .on(table.orgId, table.stripeInvoiceId)
+        .where(sql`stripe_invoice_id IS NOT NULL`),
+    ];
+  },
 );

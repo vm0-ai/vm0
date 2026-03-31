@@ -23,20 +23,24 @@ export const slackOrgConnections = pgTable(
     slackUserId: varchar("slack_user_id", { length: 255 }).notNull(),
     slackWorkspaceId: varchar("slack_workspace_id", { length: 255 })
       .notNull()
-      .references(() => slackOrgInstallations.slackWorkspaceId),
+      .references(() => {
+        return slackOrgInstallations.slackWorkspaceId;
+      }),
     vm0UserId: text("vm0_user_id").notNull(),
     dmWelcomeSent: boolean("dm_welcome_sent").default(false).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
-  (table) => [
-    uniqueIndex("idx_slack_org_connections_user_workspace").on(
-      table.slackUserId,
-      table.slackWorkspaceId,
-    ),
-    index("idx_slack_org_connections_workspace").on(table.slackWorkspaceId),
-    index("idx_slack_org_connections_vm0_user_workspace").on(
-      table.vm0UserId,
-      table.slackWorkspaceId,
-    ),
-  ],
+  (table) => {
+    return [
+      uniqueIndex("idx_slack_org_connections_user_workspace").on(
+        table.slackUserId,
+        table.slackWorkspaceId,
+      ),
+      index("idx_slack_org_connections_workspace").on(table.slackWorkspaceId),
+      index("idx_slack_org_connections_vm0_user_workspace").on(
+        table.vm0UserId,
+        table.slackWorkspaceId,
+      ),
+    ];
+  },
 );

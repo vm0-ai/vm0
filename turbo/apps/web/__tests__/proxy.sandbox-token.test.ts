@@ -14,28 +14,38 @@ type ClerkHandler = (
   request: NextRequest,
 ) => Promise<NextResponse | undefined>;
 
-vi.mock("@clerk/nextjs/server", () => ({
-  clerkMiddleware: vi.fn((handler: ClerkHandler) => {
-    // Return a NextMiddleware-shaped function that calls the handler
-    return vi.fn(async (request: NextRequest) => {
-      capturedClerkRequest = request;
-      // Simulate Clerk calling the handler with a mock auth object
-      const auth = { protect: vi.fn() };
-      const result = await handler(auth, request);
-      return result ?? NextResponse.next();
-    });
-  }),
-  createRouteMatcher: vi.fn(() => {
-    // Return a matcher that marks all routes as public
-    return () => true;
-  }),
-}));
+vi.mock("@clerk/nextjs/server", () => {
+  return {
+    clerkMiddleware: vi.fn((handler: ClerkHandler) => {
+      // Return a NextMiddleware-shaped function that calls the handler
+      return vi.fn(async (request: NextRequest) => {
+        capturedClerkRequest = request;
+        // Simulate Clerk calling the handler with a mock auth object
+        const auth = { protect: vi.fn() };
+        const result = await handler(auth, request);
+        return result ?? NextResponse.next();
+      });
+    }),
+    createRouteMatcher: vi.fn(() => {
+      // Return a matcher that marks all routes as public
+      return () => {
+        return true;
+      };
+    }),
+  };
+});
 
 // Mock next-intl/middleware to avoid ESM resolution issues in test environment.
 // This is an external dependency mock (not internal code), which is acceptable.
-vi.mock("next-intl/middleware", () => ({
-  default: () => () => NextResponse.next(),
-}));
+vi.mock("next-intl/middleware", () => {
+  return {
+    default: () => {
+      return () => {
+        return NextResponse.next();
+      };
+    },
+  };
+});
 
 // Import after mocks are set up
 import middleware from "../proxy";

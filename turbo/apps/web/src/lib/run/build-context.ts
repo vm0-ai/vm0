@@ -465,13 +465,15 @@ async function resolveOauthConnectorSecrets(
         ? { type: parsed.data, authMethod: c.authMethod }
         : null;
     })
-    .filter(
-      (c): c is { type: ConnectorType; authMethod: string } => c !== null,
-    );
+    .filter((c): c is { type: ConnectorType; authMethod: string } => {
+      return c !== null;
+    });
 
   // Filter to only allowed connector types when a permission list is provided.
   const allowedConnectors = allowedTypes
-    ? validConnectors.filter(({ type }) => allowedTypes.includes(type))
+    ? validConnectors.filter(({ type }) => {
+        return allowedTypes.includes(type);
+      })
     : validConnectors;
   // Refresh OAuth tokens in parallel.
   // Safe: each connector writes to distinct keys in connectorSecrets (e.g. github_access_token
@@ -483,9 +485,14 @@ async function resolveOauthConnectorSecrets(
           PROVIDER_HANDLERS[type as keyof typeof PROVIDER_HANDLERS];
         return handler?.refreshToken;
       })
-      .map(({ type }) =>
-        refreshConnectorAccessToken(type, orgId, userId, connectorSecrets),
-      ),
+      .map(({ type }) => {
+        return refreshConnectorAccessToken(
+          type,
+          orgId,
+          userId,
+          connectorSecrets,
+        );
+      }),
   );
 
   // Resolve environment mappings from connectors.
@@ -542,7 +549,9 @@ async function resolveOauthConnectorSecrets(
       Object.keys(secretConnectorMap).length > 0
         ? secretConnectorMap
         : undefined,
-    connectorTypes: allowedConnectors.map((c) => c.type),
+    connectorTypes: allowedConnectors.map((c) => {
+      return c.type;
+    }),
   };
 }
 
@@ -564,7 +573,9 @@ async function fetchReferencedSecrets(
     return undefined;
   }
 
-  const referencedNames = grouped.secrets.map((r) => r.name);
+  const referencedNames = grouped.secrets.map((r) => {
+    return r.name;
+  });
   log.debug(`Secrets referenced in environment: ${referencedNames.join(", ")}`);
 
   // Fetch org and user secrets in parallel, merge with user > org priority
@@ -735,9 +746,9 @@ async function resolveSecretsAndEnvironment(
   mergedVars: Record<string, string> | undefined;
 }> {
   // Model provider secret injection
-  const hasExplicitModelProviderConfig = MODEL_PROVIDER_ENV_VARS.some(
-    (v) => firstAgent?.environment?.[v] !== undefined,
-  );
+  const hasExplicitModelProviderConfig = MODEL_PROVIDER_ENV_VARS.some((v) => {
+    return firstAgent?.environment?.[v] !== undefined;
+  });
   const framework = firstAgent?.framework || "claude-code";
 
   // Run all secret resolution and variable fetching in parallel.
@@ -763,7 +774,9 @@ async function resolveSecretsAndEnvironment(
   ]);
 
   const rawApiTokenTypes = allowedConnectorTypes
-    ? apiTokenTypes.filter((t) => allowedConnectorTypes.includes(t))
+    ? apiTokenTypes.filter((t) => {
+        return allowedConnectorTypes.includes(t);
+      })
     : apiTokenTypes;
 
   const connectorTypes = [
@@ -810,10 +823,12 @@ async function resolveSecretsAndEnvironment(
   // which expandEnvironmentFromCompose needs to replace secrets with placeholders.
   const connectorFirewallConfigs: ExpandedFirewallConfig[] = connectorTypes
     .filter(isFirewallConnectorType)
-    .map((type) => ({
-      ...getConnectorFirewall(type),
-      ref: type,
-    }));
+    .map((type) => {
+      return {
+        ...getConnectorFirewall(type),
+        ref: type,
+      };
+    });
 
   // Expand environment variables from compose config.
   // All firewalls (model provider, connector) are passed via the `firewalls` param
@@ -937,12 +952,14 @@ export function filterSecretConnectorMap(
 ): Record<string, string> | undefined {
   if (!secretConnectorMap) return undefined;
   const overrideKeys = new Set(
-    overrideSources.flatMap((s) => (s ? Object.keys(s) : [])),
+    overrideSources.flatMap((s) => {
+      return s ? Object.keys(s) : [];
+    }),
   );
   const filtered = Object.fromEntries(
-    Object.entries(secretConnectorMap).filter(
-      ([key]) => !overrideKeys.has(key),
-    ),
+    Object.entries(secretConnectorMap).filter(([key]) => {
+      return !overrideKeys.has(key);
+    }),
   );
   return Object.keys(filtered).length > 0 ? filtered : undefined;
 }
@@ -1002,9 +1019,9 @@ function applyConnectorPolicies(
         };
       }
 
-      const allowed = api.permissions?.filter(
-        (perm) => refPolicies[perm.name] === "allow",
-      );
+      const allowed = api.permissions?.filter((perm) => {
+        return refPolicies[perm.name] === "allow";
+      });
 
       if (!allowed || allowed.length === 0) return null;
 
@@ -1015,9 +1032,9 @@ function applyConnectorPolicies(
       };
     });
 
-    const validApis = apis.filter(
-      (api): api is NonNullable<typeof api> => api !== null,
-    );
+    const validApis = apis.filter((api): api is NonNullable<typeof api> => {
+      return api !== null;
+    });
     if (validApis.length === 0) continue;
 
     result.push({ name: fw.name, ref: fw.ref, apis: validApis });

@@ -95,9 +95,9 @@ export function verifySenderAuthenticity(
   headers: Record<string, string>,
 ): SenderVerification {
   // Case-insensitive header lookup
-  const headerKey = Object.keys(headers).find(
-    (k) => k.toLowerCase() === "authentication-results",
-  );
+  const headerKey = Object.keys(headers).find((k) => {
+    return k.toLowerCase() === "authentication-results";
+  });
 
   if (!headerKey) {
     return {

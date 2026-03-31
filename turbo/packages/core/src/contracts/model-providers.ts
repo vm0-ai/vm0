@@ -356,7 +356,9 @@ type FirewallSupportedProvider = Exclude<
  */
 export function getSelectableProviderTypes(): ModelProviderType[] {
   return (Object.keys(MODEL_PROVIDER_TYPES) as ModelProviderType[]).filter(
-    (type) => !HIDDEN_PROVIDER_TYPES.has(type),
+    (type) => {
+      return !HIDDEN_PROVIDER_TYPES.has(type);
+    },
   );
 }
 

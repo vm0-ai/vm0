@@ -124,7 +124,9 @@ function CreditUsageBar({
         className="w-72 p-3 text-left shadow-lg"
         onPointerEnter={show}
         onPointerLeave={scheduleHide}
-        onOpenAutoFocus={(e) => e.preventDefault()}
+        onOpenAutoFocus={(e) => {
+          return e.preventDefault();
+        }}
       >
         <p className="text-sm font-medium text-foreground">Credit breakdown</p>
         <ul className="mt-2.5 space-y-2 text-xs text-muted-foreground">
@@ -238,7 +240,9 @@ function InlineCapInput({
       step={1}
       placeholder="No limit"
       value={value}
-      onChange={(e) => setValue(e.target.value)}
+      onChange={(e) => {
+        return setValue(e.target.value);
+      }}
       onBlur={commit}
       onKeyDown={(e) => {
         if (e.key === "Enter") {
@@ -295,7 +299,11 @@ export function OrgUsageTab() {
 
   const orgMembers =
     membersLoadable.state === "hasData" ? membersLoadable.data : [];
-  const memberMap = new Map(orgMembers.map((m) => [m.userId, m]));
+  const memberMap = new Map(
+    orgMembers.map((m) => {
+      return [m.userId, m];
+    }),
+  );
 
   const period = usageData?.period ?? null;
   const [members, setMembers] = useState<MemberUsage[]>([]);
@@ -303,22 +311,30 @@ export function OrgUsageTab() {
   // Sync from loadable to local state for optimistic cap updates
   const rawMembers = usageData?.members ?? [];
   const rawKey = rawMembers
-    .map((m) => `${m.userId}:${m.creditsCharged}`)
+    .map((m) => {
+      return `${m.userId}:${m.creditsCharged}`;
+    })
     .join(",");
   const [prevKey, setPrevKey] = useState("");
   if (rawKey !== prevKey) {
     setPrevKey(rawKey);
     setMembers(
-      rawMembers.slice().sort((a, b) => b.creditsCharged - a.creditsCharged),
+      rawMembers.slice().sort((a, b) => {
+        return b.creditsCharged - a.creditsCharged;
+      }),
     );
   }
 
-  const totalUsed = members.reduce((s, m) => s + m.creditsCharged, 0);
+  const totalUsed = members.reduce((s, m) => {
+    return s + m.creditsCharged;
+  }, 0);
 
   const handleCapSaved = (userId: string, cap: number | null) => {
-    setMembers((prev) =>
-      prev.map((m) => (m.userId === userId ? { ...m, creditCap: cap } : m)),
-    );
+    setMembers((prev) => {
+      return prev.map((m) => {
+        return m.userId === userId ? { ...m, creditCap: cap } : m;
+      });
+    });
   };
 
   return (
@@ -442,7 +458,9 @@ export function OrgUsageTab() {
                     {isAdmin ? (
                       <InlineCapInput
                         member={member}
-                        onSaved={(cap) => handleCapSaved(member.userId, cap)}
+                        onSaved={(cap) => {
+                          return handleCapSaved(member.userId, cap);
+                        }}
                       />
                     ) : (
                       <span className="text-[13px] tabular-nums text-muted-foreground">

@@ -268,9 +268,13 @@ describe("createZeroRun()", () => {
       expect(job).toBeDefined();
       const firewalls = job!.executionContext.experimentalFirewalls;
       expect(firewalls).toBeDefined();
-      const ghFirewall = firewalls!.find((fw) => fw.ref === "github");
+      const ghFirewall = firewalls!.find((fw) => {
+        return fw.ref === "github";
+      });
       expect(ghFirewall).toBeDefined();
-      const permNames = ghFirewall!.apis[0]!.permissions!.map((p) => p.name);
+      const permNames = ghFirewall!.apis[0]!.permissions!.map((p) => {
+        return p.name;
+      });
       expect(permNames).toContain("actions:read");
       expect(permNames).toContain("issues:read");
       expect(permNames).not.toContain("actions:write");
@@ -291,10 +295,14 @@ describe("createZeroRun()", () => {
       expect(job).toBeDefined();
       const firewalls = job!.executionContext.experimentalFirewalls;
       expect(firewalls).toBeDefined();
-      const slackFw = firewalls!.find((fw) => fw.ref === "slack");
+      const slackFw = firewalls!.find((fw) => {
+        return fw.ref === "slack";
+      });
       expect(slackFw).toBeDefined();
       // Slack has default policies — only default-allowed permissions included
-      const permNames = slackFw!.apis[0]!.permissions!.map((p) => p.name);
+      const permNames = slackFw!.apis[0]!.permissions!.map((p) => {
+        return p.name;
+      });
       expect(permNames).toContain("channels:read");
       expect(permNames).toContain("users:read");
       expect(permNames).not.toContain("admin");
@@ -320,7 +328,9 @@ describe("createZeroRun()", () => {
       expect(job).toBeDefined();
       // All denied → no firewall entry
       const slackFw = job!.executionContext.experimentalFirewalls?.find(
-        (fw) => fw.ref === "slack",
+        (fw) => {
+          return fw.ref === "slack";
+        },
       );
       expect(slackFw).toBeUndefined();
     });
@@ -342,8 +352,12 @@ describe("createZeroRun()", () => {
       expect(job).toBeDefined();
       const firewalls = job!.executionContext.experimentalFirewalls;
       expect(firewalls).toBeDefined();
-      const ghFw = firewalls!.find((fw) => fw.ref === "github");
-      const slackFw = firewalls!.find((fw) => fw.ref === "slack");
+      const ghFw = firewalls!.find((fw) => {
+        return fw.ref === "github";
+      });
+      const slackFw = firewalls!.find((fw) => {
+        return fw.ref === "slack";
+      });
       expect(ghFw).toBeDefined();
       expect(slackFw).toBeDefined();
     });

@@ -21,18 +21,32 @@ export const emailThreadSessions = pgTable(
     userId: varchar("user_id", { length: 255 }).notNull(),
     agentId: uuid("agent_id")
       .notNull()
-      .references(() => agentComposes.id, { onDelete: "cascade" }),
+      .references(
+        () => {
+          return agentComposes.id;
+        },
+        { onDelete: "cascade" },
+      ),
     agentSessionId: uuid("agent_session_id")
       .notNull()
-      .references(() => agentSessions.id, { onDelete: "cascade" }),
+      .references(
+        () => {
+          return agentSessions.id;
+        },
+        { onDelete: "cascade" },
+      ),
     orgId: varchar("org_id", { length: 255 }),
     lastEmailMessageId: varchar("last_email_message_id", { length: 512 }),
     replyToToken: varchar("reply_to_token", { length: 255 }).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (table) => [
-    uniqueIndex("idx_email_thread_sessions_reply_token").on(table.replyToToken),
-    index("idx_email_thread_sessions_user").on(table.userId),
-  ],
+  (table) => {
+    return [
+      uniqueIndex("idx_email_thread_sessions_reply_token").on(
+        table.replyToToken,
+      ),
+      index("idx_email_thread_sessions_user").on(table.userId),
+    ];
+  },
 );

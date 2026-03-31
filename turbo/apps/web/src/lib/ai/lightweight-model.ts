@@ -47,7 +47,9 @@ async function generateText(messages: ChatMessage[]): Promise<string | null> {
   });
 
   if (!response.ok) {
-    const text = await response.text().catch(() => "unknown error");
+    const text = await response.text().catch(() => {
+      return "unknown error";
+    });
     throw new Error(`OpenRouter request failed: ${response.status} ${text}`);
   }
 
@@ -107,7 +109,9 @@ export async function generateChatTitle(
     // Include up to the last 10 messages for context, truncated to keep input small
     const recent = previousMessages.slice(-10);
     context = recent
-      .map((m) => `${m.role}: ${m.content.slice(0, 200)}`)
+      .map((m) => {
+        return `${m.role}: ${m.content.slice(0, 200)}`;
+      })
       .join("\n");
     context = `Previous conversation:\n${context}\n\n`;
   }

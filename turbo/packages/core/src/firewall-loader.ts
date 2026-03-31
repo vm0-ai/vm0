@@ -95,7 +95,9 @@ export async function fetchFirewallConfig(
   const result = firewallConfigSchema.safeParse(yamlData);
   if (!result.success) {
     const issues = result.error.issues
-      .map((i) => `${i.path.join(".")}: ${i.message}`)
+      .map((i) => {
+        return `${i.path.join(".")}: ${i.message}`;
+      })
       .join("; ");
     throw new Error(`Invalid firewall config "${ref}": ${issues}`);
   }

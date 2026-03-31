@@ -14,18 +14,24 @@ import { reloadEnv } from "../../../../../../src/env";
 const mockGetUserList = vi.fn();
 const mockGetOrganizationMembershipList = vi.fn();
 const mockGetOrganization = vi.fn();
-vi.mock("@clerk/nextjs/server", () => ({
-  clerkClient: vi.fn(async () => ({
-    users: {
-      getUserList: mockGetUserList,
-      getOrganizationMembershipList: mockGetOrganizationMembershipList,
-    },
-    organizations: {
-      getOrganization: mockGetOrganization,
-    },
-  })),
-  auth: vi.fn(async () => ({ userId: null, orgId: null, orgRole: null })),
-}));
+vi.mock("@clerk/nextjs/server", () => {
+  return {
+    clerkClient: vi.fn(async () => {
+      return {
+        users: {
+          getUserList: mockGetUserList,
+          getOrganizationMembershipList: mockGetOrganizationMembershipList,
+        },
+        organizations: {
+          getOrganization: mockGetOrganization,
+        },
+      };
+    }),
+    auth: vi.fn(async () => {
+      return { userId: null, orgId: null, orgRole: null };
+    }),
+  };
+});
 
 const context = testContext();
 

@@ -220,9 +220,9 @@ describe("GET /api/logs/search", () => {
   });
 
   it("should set hasMore when results exceed limit", async () => {
-    const events = Array.from({ length: 5 }, (_, i) =>
-      createAxiomAgentEvent(testRunId, i, `Match ${i}`),
-    );
+    const events = Array.from({ length: 5 }, (_, i) => {
+      return createAxiomAgentEvent(testRunId, i, `Match ${i}`);
+    });
     context.mocks.axiom.queryAxiom.mockResolvedValueOnce(events);
 
     const request = createTestRequest(

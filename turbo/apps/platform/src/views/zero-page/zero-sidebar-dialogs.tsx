@@ -135,10 +135,18 @@ export function ManagePinnedAgentsDialog({
   const setDraftIds = useSet(setDraftPinnedIds$);
 
   const orderedPinned = draftIds
-    .map((id) => subagents.find((a) => a.id === id))
-    .filter((a): a is SubagentInfo => a !== undefined);
+    .map((id) => {
+      return subagents.find((a) => {
+        return a.id === id;
+      });
+    })
+    .filter((a): a is SubagentInfo => {
+      return a !== undefined;
+    });
 
-  const unpinned = subagents.filter((a) => !draftIds.includes(a.id));
+  const unpinned = subagents.filter((a) => {
+    return !draftIds.includes(a.id);
+  });
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -165,7 +173,11 @@ export function ManagePinnedAgentsDialog({
 
   const togglePin = (agentId: string) => {
     if (draftIds.includes(agentId)) {
-      setDraftIds(draftIds.filter((id) => id !== agentId));
+      setDraftIds(
+        draftIds.filter((id) => {
+          return id !== agentId;
+        }),
+      );
     } else {
       setDraftIds([...draftIds, agentId]);
     }
@@ -235,17 +247,23 @@ export function ManagePinnedAgentsDialog({
               onDragEnd={handleDragEnd}
             >
               <SortableContext
-                items={orderedPinned.map((a) => a.id)}
+                items={orderedPinned.map((a) => {
+                  return a.id;
+                })}
                 strategy={verticalListSortingStrategy}
               >
                 <div className="flex flex-col mt-1">
-                  {orderedPinned.map((agent) => (
-                    <SortablePinnedAgent
-                      key={agent.id}
-                      agent={agent}
-                      onUnpin={() => togglePin(agent.id)}
-                    />
-                  ))}
+                  {orderedPinned.map((agent) => {
+                    return (
+                      <SortablePinnedAgent
+                        key={agent.id}
+                        agent={agent}
+                        onUnpin={() => {
+                          return togglePin(agent.id);
+                        }}
+                      />
+                    );
+                  })}
                 </div>
               </SortableContext>
             </DndContext>
@@ -258,38 +276,42 @@ export function ManagePinnedAgentsDialog({
               Available agents
             </span>
             <div className="flex flex-col mt-1">
-              {unpinned.map((agent) => (
-                <div
-                  key={agent.id}
-                  className="group flex items-center gap-2 px-1 py-2 rounded-lg hover:bg-accent transition-colors"
-                >
-                  <AgentAvatarImg
-                    name={agent.id}
-                    alt={agent.displayName ?? agent.id}
-                    className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
-                  />
-                  <span className="text-sm text-foreground flex-1 truncate">
-                    {agent.displayName ?? agent.id}
-                  </span>
-                  <TooltipProvider delayDuration={200}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          type="button"
-                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-all duration-150 group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-muted-foreground/12 hover:text-foreground dark:hover:bg-muted-foreground/18"
-                          onClick={() => togglePin(agent.id)}
-                          aria-label="Pin to sidebar"
-                        >
-                          <IconPin size={16} stroke={2} />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="right">
-                        <p className="text-xs">Pin to sidebar</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </div>
-              ))}
+              {unpinned.map((agent) => {
+                return (
+                  <div
+                    key={agent.id}
+                    className="group flex items-center gap-2 px-1 py-2 rounded-lg hover:bg-accent transition-colors"
+                  >
+                    <AgentAvatarImg
+                      name={agent.id}
+                      alt={agent.displayName ?? agent.id}
+                      className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
+                    />
+                    <span className="text-sm text-foreground flex-1 truncate">
+                      {agent.displayName ?? agent.id}
+                    </span>
+                    <TooltipProvider delayDuration={200}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-all duration-150 group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-muted-foreground/12 hover:text-foreground dark:hover:bg-muted-foreground/18"
+                            onClick={() => {
+                              return togglePin(agent.id);
+                            }}
+                            aria-label="Pin to sidebar"
+                          >
+                            <IconPin size={16} stroke={2} />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="right">
+                          <p className="text-xs">Pin to sidebar</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -307,7 +329,9 @@ export function ManagePinnedAgentsDialog({
             variant="outline"
             size="sm"
             className="zero-btn-morandi"
-            onClick={() => onOpenChange(false)}
+            onClick={() => {
+              return onOpenChange(false);
+            }}
           >
             Cancel
           </Button>
@@ -349,32 +373,46 @@ export function ChatListDialog({
   );
 
   const pinned = pinnedIds
-    .map((id) => subagents.find((a) => a.id === id))
-    .filter((a): a is SubagentInfo => a !== undefined);
+    .map((id) => {
+      return subagents.find((a) => {
+        return a.id === id;
+      });
+    })
+    .filter((a): a is SubagentInfo => {
+      return a !== undefined;
+    });
 
-  const unpinned = subagents.filter((a) => !pinnedIds.includes(a.id));
+  const unpinned = subagents.filter((a) => {
+    return !pinnedIds.includes(a.id);
+  });
 
   const trimmedQuery = query.trim().toLowerCase();
   const filteredPinned = trimmedQuery
-    ? pinned.filter(
-        (a) =>
+    ? pinned.filter((a) => {
+        return (
           a.id.toLowerCase().includes(trimmedQuery) ||
-          (a.displayName ?? "").toLowerCase().includes(trimmedQuery),
-      )
+          (a.displayName ?? "").toLowerCase().includes(trimmedQuery)
+        );
+      })
     : pinned;
   const filteredUnpinned = trimmedQuery
-    ? unpinned.filter(
-        (a) =>
+    ? unpinned.filter((a) => {
+        return (
           a.id.toLowerCase().includes(trimmedQuery) ||
-          (a.displayName ?? "").toLowerCase().includes(trimmedQuery),
-      )
+          (a.displayName ?? "").toLowerCase().includes(trimmedQuery)
+        );
+      })
     : unpinned;
   const showLead =
     !trimmedQuery || displayName.toLowerCase().includes(trimmedQuery);
 
   const togglePin = (agentId: string) => {
     if (pinnedIds.includes(agentId)) {
-      onPinnedIdsChange(pinnedIds.filter((id) => id !== agentId));
+      onPinnedIdsChange(
+        pinnedIds.filter((id) => {
+          return id !== agentId;
+        }),
+      );
     } else {
       onPinnedIdsChange([...pinnedIds, agentId]);
     }
@@ -423,14 +461,18 @@ export function ChatListDialog({
             <Input
               type="text"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => {
+                return setQuery(e.target.value);
+              }}
               placeholder="Search agents..."
               className={`pl-9 ${query ? "pr-9" : ""}`}
             />
             {query && (
               <button
                 type="button"
-                onClick={() => setQuery("")}
+                onClick={() => {
+                  return setQuery("");
+                }}
                 className="absolute right-1.5 top-1/2 -translate-y-1/2 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                 aria-label="Clear search"
               >
@@ -449,7 +491,9 @@ export function ChatListDialog({
               </span>
               <button
                 type="button"
-                onClick={() => handleChat(null)}
+                onClick={() => {
+                  return handleChat(null);
+                }}
                 className="flex w-full items-center gap-2 px-1 py-2 rounded-lg hover:bg-accent transition-colors"
               >
                 {zeroAvatarSrc ? (
@@ -488,18 +532,26 @@ export function ChatListDialog({
                 onDragEnd={handleDragEnd}
               >
                 <SortableContext
-                  items={filteredPinned.map((a) => a.id)}
+                  items={filteredPinned.map((a) => {
+                    return a.id;
+                  })}
                   strategy={verticalListSortingStrategy}
                 >
                   <div className="flex flex-col mt-1">
-                    {filteredPinned.map((agent) => (
-                      <SortablePinnedAgent
-                        key={agent.id}
-                        agent={agent}
-                        onUnpin={() => togglePin(agent.id)}
-                        onChat={() => handleChat(agent.id)}
-                      />
-                    ))}
+                    {filteredPinned.map((agent) => {
+                      return (
+                        <SortablePinnedAgent
+                          key={agent.id}
+                          agent={agent}
+                          onUnpin={() => {
+                            return togglePin(agent.id);
+                          }}
+                          onChat={() => {
+                            return handleChat(agent.id);
+                          }}
+                        />
+                      );
+                    })}
                   </div>
                 </SortableContext>
               </DndContext>
@@ -513,44 +565,50 @@ export function ChatListDialog({
                 Others
               </span>
               <div className="flex flex-col mt-1">
-                {filteredUnpinned.map((agent) => (
-                  <div
-                    key={agent.id}
-                    className="flex items-center gap-2 px-1 py-2 rounded-lg hover:bg-accent transition-colors group"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => handleChat(agent.id)}
-                      className="flex items-center gap-2 flex-1 min-w-0"
+                {filteredUnpinned.map((agent) => {
+                  return (
+                    <div
+                      key={agent.id}
+                      className="flex items-center gap-2 px-1 py-2 rounded-lg hover:bg-accent transition-colors group"
                     >
-                      <AgentAvatarImg
-                        name={agent.id}
-                        alt={agent.displayName ?? agent.id}
-                        className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
-                      />
-                      <span className="text-sm text-foreground truncate">
-                        {agent.displayName ?? agent.id}
-                      </span>
-                    </button>
-                    <TooltipProvider delayDuration={200}>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button
-                            type="button"
-                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-all duration-150 group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-muted-foreground/12 hover:text-foreground dark:hover:bg-muted-foreground/18"
-                            onClick={() => togglePin(agent.id)}
-                            aria-label="Pin to sidebar"
-                          >
-                            <IconPin size={16} stroke={2} />
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent side="right">
-                          <p className="text-xs">Pin to sidebar</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </div>
-                ))}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          return handleChat(agent.id);
+                        }}
+                        className="flex items-center gap-2 flex-1 min-w-0"
+                      >
+                        <AgentAvatarImg
+                          name={agent.id}
+                          alt={agent.displayName ?? agent.id}
+                          className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
+                        />
+                        <span className="text-sm text-foreground truncate">
+                          {agent.displayName ?? agent.id}
+                        </span>
+                      </button>
+                      <TooltipProvider delayDuration={200}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-all duration-150 group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-muted-foreground/12 hover:text-foreground dark:hover:bg-muted-foreground/18"
+                              onClick={() => {
+                                return togglePin(agent.id);
+                              }}
+                              aria-label="Pin to sidebar"
+                            >
+                              <IconPin size={16} stroke={2} />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="right">
+                            <p className="text-xs">Pin to sidebar</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

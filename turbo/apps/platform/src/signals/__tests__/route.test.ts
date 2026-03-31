@@ -84,7 +84,9 @@ describe("route", () => {
         [
           {
             path: "/",
-            setup: command(() => void 0),
+            setup: command(() => {
+              return void 0;
+            }),
           },
           {
             path: "/home",
@@ -110,7 +112,9 @@ describe("route", () => {
       createPushStateMock(signal);
 
       mockLocation({ pathname: "/", search: "" }, signal);
-      const mockSetup$ = command(() => void 0);
+      const mockSetup$ = command(() => {
+        return void 0;
+      });
 
       // Initialize routes
       await store.set(
@@ -118,7 +122,9 @@ describe("route", () => {
         [
           {
             path: "/",
-            setup: command(() => void 0),
+            setup: command(() => {
+              return void 0;
+            }),
           },
           { path: "/home", setup: mockSetup$ },
         ],
@@ -145,7 +151,9 @@ describe("route", () => {
         [
           {
             path: "/",
-            setup: command(() => void 0),
+            setup: command(() => {
+              return void 0;
+            }),
           },
           {
             path: "/home",
@@ -185,11 +193,15 @@ describe("route", () => {
         [
           {
             path: "/",
-            setup: command(() => void 0),
+            setup: command(() => {
+              return void 0;
+            }),
           },
           {
             path: "/home",
-            setup: command(() => void 0),
+            setup: command(() => {
+              return void 0;
+            }),
           },
         ],
         signal,
@@ -219,7 +231,12 @@ describe("route", () => {
       await store.set(
         initRoutes$,
         [
-          { path: "/", setup: command(() => void 0) },
+          {
+            path: "/",
+            setup: command(() => {
+              return void 0;
+            }),
+          },
           {
             path: "/dashboard",
             setup: command((_, signal: AbortSignal) => {
@@ -227,7 +244,12 @@ describe("route", () => {
               calledSignal = signal;
             }),
           },
-          { path: "/profile", setup: command(() => void 0) },
+          {
+            path: "/profile",
+            setup: command(() => {
+              return void 0;
+            }),
+          },
         ],
         signal,
       );
@@ -285,7 +307,12 @@ describe("route", () => {
               return Promise.resolve();
             }),
           },
-          { path: "/dashboard", setup: command(() => void 0) },
+          {
+            path: "/dashboard",
+            setup: command(() => {
+              return void 0;
+            }),
+          },
         ],
         signal,
       );
@@ -305,7 +332,12 @@ describe("route", () => {
       await store.set(
         initRoutes$,
         [
-          { path: "/", setup: command(() => void 0) },
+          {
+            path: "/",
+            setup: command(() => {
+              return void 0;
+            }),
+          },
           {
             path: "/dashboard",
             setup: command(() => {

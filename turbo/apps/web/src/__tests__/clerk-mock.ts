@@ -152,15 +152,19 @@ export function mockClerk(options: {
             // Return matching users when queried by userId array
             if (userIdQuery && userIdQuery.length > 0 && options.userId) {
               const matchedUsers = userIdQuery
-                .filter((uid) => uid === options.userId)
-                .map((uid) => ({
-                  id: uid,
-                  emailAddresses: [{ id: "email_1", emailAddress: email }],
-                  primaryEmailAddressId: "email_1",
-                  firstName: options.firstName ?? null,
-                  lastName: options.lastName ?? null,
-                  imageUrl: "",
-                }));
+                .filter((uid) => {
+                  return uid === options.userId;
+                })
+                .map((uid) => {
+                  return {
+                    id: uid,
+                    emailAddresses: [{ id: "email_1", emailAddress: email }],
+                    primaryEmailAddressId: "email_1",
+                    firstName: options.firstName ?? null,
+                    lastName: options.lastName ?? null,
+                    imageUrl: "",
+                  };
+                });
               return Promise.resolve({ data: matchedUsers });
             }
             return Promise.resolve({ data: [] });
@@ -172,23 +176,25 @@ export function mockClerk(options: {
           // Return orgs for the queried user, not just the session user.
           // This supports webhook routes where sandbox tokens pass a userId
           // different from the Clerk session.
-          const queryCreated = createdOrgs.filter(
-            (o) => o.creatorUserId === queryUserId,
-          );
+          const queryCreated = createdOrgs.filter((o) => {
+            return o.creatorUserId === queryUserId;
+          });
           const orgs =
             queryUserId === options.userId
               ? [...clerkOrgs, ...queryCreated]
               : queryCreated;
           return Promise.resolve({
-            data: orgs.map((org) => ({
-              organization: {
-                id: org.id,
-                slug: org.slug,
-                name: org.name,
-              },
-              role: ("role" in org ? org.role : null) ?? "org:admin",
-              publicUserData: { userId: queryUserId },
-            })),
+            data: orgs.map((org) => {
+              return {
+                organization: {
+                  id: org.id,
+                  slug: org.slug,
+                  name: org.name,
+                },
+                role: ("role" in org ? org.role : null) ?? "org:admin",
+                publicUserData: { userId: queryUserId },
+              };
+            }),
           });
         }),
     },
@@ -212,9 +218,9 @@ export function mockClerk(options: {
             // Return members of this org.
             // For clerkOrgs: session user is a member.
             // For createdOrgs: the creator is a member (regardless of session).
-            const matchedClerkOrg = clerkOrgs.find(
-              (o) => o.id === organizationId,
-            );
+            const matchedClerkOrg = clerkOrgs.find((o) => {
+              return o.id === organizationId;
+            });
             if (matchedClerkOrg && options.userId) {
               return Promise.resolve({
                 data: [
@@ -227,7 +233,9 @@ export function mockClerk(options: {
                 ],
               });
             }
-            const created = createdOrgs.find((o) => o.id === organizationId);
+            const created = createdOrgs.find((o) => {
+              return o.id === organizationId;
+            });
             if (created) {
               return Promise.resolve({
                 data: [
@@ -253,21 +261,35 @@ export function mockClerk(options: {
             let org;
             if (params.organizationId) {
               org =
-                createdOrgs.find((o) => o.id === params.organizationId) ??
-                clerkOrgs.find((o) => o.id === params.organizationId);
+                createdOrgs.find((o) => {
+                  return o.id === params.organizationId;
+                }) ??
+                clerkOrgs.find((o) => {
+                  return o.id === params.organizationId;
+                });
             } else if (params.slug) {
               // Also check slug overrides (an org's slug may have been updated)
               const overriddenOrgId = [...orgSlugOverrides.entries()].find(
-                ([, slug]) => slug === params.slug,
+                ([, slug]) => {
+                  return slug === params.slug;
+                },
               )?.[0];
               if (overriddenOrgId) {
                 org =
-                  createdOrgs.find((o) => o.id === overriddenOrgId) ??
-                  clerkOrgs.find((o) => o.id === overriddenOrgId);
+                  createdOrgs.find((o) => {
+                    return o.id === overriddenOrgId;
+                  }) ??
+                  clerkOrgs.find((o) => {
+                    return o.id === overriddenOrgId;
+                  });
               } else {
                 org =
-                  createdOrgs.find((o) => o.slug === params.slug) ??
-                  clerkOrgs.find((o) => o.slug === params.slug);
+                  createdOrgs.find((o) => {
+                    return o.slug === params.slug;
+                  }) ??
+                  clerkOrgs.find((o) => {
+                    return o.slug === params.slug;
+                  });
               }
             }
             if (!org) {

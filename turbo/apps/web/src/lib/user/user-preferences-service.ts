@@ -13,7 +13,9 @@ function toStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
   }
-  return value.filter((item): item is string => typeof item === "string");
+  return value.filter((item): item is string => {
+    return typeof item === "string";
+  });
 }
 
 type SendMode = "enter" | "cmd-enter";

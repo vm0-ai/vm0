@@ -164,7 +164,9 @@ describe("skill resolve integration", () => {
       }),
     );
 
-    mockSpawn.mockImplementation(() => createMockChildProcess(0) as never);
+    mockSpawn.mockImplementation(() => {
+      return createMockChildProcess(0) as never;
+    });
   });
 
   afterEach(() => {
@@ -207,12 +209,28 @@ agents:
     await composeCommand.parseAsync(["node", "cli", "vm0.yaml", "--yes"]);
 
     const allLogs = mockConsoleLog.mock.calls
-      .map((call) => call[0])
-      .filter((log): log is string => typeof log === "string");
+      .map((call) => {
+        return call[0];
+      })
+      .filter((log): log is string => {
+        return typeof log === "string";
+      });
 
-    expect(allLogs.some((log) => log.includes("(cached)"))).toBe(true);
-    expect(allLogs.some((log) => log.includes("slack"))).toBe(true);
-    expect(allLogs.some((log) => log.includes("Downloading"))).toBe(false);
+    expect(
+      allLogs.some((log) => {
+        return log.includes("(cached)");
+      }),
+    ).toBe(true);
+    expect(
+      allLogs.some((log) => {
+        return log.includes("slack");
+      }),
+    ).toBe(true);
+    expect(
+      allLogs.some((log) => {
+        return log.includes("Downloading");
+      }),
+    ).toBe(false);
     expect(gitCheckoutCalled).toBe(false);
   });
 
@@ -245,11 +263,23 @@ agents:
     await composeCommand.parseAsync(["node", "cli", "vm0.yaml", "--yes"]);
 
     const allLogs = mockConsoleLog.mock.calls
-      .map((call) => call[0])
-      .filter((log): log is string => typeof log === "string");
+      .map((call) => {
+        return call[0];
+      })
+      .filter((log): log is string => {
+        return typeof log === "string";
+      });
 
-    expect(allLogs.some((log) => log.includes("Downloading"))).toBe(true);
-    expect(allLogs.some((log) => log.includes("(cached)"))).toBe(false);
+    expect(
+      allLogs.some((log) => {
+        return log.includes("Downloading");
+      }),
+    ).toBe(true);
+    expect(
+      allLogs.some((log) => {
+        return log.includes("(cached)");
+      }),
+    ).toBe(false);
   });
 
   it("mixed resolved and unresolved skills", async () => {
@@ -288,11 +318,23 @@ agents:
     await composeCommand.parseAsync(["node", "cli", "vm0.yaml", "--yes"]);
 
     const allLogs = mockConsoleLog.mock.calls
-      .map((call) => call[0])
-      .filter((log): log is string => typeof log === "string");
+      .map((call) => {
+        return call[0];
+      })
+      .filter((log): log is string => {
+        return typeof log === "string";
+      });
 
-    expect(allLogs.some((log) => log.includes("(cached)"))).toBe(true);
-    expect(allLogs.some((log) => log.includes("Downloading"))).toBe(true);
+    expect(
+      allLogs.some((log) => {
+        return log.includes("(cached)");
+      }),
+    ).toBe(true);
+    expect(
+      allLogs.some((log) => {
+        return log.includes("Downloading");
+      }),
+    ).toBe(true);
   });
 
   it("graceful degradation on 404", async () => {
@@ -321,12 +363,24 @@ agents:
     await composeCommand.parseAsync(["node", "cli", "vm0.yaml", "--yes"]);
 
     const allLogs = mockConsoleLog.mock.calls
-      .map((call) => call[0])
-      .filter((log): log is string => typeof log === "string");
+      .map((call) => {
+        return call[0];
+      })
+      .filter((log): log is string => {
+        return typeof log === "string";
+      });
 
     // Falls back to old flow
-    expect(allLogs.some((log) => log.includes("Downloading"))).toBe(true);
-    expect(allLogs.some((log) => log.includes("(cached)"))).toBe(false);
+    expect(
+      allLogs.some((log) => {
+        return log.includes("Downloading");
+      }),
+    ).toBe(true);
+    expect(
+      allLogs.some((log) => {
+        return log.includes("(cached)");
+      }),
+    ).toBe(false);
   });
 
   it("graceful degradation on network error", async () => {
@@ -355,11 +409,23 @@ agents:
     await composeCommand.parseAsync(["node", "cli", "vm0.yaml", "--yes"]);
 
     const allLogs = mockConsoleLog.mock.calls
-      .map((call) => call[0])
-      .filter((log): log is string => typeof log === "string");
+      .map((call) => {
+        return call[0];
+      })
+      .filter((log): log is string => {
+        return typeof log === "string";
+      });
 
     // Falls back to old flow
-    expect(allLogs.some((log) => log.includes("Downloading"))).toBe(true);
-    expect(allLogs.some((log) => log.includes("(cached)"))).toBe(false);
+    expect(
+      allLogs.some((log) => {
+        return log.includes("Downloading");
+      }),
+    ).toBe(true);
+    expect(
+      allLogs.some((log) => {
+        return log.includes("(cached)");
+      }),
+    ).toBe(false);
   });
 });

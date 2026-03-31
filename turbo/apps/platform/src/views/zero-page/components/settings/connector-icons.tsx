@@ -10,10 +10,9 @@ export const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> =
             eager: true,
             import: "default",
           }),
-        ).map(([path, url]) => [
-          path.replace("./icons/", "").replace(".svg", ""),
-          url,
-        ]),
+        ).map(([path, url]) => {
+          return [path.replace("./icons/", "").replace(".svg", ""), url];
+        }),
       );
 
       const connectorKeys = Object.keys(CONNECTOR_TYPES) as ConnectorType[];

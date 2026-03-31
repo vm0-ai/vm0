@@ -40,7 +40,9 @@ export const setupTeamDetailPage$ = command(
       const agents = await get(agents$);
       signal.throwIfAborted();
 
-      const agent = agents.find((a) => a.id === agentId);
+      const agent = agents.find((a) => {
+        return a.id === agentId;
+      });
       const displayName = agent?.displayName ?? "Agent";
       set(updateDocumentTitle$, displayName);
     }

@@ -129,7 +129,9 @@ const router = tsr.router(zeroAgentsByIdContract, {
     // Build compose content (all connector skills included, plus custom skills)
     const content = buildComposeContent(
       existing.name,
-      customSkills.map((name) => ({ name })),
+      customSkills.map((name) => {
+        return { name };
+      }),
     );
 
     // Run synchronous compose

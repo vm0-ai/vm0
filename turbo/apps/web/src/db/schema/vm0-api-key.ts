@@ -23,5 +23,7 @@ export const vm0ApiKeys = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (table) => [index("idx_vm0_api_keys_vendor").on(table.vendor)],
+  (table) => {
+    return [index("idx_vm0_api_keys_vendor").on(table.vendor)];
+  },
 );

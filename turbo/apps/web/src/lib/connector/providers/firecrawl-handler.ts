@@ -7,7 +7,13 @@ export const firecrawlHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Firecrawl does not support OAuth — use API key auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "FIRECRAWL_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "FIRECRAWL_TOKEN";
+  },
 };

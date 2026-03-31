@@ -14,5 +14,7 @@ export const agents$ = computed(async (get) => {
 });
 
 export const reloadAgents$ = command(({ set }) => {
-  set(internalReloadAgents$, (prev) => prev + 1);
+  set(internalReloadAgents$, (prev) => {
+    return prev + 1;
+  });
 });

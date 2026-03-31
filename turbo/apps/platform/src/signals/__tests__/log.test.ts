@@ -103,7 +103,9 @@ describe("setLogErrorHandler", () => {
 
   it("should not throw when no handler is set", () => {
     const log = logger("test-no-handler");
-    expect(() => log.error("no handler")).not.toThrow();
+    expect(() => {
+      return log.error("no handler");
+    }).not.toThrow();
   });
 
   it("should pass a copy of args to the handler", () => {

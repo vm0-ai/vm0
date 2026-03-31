@@ -7,7 +7,13 @@ export const clickupHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("ClickUp does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "CLICKUP_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "CLICKUP_TOKEN";
+  },
 };

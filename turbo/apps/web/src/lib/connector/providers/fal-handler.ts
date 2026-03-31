@@ -7,7 +7,13 @@ export const falHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("fal.ai does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "FAL_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "FAL_TOKEN";
+  },
 };

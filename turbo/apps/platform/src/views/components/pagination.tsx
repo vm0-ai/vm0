@@ -76,11 +76,13 @@ export function Pagination({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {ROWS_PER_PAGE_OPTIONS.map((option) => (
-              <SelectItem key={option} value={String(option)}>
-                {option}
-              </SelectItem>
-            ))}
+            {ROWS_PER_PAGE_OPTIONS.map((option) => {
+              return (
+                <SelectItem key={option} value={String(option)}>
+                  {option}
+                </SelectItem>
+              );
+            })}
           </SelectContent>
         </Select>
       </div>

@@ -123,8 +123,12 @@ async function devSeed() {
     // --- skills (seed skills + common connectors, batch insert) ---
     console.log("Seeding skills...");
     const gaConnectorTypes = Object.entries(CONNECTOR_TYPES)
-      .filter(([, config]) => !config.featureFlag)
-      .map(([type]) => type);
+      .filter(([, config]) => {
+        return !config.featureFlag;
+      })
+      .map(([type]) => {
+        return type;
+      });
     const skillValues = buildSeedSkillValues([
       ...new Set([...SEED_SKILLS, ...gaConnectorTypes]),
     ]);

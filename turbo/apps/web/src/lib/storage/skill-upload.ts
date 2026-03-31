@@ -77,7 +77,9 @@ export async function deleteSkillServerSide(params: {
   if (objects.length > 0) {
     await deleteS3Objects(
       bucketName,
-      objects.map((o) => o.key),
+      objects.map((o) => {
+        return o.key;
+      }),
     );
   }
 

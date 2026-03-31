@@ -49,7 +49,9 @@ beforeEach(() => {
 
       // If filtering by slug
       if (slug) {
-        const article = mockArticles.find((a) => a.slug === slug);
+        const article = mockArticles.find((a) => {
+          return a.slug === slug;
+        });
         return HttpResponse.json({
           data: article ? [article] : [],
           meta: {},

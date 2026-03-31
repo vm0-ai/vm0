@@ -74,8 +74,8 @@ describe("POST /api/zero/onboarding/complete", () => {
   it("should be idempotent when called multiple times", async () => {
     await context.setupUser();
 
-    const makeRequest = () =>
-      POST(
+    const makeRequest = () => {
+      return POST(
         createTestRequest(
           "http://localhost:3000/api/zero/onboarding/complete",
           {
@@ -83,6 +83,7 @@ describe("POST /api/zero/onboarding/complete", () => {
           },
         ),
       );
+    };
 
     const first = await makeRequest();
     expect(first.status).toBe(200);

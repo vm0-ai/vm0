@@ -20,16 +20,23 @@ export const githubUserLinks = pgTable(
     githubUserId: varchar("github_user_id", { length: 255 }).notNull(),
     installationId: uuid("installation_id")
       .notNull()
-      .references(() => githubInstallations.id, { onDelete: "cascade" }),
+      .references(
+        () => {
+          return githubInstallations.id;
+        },
+        { onDelete: "cascade" },
+      ),
     // VM0 user ID (Clerk user ID)
     vm0UserId: text("vm0_user_id").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
-  (table) => [
-    // Each GitHub user can only link to one VM0 user per installation
-    uniqueIndex("idx_github_user_links_user_installation").on(
-      table.githubUserId,
-      table.installationId,
-    ),
-  ],
+  (table) => {
+    return [
+      // Each GitHub user can only link to one VM0 user per installation
+      uniqueIndex("idx_github_user_links_user_installation").on(
+        table.githubUserId,
+        table.installationId,
+      ),
+    ];
+  },
 );

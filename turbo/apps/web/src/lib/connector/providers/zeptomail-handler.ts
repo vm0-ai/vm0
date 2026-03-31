@@ -11,7 +11,13 @@ export const zeptomailHandler: ProviderHandler = {
       "ZeptoMail does not support OAuth — use Send Mail Token auth",
     );
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "ZEPTOMAIL_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "ZEPTOMAIL_TOKEN";
+  },
 };

@@ -7,7 +7,13 @@ export const pdforgeHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("PDForge does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "PDFORGE_API_KEY",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "PDFORGE_API_KEY";
+  },
 };

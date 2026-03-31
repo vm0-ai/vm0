@@ -192,9 +192,9 @@ function resolveZeroAuth(
     };
   }
 
-  const hasCap = zeroAuth.capabilities.some(
-    (cap) => cap === options.requiredCapability,
-  );
+  const hasCap = zeroAuth.capabilities.some((cap) => {
+    return cap === options.requiredCapability;
+  });
   if (!hasCap) {
     log.debug(
       `Zero token missing required capability: ${options.requiredCapability}`,
@@ -243,7 +243,9 @@ export async function resolveCliTokenFromDb(cliAuth: {
     .update(cliTokens)
     .set({ lastUsedAt: new Date() })
     .where(eq(cliTokens.id, cliAuth.tokenId))
-    .catch((err) => log.error("Failed to update token lastUsedAt:", err));
+    .catch((err) => {
+      return log.error("Failed to update token lastUsedAt:", err);
+    });
 
   return {
     userId: cliAuth.userId,

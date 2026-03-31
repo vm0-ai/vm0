@@ -36,11 +36,13 @@ async function handleBounce(event: WebhookEvent): Promise<Response> {
     await globalThis.services.db
       .insert(emailSuppressions)
       .values(
-        recipients.map((addr) => ({
-          emailAddress: addr,
-          reason: "bounced",
-          resendEmailId: event.data?.email_id ?? null,
-        })),
+        recipients.map((addr) => {
+          return {
+            emailAddress: addr,
+            reason: "bounced",
+            resendEmailId: event.data?.email_id ?? null,
+          };
+        }),
       )
       .onConflictDoNothing();
   }
@@ -58,11 +60,13 @@ async function handleComplaint(event: WebhookEvent): Promise<Response> {
     await globalThis.services.db
       .insert(emailSuppressions)
       .values(
-        recipients.map((addr) => ({
-          emailAddress: addr,
-          reason: "complained",
-          resendEmailId: event.data?.email_id ?? null,
-        })),
+        recipients.map((addr) => {
+          return {
+            emailAddress: addr,
+            reason: "complained",
+            resendEmailId: event.data?.email_id ?? null,
+          };
+        }),
       )
       .onConflictDoNothing();
   }
@@ -166,9 +170,9 @@ export async function POST(request: Request): Promise<Response> {
           subject: senderSubject,
           errorMessage:
             "An internal error occurred while processing your email. Please try again later.",
-        }).catch((sendErr) =>
-          log.error("Failed to send error reply", { sendErr }),
-        );
+        }).catch((sendErr) => {
+          return log.error("Failed to send error reply", { sendErr });
+        });
       }
     }
   });

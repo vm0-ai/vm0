@@ -39,31 +39,33 @@ describe("frameworks", () => {
 
   describe("assertSupportedFramework", () => {
     it("does not throw for claude-code", () => {
-      expect(() => assertSupportedFramework("claude-code")).not.toThrow();
+      expect(() => {
+        return assertSupportedFramework("claude-code");
+      }).not.toThrow();
     });
 
     it("throws for undefined", () => {
-      expect(() => assertSupportedFramework(undefined)).toThrow(
-        'Unsupported framework "undefined"',
-      );
+      expect(() => {
+        return assertSupportedFramework(undefined);
+      }).toThrow('Unsupported framework "undefined"');
     });
 
     it("throws for unknown framework", () => {
-      expect(() => assertSupportedFramework("unknown")).toThrow(
-        'Unsupported framework "unknown"',
-      );
+      expect(() => {
+        return assertSupportedFramework("unknown");
+      }).toThrow('Unsupported framework "unknown"');
     });
 
     it("includes context in error message", () => {
-      expect(() =>
-        assertSupportedFramework("unknown", "getInstructionsFilename"),
-      ).toThrow('Unsupported framework "unknown" in getInstructionsFilename');
+      expect(() => {
+        return assertSupportedFramework("unknown", "getInstructionsFilename");
+      }).toThrow('Unsupported framework "unknown" in getInstructionsFilename');
     });
 
     it("lists supported frameworks in error message", () => {
-      expect(() => assertSupportedFramework("unknown")).toThrow(
-        "Supported frameworks: claude-code",
-      );
+      expect(() => {
+        return assertSupportedFramework("unknown");
+      }).toThrow("Supported frameworks: claude-code");
     });
   });
 
@@ -77,9 +79,9 @@ describe("frameworks", () => {
     });
 
     it("throws for unknown framework", () => {
-      expect(() => getValidatedFramework("unknown")).toThrow(
-        'Unsupported framework "unknown"',
-      );
+      expect(() => {
+        return getValidatedFramework("unknown");
+      }).toThrow('Unsupported framework "unknown"');
     });
   });
 
@@ -89,9 +91,9 @@ describe("frameworks", () => {
     });
 
     it("throws for unknown framework", () => {
-      expect(() => getFrameworkDisplayName("unknown")).toThrow(
-        'Unsupported framework "unknown"',
-      );
+      expect(() => {
+        return getFrameworkDisplayName("unknown");
+      }).toThrow('Unsupported framework "unknown"');
     });
   });
 
@@ -105,9 +107,9 @@ describe("frameworks", () => {
     });
 
     it("throws for unknown framework", () => {
-      expect(() => getInstructionsFilename("unknown")).toThrow(
-        'Unsupported framework "unknown"',
-      );
+      expect(() => {
+        return getInstructionsFilename("unknown");
+      }).toThrow('Unsupported framework "unknown"');
     });
   });
 });

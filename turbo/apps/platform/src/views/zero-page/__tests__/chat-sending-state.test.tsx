@@ -23,9 +23,9 @@ describe("chat sending state", () => {
       path: "/talk/c0000000-0000-4000-a000-000000000001",
     });
 
-    const textarea = await waitFor(
-      () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-    );
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
 
     await sendMessageInUI(user, textarea, "Hello");
 
@@ -49,9 +49,9 @@ describe("chat sending state", () => {
       path: "/talk/c0000000-0000-4000-a000-000000000001",
     });
 
-    const textarea = await waitFor(
-      () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-    );
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
 
     await sendMessageInUI(user, textarea, "Hello");
 
@@ -79,9 +79,9 @@ describe("chat sending state", () => {
       path: "/talk/c0000000-0000-4000-a000-000000000001",
     });
 
-    const textarea = await waitFor(
-      () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-    );
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
 
     await sendMessageInUI(user, textarea, "Hello");
 
@@ -113,9 +113,9 @@ describe("chat sending state", () => {
       path: "/talk/c0000000-0000-4000-a000-000000000001",
     });
 
-    const textarea = await waitFor(
-      () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-    );
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
 
     await sendMessageInUI(user, textarea, "Hello");
 
@@ -127,9 +127,9 @@ describe("chat sending state", () => {
 
     // Wait for any textarea currently in the DOM (the page may or may not
     // have navigated to the session chat page depending on timing).
-    const activeTextarea = await waitFor(
-      () => document.querySelector("textarea") as HTMLTextAreaElement,
-    );
+    const activeTextarea = await waitFor(() => {
+      return document.querySelector("textarea") as HTMLTextAreaElement;
+    });
 
     // Type a new message and press Enter while still sending
     await sendMessageInUI(user, activeTextarea, "Second message");
@@ -162,9 +162,9 @@ describe("chat sending state", () => {
       path: "/talk/c0000000-0000-4000-a000-000000000001",
     });
 
-    const textarea = await waitFor(
-      () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-    );
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
 
     await sendMessageInUI(user, textarea, "Hello");
 

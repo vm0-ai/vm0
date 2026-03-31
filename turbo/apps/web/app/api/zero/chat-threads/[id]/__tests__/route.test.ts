@@ -147,9 +147,9 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
     expect(response.status).toBe(200);
     expect(data.chatMessages).toHaveLength(2);
 
-    const assistantMsg = data.chatMessages.find(
-      (m: { role: string }) => m.role === "assistant",
-    );
+    const assistantMsg = data.chatMessages.find((m: { role: string }) => {
+      return m.role === "assistant";
+    });
     expect(assistantMsg).toBeDefined();
     expect(assistantMsg.content).toBe("Here are the changed files.");
     expect(assistantMsg.runId).toBe(runId);

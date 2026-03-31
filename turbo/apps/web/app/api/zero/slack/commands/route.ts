@@ -135,10 +135,16 @@ async function handleDisconnect(
       SECRETS_ENCRYPTION_KEY,
     );
     const client = createSlackClient(botToken);
-    await refreshOrgAppHome(client, installation, payload.user_id).catch((e) =>
-      log.warn("Failed to refresh App Home after disconnect", { error: e }),
+    await refreshOrgAppHome(client, installation, payload.user_id).catch(
+      (e) => {
+        return log.warn("Failed to refresh App Home after disconnect", {
+          error: e,
+        });
+      },
     );
-  })().catch((e) => log.warn("Post-disconnect cleanup failed", { error: e }));
+  })().catch((e) => {
+    return log.warn("Post-disconnect cleanup failed", { error: e });
+  });
 
   return ephemeral(
     buildSuccessMessage(

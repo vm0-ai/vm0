@@ -18,7 +18,9 @@ export function ZeroChatSessionPageWrapper() {
   const subagents =
     subagentsLoadable.state === "hasData" ? subagentsLoadable.data : [];
   const selectedSubagent = currentChatAgentId
-    ? subagents.find((a) => a.id === currentChatAgentId)
+    ? subagents.find((a) => {
+        return a.id === currentChatAgentId;
+      })
     : null;
 
   const defaultAgentIdLoadable = useLastLoadable(defaultAgentId$);

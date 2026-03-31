@@ -43,7 +43,11 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
   // Fetch configured org providers to annotate choices
   const { modelProviders: configuredProviders } =
     await listZeroOrgModelProviders();
-  const configuredTypes = new Set(configuredProviders.map((p) => p.type));
+  const configuredTypes = new Set(
+    configuredProviders.map((p) => {
+      return p.type;
+    }),
+  );
 
   // Build provider choices with configuration status (only selectable providers)
   const annotatedChoices = getSelectableProviderTypes().map((type) => {
@@ -81,7 +85,9 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
   const type = typeResponse.type as ModelProviderType;
 
   // Check if provider is already configured using the list we already fetched
-  const existingProvider = configuredProviders.find((p) => p.type === type);
+  const existingProvider = configuredProviders.find((p) => {
+    return p.type === type;
+  });
 
   if (existingProvider) {
     console.log();
@@ -149,8 +155,9 @@ async function handleInteractiveMode(): Promise<SetupInput | null> {
       type: "password",
       name: "secret",
       message: `Enter your ${secretLabel}:`,
-      validate: (value: string) =>
-        value.length > 0 || `${secretLabel} is required`,
+      validate: (value: string) => {
+        return value.length > 0 || `${secretLabel} is required`;
+      },
     },
     { onCancel },
   );

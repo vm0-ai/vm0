@@ -16,7 +16,9 @@ const slackOrgState$ = state<SlackOrgState>({
   error: null,
 });
 
-export const slackOrgData$ = computed((get) => get(slackOrgState$).data);
+export const slackOrgData$ = computed((get) => {
+  return get(slackOrgState$).data;
+});
 
 /** True when the org-scoped Slack installation has outdated bot scopes (admin-only). */
 export const slackOrgScopeMismatch$ = computed((get) => {
@@ -31,9 +33,9 @@ export const slackOrgScopeMismatch$ = computed((get) => {
 const showUninstallDialogState$ = state(false);
 
 /** Whether the uninstall confirmation dialog is visible. */
-export const showUninstallDialog$ = computed((get) =>
-  get(showUninstallDialogState$),
-);
+export const showUninstallDialog$ = computed((get) => {
+  return get(showUninstallDialogState$);
+});
 
 /** Show or hide the uninstall confirmation dialog. */
 export const setShowUninstallDialog$ = command(({ set }, show: boolean) => {
@@ -41,22 +43,26 @@ export const setShowUninstallDialog$ = command(({ set }, show: boolean) => {
 });
 
 const fetchSlackOrg$ = command(async ({ get, set }, signal: AbortSignal) => {
-  set(slackOrgState$, (prev) => ({
-    ...prev,
-    loading: true,
-    error: null,
-  }));
+  set(slackOrgState$, (prev) => {
+    return {
+      ...prev,
+      loading: true,
+      error: null,
+    };
+  });
 
   const client = get(zeroClient$)(zeroIntegrationsSlackContract);
   const result = await client.getStatus();
   signal.throwIfAborted();
 
   if (result.status !== 200) {
-    set(slackOrgState$, (prev) => ({
-      ...prev,
-      loading: false,
-      error: "Failed to fetch Slack status",
-    }));
+    set(slackOrgState$, (prev) => {
+      return {
+        ...prev,
+        loading: false,
+        error: "Failed to fetch Slack status",
+      };
+    });
     return;
   }
 

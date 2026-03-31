@@ -7,7 +7,13 @@ export const v0Handler: ProviderHandler = {
   exchangeCode() {
     throw new Error("v0 does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "V0_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "V0_TOKEN";
+  },
 };

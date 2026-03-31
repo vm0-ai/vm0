@@ -63,10 +63,12 @@ function DefaultProviderSection() {
       ? defaultProviderLoadable.data
       : null;
 
-  const selectItems = providers.map((p) => ({
-    type: p.type,
-    label: getUILabel(p.type),
-  }));
+  const selectItems = providers.map((p) => {
+    return {
+      type: p.type,
+      label: getUILabel(p.type),
+    };
+  });
   const currentDefault = defaultProvider?.type ?? selectItems[0]?.type ?? "";
 
   const handleChange = (value: string) => {
@@ -109,14 +111,16 @@ function DefaultProviderSection() {
                 <SelectValue placeholder="Select a default provider" />
               </SelectTrigger>
               <SelectContent>
-                {selectItems.map((item) => (
-                  <SelectItem key={item.type} value={item.type}>
-                    <div className="flex items-center gap-2">
-                      <ProviderIcon type={item.type} size={16} />
-                      <span>{item.label}</span>
-                    </div>
-                  </SelectItem>
-                ))}
+                {selectItems.map((item) => {
+                  return (
+                    <SelectItem key={item.type} value={item.type}>
+                      <div className="flex items-center gap-2">
+                        <ProviderIcon type={item.type} size={16} />
+                        <span>{item.label}</span>
+                      </div>
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
           )}
@@ -146,7 +150,9 @@ function ProviderListSection({ isAdmin }: { isAdmin: boolean }) {
         {isAdmin && !allConfigured && (
           <button
             type="button"
-            onClick={() => setAddDialogOpen(true)}
+            onClick={() => {
+              return setAddDialogOpen(true);
+            }}
             className="flex flex-col overflow-hidden transition-colors hover:bg-muted/30 group zero-border-dashed rounded-xl"
           >
             <div className="flex h-14 items-center gap-2.5 px-5">
@@ -177,71 +183,91 @@ function ProviderListSection({ isAdmin }: { isAdmin: boolean }) {
         )}
 
         {!isLoading &&
-          providers.map((p) => (
-            <div
-              key={p.type}
-              role={isAdmin ? "button" : undefined}
-              tabIndex={isAdmin ? 0 : undefined}
-              onClick={isAdmin ? () => openEdit(p) : undefined}
-              onKeyDown={
-                isAdmin
-                  ? (e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        openEdit(p);
-                      }
-                    }
-                  : undefined
-              }
-              className={cn(
-                "overflow-hidden zero-card shadow-[var(--zero-card-shadow)]",
-                isAdmin && "cursor-pointer",
-              )}
-            >
-              <div className="flex h-14 items-center gap-2.5 px-5">
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center">
-                  <ProviderIcon type={p.type} size={22} />
-                </span>
-                <span className="min-w-0 flex-1 text-sm font-medium text-foreground truncate">
-                  {getUILabel(p.type)}
-                </span>
-              </div>
+          providers.map((p) => {
+            return (
               <div
-                className="flex h-11 items-center justify-between pl-5 pr-2 zero-border-t"
-                onClick={isAdmin ? (e) => e.stopPropagation() : undefined}
-              >
-                <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
-                  Configured
-                </span>
-                {isAdmin && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
-                        aria-label="More options"
-                      >
-                        <IconDotsVertical size={14} stroke={1.5} />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-40">
-                      <DropdownMenuItem onClick={() => openEdit(p)}>
-                        Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        className="text-destructive"
-                        onClick={() => openDelete(p.type)}
-                      >
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                key={p.type}
+                role={isAdmin ? "button" : undefined}
+                tabIndex={isAdmin ? 0 : undefined}
+                onClick={
+                  isAdmin
+                    ? () => {
+                        return openEdit(p);
+                      }
+                    : undefined
+                }
+                onKeyDown={
+                  isAdmin
+                    ? (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          openEdit(p);
+                        }
+                      }
+                    : undefined
+                }
+                className={cn(
+                  "overflow-hidden zero-card shadow-[var(--zero-card-shadow)]",
+                  isAdmin && "cursor-pointer",
                 )}
+              >
+                <div className="flex h-14 items-center gap-2.5 px-5">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center">
+                    <ProviderIcon type={p.type} size={22} />
+                  </span>
+                  <span className="min-w-0 flex-1 text-sm font-medium text-foreground truncate">
+                    {getUILabel(p.type)}
+                  </span>
+                </div>
+                <div
+                  className="flex h-11 items-center justify-between pl-5 pr-2 zero-border-t"
+                  onClick={
+                    isAdmin
+                      ? (e) => {
+                          return e.stopPropagation();
+                        }
+                      : undefined
+                  }
+                >
+                  <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+                    Configured
+                  </span>
+                  {isAdmin && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
+                          aria-label="More options"
+                        >
+                          <IconDotsVertical size={14} stroke={1.5} />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-40">
+                        <DropdownMenuItem
+                          onClick={() => {
+                            return openEdit(p);
+                          }}
+                        >
+                          Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="text-destructive"
+                          onClick={() => {
+                            return openDelete(p.type);
+                          }}
+                        >
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
 
         {!isLoading && !isAdmin && providers.length === 0 && (
           <div className="col-span-full text-center py-8">

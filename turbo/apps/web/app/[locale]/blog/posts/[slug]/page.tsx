@@ -106,7 +106,9 @@ export default async function BlogPostPage({ params }: PageProps) {
 
   const allPosts = await getPosts(locale);
   const relatedPosts = allPosts
-    .filter((p) => p.category === post.category && p.slug !== post.slug)
+    .filter((p) => {
+      return p.category === post.category && p.slug !== post.slug;
+    })
     .slice(0, 3);
 
   return (
@@ -210,76 +212,83 @@ export default async function BlogPostPage({ params }: PageProps) {
               {t("relatedArticles")}
             </h2>
             <div className="blog-grid">
-              {relatedPosts.map((relatedPost) => (
-                <Link
-                  key={relatedPost.slug}
-                  href={`/blog/posts/${relatedPost.slug}`}
-                  style={{ textDecoration: "none" }}
-                >
-                  <article className="blog-card">
-                    <div className="blog-card-cover">
-                      <Image
-                        src={relatedPost.cover}
-                        alt={relatedPost.title}
-                        fill
-                        style={{ objectFit: "cover" }}
-                      />
-                    </div>
-                    <div className="blog-card-body">
-                      <div className="blog-card-meta">
-                        <span className="blog-card-category">
-                          {relatedPost.category}
-                        </span>
-                        <span className="blog-card-date">
-                          {new Date(relatedPost.publishedAt).toLocaleDateString(
-                            locale,
-                            { month: "short", day: "numeric", year: "numeric" },
-                          )}
-                        </span>
+              {relatedPosts.map((relatedPost) => {
+                return (
+                  <Link
+                    key={relatedPost.slug}
+                    href={`/blog/posts/${relatedPost.slug}`}
+                    style={{ textDecoration: "none" }}
+                  >
+                    <article className="blog-card">
+                      <div className="blog-card-cover">
+                        <Image
+                          src={relatedPost.cover}
+                          alt={relatedPost.title}
+                          fill
+                          style={{ objectFit: "cover" }}
+                        />
                       </div>
-                      <h3 className="blog-card-title">{relatedPost.title}</h3>
-                      <p className="blog-card-excerpt">{relatedPost.excerpt}</p>
-                      <div className="blog-card-footer">
-                        <div className="blog-card-author">
-                          <div className="blog-card-avatar">
-                            {relatedPost.author.avatar ? (
-                              <Image
-                                src={relatedPost.author.avatar}
-                                alt={relatedPost.author.name}
-                                width={32}
-                                height={32}
-                                style={{
-                                  width: "100%",
-                                  height: "100%",
-                                  objectFit: "cover",
-                                  borderRadius: "50%",
-                                }}
-                              />
-                            ) : (
-                              relatedPost.author.name.charAt(0)
-                            )}
-                          </div>
-                          <span className="blog-card-author-name">
-                            {relatedPost.author.name}
+                      <div className="blog-card-body">
+                        <div className="blog-card-meta">
+                          <span className="blog-card-category">
+                            {relatedPost.category}
+                          </span>
+                          <span className="blog-card-date">
+                            {new Date(
+                              relatedPost.publishedAt,
+                            ).toLocaleDateString(locale, {
+                              month: "short",
+                              day: "numeric",
+                              year: "numeric",
+                            })}
                           </span>
                         </div>
-                        <span className="blog-card-read-more">
-                          {t("readMore")}
-                          <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                          >
-                            <line x1="5" y1="12" x2="19" y2="12" />
-                            <polyline points="12 5 19 12 12 19" />
-                          </svg>
-                        </span>
+                        <h3 className="blog-card-title">{relatedPost.title}</h3>
+                        <p className="blog-card-excerpt">
+                          {relatedPost.excerpt}
+                        </p>
+                        <div className="blog-card-footer">
+                          <div className="blog-card-author">
+                            <div className="blog-card-avatar">
+                              {relatedPost.author.avatar ? (
+                                <Image
+                                  src={relatedPost.author.avatar}
+                                  alt={relatedPost.author.name}
+                                  width={32}
+                                  height={32}
+                                  style={{
+                                    width: "100%",
+                                    height: "100%",
+                                    objectFit: "cover",
+                                    borderRadius: "50%",
+                                  }}
+                                />
+                              ) : (
+                                relatedPost.author.name.charAt(0)
+                              )}
+                            </div>
+                            <span className="blog-card-author-name">
+                              {relatedPost.author.name}
+                            </span>
+                          </div>
+                          <span className="blog-card-read-more">
+                            {t("readMore")}
+                            <svg
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                            >
+                              <line x1="5" y1="12" x2="19" y2="12" />
+                              <polyline points="12 5 19 12 12 19" />
+                            </svg>
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  </article>
-                </Link>
-              ))}
+                    </article>
+                  </Link>
+                );
+              })}
             </div>
           </div>
         </section>

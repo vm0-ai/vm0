@@ -407,8 +407,12 @@ async function assembleZip(entries: ZipEntry[]): Promise<Buffer> {
   const chunks: Buffer[] = [];
 
   const done = new Promise<Buffer>((resolve, reject) => {
-    archive.on("data", (chunk: Buffer) => chunks.push(chunk));
-    archive.on("end", () => resolve(Buffer.concat(chunks)));
+    archive.on("data", (chunk: Buffer) => {
+      return chunks.push(chunk);
+    });
+    archive.on("end", () => {
+      return resolve(Buffer.concat(chunks));
+    });
     archive.on("error", reject);
   });
 

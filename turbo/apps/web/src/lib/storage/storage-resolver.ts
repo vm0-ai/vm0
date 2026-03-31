@@ -81,7 +81,9 @@ function replaceTemplateVars(
   const { result, missingVars } = expandVariablesInString(str, { vars });
   return {
     result,
-    missingVars: missingVars.map((ref) => ref.name),
+    missingVars: missingVars.map((ref) => {
+      return ref.name;
+    }),
   };
 }
 

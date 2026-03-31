@@ -7,7 +7,13 @@ export const zendeskHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Zendesk does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "ZENDESK_API_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "ZENDESK_API_TOKEN";
+  },
 };

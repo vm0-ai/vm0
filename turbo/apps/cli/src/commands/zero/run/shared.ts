@@ -60,7 +60,9 @@ export async function pollZeroEvents(
     // 3. Track last sequence number for pagination
     if (eventsResponse.events.length > 0) {
       lastSequence = Math.max(
-        ...eventsResponse.events.map((e) => e.sequenceNumber),
+        ...eventsResponse.events.map((e) => {
+          return e.sequenceNumber;
+        }),
       );
     }
 
@@ -94,7 +96,9 @@ export async function pollZeroEvents(
     }
 
     if (!complete) {
-      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+      await new Promise((resolve) => {
+        return setTimeout(resolve, pollIntervalMs);
+      });
     }
   }
 

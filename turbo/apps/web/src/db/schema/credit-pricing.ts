@@ -36,10 +36,12 @@ export const creditPricing = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (table) => [
-    uniqueIndex("uq_credit_pricing_model_provider").on(
-      table.model,
-      table.modelProvider,
-    ),
-  ],
+  (table) => {
+    return [
+      uniqueIndex("uq_credit_pricing_model_provider").on(
+        table.model,
+        table.modelProvider,
+      ),
+    ];
+  },
 );

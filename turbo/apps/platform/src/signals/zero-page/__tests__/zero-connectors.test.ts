@@ -27,7 +27,9 @@ describe("connectors", () => {
     });
 
     const connectorTypes = await context.store.get(allConnectorTypes$);
-    const gmailConnector = connectorTypes.find((c) => c.type === "gmail");
+    const gmailConnector = connectorTypes.find((c) => {
+      return c.type === "gmail";
+    });
 
     expect(gmailConnector).toBeDefined();
     if (!gmailConnector) {
@@ -75,16 +77,20 @@ describe("connectors", () => {
     const connectorTypes = await context.store.get(allConnectorTypes$);
 
     // Find the first connected and first unconnected
-    const firstConnectedIdx = connectorTypes.findIndex((c) => c.connected);
-    const firstUnconnectedIdx = connectorTypes.findIndex((c) => !c.connected);
+    const firstConnectedIdx = connectorTypes.findIndex((c) => {
+      return c.connected;
+    });
+    const firstUnconnectedIdx = connectorTypes.findIndex((c) => {
+      return !c.connected;
+    });
 
     // All connected connectors should appear before all unconnected ones
     expect(firstConnectedIdx).toBe(0);
     expect(firstUnconnectedIdx).toBeGreaterThan(0);
     // Verify no unconnected connector appears before a connected one
-    const allConnectedBeforeUnconnected = connectorTypes.every(
-      (c, i) => c.connected || i >= firstUnconnectedIdx,
-    );
+    const allConnectedBeforeUnconnected = connectorTypes.every((c, i) => {
+      return c.connected || i >= firstUnconnectedIdx;
+    });
     expect(allConnectedBeforeUnconnected).toBeTruthy();
 
     // GitHub should be connected and at position 0

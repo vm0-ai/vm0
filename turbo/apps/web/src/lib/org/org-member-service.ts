@@ -95,9 +95,9 @@ export async function requireOrgMember(orgId: string, userId: string) {
     organizationId: orgId,
   });
 
-  const membership = memberships.data.find(
-    (m) => m.publicUserData?.userId === userId,
-  );
+  const membership = memberships.data.find((m) => {
+    return m.publicUserData?.userId === userId;
+  });
   if (!membership) {
     throw forbidden("You are not a member of this organization");
   }
@@ -143,8 +143,12 @@ export async function getOrgMembers(
 
   // Batch-resolve emails for all members in a single Clerk API call
   const userIds = memberships.data
-    .map((m) => m.publicUserData?.userId)
-    .filter((id): id is string => Boolean(id));
+    .map((m) => {
+      return m.publicUserData?.userId;
+    })
+    .filter((id): id is string => {
+      return Boolean(id);
+    });
 
   const userMap = new Map<
     string,
@@ -158,9 +162,9 @@ export async function getOrgMembers(
   if (userIds.length > 0) {
     const users = await client.users.getUserList({ userId: userIds });
     for (const user of users.data) {
-      const primaryEmail = user.emailAddresses.find(
-        (e) => e.id === user.primaryEmailAddressId,
-      );
+      const primaryEmail = user.emailAddresses.find((e) => {
+        return e.id === user.primaryEmailAddressId;
+      });
       userMap.set(user.id, {
         email: primaryEmail?.emailAddress ?? "",
         firstName: user.firstName,
@@ -187,9 +191,9 @@ export async function getOrgMembers(
   });
 
   // Determine caller's role
-  const callerMembership = memberships.data.find(
-    (m) => m.publicUserData?.userId === userId,
-  );
+  const callerMembership = memberships.data.find((m) => {
+    return m.publicUserData?.userId === userId;
+  });
   const callerRole = callerMembership
     ? mapClerkRole(callerMembership.role)
     : "member";
@@ -197,12 +201,14 @@ export async function getOrgMembers(
   // Only expose pending invitations and membership requests to admins
   const pendingInvitations =
     callerRole === "admin"
-      ? invitations.data.map((inv) => ({
-          id: inv.id,
-          email: inv.emailAddress,
-          role: mapClerkRole(inv.role),
-          createdAt: new Date(inv.createdAt).toISOString(),
-        }))
+      ? invitations.data.map((inv) => {
+          return {
+            id: inv.id,
+            email: inv.emailAddress,
+            role: mapClerkRole(inv.role),
+            createdAt: new Date(inv.createdAt).toISOString(),
+          };
+        })
       : [];
 
   // Fetch membership requests (only for admins)
@@ -221,8 +227,12 @@ export async function getOrgMembers(
 
     if (requestsData.length > 0) {
       const requestUserIds = requestsData
-        .map((r: MembershipRequestData) => r.public_user_data?.user_id)
-        .filter((id: string | undefined): id is string => Boolean(id));
+        .map((r: MembershipRequestData) => {
+          return r.public_user_data?.user_id;
+        })
+        .filter((id: string | undefined): id is string => {
+          return Boolean(id);
+        });
 
       const requestUserMap = new Map<
         string,
@@ -238,9 +248,9 @@ export async function getOrgMembers(
           userId: requestUserIds,
         });
         for (const user of requestUsers.data) {
-          const primaryEmail = user.emailAddresses.find(
-            (e) => e.id === user.primaryEmailAddressId,
-          );
+          const primaryEmail = user.emailAddresses.find((e) => {
+            return e.id === user.primaryEmailAddressId;
+          });
           requestUserMap.set(user.id, {
             email: primaryEmail?.emailAddress ?? "",
             firstName: user.firstName,
@@ -413,7 +423,9 @@ async function cleanupOrgMember(userId: string, orgId: string): Promise<void> {
       );
 
     if (connections.length > 0) {
-      const connectionIds = connections.map((c) => c.id);
+      const connectionIds = connections.map((c) => {
+        return c.id;
+      });
       // Delete pending questions first (no cascade from connection)
       await db
         .delete(slackOrgPendingQuestions)
@@ -476,9 +488,9 @@ export async function updateMemberRole(
       await client.organizations.getOrganizationMembershipList({
         organizationId: orgId,
       });
-    const adminCount = memberships.data.filter(
-      (m) => m.role === "org:admin",
-    ).length;
+    const adminCount = memberships.data.filter((m) => {
+      return m.role === "org:admin";
+    }).length;
     if (adminCount < 2) {
       throw badRequest(
         "Cannot demote yourself — you are the only admin. Add another admin first.",
@@ -529,9 +541,9 @@ export async function removeMember(
     organizationId: orgId,
   });
 
-  const membership = memberships.data.find(
-    (m) => m.publicUserData?.userId === targetUserId,
-  );
+  const membership = memberships.data.find((m) => {
+    return m.publicUserData?.userId === targetUserId;
+  });
 
   if (!membership) {
     throw notFound(`User "${email}" is not a member of this organization`);
@@ -590,8 +602,12 @@ export async function deleteOrg(
   });
 
   const memberUserIds = memberships.data
-    .map((m) => m.publicUserData?.userId)
-    .filter((id): id is string => Boolean(id));
+    .map((m) => {
+      return m.publicUserData?.userId;
+    })
+    .filter((id): id is string => {
+      return Boolean(id);
+    });
 
   // Clean up each member's org-scoped data
   for (const userId of memberUserIds) {
@@ -733,8 +749,10 @@ export async function getUserAccessibleOrgs(
   const memberships = await client.users.getOrganizationMembershipList({
     userId: userId,
   });
-  return memberships.data.map((m) => ({
-    slug: m.organization.slug,
-    role: mapClerkRole(m.role),
-  }));
+  return memberships.data.map((m) => {
+    return {
+      slug: m.organization.slug,
+      role: mapClerkRole(m.role),
+    };
+  });
 }

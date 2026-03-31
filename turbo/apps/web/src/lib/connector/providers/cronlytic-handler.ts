@@ -7,7 +7,13 @@ export const cronlyticHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Cronlytic does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "CRONLYTIC_API_KEY",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "CRONLYTIC_API_KEY";
+  },
 };

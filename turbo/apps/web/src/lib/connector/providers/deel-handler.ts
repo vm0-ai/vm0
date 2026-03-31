@@ -31,9 +31,15 @@ export const deelHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.DEEL_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.DEEL_OAUTH_CLIENT_SECRET,
+  getClientId: (e) => {
+    return e.DEEL_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.DEEL_OAUTH_CLIENT_SECRET;
+  },
   getSecretName: getDeelSecretName,
-  getRefreshSecretName: () => "DEEL_REFRESH_TOKEN",
+  getRefreshSecretName: () => {
+    return "DEEL_REFRESH_TOKEN";
+  },
   refreshToken: refreshDeelToken,
 };

@@ -6,9 +6,9 @@ import { state, computed, command } from "ccstate";
 
 const expandedTimelineIds$ = state(new Set<string>());
 
-export const timelineExpandedIds$ = computed((get) =>
-  get(expandedTimelineIds$),
-);
+export const timelineExpandedIds$ = computed((get) => {
+  return get(expandedTimelineIds$);
+});
 
 export const toggleTimelineExpanded$ = command(
   ({ get, set }, messageId: string) => {
@@ -29,7 +29,9 @@ export const toggleTimelineExpanded$ = command(
 
 const copiedMessageId$ = state<string | null>(null);
 
-export const copiedMessageIdValue$ = computed((get) => get(copiedMessageId$));
+export const copiedMessageIdValue$ = computed((get) => {
+  return get(copiedMessageId$);
+});
 
 export const copyMessageContent$ = command(
   ({ set }, messageId: string, content: string) => {
@@ -37,7 +39,9 @@ export const copyMessageContent$ = command(
       .writeText(content)
       .then(() => {
         set(copiedMessageId$, messageId);
-        window.setTimeout(() => set(copiedMessageId$, null), 2000);
+        window.setTimeout(() => {
+          return set(copiedMessageId$, null);
+        }, 2000);
       })
       .catch(() => {
         /* clipboard unavailable – no feedback shown */

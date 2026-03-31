@@ -255,7 +255,9 @@ export function ZeroConnectorsPage() {
   });
 
   const connectHandler = (type: ConnectorType) => {
-    const ct = allConnectors.find((c) => c.type === type);
+    const ct = allConnectors.find((c) => {
+      return c.type === type;
+    });
     if (
       ct &&
       ct.availableAuthMethods.length === 1 &&
@@ -268,11 +270,16 @@ export function ZeroConnectorsPage() {
   };
 
   const disconnectHandler = (type: ConnectorType) => {
-    const label = allConnectors.find((c) => c.type === type)?.label ?? type;
+    const label =
+      allConnectors.find((c) => {
+        return c.type === type;
+      })?.label ?? type;
     const toastId = toast.loading(`Disconnecting ${label}...`);
     detach(
       disconnect(type, signal).then(
-        () => toast.success(`${label} disconnected`, { id: toastId }),
+        () => {
+          return toast.success(`${label} disconnected`, { id: toastId });
+        },
         (error: unknown) => {
           throwIfAbort(error);
           toast.error(`Failed to disconnect ${label}`, { id: toastId });
@@ -282,23 +289,30 @@ export function ZeroConnectorsPage() {
     );
   };
 
-  const getEffective = (c: ConnectorTypeWithStatus) =>
-    optimisticConnected.has(c.type) && !c.connected
+  const getEffective = (c: ConnectorTypeWithStatus) => {
+    return optimisticConnected.has(c.type) && !c.connected
       ? { ...c, connected: true }
       : c;
+  };
 
-  const renderCard = (c: ConnectorTypeWithStatus) => (
-    <GlobalConnectorCard
-      key={c.type}
-      connector={getEffective(c)}
-      isPolling={pollingType === c.type}
-      onConnect={() => connectHandler(c.type)}
-      onDisconnect={() => disconnectHandler(c.type)}
-      onReviewScopes={() =>
-        detach(setScopeReviewType(c.type, signal), Reason.DomCallback)
-      }
-    />
-  );
+  const renderCard = (c: ConnectorTypeWithStatus) => {
+    return (
+      <GlobalConnectorCard
+        key={c.type}
+        connector={getEffective(c)}
+        isPolling={pollingType === c.type}
+        onConnect={() => {
+          return connectHandler(c.type);
+        }}
+        onDisconnect={() => {
+          return disconnectHandler(c.type);
+        }}
+        onReviewScopes={() => {
+          return detach(setScopeReviewType(c.type, signal), Reason.DomCallback);
+        }}
+      />
+    );
+  };
 
   return (
     <div className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]">
@@ -323,7 +337,9 @@ export function ZeroConnectorsPage() {
                 type="text"
                 placeholder="Search connectors"
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => {
+                  return setSearch(e.target.value);
+                }}
                 className="h-9 w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input pl-9 pr-3 text-sm text-foreground outline-none placeholder:text-muted-foreground/50 transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10"
               />
             </div>
@@ -350,34 +366,40 @@ export function ZeroConnectorsPage() {
                 Available ({notConnected.length})
               </h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {notConnected.map((c) => (
-                  <AvailableConnectorCard
-                    key={c.type}
-                    connector={c}
-                    isPolling={pollingType === c.type}
-                    onConnect={() => connectHandler(c.type)}
-                  />
-                ))}
+                {notConnected.map((c) => {
+                  return (
+                    <AvailableConnectorCard
+                      key={c.type}
+                      connector={c}
+                      isPolling={pollingType === c.type}
+                      onConnect={() => {
+                        return connectHandler(c.type);
+                      }}
+                    />
+                  );
+                })}
               </div>
             </section>
           )}
 
           {allTypesLoadable.state !== "hasData" && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {Array.from({ length: 6 }, (_, i) => (
-                <div
-                  key={i}
-                  className="flex flex-col rounded-[var(--zero-card-radius)] border border-border/50 bg-card animate-pulse"
-                >
-                  <div className="flex h-14 items-center gap-2.5 px-5">
-                    <span className="h-5 w-5 shrink-0 rounded-lg bg-muted/50" />
-                    <span className="h-4 w-24 rounded bg-muted/50" />
+              {Array.from({ length: 6 }, (_, i) => {
+                return (
+                  <div
+                    key={i}
+                    className="flex flex-col rounded-[var(--zero-card-radius)] border border-border/50 bg-card animate-pulse"
+                  >
+                    <div className="flex h-14 items-center gap-2.5 px-5">
+                      <span className="h-5 w-5 shrink-0 rounded-lg bg-muted/50" />
+                      <span className="h-4 w-24 rounded bg-muted/50" />
+                    </div>
+                    <div className="flex h-11 items-center border-t border-border/30 px-5">
+                      <span className="h-3 w-16 rounded bg-muted/30" />
+                    </div>
                   </div>
-                  <div className="flex h-11 items-center border-t border-border/30 px-5">
-                    <span className="h-3 w-16 rounded bg-muted/30" />
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
@@ -393,11 +415,14 @@ export function ZeroConnectorsPage() {
 
       {selectedType && (
         <ConnectModal
-          onClose={() => setSelected(null)}
+          onClose={() => {
+            return setSelected(null);
+          }}
           onSuccess={() => {
             const label =
-              allConnectors.find((c) => c.type === selectedType)?.label ??
-              selectedType;
+              allConnectors.find((c) => {
+                return c.type === selectedType;
+              })?.label ?? selectedType;
             toast.success(`${label} connected`);
           }}
         />
@@ -406,9 +431,9 @@ export function ZeroConnectorsPage() {
       {scopeReviewType && (
         <ScopeReviewModal
           connectorType={scopeReviewType}
-          onClose={() =>
-            detach(setScopeReviewType(null, signal), Reason.DomCallback)
-          }
+          onClose={() => {
+            return detach(setScopeReviewType(null, signal), Reason.DomCallback);
+          }}
           onReconnect={(type) => {
             detach(setScopeReviewType(null, signal), Reason.DomCallback);
             detach(connect(type, signal), Reason.DomCallback);

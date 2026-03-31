@@ -27,9 +27,15 @@ export const sentryHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.SENTRY_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.SENTRY_OAUTH_CLIENT_SECRET,
+  getClientId: (e) => {
+    return e.SENTRY_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.SENTRY_OAUTH_CLIENT_SECRET;
+  },
   getSecretName: getSentrySecretName,
-  getRefreshSecretName: () => "SENTRY_REFRESH_TOKEN",
+  getRefreshSecretName: () => {
+    return "SENTRY_REFRESH_TOKEN";
+  },
   refreshToken: refreshSentryToken,
 };

@@ -89,7 +89,9 @@ const router = tsr.router(runsMainContract, {
 
     // Parse and validate status values
     const statusValues: string[] = query.status
-      ? query.status.split(",").map((s: string) => s.trim())
+      ? query.status.split(",").map((s: string) => {
+          return s.trim();
+        })
       : ["queued", "pending", "running"]; // default
 
     // Validate each status value
@@ -181,15 +183,17 @@ const router = tsr.router(runsMainContract, {
     return {
       status: 200 as const,
       body: {
-        runs: runs.map((run) => ({
-          id: run.id,
-          agentName: run.composeName || "unknown",
-          status: run.status as RunStatus,
-          prompt: run.prompt,
-          appendSystemPrompt: run.appendSystemPrompt,
-          createdAt: run.createdAt.toISOString(),
-          startedAt: run.startedAt?.toISOString() ?? null,
-        })),
+        runs: runs.map((run) => {
+          return {
+            id: run.id,
+            agentName: run.composeName || "unknown",
+            status: run.status as RunStatus,
+            prompt: run.prompt,
+            appendSystemPrompt: run.appendSystemPrompt,
+            createdAt: run.createdAt.toISOString(),
+            startedAt: run.startedAt?.toISOString() ?? null,
+          };
+        }),
       },
     };
   },

@@ -7,7 +7,13 @@ export const minioHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("MinIO does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "MINIO_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "MINIO_TOKEN";
+  },
 };

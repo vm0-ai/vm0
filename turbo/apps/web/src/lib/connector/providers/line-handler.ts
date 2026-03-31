@@ -7,7 +7,13 @@ export const lineHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("LINE does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "LINE_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "LINE_TOKEN";
+  },
 };

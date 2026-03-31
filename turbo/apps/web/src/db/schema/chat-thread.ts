@@ -21,22 +21,34 @@ export const chatThreads = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     userId: text("user_id").notNull(),
     agentComposeId: uuid("agent_compose_id")
-      .references(() => agentComposes.id, { onDelete: "cascade" })
+      .references(
+        () => {
+          return agentComposes.id;
+        },
+        { onDelete: "cascade" },
+      )
       .notNull(),
     title: text("title"),
-    sessionId: uuid("session_id").references(() => agentSessions.id, {
-      onDelete: "set null",
-    }),
+    sessionId: uuid("session_id").references(
+      () => {
+        return agentSessions.id;
+      },
+      {
+        onDelete: "set null",
+      },
+    ),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (table) => [
-    index("idx_chat_threads_user_compose_updated").on(
-      table.userId,
-      table.agentComposeId,
-      table.updatedAt.desc(),
-    ),
-  ],
+  (table) => {
+    return [
+      index("idx_chat_threads_user_compose_updated").on(
+        table.userId,
+        table.agentComposeId,
+        table.updatedAt.desc(),
+      ),
+    ];
+  },
 );
 
 /**
@@ -48,18 +60,30 @@ export const chatThreadRuns = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     chatThreadId: uuid("chat_thread_id")
-      .references(() => chatThreads.id, { onDelete: "cascade" })
+      .references(
+        () => {
+          return chatThreads.id;
+        },
+        { onDelete: "cascade" },
+      )
       .notNull(),
     runId: uuid("run_id")
-      .references(() => agentRuns.id, { onDelete: "cascade" })
+      .references(
+        () => {
+          return agentRuns.id;
+        },
+        { onDelete: "cascade" },
+      )
       .notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
-  (table) => [
-    uniqueIndex("idx_chat_thread_runs_unique").on(
-      table.chatThreadId,
-      table.runId,
-    ),
-    index("idx_chat_thread_runs_thread").on(table.chatThreadId),
-  ],
+  (table) => {
+    return [
+      uniqueIndex("idx_chat_thread_runs_unique").on(
+        table.chatThreadId,
+        table.runId,
+      ),
+      index("idx_chat_thread_runs_thread").on(table.chatThreadId),
+    ];
+  },
 );

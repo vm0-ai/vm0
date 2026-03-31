@@ -7,7 +7,13 @@ export const tldvHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("tl;dv does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "TLDV_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "TLDV_TOKEN";
+  },
 };

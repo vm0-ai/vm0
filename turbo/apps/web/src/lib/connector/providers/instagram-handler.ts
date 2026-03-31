@@ -7,7 +7,13 @@ export const instagramHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Instagram does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "INSTAGRAM_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "INSTAGRAM_TOKEN";
+  },
 };

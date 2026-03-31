@@ -257,9 +257,9 @@ describe("Org model-provider API", () => {
       // Verify first is no longer default
       const listRes = await GET(createTestRequest(orgUrl("")));
       const listData = await listRes.json();
-      const anthropic = listData.modelProviders.find(
-        (p: { type: string }) => p.type === "anthropic-api-key",
-      );
+      const anthropic = listData.modelProviders.find((p: { type: string }) => {
+        return p.type === "anthropic-api-key";
+      });
       expect(anthropic).toBeDefined();
       expect(anthropic.isDefault).toBe(false);
     });

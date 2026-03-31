@@ -74,7 +74,9 @@ export default function CliAuthPage(): React.JSX.Element {
       setError("");
 
       // Focus the next empty input or the last input
-      const nextEmptyIndex = newDigits.findIndex((d) => !d);
+      const nextEmptyIndex = newDigits.findIndex((d) => {
+        return !d;
+      });
       if (nextEmptyIndex !== -1) {
         inputRefs.current[nextEmptyIndex]?.focus();
       } else {
@@ -113,7 +115,9 @@ export default function CliAuthPage(): React.JSX.Element {
       });
   };
 
-  const isComplete = digits.every((d) => d !== "");
+  const isComplete = digits.every((d) => {
+    return d !== "";
+  });
 
   return (
     <div className="relative flex min-h-screen items-center justify-center bg-background p-6 overflow-hidden">
@@ -220,49 +224,61 @@ export default function CliAuthPage(): React.JSX.Element {
               {/* Code Input Boxes */}
               <div className="flex items-center gap-1">
                 {/* First 4 boxes */}
-                {[0, 1, 2, 3].map((index) => (
-                  <input
-                    key={index}
-                    ref={(el) => {
-                      inputRefs.current[index] = el;
-                    }}
-                    type="text"
-                    inputMode="text"
-                    autoCapitalize="characters"
-                    autoComplete="off"
-                    value={digits[index]}
-                    onChange={(e) => handleInputChange(index, e.target.value)}
-                    onKeyDown={(e) => handleKeyDown(index, e)}
-                    onPaste={handlePaste}
-                    disabled={loading}
-                    className="h-9 w-9 rounded-lg border border-border bg-input text-center text-base font-medium uppercase text-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
-                    maxLength={1}
-                  />
-                ))}
+                {[0, 1, 2, 3].map((index) => {
+                  return (
+                    <input
+                      key={index}
+                      ref={(el) => {
+                        inputRefs.current[index] = el;
+                      }}
+                      type="text"
+                      inputMode="text"
+                      autoCapitalize="characters"
+                      autoComplete="off"
+                      value={digits[index]}
+                      onChange={(e) => {
+                        return handleInputChange(index, e.target.value);
+                      }}
+                      onKeyDown={(e) => {
+                        return handleKeyDown(index, e);
+                      }}
+                      onPaste={handlePaste}
+                      disabled={loading}
+                      className="h-9 w-9 rounded-lg border border-border bg-input text-center text-base font-medium uppercase text-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                      maxLength={1}
+                    />
+                  );
+                })}
 
                 {/* Dash separator */}
                 <span className="px-1 text-sm text-muted-foreground">-</span>
 
                 {/* Last 4 boxes */}
-                {[4, 5, 6, 7].map((index) => (
-                  <input
-                    key={index}
-                    ref={(el) => {
-                      inputRefs.current[index] = el;
-                    }}
-                    type="text"
-                    inputMode="text"
-                    autoCapitalize="characters"
-                    autoComplete="off"
-                    value={digits[index]}
-                    onChange={(e) => handleInputChange(index, e.target.value)}
-                    onKeyDown={(e) => handleKeyDown(index, e)}
-                    onPaste={handlePaste}
-                    disabled={loading}
-                    className="h-9 w-9 rounded-lg border border-border bg-input text-center text-base font-medium uppercase text-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
-                    maxLength={1}
-                  />
-                ))}
+                {[4, 5, 6, 7].map((index) => {
+                  return (
+                    <input
+                      key={index}
+                      ref={(el) => {
+                        inputRefs.current[index] = el;
+                      }}
+                      type="text"
+                      inputMode="text"
+                      autoCapitalize="characters"
+                      autoComplete="off"
+                      value={digits[index]}
+                      onChange={(e) => {
+                        return handleInputChange(index, e.target.value);
+                      }}
+                      onKeyDown={(e) => {
+                        return handleKeyDown(index, e);
+                      }}
+                      onPaste={handlePaste}
+                      disabled={loading}
+                      className="h-9 w-9 rounded-lg border border-border bg-input text-center text-base font-medium uppercase text-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                      maxLength={1}
+                    />
+                  );
+                })}
               </div>
 
               {/* Error Message */}

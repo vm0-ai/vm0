@@ -60,7 +60,9 @@ const router = tsr.router(runsCancelContract, {
     try {
       const result = await cancelRun(runId, userId, orgId);
 
-      after(() => dispatchCancelSideEffects(result, dispatchQueuedZeroRun));
+      after(() => {
+        return dispatchCancelSideEffects(result, dispatchQueuedZeroRun);
+      });
 
       log.debug(
         `Run ${runId} cancelled by user ${userId}, sandbox: ${result.sandboxId ?? "none"}`,

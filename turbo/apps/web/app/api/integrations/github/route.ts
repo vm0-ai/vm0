@@ -119,8 +119,12 @@ export async function GET(request: Request) {
     if (version) {
       const content = version.content as AgentComposeYaml;
       const grouped = extractAndGroupVariables(content);
-      requiredSecrets = grouped.secrets.map((s) => s.name);
-      requiredVars = grouped.vars.map((v) => v.name);
+      requiredSecrets = grouped.secrets.map((s) => {
+        return s.name;
+      });
+      requiredVars = grouped.vars.map((v) => {
+        return v.name;
+      });
     }
   }
 
@@ -135,20 +139,28 @@ export async function GET(request: Request) {
   ]);
 
   const connectorProvided = getConnectorProvidedSecretNames(
-    userConnectors.map((c) => c.type),
+    userConnectors.map((c) => {
+      return c.type;
+    }),
   );
   const existingSecretNames = new Set([
-    ...userSecrets.map((s) => s.name),
+    ...userSecrets.map((s) => {
+      return s.name;
+    }),
     ...connectorProvided,
   ]);
-  const existingVarNames = new Set(userVars.map((v) => v.name));
+  const existingVarNames = new Set(
+    userVars.map((v) => {
+      return v.name;
+    }),
+  );
 
-  const missingSecrets = requiredSecrets.filter(
-    (name) => !existingSecretNames.has(name),
-  );
-  const missingVars = requiredVars.filter(
-    (name) => !existingVarNames.has(name),
-  );
+  const missingSecrets = requiredSecrets.filter((name) => {
+    return !existingSecretNames.has(name);
+  });
+  const missingVars = requiredVars.filter((name) => {
+    return !existingVarNames.has(name);
+  });
 
   return NextResponse.json({
     installation: {
@@ -279,7 +291,9 @@ export async function PATCH(request: Request) {
   const { userId } = authCtx;
 
   const parseResult = patchGithubBodySchema.safeParse(
-    await request.json().catch(() => undefined),
+    await request.json().catch(() => {
+      return undefined;
+    }),
   );
   if (!parseResult.success) {
     return NextResponse.json(

@@ -7,7 +7,13 @@ export const tavilyHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Tavily does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "TAVILY_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "TAVILY_TOKEN";
+  },
 };

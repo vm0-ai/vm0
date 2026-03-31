@@ -11,7 +11,12 @@ import chalk from "chalk";
 const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), "test-zero-org-list-"));
 vi.mock("os", async (importOriginal) => {
   const original = await importOriginal<typeof import("os")>();
-  return { ...original, homedir: () => TEST_HOME };
+  return {
+    ...original,
+    homedir: () => {
+      return TEST_HOME;
+    },
+  };
 });
 
 function buildFakeCliJwt(payload: Record<string, unknown>): string {

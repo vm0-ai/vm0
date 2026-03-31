@@ -33,7 +33,12 @@ export function ScopeReviewModal({
   const config = CONNECTOR_TYPES[connectorType];
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        return !open && onClose();
+      }}
+    >
       <DialogContent className="max-w-md" aria-describedby={undefined}>
         <DialogHeader>
           <div className="flex items-center gap-3">
@@ -61,17 +66,19 @@ export function ScopeReviewModal({
                   New permissions
                 </span>
                 <ul className="flex flex-col gap-1">
-                  {scopeDiff.addedScopes.map((scope) => (
-                    <li
-                      key={scope}
-                      className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400"
-                    >
-                      <span>+</span>
-                      <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
-                        {scope}
-                      </code>
-                    </li>
-                  ))}
+                  {scopeDiff.addedScopes.map((scope) => {
+                    return (
+                      <li
+                        key={scope}
+                        className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400"
+                      >
+                        <span>+</span>
+                        <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+                          {scope}
+                        </code>
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             )}
@@ -82,17 +89,19 @@ export function ScopeReviewModal({
                   Removed permissions
                 </span>
                 <ul className="flex flex-col gap-1">
-                  {scopeDiff.removedScopes.map((scope) => (
-                    <li
-                      key={scope}
-                      className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400"
-                    >
-                      <span>-</span>
-                      <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
-                        {scope}
-                      </code>
-                    </li>
-                  ))}
+                  {scopeDiff.removedScopes.map((scope) => {
+                    return (
+                      <li
+                        key={scope}
+                        className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400"
+                      >
+                        <span>-</span>
+                        <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+                          {scope}
+                        </code>
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             )}
@@ -100,7 +109,9 @@ export function ScopeReviewModal({
             <div className="flex gap-2 pt-2">
               <button
                 type="button"
-                onClick={() => onReconnect(connectorType)}
+                onClick={() => {
+                  return onReconnect(connectorType);
+                }}
                 className="flex-1 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
               >
                 Reconnect

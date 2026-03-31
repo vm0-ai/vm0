@@ -27,9 +27,15 @@ export const posthogHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.POSTHOG_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.POSTHOG_OAUTH_CLIENT_SECRET,
+  getClientId: (e) => {
+    return e.POSTHOG_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.POSTHOG_OAUTH_CLIENT_SECRET;
+  },
   getSecretName: getPosthogSecretName,
-  getRefreshSecretName: () => "POSTHOG_REFRESH_TOKEN",
+  getRefreshSecretName: () => {
+    return "POSTHOG_REFRESH_TOKEN";
+  },
   refreshToken: refreshPosthogToken,
 };

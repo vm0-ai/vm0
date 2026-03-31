@@ -12,7 +12,9 @@ export const zeroSubagents$ = computed(async (get) => {
   const agents = await get(agents$);
   const status = await get(zeroOnboardingStatus$);
   const defaultId = status.defaultAgentId;
-  return agents.filter((a) => a.id !== defaultId);
+  return agents.filter((a) => {
+    return a.id !== defaultId;
+  });
 });
 
 /**

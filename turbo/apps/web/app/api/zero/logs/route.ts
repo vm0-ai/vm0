@@ -193,18 +193,34 @@ async function getAvailableFilters(
   ]);
 
   const statuses = statusRows
-    .map((r) => logStatusSchema.safeParse(r.status))
-    .filter((r) => r.success)
-    .map((r) => r.data);
+    .map((r) => {
+      return logStatusSchema.safeParse(r.status);
+    })
+    .filter((r) => {
+      return r.success;
+    })
+    .map((r) => {
+      return r.data;
+    });
 
   const sources = sourceRows
-    .map((r) => triggerSourceSchema.safeParse(r.triggerSource))
-    .filter((r) => r.success)
-    .map((r) => r.data);
+    .map((r) => {
+      return triggerSourceSchema.safeParse(r.triggerSource);
+    })
+    .filter((r) => {
+      return r.success;
+    })
+    .map((r) => {
+      return r.data;
+    });
 
   const agents = agentRows
-    .map((r) => r.name)
-    .filter((name): name is string => name !== null);
+    .map((r) => {
+      return r.name;
+    })
+    .filter((name): name is string => {
+      return name !== null;
+    });
 
   return { statuses, sources, agents };
 }
@@ -311,7 +327,15 @@ const router = tsr.router(logsListContract, {
 
     // Resolve org slugs via org cache (skip orgs that fail lookup)
     const uniqueOrgIds = [
-      ...new Set(runs.filter((r) => r.orgId).map((r) => r.orgId!)),
+      ...new Set(
+        runs
+          .filter((r) => {
+            return r.orgId;
+          })
+          .map((r) => {
+            return r.orgId!;
+          }),
+      ),
     ];
     const slugMap = new Map<string, string>();
     await Promise.all(
@@ -348,21 +372,23 @@ const router = tsr.router(logsListContract, {
     return {
       status: 200 as const,
       body: {
-        data: data.map((run) => ({
-          id: run.id,
-          sessionId: run.sessionId ?? null,
-          agentId: run.composeId ?? null,
-          displayName: run.displayName ?? null,
-          orgSlug: run.orgId ? (slugMap.get(run.orgId) ?? null) : null,
-          framework: extractFramework(run.composeContent),
-          triggerSource: (run.triggerSource ?? "cli") as TriggerSource,
-          triggerAgentName: run.triggerAgentName ?? null,
-          scheduleId: run.scheduleId ?? null,
-          status: run.status as LogStatus,
-          createdAt: run.createdAt.toISOString(),
-          startedAt: run.startedAt?.toISOString() ?? null,
-          completedAt: run.completedAt?.toISOString() ?? null,
-        })),
+        data: data.map((run) => {
+          return {
+            id: run.id,
+            sessionId: run.sessionId ?? null,
+            agentId: run.composeId ?? null,
+            displayName: run.displayName ?? null,
+            orgSlug: run.orgId ? (slugMap.get(run.orgId) ?? null) : null,
+            framework: extractFramework(run.composeContent),
+            triggerSource: (run.triggerSource ?? "cli") as TriggerSource,
+            triggerAgentName: run.triggerAgentName ?? null,
+            scheduleId: run.scheduleId ?? null,
+            status: run.status as LogStatus,
+            createdAt: run.createdAt.toISOString(),
+            startedAt: run.startedAt?.toISOString() ?? null,
+            completedAt: run.completedAt?.toISOString() ?? null,
+          };
+        }),
         pagination: {
           hasMore,
           nextCursor,

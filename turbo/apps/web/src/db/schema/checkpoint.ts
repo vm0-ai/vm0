@@ -9,11 +9,21 @@ import { conversations } from "./conversation";
 export const checkpoints = pgTable("checkpoints", {
   id: uuid("id").defaultRandom().primaryKey(),
   runId: uuid("run_id")
-    .references(() => agentRuns.id, { onDelete: "cascade" })
+    .references(
+      () => {
+        return agentRuns.id;
+      },
+      { onDelete: "cascade" },
+    )
     .notNull()
     .unique(),
   conversationId: uuid("conversation_id")
-    .references(() => conversations.id, { onDelete: "cascade" })
+    .references(
+      () => {
+        return conversations.id;
+      },
+      { onDelete: "cascade" },
+    )
     .notNull(),
   agentComposeSnapshot: jsonb("agent_compose_snapshot").notNull(),
   artifactSnapshot: jsonb("artifact_snapshot"),

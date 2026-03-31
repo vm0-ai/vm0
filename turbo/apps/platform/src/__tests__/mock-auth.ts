@@ -31,11 +31,12 @@ export function mockUser(
       get organizationMemberships() {
         return internalMockedMemberships;
       },
-      getOrganizationInvitations: () =>
-        Promise.resolve({
+      getOrganizationInvitations: () => {
+        return Promise.resolve({
           data: internalMockedInvitations,
           total_count: internalMockedInvitations.length,
-        }),
+        });
+      },
     };
   } else {
     internalMockedUser = null;
@@ -52,7 +53,12 @@ export function mockOrganization(options: {
   pendingInvitations?: { id: string }[];
 }) {
   internalMockedOrganization = options.activeOrg
-    ? { ...options.activeOrg, reload: () => Promise.resolve() }
+    ? {
+        ...options.activeOrg,
+        reload: () => {
+          return Promise.resolve();
+        },
+      }
     : null;
   if (options.memberships) {
     internalMockedMemberships = options.memberships;
@@ -80,10 +86,14 @@ export const mockedClerk = {
   },
   get session() {
     return {
-      getToken: () => Promise.resolve(internalMockedSession?.token ?? ""),
+      getToken: () => {
+        return Promise.resolve(internalMockedSession?.token ?? "");
+      },
     };
   },
-  load: () => Promise.resolve(),
+  load: () => {
+    return Promise.resolve();
+  },
   addListener: (cb: () => void) => {
     clerkListeners.push(cb);
     return () => {

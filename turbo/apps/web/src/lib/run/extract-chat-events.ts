@@ -34,7 +34,11 @@ function findLastTextEventIndex(
 ): number {
   for (let i = events.length - 1; i >= 0; i--) {
     const content = events[i]?.eventData?.message?.content ?? [];
-    if (content.some((b) => b.type === "text" && b.text)) {
+    if (
+      content.some((b) => {
+        return b.type === "text" && b.text;
+      })
+    ) {
       return i;
     }
   }
@@ -89,7 +93,9 @@ export async function queryRunEventsForChat(runId: string): Promise<{
   const events = await queryAxiom<CombinedRunEvent>(apl);
 
   // Extract last result event
-  const resultEvents = events.filter((e) => e.eventType === "result");
+  const resultEvents = events.filter((e) => {
+    return e.eventType === "result";
+  });
   const lastResult = resultEvents[resultEvents.length - 1];
   const resultText =
     typeof lastResult?.eventData?.result === "string"
@@ -97,7 +103,9 @@ export async function queryRunEventsForChat(runId: string): Promise<{
       : null;
 
   // Extract summaries from assistant events
-  const assistantEvents = events.filter((e) => e.eventType === "assistant");
+  const assistantEvents = events.filter((e) => {
+    return e.eventType === "assistant";
+  });
   const summaries = extractSummariesFromEvents(assistantEvents);
 
   return { resultText, summaries };

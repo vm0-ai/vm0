@@ -19,13 +19,25 @@ export const emailReplyRequests = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     runId: uuid("run_id")
       .notNull()
-      .references(() => agentRuns.id, { onDelete: "cascade" }),
+      .references(
+        () => {
+          return agentRuns.id;
+        },
+        { onDelete: "cascade" },
+      ),
     emailThreadSessionId: uuid("email_thread_session_id")
       .notNull()
-      .references(() => emailThreadSessions.id, { onDelete: "cascade" }),
+      .references(
+        () => {
+          return emailThreadSessions.id;
+        },
+        { onDelete: "cascade" },
+      ),
     inboundEmailId: varchar("inbound_email_id", { length: 255 }).notNull(),
     inboundMessageId: varchar("inbound_message_id", { length: 512 }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
-  (table) => [uniqueIndex("idx_email_reply_requests_run").on(table.runId)],
+  (table) => {
+    return [uniqueIndex("idx_email_reply_requests_run").on(table.runId)];
+  },
 );

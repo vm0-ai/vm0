@@ -71,7 +71,9 @@ export function newStats(): BackfillStats {
 }
 
 function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => {
+    return setTimeout(resolve, ms);
+  });
 }
 
 function checkErrorThreshold(stats: BackfillStats): void {
@@ -109,7 +111,9 @@ async function* paginate<T>(
 
 function toStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === "string");
+  return value.filter((item): item is string => {
+    return typeof item === "string";
+  });
 }
 
 function parseSendMode(value: unknown): "enter" | "cmd-enter" {
@@ -126,9 +130,9 @@ export async function backfillOrgMetadata(
   stats: BackfillStats,
   dryRun: boolean,
 ): Promise<void> {
-  for await (const orgs of paginate<Organization>((p) =>
-    clerk.organizations.getOrganizationList({ ...p }),
-  )) {
+  for await (const orgs of paginate<Organization>((p) => {
+    return clerk.organizations.getOrganizationList({ ...p });
+  })) {
     for (const org of orgs) {
       stats.orgs.processed++;
       try {
@@ -195,16 +199,16 @@ export async function backfillOrgMembersMetadata(
   stats: BackfillStats,
   dryRun: boolean,
 ): Promise<void> {
-  for await (const orgs of paginate<Organization>((p) =>
-    clerk.organizations.getOrganizationList({ ...p }),
-  )) {
+  for await (const orgs of paginate<Organization>((p) => {
+    return clerk.organizations.getOrganizationList({ ...p });
+  })) {
     for (const org of orgs) {
-      for await (const memberships of paginate<OrganizationMembership>((p) =>
-        clerk.organizations.getOrganizationMembershipList({
+      for await (const memberships of paginate<OrganizationMembership>((p) => {
+        return clerk.organizations.getOrganizationMembershipList({
           organizationId: org.id,
           ...p,
-        }),
-      )) {
+        });
+      })) {
         for (const membership of memberships) {
           const userId = membership.publicUserData?.userId;
           if (!userId) continue;
@@ -267,9 +271,9 @@ export async function backfillUsers(
   stats: BackfillStats,
   dryRun: boolean,
 ): Promise<void> {
-  for await (const clerkUsers of paginate<User>((p) =>
-    clerk.users.getUserList({ ...p }),
-  )) {
+  for await (const clerkUsers of paginate<User>((p) => {
+    return clerk.users.getUserList({ ...p });
+  })) {
     for (const user of clerkUsers) {
       stats.users.processed++;
       try {

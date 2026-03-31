@@ -22,7 +22,12 @@ export const creditUsage = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     runId: uuid("run_id")
-      .references(() => agentRuns.id, { onDelete: "cascade" })
+      .references(
+        () => {
+          return agentRuns.id;
+        },
+        { onDelete: "cascade" },
+      )
       .notNull(),
     resultUuid: uuid("result_uuid"),
     orgId: text("org_id").notNull(),
@@ -52,19 +57,24 @@ export const creditUsage = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     processedAt: timestamp("processed_at"),
   },
-  (table) => [
-    uniqueIndex("uq_credit_usage_run_result").on(table.runId, table.resultUuid),
-    index("idx_credit_usage_run_id").on(table.runId),
-    index("idx_credit_usage_org_status").on(table.orgId, table.status),
-    index("idx_credit_usage_org_created").on(
-      table.orgId,
-      table.createdAt.desc(),
-    ),
-    index("idx_credit_usage_org_user_status_processed").on(
-      table.orgId,
-      table.userId,
-      table.status,
-      table.processedAt,
-    ),
-  ],
+  (table) => {
+    return [
+      uniqueIndex("uq_credit_usage_run_result").on(
+        table.runId,
+        table.resultUuid,
+      ),
+      index("idx_credit_usage_run_id").on(table.runId),
+      index("idx_credit_usage_org_status").on(table.orgId, table.status),
+      index("idx_credit_usage_org_created").on(
+        table.orgId,
+        table.createdAt.desc(),
+      ),
+      index("idx_credit_usage_org_user_status_processed").on(
+        table.orgId,
+        table.userId,
+        table.status,
+        table.processedAt,
+      ),
+    ];
+  },
 );

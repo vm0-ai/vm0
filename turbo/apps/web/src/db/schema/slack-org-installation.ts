@@ -29,10 +29,12 @@ export const slackOrgInstallations = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (table) => [
-    index("idx_slack_org_installations_org").on(table.orgId),
-    uniqueIndex("idx_slack_org_installations_org_unique")
-      .on(table.orgId)
-      .where(sql`org_id IS NOT NULL`),
-  ],
+  (table) => {
+    return [
+      index("idx_slack_org_installations_org").on(table.orgId),
+      uniqueIndex("idx_slack_org_installations_org_unique")
+        .on(table.orgId)
+        .where(sql`org_id IS NOT NULL`),
+    ];
+  },
 );

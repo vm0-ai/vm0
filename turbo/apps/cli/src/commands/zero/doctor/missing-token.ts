@@ -45,9 +45,13 @@ Notes:
       // Check whether the user has connected this connector and whether the
       // agent has permission to use it. Run both checks in parallel.
       const [connector, enabledTypes] = await Promise.all([
-        getZeroConnector(connectorType as ConnectorType).catch(() => null),
+        getZeroConnector(connectorType as ConnectorType).catch(() => {
+          return null;
+        }),
         agentId
-          ? getZeroAgentUserConnectors(agentId).catch(() => null)
+          ? getZeroAgentUserConnectors(agentId).catch(() => {
+              return null;
+            })
           : Promise.resolve(null),
       ]);
 

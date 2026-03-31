@@ -441,12 +441,14 @@ describe("POST /api/webhooks/agent/events", () => {
   describe("Batch Processing", () => {
     it("should handle multiple events in single request", async () => {
       // Create 15 events with client-provided sequence numbers (0-based)
-      const events = Array.from({ length: 15 }, (_, i) => ({
-        type: `event_${i}`,
-        sequenceNumber: i,
-        timestamp: Date.now() + i,
-        data: { index: i, message: `Event number ${i}` },
-      }));
+      const events = Array.from({ length: 15 }, (_, i) => {
+        return {
+          type: `event_${i}`,
+          sequenceNumber: i,
+          timestamp: Date.now() + i,
+          data: { index: i, message: `Event number ${i}` },
+        };
+      });
 
       const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/events",
@@ -475,12 +477,12 @@ describe("POST /api/webhooks/agent/events", () => {
       expect(ingestToAxiomSpy).toHaveBeenCalledWith(
         "vm0-agent-run-events-dev",
         expect.arrayContaining(
-          events.map((_, i) =>
-            expect.objectContaining({
+          events.map((_, i) => {
+            return expect.objectContaining({
               sequenceNumber: i,
               eventType: `event_${i}`,
-            }),
-          ),
+            });
+          }),
         ),
       );
     });
@@ -882,7 +884,11 @@ describe("POST /api/webhooks/agent/events", () => {
       const records = await findTestCreditUsagesByRunId(testRunId);
       expect(records).toHaveLength(2);
 
-      const byUuid = new Map(records.map((r) => [r.resultUuid, r]));
+      const byUuid = new Map(
+        records.map((r) => {
+          return [r.resultUuid, r];
+        }),
+      );
       const r1 = byUuid.get(uuid1)!;
       expect(r1.inputTokens).toBe(1000);
       expect(r1.outputTokens).toBe(200);
@@ -970,30 +976,34 @@ describe("POST /api/webhooks/agent/events", () => {
     it("should not create duplicate rows on concurrent calls with same UUID", async () => {
       const resultUuid = randomUUID();
 
-      const makeRequest = () =>
-        createTestRequest("http://localhost:3000/api/webhooks/agent/events", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${testToken}`,
-          },
-          body: JSON.stringify({
-            runId: testRunId,
-            events: [
-              {
-                type: "result",
-                uuid: resultUuid,
-                sequenceNumber: 0,
-                timestamp: Date.now(),
-                usage: {
-                  input_tokens: 100,
-                  output_tokens: 50,
+      const makeRequest = () => {
+        return createTestRequest(
+          "http://localhost:3000/api/webhooks/agent/events",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${testToken}`,
+            },
+            body: JSON.stringify({
+              runId: testRunId,
+              events: [
+                {
+                  type: "result",
+                  uuid: resultUuid,
+                  sequenceNumber: 0,
+                  timestamp: Date.now(),
+                  usage: {
+                    input_tokens: 100,
+                    output_tokens: 50,
+                  },
+                  data: {},
                 },
-                data: {},
-              },
-            ],
-          }),
-        });
+              ],
+            }),
+          },
+        );
+      };
 
       // Send two requests concurrently
       const [response1, response2] = await Promise.all([

@@ -7,7 +7,13 @@ export const qdrantHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Qdrant does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "QDRANT_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "QDRANT_TOKEN";
+  },
 };

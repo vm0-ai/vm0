@@ -14,7 +14,12 @@ export const agentRunQueue = pgTable(
     // Primary key, references agent_runs
     runId: uuid("run_id")
       .primaryKey()
-      .references(() => agentRuns.id, { onDelete: "cascade" }),
+      .references(
+        () => {
+          return agentRuns.id;
+        },
+        { onDelete: "cascade" },
+      ),
 
     // Denormalized for efficient per-user queue queries
     userId: text("user_id").notNull(),
@@ -29,12 +34,17 @@ export const agentRunQueue = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     expiresAt: timestamp("expires_at").notNull(), // TTL for auto-cleanup
   },
-  (table) => [
-    // Index for per-user FIFO dequeue (kept for backward compatibility)
-    index("agent_run_queue_user_created_idx").on(table.userId, table.createdAt),
-    // Index for per-org FIFO dequeue (primary partition key)
-    index("agent_run_queue_org_created_idx").on(table.orgId, table.createdAt),
-    // Index for TTL cleanup
-    index("agent_run_queue_expires_at_idx").on(table.expiresAt),
-  ],
+  (table) => {
+    return [
+      // Index for per-user FIFO dequeue (kept for backward compatibility)
+      index("agent_run_queue_user_created_idx").on(
+        table.userId,
+        table.createdAt,
+      ),
+      // Index for per-org FIFO dequeue (primary partition key)
+      index("agent_run_queue_org_created_idx").on(table.orgId, table.createdAt),
+      // Index for TTL cleanup
+      index("agent_run_queue_expires_at_idx").on(table.expiresAt),
+    ];
+  },
 );

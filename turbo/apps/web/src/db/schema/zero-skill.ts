@@ -25,11 +25,13 @@ export const zeroSkills = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (table) => ({
-    orgNameIdx: uniqueIndex("idx_zero_skills_org_name").on(
-      table.orgId,
-      table.name,
-    ),
-    orgIdx: index("idx_zero_skills_org").on(table.orgId),
-  }),
+  (table) => {
+    return {
+      orgNameIdx: uniqueIndex("idx_zero_skills_org_name").on(
+        table.orgId,
+        table.name,
+      ),
+      orgIdx: index("idx_zero_skills_org").on(table.orgId),
+    };
+  },
 );

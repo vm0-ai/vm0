@@ -156,7 +156,9 @@ describe("Zero Skills API (org-level)", () => {
       const listRes = await listSkillsReq(testCliToken);
       const skills = await listRes.json();
       expect(
-        skills.some((s: { name: string }) => s.name === "unbound-skill"),
+        skills.some((s: { name: string }) => {
+          return s.name === "unbound-skill";
+        }),
       ).toBe(true);
 
       // Verify agent's customSkills is still empty after skill creation
@@ -226,7 +228,9 @@ describe("Zero Skills API (org-level)", () => {
       const data = await response.json();
       expect(data).toHaveLength(2);
 
-      const names = data.map((s: { name: string }) => s.name);
+      const names = data.map((s: { name: string }) => {
+        return s.name;
+      });
       expect(names).toContain("skill-one");
       expect(names).toContain("skill-two");
     });

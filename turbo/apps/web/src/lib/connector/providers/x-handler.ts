@@ -31,9 +31,15 @@ export const xHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.X_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.X_OAUTH_CLIENT_SECRET,
+  getClientId: (e) => {
+    return e.X_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.X_OAUTH_CLIENT_SECRET;
+  },
   getSecretName: getXSecretName,
-  getRefreshSecretName: () => "X_REFRESH_TOKEN",
+  getRefreshSecretName: () => {
+    return "X_REFRESH_TOKEN";
+  },
   refreshToken: refreshXToken,
 };

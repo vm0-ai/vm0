@@ -48,20 +48,36 @@ const toolHeadlineFormatters: Record<
   string,
   (input: Record<string, unknown>) => string
 > = {
-  Read: (input) => `Read${chalk.dim(`(${String(input.file_path || "")})`)}`,
-  Edit: (input) => `Edit${chalk.dim(`(${String(input.file_path || "")})`)}`,
-  Write: (input) => `Write${chalk.dim(`(${String(input.file_path || "")})`)}`,
-  Bash: (input) =>
-    `Bash${chalk.dim(`(${truncate(String(input.command || ""), 60)})`)}`,
-  Glob: (input) => `Glob${chalk.dim(`(${String(input.pattern || "")})`)}`,
-  Grep: (input) => `Grep${chalk.dim(`(${String(input.pattern || "")})`)}`,
-  Task: (input) =>
-    `Task${chalk.dim(`(${truncate(String(input.description || ""), 60)})`)}`,
-  WebFetch: (input) =>
-    `WebFetch${chalk.dim(`(${truncate(String(input.url || ""), 60)})`)}`,
-  WebSearch: (input) =>
-    `WebSearch${chalk.dim(`(${truncate(String(input.query || ""), 60)})`)}`,
-  TodoWrite: () => "TodoWrite",
+  Read: (input) => {
+    return `Read${chalk.dim(`(${String(input.file_path || "")})`)}`;
+  },
+  Edit: (input) => {
+    return `Edit${chalk.dim(`(${String(input.file_path || "")})`)}`;
+  },
+  Write: (input) => {
+    return `Write${chalk.dim(`(${String(input.file_path || "")})`)}`;
+  },
+  Bash: (input) => {
+    return `Bash${chalk.dim(`(${truncate(String(input.command || ""), 60)})`)}`;
+  },
+  Glob: (input) => {
+    return `Glob${chalk.dim(`(${String(input.pattern || "")})`)}`;
+  },
+  Grep: (input) => {
+    return `Grep${chalk.dim(`(${String(input.pattern || "")})`)}`;
+  },
+  Task: (input) => {
+    return `Task${chalk.dim(`(${truncate(String(input.description || ""), 60)})`)}`;
+  },
+  WebFetch: (input) => {
+    return `WebFetch${chalk.dim(`(${truncate(String(input.url || ""), 60)})`)}`;
+  },
+  WebSearch: (input) => {
+    return `WebSearch${chalk.dim(`(${truncate(String(input.query || ""), 60)})`)}`;
+  },
+  TodoWrite: () => {
+    return "TodoWrite";
+  },
 };
 
 /**
@@ -174,7 +190,9 @@ function formatReadContent(resultText: string, verbose: boolean): string[] {
   const displayLines =
     contentLines.length > 0
       ? contentLines
-      : rawLines.filter((line) => line.trim().length > 0);
+      : rawLines.filter((line) => {
+          return line.trim().length > 0;
+        });
   const totalLines = displayLines.length;
 
   if (totalLines === 0) {

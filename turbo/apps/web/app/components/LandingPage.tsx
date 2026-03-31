@@ -23,8 +23,12 @@ function useTypewriterLines(
   const [started, setStarted] = useState(false);
 
   useEffect(() => {
-    const t = setTimeout(() => setStarted(true), delay);
-    return () => clearTimeout(t);
+    const t = setTimeout(() => {
+      return setStarted(true);
+    }, delay);
+    return () => {
+      return clearTimeout(t);
+    };
   }, [delay]);
 
   useEffect(() => {
@@ -33,15 +37,25 @@ function useTypewriterLines(
 
     const currentLine = lines[lineIndex] ?? "";
     if (charIndex < currentLine.length) {
-      const t = setTimeout(() => setCharIndex((c) => c + 1), speed);
-      return () => clearTimeout(t);
+      const t = setTimeout(() => {
+        return setCharIndex((c) => {
+          return c + 1;
+        });
+      }, speed);
+      return () => {
+        return clearTimeout(t);
+      };
     }
     if (lineIndex < lines.length - 1) {
       const t = setTimeout(() => {
-        setLineIndex((l) => l + 1);
+        setLineIndex((l) => {
+          return l + 1;
+        });
         setCharIndex(0);
       }, lineGap);
-      return () => clearTimeout(t);
+      return () => {
+        return clearTimeout(t);
+      };
     }
     return;
   }, [started, lineIndex, charIndex, lines, speed, lineGap]);
@@ -142,16 +156,18 @@ export default function LandingPage() {
                 "Activity logs",
                 "Proactive",
                 "100+ connectors",
-              ].map((item, i) => (
-                <div key={item} className="flex items-center">
-                  {i > 0 && (
-                    <div className="mx-3 h-3 w-px bg-[hsl(var(--gray-200))] sm:mx-5" />
-                  )}
-                  <span className="text-xs text-[hsl(var(--muted-foreground))] sm:text-sm">
-                    {item}
-                  </span>
-                </div>
-              ))}
+              ].map((item, i) => {
+                return (
+                  <div key={item} className="flex items-center">
+                    {i > 0 && (
+                      <div className="mx-3 h-3 w-px bg-[hsl(var(--gray-200))] sm:mx-5" />
+                    )}
+                    <span className="text-xs text-[hsl(var(--muted-foreground))] sm:text-sm">
+                      {item}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
 
             <div className="relative mt-4 sm:mt-4">

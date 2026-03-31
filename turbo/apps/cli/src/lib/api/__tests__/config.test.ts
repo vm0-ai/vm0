@@ -10,7 +10,9 @@ vi.mock("os", async (importOriginal) => {
   const original = await importOriginal<typeof import("os")>();
   return {
     ...original,
-    homedir: () => TEST_HOME,
+    homedir: () => {
+      return TEST_HOME;
+    },
   };
 });
 

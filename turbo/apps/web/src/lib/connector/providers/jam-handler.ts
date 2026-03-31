@@ -7,7 +7,13 @@ export const jamHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Jam does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "JAM_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "JAM_TOKEN";
+  },
 };

@@ -7,7 +7,13 @@ export const jotformHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Jotform does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "JOTFORM_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "JOTFORM_TOKEN";
+  },
 };

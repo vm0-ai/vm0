@@ -75,9 +75,9 @@ export const navigateToChat$ = command(({ set }, chatThreadId: string) => {
 const internalSidebarChatAgentId$ = state<string | null>(null);
 
 /** Currently displayed sidebar chat agent ID. Null = default agent. */
-export const sidebarChatAgentId$ = computed((get): string | null =>
-  get(internalSidebarChatAgentId$),
-);
+export const sidebarChatAgentId$ = computed((get): string | null => {
+  return get(internalSidebarChatAgentId$);
+});
 
 /** Set the sidebar chat agent ID. Called by page setup commands. */
 export const setSidebarChatAgent$ = command(
@@ -89,9 +89,9 @@ export const setSidebarChatAgent$ = command(
 const internalShowAboutPage$ = state(false);
 
 /** Whether the About VM0 page is shown. */
-export const zeroShowAboutPage$ = computed((get) =>
-  get(internalShowAboutPage$),
-);
+export const zeroShowAboutPage$ = computed((get) => {
+  return get(internalShowAboutPage$);
+});
 
 /** Show or hide the About VM0 page. */
 export const setZeroShowAboutPage$ = command(({ set }, show: boolean) => {
@@ -101,9 +101,9 @@ export const setZeroShowAboutPage$ = command(({ set }, show: boolean) => {
 const internalSidebarCollapsed$ = state(false);
 
 /** Whether the sidebar is collapsed. */
-export const zeroSidebarCollapsed$ = computed((get) =>
-  get(internalSidebarCollapsed$),
-);
+export const zeroSidebarCollapsed$ = computed((get) => {
+  return get(internalSidebarCollapsed$);
+});
 
 /** Set sidebar collapsed state. */
 export const setZeroSidebarCollapsed$ = command(

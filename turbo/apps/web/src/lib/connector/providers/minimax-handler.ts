@@ -7,7 +7,13 @@ export const minimaxHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("MiniMax does not support OAuth — use API key auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "MINIMAX_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "MINIMAX_TOKEN";
+  },
 };

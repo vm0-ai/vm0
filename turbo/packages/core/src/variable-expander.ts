@@ -149,7 +149,9 @@ export function expandVariables<T>(
     }
 
     if (Array.isArray(value)) {
-      return value.map((item) => expand(item));
+      return value.map((item) => {
+        return expand(item);
+      });
     }
 
     if (value !== null && typeof value === "object") {
@@ -247,17 +249,29 @@ export function formatMissingVariables(missing: VariableReference[]): string {
   const messages: string[] = [];
 
   if (grouped.env.length > 0) {
-    const names = grouped.env.map((r) => r.name).join(", ");
+    const names = grouped.env
+      .map((r) => {
+        return r.name;
+      })
+      .join(", ");
     messages.push(`Environment variables: ${names}`);
   }
 
   if (grouped.vars.length > 0) {
-    const names = grouped.vars.map((r) => r.name).join(", ");
+    const names = grouped.vars
+      .map((r) => {
+        return r.name;
+      })
+      .join(", ");
     messages.push(`CLI variables (--vars): ${names}`);
   }
 
   if (grouped.secrets.length > 0) {
-    const names = grouped.secrets.map((r) => r.name).join(", ");
+    const names = grouped.secrets
+      .map((r) => {
+        return r.name;
+      })
+      .join(", ");
     messages.push(`Secrets: ${names}`);
   }
 

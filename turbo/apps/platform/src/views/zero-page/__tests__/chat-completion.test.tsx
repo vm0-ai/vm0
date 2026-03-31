@@ -22,9 +22,9 @@ describe("chat completion", () => {
       path: "/talk/c0000000-0000-4000-a000-000000000001",
     });
 
-    const textarea = await waitFor(
-      () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-    );
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
 
     await sendMessageInUI(user, textarea, "Hello");
 
@@ -48,9 +48,9 @@ describe("chat completion", () => {
       path: "/talk/c0000000-0000-4000-a000-000000000001",
     });
 
-    const textarea = await waitFor(
-      () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-    );
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
 
     await sendMessageInUI(user, textarea, "Hello");
 
@@ -75,9 +75,9 @@ describe("chat completion", () => {
       path: "/talk/c0000000-0000-4000-a000-000000000001",
     });
 
-    const textarea = await waitFor(
-      () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-    );
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
 
     await sendMessageInUI(user, textarea, "Hello");
 
@@ -126,9 +126,9 @@ describe("chat completion", () => {
       path: "/talk/c0000000-0000-4000-a000-000000000001",
     });
 
-    const textarea = await waitFor(
-      () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-    );
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
 
     await sendMessageInUI(user, textarea, "Hello");
 

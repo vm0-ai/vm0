@@ -62,56 +62,58 @@ export function OrgInvoicesTab() {
         </div>
         <div className="h-0 zero-border-t mx-4" />
 
-        {invoices.map((inv, i) => (
-          <div key={inv.id}>
-            {i > 0 && <div className="h-0 zero-border-t mx-4" />}
-            <div className={cn(ROW_GRID, "px-4 py-3")}>
-              <div className="flex items-center gap-3 min-w-0">
-                <span className="text-sm font-medium text-foreground truncate">
-                  {inv.number ?? inv.id}
-                </span>
-                {inv.status && (
-                  <span className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
-                    <IconCircleCheck size={12} className="text-green-600" />
-                    {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
+        {invoices.map((inv, i) => {
+          return (
+            <div key={inv.id}>
+              {i > 0 && <div className="h-0 zero-border-t mx-4" />}
+              <div className={cn(ROW_GRID, "px-4 py-3")}>
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className="text-sm font-medium text-foreground truncate">
+                    {inv.number ?? inv.id}
                   </span>
-                )}
-              </div>
-              <div className="text-left text-sm text-muted-foreground tabular-nums">
-                {formatDate(inv.date)}
-              </div>
-              <div className="text-left text-sm text-foreground tabular-nums">
-                {formatAmount(inv.amount)}
-              </div>
-              <div className="flex justify-end">
-                {inv.hostedInvoiceUrl ? (
-                  <TooltipProvider delayDuration={200}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <a
-                          href={inv.hostedInvoiceUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-                          aria-label="Download invoice"
-                        >
-                          <IconDownload size={14} stroke={1.5} />
-                        </a>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        <p className="text-xs">Download invoice</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                ) : (
-                  <span className="flex h-7 w-7 items-center justify-center text-muted-foreground/30">
-                    <IconDownload size={14} stroke={1.5} />
-                  </span>
-                )}
+                  {inv.status && (
+                    <span className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
+                      <IconCircleCheck size={12} className="text-green-600" />
+                      {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
+                    </span>
+                  )}
+                </div>
+                <div className="text-left text-sm text-muted-foreground tabular-nums">
+                  {formatDate(inv.date)}
+                </div>
+                <div className="text-left text-sm text-foreground tabular-nums">
+                  {formatAmount(inv.amount)}
+                </div>
+                <div className="flex justify-end">
+                  {inv.hostedInvoiceUrl ? (
+                    <TooltipProvider delayDuration={200}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <a
+                            href={inv.hostedInvoiceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                            aria-label="Download invoice"
+                          >
+                            <IconDownload size={14} stroke={1.5} />
+                          </a>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          <p className="text-xs">Download invoice</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  ) : (
+                    <span className="flex h-7 w-7 items-center justify-center text-muted-foreground/30">
+                      <IconDownload size={14} stroke={1.5} />
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

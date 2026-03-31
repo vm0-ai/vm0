@@ -156,7 +156,9 @@ export async function resolveFirewallSelections(
   if (entries.length === 0) return expanded;
 
   const resolvedConfigs = await Promise.all(
-    entries.map(([ref]) => fetchFirewallConfig(ref, fetchFn)),
+    entries.map(([ref]) => {
+      return fetchFirewallConfig(ref, fetchFn);
+    }),
   );
 
   for (let i = 0; i < entries.length; i++) {
@@ -184,13 +186,19 @@ export async function resolveFirewallSelections(
       selection.permissions === "all" ? null : new Set(selection.permissions);
 
     const filteredApis = serviceConfig.apis
-      .map((api) => ({
-        ...api,
-        permissions: selectedSet
-          ? (api.permissions ?? []).filter((p) => selectedSet.has(p.name))
-          : api.permissions,
-      }))
-      .filter((api) => (api.permissions ?? []).length > 0);
+      .map((api) => {
+        return {
+          ...api,
+          permissions: selectedSet
+            ? (api.permissions ?? []).filter((p) => {
+                return selectedSet.has(p.name);
+              })
+            : api.permissions,
+        };
+      })
+      .filter((api) => {
+        return (api.permissions ?? []).length > 0;
+      });
 
     // Drop firewall config entirely if no api_entries remain
     if (filteredApis.length === 0) continue;

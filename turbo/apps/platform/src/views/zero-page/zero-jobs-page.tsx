@@ -189,19 +189,21 @@ export function ZeroJobsPage() {
           {/* Sub-agents grid */}
           {loading && (!agents || agents.length === 0) && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {[1, 2, 3].map((i) => (
-                <Card key={i} className="zero-card">
-                  <CardContent className="p-5">
-                    <div className="flex items-center gap-3 animate-pulse">
-                      <div className="h-10 w-10 rounded-full bg-muted" />
-                      <div className="min-w-0 flex-1 space-y-2">
-                        <div className="h-4 w-24 rounded bg-muted" />
-                        <div className="h-3 w-16 rounded bg-muted" />
+              {[1, 2, 3].map((i) => {
+                return (
+                  <Card key={i} className="zero-card">
+                    <CardContent className="p-5">
+                      <div className="flex items-center gap-3 animate-pulse">
+                        <div className="h-10 w-10 rounded-full bg-muted" />
+                        <div className="min-w-0 flex-1 space-y-2">
+                          <div className="h-4 w-24 rounded bg-muted" />
+                          <div className="h-3 w-16 rounded bg-muted" />
+                        </div>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           )}
 
@@ -220,23 +222,33 @@ export function ZeroJobsPage() {
           )}
 
           {!loading && !error && agents && agents.length === 0 && (
-            <CreateTeammateButton onClick={() => setDialogOpen(true)} />
+            <CreateTeammateButton
+              onClick={() => {
+                return setDialogOpen(true);
+              }}
+            />
           )}
 
           {agents && agents.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              <CreateTeammateButton onClick={() => setDialogOpen(true)} />
+              <CreateTeammateButton
+                onClick={() => {
+                  return setDialogOpen(true);
+                }}
+              />
 
-              {agents.map((agent) => (
-                <Link
-                  key={agent.id}
-                  pathname="/team/:agentId"
-                  options={{ pathParams: { agentId: agent.id } }}
-                  className="block no-underline text-inherit"
-                >
-                  <AgentCard agent={agent} />
-                </Link>
-              ))}
+              {agents.map((agent) => {
+                return (
+                  <Link
+                    key={agent.id}
+                    pathname="/team/:agentId"
+                    options={{ pathParams: { agentId: agent.id } }}
+                    className="block no-underline text-inherit"
+                  >
+                    <AgentCard agent={agent} />
+                  </Link>
+                );
+              })}
             </div>
           )}
         </div>
@@ -303,7 +315,9 @@ function CreateTeammateDialog({
           newName={newName}
           onNameChange={onNameChange}
           onConfirm={onConfirm}
-          onCancel={() => onOpenChange(false)}
+          onCancel={() => {
+            return onOpenChange(false);
+          }}
           creating={creating}
         />
       )}
@@ -366,11 +380,11 @@ function CreateTeammateDialogContent({
             />
             <button
               type="button"
-              onClick={() =>
-                isCustom
+              onClick={() => {
+                return isCustom
                   ? setAvatarUrl(randomPresetAvatar())
-                  : fileInputEl?.click()
-              }
+                  : fileInputEl?.click();
+              }}
               disabled={uploading}
               className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
               aria-label={isCustom ? "Remove custom avatar" : "Upload avatar"}
@@ -408,7 +422,9 @@ function CreateTeammateDialogContent({
         <div className="flex-1 flex items-center justify-center px-6">
           <Input
             value={newName}
-            onChange={(e) => onNameChange(e.target.value)}
+            onChange={(e) => {
+              return onNameChange(e.target.value);
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && newName.trim() && !creating) {
                 onConfirm(avatarUrl);
@@ -432,7 +448,9 @@ function CreateTeammateDialogContent({
           </Button>
           <Button
             size="sm"
-            onClick={() => onConfirm(avatarUrl)}
+            onClick={() => {
+              return onConfirm(avatarUrl);
+            }}
             disabled={!newName.trim() || creating}
           >
             {creating ? (

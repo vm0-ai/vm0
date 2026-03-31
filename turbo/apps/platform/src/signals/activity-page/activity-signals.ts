@@ -38,7 +38,9 @@ interface AgentOption {
 const internalOrgAgents$ = state<AgentOption[]>([]);
 
 /** All agents in the current org with display names (used internally for display name mapping). */
-const orgAgents$ = computed((get) => get(internalOrgAgents$));
+const orgAgents$ = computed((get) => {
+  return get(internalOrgAgents$);
+});
 
 const fetchOrgAgents$ = command(async ({ get, set }, _signal: AbortSignal) => {
   const client = get(zeroClient$)(zeroComposesListContract);
@@ -47,10 +49,12 @@ const fetchOrgAgents$ = command(async ({ get, set }, _signal: AbortSignal) => {
     throw new Error(`Failed to fetch org agents (${result.status})`);
   }
   const agents: AgentOption[] = result.body.composes.map(
-    (c: ComposeListItem) => ({
-      name: c.id,
-      displayName: c.displayName ?? c.id,
-    }),
+    (c: ComposeListItem) => {
+      return {
+        name: c.id,
+        displayName: c.displayName ?? c.id,
+      };
+    },
   );
   set(internalOrgAgents$, agents);
 });
@@ -152,7 +156,9 @@ export const zeroActivityAvailableAgents$ = computed(async (get) => {
   const orgAgents = get(orgAgents$);
   // Map agent names to display names using org agents data
   return response.filters.agents.map((name) => {
-    const agent = orgAgents.find((a) => a.name === name);
+    const agent = orgAgents.find((a) => {
+      return a.name === name;
+    });
     return {
       name,
       displayName: agent?.displayName ?? name,
@@ -209,9 +215,9 @@ export const currentRunId$ = computed((get) => {
 const internalStepSearch$ = state("");
 
 /** Current step search filter for the activity detail view. */
-export const zeroActivityStepSearch$ = computed((get) =>
-  get(internalStepSearch$),
-);
+export const zeroActivityStepSearch$ = computed((get) => {
+  return get(internalStepSearch$);
+});
 
 /** Update the step search filter. */
 export const setZeroActivityStepSearch$ = command(({ set }, value: string) => {
@@ -273,8 +279,14 @@ export const zeroActivityEvents$ = computed(async (get) => {
   if (pages.length === 0) {
     return [] as AgentEvent[];
   }
-  const results = await Promise.all(pages.map((p) => get(p)));
-  return results.flatMap((r) => r.events);
+  const results = await Promise.all(
+    pages.map((p) => {
+      return get(p);
+    }),
+  );
+  return results.flatMap((r) => {
+    return r.events;
+  });
 });
 
 // ---------------------------------------------------------------------------

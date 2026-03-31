@@ -66,9 +66,9 @@ export async function fetchTelegramContext(
 
   // Reverse to chronological order (oldest first)
   // Exclude the current message to avoid duplication with the user prompt
-  const chronological = messages
-    .reverse()
-    .filter((m) => !currentMessageId || m.messageId !== currentMessageId);
+  const chronological = messages.reverse().filter((m) => {
+    return !currentMessageId || m.messageId !== currentMessageId;
+  });
 
   log.debug("Fetched telegram context messages", {
     chatId,
@@ -80,9 +80,9 @@ export async function fetchTelegramContext(
 
   // For execution context, only include messages after lastProcessedMessageId
   const executionMessages = lastProcessedMessageId
-    ? chronological.filter(
-        (m) => Number(m.messageId) > Number(lastProcessedMessageId),
-      )
+    ? chronological.filter((m) => {
+        return Number(m.messageId) > Number(lastProcessedMessageId);
+      })
     : chronological;
 
   // Execution context: include images (download + upload to R2)
@@ -151,7 +151,9 @@ export function formatContextForAgent(
   const totalMessages = messages.length;
 
   const formattedMessages = messages
-    .filter((m) => m.text || m.fileId)
+    .filter((m) => {
+      return m.text || m.fileId;
+    })
     .map((msg, index) => {
       const relativeIndex = index - totalMessages;
       const imageParts: string[] = [];
@@ -186,7 +188,9 @@ async function formatContextForAgentWithImages(
 
   const formattedMessages = await Promise.all(
     messages
-      .filter((m) => m.text || m.fileId)
+      .filter((m) => {
+        return m.text || m.fileId;
+      })
       .map(async (msg, index) => {
         const relativeIndex = index - totalMessages;
         const imageParts: string[] = [];

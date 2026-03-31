@@ -7,7 +7,9 @@ import { onRef } from "../utils.ts";
 
 const internalLightboxUrl$ = state<string | null>(null);
 
-export const lightboxUrl$ = computed((get) => get(internalLightboxUrl$));
+export const lightboxUrl$ = computed((get) => {
+  return get(internalLightboxUrl$);
+});
 
 export const setLightboxUrl$ = command(({ set }, value: string | null) => {
   set(internalLightboxUrl$, value);

@@ -30,7 +30,11 @@ async function sha1(input: string): Promise<string> {
   const data = new TextEncoder().encode(input);
   const hashBuffer = await crypto.subtle.digest("SHA-1", data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const hex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+  const hex = hashArray
+    .map((b) => {
+      return b.toString(16).padStart(2, "0");
+    })
+    .join("");
   sha1Cache.set(input, hex);
   return hex;
 }
@@ -306,15 +310,24 @@ export async function getAllFeatureStates(
   const switches = Object.values(FEATURE_SWITCHES);
   const hashes: ResolvedHashes = {
     userHash:
-      ctx?.userId && switches.some((s) => s.enabledUserHashes?.length)
+      ctx?.userId &&
+      switches.some((s) => {
+        return s.enabledUserHashes?.length;
+      })
         ? await sha1(ctx.userId)
         : undefined,
     emailHash:
-      ctx?.email && switches.some((s) => s.enabledEmailHashes?.length)
+      ctx?.email &&
+      switches.some((s) => {
+        return s.enabledEmailHashes?.length;
+      })
         ? await sha1(ctx.email.toLowerCase())
         : undefined,
     orgIdHash:
-      ctx?.orgId && switches.some((s) => s.enabledOrgIdHashes?.length)
+      ctx?.orgId &&
+      switches.some((s) => {
+        return s.enabledOrgIdHashes?.length;
+      })
         ? await sha1(ctx.orgId)
         : undefined,
   };

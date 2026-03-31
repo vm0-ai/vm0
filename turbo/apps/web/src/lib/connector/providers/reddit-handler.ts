@@ -27,9 +27,15 @@ export const redditHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.REDDIT_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.REDDIT_OAUTH_CLIENT_SECRET,
+  getClientId: (e) => {
+    return e.REDDIT_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.REDDIT_OAUTH_CLIENT_SECRET;
+  },
   getSecretName: getRedditSecretName,
-  getRefreshSecretName: () => "REDDIT_REFRESH_TOKEN",
+  getRefreshSecretName: () => {
+    return "REDDIT_REFRESH_TOKEN";
+  },
   refreshToken: refreshRedditToken,
 };

@@ -61,11 +61,11 @@ describe("chat session switch", () => {
           updatedAt: "2026-03-10T00:00:00Z",
         });
       }),
-      http.get("*/api/zero/chat-threads", () =>
-        HttpResponse.json({ threads: [] }),
-      ),
-      http.get("*/api/zero/logs/:id", () =>
-        HttpResponse.json({
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+      http.get("*/api/zero/logs/:id", () => {
+        return HttpResponse.json({
           id: "a0000000-0000-4000-a000-000000000099",
           sessionId: "session-1",
           agentId: "zero",
@@ -84,18 +84,18 @@ describe("chat session switch", () => {
           startedAt: "2026-03-10T00:00:01Z",
           completedAt: null,
           artifact: { name: null, version: null },
-        }),
-      ),
-      http.get("*/api/zero/runs/:id/telemetry/agent", () =>
-        HttpResponse.json({
+        });
+      }),
+      http.get("*/api/zero/runs/:id/telemetry/agent", () => {
+        return HttpResponse.json({
           events: [],
           hasMore: false,
           framework: "claude-code",
-        }),
-      ),
-      http.get("*/api/zero/queue-position", () =>
-        HttpResponse.json({ position: 0 }),
-      ),
+        });
+      }),
+      http.get("*/api/zero/queue-position", () => {
+        return HttpResponse.json({ position: 0 });
+      }),
     );
 
     // Start on a completed thread (no active polling)
@@ -149,9 +149,9 @@ describe("chat session switch", () => {
           updatedAt: "2026-03-10T00:00:00Z",
         });
       }),
-      http.get("*/api/zero/chat-threads", () =>
-        HttpResponse.json({ threads: [] }),
-      ),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
     );
 
     await setupPage({ context, path: "/chat/session-alpha" });

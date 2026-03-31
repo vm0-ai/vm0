@@ -88,9 +88,9 @@ function mockAPIsWithSubagents({
 }
 
 async function openChatListDialog(user: ReturnType<typeof userEvent.setup>) {
-  const openButton = await waitFor(() =>
-    screen.getByLabelText("Open a conversation"),
-  );
+  const openButton = await waitFor(() => {
+    return screen.getByLabelText("Open a conversation");
+  });
   await user.click(openButton);
   await waitFor(() => {
     expect(screen.getByText("Talk to")).toBeInTheDocument();
@@ -132,9 +132,9 @@ describe("chatListDialog", () => {
     await openChatListDialog(user);
 
     // Find the unpinned agent button and click it
-    const unpinnedAgentButton = await waitFor(() =>
-      screen.getByRole("button", { name: /Unpinned Agent/ }),
-    );
+    const unpinnedAgentButton = await waitFor(() => {
+      return screen.getByRole("button", { name: /Unpinned Agent/ });
+    });
 
     await user.click(unpinnedAgentButton);
 

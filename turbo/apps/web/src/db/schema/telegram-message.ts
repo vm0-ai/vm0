@@ -22,7 +22,12 @@ export const telegramMessages = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     installationId: uuid("installation_id")
       .notNull()
-      .references(() => telegramInstallations.id, { onDelete: "cascade" }),
+      .references(
+        () => {
+          return telegramInstallations.id;
+        },
+        { onDelete: "cascade" },
+      ),
     chatId: varchar("chat_id", { length: 255 }).notNull(),
     messageId: varchar("message_id", { length: 255 }).notNull(),
     fromUserId: varchar("from_user_id", { length: 255 }).notNull(),
@@ -33,16 +38,21 @@ export const telegramMessages = pgTable(
     isBot: boolean("is_bot").default(false).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
-  (table) => [
-    // Each message is unique per installation + chat + message ID
-    uniqueIndex("idx_telegram_messages_unique").on(
-      table.installationId,
-      table.chatId,
-      table.messageId,
-    ),
-    // Index for context queries (recent messages in a chat)
-    index("idx_telegram_messages_chat").on(table.installationId, table.chatId),
-    // Index for 30-day cleanup cron
-    index("idx_telegram_messages_created_at").on(table.createdAt),
-  ],
+  (table) => {
+    return [
+      // Each message is unique per installation + chat + message ID
+      uniqueIndex("idx_telegram_messages_unique").on(
+        table.installationId,
+        table.chatId,
+        table.messageId,
+      ),
+      // Index for context queries (recent messages in a chat)
+      index("idx_telegram_messages_chat").on(
+        table.installationId,
+        table.chatId,
+      ),
+      // Index for 30-day cleanup cron
+      index("idx_telegram_messages_created_at").on(table.createdAt),
+    ];
+  },
 );

@@ -66,7 +66,11 @@ export function parseFirewallPolicies(
   const result = firewallPoliciesSchema.safeParse(parsed);
   if (!result.success) {
     throw new Error(
-      `Invalid --firewall-policies: ${result.error.issues.map((i) => i.message).join(", ")}`,
+      `Invalid --firewall-policies: ${result.error.issues
+        .map((i) => {
+          return i.message;
+        })
+        .join(", ")}`,
     );
   }
   return result.data;
@@ -81,7 +85,9 @@ export function isUUID(str: string): boolean {
  */
 export function extractVarNames(composeContent: unknown): string[] {
   const grouped = extractAndGroupVariables(composeContent);
-  return grouped.vars.map((r) => r.name);
+  return grouped.vars.map((r) => {
+    return r.name;
+  });
 }
 
 /**
@@ -89,7 +95,9 @@ export function extractVarNames(composeContent: unknown): string[] {
  */
 export function extractSecretNames(composeContent: unknown): string[] {
   const grouped = extractAndGroupVariables(composeContent);
-  return grouped.secrets.map((r) => r.name);
+  return grouped.secrets.map((r) => {
+    return r.name;
+  });
 }
 
 /**
@@ -118,7 +126,9 @@ export function loadValues(
   const result: Record<string, string> = { ...cliValues };
 
   // For names referenced in config but not provided via CLI, load from file/env
-  const missingNames = configNames.filter((name) => !(name in result));
+  const missingNames = configNames.filter((name) => {
+    return !(name in result);
+  });
 
   if (missingNames.length > 0) {
     // Get from environment variables (lowest priority)
@@ -140,9 +150,9 @@ export function loadValues(
       if (dotenvResult.parsed) {
         // Only include keys that are missing from CLI
         fileValues = Object.fromEntries(
-          Object.entries(dotenvResult.parsed).filter(([key]) =>
-            missingNames.includes(key),
-          ),
+          Object.entries(dotenvResult.parsed).filter(([key]) => {
+            return missingNames.includes(key);
+          }),
         );
       }
     }
@@ -286,7 +296,9 @@ export async function pollEvents(
 
     // If not complete, wait before next poll
     if (!complete) {
-      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+      await new Promise((resolve) => {
+        return setTimeout(resolve, pollIntervalMs);
+      });
     }
   }
 

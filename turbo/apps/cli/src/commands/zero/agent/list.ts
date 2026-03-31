@@ -30,10 +30,17 @@ Notes:
         return;
       }
 
-      const idWidth = Math.max(8, ...agents.map((a) => a.agentId.length));
+      const idWidth = Math.max(
+        8,
+        ...agents.map((a) => {
+          return a.agentId.length;
+        }),
+      );
       const displayWidth = Math.max(
         12,
-        ...agents.map((a) => (a.displayName ?? "").length),
+        ...agents.map((a) => {
+          return (a.displayName ?? "").length;
+        }),
       );
 
       const header = [

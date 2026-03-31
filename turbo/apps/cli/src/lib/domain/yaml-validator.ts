@@ -246,7 +246,9 @@ function levenshteinDistance(a: string, b: string): number {
   // Ensure a is the shorter string for space optimization
   if (a.length > b.length) [a, b] = [b, a];
 
-  const row = Array.from({ length: a.length + 1 }, (_, i) => i);
+  const row = Array.from({ length: a.length + 1 }, (_, i) => {
+    return i;
+  });
 
   for (let j = 1; j <= b.length; j++) {
     let prev = j - 1;

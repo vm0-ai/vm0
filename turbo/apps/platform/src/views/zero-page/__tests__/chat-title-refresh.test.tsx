@@ -46,9 +46,9 @@ describe("chat title refresh", () => {
       path: "/chat/thread-test-1",
     });
 
-    const textarea = await waitFor(
-      () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-    );
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
 
     const fetchCountBeforeSend = threadListFetchCount;
 
@@ -106,9 +106,9 @@ describe("chat title refresh", () => {
       path: "/chat/thread-test-1",
     });
 
-    const textarea = await waitFor(
-      () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
-    );
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
 
     const fetchCountBeforeSend = threadDetailFetchCount;
 

@@ -16,7 +16,12 @@ import { agentRuns } from "./agent-run";
 export const agentRunEvents = pgTable("agent_run_events", {
   id: uuid("id").defaultRandom().primaryKey(),
   runId: uuid("run_id")
-    .references(() => agentRuns.id, { onDelete: "cascade" })
+    .references(
+      () => {
+        return agentRuns.id;
+      },
+      { onDelete: "cascade" },
+    )
     .notNull(),
   sequenceNumber: integer("sequence_number").notNull(),
   eventType: varchar("event_type", { length: 50 }).notNull(),

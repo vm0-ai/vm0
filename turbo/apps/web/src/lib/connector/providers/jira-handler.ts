@@ -7,7 +7,13 @@ export const jiraHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Jira does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "JIRA_API_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "JIRA_API_TOKEN";
+  },
 };

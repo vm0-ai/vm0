@@ -155,12 +155,14 @@ function buildRunContextSnapshot(context: PreparedContext): RunContextSnapshot {
     secretNames: context.secrets ? Object.keys(context.secrets) : [],
     environment,
     firewalls,
-    volumes: (manifest?.storages ?? []).map((s) => ({
-      name: s.name,
-      mountPath: s.mountPath,
-      vasStorageName: s.vasStorageName,
-      vasVersionId: s.vasVersionId,
-    })),
+    volumes: (manifest?.storages ?? []).map((s) => {
+      return {
+        name: s.name,
+        mountPath: s.mountPath,
+        vasStorageName: s.vasStorageName,
+        vasVersionId: s.vasVersionId,
+      };
+    }),
     artifact: manifest?.artifact
       ? {
           mountPath: manifest.artifact.mountPath,
@@ -182,16 +184,22 @@ function sanitizeFirewalls(
   firewalls: ExperimentalFirewalls | null,
 ): RunContextSnapshot["firewalls"] {
   if (!firewalls) return [];
-  return firewalls.map((fw) => ({
-    name: fw.name,
-    ref: fw.ref,
-    apis: fw.apis.map((api) => ({
-      base: api.base,
-      permissions: api.permissions?.map((p) => ({
-        name: p.name,
-        description: p.description,
-        rules: p.rules,
-      })),
-    })),
-  }));
+  return firewalls.map((fw) => {
+    return {
+      name: fw.name,
+      ref: fw.ref,
+      apis: fw.apis.map((api) => {
+        return {
+          base: api.base,
+          permissions: api.permissions?.map((p) => {
+            return {
+              name: p.name,
+              description: p.description,
+              rules: p.rules,
+            };
+          }),
+        };
+      }),
+    };
+  });
 }

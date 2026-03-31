@@ -299,10 +299,9 @@ function expandPlaceholders(
 
 // Pre-compute expanded placeholders at module load time.
 const EXPANDED_CONNECTOR_FIREWALLS = Object.fromEntries(
-  Object.entries(CONNECTOR_FIREWALLS).map(([type, firewall]) => [
-    type,
-    expandPlaceholders(firewall, type as ConnectorType),
-  ]),
+  Object.entries(CONNECTOR_FIREWALLS).map(([type, firewall]) => {
+    return [type, expandPlaceholders(firewall, type as ConnectorType)];
+  }),
 ) as typeof CONNECTOR_FIREWALLS;
 
 /** Connector types that have a firewall config (subset of ConnectorType). */

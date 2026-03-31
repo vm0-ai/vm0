@@ -257,9 +257,9 @@ describe("sidebar new chat navigation", () => {
 
     await setupPage({ context, path: "/team" });
 
-    const newChatButton = await waitFor(() =>
-      screen.getByLabelText("New chat with Zero"),
-    );
+    const newChatButton = await waitFor(() => {
+      return screen.getByLabelText("New chat with Zero");
+    });
 
     await user.click(newChatButton);
 

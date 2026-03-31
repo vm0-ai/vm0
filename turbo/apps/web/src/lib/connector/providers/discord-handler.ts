@@ -7,7 +7,13 @@ export const discordHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Discord does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "DISCORD_BOT_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "DISCORD_BOT_TOKEN";
+  },
 };

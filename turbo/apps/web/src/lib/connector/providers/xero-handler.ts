@@ -27,9 +27,15 @@ export const xeroHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.XERO_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.XERO_OAUTH_CLIENT_SECRET,
+  getClientId: (e) => {
+    return e.XERO_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.XERO_OAUTH_CLIENT_SECRET;
+  },
   getSecretName: getXeroSecretName,
-  getRefreshSecretName: () => "XERO_REFRESH_TOKEN",
+  getRefreshSecretName: () => {
+    return "XERO_REFRESH_TOKEN";
+  },
   refreshToken: refreshXeroToken,
 };

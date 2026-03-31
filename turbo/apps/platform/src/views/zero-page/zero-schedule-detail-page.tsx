@@ -304,11 +304,13 @@ function ScheduleNotificationSettings({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="__dm__">Direct message</SelectItem>
-                {slackChannelsList.map((ch) => (
-                  <SelectItem key={ch.id} value={ch.id}>
-                    #{ch.name}
-                  </SelectItem>
-                ))}
+                {slackChannelsList.map((ch) => {
+                  return (
+                    <SelectItem key={ch.id} value={ch.id}>
+                      #{ch.name}
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
           </div>
@@ -490,11 +492,13 @@ function ScheduleSettingsForm({
                   <SelectValue placeholder="Select agent" />
                 </SelectTrigger>
                 <SelectContent>
-                  {agents.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>
-                      {a.displayName ?? a.id}
-                    </SelectItem>
-                  ))}
+                  {agents.map((a) => {
+                    return (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.displayName ?? a.id}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             </div>
@@ -507,7 +511,9 @@ function ScheduleSettingsForm({
             <div className={SCHEDULE_DETAIL_CONTROL_WIDTH}>
               <Input
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                onChange={(e) => {
+                  return setDescription(e.target.value);
+                }}
                 placeholder="Leave blank to auto-generate"
                 className="h-9"
                 disabled={saving}
@@ -588,7 +594,9 @@ function ScheduleSettingsForm({
                   variant="outline"
                   size="sm"
                   className="h-9 gap-2 rounded-lg border-destructive/40 px-4 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  onClick={() => setShowDeleteConfirm(true)}
+                  onClick={() => {
+                    return setShowDeleteConfirm(true);
+                  }}
                 >
                   <IconTrash size={14} stroke={1.5} />
                   Delete schedule
@@ -602,7 +610,9 @@ function ScheduleSettingsForm({
       {isDirty && (
         <ZeroUnsavedBar
           onDiscard={handleDiscard}
-          onSave={() => detach(handleSave(), Reason.DomCallback)}
+          onSave={() => {
+            return detach(handleSave(), Reason.DomCallback);
+          }}
           saving={saving}
         />
       )}
@@ -629,7 +639,9 @@ function ScheduleSettingsForm({
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setShowDeleteConfirm(false)}
+              onClick={() => {
+                return setShowDeleteConfirm(false);
+              }}
             >
               Cancel
             </Button>
@@ -679,7 +691,9 @@ function ScheduleInstructionEditorBlock({
         <ZeroUnsavedBar
           onDiscard={() => {
             setDraft(null);
-            setDiscardNonce((n) => n + 1);
+            setDiscardNonce((n) => {
+              return n + 1;
+            });
           }}
           onSave={() => {
             onSavePrompt((draft ?? entry.prompt).trim());
@@ -723,10 +737,12 @@ function ScheduleRunHistoryTab() {
   const statusOptions = [
     { value: "all", label: "All status" },
     ...(availableStatusesLoadable.state === "hasData"
-      ? availableStatusesLoadable.data.map((s) => ({
-          value: s,
-          label: STATUS_LABELS[s],
-        }))
+      ? availableStatusesLoadable.data.map((s) => {
+          return {
+            value: s,
+            label: STATUS_LABELS[s],
+          };
+        })
       : []),
   ];
 
@@ -734,17 +750,24 @@ function ScheduleRunHistoryTab() {
     <div className="flex flex-col gap-4">
       {/* Filter row */}
       <div className="flex items-center gap-2">
-        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v)}>
+        <Select
+          value={statusFilter}
+          onValueChange={(v) => {
+            return setStatusFilter(v);
+          }}
+        >
           <SelectTrigger className="zero-btn-morandi h-9 w-auto gap-1.5 rounded-lg px-3.5 text-sm font-medium">
             <IconCircleDot size={14} stroke={1.5} className="shrink-0" />
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {statusOptions.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>
-                {opt.label}
-              </SelectItem>
-            ))}
+            {statusOptions.map((opt) => {
+              return (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              );
+            })}
           </SelectContent>
         </Select>
       </div>
@@ -777,13 +800,21 @@ function ScheduleRunHistoryTab() {
           isLoading={isLoading}
           labelClassName="font-normal text-muted-foreground"
           buttonClassName="bg-transparent border-border/70"
-          onNextPage={() => detach(goToNext(pageSignal), Reason.DomCallback)}
-          onPrevPage={() => goToPrev()}
-          onForwardTwoPages={() =>
-            detach(goForwardTwo(pageSignal), Reason.DomCallback)
-          }
-          onBackTwoPages={() => goBackTwo()}
-          onRowsPerPageChange={(limit) => setRowsPerPage(limit)}
+          onNextPage={() => {
+            return detach(goToNext(pageSignal), Reason.DomCallback);
+          }}
+          onPrevPage={() => {
+            return goToPrev();
+          }}
+          onForwardTwoPages={() => {
+            return detach(goForwardTwo(pageSignal), Reason.DomCallback);
+          }}
+          onBackTwoPages={() => {
+            return goBackTwo();
+          }}
+          onRowsPerPageChange={(limit) => {
+            return setRowsPerPage(limit);
+          }}
         />
       )}
     </div>
@@ -1049,7 +1080,9 @@ export function ZeroScheduleDetailPage() {
     return <ScheduleDetailSkeleton />;
   }
 
-  const entry = combinedSchedule.find((e) => e.id === scheduleId);
+  const entry = combinedSchedule.find((e) => {
+    return e.id === scheduleId;
+  });
 
   if (!entry) {
     return <ScheduleNotFound />;

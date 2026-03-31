@@ -20,9 +20,11 @@ import {
 } from "../../../mocks/spawn-helpers";
 
 // Mock child_process for pnpm/vm0 CLI commands (external tools)
-vi.mock("child_process", () => ({
-  spawn: vi.fn(),
-}));
+vi.mock("child_process", () => {
+  return {
+    spawn: vi.fn(),
+  };
+});
 
 import { spawn } from "child_process";
 import { cookCommand } from "../index";
@@ -34,7 +36,9 @@ vi.mock("os", async (importOriginal) => {
   const original = await importOriginal<typeof import("os")>();
   return {
     ...original,
-    homedir: vi.fn(() => original.tmpdir()),
+    homedir: vi.fn(() => {
+      return original.tmpdir();
+    }),
   };
 });
 
@@ -335,9 +339,9 @@ agents:
 
       // Verify spawn was called with session continuation args
       const spawnCalls = vi.mocked(spawn).mock.calls;
-      const runCall = spawnCalls.find(
-        (call) => Array.isArray(call[1]) && call[1].includes("run"),
-      );
+      const runCall = spawnCalls.find((call) => {
+        return Array.isArray(call[1]) && call[1].includes("run");
+      });
       expect(runCall).toBeDefined();
       expect(runCall![1]).toContain("continue");
       expect(runCall![1]).toContain("session-456-saved");
@@ -380,9 +384,9 @@ agents:
 
       // Verify spawn was called with checkpoint continuation args
       const spawnCalls = vi.mocked(spawn).mock.calls;
-      const runCall = spawnCalls.find(
-        (call) => Array.isArray(call[1]) && call[1].includes("run"),
-      );
+      const runCall = spawnCalls.find((call) => {
+        return Array.isArray(call[1]) && call[1].includes("run");
+      });
       expect(runCall).toBeDefined();
       expect(runCall![1]).toContain("resume");
       expect(runCall![1]).toContain("checkpoint-789-saved");
@@ -463,9 +467,9 @@ agents:
           return HttpResponse.json({ version: "99.0.0" });
         }),
       );
-      vi.mocked(spawn).mockImplementation(
-        () => createMockChildProcess(0) as never,
-      );
+      vi.mocked(spawn).mockImplementation(() => {
+        return createMockChildProcess(0) as never;
+      });
 
       // checkAndUpgrade returns true when upgrade happens, causing process.exit
       await expect(async () => {
@@ -490,9 +494,9 @@ agents:
           return HttpResponse.json({ version: "99.0.0" });
         }),
       );
-      vi.mocked(spawn).mockImplementation(
-        () => createMockChildProcess(0) as never,
-      );
+      vi.mocked(spawn).mockImplementation(() => {
+        return createMockChildProcess(0) as never;
+      });
 
       await expect(async () => {
         await cookCommand.parseAsync(["node", "cli", "test prompt"]);
@@ -512,28 +516,40 @@ agents:
         }),
       );
       // Mock spawn to return exit code 1 (failure)
-      vi.mocked(spawn).mockImplementation(
-        () => createMockChildProcess(1) as never,
-      );
+      vi.mocked(spawn).mockImplementation(() => {
+        return createMockChildProcess(1) as never;
+      });
 
       await expect(async () => {
         await cookCommand.parseAsync(["node", "cli", "test prompt"]);
       }).rejects.toThrow("process.exit called");
 
       const allErrors = mockConsoleError.mock.calls
-        .map((call) => call[0])
-        .filter((log): log is string => typeof log === "string");
+        .map((call) => {
+          return call[0];
+        })
+        .filter((log): log is string => {
+          return typeof log === "string";
+        });
 
       // Should show upgrade failed message
-      expect(allErrors.some((log) => log.includes("Upgrade failed"))).toBe(
-        true,
-      );
+      expect(
+        allErrors.some((log) => {
+          return log.includes("Upgrade failed");
+        }),
+      ).toBe(true);
       // Should show manual command
       expect(
-        allErrors.some((log) => log.includes("npm install -g @vm0/cli@latest")),
+        allErrors.some((log) => {
+          return log.includes("npm install -g @vm0/cli@latest");
+        }),
       ).toBe(true);
       // Should show re-run command
-      expect(allErrors.some((log) => log.includes("vm0 cook"))).toBe(true);
+      expect(
+        allErrors.some((log) => {
+          return log.includes("vm0 cook");
+        }),
+      ).toBe(true);
     });
 
     it("should escape special characters in rerun command", async () => {
@@ -542,21 +558,27 @@ agents:
           return HttpResponse.json({ version: "99.0.0" });
         }),
       );
-      vi.mocked(spawn).mockImplementation(
-        () => createMockChildProcess(0) as never,
-      );
+      vi.mocked(spawn).mockImplementation(() => {
+        return createMockChildProcess(0) as never;
+      });
 
       await expect(async () => {
         await cookCommand.parseAsync(["node", "cli", 'say "hello"']);
       }).rejects.toThrow("process.exit called");
 
       const allLogs = mockConsoleLog.mock.calls
-        .map((call) => call[0])
-        .filter((log): log is string => typeof log === "string");
+        .map((call) => {
+          return call[0];
+        })
+        .filter((log): log is string => {
+          return typeof log === "string";
+        });
 
       // Should show escaped rerun command (single-quote escaping)
       expect(
-        allLogs.some((log) => log.includes("vm0 cook 'say \"hello\"'")),
+        allLogs.some((log) => {
+          return log.includes("vm0 cook 'say \"hello\"'");
+        }),
       ).toBe(true);
     });
 
@@ -578,27 +600,32 @@ agents:
       await cookCommand.parseAsync(["node", "cli", "test prompt"]);
 
       const allLogs = mockConsoleLog.mock.calls
-        .map((call) => call[0])
-        .filter((log): log is string => typeof log === "string");
+        .map((call) => {
+          return call[0];
+        })
+        .filter((log): log is string => {
+          return typeof log === "string";
+        });
 
       // Should show unsupported message
       expect(
-        allLogs.some((log) =>
-          log.includes("Auto-upgrade is not supported for bun"),
-        ),
+        allLogs.some((log) => {
+          return log.includes("Auto-upgrade is not supported for bun");
+        }),
       ).toBe(true);
       // Should show manual command
       expect(
-        allLogs.some((log) => log.includes("bun add -g @vm0/cli@latest")),
+        allLogs.some((log) => {
+          return log.includes("bun add -g @vm0/cli@latest");
+        }),
       ).toBe(true);
       // spawn should only be called for the actual cook run, not for upgrade
-      const upgradeCalls = vi
-        .mocked(spawn)
-        .mock.calls.filter(
-          (call) =>
-            Array.isArray(call[1]) &&
-            (call[1].includes("install") || call[1].includes("add")),
+      const upgradeCalls = vi.mocked(spawn).mock.calls.filter((call) => {
+        return (
+          Array.isArray(call[1]) &&
+          (call[1].includes("install") || call[1].includes("add"))
         );
+      });
       expect(upgradeCalls.length).toBe(0);
     });
 
@@ -619,16 +646,22 @@ agents:
       await cookCommand.parseAsync(["node", "cli", "test prompt"]);
 
       const allLogs = mockConsoleLog.mock.calls
-        .map((call) => call[0])
-        .filter((log): log is string => typeof log === "string");
+        .map((call) => {
+          return call[0];
+        })
+        .filter((log): log is string => {
+          return typeof log === "string";
+        });
 
       expect(
-        allLogs.some((log) =>
-          log.includes("Auto-upgrade is not supported for yarn"),
-        ),
+        allLogs.some((log) => {
+          return log.includes("Auto-upgrade is not supported for yarn");
+        }),
       ).toBe(true);
       expect(
-        allLogs.some((log) => log.includes("yarn global add @vm0/cli@latest")),
+        allLogs.some((log) => {
+          return log.includes("yarn global add @vm0/cli@latest");
+        }),
       ).toBe(true);
     });
 
@@ -649,17 +682,23 @@ agents:
       await cookCommand.parseAsync(["node", "cli", "test prompt"]);
 
       const allLogs = mockConsoleLog.mock.calls
-        .map((call) => call[0])
-        .filter((log): log is string => typeof log === "string");
+        .map((call) => {
+          return call[0];
+        })
+        .filter((log): log is string => {
+          return typeof log === "string";
+        });
 
       expect(
-        allLogs.some((log) =>
-          log.includes("Could not detect your package manager"),
-        ),
+        allLogs.some((log) => {
+          return log.includes("Could not detect your package manager");
+        }),
       ).toBe(true);
       // Should show npm as fallback
       expect(
-        allLogs.some((log) => log.includes("npm install -g @vm0/cli@latest")),
+        allLogs.some((log) => {
+          return log.includes("npm install -g @vm0/cli@latest");
+        }),
       ).toBe(true);
     });
 
@@ -679,11 +718,17 @@ agents:
       await cookCommand.parseAsync(["node", "cli", "test prompt"]);
 
       const allLogs = mockConsoleLog.mock.calls
-        .map((call) => call[0])
-        .filter((log): log is string => typeof log === "string");
+        .map((call) => {
+          return call[0];
+        })
+        .filter((log): log is string => {
+          return typeof log === "string";
+        });
 
       expect(
-        allLogs.some((log) => log.includes("⚠ Could not check for updates")),
+        allLogs.some((log) => {
+          return log.includes("⚠ Could not check for updates");
+        }),
       ).toBe(true);
     });
 
@@ -698,14 +743,24 @@ agents:
       await cookCommand.parseAsync(["node", "cli", "test prompt"]);
 
       const allLogs = mockConsoleLog.mock.calls
-        .map((call) => call[0])
-        .filter((log): log is string => typeof log === "string");
+        .map((call) => {
+          return call[0];
+        })
+        .filter((log): log is string => {
+          return typeof log === "string";
+        });
 
       // Should not show beta notice or upgrade messages
       expect(
-        allLogs.some((log) => log.includes("vm0 is currently in beta")),
+        allLogs.some((log) => {
+          return log.includes("vm0 is currently in beta");
+        }),
       ).toBe(false);
-      expect(allLogs.some((log) => log.includes("Upgrading via"))).toBe(false);
+      expect(
+        allLogs.some((log) => {
+          return log.includes("Upgrading via");
+        }),
+      ).toBe(false);
     });
 
     it("should skip upgrade check with --no-auto-update flag", async () => {
@@ -730,14 +785,24 @@ agents:
       ]);
 
       const allLogs = mockConsoleLog.mock.calls
-        .map((call) => call[0])
-        .filter((log): log is string => typeof log === "string");
+        .map((call) => {
+          return call[0];
+        })
+        .filter((log): log is string => {
+          return typeof log === "string";
+        });
 
       // Should not show upgrade messages (beta notice appears when upgrade is available)
       expect(
-        allLogs.some((log) => log.includes("vm0 is currently in beta")),
+        allLogs.some((log) => {
+          return log.includes("vm0 is currently in beta");
+        }),
       ).toBe(false);
-      expect(allLogs.some((log) => log.includes("Upgrading via"))).toBe(false);
+      expect(
+        allLogs.some((log) => {
+          return log.includes("Upgrading via");
+        }),
+      ).toBe(false);
     });
   });
 
@@ -794,20 +859,24 @@ Checkpoint ID: checkpoint-ghi789`,
       ]);
 
       // Verify workflow order: volume init → volume push → artifact init → artifact push → compose → run
-      const volumeInitCall = spawnCalls.find(
-        (call) => call.includes("volume") && call.includes("init"),
-      );
-      const volumePushCall = spawnCalls.find(
-        (call) => call.includes("volume") && call.includes("push"),
-      );
-      const artifactInitCall = spawnCalls.find(
-        (call) => call.includes("artifact") && call.includes("init"),
-      );
-      const artifactPushCall = spawnCalls.find(
-        (call) => call.includes("artifact") && call.includes("push"),
-      );
-      const composeCall = spawnCalls.find((call) => call.includes("compose"));
-      const runCall = spawnCalls.find((call) => call.includes("run"));
+      const volumeInitCall = spawnCalls.find((call) => {
+        return call.includes("volume") && call.includes("init");
+      });
+      const volumePushCall = spawnCalls.find((call) => {
+        return call.includes("volume") && call.includes("push");
+      });
+      const artifactInitCall = spawnCalls.find((call) => {
+        return call.includes("artifact") && call.includes("init");
+      });
+      const artifactPushCall = spawnCalls.find((call) => {
+        return call.includes("artifact") && call.includes("push");
+      });
+      const composeCall = spawnCalls.find((call) => {
+        return call.includes("compose");
+      });
+      const runCall = spawnCalls.find((call) => {
+        return call.includes("run");
+      });
 
       expect(volumeInitCall).toBeDefined();
       expect(volumePushCall).toBeDefined();
@@ -834,10 +903,12 @@ Checkpoint ID: checkpoint-ghi789`,
       // No prompt provided - should only compose, not run
       await cookCommand.parseAsync(["node", "cli", "--no-auto-update"]);
 
-      const composeCall = spawnCalls.find((call) => call.includes("compose"));
-      const runCall = spawnCalls.find(
-        (call) => call.includes("run") && !call.includes("artifact"),
-      );
+      const composeCall = spawnCalls.find((call) => {
+        return call.includes("compose");
+      });
+      const runCall = spawnCalls.find((call) => {
+        return call.includes("run") && !call.includes("artifact");
+      });
 
       expect(composeCall).toBeDefined();
       expect(runCall).toBeUndefined();
@@ -860,7 +931,9 @@ Checkpoint ID: checkpoint-ghi789`,
         "--no-auto-update",
       ]);
 
-      const composeCall = spawnCalls.find((call) => call.includes("compose"));
+      const composeCall = spawnCalls.find((call) => {
+        return call.includes("compose");
+      });
       expect(composeCall).toBeDefined();
       expect(composeCall).toContain("--yes");
     });
@@ -1099,8 +1172,16 @@ volumes:
       await cookCommand.parseAsync(["node", "cli", "--no-auto-update"]);
 
       // Should have init and push for each volume
-      expect(volumeOperations.filter((op) => op === "init").length).toBe(2);
-      expect(volumeOperations.filter((op) => op === "push").length).toBe(2);
+      expect(
+        volumeOperations.filter((op) => {
+          return op === "init";
+        }).length,
+      ).toBe(2);
+      expect(
+        volumeOperations.filter((op) => {
+          return op === "push";
+        }).length,
+      ).toBe(2);
     });
   });
 
@@ -1137,7 +1218,9 @@ agents:
       ]);
 
       // Find the vm0 run call (has "run" as the second element, after "vm0")
-      const runCall = spawnCalls.find((call) => call[1] === "run");
+      const runCall = spawnCalls.find((call) => {
+        return call[1] === "run";
+      });
       expect(runCall).toBeDefined();
       expect(runCall).toContain("--env-file");
       expect(runCall).toContain("test.env");

@@ -218,20 +218,24 @@ function TodoCard({
 }) {
   const todoItems = message.todoState ?? [];
   // Filter out subtasks for count - only count top-level tasks
-  const topLevelTodos = todoItems.filter((t) => !isSubtask(t.content));
-  const inProgressTask = topLevelTodos.find((t) => t.status === "in_progress");
-  const completedCount = topLevelTodos.filter(
-    (t) => t.status === "completed",
-  ).length;
+  const topLevelTodos = todoItems.filter((t) => {
+    return !isSubtask(t.content);
+  });
+  const inProgressTask = topLevelTodos.find((t) => {
+    return t.status === "in_progress";
+  });
+  const completedCount = topLevelTodos.filter((t) => {
+    return t.status === "completed";
+  }).length;
   const totalCount = topLevelTodos.length;
 
   // Check if any todo item matches search
   const hasSearchMatch = Boolean(
     searchTerm &&
     searchTerm.trim() &&
-    todoItems.some((t) =>
-      t.content.toLowerCase().includes(searchTerm.toLowerCase()),
-    ),
+    todoItems.some((t) => {
+      return t.content.toLowerCase().includes(searchTerm.toLowerCase());
+    }),
   );
 
   const timestamp = formatEventTime(message.createdAt);
@@ -275,20 +279,27 @@ function TodoCard({
           </div>
         </summary>
         <div className="mt-2 space-y-1.5 ml-[18px]">
-          {todoItems.map((item) => (
-            <div key={item.content} className="flex items-center gap-2 text-sm">
-              <span className="shrink-0">{getTodoStatusIcon(item.status)}</span>
-              <span
-                className={
-                  item.status === "completed"
-                    ? "text-muted-foreground line-through"
-                    : "text-foreground"
-                }
+          {todoItems.map((item) => {
+            return (
+              <div
+                key={item.content}
+                className="flex items-center gap-2 text-sm"
               >
-                {item.content}
-              </span>
-            </div>
-          ))}
+                <span className="shrink-0">
+                  {getTodoStatusIcon(item.status)}
+                </span>
+                <span
+                  className={
+                    item.status === "completed"
+                      ? "text-muted-foreground line-through"
+                      : "text-foreground"
+                  }
+                >
+                  {item.content}
+                </span>
+              </div>
+            );
+          })}
         </div>
       </details>
     </div>
@@ -395,15 +406,17 @@ function CollapsedToolGroup({
             </div>
           </summary>
           <div className="mt-1 ml-5 space-y-1">
-            {group.operations.map((op) => (
-              <ToolSummary
-                key={op.toolUseId}
-                operation={op}
-                searchTerm={searchTerm}
-                currentMatchIndex={currentMatchIndex}
-                matchStartIndex={matchStartIndex}
-              />
-            ))}
+            {group.operations.map((op) => {
+              return (
+                <ToolSummary
+                  key={op.toolUseId}
+                  operation={op}
+                  searchTerm={searchTerm}
+                  currentMatchIndex={currentMatchIndex}
+                  matchStartIndex={matchStartIndex}
+                />
+              );
+            })}
           </div>
         </details>
       </div>

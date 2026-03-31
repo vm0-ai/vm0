@@ -60,7 +60,9 @@ const router = tsr.router(webhookStoragesPrepareContract, {
 
     // Validate total declared file size (100MB per-file limit is enforced by schema)
     const totalDeclaredSize = files.reduce(
-      (sum: number, f: { size: number }) => sum + f.size,
+      (sum: number, f: { size: number }) => {
+        return sum + f.size;
+      },
       0,
     );
     if (totalDeclaredSize > MAX_FILE_SIZE_BYTES) {
@@ -164,10 +166,9 @@ const router = tsr.router(webhookStoragesPrepareContract, {
 
           // Create map of current files from client
           const currentFilesMap = new Map(
-            files.map((f: { path: string; hash: string; size: number }) => [
-              f.path,
-              f,
-            ]),
+            files.map((f: { path: string; hash: string; size: number }) => {
+              return [f.path, f];
+            }),
           );
 
           // Start with base manifest files, excluding deleted ones

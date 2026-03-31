@@ -8,5 +8,7 @@ import { extractAndGroupVariables } from "@vm0/core";
  */
 export function extractTemplateVars(obj: unknown): string[] {
   const grouped = extractAndGroupVariables(obj);
-  return grouped.vars.map((ref) => ref.name);
+  return grouped.vars.map((ref) => {
+    return ref.name;
+  });
 }

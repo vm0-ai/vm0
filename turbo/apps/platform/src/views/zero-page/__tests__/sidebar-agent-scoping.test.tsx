@@ -68,7 +68,9 @@ function mockTwoAgents() {
       const url = new URL(request.url);
       const agentId = url.searchParams.get("agentId");
       const filtered = agentId
-        ? allThreads.filter((t) => t.agentId === agentId)
+        ? allThreads.filter((t) => {
+            return t.agentId === agentId;
+          })
         : allThreads;
       return HttpResponse.json({ threads: filtered });
     }),

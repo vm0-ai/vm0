@@ -145,7 +145,9 @@ export async function listAgentSessions(
 
   return rows.map((row) => {
     const messages = (row.chatMessages ?? []) as StoredChatMessage[];
-    const firstUserMsg = messages.find((m) => m.role === "user");
+    const firstUserMsg = messages.find((m) => {
+      return m.role === "user";
+    });
     return {
       id: row.id,
       createdAt: row.createdAt,
@@ -190,7 +192,9 @@ export async function appendChatMessages(
   }>,
 ): Promise<void> {
   const now = new Date().toISOString();
-  const withTimestamps = messages.map((m) => ({ ...m, createdAt: now }));
+  const withTimestamps = messages.map((m) => {
+    return { ...m, createdAt: now };
+  });
 
   await globalThis.services.db.transaction(async (tx) => {
     // Verify session ownership
@@ -299,7 +303,9 @@ export async function getSessionResponse(
 
     if (version?.content) {
       const grouped = extractAndGroupVariables(version.content);
-      const names = grouped.secrets.map((ref) => ref.name);
+      const names = grouped.secrets.map((ref) => {
+        return ref.name;
+      });
       secretNames = names.length > 0 ? names : null;
     }
   }

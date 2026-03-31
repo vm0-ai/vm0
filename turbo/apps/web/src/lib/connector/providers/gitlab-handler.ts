@@ -7,7 +7,13 @@ export const gitlabHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("GitLab does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "GITLAB_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "GITLAB_TOKEN";
+  },
 };

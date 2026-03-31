@@ -68,7 +68,9 @@ function SlackCardActions({
           variant="outline"
           size="sm"
           className="h-8 shrink-0 gap-1.5 rounded-lg"
-          onClick={() => openFreshOAuth(installUrl)}
+          onClick={() => {
+            return openFreshOAuth(installUrl);
+          }}
         >
           <IconDownload size={14} stroke={1.5} />
           Install to Slack
@@ -79,7 +81,9 @@ function SlackCardActions({
           variant="outline"
           size="sm"
           className="h-8 shrink-0 gap-1.5 rounded-lg"
-          onClick={() => openFreshOAuth(connectUrl)}
+          onClick={() => {
+            return openFreshOAuth(connectUrl);
+          }}
         >
           Connect
         </Button>
@@ -162,10 +166,12 @@ function SlackCard({ displayName }: { displayName: string }) {
             isAdmin={isAdmin}
             installUrl={slackData?.installUrl}
             connectUrl={slackData?.connectUrl}
-            onDisconnect={() =>
-              detach(disconnect(pageSignal), Reason.DomCallback)
-            }
-            onUninstall={() => setShowUninstallDialog(true)}
+            onDisconnect={() => {
+              return detach(disconnect(pageSignal), Reason.DomCallback);
+            }}
+            onUninstall={() => {
+              return setShowUninstallDialog(true);
+            }}
           />
         </div>
 
@@ -179,7 +185,9 @@ function SlackCard({ displayName }: { displayName: string }) {
               variant="outline"
               size="sm"
               className="h-7 shrink-0 text-xs"
-              onClick={() => openFreshOAuth(reinstallUrl)}
+              onClick={() => {
+                return openFreshOAuth(reinstallUrl);
+              }}
             >
               Update Permissions
             </Button>
@@ -201,7 +209,9 @@ function SlackCard({ displayName }: { displayName: string }) {
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setShowUninstallDialog(false)}
+              onClick={() => {
+                return setShowUninstallDialog(false);
+              }}
             >
               Cancel
             </Button>

@@ -212,7 +212,9 @@ export function createDeferredPromise<T>(signal: AbortSignal): {
     promise,
     resolve: _resolve as unknown as (value: T) => void,
     reject: _reject as unknown as (reason?: unknown) => void,
-    settled: () => settled,
+    settled: () => {
+      return settled;
+    },
   };
 }
 

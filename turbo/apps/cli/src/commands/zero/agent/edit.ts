@@ -17,7 +17,9 @@ function resolveCustomSkills(
   }
 
   if (options.skills) {
-    return options.skills.split(",").map((s) => s.trim());
+    return options.skills.split(",").map((s) => {
+      return s.trim();
+    });
   }
 
   if (options.addSkill) {
@@ -35,7 +37,9 @@ function resolveCustomSkills(
         `Skill "${options.removeSkill}" is not attached to this agent`,
       );
     }
-    return existing.filter((s) => s !== options.removeSkill);
+    return existing.filter((s) => {
+      return s !== options.removeSkill;
+    });
   }
 
   return undefined;

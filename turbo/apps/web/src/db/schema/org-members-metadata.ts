@@ -26,5 +26,7 @@ export const orgMembersMetadata = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (table) => [primaryKey({ columns: [table.orgId, table.userId] })],
+  (table) => {
+    return [primaryKey({ columns: [table.orgId, table.userId] })];
+  },
 );

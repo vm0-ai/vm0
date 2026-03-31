@@ -33,7 +33,9 @@ export const connectors$ = computed(async (get) => {
  * Trigger a reload of connectors data.
  */
 export const reloadConnectors$ = command(({ set }) => {
-  set(internalReloadConnectors$, (x) => x + 1);
+  set(internalReloadConnectors$, (x) => {
+    return x + 1;
+  });
 });
 
 /**
@@ -49,6 +51,8 @@ export const deleteConnector$ = command(
       throw new Error(`Failed to delete connector: ${result.status}`);
     }
 
-    set(internalReloadConnectors$, (x) => x + 1);
+    set(internalReloadConnectors$, (x) => {
+      return x + 1;
+    });
   },
 );

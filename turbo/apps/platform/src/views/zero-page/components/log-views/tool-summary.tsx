@@ -281,9 +281,9 @@ function ToolInputDetails({
   }
 
   // For other tools, show key-value pairs inline
-  const entries = Object.entries(input).filter(
-    ([key]) => !shouldFilterKey(lowerName, key),
-  );
+  const entries = Object.entries(input).filter(([key]) => {
+    return !shouldFilterKey(lowerName, key);
+  });
 
   if (entries.length === 0) {
     return null;
@@ -304,12 +304,20 @@ function ToolInputDetails({
   };
 
   const fullText = entries
-    .map(([key, val]) => `${key}: ${getFullValue(val)}`)
+    .map(([key, val]) => {
+      return `${key}: ${getFullValue(val)}`;
+    })
     .join(", ");
 
   return (
     <span className="text-xs text-muted-foreground" title={fullText}>
-      ({entries.map(([key, val]) => `${key}: ${formatValue(val)}`).join(", ")})
+      (
+      {entries
+        .map(([key, val]) => {
+          return `${key}: ${formatValue(val)}`;
+        })
+        .join(", ")}
+      )
     </span>
   );
 }

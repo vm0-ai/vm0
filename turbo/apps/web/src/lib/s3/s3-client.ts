@@ -168,7 +168,9 @@ export async function deleteS3Objects(
     const command = new DeleteObjectsCommand({
       Bucket: bucket,
       Delete: {
-        Objects: batch.map((key) => ({ Key: key })),
+        Objects: batch.map((key) => {
+          return { Key: key };
+        }),
       },
     });
 

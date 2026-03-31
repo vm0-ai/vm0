@@ -19,7 +19,9 @@ function handleSetVariable(body: {
   description?: string;
 }) {
   const now = new Date().toISOString();
-  const existing = mockVariables.find((v) => v.name === body.name);
+  const existing = mockVariables.find((v) => {
+    return v.name === body.name;
+  });
   const created = !existing;
 
   const variable: VariableResponse = {
@@ -32,9 +34,9 @@ function handleSetVariable(body: {
   };
 
   if (existing) {
-    mockVariables = mockVariables.map((v) =>
-      v.name === body.name ? variable : v,
-    );
+    mockVariables = mockVariables.map((v) => {
+      return v.name === body.name ? variable : v;
+    });
   } else {
     mockVariables.push(variable);
   }

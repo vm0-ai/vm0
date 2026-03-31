@@ -21,39 +21,73 @@ const mockArticle = {
 };
 
 // External: next-intl/server (used by page.tsx and i18n.ts)
-vi.mock("next-intl/server", () => ({
-  getTranslations: vi.fn(async () => (key: string) => `mock-${key}`),
-  getRequestConfig: vi.fn((fn: unknown) => fn),
-}));
+vi.mock("next-intl/server", () => {
+  return {
+    getTranslations: vi.fn(async () => {
+      return (key: string) => {
+        return `mock-${key}`;
+      };
+    }),
+    getRequestConfig: vi.fn((fn: unknown) => {
+      return fn;
+    }),
+  };
+});
 
 // External: next-intl/navigation (used by navigation.ts → Link)
-vi.mock("next-intl/navigation", () => ({
-  createNavigation: vi.fn(() => ({
-    Link: () => null,
-    redirect: vi.fn(),
-    usePathname: vi.fn(),
-    useRouter: vi.fn(),
-  })),
-}));
+vi.mock("next-intl/navigation", () => {
+  return {
+    createNavigation: vi.fn(() => {
+      return {
+        Link: () => {
+          return null;
+        },
+        redirect: vi.fn(),
+        usePathname: vi.fn(),
+        useRouter: vi.fn(),
+      };
+    }),
+  };
+});
 
 // External: next-intl (used by Navbar, Footer, ShareButtons)
-vi.mock("next-intl", () => ({
-  useTranslations: vi.fn(() => (key: string) => `mock-${key}`),
-}));
+vi.mock("next-intl", () => {
+  return {
+    useTranslations: vi.fn(() => {
+      return (key: string) => {
+        return `mock-${key}`;
+      };
+    }),
+  };
+});
 
 // External: @clerk/nextjs (used by Navbar)
-vi.mock("@clerk/nextjs", () => ({
-  useUser: vi.fn(() => ({ user: null, isLoaded: true })),
-  useClerk: vi.fn(() => ({ signOut: vi.fn() })),
-}));
+vi.mock("@clerk/nextjs", () => {
+  return {
+    useUser: vi.fn(() => {
+      return { user: null, isLoaded: true };
+    }),
+    useClerk: vi.fn(() => {
+      return { signOut: vi.fn() };
+    }),
+  };
+});
 
 // External: next/navigation (used by BlogContent, notFound)
-vi.mock("next/navigation", () => ({
-  notFound: vi.fn(),
-  useSearchParams: vi.fn(() => new URLSearchParams()),
-  useParams: vi.fn(() => ({})),
-  useRouter: vi.fn(() => ({})),
-}));
+vi.mock("next/navigation", () => {
+  return {
+    notFound: vi.fn(),
+    useSearchParams: vi.fn(() => {
+      return new URLSearchParams();
+    }),
+    useParams: vi.fn(() => {
+      return {};
+    }),
+    useRouter: vi.fn(() => {
+      return {};
+    }),
+  };
+});
 
 import { generateMetadata } from "../page";
 

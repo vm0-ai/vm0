@@ -173,7 +173,9 @@ const router = tsr.router(runnersJobClaimContract, {
       ? new Set(Object.values(storedContext.environment))
       : new Set<string>();
     const secretValues = secretsMap
-      ? Object.values(secretsMap).filter((v) => envValues.has(v))
+      ? Object.values(secretsMap).filter((v) => {
+          return envValues.has(v);
+        })
       : null;
 
     // Return execution context (context already prepared at job creation)

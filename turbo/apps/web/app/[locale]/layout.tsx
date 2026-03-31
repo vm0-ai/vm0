@@ -35,9 +35,15 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
     openGraph: {
       locale: localeNames[locale] || "en_US",
       alternateLocale: locales
-        .filter((loc) => loc !== locale)
-        .map((loc) => localeNames[loc])
-        .filter((name): name is string => name !== undefined),
+        .filter((loc) => {
+          return loc !== locale;
+        })
+        .map((loc) => {
+          return localeNames[loc];
+        })
+        .filter((name): name is string => {
+          return name !== undefined;
+        }),
       url: `${baseUrl}/${locale}`,
       images: [
         {

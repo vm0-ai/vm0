@@ -33,7 +33,9 @@ const router = tsr.router(zeroRunsCancelContract, {
     try {
       const result = await cancelRun(params.id, userId, org.orgId);
 
-      after(() => dispatchCancelSideEffects(result, dispatchQueuedZeroRun));
+      after(() => {
+        return dispatchCancelSideEffects(result, dispatchQueuedZeroRun);
+      });
 
       return {
         status: 200 as const,

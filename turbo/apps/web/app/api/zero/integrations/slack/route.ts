@@ -202,13 +202,13 @@ async function handleUninstall(authCtx: { userId: string }) {
 
     // Publish an unlinked App Home for each connected user
     await Promise.allSettled(
-      connections.map((c) =>
-        publishAppHome(
+      connections.map((c) => {
+        return publishAppHome(
           client,
           c.slackUserId,
           buildAppHomeView({ isLinked: false, isInstalled: false }),
-        ),
-      ),
+        );
+      }),
     );
   }
 
@@ -265,8 +265,12 @@ async function getConnectedStatus(
         if (version) {
           const content = version.content as AgentComposeYaml;
           const grouped = extractAndGroupVariables(content);
-          requiredSecrets = grouped.secrets.map((s) => s.name);
-          requiredVars = grouped.vars.map((v) => v.name);
+          requiredSecrets = grouped.secrets.map((s) => {
+            return s.name;
+          });
+          requiredVars = grouped.vars.map((v) => {
+            return v.name;
+          });
         }
       }
     }
@@ -279,20 +283,28 @@ async function getConnectedStatus(
   ]);
 
   const connectorProvided = getConnectorProvidedSecretNames(
-    userConnectors.map((c) => c.type),
+    userConnectors.map((c) => {
+      return c.type;
+    }),
   );
   const existingSecretNames = new Set([
-    ...userSecrets.map((s) => s.name),
+    ...userSecrets.map((s) => {
+      return s.name;
+    }),
     ...connectorProvided,
   ]);
-  const existingVarNames = new Set(userVars.map((v) => v.name));
+  const existingVarNames = new Set(
+    userVars.map((v) => {
+      return v.name;
+    }),
+  );
 
-  const missingSecrets = requiredSecrets.filter(
-    (name) => !existingSecretNames.has(name),
-  );
-  const missingVars = requiredVars.filter(
-    (name) => !existingVarNames.has(name),
-  );
+  const missingSecrets = requiredSecrets.filter((name) => {
+    return !existingSecretNames.has(name);
+  });
+  const missingVars = requiredVars.filter((name) => {
+    return !existingVarNames.has(name);
+  });
 
   const isAdmin = member.role === "admin";
   const { SLACK_CLIENT_ID } = env();

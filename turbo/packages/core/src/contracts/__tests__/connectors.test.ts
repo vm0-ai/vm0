@@ -124,7 +124,9 @@ describe("getConnectorEnvironmentMapping", () => {
 
       const oauthSecrets = Object.keys(authMethods["oauth"].secrets);
       const prefix = oauthSecrets
-        .find((s) => s.endsWith("_ACCESS_TOKEN"))
+        .find((s) => {
+          return s.endsWith("_ACCESS_TOKEN");
+        })
         ?.replace(/_ACCESS_TOKEN$/, "");
       expect(
         prefix,
@@ -133,12 +135,13 @@ describe("getConnectorEnvironmentMapping", () => {
 
       // oauth secrets: exactly [XXX_ACCESS_TOKEN] or [XXX_ACCESS_TOKEN, XXX_REFRESH_TOKEN]
       expect(oauthSecrets, `${type}: unexpected oauth secrets`).toSatisfy(
-        (s: string[]) =>
-          s.length === 1
+        (s: string[]) => {
+          return s.length === 1
             ? s[0] === `${prefix}_ACCESS_TOKEN`
             : s.length === 2 &&
-              s.includes(`${prefix}_ACCESS_TOKEN`) &&
-              s.includes(`${prefix}_REFRESH_TOKEN`),
+                s.includes(`${prefix}_ACCESS_TOKEN`) &&
+                s.includes(`${prefix}_REFRESH_TOKEN`);
+        },
       );
 
       // environmentMapping: must contain XXX_TOKEN, all values -> $secrets.XXX_ACCESS_TOKEN

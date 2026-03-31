@@ -7,7 +7,13 @@ export const reporteiHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Reportei does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "REPORTEI_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "REPORTEI_TOKEN";
+  },
 };

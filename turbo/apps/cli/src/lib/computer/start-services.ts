@@ -32,7 +32,9 @@ async function getRandomPort(): Promise<number> {
     const server = createServer();
     server.listen(0, "127.0.0.1", () => {
       const { port } = server.address() as AddressInfo;
-      server.close(() => resolve(port));
+      server.close(() => {
+        return resolve(port);
+      });
     });
     server.on("error", reject);
   });
@@ -50,7 +52,9 @@ async function findBinary(...candidates: string[]): Promise<string | null> {
     } else {
       const found = await new Promise<boolean>((resolve) => {
         const child = spawn("which", [candidate]);
-        child.on("close", (code) => resolve(code === 0));
+        child.on("close", (code) => {
+          return resolve(code === 0);
+        });
       });
       if (found) return candidate;
     }
@@ -104,8 +108,12 @@ export async function startComputerServices(
     ],
     { stdio: ["ignore", "pipe", "pipe"] },
   );
-  wsgidav.stdout?.on("data", (data: Buffer) => process.stdout.write(data));
-  wsgidav.stderr?.on("data", (data: Buffer) => process.stderr.write(data));
+  wsgidav.stdout?.on("data", (data: Buffer) => {
+    return process.stdout.write(data);
+  });
+  wsgidav.stderr?.on("data", (data: Buffer) => {
+    return process.stderr.write(data);
+  });
   console.log(chalk.green("✓ WebDAV server started"));
 
   const chrome = spawn(
@@ -119,8 +127,12 @@ export async function startComputerServices(
     ],
     { stdio: ["ignore", "pipe", "pipe"] },
   );
-  chrome.stdout?.on("data", (data: Buffer) => process.stdout.write(data));
-  chrome.stderr?.on("data", (data: Buffer) => process.stderr.write(data));
+  chrome.stdout?.on("data", (data: Buffer) => {
+    return process.stdout.write(data);
+  });
+  chrome.stderr?.on("data", (data: Buffer) => {
+    return process.stderr.write(data);
+  });
   console.log(chalk.green("✓ Chrome started"));
 
   try {

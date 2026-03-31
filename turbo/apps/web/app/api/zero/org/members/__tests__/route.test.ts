@@ -38,7 +38,9 @@ describe("GET /api/zero/org/members", () => {
     server.use(
       http.get(
         `https://api.clerk.com/v1/organizations/${orgId}/membership_requests`,
-        () => HttpResponse.json({ data: [] }),
+        () => {
+          return HttpResponse.json({ data: [] });
+        },
       ),
     );
 
@@ -59,8 +61,8 @@ describe("GET /api/zero/org/members", () => {
     server.use(
       http.get(
         `https://api.clerk.com/v1/organizations/${orgId}/membership_requests`,
-        () =>
-          HttpResponse.json({
+        () => {
+          return HttpResponse.json({
             data: [
               {
                 id: "req_test_1",
@@ -68,7 +70,8 @@ describe("GET /api/zero/org/members", () => {
                 created_at: Date.now(),
               },
             ],
-          }),
+          });
+        },
       ),
     );
 

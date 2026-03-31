@@ -7,7 +7,13 @@ export const humeHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Hume does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "HUME_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "HUME_TOKEN";
+  },
 };

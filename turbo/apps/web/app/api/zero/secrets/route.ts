@@ -33,14 +33,16 @@ const router = tsr.router(zeroSecretsContract, {
     return {
       status: 200 as const,
       body: {
-        secrets: secrets.map((s) => ({
-          id: s.id,
-          name: s.name,
-          description: s.description,
-          type: s.type,
-          createdAt: s.createdAt.toISOString(),
-          updatedAt: s.updatedAt.toISOString(),
-        })),
+        secrets: secrets.map((s) => {
+          return {
+            id: s.id,
+            name: s.name,
+            description: s.description,
+            type: s.type,
+            createdAt: s.createdAt.toISOString(),
+            updatedAt: s.updatedAt.toISOString(),
+          };
+        }),
       },
     };
   },

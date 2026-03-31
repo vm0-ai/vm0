@@ -15,7 +15,11 @@ beforeEach(() => {
 });
 
 // Reset handlers after each test
-afterEach(() => server.resetHandlers());
+afterEach(() => {
+  return server.resetHandlers();
+});
 
 // Close server after all tests
-afterAll(() => server.close());
+afterAll(() => {
+  return server.close();
+});

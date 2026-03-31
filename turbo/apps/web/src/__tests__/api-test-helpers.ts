@@ -274,11 +274,11 @@ export async function createTestDeviceCode(options?: {
   expiresAt?: Date;
 }): Promise<string> {
   const chars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-  const part = () =>
-    Array.from(
-      { length: 4 },
-      () => chars[Math.floor(Math.random() * chars.length)],
-    ).join("");
+  const part = () => {
+    return Array.from({ length: 4 }, () => {
+      return chars[Math.floor(Math.random() * chars.length)];
+    }).join("");
+  };
   const code = `${part()}-${part()}`;
 
   const status = options?.status ?? "pending";
@@ -332,7 +332,9 @@ async function getTestAuthContext(): Promise<{
   userId: string;
   orgId: string;
 }> {
-  const { userId } = await import("@clerk/nextjs/server").then((m) => m.auth());
+  const { userId } = await import("@clerk/nextjs/server").then((m) => {
+    return m.auth();
+  });
   if (!userId) throw new Error("Mock Clerk userId is null");
   return { userId, orgId: `org_mock_${userId}` };
 }
@@ -1283,7 +1285,9 @@ async function createTestStorage(
     return {
       versionId,
       name,
-      size: files.reduce((sum, f) => sum + f.size, 0),
+      size: files.reduce((sum, f) => {
+        return sum + f.size;
+      }, 0),
       fileCount: files.length,
     };
   }
@@ -1716,38 +1720,46 @@ const OAUTH_PROVIDER_MOCKS: Record<
       GH_OAUTH_CLIENT_ID: "test-client-id",
       GH_OAUTH_CLIENT_SECRET: "test-client-secret",
     },
-    buildTokenResponse: (accessToken) => ({
-      access_token: accessToken,
-      scope: "repo,project",
-      token_type: "bearer",
-    }),
-    buildUserResponse: (opts) => ({
-      id: opts.userId ?? 12345,
-      login: opts.username ?? "testuser",
-      email: opts.email ?? "test@example.com",
-    }),
+    buildTokenResponse: (accessToken) => {
+      return {
+        access_token: accessToken,
+        scope: "repo,project",
+        token_type: "bearer",
+      };
+    },
+    buildUserResponse: (opts) => {
+      return {
+        id: opts.userId ?? 12345,
+        login: opts.username ?? "testuser",
+        email: opts.email ?? "test@example.com",
+      };
+    },
   },
   slack: {
     tokenUrl: "https://slack.com/api/oauth.v2.access",
     userUrl: "https://slack.com/api/users.info",
     envVars: {},
-    buildTokenResponse: (accessToken) => ({
-      ok: true,
-      authed_user: {
-        id: "U12345",
-        access_token: accessToken,
-        scope: "channels:read,chat:write",
-      },
-    }),
-    buildUserResponse: (opts) => ({
-      ok: true,
-      user: {
-        id: opts.userId?.toString() ?? "U12345",
-        name: opts.username ?? "testuser",
-        real_name: opts.username ?? "Test User",
-        profile: { email: opts.email ?? "test@example.com" },
-      },
-    }),
+    buildTokenResponse: (accessToken) => {
+      return {
+        ok: true,
+        authed_user: {
+          id: "U12345",
+          access_token: accessToken,
+          scope: "channels:read,chat:write",
+        },
+      };
+    },
+    buildUserResponse: (opts) => {
+      return {
+        ok: true,
+        user: {
+          id: opts.userId?.toString() ?? "U12345",
+          name: opts.username ?? "testuser",
+          real_name: opts.username ?? "Test User",
+          profile: { email: opts.email ?? "test@example.com" },
+        },
+      };
+    },
   },
   figma: {
     tokenUrl: "https://api.figma.com/v1/oauth/token",
@@ -1756,16 +1768,20 @@ const OAUTH_PROVIDER_MOCKS: Record<
       FIGMA_OAUTH_CLIENT_ID: "figma-test-client-id",
       FIGMA_OAUTH_CLIENT_SECRET: "figma-test-client-secret",
     },
-    buildTokenResponse: (accessToken) => ({
-      access_token: accessToken,
-      refresh_token: "figma-refresh-token",
-      expires_in: 7776000,
-    }),
-    buildUserResponse: (opts) => ({
-      id: opts.userId?.toString() ?? "12345",
-      email: opts.email ?? "test@example.com",
-      handle: opts.username ?? "testuser",
-    }),
+    buildTokenResponse: (accessToken) => {
+      return {
+        access_token: accessToken,
+        refresh_token: "figma-refresh-token",
+        expires_in: 7776000,
+      };
+    },
+    buildUserResponse: (opts) => {
+      return {
+        id: opts.userId?.toString() ?? "12345",
+        email: opts.email ?? "test@example.com",
+        handle: opts.username ?? "testuser",
+      };
+    },
   },
   linear: {
     tokenUrl: "https://api.linear.app/oauth/token",
@@ -1775,22 +1791,26 @@ const OAUTH_PROVIDER_MOCKS: Record<
       LINEAR_OAUTH_CLIENT_ID: "linear-test-client-id",
       LINEAR_OAUTH_CLIENT_SECRET: "linear-test-client-secret",
     },
-    buildTokenResponse: (accessToken) => ({
-      access_token: accessToken,
-      refresh_token: "linear-refresh-token",
-      expires_in: 86399,
-      token_type: "Bearer",
-      scope: "read,write,issues:create,comments:create,timeSchedule:write",
-    }),
-    buildUserResponse: (opts) => ({
-      data: {
-        viewer: {
-          id: opts.userId?.toString() ?? "linear-user-123",
-          name: opts.username ?? "Linear User",
-          email: opts.email ?? "user@linear.app",
+    buildTokenResponse: (accessToken) => {
+      return {
+        access_token: accessToken,
+        refresh_token: "linear-refresh-token",
+        expires_in: 86399,
+        token_type: "Bearer",
+        scope: "read,write,issues:create,comments:create,timeSchedule:write",
+      };
+    },
+    buildUserResponse: (opts) => {
+      return {
+        data: {
+          viewer: {
+            id: opts.userId?.toString() ?? "linear-user-123",
+            name: opts.username ?? "Linear User",
+            email: opts.email ?? "user@linear.app",
+          },
         },
-      },
-    }),
+      };
+    },
   },
 };
 
@@ -1820,16 +1840,16 @@ async function createTestOAuthConnector(options?: {
 
   // Set up MSW handlers for token exchange + user info
   server.use(
-    mswHttp.post(providerMock.tokenUrl, () =>
-      HttpResponse.json(providerMock.buildTokenResponse(accessToken)),
-    ),
-    mswHttp[providerMock.userMethod ?? "get"](providerMock.userUrl, () =>
-      HttpResponse.json(
+    mswHttp.post(providerMock.tokenUrl, () => {
+      return HttpResponse.json(providerMock.buildTokenResponse(accessToken));
+    }),
+    mswHttp[providerMock.userMethod ?? "get"](providerMock.userUrl, () => {
+      return HttpResponse.json(
         providerMock.buildUserResponse({
           username: options?.externalUsername ?? "testuser",
         }),
-      ),
-    ),
+      );
+    }),
   );
 
   // Create callback request with proper cookies
@@ -2704,15 +2724,17 @@ export async function insertTestTelegramMessages(
   count: number,
   createdAt: Date,
 ): Promise<void> {
-  const values = Array.from({ length: count }, (_, i) => ({
-    installationId,
-    chatId: "chat-1",
-    messageId: `${createdAt.getTime()}-${i}`,
-    fromUserId: "user-1",
-    text: `message ${i}`,
-    isBot: false,
-    createdAt,
-  }));
+  const values = Array.from({ length: count }, (_, i) => {
+    return {
+      installationId,
+      chatId: "chat-1",
+      messageId: `${createdAt.getTime()}-${i}`,
+      fromUserId: "user-1",
+      text: `message ${i}`,
+      isBot: false,
+      createdAt,
+    };
+  });
 
   await globalThis.services.db.insert(telegramMessages).values(values);
 }
@@ -3543,8 +3565,12 @@ export async function seedSeedSkills(): Promise<void> {
   const { CONNECTOR_TYPES } = await import("@vm0/core");
   initServices();
   const gaConnectorTypes = Object.entries(CONNECTOR_TYPES)
-    .filter(([, config]) => !config.featureFlag)
-    .map(([type]) => type);
+    .filter(([, config]) => {
+      return !config.featureFlag;
+    })
+    .map(([type]) => {
+      return type;
+    });
   const allNames = [...new Set([...SEED_SKILLS, ...gaConnectorTypes])];
   const values = buildSeedSkillValues(allNames);
   await globalThis.services.db
@@ -3565,8 +3591,12 @@ export async function seedSeedSkillStorages(): Promise<void> {
   const { SEED_SKILLS } = await import("../lib/zero/seed-skills");
   const { CONNECTOR_TYPES } = await import("@vm0/core");
   const gaConnectorTypes = Object.entries(CONNECTOR_TYPES)
-    .filter(([, config]) => !config.featureFlag)
-    .map(([type]) => type);
+    .filter(([, config]) => {
+      return !config.featureFlag;
+    })
+    .map(([type]) => {
+      return type;
+    });
   const allNames = [...new Set([...SEED_SKILLS, ...gaConnectorTypes])];
 
   initServices();
@@ -3584,36 +3614,44 @@ export async function seedSeedSkillStorages(): Promise<void> {
     const inserted = await tx
       .insert(storages)
       .values(
-        entries.map(({ storageName }) => ({
-          orgId: SYSTEM_ORG_ID,
-          userId: VOLUME_ORG_USER_ID,
-          name: storageName,
-          type: "volume" as const,
-          s3Prefix: `${SYSTEM_ORG_ID}/${storageName}`,
-        })),
+        entries.map(({ storageName }) => {
+          return {
+            orgId: SYSTEM_ORG_ID,
+            userId: VOLUME_ORG_USER_ID,
+            name: storageName,
+            type: "volume" as const,
+            s3Prefix: `${SYSTEM_ORG_ID}/${storageName}`,
+          };
+        }),
       )
       .onConflictDoNothing()
       .returning({ id: storages.id, name: storages.name });
 
     if (inserted.length === 0) return;
 
-    const nameToId = new Map(inserted.map((s) => [s.name, s.id]));
+    const nameToId = new Map(
+      inserted.map((s) => {
+        return [s.name, s.id];
+      }),
+    );
 
     // Only create versions for storages that were actually inserted.
-    const newEntries = entries.filter(({ storageName }) =>
-      nameToId.has(storageName),
-    );
+    const newEntries = entries.filter(({ storageName }) => {
+      return nameToId.has(storageName);
+    });
 
     // Batch-insert all versions.
     await tx.insert(storageVersions).values(
-      newEntries.map(({ storageName, versionId }) => ({
-        id: versionId,
-        storageId: nameToId.get(storageName)!,
-        s3Key: `${SYSTEM_ORG_ID}/${storageName}/${versionId}`,
-        size: 100,
-        fileCount: 1,
-        createdBy: "test",
-      })),
+      newEntries.map(({ storageName, versionId }) => {
+        return {
+          id: versionId,
+          storageId: nameToId.get(storageName)!,
+          s3Key: `${SYSTEM_ORG_ID}/${storageName}/${versionId}`,
+          size: 100,
+          fileCount: 1,
+          createdBy: "test",
+        };
+      }),
     );
 
     // Batch-update headVersionId for each newly created storage.

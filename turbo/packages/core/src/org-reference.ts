@@ -62,7 +62,11 @@ export function resolveSystemImageToE2b(
   // Validate system image name
   if (!SYSTEM_IMAGES.includes(resolvedName as (typeof SYSTEM_IMAGES)[number])) {
     throw new Error(
-      `Unknown system image: ${systemOrgSlug}/${name}. Available: ${SYSTEM_IMAGES.map((img) => `${systemOrgSlug}/${img}`).join(", ")}`,
+      `Unknown system image: ${systemOrgSlug}/${name}. Available: ${SYSTEM_IMAGES.map(
+        (img) => {
+          return `${systemOrgSlug}/${img}`;
+        },
+      ).join(", ")}`,
     );
   }
 

@@ -95,13 +95,12 @@ describe("zero preferences page - send mode interaction", () => {
       expect(screen.getByText("Send message with")).toBeInTheDocument();
     });
 
-    const cmdEnterButton = screen
-      .getAllByRole("button")
-      .find(
-        (btn) =>
-          btn.textContent?.includes("Enter") &&
-          btn.textContent?.includes("\u2318"),
+    const cmdEnterButton = screen.getAllByRole("button").find((btn) => {
+      return (
+        btn.textContent?.includes("Enter") &&
+        btn.textContent?.includes("\u2318")
       );
+    });
     expect(cmdEnterButton).toBeInTheDocument();
     await user.click(cmdEnterButton as HTMLElement);
 

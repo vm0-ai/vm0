@@ -166,7 +166,9 @@ function formatInlineElement(el: RichTextElement): string {
     case "emoji":
       return el.unicode
         ? String.fromCodePoint(
-            ...el.unicode.split("-").map((h) => parseInt(h, 16)),
+            ...el.unicode.split("-").map((h) => {
+              return parseInt(h, 16);
+            }),
           )
         : `:${el.name ?? "emoji"}:`;
     case "user":
@@ -199,7 +201,9 @@ export function extractTextFromBlocks(
 ): string | undefined {
   if (!blocks || blocks.length === 0) return undefined;
 
-  const richTextBlocks = blocks.filter((b) => b.type === "rich_text");
+  const richTextBlocks = blocks.filter((b) => {
+    return b.type === "rich_text";
+  });
   if (richTextBlocks.length === 0) return undefined;
 
   const parts: string[] = [];
@@ -234,10 +238,14 @@ export function extractTextFromBlocks(
         case "rich_text_quote":
           parts.push(
             (section.elements ?? [])
-              .map((el) => formatInlineElement(el))
+              .map((el) => {
+                return formatInlineElement(el);
+              })
               .join("")
               .split("\n")
-              .map((line) => `> ${line}`)
+              .map((line) => {
+                return `> ${line}`;
+              })
               .join("\n"),
           );
           break;

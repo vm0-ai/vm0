@@ -60,7 +60,9 @@ function createChatAttachment(file: File): ZeroChatAttachment {
     signal.throwIfAborted();
 
     if (!res.ok) {
-      const err = (await res.json().catch(() => null)) as {
+      const err = (await res.json().catch(() => {
+        return null;
+      })) as {
         error?: { message?: string };
       } | null;
       throw new Error(
@@ -113,17 +115,23 @@ function createDraftSignals(): DraftSignals {
   const internalSelectedModel$ = state("default");
   const internalDragOver$ = state(false);
 
-  const input$ = computed((get) => get(internalInput$));
+  const input$ = computed((get) => {
+    return get(internalInput$);
+  });
   const setInput$ = command(({ set }, value: string) => {
     set(internalInput$, value);
   });
 
-  const attachments$ = computed((get) => get(internalAttachments$));
+  const attachments$ = computed((get) => {
+    return get(internalAttachments$);
+  });
 
   const uploadAttachment$ = command(
     async ({ set }, file: File, signal: AbortSignal) => {
       const attachment = createChatAttachment(file);
-      set(internalAttachments$, (prev) => [...prev, attachment]);
+      set(internalAttachments$, (prev) => {
+        return [...prev, attachment];
+      });
 
       try {
         await set(attachment.upload$, signal);
@@ -131,9 +139,11 @@ function createDraftSignals(): DraftSignals {
         throwIfAbort(error);
         L.error("Upload failed:", error);
         set(attachment.cancel$);
-        set(internalAttachments$, (prev) =>
-          prev.filter((a) => a !== attachment),
-        );
+        set(internalAttachments$, (prev) => {
+          return prev.filter((a) => {
+            return a !== attachment;
+          });
+        });
       }
     },
   );
@@ -141,16 +151,24 @@ function createDraftSignals(): DraftSignals {
   const removeAttachment$ = command(
     ({ set }, attachment: ZeroChatAttachment) => {
       set(attachment.cancel$);
-      set(internalAttachments$, (prev) => prev.filter((a) => a !== attachment));
+      set(internalAttachments$, (prev) => {
+        return prev.filter((a) => {
+          return a !== attachment;
+        });
+      });
     },
   );
 
-  const selectedModel$ = computed((get) => get(internalSelectedModel$));
+  const selectedModel$ = computed((get) => {
+    return get(internalSelectedModel$);
+  });
   const setSelectedModel$ = command(({ set }, value: string) => {
     set(internalSelectedModel$, value);
   });
 
-  const dragOver$ = computed((get) => get(internalDragOver$));
+  const dragOver$ = computed((get) => {
+    return get(internalDragOver$);
+  });
   const setDragOver$ = command(({ set }, value: boolean) => {
     set(internalDragOver$, value);
   });
@@ -188,7 +206,9 @@ const internalDraftMap$ = state<Record<string, DraftSignals>>({});
 
 const internalTalkDraft$ = state(createDraftSignals());
 
-export const talkDraft$ = computed((get) => get(internalTalkDraft$));
+export const talkDraft$ = computed((get) => {
+  return get(internalTalkDraft$);
+});
 
 export const ensureDraft$ = command(
   ({ get, set }, threadId: string): DraftSignals => {

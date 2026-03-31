@@ -27,12 +27,13 @@ vi.mock("os", async () => {
 describe("info command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   const mockHomedir = vi.mocked(os.homedir);
+  const testApiUrl = "https://www.vm0.ai";
 
   let tempDir: string;
 
   beforeEach(() => {
     chalk.level = 0;
-    vi.stubEnv("VM0_API_URL", "https://www.vm0.ai");
+    vi.stubEnv("VM0_API_URL", testApiUrl);
 
     // Create temp directory for each test
     tempDir = mkdtempSync(join(tmpdir(), "vm0-info-test-"));
@@ -48,8 +49,12 @@ describe("info command", () => {
 
   function getAllOutput(): string[] {
     return mockConsoleLog.mock.calls
-      .map((call) => call[0] as string | undefined)
-      .filter((call): call is string => call !== undefined);
+      .map((call) => {
+        return call[0] as string | undefined;
+      })
+      .filter((call): call is string => {
+        return call !== undefined;
+      });
   }
 
   // Helper to create config file in temp directory
@@ -79,12 +84,16 @@ describe("info command", () => {
       await runInfoCommand();
 
       const allCalls = getAllOutput();
-      expect(allCalls.some((call) => call.includes("Authentication:"))).toBe(
-        true,
-      );
-      expect(allCalls.some((call) => call.includes("Not authenticated"))).toBe(
-        true,
-      );
+      expect(
+        allCalls.some((call) => {
+          return call.includes("Authentication:");
+        }),
+      ).toBe(true);
+      expect(
+        allCalls.some((call) => {
+          return call.includes("Not authenticated");
+        }),
+      ).toBe(true);
     });
 
     it("should show authenticated via config file when token exists in config", async () => {
@@ -93,8 +102,16 @@ describe("info command", () => {
       await runInfoCommand();
 
       const allCalls = getAllOutput();
-      expect(allCalls.some((call) => call.includes("Logged in"))).toBe(true);
-      expect(allCalls.some((call) => call.includes("config file"))).toBe(true);
+      expect(
+        allCalls.some((call) => {
+          return call.includes("Logged in");
+        }),
+      ).toBe(true);
+      expect(
+        allCalls.some((call) => {
+          return call.includes("config file");
+        }),
+      ).toBe(true);
     });
 
     it("should show authenticated via env var when VM0_TOKEN is set", async () => {
@@ -103,10 +120,16 @@ describe("info command", () => {
       await runInfoCommand();
 
       const allCalls = getAllOutput();
-      expect(allCalls.some((call) => call.includes("Logged in"))).toBe(true);
-      expect(allCalls.some((call) => call.includes("VM0_TOKEN env var"))).toBe(
-        true,
-      );
+      expect(
+        allCalls.some((call) => {
+          return call.includes("Logged in");
+        }),
+      ).toBe(true);
+      expect(
+        allCalls.some((call) => {
+          return call.includes("VM0_TOKEN env var");
+        }),
+      ).toBe(true);
     });
 
     it("should prefer env var over config file for token source display", async () => {
@@ -117,19 +140,27 @@ describe("info command", () => {
 
       const allCalls = getAllOutput();
       // When both exist, env var takes precedence in display
-      expect(allCalls.some((call) => call.includes("VM0_TOKEN env var"))).toBe(
-        true,
-      );
+      expect(
+        allCalls.some((call) => {
+          return call.includes("VM0_TOKEN env var");
+        }),
+      ).toBe(true);
     });
 
     it("should show config file path", async () => {
       await runInfoCommand();
 
       const allCalls = getAllOutput();
-      expect(allCalls.some((call) => call.includes("Config:"))).toBe(true);
-      expect(allCalls.some((call) => call.includes("~/.vm0/config.json"))).toBe(
-        true,
-      );
+      expect(
+        allCalls.some((call) => {
+          return call.includes("Config:");
+        }),
+      ).toBe(true);
+      expect(
+        allCalls.some((call) => {
+          return call.includes("~/.vm0/config.json");
+        }),
+      ).toBe(true);
     });
 
     it("should indicate when config file is not found", async () => {
@@ -137,7 +168,11 @@ describe("info command", () => {
       await runInfoCommand();
 
       const allCalls = getAllOutput();
-      expect(allCalls.some((call) => call.includes("(not found)"))).toBe(true);
+      expect(
+        allCalls.some((call) => {
+          return call.includes("(not found)");
+        }),
+      ).toBe(true);
     });
 
     it("should not show not found when config file exists", async () => {
@@ -146,7 +181,9 @@ describe("info command", () => {
       await runInfoCommand();
 
       const allCalls = getAllOutput();
-      const configLine = allCalls.find((call) => call.includes("Config:"));
+      const configLine = allCalls.find((call) => {
+        return call.includes("Config:");
+      });
       expect(configLine).toBeDefined();
       expect(configLine).not.toContain("(not found)");
     });
@@ -157,11 +194,21 @@ describe("info command", () => {
       await runInfoCommand();
 
       const allCalls = getAllOutput();
-      expect(allCalls.some((call) => call.includes("API:"))).toBe(true);
-      expect(allCalls.some((call) => call.includes("Host:"))).toBe(true);
-      expect(allCalls.some((call) => call.includes("https://www.vm0.ai"))).toBe(
-        true,
-      );
+      expect(
+        allCalls.some((call) => {
+          return call.includes("API:");
+        }),
+      ).toBe(true);
+      expect(
+        allCalls.some((call) => {
+          return call.includes("Host:");
+        }),
+      ).toBe(true);
+      expect(
+        allCalls.some((call) => {
+          return call.includes(testApiUrl);
+        }),
+      ).toBe(true);
     });
   });
 
@@ -170,37 +217,65 @@ describe("info command", () => {
       await runInfoCommand();
 
       const allCalls = getAllOutput();
-      expect(allCalls.some((call) => call.includes("System:"))).toBe(true);
+      expect(
+        allCalls.some((call) => {
+          return call.includes("System:");
+        }),
+      ).toBe(true);
     });
 
     it("should display Node version", async () => {
       await runInfoCommand();
 
       const allCalls = getAllOutput();
-      expect(allCalls.some((call) => call.includes("Node:"))).toBe(true);
-      expect(allCalls.some((call) => call.includes(process.version))).toBe(
-        true,
-      );
+      expect(
+        allCalls.some((call) => {
+          return call.includes("Node:");
+        }),
+      ).toBe(true);
+      expect(
+        allCalls.some((call) => {
+          return call.includes(process.version);
+        }),
+      ).toBe(true);
     });
 
     it("should display platform and architecture", async () => {
       await runInfoCommand();
 
       const allCalls = getAllOutput();
-      expect(allCalls.some((call) => call.includes("Platform:"))).toBe(true);
-      expect(allCalls.some((call) => call.includes(process.platform))).toBe(
-        true,
-      );
-      expect(allCalls.some((call) => call.includes(process.arch))).toBe(true);
+      expect(
+        allCalls.some((call) => {
+          return call.includes("Platform:");
+        }),
+      ).toBe(true);
+      expect(
+        allCalls.some((call) => {
+          return call.includes(process.platform);
+        }),
+      ).toBe(true);
+      expect(
+        allCalls.some((call) => {
+          return call.includes(process.arch);
+        }),
+      ).toBe(true);
     });
 
     it("should display OS information", async () => {
       await runInfoCommand();
 
       const allCalls = getAllOutput();
-      expect(allCalls.some((call) => call.includes("OS:"))).toBe(true);
+      expect(
+        allCalls.some((call) => {
+          return call.includes("OS:");
+        }),
+      ).toBe(true);
       // os.type() returns real value since we only mock homedir
-      expect(allCalls.some((call) => call.includes(os.type()))).toBe(true);
+      expect(
+        allCalls.some((call) => {
+          return call.includes(os.type());
+        }),
+      ).toBe(true);
     });
 
     it("should display shell", async () => {
@@ -209,8 +284,16 @@ describe("info command", () => {
       await runInfoCommand();
 
       const allCalls = getAllOutput();
-      expect(allCalls.some((call) => call.includes("Shell:"))).toBe(true);
-      expect(allCalls.some((call) => call.includes("/bin/zsh"))).toBe(true);
+      expect(
+        allCalls.some((call) => {
+          return call.includes("Shell:");
+        }),
+      ).toBe(true);
+      expect(
+        allCalls.some((call) => {
+          return call.includes("/bin/zsh");
+        }),
+      ).toBe(true);
     });
 
     it("should show unknown when SHELL is not set", async () => {
@@ -221,9 +304,9 @@ describe("info command", () => {
 
       const allCalls = getAllOutput();
       expect(
-        allCalls.some(
-          (call) => call.includes("Shell:") && call.includes("unknown"),
-        ),
+        allCalls.some((call) => {
+          return call.includes("Shell:") && call.includes("unknown");
+        }),
       ).toBe(true);
     });
 
@@ -231,9 +314,11 @@ describe("info command", () => {
       await runInfoCommand();
 
       const allCalls = getAllOutput();
-      expect(allCalls.some((call) => call.includes("Package Manager:"))).toBe(
-        true,
-      );
+      expect(
+        allCalls.some((call) => {
+          return call.includes("Package Manager:");
+        }),
+      ).toBe(true);
     });
   });
 });

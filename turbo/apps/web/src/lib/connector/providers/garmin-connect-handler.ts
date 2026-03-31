@@ -32,9 +32,15 @@ export const garminConnectHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.GARMIN_CONNECT_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.GARMIN_CONNECT_OAUTH_CLIENT_SECRET,
+  getClientId: (e) => {
+    return e.GARMIN_CONNECT_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.GARMIN_CONNECT_OAUTH_CLIENT_SECRET;
+  },
   getSecretName: getGarminConnectSecretName,
-  getRefreshSecretName: () => "GARMIN_CONNECT_REFRESH_TOKEN",
+  getRefreshSecretName: () => {
+    return "GARMIN_CONNECT_REFRESH_TOKEN";
+  },
   refreshToken: refreshGarminConnectToken,
 };

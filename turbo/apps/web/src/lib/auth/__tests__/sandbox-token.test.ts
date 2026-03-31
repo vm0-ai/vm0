@@ -97,7 +97,9 @@ describe("sandbox-token", () => {
 
       // Mock time to be 3 hours in the future (beyond 2 hour expiration)
       const realDateNow = Date.now;
-      Date.now = () => realDateNow() + 3 * 60 * 60 * 1000;
+      Date.now = () => {
+        return realDateNow() + 3 * 60 * 60 * 1000;
+      };
 
       try {
         const auth = verifySandboxToken(token);
@@ -112,7 +114,9 @@ describe("sandbox-token", () => {
 
       // Mock time to be 1 hour in the future (within 2 hour expiration)
       const realDateNow = Date.now;
-      Date.now = () => realDateNow() + 1 * 60 * 60 * 1000;
+      Date.now = () => {
+        return realDateNow() + 1 * 60 * 60 * 1000;
+      };
 
       try {
         const auth = verifySandboxToken(token);
@@ -186,7 +190,9 @@ describe("sandbox-token", () => {
 
       // Mock time to be 15 minutes in the future (beyond 10 minute expiration)
       const realDateNow = Date.now;
-      Date.now = () => realDateNow() + 15 * 60 * 1000;
+      Date.now = () => {
+        return realDateNow() + 15 * 60 * 1000;
+      };
 
       try {
         const auth = verifyComposeJobToken(token);
@@ -246,7 +252,9 @@ describe("sandbox-token", () => {
       const token = await generateZeroToken("user-123", "run-456", "org-789");
 
       const realDateNow = Date.now;
-      Date.now = () => realDateNow() + 3 * 60 * 60 * 1000;
+      Date.now = () => {
+        return realDateNow() + 3 * 60 * 60 * 1000;
+      };
 
       try {
         const auth = verifyZeroToken(token);
@@ -429,7 +437,9 @@ describe("sandbox-token", () => {
 
       // Mock time to be 91 days in the future (beyond 90 day expiration)
       const realDateNow = Date.now;
-      Date.now = () => realDateNow() + 91 * 24 * 60 * 60 * 1000;
+      Date.now = () => {
+        return realDateNow() + 91 * 24 * 60 * 60 * 1000;
+      };
 
       try {
         const auth = verifyCliToken(token);
@@ -444,7 +454,9 @@ describe("sandbox-token", () => {
 
       // Mock time to be 45 days in the future (within 90 day expiration)
       const realDateNow = Date.now;
-      Date.now = () => realDateNow() + 45 * 24 * 60 * 60 * 1000;
+      Date.now = () => {
+        return realDateNow() + 45 * 24 * 60 * 60 * 1000;
+      };
 
       try {
         const auth = verifyCliToken(token);

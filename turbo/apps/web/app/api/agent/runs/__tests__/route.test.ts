@@ -125,9 +125,13 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(job).toBeDefined();
       const firewalls = job!.executionContext.experimentalFirewalls;
       expect(firewalls).toBeDefined();
-      const ghFirewall = firewalls!.find((fw) => fw.ref === "github");
+      const ghFirewall = firewalls!.find((fw) => {
+        return fw.ref === "github";
+      });
       expect(ghFirewall).toBeDefined();
-      const permNames = ghFirewall!.apis[0]!.permissions!.map((p) => p.name);
+      const permNames = ghFirewall!.apis[0]!.permissions!.map((p) => {
+        return p.name;
+      });
       expect(permNames).toContain("actions:read");
       expect(permNames).toContain("issues:read");
       expect(permNames).not.toContain("actions:write");
@@ -1710,7 +1714,9 @@ describe("GET /api/agent/runs - List Runs", () => {
     expect(response.status).toBe(200);
     expect(data.runs.length).toBeGreaterThanOrEqual(1);
     expect(
-      data.runs.some((r: { prompt: string }) => r.prompt === "Org A run"),
+      data.runs.some((r: { prompt: string }) => {
+        return r.prompt === "Org A run";
+      }),
     ).toBe(true);
   });
 
@@ -1736,7 +1742,9 @@ describe("GET /api/agent/runs - List Runs", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    const prompts = data.runs.map((r: { prompt: string }) => r.prompt);
+    const prompts = data.runs.map((r: { prompt: string }) => {
+      return r.prompt;
+    });
     expect(prompts).toContain("Default org run");
     expect(prompts).not.toContain("Other org run");
   });
@@ -1769,7 +1777,9 @@ describe("GET /api/agent/runs - List Runs", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    const prompts = data.runs.map((r: { prompt: string }) => r.prompt);
+    const prompts = data.runs.map((r: { prompt: string }) => {
+      return r.prompt;
+    });
     expect(prompts).toContain("Target org run");
   });
 });

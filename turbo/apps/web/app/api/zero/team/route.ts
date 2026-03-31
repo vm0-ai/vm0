@@ -69,14 +69,16 @@ export async function GET() {
     .orderBy(desc(agentComposes.updatedAt));
 
   return NextResponse.json(
-    composes.map((c) => ({
-      id: c.id,
-      displayName: c.displayName ?? null,
-      description: c.description ?? null,
-      sound: c.sound ?? null,
-      avatarUrl: c.avatarUrl ?? null,
-      headVersionId: c.headVersionId,
-      updatedAt: c.updatedAt.toISOString(),
-    })),
+    composes.map((c) => {
+      return {
+        id: c.id,
+        displayName: c.displayName ?? null,
+        description: c.description ?? null,
+        sound: c.sound ?? null,
+        avatarUrl: c.avatarUrl ?? null,
+        headVersionId: c.headVersionId,
+        updatedAt: c.updatedAt.toISOString(),
+      };
+    }),
   );
 }

@@ -96,7 +96,13 @@ function formatInTimezone(isoDate: string, timezone: string): string {
     hour12: false,
   }).formatToParts(date);
 
-  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  const get = (type: string) => {
+    return (
+      parts.find((p) => {
+        return p.type === type;
+      })?.value ?? ""
+    );
+  };
   return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}`;
 }
 
@@ -196,7 +202,9 @@ async function gatherFrequency(
   }
 
   const defaultIndex = existingFrequency
-    ? FREQUENCY_CHOICES.findIndex((c) => c.value === existingFrequency)
+    ? FREQUENCY_CHOICES.findIndex((c) => {
+        return c.value === existingFrequency;
+      })
     : 0;
 
   frequency = await promptSelect<ScheduleFrequency>(
@@ -234,7 +242,9 @@ async function gatherDay(
   if (frequency === "weekly") {
     const defaultDayIndex =
       existingDay !== undefined
-        ? DAY_OF_WEEK_CHOICES.findIndex((c) => c.value === existingDay)
+        ? DAY_OF_WEEK_CHOICES.findIndex((c) => {
+            return c.value === existingDay;
+          })
         : 0;
     const day = await promptSelect(
       "Day of week",
@@ -509,9 +519,9 @@ async function findExistingSchedule(
   scheduleName: string,
 ): Promise<ScheduleListItem | undefined> {
   const { schedules } = await listZeroSchedules();
-  return schedules.find(
-    (s) => s.agentId === agentId && s.name === scheduleName,
-  );
+  return schedules.find((s) => {
+    return s.agentId === agentId && s.name === scheduleName;
+  });
 }
 
 interface DeployResult {

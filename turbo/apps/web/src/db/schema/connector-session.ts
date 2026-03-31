@@ -34,8 +34,13 @@ export const connectorSessions = pgTable(
     expiresAt: timestamp("expires_at").notNull(),
     completedAt: timestamp("completed_at"),
   },
-  (table) => [
-    uniqueIndex("idx_connector_sessions_code").on(table.code),
-    index("idx_connector_sessions_user_status").on(table.userId, table.status),
-  ],
+  (table) => {
+    return [
+      uniqueIndex("idx_connector_sessions_code").on(table.code),
+      index("idx_connector_sessions_user_status").on(
+        table.userId,
+        table.status,
+      ),
+    ];
+  },
 );

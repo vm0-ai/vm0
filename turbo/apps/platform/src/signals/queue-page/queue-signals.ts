@@ -17,7 +17,9 @@ export type QueueData = QueueResponse;
 
 const internalQueueData$ = state<QueueData | null>(null);
 
-export const queueData$ = computed((get) => get(internalQueueData$));
+export const queueData$ = computed((get) => {
+  return get(internalQueueData$);
+});
 
 const fetchQueueData$ = command(async ({ get, set }, _signal: AbortSignal) => {
   const client = get(zeroClient$)(zeroRunsQueueContract);

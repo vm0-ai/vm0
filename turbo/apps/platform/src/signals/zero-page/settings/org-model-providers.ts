@@ -23,9 +23,9 @@ import {
 // ---------------------------------------------------------------------------
 
 const internalOrgAddProviderDialogOpen$ = state(false);
-export const orgAddProviderDialogOpen$ = computed((get) =>
-  get(internalOrgAddProviderDialogOpen$),
-);
+export const orgAddProviderDialogOpen$ = computed((get) => {
+  return get(internalOrgAddProviderDialogOpen$);
+});
 export const setOrgAddProviderDialogOpen$ = command(
   ({ set }, open: boolean) => {
     set(internalOrgAddProviderDialogOpen$, open);
@@ -48,7 +48,9 @@ const internalOrgDialogState$ = state<DialogState>({
   providerType: null,
 });
 
-export const orgDialogState$ = computed((get) => get(internalOrgDialogState$));
+export const orgDialogState$ = computed((get) => {
+  return get(internalOrgDialogState$);
+});
 
 // ---------------------------------------------------------------------------
 // Delete dialog state
@@ -64,9 +66,9 @@ const internalOrgDeleteDialogState$ = state<DeleteDialogState>({
   providerType: null,
 });
 
-export const orgDeleteDialogState$ = computed((get) =>
-  get(internalOrgDeleteDialogState$),
-);
+export const orgDeleteDialogState$ = computed((get) => {
+  return get(internalOrgDeleteDialogState$);
+});
 
 // ---------------------------------------------------------------------------
 // Form values
@@ -88,9 +90,9 @@ const internalOrgFormValues$ = state<DialogFormValues>({
   useDefaultModel: true,
 });
 
-export const orgDialogFormValues$ = computed((get) =>
-  get(internalOrgFormValues$),
-);
+export const orgDialogFormValues$ = computed((get) => {
+  return get(internalOrgFormValues$);
+});
 
 // ---------------------------------------------------------------------------
 // Form validation errors
@@ -98,7 +100,9 @@ export const orgDialogFormValues$ = computed((get) =>
 
 const internalOrgFormErrors$ = state<Record<string, string>>({});
 
-export const orgFormErrors$ = computed((get) => get(internalOrgFormErrors$));
+export const orgFormErrors$ = computed((get) => {
+  return get(internalOrgFormErrors$);
+});
 
 // ---------------------------------------------------------------------------
 // Action promise (loading state)
@@ -106,9 +110,9 @@ export const orgFormErrors$ = computed((get) => get(internalOrgFormErrors$));
 
 const internalOrgActionPromise$ = state<Promise<unknown> | null>(null);
 
-export const orgActionPromise$ = computed((get) =>
-  get(internalOrgActionPromise$),
-);
+export const orgActionPromise$ = computed((get) => {
+  return get(internalOrgActionPromise$);
+});
 
 // ---------------------------------------------------------------------------
 // Derived state
@@ -116,14 +120,18 @@ export const orgActionPromise$ = computed((get) =>
 
 export const orgConfiguredProviders$ = computed(async (get) => {
   const { modelProviders } = await get(orgModelProviders$);
-  return [...modelProviders].sort(
-    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-  );
+  return [...modelProviders].sort((a, b) => {
+    return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+  });
 });
 
 export const orgDefaultProvider$ = computed(async (get) => {
   const providers = await get(orgConfiguredProviders$);
-  return providers.find((p) => p.isDefault) ?? null;
+  return (
+    providers.find((p) => {
+      return p.isDefault;
+    }) ?? null
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -194,7 +202,9 @@ export const orgCloseDialog$ = command(({ set }) => {
 // ---------------------------------------------------------------------------
 
 export const orgUpdateFormSecret$ = command(({ set }, value: string) => {
-  set(internalOrgFormValues$, (prev) => ({ ...prev, secret: value }));
+  set(internalOrgFormValues$, (prev) => {
+    return { ...prev, secret: value };
+  });
   set(internalOrgFormErrors$, (prev) => {
     const next = { ...prev };
     delete next["secret"];
@@ -203,38 +213,46 @@ export const orgUpdateFormSecret$ = command(({ set }, value: string) => {
 });
 
 export const orgUpdateFormModel$ = command(({ set }, value: string) => {
-  set(internalOrgFormValues$, (prev) => ({
-    ...prev,
-    selectedModel: value,
-    useDefaultModel: false,
-  }));
+  set(internalOrgFormValues$, (prev) => {
+    return {
+      ...prev,
+      selectedModel: value,
+      useDefaultModel: false,
+    };
+  });
 });
 
 export const orgUpdateFormUseDefaultModel$ = command(
   ({ set }, value: boolean) => {
-    set(internalOrgFormValues$, (prev) => ({
-      ...prev,
-      useDefaultModel: value,
-      selectedModel: value ? "" : prev.selectedModel,
-    }));
+    set(internalOrgFormValues$, (prev) => {
+      return {
+        ...prev,
+        useDefaultModel: value,
+        selectedModel: value ? "" : prev.selectedModel,
+      };
+    });
   },
 );
 
 export const orgUpdateFormAuthMethod$ = command(({ set }, value: string) => {
-  set(internalOrgFormValues$, (prev) => ({
-    ...prev,
-    authMethod: value,
-    secrets: {},
-  }));
+  set(internalOrgFormValues$, (prev) => {
+    return {
+      ...prev,
+      authMethod: value,
+      secrets: {},
+    };
+  });
   set(internalOrgFormErrors$, {});
 });
 
 export const orgUpdateFormSecretField$ = command(
   ({ set }, key: string, value: string) => {
-    set(internalOrgFormValues$, (prev) => ({
-      ...prev,
-      secrets: { ...prev.secrets, [key]: value },
-    }));
+    set(internalOrgFormValues$, (prev) => {
+      return {
+        ...prev,
+        secrets: { ...prev.secrets, [key]: value },
+      };
+    });
     set(internalOrgFormErrors$, (prev) => {
       const next = { ...prev };
       delete next[key];

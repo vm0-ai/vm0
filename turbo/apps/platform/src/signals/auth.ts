@@ -76,7 +76,9 @@ export const setupClerk$ = command(
       const currentUserId = clerk.user?.id ?? null;
       if (currentUserId !== prevUserId) {
         prevUserId = currentUserId;
-        set(reload$, (x) => x + 1);
+        set(reload$, (x) => {
+          return x + 1;
+        });
       }
     });
     signal.addEventListener("abort", unsubscribe);

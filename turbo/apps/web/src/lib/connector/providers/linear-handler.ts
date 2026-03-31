@@ -28,10 +28,16 @@ export const linearHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.LINEAR_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.LINEAR_OAUTH_CLIENT_SECRET,
+  getClientId: (e) => {
+    return e.LINEAR_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.LINEAR_OAUTH_CLIENT_SECRET;
+  },
   getSecretName: getLinearSecretName,
-  getRefreshSecretName: () => "LINEAR_REFRESH_TOKEN",
+  getRefreshSecretName: () => {
+    return "LINEAR_REFRESH_TOKEN";
+  },
   refreshToken: refreshLinearToken,
   revokeToken: revokeLinearToken,
 };

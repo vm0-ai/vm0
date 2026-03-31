@@ -7,7 +7,13 @@ export const firefliesHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Fireflies does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "FIREFLIES_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "FIREFLIES_TOKEN";
+  },
 };

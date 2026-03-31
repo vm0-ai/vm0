@@ -17,7 +17,7 @@ export const setPollIntervalForTest$ = command(({ set }, interval: number) => {
   set(internalPollInterval$, interval);
 });
 
-const poolInterval$ = computed((get) => get(internalPollInterval$));
+export const poolInterval$ = computed((get) => get(internalPollInterval$));
 
 function isTerminalStatus(status: string | null): boolean {
   return (
@@ -96,7 +96,11 @@ function createRunDetail(runId: string) {
       const status = (await get(runDetail$)).status;
       return isTerminalStatus(status);
     }),
-    reload$: command(({ set }) => set(internalReloadRunStatus$, (x) => x + 1)),
+    reload$: command(({ set }) => {
+      return set(internalReloadRunStatus$, (x) => {
+        return x + 1;
+      });
+    }),
   };
 }
 
@@ -113,7 +117,11 @@ function createQueuePosition(runId: string) {
       }
       return result.body.position;
     }),
-    reload$: command(({ set }) => set(internalReload$, (x) => x + 1)),
+    reload$: command(({ set }) => {
+      return set(internalReload$, (x) => {
+        return x + 1;
+      });
+    }),
   };
 }
 
@@ -212,11 +220,15 @@ export function createRunLoop(runId: string) {
       signal.throwIfAborted();
 
       const nextPage$ = createEventPageComputed(runId, since);
-      set(internalLoopedPagedEvents$, (prev) => [...prev, nextPage$]);
+      set(internalLoopedPagedEvents$, (prev) => {
+        return [...prev, nextPage$];
+      });
 
       await delay(get(poolInterval$), { signal });
       set(reloadRunStatus$);
-      set(reloadThinkingMessage$, (x) => x + 1);
+      set(reloadThinkingMessage$, (x) => {
+        return x + 1;
+      });
 
       const lastPage = await get(nextPage$);
       signal.throwIfAborted();

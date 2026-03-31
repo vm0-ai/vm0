@@ -53,7 +53,9 @@ describe("GET /api/zero/connectors", () => {
     const data = await response.json();
     expect(data.connectors.length).toBeGreaterThanOrEqual(1);
     expect(
-      data.connectors.some((c: { type: string }) => c.type === "github"),
+      data.connectors.some((c: { type: string }) => {
+        return c.type === "github";
+      }),
     ).toBe(true);
   });
 

@@ -7,7 +7,13 @@ export const instantlyHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Instantly does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "INSTANTLY_API_KEY",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "INSTANTLY_API_KEY";
+  },
 };

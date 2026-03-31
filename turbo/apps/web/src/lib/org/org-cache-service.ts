@@ -102,7 +102,11 @@ export async function batchGetOrgData(
     .from(orgCache)
     .where(inArray(orgCache.orgId, orgIds));
 
-  const cacheMap = new Map(cachedRows.map((r) => [r.orgId, r]));
+  const cacheMap = new Map(
+    cachedRows.map((r) => {
+      return [r.orgId, r];
+    }),
+  );
 
   // Batch query: all org tiers
   const tierRows = await db
@@ -110,7 +114,11 @@ export async function batchGetOrgData(
     .from(orgMetadata)
     .where(inArray(orgMetadata.orgId, orgIds));
 
-  const tierMap = new Map(tierRows.map((r) => [r.orgId, r.tier]));
+  const tierMap = new Map(
+    tierRows.map((r) => {
+      return [r.orgId, r.tier];
+    }),
+  );
 
   const result = new Map<string, OrgData>();
 

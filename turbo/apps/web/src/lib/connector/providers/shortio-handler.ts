@@ -7,7 +7,13 @@ export const shortioHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Short.io does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "SHORTIO_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "SHORTIO_TOKEN";
+  },
 };

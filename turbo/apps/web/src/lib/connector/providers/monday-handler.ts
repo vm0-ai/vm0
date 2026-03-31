@@ -27,9 +27,15 @@ export const mondayHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.MONDAY_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.MONDAY_OAUTH_CLIENT_SECRET,
+  getClientId: (e) => {
+    return e.MONDAY_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.MONDAY_OAUTH_CLIENT_SECRET;
+  },
   getSecretName: getMondaySecretName,
-  getRefreshSecretName: () => "MONDAY_REFRESH_TOKEN",
+  getRefreshSecretName: () => {
+    return "MONDAY_REFRESH_TOKEN";
+  },
   refreshToken: refreshMondayToken,
 };

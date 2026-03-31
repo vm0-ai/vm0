@@ -23,13 +23,15 @@ export const agentComposes = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (table) => ({
-    orgIdx: index("idx_agent_composes_org").on(table.orgId),
-    orgNameIdx: uniqueIndex("idx_agent_composes_org_name").on(
-      table.orgId,
-      table.name,
-    ),
-  }),
+  (table) => {
+    return {
+      orgIdx: index("idx_agent_composes_org").on(table.orgId),
+      orgNameIdx: uniqueIndex("idx_agent_composes_org_name").on(
+        table.orgId,
+        table.name,
+      ),
+    };
+  },
 );
 
 /**
@@ -43,14 +45,21 @@ export const agentComposeVersions = pgTable(
     id: varchar("id", { length: 64 }).primaryKey(), // SHA-256 hash (content-addressed)
     composeId: uuid("compose_id")
       .notNull()
-      .references(() => agentComposes.id, { onDelete: "cascade" }),
+      .references(
+        () => {
+          return agentComposes.id;
+        },
+        { onDelete: "cascade" },
+      ),
     content: jsonb("content").notNull(), // Full compose definition
     createdBy: text("created_by").notNull(), // User ID who created this version
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
-  (table) => ({
-    composeIdIdx: index("idx_agent_compose_versions_compose_id").on(
-      table.composeId,
-    ),
-  }),
+  (table) => {
+    return {
+      composeIdIdx: index("idx_agent_compose_versions_compose_id").on(
+        table.composeId,
+      ),
+    };
+  },
 );

@@ -97,7 +97,9 @@ async function getUserRunIds(
       )
       .where(and(...conditions, eq(agentComposes.name, agentName)));
 
-    return rows.map((r) => r.runId);
+    return rows.map((r) => {
+      return r.runId;
+    });
   }
 
   const rows = await globalThis.services.db
@@ -105,13 +107,19 @@ async function getUserRunIds(
     .from(agentRuns)
     .where(and(...conditions));
 
-  return rows.map((r) => r.runId);
+  return rows.map((r) => {
+    return r.runId;
+  });
 }
 
 function buildRunIdFilter(runIds: string[]): string {
   return runIds.length === 1
     ? `| where runId == "${escapeApl(runIds[0]!)}"`
-    : `| where runId in (${runIds.map((id) => `"${escapeApl(id)}"`).join(", ")})`;
+    : `| where runId in (${runIds
+        .map((id) => {
+          return `"${escapeApl(id)}"`;
+        })
+        .join(", ")})`;
 }
 
 /**
@@ -258,7 +266,13 @@ const router = tsr.router(logsSearchContract, {
     );
 
     // Assemble results
-    const matchedRunIds = [...new Set(matches.map((e) => e.runId))];
+    const matchedRunIds = [
+      ...new Set(
+        matches.map((e) => {
+          return e.runId;
+        }),
+      ),
+    ];
     const agentNames = await getAgentNames(matchedRunIds, userId, org.orgId);
 
     const results = matches.map((match) => {

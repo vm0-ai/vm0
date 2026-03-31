@@ -7,7 +7,13 @@ export const supadataHandler: ProviderHandler = {
   exchangeCode() {
     throw new Error("Supadata does not support OAuth — use API token auth");
   },
-  getClientId: () => undefined,
-  getClientSecret: () => undefined,
-  getSecretName: () => "SUPADATA_TOKEN",
+  getClientId: () => {
+    return undefined;
+  },
+  getClientSecret: () => {
+    return undefined;
+  },
+  getSecretName: () => {
+    return "SUPADATA_TOKEN";
+  },
 };

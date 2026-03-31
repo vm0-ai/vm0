@@ -83,12 +83,14 @@ const router = tsr.router(storagesListContract, {
 
     return {
       status: 200 as const,
-      body: results.map((r) => ({
-        name: r.name,
-        size: r.size,
-        fileCount: r.fileCount,
-        updatedAt: r.updatedAt.toISOString(),
-      })),
+      body: results.map((r) => {
+        return {
+          name: r.name,
+          size: r.size,
+          fileCount: r.fileCount,
+          updatedAt: r.updatedAt.toISOString(),
+        };
+      }),
     };
   },
 });

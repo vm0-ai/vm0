@@ -57,20 +57,25 @@ const internalDowngradeError$ = state<string | null>(null);
 // Selectors
 // ---------------------------------------------------------------------------
 
-export const billingDialogOpen$ = computed((get) => get(internalDialogOpen$));
-export const billingDialogLoading$ = computed(
-  (get) =>
+export const billingDialogOpen$ = computed((get) => {
+  return get(internalDialogOpen$);
+});
+export const billingDialogLoading$ = computed((get) => {
+  return (
     get(internalCheckoutLoading$) ||
     get(internalPortalLoading$) ||
-    get(internalDowngradeLoading$),
-);
-export const downgradeDialogOpen$ = computed((get) =>
-  get(internalDowngradeDialogOpen$),
-);
-export const downgradeLoading$ = computed((get) =>
-  get(internalDowngradeLoading$),
-);
-export const downgradeError$ = computed((get) => get(internalDowngradeError$));
+    get(internalDowngradeLoading$)
+  );
+});
+export const downgradeDialogOpen$ = computed((get) => {
+  return get(internalDowngradeDialogOpen$);
+});
+export const downgradeLoading$ = computed((get) => {
+  return get(internalDowngradeLoading$);
+});
+export const downgradeError$ = computed((get) => {
+  return get(internalDowngradeError$);
+});
 
 /**
  * Async computed signal that fetches billing status on first access.
@@ -93,7 +98,9 @@ export const billingStatusAsync$ = computed(async (get) => {
 
 /** Force a refetch of billing status (e.g. after onboarding creates the org row). */
 export const reloadBillingStatus$ = command(({ set }) => {
-  set(billingReload$, (x) => x + 1);
+  set(billingReload$, (x) => {
+    return x + 1;
+  });
 });
 
 export const closeBillingDialog$ = command(({ set }) => {
@@ -178,7 +185,9 @@ export const confirmDowngrade$ = command(
     if (result.status === 200) {
       set(internalDowngradeDialogOpen$, false);
       // Reload billing status to reflect the change
-      set(billingReload$, (x) => x + 1);
+      set(billingReload$, (x) => {
+        return x + 1;
+      });
     } else {
       const message =
         getErrorMessage(result.body) ?? "Failed to downgrade plan";
@@ -232,7 +241,9 @@ export const saveAutoRecharge$ = command(
     }
 
     // Reload billing status — autoRechargeConfig$ re-derives automatically
-    set(billingReload$, (x) => x + 1);
+    set(billingReload$, (x) => {
+      return x + 1;
+    });
 
     return { ok: true };
   },

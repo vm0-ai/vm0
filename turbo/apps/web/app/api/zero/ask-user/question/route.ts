@@ -157,7 +157,11 @@ const router = tsr.router(zeroAskUserQuestionContract, {
     }
 
     // Build Block Kit card and post to Slack thread
-    const fallbackText = body.questions.map((q) => q.question).join("\n");
+    const fallbackText = body.questions
+      .map((q) => {
+        return q.question;
+      })
+      .join("\n");
     const blocks = buildAskUserQuestionBlocks(body.questions, pending.id);
 
     const cardResult = await postMessage(

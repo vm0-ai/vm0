@@ -12,7 +12,9 @@ vi.mock("os", async (importOriginal) => {
   const original = await importOriginal<typeof import("os")>();
   return {
     ...original,
-    homedir: () => TEST_HOME,
+    homedir: () => {
+      return TEST_HOME;
+    },
   };
 });
 
@@ -51,8 +53,12 @@ describe("zero whoami command", () => {
 
   function getAllOutput(): string[] {
     return mockConsoleLog.mock.calls
-      .map((call) => call[0] as string | undefined)
-      .filter((call): call is string => call !== undefined);
+      .map((call) => {
+        return call[0] as string | undefined;
+      })
+      .filter((call): call is string => {
+        return call !== undefined;
+      });
   }
 
   async function runWhoami(): Promise<void> {
@@ -76,15 +82,51 @@ describe("zero whoami command", () => {
       await runWhoami();
 
       const output = getAllOutput();
-      expect(output.some((line) => line.includes("Agent ID:"))).toBe(true);
-      expect(output.some((line) => line.includes("agent-123"))).toBe(true);
-      expect(output.some((line) => line.includes("Run ID:"))).toBe(true);
-      expect(output.some((line) => line.includes("run-abc"))).toBe(true);
-      expect(output.some((line) => line.includes("Org ID:"))).toBe(true);
-      expect(output.some((line) => line.includes("org-xyz"))).toBe(true);
-      expect(output.some((line) => line.includes("Capabilities:"))).toBe(true);
-      expect(output.some((line) => line.includes("agent:read"))).toBe(true);
-      expect(output.some((line) => line.includes("schedule:read"))).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("Agent ID:");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("agent-123");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("Run ID:");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("run-abc");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("Org ID:");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("org-xyz");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("Capabilities:");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("agent:read");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("schedule:read");
+        }),
+      ).toBe(true);
     });
 
     it("should show unavailable when ZERO_TOKEN is missing", async () => {
@@ -93,11 +135,31 @@ describe("zero whoami command", () => {
       await runWhoami();
 
       const output = getAllOutput();
-      expect(output.some((line) => line.includes("Agent ID:"))).toBe(true);
-      expect(output.some((line) => line.includes("agent-no-token"))).toBe(true);
-      expect(output.some((line) => line.includes("Run ID:"))).toBe(true);
-      expect(output.some((line) => line.includes("unavailable"))).toBe(true);
-      expect(output.some((line) => line.includes("Capabilities:"))).toBe(false);
+      expect(
+        output.some((line) => {
+          return line.includes("Agent ID:");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("agent-no-token");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("Run ID:");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("unavailable");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("Capabilities:");
+        }),
+      ).toBe(false);
     });
 
     it("should show unavailable when ZERO_TOKEN is malformed", async () => {
@@ -107,10 +169,16 @@ describe("zero whoami command", () => {
       await runWhoami();
 
       const output = getAllOutput();
-      expect(output.some((line) => line.includes("agent-bad-token"))).toBe(
-        true,
-      );
-      expect(output.some((line) => line.includes("unavailable"))).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("agent-bad-token");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("unavailable");
+        }),
+      ).toBe(true);
     });
   });
 
@@ -126,8 +194,16 @@ describe("zero whoami command", () => {
       await runWhoami();
 
       const output = getAllOutput();
-      expect(output.some((line) => line.includes("Authenticated"))).toBe(true);
-      expect(output.some((line) => line.includes("config file"))).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("Authenticated");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("config file");
+        }),
+      ).toBe(true);
     });
 
     it("should show authenticated via ZERO_TOKEN env var", async () => {
@@ -136,19 +212,27 @@ describe("zero whoami command", () => {
       await runWhoami();
 
       const output = getAllOutput();
-      expect(output.some((line) => line.includes("Authenticated"))).toBe(true);
-      expect(output.some((line) => line.includes("ZERO_TOKEN env var"))).toBe(
-        true,
-      );
+      expect(
+        output.some((line) => {
+          return line.includes("Authenticated");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("ZERO_TOKEN env var");
+        }),
+      ).toBe(true);
     });
 
     it("should show not authenticated when no token exists", async () => {
       await runWhoami();
 
       const output = getAllOutput();
-      expect(output.some((line) => line.includes("Not authenticated"))).toBe(
-        true,
-      );
+      expect(
+        output.some((line) => {
+          return line.includes("Not authenticated");
+        }),
+      ).toBe(true);
     });
 
     it("should display active org from CLI JWT token", async () => {
@@ -163,8 +247,16 @@ describe("zero whoami command", () => {
       await runWhoami();
 
       const output = getAllOutput();
-      expect(output.some((line) => line.includes("Org:"))).toBe(true);
-      expect(output.some((line) => line.includes("test-org-slug"))).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("Org:");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("test-org-slug");
+        }),
+      ).toBe(true);
     });
   });
 });

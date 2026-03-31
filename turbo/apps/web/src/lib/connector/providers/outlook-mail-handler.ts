@@ -6,13 +6,14 @@ import {
 } from "./microsoft-oauth";
 
 export const outlookMailHandler: ProviderHandler = {
-  buildAuthUrl: (clientId, redirectUri, state) =>
-    buildMicrosoftAuthorizationUrl(
+  buildAuthUrl: (clientId, redirectUri, state) => {
+    return buildMicrosoftAuthorizationUrl(
       "outlook-mail",
       clientId,
       redirectUri,
       state,
-    ),
+    );
+  },
   async exchangeCode(clientId, clientSecret, code, redirectUri) {
     const result = await exchangeMicrosoftOAuthCode(
       "outlook-mail",
@@ -33,10 +34,24 @@ export const outlookMailHandler: ProviderHandler = {
       },
     };
   },
-  getClientId: (e) => e.MICROSOFT_OAUTH_CLIENT_ID,
-  getClientSecret: (e) => e.MICROSOFT_OAUTH_CLIENT_SECRET,
-  getSecretName: () => "OUTLOOK_MAIL_ACCESS_TOKEN",
-  getRefreshSecretName: () => "OUTLOOK_MAIL_REFRESH_TOKEN",
-  refreshToken: (clientId, clientSecret, refreshToken) =>
-    refreshMicrosoftToken("outlook-mail", clientId, clientSecret, refreshToken),
+  getClientId: (e) => {
+    return e.MICROSOFT_OAUTH_CLIENT_ID;
+  },
+  getClientSecret: (e) => {
+    return e.MICROSOFT_OAUTH_CLIENT_SECRET;
+  },
+  getSecretName: () => {
+    return "OUTLOOK_MAIL_ACCESS_TOKEN";
+  },
+  getRefreshSecretName: () => {
+    return "OUTLOOK_MAIL_REFRESH_TOKEN";
+  },
+  refreshToken: (clientId, clientSecret, refreshToken) => {
+    return refreshMicrosoftToken(
+      "outlook-mail",
+      clientId,
+      clientSecret,
+      refreshToken,
+    );
+  },
 };

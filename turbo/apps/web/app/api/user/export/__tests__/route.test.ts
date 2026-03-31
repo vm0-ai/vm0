@@ -92,9 +92,9 @@ describe("POST /api/user/export", () => {
 
       // Verify the uploaded buffer targets the exports path
       const uploadCalls = context.mocks.s3.uploadS3Buffer.mock.calls;
-      const exportUpload = uploadCalls.find((call) =>
-        (call[1] as string).startsWith("exports/"),
-      );
+      const exportUpload = uploadCalls.find((call) => {
+        return (call[1] as string).startsWith("exports/");
+      });
       expect(exportUpload).toBeDefined();
 
       // Verify presigned URL was generated for artifact

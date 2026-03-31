@@ -3,11 +3,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // Mock @axiomhq/js at the package boundary (not internal modules).
 // We provide a controllable `query` method that returns Axiom-shaped responses.
 const mockQuery = vi.fn();
-vi.mock("@axiomhq/js", () => ({
-  Axiom: vi.fn().mockImplementation(function () {
-    return { query: mockQuery };
-  }),
-}));
+vi.mock("@axiomhq/js", () => {
+  return {
+    Axiom: vi.fn().mockImplementation(function () {
+      return { query: mockQuery };
+    }),
+  };
+});
 
 import { reloadEnv } from "../../../env";
 import {
@@ -24,10 +26,12 @@ function axiomResponse(events: Array<Record<string, unknown>>): {
   matches: Array<{ _time: string; data: Record<string, unknown> }>;
 } {
   return {
-    matches: events.map((data) => ({
-      _time: new Date().toISOString(),
-      data,
-    })),
+    matches: events.map((data) => {
+      return {
+        _time: new Date().toISOString(),
+        data,
+      };
+    }),
   };
 }
 
@@ -111,11 +115,11 @@ describe("extractAllRunOutputs", () => {
     const outputs = await extractAllRunOutputs("run-1");
 
     expect(outputs).toHaveLength(3);
-    expect(outputs.map((o) => o.result)).toEqual([
-      "step 1 done",
-      "step 2 done",
-      "final summary",
-    ]);
+    expect(
+      outputs.map((o) => {
+        return o.result;
+      }),
+    ).toEqual(["step 1 done", "step 2 done", "final summary"]);
   });
 
   it("handles events with missing result gracefully", async () => {

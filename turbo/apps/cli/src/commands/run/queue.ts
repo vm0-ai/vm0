@@ -34,11 +34,15 @@ export const queueCommand = new Command()
       const posWidth = Math.max(1, String(queue.length).length);
       const agentWidth = Math.max(
         5,
-        ...queue.map((e) => (e.agentName ?? "-").length),
+        ...queue.map((e) => {
+          return (e.agentName ?? "-").length;
+        }),
       );
       const emailWidth = Math.max(
         4,
-        ...queue.map((e) => (e.userEmail ?? "-").length),
+        ...queue.map((e) => {
+          return (e.userEmail ?? "-").length;
+        }),
       );
 
       // Header

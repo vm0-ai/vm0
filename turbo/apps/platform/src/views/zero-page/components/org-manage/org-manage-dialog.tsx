@@ -114,13 +114,27 @@ const BASE_SIDEBAR_GROUPS = [
 ] as const satisfies readonly SidebarGroup[];
 
 const TAB_COMPONENTS = {
-  general: () => <OrgGeneralTab />,
-  providers: () => <OrgProvidersTab />,
-  members: () => <OrgMembersTab />,
-  domains: () => <OrgDomainsTab />,
-  billing: () => <OrgBillingTab />,
-  usage: () => <OrgUsageTab />,
-  invoices: () => <OrgInvoicesTab />,
+  general: () => {
+    return <OrgGeneralTab />;
+  },
+  providers: () => {
+    return <OrgProvidersTab />;
+  },
+  members: () => {
+    return <OrgMembersTab />;
+  },
+  domains: () => {
+    return <OrgDomainsTab />;
+  },
+  billing: () => {
+    return <OrgBillingTab />;
+  },
+  usage: () => {
+    return <OrgUsageTab />;
+  },
+  invoices: () => {
+    return <OrgInvoicesTab />;
+  },
 } as const satisfies Record<OrgManageTab, () => ReactNode>;
 
 function TabContent({ tab }: { tab: OrgManageTab }) {
@@ -158,48 +172,52 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
         <div className="flex h-full">
           {/* Sidebar nav — mirrors zero-sidebar.tsx styling */}
           <nav className="w-52 shrink-0 p-3 pt-3 pb-4 flex flex-col gap-4 overflow-y-auto zero-border-r bg-[hsl(var(--gray-0))]">
-            {sidebarGroups.map((group) => (
-              <div key={group.label} className="shrink-0">
-                <div className="h-7 flex items-center pl-2">
-                  <span className="text-[13px] leading-4 text-sidebar-foreground/50 font-medium">
-                    {group.label}
-                  </span>
-                </div>
-                <div className="flex flex-col gap-1">
-                  {group.items.map((item) => {
-                    const Icon = item.icon;
-                    const isActive = activeTab === item.id;
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => setActiveTab(item.id)}
-                        className={cn(
-                          "flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200",
-                          isActive
-                            ? "text-primary-foreground font-medium"
-                            : "text-sidebar-foreground hover:bg-sidebar-accent",
-                        )}
-                        style={
-                          isActive
-                            ? { backgroundColor: "hsl(var(--primary))" }
-                            : undefined
-                        }
-                      >
-                        <Icon
-                          size={16}
+            {sidebarGroups.map((group) => {
+              return (
+                <div key={group.label} className="shrink-0">
+                  <div className="h-7 flex items-center pl-2">
+                    <span className="text-[13px] leading-4 text-sidebar-foreground/50 font-medium">
+                      {group.label}
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    {group.items.map((item) => {
+                      const Icon = item.icon;
+                      const isActive = activeTab === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => {
+                            return setActiveTab(item.id);
+                          }}
                           className={cn(
-                            "shrink-0",
-                            isActive ? "opacity-100" : "opacity-50",
+                            "flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200",
+                            isActive
+                              ? "text-primary-foreground font-medium"
+                              : "text-sidebar-foreground hover:bg-sidebar-accent",
                           )}
-                        />
-                        <span className="truncate">{item.label}</span>
-                      </button>
-                    );
-                  })}
+                          style={
+                            isActive
+                              ? { backgroundColor: "hsl(var(--primary))" }
+                              : undefined
+                          }
+                        >
+                          <Icon
+                            size={16}
+                            className={cn(
+                              "shrink-0",
+                              isActive ? "opacity-100" : "opacity-50",
+                            )}
+                          />
+                          <span className="truncate">{item.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </nav>
 
           {/* Content area */}

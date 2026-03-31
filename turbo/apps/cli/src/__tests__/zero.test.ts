@@ -3,7 +3,9 @@ import { program, registerZeroCommands } from "../zero";
 
 describe("zero CLI program", () => {
   registerZeroCommands(program);
-  const commandNames = program.commands.map((cmd) => cmd.name());
+  const commandNames = program.commands.map((cmd) => {
+    return cmd.name();
+  });
 
   it("should be named 'zero'", () => {
     expect(program.name()).toBe("zero");

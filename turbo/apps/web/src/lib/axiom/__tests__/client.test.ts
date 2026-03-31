@@ -4,25 +4,29 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 const mockQuery = vi.fn();
 const mockIngest = vi.fn();
 const mockFlush = vi.fn();
-vi.mock("@axiomhq/js", () => ({
-  Axiom: vi.fn().mockImplementation(function () {
-    return { query: mockQuery, ingest: mockIngest, flush: mockFlush };
-  }),
-}));
-vi.mock("@axiomhq/logging", () => ({
-  Logger: vi.fn().mockImplementation(function () {
-    return {
-      debug: vi.fn(),
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-      flush: vi.fn().mockResolvedValue(undefined),
-    };
-  }),
-  AxiomJSTransport: vi.fn().mockImplementation(function () {
-    return {};
-  }),
-}));
+vi.mock("@axiomhq/js", () => {
+  return {
+    Axiom: vi.fn().mockImplementation(function () {
+      return { query: mockQuery, ingest: mockIngest, flush: mockFlush };
+    }),
+  };
+});
+vi.mock("@axiomhq/logging", () => {
+  return {
+    Logger: vi.fn().mockImplementation(function () {
+      return {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        flush: vi.fn().mockResolvedValue(undefined),
+      };
+    }),
+    AxiomJSTransport: vi.fn().mockImplementation(function () {
+      return {};
+    }),
+  };
+});
 
 import { reloadEnv } from "../../../env";
 import { queryAxiom, ingestToAxiom, flushAxiom } from "../client";
@@ -43,10 +47,12 @@ afterEach(() => {
 
 function axiomResponse(events: Array<Record<string, unknown>>) {
   return {
-    matches: events.map((data) => ({
-      _time: "2026-01-01T00:00:00.000Z",
-      data,
-    })),
+    matches: events.map((data) => {
+      return {
+        _time: "2026-01-01T00:00:00.000Z",
+        data,
+      };
+    }),
   };
 }
 
@@ -118,7 +124,9 @@ describe("queryAxiom", () => {
     mockQuery.mockRejectedValue(new Error("429 rate limit"));
 
     // Attach catch immediately to prevent unhandled rejection
-    const promise = queryAxiom(apl).catch((e: unknown) => e);
+    const promise = queryAxiom(apl).catch((e: unknown) => {
+      return e;
+    });
     // Advance through all 3 retry backoffs: 2s + 4s + 8s = 14s
     await vi.advanceTimersByTimeAsync(20_000);
 

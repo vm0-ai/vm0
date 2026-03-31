@@ -51,7 +51,9 @@ export const setupTalkPage$ = command(
       const subagents = await get(zeroSubagents$);
       signal.throwIfAborted();
       agentName =
-        subagents.find((a) => a.id === agentId)?.displayName ?? "Agent";
+        subagents.find((a) => {
+          return a.id === agentId;
+        })?.displayName ?? "Agent";
     }
     set(updateDocumentTitle$, agentName);
 

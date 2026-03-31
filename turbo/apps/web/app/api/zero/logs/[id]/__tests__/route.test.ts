@@ -18,16 +18,18 @@ import {
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { randomUUID } from "crypto";
 
-vi.mock("@e2b/code-interpreter", () => ({
-  Sandbox: {
-    create: vi.fn().mockResolvedValue({
-      sandboxId: "mock-sandbox-id",
-      files: { write: vi.fn().mockResolvedValue(undefined) },
-      commands: { run: vi.fn().mockResolvedValue({ exitCode: 0 }) },
-    }),
-    connect: vi.fn(),
-  },
-}));
+vi.mock("@e2b/code-interpreter", () => {
+  return {
+    Sandbox: {
+      create: vi.fn().mockResolvedValue({
+        sandboxId: "mock-sandbox-id",
+        files: { write: vi.fn().mockResolvedValue(undefined) },
+        commands: { run: vi.fn().mockResolvedValue({ exitCode: 0 }) },
+      }),
+      connect: vi.fn(),
+    },
+  };
+});
 
 const context = testContext();
 

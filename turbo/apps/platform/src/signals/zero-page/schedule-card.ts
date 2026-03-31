@@ -10,7 +10,9 @@ import { fetchSlackChannels$ } from "./slack-channels.ts";
 function cell<T>(initial: T) {
   const internal$ = state(initial);
   return Object.freeze({
-    get$: computed((get) => get(internal$)),
+    get$: computed((get) => {
+      return get(internal$);
+    }),
     set$: command(({ set }, value: StateArg<T>) => {
       set(internal$, value);
     }),
@@ -30,7 +32,9 @@ export const { get$: internalScheduleList$, set$: setScheduleList$ } = cell<
 >([]);
 
 const addScheduleOpenState$ = state(false);
-export const addScheduleOpen$ = computed((get) => get(addScheduleOpenState$));
+export const addScheduleOpen$ = computed((get) => {
+  return get(addScheduleOpenState$);
+});
 export const setAddScheduleOpen$ = command(
   async ({ set }, open: boolean, signal: AbortSignal) => {
     set(addScheduleOpenState$, open);
@@ -41,9 +45,9 @@ export const setAddScheduleOpen$ = command(
 );
 
 const editingScheduleIdState$ = state<string | null>(null);
-export const editingScheduleId$ = computed((get) =>
-  get(editingScheduleIdState$),
-);
+export const editingScheduleId$ = computed((get) => {
+  return get(editingScheduleIdState$);
+});
 
 export const setEditingScheduleId$ = command(
   async ({ set }, id: string | null, signal: AbortSignal) => {

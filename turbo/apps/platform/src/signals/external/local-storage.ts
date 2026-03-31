@@ -35,12 +35,16 @@ export function localStorageSignals(key: string) {
       return x;
     });
     localStorage.setItem(key, value);
-    set(reload$, (prev) => prev + 1);
+    set(reload$, (prev) => {
+      return prev + 1;
+    });
   });
 
   const clear$ = command(({ set }) => {
     localStorage.removeItem(key);
-    set(reload$, (prev) => prev + 1);
+    set(reload$, (prev) => {
+      return prev + 1;
+    });
   });
 
   return Object.freeze({ get$, set$, clear$ });

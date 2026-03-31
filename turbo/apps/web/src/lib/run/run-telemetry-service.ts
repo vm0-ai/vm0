@@ -88,12 +88,14 @@ ${sinceFilter}
   const resultEvents = hasMore ? events.slice(0, limit) : events;
 
   return {
-    events: resultEvents.map((e) => ({
-      sequenceNumber: e.sequenceNumber,
-      eventType: e.eventType,
-      eventData: e.eventData,
-      createdAt: e._time,
-    })),
+    events: resultEvents.map((e) => {
+      return {
+        sequenceNumber: e.sequenceNumber,
+        eventType: e.eventType,
+        eventData: e.eventData,
+        createdAt: e._time,
+      };
+    }),
     hasMore,
     framework,
   };

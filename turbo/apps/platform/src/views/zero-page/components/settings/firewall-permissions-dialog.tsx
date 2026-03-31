@@ -96,31 +96,33 @@ function PolicyPill({
 }) {
   return (
     <span className="inline-flex shrink-0 rounded-md overflow-hidden text-xs font-medium zero-border">
-      {POLICY_OPTIONS.map((opt, idx) => (
-        <button
-          key={opt.value}
-          type="button"
-          style={
-            idx > 0
-              ? { borderLeft: "0.7px solid hsl(var(--gray-400))" }
-              : undefined
-          }
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onChange(opt.value);
-          }}
-          className={`flex items-center gap-1 px-2.5 py-1.5 transition-colors ${
-            policy === opt.value
-              ? "bg-muted text-foreground"
-              : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-          }`}
-        >
-          {opt.value === "allow" && <IconCheck size={12} stroke={2.5} />}
-          {opt.value === "deny" && <IconBan size={12} stroke={2.5} />}
-          {opt.label}
-        </button>
-      ))}
+      {POLICY_OPTIONS.map((opt, idx) => {
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            style={
+              idx > 0
+                ? { borderLeft: "0.7px solid hsl(var(--gray-400))" }
+                : undefined
+            }
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onChange(opt.value);
+            }}
+            className={`flex items-center gap-1 px-2.5 py-1.5 transition-colors ${
+              policy === opt.value
+                ? "bg-muted text-foreground"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+            }`}
+          >
+            {opt.value === "allow" && <IconCheck size={12} stroke={2.5} />}
+            {opt.value === "deny" && <IconBan size={12} stroke={2.5} />}
+            {opt.label}
+          </button>
+        );
+      })}
     </span>
   );
 }
@@ -194,7 +196,12 @@ export function FirewallPermissionsDrawer({
   const connectorLabel = CONNECTOR_TYPES[connectorType]?.label ?? connectorType;
 
   return (
-    <Sheet open onOpenChange={(open) => !open && onClose()}>
+    <Sheet
+      open
+      onOpenChange={(open) => {
+        return !open && onClose();
+      }}
+    >
       <SheetContent side="right" aria-describedby={undefined}>
         <SheetHeader>
           <div className="flex items-center gap-3">
@@ -223,25 +230,31 @@ export function FirewallPermissionsDrawer({
                 Select all ({permissions.length})
               </span>
               <span className="inline-flex shrink-0 rounded-md overflow-hidden text-xs font-medium zero-border">
-                {POLICY_OPTIONS.map((opt, idx) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    style={
-                      idx > 0
-                        ? { borderLeft: "0.7px solid hsl(var(--gray-400))" }
-                        : undefined
-                    }
-                    onClick={() => handleSetAll(opt.value)}
-                    className="flex items-center gap-1 px-2.5 py-1.5 transition-colors text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                  >
-                    {opt.value === "allow" && (
-                      <IconCheck size={12} stroke={2.5} />
-                    )}
-                    {opt.value === "deny" && <IconBan size={12} stroke={2.5} />}
-                    {opt.label}
-                  </button>
-                ))}
+                {POLICY_OPTIONS.map((opt, idx) => {
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      style={
+                        idx > 0
+                          ? { borderLeft: "0.7px solid hsl(var(--gray-400))" }
+                          : undefined
+                      }
+                      onClick={() => {
+                        return handleSetAll(opt.value);
+                      }}
+                      className="flex items-center gap-1 px-2.5 py-1.5 transition-colors text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                    >
+                      {opt.value === "allow" && (
+                        <IconCheck size={12} stroke={2.5} />
+                      )}
+                      {opt.value === "deny" && (
+                        <IconBan size={12} stroke={2.5} />
+                      )}
+                      {opt.label}
+                    </button>
+                  );
+                })}
               </span>
             </div>
 
@@ -272,7 +285,9 @@ export function FirewallPermissionsDrawer({
                       </div>
                       <PolicyPill
                         policy={pol}
-                        onChange={(p) => handlePolicyChange(perm.name, p)}
+                        onChange={(p) => {
+                          return handlePolicyChange(perm.name, p);
+                        }}
                       />
                     </div>
                   </div>

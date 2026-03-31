@@ -129,9 +129,9 @@ export async function queryAxiom<T = Record<string, unknown>>(
       const result = await client.query(apl);
       // Axiom stores _time separately from data, merge them for the response
       return (
-        result.matches?.map(
-          (m: Entry) => ({ _time: m._time, ...m.data }) as T,
-        ) ?? []
+        result.matches?.map((m: Entry) => {
+          return { _time: m._time, ...m.data } as T;
+        }) ?? []
       );
     } catch (error) {
       if (attempt < MAX_QUERY_RETRIES && isRateLimitError(error)) {
@@ -141,7 +141,9 @@ export async function queryAxiom<T = Record<string, unknown>>(
         log.warn(
           `Axiom query rate limited, retrying in ${waitMs}ms (attempt ${attempt + 1}/${MAX_QUERY_RETRIES})`,
         );
-        await new Promise((r) => setTimeout(r, waitMs));
+        await new Promise((r) => {
+          return setTimeout(r, waitMs);
+        });
         continue;
       }
       throw error;

@@ -41,10 +41,18 @@ export function verifyTelegramLogin(
 
   // Build data-check-string
   const checkString = Object.entries(auth)
-    .filter(([key]) => key !== "hash")
-    .filter(([, value]) => value !== undefined)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, value]) => `${key}=${value}`)
+    .filter(([key]) => {
+      return key !== "hash";
+    })
+    .filter(([, value]) => {
+      return value !== undefined;
+    })
+    .sort(([a], [b]) => {
+      return a.localeCompare(b);
+    })
+    .map(([key, value]) => {
+      return `${key}=${value}`;
+    })
     .join("\n");
 
   // secret_key = SHA256(bot_token)

@@ -156,7 +156,9 @@ export function ZeroChatPage() {
   const subagents =
     subagentsLoadable.state === "hasData" ? subagentsLoadable.data : [];
   const selectedSubagent = currentChatAgentId
-    ? subagents.find((a) => a.id === currentChatAgentId)
+    ? subagents.find((a) => {
+        return a.id === currentChatAgentId;
+      })
     : null;
 
   const defaultAgentIdLoadable = useLastLoadable(defaultAgentId$);
@@ -203,7 +205,9 @@ export function ZeroChatPage() {
   const setInput = useSet(setChatPageInput$);
   const taglineIndex = useGet(chatPageTaglineIndex$);
   const tagline = getTagline(displayName, userName, taglineIndex);
-  const [suggestedPrompts] = useState(() => getRandomPrompts(2));
+  const [suggestedPrompts] = useState(() => {
+    return getRandomPrompts(2);
+  });
   const navigate = useSet(detachedNavigateTo$);
 
   // Agent ID from URL for ideas navigation
@@ -356,38 +360,44 @@ export function ZeroChatPage() {
             {/* Suggested prompts */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 w-full">
               {suggestedPrompts.map(
-                ({ title, description, connectors, prompt }) => (
-                  <button
-                    key={title}
-                    type="button"
-                    className="zero-card cursor-pointer p-4 text-left flex flex-col relative group hover:bg-muted/30 transition-colors"
-                    onClick={() => setInput(prompt)}
-                  >
-                    <IconArrowUpRight
-                      size={14}
-                      stroke={2}
-                      className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
-                    />
-                    <p className="text-sm font-semibold text-foreground pr-5">
-                      {title}
-                    </p>
-                    <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
-                      {description}
-                    </p>
-                    {connectors && connectors.length > 0 && (
-                      <div className="flex items-center gap-1.5 mt-auto pt-2.5">
-                        {connectors.map((type) => (
-                          <span
-                            key={type}
-                            className="flex h-7 w-7 items-center justify-center rounded-md border border-border/60 bg-background"
-                          >
-                            <ConnectorIcon type={type} size={14} />
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </button>
-                ),
+                ({ title, description, connectors, prompt }) => {
+                  return (
+                    <button
+                      key={title}
+                      type="button"
+                      className="zero-card cursor-pointer p-4 text-left flex flex-col relative group hover:bg-muted/30 transition-colors"
+                      onClick={() => {
+                        return setInput(prompt);
+                      }}
+                    >
+                      <IconArrowUpRight
+                        size={14}
+                        stroke={2}
+                        className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
+                      />
+                      <p className="text-sm font-semibold text-foreground pr-5">
+                        {title}
+                      </p>
+                      <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
+                        {description}
+                      </p>
+                      {connectors && connectors.length > 0 && (
+                        <div className="flex items-center gap-1.5 mt-auto pt-2.5">
+                          {connectors.map((type) => {
+                            return (
+                              <span
+                                key={type}
+                                className="flex h-7 w-7 items-center justify-center rounded-md border border-border/60 bg-background"
+                              >
+                                <ConnectorIcon type={type} size={14} />
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </button>
+                  );
+                },
               )}
               <button
                 type="button"

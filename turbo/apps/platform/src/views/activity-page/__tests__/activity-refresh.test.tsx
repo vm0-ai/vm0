@@ -17,18 +17,20 @@ function makeLogsResponse(
   }[],
 ) {
   return {
-    data: data.map((d) => ({
-      ...d,
-      sessionId: `session-${d.id}`,
-      orgSlug: "test",
-      framework: "claude-code",
-      triggerSource: "web",
-      triggerAgentName: null,
-      scheduleId: null,
-      createdAt: "2026-03-10T14:56:00Z",
-      startedAt: "2026-03-10T14:56:01Z",
-      completedAt: "2026-03-10T14:56:10Z",
-    })),
+    data: data.map((d) => {
+      return {
+        ...d,
+        sessionId: `session-${d.id}`,
+        orgSlug: "test",
+        framework: "claude-code",
+        triggerSource: "web",
+        triggerAgentName: null,
+        scheduleId: null,
+        createdAt: "2026-03-10T14:56:00Z",
+        startedAt: "2026-03-10T14:56:01Z",
+        completedAt: "2026-03-10T14:56:10Z",
+      };
+    }),
     pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
     filters: { statuses: ["completed"], sources: ["web"], agents: ["zero"] },
   };

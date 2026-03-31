@@ -28,19 +28,23 @@ Examples:
 
       const agentWidth = Math.max(
         5,
-        ...result.schedules.map((s) => s.agentId.length),
+        ...result.schedules.map((s) => {
+          return s.agentId.length;
+        }),
       );
       const scheduleWidth = Math.max(
         8,
-        ...result.schedules.map((s) => s.name.length),
+        ...result.schedules.map((s) => {
+          return s.name.length;
+        }),
       );
       const triggerWidth = Math.max(
         7,
-        ...result.schedules.map((s) =>
-          s.cronExpression
+        ...result.schedules.map((s) => {
+          return s.cronExpression
             ? s.cronExpression.length + s.timezone.length + 3
-            : s.atTime?.length || 0,
-        ),
+            : s.atTime?.length || 0;
+        }),
       );
 
       const header = [
