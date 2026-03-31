@@ -897,7 +897,7 @@ function ScheduleDetailView({
           <div className="mx-auto max-w-[900px]">
             <div
               className={cn(
-                "flex flex-col gap-2 min-w-0",
+                "flex flex-col gap-2 min-w-0 sm:flex-row sm:items-center sm:gap-4",
                 dimmed && "opacity-90",
               )}
             >
@@ -911,7 +911,7 @@ function ScheduleDetailView({
                   className="shrink-0 opacity-90"
                 />
               </div>
-              <div className="min-w-0 flex flex-col gap-1">
+              <div className="min-w-0 flex-1 flex flex-col gap-1">
                 <h1 className="min-w-0 text-base sm:text-lg font-semibold tracking-tight text-foreground leading-tight truncate">
                   {summaryTitle}
                 </h1>
