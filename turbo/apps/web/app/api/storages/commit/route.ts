@@ -26,7 +26,7 @@ import { logger } from "../../../../src/lib/logger";
 const log = logger("api:storages:commit");
 
 const router = tsr.router(storagesCommitContract, {
-  commit: async ({ body, headers }, { request }) => {
+  commit: async ({ body, headers }) => {
     initServices();
 
     const { storageName, storageType, versionId, files, runId, message } = body;
@@ -62,8 +62,7 @@ const router = tsr.router(storagesCommitContract, {
       }
       runtimeOrg = await getOrgData(run.orgId);
     } else {
-      const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org } = await resolveOrg(authCtx, orgSlug);
+      const { org } = await resolveOrg(authCtx);
       runtimeOrg = org;
 
       // For CLI tokens, verify body.runId belongs to the user if provided

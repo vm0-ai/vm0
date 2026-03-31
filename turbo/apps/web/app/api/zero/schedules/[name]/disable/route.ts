@@ -29,10 +29,9 @@ export async function POST(
   }
   const { userId } = authCtx;
 
-  const orgSlug = new URL(request.url).searchParams.get("org");
   const {
     org: { orgId },
-  } = await resolveOrg(authCtx, orgSlug);
+  } = await resolveOrg(authCtx);
 
   const parsed = bodySchema.safeParse(await request.json());
   if (!parsed.success) {

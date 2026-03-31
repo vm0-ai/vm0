@@ -22,8 +22,8 @@ async function setupOrg(userId: string) {
   return { slug, orgId };
 }
 
-function membersUrl(slug: string): string {
-  return `http://localhost:3000/api/zero/org/members?org=${slug}`;
+function membersUrl(): string {
+  return `http://localhost:3000/api/zero/org/members`;
 }
 
 describe("GET /api/zero/org/members", () => {
@@ -33,7 +33,7 @@ describe("GET /api/zero/org/members", () => {
 
   it("should return members list for an admin", async () => {
     const userId = uniqueId("mem-get");
-    const { slug, orgId } = await setupOrg(userId);
+    const { orgId } = await setupOrg(userId);
 
     server.use(
       http.get(
@@ -42,7 +42,7 @@ describe("GET /api/zero/org/members", () => {
       ),
     );
 
-    const response = await GET(createTestRequest(membersUrl(slug)));
+    const response = await GET(createTestRequest(membersUrl()));
 
     expect(response.status).toBe(200);
     const data = await response.json();
@@ -53,7 +53,7 @@ describe("GET /api/zero/org/members", () => {
 
   it("should include membership requests when pending requests exist", async () => {
     const userId = uniqueId("mem-mreq");
-    const { slug, orgId } = await setupOrg(userId);
+    const { orgId } = await setupOrg(userId);
     const requestUserId = `req-user-${userId}`;
 
     server.use(
@@ -72,7 +72,7 @@ describe("GET /api/zero/org/members", () => {
       ),
     );
 
-    const response = await GET(createTestRequest(membersUrl(slug)));
+    const response = await GET(createTestRequest(membersUrl()));
 
     expect(response.status).toBe(200);
     const data = await response.json();
@@ -85,18 +85,21 @@ describe("GET /api/zero/org/members", () => {
   it("should return 401 when not authenticated", async () => {
     mockClerk({ userId: null });
 
-    const response = await GET(createTestRequest(membersUrl("any-org")));
+    const response = await GET(createTestRequest(membersUrl()));
 
     expect(response.status).toBe(401);
   });
 
   it("should return 404 when org not found", async () => {
     const userId = uniqueId("mem-nf");
-    mockClerk({ userId, orgId: `org_mock_${userId}`, orgRole: "org:admin" });
+    mockClerk({
+      userId,
+      orgId: `org_mock_${userId}`,
+      orgRole: "org:admin",
+      clerkOrgs: [],
+    });
 
-    const response = await GET(
-      createTestRequest(membersUrl("nonexistent-org-slug")),
-    );
+    const response = await GET(createTestRequest(membersUrl()));
 
     expect(response.status).toBe(404);
   });
@@ -113,7 +116,7 @@ describe("GET /api/zero/org/members", () => {
     });
     await createTestOrg(slug);
 
-    const response = await GET(createTestRequest(membersUrl(slug)));
+    const response = await GET(createTestRequest(membersUrl()));
 
     expect(response.status).toBe(200);
     const data = await response.json();

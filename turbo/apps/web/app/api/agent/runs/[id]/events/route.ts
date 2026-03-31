@@ -23,7 +23,7 @@ import type {
 import { filterConsecutiveEvents, type AxiomAgentEvent } from "./filter-events";
 
 const router = tsr.router(runEventsContract, {
-  getEvents: async ({ params, query, headers }, { request }) => {
+  getEvents: async ({ params, query, headers }) => {
     initServices();
 
     const authCtx = await getAuthContext(headers.authorization, {
@@ -41,8 +41,7 @@ const router = tsr.router(runEventsContract, {
 
     const { since, limit } = query;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
 
     // Verify run exists and belongs to user+org, join with compose version to get framework
     const [runWithCompose] = await globalThis.services.db

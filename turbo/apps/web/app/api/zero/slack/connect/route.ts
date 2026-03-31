@@ -59,8 +59,7 @@ export async function GET(request: Request) {
   }
 
   if (!installation.orgId) {
-    const orgSlug = url.searchParams.get("org");
-    const { org, member } = await resolveOrg(authCtx, orgSlug);
+    const { org, member } = await resolveOrg(authCtx);
 
     if (member.role !== "admin") {
       return NextResponse.redirect(
@@ -107,7 +106,7 @@ export async function GET(request: Request) {
     // Distinguish: is the user a member of the workspace's org at all?
     let isMember = false;
     try {
-      await resolveOrg(authCtx, null, installation.orgId);
+      await resolveOrg(authCtx, installation.orgId);
       isMember = true;
     } catch {
       // Not a member
@@ -122,7 +121,7 @@ export async function GET(request: Request) {
     );
   }
 
-  const { org, member } = await resolveOrg(authCtx, null, installation.orgId);
+  const { org, member } = await resolveOrg(authCtx, installation.orgId);
 
   if (member.role === "admin") {
     await adminConnect({

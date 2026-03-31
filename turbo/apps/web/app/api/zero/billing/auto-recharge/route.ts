@@ -19,28 +19,26 @@ import {
 } from "../../../../../src/lib/billing/billing-service";
 
 const router = tsr.router(zeroBillingAutoRechargeContract, {
-  get: async ({ headers }, { request }) => {
+  get: async ({ headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
 
     const config = await getAutoRechargeConfig(org.orgId);
 
     return { status: 200 as const, body: config };
   },
 
-  update: async ({ body, headers }, { request }) => {
+  update: async ({ body, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org, member } = await resolveOrg(authCtx, orgSlug);
+    const { org, member } = await resolveOrg(authCtx);
 
     if (member.role !== "admin") {
       return createErrorResponse(

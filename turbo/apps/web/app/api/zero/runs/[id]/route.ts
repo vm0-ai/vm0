@@ -13,7 +13,7 @@ import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import { getRunById } from "../../../../../src/lib/run/run-service";
 
 const router = tsr.router(zeroRunsByIdContract, {
-  getById: async ({ params, headers }, { request }) => {
+  getById: async ({ params, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -22,8 +22,7 @@ const router = tsr.router(zeroRunsByIdContract, {
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
 
     const run = await getRunById(params.id, userId, org.orgId);
     if (!run) {

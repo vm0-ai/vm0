@@ -98,7 +98,7 @@ async function resolveDefaultAgent(
 }
 
 const router = tsr.router(onboardingStatusContract, {
-  getStatus: async ({ headers }, { request }) => {
+  getStatus: async ({ headers }) => {
     initServices();
 
     const authCtx = await getAuthContext(headers.authorization);
@@ -116,9 +116,8 @@ const router = tsr.router(onboardingStatusContract, {
     let defaultAgent: DefaultAgentInfo | null = null;
     let isAdmin = false;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
     try {
-      const { org: resolvedOrg, member } = await resolveOrg(authCtx, orgSlug);
+      const { org: resolvedOrg, member } = await resolveOrg(authCtx);
       hasOrg = true;
       resolvedOrgId = resolvedOrg.orgId;
       isAdmin = member.role === "admin";

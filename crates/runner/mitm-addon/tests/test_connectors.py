@@ -905,7 +905,8 @@ class TestGetFirewallHeaders:
                 "run-1", "https://api.github.com", encrypted, auth_templates, "tok-xyz"
             )
 
-        assert headers == mock_headers
+        assert headers["headers"] == mock_headers
+        assert headers["cache_hit"] is False
         mock_fetch.assert_called_once_with(encrypted, auth_templates, "tok-xyz", None)
 
         # Verify the cache was populated
@@ -926,7 +927,8 @@ class TestGetFirewallHeaders:
                 "run-1", "https://api.github.com", "iv:tag:data", {}, "tok-xyz"
             )
 
-        assert headers == cached_headers
+        assert headers["headers"] == cached_headers
+        assert headers["cache_hit"] is True
         mock_fetch.assert_not_called()
 
     async def test_cache_hit_with_valid_ttl_returns_cached(self):
@@ -944,7 +946,8 @@ class TestGetFirewallHeaders:
                 "run-1", "api-1", "iv:tag:data", {}, "tok-xyz"
             )
 
-        assert headers == cached_headers
+        assert headers["headers"] == cached_headers
+        assert headers["cache_hit"] is True
         mock_fetch.assert_not_called()
 
     async def test_cache_evicted_when_ttl_expired(self):
@@ -964,7 +967,8 @@ class TestGetFirewallHeaders:
                 "run-1", "api-1", "iv:tag:data", {}, "tok-xyz"
             )
 
-        assert headers == fresh_headers
+        assert headers["headers"] == fresh_headers
+        assert headers["cache_hit"] is False
         mock_fetch.assert_called_once()
         # Verify cache was updated with new entry
         assert mitm_addon._firewall_header_cache[cache_key]["headers"] == fresh_headers
@@ -984,7 +988,8 @@ class TestGetFirewallHeaders:
                 "run-1", "api-1", "iv:tag:data", {}, "tok-xyz"
             )
 
-        assert headers == cached_headers
+        assert headers["headers"] == cached_headers
+        assert headers["cache_hit"] is True
         mock_fetch.assert_not_called()
 
 
@@ -1018,12 +1023,16 @@ class TestHandleFirewallRequest:
             "rule": "GET /repos/{owner}/{repo}",
             "params": {"owner": "octocat", "repo": "hello"},
         }
-        resolved_headers = {"Authorization": "Bearer real-token", "X-Custom": "value"}
+        token_meta = {
+            "headers": {"Authorization": "Bearer real-token", "X-Custom": "value"},
+            "resolved_secrets": ["GITHUB_TOKEN"],
+            "refreshed_connectors": [],
+            "refreshed_secrets": [],
+            "cache_hit": False,
+        }
 
         with (
-            patch.object(
-                mitm_addon, "get_firewall_headers", AsyncMock(return_value=resolved_headers)
-            ),
+            patch.object(mitm_addon, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
         ):
             await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
@@ -1031,6 +1040,12 @@ class TestHandleFirewallRequest:
         # Headers injected
         assert flow.request.headers["Authorization"] == "Bearer real-token"
         assert flow.request.headers["X-Custom"] == "value"
+
+        # Token replacement metadata
+        assert flow.metadata["token_resolved_secrets"] == ["GITHUB_TOKEN"]
+        assert flow.metadata["token_refreshed_connectors"] == []
+        assert flow.metadata["token_refreshed_secrets"] == []
+        assert flow.metadata["token_cache_hit"] is False
 
         # Core metadata
         assert flow.metadata["firewall_action"] == "ALLOW"
@@ -1089,7 +1104,17 @@ class TestHandleFirewallRequest:
 
         with (
             patch.object(
-                mitm_addon, "get_firewall_headers", AsyncMock(return_value={"Auth": "tok"})
+                mitm_addon,
+                "get_firewall_headers",
+                AsyncMock(
+                    return_value={
+                        "headers": {"Auth": "tok"},
+                        "resolved_secrets": [],
+                        "refreshed_connectors": [],
+                        "refreshed_secrets": [],
+                        "cache_hit": False,
+                    }
+                ),
             ),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
         ):

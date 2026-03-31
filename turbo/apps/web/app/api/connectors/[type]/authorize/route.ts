@@ -104,8 +104,7 @@ export async function GET(
   // Auto-disconnect existing connector before re-authorizing.
   // This ensures old provider tokens are revoked during reconnect flows
   // (both "Connection expired" and "Permissions update" paths).
-  const orgSlug = url.searchParams.get("org");
-  const { org } = await resolveOrg(authCtx, orgSlug);
+  const { org } = await resolveOrg(authCtx);
 
   const [existing] = await globalThis.services.db
     .select({ id: connectors.id })

@@ -76,7 +76,7 @@ function handleCreateRunError(error: unknown) {
 }
 
 const router = tsr.router(runsMainContract, {
-  list: async ({ query, headers }, { request }) => {
+  list: async ({ query, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -85,8 +85,7 @@ const router = tsr.router(runsMainContract, {
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
 
     // Parse and validate status values
     const statusValues: string[] = query.status
@@ -194,7 +193,7 @@ const router = tsr.router(runsMainContract, {
       },
     };
   },
-  create: async ({ body, headers }, { request }) => {
+  create: async ({ body, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -204,8 +203,7 @@ const router = tsr.router(runsMainContract, {
     const { userId } = authCtx;
 
     // Resolve caller's org for authorization (ensures org membership)
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
 
     log.debug(
       `Creating run - mode: ${body.checkpointId ? "checkpoint" : body.sessionId ? "session" : "new"}`,

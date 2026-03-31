@@ -22,8 +22,8 @@ async function setupOrg(userId: string) {
   return { slug, orgId };
 }
 
-function computerUrl(slug: string): string {
-  return `http://localhost:3000/api/zero/connectors/computer?org=${slug}`;
+function computerUrl(): string {
+  return `http://localhost:3000/api/zero/connectors/computer`;
 }
 
 function setupNgrokMocks() {
@@ -103,8 +103,8 @@ function setupNgrokMocks() {
   return calls;
 }
 
-function createPostRequest(slug: string) {
-  return createTestRequest(computerUrl(slug), {
+function createPostRequest() {
+  return createTestRequest(computerUrl(), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: "{}",
@@ -120,7 +120,7 @@ describe("POST /api/zero/connectors/computer", () => {
     mockClerk({ userId: null });
 
     const response = await POST(
-      createTestRequest(computerUrl("test"), {
+      createTestRequest(computerUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: "{}",
@@ -131,10 +131,10 @@ describe("POST /api/zero/connectors/computer", () => {
 
   it("should create computer connector", async () => {
     const userId = uniqueId("zcomp-create");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
     const ngrokCalls = setupNgrokMocks();
 
-    const response = await POST(createPostRequest(slug));
+    const response = await POST(createPostRequest());
     const data = await response.json();
 
     expect(response.status).toBe(200);
@@ -152,13 +152,13 @@ describe("POST /api/zero/connectors/computer", () => {
 
   it("should return 409 if connector already exists", async () => {
     const userId = uniqueId("zcomp-dup");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
     setupNgrokMocks();
 
-    const response1 = await POST(createPostRequest(slug));
+    const response1 = await POST(createPostRequest());
     expect(response1.status).toBe(200);
 
-    const response2 = await POST(createPostRequest(slug));
+    const response2 = await POST(createPostRequest());
     expect(response2.status).toBe(409);
   });
 });
@@ -171,26 +171,26 @@ describe("GET /api/zero/connectors/computer", () => {
   it("should return 401 when not authenticated", async () => {
     mockClerk({ userId: null });
 
-    const response = await GET(createTestRequest(computerUrl("test")));
+    const response = await GET(createTestRequest(computerUrl()));
     expect(response.status).toBe(401);
   });
 
   it("should return 404 if connector not found", async () => {
     const userId = uniqueId("zcomp-nf");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
 
-    const response = await GET(createTestRequest(computerUrl(slug)));
+    const response = await GET(createTestRequest(computerUrl()));
     expect(response.status).toBe(404);
   });
 
   it("should return connector details", async () => {
     const userId = uniqueId("zcomp-get");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
     setupNgrokMocks();
 
-    await POST(createPostRequest(slug));
+    await POST(createPostRequest());
 
-    const response = await GET(createTestRequest(computerUrl(slug)));
+    const response = await GET(createTestRequest(computerUrl()));
     const data = await response.json();
 
     expect(response.status).toBe(200);
@@ -208,30 +208,30 @@ describe("DELETE /api/zero/connectors/computer", () => {
     mockClerk({ userId: null });
 
     const response = await DELETE(
-      createTestRequest(computerUrl("test"), { method: "DELETE" }),
+      createTestRequest(computerUrl(), { method: "DELETE" }),
     );
     expect(response.status).toBe(401);
   });
 
   it("should return 404 if connector not found", async () => {
     const userId = uniqueId("zcomp-del-nf");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
 
     const response = await DELETE(
-      createTestRequest(computerUrl(slug), { method: "DELETE" }),
+      createTestRequest(computerUrl(), { method: "DELETE" }),
     );
     expect(response.status).toBe(404);
   });
 
   it("should delete connector and clean up", async () => {
     const userId = uniqueId("zcomp-del");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
     const ngrokCalls = setupNgrokMocks();
 
-    await POST(createPostRequest(slug));
+    await POST(createPostRequest());
 
     const response = await DELETE(
-      createTestRequest(computerUrl(slug), { method: "DELETE" }),
+      createTestRequest(computerUrl(), { method: "DELETE" }),
     );
     expect(response.status).toBe(204);
 
@@ -240,7 +240,7 @@ describe("DELETE /api/zero/connectors/computer", () => {
     expect(ngrokCalls.deleteReservedDomain).toEqual(["rd_test_abc"]);
 
     // Verify GET returns 404
-    const getResponse = await GET(createTestRequest(computerUrl(slug)));
+    const getResponse = await GET(createTestRequest(computerUrl()));
     expect(getResponse.status).toBe(404);
   });
 });

@@ -25,6 +25,7 @@ import {
   IconLayoutSidebarLeftCollapse,
   IconDatabaseExport,
   IconPlug,
+  IconTrash,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey, type ChatThreadListItem } from "@vm0/core";
 import {
@@ -40,7 +41,16 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
+  Button,
 } from "@vm0/ui";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@vm0/ui/components/ui/dialog";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
 import slackIcon from "./components/settings/icons/slack.svg";
 import { clerk$, user$ } from "../../signals/auth.ts";
@@ -65,6 +75,7 @@ import {
   zeroSessionList$,
   createNewChatSession$,
   creatingNewSession$,
+  deleteChatThread$,
 } from "../../signals/zero-page/zero-chat.ts";
 import {
   pinnedAgentIds$,
@@ -442,6 +453,107 @@ export function AccountDropdown({
   );
 }
 
+function ChatThreadItem({
+  session,
+  isSelected,
+  onSelect,
+}: {
+  session: ChatThreadListItem;
+  isSelected: boolean;
+  onSelect?: (id: string) => void;
+}) {
+  const setDelete = useSet(deleteChatThread$);
+  const pageSignal = useGet(pageSignal$);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  function handleDeleteClick(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setConfirmOpen(true);
+  }
+
+  function confirmDelete() {
+    setConfirmOpen(false);
+    detach(setDelete(session.id, pageSignal), Reason.DomCallback);
+  }
+
+  return (
+    <>
+      <div className="group relative">
+        <Link
+          pathname="/chat/:chatThreadId"
+          options={{ pathParams: { chatThreadId: session.id } }}
+          onClick={(e) => {
+            if (e.metaKey || e.ctrlKey || e.shiftKey) {
+              return;
+            }
+            e.preventDefault();
+            onSelect?.(session.id);
+          }}
+          className={`flex h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors ${
+            isSelected
+              ? "bg-gray-200 text-gray-900 font-medium"
+              : "text-sidebar-foreground hover:bg-sidebar-accent"
+          }`}
+        >
+          <span className="truncate min-w-0 flex-1">
+            {session.preview ?? "New chat"}
+          </span>
+        </Link>
+        <div className="absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={handleDeleteClick}
+                  className={`flex h-6 w-6 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible transition-opacity duration-150 ${
+                    isSelected
+                      ? "text-slate-500 hover:text-slate-900 hover:bg-slate-300"
+                      : "text-sidebar-foreground/80 hover:text-foreground hover:bg-sidebar-foreground/10"
+                  }`}
+                  aria-label="Delete chat"
+                >
+                  <IconTrash size={12} stroke={2} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p className="text-xs">Delete chat</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+      </div>
+      <Dialog
+        open={confirmOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setConfirmOpen(false);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete chat?</DialogTitle>
+            <DialogDescription>
+              This will permanently delete this chat. This action cannot be
+              undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={confirmDelete}>
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 function RecentChatSection({
   currentChatAgentId,
   displayName,
@@ -618,27 +730,12 @@ function RecentChatSection({
               </p>
             ) : (
               filteredSessions.map((session) => (
-                <Link
+                <ChatThreadItem
                   key={session.id}
-                  pathname="/chat/:chatThreadId"
-                  options={{ pathParams: { chatThreadId: session.id } }}
-                  onClick={(e) => {
-                    if (e.metaKey || e.ctrlKey || e.shiftKey) {
-                      return;
-                    }
-                    e.preventDefault();
-                    onRecentSelect?.(session.id);
-                  }}
-                  className={`flex h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors ${
-                    selectedRecentId === session.id
-                      ? "bg-gray-200 text-gray-900 font-medium"
-                      : "text-sidebar-foreground hover:bg-sidebar-accent"
-                  }`}
-                >
-                  <span className="truncate min-w-0 flex-1">
-                    {session.preview ?? "New chat"}
-                  </span>
-                </Link>
+                  session={session}
+                  isSelected={selectedRecentId === session.id}
+                  onSelect={onRecentSelect}
+                />
               ))
             )}
           </div>

@@ -20,7 +20,7 @@ import { logger } from "../../../../src/lib/logger";
 const log = logger("api:storages:list");
 
 const router = tsr.router(storagesListContract, {
-  list: async ({ query, headers }, { request }) => {
+  list: async ({ query, headers }) => {
     initServices();
 
     const { type: storageType } = query;
@@ -51,8 +51,7 @@ const router = tsr.router(storagesListContract, {
       }
       runtimeOrg = await getOrgData(run.orgId);
     } else {
-      const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org } = await resolveOrg(authCtx, orgSlug);
+      const { org } = await resolveOrg(authCtx);
       runtimeOrg = org;
     }
 

@@ -21,7 +21,6 @@ const context = testContext();
  * The only test helpers used are infrastructure (auth mock, skill seeding).
  */
 describe("Zero Agent E2E: create → run → zero token access", () => {
-  let orgSlug: string;
   let orgId: string;
   let userId: string;
   let agent: { agentId: string };
@@ -33,7 +32,6 @@ describe("Zero Agent E2E: create → run → zero token access", () => {
     await seedSeedSkills();
     await seedSeedSkillStorages();
     const result = await onboardNewOrgAndUser(context);
-    orgSlug = result.orgSlug;
     orgId = result.user.orgId;
     userId = result.user.userId;
     agent = result.agent;
@@ -86,10 +84,10 @@ describe("Zero Agent E2E: create → run → zero token access", () => {
     // zero-layer route auth, not the sandbox token (VM0_TOKEN).
     const zeroToken = await generateZeroToken(userId, run.runId, orgId);
 
-    // 6a. With ?org= → should succeed
+    // 6a. Should succeed
     const getRes = await getAgentRoute(
       new NextRequest(
-        `http://localhost:3000/api/zero/agents/${agent.agentId}?org=${orgSlug}`,
+        `http://localhost:3000/api/zero/agents/${agent.agentId}`,
         {
           method: "GET",
           headers: {

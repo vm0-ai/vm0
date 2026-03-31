@@ -147,7 +147,6 @@ async function upsertComposeRecord(params: {
 export async function serverSideCompose(params: {
   userId: string;
   orgId: string;
-  orgSlug: string;
   content: Record<string, unknown>;
   instructions?: string;
 }): Promise<{

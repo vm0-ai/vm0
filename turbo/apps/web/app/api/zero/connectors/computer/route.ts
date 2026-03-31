@@ -22,7 +22,7 @@ import {
 } from "../../../../../src/lib/errors";
 
 const router = tsr.router(zeroComputerConnectorContract, {
-  create: async ({ headers }, { request }) => {
+  create: async ({ headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
@@ -30,8 +30,7 @@ const router = tsr.router(zeroComputerConnectorContract, {
     const { userId } = authCtx;
 
     try {
-      const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org } = await resolveOrg(authCtx, orgSlug);
+      const { org } = await resolveOrg(authCtx);
       const result = await createComputerConnector(org.orgId, userId);
       return { status: 200 as const, body: result };
     } catch (error) {
@@ -45,15 +44,14 @@ const router = tsr.router(zeroComputerConnectorContract, {
     }
   },
 
-  get: async ({ headers }, { request }) => {
+  get: async ({ headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
     const connector = await getConnector(org.orgId, userId, "computer");
 
     if (!connector) {
@@ -63,7 +61,7 @@ const router = tsr.router(zeroComputerConnectorContract, {
     return { status: 200 as const, body: connector };
   },
 
-  delete: async ({ headers }, { request }) => {
+  delete: async ({ headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
@@ -71,8 +69,7 @@ const router = tsr.router(zeroComputerConnectorContract, {
     const { userId } = authCtx;
 
     try {
-      const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org } = await resolveOrg(authCtx, orgSlug);
+      const { org } = await resolveOrg(authCtx);
       await deleteComputerConnector(org.orgId, userId);
       return { status: 204 as const, body: undefined };
     } catch (error) {

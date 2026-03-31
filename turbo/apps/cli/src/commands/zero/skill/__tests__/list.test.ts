@@ -13,8 +13,6 @@ import { server } from "../../../../mocks/server";
 import { listCommand } from "../list";
 import chalk from "chalk";
 
-const AGENT_ID = "550e8400-e29b-41d4-a716-446655440000";
-
 describe("zero skill list command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
@@ -39,26 +37,23 @@ describe("zero skill list command", () => {
   describe("successful list", () => {
     it("should display skills in table format", async () => {
       server.use(
-        http.get(
-          `http://localhost:3000/api/zero/agents/${AGENT_ID}/skills`,
-          () => {
-            return HttpResponse.json([
-              {
-                name: "code-review",
-                displayName: "Code Review",
-                description: "Reviews code",
-              },
-              {
-                name: "deploy",
-                displayName: null,
-                description: null,
-              },
-            ]);
-          },
-        ),
+        http.get("http://localhost:3000/api/zero/skills", () => {
+          return HttpResponse.json([
+            {
+              name: "code-review",
+              displayName: "Code Review",
+              description: "Reviews code",
+            },
+            {
+              name: "deploy",
+              displayName: null,
+              description: null,
+            },
+          ]);
+        }),
       );
 
-      await listCommand.parseAsync(["node", "cli", "--agent", AGENT_ID]);
+      await listCommand.parseAsync(["node", "cli"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("code-review");
@@ -68,15 +63,12 @@ describe("zero skill list command", () => {
 
     it("should show empty state when no skills", async () => {
       server.use(
-        http.get(
-          `http://localhost:3000/api/zero/agents/${AGENT_ID}/skills`,
-          () => {
-            return HttpResponse.json([]);
-          },
-        ),
+        http.get("http://localhost:3000/api/zero/skills", () => {
+          return HttpResponse.json([]);
+        }),
       );
 
-      await listCommand.parseAsync(["node", "cli", "--agent", AGENT_ID]);
+      await listCommand.parseAsync(["node", "cli"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("No custom skills found");
@@ -86,19 +78,16 @@ describe("zero skill list command", () => {
   describe("error handling", () => {
     it("should handle authentication error", async () => {
       server.use(
-        http.get(
-          `http://localhost:3000/api/zero/agents/${AGENT_ID}/skills`,
-          () => {
-            return HttpResponse.json(
-              { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
-              { status: 401 },
-            );
-          },
-        ),
+        http.get("http://localhost:3000/api/zero/skills", () => {
+          return HttpResponse.json(
+            { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
+            { status: 401 },
+          );
+        }),
       );
 
       await expect(async () => {
-        await listCommand.parseAsync(["node", "cli", "--agent", AGENT_ID]);
+        await listCommand.parseAsync(["node", "cli"]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockExit).toHaveBeenCalledWith(1);

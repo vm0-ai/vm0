@@ -1,0 +1,24 @@
+import { command } from "ccstate";
+import { createElement } from "react";
+import { FirewallAllowPageWrapper } from "../../views/firewall-allow/firewall-allow-page-wrapper.tsx";
+import { updateDocumentTitle$ } from "../document-title.ts";
+import { updatePage$ } from "../react-router.ts";
+import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
+import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
+import { fetchZeroSessionList$ } from "../zero-page/zero-chat.ts";
+
+export const setupFirewallAllowPage$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    set(updatePage$, createElement(FirewallAllowPageWrapper));
+    set(updateDocumentTitle$, "Firewall Permissions");
+
+    await set(initZeroOnboarding$, signal);
+    signal.throwIfAborted();
+
+    if (await set(onboardGuard$, signal)) {
+      return;
+    }
+
+    await set(fetchZeroSessionList$, signal);
+  },
+);

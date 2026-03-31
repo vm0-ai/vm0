@@ -26,12 +26,12 @@ async function setupOrg(userId: string) {
   return { slug, orgId };
 }
 
-function secretUrl(slug: string): string {
-  return `http://localhost:3000/api/zero/secrets?org=${slug}`;
+function secretUrl(): string {
+  return `http://localhost:3000/api/zero/secrets`;
 }
 
-function secretByNameUrl(slug: string, name: string): string {
-  return `http://localhost:3000/api/zero/secrets/${name}?org=${slug}`;
+function secretByNameUrl(name: string): string {
+  return `http://localhost:3000/api/zero/secrets/${name}`;
 }
 
 describe("DELETE /api/zero/secrets/:name", () => {
@@ -41,11 +41,11 @@ describe("DELETE /api/zero/secrets/:name", () => {
 
   it("should delete secret successfully", async () => {
     const userId = uniqueId("zsec-del-ok");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
 
     // Create a secret
     await POST(
-      createTestRequest(secretUrl(slug), {
+      createTestRequest(secretUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -57,14 +57,14 @@ describe("DELETE /api/zero/secrets/:name", () => {
 
     // Verify it exists via GET list
     const listResponse = await GET(
-      createTestRequest(secretUrl(slug), { method: "GET" }),
+      createTestRequest(secretUrl(), { method: "GET" }),
     );
     const listData = await listResponse.json();
     expect(listData.secrets).toHaveLength(1);
 
     // Delete it
     const deleteResponse = await DELETE(
-      createTestRequest(secretByNameUrl(slug, "DELETE_ME"), {
+      createTestRequest(secretByNameUrl("DELETE_ME"), {
         method: "DELETE",
       }),
     );
@@ -72,7 +72,7 @@ describe("DELETE /api/zero/secrets/:name", () => {
 
     // Verify it's gone
     const listResponse2 = await GET(
-      createTestRequest(secretUrl(slug), { method: "GET" }),
+      createTestRequest(secretUrl(), { method: "GET" }),
     );
     const listData2 = await listResponse2.json();
     expect(listData2.secrets).toEqual([]);
@@ -80,10 +80,10 @@ describe("DELETE /api/zero/secrets/:name", () => {
 
   it("should return 404 for nonexistent secret", async () => {
     const userId = uniqueId("zsec-del-404");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
 
     const response = await DELETE(
-      createTestRequest(secretByNameUrl(slug, "NONEXISTENT"), {
+      createTestRequest(secretByNameUrl("NONEXISTENT"), {
         method: "DELETE",
       }),
     );
@@ -97,10 +97,9 @@ describe("DELETE /api/zero/secrets/:name", () => {
     mockClerk({ userId: null });
 
     const response = await DELETE(
-      createTestRequest(
-        "http://localhost:3000/api/zero/secrets/ANY_KEY?org=test",
-        { method: "DELETE" },
-      ),
+      createTestRequest("http://localhost:3000/api/zero/secrets/ANY_KEY", {
+        method: "DELETE",
+      }),
     );
     expect(response.status).toBe(401);
   });

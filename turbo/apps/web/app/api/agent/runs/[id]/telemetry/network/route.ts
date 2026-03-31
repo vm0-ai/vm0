@@ -39,11 +39,15 @@ interface AxiomNetworkEvent {
   firewall_rule_match?: string;
   firewall_params?: Record<string, string>;
   firewall_error?: string;
+  token_resolved_secrets?: string[];
+  token_refreshed_connectors?: string[];
+  token_refreshed_secrets?: string[];
+  token_cache_hit?: boolean;
   error?: string;
 }
 
 const router = tsr.router(runNetworkLogsContract, {
-  getNetworkLogs: async ({ params, query, headers }, { request }) => {
+  getNetworkLogs: async ({ params, query, headers }) => {
     initServices();
 
     const authCtx = await getAuthContext(headers.authorization, {
@@ -59,8 +63,7 @@ const router = tsr.router(runNetworkLogsContract, {
     }
     const { userId } = authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
 
     // Verify run exists and belongs to user+org
     const [run] = await globalThis.services.db
@@ -123,6 +126,10 @@ ${sinceFilter}
       firewall_rule_match: e.firewall_rule_match,
       firewall_params: e.firewall_params,
       firewall_error: e.firewall_error,
+      token_resolved_secrets: e.token_resolved_secrets,
+      token_refreshed_connectors: e.token_refreshed_connectors,
+      token_refreshed_secrets: e.token_refreshed_secrets,
+      token_cache_hit: e.token_cache_hit,
       error: e.error,
     }));
 

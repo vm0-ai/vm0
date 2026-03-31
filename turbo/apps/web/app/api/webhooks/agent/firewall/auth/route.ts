@@ -54,6 +54,8 @@ async function syncRefreshTokensFromDb(
  */
 interface RefreshResult {
   expiresAt: number | null;
+  refreshedConnectors: string[];
+  refreshedSecrets: string[];
   failedConnectors: string[];
 }
 
@@ -69,7 +71,13 @@ async function refreshExpiredTokens(
     const connectorType = secretConnectorMap[key];
     if (connectorType) refreshable.set(key, connectorType);
   }
-  if (refreshable.size === 0) return { expiresAt: null, failedConnectors: [] };
+  if (refreshable.size === 0)
+    return {
+      expiresAt: null,
+      refreshedConnectors: [],
+      refreshedSecrets: [],
+      failedConnectors: [],
+    };
 
   // Look up orgId from runId
   const [run] = await globalThis.services.db
@@ -80,7 +88,12 @@ async function refreshExpiredTokens(
 
   if (!run) {
     log.warn(`[${auth.runId}] Run not found for token refresh`);
-    return { expiresAt: null, failedConnectors: [] };
+    return {
+      expiresAt: null,
+      refreshedConnectors: [],
+      refreshedSecrets: [],
+      failedConnectors: [],
+    };
   }
 
   const connectorTypes = [...new Set(refreshable.values())];
@@ -165,7 +178,14 @@ async function refreshExpiredTokens(
     }
   }
 
-  const refreshed = refreshResults.some((r) => r.ok);
+  const refreshedConnectors = refreshResults
+    .filter((r) => r.ok)
+    .map((r) => r.connectorType);
+  const refreshed = refreshedConnectors.length > 0;
+  // Map refreshed connector types back to their secret key names
+  const refreshedSecrets = refreshedConnectors
+    .flatMap((ct) => envVarsByConnector.get(ct) ?? [])
+    .sort();
   const failedConnectors = refreshResults
     .filter((r) => !r.ok)
     .map((r) => r.connectorType);
@@ -184,7 +204,12 @@ async function refreshExpiredTokens(
     }
   }
 
-  return { expiresAt: earliestExpiry, failedConnectors };
+  return {
+    expiresAt: earliestExpiry,
+    refreshedConnectors,
+    refreshedSecrets,
+    failedConnectors,
+  };
 }
 
 /**
@@ -194,12 +219,14 @@ function resolveTemplates(
   authHeaders: Record<string, string>,
   secrets: Record<string, string>,
   runId: string,
-): Record<string, string> {
-  const resolved: Record<string, string> = {};
+): { headers: Record<string, string>; resolvedSecrets: string[] } {
+  const resolvedKeys = new Set<string>();
+  const headers: Record<string, string> = {};
   for (const [name, template] of Object.entries(authHeaders)) {
-    resolved[name] = template.replace(
+    headers[name] = template.replace(
       SECRET_TEMPLATE_RE,
       (_match, key: string) => {
+        resolvedKeys.add(key);
         if (!(key in secrets)) {
           log.warn(`[${runId}] No secret value for "${key}" in template`);
           return "";
@@ -208,7 +235,7 @@ function resolveTemplates(
       },
     );
   }
-  return resolved;
+  return { headers, resolvedSecrets: [...resolvedKeys].sort() };
 }
 
 /**
@@ -296,6 +323,8 @@ export async function POST(request: Request) {
 
   // Refresh expired OAuth tokens (mutates secrets map with fresh values)
   let expiresAt: number | null = null;
+  let refreshedConnectors: string[] = [];
+  let refreshedSecrets: string[] = [];
   let failedConnectors: string[] = [];
   if (secretConnectorMap) {
     const result = await refreshExpiredTokens(
@@ -305,6 +334,8 @@ export async function POST(request: Request) {
       referencedKeys,
     );
     expiresAt = result.expiresAt;
+    refreshedConnectors = result.refreshedConnectors;
+    refreshedSecrets = result.refreshedSecrets;
     failedConnectors = result.failedConnectors;
   }
 
@@ -324,7 +355,17 @@ export async function POST(request: Request) {
   }
 
   // Resolve templates with (possibly refreshed) secret values
-  const headers = resolveTemplates(authHeaders, secrets, auth.runId);
+  const { headers, resolvedSecrets } = resolveTemplates(
+    authHeaders,
+    secrets,
+    auth.runId,
+  );
 
-  return NextResponse.json({ headers, expiresAt });
+  return NextResponse.json({
+    headers,
+    expiresAt,
+    resolvedSecrets,
+    refreshedConnectors,
+    refreshedSecrets,
+  });
 }

@@ -1,30 +1,21 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { listAgentSkills } from "../../../lib/api";
+import { listSkills } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 
 export const listCommand = new Command()
   .name("list")
   .alias("ls")
-  .description("List custom skills for a zero agent")
-  .option("--agent <id>", "Agent ID (defaults to $ZERO_AGENT_ID)")
+  .description("List custom skills in the organization")
   .addHelpText(
     "after",
     `
 Examples:
-  zero skill list
-  zero skill list --agent <id>`,
+  zero skill list`,
   )
   .action(
-    withErrorHandler(async (options: { agent?: string }) => {
-      const agentId = options.agent ?? process.env.ZERO_AGENT_ID;
-      if (!agentId) {
-        throw new Error(
-          "Agent ID required: use --agent <id> or set $ZERO_AGENT_ID",
-        );
-      }
-
-      const skills = await listAgentSkills(agentId);
+    withErrorHandler(async () => {
+      const skills = await listSkills();
 
       if (skills.length === 0) {
         console.log(chalk.dim("No custom skills found"));

@@ -15,7 +15,7 @@ import { userConnectors } from "../../../../../../src/db/schema/user-connector";
 import { eq, and } from "drizzle-orm";
 
 const router = tsr.router(zeroUserConnectorsContract, {
-  get: async ({ params, headers }, { request }) => {
+  get: async ({ params, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -24,8 +24,7 @@ const router = tsr.router(zeroUserConnectorsContract, {
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
 
     // Verify agent exists in this org
     const [agent] = await globalThis.services.db
@@ -63,7 +62,7 @@ const router = tsr.router(zeroUserConnectorsContract, {
     };
   },
 
-  update: async ({ params, body, headers }, { request }) => {
+  update: async ({ params, body, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -72,8 +71,7 @@ const router = tsr.router(zeroUserConnectorsContract, {
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
 
     // Verify agent exists in this org
     const [agent] = await globalThis.services.db

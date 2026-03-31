@@ -29,7 +29,6 @@ async function setupOrg(userId: string) {
 }
 
 describe("POST /api/zero/schedules/:name/disable", () => {
-  let slug: string;
   let orgId: string;
   let testComposeId: string;
   let testZeroAgentId: string;
@@ -38,7 +37,6 @@ describe("POST /api/zero/schedules/:name/disable", () => {
     context.setupMocks();
     const user = await context.setupUser();
     const org = await setupOrg(user.userId);
-    slug = org.slug;
     orgId = org.orgId;
 
     const agentName = `zero-sched-disable-${Date.now()}`;
@@ -60,7 +58,7 @@ describe("POST /api/zero/schedules/:name/disable", () => {
 
     const response = await POST(
       createTestRequest(
-        `http://localhost:3000/api/zero/schedules/to-disable/disable?org=${slug}`,
+        `http://localhost:3000/api/zero/schedules/to-disable/disable`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -78,7 +76,7 @@ describe("POST /api/zero/schedules/:name/disable", () => {
   it("should return 404 for non-existent schedule", async () => {
     const response = await POST(
       createTestRequest(
-        `http://localhost:3000/api/zero/schedules/non-existent/disable?org=${slug}`,
+        `http://localhost:3000/api/zero/schedules/non-existent/disable`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -105,7 +103,7 @@ describe("POST /api/zero/schedules/:name/disable", () => {
 
     const response = await POST(
       createTestRequest(
-        `http://localhost:3000/api/zero/schedules/dis-agentid/disable?org=${slug}`,
+        `http://localhost:3000/api/zero/schedules/dis-agentid/disable`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -123,7 +121,7 @@ describe("POST /api/zero/schedules/:name/disable", () => {
   it("should return 400 for invalid body", async () => {
     const response = await POST(
       createTestRequest(
-        `http://localhost:3000/api/zero/schedules/any/disable?org=${slug}`,
+        `http://localhost:3000/api/zero/schedules/any/disable`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -143,7 +141,7 @@ describe("POST /api/zero/schedules/:name/disable", () => {
 
     const response = await POST(
       createTestRequest(
-        `http://localhost:3000/api/zero/schedules/any/disable?org=${slug}`,
+        `http://localhost:3000/api/zero/schedules/any/disable`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

@@ -28,7 +28,6 @@ async function setupOrg(userId: string) {
 }
 
 describe("POST /api/zero/schedules/:name/enable", () => {
-  let slug: string;
   let orgId: string;
   let testComposeId: string;
   let testZeroAgentId: string;
@@ -37,7 +36,6 @@ describe("POST /api/zero/schedules/:name/enable", () => {
     context.setupMocks();
     const user = await context.setupUser();
     const org = await setupOrg(user.userId);
-    slug = org.slug;
     orgId = org.orgId;
 
     const agentName = `zero-sched-enable-${Date.now()}`;
@@ -58,7 +56,7 @@ describe("POST /api/zero/schedules/:name/enable", () => {
 
     const response = await POST(
       createTestRequest(
-        `http://localhost:3000/api/zero/schedules/to-enable/enable?org=${slug}`,
+        `http://localhost:3000/api/zero/schedules/to-enable/enable`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -76,7 +74,7 @@ describe("POST /api/zero/schedules/:name/enable", () => {
   it("should return 404 for non-existent schedule", async () => {
     const response = await POST(
       createTestRequest(
-        `http://localhost:3000/api/zero/schedules/non-existent/enable?org=${slug}`,
+        `http://localhost:3000/api/zero/schedules/non-existent/enable`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -99,7 +97,7 @@ describe("POST /api/zero/schedules/:name/enable", () => {
 
     const response = await POST(
       createTestRequest(
-        `http://localhost:3000/api/zero/schedules/enable-agentid/enable?org=${slug}`,
+        `http://localhost:3000/api/zero/schedules/enable-agentid/enable`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -116,14 +114,11 @@ describe("POST /api/zero/schedules/:name/enable", () => {
 
   it("should return 400 for invalid body", async () => {
     const response = await POST(
-      createTestRequest(
-        `http://localhost:3000/api/zero/schedules/any/enable?org=${slug}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}),
-        },
-      ),
+      createTestRequest(`http://localhost:3000/api/zero/schedules/any/enable`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }),
       { params: Promise.resolve({ name: "any" }) },
     );
     const data = await response.json();
@@ -136,14 +131,11 @@ describe("POST /api/zero/schedules/:name/enable", () => {
     mockClerk({ userId: null });
 
     const response = await POST(
-      createTestRequest(
-        `http://localhost:3000/api/zero/schedules/any/enable?org=${slug}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ agentId: testZeroAgentId }),
-        },
-      ),
+      createTestRequest(`http://localhost:3000/api/zero/schedules/any/enable`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testZeroAgentId }),
+      }),
       { params: Promise.resolve({ name: "any" }) },
     );
 

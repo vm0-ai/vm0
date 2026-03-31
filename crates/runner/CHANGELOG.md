@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.53.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.52.2...runner-rs-v0.53.0) (2026-03-31)
+
+
+### Features
+
+* **runner:** add xurl cli to rootfs ([#7397](https://github.com/vm0-ai/vm0/issues/7397)) ([1474ef3](https://github.com/vm0-ai/vm0/commit/1474ef34cb060a96d5af47e3aae7d626a4b5e319)), closes [#7124](https://github.com/vm0-ai/vm0/issues/7124)
+
+## [0.52.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.52.1...runner-rs-v0.52.2) (2026-03-31)
+
+
+### Bug Fixes
+
+* **firewalls:** replace placeholder tokens with realistic fill pattern ([#7332](https://github.com/vm0-ai/vm0/issues/7332)) ([237916e](https://github.com/vm0-ai/vm0/commit/237916e4d424b924ed8ac603d20da4813b969b40))
+
 ## [0.52.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.52.0...runner-rs-v0.52.1) (2026-03-31)
 
 ## [0.52.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.51.1...runner-rs-v0.52.0) (2026-03-31)

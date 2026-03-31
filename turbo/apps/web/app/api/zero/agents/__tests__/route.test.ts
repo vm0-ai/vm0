@@ -43,16 +43,10 @@ const context = testContext();
 
 let user: UserContext;
 let testCliToken: string;
-let testOrgSlug: string;
 
-function postAgent(
-  body: Record<string, unknown>,
-  token: string,
-  orgSlug?: string,
-) {
-  const orgParam = orgSlug ? `?org=${orgSlug}` : "";
+function postAgent(body: Record<string, unknown>, token: string) {
   return POST(
-    createTestRequest(`http://localhost:3000/api/zero/agents${orgParam}`, {
+    createTestRequest(`http://localhost:3000/api/zero/agents`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -63,38 +57,25 @@ function postAgent(
   );
 }
 
-function getAgent(name: string, token: string, orgSlug?: string) {
-  const orgParam = orgSlug ? `?org=${orgSlug}` : "";
+function getAgent(name: string, token: string) {
   return GET(
-    createTestRequest(
-      `http://localhost:3000/api/zero/agents/${name}${orgParam}`,
-      {
-        method: "GET",
-        headers: { Authorization: `Bearer ${token}` },
-      },
-    ),
+    createTestRequest(`http://localhost:3000/api/zero/agents/${name}`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+    }),
   );
 }
 
-function putAgent(
-  name: string,
-  body: Record<string, unknown>,
-  token: string,
-  orgSlug?: string,
-) {
-  const orgParam = orgSlug ? `?org=${orgSlug}` : "";
+function putAgent(name: string, body: Record<string, unknown>, token: string) {
   return PUT(
-    createTestRequest(
-      `http://localhost:3000/api/zero/agents/${name}${orgParam}`,
-      {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(body),
+    createTestRequest(`http://localhost:3000/api/zero/agents/${name}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
       },
-    ),
+      body: JSON.stringify(body),
+    }),
   );
 }
 
@@ -102,52 +83,41 @@ function patchAgent(
   name: string,
   body: Record<string, unknown>,
   token: string,
-  orgSlug?: string,
 ) {
-  const orgParam = orgSlug ? `?org=${orgSlug}` : "";
   return PATCH(
-    createTestRequest(
-      `http://localhost:3000/api/zero/agents/${name}${orgParam}`,
-      {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(body),
+    createTestRequest(`http://localhost:3000/api/zero/agents/${name}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
       },
-    ),
+      body: JSON.stringify(body),
+    }),
   );
 }
 
-function listAgentsReq(token: string, orgSlug?: string) {
-  const orgParam = orgSlug ? `?org=${orgSlug}` : "";
+function listAgentsReq(token: string) {
   return listAgents(
-    createTestRequest(`http://localhost:3000/api/zero/agents${orgParam}`, {
+    createTestRequest(`http://localhost:3000/api/zero/agents`, {
       method: "GET",
       headers: { Authorization: `Bearer ${token}` },
     }),
   );
 }
 
-function deleteAgent(name: string, token: string, orgSlug?: string) {
-  const orgParam = orgSlug ? `?org=${orgSlug}` : "";
+function deleteAgent(name: string, token: string) {
   return DELETE(
-    createTestRequest(
-      `http://localhost:3000/api/zero/agents/${name}${orgParam}`,
-      {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      },
-    ),
+    createTestRequest(`http://localhost:3000/api/zero/agents/${name}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    }),
   );
 }
 
-function getAgentInstructions(name: string, token: string, orgSlug?: string) {
-  const orgParam = orgSlug ? `?org=${orgSlug}` : "";
+function getAgentInstructions(name: string, token: string) {
   return getInstructions(
     createTestRequest(
-      `http://localhost:3000/api/zero/agents/${name}/instructions${orgParam}`,
+      `http://localhost:3000/api/zero/agents/${name}/instructions`,
       {
         method: "GET",
         headers: { Authorization: `Bearer ${token}` },
@@ -160,12 +130,10 @@ function putAgentInstructions(
   name: string,
   body: { content: string },
   token: string,
-  orgSlug?: string,
 ) {
-  const orgParam = orgSlug ? `?org=${orgSlug}` : "";
   return putInstructions(
     createTestRequest(
-      `http://localhost:3000/api/zero/agents/${name}/instructions${orgParam}`,
+      `http://localhost:3000/api/zero/agents/${name}/instructions`,
       {
         method: "PUT",
         headers: {
@@ -185,12 +153,11 @@ describe("Zero Agents API", () => {
     await seedSeedSkills();
     user = await context.setupUser();
     testCliToken = await createTestCliToken(user.userId);
-    testOrgSlug = `org-${user.userId.slice(-8)}`;
   });
 
   describe("POST /api/zero/agents", () => {
     it("should create an agent", async () => {
-      const response = await postAgent({}, testCliToken, testOrgSlug);
+      const response = await postAgent({}, testCliToken);
 
       expect(response.status).toBe(201);
       const data = await response.json();
@@ -208,7 +175,6 @@ describe("Zero Agents API", () => {
           sound: "professional",
         },
         testCliToken,
-        testOrgSlug,
       );
 
       expect(response.status).toBe(201);
@@ -219,7 +185,7 @@ describe("Zero Agents API", () => {
     });
 
     it("should create an agent with connector env var templates in compose", async () => {
-      const response = await postAgent({}, testCliToken, testOrgSlug);
+      const response = await postAgent({}, testCliToken);
 
       expect(response.status).toBe(201);
       const data = await response.json();
@@ -244,7 +210,6 @@ describe("Zero Agents API", () => {
       const response = await postAgent(
         { customSkills: ["my-skill", "data-tool"] },
         testCliToken,
-        testOrgSlug,
       );
 
       expect(response.status).toBe(201);
@@ -269,7 +234,7 @@ describe("Zero Agents API", () => {
     it("should return 422 when skills are not cached", async () => {
       await clearSkillsData();
 
-      const response = await postAgent({}, testCliToken, testOrgSlug);
+      const response = await postAgent({}, testCliToken);
 
       expect(response.status).toBe(422);
       const data = await response.json();
@@ -294,18 +259,13 @@ describe("Zero Agents API", () => {
           sound: "friendly",
         },
         testCliToken,
-        testOrgSlug,
       );
 
       expect(createResponse.status).toBe(201);
       const created = await createResponse.json();
 
       // Get the agent
-      const response = await getAgent(
-        created.agentId,
-        testCliToken,
-        testOrgSlug,
-      );
+      const response = await getAgent(created.agentId, testCliToken);
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -319,7 +279,6 @@ describe("Zero Agents API", () => {
       const response = await getAgent(
         "00000000-0000-0000-0000-000000000000",
         testCliToken,
-        testOrgSlug,
       );
 
       expect(response.status).toBe(404);
@@ -334,7 +293,6 @@ describe("Zero Agents API", () => {
       const createResponse = await postAgent(
         { displayName: "Original" },
         testCliToken,
-        testOrgSlug,
       );
       const created = await createResponse.json();
 
@@ -347,7 +305,6 @@ describe("Zero Agents API", () => {
           sound: "casual",
         },
         testCliToken,
-        testOrgSlug,
       );
 
       expect(response.status).toBe(200);
@@ -366,21 +323,15 @@ describe("Zero Agents API", () => {
           sound: "professional",
         },
         testCliToken,
-        testOrgSlug,
       );
       const created = await createResponse.json();
 
       // Update with no metadata fields
-      const updateResponse = await putAgent(
-        created.agentId,
-        {},
-        testCliToken,
-        testOrgSlug,
-      );
+      const updateResponse = await putAgent(created.agentId, {}, testCliToken);
       expect(updateResponse.status).toBe(200);
 
       // Verify metadata is preserved
-      const getRes = await getAgent(created.agentId, testCliToken, testOrgSlug);
+      const getRes = await getAgent(created.agentId, testCliToken);
       expect(getRes.status).toBe(200);
       const fetched = await getRes.json();
       expect(fetched.displayName).toBe("My Agent");
@@ -389,15 +340,12 @@ describe("Zero Agents API", () => {
     });
 
     it("should rebuild compose with connector env var templates", async () => {
-      const created = await (
-        await postAgent({}, testCliToken, testOrgSlug)
-      ).json();
+      const created = await (await postAgent({}, testCliToken)).json();
 
       const response = await putAgent(
         created.agentId,
         { displayName: "Refreshed" },
         testCliToken,
-        testOrgSlug,
       );
       expect(response.status).toBe(200);
 
@@ -415,20 +363,17 @@ describe("Zero Agents API", () => {
     });
 
     it("should update custom skills and reflect in compose volumes", async () => {
-      const created = await (
-        await postAgent({}, testCliToken, testOrgSlug)
-      ).json();
+      const created = await (await postAgent({}, testCliToken)).json();
 
       const response = await putAgent(
         created.agentId,
         { customSkills: ["my-skill", "data-tool"] },
         testCliToken,
-        testOrgSlug,
       );
       expect(response.status).toBe(200);
 
       // Verify skills are persisted
-      const getRes = await getAgent(created.agentId, testCliToken, testOrgSlug);
+      const getRes = await getAgent(created.agentId, testCliToken);
       const fetched = await getRes.json();
       expect(fetched.customSkills).toEqual(["my-skill", "data-tool"]);
 
@@ -446,11 +391,7 @@ describe("Zero Agents API", () => {
     it("should preserve existing custom skills when not provided in update", async () => {
       // Create with custom skills
       const created = await (
-        await postAgent(
-          { customSkills: ["my-skill"] },
-          testCliToken,
-          testOrgSlug,
-        )
+        await postAgent({ customSkills: ["my-skill"] }, testCliToken)
       ).json();
 
       // Update without customSkills field
@@ -458,12 +399,11 @@ describe("Zero Agents API", () => {
         created.agentId,
         { displayName: "Updated" },
         testCliToken,
-        testOrgSlug,
       );
       expect(response.status).toBe(200);
 
       // Verify skills are preserved
-      const getRes = await getAgent(created.agentId, testCliToken, testOrgSlug);
+      const getRes = await getAgent(created.agentId, testCliToken);
       const fetched = await getRes.json();
       expect(fetched.customSkills).toEqual(["my-skill"]);
     });
@@ -473,7 +413,6 @@ describe("Zero Agents API", () => {
         "00000000-0000-0000-0000-000000000000",
         {},
         testCliToken,
-        testOrgSlug,
       );
 
       expect(response.status).toBe(404);
@@ -482,13 +421,12 @@ describe("Zero Agents API", () => {
 
   describe("GET /api/zero/agents/:name/instructions", () => {
     it("should return null content when no instructions uploaded", async () => {
-      const createResponse = await postAgent({}, testCliToken, testOrgSlug);
+      const createResponse = await postAgent({}, testCliToken);
       const created = await createResponse.json();
 
       const response = await getAgentInstructions(
         created.agentId,
         testCliToken,
-        testOrgSlug,
       );
 
       expect(response.status).toBe(200);
@@ -500,7 +438,6 @@ describe("Zero Agents API", () => {
       const response = await getAgentInstructions(
         "00000000-0000-0000-0000-000000000000",
         testCliToken,
-        testOrgSlug,
       );
 
       expect(response.status).toBe(404);
@@ -509,14 +446,13 @@ describe("Zero Agents API", () => {
 
   describe("PUT /api/zero/agents/:name/instructions", () => {
     it("should update instructions and return agent response", async () => {
-      const createResponse = await postAgent({}, testCliToken, testOrgSlug);
+      const createResponse = await postAgent({}, testCliToken);
       const created = await createResponse.json();
 
       const response = await putAgentInstructions(
         created.agentId,
         { content: "# Updated Instructions\nBe helpful." },
         testCliToken,
-        testOrgSlug,
       );
 
       expect(response.status).toBe(200);
@@ -525,7 +461,7 @@ describe("Zero Agents API", () => {
     });
 
     it("should rebuild compose with connector env var templates", async () => {
-      const createResponse = await postAgent({}, testCliToken, testOrgSlug);
+      const createResponse = await postAgent({}, testCliToken);
       const created = await createResponse.json();
 
       // Update instructions
@@ -533,7 +469,6 @@ describe("Zero Agents API", () => {
         created.agentId,
         { content: "# New instructions" },
         testCliToken,
-        testOrgSlug,
       );
       expect(response.status).toBe(200);
 
@@ -558,7 +493,6 @@ describe("Zero Agents API", () => {
         "00000000-0000-0000-0000-000000000000",
         { content: "# Instructions" },
         testCliToken,
-        testOrgSlug,
       );
 
       expect(response.status).toBe(404);
@@ -574,12 +508,11 @@ describe("Zero Agents API", () => {
           sound: "friendly",
         },
         testCliToken,
-        testOrgSlug,
       );
       expect(createRes.status).toBe(201);
       const created = await createRes.json();
 
-      const getRes = await getAgent(created.agentId, testCliToken, testOrgSlug);
+      const getRes = await getAgent(created.agentId, testCliToken);
       expect(getRes.status).toBe(200);
       const fetched = await getRes.json();
 
@@ -588,7 +521,7 @@ describe("Zero Agents API", () => {
 
     it("should read back updated agent data after PUT via GET", async () => {
       const created = await (
-        await postAgent({ displayName: "Original" }, testCliToken, testOrgSlug)
+        await postAgent({ displayName: "Original" }, testCliToken)
       ).json();
 
       await putAgent(
@@ -599,10 +532,9 @@ describe("Zero Agents API", () => {
           sound: "casual",
         },
         testCliToken,
-        testOrgSlug,
       );
 
-      const getRes = await getAgent(created.agentId, testCliToken, testOrgSlug);
+      const getRes = await getAgent(created.agentId, testCliToken);
       expect(getRes.status).toBe(200);
       const fetched = await getRes.json();
 
@@ -613,12 +545,12 @@ describe("Zero Agents API", () => {
 
     it("should reflect deleted agent in list", async () => {
       const created = await (
-        await postAgent({ displayName: "To Delete" }, testCliToken, testOrgSlug)
+        await postAgent({ displayName: "To Delete" }, testCliToken)
       ).json();
 
-      await deleteAgent(created.agentId, testCliToken, testOrgSlug);
+      await deleteAgent(created.agentId, testCliToken);
 
-      const listResponse = await listAgentsReq(testCliToken, testOrgSlug);
+      const listResponse = await listAgentsReq(testCliToken);
       const data = await listResponse.json();
       expect(
         data.find((a: { agentId: string }) => a.agentId === created.agentId),
@@ -626,16 +558,13 @@ describe("Zero Agents API", () => {
     });
 
     it("should read back instructions content after PUT via GET", async () => {
-      const created = await (
-        await postAgent({}, testCliToken, testOrgSlug)
-      ).json();
+      const created = await (await postAgent({}, testCliToken)).json();
 
       const instructionsContent = "# My Instructions\nBe helpful.";
       await putAgentInstructions(
         created.agentId,
         { content: instructionsContent },
         testCliToken,
-        testOrgSlug,
       );
 
       // Mock S3 downloads to return what was uploaded
@@ -662,11 +591,7 @@ describe("Zero Agents API", () => {
         ),
       );
 
-      const getRes = await getAgentInstructions(
-        created.agentId,
-        testCliToken,
-        testOrgSlug,
-      );
+      const getRes = await getAgentInstructions(created.agentId, testCliToken);
       expect(getRes.status).toBe(200);
       const fetched = await getRes.json();
 
@@ -684,7 +609,6 @@ describe("Zero Agents API", () => {
           sound: "professional",
         },
         testCliToken,
-        testOrgSlug,
       );
       expect(createResponse.status).toBe(201);
       const created = await createResponse.json();
@@ -699,11 +623,7 @@ describe("Zero Agents API", () => {
       const sandboxToken = await createTestSandboxToken(user.userId, runId);
 
       // Use the sandbox token to GET the agent — should be rejected
-      const response = await getAgent(
-        created.agentId,
-        sandboxToken,
-        testOrgSlug,
-      );
+      const response = await getAgent(created.agentId, sandboxToken);
 
       // Then — sandbox tokens can no longer satisfy requiredCapability
       expect(response.status).toBe(403);
@@ -712,7 +632,7 @@ describe("Zero Agents API", () => {
 
   describe("GET /api/zero/agents", () => {
     it("should return empty array when no agents exist", async () => {
-      const response = await listAgentsReq(testCliToken, testOrgSlug);
+      const response = await listAgentsReq(testCliToken);
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data).toStrictEqual([]);
@@ -727,11 +647,10 @@ describe("Zero Agents API", () => {
             sound: "friendly",
           },
           testCliToken,
-          testOrgSlug,
         )
       ).json();
 
-      const response = await listAgentsReq(testCliToken, testOrgSlug);
+      const response = await listAgentsReq(testCliToken);
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data).toHaveLength(1);
@@ -754,7 +673,6 @@ describe("Zero Agents API", () => {
         await postAgent(
           { displayName: "Original", sound: "professional" },
           testCliToken,
-          testOrgSlug,
         )
       ).json();
 
@@ -762,7 +680,6 @@ describe("Zero Agents API", () => {
         created.agentId,
         { displayName: "Updated", description: "New desc", sound: "casual" },
         testCliToken,
-        testOrgSlug,
       );
 
       expect(response.status).toBe(200);
@@ -782,7 +699,6 @@ describe("Zero Agents API", () => {
             sound: "professional",
           },
           testCliToken,
-          testOrgSlug,
         )
       ).json();
 
@@ -791,7 +707,6 @@ describe("Zero Agents API", () => {
         created.agentId,
         { displayName: "New Name" },
         testCliToken,
-        testOrgSlug,
       );
 
       expect(response.status).toBe(200);
@@ -807,7 +722,6 @@ describe("Zero Agents API", () => {
         "00000000-0000-0000-0000-000000000000",
         { displayName: "X" },
         testCliToken,
-        testOrgSlug,
       );
 
       expect(response.status).toBe(404);
@@ -829,21 +743,20 @@ describe("Zero Agents API", () => {
   describe("avatarUrl CRUD", () => {
     it("should set avatarUrl via PATCH and persist it", async () => {
       const created = await (
-        await postAgent({ displayName: "AvatarBot" }, testCliToken, testOrgSlug)
+        await postAgent({ displayName: "AvatarBot" }, testCliToken)
       ).json();
 
       const patchRes = await patchAgent(
         created.agentId,
         { avatarUrl: "preset:2" },
         testCliToken,
-        testOrgSlug,
       );
       expect(patchRes.status).toBe(200);
       const patched = await patchRes.json();
       expect(patched.avatarUrl).toBe("preset:2");
 
       // Verify GET returns the same value
-      const getRes = await getAgent(created.agentId, testCliToken, testOrgSlug);
+      const getRes = await getAgent(created.agentId, testCliToken);
       expect(getRes.status).toBe(200);
       const fetched = await getRes.json();
       expect(fetched.avatarUrl).toBe("preset:2");
@@ -851,7 +764,7 @@ describe("Zero Agents API", () => {
 
     it("should clear avatarUrl by setting null", async () => {
       const created = await (
-        await postAgent({ displayName: "ClearBot" }, testCliToken, testOrgSlug)
+        await postAgent({ displayName: "ClearBot" }, testCliToken)
       ).json();
 
       // Set avatar first
@@ -859,7 +772,6 @@ describe("Zero Agents API", () => {
         created.agentId,
         { avatarUrl: "https://example.com/avatar.png" },
         testCliToken,
-        testOrgSlug,
       );
 
       // Clear it
@@ -867,7 +779,6 @@ describe("Zero Agents API", () => {
         created.agentId,
         { avatarUrl: null },
         testCliToken,
-        testOrgSlug,
       );
       expect(clearRes.status).toBe(200);
       const cleared = await clearRes.json();
@@ -876,7 +787,7 @@ describe("Zero Agents API", () => {
 
     it("should preserve avatarUrl on unrelated partial update", async () => {
       const created = await (
-        await postAgent({ displayName: "KeepBot" }, testCliToken, testOrgSlug)
+        await postAgent({ displayName: "KeepBot" }, testCliToken)
       ).json();
 
       // Set avatar
@@ -884,7 +795,6 @@ describe("Zero Agents API", () => {
         created.agentId,
         { avatarUrl: "preset:4" },
         testCliToken,
-        testOrgSlug,
       );
 
       // Update only displayName — avatarUrl should be preserved
@@ -892,7 +802,6 @@ describe("Zero Agents API", () => {
         created.agentId,
         { displayName: "Renamed" },
         testCliToken,
-        testOrgSlug,
       );
       expect(patchRes.status).toBe(200);
       const patched = await patchRes.json();
@@ -903,30 +812,18 @@ describe("Zero Agents API", () => {
 
   describe("DELETE /api/zero/agents/:name", () => {
     it("should delete an agent and return 204", async () => {
-      const created = await (
-        await postAgent({}, testCliToken, testOrgSlug)
-      ).json();
+      const created = await (await postAgent({}, testCliToken)).json();
 
-      const response = await deleteAgent(
-        created.agentId,
-        testCliToken,
-        testOrgSlug,
-      );
+      const response = await deleteAgent(created.agentId, testCliToken);
       expect(response.status).toBe(204);
     });
 
     it("should return 404 on GET after delete", async () => {
-      const created = await (
-        await postAgent({}, testCliToken, testOrgSlug)
-      ).json();
+      const created = await (await postAgent({}, testCliToken)).json();
 
-      await deleteAgent(created.agentId, testCliToken, testOrgSlug);
+      await deleteAgent(created.agentId, testCliToken);
 
-      const getResponse = await getAgent(
-        created.agentId,
-        testCliToken,
-        testOrgSlug,
-      );
+      const getResponse = await getAgent(created.agentId, testCliToken);
       expect(getResponse.status).toBe(404);
     });
 
@@ -934,7 +831,6 @@ describe("Zero Agents API", () => {
       const response = await deleteAgent(
         "00000000-0000-0000-0000-000000000000",
         testCliToken,
-        testOrgSlug,
       );
       expect(response.status).toBe(404);
       const data = await response.json();
@@ -943,9 +839,7 @@ describe("Zero Agents API", () => {
 
     it("should delete agent with linked Slack thread sessions and pending questions", async () => {
       // Create an agent
-      const created = await (
-        await postAgent({}, testCliToken, testOrgSlug)
-      ).json();
+      const created = await (await postAgent({}, testCliToken)).json();
 
       // Create an agent session linked to this compose
       const session = await createTestSessionWithConversation(
@@ -984,19 +878,11 @@ describe("Zero Agents API", () => {
       });
 
       // Delete the agent — this would fail with FK constraint before the fix
-      const response = await deleteAgent(
-        created.agentId,
-        testCliToken,
-        testOrgSlug,
-      );
+      const response = await deleteAgent(created.agentId, testCliToken);
       expect(response.status).toBe(204);
 
       // Verify agent is gone
-      const getResponse = await getAgent(
-        created.agentId,
-        testCliToken,
-        testOrgSlug,
-      );
+      const getResponse = await getAgent(created.agentId, testCliToken);
       expect(getResponse.status).toBe(404);
     });
 
@@ -1024,7 +910,7 @@ describe("Zero Agents API", () => {
       ]);
 
       // Delete agent via zero agents API
-      const response = await deleteAgent(composeId, testCliToken, testOrgSlug);
+      const response = await deleteAgent(composeId, testCliToken);
       expect(response.status).toBe(204);
 
       // Verify instructions storage cleaned up
@@ -1039,9 +925,7 @@ describe("Zero Agents API", () => {
     });
 
     it("should return 409 when agent has running runs", async () => {
-      const created = await (
-        await postAgent({}, testCliToken, testOrgSlug)
-      ).json();
+      const created = await (await postAgent({}, testCliToken)).json();
 
       // Create a running run for this agent
       await createTestRunInDb(user.userId, created.agentId, {
@@ -1049,11 +933,7 @@ describe("Zero Agents API", () => {
       });
 
       // Try to delete — should get 409
-      const response = await deleteAgent(
-        created.agentId,
-        testCliToken,
-        testOrgSlug,
-      );
+      const response = await deleteAgent(created.agentId, testCliToken);
       expect(response.status).toBe(409);
       const data = await response.json();
       expect(data.error.code).toBe("CONFLICT");
@@ -1071,19 +951,14 @@ describe("Zero Agents API", () => {
 
   describe("invalid UUID handling", () => {
     it("GET should return 400 for invalid UUID", async () => {
-      const response = await getAgent("abc", testCliToken, testOrgSlug);
+      const response = await getAgent("abc", testCliToken);
       expect(response.status).toBe(400);
       const data = await response.json();
       expect(data.error.code).toBe("BAD_REQUEST");
     });
 
     it("PUT should return 400 for invalid UUID", async () => {
-      const response = await putAgent(
-        "not-a-uuid",
-        {},
-        testCliToken,
-        testOrgSlug,
-      );
+      const response = await putAgent("not-a-uuid", {}, testCliToken);
       expect(response.status).toBe(400);
       const data = await response.json();
       expect(data.error.code).toBe("BAD_REQUEST");
@@ -1094,7 +969,6 @@ describe("Zero Agents API", () => {
         "not-a-uuid",
         { displayName: "X" },
         testCliToken,
-        testOrgSlug,
       );
       expect(response.status).toBe(400);
       const data = await response.json();
@@ -1102,22 +976,14 @@ describe("Zero Agents API", () => {
     });
 
     it("DELETE should return 400 for invalid UUID", async () => {
-      const response = await deleteAgent(
-        "not-a-uuid",
-        testCliToken,
-        testOrgSlug,
-      );
+      const response = await deleteAgent("not-a-uuid", testCliToken);
       expect(response.status).toBe(400);
       const data = await response.json();
       expect(data.error.code).toBe("BAD_REQUEST");
     });
 
     it("GET instructions should return 400 for invalid UUID", async () => {
-      const response = await getAgentInstructions(
-        "not-a-uuid",
-        testCliToken,
-        testOrgSlug,
-      );
+      const response = await getAgentInstructions("not-a-uuid", testCliToken);
       expect(response.status).toBe(400);
       const data = await response.json();
       expect(data.error.code).toBe("BAD_REQUEST");
@@ -1128,7 +994,6 @@ describe("Zero Agents API", () => {
         "not-a-uuid",
         { content: "# test" },
         testCliToken,
-        testOrgSlug,
       );
       expect(response.status).toBe(400);
       const data = await response.json();
@@ -1140,7 +1005,7 @@ describe("Zero Agents API", () => {
     it("should return 403 when member patches default agent metadata", async () => {
       // Create agent as admin
       const created = await (
-        await postAgent({ displayName: "Default" }, testCliToken, testOrgSlug)
+        await postAgent({ displayName: "Default" }, testCliToken)
       ).json();
 
       const orgId = `org_mock_${user.userId}`;
@@ -1154,8 +1019,8 @@ describe("Zero Agents API", () => {
         clerkOrgs: [
           {
             id: orgId,
-            slug: testOrgSlug,
-            name: testOrgSlug,
+            slug: `org-${user.userId.slice(-8)}`,
+            name: `org-${user.userId.slice(-8)}`,
             role: "org:member",
           },
         ],
@@ -1167,7 +1032,6 @@ describe("Zero Agents API", () => {
         created.agentId,
         { displayName: "Hacked" },
         memberToken,
-        testOrgSlug,
       );
       expect(response.status).toBe(403);
       const data = await response.json();
@@ -1176,7 +1040,7 @@ describe("Zero Agents API", () => {
 
     it("should return 403 when member updates default agent instructions", async () => {
       const created = await (
-        await postAgent({ displayName: "Default" }, testCliToken, testOrgSlug)
+        await postAgent({ displayName: "Default" }, testCliToken)
       ).json();
 
       const orgId = `org_mock_${user.userId}`;
@@ -1190,8 +1054,8 @@ describe("Zero Agents API", () => {
         clerkOrgs: [
           {
             id: orgId,
-            slug: testOrgSlug,
-            name: testOrgSlug,
+            slug: `org-${user.userId.slice(-8)}`,
+            name: `org-${user.userId.slice(-8)}`,
             role: "org:member",
           },
         ],
@@ -1203,7 +1067,6 @@ describe("Zero Agents API", () => {
         created.agentId,
         { content: "# Hacked instructions" },
         memberToken,
-        testOrgSlug,
       );
       expect(response.status).toBe(403);
       const data = await response.json();
@@ -1212,7 +1075,7 @@ describe("Zero Agents API", () => {
 
     it("should allow admin to patch default agent metadata", async () => {
       const created = await (
-        await postAgent({ displayName: "Default" }, testCliToken, testOrgSlug)
+        await postAgent({ displayName: "Default" }, testCliToken)
       ).json();
 
       const orgId = `org_mock_${user.userId}`;
@@ -1223,7 +1086,6 @@ describe("Zero Agents API", () => {
         created.agentId,
         { displayName: "Updated by Admin" },
         testCliToken,
-        testOrgSlug,
       );
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -1233,10 +1095,10 @@ describe("Zero Agents API", () => {
     it("should allow member to patch non-default agent metadata", async () => {
       // Create two agents — mark only one as default
       const defaultAgent = await (
-        await postAgent({ displayName: "Default" }, testCliToken, testOrgSlug)
+        await postAgent({ displayName: "Default" }, testCliToken)
       ).json();
       const otherAgent = await (
-        await postAgent({ displayName: "Other" }, testCliToken, testOrgSlug)
+        await postAgent({ displayName: "Other" }, testCliToken)
       ).json();
 
       const orgId = `org_mock_${user.userId}`;
@@ -1250,8 +1112,8 @@ describe("Zero Agents API", () => {
         clerkOrgs: [
           {
             id: orgId,
-            slug: testOrgSlug,
-            name: testOrgSlug,
+            slug: `org-${user.userId.slice(-8)}`,
+            name: `org-${user.userId.slice(-8)}`,
             role: "org:member",
           },
         ],
@@ -1264,7 +1126,6 @@ describe("Zero Agents API", () => {
         otherAgent.agentId,
         { displayName: "Member Updated" },
         memberToken,
-        testOrgSlug,
       );
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -1273,7 +1134,7 @@ describe("Zero Agents API", () => {
 
     it("should return 403 when member PUT-updates default agent", async () => {
       const created = await (
-        await postAgent({ displayName: "Default" }, testCliToken, testOrgSlug)
+        await postAgent({ displayName: "Default" }, testCliToken)
       ).json();
 
       const orgId = `org_mock_${user.userId}`;
@@ -1287,8 +1148,8 @@ describe("Zero Agents API", () => {
         clerkOrgs: [
           {
             id: orgId,
-            slug: testOrgSlug,
-            name: testOrgSlug,
+            slug: `org-${user.userId.slice(-8)}`,
+            name: `org-${user.userId.slice(-8)}`,
             role: "org:member",
           },
         ],
@@ -1300,7 +1161,6 @@ describe("Zero Agents API", () => {
         created.agentId,
         { displayName: "Hacked via PUT" },
         memberToken,
-        testOrgSlug,
       );
       expect(response.status).toBe(403);
       const data = await response.json();
@@ -1309,7 +1169,7 @@ describe("Zero Agents API", () => {
 
     it("should return 403 when member deletes default agent", async () => {
       const created = await (
-        await postAgent({ displayName: "Default" }, testCliToken, testOrgSlug)
+        await postAgent({ displayName: "Default" }, testCliToken)
       ).json();
 
       const orgId = `org_mock_${user.userId}`;
@@ -1323,8 +1183,8 @@ describe("Zero Agents API", () => {
         clerkOrgs: [
           {
             id: orgId,
-            slug: testOrgSlug,
-            name: testOrgSlug,
+            slug: `org-${user.userId.slice(-8)}`,
+            name: `org-${user.userId.slice(-8)}`,
             role: "org:member",
           },
         ],
@@ -1332,11 +1192,7 @@ describe("Zero Agents API", () => {
       await clearOrgMembersCacheEntry(orgId, user.userId);
       const memberToken = await createTestCliToken(user.userId);
 
-      const response = await deleteAgent(
-        created.agentId,
-        memberToken,
-        testOrgSlug,
-      );
+      const response = await deleteAgent(created.agentId, memberToken);
       expect(response.status).toBe(403);
       const data = await response.json();
       expect(data.error.code).toBe("FORBIDDEN");
@@ -1355,7 +1211,6 @@ describe("Zero Agents API", () => {
       const createResponse = await postAgent(
         { displayName: "Schedule Bug Agent" },
         testCliToken,
-        testOrgSlug,
       );
       expect(createResponse.status).toBe(201);
       const agent = await createResponse.json();
@@ -1369,14 +1224,11 @@ describe("Zero Agents API", () => {
 
       // 3. Execute the schedule — should succeed
       const response = await runSchedule(
-        createTestRequest(
-          `http://localhost:3000/api/zero/schedules/run?org=${testOrgSlug}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ scheduleId: schedule.id }),
-          },
-        ),
+        createTestRequest(`http://localhost:3000/api/zero/schedules/run`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scheduleId: schedule.id }),
+        }),
       );
       const data = await response.json();
 

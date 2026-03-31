@@ -56,7 +56,7 @@ export type UpdateOrgRequest = z.infer<typeof updateOrgRequestSchema>;
  */
 export const orgDefaultAgentContract = c.router({
   /**
-   * PUT /api/zero/default-agent?org={slug}
+   * PUT /api/zero/default-agent
    * Set or unset the default agent for an org.
    * Only org admins can perform this action.
    * The agent must belong to the same org.
@@ -65,9 +65,7 @@ export const orgDefaultAgentContract = c.router({
     method: "PUT",
     path: "/api/zero/default-agent",
     headers: authHeadersSchema,
-    query: z.object({
-      org: z.string().optional(),
-    }),
+    query: z.object({}),
     body: z.object({
       agentId: z.uuid().nullable(),
     }),

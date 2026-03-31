@@ -125,8 +125,7 @@ export async function GET(request: Request) {
   }
 
   // Resolve user's org for resource queries
-  const orgSlug = new URL(request.url).searchParams.get("org");
-  const { org } = await resolveOrg(authCtx, orgSlug);
+  const { org } = await resolveOrg(authCtx);
 
   // Get user's existing secrets, vars, connectors
   const [userSecrets, userVars, userConnectors] = await Promise.all([
@@ -349,8 +348,7 @@ export async function PATCH(request: Request) {
     }
     targetOrgId = targetOrg.orgId;
   } else {
-    const urlOrgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, urlOrgSlug);
+    const { org } = await resolveOrg(authCtx);
     targetOrgId = org.orgId;
   }
 

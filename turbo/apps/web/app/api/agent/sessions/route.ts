@@ -5,10 +5,9 @@ import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { listAgentSessions } from "../../../../src/lib/agent-session";
 import { agentComposes } from "../../../../src/db/schema/agent-compose";
-import { resolveCallerOrgId } from "../../../../src/lib/org/resolve-org";
 
 const router = tsr.router(sessionsContract, {
-  list: async ({ query, headers }, { request }) => {
+  list: async ({ query, headers }) => {
     initServices();
 
     const authCtx = await getAuthContext(headers.authorization);
@@ -38,7 +37,7 @@ const router = tsr.router(sessionsContract, {
       };
     }
 
-    const callerOrgId = await resolveCallerOrgId(authCtx, request);
+    const callerOrgId = authCtx.orgId ?? null;
     if (callerOrgId !== compose.orgId) {
       return {
         status: 404 as const,

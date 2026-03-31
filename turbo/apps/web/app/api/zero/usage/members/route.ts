@@ -13,14 +13,13 @@ import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import { getUsageMembers } from "../../../../../src/lib/billing/usage-service";
 
 const router = tsr.router(zeroUsageMembersContract, {
-  get: async ({ headers }, { request }) => {
+  get: async ({ headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
 
     const response = await getUsageMembers(org.orgId);
 

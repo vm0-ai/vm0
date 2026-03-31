@@ -23,8 +23,8 @@ async function setupOrg(userId: string) {
   return { slug, orgId };
 }
 
-function queueUrl(slug: string): string {
-  return `http://localhost:3000/api/zero/runs/queue?org=${slug}`;
+function queueUrl(): string {
+  return `http://localhost:3000/api/zero/runs/queue`;
 }
 
 describe("GET /api/zero/runs/queue", () => {
@@ -34,9 +34,9 @@ describe("GET /api/zero/runs/queue", () => {
 
   it("should return queue status with concurrency info", async () => {
     const userId = uniqueId("zqueue-get");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
 
-    const response = await GET(createTestRequest(queueUrl(slug)));
+    const response = await GET(createTestRequest(queueUrl()));
     expect(response.status).toBe(200);
 
     const data = await response.json();
@@ -51,13 +51,13 @@ describe("GET /api/zero/runs/queue", () => {
 
   it("should include running tasks in response", async () => {
     const userId = uniqueId("zqueue-run");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
     const compose = await createTestCompose(`agent-${uniqueId("zqueue")}`);
     await createTestRunInDb(userId, compose.composeId, {
       status: "running",
     });
 
-    const response = await GET(createTestRequest(queueUrl(slug)));
+    const response = await GET(createTestRequest(queueUrl()));
     expect(response.status).toBe(200);
 
     const data = await response.json();
@@ -70,7 +70,7 @@ describe("GET /api/zero/runs/queue", () => {
     mockClerk({ userId: null });
 
     const response = await GET(
-      createTestRequest("http://localhost:3000/api/zero/runs/queue?org=test"),
+      createTestRequest("http://localhost:3000/api/zero/runs/queue"),
     );
     expect(response.status).toBe(401);
   });
@@ -80,7 +80,7 @@ describe("GET /api/zero/runs/queue", () => {
     const token = await generateSandboxToken("user-1", "run-1");
 
     const response = await GET(
-      createTestRequest("http://localhost:3000/api/zero/runs/queue?org=test", {
+      createTestRequest("http://localhost:3000/api/zero/runs/queue", {
         headers: { Authorization: `Bearer ${token}` },
       }),
     );

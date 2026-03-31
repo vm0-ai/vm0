@@ -158,4 +158,16 @@ EOF
     assert_output --partial "PLACEHOLDER=gho_Cof"
     # API call should succeed (proxy replaced placeholder with real token)
     assert_output --partial "API_STATUS=200"
+
+    # Verify token replacement details appear in network logs.
+    # The CLI renders: ↔ GITHUB_TOKEN with optional (cached)/(refreshed) suffix.
+    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
+    [ -n "$RUN_ID" ] || {
+        echo "# Failed to extract Run ID"
+        return 1
+    }
+
+    run $VM0_CLI logs "$RUN_ID" --network --all
+    assert_success
+    assert_output --partial "GITHUB_TOKEN"
 }

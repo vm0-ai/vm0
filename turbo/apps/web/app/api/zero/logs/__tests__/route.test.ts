@@ -274,7 +274,7 @@ describe("GET /api/zero/logs", () => {
     expect(returnedIds).not.toContain(otherRunId);
   });
 
-  describe("name and org filter", () => {
+  describe("name filter", () => {
     let agentName: string;
     let nameComposeId: string;
 
@@ -297,17 +297,6 @@ describe("GET /api/zero/logs", () => {
       expect(response.status).toBe(200);
       expect(data.data).toHaveLength(1);
       expect(data.data[0].agentId).toBe(nameComposeId);
-    });
-
-    it("should return empty when name matches but org does not", async () => {
-      const request = createTestRequest(
-        `http://localhost:3000/api/zero/logs?name=${agentName}&org=nonexistent-org`,
-      );
-      const response = await GET(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.data).toEqual([]);
     });
 
     it("should include orgSlug in response", async () => {

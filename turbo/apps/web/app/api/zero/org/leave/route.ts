@@ -18,15 +18,14 @@ import {
 } from "../../../../../src/lib/errors";
 
 const router = tsr.router(zeroOrgLeaveContract, {
-  leave: async ({ headers }, { request }) => {
+  leave: async ({ headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization);
     if (isAuthError(authCtx)) return authCtx;
 
     try {
-      const orgSlug = new URL(request.url).searchParams.get("org");
-      const { org, member } = await resolveOrg(authCtx, orgSlug);
+      const { org, member } = await resolveOrg(authCtx);
       await leaveOrg(authCtx.userId, org.orgId, member.role);
       return { status: 200 as const, body: { message: "Left org" } };
     } catch (error) {

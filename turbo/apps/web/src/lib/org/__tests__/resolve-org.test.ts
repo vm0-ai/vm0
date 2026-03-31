@@ -46,45 +46,7 @@ describe("resolveOrg", () => {
     context.setupMocks();
   });
 
-  it("tier 1: orgSlug takes priority over orgId from session", async () => {
-    const { userId } = await context.setupUser();
-
-    // Create two additional orgs — set up Clerk orgs BEFORE creating orgs
-    const slug1 = uniqueId("org");
-    const slug2 = uniqueId("org");
-    mockClerk({
-      userId,
-      clerkOrgs: [
-        // Include the org from setupUser so it's already matched
-        {
-          id: `org_mock_${userId}`,
-          slug: `org-${userId}`,
-          name: `org-${userId}`,
-        },
-        ...testOrgs(slug1, slug2),
-      ],
-    });
-    await createTestOrg(slug1);
-    await createTestOrg(slug2);
-
-    // Mock session with orgId pointing to org2
-    mockClerk({
-      userId,
-      orgId: `org_mock_${slug2}`,
-      clerkOrgs: testOrgs(slug1, slug2),
-    });
-
-    // Resolve with explicit slug for org1 — should return org1, not org2
-    const result = await resolveOrg(
-      authCtx({ userId, orgId: `org_mock_${slug2}` }),
-      slug1,
-    );
-
-    expect(result.org.orgId).toBe(`org_mock_${slug1}`);
-    expect(result.org.orgId).not.toBe(`org_mock_${slug2}`);
-  });
-
-  it("tier 2: auto-detects orgId from AuthContext", async () => {
+  it("auto-detects orgId from AuthContext", async () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("org");
 
@@ -108,7 +70,7 @@ describe("resolveOrg", () => {
     expect(result.org.slug).toBe(slug);
   });
 
-  it("tier 2: explicit orgId parameter takes precedence over session", async () => {
+  it("explicit orgId parameter takes precedence over session", async () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("org");
 
@@ -126,7 +88,6 @@ describe("resolveOrg", () => {
     // Pass explicit orgId matching the org
     const result = await resolveOrg(
       authCtx({ userId, orgId: "org_session_different" }),
-      null,
       `org_mock_${slug}`,
     );
 
@@ -166,7 +127,7 @@ describe("resolveOrg", () => {
     ).rejects.toThrow();
   });
 
-  it("tier 2: resolves correct org when user has multiple orgs", async () => {
+  it("resolves correct org when user has multiple orgs", async () => {
     const userId = uniqueId("test-user");
     const slug1 = uniqueId("org");
     const slug2 = uniqueId("org");
@@ -289,7 +250,7 @@ describe("resolveOrg", () => {
     expect(result.member.userId).toBe(userId);
   });
 
-  it("throws 403 when user is not a Clerk org member", async () => {
+  it("throws when user is not a member of the org", async () => {
     const userId = uniqueId("test-user");
     const otherUserId = uniqueId("other-user");
     const slug = uniqueId("org");
@@ -301,16 +262,18 @@ describe("resolveOrg", () => {
     // Mock as different user who is NOT in the org
     mockClerk({
       userId: otherUserId,
-      orgId: null,
+      orgId: `org_mock_${slug}`,
       clerkOrgs: [], // No orgs
     });
 
+    // Throws because the other user cannot resolve this org
+    // (either "not found" from org cache miss, or "not a member" from membership check)
     await expect(
-      resolveOrg(authCtx({ userId: otherUserId }), slug),
-    ).rejects.toThrow("You are not a member of this organization");
+      resolveOrg(authCtx({ userId: otherUserId, orgId: `org_mock_${slug}` })),
+    ).rejects.toThrow();
   });
 
-  it("?org= param resolves org by orgId", async () => {
+  it("explicit orgId resolves org", async () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("org");
 
@@ -325,41 +288,13 @@ describe("resolveOrg", () => {
       clerkOrgs: testOrgs(slug),
     });
 
-    // Pass orgId directly (simulates ?org= being passed as 3rd arg)
+    // Pass orgId directly
     const result = await resolveOrg(
       authCtx({ userId, orgId: "org_session_different" }),
-      null,
       `org_mock_${slug}`,
     );
 
     expect(result.org.orgId).toBe(`org_mock_${slug}`);
     expect(result.org.slug).toBe(slug);
-  });
-
-  it("orgSlug takes priority over orgId", async () => {
-    const userId = uniqueId("test-user");
-    const slug1 = uniqueId("org");
-    const slug2 = uniqueId("org");
-
-    // Set up two Clerk orgs BEFORE creating orgs
-    mockClerk({ userId, clerkOrgs: testOrgs(slug1, slug2) });
-    await createTestOrg(slug1);
-    await createTestOrg(slug2);
-
-    mockClerk({
-      userId,
-      orgId: `org_mock_${slug1}`,
-      clerkOrgs: testOrgs(slug1, slug2),
-    });
-
-    // Pass both orgSlug and orgId — orgSlug should win
-    const result = await resolveOrg(
-      authCtx({ userId, orgId: `org_mock_${slug1}` }),
-      slug1,
-      `org_mock_${slug2}`,
-    );
-
-    expect(result.org.orgId).toBe(`org_mock_${slug1}`);
-    expect(result.org.slug).toBe(slug1);
   });
 });

@@ -19,7 +19,7 @@ import { logger } from "../../../../src/lib/logger";
 const log = logger("api:zero-agents");
 
 const router = tsr.router(zeroAgentsMainContract, {
-  create: async ({ body, headers }, { request }) => {
+  create: async ({ body, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -28,8 +28,7 @@ const router = tsr.router(zeroAgentsMainContract, {
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
 
     // Generate UUID agent name
     const agentName = crypto.randomUUID();
@@ -48,7 +47,6 @@ const router = tsr.router(zeroAgentsMainContract, {
     const result = await serverSideCompose({
       userId,
       orgId: org.orgId,
-      orgSlug: org.slug,
       content,
       instructions: "",
     });
@@ -107,7 +105,7 @@ const router = tsr.router(zeroAgentsMainContract, {
     };
   },
 
-  list: async ({ headers }, { request }) => {
+  list: async ({ headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -115,8 +113,7 @@ const router = tsr.router(zeroAgentsMainContract, {
     });
     if (isAuthError(authCtx)) return authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
 
     const rows = await globalThis.services.db
       .select({

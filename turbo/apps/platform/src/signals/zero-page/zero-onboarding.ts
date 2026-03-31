@@ -225,6 +225,7 @@ export const completeZeroOnboarding$ = command(
       // Set as default agent
       const defaultAgentClient = createClient(orgDefaultAgentContract);
       const result = await defaultAgentClient.setDefaultAgent({
+        query: {},
         body: { agentId: agent.agentId },
       });
       signal.throwIfAborted();

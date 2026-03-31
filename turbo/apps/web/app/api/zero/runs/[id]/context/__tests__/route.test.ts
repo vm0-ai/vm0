@@ -24,8 +24,8 @@ async function setupOrg(userId: string) {
   return { slug, orgId };
 }
 
-function contextUrl(slug: string, runId: string): string {
-  return `http://localhost:3000/api/zero/runs/${runId}/context?org=${slug}`;
+function contextUrl(runId: string): string {
+  return `http://localhost:3000/api/zero/runs/${runId}/context`;
 }
 
 function makeSnapshot(runId: string, userId: string): RunContextSnapshot {
@@ -80,7 +80,7 @@ describe("GET /api/zero/runs/:id/context", () => {
 
   it("should return run context snapshot", async () => {
     const userId = uniqueId("zctx-get");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
     const compose = await createTestCompose(`agent-${uniqueId("zctx")}`);
     const { runId } = await createTestRunInDb(userId, compose.composeId, {
       status: "running",
@@ -90,7 +90,7 @@ describe("GET /api/zero/runs/:id/context", () => {
     const snapshot = makeSnapshot(runId, userId);
     context.mocks.axiom.queryAxiom.mockResolvedValue([snapshot]);
 
-    const response = await GET(createTestRequest(contextUrl(slug, runId)));
+    const response = await GET(createTestRequest(contextUrl(runId)));
     expect(response.status).toBe(200);
 
     const data = await response.json();
@@ -109,11 +109,9 @@ describe("GET /api/zero/runs/:id/context", () => {
 
   it("should return 404 when run not found", async () => {
     const userId = uniqueId("zctx-nf");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
 
-    const response = await GET(
-      createTestRequest(contextUrl(slug, randomUUID())),
-    );
+    const response = await GET(createTestRequest(contextUrl(randomUUID())));
     expect(response.status).toBe(404);
 
     const data = await response.json();
@@ -122,7 +120,7 @@ describe("GET /api/zero/runs/:id/context", () => {
 
   it("should return 404 when context not available", async () => {
     const userId = uniqueId("zctx-nc");
-    const { slug } = await setupOrg(userId);
+    await setupOrg(userId);
     const compose = await createTestCompose(`agent-${uniqueId("zctx")}`);
     const { runId } = await createTestRunInDb(userId, compose.composeId, {
       status: "running",
@@ -130,7 +128,7 @@ describe("GET /api/zero/runs/:id/context", () => {
 
     context.mocks.axiom.queryAxiom.mockResolvedValue([]);
 
-    const response = await GET(createTestRequest(contextUrl(slug, runId)));
+    const response = await GET(createTestRequest(contextUrl(runId)));
     expect(response.status).toBe(404);
 
     const data = await response.json();
@@ -141,9 +139,7 @@ describe("GET /api/zero/runs/:id/context", () => {
     mockClerk({ userId: null });
 
     const response = await GET(
-      createTestRequest(
-        "http://localhost:3000/api/zero/runs/some-id/context?org=test",
-      ),
+      createTestRequest("http://localhost:3000/api/zero/runs/some-id/context"),
     );
     expect(response.status).toBe(401);
   });
