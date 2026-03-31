@@ -33,10 +33,10 @@ export default function ConnectorStatusPage({
       status: isSuccess ? "success" : "error",
     });
     channel.close();
-    // Small delay to ensure the parent window receives the BroadcastChannel
-    // message before the popup closes. Message delivery is asynchronous and
-    // calling window.close() immediately could prevent delivery.
-    const timer = setTimeout(() => window.close(), 300);
+    // Yield to the event loop so the parent window's BroadcastChannel listener
+    // processes the message before the popup closes. postMessage dispatches
+    // asynchronously, so a single macrotask yield is sufficient.
+    const timer = setTimeout(() => window.close(), 0);
     return () => clearTimeout(timer);
   }, [connectorType, isSuccess]);
   const connectorLabel =
