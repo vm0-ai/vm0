@@ -406,6 +406,7 @@ export {
   type ExperimentalFirewalls,
   type FirewallPolicyValue,
   type FirewallPolicies,
+  hasBaseUrlParams,
   hasBaseUrlVars,
   resolveFirewallBaseUrlVars,
   validateBaseUrl,
