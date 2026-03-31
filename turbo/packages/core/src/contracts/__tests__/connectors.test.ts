@@ -188,6 +188,16 @@ describe("getConnectorEnvironmentMapping", () => {
           `${type}: environmentMapping["${key}"] = "${mapping[key]}", expected $secrets.${key} or $vars.${key}`,
         ).toBe(true);
       }
+
+      // If both oauth and api-token exist, api-token must have exactly one secret: ${prefix}_TOKEN
+      const apiTokenMethod = authMethods["api-token"];
+      if (apiTokenMethod) {
+        const apiSecrets = Object.keys(apiTokenMethod.secrets);
+        expect(
+          apiSecrets,
+          `${type}: api-token with oauth must have exactly ["${prefix}_TOKEN"]`,
+        ).toEqual([`${prefix}_TOKEN`]);
+      }
     }
   });
 
