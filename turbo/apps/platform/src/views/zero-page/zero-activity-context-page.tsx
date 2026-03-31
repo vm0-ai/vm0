@@ -251,7 +251,7 @@ export function ZeroActivityContextPage() {
 function Breadcrumb({ runId }: { runId: string | null }) {
   const features = useLastResolved(featureSwitch$);
   return (
-    <nav className="shrink-0 flex items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
+    <nav className="hidden md:flex shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
       {features?.[FeatureSwitchKey.ActivityLogList] && (
         <>
           <Link

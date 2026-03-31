@@ -238,18 +238,18 @@ export function ZeroWorksPage() {
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
-      <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-10 pb-3">
+      <header className="hidden md:block shrink-0 bg-transparent px-4 sm:px-6 pt-10 pb-3">
         <div className="mx-auto max-w-[900px]">
-          <h1 className="text-lg font-semibold tracking-tight text-foreground">
+          <h1 className="hidden md:block text-lg font-semibold tracking-tight text-foreground">
             Where {displayName} works
           </h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
+          <p className="hidden md:block mt-0.5 text-sm text-muted-foreground">
             Connect with {displayName} through these channels
           </p>
         </div>
       </header>
 
-      <main className="flex-1 overflow-auto px-4 sm:px-6 pt-4 pb-8">
+      <main className="flex-1 overflow-auto px-4 sm:px-6 pt-3 pb-8">
         <div className="mx-auto max-w-[900px] flex flex-col gap-4">
           <SlackCard displayName={displayName} />
         </div>

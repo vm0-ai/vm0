@@ -105,10 +105,10 @@ export function ZeroActivityPage() {
   return (
     <div className="flex flex-1 flex-col min-h-0">
       {/* Fixed header: title + filters */}
-      <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-10 pb-3">
+      <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-3 md:pt-10 pb-0 md:pb-3">
         <div className="mx-auto max-w-[900px]">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
-            <div>
+            <div className="hidden md:block">
               <h1 className="text-xl font-semibold tracking-tight text-foreground">
                 Activity
               </h1>
@@ -187,7 +187,7 @@ export function ZeroActivityPage() {
       </header>
 
       {/* Scrollable table + pagination area */}
-      <div className="flex-1 min-h-0 overflow-auto px-4 sm:px-6 pt-4">
+      <div className="flex-1 min-h-0 overflow-auto px-4 sm:px-6 pt-3">
         <div className="mx-auto max-w-[900px]">
           {hasError ? (
             <div

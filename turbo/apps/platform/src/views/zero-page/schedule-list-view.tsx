@@ -232,7 +232,7 @@ function ScheduleListCard<T extends ScheduleEntry>({
   return (
     <div
       className={cn(
-        "flex flex-col gap-0.5 px-4 py-3 border-b border-border/50 last:border-0 transition-colors",
+        "flex items-center gap-2 px-5 py-3 border-b border-border/50 last:border-0 transition-colors",
         clickable && "cursor-pointer hover:bg-muted/25",
         dimmed && "opacity-75",
       )}
@@ -251,36 +251,21 @@ function ScheduleListCard<T extends ScheduleEntry>({
           : undefined
       }
     >
-      {/* Top row: instruction + actions */}
-      <div className="flex items-start justify-between gap-2 min-w-0">
-        <div className="min-w-0 flex-1">
-          {showAgent && (
-            <span className="block text-sm font-medium text-foreground truncate mb-0.5">
-              {agentLabel}
-            </span>
-          )}
-          <span
-            className={cn(
-              "block text-sm text-foreground leading-snug truncate",
-              dimmed && "text-muted-foreground",
-            )}
-          >
-            {entry.description || entry.prompt}
+      {/* Left: text content */}
+      <div className="min-w-0 flex-1 flex flex-col gap-0.5">
+        {showAgent && (
+          <span className="block text-sm font-medium text-foreground truncate">
+            {agentLabel}
           </span>
-        </div>
-        <div onClick={(e) => e.stopPropagation()}>
-          <RowActions
-            entry={entry}
-            running={running}
-            onEdit={onEdit}
-            onDelete={onDelete}
-            onRunNow={onRunNow}
-          />
-        </div>
-      </div>
-
-      {/* Bottom row: schedule time + status toggle */}
-      <div className="flex items-center justify-between gap-2">
+        )}
+        <span
+          className={cn(
+            "block text-sm text-foreground leading-snug truncate",
+            dimmed && "text-muted-foreground",
+          )}
+        >
+          {entry.description || entry.prompt}
+        </span>
         <span
           className={cn(
             "text-sm text-muted-foreground tabular-nums truncate",
@@ -295,18 +280,30 @@ function ScheduleListCard<T extends ScheduleEntry>({
             </span>
           )}
         </span>
+      </div>
+
+      {/* Right: toggle + more button */}
+      <div
+        className="flex items-center gap-4 shrink-0"
+        onClick={(e) => e.stopPropagation()}
+      >
         {onToggle && (
-          <div onClick={(e) => e.stopPropagation()}>
-            <LoadingSwitch
-              checked={entry.enabled !== false}
-              loading={toggling}
-              onCheckedChange={(checked) => {
-                onToggle(entry, checked);
-              }}
-              ariaLabel={`${entry.enabled !== false ? "Disable" : "Enable"} ${entry.time}`}
-            />
-          </div>
+          <LoadingSwitch
+            checked={entry.enabled !== false}
+            loading={toggling}
+            onCheckedChange={(checked) => {
+              onToggle(entry, checked);
+            }}
+            ariaLabel={`${entry.enabled !== false ? "Disable" : "Enable"} ${entry.time}`}
+          />
         )}
+        <RowActions
+          entry={entry}
+          running={running}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          onRunNow={onRunNow}
+        />
       </div>
     </div>
   );
@@ -375,7 +372,7 @@ export function ScheduleListView<T extends ScheduleEntry>({
   return (
     <>
       {/* Mobile: card list */}
-      <div className="sm:hidden">
+      <div className="sm:hidden pb-2">
         {entries.map((entry) => (
           <ScheduleListCard
             key={entry.id}
@@ -394,7 +391,7 @@ export function ScheduleListView<T extends ScheduleEntry>({
       </div>
 
       {/* Desktop: table */}
-      <div className="hidden sm:block w-full overflow-x-auto">
+      <div className="hidden sm:block w-full overflow-x-auto pb-2">
         <table className="w-full text-sm border-collapse [&_tr>:first-child]:pl-5 [&_tr>:last-child]:pr-5">
           <thead>
             <tr className="border-b border-border/40 bg-card text-left text-sm text-muted-foreground">

@@ -126,7 +126,7 @@ function ActivityNotFound() {
   const features = useLastResolved(featureSwitch$);
   return (
     <div className="h-full flex flex-col min-h-0">
-      <nav className="shrink-0 flex items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
+      <nav className="hidden md:flex shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
         {features?.[FeatureSwitchKey.ActivityLogList] && (
           <>
             <ActivityBreadcrumbLink />
@@ -397,7 +397,7 @@ export function ZeroActivityDetailPage() {
   return (
     <div className="h-full flex flex-col min-h-0 overflow-hidden">
       <div className="flex-1 flex flex-col min-h-0 overflow-auto">
-        <nav className="shrink-0 flex items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
+        <nav className="hidden md:flex shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
           {features?.[FeatureSwitchKey.ActivityLogList] && (
             <>
               <ActivityBreadcrumbLink />
@@ -471,7 +471,7 @@ function ActivitySkeleton() {
   return (
     <div className="h-full flex flex-col min-h-0 overflow-hidden">
       <div className="flex-1 flex flex-col min-h-0 overflow-auto">
-        <nav className="shrink-0 flex items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
+        <nav className="hidden md:flex shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
           {features?.[FeatureSwitchKey.ActivityLogList] && (
             <>
               <ActivityBreadcrumbLink />

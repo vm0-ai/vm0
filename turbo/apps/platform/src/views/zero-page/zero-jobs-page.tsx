@@ -91,20 +91,20 @@ export function ZeroJobsPage() {
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
-      <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-10 pb-3">
+      <header className="hidden md:block shrink-0 bg-transparent px-4 sm:px-6 pt-10 pb-3">
         <div className="mx-auto max-w-[900px]">
-          <h1 className="text-lg font-semibold tracking-tight text-foreground">
+          <h1 className="hidden md:block text-lg font-semibold tracking-tight text-foreground">
             Agents
           </h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
+          <p className="hidden md:block mt-0.5 text-sm text-muted-foreground">
             {displayName} and sub-agents working together to run tailored
             workflows for you and your team.
           </p>
         </div>
       </header>
 
-      <main className="flex-1 overflow-auto px-4 sm:px-6 pt-4 pb-8">
-        <div className="mx-auto max-w-[900px] flex flex-col gap-6">
+      <main className="flex-1 overflow-auto px-4 sm:px-6 pt-3 pb-8">
+        <div className="mx-auto max-w-[900px] flex flex-col gap-4">
           {/* Zero — full width */}
           {rawAgentName ? (
             <Link
@@ -188,22 +188,20 @@ export function ZeroJobsPage() {
 
           {/* Sub-agents grid */}
           {loading && (!agents || agents.length === 0) && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {[1, 2, 3].map((i) => {
-                return (
-                  <Card key={i} className="zero-card">
-                    <CardContent className="p-5">
-                      <div className="flex items-center gap-3 animate-pulse">
-                        <div className="h-10 w-10 rounded-full bg-muted" />
-                        <div className="min-w-0 flex-1 space-y-2">
-                          <div className="h-4 w-24 rounded bg-muted" />
-                          <div className="h-3 w-16 rounded bg-muted" />
-                        </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[1, 2, 3].map((i) => (
+                <Card key={i} className="zero-card">
+                  <CardContent className="p-5">
+                    <div className="flex items-center gap-3 animate-pulse">
+                      <div className="h-10 w-10 rounded-full bg-muted" />
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <div className="h-4 w-24 rounded bg-muted" />
+                        <div className="h-3 w-16 rounded bg-muted" />
                       </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
           )}
 
@@ -222,33 +220,23 @@ export function ZeroJobsPage() {
           )}
 
           {!loading && !error && agents && agents.length === 0 && (
-            <CreateTeammateButton
-              onClick={() => {
-                return setDialogOpen(true);
-              }}
-            />
+            <CreateTeammateButton onClick={() => setDialogOpen(true)} />
           )}
 
           {agents && agents.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              <CreateTeammateButton
-                onClick={() => {
-                  return setDialogOpen(true);
-                }}
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <CreateTeammateButton onClick={() => setDialogOpen(true)} />
 
-              {agents.map((agent) => {
-                return (
-                  <Link
-                    key={agent.id}
-                    pathname="/team/:agentId"
-                    options={{ pathParams: { agentId: agent.id } }}
-                    className="block no-underline text-inherit"
-                  >
-                    <AgentCard agent={agent} />
-                  </Link>
-                );
-              })}
+              {agents.map((agent) => (
+                <Link
+                  key={agent.id}
+                  pathname="/team/:agentId"
+                  options={{ pathParams: { agentId: agent.id } }}
+                  className="block no-underline text-inherit"
+                >
+                  <AgentCard agent={agent} />
+                </Link>
+              ))}
             </div>
           )}
         </div>
@@ -271,7 +259,7 @@ function CreateTeammateButton({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="flex items-center gap-3 rounded-xl border border-dashed border-[hsl(var(--gray-400))] px-4 py-4 transition-colors hover:bg-muted/30 group cursor-pointer text-left"
+      className="w-full h-full flex items-center gap-3 rounded-xl border border-dashed border-[hsl(var(--gray-400))] px-4 py-4 transition-colors hover:bg-muted/30 group cursor-pointer text-left"
     >
       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg">
         <IconPlus
@@ -315,9 +303,7 @@ function CreateTeammateDialog({
           newName={newName}
           onNameChange={onNameChange}
           onConfirm={onConfirm}
-          onCancel={() => {
-            return onOpenChange(false);
-          }}
+          onCancel={() => onOpenChange(false)}
           creating={creating}
         />
       )}
@@ -380,11 +366,11 @@ function CreateTeammateDialogContent({
             />
             <button
               type="button"
-              onClick={() => {
-                return isCustom
+              onClick={() =>
+                isCustom
                   ? setAvatarUrl(randomPresetAvatar())
-                  : fileInputEl?.click();
-              }}
+                  : fileInputEl?.click()
+              }
               disabled={uploading}
               className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
               aria-label={isCustom ? "Remove custom avatar" : "Upload avatar"}
@@ -422,9 +408,7 @@ function CreateTeammateDialogContent({
         <div className="flex-1 flex items-center justify-center px-6">
           <Input
             value={newName}
-            onChange={(e) => {
-              return onNameChange(e.target.value);
-            }}
+            onChange={(e) => onNameChange(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && newName.trim() && !creating) {
                 onConfirm(avatarUrl);
@@ -448,9 +432,7 @@ function CreateTeammateDialogContent({
           </Button>
           <Button
             size="sm"
-            onClick={() => {
-              return onConfirm(avatarUrl);
-            }}
+            onClick={() => onConfirm(avatarUrl)}
             disabled={!newName.trim() || creating}
           >
             {creating ? (

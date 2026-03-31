@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
 import { IconMenu2, IconUserPlus } from "@tabler/icons-react";
 import { ZeroSidebar } from "./zero-sidebar.tsx";
+import { useAgentAvatar } from "./zero-sidebar-shared.tsx";
 import { user$ } from "../../signals/auth.ts";
 import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import {
@@ -22,7 +23,6 @@ import {
 } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { detach, Reason } from "../../signals/utils.ts";
 
 function SidebarLayoutSkeleton() {
   const userLoadable = useLoadable(user$);
@@ -33,6 +33,23 @@ function SidebarLayoutSkeleton() {
   const visible = isLoggedIn && !agentNameReady;
 
   return <AppSkeleton visible={visible} />;
+}
+
+function AgentAvatarInTopBar({ agentId }: { agentId: string }) {
+  const src = useAgentAvatar(agentId);
+  if (!src) {
+    return (
+      <div className="h-6 w-6 shrink-0 rounded-full bg-muted" aria-hidden />
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt=""
+      role="presentation"
+      className="h-6 w-6 shrink-0 rounded-full object-cover object-top"
+    />
+  );
 }
 
 function MobileTopBar() {
@@ -56,27 +73,37 @@ function MobileTopBar() {
       <button
         type="button"
         onClick={() => setSidebarCollapsed(false)}
-        className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
         aria-label="Open menu"
       >
         <IconMenu2 size={18} stroke={1.8} />
       </button>
       {breadcrumb && (
-        <div className="flex-1 min-w-0 text-sm text-muted-foreground flex items-center gap-1">
-          <Link
-            pathname={breadcrumb.sectionPath}
-            className="hover:text-foreground transition-colors no-underline text-inherit"
-          >
-            {breadcrumb.section}
-          </Link>
-          {breadcrumb.name && (
-            <>
-              <span className="text-muted-foreground/40 select-none">/</span>
-              <span className="text-foreground font-medium truncate">
-                {breadcrumb.name}
-              </span>
-            </>
+        <div className="flex-1 min-w-0 flex items-center gap-2 min-w-0">
+          {breadcrumb.avatarAgentId && (
+            <AgentAvatarInTopBar agentId={breadcrumb.avatarAgentId} />
           )}
+          <div className="flex items-baseline gap-1 min-w-0 flex-1">
+            <div className="text-sm font-medium text-foreground flex items-center gap-1 shrink-0">
+              <Link
+                pathname={breadcrumb.sectionPath}
+                className="hover:opacity-70 transition-opacity no-underline text-inherit"
+              >
+                {breadcrumb.section}
+              </Link>
+              {breadcrumb.name && (
+                <>
+                  <span className="text-foreground/30 select-none">/</span>
+                  <span>{breadcrumb.name}</span>
+                </>
+              )}
+            </div>
+            {!breadcrumb.name && breadcrumb.description && (
+              <span className="text-xs text-muted-foreground truncate">
+                {breadcrumb.description}
+              </span>
+            )}
+          </div>
         </div>
       )}
       {!breadcrumb && <div className="flex-1" />}
@@ -86,7 +113,7 @@ function MobileTopBar() {
           onClick={() => {
             setTab("members");
             setSubPage(false);
-            detach(openManage(true, pageSignal), Reason.DomCallback);
+            void openManage(true, pageSignal);
           }}
           className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors shrink-0"
         >

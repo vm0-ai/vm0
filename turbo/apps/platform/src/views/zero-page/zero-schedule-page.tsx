@@ -578,9 +578,9 @@ export function ZeroSchedulePage() {
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
-      <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-10 pb-3">
+      <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-3 md:pt-10 pb-0 md:pb-3">
         <div className="mx-auto max-w-[900px] flex flex-wrap items-end justify-between gap-4">
-          <div className="min-w-0">
+          <div className="min-w-0 hidden md:block">
             <h1 className="text-lg font-semibold tracking-tight text-foreground">
               Scheduled tasks
             </h1>
@@ -629,7 +629,7 @@ export function ZeroSchedulePage() {
         </div>
       </header>
 
-      <main className="flex-1 overflow-auto px-4 sm:px-6 pt-4 pb-8">
+      <main className="flex-1 overflow-auto px-4 sm:px-6 pt-3 pb-8">
         <div className="mx-auto max-w-[900px]">
           <div className="zero-card overflow-hidden pb-3">
             {isInitialLoading ? (

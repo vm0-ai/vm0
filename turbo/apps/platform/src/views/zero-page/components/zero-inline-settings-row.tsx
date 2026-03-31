@@ -23,7 +23,7 @@ export function InlineSettingsRow({
         alignControls === "center" ? "sm:items-center" : "sm:items-start",
       )}
     >
-      <div className="min-w-0 w-full sm:w-[46%] sm:shrink-0">
+      <div className="min-w-0 w-full sm:w-[46%] sm:shrink-0 sm:self-start">
         <p className="text-sm font-medium text-foreground">{label}</p>
         {description ? (
           <p className="text-xs text-muted-foreground mt-1 leading-snug">
@@ -37,7 +37,7 @@ export function InlineSettingsRow({
           wideControls
             ? "sm:min-w-0 sm:flex-1 sm:max-w-none sm:pt-0.5"
             : alignControls === "center"
-              ? "flex justify-end sm:max-w-[min(100%,28rem)] sm:items-center"
+              ? "flex justify-end sm:max-w-[min(100%,28rem)]"
               : "sm:flex sm:max-w-[min(100%,28rem)] sm:justify-end sm:pt-0.5",
         )}
       >

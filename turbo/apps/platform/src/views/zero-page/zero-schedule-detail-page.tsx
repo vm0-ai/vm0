@@ -158,7 +158,7 @@ function ScheduleBreadcrumbLink() {
 function ScheduleDetailSkeleton() {
   return (
     <div className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]">
-      <nav className="shrink-0 flex items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
+      <nav className="hidden md:flex shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
         <ScheduleBreadcrumbLink />
         <span className="text-muted-foreground/40 select-none">/</span>
         <div className="h-4 w-32 rounded bg-muted/50 animate-pulse" />
@@ -193,7 +193,7 @@ function ScheduleDetailSkeleton() {
 function ScheduleNotFound() {
   return (
     <div className="h-full flex flex-col min-h-0">
-      <nav className="shrink-0 flex items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
+      <nav className="hidden md:flex shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
         <ScheduleBreadcrumbLink />
         <span className="text-muted-foreground/40 select-none">/</span>
         <span className="rounded-md px-1.5 py-0.5 text-foreground font-medium">
@@ -893,7 +893,7 @@ function ScheduleDetailView({
           </span>
         </nav>
 
-        <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-6 pb-3">
+        <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-6 pb-0">
           <div className="mx-auto max-w-[900px]">
             <div
               className={cn(
@@ -958,20 +958,7 @@ function ScheduleDetailView({
               </div>
             </div>
 
-            <div className="mt-4 flex flex-col gap-2 sm:mt-6 sm:flex-row sm:h-9 sm:items-center">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg px-4 border text-sm font-medium transition-colors hover:bg-accent"
-                disabled={running || !entry.prompt.trim()}
-                onClick={() => {
-                  onRunNow().catch(() => {});
-                }}
-              >
-                <IconPlayerPlay size={14} stroke={1.5} />
-                {running ? "Starting…" : "Run now"}
-              </Button>
+            <div className="mt-4 flex flex-col gap-3 sm:mt-6 sm:flex-row sm:h-9 sm:items-center sm:justify-between">
               {/* Mobile: Select dropdown */}
               <div className="sm:hidden w-full">
                 <Select
@@ -1020,13 +1007,26 @@ function ScheduleDetailView({
                   Run History
                 </TabsTrigger>
               </TabsList>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg px-4 border text-sm font-medium transition-colors hover:bg-accent"
+                disabled={running || !entry.prompt.trim()}
+                onClick={() => {
+                  onRunNow().catch(() => {});
+                }}
+              >
+                <IconPlayerPlay size={14} stroke={1.5} />
+                {running ? "Starting…" : "Run now"}
+              </Button>
             </div>
           </div>
         </header>
 
         <main
           className={cn(
-            "shrink-0 flex-1 px-4 sm:px-6 pt-4 pb-16 transition-opacity",
+            "shrink-0 flex-1 px-4 sm:px-6 pt-4 sm:pt-6 pb-16 transition-opacity",
             dimmed && "opacity-90",
           )}
         >

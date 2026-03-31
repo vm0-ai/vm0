@@ -115,7 +115,7 @@ function Breadcrumb({
 }) {
   return (
     <nav
-      className={`shrink-0 flex items-center gap-1 px-4 pt-4 text-sm text-muted-foreground${className ? ` ${className}` : ""}`}
+      className={`hidden md:flex shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground${className ? ` ${className}` : ""}`}
     >
       <Link
         pathname="/team"
@@ -770,8 +770,8 @@ export function ZeroJobDetailPage({ agentId }: ZeroJobDetailPageProps) {
 
   return (
     <div className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]">
-      <Breadcrumb currentName={displayName} className="hidden sm:flex" />
-      <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-6 pb-3">
+      <Breadcrumb currentName={displayName} />
+      <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-6 pb-0">
         <div className="mx-auto max-w-[900px]">
           <div className="flex items-center gap-4">
             {currentAvatar ? (
@@ -796,7 +796,7 @@ export function ZeroJobDetailPage({ agentId }: ZeroJobDetailPageProps) {
             </div>
           </div>
 
-          <div className="mt-4">
+          <div className="mt-4 sm:mt-6">
             <AgentTabNav
               activeTab={activeTab}
               onTabChange={setActiveTab}
@@ -818,7 +818,7 @@ export function ZeroJobDetailPage({ agentId }: ZeroJobDetailPageProps) {
         </div>
       </header>
 
-      <main className="shrink-0 px-4 sm:px-6 pt-4 pb-16">
+      <main className="shrink-0 px-4 sm:px-6 pt-4 sm:pt-6 pb-16">
         {activeTab === "authorization" && (
           <JobPermissionsTab agentId={agentId} displayName={displayName} />
         )}

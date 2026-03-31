@@ -316,10 +316,10 @@ export function ZeroConnectorsPage() {
 
   return (
     <div className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]">
-      <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-10 pb-3">
+      <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-3 md:pt-10 pb-0 md:pb-3">
         <div className="mx-auto max-w-[900px]">
           <div className="flex items-center justify-between gap-4">
-            <div>
+            <div className="hidden md:block">
               <h1 className="text-xl font-semibold tracking-tight text-foreground">
                 Connectors
               </h1>
@@ -327,7 +327,7 @@ export function ZeroConnectorsPage() {
                 Connect third-party services for your agents to use.
               </p>
             </div>
-            <div className="relative w-56">
+            <div className="relative w-full md:w-56">
               <IconSearch
                 size={15}
                 stroke={1.5}
@@ -347,7 +347,7 @@ export function ZeroConnectorsPage() {
         </div>
       </header>
 
-      <main className="flex-1 px-4 sm:px-6 pt-4 pb-16">
+      <main className="flex-1 px-4 sm:px-6 pt-3 pb-16">
         <div className="mx-auto max-w-[900px] flex flex-col gap-6">
           {connected.length > 0 && (
             <section className="flex flex-col gap-3">

@@ -92,11 +92,11 @@ export function ZeroIdeationPage() {
         <div className="min-h-0 flex-1 overflow-auto">
           <div className="px-4 pb-8 sm:px-6">
             <div className="mx-auto w-full max-w-[900px]">
-              <header className="bg-transparent pt-6 pb-3">
-                <h1 className="text-lg font-semibold tracking-tight text-foreground">
+              <header className="bg-transparent pt-3 md:pt-6 pb-3">
+                <h1 className="hidden md:block text-lg font-semibold tracking-tight text-foreground">
                   Ideas &amp; Use Cases
                 </h1>
-                <p className="mt-1 text-sm text-muted-foreground leading-relaxed">
+                <p className="hidden md:block mt-1 text-sm text-muted-foreground leading-relaxed">
                   Click any card to start a conversation. It could become an
                   on-demand task, a recurring workflow, or a subagent.
                 </p>

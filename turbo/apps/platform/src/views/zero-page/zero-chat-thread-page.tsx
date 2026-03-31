@@ -151,8 +151,8 @@ export function ZeroChatThreadPage({
   return (
     <div className="flex flex-1 flex-col min-h-0 bg-transparent">
       {/* Header */}
-      <header className="shrink-0 bg-transparent px-4 sm:px-6 py-3 flex items-center justify-between">
-        <div className="flex flex-col items-start gap-0.5">
+      <header className="hidden sm:flex shrink-0 bg-transparent px-6 py-3 items-center justify-between">
+        <div className="flex items-center gap-3">
           <div className="relative shrink-0">
             {avatarAgentId ? (
               <TooltipProvider delayDuration={200}>
@@ -207,7 +207,7 @@ export function ZeroChatThreadPage({
           </div>
           <span className="font-semibold text-foreground">{displayName}</span>
         </div>
-        <div className="flex items-center gap-0.5">
+        <div className="hidden sm:flex items-center gap-0.5">
           <TooltipProvider delayDuration={200}>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -247,7 +247,7 @@ export function ZeroChatThreadPage({
 
       {/* Scrollable area — messages + sticky composer share the same scroll context */}
       <div className="flex-1 overflow-auto flex flex-col min-h-0">
-        <main className="flex-1 px-4 sm:px-6 py-4 items-center">
+        <main className="flex-1 px-4 sm:px-6 py-4 items-center @container">
           <div className="w-full max-w-[900px] mx-auto flex flex-1 flex-col gap-6 pb-4 overflow-visible">
             {sessionError && (
               <div className="flex-1 flex items-center justify-center py-16">
@@ -315,8 +315,8 @@ function ChatSkeleton() {
         <Skeleton className="h-10 w-[60%] rounded-xl" />
       </div>
       {/* Assistant bubble skeleton */}
-      <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 -ml-[38px] sm:-ml-[46px] items-start">
-        <Skeleton className="h-7 w-7 sm:h-9 sm:w-9 rounded-xl" />
+      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+        <Skeleton className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 rounded-xl" />
         <div className="flex flex-col gap-2">
           <Skeleton className="h-4 w-[90%] rounded-lg" />
           <Skeleton className="h-4 w-[75%] rounded-lg" />
@@ -328,8 +328,8 @@ function ChatSkeleton() {
         <Skeleton className="h-10 w-[45%] rounded-xl" />
       </div>
       {/* Assistant bubble skeleton */}
-      <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 -ml-[38px] sm:-ml-[46px] items-start">
-        <Skeleton className="h-7 w-7 sm:h-9 sm:w-9 rounded-xl" />
+      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+        <Skeleton className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 rounded-xl" />
         <div className="flex flex-col gap-2">
           <Skeleton className="h-4 w-[85%] rounded-lg" />
           <Skeleton className="h-4 w-[60%] rounded-lg" />
@@ -413,9 +413,9 @@ function UserMessage({ message }: { message: UserChatMessage }) {
 
   return (
     <>
-      <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 -ml-[38px] sm:-ml-[46px] items-start animate-in fade-in slide-in-from-bottom-2 duration-300">
-        <div className="w-7 h-7 sm:w-9 sm:h-9 shrink-0" />
-        <div className="flex flex-col items-end min-w-0">
+      <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+        <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
+        <div className="flex flex-col items-end w-full">
           <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-sm leading-relaxed break-words overflow-hidden">
             <div className="px-4 py-3">
               <Markdown source={displayContent} />
@@ -749,11 +749,11 @@ function StaticAssistantMessage({
   const pageSignal = useGet(pageSignal$);
   const content = useLastResolved(message.result$) ?? "";
   const avatar = (
-    <div className="h-9 w-9 shrink-0 mt-0.5 overflow-hidden rounded-xl">
+    <div className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 mt-0.5 overflow-hidden rounded-xl">
       <AvatarOrPlaceholder
         src={zeroAvatarSrc}
-        className="h-7 w-7 sm:h-9 sm:w-9 rounded-full object-cover object-top"
-        placeholderClassName="h-7 w-7 sm:h-9 sm:w-9 rounded-full bg-muted"
+        className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 rounded-full object-cover object-top"
+        placeholderClassName="h-7 w-7 @[900px]:h-9 @[900px]:w-9 rounded-full bg-muted"
       />
     </div>
   );
@@ -772,8 +772,8 @@ function StaticAssistantMessage({
   };
 
   const logButton = message.legacyRunId ? (
-    <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 -ml-[38px] sm:-ml-[46px]">
-      <div />
+    <div className="@[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px]">
+      <div className="hidden @[900px]:block" />
       <div className="flex items-center py-2 gap-1 -ml-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
         <TooltipProvider delayDuration={300}>
           <Tooltip>
@@ -834,9 +834,9 @@ function StaticAssistantMessage({
       message.error.includes("Invalid signature in thinking block");
     return (
       <div className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
-        <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 -ml-[38px] sm:-ml-[46px] items-start">
+        <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
           {avatar}
-          <div className="zero-chat-bubble-assistant px-0 pt-4 text-sm leading-relaxed min-w-0 break-words">
+          <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-1.5 text-sm leading-relaxed min-w-0 break-words">
             {hasSummaries && (
               <CollapsibleTimeline
                 summaries={message.summaries!}
@@ -900,9 +900,9 @@ function StaticAssistantMessage({
   if (content) {
     return (
       <div className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
-        <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 -ml-[38px] sm:-ml-[46px] items-start">
+        <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
           {avatar}
-          <div className="zero-chat-bubble-assistant px-0 pt-4 text-sm leading-relaxed min-w-0 break-words">
+          <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-1.5 text-sm leading-relaxed min-w-0 break-words">
             {hasSummaries && (
               <CollapsibleTimeline
                 summaries={message.summaries!}
@@ -929,7 +929,7 @@ function StaticAssistantMessage({
   // Thinking / loading state — show live run activity
   return (
     <div className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
-      <div className="grid grid-cols-[28px_1fr] sm:grid-cols-[36px_1fr] gap-2.5 -ml-[38px] sm:-ml-[46px] items-start">
+      <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         {avatar}
         <div className="zero-chat-bubble-assistant rounded-xl py-4 text-sm leading-relaxed min-w-0 overflow-hidden">
           {renderActivityLine ?? (

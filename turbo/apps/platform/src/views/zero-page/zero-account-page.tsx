@@ -171,18 +171,18 @@ export function ZeroPreferencesPage() {
 
   return (
     <div className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]">
-      <header className="shrink-0 bg-transparent px-4 pt-10 pb-4 sm:px-6">
+      <header className="hidden md:block shrink-0 bg-transparent px-4 sm:px-6 pt-10 pb-4">
         <div className="mx-auto max-w-[900px]">
-          <h1 className="text-xl font-semibold tracking-tight text-foreground">
+          <h1 className="hidden md:block text-xl font-semibold tracking-tight text-foreground">
             Preferences
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <p className="hidden md:block text-sm text-muted-foreground mt-1">
             Manage your appearance and agent runtime preferences
           </p>
         </div>
       </header>
 
-      <main className="shrink-0 px-4 sm:px-6 pt-4 pb-16">
+      <main className="shrink-0 px-4 sm:px-6 pt-3 pb-16">
         <div className="mx-auto max-w-[900px] flex flex-col gap-8">
           <Tabs
             value={tab}

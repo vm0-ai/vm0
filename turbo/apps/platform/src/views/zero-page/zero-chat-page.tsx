@@ -211,8 +211,8 @@ export function ZeroChatPage({
   // Landing page: full content (title, triggers, composer, actions, prompts)
   return (
     <div className="relative flex flex-1 flex-col min-h-0">
-      <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-2">
-        <div className="hidden sm:flex justify-end">
+      <header className="hidden md:block shrink-0 bg-transparent px-6 pt-4 pb-2">
+        <div className="flex justify-end">
           {isAdmin && (
             <Button
               variant="outline"
@@ -227,9 +227,9 @@ export function ZeroChatPage({
         </div>
       </header>
 
-      <main className="flex flex-1 flex-col justify-center overflow-auto px-4 sm:px-6 py-12">
-        <div className="mx-auto w-full max-w-[900px] flex flex-col items-stretch gap-8 -mt-24">
-          <div className="flex flex-col gap-3 w-full">
+      <main className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6">
+        <div className="mx-auto w-full max-w-[900px] flex flex-col items-stretch gap-6 pt-8 pb-12 sm:pt-[15vh] sm:pb-[10vh]">
+          <div className="flex items-center gap-4 w-full">
             <div className="relative shrink-0">
               {avatarAgentId ? (
                 <TooltipProvider delayDuration={200}>
