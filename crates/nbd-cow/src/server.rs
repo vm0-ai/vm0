@@ -161,6 +161,7 @@ mod tests {
     use crate::cow::CowLayer;
     use crate::protocol::{Command, NbdRequest, serialize_request};
     use std::io::Write as _;
+    use std::os::unix::fs::MetadataExt;
     use tempfile::NamedTempFile;
 
     fn create_test_cow(base_data: &[u8]) -> (NamedTempFile, NamedTempFile, CowLayer) {
@@ -292,5 +293,201 @@ mod tests {
 
         // Server should exit cleanly
         server_task.await.unwrap().unwrap();
+    }
+
+    /// Helper: create socketpair, spawn dispatch, return client stream halves.
+    async fn setup_dispatch(
+        cow: Arc<Mutex<CowLayer>>,
+    ) -> (
+        tokio::net::unix::OwnedReadHalf,
+        tokio::net::unix::OwnedWriteHalf,
+        tokio::task::JoinHandle<crate::error::Result<()>>,
+        CancellationToken,
+    ) {
+        let shutdown = CancellationToken::new();
+        let (client_fd, server_fd) = {
+            let mut fds = [0i32; 2];
+            let ret =
+                unsafe { libc::socketpair(libc::AF_UNIX, libc::SOCK_STREAM, 0, fds.as_mut_ptr()) };
+            assert_eq!(ret, 0);
+            unsafe { (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])) }
+        };
+
+        let cow_clone = cow.clone();
+        let shutdown_clone = shutdown.clone();
+        let task =
+            tokio::spawn(async move { dispatch(server_fd, cow_clone, shutdown_clone).await });
+
+        let client_std = unsafe {
+            std::os::unix::net::UnixStream::from_raw_fd(std::os::unix::io::AsRawFd::as_raw_fd(
+                &client_fd,
+            ))
+        };
+        client_std.set_nonblocking(true).unwrap();
+        let client_stream = UnixStream::from_std(client_std).unwrap();
+        std::mem::forget(client_fd);
+
+        let (reader, writer) = client_stream.into_split();
+        (reader, writer, task, shutdown)
+    }
+
+    /// Helper: send a request and read the reply header, return the error field.
+    async fn send_and_recv_reply(
+        reader: &mut tokio::net::unix::OwnedReadHalf,
+        writer: &mut tokio::net::unix::OwnedWriteHalf,
+        req: &NbdRequest,
+    ) -> u32 {
+        writer.write_all(&serialize_request(req)).await.unwrap();
+        let mut reply_buf = [0u8; 16];
+        reader.read_exact(&mut reply_buf).await.unwrap();
+        assert_eq!(
+            u32::from_be_bytes([reply_buf[0], reply_buf[1], reply_buf[2], reply_buf[3]]),
+            protocol::REPLY_MAGIC
+        );
+        u32::from_be_bytes([reply_buf[4], reply_buf[5], reply_buf[6], reply_buf[7]])
+    }
+
+    #[tokio::test]
+    async fn dispatch_flush_persists_to_cow_file() {
+        let base_data = vec![0x00; 8192];
+        let (_base, cow_file, cow) = create_test_cow(&base_data);
+        let cow = Arc::new(Mutex::new(cow));
+
+        let (mut reader, mut writer, task, _shutdown) = setup_dispatch(cow.clone()).await;
+
+        // Write data
+        let write_req = NbdRequest {
+            flags: 0,
+            command: Command::Write,
+            handle: 1,
+            offset: 0,
+            length: 4096,
+        };
+        writer
+            .write_all(&serialize_request(&write_req))
+            .await
+            .unwrap();
+        writer.write_all(&vec![0xCC; 4096]).await.unwrap();
+        let mut reply_buf = [0u8; 16];
+        reader.read_exact(&mut reply_buf).await.unwrap();
+
+        // Send FLUSH
+        let flush_req = NbdRequest {
+            flags: 0,
+            command: Command::Flush,
+            handle: 2,
+            offset: 0,
+            length: 0,
+        };
+        let error = send_and_recv_reply(&mut reader, &mut writer, &flush_req).await;
+        assert_eq!(error, 0, "flush should succeed");
+
+        // Verify data was flushed to COW file
+        {
+            let cow = cow.lock().await;
+            assert_eq!(
+                cow.buffered_block_count(),
+                0,
+                "buffer should be empty after flush"
+            );
+            assert!(
+                cow.dirty_block_count() > 0,
+                "should have dirty blocks in COW file"
+            );
+        }
+
+        // Verify COW file has data
+        let cow_meta = std::fs::metadata(cow_file.path()).unwrap();
+        assert!(
+            cow_meta.blocks() > 0,
+            "COW file should have allocated blocks after flush"
+        );
+
+        // Disconnect
+        let disc = NbdRequest {
+            flags: 0,
+            command: Command::Disconnect,
+            handle: 3,
+            offset: 0,
+            length: 0,
+        };
+        writer.write_all(&serialize_request(&disc)).await.unwrap();
+        task.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn dispatch_trim_succeeds() {
+        let base_data = vec![0xAA; 8192];
+        let (_base, _cow_file, cow) = create_test_cow(&base_data);
+        let cow = Arc::new(Mutex::new(cow));
+
+        let (mut reader, mut writer, task, _shutdown) = setup_dispatch(cow).await;
+
+        // Send TRIM
+        let trim_req = NbdRequest {
+            flags: 0,
+            command: Command::Trim,
+            handle: 1,
+            offset: 0,
+            length: 4096,
+        };
+        let error = send_and_recv_reply(&mut reader, &mut writer, &trim_req).await;
+        assert_eq!(error, 0, "trim should succeed (no-op)");
+
+        // Disconnect
+        let disc = NbdRequest {
+            flags: 0,
+            command: Command::Disconnect,
+            handle: 2,
+            offset: 0,
+            length: 0,
+        };
+        writer.write_all(&serialize_request(&disc)).await.unwrap();
+        task.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn dispatch_shutdown_flushes_data() {
+        let base_data = vec![0x00; 8192];
+        let (_base, _cow_file, cow) = create_test_cow(&base_data);
+        let cow = Arc::new(Mutex::new(cow));
+
+        let (mut reader, mut writer, task, shutdown) = setup_dispatch(cow.clone()).await;
+
+        // Write data (stays in buffer)
+        let write_req = NbdRequest {
+            flags: 0,
+            command: Command::Write,
+            handle: 1,
+            offset: 0,
+            length: 4096,
+        };
+        writer
+            .write_all(&serialize_request(&write_req))
+            .await
+            .unwrap();
+        writer.write_all(&vec![0xDD; 4096]).await.unwrap();
+        let mut reply_buf = [0u8; 16];
+        reader.read_exact(&mut reply_buf).await.unwrap();
+
+        // Verify data is in buffer
+        {
+            let cow = cow.lock().await;
+            assert_eq!(cow.buffered_block_count(), 1);
+        }
+
+        // Signal shutdown (should flush)
+        shutdown.cancel();
+        task.await.unwrap().unwrap();
+
+        // After shutdown, buffer should be flushed
+        {
+            let cow = cow.lock().await;
+            assert_eq!(
+                cow.buffered_block_count(),
+                0,
+                "shutdown should flush buffer"
+            );
+        }
     }
 }
