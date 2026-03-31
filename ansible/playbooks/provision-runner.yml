@@ -58,11 +58,9 @@
       become: true
 
     - name: Load nbd kernel module
-      community.general.modprobe:
-        name: nbd
-        params: nbds_max=256
-        state: present
+      shell: modprobe nbd nbds_max=256
       become: true
+      changed_when: false
 
     - name: Persist nbd module across reboots
       copy:
