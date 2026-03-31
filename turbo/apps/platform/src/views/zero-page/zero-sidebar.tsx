@@ -987,7 +987,7 @@ export function ZeroSidebar() {
   const onRecentSelect = (chatThreadId: string) => navigateToChat(chatThreadId);
   const selectedRecentId = useGet(chatThreadId$);
   const onAccountAction = useSet(handleZeroAccountAction$);
-  const recentSessionsLoadable = useLoadable(zeroSessionList$);
+  const recentSessionsLoadable = useLastLoadable(zeroSessionList$);
   const recentSessions =
     recentSessionsLoadable.state === "hasData"
       ? recentSessionsLoadable.data
