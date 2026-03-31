@@ -111,6 +111,19 @@ export const chatThreadByIdContract = c.router({
     },
     summary: "Get chat thread detail with messages",
   },
+  delete: {
+    method: "DELETE",
+    path: "/api/zero/chat-threads/:id",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.string() }),
+    responses: {
+      204: c.noBody(),
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Delete a chat thread",
+    body: c.noBody(),
+  },
 });
 
 /**

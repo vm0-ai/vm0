@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { GET } from "../route";
+import { GET, DELETE } from "../route";
 import { GET as listThreads, POST } from "../../route";
 import {
   createTestRequest,
@@ -249,5 +249,126 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
     expect(listResponse.status).toBe(200);
     expect(listData.threads).toHaveLength(1);
     expect(listData.threads[0].title).toBe("After AI update");
+  });
+});
+
+describe("DELETE /api/zero/chat-threads/:id - Delete Thread", () => {
+  let testComposeId: string;
+
+  beforeEach(async () => {
+    context.setupMocks();
+    await context.setupUser();
+
+    const { composeId } = await createTestCompose(uniqueId("chat-delete"));
+    testComposeId = composeId;
+  });
+
+  it("should require authentication", async () => {
+    mockClerk({ userId: null });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/chat-threads/some-id",
+      { method: "DELETE" },
+    );
+    const response = await DELETE(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data.error.message).toContain("Not authenticated");
+  });
+
+  it("should return 404 for non-existent thread", async () => {
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/chat-threads/00000000-0000-0000-0000-000000000000",
+      { method: "DELETE" },
+    );
+    const response = await DELETE(request);
+
+    expect(response.status).toBe(404);
+  });
+
+  it("should delete a thread and remove it from the list", async () => {
+    // Create a thread
+    const createResponse = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId, title: "To delete" }),
+      }),
+    );
+    const { id: threadId } = await createResponse.json();
+
+    // Delete the thread
+    const deleteResponse = await DELETE(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}`,
+        { method: "DELETE" },
+      ),
+    );
+    expect(deleteResponse.status).toBe(204);
+
+    // Verify it's gone from GET
+    const getResponse = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}`,
+      ),
+    );
+    expect(getResponse.status).toBe(404);
+
+    // Verify it's gone from list
+    const listResponse = await listThreads(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads?agentId=${testComposeId}`,
+      ),
+    );
+    const listData = await listResponse.json();
+    expect(listData.threads).toHaveLength(0);
+  });
+
+  it("should return 204 with no body (no content-type: application/json)", async () => {
+    const createResponse = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId, title: "No body" }),
+      }),
+    );
+    const { id: threadId } = await createResponse.json();
+
+    const deleteResponse = await DELETE(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}`,
+        { method: "DELETE" },
+      ),
+    );
+    expect(deleteResponse.status).toBe(204);
+    // The contract uses c.noBody() so the response must not have a JSON
+    // content-type header — otherwise ts-rest clients crash parsing empty body.
+    const ct = deleteResponse.headers.get("content-type");
+    expect(ct === null || !ct.includes("application/json")).toBe(true);
+  });
+
+  it("should not allow deleting another user's thread", async () => {
+    // Create a thread as user 1
+    const createResponse = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId, title: "Private" }),
+      }),
+    );
+    const { id: threadId } = await createResponse.json();
+
+    // Switch to user 2
+    await context.setupUser({ prefix: "other-user" });
+
+    // Try to delete as user 2
+    const deleteResponse = await DELETE(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}`,
+        { method: "DELETE" },
+      ),
+    );
+    expect(deleteResponse.status).toBe(404);
   });
 });
