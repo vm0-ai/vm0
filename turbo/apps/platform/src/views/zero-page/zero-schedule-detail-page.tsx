@@ -959,7 +959,7 @@ function ScheduleDetailView({
             </div>
 
             <div className="mt-4 flex flex-col gap-2 sm:mt-6 sm:flex-row sm:h-9 sm:items-center">
-              <TabsList className="zero-tabs h-9 w-full sm:w-auto gap-1 px-1 py-1 overflow-x-auto justify-start">
+              <TabsList className="zero-tabs h-9 w-full sm:w-auto gap-1 px-1 py-1 overflow-x-auto overflow-y-hidden justify-start">
                 <TabsTrigger
                   value="settings"
                   className={SCHEDULE_DETAIL_TAB_TRIGGER_CLASS}

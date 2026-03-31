@@ -226,7 +226,7 @@ function AgentTabNav({
       onValueChange={onTabChange}
       className="flex-1 min-w-0"
     >
-      <TabsList className="zero-tabs h-9 w-full sm:w-auto gap-1 px-1 py-1 overflow-x-auto justify-start">
+      <TabsList className="zero-tabs h-9 w-full sm:w-auto gap-1 px-1 py-1 overflow-x-auto overflow-y-hidden justify-start">
         <TabsTrigger value="authorization" className={TAB_TRIGGER_CLASS}>
           <IconShield size={14} stroke={1.5} />
           Authorization
