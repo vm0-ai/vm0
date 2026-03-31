@@ -1,5 +1,20 @@
 # Changelog
 
+## [12.177.2](https://github.com/vm0-ai/vm0/compare/web-v12.177.1...web-v12.177.2) (2026-03-31)
+
+
+### Refactoring
+
+* remove redundant preview field from chat thread list items ([#7418](https://github.com/vm0-ai/vm0/issues/7418)) ([1b3bbee](https://github.com/vm0-ai/vm0/commit/1b3bbeec9aa0d7ff8ae18d446f63e4966108ee9e))
+* **run:** move build-execution-context and business logic from infra to zero layer ([#7408](https://github.com/vm0-ai/vm0/issues/7408)) ([5bf0335](https://github.com/vm0-ai/vm0/commit/5bf033540a9db1bf10eb95ec831487cfffe6141d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.131.2
+
 ## [12.177.1](https://github.com/vm0-ai/vm0/compare/web-v12.177.0...web-v12.177.1) (2026-03-31)
 
 
