@@ -282,7 +282,6 @@ const router = tsr.router(zeroSkillsDetailContract, {
         await serverSideCompose({
           userId,
           orgId: org.orgId,
-          orgSlug: org.slug,
           content,
         });
       } catch (e) {

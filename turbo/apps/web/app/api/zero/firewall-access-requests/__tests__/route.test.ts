@@ -333,7 +333,7 @@ describe("GET /api/zero/firewall-access-requests", () => {
   });
 
   it("should include requesterName from Clerk user data", async () => {
-    const agent = await (await createAgent(testCliToken, testOrgSlug)).json();
+    const agent = await (await createAgent(testCliToken)).json();
 
     // Override Clerk mock to return user with a name
     mockClerk({
@@ -349,14 +349,9 @@ describe("GET /api/zero/firewall-access-requests", () => {
         permission: "issues:read",
       },
       testCliToken,
-      testOrgSlug,
     );
 
-    const response = await listAccessRequests(
-      agent.agentId,
-      testCliToken,
-      testOrgSlug,
-    );
+    const response = await listAccessRequests(agent.agentId, testCliToken);
 
     expect(response.status).toBe(200);
     const data = await response.json();
@@ -365,7 +360,7 @@ describe("GET /api/zero/firewall-access-requests", () => {
   });
 
   it("should return null requesterName when Clerk has no name data", async () => {
-    const agent = await (await createAgent(testCliToken, testOrgSlug)).json();
+    const agent = await (await createAgent(testCliToken)).json();
 
     await createAccessRequest(
       {
@@ -374,14 +369,9 @@ describe("GET /api/zero/firewall-access-requests", () => {
         permission: "issues:read",
       },
       testCliToken,
-      testOrgSlug,
     );
 
-    const response = await listAccessRequests(
-      agent.agentId,
-      testCliToken,
-      testOrgSlug,
-    );
+    const response = await listAccessRequests(agent.agentId, testCliToken);
 
     expect(response.status).toBe(200);
     const data = await response.json();

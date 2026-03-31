@@ -26,10 +26,7 @@ const context = testContext();
 let user: UserContext;
 let testCliToken: string;
 
-function postSkillReq(
-  body: Record<string, unknown>,
-  token: string,
-) {
+function postSkillReq(body: Record<string, unknown>, token: string) {
   return postSkill(
     createTestRequest(`http://localhost:3000/api/zero/skills`, {
       method: "POST",
@@ -53,13 +50,10 @@ function listSkillsReq(token: string) {
 
 function getSkillReq(name: string, token: string) {
   return getSkill(
-    createTestRequest(
-      `http://localhost:3000/api/zero/skills/${name}`,
-      {
-        method: "GET",
-        headers: { Authorization: `Bearer ${token}` },
-      },
-    ),
+    createTestRequest(`http://localhost:3000/api/zero/skills/${name}`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+    }),
   );
 }
 
@@ -69,29 +63,23 @@ function putSkillReq(
   token: string,
 ) {
   return putSkill(
-    createTestRequest(
-      `http://localhost:3000/api/zero/skills/${name}`,
-      {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(body),
+    createTestRequest(`http://localhost:3000/api/zero/skills/${name}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
       },
-    ),
+      body: JSON.stringify(body),
+    }),
   );
 }
 
 function deleteSkillReq(name: string, token: string) {
   return deleteSkill(
-    createTestRequest(
-      `http://localhost:3000/api/zero/skills/${name}`,
-      {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      },
-    ),
+    createTestRequest(`http://localhost:3000/api/zero/skills/${name}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    }),
   );
 }
 
@@ -230,10 +218,7 @@ describe("Zero Skills API (org-level)", () => {
         },
         testCliToken,
       );
-      await postSkillReq(
-        { name: "skill-two", content: "# Two" },
-        testCliToken,
-      );
+      await postSkillReq({ name: "skill-two", content: "# Two" }, testCliToken);
 
       const response = await listSkillsReq(testCliToken);
 
@@ -270,10 +255,7 @@ describe("Zero Skills API (org-level)", () => {
     });
 
     it("should return 404 for non-existent skill", async () => {
-      const response = await getSkillReq(
-        "no-such-skill",
-        testCliToken,
-      );
+      const response = await getSkillReq("no-such-skill", testCliToken);
 
       expect(response.status).toBe(404);
     });
@@ -316,10 +298,7 @@ describe("Zero Skills API (org-level)", () => {
         testCliToken,
       );
 
-      const response = await deleteSkillReq(
-        "my-skill",
-        testCliToken,
-      );
+      const response = await deleteSkillReq("my-skill", testCliToken);
 
       expect(response.status).toBe(204);
 
@@ -352,10 +331,7 @@ describe("Zero Skills API (org-level)", () => {
       await bindCustomSkillToAgent(agent2.agentId, "shared-skill");
 
       // Delete the skill at org level
-      const response = await deleteSkillReq(
-        "shared-skill",
-        testCliToken,
-      );
+      const response = await deleteSkillReq("shared-skill", testCliToken);
 
       expect(response.status).toBe(204);
 
@@ -366,10 +342,7 @@ describe("Zero Skills API (org-level)", () => {
     });
 
     it("should return 404 for non-existent skill", async () => {
-      const response = await deleteSkillReq(
-        "no-such-skill",
-        testCliToken,
-      );
+      const response = await deleteSkillReq("no-such-skill", testCliToken);
 
       expect(response.status).toBe(404);
     });
