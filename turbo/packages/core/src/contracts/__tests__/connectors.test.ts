@@ -131,12 +131,15 @@ describe("getConnectorEnvironmentMapping", () => {
         `${type}: oauth secrets must include an _ACCESS_TOKEN key`,
       ).toBeDefined();
 
-      // oauth secrets: exactly {XXX_ACCESS_TOKEN} or {XXX_ACCESS_TOKEN, XXX_REFRESH_TOKEN}
-      const allowed = [`${prefix}_ACCESS_TOKEN`, `${prefix}_REFRESH_TOKEN`];
-      expect(
-        oauthSecrets.every((s) => allowed.includes(s)),
-        `${type}: unexpected oauth secrets: ${oauthSecrets.join(", ")}`,
-      ).toBe(true);
+      // oauth secrets: exactly [XXX_ACCESS_TOKEN] or [XXX_ACCESS_TOKEN, XXX_REFRESH_TOKEN]
+      expect(oauthSecrets, `${type}: unexpected oauth secrets`).toSatisfy(
+        (s: string[]) =>
+          s.length === 1
+            ? s[0] === `${prefix}_ACCESS_TOKEN`
+            : s.length === 2 &&
+              s.includes(`${prefix}_ACCESS_TOKEN`) &&
+              s.includes(`${prefix}_REFRESH_TOKEN`),
+      );
 
       // environmentMapping: all values point to $secrets.XXX_ACCESS_TOKEN
       const mapping = getConnectorEnvironmentMapping(type);
