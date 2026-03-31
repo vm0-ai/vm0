@@ -1,5 +1,6 @@
 """Tests for registry loading, caching, and network logging."""
 
+import asyncio
 import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -11,6 +12,8 @@ def _reset_cache():
     """Reset the module-level registry cache between tests."""
     mitm_addon._registry_cache = {}
     mitm_addon._registry_cache_key = (0, 0)
+    mitm_addon._firewall_header_cache.clear()
+    mitm_addon._cache_locks.clear()
 
 
 class TestLoadRegistry:
@@ -59,14 +62,16 @@ class TestLoadRegistry:
         with patch.object(mitm_addon, "get_registry_path", return_value=str(registry_file)):
             mitm_addon.load_registry()  # initial load (has run-abc-123)
 
-            # Simulate cached headers for run-abc-123
+            # Simulate cached headers and locks for run-abc-123
             mitm_addon._firewall_header_cache[("run-abc-123", "api-0")] = {
                 "headers": {"Authorization": "Bearer tok"},
             }
+            mitm_addon._cache_locks[("run-abc-123", "api-0")] = asyncio.Lock()
             # Also cache for run-other (will appear in new registry)
             mitm_addon._firewall_header_cache[("run-other", "api-0")] = {
                 "headers": {"Authorization": "Bearer other"},
             }
+            mitm_addon._cache_locks[("run-other", "api-0")] = asyncio.Lock()
 
             # Update registry: remove run-abc-123, add run-other
             new_data = {"vms": {"10.200.0.99": {"runId": "run-other"}}, "updatedAt": 0}
@@ -74,10 +79,12 @@ class TestLoadRegistry:
 
             mitm_addon.load_registry()  # reload triggers eviction
 
-        # run-abc-123 cache should be evicted (no longer in registry)
+        # run-abc-123 cache and lock should be evicted (no longer in registry)
         assert ("run-abc-123", "api-0") not in mitm_addon._firewall_header_cache
-        # run-other cache should remain (still in registry)
+        assert ("run-abc-123", "api-0") not in mitm_addon._cache_locks
+        # run-other cache and lock should remain (still in registry)
         assert ("run-other", "api-0") in mitm_addon._firewall_header_cache
+        assert ("run-other", "api-0") in mitm_addon._cache_locks
 
 
 class TestGetVmInfo:
