@@ -2,7 +2,10 @@ import { eq, and, desc } from "drizzle-orm";
 import { chatThreads, chatThreadRuns } from "../../db/schema/chat-thread";
 import { agentRuns } from "../../db/schema/agent-run";
 import { agentSessions } from "../../db/schema/agent-session";
-import { zeroAgentSessions } from "../../db/schema/zero-agent-session";
+import {
+  zeroAgentSessions,
+  type StoredChatMessage,
+} from "../../db/schema/zero-agent-session";
 import { notFound } from "../errors";
 import type { SummaryEntry } from "@vm0/core";
 import type { TitleContextMessage } from "../ai/lightweight-model";
@@ -233,14 +236,7 @@ export async function getChatThreadMessages(
   }
 
   // Load messages from the session
-  type StoredMessage = {
-    role: "user" | "assistant";
-    content: string;
-    runId?: string;
-    summaries?: SummaryEntry[];
-    createdAt: string;
-  };
-  let messages: StoredMessage[] = [];
+  let messages: StoredChatMessage[] = [];
 
   if (sessionId) {
     const [session] = await globalThis.services.db
@@ -251,7 +247,7 @@ export async function getChatThreadMessages(
         and(eq(agentSessions.id, sessionId), eq(agentSessions.userId, userId)),
       )
       .limit(1);
-    messages = (session?.chatMessages ?? []) as StoredMessage[];
+    messages = session?.chatMessages ?? [];
 
     // Mark runs that have messages in the session
     for (const msg of messages) {
@@ -312,11 +308,6 @@ export async function getChatThreadContext(
     return [];
   }
 
-  type StoredMessage = {
-    role: "user" | "assistant";
-    content: string;
-  };
-
   const [session] = await globalThis.services.db
     .select({ chatMessages: zeroAgentSessions.chatMessages })
     .from(agentSessions)
@@ -329,7 +320,7 @@ export async function getChatThreadContext(
     )
     .limit(1);
 
-  const messages = (session?.chatMessages ?? []) as StoredMessage[];
+  const messages = session?.chatMessages ?? [];
   return messages.slice(-10).map((m) => ({
     role: m.role,
     content: m.content,

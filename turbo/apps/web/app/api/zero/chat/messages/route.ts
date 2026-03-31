@@ -27,6 +27,9 @@ import {
   generateCallbackSecret,
 } from "../../../../../src/lib/callback";
 import type { ChatCallbackPayload } from "../../../../../src/lib/callback/callback-payloads";
+import { logger } from "../../../../../src/lib/logger";
+
+const log = logger("zero:chat-messages");
 
 const router = tsr.router(chatMessagesContract, {
   send: async ({ body, headers }) => {
@@ -83,7 +86,12 @@ const router = tsr.router(chatMessagesContract, {
             return updateChatThreadTitle(capturedThreadId, title);
           }
         })
-        .catch(() => {});
+        .catch((err: unknown) => {
+          log.warn("Chat title generation failed", {
+            threadId: capturedThreadId,
+            err,
+          });
+        });
 
       // Build callback for session persistence
       const chatCallback: {

@@ -45,6 +45,13 @@ export {
 
 const L = logger("ZeroChat");
 
+/**
+ * Delay before refreshing sidebar/thread to pick up async title generation.
+ * Title is generated server-side in a fire-and-forget manner, so the client
+ * schedules a delayed refresh to fetch the updated title.
+ */
+const TITLE_REFRESH_DELAY_MS = 3000;
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -844,7 +851,7 @@ export const sendNewThreadMessage$ = command(
       set(reloadChatThreadList$, (n) => n + 1);
 
       // Title is generated async on the server — refresh after a short delay
-      delay(3000, { signal })
+      delay(TITLE_REFRESH_DELAY_MS, { signal })
         .then(() => set(reloadChatThreadList$, (n) => n + 1))
         .catch(() => {});
     } catch (error) {
@@ -915,7 +922,7 @@ export const sendExistingThreadMessage$ = command(
       // so schedule a delayed refresh to pick it up
       set(reloadChatThreadList$, (n) => n + 1);
       set(reloadCurrentThread$, (n) => n + 1);
-      delay(3000, { signal })
+      delay(TITLE_REFRESH_DELAY_MS, { signal })
         .then(() => {
           set(reloadChatThreadList$, (n) => n + 1);
           set(reloadCurrentThread$, (n) => n + 1);

@@ -52,8 +52,8 @@ describe("chat title refresh", () => {
 
     sendMessageInUI(textarea, "Follow-up question");
 
-    // Wait for sidebar to be refetched (title generation happens synchronously
-    // on the server before the response, so the next list fetch picks it up)
+    // Wait for sidebar to be refetched (title is generated async on the server;
+    // the client schedules a delayed refresh to pick up the updated title)
     await waitFor(() => {
       expect(threadListFetchCount).toBeGreaterThan(fetchCountBeforeSend);
     });
