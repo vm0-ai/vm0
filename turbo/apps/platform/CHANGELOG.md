@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.172.0](https://github.com/vm0-ai/vm0/compare/app-v0.171.2...app-v0.172.0) (2026-03-31)
+
+
+### Features
+
+* add activity log list feature switch to gate sidebar and breadcrumb visibility ([#7425](https://github.com/vm0-ai/vm0/issues/7425)) ([623b220](https://github.com/vm0-ai/vm0/commit/623b2203641bad18b4e91b28931564668466d62a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.132.0
+
 ## [0.171.2](https://github.com/vm0-ai/vm0/compare/app-v0.171.1...app-v0.171.2) (2026-03-31)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.132.0](https://github.com/vm0-ai/vm0/compare/core-v8.131.2...core-v8.132.0) (2026-03-31)
+
+
+### Features
+
+* add activity log list feature switch to gate sidebar and breadcrumb visibility ([#7425](https://github.com/vm0-ai/vm0/issues/7425)) ([623b220](https://github.com/vm0-ai/vm0/commit/623b2203641bad18b4e91b28931564668466d62a))
+
 ## [8.131.2](https://github.com/vm0-ai/vm0/compare/core-v8.131.1...core-v8.131.2) (2026-03-31)
 
 
