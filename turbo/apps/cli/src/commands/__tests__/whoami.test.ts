@@ -82,7 +82,8 @@ describe("whoami command", () => {
           capabilities: [],
         }),
       );
-      vi.stubEnv("VM0_API_URL", "https://api.vm0.ai");
+      const apiUrl = "https://api.vm0.ai";
+      vi.stubEnv("VM0_API_URL", apiUrl);
 
       await runWhoami();
 
@@ -119,7 +120,7 @@ describe("whoami command", () => {
       ).toBe(true);
       expect(
         output.some((line) => {
-          return line.includes("https://api.vm0.ai");
+          return line.includes(apiUrl);
         }),
       ).toBe(true);
     });
@@ -255,14 +256,15 @@ describe("whoami command", () => {
     });
 
     it("should display API URL", async () => {
-      vi.stubEnv("VM0_API_URL", "https://custom-api.vm0.ai");
+      const customApiUrl = "https://custom-api.vm0.ai";
+      vi.stubEnv("VM0_API_URL", customApiUrl);
 
       await runWhoami();
 
       const output = getAllOutput();
       expect(
         output.some((line) => {
-          return line.includes("https://custom-api.vm0.ai");
+          return line.includes(customApiUrl);
         }),
       ).toBe(true);
     });

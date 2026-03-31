@@ -27,12 +27,13 @@ vi.mock("os", async () => {
 describe("info command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   const mockHomedir = vi.mocked(os.homedir);
+  const testApiUrl = "https://www.vm0.ai";
 
   let tempDir: string;
 
   beforeEach(() => {
     chalk.level = 0;
-    vi.stubEnv("VM0_API_URL", "https://www.vm0.ai");
+    vi.stubEnv("VM0_API_URL", testApiUrl);
 
     // Create temp directory for each test
     tempDir = mkdtempSync(join(tmpdir(), "vm0-info-test-"));
@@ -205,7 +206,7 @@ describe("info command", () => {
       ).toBe(true);
       expect(
         allCalls.some((call) => {
-          return call.includes("https://www.vm0.ai");
+          return call.includes(testApiUrl);
         }),
       ).toBe(true);
     });
