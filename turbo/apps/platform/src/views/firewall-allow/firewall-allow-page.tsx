@@ -34,7 +34,7 @@ import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.
 import { detach, Reason } from "../../signals/utils.ts";
 
 // ---------------------------------------------------------------------------
-// PolicyPill (reused from firewall-permissions-dialog pattern)
+// PolicyPill
 // ---------------------------------------------------------------------------
 
 const POLICY_OPTIONS = [
@@ -86,18 +86,320 @@ function PolicyPill({
 }
 
 // ---------------------------------------------------------------------------
-// Admin View
+// Focused single-permission admin view
 // ---------------------------------------------------------------------------
 
-function AdminView({
+function AdminFocusedView({
   agentId,
   ref,
-  highlightPermission,
+  permission,
+  agent,
+  method,
+  path,
+}: {
+  agentId: string;
+  ref: string;
+  permission: { name: string; description?: string };
+  agent: { firewallPolicies: FirewallPolicies | null };
+  method: string | null;
+  path: string | null;
+}) {
+  const defaults = isFirewallConnectorType(ref)
+    ? getDefaultFirewallPolicies(ref)
+    : null;
+  const pageSignal = useGet(pageSignal$);
+  const requestsLoadable = useLastLoadable(firewallAccessRequests$);
+  const setSavePolicies = useSet(saveFirewallPolicies$);
+  const setResolveRequest = useSet(resolveAccessRequest$);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
+
+  const currentPolicy =
+    agent.firewallPolicies?.[ref]?.[permission.name] ??
+    defaults?.[permission.name] ??
+    "allow";
+  const [policy, setPolicy] = useState<FirewallPolicyValue>(currentPolicy);
+
+  const handleSave = () => {
+    const fullPolicies: FirewallPolicies = {
+      ...agent.firewallPolicies,
+      [ref]: {
+        ...agent.firewallPolicies?.[ref],
+        [permission.name]: policy,
+      },
+    };
+    setSaving(true);
+    setSaved(false);
+    detach(
+      setSavePolicies(agentId, fullPolicies, pageSignal)
+        .then(() => setSaved(true))
+        .finally(() => setSaving(false)),
+      Reason.DomCallback,
+    );
+  };
+
+  const handleResolve = (requestId: string, action: "approve" | "reject") => {
+    setResolvingId(requestId);
+    detach(
+      setResolveRequest(requestId, action, pageSignal)
+        .then(() => {
+          if (action === "approve") {
+            setPolicy("allow");
+          }
+        })
+        .finally(() => setResolvingId(null)),
+      Reason.DomCallback,
+    );
+  };
+
+  const requests =
+    requestsLoadable.state === "hasData" ? requestsLoadable.data : [];
+  const isDirty = policy !== currentPolicy;
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Blocked request context */}
+      {method && path && (
+        <div className="rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 px-3 py-2">
+          <p className="text-xs text-amber-800 dark:text-amber-200 flex items-center gap-1.5">
+            <IconAlertTriangle size={13} />
+            Blocked:{" "}
+            <code className="font-mono font-medium">
+              {method} {path}
+            </code>
+          </p>
+        </div>
+      )}
+
+      {/* Permission card */}
+      <div className="zero-border rounded-lg px-4 py-3">
+        <div className="flex items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <code className="text-sm font-medium text-foreground">
+              {permission.name}
+            </code>
+            {permission.description && (
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {permission.description}
+              </p>
+            )}
+          </div>
+          <PolicyPill policy={policy} onChange={setPolicy} />
+          <Button
+            size="sm"
+            onClick={handleSave}
+            disabled={saving || (!isDirty && !saved)}
+          >
+            {saving ? "Saving..." : saved && !isDirty ? "Saved" : "Save"}
+          </Button>
+        </div>
+      </div>
+
+      {/* Pending access requests */}
+      {requests.length > 0 && (
+        <div className="zero-border rounded-lg overflow-hidden">
+          <div className="px-3 py-2 bg-muted/30 border-b border-border/40">
+            <h3 className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+              <IconClock size={12} />
+              Pending Requests ({requests.length})
+            </h3>
+          </div>
+          {requests.map((req, idx) => (
+            <div key={req.id}>
+              {idx > 0 && <div className="border-t border-border/40" />}
+              <div className="flex items-center gap-2 px-3 py-2">
+                <div className="min-w-0 flex-1">
+                  <span className="text-xs text-foreground">
+                    {req.requesterName ?? req.requesterUserId}
+                  </span>
+                  {req.reason && (
+                    <span className="text-xs text-muted-foreground">
+                      {" "}
+                      &mdash; <span className="italic">{req.reason}</span>
+                    </span>
+                  )}
+                </div>
+                <div className="flex gap-1.5 shrink-0">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleResolve(req.id, "reject")}
+                    disabled={resolvingId === req.id}
+                  >
+                    <IconBan size={12} />
+                    Reject
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => handleResolve(req.id, "approve")}
+                    disabled={resolvingId === req.id}
+                  >
+                    <IconCheck size={12} />
+                    Approve
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Focused single-permission member view
+// ---------------------------------------------------------------------------
+
+function MemberFocusedView({
+  agentId,
+  ref,
+  permission,
+  method,
+  path,
   agent,
 }: {
   agentId: string;
   ref: string;
-  highlightPermission: string | null;
+  permission: { name: string; description?: string };
+  method: string | null;
+  path: string | null;
+  agent: { firewallPolicies: FirewallPolicies | null };
+}) {
+  const defaults = isFirewallConnectorType(ref)
+    ? getDefaultFirewallPolicies(ref)
+    : null;
+  const pageSignal = useGet(pageSignal$);
+  const requestsLoadable = useLastLoadable(firewallAccessRequests$);
+  const setCreateRequest = useSet(createAccessRequest$);
+  const [showForm, setShowForm] = useState(false);
+  const [reason, setReason] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const currentPolicy =
+    agent.firewallPolicies?.[ref]?.[permission.name] ??
+    defaults?.[permission.name] ??
+    "allow";
+
+  const requests =
+    requestsLoadable.state === "hasData" ? requestsLoadable.data : [];
+  const isPending = requests.some((r) => r.permission === permission.name);
+
+  const handleSubmit = () => {
+    setSubmitting(true);
+    detach(
+      setCreateRequest(
+        {
+          agentId,
+          firewallRef: ref,
+          permission: permission.name,
+          method: method ?? undefined,
+          path: path ?? undefined,
+          reason: reason || undefined,
+        },
+        pageSignal,
+      )
+        .then(() => {
+          setShowForm(false);
+          setReason("");
+        })
+        .finally(() => setSubmitting(false)),
+      Reason.DomCallback,
+    );
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Blocked request context */}
+      {method && path && (
+        <div className="rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 px-3 py-2">
+          <p className="text-xs text-amber-800 dark:text-amber-200 flex items-center gap-1.5">
+            <IconAlertTriangle size={13} />
+            Blocked:{" "}
+            <code className="font-mono font-medium">
+              {method} {path}
+            </code>
+          </p>
+        </div>
+      )}
+
+      {/* Permission card */}
+      <div className="zero-border rounded-lg px-4 py-3">
+        <div className="flex items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <code className="text-sm font-medium text-foreground">
+              {permission.name}
+            </code>
+            {permission.description && (
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {permission.description}
+              </p>
+            )}
+          </div>
+          <PolicyPill policy={currentPolicy} disabled />
+          {currentPolicy !== "allow" && (
+            <>
+              {isPending ? (
+                <span className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1 shrink-0">
+                  <IconClock size={12} />
+                  Pending
+                </span>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setShowForm(true)}
+                >
+                  Request Access
+                </Button>
+              )}
+            </>
+          )}
+        </div>
+
+        {showForm && (
+          <div className="mt-3 flex flex-col gap-2 border-t border-border/40 pt-3">
+            <textarea
+              placeholder="Reason for access (optional)"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              rows={2}
+              className="text-sm w-full rounded-md border border-input bg-background px-3 py-2 ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            />
+            <div className="flex gap-2 justify-end">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setShowForm(false);
+                  setReason("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button size="sm" onClick={handleSubmit} disabled={submitting}>
+                {submitting ? "Submitting..." : "Submit Request"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// List views (fallback when no specific permission in URL)
+// ---------------------------------------------------------------------------
+
+function AdminListView({
+  agentId,
+  ref,
+  agent,
+}: {
+  agentId: string;
+  ref: string;
   agent: {
     firewallPolicies: FirewallPolicies | null;
     displayName: string | null;
@@ -108,11 +410,8 @@ function AdminView({
     ? getDefaultFirewallPolicies(ref)
     : null;
   const pageSignal = useGet(pageSignal$);
-  const requestsLoadable = useLastLoadable(firewallAccessRequests$);
   const setSavePolicies = useSet(saveFirewallPolicies$);
-  const setResolveRequest = useSet(resolveAccessRequest$);
   const [saving, setSaving] = useState(false);
-  const [resolvingId, setResolvingId] = useState<string | null>(null);
 
   const [policies, setPolicies] = useState<Record<string, FirewallPolicyValue>>(
     () => {
@@ -134,335 +433,92 @@ function AdminView({
     };
     setSaving(true);
     detach(
-      setSavePolicies(agentId, fullPolicies, pageSignal).finally(() => {
-        setSaving(false);
-      }),
+      setSavePolicies(agentId, fullPolicies, pageSignal).finally(() =>
+        setSaving(false),
+      ),
       Reason.DomCallback,
     );
   };
-
-  const handleResolve = (requestId: string, action: "approve" | "reject") => {
-    setResolvingId(requestId);
-    detach(
-      setResolveRequest(requestId, action, pageSignal)
-        .then(() => {
-          if (action === "approve") {
-            // Reflect the approval in local state
-            const request =
-              requestsLoadable.state === "hasData"
-                ? requestsLoadable.data.find((r) => r.id === requestId)
-                : null;
-            if (request) {
-              setPolicies((prev) => ({
-                ...prev,
-                [request.permission]: "allow",
-              }));
-            }
-          }
-        })
-        .finally(() => {
-          setResolvingId(null);
-        }),
-      Reason.DomCallback,
-    );
-  };
-
-  const requests =
-    requestsLoadable.state === "hasData" ? requestsLoadable.data : [];
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* Permissions list */}
-      <section>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-medium text-foreground">Permissions</h2>
-          <Button size="sm" onClick={handleSave} disabled={saving}>
-            {saving ? "Saving..." : "Save"}
-          </Button>
-        </div>
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-medium text-foreground">Permissions</h2>
+        <Button size="sm" onClick={handleSave} disabled={saving}>
+          {saving ? "Saving..." : "Save"}
+        </Button>
+      </div>
 
-        <div className="zero-border rounded-lg overflow-hidden">
-          {permissions.map((perm, idx) => {
-            const isHighlighted = perm.name === highlightPermission;
-            return (
-              <div key={perm.name}>
-                {idx > 0 && <div className="border-t border-border/40" />}
-                <div
-                  className={`flex items-center gap-2.5 px-4 py-3 transition-colors ${
-                    isHighlighted
-                      ? "bg-yellow-50 dark:bg-yellow-950/20"
-                      : "hover:bg-muted/50"
-                  }`}
-                >
-                  <div className="min-w-0 flex-1">
-                    <code className="text-xs font-medium text-foreground truncate block">
-                      {perm.name}
-                    </code>
-                    {perm.description && (
-                      <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
-                        {perm.description}
-                      </p>
-                    )}
-                  </div>
-                  <PolicyPill
-                    policy={policies[perm.name] ?? "allow"}
-                    onChange={(p) =>
-                      setPolicies((prev) => ({ ...prev, [perm.name]: p }))
-                    }
-                  />
-                </div>
+      <div className="zero-border rounded-lg overflow-hidden">
+        {permissions.map((perm, idx) => (
+          <div key={perm.name}>
+            {idx > 0 && <div className="border-t border-border/40" />}
+            <div className="flex items-center gap-2.5 px-3 py-2 hover:bg-muted/50 transition-colors">
+              <div className="min-w-0 flex-1">
+                <code className="text-xs font-medium text-foreground truncate block">
+                  {perm.name}
+                </code>
+                {perm.description && (
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {perm.description}
+                  </p>
+                )}
               </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* Access requests section */}
-      {requests.length > 0 && (
-        <section>
-          <h2 className="text-sm font-medium text-foreground mb-3">
-            <span className="flex items-center gap-1.5">
-              <IconClock size={14} />
-              Pending Access Requests ({requests.length})
-            </span>
-          </h2>
-
-          <div className="zero-border rounded-lg overflow-hidden">
-            {requests.map((req, idx) => (
-              <div key={req.id}>
-                {idx > 0 && <div className="border-t border-border/40" />}
-                <div className="px-4 py-3">
-                  <div className="flex items-center justify-between">
-                    <div className="min-w-0 flex-1">
-                      <code className="text-xs font-medium text-foreground">
-                        {req.permission}
-                      </code>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Requested by {req.requesterUserId}
-                        {req.reason && (
-                          <>
-                            {" "}
-                            &mdash; <span className="italic">{req.reason}</span>
-                          </>
-                        )}
-                      </p>
-                    </div>
-                    <div className="flex gap-2 shrink-0 ml-3">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleResolve(req.id, "reject")}
-                        disabled={resolvingId === req.id}
-                      >
-                        <IconBan size={12} />
-                        Reject
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={() => handleResolve(req.id, "approve")}
-                        disabled={resolvingId === req.id}
-                      >
-                        <IconCheck size={12} />
-                        Approve
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
+              <PolicyPill
+                policy={policies[perm.name] ?? "allow"}
+                onChange={(p) =>
+                  setPolicies((prev) => ({ ...prev, [perm.name]: p }))
+                }
+              />
+            </div>
           </div>
-        </section>
-      )}
+        ))}
+      </div>
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Member View
-// ---------------------------------------------------------------------------
-
-function MemberView({
-  agentId,
+function MemberListView({
   ref,
-  highlightPermission,
-  method,
-  path,
   agent,
 }: {
-  agentId: string;
   ref: string;
-  highlightPermission: string | null;
-  method: string | null;
-  path: string | null;
   agent: { firewallPolicies: FirewallPolicies | null };
 }) {
   const permissions = extractPermissions(ref);
   const defaults = isFirewallConnectorType(ref)
     ? getDefaultFirewallPolicies(ref)
     : null;
-  const pageSignal = useGet(pageSignal$);
-  const requestsLoadable = useLastLoadable(firewallAccessRequests$);
-  const setCreateRequest = useSet(createAccessRequest$);
-  const [requestingPermission, setRequestingPermission] = useState<
-    string | null
-  >(null);
-  const [reason, setReason] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-
-  const requests =
-    requestsLoadable.state === "hasData" ? requestsLoadable.data : [];
-  const pendingPermissions = new Set(requests.map((r) => r.permission));
-
-  const handleSubmit = (permission: string) => {
-    setSubmitting(true);
-    detach(
-      setCreateRequest(
-        {
-          agentId,
-          firewallRef: ref,
-          permission,
-          method: method ?? undefined,
-          path: path ?? undefined,
-          reason: reason || undefined,
-        },
-        pageSignal,
-      )
-        .then(() => {
-          setRequestingPermission(null);
-          setReason("");
-        })
-        .finally(() => {
-          setSubmitting(false);
-        }),
-      Reason.DomCallback,
-    );
-  };
 
   return (
-    <div className="flex flex-col gap-6">
-      <section>
-        <h2 className="text-sm font-medium text-foreground mb-3">
-          Permissions
-        </h2>
-
-        <div className="zero-border rounded-lg overflow-hidden">
-          {permissions.map((perm, idx) => {
-            const isHighlighted = perm.name === highlightPermission;
-            const currentPolicy =
-              agent.firewallPolicies?.[ref]?.[perm.name] ??
-              defaults?.[perm.name] ??
-              "allow";
-            const isPending = pendingPermissions.has(perm.name);
-
-            return (
-              <div key={perm.name}>
-                {idx > 0 && <div className="border-t border-border/40" />}
-                <div
-                  className={`px-4 py-3 transition-colors ${
-                    isHighlighted ? "bg-yellow-50 dark:bg-yellow-950/20" : ""
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <div className="min-w-0 flex-1">
-                      <code className="text-xs font-medium text-foreground truncate block">
-                        {perm.name}
-                      </code>
-                      {perm.description && (
-                        <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
-                          {perm.description}
-                        </p>
-                      )}
-                    </div>
-                    <PolicyPill policy={currentPolicy} disabled />
-                    {isHighlighted && currentPolicy !== "allow" && (
-                      <>
-                        {isPending ? (
-                          <span className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1 shrink-0">
-                            <IconClock size={12} />
-                            Pending
-                          </span>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setRequestingPermission(perm.name)}
-                          >
-                            Request Access
-                          </Button>
-                        )}
-                      </>
-                    )}
-                  </div>
-
-                  {requestingPermission === perm.name && (
-                    <div className="mt-3 flex flex-col gap-2">
-                      <textarea
-                        placeholder="Reason for access (optional)"
-                        value={reason}
-                        onChange={(e) => setReason(e.target.value)}
-                        rows={2}
-                        className="text-sm w-full rounded-md border border-input bg-background px-3 py-2 ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                      />
-                      <div className="flex gap-2 justify-end">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setRequestingPermission(null);
-                            setReason("");
-                          }}
-                        >
-                          Cancel
-                        </Button>
-                        <Button
-                          size="sm"
-                          onClick={() => handleSubmit(perm.name)}
-                          disabled={submitting}
-                        >
-                          {submitting ? "Submitting..." : "Submit Request"}
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* Show own pending requests */}
-      {requests.length > 0 && (
-        <section>
-          <h2 className="text-sm font-medium text-foreground mb-3">
-            <span className="flex items-center gap-1.5">
-              <IconClock size={14} />
-              Your Pending Requests ({requests.length})
-            </span>
-          </h2>
-
-          <div className="zero-border rounded-lg overflow-hidden">
-            {requests.map((req, idx) => (
-              <div key={req.id}>
-                {idx > 0 && <div className="border-t border-border/40" />}
-                <div className="px-4 py-3">
-                  <code className="text-xs font-medium text-foreground">
-                    {req.permission}
+    <div className="flex flex-col gap-4">
+      <h2 className="text-sm font-medium text-foreground">Permissions</h2>
+      <div className="zero-border rounded-lg overflow-hidden">
+        {permissions.map((perm, idx) => {
+          const currentPolicy =
+            agent.firewallPolicies?.[ref]?.[perm.name] ??
+            defaults?.[perm.name] ??
+            "allow";
+          return (
+            <div key={perm.name}>
+              {idx > 0 && <div className="border-t border-border/40" />}
+              <div className="flex items-center gap-2.5 px-3 py-2">
+                <div className="min-w-0 flex-1">
+                  <code className="text-xs font-medium text-foreground truncate block">
+                    {perm.name}
                   </code>
-                  {req.reason && (
-                    <p className="text-xs text-muted-foreground mt-0.5 italic">
-                      {req.reason}
+                  {perm.description && (
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {perm.description}
                     </p>
                   )}
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Submitted {new Date(req.createdAt).toLocaleDateString()}
-                  </p>
                 </div>
+                <PolicyPill policy={currentPolicy} disabled />
               </div>
-            ))}
-          </div>
-        </section>
-      )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -541,54 +597,52 @@ export function FirewallAllowPage() {
   const connectorLabel = CONNECTOR_TYPES[ref]?.label ?? ref;
   const agentDisplayName = agent.displayName ?? agentId;
 
+  // Find the specific permission if URL specifies one
+  const allPermissions = extractPermissions(ref);
+  const focusedPermission = highlightPermission
+    ? (allPermissions.find((p) => p.name === highlightPermission) ?? null)
+    : null;
+
   return (
     <div className="flex flex-1 flex-col min-h-0">
-      {/* Header */}
-      <header className="px-6 pt-6 pb-4">
-        <div className="flex items-center gap-3 mb-2">
-          <ConnectorIcon type={ref} size={28} />
-          <div>
-            <h1 className="text-base font-semibold text-foreground flex items-center gap-2">
-              <IconShieldLock size={18} />
-              {connectorLabel} Firewall Permissions
-            </h1>
-            <p className="text-xs text-muted-foreground">
-              for {agentDisplayName}
-            </p>
-          </div>
+      <header className="px-6 pt-5 pb-3">
+        <div className="flex items-center gap-2.5">
+          <ConnectorIcon type={ref} size={22} />
+          <h1 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+            <IconShieldLock size={15} />
+            {connectorLabel} Firewall
+          </h1>
+          <span className="text-xs text-muted-foreground">
+            &middot; {agentDisplayName}
+          </span>
         </div>
-
-        {/* Context banner for blocked requests */}
-        {method && path && (
-          <div className="mt-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 px-4 py-2.5">
-            <p className="text-xs text-amber-800 dark:text-amber-200 flex items-center gap-1.5">
-              <IconAlertTriangle size={14} />A request was blocked:{" "}
-              <code className="font-mono font-medium">
-                {method} {path}
-              </code>
-            </p>
-          </div>
-        )}
       </header>
 
-      {/* Main content */}
       <main className="flex-1 overflow-auto px-6 pb-6">
-        {isAdmin ? (
-          <AdminView
-            agentId={agentId}
-            ref={ref}
-            highlightPermission={highlightPermission}
-            agent={agent}
-          />
+        {focusedPermission ? (
+          isAdmin ? (
+            <AdminFocusedView
+              agentId={agentId}
+              ref={ref}
+              permission={focusedPermission}
+              agent={agent}
+              method={method}
+              path={path}
+            />
+          ) : (
+            <MemberFocusedView
+              agentId={agentId}
+              ref={ref}
+              permission={focusedPermission}
+              method={method}
+              path={path}
+              agent={agent}
+            />
+          )
+        ) : isAdmin ? (
+          <AdminListView agentId={agentId} ref={ref} agent={agent} />
         ) : (
-          <MemberView
-            agentId={agentId}
-            ref={ref}
-            highlightPermission={highlightPermission}
-            method={method}
-            path={path}
-            agent={agent}
-          />
+          <MemberListView ref={ref} agent={agent} />
         )}
       </main>
     </div>

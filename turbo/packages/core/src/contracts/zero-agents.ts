@@ -372,6 +372,7 @@ export const firewallAccessRequestResponseSchema = z.object({
   reason: z.string().nullable(),
   status: firewallAccessRequestStatusSchema,
   requesterUserId: z.string(),
+  requesterName: z.string().nullable(),
   resolvedBy: z.string().nullable(),
   resolvedAt: z.string().nullable(),
   createdAt: z.string(),
