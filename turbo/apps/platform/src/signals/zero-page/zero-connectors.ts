@@ -116,6 +116,7 @@ export const saveZeroConnectors$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(internalSaving$, true);
     const agentId = await get(zeroAgentId$);
+    signal.throwIfAborted();
     try {
       const draft = get(internalAddedConnectors$);
       const newConnectors =
