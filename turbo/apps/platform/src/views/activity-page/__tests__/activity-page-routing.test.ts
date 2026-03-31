@@ -176,7 +176,15 @@ describe("activity page routing", () => {
     server.use(
       http.get("*/api/zero/composes/list", () => {
         return HttpResponse.json({
-          composes: [{ name: "child-agent", displayName: "Child Agent" }],
+          composes: [
+            {
+              id: "c0000000-0000-4000-a000-000000000001",
+              name: "child-agent",
+              displayName: "Child Agent",
+              headVersionId: null,
+              updatedAt: "2026-03-10T00:00:00Z",
+            },
+          ],
         });
       }),
       http.get("*/api/zero/logs", () => {
@@ -199,6 +207,7 @@ describe("activity page routing", () => {
             },
           ],
           pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
+          filters: { statuses: [], sources: [], agents: [] },
         });
       }),
       http.get("*/api/zero/chat-threads", () => {
