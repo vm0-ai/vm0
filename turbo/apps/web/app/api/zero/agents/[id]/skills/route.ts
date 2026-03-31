@@ -76,11 +76,13 @@ const router = tsr.router(zeroAgentSkillsCollectionContract, {
 
     return {
       status: 200 as const,
-      body: rows.map((r) => ({
-        name: r.name,
-        displayName: r.displayName ?? null,
-        description: r.description ?? null,
-      })),
+      body: rows.map((r) => {
+        return {
+          name: r.name,
+          displayName: r.displayName ?? null,
+          description: r.description ?? null,
+        };
+      }),
     };
   },
 
@@ -195,7 +197,9 @@ const router = tsr.router(zeroAgentSkillsCollectionContract, {
     // Rebuild compose with new volume declaration
     const content = buildComposeContent(
       existing.name,
-      updatedSkills.map((name) => ({ name })),
+      updatedSkills.map((name) => {
+        return { name };
+      }),
     );
 
     const result = await serverSideCompose({

@@ -471,7 +471,9 @@ async function resolveOauthConnectorSecrets(
 
   // Filter to only allowed connector types when a permission list is provided.
   const allowedConnectors = allowedTypes
-    ? validConnectors.filter(({ type }) => allowedTypes.includes(type))
+    ? validConnectors.filter(({ type }) => {
+        return allowedTypes.includes(type);
+      })
     : validConnectors;
   // Refresh OAuth tokens in parallel.
   // Safe: each connector writes to distinct keys in connectorSecrets (e.g. github_access_token
@@ -772,7 +774,9 @@ async function resolveSecretsAndEnvironment(
   ]);
 
   const rawApiTokenTypes = allowedConnectorTypes
-    ? apiTokenTypes.filter((t) => allowedConnectorTypes.includes(t))
+    ? apiTokenTypes.filter((t) => {
+        return allowedConnectorTypes.includes(t);
+      })
     : apiTokenTypes;
 
   const connectorTypes = [

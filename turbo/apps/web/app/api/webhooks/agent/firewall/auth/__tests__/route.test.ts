@@ -690,12 +690,12 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
 
       // MSW for Notion refresh
       server.use(
-        mswHttp.post(NOTION_TOKEN_URL, () =>
-          HttpResponse.json({
+        mswHttp.post(NOTION_TOKEN_URL, () => {
+          return HttpResponse.json({
             access_token: "fresh-notion-token",
             expires_in: 3600,
-          }),
-        ),
+          });
+        }),
       );
 
       const encrypted = encryptTestSecrets({

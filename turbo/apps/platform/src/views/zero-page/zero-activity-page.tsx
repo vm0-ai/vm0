@@ -212,15 +212,21 @@ export function ZeroActivityPage() {
                 isLoading={isLoading}
                 labelClassName="font-normal text-muted-foreground"
                 buttonClassName="bg-transparent border-border/70"
-                onNextPage={() =>
-                  detach(goToNext(pageSignal), Reason.DomCallback)
-                }
-                onPrevPage={() => goToPrev()}
-                onForwardTwoPages={() =>
-                  detach(goForwardTwo(pageSignal), Reason.DomCallback)
-                }
-                onBackTwoPages={() => goBackTwo()}
-                onRowsPerPageChange={(limit) => setRowsPerPage(limit)}
+                onNextPage={() => {
+                  return detach(goToNext(pageSignal), Reason.DomCallback);
+                }}
+                onPrevPage={() => {
+                  return goToPrev();
+                }}
+                onForwardTwoPages={() => {
+                  return detach(goForwardTwo(pageSignal), Reason.DomCallback);
+                }}
+                onBackTwoPages={() => {
+                  return goBackTwo();
+                }}
+                onRowsPerPageChange={(limit) => {
+                  return setRowsPerPage(limit);
+                }}
               />
             </div>
           )}

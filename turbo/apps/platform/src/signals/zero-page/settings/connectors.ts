@@ -332,7 +332,11 @@ export const connectConnector$ = command(
       const { connectors: polled } = await get(connectors$);
       signal.throwIfAborted();
 
-      if (polled.some((c) => c.type === type)) {
+      if (
+        polled.some((c) => {
+          return c.type === type;
+        })
+      ) {
         freshConnectors = polled;
         break;
       }
@@ -345,9 +349,13 @@ export const connectConnector$ = command(
 
     // Mark as optimistically connected before clearing polling so the UI
     // transitions directly from "Connecting…" to "Connected" without flash.
-    const isConnected = freshConnectors.some((c) => c.type === type);
+    const isConnected = freshConnectors.some((c) => {
+      return c.type === type;
+    });
     if (isConnected) {
-      set(internalJustConnectedTypes$, (prev) => new Set([...prev, type]));
+      set(internalJustConnectedTypes$, (prev) => {
+        return new Set([...prev, type]);
+      });
     }
     set(internalPollingType$, null);
     // Show in connections list again when user connects

@@ -113,9 +113,15 @@ export async function createZeroRun(
         ),
       );
     allowedConnectorTypes = permRows
-      .map((r) => connectorTypeSchema.safeParse(r.connectorType))
-      .filter((p) => p.success)
-      .map((p) => p.data);
+      .map((r) => {
+        return connectorTypeSchema.safeParse(r.connectorType);
+      })
+      .filter((p) => {
+        return p.success;
+      })
+      .map((p) => {
+        return p.data;
+      });
   }
 
   // Build agent system prompt: identity + tools first, then trigger context

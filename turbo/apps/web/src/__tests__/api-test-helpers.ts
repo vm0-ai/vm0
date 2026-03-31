@@ -3566,8 +3566,12 @@ export async function seedSeedSkills(): Promise<void> {
   const { CONNECTOR_TYPES } = await import("@vm0/core");
   initServices();
   const gaConnectorTypes = Object.entries(CONNECTOR_TYPES)
-    .filter(([, config]) => !config.featureFlag)
-    .map(([type]) => type);
+    .filter(([, config]) => {
+      return !config.featureFlag;
+    })
+    .map(([type]) => {
+      return type;
+    });
   const allNames = [...new Set([...SEED_SKILLS, ...gaConnectorTypes])];
   const values = buildSeedSkillValues(allNames);
   await globalThis.services.db
@@ -3588,8 +3592,12 @@ export async function seedSeedSkillStorages(): Promise<void> {
   const { SEED_SKILLS } = await import("../lib/zero/seed-skills");
   const { CONNECTOR_TYPES } = await import("@vm0/core");
   const gaConnectorTypes = Object.entries(CONNECTOR_TYPES)
-    .filter(([, config]) => !config.featureFlag)
-    .map(([type]) => type);
+    .filter(([, config]) => {
+      return !config.featureFlag;
+    })
+    .map(([type]) => {
+      return type;
+    });
   const allNames = [...new Set([...SEED_SKILLS, ...gaConnectorTypes])];
 
   initServices();
@@ -3607,36 +3615,44 @@ export async function seedSeedSkillStorages(): Promise<void> {
     const inserted = await tx
       .insert(storages)
       .values(
-        entries.map(({ storageName }) => ({
-          orgId: SYSTEM_ORG_ID,
-          userId: VOLUME_ORG_USER_ID,
-          name: storageName,
-          type: "volume" as const,
-          s3Prefix: `${SYSTEM_ORG_ID}/${storageName}`,
-        })),
+        entries.map(({ storageName }) => {
+          return {
+            orgId: SYSTEM_ORG_ID,
+            userId: VOLUME_ORG_USER_ID,
+            name: storageName,
+            type: "volume" as const,
+            s3Prefix: `${SYSTEM_ORG_ID}/${storageName}`,
+          };
+        }),
       )
       .onConflictDoNothing()
       .returning({ id: storages.id, name: storages.name });
 
     if (inserted.length === 0) return;
 
-    const nameToId = new Map(inserted.map((s) => [s.name, s.id]));
+    const nameToId = new Map(
+      inserted.map((s) => {
+        return [s.name, s.id];
+      }),
+    );
 
     // Only create versions for storages that were actually inserted.
-    const newEntries = entries.filter(({ storageName }) =>
-      nameToId.has(storageName),
-    );
+    const newEntries = entries.filter(({ storageName }) => {
+      return nameToId.has(storageName);
+    });
 
     // Batch-insert all versions.
     await tx.insert(storageVersions).values(
-      newEntries.map(({ storageName, versionId }) => ({
-        id: versionId,
-        storageId: nameToId.get(storageName)!,
-        s3Key: `${SYSTEM_ORG_ID}/${storageName}/${versionId}`,
-        size: 100,
-        fileCount: 1,
-        createdBy: "test",
-      })),
+      newEntries.map(({ storageName, versionId }) => {
+        return {
+          id: versionId,
+          storageId: nameToId.get(storageName)!,
+          s3Key: `${SYSTEM_ORG_ID}/${storageName}/${versionId}`,
+          size: 100,
+          fileCount: 1,
+          createdBy: "test",
+        };
+      }),
     );
 
     // Batch-update headVersionId for each newly created storage.

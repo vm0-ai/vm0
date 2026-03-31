@@ -277,7 +277,9 @@ export function ZeroConnectorsPage() {
     const toastId = toast.loading(`Disconnecting ${label}...`);
     detach(
       disconnect(type, signal).then(
-        () => toast.success(`${label} disconnected`, { id: toastId }),
+        () => {
+          return toast.success(`${label} disconnected`, { id: toastId });
+        },
         (error: unknown) => {
           throwIfAbort(error);
           toast.error(`Failed to disconnect ${label}`, { id: toastId });

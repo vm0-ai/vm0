@@ -36,7 +36,9 @@ export const zeroRuns = pgTable(
     ),
     // References agent_composes.id of the agent that triggered this run (agent-to-agent delegation)
     triggerAgentId: uuid("trigger_agent_id").references(
-      () => agentComposes.id,
+      () => {
+        return agentComposes.id;
+      },
       { onDelete: "set null" },
     ),
   },

@@ -115,13 +115,17 @@ async function refreshExpiredTokens(
   // where another concurrent request just refreshed the token — the DB expiry
   // looks fresh but encryptedSecrets still has the stale build-time value.
   const toRefreshSet = new Set(toRefresh);
-  const skippedTypes = connectorTypes.filter((ct) => !toRefreshSet.has(ct));
+  const skippedTypes = connectorTypes.filter((ct) => {
+    return !toRefreshSet.has(ct);
+  });
   if (skippedTypes.length > 0) {
     const currentTokens = await Promise.all(
-      skippedTypes.map(async (ct) => ({
-        connectorType: ct,
-        token: await getConnectorAccessToken(ct, run.orgId, auth.userId),
-      })),
+      skippedTypes.map(async (ct) => {
+        return {
+          connectorType: ct,
+          token: await getConnectorAccessToken(ct, run.orgId, auth.userId),
+        };
+      }),
     );
     for (const { connectorType, token } of currentTokens) {
       if (!token) {
@@ -136,10 +140,16 @@ async function refreshExpiredTokens(
     }
   }
 
-  const refreshed = refreshResults.some((r) => r.ok);
+  const refreshed = refreshResults.some((r) => {
+    return r.ok;
+  });
   const failedConnectors = refreshResults
-    .filter((r) => !r.ok)
-    .map((r) => r.connectorType);
+    .filter((r) => {
+      return !r.ok;
+    })
+    .map((r) => {
+      return r.connectorType;
+    });
 
   // Use accurate DB values after refresh; skip extra query if nothing changed
   const finalExpiryMap = refreshed

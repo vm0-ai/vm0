@@ -755,14 +755,18 @@ const prepareUserMessage$ = command(
 
     // Pair attachments with resolved file info, dropping any that failed or haven't started
     const ready = allAttachments
-      .map((a, i) => ({ attachment: a, info: allInfos[i] }))
+      .map((a, i) => {
+        return { attachment: a, info: allInfos[i] };
+      })
       .filter(
         (
           r,
         ): r is {
           attachment: ZeroChatAttachment;
           info: { id: string; url: string };
-        } => r.info !== null,
+        } => {
+          return r.info !== null;
+        },
       );
 
     let fullPrompt = prompt.trim();

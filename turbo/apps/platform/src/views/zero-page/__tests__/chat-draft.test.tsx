@@ -24,9 +24,9 @@ function mockThreads() {
         updatedAt: "2026-03-10T00:00:00Z",
       });
     }),
-    http.get("*/api/zero/chat-threads", () =>
-      HttpResponse.json({ threads: [] }),
-    ),
+    http.get("*/api/zero/chat-threads", () => {
+      return HttpResponse.json({ threads: [] });
+    }),
   );
 }
 
@@ -127,16 +127,18 @@ describe("chat draft persistence across thread navigation", () => {
           updatedAt: "2026-03-10T00:00:00Z",
         });
       }),
-      http.get("*/api/zero/chat-threads", () =>
-        HttpResponse.json({ threads: [] }),
-      ),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
       http.post("*/api/zero/uploads", () => {
         // Signal that the upload request has arrived
         resolveUpload?.();
 
         // Return a promise that we resolve later
         return new Promise<Response>((resolve) => {
-          uploadRequestResolve = (resp) => resolve(resp);
+          uploadRequestResolve = (resp) => {
+            return resolve(resp);
+          };
         });
       }),
     );

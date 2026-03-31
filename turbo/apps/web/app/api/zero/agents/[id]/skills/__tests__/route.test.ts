@@ -314,7 +314,9 @@ describe("Zero Agent Skills API", () => {
       const data = await response.json();
       expect(data).toHaveLength(2);
 
-      const names = data.map((s: { name: string }) => s.name);
+      const names = data.map((s: { name: string }) => {
+        return s.name;
+      });
       expect(names).toContain("skill-one");
       expect(names).toContain("skill-two");
     });
