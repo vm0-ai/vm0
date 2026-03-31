@@ -103,7 +103,7 @@ impl NbdCowDevice {
         // kernel to update the block device capacity.
         //
         // NBD_SET_SIZE = _IO(0xab, 2) = 0xab02
-        const NBD_SET_SIZE: libc::c_ulong = 0xab02;
+        const NBD_SET_SIZE: libc::Ioctl = 0xab02;
         let dev_fd = std::fs::File::open(&device_path)?;
         let ret = unsafe { libc::ioctl(dev_fd.as_raw_fd(), NBD_SET_SIZE, size as libc::c_ulong) };
         drop(dev_fd);
