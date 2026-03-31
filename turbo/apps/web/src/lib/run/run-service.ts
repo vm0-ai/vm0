@@ -1,4 +1,4 @@
-import { eq, and, count, gt, or, sql } from "drizzle-orm";
+import { eq, and, or } from "drizzle-orm";
 import { env } from "../../env";
 import { checkpoints } from "../../db/schema/checkpoint";
 import { agentRuns } from "../../db/schema/agent-run";
@@ -13,28 +13,22 @@ import {
   unauthorized,
   badRequest,
   forbidden,
-  concurrentRunLimit,
   isConcurrentRunLimit,
-  insufficientCredits,
-  noModelProvider,
 } from "../errors";
-import { orgMetadata } from "../../db/schema/org-metadata";
-import { orgMembersMetadata } from "../../db/schema/org-members-metadata";
-import { modelProviders } from "../../db/schema/model-provider";
-import { enqueueRun, drainOrgQueue } from "./run-queue-service";
-import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
+import {
+  checkRunConcurrencyLimit,
+  checkOrgCredits,
+  checkModelProviderConfigured,
+} from "../zero/zero-preflight";
+import { enqueueZeroRun, drainOrgQueue } from "../zero/zero-queue-service";
 import { logger } from "../logger";
-import type { Database } from "../../types/global";
 import type { AgentComposeSnapshot } from "../checkpoint/types";
 import type { AgentComposeYaml } from "../../types/agent-compose";
 import { getAgentSessionWithConversation } from "../agent-session";
 import { prepareForExecution } from "./context/execution-preparer";
 import { executeRunnerJob } from "./executors/runner-executor";
 import type { ExecutorResult, PreparedContext } from "./executors/types";
-import {
-  buildExecutionContext as buildContext,
-  MODEL_PROVIDER_ENV_VARS,
-} from "./build-context";
+import { buildExecutionContext as buildContext } from "./build-context";
 import { generateSandboxToken } from "../auth/sandbox-token";
 import { recordSandboxOperation } from "../metrics";
 import { extractTemplateVars } from "../config-validator";
@@ -54,222 +48,9 @@ import { getOrgData } from "../org/org-cache-service";
 import { agentRunQueue } from "../../db/schema/agent-run-queue";
 import { publishCancelNotification } from "../realtime/client";
 import { processOrgCredits } from "../credit/credit-service";
+import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 
 const log = logger("service:run");
-
-// Defense-in-depth: exclude pending runs older than this from concurrency check.
-// The cleanup-sandboxes cron job already transitions pending runs to "timeout" after 5 minutes,
-// so this TTL only matters if the cron job fails to run.
-export const PENDING_RUN_TTL_MS = 15 * 60 * 1000; // 15 minutes
-
-/** Concurrent run limits by org tier */
-const TIER_CONCURRENCY_LIMITS: Record<OrgTier, number> = {
-  free: 1,
-  pro: 2,
-  team: 5,
-};
-
-function getConcurrencyLimitForTier(tier: OrgTier): number {
-  return TIER_CONCURRENCY_LIMITS[tier];
-}
-
-/**
- * Get the effective concurrency limit for an org tier.
- * Tier-based limit is the baseline; env var acts as a global cap.
- * Returns 0 for unlimited.
- */
-export function getEffectiveConcurrencyLimit(orgTier: OrgTier): number {
-  const tierLimit = getConcurrencyLimitForTier(orgTier);
-  const envCap = env().CONCURRENT_RUN_LIMIT_CAP;
-  if (envCap === 0) return 0;
-  if (envCap !== undefined && !isNaN(envCap))
-    return Math.min(tierLimit, envCap);
-  return tierLimit;
-}
-
-/**
- * Check if org has reached concurrent run limit
- *
- * @param orgId Clerk org ID to check
- * @param orgTier Org tier for tier-based limit (default: "free")
- * @param db Optional database instance (for use within transactions)
- * @throws ConcurrentRunLimitError if limit exceeded
- */
-export async function checkRunConcurrencyLimit(
-  orgId: string,
-  orgTier: OrgTier = "free",
-  db?: Database,
-): Promise<void> {
-  const effectiveLimit = getEffectiveConcurrencyLimit(orgTier);
-
-  // Skip check if limit is 0 (no limit)
-  if (effectiveLimit === 0) {
-    return;
-  }
-
-  const queryDb = db ?? globalThis.services.db;
-
-  // Count active runs: all "running" runs + "pending" runs within TTL
-  const staleThreshold = new Date(Date.now() - PENDING_RUN_TTL_MS);
-
-  const [result] = await queryDb
-    .select({ count: count() })
-    .from(agentRuns)
-    .where(
-      and(
-        eq(agentRuns.orgId, orgId),
-        or(
-          eq(agentRuns.status, "running"),
-          and(
-            eq(agentRuns.status, "pending"),
-            gt(agentRuns.createdAt, staleThreshold),
-          ),
-        ),
-      ),
-    );
-
-  const activeRunCount = Number(result?.count ?? 0);
-
-  if (activeRunCount >= effectiveLimit) {
-    log.debug(
-      `Org ${orgId} has ${activeRunCount} active runs, limit is ${effectiveLimit}`,
-    );
-    throw concurrentRunLimit();
-  }
-}
-
-/**
- * Check if the org has sufficient credits for a VM0 provider run.
- *
- * Only blocks runs using the VM0 managed provider (where the platform
- * bears API costs). Runs using the org's own API key are not affected.
- *
- * Uses lazy resolution: the org default provider is only queried
- * when modelProvider is null AND credits are already depleted.
- * The query runs within the caller's transaction to preserve
- * advisory lock guarantees.
- */
-async function checkOrgCredits(
-  orgId: string,
-  userId: string,
-  modelProvider: string | null | undefined,
-  db: Database,
-): Promise<void> {
-  // Explicit non-VM0 provider — skip check entirely
-  if (modelProvider && modelProvider !== "vm0") {
-    return;
-  }
-
-  // Determine if this is a VM0 run
-  let isVm0 = modelProvider === "vm0";
-
-  if (!isVm0 && !modelProvider) {
-    // Resolve org default provider to determine if this is a VM0 run
-    const [defaultProvider] = await db
-      .select({ type: modelProviders.type })
-      .from(modelProviders)
-      .where(
-        and(
-          eq(modelProviders.orgId, orgId),
-          eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-          eq(modelProviders.isDefault, true),
-        ),
-      )
-      .limit(1);
-    isVm0 = defaultProvider?.type === "vm0";
-  }
-
-  // Per-member credit cap check — only for VM0 runs
-  if (isVm0) {
-    const [memberRow] = await db
-      .select({ creditEnabled: orgMembersMetadata.creditEnabled })
-      .from(orgMembersMetadata)
-      .where(
-        and(
-          eq(orgMembersMetadata.orgId, orgId),
-          eq(orgMembersMetadata.userId, userId),
-        ),
-      )
-      .limit(1);
-
-    if (memberRow?.creditEnabled === false) {
-      throw insufficientCredits();
-    }
-  }
-
-  // Read credits from org_metadata
-  const [orgRow] = await db
-    .select({ credits: orgMetadata.credits })
-    .from(orgMetadata)
-    .where(eq(orgMetadata.orgId, orgId))
-    .limit(1);
-
-  // No org row → treat as sufficient (new org, default 10000 credits)
-  if (!orgRow) {
-    return;
-  }
-
-  // Credits > 0 → sufficient for any provider
-  if (orgRow.credits > 0) {
-    return;
-  }
-
-  // Credits <= 0 and VM0 run — insufficient
-  if (isVm0) {
-    throw insufficientCredits();
-  }
-
-  // Effective provider is not VM0 — skip check
-}
-
-/**
- * Pre-INSERT check: ensure the org has a model provider configured.
- * Skips the check when:
- * - The compose has explicit model provider env vars (e.g. ANTHROPIC_API_KEY)
- * - An explicit modelProvider param is provided (validated later in build-context)
- * - The framework doesn't use model providers (non-claude-code)
- */
-async function checkModelProviderConfigured(
-  orgId: string,
-  modelProvider: string | null | undefined,
-  composeContent: AgentComposeYaml,
-  db: Database,
-): Promise<void> {
-  // Explicit modelProvider param provided — skip (will be validated in build-context)
-  if (modelProvider) return;
-
-  // Extract framework and environment from first agent
-  const firstAgent = composeContent.agents
-    ? Object.values(composeContent.agents)[0]
-    : undefined;
-  const framework = firstAgent?.framework || "claude-code";
-
-  // Only claude-code framework needs provider resolution
-  if (framework !== "claude-code") return;
-
-  // If compose has explicit model provider env vars, skip check
-  const hasExplicitConfig = MODEL_PROVIDER_ENV_VARS.some(
-    (v) => firstAgent?.environment?.[v] !== undefined,
-  );
-  if (hasExplicitConfig) return;
-
-  // Check if org has a default model provider (within transaction)
-  const [defaultProvider] = await db
-    .select({ type: modelProviders.type })
-    .from(modelProviders)
-    .where(
-      and(
-        eq(modelProviders.orgId, orgId),
-        eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-        eq(modelProviders.isDefault, true),
-      ),
-    )
-    .limit(1);
-
-  if (!defaultProvider) {
-    throw noModelProvider();
-  }
-}
 
 /**
  * Validate a checkpoint for resume operation
@@ -472,6 +253,10 @@ export interface CreateRunParams {
   // Per-permission firewall policies from zero agent configuration.
   firewallPolicies?: FirewallPolicies;
   allowedConnectorTypes?: ConnectorType[];
+
+  // When set, createRunRecord() UPDATEs the existing run (dequeued by drain)
+  // instead of INSERTing a new one. Status guard prevents overwriting cancels.
+  existingRunId?: string;
 }
 
 /**
@@ -683,9 +468,6 @@ async function registerCallbacks(
 /**
  * Mark a run as failed, dispatch terminal side effects, and attach run
  * metadata to the error for callers.
- *
- * @param drain - Optional queue drain function. Injected by callers to release
- *   concurrency slots when a run that occupied one fails during dispatch.
  */
 async function markRunFailed(
   runId: string,
@@ -720,7 +502,10 @@ async function markRunFailed(
 
 /**
  * Shared dispatch pipeline for steps 6-10 of the run creation flow.
- * Used by both createRun (new runs) and dispatchQueuedRun (dequeued runs).
+ * Used by both createRun (new runs) and the zero-layer drain path (dequeued runs).
+ *
+ * @param opts.drain - Optional queue drain function. Injected by callers to release
+ *   concurrency slots when a run that occupied one fails during dispatch.
  */
 export async function buildAndDispatchRun(opts: {
   runId: string;
@@ -731,11 +516,7 @@ export async function buildAndDispatchRun(opts: {
   orgId: string;
   authorizeTime: number;
   transactionTime: number;
-  queueDispatcher?: (
-    runId: string,
-    createdAt: Date,
-    params: CreateRunParams,
-  ) => Promise<void>;
+  drain?: () => Promise<void>;
 }): Promise<{ status: RunStatus; sandboxId?: string }> {
   const {
     runId,
@@ -883,13 +664,7 @@ export async function buildAndDispatchRun(opts: {
     log.debug(`Run ${runId} dispatched with status: ${result.status}`);
     return result;
   } catch (error) {
-    const dispatcher = opts.queueDispatcher ?? dispatchQueuedRun;
-    await markRunFailed(
-      runId,
-      createdAt,
-      error,
-      orgId ? () => drainOrgQueue(orgId, dispatcher) : undefined,
-    );
+    await markRunFailed(runId, createdAt, error, opts.drain);
     throw error;
   }
 }
@@ -1058,8 +833,7 @@ export async function startRun(
   const orgData = await getOrgData(authOrgId);
   const orgTier = orgTierSchema.parse(orgData.tier);
 
-  // 4. Delegate to createRun with fully resolved params
-  return createRun({
+  const runParams: CreateRunParams = {
     userId: params.userId,
     agentComposeVersionId: resolved.agentComposeVersionId,
     prompt: params.prompt,
@@ -1087,7 +861,48 @@ export async function startRun(
     allowedConnectorTypes: params.allowedConnectorTypes,
     orgId: authOrgId,
     orgTier,
+  };
+
+  // 4. Pre-flight checks (logic lives in zero-preflight.ts)
+  try {
+    await checkRunConcurrencyLimit(authOrgId, orgTier);
+  } catch (error) {
+    if (isConcurrentRunLimit(error)) {
+      return enqueueZeroRun(runParams);
+    }
+    throw error;
+  }
+  await checkOrgCredits(authOrgId, params.userId, params.modelProvider);
+
+  // 5. Create run record
+  const record = await createRunRecord(runParams);
+
+  // 6. Model provider check (needs compose content from record)
+  await checkModelProviderConfigured(
+    authOrgId,
+    params.modelProvider,
+    record.composeContent,
+  );
+
+  // 7. Dispatch
+  const result = await buildAndDispatchRun({
+    runId: record.run.id,
+    createdAt: record.run.createdAt,
+    params: runParams,
+    composeContent: record.composeContent,
+    orgId: record.orgId,
+    apiStartTime: record.apiStartTime,
+    authorizeTime: record.authorizeTime,
+    transactionTime: record.transactionTime,
+    drain: () => drainOrgQueue(authOrgId),
   });
+
+  return {
+    runId: record.run.id,
+    status: result.status,
+    sandboxId: result.sandboxId,
+    createdAt: record.run.createdAt,
+  };
 }
 
 /**
@@ -1106,21 +921,23 @@ interface CreateRunRecordResult {
 /**
  * Create a run record without dispatching.
  *
- * Handles steps 1-5 of the run creation pipeline:
+ * Handles steps 1-4 of the run creation pipeline:
  * 1. Load compose version content + compose metadata
  * 2. Permission check (canAccessCompose)
  * 3. Validate template vars and image access
- * 4. Validate mutual exclusivity (checkpointId vs sessionId)
- * 5. Acquire per-org advisory lock, check concurrent run limit, INSERT agentRuns (atomic transaction)
+ * 4. INSERT new run record (or UPDATE existing when existingRunId is set)
  *
- * Returns the run record and compose content needed by buildAndDispatchRun().
- * Does NOT handle the enqueueRun() fallback — callers decide how to handle
- * ConcurrentRunLimitError.
+ * Pre-flight checks (concurrency, credits, model provider) are the caller's
+ * responsibility — they live in the zero layer (zero-preflight.ts) so that
+ * the infra layer remains a pure execution engine.
+ *
+ * When existingRunId is set (dequeued runs), UPDATEs the existing record
+ * instead of INSERTing. Status guard (status = "pending") prevents
+ * overwriting a run that was cancelled while queued.
  *
  * @throws ForbiddenError - user cannot access compose
  * @throws BadRequestError - validation failure (missing vars, mutual exclusivity)
  * @throws NotFoundError - compose version not found
- * @throws ConcurrentRunLimitError - org has reached concurrent run limit
  */
 export async function createRunRecord(
   params: CreateRunParams,
@@ -1154,32 +971,35 @@ export async function createRunRecord(
     );
   }
 
-  // Org context for the run record and storage (required from caller)
   const orgId = params.orgId;
 
-  // Step 5: Concurrency check + INSERT in a transaction with advisory lock
-  // to prevent TOCTOU race where two concurrent requests both pass the
-  // concurrency check before either inserts.
-  const run = await globalThis.services.db.transaction(async (tx) => {
-    // Acquire per-org advisory lock (released when transaction ends)
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${orgId}))`);
+  let run: { id: string; createdAt: Date };
 
-    // Check concurrent run limit within the serialized transaction
-    await checkRunConcurrencyLimit(orgId, params.orgTier ?? "free", tx);
+  if (params.existingRunId) {
+    // Dequeued path: UPDATE existing record. Status guard prevents
+    // overwriting a run that was cancelled between dequeue and dispatch.
+    const [updated] = await globalThis.services.db
+      .update(agentRuns)
+      .set({
+        lastHeartbeatAt: new Date(),
+      })
+      .where(
+        and(
+          eq(agentRuns.id, params.existingRunId),
+          eq(agentRuns.status, "pending"),
+        ),
+      )
+      .returning({ id: agentRuns.id, createdAt: agentRuns.createdAt });
 
-    // Check credit balance for VM0 provider runs
-    await checkOrgCredits(orgId, userId, params.modelProvider, tx);
-
-    // Check model provider is configured (pre-INSERT to avoid ghost run records)
-    await checkModelProviderConfigured(
-      orgId,
-      params.modelProvider,
-      composeContent,
-      tx,
-    );
-
-    // INSERT within the same transaction
-    const [newRun] = await tx
+    if (!updated) {
+      throw badRequest(
+        `Run ${params.existingRunId} cannot be dispatched: status has changed`,
+      );
+    }
+    run = updated;
+  } else {
+    // Direct path: INSERT new record
+    const [newRun] = await globalThis.services.db
       .insert(agentRuns)
       .values({
         userId,
@@ -1200,9 +1020,8 @@ export async function createRunRecord(
     if (!newRun) {
       throw new Error("Failed to create run record");
     }
-
-    return newRun;
-  });
+    run = newRun;
+  }
 
   const transactionTime = Date.now();
   log.debug(`Created run ${run.id} for user ${userId}`);
@@ -1221,8 +1040,11 @@ export async function createRunRecord(
  * Low-level run creation pipeline (requires pre-resolved version + org).
  *
  * Composes createRunRecord() + buildAndDispatchRun() into a single call.
- * Handles the enqueueRun() fallback when the org hits the concurrent run limit.
- * Prefer startRun() unless you need checkpoint/session resume or custom params.
+ * Pre-flight checks (concurrency, credits, model provider) and enqueue
+ * fallback are the caller's responsibility (zero layer).
+ *
+ * @param params.existingRunId - When set (dequeued runs), UPDATEs existing record
+ * @param drain - Optional queue drain function for failure recovery
  *
  * @throws ForbiddenError - user cannot access compose
  * @throws BadRequestError - validation failure (missing vars, mutual exclusivity)
@@ -1231,16 +1053,9 @@ export async function createRunRecord(
  */
 export async function createRun(
   params: CreateRunParams,
+  drain?: () => Promise<void>,
 ): Promise<CreateRunResult> {
-  let record: CreateRunRecordResult;
-  try {
-    record = await createRunRecord(params);
-  } catch (error) {
-    if (isConcurrentRunLimit(error)) {
-      return enqueueRun(params);
-    }
-    throw error;
-  }
+  const record = await createRunRecord(params);
 
   const result = await buildAndDispatchRun({
     runId: record.run.id,
@@ -1251,6 +1066,7 @@ export async function createRun(
     orgId: record.orgId,
     authorizeTime: record.authorizeTime,
     transactionTime: record.transactionTime,
+    drain,
   });
 
   return {
@@ -1259,64 +1075,6 @@ export async function createRun(
     sandboxId: result.sandboxId,
     createdAt: record.run.createdAt,
   };
-}
-
-/**
- * Dispatch a previously queued run that has already been dequeued and
- * transitioned to "pending" by drainOrgQueue().
- *
- * Loads compose content, authorizes, and dispatches. Does NOT acquire
- * advisory lock or check concurrency — that is handled atomically in
- * the drain transaction.
- *
- * Called from drainOrgQueue() after the atomic dequeue + status update.
- */
-export async function dispatchQueuedRun(
-  runId: string,
-  createdAt: Date,
-  params: CreateRunParams,
-  queueDispatcher?: (
-    runId: string,
-    createdAt: Date,
-    params: CreateRunParams,
-  ) => Promise<void>,
-): Promise<void> {
-  const apiStartTime = Date.now();
-  const { userId, agentComposeVersionId } = params;
-  const transactionTime = apiStartTime; // No separate transaction step
-
-  log.debug(`Dispatching queued run ${runId} for user ${userId}`);
-
-  // Load compose and authorize
-  const { composeContent, compose: queuedCompose } = await loadCompose(
-    agentComposeVersionId,
-    params.composeId,
-  );
-  authorizeCompose(userId, params.orgId, queuedCompose);
-  const authorizeTime = Date.now();
-
-  // Validate template vars and image access (for new runs only)
-  if (!params.checkpointId && !params.sessionId) {
-    await validateComposeRequirements(
-      userId,
-      composeContent,
-      params.orgId,
-      params.vars,
-      params.checkEnv,
-    );
-  }
-
-  await buildAndDispatchRun({
-    runId,
-    createdAt,
-    params,
-    composeContent,
-    apiStartTime,
-    orgId: params.orgId,
-    authorizeTime,
-    transactionTime,
-    queueDispatcher,
-  });
 }
 
 /**
@@ -1432,14 +1190,13 @@ export async function cancelRun(
 /**
  * Dispatch post-cancellation side effects (Ably notification, callbacks, queue drain, credits).
  * Designed to be called inside `after()` so it runs after the response is sent.
+ *
+ * @param drain - Optional queue drain function. Injected by callers (zero layer)
+ *   so infra never imports queue logic.
  */
 export async function dispatchCancelSideEffects(
   result: CancelRunResult,
-  queueDispatcher: (
-    runId: string,
-    createdAt: Date,
-    params: CreateRunParams,
-  ) => Promise<void> = dispatchQueuedRun,
+  drain?: () => Promise<void>,
 ): Promise<void> {
   const log = logger("service:run:cancel");
 
@@ -1462,9 +1219,7 @@ export async function dispatchCancelSideEffects(
     result.runId,
     "cancelled",
     "Run cancelled",
-    shouldDrain
-      ? () => drainOrgQueue(result.orgId, queueDispatcher)
-      : undefined,
+    shouldDrain ? drain : undefined,
   );
 
   if (shouldDrain) {

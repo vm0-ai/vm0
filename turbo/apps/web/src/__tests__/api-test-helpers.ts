@@ -3023,6 +3023,15 @@ export async function insertOrgDefaultModelProvider(
 }
 
 /**
+ * Delete all model providers for an org.
+ */
+export async function deleteOrgModelProviders(orgId: string): Promise<void> {
+  await globalThis.services.db
+    .delete(modelProviders)
+    .where(eq(modelProviders.orgId, orgId));
+}
+
+/**
  * Ensure an org row exists in the `org` table.
  * Inserts with defaults if missing, does nothing if already present.
  */
@@ -3538,8 +3547,9 @@ export async function seedTestSkill(
  * Feature-flagged connectors are excluded to match buildComposeContent behaviour.
  */
 export async function seedSeedSkills(): Promise<void> {
-  const { SEED_SKILLS, buildSeedSkillValues } =
-    await import("../lib/zero/seed-skills");
+  const { SEED_SKILLS, buildSeedSkillValues } = await import(
+    "../lib/zero/seed-skills"
+  );
   const { CONNECTOR_TYPES } = await import("@vm0/core");
   initServices();
   const gaConnectorTypes = Object.entries(CONNECTOR_TYPES)

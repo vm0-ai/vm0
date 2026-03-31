@@ -10,7 +10,7 @@ import {
   createTestVariable,
   findTestRunnerJobEntry,
 } from "../../../__tests__/api-test-helpers";
-import { createRun, type CreateRunParams } from "../run-service";
+import { startRun, createRun, type CreateRunParams } from "../run-service";
 import { upsertOrgModelProvider } from "../../model-provider/model-provider-service";
 import { upsertSecretByOrg } from "../../secret/secret-service";
 import { setVariable } from "../../variable/variable-service";
@@ -71,9 +71,11 @@ describe("Org-Level Runtime Resolution", () => {
       });
 
       await expect(
-        createRun(
-          baseParams({ agentComposeVersionId: noKeyCompose.versionId }),
-        ),
+        startRun({
+          userId: user.userId,
+          agentComposeVersionId: noKeyCompose.versionId,
+          prompt: "No provider test",
+        }),
       ).rejects.toSatisfy(isNoModelProvider);
     });
   });
