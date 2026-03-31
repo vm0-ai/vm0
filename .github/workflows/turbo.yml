@@ -940,8 +940,8 @@ jobs:
               -H "Authorization: Bearer ${CLERK_SECRET_KEY}" > /dev/null
           done
 
-          # Create 3 test users + orgs
-          for variant in browser serial runner; do
+          # Create test users + orgs (browser is created via UI sign-up flow)
+          for variant in serial runner; do
             email="${JOB_REF}+clerk_test+${variant}@vm0-e2e.ai"
             user=$(curl -sS -X POST "https://api.clerk.com/v1/users" \
               -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
@@ -1127,9 +1127,6 @@ jobs:
           node-version: 22
       - name: Install E2E dependencies
         run: npm install -g agent-browser@0.22.0
-      - name: Generate random email for browser sign-up test
-        id: browser-email
-        run: echo "hex=$(openssl rand -hex 4)" >> "$GITHUB_OUTPUT"
       - name: Run browser E2E tests
         run: |
           BATS_TEST_TIMEOUT=180 ./e2e/test/libs/bats/bin/bats -T ./e2e/tests/02-browser/*.bats
@@ -1137,7 +1134,7 @@ jobs:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          E2E_ACCOUNT: ${{ needs.prepare.outputs.job-ref }}+clerk_test@${{ steps.browser-email.outputs.hex }}.test
+          E2E_ACCOUNT: ${{ needs.prepare.outputs.job-ref }}+clerk_test+browser@vm0-e2e.ai
       - name: Cleanup test accounts
         if: always()
         env:
@@ -1818,6 +1815,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           CI_GITHUB_TOKEN: ${{ github.token }}
+          E2E_RUNNER_EMAIL: ${{ needs.prepare.outputs.job-ref }}+clerk_test+runner@vm0-e2e.ai
 
       - name: Print E2E trace log
         if: always()
