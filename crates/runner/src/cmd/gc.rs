@@ -11,10 +11,6 @@ use crate::error::{RunnerError, RunnerResult};
 use crate::lock;
 use crate::paths::{HomePaths, LogPaths};
 
-/// Default upper bound for NBD device indices when `/sys/module/nbd/parameters/nbds_max`
-/// is unreadable (e.g. module not loaded).
-const NBD_DEFAULT_MAX: u32 = 256;
-
 /// Artifacts younger than this are unconditionally kept, regardless of lock
 /// status or `--keep-latest`. This prevents races between `runner build`
 /// releasing its lock and `runner start` acquiring a shared lock.
@@ -471,34 +467,15 @@ async fn gc_versions(home: &HomePaths, dry_run: bool) -> RunnerResult<Vec<String
     Ok(removed)
 }
 
-/// Read the maximum number of NBD devices from the kernel module parameter.
-fn read_nbds_max() -> u32 {
-    std::fs::read_to_string("/sys/module/nbd/parameters/nbds_max")
-        .ok()
-        .and_then(|s| s.trim().parse::<u32>().ok())
-        .unwrap_or(NBD_DEFAULT_MAX)
-}
-
-/// Parse the PID from `/sys/block/nbd{i}/pid`. Returns `None` if the file
-/// doesn't exist, is empty, or contains a non-positive value (-1, 0).
-fn read_nbd_pid(device_index: u32) -> Option<u32> {
-    let content = std::fs::read_to_string(format!("/sys/block/nbd{device_index}/pid")).ok()?;
-    let trimmed = content.trim();
-    if trimmed.is_empty() || trimmed == "-1" || trimmed == "0" {
-        return None;
-    }
-    trimmed.parse::<u32>().ok()
-}
-
 /// Scan for NBD devices whose owning process has exited (orphans) and
 /// optionally disconnect them. Returns the number of orphans found.
 async fn gc_nbd_orphans(dry_run: bool) -> RunnerResult<u32> {
     let (max_devs, orphans) = tokio::task::spawn_blocking(|| {
-        let max_devs = read_nbds_max();
+        let max_devs = super::nbd::read_nbds_max();
         let mut orphans: Vec<(u32, u32)> = Vec::new();
 
         for i in 0..max_devs {
-            if let Some(pid) = read_nbd_pid(i)
+            if let Some(pid) = super::nbd::read_nbd_pid(i)
                 && !Path::new(&format!("/proc/{pid}")).exists()
             {
                 orphans.push((i, pid));
@@ -1135,14 +1112,14 @@ mod tests {
     #[test]
     fn read_nbd_pid_nonexistent_device() {
         // A device index that almost certainly doesn't exist.
-        assert!(read_nbd_pid(9999).is_none());
+        assert!(crate::cmd::nbd::read_nbd_pid(9999).is_none());
     }
 
     #[test]
     fn read_nbds_max_returns_default_without_module() {
         // When the NBD module is not loaded, the function should return the default.
         // On CI this is expected; on a host with NBD it returns the actual value.
-        let max = read_nbds_max();
+        let max = crate::cmd::nbd::read_nbds_max();
         assert!(max > 0);
     }
 }

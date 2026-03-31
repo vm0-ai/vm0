@@ -6,6 +6,7 @@ mod exec;
 mod gc;
 mod kill;
 mod local;
+mod nbd;
 mod rootfs;
 mod service;
 mod setup;
