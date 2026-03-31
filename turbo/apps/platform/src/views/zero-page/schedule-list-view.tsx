@@ -279,35 +279,35 @@ function ScheduleListCard<T extends ScheduleEntry>({
         </div>
       </div>
 
-      {/* Bottom row: schedule time + status toggle */}
-      <div className="flex items-center justify-between gap-2">
-        <span
-          className={cn(
-            "text-sm text-muted-foreground tabular-nums truncate",
-            dimmed && "text-muted-foreground/80",
-          )}
-        >
-          {entry.time}
-          {entry.timezone && (
-            <span className="text-muted-foreground/70">
-              {" "}
-              · {entry.timezone.replace(/_/g, " ")}
-            </span>
-          )}
-        </span>
-        {onToggle && (
-          <div onClick={(e) => e.stopPropagation()}>
-            <LoadingSwitch
-              checked={entry.enabled !== false}
-              loading={toggling}
-              onCheckedChange={(checked) => {
-                onToggle(entry, checked);
-              }}
-              ariaLabel={`${entry.enabled !== false ? "Disable" : "Enable"} ${entry.time}`}
-            />
-          </div>
+      {/* Time row */}
+      <span
+        className={cn(
+          "text-sm text-muted-foreground tabular-nums truncate",
+          dimmed && "text-muted-foreground/80",
         )}
-      </div>
+      >
+        {entry.time}
+        {entry.timezone && (
+          <span className="text-muted-foreground/70">
+            {" "}
+            · {entry.timezone.replace(/_/g, " ")}
+          </span>
+        )}
+      </span>
+
+      {/* Toggle row */}
+      {onToggle && (
+        <div onClick={(e) => e.stopPropagation()}>
+          <LoadingSwitch
+            checked={entry.enabled !== false}
+            loading={toggling}
+            onCheckedChange={(checked) => {
+              onToggle(entry, checked);
+            }}
+            ariaLabel={`${entry.enabled !== false ? "Disable" : "Enable"} ${entry.time}`}
+          />
+        </div>
+      )}
     </div>
   );
 }
