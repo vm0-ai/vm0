@@ -1251,7 +1251,7 @@ export function ZeroSidebar() {
   if (collapsed) {
     return (
       <VM0ClerkProvider>
-        <aside className="zero-nav box-border flex h-full w-16 shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar px-2 transition-all duration-300">
+        <aside className="zero-nav box-border hidden md:flex h-full w-16 shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar px-2 transition-all duration-300">
           {/* Expand — same row pattern as every nav icon (centered in content column) */}
           <div className="flex w-full shrink-0 justify-center pt-3 pb-1">
             <TooltipProvider delayDuration={200}>
