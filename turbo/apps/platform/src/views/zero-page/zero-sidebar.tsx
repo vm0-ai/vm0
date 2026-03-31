@@ -41,7 +41,16 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
+  Button,
 } from "@vm0/ui";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@vm0/ui/components/ui/dialog";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
 import slackIcon from "./components/settings/icons/slack.svg";
 import { clerk$, user$ } from "../../signals/auth.ts";
@@ -449,42 +458,93 @@ function ChatThreadItem({
 }) {
   const setDelete = useSet(deleteChatThread$);
   const pageSignal = useGet(pageSignal$);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
-  function handleDelete(e: React.MouseEvent) {
+  function handleDeleteClick(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
+    setConfirmOpen(true);
+  }
+
+  function confirmDelete() {
+    setConfirmOpen(false);
     detach(setDelete(session.id, pageSignal), Reason.DomCallback);
   }
 
   return (
-    <Link
-      pathname="/chat/:chatThreadId"
-      options={{ pathParams: { chatThreadId: session.id } }}
-      onClick={(e) => {
-        if (e.metaKey || e.ctrlKey || e.shiftKey) {
-          return;
-        }
-        e.preventDefault();
-        onSelect?.(session.id);
-      }}
-      className={`group/thread flex h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors ${
-        isSelected
-          ? "bg-gray-200 text-gray-900 font-medium"
-          : "text-sidebar-foreground hover:bg-sidebar-accent"
-      }`}
-    >
-      <span className="truncate min-w-0 flex-1">
-        {session.preview ?? "New chat"}
-      </span>
-      <button
-        type="button"
-        onClick={handleDelete}
-        className="shrink-0 hidden group-hover/thread:flex items-center justify-center h-5 w-5 rounded text-sidebar-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-colors"
-        aria-label="Delete chat"
+    <>
+      <div className="group relative">
+        <Link
+          pathname="/chat/:chatThreadId"
+          options={{ pathParams: { chatThreadId: session.id } }}
+          onClick={(e) => {
+            if (e.metaKey || e.ctrlKey || e.shiftKey) {
+              return;
+            }
+            e.preventDefault();
+            onSelect?.(session.id);
+          }}
+          className={`flex h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors ${
+            isSelected
+              ? "bg-gray-200 text-gray-900 font-medium"
+              : "text-sidebar-foreground hover:bg-sidebar-accent"
+          }`}
+        >
+          <span className="truncate min-w-0 flex-1">
+            {session.preview ?? "New chat"}
+          </span>
+        </Link>
+        <div className="absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={handleDeleteClick}
+                  className={`flex h-6 w-6 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible transition-opacity duration-150 ${
+                    isSelected
+                      ? "text-slate-500 hover:text-slate-900 hover:bg-slate-300"
+                      : "text-sidebar-foreground/80 hover:text-foreground hover:bg-sidebar-foreground/10"
+                  }`}
+                  aria-label="Delete chat"
+                >
+                  <IconTrash size={12} stroke={2} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p className="text-xs">Delete chat</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+      </div>
+      <Dialog
+        open={confirmOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setConfirmOpen(false);
+          }
+        }}
       >
-        <IconTrash size={13} stroke={2} />
-      </button>
-    </Link>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete chat?</DialogTitle>
+            <DialogDescription>
+              This will permanently delete this chat. This action cannot be
+              undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={confirmDelete}>
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

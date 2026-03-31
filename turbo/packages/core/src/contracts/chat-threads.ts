@@ -117,12 +117,12 @@ export const chatThreadByIdContract = c.router({
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string() }),
     responses: {
-      204: z.void(),
+      204: c.noBody(),
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Delete a chat thread",
-    body: z.void(),
+    body: c.noBody(),
   },
 });
 

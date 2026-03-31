@@ -322,7 +322,6 @@ export const deleteChatThread$ = command(
     const client = get(zeroClient$)(chatThreadByIdContract);
     const result = await client.delete({
       params: { id: threadId },
-      body: undefined,
     });
     signal.throwIfAborted();
 
@@ -335,12 +334,13 @@ export const deleteChatThread$ = command(
     }
 
     toast.success("Chat deleted");
-    set(reloadChatThreadList$, (n) => n + 1);
 
-    // If the user is viewing the deleted thread, navigate to landing page
+    // Navigate away first so currentChatThread$ won't re-fetch the deleted thread
     if (get(chatThreadId$) === threadId) {
       set(detachedNavigateTo$, "/");
     }
+
+    set(reloadChatThreadList$, (n) => n + 1);
   },
 );
 

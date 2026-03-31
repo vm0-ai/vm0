@@ -325,6 +325,29 @@ describe("DELETE /api/zero/chat-threads/:id - Delete Thread", () => {
     expect(listData.threads).toHaveLength(0);
   });
 
+  it("should return 204 with no body (no content-type: application/json)", async () => {
+    const createResponse = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId, title: "No body" }),
+      }),
+    );
+    const { id: threadId } = await createResponse.json();
+
+    const deleteResponse = await DELETE(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}`,
+        { method: "DELETE" },
+      ),
+    );
+    expect(deleteResponse.status).toBe(204);
+    // The contract uses c.noBody() so the response must not have a JSON
+    // content-type header — otherwise ts-rest clients crash parsing empty body.
+    const ct = deleteResponse.headers.get("content-type");
+    expect(ct === null || !ct.includes("application/json")).toBe(true);
+  });
+
   it("should not allow deleting another user's thread", async () => {
     // Create a thread as user 1
     const createResponse = await POST(
