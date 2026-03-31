@@ -45,8 +45,6 @@ impl NbdCowDevice {
     /// 3. Spawns dispatch tasks for each connection
     /// 4. Connects via netlink
     pub async fn create(base_image: &Path, cow_file: &Path, size: u64) -> Result<Self> {
-        let device_index = netlink::find_free_device()?;
-        let device_path = PathBuf::from(format!("/dev/nbd{device_index}"));
         let shutdown = CancellationToken::new();
 
         // Create COW layer
@@ -77,15 +75,19 @@ impl NbdCowDevice {
             server_handles.push(handle);
         }
 
-        // Connect via netlink — on failure, abort spawned tasks so they don't
-        // leak as detached (they would exit on EOF anyway, but this is cleaner).
-        if let Err(e) = netlink::connect(device_index, &client_fds, size, BLOCK_SIZE as u64) {
-            shutdown.cancel();
-            for handle in server_handles {
-                handle.abort();
+        // Atomically find a free device and connect — retries on EBUSY so
+        // concurrent runners don't race for the same device index.
+        let device_index = match netlink::find_and_connect(&client_fds, size, BLOCK_SIZE as u64) {
+            Ok(idx) => idx,
+            Err(e) => {
+                shutdown.cancel();
+                for handle in server_handles {
+                    handle.abort();
+                }
+                return Err(e);
             }
-            return Err(e);
-        }
+        };
+        let device_path = PathBuf::from(format!("/dev/nbd{device_index}"));
 
         Ok(Self {
             device_index,

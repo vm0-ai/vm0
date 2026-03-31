@@ -58,82 +58,78 @@ pub fn create_socketpair() -> Result<(OwnedFd, OwnedFd)> {
     Ok(unsafe { (OwnedFd::from_raw_fd(fd0), OwnedFd::from_raw_fd(fd1)) })
 }
 
-/// Find a free NBD device by scanning `/sys/block/nbdN/pid`.
-///
-/// A device is free if its pid file contains "0" or "-1" or does not exist.
-pub fn find_free_device() -> Result<u32> {
-    for i in 0..256u32 {
-        let pid_path = format!("/sys/block/nbd{i}/pid");
-        let path = Path::new(&pid_path);
+/// Read the kernel's nbds_max parameter to know how many devices are available.
+fn nbds_max() -> u32 {
+    std::fs::read_to_string("/sys/module/nbd/parameters/nbds_max")
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(256)
+}
 
-        if !path.exists() {
-            // Device exists in kernel but no pid file -> free
-            // But first check if the device node exists
-            let dev_path = format!("/dev/nbd{i}");
-            if Path::new(&dev_path).exists() {
-                return Ok(i);
-            }
+/// Check if a device index appears free by inspecting its pid file.
+fn device_appears_free(index: u32) -> bool {
+    let pid_path = format!("/sys/block/nbd{index}/pid");
+    let path = Path::new(&pid_path);
+
+    if !path.exists() {
+        // No pid file — free if the device node exists
+        return Path::new(&format!("/dev/nbd{index}")).exists();
+    }
+
+    match std::fs::read_to_string(path) {
+        Ok(contents) => {
+            let pid = contents.trim();
+            pid == "-1" || pid == "0" || pid.is_empty()
+        }
+        Err(_) => true, // Can't read pid file → assume free
+    }
+}
+
+/// Atomically find a free NBD device and connect it.
+///
+/// Iterates candidate devices, attempts `connect` on each one that appears free.
+/// If the kernel returns EBUSY (another process grabbed it first), tries the next
+/// device. This eliminates the TOCTOU race between find and connect.
+///
+/// Returns the device index on success.
+pub fn find_and_connect(client_fds: &[OwnedFd], size: u64, block_size: u64) -> Result<u32> {
+    let max = nbds_max();
+
+    let sock = open_genl_socket()?;
+    let family_id = resolve_nbd_family(&sock)?;
+
+    // Build socket attributes once (reused across attempts)
+    let sockets_nla = build_sockets_nla(client_fds);
+    let flags = NBD_FLAG_HAS_FLAGS | NBD_FLAG_CAN_MULTI_CONN;
+
+    for i in 0..max {
+        if !device_appears_free(i) {
             continue;
         }
 
-        match std::fs::read_to_string(path) {
-            Ok(contents) => {
-                let pid = contents.trim();
-                if pid == "-1" || pid == "0" || pid.is_empty() {
-                    return Ok(i);
-                }
+        // Build per-device attributes
+        let mut attrs = Vec::new();
+        attrs.extend_from_slice(&build_nla(NBD_ATTR_INDEX, &i.to_ne_bytes()));
+        attrs.extend_from_slice(&build_nla(NBD_ATTR_SIZE_BYTES, &size.to_ne_bytes()));
+        attrs.extend_from_slice(&build_nla(
+            NBD_ATTR_BLOCK_SIZE_BYTES,
+            &block_size.to_ne_bytes(),
+        ));
+        attrs.extend_from_slice(&build_nla(NBD_ATTR_SERVER_FLAGS, &flags.to_ne_bytes()));
+        attrs.extend_from_slice(&sockets_nla);
+
+        send_genl_msg(&sock, family_id, NBD_CMD_CONNECT, &attrs)?;
+        match recv_genl_ack(&sock) {
+            Ok(()) => return Ok(i),
+            Err(NbdCowError::NetlinkErrno { errno, .. }) if errno == libc::EBUSY => {
+                // Device was grabbed by another process — try next
+                continue;
             }
-            Err(_) => {
-                // Can't read pid file -> assume free
-                return Ok(i);
-            }
+            Err(e) => return Err(e),
         }
     }
 
     Err(NbdCowError::NoFreeDevice)
-}
-
-/// Connect an NBD device via generic netlink.
-///
-/// This passes the client-side socket fds to the kernel, which takes ownership
-/// of them for the NBD device's I/O.
-pub fn connect(
-    device_index: u32,
-    client_fds: &[OwnedFd],
-    size: u64,
-    block_size: u64,
-) -> Result<()> {
-    let sock = open_genl_socket()?;
-    let family_id = resolve_nbd_family(&sock)?;
-    let flags = NBD_FLAG_HAS_FLAGS | NBD_FLAG_CAN_MULTI_CONN;
-
-    // Build nested SOCKETS attribute:
-    // NBD_ATTR_SOCKETS (nested)
-    //   NBD_SOCK_ITEM (nested, per socket)
-    //     NBD_SOCK_FD (u32)
-    let mut sockets_payload = Vec::new();
-    for fd in client_fds.iter() {
-        let raw_fd = std::os::unix::io::AsRawFd::as_raw_fd(fd) as u32;
-        let fd_nla = build_nla(NBD_SOCK_FD, &raw_fd.to_ne_bytes());
-        let item_nla = build_nested_nla(NBD_SOCK_ITEM, &fd_nla);
-        sockets_payload.extend_from_slice(&item_nla);
-    }
-
-    // Build the full message
-    let mut attrs = Vec::new();
-    attrs.extend_from_slice(&build_nla(NBD_ATTR_INDEX, &device_index.to_ne_bytes()));
-    attrs.extend_from_slice(&build_nla(NBD_ATTR_SIZE_BYTES, &size.to_ne_bytes()));
-    attrs.extend_from_slice(&build_nla(
-        NBD_ATTR_BLOCK_SIZE_BYTES,
-        &block_size.to_ne_bytes(),
-    ));
-    attrs.extend_from_slice(&build_nla(NBD_ATTR_SERVER_FLAGS, &flags.to_ne_bytes()));
-    attrs.extend_from_slice(&build_nested_nla(NBD_ATTR_SOCKETS, &sockets_payload));
-
-    send_genl_msg(&sock, family_id, NBD_CMD_CONNECT, &attrs)?;
-    recv_genl_ack(&sock)?;
-
-    Ok(())
 }
 
 /// Disconnect an NBD device via generic netlink.
@@ -335,13 +331,26 @@ fn recv_genl_ack(sock: &GenlSocket) -> Result<()> {
         if error == 0 {
             return Ok(()); // ACK (error=0 means success)
         }
-        return Err(NbdCowError::Netlink(format!(
-            "netlink error: {}",
-            std::io::Error::from_raw_os_error(-error)
-        )));
+        let errno = -error;
+        return Err(NbdCowError::NetlinkErrno {
+            errno,
+            message: std::io::Error::from_raw_os_error(errno).to_string(),
+        });
     }
 
     Ok(())
+}
+
+/// Build the nested NBD_ATTR_SOCKETS NLA from a list of client fds.
+fn build_sockets_nla(client_fds: &[OwnedFd]) -> Vec<u8> {
+    let mut sockets_payload = Vec::new();
+    for fd in client_fds.iter() {
+        let raw_fd = std::os::unix::io::AsRawFd::as_raw_fd(fd) as u32;
+        let fd_nla = build_nla(NBD_SOCK_FD, &raw_fd.to_ne_bytes());
+        let item_nla = build_nested_nla(NBD_SOCK_ITEM, &fd_nla);
+        sockets_payload.extend_from_slice(&item_nla);
+    }
+    build_nested_nla(NBD_ATTR_SOCKETS, &sockets_payload)
 }
 
 /// Build a netlink attribute (NLA).

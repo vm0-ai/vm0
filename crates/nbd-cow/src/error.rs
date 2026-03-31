@@ -18,6 +18,9 @@ pub enum NbdCowError {
     #[error("netlink error: {0}")]
     Netlink(String),
 
+    #[error("netlink errno {errno}: {message}")]
+    NetlinkErrno { errno: i32, message: String },
+
     #[error("no free NBD device found")]
     NoFreeDevice,
 }
