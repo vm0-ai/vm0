@@ -155,7 +155,7 @@ EOF
     assert_output --partial "Run completed successfully"
 
     # Token should be the placeholder (proxy will replace it with real token)
-    assert_output --partial "PLACEHOLDER=gho_Vm0"
+    assert_output --partial "PLACEHOLDER=gho_Cof"
     # API call should succeed (proxy replaced placeholder with real token)
     assert_output --partial "API_STATUS=200"
 }
