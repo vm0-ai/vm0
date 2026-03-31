@@ -8,7 +8,10 @@ import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { findNewSessionId } from "../../../../../src/lib/session/find-new-session";
 import { queryRunEventsForChat } from "../../../../../src/lib/run/extract-chat-events";
 import { appendChatMessages } from "../../../../../src/lib/agent-session/agent-session-service";
-import { generateChatTitle } from "../../../../../src/lib/ai/lightweight-model";
+import {
+  generateChatTitle,
+  type TitleContextMessage,
+} from "../../../../../src/lib/ai/lightweight-model";
 import { updateChatThreadTitle } from "../../../../../src/lib/chat-thread";
 import type { ChatCallbackPayload } from "../../../../../src/lib/callback/callback-payloads";
 import { logger } from "../../../../../src/lib/logger";
@@ -108,7 +111,14 @@ async function handleCompleted(
 
   // Generate and update chat thread title
   try {
-    const title = await generateChatTitle(prompt, resultText);
+    const previousMessages: TitleContextMessage[] = [];
+    if (resultText) {
+      previousMessages.push({ role: "assistant", content: resultText });
+    }
+    const title = await generateChatTitle(
+      prompt,
+      previousMessages.length > 0 ? previousMessages : undefined,
+    );
     if (title) {
       await updateChatThreadTitle(threadId, title);
     }
