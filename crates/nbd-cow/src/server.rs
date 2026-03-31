@@ -20,7 +20,7 @@ const MAX_REQUEST_LENGTH: u32 = 32 * 1024 * 1024;
 /// and sends replies back. Handles graceful shutdown via the cancellation token.
 ///
 /// NOTE: CowLayer uses synchronous file I/O (pread/pwrite) while holding the
-/// mutex lock. This briefly blocks the tokio worker thread. For our workload
+/// RwLock. This briefly blocks the tokio worker thread. For our workload
 /// (4KB blocks, fast NVMe/EBS storage) this is acceptable. If latency becomes
 /// an issue, consider `spawn_blocking` or async file I/O.
 pub async fn dispatch(

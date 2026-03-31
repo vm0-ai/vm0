@@ -95,8 +95,9 @@ impl CowLayer {
                 if let Some(ref cow_fd) = self.cow_fd {
                     cow_fd.read_at(dest, current_offset)?;
                 } else {
-                    // Dirty bit set but no COW file -- should not happen, fall back to base
-                    self.base_fd.read_at(dest, current_offset)?;
+                    return Err(NbdCowError::Io(std::io::Error::other(
+                        "dirty bit set but COW file not open",
+                    )));
                 }
             } else {
                 // Read from base image
