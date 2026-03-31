@@ -214,12 +214,14 @@ function useAccountSessions() {
   return { user, clerk, accounts };
 }
 
-function AccountDropdown({
+export function AccountDropdown({
   onAccountAction,
   collapsed = false,
+  hidePreferences = false,
 }: {
   onAccountAction?: (action: ZeroAccountAction) => void;
   collapsed?: boolean;
+  hidePreferences?: boolean;
 }) {
   const { user, clerk, accounts } = useAccountSessions();
   const features = useLastResolved(featureSwitch$);
@@ -265,7 +267,7 @@ function AccountDropdown({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className={`rounded-lg transition-colors duration-200 ${
+          className={`rounded-lg transition-colors duration-200 focus:outline-none ${
             collapsed
               ? "inline-flex h-8 w-8 shrink-0 items-center justify-center p-0 hover:bg-sidebar-accent/50"
               : "flex w-full items-center gap-2 p-2 text-left hover:bg-sidebar-accent/50"
@@ -321,18 +323,22 @@ function AccountDropdown({
         )}
 
         {/* Preferences (standalone) */}
-        <DropdownMenuItem
-          onClick={() => handleAccountAction("preferences")}
-          className="gap-3 px-3 py-2.5 rounded-lg"
-        >
-          <IconAdjustmentsHorizontal
-            size={18}
-            stroke={1.5}
-            className="text-muted-foreground"
-          />
-          <span>Preferences</span>
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
+        {!hidePreferences && (
+          <>
+            <DropdownMenuItem
+              onClick={() => handleAccountAction("preferences")}
+              className="gap-3 px-3 py-2.5 rounded-lg"
+            >
+              <IconAdjustmentsHorizontal
+                size={18}
+                stroke={1.5}
+                className="text-muted-foreground"
+              />
+              <span>Preferences</span>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        )}
 
         {/* Account management group */}
         {hasOthers ? (
