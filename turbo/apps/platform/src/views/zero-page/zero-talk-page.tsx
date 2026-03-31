@@ -8,7 +8,6 @@ import {
   agentDisplayName$,
   defaultAgentId$,
 } from "../../signals/zero-page/zero-agent-name.ts";
-import { detachedNavigateTo$ } from "../../signals/route.ts";
 import {
   resetTalkSendSignal$,
   sendNewThreadMessage$,
@@ -44,20 +43,9 @@ export function ZeroTalkPage() {
     ? (selectedSubagent.displayName ?? selectedSubagent.id)
     : agentDisplayName;
 
-  const navigateTo = useSet(detachedNavigateTo$);
   const sendNewThread = useSet(sendNewThreadMessage$);
   const startNewSession = useSet(startNewZeroSession$);
   const resetTalkSendSignal = useSet(resetTalkSendSignal$);
-
-  const handleNavigateToMeet = (tab?: string) => {
-    if (resolvedAgentId) {
-      const searchParams = tab ? new URLSearchParams({ tab }) : undefined;
-      navigateTo("/team/:agentId", {
-        pathParams: { agentId: resolvedAgentId },
-        searchParams,
-      });
-    }
-  };
 
   const handleSendMessage = (
     message: string,
@@ -82,7 +70,6 @@ export function ZeroTalkPage() {
     <SidebarLayout>
       <ZeroChatPage
         onSendMessage={handleSendMessage}
-        onNavigateToMeet={handleNavigateToMeet}
         zeroAvatarSrc={chatAvatarSrc}
         chatAgentName={chatAgentName}
         avatarAgentId={resolvedAgentId ?? undefined}
