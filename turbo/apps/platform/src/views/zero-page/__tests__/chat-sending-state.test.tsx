@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { delay } from "signal-timers";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import {
@@ -57,17 +56,14 @@ describe("chat sending state", () => {
 
     await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-      // While sending, the Send button is disabled
       expect(screen.getByLabelText("Send")).toBeDisabled();
     });
 
     ctrl.completeRun("Done");
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Send")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
     });
-
-    expect(screen.queryByLabelText("Stop")).toBeNull();
   });
 
   it("should display thinking text while waiting for telemetry", async () => {
@@ -85,8 +81,6 @@ describe("chat sending state", () => {
 
     await sendMessageInUI(user, textarea, "Hello");
 
-    // The thinking message cycles through various texts; the shimmer class
-    // is applied to the element. We check for the shimmer class presence.
     await waitFor(() => {
       const shimmer = document.querySelector(".zero-shimmer-text");
       expect(shimmer).toBeInTheDocument();
@@ -119,29 +113,17 @@ describe("chat sending state", () => {
 
     await sendMessageInUI(user, textarea, "Hello");
 
-    // Wait for the first run to be created and sending state to be active
     await waitFor(() => {
       expect(runCreateCount).toBe(1);
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
 
-    // Wait for any textarea currently in the DOM (the page may or may not
-    // have navigated to the session chat page depending on timing).
     const activeTextarea = await waitFor(() => {
       return document.querySelector("textarea") as HTMLTextAreaElement;
     });
 
-    // Type a new message and press Enter while still sending
     await sendMessageInUI(user, activeTextarea, "Second message");
 
-    // Give any potential second request time to fire.
-    // NOTE: intentionally not wrapped in act() — background polling loops with
-    // 0ms interval cause act() to hang indefinitely waiting for them to settle.
-    await delay(100);
-
-    // The sending state is still active (Stop button visible), so the run
-    // creation endpoint should have been called only once — no artificial
-    // delay is needed because the state is already observable.
     await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });

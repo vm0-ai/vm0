@@ -16,7 +16,7 @@ function mockTwoAgents() {
   const allThreads = [
     {
       id: "thread-alpha-1",
-      title: "Alpha thread",
+      title: "Hello from Alpha",
       preview: "Hello from Alpha",
       agentId: "agent-alpha",
       createdAt: "2026-03-10T00:00:00Z",
@@ -24,7 +24,7 @@ function mockTwoAgents() {
     },
     {
       id: "thread-beta-1",
-      title: "Beta thread",
+      title: "Hello from Beta",
       preview: "Hello from Beta",
       agentId: "agent-beta",
       createdAt: "2026-03-09T00:00:00Z",

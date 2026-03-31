@@ -27,7 +27,7 @@ function mockAPIs() {
         threads: [
           {
             id: "thread-abc-123",
-            title: "Test conversation",
+            title: "Who are you and what can you do?",
             preview: "Who are you and what can you do?",
             agentId: "c0000000-0000-4000-a000-000000000001",
             createdAt: "2026-03-10T00:00:00Z",

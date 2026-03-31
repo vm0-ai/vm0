@@ -7,6 +7,7 @@ import {
 } from "../../signals/queue-page/queue-signals.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { Link } from "../router/link.tsx";
+import { detach, Reason } from "../../signals/utils.ts";
 
 const ROW_GRID = "grid grid-cols-[1fr_1fr_6rem_5rem_4rem] gap-x-6 items-center";
 
@@ -103,7 +104,10 @@ export function QueueRunningTable({ tasks }: QueueRunningTableProps) {
                       type="button"
                       className="text-sm text-destructive hover:underline"
                       onClick={() => {
-                        return void cancelRun(runId, pageSignal);
+                        detach(
+                          cancelRun(runId, pageSignal),
+                          Reason.DomCallback,
+                        );
                       }}
                     >
                       Cancel

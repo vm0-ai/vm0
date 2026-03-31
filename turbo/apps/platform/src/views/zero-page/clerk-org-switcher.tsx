@@ -2,7 +2,7 @@ import { OrganizationSwitcher } from "@clerk/clerk-react";
 import { useGet, useSet } from "ccstate-react";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { watchOrgSwitch$ } from "../../signals/auth.ts";
-import { onRef } from "../../signals/utils.ts";
+import { detach, onRef, Reason } from "../../signals/utils.ts";
 import {
   orgManageDialogOpen$,
   setOrgManageDialogOpen$,
@@ -49,7 +49,7 @@ export function ClerkOrgSwitcher() {
       <OrgManageDialog
         open={dialogOpen}
         onOpenChange={(open) => {
-          return void setDialogOpen(open, pageSignal);
+          detach(setDialogOpen(open, pageSignal), Reason.DomCallback);
         }}
       />
     </>
