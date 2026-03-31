@@ -494,6 +494,121 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn dispatch_oversized_read_returns_error() {
+        let base_data = vec![0xAA; 8192];
+        let (_base, _cow_file, cow) = create_test_cow(&base_data);
+        let cow = Arc::new(RwLock::new(cow));
+
+        let (mut reader, mut writer, task, _shutdown) = setup_dispatch(cow).await;
+
+        // Send a read request exceeding MAX_REQUEST_LENGTH (32 MB)
+        let big_read = NbdRequest {
+            flags: 0,
+            command: Command::Read,
+            handle: 1,
+            offset: 0,
+            length: 33 * 1024 * 1024, // 33 MB > 32 MB limit
+        };
+        let error = send_and_recv_reply(&mut reader, &mut writer, &big_read).await;
+        assert_ne!(error, 0, "oversized read should return error");
+
+        // A normal read should still work afterwards
+        let normal_read = NbdRequest {
+            flags: 0,
+            command: Command::Read,
+            handle: 2,
+            offset: 0,
+            length: 4096,
+        };
+        let error = send_and_recv_reply(&mut reader, &mut writer, &normal_read).await;
+        assert_eq!(error, 0, "normal read after oversized should succeed");
+        // Consume the data payload
+        let mut data = vec![0u8; 4096];
+        reader.read_exact(&mut data).await.unwrap();
+        assert!(data.iter().all(|&b| b == 0xAA));
+
+        // Disconnect
+        let disc = NbdRequest {
+            flags: 0,
+            command: Command::Disconnect,
+            handle: 3,
+            offset: 0,
+            length: 0,
+        };
+        writer.write_all(&serialize_request(&disc)).await.unwrap();
+        task.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn dispatch_oversized_write_discards_and_returns_error() {
+        let base_data = vec![0xAA; 8192];
+        let (_base, _cow_file, cow) = create_test_cow(&base_data);
+        let cow = Arc::new(RwLock::new(cow));
+
+        let (mut reader, mut writer, task, _shutdown) = setup_dispatch(cow).await;
+
+        // Send a write request header claiming 33 MB, but only send a small payload
+        // to test that discard_bytes works correctly.
+        // We use a small oversized value to keep the test fast.
+        let big_write = NbdRequest {
+            flags: 0,
+            command: Command::Write,
+            handle: 1,
+            offset: 0,
+            length: 33 * 1024 * 1024, // claimed 33 MB
+        };
+        writer
+            .write_all(&serialize_request(&big_write))
+            .await
+            .unwrap();
+        // Send 33 MB of data (the server must discard all of it)
+        // To keep the test fast, we send in chunks
+        let chunk = vec![0xFFu8; 64 * 1024];
+        let total = 33 * 1024 * 1024;
+        let mut sent = 0usize;
+        while sent < total {
+            let to_send = chunk.len().min(total - sent);
+            writer
+                .write_all(chunk.get(..to_send).unwrap())
+                .await
+                .unwrap();
+            sent += to_send;
+        }
+
+        // Should get an error reply
+        let mut reply_buf = [0u8; 16];
+        reader.read_exact(&mut reply_buf).await.unwrap();
+        let error = u32::from_be_bytes([reply_buf[4], reply_buf[5], reply_buf[6], reply_buf[7]]);
+        assert_ne!(error, 0, "oversized write should return error");
+
+        // Protocol should still be in sync — a normal read should work
+        let normal_read = NbdRequest {
+            flags: 0,
+            command: Command::Read,
+            handle: 2,
+            offset: 0,
+            length: 4096,
+        };
+        let error = send_and_recv_reply(&mut reader, &mut writer, &normal_read).await;
+        assert_eq!(error, 0, "normal read after oversized write should succeed");
+        let mut data = vec![0u8; 4096];
+        reader.read_exact(&mut data).await.unwrap();
+        // Data should still be original base data (oversized write was rejected)
+        assert!(data.iter().all(|&b| b == 0xAA));
+
+        // Disconnect
+        let disc = NbdRequest {
+            flags: 0,
+            command: Command::Disconnect,
+            handle: 3,
+            offset: 0,
+            length: 0,
+        };
+        writer.write_all(&serialize_request(&disc)).await.unwrap();
+        task.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
     async fn dispatch_shutdown_flushes_data() {
         let base_data = vec![0x00; 8192];
         let (_base, _cow_file, cow) = create_test_cow(&base_data);

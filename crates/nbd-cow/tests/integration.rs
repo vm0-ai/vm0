@@ -92,6 +92,25 @@ async fn destroy_keep_cow_preserves_file() {
         .await
         .expect("create");
 
+    // Write a small amount so the COW file is actually created on disk
+    let dev_path = device.device_path().to_owned();
+    let status = Command::new("dd")
+        .args([
+            "if=/dev/urandom",
+            &format!("of={}", dev_path.to_string_lossy()),
+            "bs=4096",
+            "count=1",
+            "conv=notrunc",
+        ])
+        .status()
+        .expect("dd write");
+    assert!(status.success(), "dd write should succeed");
+
+    // Sync to flush the write buffer to the COW file
+    let status = Command::new("sync").status().expect("sync");
+    assert!(status.success());
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
     device.destroy_keep_cow().await.expect("destroy_keep_cow");
     assert!(cow.exists(), "COW file should be preserved");
 }

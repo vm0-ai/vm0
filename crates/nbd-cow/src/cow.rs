@@ -365,6 +365,60 @@ mod tests {
     }
 
     #[test]
+    fn write_after_flush_overwrites_dirty_block() {
+        let base = create_base_image(&vec![0x00; 4096]);
+        let cow_file = NamedTempFile::new().unwrap();
+        let mut cow = make_cow(&base, &cow_file, 4096, 1024 * 1024);
+
+        // Write and flush
+        cow.write(0, &vec![0xAA; 4096]).unwrap();
+        cow.flush().unwrap();
+        assert_eq!(cow.dirty_block_count(), 1);
+
+        // Overwrite the same block (now in COW file, not buffer)
+        cow.write(0, &vec![0xBB; 4096]).unwrap();
+        assert_eq!(cow.buffered_block_count(), 1);
+
+        // Read should return the latest write (from buffer)
+        let mut buf = vec![0u8; 4096];
+        cow.read(0, &mut buf).unwrap();
+        assert!(buf.iter().all(|&b| b == 0xBB));
+
+        // Flush again and read — should still be 0xBB
+        cow.flush().unwrap();
+        cow.read(0, &mut buf).unwrap();
+        assert!(buf.iter().all(|&b| b == 0xBB));
+    }
+
+    #[test]
+    fn zero_length_read_write() {
+        let base = create_base_image(&vec![0xAA; 4096]);
+        let cow_file = NamedTempFile::new().unwrap();
+        let mut cow = make_cow(&base, &cow_file, 4096, 1024 * 1024);
+
+        // Zero-length read and write should succeed as no-ops
+        cow.read(0, &mut []).unwrap();
+        cow.write(0, &[]).unwrap();
+        assert_eq!(cow.buffered_block_count(), 0);
+
+        // Also at end of device
+        cow.read(4096, &mut []).unwrap();
+        cow.write(4096, &[]).unwrap();
+    }
+
+    #[test]
+    fn sync_without_writes() {
+        let base = create_base_image(&vec![0x00; 4096]);
+        let cow_file = NamedTempFile::new().unwrap();
+        let mut cow = make_cow(&base, &cow_file, 4096, 1024 * 1024);
+
+        // Sync with no writes should be a no-op (no COW file created)
+        cow.sync().unwrap();
+        assert_eq!(cow.dirty_block_count(), 0);
+        assert_eq!(cow.buffered_block_count(), 0);
+    }
+
+    #[test]
     fn cross_block_read_write() {
         let base = create_base_image(&vec![0xAA; 8192]);
         let cow_file = NamedTempFile::new().unwrap();
