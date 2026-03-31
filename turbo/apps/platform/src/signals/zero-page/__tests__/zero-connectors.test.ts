@@ -2,8 +2,12 @@ import { describe, it, expect } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import {
+  setupPage,
+  updateTestPathname$,
+} from "../../../__tests__/page-helper.ts";
 import { allConnectorTypes$ } from "../settings/connectors.ts";
+import { zeroAddedConnectors$, addZeroConnector$ } from "../zero-connectors.ts";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 
 const context = testContext();
@@ -86,5 +90,66 @@ describe("connectors", () => {
     // GitHub should be connected and at position 0
     expect(connectorTypes[0].type).toBe("github" as ConnectorType);
     expect(connectorTypes[0].connected).toBeTruthy();
+  });
+});
+
+describe("zero connectors — agent switch discards local draft", () => {
+  it("should return seeded connectors for new agent after switching", async () => {
+    // Mock two agents with different user-connector permissions
+    server.use(
+      http.get("*/api/zero/agents/agent-a", () => {
+        return HttpResponse.json({
+          name: "agent-a",
+          agentId: "uuid-a",
+          description: null,
+          displayName: "Agent A",
+          sound: null,
+          avatarUrl: null,
+          firewallPolicies: null,
+        });
+      }),
+      http.get("*/api/zero/agents/agent-b", () => {
+        return HttpResponse.json({
+          name: "agent-b",
+          agentId: "uuid-b",
+          description: null,
+          displayName: "Agent B",
+          sound: null,
+          avatarUrl: null,
+          firewallPolicies: null,
+        });
+      }),
+      http.get("*/api/zero/agents/:id/user-connectors", ({ params }) => {
+        if (params["id"] === "uuid-a" || params["id"] === "agent-a") {
+          return HttpResponse.json({ enabledTypes: ["github"] });
+        }
+        return HttpResponse.json({ enabledTypes: ["slack"] });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/team/agent-a",
+      withoutRender: true,
+    });
+
+    // Agent A should have github as seeded connector
+    const initialConnectors = await context.store.get(zeroAddedConnectors$);
+    expect(initialConnectors).toEqual(["github"]);
+
+    // Add a local connector for agent A
+    await context.store.set(addZeroConnector$, "notion", context.signal);
+
+    const afterAdd = await context.store.get(zeroAddedConnectors$);
+    expect(afterAdd).toContain("notion");
+    expect(afterAdd).toContain("github");
+
+    // Switch to agent B by updating the pathname
+    context.store.set(updateTestPathname$, "/team/agent-b");
+
+    // Local draft should be discarded; agent B's seeded connectors should show
+    const agentBConnectors = await context.store.get(zeroAddedConnectors$);
+    expect(agentBConnectors).toEqual(["slack"]);
+    expect(agentBConnectors).not.toContain("notion");
   });
 });

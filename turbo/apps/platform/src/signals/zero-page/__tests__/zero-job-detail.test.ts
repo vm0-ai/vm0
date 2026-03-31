@@ -26,6 +26,7 @@ import {
   zeroJobUpdateSettings$,
   zeroJobSettingsSaving$,
   zeroJobAddedConnectors$,
+  zeroJobConnectorsLoading$,
   zeroJobConnectorsDirty$,
   addZeroJobConnector$,
   removeZeroJobConnector$,
@@ -1082,6 +1083,12 @@ describe("zero-job-detail signals", () => {
       const connectors = context.store.get(zeroJobAddedConnectors$);
       expect(connectors).toStrictEqual(["search"]);
       expect(context.store.get(zeroJobConnectorsDirty$)).toBeFalsy();
+    });
+
+    it("should report loading=false after connectors are fetched", async () => {
+      await setupWithAgent();
+
+      expect(context.store.get(zeroJobConnectorsLoading$)).toBeFalsy();
     });
 
     it("should add and remove connectors with dirty tracking", async () => {

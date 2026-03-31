@@ -1,4 +1,4 @@
-import type { ChangeEvent } from "react";
+import { useState, type ChangeEvent } from "react";
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import {
   IconArrowUp,
@@ -18,7 +18,6 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  Switch,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -48,6 +47,7 @@ import {
   justConnectedTypes$,
   clearJustConnectedTypes$,
 } from "../../signals/zero-page/settings/connectors.ts";
+import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   zeroAddedConnectors$,
@@ -141,11 +141,15 @@ function ConnectorTriggerIcons({
 
 function ConnectorsPopoverButton({
   agentConnectors,
+  connectorsLoading,
+  savingType,
   onOpenAddDialog,
   onToggle,
   displayName,
 }: {
   agentConnectors: ComposerConnectorItem[];
+  connectorsLoading: boolean;
+  savingType: string | null;
   onOpenAddDialog: () => void;
   onToggle: (type: string, checked: boolean) => void;
   displayName: string;
@@ -171,13 +175,23 @@ function ConnectorsPopoverButton({
         </Tooltip>
       </TooltipProvider>
       <PopoverContent side="top" align="start" className="w-72 p-0 rounded-lg">
-        {agentConnectors.length > 0 && (
-          <div className="py-1">
-            <div className="px-3 pt-2 pb-1">
-              <span className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider">
-                Services for {displayName}
-              </span>
+        <div className="py-1">
+          <div className="px-3 pt-2 pb-1">
+            <span className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wider">
+              Services for {displayName}
+            </span>
+          </div>
+          {connectorsLoading ? (
+            <div className="flex flex-col animate-pulse">
+              {Array.from({ length: 3 }, (_, i) => (
+                <div key={i} className="flex items-center gap-2 px-3 py-2">
+                  <span className="h-4 w-4 shrink-0 rounded bg-muted/50" />
+                  <span className="h-3.5 w-20 rounded bg-muted/50 flex-1" />
+                  <span className="h-3 w-6 rounded-full bg-muted/50" />
+                </div>
+              ))}
             </div>
+          ) : agentConnectors.length > 0 ? (
             <div className="flex flex-col">
               {agentConnectors.map((item) => (
                 <div
@@ -193,21 +207,22 @@ function ConnectorsPopoverButton({
                   <span className="text-sm flex-1 truncate text-foreground">
                     {item.label}
                   </span>
-                  <Switch
+                  <LoadingSwitch
                     checked={item.added}
                     onCheckedChange={(checked) => onToggle(item.type, checked)}
-                    size="sm"
-                    aria-label={`${item.added ? "Remove" : "Add"} ${item.label}`}
+                    loading={savingType === item.type}
+                    ariaLabel={`${item.added ? "Remove" : "Add"} ${item.label}`}
                   />
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          ) : null}
+        </div>
         <div
           className={cn(
             "p-1 flex flex-col",
-            agentConnectors.length > 0 && "border-t border-border/50",
+            (agentConnectors.length > 0 || connectorsLoading) &&
+              "border-t border-border/50",
           )}
         >
           <button
@@ -272,6 +287,12 @@ export function ZeroChatComposer({
   const clearOptimistic = useSet(clearJustConnectedTypes$);
   const navigate = useSet(detachedNavigateTo$);
 
+  const [savingType, setSavingType] = useState<string | null>(null);
+
+  const connectorsLoading =
+    allTypesLoadable.state !== "hasData" ||
+    addedConnectorsLoadable.state !== "hasData";
+
   const allConnectors =
     allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
   const connectorMap = new Map(allConnectors.map((c) => [c.type, c]));
@@ -311,31 +332,24 @@ export function ZeroChatComposer({
   };
 
   const handleToggle = (type: string, checked: boolean) => {
-    if (checked) {
-      detach(
-        (async () => {
+    setSavingType(type);
+    detach(
+      (async () => {
+        if (checked) {
           await addConnector(type, pageSignal);
-          try {
-            await saveConnectors(pageSignal);
-          } catch (error) {
-            throwIfAbort(error);
-          }
-        })(),
-        Reason.DomCallback,
-      );
-    } else {
-      detach(
-        (async () => {
+        } else {
           await removeConnector(type, pageSignal);
-          try {
-            await saveConnectors(pageSignal);
-          } catch (error) {
-            throwIfAbort(error);
-          }
-        })(),
-        Reason.DomCallback,
-      );
-    }
+        }
+        try {
+          await saveConnectors(pageSignal);
+        } catch (error) {
+          throwIfAbort(error);
+        } finally {
+          setSavingType(null);
+        }
+      })(),
+      Reason.DomCallback,
+    );
   };
 
   const handleSend = () => {
@@ -428,6 +442,8 @@ export function ZeroChatComposer({
                 </button>
                 <ConnectorsPopoverButton
                   agentConnectors={agentConnectors}
+                  connectorsLoading={connectorsLoading}
+                  savingType={savingType}
                   onOpenAddDialog={() => navigate("/connectors")}
                   onToggle={handleToggle}
                   displayName={displayName}

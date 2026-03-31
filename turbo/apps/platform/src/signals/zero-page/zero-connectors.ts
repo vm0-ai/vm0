@@ -45,8 +45,11 @@ const zeroAgent$ = computed(async (get) => {
 
 const internalSaving$ = state(false);
 
-// null = not initialized (fallback to seeded), string[] = user's local draft
-const internalAddedConnectors$ = state<string[] | null>(null);
+// Local draft tagged with the agent it belongs to; discarded on agent switch.
+const internalAddedConnectors$ = state<{
+  agentId: string;
+  connectors: string[];
+} | null>(null);
 
 /** User connector permissions for this agent from the user-connectors API. */
 const seededConnectors$ = computed(async (get) => {
@@ -64,9 +67,10 @@ const seededConnectors$ = computed(async (get) => {
 
 /** Added connectors: local draft takes precedence, otherwise seeded from agent. */
 export const zeroAddedConnectors$ = computed(async (get) => {
+  const agentId = await get(zeroAgentId$);
   const local = get(internalAddedConnectors$);
-  if (local !== null) {
-    return local;
+  if (local !== null && local.agentId === agentId) {
+    return local.connectors;
   }
   return await get(seededConnectors$);
 });
@@ -74,22 +78,32 @@ export const zeroAddedConnectors$ = computed(async (get) => {
 /** Add a connector (local only, no compose job). */
 export const addZeroConnector$ = command(
   async ({ get, set }, name: string, _signal: AbortSignal) => {
-    if (get(internalAddedConnectors$) === null) {
-      set(internalAddedConnectors$, await get(seededConnectors$));
-    }
-    set(internalAddedConnectors$, (prev) => [...(prev ?? []), name]);
+    const agentId = await get(zeroAgentId$);
+    const local = get(internalAddedConnectors$);
+    const base =
+      local !== null && local.agentId === agentId
+        ? local.connectors
+        : await get(seededConnectors$);
+    set(internalAddedConnectors$, {
+      agentId: agentId ?? "",
+      connectors: [...base, name],
+    });
   },
 );
 
 /** Remove a connector (local only, no compose job). */
 export const removeZeroConnector$ = command(
   async ({ get, set }, name: string, _signal: AbortSignal) => {
-    if (get(internalAddedConnectors$) === null) {
-      set(internalAddedConnectors$, await get(seededConnectors$));
-    }
-    set(internalAddedConnectors$, (prev) =>
-      (prev ?? []).filter((n) => n !== name),
-    );
+    const agentId = await get(zeroAgentId$);
+    const local = get(internalAddedConnectors$);
+    const base =
+      local !== null && local.agentId === agentId
+        ? local.connectors
+        : await get(seededConnectors$);
+    set(internalAddedConnectors$, {
+      agentId: agentId ?? "",
+      connectors: base.filter((n) => n !== name),
+    });
   },
 );
 
@@ -98,7 +112,8 @@ export const saveZeroConnectors$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(internalSaving$, true);
     try {
-      const newConnectors = get(internalAddedConnectors$) ?? [];
+      const local = get(internalAddedConnectors$);
+      const newConnectors = local?.connectors ?? [];
       await set(syncConnectorsToCompose$, newConnectors, signal);
       // Reset to null so seeded picks up the new agent state
       set(internalAddedConnectors$, null);

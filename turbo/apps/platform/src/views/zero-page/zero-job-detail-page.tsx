@@ -27,11 +27,11 @@ import {
   TooltipTrigger,
   Card,
   CardContent,
-  Switch,
   cn,
 } from "@vm0/ui";
 import { ZeroScheduleTab } from "./zero-schedule-tab.tsx";
 import { ZeroInstructionsTab } from "./zero-instructions-tab.tsx";
+import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { ZeroSettingsTab } from "./zero-settings-tab.tsx";
 
 import { TONE_OPTIONS, type Tone } from "./zero-tone-constants.ts";
@@ -58,11 +58,10 @@ import {
   zeroJobSettingsSaving$,
   deleteZeroJobAgent$,
   zeroJobAddedConnectors$,
-  zeroJobConnectorsDirty$,
+  zeroJobConnectorsLoading$,
   addZeroJobConnector$,
   removeZeroJobConnector$,
   saveZeroJobConnectors$,
-  discardZeroJobConnectors$,
   zeroJobActiveTab$,
   setZeroJobActiveTab$,
   zeroJobFirewallPolicies$,
@@ -90,7 +89,6 @@ import {
   allConnectorTypes$,
   type ConnectorTypeWithStatus,
 } from "../../signals/zero-page/settings/connectors.ts";
-import { ZeroUnsavedBar } from "./zero-unsaved-bar.tsx";
 import { toast } from "@vm0/ui/components/ui/sonner";
 
 // ---------------------------------------------------------------------------
@@ -283,7 +281,7 @@ function PermissionRow({
   connector,
   enabled,
   onToggle,
-  readOnly,
+  loading,
   showManage,
   onManage,
   isLast,
@@ -291,24 +289,14 @@ function PermissionRow({
   connector: ConnectorTypeWithStatus;
   enabled: boolean;
   onToggle: (checked: boolean) => void;
-  readOnly?: boolean;
+  loading?: boolean;
   showManage?: boolean;
   onManage?: () => void;
   isLast?: boolean;
 }) {
   return (
     <>
-      <button
-        type="button"
-        disabled={readOnly}
-        onClick={() => onToggle(!enabled)}
-        className={cn(
-          "flex items-center gap-3 px-5 py-4 w-full text-left transition-colors",
-          !readOnly && "hover:bg-muted/40 cursor-pointer",
-          readOnly && "cursor-default",
-        )}
-        aria-label={`${enabled ? "Revoke" : "Grant"} ${connector.label}`}
-      >
+      <div className="flex items-center gap-3 px-5 py-4 w-full text-left transition-colors">
         <ConnectorIcon type={connector.type} size={20} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
@@ -339,13 +327,9 @@ function PermissionRow({
                   <span
                     role="button"
                     tabIndex={0}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onManage?.();
-                    }}
+                    onClick={() => onManage?.()}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
-                        e.stopPropagation();
                         e.preventDefault();
                         onManage?.();
                       }
@@ -362,17 +346,14 @@ function PermissionRow({
               </Tooltip>
             </TooltipProvider>
           )}
-          <span onClick={(e) => e.stopPropagation()} className="inline-flex">
-            <Switch
-              checked={enabled}
-              onCheckedChange={(checked) => onToggle(checked)}
-              disabled={readOnly}
-              size="sm"
-              aria-label={`${enabled ? "Revoke" : "Grant"} ${connector.label} access`}
-            />
-          </span>
+          <LoadingSwitch
+            checked={enabled}
+            onCheckedChange={(checked) => onToggle(checked)}
+            loading={loading}
+            ariaLabel={`${enabled ? "Revoke" : "Grant"} ${connector.label} access`}
+          />
         </div>
-      </button>
+      </div>
       {!isLast && <div className="mx-5 border-b border-border/50" />}
     </>
   );
@@ -385,19 +366,14 @@ function PermissionRow({
 function JobPermissionsTab({
   agentId,
   displayName,
-  readOnly,
 }: {
   agentId: string;
   displayName: string;
-  readOnly?: boolean;
 }) {
   const addedConnectors = useGet(zeroJobAddedConnectors$);
   const addConnector = useSet(addZeroJobConnector$);
   const removeConnector = useSet(removeZeroJobConnector$);
-  const connectorsDirty = useGet(zeroJobConnectorsDirty$);
-  const connectorsSaving = useGet(zeroJobSettingsSaving$);
   const saveConnectors = useSet(saveZeroJobConnectors$);
-  const discardConnectors = useSet(discardZeroJobConnectors$);
   const pageSignal = useGet(pageSignal$);
   const firewallPolicies = useGet(zeroJobFirewallPolicies$);
   const setFirewallPolicies = useSet(setZeroJobFirewallPolicies$);
@@ -405,9 +381,12 @@ function JobPermissionsTab({
   const [firewallType, setFirewallType] = useState<ConnectorType | null>(null);
   const [search, setSearch] = useState("");
   const [searchActive, setSearchActive] = useState(false);
+  const [savingType, setSavingType] = useState<string | null>(null);
 
   const adminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin = adminLoadable.state === "hasData" && adminLoadable.data;
+
+  const connectorsLoading = useGet(zeroJobConnectorsLoading$);
 
   const allTypesLoadable = useLastLoadable(allConnectorTypes$);
   const allConnectors =
@@ -427,9 +406,14 @@ function JobPermissionsTab({
     } else {
       removeConnector(type);
     }
+    setSavingType(type);
+    detach(
+      saveConnectors(pageSignal).finally(() => setSavingType(null)),
+      Reason.DomCallback,
+    );
   };
 
-  if (allTypesLoadable.state !== "hasData") {
+  if (allTypesLoadable.state !== "hasData" || connectorsLoading) {
     return (
       <div className="mx-auto max-w-[900px]">
         <div className="rounded-[var(--zero-card-radius)] border-[0.7px] border-[hsl(var(--gray-400))] bg-card animate-pulse">
@@ -535,7 +519,7 @@ function JobPermissionsTab({
                   connector={c}
                   enabled={addedSet.has(c.type)}
                   onToggle={(checked) => handleToggle(c.type, checked)}
-                  readOnly={readOnly}
+                  loading={savingType === c.type}
                   showManage={isAdmin && hasFirewallPermissions(c.type)}
                   onManage={() => setFirewallType(c.type)}
                   isLast={i === filteredConnectors.length - 1}
@@ -565,16 +549,6 @@ function JobPermissionsTab({
                 toast.success("Permissions updated");
               }}
               onClose={() => setFirewallType(null)}
-            />
-          )}
-
-          {!readOnly && (connectorsDirty || connectorsSaving) && (
-            <ZeroUnsavedBar
-              onDiscard={() => discardConnectors()}
-              onSave={() =>
-                detach(saveConnectors(pageSignal), Reason.DomCallback)
-              }
-              saving={connectorsSaving}
             />
           )}
         </>
@@ -764,11 +738,7 @@ export function ZeroJobDetailPage({ agentId }: ZeroJobDetailPageProps) {
 
       <main className="shrink-0 px-4 sm:px-6 pt-4 pb-16">
         {activeTab === "authorization" && (
-          <JobPermissionsTab
-            agentId={agentId}
-            displayName={displayName}
-            readOnly={hideProfileAndInstructions}
-          />
+          <JobPermissionsTab agentId={agentId} displayName={displayName} />
         )}
 
         {activeTab === "schedule" && (

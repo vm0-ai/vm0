@@ -107,7 +107,7 @@ describe("zero authorization tab — toggle rows", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: "Grant GitHub" }),
+        screen.getByRole("switch", { name: "Grant GitHub access" }),
       ).toBeInTheDocument();
     });
   });
@@ -120,7 +120,7 @@ describe("zero authorization tab — toggle rows", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: "Revoke GitHub" }),
+        screen.getByRole("switch", { name: "Revoke GitHub access" }),
       ).toBeInTheDocument();
     });
   });
@@ -161,17 +161,17 @@ describe("zero authorization tab — multiple connectors", () => {
 
     // GitHub is enabled, Slack is not
     expect(
-      screen.getByRole("button", { name: "Revoke GitHub" }),
+      screen.getByRole("switch", { name: "Revoke GitHub access" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Grant Slack" }),
+      screen.getByRole("switch", { name: "Grant Slack access" }),
     ).toBeInTheDocument();
   });
 });
 
 /**
  * Render the default agent's authorization tab as a non-admin member.
- * This triggers readOnly=true (hideProfileAndInstructions) in ZeroJobDetailPage.
+ * Connector permissions are user-level, so toggles remain interactive.
  */
 async function renderTeamPageAsMember(
   orgConnectors: ConnectorResponse[],
@@ -220,20 +220,20 @@ async function renderTeamPageAsMember(
   await setupPage({ context, path: "/team/zero" });
 }
 
-describe("zero authorization tab — readOnly behavior (member on default agent)", () => {
-  it("shows toggle row but disables it when readOnly", async () => {
+describe("zero authorization tab — member on default agent", () => {
+  it("toggle is interactive (not disabled) because connector permissions are user-level", async () => {
     await renderTeamPageAsMember(
       [makeConnector({ type: "github", oauthScopes: ["repo", "project"] })],
       ["github"],
     );
 
     const toggleRow = await waitFor(() =>
-      screen.getByRole("button", { name: "Revoke GitHub" }),
+      screen.getByRole("switch", { name: "Revoke GitHub access" }),
     );
-    expect(toggleRow).toBeDisabled();
+    expect(toggleRow).not.toBeDisabled();
   });
 
-  it("shows empty state when readOnly and no org connectors", async () => {
+  it("shows empty state when no org connectors", async () => {
     await renderTeamPageAsMember([], []);
 
     await waitFor(() => {
@@ -241,7 +241,7 @@ describe("zero authorization tab — readOnly behavior (member on default agent)
     });
   });
 
-  it("shows toggle row for enabled connector when readOnly", async () => {
+  it("shows toggle row for enabled connector", async () => {
     await renderTeamPageAsMember(
       [makeConnector({ type: "github", oauthScopes: ["repo", "project"] })],
       ["github"],
@@ -251,7 +251,7 @@ describe("zero authorization tab — readOnly behavior (member on default agent)
       expect(screen.getByText("GitHub")).toBeInTheDocument();
     });
     expect(
-      screen.getByRole("button", { name: "Revoke GitHub" }),
+      screen.getByRole("switch", { name: "Revoke GitHub access" }),
     ).toBeInTheDocument();
   });
 });
