@@ -174,7 +174,8 @@ export async function createZeroRun(
   };
 
   // 2.5 Pre-flight checks (Zero-only: generic vm0 run no longer does these)
-  const { composeContent: preflightCompose } = await loadCompose(
+  // Load compose once here and pass to createRunRecord to avoid redundant DB query.
+  const preloadedCompose = await loadCompose(
     runParams.agentComposeVersionId,
     runParams.composeId,
   );
@@ -187,14 +188,15 @@ export async function createZeroRun(
   await checkModelProviderConfigured(
     resolved.orgId,
     params.modelProvider,
-    preflightCompose,
+    preloadedCompose.composeContent,
     db,
   );
 
   // 3. Create run record (may throw ConcurrentRunLimitError)
+  // Pass preloadedCompose to skip redundant loadCompose() inside createRunRecord.
   let record;
   try {
-    record = await createRunRecord(runParams);
+    record = await createRunRecord({ ...runParams, preloadedCompose });
   } catch (error) {
     if (isConcurrentRunLimit(error)) {
       // Enqueue without token — dispatchQueuedZeroRun generates a fresh

@@ -331,6 +331,12 @@ export interface CreateRunParams {
   // Per-permission firewall policies from zero agent configuration.
   firewallPolicies?: FirewallPolicies;
   allowedConnectorTypes?: ConnectorType[];
+  // Pre-loaded compose content to skip redundant loadCompose() DB query.
+  // When provided, createRunRecord() uses this instead of loading from DB.
+  preloadedCompose?: {
+    composeContent: AgentComposeYaml;
+    compose: { id: string; userId: string; orgId: string };
+  };
 }
 
 /**
@@ -985,11 +991,10 @@ export async function createRunRecord(
   const apiStartTime = Date.now();
   const { userId, agentComposeVersionId, prompt } = params;
 
-  // Steps 1-2: Load compose and authorize
-  const { composeContent, compose } = await loadCompose(
-    agentComposeVersionId,
-    params.composeId,
-  );
+  // Steps 1-2: Load compose and authorize (skip load if caller pre-loaded)
+  const { composeContent, compose } = params.preloadedCompose
+    ? params.preloadedCompose
+    : await loadCompose(agentComposeVersionId, params.composeId);
   authorizeCompose(userId, params.orgId, compose);
   const authorizeTime = Date.now();
 
