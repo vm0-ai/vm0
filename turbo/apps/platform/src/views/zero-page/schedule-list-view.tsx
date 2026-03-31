@@ -255,13 +255,13 @@ function ScheduleListCard<T extends ScheduleEntry>({
       <div className="flex items-start justify-between gap-2 min-w-0">
         <div className="min-w-0 flex-1">
           {showAgent && (
-            <span className="block text-xs text-muted-foreground truncate mb-0.5">
+            <span className="block text-sm font-medium text-foreground truncate mb-0.5">
               {agentLabel}
             </span>
           )}
           <span
             className={cn(
-              "block text-sm font-medium text-foreground leading-snug truncate",
+              "block text-sm text-foreground leading-snug truncate",
               dimmed && "text-muted-foreground",
             )}
           >
@@ -283,13 +283,13 @@ function ScheduleListCard<T extends ScheduleEntry>({
       <div className="flex items-center justify-between gap-2">
         <span
           className={cn(
-            "text-xs text-muted-foreground tabular-nums truncate",
-            dimmed && "text-muted-foreground/70",
+            "text-sm text-muted-foreground tabular-nums truncate",
+            dimmed && "text-muted-foreground/80",
           )}
         >
           {entry.time}
           {entry.timezone && (
-            <span className="text-muted-foreground/60">
+            <span className="text-muted-foreground/70">
               {" "}
               · {entry.timezone.replace(/_/g, " ")}
             </span>
