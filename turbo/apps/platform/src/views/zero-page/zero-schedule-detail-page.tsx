@@ -897,12 +897,12 @@ function ScheduleDetailView({
           <div className="mx-auto max-w-[900px]">
             <div
               className={cn(
-                "flex items-center gap-4 min-w-0",
+                "flex flex-col gap-2 min-w-0",
                 dimmed && "opacity-90",
               )}
             >
               <div
-                className="h-[54px] w-[54px] shrink-0 flex items-center justify-center rounded-xl bg-muted/60 text-muted-foreground"
+                className="h-[54px] w-[54px] flex items-center justify-center rounded-xl bg-muted/60 text-muted-foreground"
                 aria-hidden
               >
                 <IconCalendar
@@ -911,11 +911,11 @@ function ScheduleDetailView({
                   className="shrink-0 opacity-90"
                 />
               </div>
-              <div className="min-w-0 flex-1 flex flex-col justify-center gap-1.5">
+              <div className="min-w-0 flex flex-col gap-1">
                 <h1 className="min-w-0 text-base sm:text-lg font-semibold tracking-tight text-foreground leading-tight truncate">
                   {summaryTitle}
                 </h1>
-                <div className="flex flex-col gap-1 text-[11px] text-muted-foreground leading-tight">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground leading-tight">
                   <span className="flex items-center gap-1.5 whitespace-nowrap">
                     <span
                       className={cn(
@@ -932,15 +932,23 @@ function ScheduleDetailView({
                     >
                       {isActive ? "Active" : "Paused"}
                     </span>
-                    <span
-                      className="text-muted-foreground/40 select-none"
-                      aria-hidden
-                    >
-                      ·
-                    </span>
-                    <span className="text-foreground/80">{entry.time}</span>
                   </span>
-                  <span className="whitespace-nowrap text-muted-foreground/80">
+                  <span
+                    className="text-muted-foreground/40 select-none"
+                    aria-hidden
+                  >
+                    ·
+                  </span>
+                  <span className="text-foreground/80 whitespace-nowrap">
+                    {entry.time}
+                  </span>
+                  <span
+                    className="text-muted-foreground/40 select-none"
+                    aria-hidden
+                  >
+                    ·
+                  </span>
+                  <span className="whitespace-nowrap">
                     <span className="font-medium text-foreground/70">
                       Next run
                     </span>{" "}
