@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor, fireEvent } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -155,6 +156,7 @@ describe("onboarding navigation", () => {
   });
 
   it("should navigate to / after completing admin onboarding via web", async () => {
+    const user = userEvent.setup();
     mockOnboardingNeededAdmin();
 
     await setupPage({ context, path: "/onboarding" });
@@ -166,20 +168,21 @@ describe("onboarding navigation", () => {
 
     // Fill name and advance
     const input = screen.getByPlaceholderText("e.g. Acme Corp");
-    fireEvent.change(input, { target: { value: "Test Workspace" } });
-    fireEvent.click(screen.getByText("Next"));
+    await user.clear(input);
+    await user.type(input, "Test Workspace");
+    await user.click(screen.getByText("Next"));
 
     // Step 2: Choose your tools → Next
     await waitFor(() => {
       expect(screen.getByText("Choose your tools")).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByText("Next"));
+    await user.click(screen.getByText("Next"));
 
     // Step 3: Connect your apps → Next
     await waitFor(() => {
       expect(screen.getByText("Connect your apps")).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByText("Next"));
+    await user.click(screen.getByText("Next"));
 
     // Step 4: Where to work
     await waitFor(() => {
@@ -207,7 +210,7 @@ describe("onboarding navigation", () => {
     const continueButton = screen.getByRole("button", {
       name: /Continue in web/,
     });
-    fireEvent.click(continueButton);
+    await user.click(continueButton);
 
     // Verify navigation to / (which then redirects to /talk/:name)
     await waitFor(() => {
@@ -234,6 +237,7 @@ describe("onboarding navigation", () => {
   });
 
   it("should navigate to / after completing member onboarding via web", async () => {
+    const user = userEvent.setup();
     mockOnboardingNeededMember();
 
     await setupPage({ context, path: "/onboarding" });
@@ -264,7 +268,7 @@ describe("onboarding navigation", () => {
     const chatButton = screen.getByRole("button", {
       name: /Continue in web/,
     });
-    fireEvent.click(chatButton);
+    await user.click(chatButton);
 
     // Verify navigation away from /onboarding (/ redirects to /talk/:name)
     await waitFor(() => {

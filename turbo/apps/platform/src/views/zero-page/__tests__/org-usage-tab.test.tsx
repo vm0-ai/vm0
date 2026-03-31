@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { screen, waitFor, act, fireEvent } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -200,6 +201,7 @@ describe("org usage tab - member usage table", () => {
 
 describe("org usage tab - inline cap editing", () => {
   it("should allow setting a credit cap via inline input", async () => {
+    const user = userEvent.setup();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -231,12 +233,9 @@ describe("org usage tab - inline cap editing", () => {
     expect(capInput).toBeInTheDocument();
 
     // Type a cap value and commit by blurring
-    await act(() => {
-      fireEvent.change(capInput, { target: { value: "5000" } });
-    });
-    await act(() => {
-      fireEvent.blur(capInput);
-    });
+    await user.clear(capInput);
+    await user.type(capInput, "5000");
+    await user.tab();
 
     // Wait for save to complete
     await waitFor(() => {
@@ -245,6 +244,7 @@ describe("org usage tab - inline cap editing", () => {
   });
 
   it("should allow committing cap via Enter key", async () => {
+    const user = userEvent.setup();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -272,12 +272,9 @@ describe("org usage tab - inline cap editing", () => {
     });
 
     const capInput = screen.getByRole("spinbutton");
-    await act(() => {
-      fireEvent.change(capInput, { target: { value: "3000" } });
-    });
-    await act(() => {
-      fireEvent.keyDown(capInput, { key: "Enter" });
-    });
+    await user.clear(capInput);
+    await user.type(capInput, "3000");
+    await user.keyboard("{Enter}");
 
     await waitFor(() => {
       expect(capStore["user-a"]).toBe(3000);
@@ -287,6 +284,7 @@ describe("org usage tab - inline cap editing", () => {
 
 describe("org usage tab - expiring credits warning", () => {
   it("shows expiring credits warning for paid org", async () => {
+    const user = userEvent.setup();
     setMockBillingStatus({
       tier: "pro",
       credits: 15_000,
@@ -315,9 +313,7 @@ describe("org usage tab - expiring credits warning", () => {
 
     // Hover over the progress bar to open the popover
     const progressbar = screen.getByRole("progressbar");
-    await act(() => {
-      fireEvent.pointerEnter(progressbar.closest("[class*='group']")!);
-    });
+    await user.hover(progressbar.closest("[class*='group']")!);
 
     await waitFor(
       () => {
@@ -330,6 +326,7 @@ describe("org usage tab - expiring credits warning", () => {
   });
 
   it("hides expiring credits warning when zero", async () => {
+    const user = userEvent.setup();
     setMockBillingStatus({
       tier: "pro",
       credits: 15_000,
@@ -358,9 +355,7 @@ describe("org usage tab - expiring credits warning", () => {
 
     // Hover over the progress bar to open the popover
     const progressbar = screen.getByRole("progressbar");
-    await act(() => {
-      fireEvent.pointerEnter(progressbar.closest("[class*='group']")!);
-    });
+    await user.hover(progressbar.closest("[class*='group']")!);
 
     await waitFor(
       () => {
@@ -373,6 +368,7 @@ describe("org usage tab - expiring credits warning", () => {
   });
 
   it("hides expiring credits warning for free org", async () => {
+    const user = userEvent.setup();
     setMockBillingStatus({
       tier: "free",
       credits: 10_000,
@@ -396,9 +392,7 @@ describe("org usage tab - expiring credits warning", () => {
 
     // Hover over the progress bar to open the popover
     const progressbar = screen.getByRole("progressbar");
-    await act(() => {
-      fireEvent.pointerEnter(progressbar.closest("[class*='group']")!);
-    });
+    await user.hover(progressbar.closest("[class*='group']")!);
 
     await waitFor(
       () => {

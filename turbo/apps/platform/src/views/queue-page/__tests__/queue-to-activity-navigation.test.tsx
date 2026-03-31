@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor, fireEvent } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -114,6 +115,7 @@ function mockActivityDetailAPIs(runId: string) {
 
 describe("queue to activity navigation", () => {
   it("should initialize activity page when clicking View logs in running table", async () => {
+    const user = userEvent.setup();
     mockQueueWithActivityLinks();
     mockActivityDetailAPIs("a0000000-0000-4000-a000-000000000001");
 
@@ -126,7 +128,7 @@ describe("queue to activity navigation", () => {
 
     // Find "View logs" links — click the first one (running table)
     const viewLogsLinks = screen.getAllByText("View logs");
-    fireEvent.click(viewLogsLinks[0]!);
+    await user.click(viewLogsLinks[0]!);
 
     // The activity detail page should fully initialize
     await waitFor(() => {
@@ -139,6 +141,7 @@ describe("queue to activity navigation", () => {
   }, 15_000);
 
   it("should initialize activity page when clicking View logs in waiting table", async () => {
+    const user = userEvent.setup();
     mockQueueWithActivityLinks();
     mockActivityDetailAPIs("a0000000-0000-4000-a000-000000000002");
 
@@ -151,7 +154,7 @@ describe("queue to activity navigation", () => {
 
     // Find "View logs" links — click the second one (waiting table)
     const viewLogsLinks = screen.getAllByText("View logs");
-    fireEvent.click(viewLogsLinks[1]!);
+    await user.click(viewLogsLinks[1]!);
 
     // The activity detail page should fully initialize
     await waitFor(() => {

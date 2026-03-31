@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor, fireEvent } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -41,6 +42,7 @@ function mockChatSessionAPIs() {
 
 describe("chat session page wrapper navigation", () => {
   it("should navigate to agent schedule when clicking schedule button", async () => {
+    const user = userEvent.setup();
     mockChatSessionAPIs();
 
     await setupPage({ context, path: "/chat/session-thread-1" });
@@ -52,7 +54,7 @@ describe("chat session page wrapper navigation", () => {
 
     // Click the schedule button in the session header
     const scheduledButton = screen.getByLabelText("Scheduled");
-    fireEvent.click(scheduledButton);
+    await user.click(scheduledButton);
 
     // Verify navigation to /team/c0000000-0000-4000-a000-000000000001 with tab=schedule
     await waitFor(() => {
@@ -62,6 +64,7 @@ describe("chat session page wrapper navigation", () => {
   });
 
   it("should navigate to agent profile when clicking chat avatar", async () => {
+    const user = userEvent.setup();
     mockChatSessionAPIs();
 
     await setupPage({ context, path: "/chat/session-thread-1" });
@@ -73,7 +76,7 @@ describe("chat session page wrapper navigation", () => {
 
     // Click the avatar button in the session header
     const avatarButton = screen.getByLabelText("View agent profile");
-    fireEvent.click(avatarButton);
+    await user.click(avatarButton);
 
     // Verify navigation to /team/c0000000-0000-4000-a000-000000000001 (no tab param)
     await waitFor(() => {

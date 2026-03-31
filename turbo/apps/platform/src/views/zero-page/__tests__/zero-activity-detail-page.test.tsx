@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -267,7 +268,8 @@ describe("zeroActivityDetailPage", () => {
     });
 
     // Expand the System Prompt details
-    fireEvent.click(screen.getByText("System Prompt"));
+    const user = userEvent.setup();
+    await user.click(screen.getByText("System Prompt"));
 
     // Text after <command> must NOT be truncated (bug #6770)
     await waitFor(() => {

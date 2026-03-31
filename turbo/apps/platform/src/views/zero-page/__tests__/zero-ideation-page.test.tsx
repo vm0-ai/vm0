@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { act, screen, waitFor, fireEvent } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -96,6 +97,7 @@ describe("ideation page - category tabs", () => {
   });
 
   it("should filter to a single category when its tab is clicked", async () => {
+    const user = userEvent.setup();
     await renderIdeationPage();
 
     await waitFor(() => {
@@ -104,7 +106,7 @@ describe("ideation page - category tabs", () => {
       ).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "GitHub" }));
+    await user.click(screen.getByRole("button", { name: "GitHub" }));
 
     await waitFor(() => {
       expect(
@@ -119,6 +121,7 @@ describe("ideation page - category tabs", () => {
   });
 
   it("should show all categories again when All tab is clicked after filtering", async () => {
+    const user = userEvent.setup();
     await renderIdeationPage();
 
     await waitFor(() => {
@@ -127,7 +130,7 @@ describe("ideation page - category tabs", () => {
       ).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "GitHub" }));
+    await user.click(screen.getByRole("button", { name: "GitHub" }));
 
     await waitFor(() => {
       expect(
@@ -135,7 +138,7 @@ describe("ideation page - category tabs", () => {
       ).not.toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "All" }));
+    await user.click(screen.getByRole("button", { name: "All" }));
 
     await waitFor(() => {
       expect(
@@ -157,13 +160,15 @@ describe("ideation page - search", () => {
   });
 
   it("should filter use cases by title", async () => {
+    const user = userEvent.setup();
     await renderIdeationPage();
 
     const searchInput = await waitFor(() =>
       screen.getByRole("searchbox", { name: "Search use cases" }),
     );
 
-    fireEvent.change(searchInput, { target: { value: "Daily standup" } });
+    await user.clear(searchInput);
+    await user.type(searchInput, "Daily standup");
 
     await waitFor(() => {
       expect(screen.getByText("Daily standup report")).toBeInTheDocument();
@@ -174,15 +179,15 @@ describe("ideation page - search", () => {
   });
 
   it("should show empty message when no use cases match", async () => {
+    const user = userEvent.setup();
     await renderIdeationPage();
 
     const searchInput = await waitFor(() =>
       screen.getByRole("searchbox", { name: "Search use cases" }),
     );
 
-    fireEvent.change(searchInput, {
-      target: { value: "xyznonexistentquery" },
-    });
+    await user.clear(searchInput);
+    await user.type(searchInput, "xyznonexistentquery");
 
     await waitFor(() => {
       expect(
@@ -223,15 +228,14 @@ describe("ideation page - sidebar layout", () => {
 
 describe("ideation page - navigation", () => {
   it("should navigate to /talk/:id when a use case card is clicked", async () => {
+    const user = userEvent.setup();
     await renderIdeationPage();
 
     await waitFor(() => {
       expect(screen.getByText("Daily standup report")).toBeInTheDocument();
     });
 
-    await act(() => {
-      fireEvent.click(screen.getByText("Daily standup report"));
-    });
+    await user.click(screen.getByText("Daily standup report"));
 
     await waitFor(() => {
       expect(pathname()).toBe(`/talk/${AGENT_ID}`);
@@ -239,15 +243,14 @@ describe("ideation page - navigation", () => {
   });
 
   it("should navigate to /talk/:id when Chat breadcrumb is clicked", async () => {
+    const user = userEvent.setup();
     await renderIdeationPage();
 
     const chatBreadcrumb = await waitFor(
       () => screen.getByText("Chat").closest("button")!,
     );
 
-    await act(() => {
-      fireEvent.click(chatBreadcrumb!);
-    });
+    await user.click(chatBreadcrumb!);
 
     await waitFor(() => {
       expect(pathname()).toBe(`/talk/${AGENT_ID}`);
@@ -296,10 +299,9 @@ describe("ideation page - navigation", () => {
     });
 
     // Navigate back via breadcrumb — should go to the same agent's chat
+    const user = userEvent.setup();
     const chatBreadcrumb = screen.getByText("Chat").closest("button")!;
-    await act(() => {
-      fireEvent.click(chatBreadcrumb);
-    });
+    await user.click(chatBreadcrumb);
 
     await waitFor(() => {
       expect(pathname()).toBe(`/talk/${customAgentId}`);

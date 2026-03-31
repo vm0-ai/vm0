@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.131.1](https://github.com/vm0-ai/vm0/compare/core-v8.131.0...core-v8.131.1) (2026-03-31)
+
+
+### Refactoring
+
+* remove redundant ?org=slug query param from all routes ([#7301](https://github.com/vm0-ai/vm0/issues/7301)) ([96d6b6c](https://github.com/vm0-ai/vm0/commit/96d6b6ced9bb5770bce51301ceabea226bcc22f4))
+
 ## [8.131.0](https://github.com/vm0-ai/vm0/compare/core-v8.130.2...core-v8.131.0) (2026-03-31)
 
 

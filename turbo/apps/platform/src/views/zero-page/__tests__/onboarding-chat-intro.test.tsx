@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor, fireEvent } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -184,7 +185,10 @@ function mockMemberOnboardingWithChat() {
 }
 
 /** Walk through onboarding steps up to the "Where would you like to work" step. */
-async function walkToWhereStep(isMember: boolean) {
+async function walkToWhereStep(
+  user: ReturnType<typeof userEvent.setup>,
+  isMember: boolean,
+) {
   if (isMember) {
     // Member with no connectors skips directly to step 4 (where-to-work)
     await waitFor(() => {
@@ -200,20 +204,21 @@ async function walkToWhereStep(isMember: boolean) {
 
     // Fill workspace name and advance
     const input = screen.getByPlaceholderText("e.g. Acme Corp");
-    fireEvent.change(input, { target: { value: "Test Workspace" } });
-    fireEvent.click(screen.getByText("Next"));
+    await user.clear(input);
+    await user.type(input, "Test Workspace");
+    await user.click(screen.getByText("Next"));
 
     // Step 2: Choose your tools → Next
     await waitFor(() => {
       expect(screen.getByText("Choose your tools")).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByText("Next"));
+    await user.click(screen.getByText("Next"));
 
     // Step 3: Connect your apps → Next
     await waitFor(() => {
       expect(screen.getByText("Connect your apps")).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByText("Next"));
+    await user.click(screen.getByText("Next"));
 
     // Step 4: Where to work
     await waitFor(() => {
@@ -226,15 +231,16 @@ async function walkToWhereStep(isMember: boolean) {
 
 describe("onboarding auto-intro message", () => {
   it("should send intro message after admin completes onboarding via web", async () => {
+    const user = userEvent.setup();
     const mock = mockAdminOnboardingWithChat();
 
     await setupPage({ context, path: "/onboarding" });
-    await walkToWhereStep(false);
+    await walkToWhereStep(user, false);
 
     // Switch onboarding status so post-navigate route doesn't redirect back
     mock.completeOnboarding();
 
-    fireEvent.click(screen.getByRole("button", { name: /Continue in web/ }));
+    await user.click(screen.getByRole("button", { name: /Continue in web/ }));
 
     // Verify navigation away from onboarding
     await waitFor(() => {
@@ -261,14 +267,15 @@ describe("onboarding auto-intro message", () => {
   });
 
   it("should send intro message after member completes onboarding via web", async () => {
+    const user = userEvent.setup();
     const mock = mockMemberOnboardingWithChat();
 
     await setupPage({ context, path: "/onboarding" });
-    await walkToWhereStep(true);
+    await walkToWhereStep(user, true);
 
     mock.completeOnboarding();
 
-    fireEvent.click(screen.getByRole("button", { name: /Continue in web/ }));
+    await user.click(screen.getByRole("button", { name: /Continue in web/ }));
 
     await waitFor(() => {
       expect(pathname()).not.toBe("/onboarding");
@@ -291,14 +298,15 @@ describe("onboarding auto-intro message", () => {
   });
 
   it("should allow follow-up messages after onboarding intro completes", async () => {
+    const user = userEvent.setup();
     const mock = mockMemberOnboardingWithChat();
 
     await setupPage({ context, path: "/onboarding" });
-    await walkToWhereStep(true);
+    await walkToWhereStep(user, true);
 
     mock.completeOnboarding();
 
-    fireEvent.click(screen.getByRole("button", { name: /Continue in web/ }));
+    await user.click(screen.getByRole("button", { name: /Continue in web/ }));
 
     // Wait for intro run to start
     await waitFor(() => {

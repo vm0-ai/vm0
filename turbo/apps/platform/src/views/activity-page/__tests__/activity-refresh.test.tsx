@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor, fireEvent } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -56,6 +57,7 @@ function mockCommonAPIs() {
 
 describe("activity list refresh on navigation", () => {
   it("should refresh data when navigating back to the activity page", async () => {
+    const user = userEvent.setup();
     let fetchCount = 0;
 
     mockCommonAPIs();
@@ -92,7 +94,7 @@ describe("activity list refresh on navigation", () => {
     // Navigate to team page via sidebar
     const teamLink = screen.getByText("Agents").closest("a");
     expect(teamLink).not.toBeNull();
-    fireEvent.click(teamLink!);
+    await user.click(teamLink!);
 
     // Wait for team page to render
     await waitFor(() => {
@@ -104,7 +106,7 @@ describe("activity list refresh on navigation", () => {
     // Navigate back to activity page
     const activityLink = screen.getByText("Activity logs").closest("a");
     expect(activityLink).not.toBeNull();
-    fireEvent.click(activityLink!);
+    await user.click(activityLink!);
 
     // Wait for the list to render again
     await waitFor(() => {

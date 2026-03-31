@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { screen, fireEvent, act, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -72,38 +73,37 @@ describe("org general tab - profile section", () => {
   });
 
   it("should show save/discard buttons when slug is changed", async () => {
+    const user = userEvent.setup();
     mockAPIs({ slug: "old-slug" });
     await openGeneralTab();
 
     const slugInput = await screen.findByDisplayValue("old-slug");
-    await act(() => {
-      fireEvent.change(slugInput, { target: { value: "new-slug" } });
-    });
+    await user.clear(slugInput);
+    await user.type(slugInput, "new-slug");
 
     expect(screen.getByText("Save changes")).toBeInTheDocument();
     expect(screen.getByText("Discard")).toBeInTheDocument();
   });
 
   it("should discard slug changes when clicking Discard", async () => {
+    const user = userEvent.setup();
     mockAPIs({ slug: "original-slug" });
     await openGeneralTab();
 
     const slugInput = await screen.findByDisplayValue("original-slug");
-    await act(() => {
-      fireEvent.change(slugInput, { target: { value: "changed-slug" } });
-    });
+    await user.clear(slugInput);
+    await user.type(slugInput, "changed-slug");
 
     expect(screen.getByDisplayValue("changed-slug")).toBeInTheDocument();
 
-    await act(() => {
-      fireEvent.click(screen.getByText("Discard"));
-    });
+    await user.click(screen.getByText("Discard"));
 
     expect(screen.getByDisplayValue("original-slug")).toBeInTheDocument();
     expect(screen.queryByText("Save changes")).not.toBeInTheDocument();
   });
 
   it("should send slug in PUT request when saving slug change", async () => {
+    const user = userEvent.setup();
     const requestBody = vi.fn();
     mockAPIs({ name: "Test Org", slug: "old-slug" });
     server.use(
@@ -120,13 +120,10 @@ describe("org general tab - profile section", () => {
     await openGeneralTab();
 
     const slugInput = await screen.findByDisplayValue("old-slug");
-    await act(() => {
-      fireEvent.change(slugInput, { target: { value: "new-slug" } });
-    });
+    await user.clear(slugInput);
+    await user.type(slugInput, "new-slug");
 
-    await act(() => {
-      fireEvent.click(screen.getByText("Save changes"));
-    });
+    await user.click(screen.getByText("Save changes"));
 
     await vi.waitFor(() => {
       expect(requestBody).toHaveBeenCalledWith({
@@ -137,6 +134,7 @@ describe("org general tab - profile section", () => {
   });
 
   it("should send both name and slug when both are changed", async () => {
+    const user = userEvent.setup();
     const requestBody = vi.fn();
     mockAPIs({ name: "Old Name", slug: "old-slug" });
     server.use(
@@ -155,14 +153,12 @@ describe("org general tab - profile section", () => {
     const nameInput = await screen.findByDisplayValue("Old Name");
     const slugInput = screen.getByDisplayValue("old-slug");
 
-    await act(() => {
-      fireEvent.change(nameInput, { target: { value: "New Name" } });
-      fireEvent.change(slugInput, { target: { value: "new-slug" } });
-    });
+    await user.clear(nameInput);
+    await user.type(nameInput, "New Name");
+    await user.clear(slugInput);
+    await user.type(slugInput, "new-slug");
 
-    await act(() => {
-      fireEvent.click(screen.getByText("Save changes"));
-    });
+    await user.click(screen.getByText("Save changes"));
 
     await vi.waitFor(() => {
       expect(requestBody).toHaveBeenCalledWith({
@@ -174,6 +170,7 @@ describe("org general tab - profile section", () => {
   });
 
   it("should show inline error when save fails", async () => {
+    const user = userEvent.setup();
     mockAPIs({ slug: "old-slug" });
     server.use(
       http.put("*/api/zero/org", () => {
@@ -192,13 +189,10 @@ describe("org general tab - profile section", () => {
     await openGeneralTab();
 
     const slugInput = await screen.findByDisplayValue("old-slug");
-    await act(() => {
-      fireEvent.change(slugInput, { target: { value: "taken-slug" } });
-    });
+    await user.clear(slugInput);
+    await user.type(slugInput, "taken-slug");
 
-    await act(() => {
-      fireEvent.click(screen.getByText("Save changes"));
-    });
+    await user.click(screen.getByText("Save changes"));
 
     await waitFor(() => {
       expect(screen.getByText("Slug is already taken")).toBeInTheDocument();
@@ -206,6 +200,7 @@ describe("org general tab - profile section", () => {
   });
 
   it("should clear inline error on discard", async () => {
+    const user = userEvent.setup();
     mockAPIs({ slug: "old-slug" });
     server.use(
       http.put("*/api/zero/org", () => {
@@ -224,21 +219,16 @@ describe("org general tab - profile section", () => {
     await openGeneralTab();
 
     const slugInput = await screen.findByDisplayValue("old-slug");
-    await act(() => {
-      fireEvent.change(slugInput, { target: { value: "taken-slug" } });
-    });
+    await user.clear(slugInput);
+    await user.type(slugInput, "taken-slug");
 
-    await act(() => {
-      fireEvent.click(screen.getByText("Save changes"));
-    });
+    await user.click(screen.getByText("Save changes"));
 
     await waitFor(() => {
       expect(screen.getByText("Slug is already taken")).toBeInTheDocument();
     });
 
-    await act(() => {
-      fireEvent.click(screen.getByText("Discard"));
-    });
+    await user.click(screen.getByText("Discard"));
 
     expect(screen.queryByText("Slug is already taken")).not.toBeInTheDocument();
   });
@@ -261,6 +251,7 @@ describe("org general tab - profile section", () => {
   });
 
   it("should not send slug when only name is changed", async () => {
+    const user = userEvent.setup();
     const requestBody = vi.fn();
     mockAPIs({ name: "Old Name", slug: "keep-slug" });
     server.use(
@@ -277,13 +268,10 @@ describe("org general tab - profile section", () => {
     await openGeneralTab();
 
     const nameInput = await screen.findByDisplayValue("Old Name");
-    await act(() => {
-      fireEvent.change(nameInput, { target: { value: "New Name" } });
-    });
+    await user.clear(nameInput);
+    await user.type(nameInput, "New Name");
 
-    await act(() => {
-      fireEvent.click(screen.getByText("Save changes"));
-    });
+    await user.click(screen.getByText("Save changes"));
 
     await vi.waitFor(() => {
       expect(requestBody).toHaveBeenCalledWith({ name: "New Name" });

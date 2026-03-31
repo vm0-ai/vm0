@@ -1,5 +1,5 @@
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { userEvent } from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import type { AgentEvent } from "../../../signals/zero-page/log-types.ts";
 import type { SummaryEntry } from "@vm0/core";
@@ -7,11 +7,11 @@ import type { SummaryEntry } from "@vm0/core";
 export const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
 
 export async function sendMessageInUI(
+  user: ReturnType<typeof userEvent.setup>,
   textarea: HTMLTextAreaElement,
   text: string,
 ): Promise<void> {
-  const user = userEvent.setup();
-  await user.click(textarea);
+  await user.clear(textarea);
   await user.type(textarea, text);
   await user.keyboard("{Enter}");
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor, fireEvent } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -36,6 +37,7 @@ function getTextarea(): HTMLTextAreaElement {
 
 describe("chat draft persistence across thread navigation", () => {
   it("should preserve input text when switching between threads", async () => {
+    const user = userEvent.setup();
     mockThreads();
     await setupPage({ context, path: "/chat/thread-1" });
 
@@ -44,9 +46,8 @@ describe("chat draft persistence across thread navigation", () => {
     });
 
     // Type on thread-1
-    fireEvent.change(getTextarea(), {
-      target: { value: "draft for thread 1" },
-    });
+    await user.clear(getTextarea());
+    await user.type(getTextarea(), "draft for thread 1");
     expect(getTextarea().value).toBe("draft for thread 1");
 
     // Navigate to thread-2
@@ -60,9 +61,8 @@ describe("chat draft persistence across thread navigation", () => {
     });
 
     // Type on thread-2
-    fireEvent.change(getTextarea(), {
-      target: { value: "draft for thread 2" },
-    });
+    await user.clear(getTextarea());
+    await user.type(getTextarea(), "draft for thread 2");
 
     // Navigate back to thread-1 — draft restored
     context.store.set(detachedNavigateTo$, "/chat/:chatThreadId", {
@@ -84,6 +84,7 @@ describe("chat draft persistence across thread navigation", () => {
   });
 
   it("should not leak thread draft into a different thread", async () => {
+    const user = userEvent.setup();
     mockThreads();
     await setupPage({ context, path: "/chat/thread-a" });
 
@@ -91,9 +92,8 @@ describe("chat draft persistence across thread navigation", () => {
       expect(getTextarea()).toBeInTheDocument();
     });
 
-    fireEvent.change(getTextarea(), {
-      target: { value: "only for thread-a" },
-    });
+    await user.clear(getTextarea());
+    await user.type(getTextarea(), "only for thread-a");
 
     context.store.set(detachedNavigateTo$, "/chat/:chatThreadId", {
       pathParams: { chatThreadId: "thread-b" },
@@ -105,6 +105,7 @@ describe("chat draft persistence across thread navigation", () => {
   });
 
   it("should complete upload after switching away and show it on return", async () => {
+    const user = userEvent.setup();
     // Deferred upload handler — resolve manually
     let resolveUpload: (() => void) | null = null;
     const uploadStarted = new Promise<void>((resolve) => {
@@ -152,7 +153,7 @@ describe("chat draft persistence across thread navigation", () => {
       'input[type="file"]',
     ) as HTMLInputElement;
     const file = new File(["img-data"], "photo.png", { type: "image/png" });
-    fireEvent.change(fileInput, { target: { files: [file] } });
+    await user.upload(fileInput, file);
 
     // Wait for upload request to arrive at MSW
     await uploadStarted;

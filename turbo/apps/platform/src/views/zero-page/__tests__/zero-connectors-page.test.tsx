@@ -8,7 +8,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { screen, waitFor, fireEvent } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -87,6 +88,7 @@ describe("connectors page", () => {
   });
 
   it("filters connectors by search term", async () => {
+    const user = userEvent.setup();
     await setupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
@@ -94,7 +96,8 @@ describe("connectors page", () => {
     });
 
     const searchInput = screen.getByPlaceholderText("Search connectors");
-    fireEvent.change(searchInput, { target: { value: "github" } });
+    await user.clear(searchInput);
+    await user.type(searchInput, "github");
 
     await waitFor(() => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
@@ -104,6 +107,7 @@ describe("connectors page", () => {
   });
 
   it("shows empty state when search has no matches", async () => {
+    const user = userEvent.setup();
     await setupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
@@ -111,9 +115,8 @@ describe("connectors page", () => {
     });
 
     const searchInput = screen.getByPlaceholderText("Search connectors");
-    fireEvent.change(searchInput, {
-      target: { value: "nonexistent-connector-xyz" },
-    });
+    await user.clear(searchInput);
+    await user.type(searchInput, "nonexistent-connector-xyz");
 
     await waitFor(() => {
       expect(screen.getByText(/No connectors matching/)).toBeInTheDocument();
@@ -121,6 +124,7 @@ describe("connectors page", () => {
   });
 
   it("shows loading toast then success toast on disconnect", async () => {
+    const user = userEvent.setup();
     mockConnectors([{ type: "github", externalUsername: "testuser" }]);
 
     let deleteResolve: () => void;
@@ -142,16 +146,16 @@ describe("connectors page", () => {
       expect(screen.getByText(/Connected \(/)).toBeInTheDocument();
     });
 
-    // Radix DropdownMenu opens on pointerDown
+    // Radix DropdownMenu opens on click
     const moreButton = screen.getByRole("button", { name: "More options" });
-    fireEvent.pointerDown(moreButton, { button: 0, ctrlKey: false });
+    await user.click(moreButton);
 
     await waitFor(() => {
       expect(
         screen.getByRole("menuitem", { name: "Disconnect" }),
       ).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByRole("menuitem", { name: "Disconnect" }));
+    await user.click(screen.getByRole("menuitem", { name: "Disconnect" }));
 
     // Loading toast should appear while API is in-flight
     await waitFor(() => {
@@ -168,6 +172,7 @@ describe("connectors page", () => {
   });
 
   it("shows error toast when disconnect fails", async () => {
+    const user = userEvent.setup();
     mockConnectors([{ type: "github", externalUsername: "testuser" }]);
 
     server.use(
@@ -182,16 +187,16 @@ describe("connectors page", () => {
       expect(screen.getByText(/Connected \(/)).toBeInTheDocument();
     });
 
-    // Radix DropdownMenu opens on pointerDown
+    // Radix DropdownMenu opens on click
     const moreButton = screen.getByRole("button", { name: "More options" });
-    fireEvent.pointerDown(moreButton, { button: 0, ctrlKey: false });
+    await user.click(moreButton);
 
     await waitFor(() => {
       expect(
         screen.getByRole("menuitem", { name: "Disconnect" }),
       ).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByRole("menuitem", { name: "Disconnect" }));
+    await user.click(screen.getByRole("menuitem", { name: "Disconnect" }));
 
     await waitFor(() => {
       expect(
