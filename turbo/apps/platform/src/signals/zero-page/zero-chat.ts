@@ -40,8 +40,6 @@ export {
 
 const L = logger("ZeroChat");
 
-const TITLE_REFRESH_DELAY_MS = 3000;
-
 function isResultEventData(data: unknown): data is { result: string } {
   return (
     typeof data === "object" &&
@@ -303,11 +301,20 @@ export const chatThreads$ = computed(async (get) => {
   if (result.status !== 200) {
     throw new Error(`Failed to load chats (${result.status})`);
   }
-  return result.body.threads;
+  const threads = result.body.threads;
+
+  const currentThread = await get(currentChatThread$);
+  return threads.map((t) => ({
+    ...t,
+    title:
+      t.id === currentThread?.id ? currentThread.title || t.title : t.title,
+  }));
 });
 
-interface ChatThreadData {
+interface ChatThread {
+  id: string;
   agentId?: string;
+  title: string;
   chatMessages: {
     role: "user" | "assistant";
     content: string;
@@ -402,7 +409,7 @@ function createActiveRunMessage(
   };
 }
 
-function unsavedRunsToMessages(unsavedRuns: ChatThreadData["unsavedRuns"]): {
+function unsavedRunsToMessages(unsavedRuns: ChatThread["unsavedRuns"]): {
   messages: ZeroChatMessage[];
   activeRunMessages: ZeroChatMessage[];
   lastActiveRunId: string | null;
@@ -456,7 +463,7 @@ interface ChatSessionSnapshotData {
 const reloadCurrentThread$ = state(0);
 
 export const currentChatThread$ = computed(
-  async (get): Promise<ChatThreadData | null> => {
+  async (get): Promise<ChatThread | null> => {
     get(reloadCurrentThread$);
     const threadId = get(chatThreadId$);
     if (!threadId) {
@@ -471,6 +478,8 @@ export const currentChatThread$ = computed(
     if (threadResult.status === 200) {
       const body = threadResult.body;
       return {
+        id: threadId,
+        title: body.title ?? "",
         agentId: body.agentId,
         chatMessages: body.chatMessages ?? [],
         latestSessionId: body.latestSessionId ?? null,
@@ -489,6 +498,8 @@ export const currentChatThread$ = computed(
     }
     const body = sessionResult.body;
     return {
+      id: threadId,
+      title: "",
       agentId: body.agentId,
       chatMessages: body.chatMessages ?? [],
       latestSessionId: threadId,
@@ -584,11 +595,9 @@ export const loadSessionFromSnapshot$ = command(
     );
     signal.throwIfAborted();
 
-    await Promise.all(
-      assistantMessages
-        .filter((m) => m.legacyRunId)
-        .map(() => set(finalizeCompletedRun$, signal)),
-    );
+    set(reloadCurrentThread$, (n) => n + 1);
+
+    await Promise.all(assistantMessages.filter((m) => m.legacyRunId));
   },
 );
 
@@ -619,7 +628,7 @@ const internalCreateNewChatSession$ = command(
     const createClient = get(zeroClient$);
     const thread = await createChatThread(createClient, resolvedComposeId);
 
-    set(internalReloadChatThreads$, (n) => n + 1);
+    set(reloadChatThreads$);
     set(navigateToChat$, thread.id);
   },
 );
@@ -690,18 +699,6 @@ const prepareUserMessage$ = command(
   },
 );
 
-const finalizeCompletedRun$ = command(async ({ set }, signal: AbortSignal) => {
-  set(internalReloadChatThreads$, (n) => n + 1);
-  set(reloadCurrentThread$, (n) => n + 1);
-
-  delay(TITLE_REFRESH_DELAY_MS, { signal })
-    .then(() => {
-      set(internalReloadChatThreads$, (n) => n + 1);
-      set(reloadCurrentThread$, (n) => n + 1);
-    })
-    .catch(() => {});
-});
-
 function resolveModelProvider(
   modelProvider: string | undefined,
 ): string | undefined {
@@ -761,10 +758,6 @@ export const sendNewThreadMessage$ = command(
     set(reloadChatThreads$);
 
     set(navigateToChat$, result.body.threadId);
-
-    delay(TITLE_REFRESH_DELAY_MS, { signal })
-      .then(() => set(reloadChatThreads$))
-      .catch(() => {});
   },
 );
 
@@ -823,7 +816,7 @@ export const sendExistingThreadMessage$ = command(
     }
 
     await set(runLoop.beginLoop$, signal);
-    await set(finalizeCompletedRun$, signal);
+    set(reloadCurrentThread$, (n) => n + 1);
   },
 );
 

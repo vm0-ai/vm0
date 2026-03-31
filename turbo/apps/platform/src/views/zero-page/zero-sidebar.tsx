@@ -486,7 +486,7 @@ function RecentChatSection({
   const trimmedTerm = searchTerm.trim().toLowerCase();
   const filteredSessions = trimmedTerm
     ? agentSessions.filter((s) =>
-        (s.preview ?? "").toLowerCase().includes(trimmedTerm),
+        (s.title ?? "").toLowerCase().includes(trimmedTerm),
       )
     : agentSessions;
 
@@ -636,7 +636,7 @@ function RecentChatSection({
                   }`}
                 >
                   <span className="truncate min-w-0 flex-1">
-                    {session.preview ?? "New chat"}
+                    {session.title ?? "New chat"}
                   </span>
                 </Link>
               ))

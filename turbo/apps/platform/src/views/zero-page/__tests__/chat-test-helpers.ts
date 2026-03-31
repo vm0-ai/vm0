@@ -81,6 +81,7 @@ export function mockChatLifecycle(options?: {
   let threadList: ThreadListItem[] = [];
   let runPrompt: string | null = null;
   let runAssociated = false;
+  let threadTitle: string | null = options?.threadTitle ?? null;
 
   server.use(
     http.get("*/api/zero/chat-threads/:id", () => {
@@ -100,7 +101,7 @@ export function mockChatLifecycle(options?: {
           : []);
       return HttpResponse.json({
         id: threadId,
-        title: options?.threadTitle ?? null,
+        title: threadTitle,
         agentId: "c0000000-0000-4000-a000-000000000001",
         chatMessages,
         latestSessionId: null,
@@ -200,6 +201,7 @@ export function mockChatLifecycle(options?: {
     completeRun: (content?: string) => {
       runStatus = "completed";
       resultContent = content ?? "";
+      threadTitle = threadTitle ?? runPrompt;
       if (content) {
         events = [
           ...events,

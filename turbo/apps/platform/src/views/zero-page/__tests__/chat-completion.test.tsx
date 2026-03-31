@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import {
@@ -105,6 +107,16 @@ describe("chat completion", () => {
 
   it("should update sidebar title after completion", async () => {
     const ctrl = mockChatLifecycle();
+    ctrl.setThreadList([
+      {
+        id: "thread-test-1",
+        title: "untitled",
+        preview: "untitled",
+        agentId: "c0000000-0000-4000-a000-000000000001",
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+      },
+    ]);
 
     await setupPage({
       context,
@@ -121,29 +133,13 @@ describe("chat completion", () => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
 
-    // Set thread list so the sidebar shows a preview after completion
-    ctrl.setThreadList([
-      {
-        id: "thread-test-1",
-        title: "My conversation",
-        preview: "Hello",
-        agentId: "c0000000-0000-4000-a000-000000000001",
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-10T00:00:00Z",
-      },
-    ]);
+    // After completion, the thread list API returns the thread with a title
 
     ctrl.completeRun("Done");
 
-    // The sidebar renders session.preview as the visible text
+    // The sidebar renders the thread title as a link after the title refresh
     await waitFor(() => {
-      // Look for the sidebar preview text (not the user message bubble)
-      const links = document.querySelectorAll("a");
-      const sidebarLink = Array.from(links).find(
-        (a) =>
-          a.textContent === "Hello" && a.getAttribute("href")?.includes("chat"),
-      );
-      expect(sidebarLink).toBeTruthy();
+      expect(screen.getByRole("link", { name: "Hello" })).toBeInTheDocument();
     });
   });
 });
