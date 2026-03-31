@@ -915,11 +915,11 @@ function ScheduleDetailView({
                 <h1 className="min-w-0 text-base sm:text-lg font-semibold tracking-tight text-foreground leading-tight truncate">
                   {summaryTitle}
                 </h1>
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground leading-tight">
-                  <span className="flex items-center gap-2 whitespace-nowrap">
+                <div className="flex flex-col gap-1 text-[11px] text-muted-foreground leading-tight">
+                  <span className="flex items-center gap-1.5 whitespace-nowrap">
                     <span
                       className={cn(
-                        "h-2 w-2 shrink-0 rounded-full",
+                        "h-1.5 w-1.5 shrink-0 rounded-full",
                         isActive ? "bg-emerald-500" : "bg-muted-foreground/50",
                       )}
                       aria-hidden
@@ -932,29 +932,19 @@ function ScheduleDetailView({
                     >
                       {isActive ? "Active" : "Paused"}
                     </span>
+                    <span
+                      className="text-muted-foreground/40 select-none"
+                      aria-hidden
+                    >
+                      ·
+                    </span>
+                    <span className="text-foreground/80">{entry.time}</span>
                   </span>
-                  <span
-                    className="text-muted-foreground/50 select-none"
-                    aria-hidden
-                  >
-                    |
-                  </span>
-                  <span className="text-foreground/90 whitespace-nowrap">
-                    {entry.time}
-                  </span>
-                  <span
-                    className="hidden sm:inline text-muted-foreground/50 select-none"
-                    aria-hidden
-                  >
-                    |
-                  </span>
-                  <span className="hidden sm:inline whitespace-nowrap">
-                    <span className="font-medium text-foreground/90">
+                  <span className="whitespace-nowrap text-muted-foreground/80">
+                    <span className="font-medium text-foreground/70">
                       Next run
                     </span>{" "}
-                    <span className="tabular-nums text-foreground/90">
-                      {nextRunLabel}
-                    </span>
+                    <span className="tabular-nums">{nextRunLabel}</span>
                   </span>
                 </div>
               </div>
