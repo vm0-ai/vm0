@@ -959,6 +959,19 @@ function ScheduleDetailView({
             </div>
 
             <div className="mt-4 flex flex-col gap-2 sm:mt-6 sm:flex-row sm:h-9 sm:items-center">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg px-4 border text-sm font-medium transition-colors hover:bg-accent"
+                disabled={running || !entry.prompt.trim()}
+                onClick={() => {
+                  onRunNow().catch(() => {});
+                }}
+              >
+                <IconPlayerPlay size={14} stroke={1.5} />
+                {running ? "Starting…" : "Run now"}
+              </Button>
               {/* Mobile: Select dropdown */}
               <div className="sm:hidden w-full">
                 <Select
@@ -1007,19 +1020,6 @@ function ScheduleDetailView({
                   Run History
                 </TabsTrigger>
               </TabsList>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg px-4 border text-sm font-medium transition-colors hover:bg-accent sm:ml-auto"
-                disabled={running || !entry.prompt.trim()}
-                onClick={() => {
-                  onRunNow().catch(() => {});
-                }}
-              >
-                <IconPlayerPlay size={14} stroke={1.5} />
-                {running ? "Starting…" : "Run now"}
-              </Button>
             </div>
           </div>
         </header>
