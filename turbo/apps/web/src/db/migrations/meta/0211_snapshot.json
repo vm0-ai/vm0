@@ -1,6 +1,6 @@
 {
-  "id": "0211_remove_schedule_artifact_columns",
-  "prevId": "0210_unify_notification_defaults",
+  "id": "6dea1245-7add-4c17-a1f2-35bdcde7c365",
+  "prevId": "311d5aca-7942-465c-888f-f4666b50e64b",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
