@@ -25,16 +25,13 @@ const context = testContext();
 
 let user: UserContext;
 let testCliToken: string;
-let testOrgSlug: string;
 
 function postSkillReq(
   body: Record<string, unknown>,
   token: string,
-  orgSlug?: string,
 ) {
-  const orgParam = orgSlug ? `?org=${orgSlug}` : "";
   return postSkill(
-    createTestRequest(`http://localhost:3000/api/zero/skills${orgParam}`, {
+    createTestRequest(`http://localhost:3000/api/zero/skills`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -45,21 +42,19 @@ function postSkillReq(
   );
 }
 
-function listSkillsReq(token: string, orgSlug?: string) {
-  const orgParam = orgSlug ? `?org=${orgSlug}` : "";
+function listSkillsReq(token: string) {
   return listSkills(
-    createTestRequest(`http://localhost:3000/api/zero/skills${orgParam}`, {
+    createTestRequest(`http://localhost:3000/api/zero/skills`, {
       method: "GET",
       headers: { Authorization: `Bearer ${token}` },
     }),
   );
 }
 
-function getSkillReq(name: string, token: string, orgSlug?: string) {
-  const orgParam = orgSlug ? `?org=${orgSlug}` : "";
+function getSkillReq(name: string, token: string) {
   return getSkill(
     createTestRequest(
-      `http://localhost:3000/api/zero/skills/${name}${orgParam}`,
+      `http://localhost:3000/api/zero/skills/${name}`,
       {
         method: "GET",
         headers: { Authorization: `Bearer ${token}` },
@@ -72,12 +67,10 @@ function putSkillReq(
   name: string,
   body: Record<string, unknown>,
   token: string,
-  orgSlug?: string,
 ) {
-  const orgParam = orgSlug ? `?org=${orgSlug}` : "";
   return putSkill(
     createTestRequest(
-      `http://localhost:3000/api/zero/skills/${name}${orgParam}`,
+      `http://localhost:3000/api/zero/skills/${name}`,
       {
         method: "PUT",
         headers: {
@@ -90,11 +83,10 @@ function putSkillReq(
   );
 }
 
-function deleteSkillReq(name: string, token: string, orgSlug?: string) {
-  const orgParam = orgSlug ? `?org=${orgSlug}` : "";
+function deleteSkillReq(name: string, token: string) {
   return deleteSkill(
     createTestRequest(
-      `http://localhost:3000/api/zero/skills/${name}${orgParam}`,
+      `http://localhost:3000/api/zero/skills/${name}`,
       {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
@@ -126,7 +118,6 @@ describe("Zero Skills API (org-level)", () => {
     await seedSeedSkills();
     user = await context.setupUser();
     testCliToken = await createTestCliToken(user.userId);
-    testOrgSlug = `org-${user.userId.slice(-8)}`;
   });
 
   describe("POST /api/zero/skills", () => {
@@ -134,7 +125,6 @@ describe("Zero Skills API (org-level)", () => {
       const response = await postSkillReq(
         { name: "my-skill", content: "# My Skill\nHello" },
         testCliToken,
-        testOrgSlug,
       );
 
       expect(response.status).toBe(201);
@@ -153,7 +143,6 @@ describe("Zero Skills API (org-level)", () => {
           description: "A useful skill",
         },
         testCliToken,
-        testOrgSlug,
       );
 
       expect(response.status).toBe(201);
@@ -173,11 +162,10 @@ describe("Zero Skills API (org-level)", () => {
       await postSkillReq(
         { name: "unbound-skill", content: "# Content" },
         testCliToken,
-        testOrgSlug,
       );
 
       // Verify skill exists in org list
-      const listRes = await listSkillsReq(testCliToken, testOrgSlug);
+      const listRes = await listSkillsReq(testCliToken);
       const skills = await listRes.json();
       expect(
         skills.some((s: { name: string }) => s.name === "unbound-skill"),
@@ -192,13 +180,11 @@ describe("Zero Skills API (org-level)", () => {
       await postSkillReq(
         { name: "my-skill", content: "# Content" },
         testCliToken,
-        testOrgSlug,
       );
 
       const response = await postSkillReq(
         { name: "my-skill", content: "# Other" },
         testCliToken,
-        testOrgSlug,
       );
 
       expect(response.status).toBe(409);
@@ -208,7 +194,6 @@ describe("Zero Skills API (org-level)", () => {
       const response = await postSkillReq(
         { name: "deep-dive", content: "# Content" },
         testCliToken,
-        testOrgSlug,
       );
 
       expect(response.status).toBe(409);
@@ -228,7 +213,7 @@ describe("Zero Skills API (org-level)", () => {
 
   describe("GET /api/zero/skills", () => {
     it("should return empty array when no skills", async () => {
-      const response = await listSkillsReq(testCliToken, testOrgSlug);
+      const response = await listSkillsReq(testCliToken);
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -244,15 +229,13 @@ describe("Zero Skills API (org-level)", () => {
           description: "First skill",
         },
         testCliToken,
-        testOrgSlug,
       );
       await postSkillReq(
         { name: "skill-two", content: "# Two" },
         testCliToken,
-        testOrgSlug,
       );
 
-      const response = await listSkillsReq(testCliToken, testOrgSlug);
+      const response = await listSkillsReq(testCliToken);
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -273,12 +256,11 @@ describe("Zero Skills API (org-level)", () => {
           displayName: "My Skill",
         },
         testCliToken,
-        testOrgSlug,
       );
 
       mockSkillContent("# My Skill Content");
 
-      const response = await getSkillReq("my-skill", testCliToken, testOrgSlug);
+      const response = await getSkillReq("my-skill", testCliToken);
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -291,7 +273,6 @@ describe("Zero Skills API (org-level)", () => {
       const response = await getSkillReq(
         "no-such-skill",
         testCliToken,
-        testOrgSlug,
       );
 
       expect(response.status).toBe(404);
@@ -303,14 +284,12 @@ describe("Zero Skills API (org-level)", () => {
       await postSkillReq(
         { name: "my-skill", content: "# Original" },
         testCliToken,
-        testOrgSlug,
       );
 
       const response = await putSkillReq(
         "my-skill",
         { content: "# Updated Content" },
         testCliToken,
-        testOrgSlug,
       );
 
       expect(response.status).toBe(200);
@@ -324,7 +303,6 @@ describe("Zero Skills API (org-level)", () => {
         "no-such-skill",
         { content: "# Content" },
         testCliToken,
-        testOrgSlug,
       );
 
       expect(response.status).toBe(404);
@@ -336,19 +314,17 @@ describe("Zero Skills API (org-level)", () => {
       await postSkillReq(
         { name: "my-skill", content: "# Content" },
         testCliToken,
-        testOrgSlug,
       );
 
       const response = await deleteSkillReq(
         "my-skill",
         testCliToken,
-        testOrgSlug,
       );
 
       expect(response.status).toBe(204);
 
       // Verify skill is removed from list
-      const listRes = await listSkillsReq(testCliToken, testOrgSlug);
+      const listRes = await listSkillsReq(testCliToken);
       const data = await listRes.json();
       expect(data).toEqual([]);
     });
@@ -358,7 +334,6 @@ describe("Zero Skills API (org-level)", () => {
       await postSkillReq(
         { name: "shared-skill", content: "# Shared" },
         testCliToken,
-        testOrgSlug,
       );
 
       // Bind to two agents
@@ -380,13 +355,12 @@ describe("Zero Skills API (org-level)", () => {
       const response = await deleteSkillReq(
         "shared-skill",
         testCliToken,
-        testOrgSlug,
       );
 
       expect(response.status).toBe(204);
 
       // Verify skill is gone from org
-      const listRes = await listSkillsReq(testCliToken, testOrgSlug);
+      const listRes = await listSkillsReq(testCliToken);
       const data = await listRes.json();
       expect(data).toEqual([]);
     });
@@ -395,7 +369,6 @@ describe("Zero Skills API (org-level)", () => {
       const response = await deleteSkillReq(
         "no-such-skill",
         testCliToken,
-        testOrgSlug,
       );
 
       expect(response.status).toBe(404);

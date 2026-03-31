@@ -210,7 +210,6 @@ describe("Zero Agents API", () => {
       const response = await postAgent(
         { customSkills: ["my-skill", "data-tool"] },
         testCliToken,
-        testOrgSlug,
       );
 
       expect(response.status).toBe(201);
@@ -364,20 +363,17 @@ describe("Zero Agents API", () => {
     });
 
     it("should update custom skills and reflect in compose volumes", async () => {
-      const created = await (
-        await postAgent({}, testCliToken, testOrgSlug)
-      ).json();
+      const created = await (await postAgent({}, testCliToken)).json();
 
       const response = await putAgent(
         created.agentId,
         { customSkills: ["my-skill", "data-tool"] },
         testCliToken,
-        testOrgSlug,
       );
       expect(response.status).toBe(200);
 
       // Verify skills are persisted
-      const getRes = await getAgent(created.agentId, testCliToken, testOrgSlug);
+      const getRes = await getAgent(created.agentId, testCliToken);
       const fetched = await getRes.json();
       expect(fetched.customSkills).toEqual(["my-skill", "data-tool"]);
 
@@ -395,11 +391,7 @@ describe("Zero Agents API", () => {
     it("should preserve existing custom skills when not provided in update", async () => {
       // Create with custom skills
       const created = await (
-        await postAgent(
-          { customSkills: ["my-skill"] },
-          testCliToken,
-          testOrgSlug,
-        )
+        await postAgent({ customSkills: ["my-skill"] }, testCliToken)
       ).json();
 
       // Update without customSkills field
@@ -407,12 +399,11 @@ describe("Zero Agents API", () => {
         created.agentId,
         { displayName: "Updated" },
         testCliToken,
-        testOrgSlug,
       );
       expect(response.status).toBe(200);
 
       // Verify skills are preserved
-      const getRes = await getAgent(created.agentId, testCliToken, testOrgSlug);
+      const getRes = await getAgent(created.agentId, testCliToken);
       const fetched = await getRes.json();
       expect(fetched.customSkills).toEqual(["my-skill"]);
     });
