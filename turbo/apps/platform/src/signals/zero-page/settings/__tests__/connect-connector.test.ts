@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server.ts";
 import { testContext } from "../../../__tests__/test-helpers.ts";
@@ -8,26 +8,32 @@ import type { ConnectorListResponse } from "@vm0/core";
 
 const context = testContext();
 
-const GITHUB_CONNECTOR_RESPONSE: ConnectorListResponse = {
-  connectors: [
-    {
-      type: "github",
-      authMethod: "oauth",
-      externalId: "12345",
-      externalUsername: "testuser",
-      externalEmail: "test@example.com",
-      oauthScopes: ["repo", "read:user"],
-      tokenExpiresAt: null,
-      needsReconnect: false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-  ],
-  configuredTypes: ["github"],
-  connectorProvidedSecretNames: [],
-};
+function makeGithubConnectorResponse(): ConnectorListResponse {
+  return {
+    connectors: [
+      {
+        id: "conn-12345",
+        type: "github",
+        authMethod: "oauth",
+        externalId: "12345",
+        externalUsername: "testuser",
+        externalEmail: "test@example.com",
+        oauthScopes: ["repo", "read:user"],
+        needsReconnect: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    ],
+    configuredTypes: ["github"],
+    connectorProvidedSecretNames: [],
+  };
+}
 
 describe("connectConnector$", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("exits polling when BroadcastChannel message arrives", async () => {
     await setupPage({ context, path: "/", withoutRender: true });
 
@@ -37,7 +43,7 @@ describe("connectConnector$", () => {
     // After BroadcastChannel notification, API returns the connected connector
     server.use(
       http.get("*/api/zero/connectors", () => {
-        return HttpResponse.json(GITHUB_CONNECTOR_RESPONSE);
+        return HttpResponse.json(makeGithubConnectorResponse());
       }),
     );
 
@@ -54,8 +60,8 @@ describe("connectConnector$", () => {
 
     const result = await connectPromise;
 
-    expect(result).toBe(true);
-    expect(mockWindow.close).toHaveBeenCalled();
+    expect(result).toBeTruthy();
+    expect(mockWindow.close).toHaveBeenCalledWith();
 
     // Polling state should be cleared
     const polling = context.store.get(pollingConnectorType$);
@@ -70,31 +76,41 @@ describe("connectConnector$", () => {
 
     server.use(
       http.get("*/api/zero/connectors", () => {
-        return HttpResponse.json(GITHUB_CONNECTOR_RESPONSE);
+        return HttpResponse.json(makeGithubConnectorResponse());
       }),
     );
 
     // Hide BroadcastChannel to test fallback
     const OriginalBC = globalThis.BroadcastChannel;
-    // @ts-expect-error -- intentionally removing for test
-    delete globalThis.BroadcastChannel;
+    Object.defineProperty(globalThis, "BroadcastChannel", {
+      value: undefined,
+      writable: true,
+      configurable: true,
+    });
 
     try {
+      vi.useFakeTimers();
+
       const connectPromise = context.store.set(
         connectConnector$,
         "github",
         context.signal,
       );
 
-      // Simulate popup closing after a tick
-      setTimeout(() => {
-        mockWindow.closed = true;
-      }, 100);
+      // Advance past the first polling interval, then simulate popup closing
+      await vi.advanceTimersByTimeAsync(500);
+      mockWindow.closed = true;
+      await vi.advanceTimersByTimeAsync(500);
 
       const result = await connectPromise;
-      expect(result).toBe(true);
+      expect(result).toBeTruthy();
     } finally {
-      globalThis.BroadcastChannel = OriginalBC;
+      vi.useRealTimers();
+      Object.defineProperty(globalThis, "BroadcastChannel", {
+        value: OriginalBC,
+        writable: true,
+        configurable: true,
+      });
     }
   });
 });

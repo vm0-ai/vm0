@@ -33,7 +33,11 @@ export default function ConnectorStatusPage({
       status: isSuccess ? "success" : "error",
     });
     channel.close();
-    window.close();
+    // Small delay to ensure the parent window receives the BroadcastChannel
+    // message before the popup closes. Message delivery is asynchronous and
+    // calling window.close() immediately could prevent delivery.
+    const timer = setTimeout(() => window.close(), 300);
+    return () => clearTimeout(timer);
   }, [connectorType, isSuccess]);
   const connectorLabel =
     connectorType === "github" ? "GitHub" : connectorType.toUpperCase();

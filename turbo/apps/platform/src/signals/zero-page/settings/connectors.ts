@@ -310,7 +310,10 @@ export const connectConnector$ = command(
 
     if (channel) {
       channel.addEventListener("message", (event: MessageEvent) => {
-        if (event.data?.connectorType === type) {
+        if (
+          event.data?.connectorType === type &&
+          event.data?.status === "success"
+        ) {
           channelNotified = true;
         }
       });
