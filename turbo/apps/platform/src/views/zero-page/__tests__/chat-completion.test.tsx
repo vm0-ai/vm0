@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import {
@@ -13,6 +14,7 @@ const context = testContext();
 
 describe("chat completion", () => {
   it("should display final markdown content after completion", async () => {
+    const user = userEvent.setup();
     const ctrl = mockChatLifecycle();
 
     await setupPage({
@@ -24,7 +26,7 @@ describe("chat completion", () => {
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
     );
 
-    sendMessageInUI(textarea, "Hello");
+    await sendMessageInUI(user, textarea, "Hello");
 
     await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
@@ -38,6 +40,7 @@ describe("chat completion", () => {
   });
 
   it("should restore Send button and remove Stop button after completion", async () => {
+    const user = userEvent.setup();
     const ctrl = mockChatLifecycle();
 
     await setupPage({
@@ -49,7 +52,7 @@ describe("chat completion", () => {
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
     );
 
-    sendMessageInUI(textarea, "Hello");
+    await sendMessageInUI(user, textarea, "Hello");
 
     await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
@@ -64,6 +67,7 @@ describe("chat completion", () => {
   });
 
   it("should collapse activity steps into expandable timeline", async () => {
+    const user = userEvent.setup();
     const ctrl = mockChatLifecycle();
 
     await setupPage({
@@ -75,7 +79,7 @@ describe("chat completion", () => {
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
     );
 
-    sendMessageInUI(textarea, "Hello");
+    await sendMessageInUI(user, textarea, "Hello");
 
     // Wait for running state
     await waitFor(() => {
@@ -104,6 +108,7 @@ describe("chat completion", () => {
   });
 
   it("should update sidebar title after completion", async () => {
+    const user = userEvent.setup();
     const ctrl = mockChatLifecycle();
 
     await setupPage({
@@ -115,7 +120,7 @@ describe("chat completion", () => {
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
     );
 
-    sendMessageInUI(textarea, "Hello");
+    await sendMessageInUI(user, textarea, "Hello");
 
     await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();

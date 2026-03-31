@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor, fireEvent } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -47,6 +48,7 @@ describe("zero onboarding - step 1: workspace name", () => {
   });
 
   it("should advance to connector selection when Next is clicked", async () => {
+    const user = userEvent.setup();
     mockOnboardingNeeded();
     await renderOnboardingPage();
 
@@ -56,9 +58,10 @@ describe("zero onboarding - step 1: workspace name", () => {
 
     // Fill in workspace name so Next is enabled
     const input = screen.getByPlaceholderText("e.g. Acme Corp");
-    fireEvent.change(input, { target: { value: "Test Workspace" } });
+    await user.clear(input);
+    await user.type(input, "Test Workspace");
 
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    await user.click(screen.getByRole("button", { name: "Next" }));
 
     await waitFor(() => {
       expect(screen.getByText("Choose your tools")).toBeInTheDocument();
@@ -68,6 +71,7 @@ describe("zero onboarding - step 1: workspace name", () => {
 
 describe("zero onboarding - step 2: choose tools", () => {
   it("should show connector selection with search", async () => {
+    const user = userEvent.setup();
     mockOnboardingNeeded();
     await renderOnboardingPage();
 
@@ -77,8 +81,9 @@ describe("zero onboarding - step 2: choose tools", () => {
     });
 
     const input = screen.getByPlaceholderText("e.g. Acme Corp");
-    fireEvent.change(input, { target: { value: "Test Workspace" } });
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    await user.clear(input);
+    await user.type(input, "Test Workspace");
+    await user.click(screen.getByRole("button", { name: "Next" }));
 
     // Should reach step 2 (choose tools)
     await waitFor(() => {

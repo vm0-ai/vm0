@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor, fireEvent } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse, delay } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -106,6 +107,7 @@ function mockSubagentAPIs() {
 
 describe("sidebar new chat navigation", () => {
   it("should create thread and navigate to /chat/:threadId when clicking new chat for default agent", async () => {
+    const user = userEvent.setup();
     mockSubagentAPIs();
 
     // Start on /team so the "new chat" button navigates away
@@ -116,7 +118,7 @@ describe("sidebar new chat navigation", () => {
       return screen.getByLabelText("New chat with Zero");
     });
 
-    fireEvent.click(newChatButton);
+    await user.click(newChatButton);
 
     // Verify navigation to /chat/:threadId
     await waitFor(() => {
@@ -125,6 +127,7 @@ describe("sidebar new chat navigation", () => {
   }, 15_000);
 
   it("should create thread and navigate to /chat/:threadId when clicking new chat for a subagent", async () => {
+    const user = userEvent.setup();
     mockSubagentAPIs();
 
     await setupPage({ context, path: "/talk/subagent-compose-id" });
@@ -134,7 +137,7 @@ describe("sidebar new chat navigation", () => {
       return screen.getByLabelText("New chat with Helper Bot");
     });
 
-    fireEvent.click(newChatButton);
+    await user.click(newChatButton);
 
     // Verify navigation to /chat/:threadId
     await waitFor(() => {
@@ -143,6 +146,7 @@ describe("sidebar new chat navigation", () => {
   }, 15_000);
 
   it("should disable button during thread creation", async () => {
+    const user = userEvent.setup();
     mockSubagentAPIs();
     // Override POST to add a delay
     server.use(
@@ -165,7 +169,7 @@ describe("sidebar new chat navigation", () => {
       return screen.getByLabelText("New chat with Zero");
     });
 
-    fireEvent.click(newChatButton);
+    await user.click(newChatButton);
 
     // Button should be disabled while creating
     await waitFor(() => {
@@ -179,6 +183,7 @@ describe("sidebar new chat navigation", () => {
   }, 15_000);
 
   it("should handle API failure gracefully", async () => {
+    const user = userEvent.setup();
     mockSubagentAPIs();
     // Override POST to return error
     server.use(
@@ -203,7 +208,7 @@ describe("sidebar new chat navigation", () => {
       return screen.getByLabelText("New chat with Zero");
     });
 
-    fireEvent.click(newChatButton);
+    await user.click(newChatButton);
 
     // Wait for the request to complete (button should become enabled again)
     await waitFor(() => {
@@ -215,6 +220,7 @@ describe("sidebar new chat navigation", () => {
   }, 15_000);
 
   it("should show new chat entry in sidebar and focus textarea after creating new chat", async () => {
+    const user = userEvent.setup();
     mockSubagentAPIs();
 
     // Override list and detail endpoints to include the newly created thread.
@@ -255,7 +261,7 @@ describe("sidebar new chat navigation", () => {
       screen.getByLabelText("New chat with Zero"),
     );
 
-    fireEvent.click(newChatButton);
+    await user.click(newChatButton);
 
     // 1. Verify navigation (URL-based selection confirmation)
     await waitFor(() => {

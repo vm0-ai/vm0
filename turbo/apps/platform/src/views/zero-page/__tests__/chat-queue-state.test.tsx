@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import {
@@ -13,6 +14,7 @@ const context = testContext();
 
 describe("chat queue state", () => {
   it("should show queue position when run is queued", async () => {
+    const user = userEvent.setup();
     const ctrl = mockChatLifecycle();
 
     ctrl.setRunStatus("queued");
@@ -27,7 +29,7 @@ describe("chat queue state", () => {
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
     );
 
-    sendMessageInUI(textarea, "Hello");
+    await sendMessageInUI(user, textarea, "Hello");
 
     await waitFor(() => {
       expect(screen.getByText(/In queue/)).toBeInTheDocument();
@@ -41,6 +43,7 @@ describe("chat queue state", () => {
   });
 
   it("should transition from queue to running state", async () => {
+    const user = userEvent.setup();
     const ctrl = mockChatLifecycle();
     ctrl.setRunStatus("queued");
     ctrl.setQueuePosition(2);
@@ -54,7 +57,7 @@ describe("chat queue state", () => {
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
     );
 
-    sendMessageInUI(textarea, "Hello");
+    await sendMessageInUI(user, textarea, "Hello");
 
     // Wait for queue state
     await waitFor(() => {

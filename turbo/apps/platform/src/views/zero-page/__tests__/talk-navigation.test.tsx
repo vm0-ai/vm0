@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
-import { screen, waitFor, fireEvent, act } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -81,6 +82,7 @@ function mockChatAPIs() {
 
 describe("talk navigation", () => {
   it("should navigate from /talk/:name to /chat/:chatThreadId after sending a message", async () => {
+    const user = userEvent.setup();
     mockChatAPIs();
 
     await setupPage({
@@ -94,18 +96,11 @@ describe("talk navigation", () => {
     );
 
     // Type a message
-    fireEvent.change(textarea, { target: { value: "Hello" } });
+    await user.clear(textarea);
+    await user.type(textarea, "Hello");
 
     // Press Enter to send
-    const preventDefault = vi.fn();
-    await act(() => {
-      textarea.dispatchEvent(
-        Object.assign(
-          new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
-          { preventDefault },
-        ),
-      );
-    });
+    await user.keyboard("{Enter}");
 
     // The URL should navigate to /chat/new-thread-id-123
     await waitFor(() => {
@@ -114,6 +109,7 @@ describe("talk navigation", () => {
   }, 15_000);
 
   it("should navigate to /chat/:chatThreadId after completing onboarding and sending auto-intro", async () => {
+    const user = userEvent.setup();
     // Track onboarding status: starts as needing onboarding, then completes
     let onboardingComplete = false;
 
@@ -223,20 +219,21 @@ describe("talk navigation", () => {
 
     // Fill name and advance
     const input = screen.getByPlaceholderText("e.g. Acme Corp");
-    fireEvent.change(input, { target: { value: "Test Workspace" } });
-    fireEvent.click(screen.getByText("Next"));
+    await user.clear(input);
+    await user.type(input, "Test Workspace");
+    await user.click(screen.getByText("Next"));
 
     // Step 2: Choose your tools → Next
     await waitFor(() => {
       expect(screen.getByText("Choose your tools")).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByText("Next"));
+    await user.click(screen.getByText("Next"));
 
     // Step 3: Connect your apps → Next
     await waitFor(() => {
       expect(screen.getByText("Connect your apps")).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByText("Next"));
+    await user.click(screen.getByText("Next"));
 
     // Step 4: Where to work
     await waitFor(() => {
@@ -253,7 +250,7 @@ describe("talk navigation", () => {
     const continueButton = screen.getByRole("button", {
       name: /Continue in web/,
     });
-    fireEvent.click(continueButton);
+    await user.click(continueButton);
 
     // The final URL should be /chat/new-thread-id-123 after the auto-intro
     // message creates a thread and navigates

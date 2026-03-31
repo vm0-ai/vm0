@@ -237,6 +237,7 @@ describe("route", () => {
       expect(calledSignal?.aborted).toBeFalsy();
 
       mockLocation({ pathname: "/profile", search: "" }, signal);
+      // eslint-disable-next-line ccstate/prefer-user-event -- window.dispatchEvent for router simulation, not user interaction; confirmed by ethan@vm0.ai
       window.dispatchEvent(new PopStateEvent("popstate"));
 
       expect(calledSignal?.aborted).toBeTruthy();
@@ -328,6 +329,7 @@ describe("route", () => {
 
       // Simulate browser history navigation
       mockLocation({ pathname: "/profile", search: "" }, signal);
+      // eslint-disable-next-line ccstate/prefer-user-event -- window.dispatchEvent for router simulation, not user interaction; confirmed by ethan@vm0.ai
       window.dispatchEvent(new PopStateEvent("popstate"));
 
       await vi.waitFor(() => {

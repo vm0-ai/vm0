@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor, fireEvent } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import {
@@ -12,6 +13,7 @@ const context = testContext();
 
 describe("chat failure and cancel", () => {
   it("should display error message and restore Send button on failure", async () => {
+    const user = userEvent.setup();
     const ctrl = mockChatLifecycle();
 
     await setupPage({
@@ -23,7 +25,7 @@ describe("chat failure and cancel", () => {
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
     );
 
-    sendMessageInUI(textarea, "Hello");
+    await sendMessageInUI(user, textarea, "Hello");
 
     await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
@@ -39,6 +41,7 @@ describe("chat failure and cancel", () => {
   });
 
   it("should send cancel request when Stop button is clicked", async () => {
+    const user = userEvent.setup();
     const ctrl = mockChatLifecycle();
 
     await setupPage({
@@ -50,13 +53,13 @@ describe("chat failure and cancel", () => {
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
     );
 
-    sendMessageInUI(textarea, "Hello");
+    await sendMessageInUI(user, textarea, "Hello");
 
     await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByLabelText("Stop"));
+    await user.click(screen.getByLabelText("Stop"));
     ctrl.cancelRun();
 
     // After server confirms cancellation, sending state ends and Send button returns
@@ -67,6 +70,7 @@ describe("chat failure and cancel", () => {
   });
 
   it("should show cancelled state after polling discovers cancellation", async () => {
+    const user = userEvent.setup();
     const ctrl = mockChatLifecycle();
 
     await setupPage({
@@ -78,7 +82,7 @@ describe("chat failure and cancel", () => {
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
     );
 
-    sendMessageInUI(textarea, "Hello");
+    await sendMessageInUI(user, textarea, "Hello");
 
     await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
@@ -93,6 +97,7 @@ describe("chat failure and cancel", () => {
   });
 
   it("should restore input after cancel", async () => {
+    const user = userEvent.setup();
     const ctrl = mockChatLifecycle();
 
     await setupPage({
@@ -104,7 +109,7 @@ describe("chat failure and cancel", () => {
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
     );
 
-    sendMessageInUI(textarea, "Hello");
+    await sendMessageInUI(user, textarea, "Hello");
 
     await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();

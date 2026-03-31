@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-  screen,
-  waitFor,
-  fireEvent,
-  act,
-  within,
-} from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -92,13 +87,11 @@ function mockAPIsWithSubagents({
   );
 }
 
-async function openChatListDialog() {
+async function openChatListDialog(user: ReturnType<typeof userEvent.setup>) {
   const openButton = await waitFor(() =>
     screen.getByLabelText("Open a conversation"),
   );
-  await act(() => {
-    fireEvent.click(openButton);
-  });
+  await user.click(openButton);
   await waitFor(() => {
     expect(screen.getByText("Talk to")).toBeInTheDocument();
   });
@@ -106,10 +99,11 @@ async function openChatListDialog() {
 
 describe("chatListDialog", () => {
   it("should navigate to chat when clicking a pinned agent", async () => {
+    const user = userEvent.setup();
     mockAPIsWithSubagents();
     await setupPage({ context, path: "/team" });
 
-    await openChatListDialog();
+    await openChatListDialog(user);
 
     // Wait for the "Pinned" section label to appear, then find the chat button
     await waitFor(() => {
@@ -122,9 +116,7 @@ describe("chatListDialog", () => {
     const pinnedAgentText = within(dialog).getByText("Pinned Agent");
     const pinnedAgentButton = pinnedAgentText.closest("button")!;
 
-    await act(() => {
-      fireEvent.click(pinnedAgentButton);
-    });
+    await user.click(pinnedAgentButton);
 
     // Should navigate to /chat/:threadId
     await waitFor(() => {
@@ -133,19 +125,18 @@ describe("chatListDialog", () => {
   }, 15_000);
 
   it("should navigate to chat when clicking an unpinned agent", async () => {
+    const user = userEvent.setup();
     mockAPIsWithSubagents();
     await setupPage({ context, path: "/team" });
 
-    await openChatListDialog();
+    await openChatListDialog(user);
 
     // Find the unpinned agent button and click it
     const unpinnedAgentButton = await waitFor(() =>
       screen.getByRole("button", { name: /Unpinned Agent/ }),
     );
 
-    await act(() => {
-      fireEvent.click(unpinnedAgentButton);
-    });
+    await user.click(unpinnedAgentButton);
 
     await waitFor(() => {
       expect(pathname()).toBe("/chat/new-thread-from-dialog");
@@ -153,10 +144,11 @@ describe("chatListDialog", () => {
   }, 15_000);
 
   it("should render unpinned agent avatars without reduced opacity", async () => {
+    const user = userEvent.setup();
     mockAPIsWithSubagents();
     await setupPage({ context, path: "/team" });
 
-    await openChatListDialog();
+    await openChatListDialog(user);
 
     // Wait for the "Others" section to render with the unpinned agent
     const dialog = screen.getByRole("dialog");
@@ -170,10 +162,11 @@ describe("chatListDialog", () => {
   }, 15_000);
 
   it("should navigate to chat when clicking the lead agent", async () => {
+    const user = userEvent.setup();
     mockAPIsWithSubagents();
     await setupPage({ context, path: "/team" });
 
-    await openChatListDialog();
+    await openChatListDialog(user);
 
     // The lead agent section should have a clickable button
     const leadButton = await waitFor(() => {
@@ -182,9 +175,7 @@ describe("chatListDialog", () => {
         .closest("button")!;
     });
 
-    await act(() => {
-      fireEvent.click(leadButton);
-    });
+    await user.click(leadButton);
 
     await waitFor(() => {
       expect(pathname()).toBe("/chat/new-thread-from-dialog");

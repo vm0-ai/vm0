@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { screen, waitFor, fireEvent } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -34,6 +35,7 @@ function mockQueuePage() {
 
 describe("link component new-tab behavior", () => {
   it("should open new tab on ctrl+click instead of navigating via pushState", async () => {
+    const user = userEvent.setup();
     mockQueuePage();
 
     const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
@@ -46,7 +48,9 @@ describe("link component new-tab behavior", () => {
 
     // The "View logs" link is a Link component — ctrl+click should open new tab
     const viewLogsLink = screen.getByText("View logs");
-    fireEvent.click(viewLogsLink, { ctrlKey: true });
+    await user.keyboard("{Control>}");
+    await user.click(viewLogsLink);
+    await user.keyboard("{/Control}");
 
     await waitFor(() => {
       expect(openSpy).toHaveBeenCalledWith(

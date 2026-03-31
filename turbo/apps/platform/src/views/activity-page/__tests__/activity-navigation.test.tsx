@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor, fireEvent } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -95,6 +96,7 @@ function mockActivityAPIs() {
 
 describe("activity navigation", () => {
   it("should load detail page when clicking an activity row from the list", async () => {
+    const user = userEvent.setup();
     mockActivityAPIs();
 
     await setupPage({
@@ -108,7 +110,7 @@ describe("activity navigation", () => {
     });
 
     // Click the activity row to navigate to detail
-    fireEvent.click(screen.getByText("Test Agent"));
+    await user.click(screen.getByText("Test Agent"));
 
     // The detail page should render with the agent name as heading
     await waitFor(() => {

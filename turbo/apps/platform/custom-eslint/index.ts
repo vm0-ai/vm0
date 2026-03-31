@@ -37,6 +37,7 @@ import noNonZeroApi from "./rules/no-non-zero-api.ts";
 import commandAsyncSignal from "./rules/command-async-signal.ts";
 import noGetterSetterParams from "./rules/no-getter-setter-params.ts";
 import noNewAbortController from "./rules/no-new-abort-controller.ts";
+import preferUserEvent from "./rules/prefer-user-event.ts";
 
 const plugin = {
   meta: {
@@ -61,6 +62,7 @@ const plugin = {
     "command-async-signal": commandAsyncSignal,
     "no-getter-setter-params": noGetterSetterParams,
     "no-new-abort-controller": noNewAbortController,
+    "prefer-user-event": preferUserEvent,
   },
 };
 

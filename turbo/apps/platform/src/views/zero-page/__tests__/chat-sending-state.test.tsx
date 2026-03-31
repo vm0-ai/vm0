@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { delay } from "signal-timers";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
@@ -14,6 +15,7 @@ const context = testContext();
 
 describe("chat sending state", () => {
   it("should show user message and clear input after send", async () => {
+    const user = userEvent.setup();
     const ctrl = mockChatLifecycle();
 
     await setupPage({
@@ -25,7 +27,7 @@ describe("chat sending state", () => {
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
     );
 
-    sendMessageInUI(textarea, "Hello");
+    await sendMessageInUI(user, textarea, "Hello");
 
     await waitFor(() => {
       expect(screen.getByText("Hello")).toBeInTheDocument();
@@ -39,6 +41,7 @@ describe("chat sending state", () => {
   });
 
   it("should show Stop button and hide Send button while sending", async () => {
+    const user = userEvent.setup();
     const ctrl = mockChatLifecycle();
 
     await setupPage({
@@ -50,7 +53,7 @@ describe("chat sending state", () => {
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
     );
 
-    sendMessageInUI(textarea, "Hello");
+    await sendMessageInUI(user, textarea, "Hello");
 
     await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
@@ -68,6 +71,7 @@ describe("chat sending state", () => {
   });
 
   it("should display thinking text while waiting for telemetry", async () => {
+    const user = userEvent.setup();
     const ctrl = mockChatLifecycle();
 
     await setupPage({
@@ -79,7 +83,7 @@ describe("chat sending state", () => {
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
     );
 
-    sendMessageInUI(textarea, "Hello");
+    await sendMessageInUI(user, textarea, "Hello");
 
     // The thinking message cycles through various texts; the shimmer class
     // is applied to the element. We check for the shimmer class presence.
@@ -96,6 +100,7 @@ describe("chat sending state", () => {
   });
 
   it("should not trigger send when pressing Enter while a message is being sent", async () => {
+    const user = userEvent.setup();
     let runCreateCount = 0;
     const ctrl = mockChatLifecycle({
       onRunCreate: () => {
@@ -112,7 +117,7 @@ describe("chat sending state", () => {
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
     );
 
-    sendMessageInUI(textarea, "Hello");
+    await sendMessageInUI(user, textarea, "Hello");
 
     // Wait for the first run to be created and sending state to be active
     await waitFor(() => {
@@ -127,7 +132,7 @@ describe("chat sending state", () => {
     );
 
     // Type a new message and press Enter while still sending
-    sendMessageInUI(activeTextarea, "Second message");
+    await sendMessageInUI(user, activeTextarea, "Second message");
 
     // Give any potential second request time to fire.
     // NOTE: intentionally not wrapped in act() — background polling loops with
@@ -149,6 +154,7 @@ describe("chat sending state", () => {
   });
 
   it("should replace thinking with activity steps when telemetry arrives", async () => {
+    const user = userEvent.setup();
     const ctrl = mockChatLifecycle();
 
     await setupPage({
@@ -160,7 +166,7 @@ describe("chat sending state", () => {
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
     );
 
-    sendMessageInUI(textarea, "Hello");
+    await sendMessageInUI(user, textarea, "Hello");
 
     // Wait for thinking state
     await waitFor(() => {

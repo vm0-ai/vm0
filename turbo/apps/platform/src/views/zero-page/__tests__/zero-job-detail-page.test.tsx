@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor, act, fireEvent } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -81,6 +82,7 @@ describe("zero job detail page", () => {
   });
 
   it("should switch to profile tab and show settings form", async () => {
+    const user = userEvent.setup();
     mockAPIs();
     await setupPage({ context, path: "/team/my-agent" });
 
@@ -91,9 +93,7 @@ describe("zero job detail page", () => {
     });
 
     // Click Profile tab
-    await act(() => {
-      fireEvent.click(screen.getByRole("tab", { name: /Profile/i }));
-    });
+    await user.click(screen.getByRole("tab", { name: /Profile/i }));
 
     // Profile tab should show settings form with agent name input
     await waitFor(() => {
@@ -237,21 +237,23 @@ function mockAPIsWithSchedules() {
 }
 
 async function openScheduleMenuAndClick(
+  user: ReturnType<typeof userEvent.setup>,
   timeLabel: string,
   action: "Edit" | "Delete" | "Run now",
 ) {
   const menuTrigger = screen.getByRole("button", {
     name: `More actions for ${timeLabel}`,
   });
-  fireEvent.pointerDown(menuTrigger, { button: 0, ctrlKey: false });
+  await user.click(menuTrigger);
   await waitFor(() => {
     expect(screen.getByRole("menuitem", { name: action })).toBeInTheDocument();
   });
-  fireEvent.click(screen.getByRole("menuitem", { name: action }));
+  await user.click(screen.getByRole("menuitem", { name: action }));
 }
 
 describe("zero job detail page - schedule card delete confirmation", () => {
   it("should show confirmation dialog when delete button is clicked in card view", async () => {
+    const user = userEvent.setup();
     mockAPIsWithSchedules();
     await setupPage({ context, path: "/team/my-agent?tab=schedule" });
 
@@ -261,7 +263,7 @@ describe("zero job detail page - schedule card delete confirmation", () => {
       ).toBeInTheDocument();
     });
 
-    await openScheduleMenuAndClick("Every weekday at 9:00 AM", "Delete");
+    await openScheduleMenuAndClick(user, "Every weekday at 9:00 AM", "Delete");
 
     await waitFor(() => {
       expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
@@ -272,6 +274,7 @@ describe("zero job detail page - schedule card delete confirmation", () => {
   });
 
   it("should close dialog without deleting when Cancel is clicked in card view", async () => {
+    const user = userEvent.setup();
     let deleteCalled = false;
 
     mockAPIsWithSchedules();
@@ -290,13 +293,13 @@ describe("zero job detail page - schedule card delete confirmation", () => {
       ).toBeInTheDocument();
     });
 
-    await openScheduleMenuAndClick("Every weekday at 9:00 AM", "Delete");
+    await openScheduleMenuAndClick(user, "Every weekday at 9:00 AM", "Delete");
 
     await waitFor(() => {
       expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
 
     await waitFor(() => {
       expect(screen.queryByText("Delete schedule?")).not.toBeInTheDocument();
@@ -305,6 +308,7 @@ describe("zero job detail page - schedule card delete confirmation", () => {
   });
 
   it("should call delete API when Delete is confirmed in card view", async () => {
+    const user = userEvent.setup();
     let deletedName: string | null = null;
 
     mockAPIsWithSchedules();
@@ -323,13 +327,13 @@ describe("zero job detail page - schedule card delete confirmation", () => {
       ).toBeInTheDocument();
     });
 
-    await openScheduleMenuAndClick("Every weekday at 9:00 AM", "Delete");
+    await openScheduleMenuAndClick(user, "Every weekday at 9:00 AM", "Delete");
 
     await waitFor(() => {
       expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    await user.click(screen.getByRole("button", { name: "Delete" }));
 
     await waitFor(() => {
       expect(deletedName).toBe("morning-briefing");

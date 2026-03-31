@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -14,6 +15,7 @@ const context = testContext();
 
 describe("chat message lifecycle", () => {
   it("should show user message and assistant response after sending", async () => {
+    const user = userEvent.setup();
     const ctrl = mockChatLifecycle();
 
     await setupPage({
@@ -25,7 +27,7 @@ describe("chat message lifecycle", () => {
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
     );
 
-    sendMessageInUI(textarea, "What can you do?");
+    await sendMessageInUI(user, textarea, "What can you do?");
 
     // User message appears
     await waitFor(() => {
@@ -49,6 +51,7 @@ describe("chat message lifecycle", () => {
   });
 
   it("should stay on talk page when run creation fails", async () => {
+    const user = userEvent.setup();
     mockChatLifecycle();
     server.use(
       http.post("*/api/zero/chat/messages", () =>
@@ -68,7 +71,7 @@ describe("chat message lifecycle", () => {
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
     );
 
-    sendMessageInUI(textarea, "Hello");
+    await sendMessageInUI(user, textarea, "Hello");
 
     // User stays on /talk/ — the composer is still available for retry
     await waitFor(() => {
@@ -77,6 +80,7 @@ describe("chat message lifecycle", () => {
   });
 
   it("should stay on talk page when message sending fails", async () => {
+    const user = userEvent.setup();
     mockChatLifecycle();
     server.use(
       http.post("*/api/zero/chat/messages", () =>
@@ -101,7 +105,7 @@ describe("chat message lifecycle", () => {
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
     );
 
-    sendMessageInUI(textarea, "Hello");
+    await sendMessageInUI(user, textarea, "Hello");
 
     // User stays on /talk/ — the composer is still available for retry
     await waitFor(() => {
@@ -110,6 +114,7 @@ describe("chat message lifecycle", () => {
   });
 
   it("should not send empty messages", async () => {
+    const user = userEvent.setup();
     mockChatLifecycle();
 
     await setupPage({
@@ -121,7 +126,7 @@ describe("chat message lifecycle", () => {
       () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
     );
 
-    sendMessageInUI(textarea, "   ");
+    await sendMessageInUI(user, textarea, "   ");
 
     // Empty message is ignored — user stays on /talk/ with composer available
     await waitFor(() => {

@@ -1,12 +1,7 @@
 import type { ConnectorType } from "@vm0/core";
 import { describe, expect, it, vi } from "vitest";
-import {
-  act,
-  screen,
-  waitFor,
-  fireEvent,
-  within,
-} from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -103,6 +98,7 @@ describe("zero chat page - suggested prompts", () => {
   });
 
   it("should populate composer with the correct prompt when a card is clicked", async () => {
+    const user = userEvent.setup();
     await renderChatPage();
 
     const exploreButton = await waitFor(() =>
@@ -122,7 +118,7 @@ describe("zero chat page - suggested prompts", () => {
     )!;
     const expectedPrompt = promptByTitle.get(cardTitle)!;
 
-    fireEvent.click(promptCard);
+    await user.click(promptCard);
 
     await waitFor(() => {
       const textarea = screen.getByPlaceholderText(
@@ -182,6 +178,7 @@ describe("zero chat page - composer", () => {
   });
 
   it("should enable Send button when input has text", async () => {
+    const user = userEvent.setup();
     await renderChatPage();
 
     const textarea = await waitFor(() =>
@@ -190,7 +187,8 @@ describe("zero chat page - composer", () => {
       ),
     );
 
-    fireEvent.change(textarea, { target: { value: "Hello" } });
+    await user.clear(textarea);
+    await user.type(textarea, "Hello");
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Send" })).not.toBeDisabled();
@@ -200,6 +198,7 @@ describe("zero chat page - composer", () => {
 
 describe("zero chat page - file input ref", () => {
   it("should open file picker when Attach button is clicked", async () => {
+    const user = userEvent.setup();
     await renderChatPage();
 
     const attachButton = await waitFor(() =>
@@ -218,7 +217,7 @@ describe("zero chat page - file input ref", () => {
     const clickSpy = vi.fn();
     fileInput.click = clickSpy;
 
-    fireEvent.click(attachButton);
+    await user.click(attachButton);
 
     expect(clickSpy).toHaveBeenCalledOnce();
   });
@@ -226,19 +225,20 @@ describe("zero chat page - file input ref", () => {
 
 describe("zero chat page - connectors popover", () => {
   it("should navigate to connectors page when clicking Manage connectors in popover", async () => {
+    const user = userEvent.setup();
     await renderChatPage();
 
     const connectorsButton = await waitFor(() =>
       screen.getByRole("button", { name: "Connectors" }),
     );
 
-    fireEvent.click(connectorsButton);
+    await user.click(connectorsButton);
 
     const manageButton = await waitFor(() =>
       screen.getByText("Manage connectors"),
     );
 
-    fireEvent.click(manageButton);
+    await user.click(manageButton);
 
     await waitFor(() => {
       expect(
@@ -252,6 +252,7 @@ describe("zero chat page - connectors popover", () => {
 
 describe("zero chat page - connector label casing", () => {
   it("should display connector label from CONNECTOR_TYPES (e.g. 'Axiom') not the raw key ('axiom')", async () => {
+    const user = userEvent.setup();
     server.use(
       http.get("*/api/zero/agents/:name", ({ params }) => {
         if (
@@ -305,7 +306,7 @@ describe("zero chat page - connector label casing", () => {
       screen.getByRole("button", { name: "Connectors" }),
     );
 
-    fireEvent.click(connectorsButton);
+    await user.click(connectorsButton);
 
     await waitFor(() => {
       expect(screen.getByText("Axiom")).toBeInTheDocument();
@@ -340,6 +341,7 @@ describe("zero chat page - agent avatar and greeting", () => {
 
 describe("zero chat page - ideation page", () => {
   it("should navigate to ideation page when explore card is clicked", async () => {
+    const user = userEvent.setup();
     await renderChatPage();
 
     await waitFor(() => {
@@ -351,9 +353,7 @@ describe("zero chat page - ideation page", () => {
     const exploreButton = exploreText.closest("button")!;
     expect(exploreButton).toBeInTheDocument();
 
-    await act(() => {
-      fireEvent.click(exploreButton);
-    });
+    await user.click(exploreButton);
 
     await waitFor(() => {
       expect(
@@ -367,16 +367,14 @@ describe("zero chat page - ideation page", () => {
     expect(screen.getByRole("button", { name: "GitHub" })).toBeInTheDocument();
   });
 
-  async function navigateToIdeation() {
+  async function navigateToIdeation(user: ReturnType<typeof userEvent.setup>) {
     await waitFor(() => {
       expect(screen.getByText("Ideas & use cases")).toBeInTheDocument();
     });
     const exploreButton = screen
       .getByText("Ideas & use cases")
       .closest("button")!;
-    await act(() => {
-      fireEvent.click(exploreButton);
-    });
+    await user.click(exploreButton);
     await waitFor(() => {
       expect(
         screen.getByText(/Click any card to start a conversation/),
@@ -385,11 +383,12 @@ describe("zero chat page - ideation page", () => {
   }
 
   it("should filter categories when a tab is clicked", async () => {
+    const user = userEvent.setup();
     await renderChatPage();
-    await navigateToIdeation();
+    await navigateToIdeation(user);
 
     // Click a specific category tab
-    fireEvent.click(screen.getByRole("button", { name: "GitHub" }));
+    await user.click(screen.getByRole("button", { name: "GitHub" }));
 
     await waitFor(() => {
       // The selected category heading should be visible
@@ -405,13 +404,12 @@ describe("zero chat page - ideation page", () => {
   });
 
   it("should navigate back to chat and set prompt when a use case is clicked", async () => {
+    const user = userEvent.setup();
     await renderChatPage();
-    await navigateToIdeation();
+    await navigateToIdeation(user);
 
     // Click a known use case card
-    await act(() => {
-      fireEvent.click(screen.getByText("Daily standup report"));
-    });
+    await user.click(screen.getByText("Daily standup report"));
 
     // Should navigate back to chat page with the prompt set
     await waitFor(() => {
@@ -425,14 +423,13 @@ describe("zero chat page - ideation page", () => {
   });
 
   it("should navigate back to chat when breadcrumb is clicked", async () => {
+    const user = userEvent.setup();
     await renderChatPage();
-    await navigateToIdeation();
+    await navigateToIdeation(user);
 
     // Click the Chat breadcrumb to go back
     const chatBreadcrumb = screen.getByText("Chat").closest("button")!;
-    await act(() => {
-      fireEvent.click(chatBreadcrumb);
-    });
+    await user.click(chatBreadcrumb);
 
     // Should be back on the chat page
     await waitFor(() => {
