@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, act } from "@testing-library/react";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import {
@@ -88,6 +88,56 @@ describe("chat sending state", () => {
     });
 
     // Complete the run and wait for polling to stop
+    ctrl.completeRun();
+    await waitFor(() => {
+      expect(screen.getByLabelText("Send")).toBeInTheDocument();
+    });
+  });
+
+  it("should not trigger send when pressing Enter while a message is being sent", async () => {
+    let runCreateCount = 0;
+    const ctrl = mockChatLifecycle({
+      onRunCreate: () => {
+        runCreateCount++;
+      },
+    });
+
+    await setupPage({
+      context,
+      path: "/talk/c0000000-0000-4000-a000-000000000001",
+    });
+
+    const textarea = await waitFor(
+      () => screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
+    );
+
+    sendMessageInUI(textarea, "Hello");
+
+    // Wait for the first run to be created and sending state to be active
+    await waitFor(() => {
+      expect(runCreateCount).toBe(1);
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+
+    // Wait for any textarea currently in the DOM (the page may or may not
+    // have navigated to the session chat page depending on timing).
+    const activeTextarea = await waitFor(
+      () => document.querySelector("textarea") as HTMLTextAreaElement,
+    );
+
+    // Type a new message and press Enter while still sending
+    act(() => {
+      sendMessageInUI(activeTextarea, "Second message");
+    });
+
+    // The sending state is still active (Stop button visible), so the run
+    // creation endpoint should have been called only once — no artificial
+    // delay is needed because the state is already observable.
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+    expect(runCreateCount).toBe(1);
+
     ctrl.completeRun();
     await waitFor(() => {
       expect(screen.getByLabelText("Send")).toBeInTheDocument();
