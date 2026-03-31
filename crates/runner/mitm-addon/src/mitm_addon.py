@@ -57,8 +57,8 @@ _registry_cache_key = (0, 0)
 # Track request start times for latency calculation
 _request_start_times = {}
 
-# Cache for firewall auth headers: (run_id, api_id) -> {"headers": dict}
-_firewall_header_cache = {}
+# Cache for firewall auth headers: (run_id, api_id) -> {"headers": dict, "expiresAt": float | None}
+_firewall_header_cache: dict[tuple[str, str], dict] = {}
 
 # Per-key locks to coalesce concurrent fetches for the same (run_id, api_id)
 _cache_locks: dict[tuple[str, str], asyncio.Lock] = {}
