@@ -13,6 +13,7 @@ tracing = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
+nix = { workspace = true, features = ["user"] }
 tempfile = { workspace = true }
 
 [lints]

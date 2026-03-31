@@ -69,6 +69,7 @@ jobs:
       guest-agent-changed: ${{ steps.detect.outputs.guest-agent-changed }}
       guest-mock-claude-changed: ${{ steps.detect.outputs.guest-mock-claude-changed }}
       block-cow-changed: ${{ steps.detect.outputs.block-cow-changed }}
+      nbd-cow-changed: ${{ steps.detect.outputs.nbd-cow-changed }}
       metal-host: ${{ steps.host.outputs.host }}
       metal-job-ref: ${{ steps.host.outputs.job-ref }}
     steps:
@@ -114,6 +115,7 @@ jobs:
           check_crate guest-agent
           check_crate guest-mock-claude
           check_crate block-cow
+          check_crate nbd-cow
 
           # Aggregate: true if any crate or CI config changed
           if grep -q "=true" "$GITHUB_OUTPUT"; then
@@ -289,6 +291,63 @@ jobs:
           scp "$TEST_BIN" "${REMOTE}:${REMOTE_BIN}"
           # shellcheck disable=SC2029
           ssh "$REMOTE" "trap 'rm -f ${REMOTE_BIN}' EXIT && sudo ${REMOTE_BIN} --ignored --test-threads=1"
+
+  nbd-cow-test:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260320
+    needs: [detect]
+    if: |
+      needs.detect.outputs.ci-changed == 'true' ||
+      needs.detect.outputs.nbd-cow-changed == 'true'
+    timeout-minutes: 5
+    env:
+      CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS: "-C target-feature=+crt-static -C link-arg=-fuse-ld=mold"
+      TARGET_TRIPLE: aarch64-unknown-linux-musl
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install mold linker
+        env:
+          MOLD_VERSION: "2.40.4"
+        run: |
+          curl -fsSL "https://github.com/rui314/mold/releases/download/v${MOLD_VERSION}/mold-${MOLD_VERSION}-x86_64-linux.tar.gz" \
+            | tar xz --strip-components=2 -C /usr/local/bin "mold-${MOLD_VERSION}-x86_64-linux/bin/mold"
+          ln -sf /usr/local/bin/mold /usr/local/bin/ld.mold
+          ln -sf /usr/local/bin/mold /usr/local/bin/aarch64-linux-gnu-ld.mold
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates -> target
+          shared-key: aarch64-musl-ci
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Cross-compile nbd-cow tests for ARM64
+        run: |
+          cd crates
+          cargo test --no-run --release --target "$TARGET_TRIPLE" -p nbd-cow
+          TEST_BIN=$(find "target/$TARGET_TRIPLE/release/deps" -name "integration-*" -executable -type f | head -1)
+          cp "$TEST_BIN" "target/nbd-cow-integration-test"
+          echo "TEST_BIN=crates/target/nbd-cow-integration-test" >> "$GITHUB_ENV"
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Run nbd-cow integration tests on metal
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          HOST: ${{ needs.detect.outputs.metal-host }}
+          JOB_REF: ${{ needs.detect.outputs.metal-job-ref }}
+        run: |
+          REMOTE="${METAL_USER}@${HOST}"
+          REMOTE_BIN="/tmp/nbd-cow-test-${JOB_REF}"
+          scp "$TEST_BIN" "${REMOTE}:${REMOTE_BIN}"
+          # shellcheck disable=SC2029
+          ssh "$REMOTE" "trap 'rm -f ${REMOTE_BIN}' EXIT && sudo modprobe nbd nbds_max=256 && sudo ${REMOTE_BIN} --ignored --test-threads=1"
 
   runner-build:
     runs-on: ubuntu-latest
