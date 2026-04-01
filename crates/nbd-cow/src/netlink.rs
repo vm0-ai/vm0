@@ -151,7 +151,7 @@ pub fn find_and_connect(client_fds: &[OwnedFd], size: u64, block_size: u64) -> R
 /// On reconnect (same index after a recent disconnect), the kernel may
 /// briefly report the old (zero) capacity before the new config takes
 /// effect. A few milliseconds of polling handles this.
-pub fn verify_device_size(device_index: u32, expected_size: u64) -> bool {
+pub async fn verify_device_size(device_index: u32, expected_size: u64) -> bool {
     let expected_sectors = expected_size / 512;
     let size_path = format!("/sys/block/nbd{device_index}/size");
     for _ in 0..5 {
@@ -161,7 +161,7 @@ pub fn verify_device_size(device_index: u32, expected_size: u64) -> bool {
                 return true;
             }
         }
-        std::thread::sleep(std::time::Duration::from_millis(10));
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
     }
     false
 }

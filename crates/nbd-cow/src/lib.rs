@@ -116,7 +116,7 @@ impl NbdCowDevice {
             };
 
             // Verify the device got the correct size via sysfs.
-            if netlink::verify_device_size(device_index, size) {
+            if netlink::verify_device_size(device_index, size).await {
                 let device_path = PathBuf::from(format!("/dev/nbd{device_index}"));
                 return Ok(Self {
                     device_index,
@@ -143,7 +143,7 @@ impl NbdCowDevice {
             last_err_idx = device_index;
 
             if attempt < MAX_CONNECT_RETRIES {
-                std::thread::sleep(std::time::Duration::from_millis(200));
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
             }
         }
 
