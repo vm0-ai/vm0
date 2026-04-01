@@ -1,6 +1,6 @@
 import type { ConnectorType } from "@vm0/core";
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
@@ -260,15 +260,18 @@ describe("zero chat page - connectors popover", () => {
   });
 
   it("should show unconnected connectors in AddConnectorsDialog with connect buttons", async () => {
+    const user = userEvent.setup();
     await renderChatPage();
 
-    const connectorsButton = await waitFor(() =>
-      screen.getByRole("button", { name: "Connectors" }),
-    );
-    fireEvent.click(connectorsButton);
+    const connectorsButton = await waitFor(() => {
+      return screen.getByRole("button", { name: "Connectors" });
+    });
+    await user.click(connectorsButton);
 
-    const addButton = await waitFor(() => screen.getByText("Add connectors"));
-    fireEvent.click(addButton);
+    const addButton = await waitFor(() => {
+      return screen.getByText("Add connectors");
+    });
+    await user.click(addButton);
 
     // Dialog should show available (unconnected) connectors with Connect buttons
     await waitFor(() => {
@@ -284,19 +287,22 @@ describe("zero chat page - connectors popover", () => {
   });
 
   it("should filter connectors when searching in AddConnectorsDialog", async () => {
+    const user = userEvent.setup();
     await renderChatPage();
 
-    const connectorsButton = await waitFor(() =>
-      screen.getByRole("button", { name: "Connectors" }),
-    );
-    fireEvent.click(connectorsButton);
+    const connectorsButton = await waitFor(() => {
+      return screen.getByRole("button", { name: "Connectors" });
+    });
+    await user.click(connectorsButton);
 
-    const addButton = await waitFor(() => screen.getByText("Add connectors"));
-    fireEvent.click(addButton);
+    const addButton = await waitFor(() => {
+      return screen.getByText("Add connectors");
+    });
+    await user.click(addButton);
 
-    const searchInput = await waitFor(() =>
-      screen.getByPlaceholderText("Search connectors..."),
-    );
+    const searchInput = await waitFor(() => {
+      return screen.getByPlaceholderText("Search connectors...");
+    });
 
     // Before filtering: GitHub should be visible
     await waitFor(() => {
@@ -306,7 +312,8 @@ describe("zero chat page - connectors popover", () => {
     });
 
     // Type a filter that won't match GitHub
-    fireEvent.change(searchInput, { target: { value: "Slack" } });
+    await user.clear(searchInput);
+    await user.type(searchInput, "Slack");
 
     await waitFor(() => {
       expect(
@@ -363,10 +370,11 @@ describe("zero chat page - connectors popover", () => {
     mockChatAPI();
     await setupPage({ context, path: "/" });
 
-    const connectorsButton = await waitFor(() =>
-      screen.getByRole("button", { name: "Connectors" }),
-    );
-    fireEvent.click(connectorsButton);
+    const user = userEvent.setup();
+    const connectorsButton = await waitFor(() => {
+      return screen.getByRole("button", { name: "Connectors" });
+    });
+    await user.click(connectorsButton);
 
     // Both connectors should appear in the popover
     await waitFor(() => {

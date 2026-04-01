@@ -1173,7 +1173,7 @@ export function ZeroSidebar() {
   };
   const displayName = displayNameRaw || "Zero";
   const pinnedIdsLoadable = useLastLoadable(pinnedAgentIds$);
-  const pinnedIds =
+  const pinnedIds: string[] =
     pinnedIdsLoadable.state === "hasData" ? pinnedIdsLoadable.data : [];
   const savingPinned = useGet(savingPinnedAgents$);
   const savePinnedIds = useSet(updatePinnedAgentIds$);
@@ -1211,7 +1211,7 @@ export function ZeroSidebar() {
         return a.id === id;
       });
     })
-    .filter((a): a is SubagentInfo => {
+    .filter((a: SubagentInfo | undefined): a is SubagentInfo => {
       return a !== undefined;
     });
 

@@ -78,7 +78,9 @@ export const removeZeroConnector$ = command(
     signal.throwIfAborted();
     await set(
       syncConnectorsToCompose$,
-      current.filter((n) => n !== name),
+      current.filter((n) => {
+        return n !== name;
+      }),
       signal,
     );
   },
