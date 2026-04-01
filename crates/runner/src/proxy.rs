@@ -30,6 +30,7 @@ struct VmEntry {
     firewalls: Option<Vec<Firewall>>,
     encrypted_secrets: Option<String>,
     secret_connector_map: Option<HashMap<String, String>>,
+    vars: Option<HashMap<String, String>>,
 }
 
 /// Parameters for registering a VM in the proxy registry.
@@ -41,6 +42,7 @@ pub struct VmRegistration<'a> {
     pub firewalls: Option<&'a [Firewall]>,
     pub encrypted_secrets: Option<&'a str>,
     pub secret_connector_map: Option<&'a HashMap<String, String>>,
+    pub vars: Option<&'a HashMap<String, String>>,
 }
 
 /// Embedded mitmproxy addon script (compiled into the binary).
@@ -440,6 +442,7 @@ impl ProxyRegistryHandle {
                 firewalls,
                 encrypted_secrets: registration.encrypted_secrets.map(String::from),
                 secret_connector_map: registration.secret_connector_map.cloned(),
+                vars: registration.vars.cloned(),
             },
         );
         registry.updated_at = now;
@@ -516,6 +519,7 @@ mod tests {
                 firewalls: None,
                 encrypted_secrets: None,
                 secret_connector_map: None,
+                vars: None,
             },
         );
         write_registry(&registry_path, &registry).await.unwrap();
@@ -562,6 +566,7 @@ mod tests {
             firewalls: None,
             encrypted_secrets: None,
             secret_connector_map: None,
+            vars: None,
         };
         handle
             .register_vm("10.200.0.2", &registration)
@@ -581,6 +586,7 @@ mod tests {
             firewalls: None,
             encrypted_secrets: None,
             secret_connector_map: None,
+            vars: None,
         };
         handle
             .register_vm("10.200.0.2", &registration2)
@@ -633,6 +639,7 @@ mod tests {
                     firewalls: None,
                     encrypted_secrets: None,
                     secret_connector_map: None,
+                    vars: None,
                 };
                 h.register_vm(&ip, &registration).await.unwrap();
             });
@@ -692,6 +699,7 @@ mod tests {
             firewalls: Some(&firewall_entries),
             encrypted_secrets: None,
             secret_connector_map: None,
+            vars: None,
         };
         handle
             .register_vm("10.200.0.5", &registration)
@@ -757,6 +765,7 @@ mod tests {
             firewalls: None,
             encrypted_secrets: Some("iv_b64:tag_b64:data_b64"),
             secret_connector_map: None,
+            vars: None,
         };
         handle
             .register_vm("10.200.0.6", &registration)

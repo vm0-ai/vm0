@@ -248,6 +248,109 @@ afterEach(() => {
 });
 ```
 
+## Extracting Shared Logic from Commands
+
+When two or more commands share duplicated logic, extract it into a **sub-command** (`command()`), not a plain function that receives `get`/`set`.
+
+### Why not a plain function?
+
+A plain helper that accepts `get` or `set` as parameters breaks the ccstate contract — `get`/`set` are scoped to the command callback and should not leak out. The ESLint rule `ccstate/...` flags this. More importantly, a plain function cannot participate in the signal/reactive graph.
+
+### Pattern: Extract a sub-command
+
+```typescript
+// ❌ Plain function receiving get — breaks ccstate contract
+async function sendRequest(
+  get: Getter,
+  agentId: string,
+  prompt: string,
+): Promise<Result> {
+  const client = get(zeroClient$)(contract);
+  return await client.send({ body: { agentId, prompt } });
+}
+
+// ✅ Sub-command — get/set stay inside the command callback
+const sendRequest$ = command(
+  async ({ get }, agentId: string, prompt: string): Promise<Result> => {
+    const client = get(zeroClient$)(contract);
+    return await client.send({ body: { agentId, prompt } });
+  },
+);
+
+// Caller
+const doSomething$ = command(async ({ set }, signal: AbortSignal) => {
+  const result = await set(sendRequest$, agentId, prompt);
+  signal.throwIfAborted();
+  // ...
+});
+```
+
+### Handling AbortSignal in sub-commands
+
+**Pass `signal` explicitly and use `fetchOptions: { signal }` for HTTP calls.** This ensures the request is cancelled when the caller's signal aborts.
+
+```typescript
+const sendRequest$ = command(
+  async (
+    { get },
+    agentId: string,
+    prompt: string,
+    signal: AbortSignal,
+  ): Promise<Result> => {
+    const client = get(zeroClient$)(contract);
+    const result = await client.send({
+      body: { agentId, prompt },
+      fetchOptions: { signal },       // ← cancel HTTP on abort
+    });
+
+    if (result.status !== 201) {
+      throw new Error(`Failed (${result.status})`);
+    }
+    return result.body;
+  },
+);
+```
+
+The caller passes its own signal through:
+
+```typescript
+const parentCommand$ = command(async ({ set }, signal: AbortSignal) => {
+  const result = await set(sendRequest$, agentId, prompt, signal);
+  // No need for signal.throwIfAborted() here — if signal was aborted,
+  // the fetch inside sendRequest$ already threw an AbortError.
+  // Only add throwIfAborted() after operations that DON'T accept a signal.
+});
+```
+
+### When to use `signal.throwIfAborted()`
+
+Use it **after any `await` that does NOT accept a signal** — i.e., after operations that will complete even if the caller wants to abort:
+
+```typescript
+const example$ = command(async ({ get, set }, signal: AbortSignal) => {
+  // ✅ fetch accepts signal → no throwIfAborted needed after
+  const result = await set(sendRequest$, data, signal);
+
+  // ✅ get() on a computed is synchronous-ish but doesn't accept signal
+  const thread = await get(currentThread$);
+  signal.throwIfAborted();  // ← needed: get() doesn't know about our signal
+
+  // ✅ set() on a sub-command that passes signal through → no throwIfAborted needed
+  await set(anotherCommand$, thread.id, signal);
+});
+```
+
+**Rule of thumb:** If the awaited operation receives your signal, it will throw on abort itself. If it doesn't, check manually after.
+
+### Decomposition strategy
+
+When extracting shared logic from two commands:
+
+1. **Identify the shared block** — usually preparation (validate + transform) and/or execution (send + error handling)
+2. **Extract each block as a sub-command** — one for preparation, one for execution
+3. **Keep post-execution logic in the original commands** — navigation, reload, run loop setup, etc. are caller-specific
+4. **Pass signal as the last parameter** by convention
+
 ## MSW Handler URL Matching
 
 Default MSW handlers must use wildcard prefix `*/` to match absolute URLs:

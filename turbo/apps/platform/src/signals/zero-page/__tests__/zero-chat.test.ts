@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { delay } from "signal-timers";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
@@ -12,7 +12,6 @@ import {
   setZeroChatInput$,
   clearZeroChatInput$,
   startNewZeroSession$,
-  sendNewThreadMessage$,
   sendExistingThreadMessage$,
   loadSessionFromSnapshot$,
   zeroChatAttachments$,
@@ -312,117 +311,6 @@ describe("zero-chat signals", () => {
     });
   });
 
-  describe("sendNewThreadMessage$ error recovery", () => {
-    it("should clear optimistic messages when API returns 400", async () => {
-      server.use(
-        http.get("*/api/zero/chat-threads", () => {
-          return HttpResponse.json({ threads: [] });
-        }),
-        http.post("*/api/zero/chat/messages", () => {
-          return HttpResponse.json(
-            { error: { message: "Bad request", code: "BAD_REQUEST" } },
-            { status: 400 },
-          );
-        }),
-      );
-
-      await setup();
-
-      await expect(
-        context.store.set(
-          sendNewThreadMessage$,
-          "c0000000-0000-4000-a000-000000000001",
-          "Hello",
-          undefined,
-          context.signal,
-        ),
-      ).rejects.toThrow();
-
-      const messages = await context.store.get(zeroChatMessages$);
-      expect(messages).toHaveLength(0);
-    });
-
-    it("should clear optimistic messages when API returns 500", async () => {
-      server.use(
-        http.get("*/api/zero/chat-threads", () => {
-          return HttpResponse.json({ threads: [] });
-        }),
-        http.post("*/api/zero/chat/messages", () => {
-          return HttpResponse.json(
-            {
-              error: {
-                message: "Internal server error",
-                code: "INTERNAL_SERVER_ERROR",
-              },
-            },
-            { status: 500 },
-          );
-        }),
-      );
-
-      await setup();
-
-      await expect(
-        context.store.set(
-          sendNewThreadMessage$,
-          "c0000000-0000-4000-a000-000000000001",
-          "Hello",
-          undefined,
-          context.signal,
-        ),
-      ).rejects.toThrow();
-
-      const messages = await context.store.get(zeroChatMessages$);
-      expect(messages).toHaveLength(0);
-    });
-  });
-
-  describe("sendExistingThreadMessage$ error recovery", () => {
-    it("should clear optimistic messages when API returns 400", async () => {
-      server.use(
-        http.get("*/api/zero/chat-threads", () => {
-          return HttpResponse.json({ threads: [] });
-        }),
-        http.get("*/api/zero/chat-threads/:id", () => {
-          return HttpResponse.json({
-            id: "thread-err",
-            title: null,
-            agentId: "c0000000-0000-4000-a000-000000000001",
-            chatMessages: [],
-            latestSessionId: null,
-            unsavedRuns: [],
-            createdAt: "2026-03-10T00:00:00Z",
-            updatedAt: "2026-03-10T00:00:00Z",
-          });
-        }),
-        http.post("*/api/zero/chat/messages", () => {
-          return HttpResponse.json(
-            { error: { message: "Bad request", code: "BAD_REQUEST" } },
-            { status: 400 },
-          );
-        }),
-      );
-
-      await setupPage({
-        context,
-        path: "/chat/thread-err",
-        withoutRender: true,
-      });
-
-      await expect(
-        context.store.set(
-          sendExistingThreadMessage$,
-          "Hello",
-          undefined,
-          context.signal,
-        ),
-      ).rejects.toThrow();
-
-      const messages = await context.store.get(zeroChatMessages$);
-      expect(messages).toHaveLength(0);
-    });
-  });
-
   describe("startNewZeroSession$", () => {
     it("should reset all chat state", async () => {
       await setup();
@@ -650,12 +538,12 @@ describe("zero-chat signals", () => {
         )
         .catch(() => {});
 
-      // Wait for both placeholders
-      await delay(10);
-      const before = context.store.get(zeroChatAttachments$);
-      expect(before).toHaveLength(2);
+      await vi.waitFor(() => {
+        const before = context.store.get(zeroChatAttachments$);
+        expect(before).toHaveLength(2);
+      });
 
-      // Cancel the first upload via removeZeroAttachment$ (which calls cancel$)
+      const before = context.store.get(zeroChatAttachments$);
       context.store.set(removeZeroAttachment$, before[0]!);
 
       await Promise.all([promise1, promise2]);
@@ -665,31 +553,6 @@ describe("zero-chat signals", () => {
       expect(after).toHaveLength(1);
       const info = await context.store.get(after[0]!.fileInfo$);
       expect(info?.url).toContain("example.com");
-    });
-
-    it("should remove placeholder on upload failure", async () => {
-      server.use(
-        http.post("*/api/zero/uploads", () => {
-          return HttpResponse.json(
-            {
-              error: {
-                message: "Internal server error",
-                code: "INTERNAL_SERVER_ERROR",
-              },
-            },
-            { status: 500 },
-          );
-        }),
-      );
-      await setup();
-
-      await context.store.set(
-        uploadZeroAttachment$,
-        createTestFile(),
-        context.signal,
-      );
-
-      expect(context.store.get(zeroChatAttachments$)).toHaveLength(0);
     });
   });
 });

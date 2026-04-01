@@ -18,12 +18,13 @@ const bodySchema = z.object({
   encryptedSecrets: z.string().min(1),
   authHeaders: z.record(z.string(), z.string()),
   secretConnectorMap: z.record(z.string(), z.string()).optional(),
+  vars: z.record(z.string(), z.string()).optional(),
 });
 
 const log = logger("webhook:firewall-auth");
 
-/** Matches ${{ secrets.KEY_NAME }} template placeholders in auth header values. */
-const SECRET_TEMPLATE_RE = /\$\{\{\s*secrets\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
+/** Matches ${{ secrets.X }} or ${{ vars.X }} template placeholders. */
+const TEMPLATE_RE = /\$\{\{\s*(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 
 /**
  * Load refresh tokens from DB into the secrets map.
@@ -229,25 +230,34 @@ async function refreshExpiredTokens(
 }
 
 /**
- * Resolve ${{ secrets.XXX }} templates with decrypted secret values.
+ * Resolve ${{ secrets.XXX }} and ${{ vars.XXX }} templates in auth header values.
  */
 function resolveTemplates(
   authHeaders: Record<string, string>,
   secrets: Record<string, string>,
+  vars: Record<string, string>,
   runId: string,
 ): { headers: Record<string, string>; resolvedSecrets: string[] } {
   const resolvedKeys = new Set<string>();
   const headers: Record<string, string> = {};
   for (const [name, template] of Object.entries(authHeaders)) {
     headers[name] = template.replace(
-      SECRET_TEMPLATE_RE,
-      (_match, key: string) => {
-        resolvedKeys.add(key);
-        if (!(key in secrets)) {
-          log.warn(`[${runId}] No secret value for "${key}" in template`);
+      TEMPLATE_RE,
+      (_match, namespace: string, key: string) => {
+        if (namespace === "secrets") {
+          resolvedKeys.add(key);
+          if (!(key in secrets)) {
+            log.warn(`[${runId}] No secret value for "${key}" in template`);
+            return "";
+          }
+          return secrets[key] ?? "";
+        }
+        // namespace === "vars"
+        if (!(key in vars)) {
+          log.warn(`[${runId}] No var value for "${key}" in template`);
           return "";
         }
-        return secrets[key] ?? "";
+        return vars[key] ?? "";
       },
     );
   }
@@ -264,7 +274,7 @@ function resolveTemplates(
  * on demand and an expiresAt timestamp is returned for addon-side TTL caching.
  *
  * Auth: Sandbox JWT
- * Body: { encryptedSecrets, authHeaders, secretConnectorMap? }
+ * Body: { encryptedSecrets, authHeaders, secretConnectorMap?, vars? }
  * Response: { headers, expiresAt? } or 502 { error } when token refresh fails
  */
 export async function POST(request: Request) {
@@ -310,7 +320,8 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  const { encryptedSecrets, authHeaders, secretConnectorMap } = parsed.data;
+  const { encryptedSecrets, authHeaders, secretConnectorMap, vars } =
+    parsed.data;
 
   // Decrypt secrets
   let secrets: Record<string, string> | null;
@@ -332,8 +343,8 @@ export async function POST(request: Request) {
   // Collect which secret keys are referenced in auth templates
   const referencedKeys = new Set<string>();
   for (const template of Object.values(authHeaders)) {
-    for (const match of template.matchAll(SECRET_TEMPLATE_RE)) {
-      if (match[1]) referencedKeys.add(match[1]);
+    for (const match of template.matchAll(TEMPLATE_RE)) {
+      if (match[1] === "secrets" && match[2]) referencedKeys.add(match[2]);
     }
   }
 
@@ -374,6 +385,7 @@ export async function POST(request: Request) {
   const { headers, resolvedSecrets } = resolveTemplates(
     authHeaders,
     secrets,
+    vars ?? {},
     auth.runId,
   );
 
