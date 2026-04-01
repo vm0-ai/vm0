@@ -17,6 +17,7 @@ import {
   findTestRunRecord,
   findTestQueueEntry,
 } from "../../../../../../src/__tests__/api-test-helpers";
+import { enqueueRun } from "../../../../../../src/lib/run/run-queue-service";
 import { reloadEnv } from "../../../../../../src/env";
 import { getAgentSessionWithConversation } from "../../../../../../src/lib/agent-session";
 import {
@@ -662,14 +663,21 @@ describe("POST /api/webhooks/agent/complete", () => {
       // Use a separate user to avoid concurrency interference
       const qUser = await context.setupUser({ prefix: "queue-drain" });
       mockClerk({ userId: qUser.userId });
-      const { composeId } = await createTestCompose(uniqueId("drain-agent"));
+      const { composeId, versionId } = await createTestCompose(
+        uniqueId("drain-agent"),
+      );
 
       // First run claims the slot
       const run1 = await createTestRun(composeId, "First run");
       expect(run1.status).toBe("pending");
 
-      // Second run gets queued
-      const run2 = await createTestRun(composeId, "Queued run");
+      // Enqueue a run with proper encrypted params (startRun no longer enqueues)
+      const run2 = await enqueueRun({
+        userId: qUser.userId,
+        agentComposeVersionId: versionId,
+        prompt: "Queued run",
+        orgId: qUser.orgId,
+      });
       expect(run2.status).toBe("queued");
 
       // Verify queue entry exists
