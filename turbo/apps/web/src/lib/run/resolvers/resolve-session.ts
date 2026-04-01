@@ -4,6 +4,7 @@ import {
   agentComposeVersions,
 } from "../../../db/schema/agent-compose";
 import { agentRuns } from "../../../db/schema/agent-run";
+import { zeroRuns } from "../../../db/schema/zero-run";
 import { notFound, unauthorized, badRequest } from "../../errors";
 import { logger } from "../../logger";
 import { getAgentSessionWithConversation } from "../../agent-session";
@@ -110,9 +111,10 @@ export async function resolveSession(
     globalThis.services.db
       .select({
         vars: agentRuns.vars,
-        modelProvider: agentRuns.modelProvider,
+        modelProvider: zeroRuns.modelProvider,
       })
       .from(agentRuns)
+      .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
       .where(eq(agentRuns.id, conversation.runId))
       .limit(1),
   ]);

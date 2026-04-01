@@ -11,6 +11,7 @@ import {
   markRunningRunsAsCompleted,
   setOrgCredits,
 } from "../../../__tests__/api-test-helpers";
+import { zeroRuns } from "../../../db/schema/zero-run";
 import { reloadEnv } from "../../../env";
 import {
   createRun,
@@ -56,6 +57,11 @@ describe("credit check (infra queue path)", () => {
       const queued = await enqueueRun(
         baseParams({ prompt: "Queued VM0", modelProvider: "vm0" }),
       );
+      await globalThis.services.db.insert(zeroRuns).values({
+        id: queued.runId,
+        triggerSource: "cli",
+        modelProvider: "vm0",
+      });
 
       // Deplete credits
       await setOrgCredits(user.orgId, 0);
@@ -85,6 +91,11 @@ describe("credit check (infra queue path)", () => {
       const queued = await enqueueRun(
         baseParams({ prompt: "Queued Anthropic", modelProvider: "anthropic" }),
       );
+      await globalThis.services.db.insert(zeroRuns).values({
+        id: queued.runId,
+        triggerSource: "cli",
+        modelProvider: "anthropic",
+      });
 
       // Deplete credits
       await setOrgCredits(user.orgId, 0);
@@ -111,9 +122,19 @@ describe("credit check (infra queue path)", () => {
       const vm0Run = await enqueueRun(
         baseParams({ prompt: "VM0 run", modelProvider: "vm0" }),
       );
+      await globalThis.services.db.insert(zeroRuns).values({
+        id: vm0Run.runId,
+        triggerSource: "cli",
+        modelProvider: "vm0",
+      });
       const nonVm0Run = await enqueueRun(
         baseParams({ prompt: "Anthropic run", modelProvider: "anthropic" }),
       );
+      await globalThis.services.db.insert(zeroRuns).values({
+        id: nonVm0Run.runId,
+        triggerSource: "cli",
+        modelProvider: "anthropic",
+      });
 
       // Deplete credits
       await setOrgCredits(user.orgId, 0);

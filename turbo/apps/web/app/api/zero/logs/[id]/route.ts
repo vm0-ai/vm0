@@ -121,6 +121,8 @@ function buildLogDetailBody(result: {
   triggerSource: string | null;
   scheduleId: string | null;
   triggerAgentName: string | null;
+  modelProvider: string | null;
+  selectedModel: string | null;
 }) {
   const {
     run,
@@ -130,6 +132,8 @@ function buildLogDetailBody(result: {
     triggerSource,
     scheduleId,
     triggerAgentName,
+    modelProvider,
+    selectedModel,
   } = result;
   const runResult = run.result as RunResult | null;
   const composeContent = composeVersion?.content as ComposeContent | null;
@@ -140,8 +144,8 @@ function buildLogDetailBody(result: {
     agentId: compose?.id ?? null,
     displayName: agentDisplayName ?? null,
     framework: extractFramework(composeContent),
-    modelProvider: run.modelProvider ?? null,
-    selectedModel: run.selectedModel ?? null,
+    modelProvider: modelProvider ?? null,
+    selectedModel: selectedModel ?? null,
     triggerSource: (triggerSource ?? "cli") as TriggerSource,
     triggerAgentName: triggerAgentName ?? null,
     scheduleId: scheduleId ?? null,
@@ -194,6 +198,8 @@ const router = tsr.router(logsByIdContract, {
         triggerSource: zeroRuns.triggerSource,
         scheduleId: zeroRuns.scheduleId,
         triggerAgentName: triggerAgentAlias.displayName,
+        modelProvider: zeroRuns.modelProvider,
+        selectedModel: zeroRuns.selectedModel,
       })
       .from(agentRuns)
       .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))

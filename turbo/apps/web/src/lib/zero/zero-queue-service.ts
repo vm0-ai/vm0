@@ -91,8 +91,6 @@ export async function dispatchQueuedZeroRun(
       runId,
       createdAt,
       context: contextResult.context,
-      resolvedModelProvider: contextResult.resolvedModelProvider,
-      selectedModel: contextResult.selectedModel,
       timings: {
         apiStart: apiStartTime,
         authorize: authorizeTime,
@@ -104,6 +102,16 @@ export async function dispatchQueuedZeroRun(
       orgId: params.orgId,
       queueDispatcher: dispatchQueuedZeroRun,
     });
+
+    // Update zero_runs with resolved model provider and selected model
+    await globalThis.services.db
+      .update(zeroRuns)
+      .set({
+        modelProvider: contextResult.resolvedModelProvider ?? null,
+        selectedModel: contextResult.selectedModel ?? null,
+      })
+      .where(eq(zeroRuns.id, runId));
+
     return;
   }
 

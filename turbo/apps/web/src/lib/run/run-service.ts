@@ -29,6 +29,7 @@ import type { ExecutorResult, PreparedContext } from "./executors/types";
 import { generateSandboxToken } from "../auth/sandbox-token";
 import type { ExecutionContext, DispatchTimings } from "./types";
 import { buildZeroExecutionContext } from "../zero/build-zero-context";
+import { zeroRuns } from "../../db/schema/zero-run";
 import { recordSandboxOperation } from "../metrics";
 import { extractTemplateVars } from "../config-validator";
 import { canAccessCompose } from "../agent/compose-access";
@@ -589,8 +590,6 @@ export async function buildAndDispatchRun(opts: {
   createdAt: Date;
   // Pre-built execution context (caller resolves all secrets/providers/firewalls)
   context: ExecutionContext;
-  resolvedModelProvider?: string;
-  selectedModel?: string;
   timings: DispatchTimings;
   orgId: string;
   queueDispatcher?: (
@@ -603,8 +602,6 @@ export async function buildAndDispatchRun(opts: {
     runId,
     createdAt,
     context,
-    resolvedModelProvider,
-    selectedModel,
     timings,
     orgId,
   } = opts;
@@ -615,16 +612,10 @@ export async function buildAndDispatchRun(opts: {
     // Refresh heartbeat after the heaviest pipeline step to prevent the
     // cleanup cron from timing out runs whose dispatch takes > 5 minutes.
     // Status guard avoids touching runs cancelled/failed while in-flight.
-    // Also persist the resolved model provider type (when the user selected
-    // "Default", the INSERT stored null — this UPDATE writes the actual value).
     await globalThis.services.db
       .update(agentRuns)
       .set({
         lastHeartbeatAt: new Date(),
-        ...(resolvedModelProvider
-          ? { modelProvider: resolvedModelProvider }
-          : {}),
-        ...(selectedModel ? { selectedModel } : {}),
       })
       .where(
         and(
@@ -992,7 +983,6 @@ export async function createRunRecord(
         secretNames: params.secrets ? Object.keys(params.secrets) : null,
         resumedFromCheckpointId: params.resumedFromCheckpointId ?? null,
         continuedFromSessionId: params.sessionId ?? null,
-        modelProvider: params.modelProvider ?? null,
         lastHeartbeatAt: new Date(),
       })
       .returning();
@@ -1063,8 +1053,6 @@ export async function createRun(
       runId: record.run.id,
       createdAt: record.run.createdAt,
       context: contextResult.context,
-      resolvedModelProvider: contextResult.resolvedModelProvider,
-      selectedModel: contextResult.selectedModel,
       timings: {
         apiStart: record.apiStartTime,
         authorize: record.authorizeTime,
@@ -1075,6 +1063,17 @@ export async function createRun(
       },
       orgId: record.orgId,
     });
+
+    // Persist zero-layer model fields (reverse dependency — cleanup in later issue)
+    await globalThis.services.db
+      .insert(zeroRuns)
+      .values({
+        id: record.run.id,
+        triggerSource: "api",
+        modelProvider: contextResult.resolvedModelProvider ?? null,
+        selectedModel: contextResult.selectedModel ?? null,
+      })
+      .onConflictDoNothing();
 
     return {
       runId: record.run.id,
@@ -1159,8 +1158,6 @@ export async function dispatchQueuedRun(
       runId,
       createdAt,
       context: contextResult.context,
-      resolvedModelProvider: contextResult.resolvedModelProvider,
-      selectedModel: contextResult.selectedModel,
       timings: {
         apiStart: apiStartTime,
         authorize: authorizeTime,
@@ -1172,6 +1169,15 @@ export async function dispatchQueuedRun(
       orgId: params.orgId,
       queueDispatcher,
     });
+
+    // Update zero_runs with resolved model fields (reverse dependency — cleanup in later issue)
+    await globalThis.services.db
+      .update(zeroRuns)
+      .set({
+        modelProvider: contextResult.resolvedModelProvider ?? null,
+        selectedModel: contextResult.selectedModel ?? null,
+      })
+      .where(eq(zeroRuns.id, runId));
   } catch (error) {
     const dispatcher = queueDispatcher ?? dispatchQueuedRun;
     await markRunFailed(runId, createdAt, error, () => {

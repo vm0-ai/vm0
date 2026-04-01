@@ -2784,9 +2784,9 @@ export async function setTestRunModelProvider(
   modelProvider: string,
 ): Promise<void> {
   await globalThis.services.db
-    .update(agentRuns)
+    .update(zeroRuns)
     .set({ modelProvider })
-    .where(eq(agentRuns.id, runId));
+    .where(eq(zeroRuns.id, runId));
 }
 
 export async function setTestRunSelectedModel(
@@ -2794,9 +2794,9 @@ export async function setTestRunSelectedModel(
   selectedModel: string,
 ): Promise<void> {
   await globalThis.services.db
-    .update(agentRuns)
+    .update(zeroRuns)
     .set({ selectedModel })
-    .where(eq(agentRuns.id, runId));
+    .where(eq(zeroRuns.id, runId));
 }
 
 export async function expireQueueEntry(runId: string) {
