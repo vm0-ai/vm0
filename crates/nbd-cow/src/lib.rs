@@ -230,11 +230,12 @@ impl NbdCowDevice {
             cow.save_bitmap(&self.bitmap_path())?;
         }
 
-        // Disconnect via netlink (after tasks are done)
-        if let Err(e) = netlink::disconnect(self.device_index) {
-            tracing::warn!("NBD disconnect failed for nbd{}: {e}", self.device_index);
-        }
+        // Disconnect via netlink (after tasks are done).
+        // Propagate the error so callers can retry (e.g., factory destroy loop).
+        // Mark as disconnected regardless — Drop should not attempt a second
+        // disconnect on a device that may have been recycled by another runner.
         self.disconnected = true;
+        netlink::disconnect(self.device_index)?;
 
         // Wait for kernel to release the device (poll pid file)
         let pid_path = format!("/sys/block/nbd{}/pid", self.device_index);

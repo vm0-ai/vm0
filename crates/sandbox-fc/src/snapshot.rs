@@ -233,10 +233,9 @@ async fn run_snapshot_workflow(
 
     // Tear down: umount bind mount, then destroy NBD COW device.
     //
-    // Both steps may fail transiently because kill_process_group + child.wait()
-    // only waits for the top-level unshare — the inner Firecracker (inside
-    // netns) may still be exiting, holding the NBD device fd and bind mount
-    // reference open. Retry both in a loop until Firecracker fully terminates.
+    // Both steps may fail transiently — after kill_process_group + child.wait(),
+    // the kernel may still be releasing the NBD device fd and bind mount
+    // reference. Retry both in a loop until all references are released.
     let drive_bind_str = paths.cow_device_bind().display().to_string();
 
     if result.is_ok() {
