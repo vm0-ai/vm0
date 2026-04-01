@@ -26,12 +26,35 @@ const CHAT_PATH = "/" as RoutePath;
 
 /**
  * Provides breadcrumb data for the MobileTopBar.
- * Only the chat section returns a value — other sections render their own
- * breadcrumbs (hidden on desktop via CSS) and don't need mobile duplication.
+ * For chat: resolves the active agent name and avatar.
+ * For other sections: returns a static label so the top bar has context on mobile
+ * (page-level breadcrumbs use `hidden md:flex` and are invisible on mobile).
  */
 export const mobileBreadcrumb$ = computed(
   async (get): Promise<MobileBreadcrumb | null> => {
     const activeId = get(zeroActiveId$);
+
+    // Static labels for non-chat sections
+    const nonChatSections: Partial<
+      Record<string, { label: string; path: RoutePath }>
+    > = {
+      schedule: { label: "Scheduled", path: "/schedule" as RoutePath },
+      team: { label: "Agents", path: "/team" as RoutePath },
+      activity: { label: "Activity logs", path: "/activity" as RoutePath },
+      works: { label: "Works", path: "/works" as RoutePath },
+      usage: { label: "Usage", path: "/usage" as RoutePath },
+      preferences: { label: "Preferences", path: "/preferences" as RoutePath },
+      queue: { label: "Queue", path: "/queue" as RoutePath },
+      connectors: { label: "Connectors", path: "/connectors" as RoutePath },
+    };
+    const nonChatSection = nonChatSections[activeId];
+    if (nonChatSection) {
+      return {
+        section: nonChatSection.label,
+        sectionPath: nonChatSection.path,
+      };
+    }
+
     if (activeId !== "chat") {
       return null;
     }
