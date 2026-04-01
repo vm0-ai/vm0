@@ -468,67 +468,61 @@ async fn gc_versions(home: &HomePaths, dry_run: bool) -> RunnerResult<Vec<String
 }
 
 /// Scan for NBD devices whose owning process has exited (orphans) and
-/// optionally disconnect them. Returns the number of orphans found.
+/// optionally disconnect them. Returns the number of orphans cleaned.
 async fn gc_nbd_orphans(dry_run: bool) -> RunnerResult<u32> {
-    let (max_devs, orphans) = tokio::task::spawn_blocking(|| {
-        let max_devs = super::nbd::read_nbds_max();
-        let mut orphans: Vec<(u32, u32)> = Vec::new();
-
-        for i in 0..max_devs {
-            if let Some(pid) = super::nbd::read_nbd_pid(i)
-                && !Path::new(&format!("/proc/{pid}")).exists()
-            {
-                orphans.push((i, pid));
-            }
-        }
-        (max_devs, orphans)
-    })
-    .await
-    .map_err(|e| RunnerError::Internal(format!("nbd orphan scan task failed: {e}")))?;
+    let (max_devs, orphans) = tokio::task::spawn_blocking(super::nbd::find_nbd_orphans)
+        .await
+        .map_err(|e| RunnerError::Internal(format!("nbd orphan scan task failed: {e}")))?;
 
     if orphans.is_empty() {
         tracing::debug!("nbd: scanned {max_devs} devices, no orphans");
         return Ok(0);
     }
 
-    let mut count: u32 = 0;
+    let found = orphans.len() as u32;
+    let mut cleaned: u32 = 0;
     for (device_index, pid) in orphans {
         if dry_run {
             info!(
                 "[dry-run] would disconnect orphan NBD device /dev/nbd{device_index} (owner PID {pid} dead)"
             );
-            count += 1;
+            cleaned += 1;
         } else {
             // Re-check before disconnect: between the scan and now, the device
             // could have been freed and re-acquired by another runner. Only
             // disconnect if the PID is unchanged and still dead.
-            let result =
-                tokio::task::spawn_blocking(move || {
-                    match super::nbd::read_nbd_pid(device_index) {
-                        Some(current_pid) if current_pid == pid
-                            && !Path::new(&format!("/proc/{pid}")).exists() =>
-                        {
-                            Some(nbd_cow::netlink::disconnect(device_index))
-                        }
-                        _ => {
-                            tracing::debug!(
-                                "nbd{device_index}: skipping disconnect, device state changed since scan"
-                            );
-                            None
-                        }
+            let result = match tokio::task::spawn_blocking(move || {
+                match super::nbd::read_nbd_pid(device_index) {
+                    Some(current_pid) if current_pid == pid
+                        && !Path::new(&format!("/proc/{pid}")).exists() =>
+                    {
+                        Some(nbd_cow::netlink::disconnect(device_index))
                     }
-                })
-                    .await
-                    .map_err(|e| {
-                        RunnerError::Internal(format!("nbd disconnect task failed: {e}"))
-                    })?;
+                    _ => {
+                        tracing::debug!(
+                            "nbd{device_index}: skipping disconnect, device state changed since scan"
+                        );
+                        None
+                    }
+                }
+            })
+            .await
+            {
+                Ok(result) => result,
+                Err(e) => {
+                    tracing::warn!(
+                        "nbd disconnect task failed for /dev/nbd{device_index}: {e}"
+                    );
+                    continue;
+                }
+            };
 
             match result {
                 Some(Ok(())) => {
                     info!(
                         "disconnected orphan NBD device /dev/nbd{device_index} (owner PID {pid} dead)"
                     );
-                    count += 1;
+                    cleaned += 1;
                 }
                 Some(Err(e)) => {
                     info!("failed to disconnect orphan NBD device /dev/nbd{device_index}: {e}");
@@ -538,7 +532,11 @@ async fn gc_nbd_orphans(dry_run: bool) -> RunnerResult<u32> {
         }
     }
 
-    Ok(count)
+    if cleaned < found {
+        info!("nbd orphans: {found} found, {cleaned} cleaned");
+    }
+
+    Ok(cleaned)
 }
 
 fn human_bytes(bytes: u64) -> String {

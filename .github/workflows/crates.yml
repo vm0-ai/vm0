@@ -975,6 +975,7 @@ jobs:
       - runner-exec
       - runner-balloon
       - runner-upgrade-local
+      - nbd-cow-test
     # Always run so the gate reports an explicit result (not "skipped").
     if: always()
     steps:
@@ -1019,6 +1020,7 @@ jobs:
           check_result "runner-exec" "${{ needs.runner-exec.result }}" "true"
           check_result "runner-balloon" "${{ needs.runner-balloon.result }}" "true"
           check_result "runner-upgrade-local" "${{ needs.runner-upgrade-local.result }}" "true"
+          check_result "nbd-cow-test" "${{ needs.nbd-cow-test.result }}" "true"
 
           echo "::endgroup::"
           exit $FAILED

@@ -18,8 +18,9 @@ use tracing::{error, info, warn};
 /// Number of pre-warmed COW slots to maintain in the queue.
 const BUFFER_SIZE: usize = 4;
 
-/// Maximum slots a single pool can allocate (prevents runaway NBD device
-/// consumption). Matches [`NetnsPool`]'s `MAX_NAMESPACES`.
+/// Maximum slots in the pool pipeline at any time (queue + pending + creating).
+/// Prevents runaway NBD device consumption. In practice the pool stays near
+/// `BUFFER_SIZE`; this is a safety ceiling.
 const MAX_SLOTS: u32 = 256;
 
 // ---------------------------------------------------------------------------
@@ -161,6 +162,7 @@ impl CowPool {
 
         // Tier 1: pop from queue.
         if let Some(slot) = self.queue.pop_front() {
+            self.next_slot_idx = self.next_slot_idx.saturating_sub(1);
             info!(id = %slot.id, remaining = self.queue.len(), "acquired COW slot from pool");
             self.maybe_replenish();
             return Ok(slot);
@@ -170,6 +172,7 @@ impl CowPool {
         while let Some(result) = self.pending.join_next().await {
             match result {
                 Ok(Ok(slot)) => {
+                    self.next_slot_idx = self.next_slot_idx.saturating_sub(1);
                     info!(id = %slot.id, "acquired COW slot from pending");
                     self.maybe_replenish();
                     return Ok(slot);
@@ -194,6 +197,7 @@ impl CowPool {
         let config = self.config.clone();
         match tokio::task::spawn_blocking(move || create_slot(&config)).await {
             Ok(Ok(slot)) => {
+                self.next_slot_idx = self.next_slot_idx.saturating_sub(1);
                 self.maybe_replenish();
                 Ok(slot)
             }
@@ -237,6 +241,7 @@ impl CowPool {
         info!(count, "cleaning up COW pool");
 
         while let Some(slot) = self.queue.pop_front() {
+            self.next_slot_idx = self.next_slot_idx.saturating_sub(1);
             destroy_slot(slot);
         }
         info!("COW pool cleanup complete");
@@ -265,10 +270,7 @@ impl CowPool {
 
     /// Spawn one background replenishment task if the queue is below threshold.
     fn maybe_replenish(&mut self) {
-        if self.queue.len() + self.pending.len() >= BUFFER_SIZE
-            || !self.pending.is_empty()
-            || self.next_slot_idx >= MAX_SLOTS
-        {
+        if self.queue.len() + self.pending.len() >= BUFFER_SIZE || self.next_slot_idx >= MAX_SLOTS {
             return;
         }
         self.next_slot_idx += 1;

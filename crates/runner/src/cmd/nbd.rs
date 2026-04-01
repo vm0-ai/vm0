@@ -24,3 +24,19 @@ pub(crate) fn read_nbd_pid(device_index: u32) -> Option<u32> {
     }
     trimmed.parse::<u32>().ok()
 }
+
+/// Scan all NBD devices for orphans: devices whose owning PID has exited.
+///
+/// Returns `(max_devs_scanned, orphans)` where each orphan is `(device_index, pid)`.
+pub(crate) fn find_nbd_orphans() -> (u32, Vec<(u32, u32)>) {
+    let max_devs = read_nbds_max();
+    let mut orphans: Vec<(u32, u32)> = Vec::new();
+    for i in 0..max_devs {
+        if let Some(pid) = read_nbd_pid(i)
+            && !std::path::Path::new(&format!("/proc/{pid}")).exists()
+        {
+            orphans.push((i, pid));
+        }
+    }
+    (max_devs, orphans)
+}

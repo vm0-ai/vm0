@@ -308,8 +308,9 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
         detect_global_orphans(&reports, &discovered.firecrackers, &discovered.mitmdumps).await
     } else {
         // Scoped detection: orphan firecracker for the named runner.
-        // Orphan mitmproxy and namespace cannot be scoped (no runner-identifying
-        // info on orphaned processes / no persistent runner→pool_idx mapping).
+        // Orphan mitmproxy, namespace, and NBD devices cannot be scoped
+        // (no runner-identifying info on orphaned processes / no persistent
+        // runner→pool_idx mapping / NBD devices lack per-runner attribution).
         let mut warnings = Vec::new();
 
         // Orphan firecracker: scope by base_dir match.
@@ -806,20 +807,9 @@ async fn detect_orphan_namespaces() -> Vec<Warning> {
 
 /// Scan for NBD devices whose owning process has exited without disconnecting.
 async fn detect_nbd_orphans() -> Vec<Warning> {
-    let orphans = tokio::task::spawn_blocking(|| {
-        let max_devs = super::nbd::read_nbds_max();
-        let mut found: Vec<(u32, u32)> = Vec::new();
-        for i in 0..max_devs {
-            if let Some(pid) = super::nbd::read_nbd_pid(i)
-                && !Path::new(&format!("/proc/{pid}")).exists()
-            {
-                found.push((i, pid));
-            }
-        }
-        found
-    })
-    .await
-    .unwrap_or_default();
+    let (_, orphans) = tokio::task::spawn_blocking(super::nbd::find_nbd_orphans)
+        .await
+        .unwrap_or_default();
 
     orphans
         .into_iter()

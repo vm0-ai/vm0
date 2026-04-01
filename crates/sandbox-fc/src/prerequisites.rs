@@ -78,6 +78,8 @@ fn check_required_commands(_config: &PrerequisiteConfig<'_>, errors: &mut Vec<St
         "pgrep",
         // Required by cow_pool (sparse copy for golden snapshots).
         "cp",
+        // Required by snapshot restore (unshare --mount).
+        "unshare",
     ];
     for cmd in &commands {
         if which::which(cmd).is_err() {

@@ -159,6 +159,10 @@ pub fn find_and_connect(client_fds: &[OwnedFd], size: u64, block_size: u64) -> R
 /// kernel-memory backed and complete in microseconds, so they do not
 /// meaningfully block the tokio worker thread.
 pub async fn verify_device_size(device_index: u32, expected_size: u64) -> bool {
+    debug_assert!(
+        expected_size.is_multiple_of(512),
+        "expected_size must be 512-aligned"
+    );
     let expected_sectors = expected_size / 512;
     let size_path = format!("/sys/block/nbd{device_index}/size");
     for _ in 0..5 {
@@ -404,6 +408,7 @@ fn recv_genl_ack(sock: &GenlSocket) -> Result<()> {
         });
     }
 
+    tracing::debug!(msg_type, "recv_genl_ack: ignoring non-error message type");
     Ok(())
 }
 
@@ -422,7 +427,7 @@ fn build_sockets_nla(client_fds: &[OwnedFd]) -> Vec<u8> {
 /// Build a netlink attribute (NLA).
 fn build_nla(nla_type: u16, payload: &[u8]) -> Vec<u8> {
     let nla_len = 4 + payload.len();
-    debug_assert!(nla_len <= u16::MAX as usize, "NLA payload too large");
+    assert!(nla_len <= u16::MAX as usize, "NLA payload too large");
     let aligned_len = (nla_len + 3) & !3;
     let mut buf = vec![0u8; aligned_len];
     if let Some(header) = buf.get_mut(..4) {

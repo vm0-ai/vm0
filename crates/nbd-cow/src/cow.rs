@@ -60,6 +60,7 @@ impl CowLayer {
         block_size: usize,
         flush_threshold: usize,
     ) -> Result<Self> {
+        assert!(block_size > 0, "block_size must be positive");
         let base_fd = File::open(base_path)?;
         let num_blocks = (size as usize).div_ceil(block_size);
 
