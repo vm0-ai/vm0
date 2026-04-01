@@ -20,10 +20,9 @@ const context = testContext();
 
 describe("chat immediate feedback after sending", () => {
   it("should produce a placeholder assistant message while waiting for server response", async () => {
-    // Signal-level test: use withoutRender to avoid page setup race condition
     let resolvePost!: () => void;
-    const gate = new Promise<void>((r) => {
-      resolvePost = r;
+    const gate = new Promise<void>((resolve) => {
+      resolvePost = resolve;
     });
 
     const ctrl = mockChatLifecycle();
@@ -47,7 +46,6 @@ describe("chat immediate feedback after sending", () => {
     await setupPage({
       context,
       path: "/chat/thread-test-1",
-      withoutRender: true,
     });
 
     // Send message — prepareUserMessage$ runs before the POST, so the user
@@ -72,7 +70,9 @@ describe("chat immediate feedback after sending", () => {
     // inspecting the placeholder's runLoop.finished$ directly — its promise
     // status must still be "pending".
     const messages = await context.store.get(zeroChatMessages$);
-    const placeholder = messages.find((m) => m.role === "assistant");
+    const placeholder = messages.find((m) => {
+      return m.role === "assistant";
+    });
     expect(placeholder).toBeDefined();
     expect(placeholder!.role).toBe("assistant");
     const assistantMsg =
@@ -81,9 +81,9 @@ describe("chat immediate feedback after sending", () => {
     // The finished$ promise should be pending (never-resolving).
     // We verify this by racing it against an immediately-resolved value.
     const finishedStatus = await Promise.race([
-      context.store
-        .get(assistantMsg.runLoop!.finished$)
-        .then(() => "resolved" as const),
+      context.store.get(assistantMsg.runLoop!.finished$).then(() => {
+        return "resolved" as const;
+      }),
       Promise.resolve("pending" as const),
     ]);
     expect(finishedStatus).toBe("pending");
@@ -95,7 +95,7 @@ describe("chat immediate feedback after sending", () => {
 
     await vi.waitFor(async () => {
       const f = await context.store.get(allFinished$);
-      expect(f).toBe(true);
+      expect(f).toBeTruthy();
     });
   });
 

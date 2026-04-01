@@ -121,7 +121,7 @@ function placeholderIdFromUser(userMessageId: string): string {
  * dropped (i.e. when the real assistant message arrives and the derived
  * `zeroChatMessages$` no longer includes the placeholder).
  */
-const neverResolve$ = computed(async (): Promise<never> => {
+const neverResolve$ = computed((): Promise<never> => {
   return new Promise<never>(() => {});
 });
 
@@ -134,8 +134,8 @@ const neverResolve$ = computed(async (): Promise<never> => {
 function createPlaceholderAssistantMessage(
   userMessageId: string,
 ): AssistantChatMessage {
-  const noopCommand = command(() => {});
-  const noopAsyncCommand = command(async () => {});
+  const noopCommand$ = command(() => {});
+  const noopAsyncCommand$ = command(async () => {});
   return {
     id: placeholderIdFromUser(userMessageId),
     role: "assistant",
@@ -143,15 +143,17 @@ function createPlaceholderAssistantMessage(
     createdAt: new Date().toISOString(),
     runLoop: {
       pagedEventsList$: neverResolve$,
-      beginLoop$: noopAsyncCommand,
-      cancel$: noopAsyncCommand,
+      beginLoop$: noopAsyncCommand$,
+      cancel$: noopAsyncCommand$,
       detail$: neverResolve$,
       queuePosition$: neverResolve$,
       finished$: neverResolve$,
-      thinkingMessage$: computed(() => "Thinking..."),
+      thinkingMessage$: computed(() => {
+        return "Thinking..." as const;
+      }),
     },
     summaries$: neverResolve$,
-    beginLoop$: noopCommand,
+    beginLoop$: noopCommand$,
   };
 }
 
