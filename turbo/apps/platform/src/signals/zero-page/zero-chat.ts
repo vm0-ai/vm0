@@ -102,6 +102,48 @@ export const resetLocalMessages$ = command(({ set }) => {
   set(internalLocalMessages$, []);
 });
 
+/**
+ * Increment a UUID by 1 to produce a deterministic, UUID-shaped derivative.
+ */
+function incrementUUID(uuid: string): string {
+  const hex = uuid.replace(/-/g, "");
+  const next = (BigInt("0x" + hex) + 1n).toString(16).padStart(32, "0");
+  return `${next.slice(0, 8)}-${next.slice(8, 12)}-${next.slice(12, 16)}-${next.slice(16, 20)}-${next.slice(20)}`;
+}
+
+const neverResolve$ = computed(async (): Promise<never> => {
+  return new Promise<never>(() => {});
+});
+
+/**
+ * Create a lightweight placeholder assistant message that is derived (not
+ * stored) inside `zeroChatMessages$`.  All async computed signals never
+ * resolve and all commands are no-ops, so the placeholder is completely
+ * inert — it exists only to give the UI something to render immediately.
+ */
+function createPlaceholderAssistantMessage(
+  userMessageId: string,
+): AssistantChatMessage {
+  const noopCommand = command(() => {});
+  const noopAsyncCommand = command(async () => {});
+  return {
+    id: incrementUUID(userMessageId),
+    role: "assistant",
+    result$: neverResolve$,
+    runLoop: {
+      pagedEventsList$: neverResolve$,
+      beginLoop$: noopAsyncCommand,
+      cancel$: noopAsyncCommand,
+      detail$: neverResolve$,
+      queuePosition$: neverResolve$,
+      finished$: neverResolve$,
+      thinkingMessage$: computed(() => "Thinking..."),
+    },
+    summaries$: neverResolve$,
+    beginLoop$: noopCommand,
+  };
+}
+
 export const zeroChatMessages$ = computed(async (get) => {
   const snapshot = await get(chatSessionSnapshot$);
   const serverMessages = snapshot?.messages ?? [];
@@ -138,7 +180,18 @@ export const zeroChatMessages$ = computed(async (get) => {
   const filteredLocal = localMessages.filter((_, i) => {
     return !skipIndices.has(i);
   });
-  return [...serverMessages, ...filteredLocal];
+  const merged = [...serverMessages, ...filteredLocal];
+
+  // If the last local message is a user message with no following assistant
+  // message, derive a placeholder assistant message so the UI can show
+  // immediate feedback (avatar, spinner, disabled input) before the server
+  // responds with a runId.
+  const last = filteredLocal[filteredLocal.length - 1];
+  if (last?.role === "user") {
+    merged.push(createPlaceholderAssistantMessage(last.id));
+  }
+
+  return merged;
 });
 
 export const allFinished$ = computed(async (get) => {

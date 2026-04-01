@@ -1,6 +1,7 @@
 import {
   useGet,
   useSet,
+  useLoadable,
   useLastLoadable,
   useLastResolved,
   useResolved,
@@ -315,9 +316,9 @@ export function ZeroChatThreadPage() {
 
 function ChatThreadComposer({ hasMessages }: { hasMessages: boolean }) {
   const { displayName } = useChatAgentIdentity();
-  const allFinishedLoadable = useLastLoadable(allFinished$);
+  const allFinishedLoadable = useLoadable(allFinished$);
   const sending =
-    allFinishedLoadable.state === "hasData" ? !allFinishedLoadable.data : false;
+    allFinishedLoadable.state === "hasData" ? !allFinishedLoadable.data : true;
   const input = useGet(zeroChatInput$);
   const setInput = useSet(setZeroChatInput$);
   const clearInput = useSet(clearZeroChatInput$);
