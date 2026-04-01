@@ -10,7 +10,8 @@ import { writeOutput } from "./codegen";
 
 const DOCS_URL =
   "https://docs.htmlcsstoimage.com/getting-started/authentication";
-const PLACEHOLDER_VALUE = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+// UUID-shaped placeholder using c0ffee5afe10ca1 vocabulary (see README.md)
+const PLACEHOLDER_VALUE = "c0ffee5a-fe10-ca1c-0ffe-e5afe10ca1c0";
 
 function generateTypeScript(): string {
   const lines: string[] = [

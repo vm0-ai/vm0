@@ -10,7 +10,7 @@ export const htmlcsstoimageFirewall: FirewallConfig = {
   name: "htmlcsstoimage",
   description: "HTML/CSS to Image API",
   placeholders: {
-    HCTI_API_KEY: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    HCTI_API_KEY: "c0ffee5a-fe10-ca1c-0ffe-e5afe10ca1c0",
   },
   apis: [
     {
