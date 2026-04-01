@@ -6,9 +6,9 @@ import {
   useLastResolved,
 } from "ccstate-react";
 import slackIcon from "./components/settings/icons/slack.svg";
-import zeroAvatarImg from "./assets/avatar_0.png";
+import zeroAvatarImg from "./assets/avatar_0.webp";
 import zeroAnimatedSrc from "./assets/zero-animated.webp";
-import slackPreviewImg from "./assets/Slack.png";
+import slackPreviewImg from "./assets/Slack.webp";
 import { Button, Input } from "@vm0/ui";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
