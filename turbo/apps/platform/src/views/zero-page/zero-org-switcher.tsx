@@ -63,7 +63,7 @@ export function ZeroOrgSwitcher() {
   const orgSlug = orgData?.slug;
 
   const otherMemberships = memberships.filter((m) => {
-    return m.organization.id !== currentOrgId;
+    return m.organization && m.organization.id !== currentOrgId;
   });
 
   const handleSwitchOrg = (orgId: string) => {
