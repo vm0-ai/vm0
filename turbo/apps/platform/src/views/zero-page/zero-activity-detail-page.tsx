@@ -187,7 +187,7 @@ function ActivityHeaderCard({
 }) {
   return (
     <div className="zero-card shrink-0 px-4 py-3">
-      <div className="flex items-center gap-y-2 overflow-hidden">
+      <div className="flex items-center gap-y-2">
         <h2 className="text-base font-semibold tracking-tight text-foreground truncate min-w-0 pr-3 shrink-0">
           {displayName}
         </h2>
@@ -195,7 +195,7 @@ function ActivityHeaderCard({
           className="w-px h-3.5 shrink-0 bg-border self-center"
           aria-hidden
         />
-        <div className="flex items-center gap-x-0 text-sm min-w-0 overflow-hidden">
+        <div className="flex items-center gap-x-0 text-sm flex-1 overflow-x-auto">
           <div className="flex items-center gap-1.5 pl-3 pr-3">
             <span className="text-muted-foreground shrink-0">Status</span>
             <StatusBadge status={status} zeroStyle />
@@ -283,7 +283,6 @@ function ActivityHeaderCard({
             <span className="text-foreground whitespace-nowrap">{time}</span>
           </div>
         </div>
-        <div className="flex-1 min-w-0" />
         {showContextLink && (
           <Link
             pathname="/activity/:runId/context"
