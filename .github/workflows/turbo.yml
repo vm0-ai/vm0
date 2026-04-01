@@ -1194,6 +1194,16 @@ jobs:
           echo "CLI package verification passed"
       - name: Deploy CLI with production dependencies
         run: cd turbo && pnpm deploy --filter @vm0/cli --prod --legacy --config.node-linker=hoisted /tmp/cli-deploy
+      - name: Smoke test deployed CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/cli-deploy
+          # Eager imports in both entry points load the full dependency tree
+          # (@sentry/node → @prisma/instrumentation → @opentelemetry/*).
+          # Any broken transitive dep will fail here.
+          node dist/index.js --help
+          node dist/zero.js --help
       - name: Upload CLI artifact
         uses: actions/upload-artifact@v7
         with:
