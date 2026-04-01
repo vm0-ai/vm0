@@ -22,5 +22,14 @@ export const mailchimpFirewall: FirewallConfig = {
       },
       permissions: [],
     },
+    {
+      base: "https://login.mailchimp.com",
+      auth: {
+        headers: {
+          Authorization: "OAuth ${{ secrets.MAILCHIMP_TOKEN }}",
+        },
+      },
+      permissions: [],
+    },
   ],
 };
