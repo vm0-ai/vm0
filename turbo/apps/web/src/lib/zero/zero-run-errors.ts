@@ -15,7 +15,6 @@ export function handleCreateRunError(error: unknown) {
         runId: error.runId,
         status: "failed" as const,
         error: error.message,
-        createdAt: error.createdAt?.toISOString() ?? "",
       },
     };
   }

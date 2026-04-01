@@ -378,7 +378,6 @@ export async function createZeroRun(
     // 8. Dispatch with pre-built context (callbacks already registered above)
     const result = await buildAndDispatchRun({
       runId: record.run.id,
-      createdAt: record.run.createdAt,
       context: contextResult.context,
       timings: {
         apiStart: record.apiStartTime,
@@ -401,7 +400,7 @@ export async function createZeroRun(
       createdAt: record.run.createdAt,
     };
   } catch (error) {
-    await markRunFailed(record.run.id, record.run.createdAt, error, () => {
+    await markRunFailed(record.run.id, error, () => {
       return drainOrgQueue(resolved.orgId, dispatchQueuedZeroRun);
     });
     throw error;

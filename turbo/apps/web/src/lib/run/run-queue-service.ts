@@ -28,7 +28,6 @@ const QUEUE_TTL_MS = 2 * 60 * 60 * 1000;
  */
 type QueuedRunDispatcher = (
   runId: string,
-  createdAt: Date,
   params: CreateRunParams,
 ) => Promise<void>;
 
@@ -150,7 +149,7 @@ export async function drainOrgQueue(
 
     // Dispatch the run (compose loading, authorization, execution)
     try {
-      await dispatch(dequeued.runId, dequeued.createdAt, params);
+      await dispatch(dequeued.runId, params);
       log.debug(`Queued run ${dequeued.runId} dispatched successfully`);
       return; // Successfully dispatched — done
     } catch (error) {
@@ -167,7 +166,6 @@ export async function drainOrgQueue(
 
 interface DequeuedEntry {
   runId: string;
-  createdAt: Date;
   encryptedParams: string | null;
 }
 
@@ -260,7 +258,7 @@ async function dequeueNextAtomic(
           .where(
             and(eq(agentRuns.id, row.run_id), eq(agentRuns.status, "queued")),
           )
-          .returning({ createdAt: agentRuns.createdAt });
+          .returning({ id: agentRuns.id });
 
         if (!updated) {
           // Run was cancelled/failed between enqueue and drain — skip it
@@ -271,7 +269,6 @@ async function dequeueNextAtomic(
         log.debug(`Dequeued run ${row.run_id} for org ${orgId}`);
         return {
           runId: row.run_id,
-          createdAt: updated.createdAt,
           encryptedParams: row.encrypted_params,
         };
       }

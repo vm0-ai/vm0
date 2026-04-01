@@ -85,7 +85,7 @@ const createRunResponseSchema = z.object({
   output: z.string().optional(),
   error: z.string().optional(),
   executionTimeMs: z.number().optional(),
-  createdAt: z.string(),
+  createdAt: z.string().optional(),
 });
 
 /**

@@ -282,12 +282,11 @@ async function dispatchRun(context: PreparedContext): Promise<ExecutorResult> {
 /**
  * Extended error type for dispatch failures that includes run metadata.
  * When createRun() fails after the run record is created (post-INSERT),
- * the error is augmented with runId and createdAt so callers can
- * return partial results if needed.
+ * the error is augmented with runId so callers can return partial
+ * results if needed.
  */
 export interface RunDispatchError extends Error {
   runId?: string;
-  createdAt?: Date;
 }
 
 export function isRunDispatchError(error: unknown): error is RunDispatchError {
@@ -552,7 +551,6 @@ export async function registerCallbacks(
  */
 export async function markRunFailed(
   runId: string,
-  createdAt: Date,
   error: unknown,
   drain?: () => Promise<void>,
 ): Promise<void> {
@@ -577,7 +575,6 @@ export async function markRunFailed(
   // Attach run metadata so callers can return partial results
   if (error instanceof Error) {
     (error as RunDispatchError).runId = runId;
-    (error as RunDispatchError).createdAt = createdAt;
   }
 }
 
@@ -587,17 +584,12 @@ export async function markRunFailed(
  */
 export async function buildAndDispatchRun(opts: {
   runId: string;
-  createdAt: Date;
   // Pre-built execution context (caller resolves all secrets/providers/firewalls)
   context: ExecutionContext;
   timings: DispatchTimings;
-  queueDispatcher?: (
-    runId: string,
-    createdAt: Date,
-    params: CreateRunParams,
-  ) => Promise<void>;
+  queueDispatcher?: (runId: string, params: CreateRunParams) => Promise<void>;
 }): Promise<{ status: RunStatus; sandboxId?: string }> {
-  const { runId, createdAt, context, timings } = opts;
+  const { runId, context, timings } = opts;
 
   try {
     const buildContextTime = Date.now();
@@ -675,7 +667,7 @@ export async function buildAndDispatchRun(opts: {
     return result;
   } catch (error) {
     const dispatcher = opts.queueDispatcher ?? dispatchQueuedRun;
-    await markRunFailed(runId, createdAt, error, () => {
+    await markRunFailed(runId, error, () => {
       return drainOrgQueue(context.orgId, dispatcher);
     });
     throw error;
@@ -1049,7 +1041,6 @@ export async function createRun(
 
     const result = await buildAndDispatchRun({
       runId: record.run.id,
-      createdAt: record.run.createdAt,
       context: contextResult.context,
       timings: {
         apiStart: record.apiStartTime,
@@ -1071,7 +1062,7 @@ export async function createRun(
     // Mark run as failed when context building or dispatch fails.
     // buildAndDispatchRun may have already called markRunFailed — the
     // second call is a safe no-op (transitionRunStatus guards on status).
-    await markRunFailed(record.run.id, record.run.createdAt, error, () => {
+    await markRunFailed(record.run.id, error, () => {
       return drainOrgQueue(record.orgId, dispatchQueuedRun);
     });
     throw error;
@@ -1090,13 +1081,8 @@ export async function createRun(
  */
 export async function dispatchQueuedRun(
   runId: string,
-  createdAt: Date,
   params: CreateRunParams,
-  queueDispatcher?: (
-    runId: string,
-    createdAt: Date,
-    params: CreateRunParams,
-  ) => Promise<void>,
+  queueDispatcher?: (runId: string, params: CreateRunParams) => Promise<void>,
 ): Promise<void> {
   const apiStartTime = Date.now();
   const { userId, agentComposeVersionId } = params;
@@ -1163,7 +1149,6 @@ export async function dispatchQueuedRun(
 
     await buildAndDispatchRun({
       runId,
-      createdAt,
       context: contextResult.context,
       timings: {
         apiStart: apiStartTime,
@@ -1177,7 +1162,7 @@ export async function dispatchQueuedRun(
     });
   } catch (error) {
     const dispatcher = queueDispatcher ?? dispatchQueuedRun;
-    await markRunFailed(runId, createdAt, error, () => {
+    await markRunFailed(runId, error, () => {
       return drainOrgQueue(params.orgId, dispatcher);
     });
     throw error;

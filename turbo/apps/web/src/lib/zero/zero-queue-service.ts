@@ -40,7 +40,6 @@ import type { OrgTier, QueueResponse, TriggerSource } from "@vm0/core";
  */
 export async function dispatchQueuedZeroRun(
   runId: string,
-  createdAt: Date,
   params: CreateRunParams,
 ): Promise<void> {
   if (params.vars?.ZERO_AGENT_ID) {
@@ -100,7 +99,6 @@ export async function dispatchQueuedZeroRun(
 
     await buildAndDispatchRun({
       runId,
-      createdAt,
       context: contextResult.context,
       timings: {
         apiStart: apiStartTime,
@@ -117,7 +115,7 @@ export async function dispatchQueuedZeroRun(
   }
 
   // Non-zero path — delegate to infra dispatcher
-  return dispatchQueuedRun(runId, createdAt, params, dispatchQueuedZeroRun);
+  return dispatchQueuedRun(runId, params, dispatchQueuedZeroRun);
 }
 
 const RECENT_RUNS_FOR_ETA = 20;

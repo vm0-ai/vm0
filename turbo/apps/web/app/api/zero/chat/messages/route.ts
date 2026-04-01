@@ -141,7 +141,6 @@ const router = tsr.router(chatMessagesContract, {
             runId: error.runId,
             threadId,
             status: "failed" as const,
-            createdAt: error.createdAt?.toISOString() ?? "",
           },
         };
       }

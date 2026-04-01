@@ -41,7 +41,7 @@ export interface CreateRunResponse {
   output?: string;
   error?: string;
   executionTimeMs?: number;
-  createdAt: string;
+  createdAt?: string;
 }
 
 export interface GetComposeVersionResponse {

@@ -146,7 +146,7 @@ export const chatMessagesContract = c.router({
         runId: z.string(),
         threadId: z.string(),
         status: runStatusSchema,
-        createdAt: z.string(),
+        createdAt: z.string().optional(),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,

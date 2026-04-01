@@ -41,7 +41,6 @@ function handleCreateRunError(error: unknown) {
           runId: dispatchError.runId,
           status: "failed" as const,
           error: error.message,
-          createdAt: dispatchError.createdAt?.toISOString() ?? "",
         },
       };
     }
@@ -67,7 +66,6 @@ function handleCreateRunError(error: unknown) {
         runId: dispatchError.runId,
         status: "failed" as const,
         error: "Run failed",
-        createdAt: dispatchError.createdAt?.toISOString() ?? "",
       },
     };
   }
