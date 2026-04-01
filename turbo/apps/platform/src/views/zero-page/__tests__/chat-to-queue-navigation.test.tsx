@@ -82,5 +82,5 @@ describe("chat to queue navigation", () => {
     await waitFor(() => {
       expect(screen.getByText("Queue Agent")).toBeInTheDocument();
     });
-  }, 15_000);
+  });
 });

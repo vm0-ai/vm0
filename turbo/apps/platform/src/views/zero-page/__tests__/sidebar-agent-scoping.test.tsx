@@ -98,7 +98,7 @@ describe("sidebar agent scoping (#7239)", () => {
     expect(screen.getByText("Chats with Beta Bot")).toBeInTheDocument();
     // Alpha thread must NOT appear
     expect(screen.queryByText("Alpha thread")).not.toBeInTheDocument();
-  }, 15_000);
+  });
 
   it("should switch back to first agent after visiting second agent", async () => {
     mockTwoAgents();
@@ -120,7 +120,7 @@ describe("sidebar agent scoping (#7239)", () => {
       expect(screen.getByText("Alpha thread")).toBeInTheDocument();
     });
     expect(screen.queryByText("Beta thread")).not.toBeInTheDocument();
-  }, 15_000);
+  });
 
   it("should retain agent scope when navigating to a non-chat page and back", async () => {
     mockTwoAgents();
@@ -141,7 +141,7 @@ describe("sidebar agent scoping (#7239)", () => {
     });
     expect(screen.getByText("Beta thread")).toBeInTheDocument();
     expect(screen.queryByText("Alpha thread")).not.toBeInTheDocument();
-  }, 15_000);
+  });
 
   it("should update sidebar to show agent chats when navigating to /team/:agentId profile page", async () => {
     mockTwoAgents();
@@ -163,5 +163,5 @@ describe("sidebar agent scoping (#7239)", () => {
     });
     expect(screen.getByText("Beta thread")).toBeInTheDocument();
     expect(screen.queryByText("Alpha thread")).not.toBeInTheDocument();
-  }, 15_000);
+  });
 });

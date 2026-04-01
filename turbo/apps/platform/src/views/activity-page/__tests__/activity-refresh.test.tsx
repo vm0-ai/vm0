@@ -129,5 +129,5 @@ describe("activity list refresh on navigation", () => {
 
     // Verify that a new fetch was triggered after re-navigation
     expect(fetchCount).toBeGreaterThan(initialFetchCount);
-  }, 20_000);
+  });
 });

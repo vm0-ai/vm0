@@ -138,7 +138,7 @@ describe("queue to activity navigation", () => {
     });
 
     expect(screen.getByText("4.0s")).toBeInTheDocument();
-  }, 15_000);
+  });
 
   it("should initialize activity page when clicking View logs in waiting table", async () => {
     const user = userEvent.setup();
@@ -164,5 +164,5 @@ describe("queue to activity navigation", () => {
     });
 
     expect(screen.getByText("4.0s")).toBeInTheDocument();
-  }, 15_000);
+  });
 });

@@ -122,7 +122,7 @@ describe("chatListDialog", () => {
     await waitFor(() => {
       expect(pathname()).toBe("/chat/new-thread-from-dialog");
     });
-  }, 15_000);
+  });
 
   it("should navigate to chat when clicking an unpinned agent", async () => {
     const user = userEvent.setup();
@@ -141,7 +141,7 @@ describe("chatListDialog", () => {
     await waitFor(() => {
       expect(pathname()).toBe("/chat/new-thread-from-dialog");
     });
-  }, 15_000);
+  });
 
   it("should render unpinned agent avatars without reduced opacity", async () => {
     const user = userEvent.setup();
@@ -159,7 +159,7 @@ describe("chatListDialog", () => {
     // Find the unpinned agent's avatar image within the dialog
     const unpinnedAvatar = within(dialog).getByAltText("Unpinned Agent");
     expect(unpinnedAvatar.className).not.toContain("opacity-60");
-  }, 15_000);
+  });
 
   it("should navigate to chat when clicking the lead agent", async () => {
     const user = userEvent.setup();
@@ -180,5 +180,5 @@ describe("chatListDialog", () => {
     await waitFor(() => {
       expect(pathname()).toBe("/chat/new-thread-from-dialog");
     });
-  }, 15_000);
+  });
 });

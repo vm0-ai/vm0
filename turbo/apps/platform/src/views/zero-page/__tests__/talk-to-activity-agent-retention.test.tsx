@@ -64,12 +64,9 @@ describe("talk to activity agent retention", () => {
     });
 
     // Wait for sidebar to show "bar" as the active chat agent
-    await waitFor(
-      () => {
-        expect(screen.getByLabelText("New chat with bar")).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByLabelText("New chat with bar")).toBeInTheDocument();
+    });
 
     // Click the "Activity logs" nav tab in the sidebar
     const activityNavLink = screen.getByRole("link", {
@@ -78,20 +75,14 @@ describe("talk to activity agent retention", () => {
     await user.click(activityNavLink);
 
     // Wait for navigation to /activity to complete
-    await waitFor(
-      () => {
-        expect(pathname()).toBe("/activity");
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(pathname()).toBe("/activity");
+    });
 
     // After navigating to /activity, the sidebar should still show "chat with bar"
     // (the last visited agent), not "chat with foo" (the default agent)
-    await waitFor(
-      () => {
-        expect(screen.getByLabelText("New chat with bar")).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
-  }, 15_000);
+    await waitFor(() => {
+      expect(screen.getByLabelText("New chat with bar")).toBeInTheDocument();
+    });
+  });
 });

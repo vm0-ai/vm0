@@ -106,7 +106,7 @@ describe("talk navigation", () => {
     await waitFor(() => {
       expect(pathname()).toBe("/chat/new-thread-id-123");
     });
-  }, 15_000);
+  });
 
   it("should navigate to /chat/:chatThreadId after completing onboarding and sending auto-intro", async () => {
     const user = userEvent.setup();
@@ -257,5 +257,5 @@ describe("talk navigation", () => {
     await waitFor(() => {
       expect(pathname()).toBe("/chat/new-thread-id-123");
     });
-  }, 15_000);
+  });
 });

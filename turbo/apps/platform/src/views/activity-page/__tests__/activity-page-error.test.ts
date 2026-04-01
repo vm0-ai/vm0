@@ -36,5 +36,5 @@ describe("activity page error", () => {
     expect(
       screen.getByText("Something went wrong. Please try again later."),
     ).toBeInTheDocument();
-  }, 10_000);
+  });
 });

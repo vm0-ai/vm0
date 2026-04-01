@@ -136,7 +136,7 @@ describe("activity page routing", () => {
 
     // Verify detail content loaded (duration)
     expect(screen.getByText("3.0s")).toBeInTheDocument();
-  }, 10_000);
+  });
 
   it("should navigate back to list from detail breadcrumb", async () => {
     const user = userEvent.setup();
@@ -175,7 +175,7 @@ describe("activity page routing", () => {
         screen.getByRole("heading", { name: "Activity" }),
       ).toBeInTheDocument();
     });
-  }, 10_000);
+  });
 
   it("should display 'Agent (displayName)' for delegated runs with triggerAgentName", async () => {
     server.use(
@@ -229,5 +229,5 @@ describe("activity page routing", () => {
     await waitFor(() => {
       expect(screen.getByText("Agent (Parent Bot)")).toBeInTheDocument();
     });
-  }, 10_000);
+  });
 });

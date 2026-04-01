@@ -142,5 +142,5 @@ describe("chat to activity navigation", () => {
 
     // Verify the detail content loaded (duration: 4.0s)
     expect(screen.getByText("4.0s")).toBeInTheDocument();
-  }, 15_000);
+  });
 });

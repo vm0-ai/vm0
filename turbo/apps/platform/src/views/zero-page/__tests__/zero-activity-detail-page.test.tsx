@@ -85,7 +85,7 @@ describe("zeroActivityDetailPage", () => {
 
     // Verify the header card rendered with run details
     expect(screen.getByText("9.0s")).toBeInTheDocument();
-  }, 10_000);
+  });
 
   it("should hide Activity breadcrumb when ActivityLogList switch is off", async () => {
     mockActivityDetailAPI();
@@ -105,7 +105,7 @@ describe("zeroActivityDetailPage", () => {
     // The breadcrumb link to /activity should not be present
     const activityLinks = screen.queryAllByRole("link", { name: /Activity/i });
     expect(activityLinks).toHaveLength(0);
-  }, 10_000);
+  });
 
   it("should show Activity breadcrumb when ActivityLogList switch is on", async () => {
     mockActivityDetailAPI();
@@ -125,7 +125,7 @@ describe("zeroActivityDetailPage", () => {
     // The breadcrumb link to /activity should be present
     const activityLinks = screen.queryAllByRole("link", { name: /Activity/i });
     expect(activityLinks.length).toBeGreaterThan(0);
-  }, 10_000);
+  });
 
   it("should render schedule source as a clickable link when scheduleId is present", async () => {
     const logDetail: LogDetail = {
@@ -180,7 +180,7 @@ describe("zeroActivityDetailPage", () => {
     const scheduleLink = screen.getByRole("link", { name: "Schedule" });
     expect(scheduleLink).toBeInTheDocument();
     expect(scheduleLink.getAttribute("href")).toBe("/schedule/sched-abc-123");
-  }, 10_000);
+  });
 
   it("should render schedule source as plain text when scheduleId is null", async () => {
     const logDetail: LogDetail = {
@@ -234,7 +234,7 @@ describe("zeroActivityDetailPage", () => {
     // "Schedule" should be plain text, not a link
     expect(screen.getByText("Schedule")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Schedule" })).toBeNull();
-  }, 10_000);
+  });
 
   it("should render non-schedule source as plain text", async () => {
     mockActivityDetailAPI();
@@ -253,7 +253,7 @@ describe("zeroActivityDetailPage", () => {
     // "Web" source should be plain text, not a link
     expect(screen.getByText("Web")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Web" })).toBeNull();
-  }, 10_000);
+  });
 
   it("should not truncate system prompt containing unknown HTML-like tags", async () => {
     const logDetail: LogDetail = {
@@ -317,7 +317,7 @@ describe("zeroActivityDetailPage", () => {
         screen.getAllByText(/This line must not be lost/).length,
       ).toBeGreaterThan(0);
     });
-  }, 10_000);
+  });
 
   it("should display selectedModel when ModelDetail feature is enabled", async () => {
     const logDetail: LogDetail = {
@@ -371,7 +371,7 @@ describe("zeroActivityDetailPage", () => {
 
     // selectedModel should be displayed as the model label
     expect(screen.getByText("claude-sonnet-4.5")).toBeInTheDocument();
-  }, 10_000);
+  });
 
   it("should display provider label when ModelDetail feature is disabled", async () => {
     const logDetail: LogDetail = {
@@ -426,7 +426,7 @@ describe("zeroActivityDetailPage", () => {
     // Provider label should be displayed, not selectedModel
     expect(screen.getByText("Anthropic API Key")).toBeInTheDocument();
     expect(screen.queryByText("claude-sonnet-4.5")).toBeNull();
-  }, 10_000);
+  });
 
   it("should fallback to provider label when ModelDetail is enabled but selectedModel is null", async () => {
     const logDetail: LogDetail = {
@@ -480,5 +480,5 @@ describe("zeroActivityDetailPage", () => {
 
     // Should fallback to provider label when selectedModel is null
     expect(screen.getByText("Anthropic API Key")).toBeInTheDocument();
-  }, 10_000);
+  });
 });

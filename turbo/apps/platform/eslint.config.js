@@ -76,6 +76,27 @@ export default [
     files: ["**/__tests__/**/*.{ts,tsx}"],
     rules: {
       "ccstate/prefer-user-event": "error",
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "CallExpression[callee.name=/^(it|test)$/][arguments.2.type='Literal']",
+          message:
+            "Do not set test timeout. The default timeout (5000ms) is sufficient — a single test should complete within 500ms. Polling intervals are reduced to 10ms in tests, so do not rely on extending timeout to fix flaky tests. Find and fix the underlying timing issue instead.",
+        },
+        {
+          selector:
+            "CallExpression[callee.name='describe'][arguments.2.type='Literal']",
+          message:
+            "Do not set test timeout. The default timeout (5000ms) is sufficient — a single test should complete within 500ms. Polling intervals are reduced to 10ms in tests, so do not rely on extending timeout to fix flaky tests. Find and fix the underlying timing issue instead.",
+        },
+        {
+          selector:
+            "CallExpression[callee.name='waitFor'] > ObjectExpression > Property[key.name='timeout']",
+          message:
+            "Do not set test timeout. The default timeout (5000ms) is sufficient — a single test should complete within 500ms. Polling intervals are reduced to 10ms in tests, so do not rely on extending timeout to fix flaky tests. Find and fix the underlying timing issue instead.",
+        },
+      ],
     },
   },
   // Allow new AbortController in signal infrastructure, test helpers, and

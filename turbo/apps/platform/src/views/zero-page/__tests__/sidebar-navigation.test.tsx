@@ -177,7 +177,7 @@ describe("sidebar new chat navigation", () => {
     await waitFor(() => {
       expect(pathname()).toBe("/chat/delayed-thread-id");
     });
-  }, 15_000);
+  });
 
   it("should handle API failure gracefully", async () => {
     const user = userEvent.setup();
@@ -214,7 +214,7 @@ describe("sidebar new chat navigation", () => {
 
     // Should not have navigated
     expect(pathname()).toBe(initialPath);
-  }, 15_000);
+  });
 
   it("should show new chat entry in sidebar and focus textarea after creating new chat", async () => {
     const user = userEvent.setup();

@@ -24,12 +24,9 @@ describe("prompt query parameter injection", () => {
     await setupPage({ context, path: "/?prompt=Hello%20world" });
 
     // Should redirect to /talk/:id and show the prompt in the input
-    const textarea = await waitFor(
-      () => {
-        return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
-      },
-      { timeout: 5000 },
-    );
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
 
     expect(textarea).toHaveValue("Hello world");
   });
@@ -41,12 +38,9 @@ describe("prompt query parameter injection", () => {
       path: "/talk/c0000000-0000-4000-a000-000000000001?prompt=Set%20up%20a%20daily%20report",
     });
 
-    const textarea = await waitFor(
-      () => {
-        return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
-      },
-      { timeout: 5000 },
-    );
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
 
     expect(textarea).toHaveValue("Set up a daily report");
   });
@@ -58,12 +52,9 @@ describe("prompt query parameter injection", () => {
       path: "/talk/c0000000-0000-4000-a000-000000000001?prompt=test",
     });
 
-    await waitFor(
-      () => {
-        expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+    });
 
     // The prompt param should be removed from the URL
     expect(search()).not.toContain("prompt=");
@@ -76,12 +67,9 @@ describe("prompt query parameter injection", () => {
       path: "/talk/c0000000-0000-4000-a000-000000000001",
     });
 
-    const textarea = await waitFor(
-      () => {
-        return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
-      },
-      { timeout: 5000 },
-    );
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
 
     expect(textarea).toHaveValue("");
   });
@@ -90,11 +78,8 @@ describe("prompt query parameter injection", () => {
     mockChatAPI();
     await setupPage({ context, path: "/?prompt=hello" });
 
-    await waitFor(
-      () => {
-        expect(pathname()).toMatch(/^\/talk\//);
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(pathname()).toMatch(/^\/talk\//);
+    });
   });
 });

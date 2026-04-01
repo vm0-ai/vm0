@@ -190,5 +190,5 @@ describe("activity detail stale data", () => {
         screen.getByRole("heading", { name: "Agent Two" }),
       ).toBeInTheDocument();
     });
-  }, 20_000);
+  });
 });

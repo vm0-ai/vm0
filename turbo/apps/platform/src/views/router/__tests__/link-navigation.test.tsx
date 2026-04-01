@@ -62,5 +62,5 @@ describe("link component new-tab behavior", () => {
     });
 
     openSpy.mockRestore();
-  }, 15_000);
+  });
 });

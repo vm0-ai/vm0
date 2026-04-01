@@ -319,12 +319,9 @@ describe("org usage tab - expiring credits warning", () => {
     const progressbar = screen.getByRole("progressbar");
     await user.hover(progressbar.closest("[class*='group']")!);
 
-    await waitFor(
-      () => {
-        expect(screen.getByText("5,000")).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByText("5,000")).toBeInTheDocument();
+    });
 
     expect(screen.getByText(/Expiring on/)).toBeInTheDocument();
   });
@@ -361,12 +358,9 @@ describe("org usage tab - expiring credits warning", () => {
     const progressbar = screen.getByRole("progressbar");
     await user.hover(progressbar.closest("[class*='group']")!);
 
-    await waitFor(
-      () => {
-        expect(screen.getByText("Credit breakdown")).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByText("Credit breakdown")).toBeInTheDocument();
+    });
 
     expect(screen.queryByText(/Expiring on/)).not.toBeInTheDocument();
   });
@@ -398,12 +392,9 @@ describe("org usage tab - expiring credits warning", () => {
     const progressbar = screen.getByRole("progressbar");
     await user.hover(progressbar.closest("[class*='group']")!);
 
-    await waitFor(
-      () => {
-        expect(screen.getByText("Credit breakdown")).toBeInTheDocument();
-      },
-      { timeout: 5000 },
-    );
+    await waitFor(() => {
+      expect(screen.getByText("Credit breakdown")).toBeInTheDocument();
+    });
 
     expect(screen.queryByText(/Expiring on/)).not.toBeInTheDocument();
   });

@@ -121,5 +121,5 @@ describe("activity navigation", () => {
 
     // Verify the detail content is visible (duration)
     expect(screen.getByText("9.0s")).toBeInTheDocument();
-  }, 15_000);
+  });
 });
