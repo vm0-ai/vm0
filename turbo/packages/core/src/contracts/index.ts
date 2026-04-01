@@ -388,7 +388,7 @@ export {
 } from "./connectors";
 
 export {
-  BASIC_AUTH_TEMPLATE_RE,
+  basicAuthTemplateRe,
   extractSecretNamesFromApis,
   firewallPermissionSchema,
   firewallApiSchema,

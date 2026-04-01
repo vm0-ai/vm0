@@ -13,7 +13,7 @@ import {
   getConnectorAccessToken,
   getConnectorRefreshToken,
 } from "../../../../../../src/lib/connector/connector-service";
-import { BASIC_AUTH_TEMPLATE_RE } from "@vm0/core";
+import { basicAuthTemplateRe } from "@vm0/core";
 
 const bodySchema = z.object({
   encryptedSecrets: z.string().min(1),
@@ -239,7 +239,7 @@ function collectReferencedSecrets(
     for (const match of template.matchAll(TEMPLATE_RE)) {
       if (match[1] === "secrets" && match[2]) keys.add(match[2]);
     }
-    for (const match of template.matchAll(BASIC_AUTH_TEMPLATE_RE)) {
+    for (const match of template.matchAll(basicAuthTemplateRe())) {
       if (match[1] === "secrets" && match[2]) keys.add(match[2]);
       if (match[3] === "secrets" && match[4]) keys.add(match[4]);
     }
@@ -313,7 +313,7 @@ function resolveTemplates(
     );
     // Pass 2: resolve ${{ basic(username, password) }} templates
     resolved = resolved.replace(
-      BASIC_AUTH_TEMPLATE_RE,
+      basicAuthTemplateRe(),
       (_match, ns1?: string, key1?: string, ns2?: string, key2?: string) => {
         const user = resolveBasicArg(
           ns1,

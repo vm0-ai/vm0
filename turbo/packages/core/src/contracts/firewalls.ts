@@ -98,8 +98,15 @@ const AUTH_SECRET_PATTERN =
  *
  * Shared between build-time secret extraction and runtime template resolution.
  */
-export const BASIC_AUTH_TEMPLATE_RE =
-  /\$\{\{\s*basic\(\s*(?:(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*))?\s*,\s*(?:(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*))?\s*\)\s*\}\}/g;
+/**
+ * Create a fresh RegExp matching `${{ basic(username, password) }}` templates.
+ * Returns a new instance each time to avoid `.lastIndex` state leaking between
+ * callers when the `/g` flag is used.
+ * Groups: (1) ns1, (2) key1, (3) ns2, (4) key2 — all optional.
+ */
+export function basicAuthTemplateRe(): RegExp {
+  return /\$\{\{\s*basic\(\s*(?:(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*))?\s*,\s*(?:(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*))?\s*\)\s*\}\}/g;
+}
 
 /**
  * Extract all secret names referenced in firewall rule auth header templates.
@@ -117,7 +124,7 @@ export function extractSecretNamesFromApis(
       }
       // basic() args may reference secrets or vars; only collect secrets here
       // (vars don't need placeholders).
-      for (const match of value.matchAll(BASIC_AUTH_TEMPLATE_RE)) {
+      for (const match of value.matchAll(basicAuthTemplateRe())) {
         if (match[1] === "secrets" && match[2]) names.add(match[2]);
         if (match[3] === "secrets" && match[4]) names.add(match[4]);
       }
