@@ -83,6 +83,7 @@ export const apiAgentsHandlers = [
 
     return HttpResponse.json({
       agentId: "c0000000-0000-4000-a000-000000000001",
+      ownerId: "test-owner-id",
       description: null,
       displayName: null,
       sound: null,

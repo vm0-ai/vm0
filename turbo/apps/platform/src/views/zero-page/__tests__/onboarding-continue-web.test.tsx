@@ -58,6 +58,7 @@ function mockAdminOnboardingApis() {
         {
           name: "zero",
           agentId: MOCK_AGENT_ID,
+          ownerId: "test-owner-id",
           description: null,
           displayName: null,
           sound: null,
@@ -72,6 +73,7 @@ function mockAdminOnboardingApis() {
       return HttpResponse.json({
         name: "zero",
         agentId: MOCK_AGENT_ID,
+        ownerId: "test-owner-id",
         description: null,
         displayName: null,
         sound: null,

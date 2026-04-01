@@ -61,6 +61,7 @@ function mockAdminOnboardingWithChat() {
         {
           name: "zero",
           agentId: "d0000000-0000-4000-a000-000000000001",
+          ownerId: "test-owner-id",
           description: null,
           displayName: null,
           sound: null,
@@ -75,6 +76,7 @@ function mockAdminOnboardingWithChat() {
       return HttpResponse.json({
         name: "zero",
         agentId: "d0000000-0000-4000-a000-000000000001",
+        ownerId: "test-owner-id",
         description: null,
         displayName: null,
         sound: null,

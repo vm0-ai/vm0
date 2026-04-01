@@ -107,6 +107,7 @@ describe("zero connectors — agent switch", () => {
         return HttpResponse.json({
           name: "agent-a",
           agentId: "uuid-a",
+          ownerId: "test-owner-id",
           description: null,
           displayName: "Agent A",
           sound: null,
@@ -118,6 +119,7 @@ describe("zero connectors — agent switch", () => {
         return HttpResponse.json({
           name: "agent-b",
           agentId: "uuid-b",
+          ownerId: "test-owner-id",
           description: null,
           displayName: "Agent B",
           sound: null,

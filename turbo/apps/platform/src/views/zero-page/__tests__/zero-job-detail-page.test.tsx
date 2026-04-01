@@ -41,6 +41,7 @@ function mockAPIs() {
       return HttpResponse.json({
         name: "my-agent",
         agentId: "e0000000-0000-4000-a000-000000000010",
+        ownerId: "test-owner-id",
         description: "A helpful agent",
         displayName: "My Agent",
         sound: null,
@@ -185,6 +186,7 @@ function mockAPIsWithSchedules() {
       return HttpResponse.json({
         name: "my-agent",
         agentId: "e0000000-0000-4000-a000-000000000010",
+        ownerId: "test-owner-id",
         description: "A helpful agent",
         displayName: "My Agent",
         sound: null,
