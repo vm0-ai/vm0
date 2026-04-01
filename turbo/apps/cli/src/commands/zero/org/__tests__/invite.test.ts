@@ -81,6 +81,47 @@ describe("zero org invite command", () => {
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
+  it("should invite member with admin role", async () => {
+    server.use(
+      http.post("http://localhost:3000/api/zero/org/invite", () => {
+        return HttpResponse.json({
+          message: "Invitation sent to admin@example.com",
+        });
+      }),
+    );
+
+    await inviteCommand.parseAsync([
+      "node",
+      "cli",
+      "--email",
+      "admin@example.com",
+      "--role",
+      "admin",
+    ]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("admin@example.com");
+    expect(logCalls).toContain("as admin");
+  });
+
+  it("should reject invalid role value", async () => {
+    await expect(async () => {
+      await inviteCommand.parseAsync([
+        "node",
+        "cli",
+        "--email",
+        "user@example.com",
+        "--role",
+        "superadmin",
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      expect.stringContaining('Invalid role "superadmin"'),
+    );
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
   it("should handle forbidden error (non-admin)", async () => {
     server.use(
       http.post("http://localhost:3000/api/zero/org/invite", () => {
