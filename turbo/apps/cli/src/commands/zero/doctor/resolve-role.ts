@@ -16,7 +16,8 @@ export async function resolveRole(): Promise<UserRole> {
       return org.role;
     }
     return "unknown";
-  } catch {
+  } catch (error: unknown) {
+    console.debug("resolveRole failed, falling back to unknown:", error);
     return "unknown";
   }
 }
