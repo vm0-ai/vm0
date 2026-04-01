@@ -909,15 +909,15 @@ function StaticAssistantMessage({
                 messageId={message.id}
               />
             )}
+            {renderActivityLine && (
+              <div className="mb-3 pb-3 border-b">{renderActivityLine}</div>
+            )}
             <Markdown source={content} />
             {message.cancelled && (
               <div className="mt-3 pt-3 border-t flex items-center gap-1.5 text-xs text-muted-foreground">
                 <IconPlayerStop size={12} />
                 <span>Cancelled</span>
               </div>
-            )}
-            {renderActivityLine && (
-              <div className="mt-3 pt-3 border-t">{renderActivityLine}</div>
             )}
           </div>
         </div>
