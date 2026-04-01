@@ -648,7 +648,7 @@ export function ZeroChatComposer({
                     size="sm"
                     className="rounded-lg h-9 w-9 p-0 shrink-0"
                     onClick={handleSend}
-                    disabled={!input.trim()}
+                    disabled={!input.trim() || !!sending}
                     aria-label="Send"
                   >
                     <IconArrowUp size={18} stroke={2} />
