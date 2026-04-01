@@ -35,10 +35,6 @@ export const continueCommand = new Command()
     {},
   )
   .option(
-    "--model-provider <type>",
-    "Override model provider (e.g., anthropic-api-key)",
-  )
-  .option(
     "--append-system-prompt <text>",
     "Append text to the agent's system prompt",
   )
@@ -59,7 +55,6 @@ export const continueCommand = new Command()
     'Firewall policies JSON (e.g., \'{"github": {"actions:read": "allow"}}\')',
   )
   .option("--verbose", "Show full tool inputs and outputs")
-  .option("--check-env", "Validate secrets and vars before running")
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
   .action(
     withErrorHandler(
@@ -70,14 +65,12 @@ export const continueCommand = new Command()
           envFile?: string;
           vars: Record<string, string>;
           secrets: Record<string, string>;
-          modelProvider?: string;
           appendSystemPrompt?: string;
           disallowedTools?: string[];
           tools?: string[];
           settings?: string;
           firewallPolicies?: string;
           verbose?: boolean;
-          checkEnv?: boolean;
           debugNoMockClaude?: boolean;
         },
         command: { optsWithGlobals: () => Record<string, unknown> },
@@ -88,14 +81,12 @@ export const continueCommand = new Command()
           envFile?: string;
           vars: Record<string, string>;
           secrets: Record<string, string>;
-          modelProvider?: string;
           appendSystemPrompt?: string;
           disallowedTools?: string[];
           tools?: string[];
           settings?: string;
           firewallPolicies?: string;
           verbose?: boolean;
-          checkEnv?: boolean;
           debugNoMockClaude?: boolean;
         };
 
@@ -127,7 +118,6 @@ export const continueCommand = new Command()
           prompt,
           vars: Object.keys(vars).length > 0 ? vars : undefined,
           secrets: loadedSecrets,
-          modelProvider: options.modelProvider || allOpts.modelProvider,
           appendSystemPrompt:
             options.appendSystemPrompt || allOpts.appendSystemPrompt,
           disallowedTools: options.disallowedTools || allOpts.disallowedTools,
@@ -136,7 +126,6 @@ export const continueCommand = new Command()
           firewallPolicies: parseFirewallPolicies(
             options.firewallPolicies || allOpts.firewallPolicies,
           ),
-          checkEnv: options.checkEnv || allOpts.checkEnv || undefined,
           debugNoMockClaude:
             options.debugNoMockClaude || allOpts.debugNoMockClaude || undefined,
         });

@@ -67,10 +67,6 @@ export const mainRunCommand = new Command()
     "Resume from conversation ID (for fine-grained control)",
   )
   .option(
-    "--model-provider <type>",
-    "Override model provider (e.g., anthropic-api-key)",
-  )
-  .option(
     "--append-system-prompt <text>",
     "Append text to the agent's system prompt",
   )
@@ -91,7 +87,6 @@ export const mainRunCommand = new Command()
     'Firewall policies JSON (e.g., \'{"github": {"actions:read": "allow"}}\')',
   )
   .option("--verbose", "Show full tool inputs and outputs")
-  .option("--check-env", "Validate secrets and vars before running")
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
   .addOption(new Option("--no-auto-update").hideHelp())
   .action(
@@ -108,14 +103,12 @@ export const mainRunCommand = new Command()
           memory?: string;
           volumeVersion: Record<string, string>;
           conversation?: string;
-          modelProvider?: string;
           appendSystemPrompt?: string;
           disallowedTools?: string[];
           tools?: string[];
           settings?: string;
           firewallPolicies?: string;
           verbose?: boolean;
-          checkEnv?: boolean;
           debugNoMockClaude?: boolean;
           autoUpdate?: boolean;
         },
@@ -196,13 +189,11 @@ export const mainRunCommand = new Command()
               ? options.volumeVersion
               : undefined,
           conversationId: options.conversation,
-          modelProvider: options.modelProvider,
           appendSystemPrompt: options.appendSystemPrompt,
           disallowedTools: options.disallowedTools,
           tools: options.tools,
           settings: options.settings,
           firewallPolicies: parseFirewallPolicies(options.firewallPolicies),
-          checkEnv: options.checkEnv || undefined,
           debugNoMockClaude: options.debugNoMockClaude || undefined,
         });
 
