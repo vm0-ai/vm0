@@ -72,6 +72,7 @@ async function renderTeamPage(
       return HttpResponse.json({
         name: "zero",
         agentId: "compose-1",
+        ownerId: "test-user-123",
         description: null,
         displayName: null,
         sound: null,
@@ -183,6 +184,7 @@ async function renderTeamPageAsMember(
       return HttpResponse.json({
         name: "zero",
         agentId: "compose-1",
+        ownerId: "test-user-123",
         description: null,
         displayName: null,
         sound: null,

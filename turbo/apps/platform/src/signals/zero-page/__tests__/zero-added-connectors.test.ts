@@ -17,6 +17,7 @@ function mockAgentApi(connectors: string[]) {
       }
       return HttpResponse.json({
         agentId: "c0000000-0000-4000-a000-000000000001",
+        ownerId: "test-user-123",
         description: null,
         displayName: null,
         sound: null,
@@ -62,6 +63,7 @@ describe("zeroAddedConnectors$", () => {
       http.get("*/api/zero/agents/sub-agent-compose-id", () => {
         return HttpResponse.json({
           agentId: "sub-agent-compose-id",
+          ownerId: "test-user-123",
           description: null,
           displayName: null,
           sound: null,

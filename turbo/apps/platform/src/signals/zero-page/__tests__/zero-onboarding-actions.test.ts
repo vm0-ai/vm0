@@ -82,6 +82,7 @@ function mockAdminCompletionApis() {
         {
           name: "zero",
           agentId: MOCK_AGENT_ID,
+          ownerId: "test-user-123",
           description: null,
           displayName: null,
           sound: null,
@@ -95,6 +96,7 @@ function mockAdminCompletionApis() {
       return HttpResponse.json({
         name: "zero",
         agentId: MOCK_AGENT_ID,
+        ownerId: "test-user-123",
         description: null,
         displayName: null,
         sound: null,

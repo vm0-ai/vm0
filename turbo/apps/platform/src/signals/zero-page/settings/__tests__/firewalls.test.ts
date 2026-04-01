@@ -38,6 +38,7 @@ describe("saveFirewallPolicies$", () => {
         capturedBody = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json({
           agentId: "compose-1",
+          ownerId: "test-user-123",
           description: null,
           displayName: null,
           sound: null,

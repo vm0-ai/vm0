@@ -102,6 +102,7 @@ describe("firewall allow page", () => {
         }
         return HttpResponse.json({
           agentId: AGENT_ID,
+          ownerId: "test-owner-id",
           description: null,
           displayName: null,
           sound: null,
@@ -136,6 +137,23 @@ describe("firewall allow page", () => {
           slug: "user-12345678",
           name: "User 12345678",
           role: "member",
+        });
+      }),
+      http.get("*/api/zero/agents/:name", ({ params }) => {
+        if (
+          params.name === "instructions" ||
+          (typeof params.name === "string" && params.name.includes("/"))
+        ) {
+          return;
+        }
+        return HttpResponse.json({
+          agentId: AGENT_ID,
+          ownerId: "other-owner-id",
+          description: null,
+          displayName: null,
+          sound: null,
+          avatarUrl: null,
+          firewallPolicies: null,
         });
       }),
     );

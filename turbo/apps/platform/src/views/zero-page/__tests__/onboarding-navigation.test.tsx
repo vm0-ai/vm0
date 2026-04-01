@@ -33,6 +33,7 @@ function mockAgentResponse() {
   return {
     name: "zero",
     agentId: MOCK_AGENT_ID,
+    ownerId: "test-user-123",
     description: null,
     displayName: null,
     sound: null,
