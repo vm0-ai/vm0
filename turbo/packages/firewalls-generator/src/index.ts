@@ -113,7 +113,6 @@ import { generate as generateWix } from "./wix";
 import { generate as generateWrike } from "./wrike";
 import { generate as generateX } from "./x";
 import { generate as generateXero } from "./xero";
-import { generate as generateYoutube } from "./youtube";
 import { generate as generateZapier } from "./zapier";
 import { generate as generateZapsign } from "./zapsign";
 import { generate as generateZendesk } from "./zendesk";
@@ -228,7 +227,6 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   wrike: generateWrike,
   x: generateX,
   xero: generateXero,
-  youtube: generateYoutube,
   zapier: generateZapier,
   zapsign: generateZapsign,
   zendesk: generateZendesk,

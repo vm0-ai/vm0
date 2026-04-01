@@ -75,6 +75,19 @@ function extractMethods(
   return methods;
 }
 
+// ── Scopeless methods ───────────────────────────────────────────────────
+// Some Discovery methods lack OAuth scopes (e.g. deprecated or partner-only
+// YouTube endpoints). They are skipped during generation. If a new scopeless
+// method appears, the generator will fail until it is added here.
+
+const SCOPELESS_METHODS = new Set([
+  "youtube.youtube.v3.updateCommentThreads",
+  "youtube.thirdPartyLinks.list",
+  "youtube.thirdPartyLinks.insert",
+  "youtube.thirdPartyLinks.update",
+  "youtube.thirdPartyLinks.delete",
+]);
+
 // ── Grouping ─────────────────────────────────────────────────────────────
 
 function buildGroups(
@@ -110,7 +123,14 @@ function buildGroups(
       );
     }
     if (!scopes || scopes.length === 0) {
-      throw new Error(`Method has no scopes: ${httpMethod} /${methodPath}`);
+      const id = method.id ?? `${httpMethod} ${methodPath}`;
+      if (!SCOPELESS_METHODS.has(id)) {
+        throw new Error(
+          `Method has no scopes: ${id}\n` +
+            "If this is expected, add it to SCOPELESS_METHODS in google.ts.",
+        );
+      }
+      continue;
     }
 
     // For APIs with servicePath (Drive, Calendar): paths are relative,
@@ -196,9 +216,11 @@ function generateTypeScript(
     lines.push(`      base: "${api.base}",`);
     lines.push("      auth: {");
     lines.push("        headers: {");
-    lines.push(
-      `          Authorization: "Bearer \${{ secrets.${config.placeholderKey} }}",`,
-    );
+    for (const [header, value] of Object.entries(config.auth.headers)) {
+      lines.push(
+        `          "${escapeString(header)}": "${escapeString(value)}",`,
+      );
+    }
     lines.push("        },");
     lines.push("      },");
     lines.push("      permissions: [");
@@ -215,6 +237,11 @@ function generateTypeScript(
 }
 
 // ── Generation ───────────────────────────────────────────────────────────
+
+interface GoogleFirewallAuth {
+  /** Auth header entries (e.g. { Authorization: "Bearer ${{ secrets.TOKEN }}" }). */
+  headers: Record<string, string>;
+}
 
 interface GoogleFirewallConfig {
   /** Discovery URLs to fetch (supports multiple versions). */
@@ -236,6 +263,8 @@ interface GoogleFirewallConfig {
   serviceDescription: string;
   placeholderKey: string;
   placeholderValue: string;
+  /** Auth header configuration for the generated firewall. */
+  auth: GoogleFirewallAuth;
 }
 
 function mergePermissions(
@@ -319,8 +348,16 @@ async function generateGoogleFirewall(
 
 // ── Service configs ──────────────────────────────────────────────────────
 
-const PLACEHOLDER_VALUE =
+const OAUTH_PLACEHOLDER =
   "ya29.A0CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa";
+
+function bearerAuth(placeholderKey: string): GoogleFirewallAuth {
+  return {
+    headers: {
+      Authorization: `Bearer \${{ secrets.${placeholderKey} }}`,
+    },
+  };
+}
 
 const CONFIGS: Record<string, GoogleFirewallConfig> = {
   gmail: {
@@ -334,7 +371,8 @@ const CONFIGS: Record<string, GoogleFirewallConfig> = {
     serviceName: "gmail",
     serviceDescription: "Gmail API",
     placeholderKey: "GMAIL_TOKEN",
-    placeholderValue: PLACEHOLDER_VALUE,
+    placeholderValue: OAUTH_PLACEHOLDER,
+    auth: bearerAuth("GMAIL_TOKEN"),
   },
   "google-calendar": {
     discoveryUrls: [
@@ -345,7 +383,8 @@ const CONFIGS: Record<string, GoogleFirewallConfig> = {
     serviceName: "google-calendar",
     serviceDescription: "Google Calendar API",
     placeholderKey: "GOOGLE_CALENDAR_TOKEN",
-    placeholderValue: PLACEHOLDER_VALUE,
+    placeholderValue: OAUTH_PLACEHOLDER,
+    auth: bearerAuth("GOOGLE_CALENDAR_TOKEN"),
   },
   "google-docs": {
     discoveryUrls: ["https://docs.googleapis.com/$discovery/rest?version=v1"],
@@ -354,7 +393,8 @@ const CONFIGS: Record<string, GoogleFirewallConfig> = {
     serviceName: "google-docs",
     serviceDescription: "Google Docs API",
     placeholderKey: "GOOGLE_DOCS_TOKEN",
-    placeholderValue: PLACEHOLDER_VALUE,
+    placeholderValue: OAUTH_PLACEHOLDER,
+    auth: bearerAuth("GOOGLE_DOCS_TOKEN"),
   },
   "google-drive": {
     discoveryUrls: [
@@ -370,7 +410,8 @@ const CONFIGS: Record<string, GoogleFirewallConfig> = {
     serviceName: "google-drive",
     serviceDescription: "Google Drive API",
     placeholderKey: "GOOGLE_DRIVE_TOKEN",
-    placeholderValue: PLACEHOLDER_VALUE,
+    placeholderValue: OAUTH_PLACEHOLDER,
+    auth: bearerAuth("GOOGLE_DRIVE_TOKEN"),
   },
   "google-sheets": {
     discoveryUrls: ["https://sheets.googleapis.com/$discovery/rest?version=v4"],
@@ -379,7 +420,29 @@ const CONFIGS: Record<string, GoogleFirewallConfig> = {
     serviceName: "google-sheets",
     serviceDescription: "Google Sheets API",
     placeholderKey: "GOOGLE_SHEETS_TOKEN",
-    placeholderValue: PLACEHOLDER_VALUE,
+    placeholderValue: OAUTH_PLACEHOLDER,
+    auth: bearerAuth("GOOGLE_SHEETS_TOKEN"),
+  },
+  youtube: {
+    discoveryUrls: [
+      "https://www.googleapis.com/discovery/v1/apis/youtube/v3/rest",
+    ],
+    baseUrl: "https://youtube.googleapis.com/youtube",
+    uploadBaseUrls: [
+      "https://youtube.googleapis.com/upload/youtube",
+      "https://youtube.googleapis.com/resumable/upload/youtube",
+    ],
+    stripPrefix: "youtube",
+    serviceName: "youtube",
+    serviceDescription: "YouTube Data API",
+    placeholderKey: "YOUTUBE_TOKEN",
+    // Format: AIza + 35 word chars (gitleaks: gcp-api-key)
+    placeholderValue: "AIzaSyBCoffeeSafeLocalCoffeeSafeLocalCo",
+    auth: {
+      headers: {
+        "X-Goog-Api-Key": "${{ secrets.YOUTUBE_TOKEN }}",
+      },
+    },
   },
 };
 
