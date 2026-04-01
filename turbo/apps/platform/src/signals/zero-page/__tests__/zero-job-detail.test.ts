@@ -869,6 +869,39 @@ describe("zero-job-detail signals", () => {
       expect(instructions?.content).toBe("Updated instructions");
     });
 
+    it("should clear building state before detail refetch so editor remounts editable", async () => {
+      let buildingDuringRefetch: boolean | null = null;
+
+      await setupWithAgent();
+
+      server.use(
+        http.put(
+          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
+          () => {
+            return HttpResponse.json({
+              agentId: "c0000000-0000-4000-a000-000000000002",
+              description: null,
+              displayName: null,
+              sound: null,
+              avatarUrl: null,
+              firewallPolicies: null,
+            });
+          },
+        ),
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
+          // Capture building state during the post-build detail refetch.
+          // This must be false so the editor remounts with editable=true.
+          buildingDuringRefetch = context.store.get(zeroJobBuilding$);
+          return HttpResponse.json(mockAgentResponse());
+        }),
+      );
+
+      context.store.set(setZeroJobEditedContent$, "New content");
+      await context.store.set(buildZeroJobInstructions$, context.signal);
+
+      expect(buildingDuringRefetch).toBeFalsy();
+    });
+
     it("should set build error on api failure", async () => {
       await setupWithAgent();
 
