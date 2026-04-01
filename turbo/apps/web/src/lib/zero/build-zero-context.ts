@@ -25,6 +25,7 @@ import {
   resolveFirewallBaseUrlVars,
 } from "@vm0/core";
 import { agentComposeVersions } from "../../db/schema/agent-compose";
+import { zeroRuns } from "../../db/schema/zero-run";
 import {
   badRequest,
   notFound,
@@ -1096,7 +1097,7 @@ export async function buildZeroExecutionContext(
 
   // Step 4: Resolve secrets, user preferences in parallel.
   const resolveSecretsStart = Date.now();
-  const [secretsResult, userPrefs] = await Promise.all([
+  const [secretsResult, userPrefs, originalModelProvider] = await Promise.all([
     resolveSecretsAndEnvironment(
       params.orgId,
       agentCompose,
@@ -1110,6 +1111,17 @@ export async function buildZeroExecutionContext(
     params.userId
       ? getUserPreferences(params.orgId, params.userId)
       : Promise.resolve(null),
+    // Zero-layer concern: fetch previous run's model provider for compatibility check
+    resolution?.previousRunId
+      ? globalThis.services.db
+          .select({ modelProvider: zeroRuns.modelProvider })
+          .from(zeroRuns)
+          .where(eq(zeroRuns.id, resolution.previousRunId))
+          .limit(1)
+          .then(([row]) => {
+            return row?.modelProvider ?? undefined;
+          })
+      : Promise.resolve(undefined),
   ]);
   const resolveSecretsEnd = Date.now();
 
@@ -1129,11 +1141,11 @@ export async function buildZeroExecutionContext(
   // When resuming a session, verify the new provider is compatible with the
   // original provider to avoid mid-conversation base URL mismatches.
   if (
-    resolution?.originalModelProvider &&
+    originalModelProvider &&
     resolvedModelProvider &&
-    resolution.originalModelProvider in MODEL_PROVIDER_TYPES
+    originalModelProvider in MODEL_PROVIDER_TYPES
   ) {
-    const originalType = resolution.originalModelProvider as ModelProviderType;
+    const originalType = originalModelProvider as ModelProviderType;
     const newType = resolvedModelProvider as ModelProviderType;
     if (!areProvidersCompatible(originalType, newType)) {
       const originalLabel = MODEL_PROVIDER_TYPES[originalType].label;
