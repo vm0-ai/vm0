@@ -76,7 +76,7 @@ pub fn create_socketpair() -> Result<(OwnedFd, OwnedFd)> {
 ///
 /// Falls back to 256 when the sysfs parameter is unreadable (module not loaded).
 /// The actual limit is set by ansible (`modprobe nbd nbds_max=4096`).
-fn nbds_max() -> u32 {
+pub fn nbds_max() -> u32 {
     std::fs::read_to_string("/sys/module/nbd/parameters/nbds_max")
         .ok()
         .and_then(|s| s.trim().parse().ok())

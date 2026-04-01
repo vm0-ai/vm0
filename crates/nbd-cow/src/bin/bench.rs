@@ -208,7 +208,7 @@ async fn run_nbd_cow_bench(
 
     if !nbd_module_loaded() {
         eprintln!("  WARNING: nbd kernel module not loaded.");
-        eprintln!("  Load with: modprobe nbd nbds_max=256");
+        eprintln!("  Load with: modprobe nbd nbds_max=4096");
         return Ok(results);
     }
 
@@ -451,17 +451,30 @@ fn tool_exists(name: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Try to disconnect any NBD devices that still have a non-zero size (stale from previous runs).
+/// Try to disconnect NBD devices owned by our process that still have a non-zero
+/// size (stale from a previous bench run that didn't clean up).
 fn cleanup_stale_nbd_devices() {
-    for i in 0..16u32 {
+    let max = nbd_cow::netlink::nbds_max();
+    let my_pid = std::process::id();
+    for i in 0..max {
         let size_path = format!("/sys/block/nbd{i}/size");
-        if let Ok(content) = std::fs::read_to_string(&size_path) {
-            let size: u64 = content.trim().parse().unwrap_or(0);
-            if size > 0 {
-                eprintln!("  Cleaning up stale /dev/nbd{i} (size={size})...");
-                let _ = nbd_cow::netlink::disconnect(i);
-                std::thread::sleep(std::time::Duration::from_millis(200));
-            }
+        let pid_path = format!("/sys/block/nbd{i}/pid");
+        let size: u64 = std::fs::read_to_string(&size_path)
+            .ok()
+            .and_then(|s| s.trim().parse().ok())
+            .unwrap_or(0);
+        if size == 0 {
+            continue;
+        }
+        // Only disconnect devices we own or whose owner is dead.
+        let pid: u32 = std::fs::read_to_string(&pid_path)
+            .ok()
+            .and_then(|s| s.trim().parse().ok())
+            .unwrap_or(0);
+        if pid == my_pid || !std::path::Path::new(&format!("/proc/{pid}")).exists() {
+            eprintln!("  Cleaning up stale /dev/nbd{i} (size={size}, pid={pid})...");
+            let _ = nbd_cow::netlink::disconnect(i);
+            std::thread::sleep(std::time::Duration::from_millis(200));
         }
     }
 }
