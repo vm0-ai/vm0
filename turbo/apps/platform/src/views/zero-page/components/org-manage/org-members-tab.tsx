@@ -37,6 +37,7 @@ import {
   zeroOrgInviteContract,
   zeroOrgMembershipRequestsContract,
   type OrgRole,
+  orgRoleSchema,
 } from "@vm0/core";
 import {
   orgMembers$,
@@ -410,7 +411,7 @@ function InviteDialog({
             <Select
               value={role}
               onValueChange={(v) => {
-                return setRole(v as OrgRole);
+                return setRole(orgRoleSchema.parse(v));
               }}
               disabled={sending}
             >
