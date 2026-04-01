@@ -42,10 +42,10 @@ export const firewallSchema = z.object({
 });
 
 /**
- * Experimental firewall configuration for proxy-side token replacement.
+ * Firewall configuration for proxy-side token replacement.
  * Flat array of firewall entries: [{ name, ref, apis }]
  */
-export const experimentalFirewallsSchema = z.array(firewallSchema);
+export const firewallsSchema = z.array(firewallSchema);
 
 /**
  * Zod schema for validating firewall config (GitHub-hosted YAML).
@@ -82,7 +82,7 @@ export type FirewallPolicies = z.infer<typeof firewallPoliciesSchema>;
 export type FirewallApi = z.infer<typeof firewallApiSchema>;
 export type FirewallConfig = z.infer<typeof firewallConfigSchema>;
 export type Firewall = z.infer<typeof firewallSchema>;
-export type ExperimentalFirewalls = z.infer<typeof experimentalFirewallsSchema>;
+export type Firewalls = z.infer<typeof firewallsSchema>;
 
 /**
  * Regex pattern matching `${{ secrets.XXX }}` references in auth header templates.
@@ -148,9 +148,9 @@ export function hasBaseUrlVars(base: string): boolean {
  * Throws if a referenced variable is not provided.
  */
 export function resolveFirewallBaseUrlVars(
-  firewalls: ExperimentalFirewalls,
+  firewalls: Firewalls,
   vars: Record<string, string> | undefined,
-): ExperimentalFirewalls {
+): Firewalls {
   return firewalls.map((fw) => {
     return {
       ...fw,

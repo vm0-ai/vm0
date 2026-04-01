@@ -146,7 +146,7 @@ const agentDefinitionSchema = z.object({
    * Map format: { slack: { permissions: [...] | "all" } }
    * Resolved to full ExpandedFirewallConfig[] at runtime.
    */
-  experimental_firewalls: z
+  firewalls: z
     .record(
       z.string(),
       z.object({
@@ -157,7 +157,7 @@ const agentDefinitionSchema = z.object({
 });
 
 /**
- * Agent compose YAML content schema (CLI input — experimental_firewalls is map format)
+ * Agent compose YAML content schema (CLI input — firewalls is map format)
  */
 const agentComposeContentSchema = z.object({
   version: z.string().min(1, "Version is required"),
@@ -167,7 +167,7 @@ const agentComposeContentSchema = z.object({
 
 /**
  * Agent compose content schema for API requests.
- * experimental_firewalls is no longer stored in compose content — all firewalls
+ * firewalls is no longer stored in compose content — all firewalls
  * are injected at runtime. The field is accepted as unknown for backward
  * compatibility with older stored compose versions (ignored at runtime).
  */
@@ -178,7 +178,7 @@ const agentComposeApiContentSchema = z.object({
     agentDefinitionSchema.extend({
       // Legacy: older compose versions may have this field (map or expanded array).
       // Accepted for backward compat but ignored at runtime.
-      experimental_firewalls: z.unknown().optional(),
+      firewalls: z.unknown().optional(),
     }),
   ),
   volumes: z.record(z.string(), volumeConfigSchema).optional(),

@@ -266,7 +266,7 @@ describe("createZeroRun()", () => {
 
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
-      const firewalls = job!.executionContext.experimentalFirewalls;
+      const firewalls = job!.executionContext.firewalls;
       expect(firewalls).toBeDefined();
       const ghFirewall = firewalls!.find((fw) => {
         return fw.ref === "github";
@@ -293,7 +293,7 @@ describe("createZeroRun()", () => {
 
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
-      const firewalls = job!.executionContext.experimentalFirewalls;
+      const firewalls = job!.executionContext.firewalls;
       expect(firewalls).toBeDefined();
       const slackFw = firewalls!.find((fw) => {
         return fw.ref === "slack";
@@ -327,11 +327,9 @@ describe("createZeroRun()", () => {
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
       // All denied → entry preserved with empty permissions for token injection
-      const slackFw = job!.executionContext.experimentalFirewalls?.find(
-        (fw) => {
-          return fw.ref === "slack";
-        },
-      );
+      const slackFw = job!.executionContext.firewalls?.find((fw) => {
+        return fw.ref === "slack";
+      });
       expect(slackFw).toBeDefined();
       for (const api of slackFw!.apis) {
         expect(api.permissions).toEqual([]);
@@ -353,7 +351,7 @@ describe("createZeroRun()", () => {
 
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
-      const firewalls = job!.executionContext.experimentalFirewalls;
+      const firewalls = job!.executionContext.firewalls;
       expect(firewalls).toBeDefined();
       const ghFw = firewalls!.find((fw) => {
         return fw.ref === "github";

@@ -123,7 +123,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(data.runId).toBeDefined();
       const job = await findTestRunnerJobEntry(data.runId);
       expect(job).toBeDefined();
-      const firewalls = job!.executionContext.experimentalFirewalls;
+      const firewalls = job!.executionContext.firewalls;
       expect(firewalls).toBeDefined();
       const ghFirewall = firewalls!.find((fw) => {
         return fw.ref === "github";

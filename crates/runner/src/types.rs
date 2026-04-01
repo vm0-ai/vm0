@@ -72,7 +72,7 @@ pub struct ExecutionContext {
     #[serde(default)]
     pub memory_name: Option<String>,
     #[serde(default)]
-    pub experimental_firewalls: Option<Vec<Firewall>>,
+    pub firewalls: Option<Vec<Firewall>>,
     #[serde(default)]
     pub disallowed_tools: Option<Vec<String>>,
     #[serde(default)]

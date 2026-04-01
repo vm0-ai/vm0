@@ -1,7 +1,7 @@
 import type { StorageManifest } from "../../storage/types";
 import type { ResumeSession } from "../types";
 import type { ArtifactSnapshot } from "../../checkpoint/types";
-import type { ExperimentalFirewalls } from "@vm0/core";
+import type { Firewalls } from "@vm0/core";
 
 /**
  * Prepared execution context for executors
@@ -43,8 +43,8 @@ export interface PreparedContext {
   // Memory storage name
   memoryName: string | null;
 
-  // Experimental firewall for proxy-side token replacement
-  experimentalFirewalls: ExperimentalFirewalls | null;
+  // Firewall for proxy-side token replacement
+  firewalls: Firewalls | null;
 
   // Tools to disable in Claude CLI (passed as --disallowed-tools)
   disallowedTools: string[] | null;

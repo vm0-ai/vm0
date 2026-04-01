@@ -14,7 +14,7 @@ import {
   areProvidersCompatible,
   getVm0ConcreteProviderType,
   getVm0Vendor,
-  type ExperimentalFirewalls,
+  type Firewalls,
   type ExpandedFirewallConfig,
   type ConnectorType,
   type ModelProviderType,
@@ -943,11 +943,11 @@ export function filterSecretConnectorMap(
  * Compose content no longer stores firewalls — all firewalls are runtime-injected.
  */
 function mergeFirewalls(
-  modelProviderFirewall: ExperimentalFirewalls[number] | null | undefined,
+  modelProviderFirewall: Firewalls[number] | null | undefined,
   connectorFirewalls: ExpandedFirewallConfig[],
   firewallPolicies?: FirewallPolicies,
   vars?: Record<string, string>,
-): ExperimentalFirewalls | undefined {
+): Firewalls | undefined {
   const autoFirewalls = modelProviderFirewall ? [modelProviderFirewall] : [];
   const policyFirewalls = applyConnectorPolicies(
     connectorFirewalls,
@@ -977,8 +977,8 @@ export const UNRESTRICTED_PERMISSION = {
 export function applyConnectorPolicies(
   connectorFirewalls: ExpandedFirewallConfig[],
   policies?: FirewallPolicies,
-): ExperimentalFirewalls {
-  const result: ExperimentalFirewalls = [];
+): Firewalls {
+  const result: Firewalls = [];
 
   for (const fw of connectorFirewalls) {
     const refPolicies = policies?.[fw.ref];
@@ -1150,8 +1150,8 @@ export async function buildZeroExecutionContext(
     }
   }
 
-  // Build experimental firewall manifest (base + auth entries for the runner).
-  const experimentalFirewalls = mergeFirewalls(
+  // Build firewall manifest (base + auth entries for the runner).
+  const firewalls = mergeFirewalls(
     modelProviderFirewall,
     connectorFirewalls,
     params.firewallPolicies,
@@ -1178,7 +1178,7 @@ export async function buildZeroExecutionContext(
       volumeVersions,
       environment,
       userTimezone,
-      experimentalFirewalls,
+      firewalls,
       disallowedTools: params.disallowedTools,
       tools: params.tools,
       settings: params.settings,

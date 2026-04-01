@@ -1,5 +1,5 @@
 import type { ArtifactSnapshot } from "../checkpoint/types";
-import type { ExperimentalFirewalls } from "@vm0/core";
+import type { Firewalls } from "@vm0/core";
 
 /**
  * Run status values
@@ -79,8 +79,8 @@ export interface ExecutionContext {
   // Injected as TZ environment variable in sandbox if not already set in environment
   userTimezone?: string;
 
-  // Experimental firewall for proxy-side token replacement
-  experimentalFirewalls?: ExperimentalFirewalls;
+  // Firewall for proxy-side token replacement
+  firewalls?: Firewalls;
 
   // Tools to disable in Claude CLI (passed as --disallowed-tools)
   disallowedTools?: string[];
