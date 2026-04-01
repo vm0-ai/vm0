@@ -54,7 +54,6 @@ import {
   selectedConnectorType$,
   setSelectedConnectorType$,
   justConnectedTypes$,
-  clearJustConnectedTypes$,
   pollingConnectorType$,
   type ConnectorTypeWithStatus,
 } from "../../signals/zero-page/settings/connectors.ts";
@@ -98,22 +97,6 @@ interface ComposerConnectorItem {
   label: string;
   connected: boolean;
   added: boolean;
-}
-
-function maybeClearOptimistic(
-  optimistic: Set<string>,
-  connectorMap: Map<ConnectorType, { connected: boolean }>,
-  clear: () => void,
-) {
-  if (optimistic.size === 0) {
-    return;
-  }
-  const allConfirmed = [...optimistic].every((t) => {
-    return connectorMap.get(t as ConnectorType)?.connected;
-  });
-  if (allConfirmed) {
-    clear();
-  }
 }
 
 function resolveConnectorLabel(
@@ -432,7 +415,6 @@ export function ZeroChatComposer({
   const addConnector = useSet(addZeroConnector$);
   const removeConnector = useSet(removeZeroConnector$);
   const optimisticConnected = useGet(justConnectedTypes$);
-  const clearOptimistic = useSet(clearJustConnectedTypes$);
 
   const [savingType, setSavingType] = useState<string | null>(null);
 
@@ -447,7 +429,6 @@ export function ZeroChatComposer({
       return [c.type, c];
     }),
   );
-  maybeClearOptimistic(optimisticConnected, connectorMap, clearOptimistic);
   const addedConnectors =
     addedConnectorsLoadable.state === "hasData"
       ? addedConnectorsLoadable.data
@@ -469,22 +450,17 @@ export function ZeroChatComposer({
     };
   });
 
-  const handleConnectSuccess = (type: string) => {
+  const handleConnectSuccess = async (type: string) => {
     const label = resolveConnectorLabel(type, connectorMap);
-    detach(
-      (async () => {
-        try {
-          await addConnector(type, pageSignal);
-        } catch (error) {
-          throwIfAbort(error);
-          // May fail during onboarding when compose doesn't exist yet — ignore
-        }
-        toast.success(`${label} is now available for ${displayName}`, {
-          id: "connector-authorized",
-        });
-      })(),
-      Reason.DomCallback,
-    );
+    try {
+      await addConnector(type, pageSignal);
+    } catch (error) {
+      throwIfAbort(error);
+      // May fail during onboarding when compose doesn't exist yet — ignore
+    }
+    toast.success(`${label} connected and authorized for ${displayName}`, {
+      id: `connector-connected-${type}`,
+    });
   };
 
   const handleToggle = (type: string, checked: boolean) => {
@@ -668,12 +644,13 @@ export function ZeroChatComposer({
           onClose={() => {
             return setSelectedConnType(null);
           }}
-          onSuccess={() => {
+          onSuccess={async () => {
             const type = pendingConnectType ?? selectedConnType;
             if (type && !addedSet.has(type)) {
-              handleConnectSuccess(type);
+              await handleConnectSuccess(type);
             }
             setPendingConnectType(null);
+            setShowAddDialog(false);
           }}
         />
       )}
@@ -685,7 +662,6 @@ export function ZeroChatComposer({
           onSelect={(type) => {
             setPendingConnectType(type);
             setSelectedConnType(type as ConnectorType);
-            setShowAddDialog(false);
           }}
         />
       )}

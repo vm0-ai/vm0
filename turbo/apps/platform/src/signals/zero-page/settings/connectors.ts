@@ -271,7 +271,9 @@ export const submitApiToken$ = command(
     const hidden = new Set(get(hiddenConnectorTypes$));
     hidden.delete(type);
     set(setHiddenConnectorTypes$, JSON.stringify([...hidden]));
-    toast.success(`${CONNECTOR_TYPES[type].label} connected successfully`);
+    toast.success(`${CONNECTOR_TYPES[type].label} connected successfully`, {
+      id: `connector-connected-${type}`,
+    });
   },
 );
 
@@ -295,10 +297,6 @@ const internalJustConnectedTypes$ = state<Set<string>>(new Set());
 /** Types that were just connected but may not yet be reflected in allConnectorTypes$. */
 export const justConnectedTypes$ = computed((get) => {
   return get(internalJustConnectedTypes$);
-});
-
-export const clearJustConnectedTypes$ = command(({ set }) => {
-  set(internalJustConnectedTypes$, new Set());
 });
 
 // ---------------------------------------------------------------------------

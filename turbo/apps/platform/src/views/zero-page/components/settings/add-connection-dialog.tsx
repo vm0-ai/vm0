@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useLastResolved, useGet, useSet } from "ccstate-react";
 import { Input } from "@vm0/ui/components/ui/input";
 import { Button } from "@vm0/ui/components/ui/button";
@@ -70,7 +71,7 @@ function ApiTokenForm({
 }: {
   type: ConnectorType;
   item: ConnectorTypeWithStatus;
-  onSuccess: () => void;
+  onSuccess: () => void | Promise<void>;
 }) {
   const config = CONNECTOR_TYPES[type];
   const apiTokenConfig = config.authMethods["api-token"];
@@ -102,7 +103,7 @@ function ApiTokenForm({
         await submit(type, secretValues, pageSignal);
         setSubmitting(null);
         clearForm(type);
-        onSuccess();
+        await onSuccess();
       })().catch(() => {
         setSubmitting(null);
       }),
@@ -162,11 +163,12 @@ function ConnectModalContent({
   onSuccess,
 }: {
   item: ConnectorTypeWithStatus;
-  onSuccess: () => void;
+  onSuccess: () => void | Promise<void>;
 }) {
   const connect = useSet(connectConnector$);
   const pageSignal = useGet(pageSignal$);
   const pollingType = useGet(pollingConnectorType$);
+  const [settling, setSettling] = useState(false);
   const isPolling = pollingType === item.type;
 
   const config = CONNECTOR_TYPES[item.type];
@@ -176,6 +178,12 @@ function ConnectModalContent({
   // While OAuth is in progress, only show connecting state
   if (isPolling) {
     return <p className="text-sm text-muted-foreground">Connecting...</p>;
+  }
+
+  if (settling) {
+    return (
+      <p className="text-sm text-muted-foreground">Saving permissions...</p>
+    );
   }
 
   return (
@@ -188,7 +196,8 @@ function ConnectModalContent({
               (async () => {
                 const connected = await connect(item.type, pageSignal);
                 if (connected) {
-                  onSuccess();
+                  setSettling(true);
+                  await onSuccess();
                 }
               })(),
               Reason.DomCallback,
@@ -227,7 +236,7 @@ export function ConnectModal({
   onSuccess,
 }: {
   onClose: () => void;
-  onSuccess?: () => void;
+  onSuccess?: () => void | Promise<void>;
 }) {
   const selectedType = useGet(selectedConnectorType$);
   const connectorTypes = useLastResolved(allConnectorTypes$);
@@ -267,8 +276,8 @@ export function ConnectModal({
 
         <ConnectModalContent
           item={item}
-          onSuccess={() => {
-            onSuccess?.();
+          onSuccess={async () => {
+            await onSuccess?.();
             onClose();
           }}
         />

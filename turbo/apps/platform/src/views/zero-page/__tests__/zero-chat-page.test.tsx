@@ -1,6 +1,6 @@
 import type { ConnectorType } from "@vm0/core";
 import { describe, expect, it, vi } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
@@ -257,6 +257,130 @@ describe("zero chat page - connectors popover", () => {
         screen.getByPlaceholderText("Search connectors..."),
       ).toBeInTheDocument();
     });
+  });
+
+  it("should show unconnected connectors in AddConnectorsDialog with connect buttons", async () => {
+    await renderChatPage();
+
+    const connectorsButton = await waitFor(() =>
+      screen.getByRole("button", { name: "Connectors" }),
+    );
+    fireEvent.click(connectorsButton);
+
+    const addButton = await waitFor(() => screen.getByText("Add connectors"));
+    fireEvent.click(addButton);
+
+    // Dialog should show available (unconnected) connectors with Connect buttons
+    await waitFor(() => {
+      expect(
+        screen.getByPlaceholderText("Search connectors..."),
+      ).toBeInTheDocument();
+    });
+
+    // Default mock has no org connectors, so all types are unconnected.
+    // Check that at least one "Connect X" button exists.
+    const connectButtons = screen.getAllByRole("button", { name: /^Connect / });
+    expect(connectButtons.length).toBeGreaterThan(0);
+  });
+
+  it("should filter connectors when searching in AddConnectorsDialog", async () => {
+    await renderChatPage();
+
+    const connectorsButton = await waitFor(() =>
+      screen.getByRole("button", { name: "Connectors" }),
+    );
+    fireEvent.click(connectorsButton);
+
+    const addButton = await waitFor(() => screen.getByText("Add connectors"));
+    fireEvent.click(addButton);
+
+    const searchInput = await waitFor(() =>
+      screen.getByPlaceholderText("Search connectors..."),
+    );
+
+    // Before filtering: GitHub should be visible
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Connect GitHub" }),
+      ).toBeInTheDocument();
+    });
+
+    // Type a filter that won't match GitHub
+    fireEvent.change(searchInput, { target: { value: "Slack" } });
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", { name: "Connect GitHub" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Connect Slack" }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("should sort connected connectors by added status in popover", async () => {
+    // Set up: axiom and github are org-connected, only axiom is added to agent
+    server.use(
+      http.get("*/api/zero/connectors", () => {
+        return HttpResponse.json({
+          connectors: [
+            {
+              id: crypto.randomUUID(),
+              type: "axiom",
+              authMethod: "api-token",
+              externalId: null,
+              externalUsername: null,
+              externalEmail: null,
+              oauthScopes: null,
+              needsReconnect: false,
+              createdAt: "2026-01-01T00:00:00Z",
+              updatedAt: "2026-01-01T00:00:00Z",
+            },
+            {
+              id: crypto.randomUUID(),
+              type: "github",
+              authMethod: "oauth",
+              externalId: null,
+              externalUsername: null,
+              externalEmail: null,
+              oauthScopes: ["repo"],
+              needsReconnect: false,
+              createdAt: "2026-01-01T00:00:00Z",
+              updatedAt: "2026-01-01T00:00:00Z",
+            },
+          ],
+          configuredTypes: ["axiom", "github"],
+          connectorProvidedSecretNames: [],
+        });
+      }),
+      http.get(
+        "*/api/zero/agents/c0000000-0000-4000-a000-000000000001/user-connectors",
+        () => {
+          return HttpResponse.json({ enabledTypes: ["axiom"] });
+        },
+      ),
+    );
+    mockChatAPI();
+    await setupPage({ context, path: "/" });
+
+    const connectorsButton = await waitFor(() =>
+      screen.getByRole("button", { name: "Connectors" }),
+    );
+    fireEvent.click(connectorsButton);
+
+    // Both connectors should appear in the popover
+    await waitFor(() => {
+      expect(screen.getByText("Axiom")).toBeInTheDocument();
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+    });
+
+    // The added one (Axiom) should have a "Remove" toggle, GitHub should have "Add"
+    expect(
+      screen.getByRole("switch", { name: "Remove Axiom" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("switch", { name: "Add GitHub" }),
+    ).toBeInTheDocument();
   });
 });
 
