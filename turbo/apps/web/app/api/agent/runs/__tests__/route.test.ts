@@ -22,7 +22,6 @@ import {
   getOrgCacheEntry,
   createTestZeroAgent,
   updateOrgTier,
-  findTestRunnerJobEntry,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   generateSandboxToken,
@@ -107,35 +106,8 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(run.appendSystemPrompt).toBe("Custom instructions");
     });
 
-    it("should forward firewallPolicies to execution context", async () => {
-      await createTestConnector({ type: "github" });
-
-      const data = await createTestRun(testComposeId, "Test with policies", {
-        firewallPolicies: {
-          github: {
-            "actions:read": "allow",
-            "actions:write": "deny",
-            "issues:read": "allow",
-          },
-        },
-      });
-
-      expect(data.runId).toBeDefined();
-      const job = await findTestRunnerJobEntry(data.runId);
-      expect(job).toBeDefined();
-      const firewalls = job!.executionContext.firewalls;
-      expect(firewalls).toBeDefined();
-      const ghFirewall = firewalls!.find((fw) => {
-        return fw.ref === "github";
-      });
-      expect(ghFirewall).toBeDefined();
-      const permNames = ghFirewall!.apis[0]!.permissions!.map((p) => {
-        return p.name;
-      });
-      expect(permNames).toContain("actions:read");
-      expect(permNames).toContain("issues:read");
-      expect(permNames).not.toContain("actions:write");
-    });
+    // Note: firewallPolicies → firewalls conversion requires connector resolution
+    // which is a zero-layer concern. Tested via POST /api/zero/runs route.
   });
 
   describe("Validation", () => {
@@ -217,41 +189,9 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(data.status).toBe("pending");
     });
 
-    it("should auto-fetch secrets from database when secrets.* is referenced", async () => {
-      // Store a secret in the database first
-      const secretName = `DB_SECRET_${Date.now()}`;
-      const createSecretRequest = createTestRequest(
-        "http://localhost:3000/api/zero/secrets",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: secretName,
-            value: "db-secret-value",
-          }),
-        },
-      );
-      await putSecret(createSecretRequest);
-
-      // Create compose that references the secret
-      const { composeId } = await createTestCompose(
-        `db-secret-test-${Date.now()}`,
-        {
-          overrides: {
-            environment: {
-              ANTHROPIC_API_KEY: "test-key",
-              MY_SECRET: `\${{ secrets.${secretName} }}`,
-            },
-          },
-        },
-      );
-
-      // Run WITHOUT passing the secret via CLI - should auto-fetch from DB
-      const data = await createTestRun(composeId, "Test DB secret auto-fetch");
-
-      // Should succeed (pending, not failed)
-      expect(data.status).toBe("pending");
-    });
+    // Note: auto-fetching secrets from database is a zero-layer concern.
+    // CLI path requires all secrets to be passed explicitly.
+    // Tested via POST /api/zero/runs route.
 
     it("should prefer CLI secrets over DB secrets", async () => {
       // Store a secret in the database
@@ -371,7 +311,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       mockClerk({ userId: ownerUser.userId });
     });
 
-    it("should fail org member agent run when org has no model provider", async () => {
+    it("should succeed org member agent run even without model provider (CLI path)", async () => {
       // User A (owner) creates an agent in a new org without any model provider
       const ownerUser = user;
       const { composeId: sharedComposeId } = await createTestCompose(
@@ -390,24 +330,14 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       // Set User B's active org to owner's org (simulates org selection in Clerk)
       mockClerk({ userId: runnerUser.userId, orgId: ownerUser.orgId });
 
-      // User B runs the org member agent — model provider check fails after run creation
-      const request = createTestRequest(
-        "http://localhost:3000/api/agent/runs",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            agentComposeId: sharedComposeId,
-            prompt: "Run without model provider",
-          }),
-        },
+      // CLI path (startRun) does not check model providers — that's a zero-layer concern.
+      // Run succeeds with "pending" status; the sandbox will fail if API key is missing.
+      const data = await createTestRun(
+        sharedComposeId,
+        "Run without model provider",
       );
-      const response = await POST(request);
-      const data = await response.json();
 
-      expect(response.status).toBe(201);
-      expect(data.status).toBe("failed");
-      expect(data.error).toMatch(/model provider/i);
+      expect(data.status).toBe("pending");
 
       // Switch back to owner for cleanup
       mockClerk({ userId: ownerUser.userId });
@@ -557,12 +487,12 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
   });
 
   describe("Concurrent Run Limit", () => {
-    it("should enqueue run when concurrent run limit is reached", async () => {
+    it("should reject run with 429 when concurrent run limit is reached (CLI path)", async () => {
       // Free tier (default) allows only 1 concurrent run
       const run1 = await createTestRun(testComposeId, "First run");
       expect(run1.status).toBe("pending");
 
-      // Second run should be queued
+      // CLI path returns 429 error (queueing is a zero-layer concern)
       const request = createTestRequest(
         "http://localhost:3000/api/agent/runs",
         {
@@ -576,10 +506,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       );
 
       const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(201);
-      expect(data.status).toBe("queued");
+      expect(response.status).toBe(429);
     });
 
     it("should allow unlimited runs when limit is 0", async () => {
@@ -617,17 +544,30 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(run2.status).toBe("pending");
     });
 
-    it("should queue 3rd concurrent run for pro tier orgs", async () => {
+    it("should reject 3rd concurrent run for pro tier orgs (CLI path)", async () => {
       // Pro tier only allows 2 concurrent runs
       await updateOrgTier(user.orgId, "pro");
 
       const run1 = await createTestRun(testComposeId, "Run 1");
       const run2 = await createTestRun(testComposeId, "Run 2");
-      const run3 = await createTestRun(testComposeId, "Run 3");
 
       expect(run1.status).toBe("pending");
       expect(run2.status).toBe("pending");
-      expect(run3.status).toBe("queued");
+
+      // CLI path returns 429 error instead of queueing
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: testComposeId,
+            prompt: "Run 3",
+          }),
+        },
+      );
+      const response = await POST(request);
+      expect(response.status).toBe(429);
     });
 
     it("should not count stale pending runs toward concurrency limit", async () => {
@@ -691,30 +631,19 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(data.status).toBe("pending");
     });
 
-    it("should reject run when no model provider and no API key in compose", async () => {
+    it("should succeed when no model provider and no API key in compose (CLI path)", async () => {
       // Create compose without API key and no environment block
       const { composeId } = await createTestCompose(uniqueId("no-mp"), {
         noEnvironmentBlock: true,
       });
 
-      // Model provider check fails after run creation — returns 201 with "failed" status
-      const request = createTestRequest(
-        "http://localhost:3000/api/agent/runs",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            agentComposeId: composeId,
-            prompt: "Test without model provider",
-          }),
-        },
+      // CLI path (startRun) does not validate model providers — that's a zero-layer concern.
+      // Run succeeds with "pending" status.
+      const data = await createTestRun(
+        composeId,
+        "Test without model provider",
       );
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(201);
-      expect(data.status).toBe("failed");
-      expect(data.error).toMatch(/model provider/i);
+      expect(data.status).toBe("pending");
     });
 
     it("should skip injection when compose has explicit ANTHROPIC_API_KEY", async () => {
@@ -758,12 +687,14 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(data.status).toBe("pending");
     });
 
-    it("should fail when specified model provider type is invalid", async () => {
+    it("should succeed even with invalid model provider (CLI path)", async () => {
       // Create compose without API key
       const { composeId } = await createTestCompose(uniqueId("invalid-mp"), {
         skipDefaultApiKey: true,
       });
 
+      // CLI path does not validate model providers — that's a zero-layer concern.
+      // The modelProvider param is passed through but not resolved.
       const data = await createTestRun(
         composeId,
         "Test with invalid provider",
@@ -772,13 +703,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         },
       );
 
-      // Route creates run first, then fails during preparation
-      expect(data.status).toBe("failed");
-
-      // Verify error via API
-      const run = await getTestRun(data.runId);
-
-      expect(run.error).toMatch(/model provider/i);
+      expect(data.status).toBe("pending");
     });
 
     it("should auto-inject model provider when no environment block exists", async () => {
@@ -827,25 +752,9 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
   });
 
   describe("Connector Injection", () => {
-    it("should satisfy ${{ secrets.GH_TOKEN }} from connector when user has no GH_TOKEN secret", async () => {
-      // Create a GitHub connector for the test user
-      await createTestConnector({
-        accessToken: "ghp-test-connector-token",
-      });
-
-      // Create compose with explicit ${{ secrets.GH_TOKEN }} reference (real-world scenario from skills)
-      const { composeId } = await createTestCompose(uniqueId("gh-connector"), {
-        overrides: {
-          environment: {
-            ANTHROPIC_API_KEY: "test-key",
-            GH_TOKEN: "${{ secrets.GH_TOKEN }}",
-          },
-        },
-      });
-
-      const data = await createTestRun(composeId, "Test with GitHub connector");
-      expect(data.status).toBe("pending");
-    });
+    // Note: connector secret injection is a zero-layer concern.
+    // CLI path requires all secrets to be passed explicitly.
+    // Tested via POST /api/zero/runs route.
 
     it("should not override user-provided GH_TOKEN secret with connector token", async () => {
       // Create a GitHub connector
@@ -892,29 +801,8 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(data.status).toBe("pending");
     });
 
-    it("should satisfy ${{ secrets.SLACK_TOKEN }} from Slack connector when user has no SLACK_TOKEN secret", async () => {
-      // Create a Slack connector for the test user
-      await createTestConnector({
-        type: "slack",
-        accessToken: "xoxp-test-slack-connector-token",
-      });
-
-      // Create compose with explicit ${{ secrets.SLACK_TOKEN }} reference
-      const { composeId } = await createTestCompose(
-        uniqueId("slack-connector"),
-        {
-          overrides: {
-            environment: {
-              ANTHROPIC_API_KEY: "test-key",
-              SLACK_TOKEN: "${{ secrets.SLACK_TOKEN }}",
-            },
-          },
-        },
-      );
-
-      const data = await createTestRun(composeId, "Test with Slack connector");
-      expect(data.status).toBe("pending");
-    });
+    // Note: Slack connector secret injection is a zero-layer concern.
+    // Tested via POST /api/zero/runs route.
 
     it("should not override user-provided SLACK_TOKEN secret with Slack connector token", async () => {
       // Create a Slack connector

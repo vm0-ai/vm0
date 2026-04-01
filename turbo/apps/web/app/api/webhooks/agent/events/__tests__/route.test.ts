@@ -11,6 +11,7 @@ import {
   createTestRequest,
   createTestCompose,
   createTestRun,
+  createTestRunInDb,
   createTestSandboxToken,
   findTestCreditUsagesByRunId,
   setTestRunModelProvider,
@@ -653,9 +654,14 @@ describe("POST /api/webhooks/agent/events", () => {
     });
 
     it("should store modelProvider and selectedModel from agent run in credit_usage", async () => {
-      // Set modelProvider and selectedModel on the existing test run
-      await setTestRunModelProvider(testRunId, "anthropic-api-key");
-      await setTestRunSelectedModel(testRunId, "claude-sonnet-4.6");
+      // Create a run with zeroRuns record (needed for modelProvider/selectedModel storage)
+      const { runId: zeroRunId } = await createTestRunInDb(
+        user.userId,
+        testComposeId,
+      );
+      const zeroRunToken = await createTestSandboxToken(user.userId, zeroRunId);
+      await setTestRunModelProvider(zeroRunId, "anthropic-api-key");
+      await setTestRunSelectedModel(zeroRunId, "claude-sonnet-4.6");
 
       // In production, result events arrive in separate requests from system.init
       const resultUuid = randomUUID();
@@ -665,10 +671,10 @@ describe("POST /api/webhooks/agent/events", () => {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${testToken}`,
+            Authorization: `Bearer ${zeroRunToken}`,
           },
           body: JSON.stringify({
-            runId: testRunId,
+            runId: zeroRunId,
             events: [
               {
                 type: "result",
@@ -689,7 +695,7 @@ describe("POST /api/webhooks/agent/events", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      const records = await findTestCreditUsagesByRunId(testRunId);
+      const records = await findTestCreditUsagesByRunId(zeroRunId);
       expect(records).toHaveLength(1);
       const record = records[0]!;
       expect(record.model).toBe("claude-sonnet-4.6");
@@ -697,7 +703,13 @@ describe("POST /api/webhooks/agent/events", () => {
     });
 
     it("should prefer run.selectedModel over system.init model", async () => {
-      await setTestRunSelectedModel(testRunId, "claude-sonnet-4.6");
+      // Create a run with zeroRuns record (needed for selectedModel storage)
+      const { runId: zeroRunId } = await createTestRunInDb(
+        user.userId,
+        testComposeId,
+      );
+      const zeroRunToken = await createTestSandboxToken(user.userId, zeroRunId);
+      await setTestRunSelectedModel(zeroRunId, "claude-sonnet-4.6");
 
       const resultUuid = randomUUID();
       const request = createTestRequest(
@@ -706,10 +718,10 @@ describe("POST /api/webhooks/agent/events", () => {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${testToken}`,
+            Authorization: `Bearer ${zeroRunToken}`,
           },
           body: JSON.stringify({
-            runId: testRunId,
+            runId: zeroRunId,
             events: [
               {
                 type: "system",
@@ -738,7 +750,7 @@ describe("POST /api/webhooks/agent/events", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      const records = await findTestCreditUsagesByRunId(testRunId);
+      const records = await findTestCreditUsagesByRunId(zeroRunId);
       expect(records).toHaveLength(1);
       expect(records[0]!.model).toBe("claude-sonnet-4.6");
     });
