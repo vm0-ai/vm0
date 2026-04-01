@@ -205,13 +205,13 @@ function ActivityHeaderCard({
           <Button
             variant="ghost"
             size="sm"
-            className="h-8 shrink-0 gap-1 rounded-lg text-sm text-muted-foreground hover:text-foreground"
+            className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:text-foreground p-0"
+            aria-label="Download CSV"
             onClick={() => {
               return downloadCsv(events, detail.id);
             }}
           >
             <IconDownload size={14} stroke={1.5} />
-            Download
           </Button>
         </div>
         <div className="flex flex-wrap items-center gap-y-1 text-sm -mx-3">
