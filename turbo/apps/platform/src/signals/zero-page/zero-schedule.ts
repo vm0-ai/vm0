@@ -327,7 +327,14 @@ export const toggleZeroScheduleEnabled$ = command(
       throw new Error(message);
     }
 
-    await set(fetchZeroSchedules$, signal);
+    // Optimistic update: patch the local schedule state instead of refetching
+    const current = get(internalSchedules$);
+    set(
+      internalSchedules$,
+      current.map((s) => {
+        return s.name === params.name ? { ...s, enabled: params.enabled } : s;
+      }),
+    );
   },
 );
 

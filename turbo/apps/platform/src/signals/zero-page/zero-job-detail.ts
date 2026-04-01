@@ -675,8 +675,6 @@ const fetchZeroJobSchedule$ = command(
       return;
     }
 
-    set(scheduleState$, { schedules: [], error: null });
-
     try {
       const client = get(zeroClient$)(zeroSchedulesMainContract);
       const result = await client.list();
@@ -824,7 +822,14 @@ export const toggleZeroJobScheduleEnabled$ = command(
       throw new Error(message);
     }
 
-    await set(fetchZeroJobSchedule$, signal);
+    // Optimistic update: patch the local schedule state instead of refetching
+    const current = get(scheduleState$);
+    set(scheduleState$, {
+      ...current,
+      schedules: current.schedules.map((s) => {
+        return s.name === params.name ? { ...s, enabled: params.enabled } : s;
+      }),
+    });
   },
 );
 

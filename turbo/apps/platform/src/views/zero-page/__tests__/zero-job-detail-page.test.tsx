@@ -338,3 +338,62 @@ describe("zero job detail page - schedule card delete confirmation", () => {
     });
   });
 });
+
+describe("zero job detail page - schedule tab toggle", () => {
+  it("should not flash empty state when toggling schedule status", async () => {
+    const user = userEvent.setup();
+    mockAPIsWithSchedules();
+
+    server.use(
+      http.post("*/api/zero/schedules/:name/:action", () => {
+        return HttpResponse.json({
+          id: "f0000002-0000-4000-a000-000000000001",
+          agentId: "e0000000-0000-4000-a000-000000000010",
+          displayName: null,
+          name: "morning-briefing",
+          triggerType: "cron",
+          cronExpression: "0 9 * * 1-5",
+          atTime: null,
+          intervalSeconds: null,
+          timezone: "UTC",
+          prompt: "Summarize yesterday's threads",
+          description: null,
+          enabled: false,
+          nextRunAt: null,
+          lastRunAt: null,
+          createdAt: "2026-03-01T00:00:00Z",
+          updatedAt: "2026-03-01T00:00:00Z",
+          userId: "test-user-123",
+          appendSystemPrompt: null,
+          vars: null,
+          secretNames: null,
+          artifactName: null,
+          artifactVersion: null,
+          volumeVersions: null,
+          retryStartedAt: null,
+          consecutiveFailures: 0,
+        });
+      }),
+    );
+
+    await setupPage({ context, path: "/team/my-agent?tab=schedule" });
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByText("Summarize yesterday's threads")[0],
+      ).toBeInTheDocument();
+    });
+
+    // Toggle the schedule status switch
+    const toggle = screen.getByRole("switch", {
+      name: /disable.*weekday/i,
+    });
+    await user.click(toggle);
+
+    // Schedule content should remain visible — no flash to empty state
+    expect(
+      screen.getAllByText("Summarize yesterday's threads")[0],
+    ).toBeInTheDocument();
+    expect(screen.queryByText("No runs scheduled")).not.toBeInTheDocument();
+  });
+});

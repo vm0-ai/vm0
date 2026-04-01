@@ -633,6 +633,7 @@ function JobScheduleTab({ displayName }: { displayName: string }) {
   const nav = useSet(detachedNavigateTo$);
   const pageSignal = useGet(pageSignal$);
 
+  const loading = entriesLoadable.state === "loading";
   const entries: ScheduleEntry[] =
     entriesLoadable.state === "hasData" ? entriesLoadable.data : [];
 
@@ -648,6 +649,7 @@ function JobScheduleTab({ displayName }: { displayName: string }) {
     <ZeroScheduleTab
       displayName={displayName}
       entries={entries}
+      loading={loading}
       scheduleError={scheduleError}
       onSave={(params) => {
         return saveSchedule(params, pageSignal);

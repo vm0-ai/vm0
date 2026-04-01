@@ -617,6 +617,47 @@ describe("zero-schedule signals", () => {
         ),
       ).rejects.toThrow("Failed to enable schedule (404)");
     });
+
+    it("should optimistically update local state without refetching", async () => {
+      let fetchCount = 0;
+
+      server.use(
+        http.get("http://localhost:3000/api/zero/schedules", () => {
+          fetchCount++;
+          return HttpResponse.json({ schedules: createMockSchedules() });
+        }),
+        http.post(
+          "http://localhost:3000/api/zero/schedules/:name/:action",
+          () => {
+            return HttpResponse.json(mockScheduleResponse());
+          },
+        ),
+      );
+
+      await setup();
+      await context.store.set(fetchZeroSchedules$, context.signal);
+
+      const entriesBefore = context.store.get(zeroScheduleEntries$);
+      const enabledEntry = entriesBefore.find((e) => {
+        return e.name === "morning-briefing";
+      });
+      expect(enabledEntry?.enabled).toBeTruthy();
+      const fetchCountAfterInit = fetchCount;
+
+      await context.store.set(
+        toggleZeroScheduleEnabled$,
+        { name: "morning-briefing", enabled: false },
+        context.signal,
+      );
+
+      const entriesAfter = context.store.get(zeroScheduleEntries$);
+      const toggledEntry = entriesAfter.find((e) => {
+        return e.name === "morning-briefing";
+      });
+      expect(toggledEntry?.enabled).toBeFalsy();
+      // No additional schedule list fetch should have happened
+      expect(fetchCount).toBe(fetchCountAfterInit);
+    });
   });
 
   describe("runScheduleNow$", () => {

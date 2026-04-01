@@ -774,6 +774,89 @@ describe("zero-job-detail signals", () => {
         ),
       ).rejects.toThrow("Failed to enable schedule (500)");
     });
+
+    it("should optimistically update local state without refetching", async () => {
+      let fetchCount = 0;
+
+      server.use(
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
+          return HttpResponse.json(mockAgentResponse());
+        }),
+        http.get(
+          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
+          () => {
+            return HttpResponse.json(mockInstructions());
+          },
+        ),
+        http.get("http://localhost:3000/api/zero/schedules", () => {
+          fetchCount++;
+          return HttpResponse.json(mockSchedules());
+        }),
+      );
+
+      await setupPage({ context, path: "/", withoutRender: true });
+      await context.store.set(fetchZeroJobData$, "my-agent", context.signal);
+
+      const entriesBefore = await context.store.get(zeroJobScheduleEntries$);
+      expect(entriesBefore).toHaveLength(1);
+      expect(entriesBefore[0]!.enabled).toBeTruthy();
+      const fetchCountAfterInit = fetchCount;
+
+      server.use(
+        http.post(
+          "http://localhost:3000/api/zero/schedules/:name/:action",
+          () => {
+            return HttpResponse.json(mockScheduleResponse());
+          },
+        ),
+      );
+
+      await context.store.set(
+        toggleZeroJobScheduleEnabled$,
+        { name: "daily-run", enabled: false },
+        context.signal,
+      );
+
+      const entriesAfter = await context.store.get(zeroJobScheduleEntries$);
+      expect(entriesAfter).toHaveLength(1);
+      expect(entriesAfter[0]!.enabled).toBeFalsy();
+      // No additional schedule list fetch should have happened
+      expect(fetchCount).toBe(fetchCountAfterInit);
+    });
+  });
+
+  describe("fetchZeroJobSchedule$ preserves stale data during refetch", () => {
+    it("should not clear schedule entries before fetching", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
+          return HttpResponse.json(mockAgentResponse());
+        }),
+        http.get(
+          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
+          () => {
+            return HttpResponse.json(mockInstructions());
+          },
+        ),
+        http.get("http://localhost:3000/api/zero/schedules", () => {
+          return HttpResponse.json(mockSchedules());
+        }),
+      );
+
+      await setupPage({ context, path: "/", withoutRender: true });
+      await context.store.set(fetchZeroJobData$, "my-agent", context.signal);
+
+      const entries = await context.store.get(zeroJobScheduleEntries$);
+      expect(entries).toHaveLength(1);
+
+      // Trigger a second fetch — entries should remain visible (not flash to empty)
+      await context.store.set(fetchZeroJobData$, "my-agent", context.signal);
+
+      const entriesAfterRefetch = await context.store.get(
+        zeroJobScheduleEntries$,
+      );
+      expect(entriesAfterRefetch).toHaveLength(1);
+      expect(entriesAfterRefetch[0]!.name).toBe("daily-run");
+    });
   });
 
   describe("instructions editing", () => {
