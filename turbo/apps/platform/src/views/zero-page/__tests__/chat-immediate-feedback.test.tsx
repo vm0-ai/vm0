@@ -116,8 +116,10 @@ describe("chat immediate feedback after sending", () => {
 
     // With the placeholder fix, sending state and thinking indicator
     // should be visible even before the POST responds.
+    // With mutual exclusion ternary, Stop button replaces Send while sending.
     await waitFor(() => {
-      expect(screen.getByLabelText("Send")).toBeDisabled();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Send")).not.toBeInTheDocument();
     });
 
     await waitFor(() => {
