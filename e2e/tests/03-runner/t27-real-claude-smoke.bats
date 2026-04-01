@@ -35,17 +35,16 @@ VOLEOF
     $VM0_CLI volume push >/dev/null
     cd - >/dev/null
 
-    # Set up model-provider once for all tests
-    $ZERO_CLI org model-provider setup \
-        --type "anthropic-api-key" --secret "$ANTHROPIC_API_KEY"
-
     # Compose agents separately (only one agent per compose is supported)
+    # ANTHROPIC_API_KEY is passed via --secrets at run time (not via model-provider)
     cat > "$TEST_DIR/vm0-basic.yaml" <<EOF
 version: "1.0"
 agents:
   ${AGENT_NAME}:
     description: "Real Claude smoke test"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "\${{ secrets.ANTHROPIC_API_KEY }}"
     volumes:
       - claude-files:/home/user/.claude
     working_dir: /home/user/workspace
@@ -61,6 +60,8 @@ agents:
   ${AGENT_NAME}-flags:
     description: "Real Claude flags test"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "\${{ secrets.ANTHROPIC_API_KEY }}"
     volumes:
       - claude-files:/home/user/.claude
     working_dir: /home/user/workspace
@@ -76,6 +77,8 @@ agents:
   ${AGENT_NAME}-settings:
     description: "Real Claude settings test"
     framework: claude-code
+    environment:
+      ANTHROPIC_API_KEY: "\${{ secrets.ANTHROPIC_API_KEY }}"
     volumes:
       - claude-files:/home/user/.claude
     working_dir: /home/user/workspace
@@ -91,8 +94,6 @@ EOF
 }
 
 teardown_file() {
-    # Clean up model provider (best-effort)
-    $ZERO_CLI org model-provider remove "anthropic-api-key" 2>/dev/null || true
     if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
         rm -rf "$TEST_DIR"
     fi
@@ -106,7 +107,7 @@ teardown_file() {
 
     # Run claude --version inside the sandbox to confirm which binary is installed
     run $VM0_CLI run "$AGENT_NAME" \
-        --model-provider "anthropic-api-key" \
+        --secrets "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" \
         --debug-no-mock-claude \
         "Run 'claude --version' with the Bash tool and include the exact output"
 
@@ -123,7 +124,7 @@ teardown_file() {
     fi
 
     run $VM0_CLI run "$AGENT_NAME" \
-        --model-provider "anthropic-api-key" \
+        --secrets "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" \
         --debug-no-mock-claude \
         "Compute 123+456 and reply with exactly: RESULT=<answer>"
 
@@ -145,7 +146,7 @@ teardown_file() {
     # "--" separates variadic --disallowed-tools from the prompt
     # (Commander.js <tools...> would otherwise swallow subsequent args)
     run $VM0_CLI run "${AGENT_NAME}-flags" \
-        --model-provider "anthropic-api-key" \
+        --secrets "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" \
         --debug-no-mock-claude \
         --append-system-prompt "Always end your final response with SIGNATURE=smoke-test" \
         --disallowed-tools CronCreate CronList CronDelete \
@@ -173,7 +174,7 @@ teardown_file() {
     local settings='{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"echo SETTINGS_HOOK_OK > /tmp/hook_sentinel.txt"}]}]}}'
 
     run $VM0_CLI run "${AGENT_NAME}-settings" \
-        --model-provider "anthropic-api-key" \
+        --secrets "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" \
         --debug-no-mock-claude \
         --settings "$settings" \
         -- "Step 1: run 'echo hello'. Step 2: run 'cat /tmp/hook_sentinel.txt'. Include the exact output of step 2 in your response."
