@@ -31,11 +31,13 @@ const PLACEHOLDER_VALUE =
 
 // ── Stone parsing ────────────────────────────────────────────────────────
 
+type DropboxHost = "api" | "content" | "notify";
+
 interface StoneRoute {
   namespace: string;
   name: string;
   scope: string | null;
-  host: string; // "api", "content", or "notify"
+  host: DropboxHost;
 }
 
 // Routes without scopes that are expected (auth/health-check).
@@ -54,7 +56,7 @@ function parseStoneRoutes(content: string): StoneRoute[] {
   let currentRoute = "";
   let inAttrs = false;
   let routeScope: string | null = null;
-  let routeHost = "api";
+  let routeHost: DropboxHost = "api";
 
   function flushRoute(): void {
     if (currentRoute) {
@@ -74,16 +76,16 @@ function parseStoneRoutes(content: string): StoneRoute[] {
   for (const line of lines) {
     const trimmed = line.trim();
 
-    const nsMatch = /^namespace\s+(\S+)/.exec(trimmed);
-    if (nsMatch) {
-      namespace = nsMatch[1]!;
+    const nsCapture = /^namespace\s+(\S+)/.exec(trimmed)?.[1];
+    if (nsCapture) {
+      namespace = nsCapture;
       continue;
     }
 
-    const routeMatch = /^route\s+(\S+)\s*\(/.exec(trimmed);
-    if (routeMatch) {
+    const routeCapture = /^route\s+(\S+)\s*\(/.exec(trimmed)?.[1];
+    if (routeCapture) {
       flushRoute();
-      currentRoute = routeMatch[1]!;
+      currentRoute = routeCapture;
       continue;
     }
 
@@ -93,13 +95,13 @@ function parseStoneRoutes(content: string): StoneRoute[] {
     }
 
     if (inAttrs && currentRoute) {
-      const scopeMatch = /^scope\s*=\s*"([^"]+)"/.exec(trimmed);
-      if (scopeMatch) {
-        routeScope = scopeMatch[1]!;
+      const scopeCapture = /^scope\s*=\s*"([^"]+)"/.exec(trimmed)?.[1];
+      if (scopeCapture) {
+        routeScope = scopeCapture;
       }
-      const hostMatch = /^host\s*=\s*"([^"]+)"/.exec(trimmed);
-      if (hostMatch) {
-        routeHost = hostMatch[1]!;
+      const hostCapture = /^host\s*=\s*"([^"]+)"/.exec(trimmed)?.[1];
+      if (hostCapture) {
+        routeHost = hostCapture as DropboxHost;
       }
     }
   }
@@ -110,7 +112,7 @@ function parseStoneRoutes(content: string): StoneRoute[] {
 
 // ── Grouping ─────────────────────────────────────────────────────────────
 
-const HOST_BASE_URLS: Record<string, string> = {
+const HOST_BASE_URLS: Record<DropboxHost, string> = {
   api: "https://api.dropboxapi.com",
   content: "https://content.dropboxapi.com",
   notify: "https://notify.dropboxapi.com",
@@ -120,7 +122,7 @@ interface HostPermissions {
   permissions: PermissionGroup[];
 }
 
-function buildGroups(routes: StoneRoute[]): Map<string, HostPermissions> {
+function buildGroups(routes: StoneRoute[]): Map<DropboxHost, HostPermissions> {
   // scope -> host -> rules
   const groups = new Map<string, Map<string, Set<string>>>();
   const unknownScopeless: string[] = [];
@@ -158,9 +160,9 @@ function buildGroups(routes: StoneRoute[]): Map<string, HostPermissions> {
   }
 
   // Build per-host permission groups
-  const result = new Map<string, HostPermissions>();
+  const result = new Map<DropboxHost, HostPermissions>();
 
-  for (const host of Object.keys(HOST_BASE_URLS)) {
+  for (const host of Object.keys(HOST_BASE_URLS) as DropboxHost[]) {
     const permissions: PermissionGroup[] = [];
 
     for (const [scope, hostMap] of [...groups.entries()].sort(([a], [b]) =>
@@ -183,7 +185,9 @@ function buildGroups(routes: StoneRoute[]): Map<string, HostPermissions> {
 
 // ── TypeScript generation ────────────────────────────────────────────────
 
-function generateTypeScript(hostGroups: Map<string, HostPermissions>): string {
+function generateTypeScript(
+  hostGroups: Map<DropboxHost, HostPermissions>,
+): string {
   const lines: string[] = [
     "// Auto-generated from Dropbox's official Stone API spec.",
     "// Source: https://github.com/dropbox/dropbox-api-spec",
@@ -203,7 +207,7 @@ function generateTypeScript(hostGroups: Map<string, HostPermissions>): string {
   ];
 
   for (const [host, { permissions }] of hostGroups) {
-    const baseUrl = HOST_BASE_URLS[host]!;
+    const baseUrl = HOST_BASE_URLS[host];
     lines.push("    {");
     lines.push(`      base: "${baseUrl}",`);
     lines.push("      auth: {");
@@ -241,16 +245,22 @@ export async function generate(): Promise<void> {
   if (!listRes.ok) {
     throw new Error(`Failed to list spec files: ${listRes.status}`);
   }
-  const files = (await listRes.json()) as GitHubContent[];
+  const json: unknown = await listRes.json();
+  if (!Array.isArray(json)) {
+    throw new Error("Expected array from GitHub contents API");
+  }
+  const files = json as GitHubContent[];
   const stoneFiles = files.filter((f) => f.name.endsWith(".stone"));
   console.error(`  Found ${stoneFiles.length} .stone files`);
 
-  const allRoutes: StoneRoute[] = [];
-  for (const file of stoneFiles) {
-    const res = await fetchSpec(file.download_url, file.name);
-    const content = await res.text();
-    allRoutes.push(...parseStoneRoutes(content));
-  }
+  const parsed = await Promise.all(
+    stoneFiles.map(async (file) => {
+      const res = await fetchSpec(file.download_url, file.name);
+      const content = await res.text();
+      return parseStoneRoutes(content);
+    }),
+  );
+  const allRoutes = parsed.flat();
   console.error(`  Parsed ${allRoutes.length} routes`);
 
   const hostGroups = buildGroups(allRoutes);
