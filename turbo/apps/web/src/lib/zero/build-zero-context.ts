@@ -1158,6 +1158,7 @@ export async function buildZeroExecutionContext(
     context: {
       runId: params.runId,
       userId: params.userId,
+      orgId: params.orgId,
       agentComposeVersionId,
       agentCompose,
       prompt: params.prompt,

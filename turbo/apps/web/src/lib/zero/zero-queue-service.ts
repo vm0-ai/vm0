@@ -110,7 +110,6 @@ export async function dispatchQueuedZeroRun(
         resolveSourceDuration: contextResult.timings.resolveSourceAndOrg,
         resolveSecretsDuration: contextResult.timings.resolveSecrets,
       },
-      orgId: params.orgId,
       queueDispatcher: dispatchQueuedZeroRun,
     });
 

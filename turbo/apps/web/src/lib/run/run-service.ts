@@ -591,14 +591,13 @@ export async function buildAndDispatchRun(opts: {
   // Pre-built execution context (caller resolves all secrets/providers/firewalls)
   context: ExecutionContext;
   timings: DispatchTimings;
-  orgId: string;
   queueDispatcher?: (
     runId: string,
     createdAt: Date,
     params: CreateRunParams,
   ) => Promise<void>;
 }): Promise<{ status: RunStatus; sandboxId?: string }> {
-  const { runId, createdAt, context, timings, orgId } = opts;
+  const { runId, createdAt, context, timings } = opts;
 
   try {
     const buildContextTime = Date.now();
@@ -619,7 +618,7 @@ export async function buildAndDispatchRun(opts: {
       );
 
     // Prepare execution context (storage manifest, working dir, etc.)
-    const prepareResult = await prepareForExecution(context, orgId);
+    const prepareResult = await prepareForExecution(context);
     const prepareTime = Date.now();
 
     // Dispatch to executor
@@ -676,16 +675,9 @@ export async function buildAndDispatchRun(opts: {
     return result;
   } catch (error) {
     const dispatcher = opts.queueDispatcher ?? dispatchQueuedRun;
-    await markRunFailed(
-      runId,
-      createdAt,
-      error,
-      orgId
-        ? () => {
-            return drainOrgQueue(orgId, dispatcher);
-          }
-        : undefined,
-    );
+    await markRunFailed(runId, createdAt, error, () => {
+      return drainOrgQueue(context.orgId, dispatcher);
+    });
     throw error;
   }
 }
@@ -1067,7 +1059,6 @@ export async function createRun(
         resolveSourceDuration: contextResult.timings.resolveSourceAndOrg,
         resolveSecretsDuration: contextResult.timings.resolveSecrets,
       },
-      orgId: record.orgId,
     });
 
     return {
@@ -1182,7 +1173,6 @@ export async function dispatchQueuedRun(
         resolveSourceDuration: contextResult.timings.resolveSourceAndOrg,
         resolveSecretsDuration: contextResult.timings.resolveSecrets,
       },
-      orgId: params.orgId,
       queueDispatcher,
     });
   } catch (error) {

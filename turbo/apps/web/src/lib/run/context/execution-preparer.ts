@@ -76,8 +76,8 @@ interface PrepareResult {
 
 export async function prepareForExecution(
   context: ExecutionContext,
-  orgId: string,
 ): Promise<PrepareResult> {
+  const orgId = context.orgId;
   log.debug(`Preparing execution context for run ${context.runId}...`);
 
   // Extract configuration from agent compose

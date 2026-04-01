@@ -388,7 +388,6 @@ export async function createZeroRun(
         resolveSourceDuration: contextResult.timings.resolveSourceAndOrg,
         resolveSecretsDuration: contextResult.timings.resolveSecrets,
       },
-      orgId: record.orgId,
       queueDispatcher: dispatchQueuedZeroRun,
     });
 
