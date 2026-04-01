@@ -67,6 +67,7 @@ import { encryptSecretsMap } from "../lib/crypto/secrets-encryption";
 import {
   VOLUME_ORG_USER_ID,
   SYSTEM_ORG_ID,
+  getEligibleConnectorTypes,
   type StoredExecutionContext,
   type FirewallPolicies,
 } from "@vm0/core";
@@ -94,7 +95,7 @@ import { POST as storageCommitRoute } from "../../app/api/storages/commit/route"
 import { POST as setSecretRoute } from "../../app/api/zero/secrets/route";
 import { POST as setVariableRoute } from "../../app/api/zero/variables/route";
 
-import { GET as connectorCallbackRoute } from "../../app/api/connectors/[type]/callback/route";
+import { GET as connectorCallbackRoute } from "../../app/api/zero/connectors/[type]/callback/route";
 import { composeJobs } from "../db/schema/compose-job";
 import { connectors } from "../db/schema/connector";
 import { connectorSessions } from "../db/schema/connector-session";
@@ -1623,7 +1624,7 @@ export async function insertStalePendingRun(
  * Create a test connector via API routes.
  *
  * - api-token: calls POST /api/connectors/:type/token
- * - oauth: calls GET /api/connectors/:type/callback with MSW mocks
+ * - oauth: calls GET /api/zero/connectors/:type/callback with MSW mocks
  *
  * @param options - Connector configuration
  */
@@ -1815,7 +1816,7 @@ const OAUTH_PROVIDER_MOCKS: Record<
 };
 
 /**
- * Create an OAuth connector via GET /api/connectors/:type/callback with MSW mocks.
+ * Create an OAuth connector via GET /api/zero/connectors/:type/callback with MSW mocks.
  */
 async function createTestOAuthConnector(options?: {
   type?: ConnectorType;
@@ -1854,7 +1855,9 @@ async function createTestOAuthConnector(options?: {
 
   // Create callback request with proper cookies
   const state = "test-oauth-state";
-  const url = new URL(`http://localhost:3000/api/connectors/${type}/callback`);
+  const url = new URL(
+    `http://localhost:3000/api/zero/connectors/${type}/callback`,
+  );
   url.searchParams.set("code", "test-code");
   url.searchParams.set("state", state);
 
@@ -2265,6 +2268,28 @@ export async function findTestZeroRun(
 }
 
 /**
+ * Insert a zero_runs record for a run that already exists in agent_runs.
+ * Used in tests where the run is created via enqueueRun() (which does not
+ * create a zero_runs row) and the test needs to set model provider metadata
+ * for credit-check scenarios.
+ */
+export async function insertTestZeroRun(
+  runId: string,
+  options?: {
+    triggerSource?: string;
+    modelProvider?: string | null;
+    selectedModel?: string | null;
+  },
+): Promise<void> {
+  await globalThis.services.db.insert(zeroRuns).values({
+    id: runId,
+    triggerSource: options?.triggerSource ?? "cli",
+    modelProvider: options?.modelProvider ?? null,
+    selectedModel: options?.selectedModel ?? null,
+  });
+}
+
+/**
  * Look up agent run callback records by run ID for verification in tests.
  *
  * Direct DB read is required because no API endpoint exposes callback
@@ -2326,26 +2351,6 @@ export async function findTestSlackOrgConnections(
         eq(slackOrgConnections.slackWorkspaceId, workspaceId),
       ),
     );
-}
-
-/**
- * Find a compose record with its org details.
- *
- * Direct DB read is required because the compose API does not expose
- * org slug in its response — it only returns compose-level fields.
- */
-export async function findTestComposeWithOrg(composeId: string) {
-  const [row] = await globalThis.services.db
-    .select({
-      composeId: agentComposes.id,
-      composeName: agentComposes.name,
-      orgSlug: orgCache.slug,
-    })
-    .from(agentComposes)
-    .innerJoin(orgCache, eq(orgCache.orgId, agentComposes.orgId))
-    .where(eq(agentComposes.id, composeId))
-    .limit(1);
-  return row;
 }
 
 /**
@@ -2784,9 +2789,9 @@ export async function setTestRunModelProvider(
   modelProvider: string,
 ): Promise<void> {
   await globalThis.services.db
-    .update(agentRuns)
+    .update(zeroRuns)
     .set({ modelProvider })
-    .where(eq(agentRuns.id, runId));
+    .where(eq(zeroRuns.id, runId));
 }
 
 export async function setTestRunSelectedModel(
@@ -2794,9 +2799,9 @@ export async function setTestRunSelectedModel(
   selectedModel: string,
 ): Promise<void> {
   await globalThis.services.db
-    .update(agentRuns)
+    .update(zeroRuns)
     .set({ selectedModel })
-    .where(eq(agentRuns.id, runId));
+    .where(eq(zeroRuns.id, runId));
 }
 
 export async function expireQueueEntry(runId: string) {
@@ -3557,21 +3562,15 @@ export async function seedTestSkill(
 /**
  * Seed all SEED_SKILLS plus GA connector type skills into the skills table so
  * that server-side compose succeeds when buildComposeContent injects them.
- * Feature-flagged connectors are excluded to match buildComposeContent behaviour.
+ * Feature-flagged OAuth-only connectors are excluded to match buildComposeContent behaviour.
  */
 export async function seedSeedSkills(): Promise<void> {
   const { SEED_SKILLS, buildSeedSkillValues } =
     await import("../lib/zero/seed-skills");
-  const { CONNECTOR_TYPES } = await import("@vm0/core");
   initServices();
-  const gaConnectorTypes = Object.entries(CONNECTOR_TYPES)
-    .filter(([, config]) => {
-      return !config.featureFlag;
-    })
-    .map(([type]) => {
-      return type;
-    });
-  const allNames = [...new Set([...SEED_SKILLS, ...gaConnectorTypes])];
+  const allNames = [
+    ...new Set([...SEED_SKILLS, ...getEligibleConnectorTypes()]),
+  ];
   const values = buildSeedSkillValues(allNames);
   await globalThis.services.db
     .insert(skills)
@@ -3589,15 +3588,9 @@ export async function seedSeedSkills(): Promise<void> {
  */
 export async function seedSeedSkillStorages(): Promise<void> {
   const { SEED_SKILLS } = await import("../lib/zero/seed-skills");
-  const { CONNECTOR_TYPES } = await import("@vm0/core");
-  const gaConnectorTypes = Object.entries(CONNECTOR_TYPES)
-    .filter(([, config]) => {
-      return !config.featureFlag;
-    })
-    .map(([type]) => {
-      return type;
-    });
-  const allNames = [...new Set([...SEED_SKILLS, ...gaConnectorTypes])];
+  const allNames = [
+    ...new Set([...SEED_SKILLS, ...getEligibleConnectorTypes()]),
+  ];
 
   initServices();
 

@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const vercelFirewall: FirewallConfig = {
+export const vercelFirewall = {
   name: "vercel",
   description: "Vercel API",
   placeholders: {
@@ -427,6 +427,19 @@ export const vercelFirewall: FirewallConfig = {
           ],
         },
         {
+          name: "microfrontends:read",
+          rules: [
+            "GET /v1/microfrontends/groups",
+            "GET /v1/microfrontends/groups/{groupId}/projects",
+            "GET /v1/microfrontends/projects/{projectIdOrName}/production-mfe-config",
+            "GET /v1/microfrontends/{deploymentId}/config",
+          ],
+        },
+        {
+          name: "microfrontends:write",
+          rules: ["POST /v1/microfrontends/group"],
+        },
+        {
           name: "project-routes:read",
           rules: [
             "GET /v1/projects/{projectId}/routes",
@@ -475,6 +488,7 @@ export const vercelFirewall: FirewallConfig = {
             "POST /v1/projects/{idOrName}/domains/{domain}/move",
             "DELETE /v1/projects/{idOrName}/env",
             "PATCH /v1/projects/{idOrName}/protection-bypass",
+            "PATCH /v1/projects/{projectId}/microfrontends",
             "POST /v1/projects/{projectId}/pause",
             "POST /v1/projects/{projectId}/rollback/{deploymentId}",
             "POST /v1/projects/{projectId}/unpause",
@@ -609,6 +623,8 @@ export const vercelFirewall: FirewallConfig = {
             "POST /v1/teams/{teamId}/members/teams/join",
             "PATCH /v1/teams/{teamId}/members/{uid}",
             "DELETE /v1/teams/{teamId}/members/{uid}",
+            "PATCH /v1/teams/{teamId}/microfrontends/{groupId}",
+            "DELETE /v1/teams/{teamId}/microfrontends/{groupId}",
             "POST /v1/teams/{teamId}/request",
             "PATCH /v2/teams/{teamId}",
             "POST /v2/teams/{teamId}/members",
@@ -633,4 +649,4 @@ export const vercelFirewall: FirewallConfig = {
       ],
     },
   ],
-};
+} as const satisfies FirewallConfig;

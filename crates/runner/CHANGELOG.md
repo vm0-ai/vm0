@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.55.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.54.0...runner-rs-v0.55.0) (2026-04-01)
+
+
+### Features
+
+* **runner:** run runner as root, remove all sudo wrappers ([#7443](https://github.com/vm0-ai/vm0/issues/7443)) ([66e9af9](https://github.com/vm0-ai/vm0/commit/66e9af9846cfdc044ec4203b04e784bbc5ea305d))
+
 ## [0.54.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.53.0...runner-rs-v0.54.0) (2026-04-01)
 
 

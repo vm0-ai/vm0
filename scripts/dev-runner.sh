@@ -33,9 +33,9 @@ RUNNER_GROUP="${RUNNER_DEFAULT_GROUP:?RUNNER_DEFAULT_GROUP not set in $ENV_FILE}
 # vm0/local-alice-macbook -> alice-macbook
 RUNNER_NAME="${RUNNER_GROUP##*/}"
 
-REMOTE_BIN_DIR=".vm0-runner/bin/${RUNNER_NAME}"
-RUNNER_BIN="~/$REMOTE_BIN_DIR/runner"
-RUNNER_DIR="~/.vm0-runner/runners/$RUNNER_NAME"
+REMOTE_BIN_DIR="/var/lib/vm0-runner/bin/${RUNNER_NAME}"
+RUNNER_BIN="sudo $REMOTE_BIN_DIR/runner"
+RUNNER_DIR="/var/lib/vm0-runner/runners/$RUNNER_NAME"
 
 CF_SSH="$SCRIPT_DIR/cf-ssh.sh"
 SSH_KEY="$PROJECT_ROOT/.certs/vm0-metal-local.pem"
@@ -78,8 +78,8 @@ cmd_deploy() {
 
   # Upload
   log "Deploying to $SSH_USER@$HOST..."
-  ssh_cmd "mkdir -p ~/$REMOTE_BIN_DIR"
-  cat "$BINARY" | ssh_cmd "cat > ~/$REMOTE_BIN_DIR/runner && chmod 755 ~/$REMOTE_BIN_DIR/runner"
+  ssh_cmd "sudo mkdir -p $REMOTE_BIN_DIR"
+  cat "$BINARY" | ssh_cmd "sudo install -m 755 /dev/stdin $REMOTE_BIN_DIR/runner"
 
   # Setup (idempotent, downloads firecracker/kernel if missing)
   log "Running setup..."
@@ -160,7 +160,7 @@ cmd_remove() {
   log "Removing runner $RUNNER_NAME from $HOST..."
 
   ssh_cmd "$RUNNER_BIN service stop --name $RUNNER_NAME 2>/dev/null || true"
-  ssh_cmd "rm -rf ~/$REMOTE_BIN_DIR $RUNNER_DIR"
+  ssh_cmd "sudo rm -rf $REMOTE_BIN_DIR $RUNNER_DIR"
 
   log "Done! Runner $RUNNER_NAME removed from $HOST"
 }

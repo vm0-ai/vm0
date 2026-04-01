@@ -6,6 +6,7 @@ import {
 import { webhookEventsContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
+import { zeroRuns } from "../../../../../src/db/schema/zero-run";
 import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
 import { logger } from "../../../../../src/lib/logger";
@@ -43,8 +44,13 @@ const router = tsr.router(webhookEventsContract, {
 
     // Verify run exists and belongs to the authenticated user
     const [run] = await globalThis.services.db
-      .select()
+      .select({
+        orgId: agentRuns.orgId,
+        modelProvider: zeroRuns.modelProvider,
+        selectedModel: zeroRuns.selectedModel,
+      })
       .from(agentRuns)
+      .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
       .where(and(eq(agentRuns.id, body.runId), eq(agentRuns.userId, userId)))
       .limit(1);
 

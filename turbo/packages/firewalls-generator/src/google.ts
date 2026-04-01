@@ -182,7 +182,7 @@ function generateTypeScript(
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    `export const ${exportName}Firewall: FirewallConfig = {`,
+    `export const ${exportName}Firewall = {`,
     `  name: "${config.serviceName}",`,
     `  description: "${escapeString(config.serviceDescription)}",`,
     "  placeholders: {",
@@ -208,7 +208,7 @@ function generateTypeScript(
   }
 
   lines.push("  ],");
-  lines.push("};");
+  lines.push("} as const satisfies FirewallConfig;");
   lines.push("");
 
   return lines.join("\n");

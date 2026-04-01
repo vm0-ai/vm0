@@ -54,12 +54,17 @@ describe("activity line visibility while run is still running", () => {
       ).toBeInTheDocument();
     });
 
-    // BUG: The activity line (shimmer text or summary steps) should still be
-    // visible because run status is still "running". Currently, the
-    // StaticAssistantMessage decision tree hides the activity line as soon as
-    // message.content becomes non-empty, regardless of run status.
+    // The activity line (shimmer text or summary steps) should still be
+    // visible because run status is still "running".
     const shimmer = document.querySelector(".zero-shimmer-text");
     expect(shimmer).toBeInTheDocument();
+
+    // The activity line should appear ABOVE the result content in the DOM,
+    // so the user sees the ongoing CoT before the result text.
+    const resultEl = screen.getByText("Here is the first part of the answer.");
+    expect(shimmer!.compareDocumentPosition(resultEl)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
   });
 
   it("should hide activity line only after run reaches terminal status", async () => {

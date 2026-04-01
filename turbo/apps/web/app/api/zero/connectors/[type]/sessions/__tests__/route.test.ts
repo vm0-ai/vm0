@@ -47,7 +47,9 @@ describe("POST /api/zero/connectors/:type/sessions", () => {
     expect(data.code).toMatch(/^[A-Z0-9]{4}-[A-Z0-9]{4}$/);
     expect(data.type).toBe("github");
     expect(data.status).toBe("pending");
-    expect(data.verificationUrl).toContain("/api/connectors/github/authorize");
+    expect(data.verificationUrl).toContain(
+      "/api/zero/connectors/github/authorize",
+    );
     expect(data.verificationUrl).toContain(`session=${data.id}`);
     expect(data.expiresIn).toBe(900);
     expect(data.interval).toBe(5);

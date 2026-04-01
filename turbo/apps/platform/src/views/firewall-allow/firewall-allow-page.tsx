@@ -13,6 +13,7 @@ import {
   isFirewallConnectorType,
   CONNECTOR_TYPES,
   getDefaultFirewallPolicies,
+  groupPermissionsByCategory,
   type FirewallPolicies,
   type FirewallPolicyValue,
 } from "@vm0/core";
@@ -415,6 +416,81 @@ function MemberFocusedView({
 // List views (fallback when no specific permission in URL)
 // ---------------------------------------------------------------------------
 
+function PermissionRow({
+  perm,
+  policy,
+  onChange,
+  disabled,
+  indented,
+}: {
+  perm: { name: string; description?: string };
+  policy: FirewallPolicyValue;
+  onChange?: (p: FirewallPolicyValue) => void;
+  disabled?: boolean;
+  indented?: boolean;
+}) {
+  return (
+    <div
+      className={`flex items-center gap-2.5 px-3 py-2 ${disabled ? "" : "hover:bg-muted/50"} transition-colors ${indented ? "pl-6" : ""}`}
+    >
+      <div className="min-w-0 flex-1">
+        <code className="text-xs font-medium text-foreground truncate block">
+          {perm.name}
+        </code>
+        {perm.description && (
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {perm.description}
+          </p>
+        )}
+      </div>
+      <PolicyPill policy={policy} onChange={onChange} disabled={disabled} />
+    </div>
+  );
+}
+
+function CategoryHeader({
+  category,
+  count,
+  onSetAll,
+}: {
+  category: string;
+  count: number;
+  onSetAll?: (p: FirewallPolicyValue) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between px-3 py-2 bg-muted/30">
+      <span className="text-xs font-medium text-foreground">
+        {category} ({count})
+      </span>
+      {onSetAll && (
+        <span className="inline-flex shrink-0 rounded-md overflow-hidden text-xs font-medium zero-border">
+          {POLICY_OPTIONS.map((opt, idx) => {
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                style={
+                  idx > 0
+                    ? { borderLeft: "0.7px solid hsl(var(--gray-400))" }
+                    : undefined
+                }
+                onClick={() => {
+                  return onSetAll(opt.value);
+                }}
+                className="flex items-center gap-1 px-2.5 py-1.5 transition-colors text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              >
+                {opt.value === "allow" && <IconCheck size={12} stroke={2.5} />}
+                {opt.value === "deny" && <IconBan size={12} stroke={2.5} />}
+                {opt.label}
+              </button>
+            );
+          })}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function AdminListView({
   agentId,
   ref,
@@ -428,6 +504,7 @@ function AdminListView({
   };
 }) {
   const permissions = extractPermissions(ref);
+  const groups = groupPermissionsByCategory(permissions, ref);
   const defaults = isFirewallConnectorType(ref)
     ? getDefaultFirewallPolicies(ref)
     : null;
@@ -462,6 +539,19 @@ function AdminListView({
     );
   };
 
+  const handleSetGroupAll = (
+    groupPerms: { name: string }[],
+    policy: FirewallPolicyValue,
+  ) => {
+    setPolicies((prev) => {
+      const next = { ...prev };
+      for (const p of groupPerms) {
+        next[p.name] = policy;
+      }
+      return next;
+    });
+  };
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
@@ -472,33 +562,58 @@ function AdminListView({
       </div>
 
       <div className="zero-border rounded-lg overflow-hidden">
-        {permissions.map((perm, idx) => {
-          return (
-            <div key={perm.name}>
-              {idx > 0 && <div className="border-t border-border/40" />}
-              <div className="flex items-center gap-2.5 px-3 py-2 hover:bg-muted/50 transition-colors">
-                <div className="min-w-0 flex-1">
-                  <code className="text-xs font-medium text-foreground truncate block">
-                    {perm.name}
-                  </code>
-                  {perm.description && (
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {perm.description}
-                    </p>
+        {groups
+          ? groups.map((group, groupIdx) => {
+              return (
+                <div key={group.category}>
+                  {groupIdx > 0 && (
+                    <div className="border-t border-border/40" />
                   )}
+                  <CategoryHeader
+                    category={group.category}
+                    count={group.permissions.length}
+                    onSetAll={(p) => {
+                      return handleSetGroupAll(group.permissions, p);
+                    }}
+                  />
+                  {group.permissions.map((perm, idx) => {
+                    return (
+                      <div key={perm.name}>
+                        {idx > 0 && (
+                          <div className="border-t border-border/40" />
+                        )}
+                        <PermissionRow
+                          perm={perm}
+                          policy={policies[perm.name] ?? "allow"}
+                          onChange={(p) => {
+                            return setPolicies((prev) => {
+                              return { ...prev, [perm.name]: p };
+                            });
+                          }}
+                          indented
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
-                <PolicyPill
-                  policy={policies[perm.name] ?? "allow"}
-                  onChange={(p) => {
-                    return setPolicies((prev) => {
-                      return { ...prev, [perm.name]: p };
-                    });
-                  }}
-                />
-              </div>
-            </div>
-          );
-        })}
+              );
+            })
+          : permissions.map((perm, idx) => {
+              return (
+                <div key={perm.name}>
+                  {idx > 0 && <div className="border-t border-border/40" />}
+                  <PermissionRow
+                    perm={perm}
+                    policy={policies[perm.name] ?? "allow"}
+                    onChange={(p) => {
+                      return setPolicies((prev) => {
+                        return { ...prev, [perm.name]: p };
+                      });
+                    }}
+                  />
+                </div>
+              );
+            })}
       </div>
     </div>
   );
@@ -512,6 +627,7 @@ function MemberListView({
   agent: { firewallPolicies: FirewallPolicies | null };
 }) {
   const permissions = extractPermissions(ref);
+  const groups = groupPermissionsByCategory(permissions, ref);
   const defaults = isFirewallConnectorType(ref)
     ? getDefaultFirewallPolicies(ref)
     : null;
@@ -520,30 +636,51 @@ function MemberListView({
     <div className="flex flex-col gap-4">
       <h2 className="text-sm font-medium text-foreground">Permissions</h2>
       <div className="zero-border rounded-lg overflow-hidden">
-        {permissions.map((perm, idx) => {
-          const currentPolicy =
-            agent.firewallPolicies?.[ref]?.[perm.name] ??
-            defaults?.[perm.name] ??
-            "allow";
-          return (
-            <div key={perm.name}>
-              {idx > 0 && <div className="border-t border-border/40" />}
-              <div className="flex items-center gap-2.5 px-3 py-2">
-                <div className="min-w-0 flex-1">
-                  <code className="text-xs font-medium text-foreground truncate block">
-                    {perm.name}
-                  </code>
-                  {perm.description && (
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {perm.description}
-                    </p>
+        {groups
+          ? groups.map((group, groupIdx) => {
+              return (
+                <div key={group.category}>
+                  {groupIdx > 0 && (
+                    <div className="border-t border-border/40" />
                   )}
+                  <CategoryHeader
+                    category={group.category}
+                    count={group.permissions.length}
+                  />
+                  {group.permissions.map((perm, idx) => {
+                    const currentPolicy =
+                      agent.firewallPolicies?.[ref]?.[perm.name] ??
+                      defaults?.[perm.name] ??
+                      "allow";
+                    return (
+                      <div key={perm.name}>
+                        {idx > 0 && (
+                          <div className="border-t border-border/40" />
+                        )}
+                        <PermissionRow
+                          perm={perm}
+                          policy={currentPolicy}
+                          disabled
+                          indented
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
-                <PolicyPill policy={currentPolicy} disabled />
-              </div>
-            </div>
-          );
-        })}
+              );
+            })
+          : permissions.map((perm, idx) => {
+              const currentPolicy =
+                agent.firewallPolicies?.[ref]?.[perm.name] ??
+                defaults?.[perm.name] ??
+                "allow";
+              return (
+                <div key={perm.name}>
+                  {idx > 0 && <div className="border-t border-border/40" />}
+                  <PermissionRow perm={perm} policy={currentPolicy} disabled />
+                </div>
+              );
+            })}
       </div>
     </div>
   );

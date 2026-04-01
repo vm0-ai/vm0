@@ -1135,34 +1135,6 @@ jobs:
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           E2E_ACCOUNT: ${{ needs.prepare.outputs.job-ref }}+clerk_test+browser@vm0-e2e.ai
-      - name: Cleanup test accounts
-        if: always()
-        env:
-          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
-        run: |
-          echo "Cleaning up Clerk test accounts..."
-          # List users whose email contains the JOB_REF prefix
-          users=$(curl -sS -X GET \
-            "https://api.clerk.com/v1/users?query=${JOB_REF}%2Bclerk_test&limit=100" \
-            -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
-            -H "Content-Type: application/json")
-
-          # Delete all matching users (no exclusions — all accounts are ephemeral)
-          ids=$(echo "$users" | jq -r '.[].id' 2>/dev/null || true)
-
-          if [ -z "$ids" ]; then
-            echo "No test accounts to clean up"
-          else
-            for uid in $ids; do
-              echo "Deleting user $uid..."
-              curl -sS -X DELETE \
-                "https://api.clerk.com/v1/users/${uid}" \
-                -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
-                -H "Content-Type: application/json" > /dev/null
-            done
-            echo "Cleanup complete"
-          fi
       - name: Upload auth screenshots
         if: always()
         uses: actions/upload-artifact@v7
@@ -1422,8 +1394,8 @@ jobs:
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
         run: |
-          echo "bin-dir=~/.vm0-runner/bin/${JOB_REF}" >> "$GITHUB_OUTPUT"
-          echo "runner-dir=~/.vm0-runner/runners/${JOB_REF}" >> "$GITHUB_OUTPUT"
+          echo "bin-dir=/var/lib/vm0-runner/bin/${JOB_REF}" >> "$GITHUB_OUTPUT"
+          echo "runner-dir=/var/lib/vm0-runner/runners/${JOB_REF}" >> "$GITHUB_OUTPUT"
           NUM_HOSTS=$(echo "$METAL_HOSTS" | tr ',' '\n' | grep -c .)
           if [ "$NUM_HOSTS" -lt 1 ]; then
             echo "::error::AWS_METAL_RUNNER_HOSTS is empty"
@@ -1501,20 +1473,21 @@ jobs:
 
             # Clean previous run artifacts and upload runner (guests are embedded)
             # shellcheck disable=SC2029
-            ssh "$REMOTE" "rm -rf ${BIN_DIR} ${RUNNER_DIR} && mkdir -p ${BIN_DIR}"
-            scp "${TARGET_DIR}/runner" "${REMOTE}:${BIN_DIR}/"
+            ssh "$REMOTE" "sudo rm -rf ${BIN_DIR} ${RUNNER_DIR} && sudo mkdir -p ${BIN_DIR}"
+            # shellcheck disable=SC2029
+            < "${TARGET_DIR}/runner" ssh "$REMOTE" "sudo install -m 755 /dev/stdin ${BIN_DIR}/runner"
 
             # Clean up old rootfs/snapshots, keep the 6 most recent (3 deploys × 2 profiles)
             # shellcheck disable=SC2029
-            ssh "$REMOTE" "${BIN_DIR}/runner gc --keep-latest 6"
+            ssh "$REMOTE" "sudo ${BIN_DIR}/runner gc --keep-latest 6"
 
             # Run setup (downloads firecracker/kernel/mitmdump, cached + idempotent)
             # shellcheck disable=SC2029
-            ssh "$REMOTE" "${BIN_DIR}/runner setup"
+            ssh "$REMOTE" "sudo ${BIN_DIR}/runner setup"
 
             # Run build to create rootfs + snapshot (outputs hashes to stdout)
             # shellcheck disable=SC2029
-            ssh "$REMOTE" "${BIN_DIR}/runner build --profile vm0/default"
+            ssh "$REMOTE" "sudo ${BIN_DIR}/runner build --profile vm0/default"
             echo "=== Done deploying to ${HOST} ==="
           }
 
@@ -1616,7 +1589,7 @@ jobs:
 
             # Generate runner.yaml with real preview URL (no build needed, uses cached hashes)
             # shellcheck disable=SC2029
-            ssh "$REMOTE" "${BIN_DIR}/runner config \
+            ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
               --profile vm0/default \
               --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
               --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
@@ -1630,11 +1603,11 @@ jobs:
             # Stop any existing service from a previous run (e.g., re-run after test failure).
             # Ignore errors if not running.
             # shellcheck disable=SC2029
-            ssh "$REMOTE" "${BIN_DIR}/runner service stop --name ${RUNNER_NAME}" 2>/dev/null || true
+            ssh "$REMOTE" "sudo ${BIN_DIR}/runner service stop --name ${RUNNER_NAME}" 2>/dev/null || true
 
             # Start as systemd transient service
             # shellcheck disable=SC2029
-            ssh "$REMOTE" "${BIN_DIR}/runner service start \
+            ssh "$REMOTE" "sudo ${BIN_DIR}/runner service start \
               --name ${RUNNER_NAME} \
               --config ${RUNNER_DIR}/runner.yaml \
               --env VERCEL_AUTOMATION_BYPASS_SECRET=${VERCEL_BYPASS} \
@@ -1643,7 +1616,7 @@ jobs:
             # Health check — wait for runner startup, then verify
             sleep 5
             # shellcheck disable=SC2029
-            ssh "$REMOTE" "${BIN_DIR}/runner doctor --name ${RUNNER_NAME}"
+            ssh "$REMOTE" "sudo ${BIN_DIR}/runner doctor --name ${RUNNER_NAME}"
             echo "=== Runner started on ${HOST} ==="
           }
 

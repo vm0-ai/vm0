@@ -488,6 +488,36 @@ describe("Zero Agents API", () => {
       expect(agentEnv.ZERO_TOKEN).toBe("${{ secrets.ZERO_TOKEN }}");
     });
 
+    it("should preserve custom skill volumes after instructions update", async () => {
+      const createResponse = await postAgent(
+        { customSkills: ["my-skill"] },
+        testCliToken,
+      );
+      const created = await createResponse.json();
+
+      const response = await putAgentInstructions(
+        created.agentId,
+        { content: "# Updated instructions" },
+        testCliToken,
+      );
+      expect(response.status).toBe(200);
+
+      const content = await getTestComposeVersionContent(created.agentId);
+      const volumes = content?.volumes as
+        | Record<string, { name: string; version: string }>
+        | undefined;
+      expect(volumes?.["custom-skill-my-skill"]).toEqual({
+        name: "custom-skill@my-skill",
+        version: "latest",
+      });
+
+      const agents = content?.agents as Record<string, { volumes: string[] }>;
+      const agentVolumes = Object.values(agents)[0]!.volumes;
+      expect(agentVolumes).toContain(
+        "custom-skill-my-skill:/home/user/.claude/skills/my-skill",
+      );
+    });
+
     it("should return 404 for unknown agent", async () => {
       const response = await putAgentInstructions(
         "00000000-0000-0000-0000-000000000000",

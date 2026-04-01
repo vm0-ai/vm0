@@ -11,8 +11,7 @@ const DM_DEV_PREFIX: &str = "/dev/mapper/";
 /// `chunk_size` is in 512-byte sectors (e.g. 8 = 4KB chunks).
 /// Returns the path to the created snapshot device.
 ///
-/// The device is created as `root:disk 0660`; the runner user must be
-/// in the `disk` group to open it.
+/// The device is created as `root:disk 0660`.
 pub fn create_snapshot(
     name: &str,
     origin: &str,
@@ -21,7 +20,7 @@ pub fn create_snapshot(
     chunk_size: u32,
 ) -> Result<PathBuf> {
     let table = format!("0 {sectors} snapshot {origin} {cow_device} P {chunk_size}");
-    command::sudo("dmsetup", &["create", name, "--table", &table])?;
+    command::run("dmsetup", &["create", name, "--table", &table])?;
     Ok(PathBuf::from(format!("{DM_DEV_PREFIX}{name}")))
 }
 
@@ -30,12 +29,12 @@ pub fn create_snapshot(
 /// Format: `<used_sectors>/<total_sectors> <metadata_sectors>`
 /// Useful for debugging COW usage after sandbox execution.
 pub fn status(name: &str) -> Result<String> {
-    command::sudo("dmsetup", &["status", name])
+    command::run("dmsetup", &["status", name])
 }
 
 /// Remove a device mapper target.
 pub fn remove(name: &str) -> Result<()> {
-    command::sudo("dmsetup", &["remove", name])?;
+    command::run("dmsetup", &["remove", name])?;
     Ok(())
 }
 
@@ -46,6 +45,6 @@ pub fn remove(name: &str) -> Result<()> {
 /// their file descriptors.  Returns success immediately even if the
 /// device is currently busy.
 pub fn remove_deferred(name: &str) -> Result<()> {
-    command::sudo("dmsetup", &["remove", "--force", name])?;
+    command::run("dmsetup", &["remove", "--force", name])?;
     Ok(())
 }

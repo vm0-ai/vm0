@@ -83,6 +83,14 @@ sudo mount -o loop,ro "$ROOTFS" "$MOUNT_DIR"
 
 errors=()
 
+# Check root directory permissions (must be 0755 for non-root users to access files)
+root_perms=$(stat -c%a "$MOUNT_DIR")
+if [[ "$root_perms" == "755" ]]; then
+  echo "  root dir: 0755"
+else
+  errors+=("root directory has permissions 0${root_perms}, expected 0755")
+fi
+
 # Check python3
 if [[ -f "${MOUNT_DIR}/usr/bin/python3" ]]; then
   echo "  python3: found"

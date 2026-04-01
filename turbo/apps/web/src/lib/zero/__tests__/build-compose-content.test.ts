@@ -1,29 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildComposeContent } from "../build-compose-content";
 import { SEED_SKILLS } from "../seed-skills";
-import {
-  CONNECTOR_TYPES,
-  resolveSkillRef,
-  getInstructionsFilename,
-} from "@vm0/core";
-
-/** Connector types that are NOT behind a feature flag (generally available). */
-const gaConnectorTypes = Object.entries(CONNECTOR_TYPES)
-  .filter(([, config]) => {
-    return !config.featureFlag;
-  })
-  .map(([type]) => {
-    return type;
-  });
-
-/** Connector types that ARE behind a feature flag. */
-const flaggedConnectorTypes = Object.entries(CONNECTOR_TYPES)
-  .filter(([, config]) => {
-    return !!config.featureFlag;
-  })
-  .map(([type]) => {
-    return type;
-  });
+import { resolveSkillRef, getInstructionsFilename } from "@vm0/core";
 
 describe("buildComposeContent", () => {
   it("should return valid compose structure", () => {
@@ -63,26 +41,35 @@ describe("buildComposeContent", () => {
     ]!;
     const skills = agent.skills as string[];
 
-    for (const connectorType of gaConnectorTypes) {
-      const url = resolveSkillRef(connectorType);
-      expect(skills).toContain(url);
-    }
+    // github and jira are GA connectors (no feature flag)
+    expect(skills).toContain(resolveSkillRef("github"));
+    expect(skills).toContain(resolveSkillRef("jira"));
   });
 
-  it("should exclude feature-flagged connector types from skills", () => {
-    // Sanity: there are flagged connectors to exclude
-    expect(flaggedConnectorTypes.length).toBeGreaterThan(0);
-
+  it("should include feature-flagged connectors that have api-token", () => {
     const result = buildComposeContent("agent");
     const agent = (result.agents as Record<string, Record<string, unknown>>)[
       "agent"
     ]!;
     const skills = agent.skills as string[];
 
-    for (const connectorType of flaggedConnectorTypes) {
-      const url = resolveSkillRef(connectorType);
-      expect(skills).not.toContain(url);
-    }
+    // mercury: feature-flagged + has api-token → should be included
+    expect(skills).toContain(resolveSkillRef("mercury"));
+    // ahrefs: feature-flagged + has api-token → should be included
+    expect(skills).toContain(resolveSkillRef("ahrefs"));
+  });
+
+  it("should exclude feature-flagged OAuth-only connectors from skills", () => {
+    const result = buildComposeContent("agent");
+    const agent = (result.agents as Record<string, Record<string, unknown>>)[
+      "agent"
+    ]!;
+    const skills = agent.skills as string[];
+
+    // reddit: feature-flagged + OAuth-only → should be excluded
+    expect(skills).not.toContain(resolveSkillRef("reddit"));
+    // canva: feature-flagged + OAuth-only → should be excluded
+    expect(skills).not.toContain(resolveSkillRef("canva"));
   });
 
   it("should not produce duplicate skills", () => {
@@ -122,15 +109,26 @@ describe("buildComposeContent", () => {
     expect(environment.JIRA_API_TOKEN).toBe("${{ secrets.JIRA_API_TOKEN }}");
   });
 
-  it("should not inject env var templates for feature-flagged connectors", () => {
+  it("should inject env var templates for feature-flagged connectors with api-token", () => {
     const result = buildComposeContent("agent");
     const agent = (result.agents as Record<string, Record<string, unknown>>)[
       "agent"
     ]!;
     const environment = agent.environment as Record<string, string>;
 
-    // Ahrefs is feature-flagged — its env var should NOT be present
-    expect(environment.AHREFS_TOKEN).toBeUndefined();
+    // Mercury is feature-flagged but has api-token — its env var SHOULD be present
+    expect(environment.MERCURY_TOKEN).toBe("${{ secrets.MERCURY_TOKEN }}");
+  });
+
+  it("should not inject env var templates for feature-flagged OAuth-only connectors", () => {
+    const result = buildComposeContent("agent");
+    const agent = (result.agents as Record<string, Record<string, unknown>>)[
+      "agent"
+    ]!;
+    const environment = agent.environment as Record<string, string>;
+
+    // Reddit is feature-flagged and OAuth-only — its env var should NOT be present
+    expect(environment.REDDIT_TOKEN).toBeUndefined();
   });
 
   it("should always include ZERO_AGENT_ID and ZERO_TOKEN", () => {

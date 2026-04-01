@@ -13,9 +13,10 @@
 
 - name: Cleanup Crates Runner
   hosts: all
+  become: true
 
   vars:
-    base_dir: "{{ ansible_facts['env']['HOME'] }}/.vm0-runner"
+    base_dir: /var/lib/vm0-runner
     bin_dir: "{{ base_dir }}/bin/{{ job_ref }}"
 
   tasks:
@@ -28,54 +29,44 @@
     - name: Stop persistent service upgrade-a
       command: systemctl stop vm0-runner-{{ job_ref }}-upgrade-a.service
       ignore_errors: true
-      become: true
 
     - name: Disable persistent service upgrade-a
       command: systemctl disable vm0-runner-{{ job_ref }}-upgrade-a.service
       ignore_errors: true
-      become: true
 
     - name: Remove unit file upgrade-a
       file:
         path: /etc/systemd/system/vm0-runner-{{ job_ref }}-upgrade-a.service
         state: absent
-      become: true
 
     - name: Stop persistent service upgrade-b
       command: systemctl stop vm0-runner-{{ job_ref }}-upgrade-b.service
       ignore_errors: true
-      become: true
 
     - name: Disable persistent service upgrade-b
       command: systemctl disable vm0-runner-{{ job_ref }}-upgrade-b.service
       ignore_errors: true
-      become: true
 
     - name: Remove unit file upgrade-b
       file:
         path: /etc/systemd/system/vm0-runner-{{ job_ref }}-upgrade-b.service
         state: absent
-      become: true
 
     - name: Stop transient service exec
       command: systemctl stop vm0-runner-{{ job_ref }}-exec.service
       ignore_errors: true
-      become: true
 
     - name: Stop transient service balloon
       command: systemctl stop vm0-runner-{{ job_ref }}-balloon.service
       ignore_errors: true
-      become: true
 
     - name: Stop transient service cancel
       command: systemctl stop vm0-runner-{{ job_ref }}-cancel.service
       ignore_errors: true
-      become: true
 
     - name: Reload systemd daemon
       command: systemctl daemon-reload
       ignore_errors: true
-      become: true
 
     - name: Remove directories
       file:

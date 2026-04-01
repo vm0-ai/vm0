@@ -339,12 +339,7 @@ export async function createZeroRun(
       const queueResult = await enqueueRun(runParams);
 
       // Persist zero-layer metadata
-      await globalThis.services.db.insert(zeroRuns).values({
-        id: queueResult.runId,
-        triggerSource: params.triggerSource,
-        scheduleId: params.scheduleId ?? null,
-        triggerAgentId: params.triggerAgentId ?? null,
-      });
+      await persistZeroRunMetadata(queueResult.runId, params);
 
       return queueResult;
     }
@@ -385,8 +380,6 @@ export async function createZeroRun(
       runId: record.run.id,
       createdAt: record.run.createdAt,
       context: contextResult.context,
-      resolvedModelProvider: contextResult.resolvedModelProvider,
-      selectedModel: contextResult.selectedModel,
       timings: {
         apiStart: record.apiStartTime,
         authorize: record.authorizeTime,
@@ -399,13 +392,8 @@ export async function createZeroRun(
       queueDispatcher: dispatchQueuedZeroRun,
     });
 
-    // 9. Persist zero-layer metadata (triggerSource + schedule + trigger agent association)
-    await globalThis.services.db.insert(zeroRuns).values({
-      id: record.run.id,
-      triggerSource: params.triggerSource,
-      scheduleId: params.scheduleId ?? null,
-      triggerAgentId: params.triggerAgentId ?? null,
-    });
+    // 9. Persist zero-layer metadata (triggerSource + schedule + trigger agent + model fields)
+    await persistZeroRunMetadata(record.run.id, params, contextResult);
 
     return {
       runId: record.run.id,
@@ -419,4 +407,27 @@ export async function createZeroRun(
     });
     throw error;
   }
+}
+
+/**
+ * Persist zero-layer metadata to zero_runs table.
+ * Extracted to keep createZeroRun within complexity limits.
+ */
+async function persistZeroRunMetadata(
+  runId: string,
+  params: ZeroRunParams,
+  contextResult?: {
+    resolvedModelProvider: string | undefined;
+    selectedModel: string | undefined;
+  },
+): Promise<void> {
+  await globalThis.services.db.insert(zeroRuns).values({
+    id: runId,
+    triggerSource: params.triggerSource,
+    scheduleId: params.scheduleId ?? null,
+    triggerAgentId: params.triggerAgentId ?? null,
+    modelProvider:
+      contextResult?.resolvedModelProvider ?? params.modelProvider ?? null,
+    selectedModel: contextResult?.selectedModel ?? null,
+  });
 }

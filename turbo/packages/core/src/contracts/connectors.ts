@@ -3672,6 +3672,21 @@ export function getConnectorEnvironmentMapping(
 }
 
 /**
+ * Connector types eligible for agent compose: GA (no feature flag) or
+ * feature-flagged with an api-token auth method.  Feature flags only gate
+ * OAuth; api-token is always available.
+ */
+export function getEligibleConnectorTypes(): string[] {
+  return Object.entries(CONNECTOR_TYPES)
+    .filter(([, config]) => {
+      return !config.featureFlag || "api-token" in config.authMethods;
+    })
+    .map(([type]) => {
+      return type;
+    });
+}
+
+/**
  * Get connector label and derived env var names for a connector secret.
  * Performs a reverse lookup from secret name to the connector type and
  * environment mapping that references it.

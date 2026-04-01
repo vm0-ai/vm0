@@ -15,17 +15,12 @@ import {
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
 import { listSecrets } from "../../../../src/lib/secret/secret-service";
-import {
-  getOrgData,
-  getOrgBySlug,
-} from "../../../../src/lib/org/org-cache-service";
 import { listVariables } from "../../../../src/lib/variable/variable-service";
 import { listConnectors } from "../../../../src/lib/connector/connector-service";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
 import { decryptSecretValue } from "../../../../src/lib/crypto/secrets-encryption";
 import { deleteWebhook } from "../../../../src/lib/telegram/client";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
-import { isNotFound } from "../../../../src/lib/errors";
 import { logger } from "../../../../src/lib/logger";
 import { checkTelegramDomain } from "../../../../src/lib/telegram/check-domain";
 
@@ -88,21 +83,16 @@ export async function GET(request: Request) {
     );
   }
 
-  // Get default agent with org info
+  // Get default agent
   const [compose] = await db
     .select({
       id: agentComposes.id,
       name: agentComposes.name,
       headVersionId: agentComposes.headVersionId,
-      orgId: agentComposes.orgId,
     })
     .from(agentComposes)
     .where(eq(agentComposes.id, installation.defaultComposeId))
     .limit(1);
-
-  const composeOrgSlug = compose
-    ? (await getOrgData(compose.orgId)).slug
-    : null;
 
   // Extract required secrets/vars from agent compose
   let requiredSecrets: string[] = [];
@@ -174,9 +164,7 @@ export async function GET(request: Request) {
       id: installation.telegramBotId,
       username: installation.botUsername,
     },
-    agent: compose
-      ? { id: compose.id, name: compose.name, orgSlug: composeOrgSlug }
-      : null,
+    agent: compose ? { id: compose.id, name: compose.name } : null,
     isAdmin,
     isConnected,
     domainConfigured,
@@ -263,37 +251,8 @@ export async function PATCH(request: Request) {
     );
   }
 
-  // Parse org/agentName format
-  const slashIndex = body.agentName.indexOf("/");
-  const agentName =
-    slashIndex === -1 ? body.agentName : body.agentName.slice(slashIndex + 1);
-  const orgSlug =
-    slashIndex === -1 ? null : body.agentName.slice(0, slashIndex);
-
-  // Resolve target org
-  let targetOrg: { orgId: string };
-  if (orgSlug) {
-    const resolved = await getOrgBySlug(orgSlug);
-    if (!resolved) {
-      return NextResponse.json(
-        { error: { message: "Org not found", code: "BAD_REQUEST" } },
-        { status: 400 },
-      );
-    }
-    targetOrg = resolved;
-  } else {
-    try {
-      ({ org: targetOrg } = await resolveOrg(authCtx));
-    } catch (error) {
-      if (isNotFound(error)) {
-        return NextResponse.json(
-          { error: { message: "No org configured", code: "BAD_REQUEST" } },
-          { status: 400 },
-        );
-      }
-      throw error;
-    }
-  }
+  // Resolve org from authenticated user's context
+  const { org: targetOrg } = await resolveOrg(authCtx);
 
   // Find agent
   const [compose] = await db
@@ -302,7 +261,7 @@ export async function PATCH(request: Request) {
     .where(
       and(
         eq(agentComposes.orgId, targetOrg.orgId),
-        eq(agentComposes.name, agentName),
+        eq(agentComposes.name, body.agentName),
       ),
     )
     .limit(1);

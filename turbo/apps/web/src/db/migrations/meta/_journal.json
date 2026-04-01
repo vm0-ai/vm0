@@ -1513,6 +1513,13 @@
       "when": 1774940000003,
       "tag": "0215_add_firewall_access_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 216,
+      "version": "7",
+      "when": 1775013793527,
+      "tag": "0216_public_jack_flag",
+      "breakpoints": true
     }
   ]
 }

@@ -865,8 +865,8 @@ async fn detect_block_cow_orphans(
     let mut warnings = Vec::new();
 
     // 1. List dm-snapshot targets
-    let dm_output = match tokio::process::Command::new("sudo")
-        .args(["dmsetup", "ls", "--target", "snapshot"])
+    let dm_output = match tokio::process::Command::new("dmsetup")
+        .args(["ls", "--target", "snapshot"])
         .output()
         .await
     {
@@ -932,8 +932,8 @@ async fn detect_block_cow_orphans(
         }
     };
 
-    let loop_output = match tokio::process::Command::new("sudo")
-        .args(["losetup", "-a"])
+    let loop_output = match tokio::process::Command::new("losetup")
+        .args(["-a"])
         .output()
         .await
     {
@@ -1020,8 +1020,8 @@ fn find_runner_for_dm_target(
 
 /// Check if a dm target has no openers (`Open count: 0` in `dmsetup info`).
 async fn dm_target_has_no_openers(name: &str) -> bool {
-    let output = match tokio::process::Command::new("sudo")
-        .args(["dmsetup", "info", name])
+    let output = match tokio::process::Command::new("dmsetup")
+        .args(["info", name])
         .output()
         .await
     {
@@ -1093,8 +1093,8 @@ fn runner_is_alive(runner_name: &Option<String>, reports: &[RunnerReport]) -> bo
 
 /// Check if a loop device still exists.
 async fn loop_device_exists(device: &str) -> bool {
-    match tokio::process::Command::new("sudo")
-        .args(["losetup", device])
+    match tokio::process::Command::new("losetup")
+        .args([device])
         .output()
         .await
     {
@@ -1511,7 +1511,7 @@ mod tests {
 
         let w = Warning::OrphanLoopDevice {
             device: "/dev/loop5".into(),
-            backing: "/home/ubuntu/.vm0-runner/workspaces/x/cow.img".into(),
+            backing: "/var/lib/vm0-runner/workspaces/x/cow.img".into(),
             runner_name: Some("pr-100-1".into()),
         };
         assert!(w.to_string().contains("/dev/loop5"));
@@ -1680,9 +1680,7 @@ Major, minor:      253, 0";
     #[test]
     fn extract_sandbox_id_from_cow_path() {
         assert_eq!(
-            extract_sandbox_id(
-                "/home/ubuntu/.vm0-runner/runners/pr-123/workspaces/abc-def/cow.img"
-            ),
+            extract_sandbox_id("/var/lib/vm0-runner/runners/pr-123/workspaces/abc-def/cow.img"),
             Some("abc-def")
         );
     }
@@ -1691,7 +1689,7 @@ Major, minor:      253, 0";
     fn extract_sandbox_id_from_deleted_cow_path() {
         assert_eq!(
             extract_sandbox_id(
-                "/home/ubuntu/.vm0-runner/runners/pr-123/workspaces/abc-def/cow.img (deleted)"
+                "/var/lib/vm0-runner/runners/pr-123/workspaces/abc-def/cow.img (deleted)"
             ),
             Some("abc-def")
         );
@@ -1700,7 +1698,7 @@ Major, minor:      253, 0";
     #[test]
     fn extract_sandbox_id_returns_none_for_rootfs() {
         assert_eq!(
-            extract_sandbox_id("/home/ubuntu/.vm0-runner/rootfs/560c452/rootfs.ext4"),
+            extract_sandbox_id("/var/lib/vm0-runner/rootfs/560c452/rootfs.ext4"),
             None
         );
     }

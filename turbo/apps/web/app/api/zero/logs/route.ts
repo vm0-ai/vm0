@@ -287,7 +287,7 @@ const router = tsr.router(logsListContract, {
       .select({
         id: agentRuns.id,
         status: agentRuns.status,
-        modelProvider: agentRuns.modelProvider,
+        modelProvider: zeroRuns.modelProvider,
         createdAt: agentRuns.createdAt,
         startedAt: agentRuns.startedAt,
         completedAt: agentRuns.completedAt,

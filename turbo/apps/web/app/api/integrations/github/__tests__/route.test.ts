@@ -8,7 +8,6 @@ import {
   insertTestGitHubInstallationWithAdmin,
   insertTestGitHubUserLink,
   findTestGitHubInstallationById,
-  findTestComposeWithOrg,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -426,57 +425,6 @@ describe("/api/integrations/github", () => {
       const getData = await getResponse.json();
 
       expect(getData.agent.name).toBe("new-agent");
-    });
-
-    it("should update default agent with org-qualified name", async () => {
-      const userId = uniqueId("gh-user");
-      mockClerk({ userId });
-      await createTestOrg(uniqueId("gh-org"));
-      const { composeId } = await createTestCompose("gh-agent");
-      await insertTestGitHubInstallationWithAdmin(composeId, userId);
-
-      // Create a compose in a different org (simulating an org member agent)
-      const otherUserId = uniqueId("other-user");
-      mockClerk({ userId: otherUserId });
-      await createTestOrg(uniqueId("other-org"));
-      const { composeId: otherComposeId } =
-        await createTestCompose("other-org-agent");
-
-      // Switch back to original user
-      mockClerk({ userId });
-
-      // Look up the other org's slug for the org-qualified name
-      const otherCompose = await findTestComposeWithOrg(otherComposeId);
-
-      const request = createTestRequest(
-        "http://localhost:3000/api/integrations/github",
-        {
-          method: "PATCH",
-          headers: {
-            Authorization: "Bearer test-token",
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            agentName: `${otherCompose!.orgSlug}/${otherCompose!.composeName}`,
-          }),
-        },
-      );
-      const response = await PATCH(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.ok).toBe(true);
-
-      // Verify the agent was updated
-      const getResponse = await GET(
-        createTestRequest("http://localhost:3000/api/integrations/github", {
-          headers: { Authorization: "Bearer test-token" },
-        }),
-      );
-      const getData = await getResponse.json();
-
-      expect(getData.agent.name).toBe(otherCompose!.composeName);
-      expect(getData.agent.orgSlug).toBe(otherCompose!.orgSlug);
     });
   });
 });

@@ -104,6 +104,7 @@
     "generate:slack": "tsx src/index.ts slack",
     "generate:spotify": "tsx src/index.ts spotify",
     "generate:strava": "tsx src/index.ts strava",
+    "generate:streak": "tsx src/index.ts streak",
     "generate:stripe": "tsx src/index.ts stripe",
     "generate:supabase": "tsx src/index.ts supabase",
     "generate:supadata": "tsx src/index.ts supadata",

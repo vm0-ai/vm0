@@ -40,7 +40,7 @@ use std::fs::File;
 use nix::fcntl::{Flock, FlockArg};
 use tracing::{error, info, trace, warn};
 
-use crate::command::{Privilege, exec, exec_ignore_errors};
+use crate::command::{exec, exec_ignore_errors};
 use crate::paths::LockPaths;
 
 use super::GUEST_NETWORK;
@@ -165,15 +165,15 @@ fn is_hex2(s: &str) -> bool {
 // Network operations
 // ---------------------------------------------------------------------------
 
-/// Shorthand: run `sudo ip <args>`, discard stdout.
-async fn sudo_ip(args: &[&str]) -> Result<()> {
-    exec("ip", args, Privilege::Sudo).await?;
+/// Shorthand: run `ip <args>`, discard stdout.
+async fn exec_ip(args: &[&str]) -> Result<()> {
+    exec("ip", args).await?;
     Ok(())
 }
 
-/// Shorthand: run `sudo iptables <args>`, discard stdout.
-async fn sudo_iptables(args: &[&str]) -> Result<()> {
-    exec("iptables", args, Privilege::Sudo).await?;
+/// Shorthand: run `iptables <args>`, discard stdout.
+async fn exec_iptables(args: &[&str]) -> Result<()> {
+    exec("iptables", args).await?;
     Ok(())
 }
 
@@ -184,17 +184,17 @@ async fn create_netns_with_tap(
     tap_mac: &str,
     gateway_ip_with_prefix: &str,
 ) -> Result<()> {
-    sudo_ip(&["netns", "add", ns_name]).await?;
-    sudo_ip(&[
+    exec_ip(&["netns", "add", ns_name]).await?;
+    exec_ip(&[
         "netns", "exec", ns_name, "ip", "tuntap", "add", tap_name, "mode", "tap",
     ])
     .await?;
     // Set a fixed MAC so guest ARP cache from snapshots stays valid after restore.
-    sudo_ip(&[
+    exec_ip(&[
         "netns", "exec", ns_name, "ip", "link", "set", tap_name, "address", tap_mac,
     ])
     .await?;
-    sudo_ip(&[
+    exec_ip(&[
         "netns",
         "exec",
         ns_name,
@@ -206,11 +206,11 @@ async fn create_netns_with_tap(
         tap_name,
     ])
     .await?;
-    sudo_ip(&[
+    exec_ip(&[
         "netns", "exec", ns_name, "ip", "link", "set", tap_name, "up",
     ])
     .await?;
-    sudo_ip(&["netns", "exec", ns_name, "ip", "link", "set", "lo", "up"]).await?;
+    exec_ip(&["netns", "exec", ns_name, "ip", "link", "set", "lo", "up"]).await?;
     Ok(())
 }
 
@@ -223,7 +223,7 @@ async fn setup_veth_pair(
 ) -> Result<()> {
     let peer_cidr = format!("{peer_ip}/30");
     let host_cidr = format!("{host_ip}/30");
-    sudo_ip(&[
+    exec_ip(&[
         "link",
         "add",
         host_device,
@@ -236,7 +236,7 @@ async fn setup_veth_pair(
         name,
     ])
     .await?;
-    sudo_ip(&[
+    exec_ip(&[
         "netns",
         "exec",
         name,
@@ -248,7 +248,7 @@ async fn setup_veth_pair(
         PEER_DEVICE,
     ])
     .await?;
-    sudo_ip(&[
+    exec_ip(&[
         "netns",
         "exec",
         name,
@@ -259,8 +259,8 @@ async fn setup_veth_pair(
         "up",
     ])
     .await?;
-    sudo_ip(&["addr", "add", &host_cidr, "dev", host_device]).await?;
-    sudo_ip(&["link", "set", host_device, "up"]).await?;
+    exec_ip(&["addr", "add", &host_cidr, "dev", host_device]).await?;
+    exec_ip(&["link", "set", host_device, "up"]).await?;
     Ok(())
 }
 
@@ -272,11 +272,11 @@ async fn setup_namespace_routing(
     prefix_len: u8,
 ) -> Result<()> {
     let src = format!("{gateway_ip}/{prefix_len}");
-    sudo_ip(&[
+    exec_ip(&[
         "netns", "exec", name, "ip", "route", "add", "default", "via", host_ip,
     ])
     .await?;
-    sudo_ip(&[
+    exec_ip(&[
         "netns",
         "exec",
         name,
@@ -293,7 +293,7 @@ async fn setup_namespace_routing(
         "MASQUERADE",
     ])
     .await?;
-    sudo_ip(&[
+    exec_ip(&[
         "netns",
         "exec",
         name,
@@ -313,7 +313,7 @@ async fn setup_host_iptables(
     default_iface: &str,
 ) -> Result<()> {
     let src = format!("{peer_ip}/30");
-    sudo_iptables(&[
+    exec_iptables(&[
         "-t",
         "nat",
         "-A",
@@ -330,7 +330,7 @@ async fn setup_host_iptables(
         name,
     ])
     .await?;
-    sudo_iptables(&[
+    exec_iptables(&[
         "-A",
         "FORWARD",
         "-i",
@@ -345,7 +345,7 @@ async fn setup_host_iptables(
         name,
     ])
     .await?;
-    sudo_iptables(&[
+    exec_iptables(&[
         "-A",
         "FORWARD",
         "-i",
@@ -375,7 +375,7 @@ async fn setup_host_iptables(
 async fn add_proxy_redirect_rule(name: &str, peer_ip: &str, proxy_port: u16) -> Result<()> {
     let src = format!("{peer_ip}/30");
     let port_str = proxy_port.to_string();
-    sudo_iptables(&[
+    exec_iptables(&[
         "-t",
         "nat",
         "-A",
@@ -410,7 +410,7 @@ async fn add_proxy_redirect_rule(name: &str, peer_ip: &str, proxy_port: u16) -> 
 async fn add_non_tcp_log_rule(name: &str, peer_ip: &str) -> Result<()> {
     let src = format!("{peer_ip}/30");
     let prefix = format!("VM0:{peer_ip}:");
-    sudo_iptables(&[
+    exec_iptables(&[
         "-I",
         "FORWARD",
         "1",
@@ -441,7 +441,7 @@ async fn add_non_tcp_log_rule(name: &str, peer_ip: &str) -> Result<()> {
 }
 
 async fn get_default_interface() -> Result<String> {
-    let result = exec("ip", &["route", "get", "8.8.8.8"], Privilege::User).await?;
+    let result = exec("ip", &["route", "get", "8.8.8.8"]).await?;
     let iface = result
         .split_whitespace()
         .skip_while(|&w| w != "dev")
@@ -460,7 +460,7 @@ async fn delete_iptables_rules_by_comment(comment: &str) {
 }
 
 async fn delete_iptables_from_table(table: &str, comment: &str) {
-    let output = match exec("iptables-save", &["-t", table], Privilege::Sudo).await {
+    let output = match exec("iptables-save", &["-t", table]).await {
         Ok(output) => output,
         Err(e) => {
             trace!(table, error = %e, "failed to read iptables rules, skipping cleanup");
@@ -479,7 +479,7 @@ async fn delete_iptables_from_table(table: &str, comment: &str) {
         let rule = line.replacen("-A ", "-D ", 1);
         let mut args: Vec<&str> = vec!["-t", table];
         args.extend(rule.split_whitespace().map(|t| t.trim_matches('"')));
-        exec_ignore_errors("iptables", &args, Privilege::Sudo).await;
+        exec_ignore_errors("iptables", &args).await;
     }
 }
 
@@ -490,8 +490,8 @@ async fn delete_namespace_resources(ns_name: &str, host_device: &str) {
     let del_link_args = ["link", "del", host_device];
     let del_ns_args = ["netns", "del", ns_name];
     tokio::join!(
-        exec_ignore_errors("ip", &del_link_args, Privilege::Sudo),
-        exec_ignore_errors("ip", &del_ns_args, Privilege::Sudo),
+        exec_ignore_errors("ip", &del_link_args),
+        exec_ignore_errors("ip", &del_ns_args),
     );
     info!(name = %ns_name, "namespace deleted");
 }
@@ -506,8 +506,8 @@ async fn flush_conntrack(peer_ip: &str) {
     let src_args = ["-D", "-s", peer_ip];
     let dst_args = ["-D", "-d", peer_ip];
     tokio::join!(
-        exec_ignore_errors("conntrack", &src_args, Privilege::Sudo),
-        exec_ignore_errors("conntrack", &dst_args, Privilege::Sudo),
+        exec_ignore_errors("conntrack", &src_args),
+        exec_ignore_errors("conntrack", &dst_args),
     );
 }
 
@@ -523,12 +523,24 @@ async fn flush_conntrack(peer_ip: &str) {
 fn acquire_pool_lock(locks: &LockPaths) -> Result<(u32, Flock<File>)> {
     for index in 0..MAX_POOLS {
         let path = locks.netns_pool(index);
-        let file = File::options()
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(&path)
-            .map_err(|e| NetworkError::LockOpen(format!("{}: {e}", path.display())))?;
+        // Open for writing without O_CREAT first, fall back to create.
+        // This avoids EACCES from fs.protected_regular=2 on sticky-bit
+        // directories (/var/lock) when the file is owned by another user.
+        let file = match File::options().write(true).open(&path).or_else(|_| {
+            File::options()
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .open(&path)
+        }) {
+            Ok(f) => f,
+            Err(e) => {
+                // Skip indices whose lock file is inaccessible (e.g. owned by
+                // another user under fs.protected_regular=2).
+                warn!(index, %e, "cannot open pool lock, skipping index");
+                continue;
+            }
+        };
         match Flock::lock(file, FlockArg::LockExclusiveNonblock) {
             Ok(lock) => {
                 info!(index, "acquired pool index lock");
@@ -590,7 +602,7 @@ impl NetnsPool {
         info!(index, buffer = BUFFER_SIZE, "initializing namespace pool");
 
         // Enable host-level IP forwarding (idempotent, needed once per host).
-        exec("sysctl", &["-w", "net.ipv4.ip_forward=1"], Privilege::Sudo).await?;
+        exec("sysctl", &["-w", "net.ipv4.ip_forward=1"]).await?;
 
         // Clean up orphaned namespaces from a previous process that used the same index.
         cleanup_namespaces_by_index(index).await;
@@ -1059,7 +1071,7 @@ pub async fn cleanup_namespaces_by_index(index: u32) {
     delete_iptables_rules_by_comment(&prefix).await;
 
     // 2. Discover and delete any remaining namespaces (+ their veth devices).
-    let Ok(output) = exec("ip", &["netns", "list"], Privilege::Sudo).await else {
+    let Ok(output) = exec("ip", &["netns", "list"]).await else {
         error!(index, "failed to list namespaces for cleanup");
         return;
     };

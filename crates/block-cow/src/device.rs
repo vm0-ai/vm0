@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use tracing::{info, warn};
+use tracing::{info, trace, warn};
 
 use crate::dmsetup;
 use crate::error::{BlockCowError, Result};
@@ -357,8 +357,21 @@ impl CowDevice {
         // so we don't contribute to the open count.  Firecracker may still
         // have the device open — if so, dmsetup remove fails with EBUSY
         // and we bail to let the caller retry.
+        //
+        // After dropping the holder fd, udev may briefly open the device to
+        // rescan metadata. Retry a few times with a short sleep to let
+        // transient openers (udev) release their references.
         self._device_holder = None;
-        dmsetup::remove(&cow_name)?;
+        for attempt in 0..3u32 {
+            match dmsetup::remove(&cow_name) {
+                Ok(()) => break,
+                Err(e) if attempt < 2 => {
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                    trace!(id = self.id, attempt, error = %e, "dmsetup remove busy, retrying");
+                }
+                Err(e) => return Err(e),
+            }
+        }
 
         // Snapshot is gone — past the point of no return. Mark inactive
         // so Drop won't retry the (already succeeded) snapshot removal.

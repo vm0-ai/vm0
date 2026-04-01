@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const gmailFirewall: FirewallConfig = {
+export const gmailFirewall = {
   name: "gmail",
   description: "Gmail API",
   placeholders: {
@@ -490,4 +490,4 @@ export const gmailFirewall: FirewallConfig = {
       ],
     },
   ],
-};
+} as const satisfies FirewallConfig;

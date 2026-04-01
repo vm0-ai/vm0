@@ -29,6 +29,7 @@ import type { ExecutorResult, PreparedContext } from "./executors/types";
 import { generateSandboxToken } from "../auth/sandbox-token";
 import type { ExecutionContext, DispatchTimings } from "./types";
 import { buildZeroExecutionContext } from "../zero/build-zero-context";
+import { zeroRuns } from "../../db/schema/zero-run";
 import { recordSandboxOperation } from "../metrics";
 import { extractTemplateVars } from "../config-validator";
 import { canAccessCompose } from "../agent/compose-access";
@@ -589,8 +590,6 @@ export async function buildAndDispatchRun(opts: {
   createdAt: Date;
   // Pre-built execution context (caller resolves all secrets/providers/firewalls)
   context: ExecutionContext;
-  resolvedModelProvider?: string;
-  selectedModel?: string;
   timings: DispatchTimings;
   orgId: string;
   queueDispatcher?: (
@@ -599,15 +598,7 @@ export async function buildAndDispatchRun(opts: {
     params: CreateRunParams,
   ) => Promise<void>;
 }): Promise<{ status: RunStatus; sandboxId?: string }> {
-  const {
-    runId,
-    createdAt,
-    context,
-    resolvedModelProvider,
-    selectedModel,
-    timings,
-    orgId,
-  } = opts;
+  const { runId, createdAt, context, timings, orgId } = opts;
 
   try {
     const buildContextTime = Date.now();
@@ -615,16 +606,10 @@ export async function buildAndDispatchRun(opts: {
     // Refresh heartbeat after the heaviest pipeline step to prevent the
     // cleanup cron from timing out runs whose dispatch takes > 5 minutes.
     // Status guard avoids touching runs cancelled/failed while in-flight.
-    // Also persist the resolved model provider type (when the user selected
-    // "Default", the INSERT stored null — this UPDATE writes the actual value).
     await globalThis.services.db
       .update(agentRuns)
       .set({
         lastHeartbeatAt: new Date(),
-        ...(resolvedModelProvider
-          ? { modelProvider: resolvedModelProvider }
-          : {}),
-        ...(selectedModel ? { selectedModel } : {}),
       })
       .where(
         and(
@@ -992,7 +977,6 @@ export async function createRunRecord(
         secretNames: params.secrets ? Object.keys(params.secrets) : null,
         resumedFromCheckpointId: params.resumedFromCheckpointId ?? null,
         continuedFromSessionId: params.sessionId ?? null,
-        modelProvider: params.modelProvider ?? null,
         lastHeartbeatAt: new Date(),
       })
       .returning();
@@ -1059,12 +1043,22 @@ export async function createRun(
       continuedFromSessionId: params.sessionId,
     });
 
+    // Persist zero-layer model fields before dispatch so metadata is recorded
+    // even if dispatch succeeds but a later step fails (reverse dependency — cleanup in later issue)
+    await globalThis.services.db
+      .insert(zeroRuns)
+      .values({
+        id: record.run.id,
+        triggerSource: "api",
+        modelProvider: contextResult.resolvedModelProvider ?? null,
+        selectedModel: contextResult.selectedModel ?? null,
+      })
+      .onConflictDoNothing();
+
     const result = await buildAndDispatchRun({
       runId: record.run.id,
       createdAt: record.run.createdAt,
       context: contextResult.context,
-      resolvedModelProvider: contextResult.resolvedModelProvider,
-      selectedModel: contextResult.selectedModel,
       timings: {
         apiStart: record.apiStartTime,
         authorize: record.authorizeTime,
@@ -1155,12 +1149,31 @@ export async function dispatchQueuedRun(
       continuedFromSessionId: params.sessionId,
     });
 
+    // Upsert zero_runs with resolved model fields before dispatch so metadata
+    // is recorded even if dispatch succeeds but a later step fails.
+    // Uses UPSERT to handle both cases: row exists (zero queued path creates
+    // it at enqueue time) and row doesn't exist (non-zero queued path).
+    // (reverse dependency — cleanup in later issue)
+    await globalThis.services.db
+      .insert(zeroRuns)
+      .values({
+        id: runId,
+        triggerSource: "api",
+        modelProvider: contextResult.resolvedModelProvider ?? null,
+        selectedModel: contextResult.selectedModel ?? null,
+      })
+      .onConflictDoUpdate({
+        target: zeroRuns.id,
+        set: {
+          modelProvider: contextResult.resolvedModelProvider ?? null,
+          selectedModel: contextResult.selectedModel ?? null,
+        },
+      });
+
     await buildAndDispatchRun({
       runId,
       createdAt,
       context: contextResult.context,
-      resolvedModelProvider: contextResult.resolvedModelProvider,
-      selectedModel: contextResult.selectedModel,
       timings: {
         apiStart: apiStartTime,
         authorize: authorizeTime,

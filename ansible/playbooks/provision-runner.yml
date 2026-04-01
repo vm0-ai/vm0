@@ -41,13 +41,12 @@
       when: docker_check.rc != 0
       become: true
 
-    - name: Add user to docker, kvm and disk groups
+    - name: Add user to docker and kvm groups
       user:
         name: "{{ ansible_user }}"
         groups:
           - docker
           - kvm
-          - disk
         append: true
       become: true
       register: group_change
@@ -60,7 +59,7 @@
 
     # When groups change, the current SSH session still has the old group list.
     # Reset the connection so subsequent playbooks (deploy-runner) pick up the
-    # new membership (e.g. 'disk' group needed to open /dev/loopN).
+    # new membership.
     - name: Reset SSH connection to pick up new group membership
       meta: reset_connection
       when: group_change.changed

@@ -997,21 +997,14 @@ function applyConnectorPolicies(
         return refPolicies[perm.name] === "allow";
       });
 
-      if (!allowed || allowed.length === 0) return null;
-
       return {
         base: api.base,
         auth: api.auth,
-        permissions: allowed,
+        permissions: allowed ?? [],
       };
     });
 
-    const validApis = apis.filter((api): api is NonNullable<typeof api> => {
-      return api !== null;
-    });
-    if (validApis.length === 0) continue;
-
-    result.push({ name: fw.name, ref: fw.ref, apis: validApis });
+    result.push({ name: fw.name, ref: fw.ref, apis });
   }
 
   return result;

@@ -118,7 +118,7 @@ export const zeroConnectorsSearchContract = c.router({
 
 /**
  * Zero contract for POST /api/zero/connectors/:type/sessions
- * Proxies to POST /api/connectors/:type/sessions (OAuth device flow)
+ * Creates an OAuth device flow session
  */
 export const zeroConnectorSessionsContract = c.router({
   create: {
@@ -138,7 +138,7 @@ export const zeroConnectorSessionsContract = c.router({
 
 /**
  * Zero contract for GET /api/zero/connectors/:type/sessions/:sessionId
- * Proxies to GET /api/connectors/:type/sessions/:sessionId (poll session)
+ * Polls OAuth device flow session status
  */
 export const zeroConnectorSessionByIdContract = c.router({
   get: {

@@ -132,7 +132,6 @@ fn generate_unit_file(
     unit: &str,
     exe_path: &Path,
     config_path: &Path,
-    user: &str,
     env_vars: &[String],
     local: bool,
 ) -> String {
@@ -155,7 +154,6 @@ Restart=on-failure
 RestartSec=5
 KillSignal=SIGTERM
 TimeoutStopSec=300
-User={user}
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier={unit}
@@ -181,10 +179,9 @@ fn validate_env_vars(vars: &[String]) -> RunnerResult<()> {
     Ok(())
 }
 
-/// Run `sudo systemctl <args>` and check exit status.
+/// Run `systemctl <args>` and check exit status.
 async fn run_systemctl(args: &[&str]) -> RunnerResult<()> {
-    let status = tokio::process::Command::new("sudo")
-        .arg("systemctl")
+    let status = tokio::process::Command::new("systemctl")
         .args(args)
         .status()
         .await
@@ -197,35 +194,10 @@ async fn run_systemctl(args: &[&str]) -> RunnerResult<()> {
     Ok(())
 }
 
-/// Write a unit file via `sudo tee`.
-async fn write_unit_file(path: &Path, content: &str) -> RunnerResult<()> {
-    use tokio::io::AsyncWriteExt;
-
-    let mut child = tokio::process::Command::new("sudo")
-        .args(["tee", &path.to_string_lossy()])
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::null())
-        .spawn()
-        .map_err(|e| RunnerError::Internal(format!("spawn sudo tee: {e}")))?;
-
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin
-            .write_all(content.as_bytes())
-            .await
-            .map_err(|e| RunnerError::Internal(format!("write unit file: {e}")))?;
-    }
-
-    let status = child
-        .wait()
-        .await
-        .map_err(|e| RunnerError::Internal(format!("wait sudo tee: {e}")))?;
-    if !status.success() {
-        return Err(RunnerError::Internal(format!(
-            "sudo tee {} failed: {status}",
-            path.display()
-        )));
-    }
-    Ok(())
+/// Write a unit file directly (running as root).
+fn write_unit_file(path: &Path, content: &str) -> RunnerResult<()> {
+    std::fs::write(path, content)
+        .map_err(|e| RunnerError::Internal(format!("write {}: {e}", path.display())))
 }
 
 /// Check whether a systemd unit is active (running or activating).
@@ -274,17 +246,14 @@ async fn start(args: ServiceRunArgs) -> RunnerResult<()> {
     let config_path = resolve_config_path(&args.config)?;
     let exe_path =
         std::env::current_exe().map_err(|e| RunnerError::Internal(format!("current_exe: {e}")))?;
-    let uid = nix::unistd::getuid();
 
     let unit_arg = format!("--unit={unit}");
     let desc_arg = format!("--description=VM0 Runner ({unit})");
     let syslog_arg = format!("--property=SyslogIdentifier={unit}");
-    let uid_arg = format!("--uid={uid}");
-    let mut cmd = tokio::process::Command::new("sudo");
+    let mut cmd = tokio::process::Command::new("systemd-run");
     cmd.args([
-        "systemd-run",
-        &unit_arg,
-        &desc_arg,
+        &*unit_arg,
+        &*desc_arg,
         "--property=Type=exec",
         "--property=Restart=on-failure",
         "--property=RestartSec=5",
@@ -292,8 +261,7 @@ async fn start(args: ServiceRunArgs) -> RunnerResult<()> {
         "--property=StandardError=journal",
         "--property=KillSignal=SIGTERM",
         "--property=TimeoutStopSec=300",
-        &syslog_arg,
-        &uid_arg,
+        &*syslog_arg,
     ]);
     for entry in &args.env {
         cmd.arg(format!("--setenv={entry}"));
@@ -339,17 +307,11 @@ async fn install(args: ServiceRunArgs) -> RunnerResult<()> {
     let config_path = resolve_config_path(&args.config)?;
     let exe_path =
         std::env::current_exe().map_err(|e| RunnerError::Internal(format!("current_exe: {e}")))?;
-    let uid = nix::unistd::getuid();
-    let user = nix::unistd::User::from_uid(uid)
-        .map_err(|e| RunnerError::Internal(format!("lookup user for uid {uid}: {e}")))?
-        .ok_or_else(|| RunnerError::Internal(format!("no user found for uid {uid}")))?
-        .name;
 
-    let unit_content =
-        generate_unit_file(&unit, &exe_path, &config_path, &user, &args.env, args.local);
+    let unit_content = generate_unit_file(&unit, &exe_path, &config_path, &args.env, args.local);
     let upath = unit_file_path(&unit);
 
-    write_unit_file(&upath, &unit_content).await?;
+    write_unit_file(&upath, &unit_content)?;
 
     run_systemctl(&["daemon-reload"]).await?;
     let svc = format!("{unit}.service");
@@ -372,11 +334,9 @@ pub(crate) async fn uninstall_service(suffix: &str) -> RunnerResult<()> {
 
     // Remove the unit file if it exists.
     let upath = unit_file_path(&unit);
-    let rm_result = tokio::process::Command::new("sudo")
-        .args(["rm", "-f", &upath.to_string_lossy()])
-        .status()
-        .await;
-    if let Err(e) = rm_result {
+    if upath.exists()
+        && let Err(e) = std::fs::remove_file(&upath)
+    {
         warn!(unit = %unit, error = %e, "failed to remove unit file");
     }
 
@@ -494,17 +454,16 @@ mod tests {
     fn test_generate_unit_file() {
         let content = generate_unit_file(
             "vm0-runner-v0.1.0",
-            Path::new("/home/ubuntu/.vm0-runner/bin/v0.1.0/vm0-runner"),
+            Path::new("/var/lib/vm0-runner/bin/v0.1.0/vm0-runner"),
             Path::new("/home/ubuntu/runner.yaml"),
-            "ubuntu",
             &[],
             false,
         );
         assert!(content.contains("Description=VM0 Runner (vm0-runner-v0.1.0)"));
         assert!(content.contains(
-            "ExecStart=\"/home/ubuntu/.vm0-runner/bin/v0.1.0/vm0-runner\" start --config \"/home/ubuntu/runner.yaml\"\n"
+            "ExecStart=\"/var/lib/vm0-runner/bin/v0.1.0/vm0-runner\" start --config \"/home/ubuntu/runner.yaml\"\n"
         ));
-        assert!(content.contains("User=ubuntu"));
+        assert!(!content.contains("User="));
         assert!(content.contains("SyslogIdentifier=vm0-runner-v0.1.0"));
         assert!(content.contains("Restart=on-failure"));
         assert!(content.contains("TimeoutStopSec=300"));
@@ -523,9 +482,8 @@ mod tests {
         ];
         let content = generate_unit_file(
             "vm0-runner-v0.1.0",
-            Path::new("/home/ubuntu/.vm0-runner/bin/v0.1.0/vm0-runner"),
+            Path::new("/var/lib/vm0-runner/bin/v0.1.0/vm0-runner"),
             Path::new("/home/ubuntu/runner.yaml"),
-            "ubuntu",
             &env,
             false,
         );
@@ -541,14 +499,13 @@ mod tests {
             "vm0-runner-v0.1.0",
             Path::new("/opt/my runner/vm0-runner"),
             Path::new("/opt/my config/runner.yaml"),
-            "deploy-user",
             &[],
             false,
         );
         assert!(content.contains(
             "ExecStart=\"/opt/my runner/vm0-runner\" start --config \"/opt/my config/runner.yaml\""
         ));
-        assert!(content.contains("User=deploy-user"));
+        assert!(!content.contains("User="));
     }
 
     #[test]
@@ -557,7 +514,6 @@ mod tests {
             "vm0-runner-v0.1.0",
             Path::new("/usr/bin/runner"),
             Path::new("/etc/runner.yaml"),
-            "ubuntu",
             &[],
             true,
         );

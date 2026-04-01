@@ -87,12 +87,21 @@ export async function dispatchQueuedZeroRun(
       agentName: params.agentName,
     });
 
+    // Update zero_runs with resolved model fields before dispatch so metadata
+    // is recorded even if dispatch succeeds but a later step fails.
+    // Zero queued path: row already exists (created at enqueue time), so UPDATE is safe.
+    await globalThis.services.db
+      .update(zeroRuns)
+      .set({
+        modelProvider: contextResult.resolvedModelProvider ?? null,
+        selectedModel: contextResult.selectedModel ?? null,
+      })
+      .where(eq(zeroRuns.id, runId));
+
     await buildAndDispatchRun({
       runId,
       createdAt,
       context: contextResult.context,
-      resolvedModelProvider: contextResult.resolvedModelProvider,
-      selectedModel: contextResult.selectedModel,
       timings: {
         apiStart: apiStartTime,
         authorize: authorizeTime,
@@ -104,6 +113,7 @@ export async function dispatchQueuedZeroRun(
       orgId: params.orgId,
       queueDispatcher: dispatchQueuedZeroRun,
     });
+
     return;
   }
 

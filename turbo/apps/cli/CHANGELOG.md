@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.91.1](https://github.com/vm0-ai/vm0/compare/cli-v9.91.0...cli-v9.91.1) (2026-04-01)
+
+
+### Refactoring
+
+* remove org slug from schedule response and contract ([#7436](https://github.com/vm0-ai/vm0/issues/7436)) ([#7456](https://github.com/vm0-ai/vm0/issues/7456)) ([7001594](https://github.com/vm0-ai/vm0/commit/7001594afafabf8e715aa57edc53094a854e03c1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.133.0
+
 ## [9.91.0](https://github.com/vm0-ai/vm0/compare/cli-v9.90.6...cli-v9.91.0) (2026-04-01)
 
 

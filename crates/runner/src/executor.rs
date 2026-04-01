@@ -437,10 +437,7 @@ fn dmesg_indicates_oom(stdout: &str) -> bool {
 /// blocking if sudo hangs.
 async fn check_host_oom(pid: u32) -> bool {
     let result = tokio::time::timeout(Duration::from_secs(5), async {
-        tokio::process::Command::new("sudo")
-            .args(["-n", "dmesg"])
-            .output()
-            .await
+        tokio::process::Command::new("dmesg").output().await
     })
     .await;
     match result {
@@ -448,11 +445,11 @@ async fn check_host_oom(pid: u32) -> bool {
             host_dmesg_indicates_oom(&String::from_utf8_lossy(&out.stdout), pid)
         }
         Ok(Ok(out)) => {
-            warn!(pid, exit_code = out.status.code(), "sudo dmesg failed");
+            warn!(pid, exit_code = out.status.code(), "dmesg failed");
             false
         }
         Ok(Err(e)) => {
-            warn!(pid, error = %e, "failed to run sudo dmesg for OOM check");
+            warn!(pid, error = %e, "failed to run dmesg for OOM check");
             false
         }
         Err(_) => {

@@ -10,6 +10,7 @@ import {
 import {
   getConnectorFirewall,
   getDefaultFirewallPolicies,
+  groupPermissionsByCategory,
   isFirewallConnectorType,
   CONNECTOR_TYPES,
   type ConnectorType,
@@ -163,6 +164,16 @@ export function FirewallPermissionsDrawer({
   const [saving, setSaving] = useState(false);
   const permissions = config ? sortPermissions(extractPermissions(config)) : [];
   const policies = allPolicies[ref] ?? {};
+  const groups = config
+    ? (groupPermissionsByCategory(extractPermissions(config), ref)?.map(
+        (group) => {
+          return {
+            ...group,
+            permissions: sortPermissions(group.permissions),
+          };
+        },
+      ) ?? null)
+    : null;
 
   const handlePolicyChange = (name: string, policy: PermissionPolicy) => {
     setAllPolicies({
@@ -174,6 +185,17 @@ export function FirewallPermissionsDrawer({
   const handleSetAll = (policy: PermissionPolicy) => {
     const next: Record<string, PermissionPolicy> = {};
     for (const p of permissions) {
+      next[p.name] = policy;
+    }
+    setAllPolicies({ ...allPolicies, [ref]: next });
+  };
+
+  const handleSetGroupAll = (
+    groupPerms: FirewallPermission[],
+    policy: PermissionPolicy,
+  ) => {
+    const next = { ...policies };
+    for (const p of groupPerms) {
       next[p.name] = policy;
     }
     setAllPolicies({ ...allPolicies, [ref]: next });
@@ -265,34 +287,110 @@ export function FirewallPermissionsDrawer({
                 setScrolled(target.scrollTop > 0);
               }}
             >
-              {permissions.map((perm, idx) => {
-                const pol = policies[perm.name] ?? "allow";
-                return (
-                  <div key={perm.name}>
-                    {idx > 0 && (
-                      <div className="mx-3 border-t border-border/40" />
-                    )}
-                    <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-md hover:bg-muted/50 transition-colors">
-                      <div className="min-w-0 flex-1">
-                        <code className="text-xs font-medium text-foreground truncate block">
-                          {perm.name}
-                        </code>
-                        {perm.description && (
-                          <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
-                            {perm.description}
-                          </p>
+              {groups
+                ? groups.map((group, groupIdx) => {
+                    return (
+                      <div key={group.category}>
+                        {groupIdx > 0 && (
+                          <div className="mx-3 border-t border-border/40 my-1" />
                         )}
+                        <div className="flex items-center justify-between px-3 py-2">
+                          <span className="text-xs font-medium text-foreground">
+                            {group.category} ({group.permissions.length})
+                          </span>
+                          <span className="inline-flex shrink-0 rounded-md overflow-hidden text-xs font-medium zero-border">
+                            {POLICY_OPTIONS.map((opt, idx) => {
+                              return (
+                                <button
+                                  key={opt.value}
+                                  type="button"
+                                  style={
+                                    idx > 0
+                                      ? {
+                                          borderLeft:
+                                            "0.7px solid hsl(var(--gray-400))",
+                                        }
+                                      : undefined
+                                  }
+                                  onClick={() => {
+                                    return handleSetGroupAll(
+                                      group.permissions,
+                                      opt.value,
+                                    );
+                                  }}
+                                  className="flex items-center gap-1 px-2.5 py-1.5 transition-colors text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                                >
+                                  {opt.value === "allow" && (
+                                    <IconCheck size={12} stroke={2.5} />
+                                  )}
+                                  {opt.value === "deny" && (
+                                    <IconBan size={12} stroke={2.5} />
+                                  )}
+                                  {opt.label}
+                                </button>
+                              );
+                            })}
+                          </span>
+                        </div>
+                        {group.permissions.map((perm, idx) => {
+                          const pol = policies[perm.name] ?? "allow";
+                          return (
+                            <div key={perm.name}>
+                              {idx > 0 && (
+                                <div className="mx-3 border-t border-border/40" />
+                              )}
+                              <div className="flex items-center gap-2.5 px-3 py-2.5 pl-6 rounded-md hover:bg-muted/50 transition-colors">
+                                <div className="min-w-0 flex-1">
+                                  <code className="text-xs font-medium text-foreground truncate block">
+                                    {perm.name}
+                                  </code>
+                                  {perm.description && (
+                                    <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
+                                      {perm.description}
+                                    </p>
+                                  )}
+                                </div>
+                                <PolicyPill
+                                  policy={pol}
+                                  onChange={(p) => {
+                                    return handlePolicyChange(perm.name, p);
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                      <PolicyPill
-                        policy={pol}
-                        onChange={(p) => {
-                          return handlePolicyChange(perm.name, p);
-                        }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
+                    );
+                  })
+                : permissions.map((perm, idx) => {
+                    const pol = policies[perm.name] ?? "allow";
+                    return (
+                      <div key={perm.name}>
+                        {idx > 0 && (
+                          <div className="mx-3 border-t border-border/40" />
+                        )}
+                        <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-md hover:bg-muted/50 transition-colors">
+                          <div className="min-w-0 flex-1">
+                            <code className="text-xs font-medium text-foreground truncate block">
+                              {perm.name}
+                            </code>
+                            {perm.description && (
+                              <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
+                                {perm.description}
+                              </p>
+                            )}
+                          </div>
+                          <PolicyPill
+                            policy={pol}
+                            onChange={(p) => {
+                              return handlePolicyChange(perm.name, p);
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
             </div>
           </div>
         )}

@@ -56,7 +56,7 @@ In local mode, webhooks go nowhere (no web server), but VM execution still works
 | `vm0/default` | 2 | 2048 MB | CLI agent, code generation, browser automation |
 
 Profile definitions: `crates/runner/src/profile.rs`
-Runner config on host: `~/.vm0-runner/runners/<name>/runner.yaml`
+Runner config on host: `/var/lib/vm0-runner/runners/<name>/runner.yaml`
 
 ## Testing Workflow
 
@@ -87,10 +87,10 @@ Job logs are stored on the metal host:
 
 ```bash
 # System log (guest-agent output including command results)
-scripts/cf-ssh.sh <host> -- 'cat ~/.vm0-runner/logs/system-<run-id>.log'
+scripts/cf-ssh.sh <host> -- 'sudo cat /var/lib/vm0-runner/logs/system-<run-id>.log'
 
 # Network log (mitmproxy HTTP activity)
-scripts/cf-ssh.sh <host> -- 'cat ~/.vm0-runner/logs/network-<run-id>.jsonl'
+scripts/cf-ssh.sh <host> -- 'sudo cat /var/lib/vm0-runner/logs/network-<run-id>.jsonl'
 
 # Runner service log
 scripts/cf-ssh.sh <host> -- 'journalctl -u vm0-runner-<name> --since "5 minutes ago"'
@@ -122,7 +122,7 @@ Example: 16 vCPU / 32 GB host can run:
 scripts/cf-ssh.sh <host> [-- <command>]
 
 # Examples
-scripts/cf-ssh.sh local-1.aws.vm3.ai -- 'cat ~/.vm0-runner/runners/<name>/status.json'
+scripts/cf-ssh.sh local-1.aws.vm3.ai -- 'sudo cat /var/lib/vm0-runner/runners/<name>/status.json'
 scripts/cf-ssh.sh local-1.aws.vm3.ai -- 'nproc && free -m'
 ```
 
@@ -138,12 +138,12 @@ Usually mitmproxy upstream TLS verification failure. Check the system log for `C
 mitmproxy cannot verify upstream server's TLS certificate. The standalone mitmproxy binary bundles its own CA store which may be incomplete. The runner passes `ssl_verify_upstream_trusted_ca=/etc/ssl/certs/ca-certificates.crt` to use the host's system CA store instead.
 
 #### No network log file
-If `~/.vm0-runner/logs/network-<run-id>.jsonl` doesn't exist, mitmproxy didn't intercept the traffic at HTTP level. Check:
-1. Is the VM registered in proxy registry? (`cat ~/.vm0-runner/runners/<name>/proxy-registry.json`)
+If `/var/lib/vm0-runner/logs/network-<run-id>.jsonl` doesn't exist, mitmproxy didn't intercept the traffic at HTTP level. Check:
+1. Is the VM registered in proxy registry? (`sudo cat /var/lib/vm0-runner/runners/<name>/proxy-registry.json`)
 2. Are iptables rules redirecting the VM's subnet to the correct mitmproxy port?
 
 #### Job stuck / not picked up
-In local mode, runner watches `~/.vm0-runner/groups/<group>/` for `.job` files. Check:
+In local mode, runner watches `/var/lib/vm0-runner/groups/<group>/` for `.job` files. Check:
 1. Is the runner service running? `systemctl status vm0-runner-<name>`
 2. Is it in local mode? Check for `--local` in the service command
 

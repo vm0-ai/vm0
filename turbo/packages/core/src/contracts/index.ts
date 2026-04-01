@@ -359,6 +359,7 @@ export {
   getConnectorSecretsForAuthMethod,
   getConnectorSecretNames,
   getConnectorEnvironmentMapping,
+  getEligibleConnectorTypes,
   getConnectorDerivedNames,
   getConnectorProvidedSecretNames,
   getConnectorManagedSecretNames,
@@ -388,6 +389,7 @@ export {
 } from "./connectors";
 
 export {
+  basicAuthTemplateRe,
   extractSecretNamesFromApis,
   firewallPermissionSchema,
   firewallApiSchema,

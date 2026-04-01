@@ -429,30 +429,31 @@ jobs:
         run: |
           REMOTE="${METAL_USER}@${HOST}"
           # shellcheck disable=SC2088
-          BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
+          BIN_DIR="/var/lib/vm0-runner/bin/${JOB_REF}"
           TARGET_DIR="crates/target/${TARGET_TRIPLE}/${CARGO_PROFILE}"
 
           # Clean previous run artifacts and upload runner (guests are embedded)
           echo "=== Deploying runner to ${HOST}:${BIN_DIR} ==="
           # shellcheck disable=SC2029
-          ssh "$REMOTE" "rm -rf ${BIN_DIR} ~/.vm0-runner/runners/${JOB_REF}-bench ~/.vm0-runner/runners/${JOB_REF}-local && mkdir -p ${BIN_DIR}"
-          scp "${TARGET_DIR}/runner" "${REMOTE}:${BIN_DIR}/"
+          ssh "$REMOTE" "sudo rm -rf ${BIN_DIR} /var/lib/vm0-runner/runners/${JOB_REF}-bench /var/lib/vm0-runner/runners/${JOB_REF}-local && sudo mkdir -p ${BIN_DIR}"
+          # shellcheck disable=SC2029
+          < "${TARGET_DIR}/runner" ssh "$REMOTE" "sudo install -m 755 /dev/stdin ${BIN_DIR}/runner"
 
           # Clean up old rootfs/snapshots, keep the 3 most recent deploys
           # shellcheck disable=SC2029
-          ssh "$REMOTE" "${BIN_DIR}/runner gc --keep-latest 3"
+          ssh "$REMOTE" "sudo ${BIN_DIR}/runner gc --keep-latest 3"
 
           # Run setup (downloads firecracker/kernel/mitmdump, cached + idempotent)
           echo "=== Running setup ==="
           # shellcheck disable=SC2029
-          ssh "$REMOTE" "${BIN_DIR}/runner setup"
+          ssh "$REMOTE" "sudo ${BIN_DIR}/runner setup"
 
           # Run build (rootfs via Docker + snapshot via Firecracker)
           # Use tee to stream output in real-time while capturing for hash extraction
           echo "=== Building vm0/default ==="
           BUILD_LOG_DEFAULT=$(mktemp)
           # shellcheck disable=SC2029
-          ssh "$REMOTE" "${BIN_DIR}/runner build --profile vm0/default" | tee "$BUILD_LOG_DEFAULT"
+          ssh "$REMOTE" "sudo ${BIN_DIR}/runner build --profile vm0/default" | tee "$BUILD_LOG_DEFAULT"
           DEFAULT_ROOTFS_HASH=$(grep '^rootfs_hash=' "$BUILD_LOG_DEFAULT" | cut -d= -f2)
           DEFAULT_SNAPSHOT_HASH=$(grep '^snapshot_hash=' "$BUILD_LOG_DEFAULT" | cut -d= -f2)
           rm -f "$BUILD_LOG_DEFAULT"
@@ -489,13 +490,13 @@ jobs:
         run: |
           REMOTE="${METAL_USER}@${HOST}"
           # shellcheck disable=SC2088
-          BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
+          BIN_DIR="/var/lib/vm0-runner/bin/${JOB_REF}"
           # shellcheck disable=SC2088
-          RUNNER_DIR="~/.vm0-runner/runners/${JOB_REF}-bench"
+          RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}-bench"
 
           echo "=== Generating config ==="
           # shellcheck disable=SC2029
-          ssh "$REMOTE" "${BIN_DIR}/runner config \
+          ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
             --profile vm0/default \
             --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
             --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
@@ -507,14 +508,14 @@ jobs:
 
           echo "=== Running benchmark (default) ==="
           # shellcheck disable=SC2029
-          ssh "$REMOTE" "${BIN_DIR}/runner benchmark \
+          ssh "$REMOTE" "sudo ${BIN_DIR}/runner benchmark \
             --config ${RUNNER_DIR}/runner.yaml \
             --profile vm0/default \
             'curl -sf --max-time 10 https://httpbin.org/get'"
 
           echo "=== Running benchmark (browser automation) ==="
           # shellcheck disable=SC2029
-          ssh "$REMOTE" "${BIN_DIR}/runner benchmark \
+          ssh "$REMOTE" "sudo ${BIN_DIR}/runner benchmark \
             --config ${RUNNER_DIR}/runner.yaml \
             --profile vm0/default \
             'agent-browser open https://github.com/ && agent-browser get title && agent-browser close'"
@@ -544,11 +545,11 @@ jobs:
         run: |
           REMOTE="${METAL_USER}@${HOST}"
           # shellcheck disable=SC2088
-          BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
+          BIN_DIR="/var/lib/vm0-runner/bin/${JOB_REF}"
 
           echo "=== Generating config ==="
           # shellcheck disable=SC2029
-          ssh "$REMOTE" "${BIN_DIR}/runner config \
+          ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
             --profile vm0/default \
             --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
             --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
@@ -562,7 +563,7 @@ jobs:
           echo "=== Running exec test ==="
           ssh "$REMOTE" bash -s -- "${BIN_DIR}" "${JOB_REF}" <<'REMOTE_SCRIPT'
           BIN_DIR=$1; JOB_REF=$2
-          RUNNER_DIR="$HOME/.vm0-runner/runners/${JOB_REF}-exec"
+          RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}-exec"
           SVC="${JOB_REF}-exec"
           GROUP="vm0/exec-${JOB_REF}"
 
@@ -570,25 +571,25 @@ jobs:
 
           cleanup() {
             echo "--- Cleanup ---"
-            "$BIN_DIR/runner" service stop --name "$SVC" 2>/dev/null || true
+            sudo "$BIN_DIR/runner" service stop --name "$SVC" 2>/dev/null || true
           }
           trap cleanup EXIT
 
           # Start transient runner service
           echo "--- Starting runner ---"
-          "$BIN_DIR/runner" service start --name "$SVC" \
+          sudo "$BIN_DIR/runner" service start --name "$SVC" \
             --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true
 
           # Submit a long-running job in background (keeps sandbox alive during tests)
           echo "--- Submitting long-running job ---"
-          "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'sleep 120 && echo done' &
+          sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'sleep 120 && echo done' &
 
           # Wait for OUR runner's sandbox to have a control socket.
           # Read the run ID from our runner's status.json (not from /run/vm0/sock/)
           # to avoid matching sandboxes from parallel CI jobs (benchmark, upgrade).
           echo "--- Waiting for sandbox control socket ---"
           for i in $(seq 1 60); do
-            RUN_ID=$(grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' \
+            RUN_ID=$(sudo grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' \
               "$RUNNER_DIR/status.json" 2>/dev/null | head -1)
             [ -n "$RUN_ID" ] && [ -S "/run/vm0/sock/$RUN_ID/control.sock" ] && break
             RUN_ID=""
@@ -599,24 +600,24 @@ jobs:
 
           # Test 1: basic exec
           echo "--- Test: basic exec ---"
-          OUTPUT=$("$BIN_DIR/runner" exec "$RUN_ID" -- echo hello-from-exec)
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- echo hello-from-exec)
           echo "$OUTPUT" | grep -q "hello-from-exec" || fail "expected 'hello-from-exec', got: $OUTPUT"
           echo "PASS: basic exec"
 
           # Test 2: exit code propagation
           echo "--- Test: exit code propagation ---"
-          "$BIN_DIR/runner" exec "$RUN_ID" -- false && fail "expected non-zero exit"
+          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- false && fail "expected non-zero exit"
           echo "PASS: exit code propagation"
 
           # Test 3: prefix matching
           echo "--- Test: prefix matching ---"
           PREFIX=$(echo "$RUN_ID" | cut -c1-8)
-          OUTPUT=$("$BIN_DIR/runner" exec "$PREFIX" -- hostname)
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$PREFIX" -- hostname)
           [ -n "$OUTPUT" ] || fail "prefix match returned empty output"
           echo "PASS: prefix matching"
 
           # Stop transient service (kills sandbox, submit terminates naturally)
-          "$BIN_DIR/runner" service stop --name "$SVC"
+          sudo "$BIN_DIR/runner" service stop --name "$SVC"
           trap - EXIT
 
           echo "=== Exec test passed ==="
@@ -647,11 +648,11 @@ jobs:
         run: |
           REMOTE="${METAL_USER}@${HOST}"
           # shellcheck disable=SC2088
-          BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
+          BIN_DIR="/var/lib/vm0-runner/bin/${JOB_REF}"
 
           echo "=== Generating config ==="
           # shellcheck disable=SC2029
-          ssh "$REMOTE" "${BIN_DIR}/runner config \
+          ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
             --profile vm0/default \
             --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
             --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
@@ -665,7 +666,7 @@ jobs:
           echo "=== Running cancel test ==="
           ssh "$REMOTE" bash -s -- "${BIN_DIR}" "${JOB_REF}" <<'REMOTE_SCRIPT'
           BIN_DIR=$1; JOB_REF=$2
-          RUNNER_DIR="$HOME/.vm0-runner/runners/${JOB_REF}-cancel"
+          RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}-cancel"
           SVC="${JOB_REF}-cancel"
           GROUP="vm0/cancel-${JOB_REF}"
 
@@ -673,24 +674,24 @@ jobs:
 
           cleanup() {
             echo "--- Cleanup ---"
-            "$BIN_DIR/runner" service stop --name "$SVC" 2>/dev/null || true
+            sudo "$BIN_DIR/runner" service stop --name "$SVC" 2>/dev/null || true
           }
           trap cleanup EXIT
 
           # Start transient runner service
           echo "--- Starting runner ---"
-          "$BIN_DIR/runner" service start --name "$SVC" \
+          sudo "$BIN_DIR/runner" service start --name "$SVC" \
             --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true
 
           # Submit a long-running job in background
           echo "--- Submitting long-running job ---"
-          "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'sleep 120 && echo done' &
+          sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'sleep 120 && echo done' &
           SUBMIT_PID=$!
 
           # Wait for sandbox to be running
           echo "--- Waiting for sandbox ---"
           for i in $(seq 1 60); do
-            RUN_ID=$(grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' \
+            RUN_ID=$(sudo grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' \
               "$RUNNER_DIR/status.json" 2>/dev/null | head -1)
             [ -n "$RUN_ID" ] && [ -S "/run/vm0/sock/$RUN_ID/control.sock" ] && break
             RUN_ID=""
@@ -701,7 +702,7 @@ jobs:
 
           # Test 1: cancel the job via runner local cancel
           echo "--- Test: runner local cancel ---"
-          "$BIN_DIR/runner" local cancel --group "$GROUP" "$RUN_ID" || fail "cancel command failed"
+          sudo "$BIN_DIR/runner" local cancel --group "$GROUP" "$RUN_ID" || fail "cancel command failed"
           echo "PASS: cancel command succeeded"
 
           # Test 2: submit should exit quickly (not after 300s timeout)
@@ -718,7 +719,7 @@ jobs:
           echo "PASS: submit exited with non-zero after cancel (${ELAPSED}s)"
 
           # Stop transient service
-          "$BIN_DIR/runner" service stop --name "$SVC"
+          sudo "$BIN_DIR/runner" service stop --name "$SVC"
           trap - EXIT
 
           echo "=== Cancel test passed ==="
@@ -749,11 +750,11 @@ jobs:
         run: |
           REMOTE="${METAL_USER}@${HOST}"
           # shellcheck disable=SC2088
-          BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
+          BIN_DIR="/var/lib/vm0-runner/bin/${JOB_REF}"
 
           echo "=== Generating config ==="
           # shellcheck disable=SC2029
-          ssh "$REMOTE" "${BIN_DIR}/runner config \
+          ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
             --profile vm0/default \
             --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
             --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
@@ -767,7 +768,7 @@ jobs:
           echo "=== Running balloon test ==="
           ssh "$REMOTE" bash -s -- "${BIN_DIR}" "${JOB_REF}" <<'REMOTE_SCRIPT'
           BIN_DIR=$1; JOB_REF=$2
-          RUNNER_DIR="$HOME/.vm0-runner/runners/${JOB_REF}-balloon"
+          RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}-balloon"
           SVC="${JOB_REF}-balloon"
           GROUP="vm0/balloon-${JOB_REF}"
 
@@ -775,23 +776,23 @@ jobs:
 
           cleanup() {
             echo "--- Cleanup ---"
-            "$BIN_DIR/runner" service stop --name "$SVC" 2>/dev/null || true
+            sudo "$BIN_DIR/runner" service stop --name "$SVC" 2>/dev/null || true
           }
           trap cleanup EXIT
 
           # Start transient runner service
           echo "--- Starting runner ---"
-          "$BIN_DIR/runner" service start --name "$SVC" \
+          sudo "$BIN_DIR/runner" service start --name "$SVC" \
             --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true
 
           # Submit a long-running job in background (keeps sandbox alive during tests)
           echo "--- Submitting long-running job ---"
-          "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'sleep 120 && echo done' &
+          sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'sleep 120 && echo done' &
 
           # Wait for sandbox control socket
           echo "--- Waiting for sandbox control socket ---"
           for i in $(seq 1 60); do
-            RUN_ID=$(grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' \
+            RUN_ID=$(sudo grep -oE '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}' \
               "$RUNNER_DIR/status.json" 2>/dev/null | head -1)
             [ -n "$RUN_ID" ] && [ -S "/run/vm0/sock/$RUN_ID/control.sock" ] && break
             RUN_ID=""
@@ -804,13 +805,13 @@ jobs:
 
           # Helper: read current balloon actual_mib
           balloon_mib() {
-            curl -sf --unix-socket "$API_SOCK" http://localhost/balloon/statistics \
+            sudo curl -sf --unix-socket "$API_SOCK" http://localhost/balloon/statistics \
               | jq '.actual_mib // 0' 2>/dev/null || echo 0
           }
 
           # Helper: read guest MemAvailable in kB
           guest_avail_kb() {
-            "$BIN_DIR/runner" exec "$RUN_ID" -- grep MemAvailable /proc/meminfo \
+            sudo "$BIN_DIR/runner" exec "$RUN_ID" -- grep MemAvailable /proc/meminfo \
               | tr -s ' ' | cut -d' ' -f2
           }
 
@@ -856,9 +857,9 @@ jobs:
           # Write script via base64 to avoid quoting issues with runner exec.
           echo "--- Test 2: balloon deflate under memory pressure ---"
           ALLOC_B64=$(printf 'import ctypes,time\nb=bytearray(300*1024*1024)\nctypes.memset((ctypes.c_char*len(b)).from_buffer(b),1,len(b))\ntime.sleep(120)\n' | base64 -w0)
-          "$BIN_DIR/runner" exec "$RUN_ID" -- "echo $ALLOC_B64 | base64 -d > /tmp/alloc.py"
+          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- "echo $ALLOC_B64 | base64 -d > /tmp/alloc.py"
           # Run allocator in guest foreground, host background
-          "$BIN_DIR/runner" exec "$RUN_ID" -- python3 /tmp/alloc.py &
+          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- python3 /tmp/alloc.py &
           ALLOC_PID=$!
 
           # Wait for balloon to deflate (actual_mib decreases)
@@ -879,7 +880,7 @@ jobs:
           # then kill host-side exec. The pkill may fail with "Operation not permitted"
           # but the host-side kill terminates the vsock session which kills the process.
           echo "--- Test 3: balloon re-inflate after pressure release ---"
-          "$BIN_DIR/runner" exec "$RUN_ID" -- "pkill -f alloc.py" 2>/dev/null || true
+          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- "pkill -f alloc.py" 2>/dev/null || true
           kill $ALLOC_PID 2>/dev/null || true
           wait $ALLOC_PID 2>/dev/null || true
 
@@ -898,7 +899,7 @@ jobs:
           echo "PASS: balloon re-inflated from ${DEFLATE_MIB} to ${ACTUAL} MiB (midpoint=${MIDPOINT})"
 
           # Stop transient service
-          "$BIN_DIR/runner" service stop --name "$SVC"
+          sudo "$BIN_DIR/runner" service stop --name "$SVC"
           trap - EXIT
 
           echo "=== Balloon test passed ==="
@@ -929,13 +930,13 @@ jobs:
         run: |
           REMOTE="${METAL_USER}@${HOST}"
           # shellcheck disable=SC2088
-          BIN_DIR="~/.vm0-runner/bin/${JOB_REF}"
+          BIN_DIR="/var/lib/vm0-runner/bin/${JOB_REF}"
           GROUP="vm0/upgrade-${JOB_REF}"
 
           echo "=== Generating configs for runner A and B ==="
           for SUFFIX in upgrade-a upgrade-b; do
             # shellcheck disable=SC2029
-            ssh "$REMOTE" "${BIN_DIR}/runner config \
+            ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
               --profile vm0/default \
               --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
               --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
@@ -950,8 +951,8 @@ jobs:
           echo "=== Running upgrade test ==="
           ssh "$REMOTE" bash -s -- "${BIN_DIR}" "${JOB_REF}" "${GROUP}" <<'REMOTE_SCRIPT'
           BIN_DIR=$1; JOB_REF=$2; GROUP=$3
-          RUNNER_DIR_A="$HOME/.vm0-runner/runners/${JOB_REF}-upgrade-a"
-          RUNNER_DIR_B="$HOME/.vm0-runner/runners/${JOB_REF}-upgrade-b"
+          RUNNER_DIR_A="/var/lib/vm0-runner/runners/${JOB_REF}-upgrade-a"
+          RUNNER_DIR_B="/var/lib/vm0-runner/runners/${JOB_REF}-upgrade-b"
           SVC_A="${JOB_REF}-upgrade-a"
           SVC_B="${JOB_REF}-upgrade-b"
 
@@ -960,8 +961,8 @@ jobs:
 
           cleanup() {
             echo "--- Cleanup: uninstalling services ---"
-            "$BIN_DIR/runner" service uninstall --name "$SVC_A" 2>/dev/null || true
-            "$BIN_DIR/runner" service uninstall --name "$SVC_B" 2>/dev/null || true
+            sudo "$BIN_DIR/runner" service uninstall --name "$SVC_A" 2>/dev/null || true
+            sudo "$BIN_DIR/runner" service uninstall --name "$SVC_B" 2>/dev/null || true
             if [ "$FAILED" -ne 0 ]; then
               echo "--- Cleanup: dumping logs (test failed) ---"
               journalctl --unit "vm0-runner-${SVC_A}" --lines 50 --no-pager 2>/dev/null || true
@@ -971,32 +972,32 @@ jobs:
           trap cleanup EXIT
 
           # Pre-cleanup: uninstall leftover services from previous CI runs
-          "$BIN_DIR/runner" service uninstall --name "$SVC_A" 2>/dev/null || true
-          "$BIN_DIR/runner" service uninstall --name "$SVC_B" 2>/dev/null || true
+          sudo "$BIN_DIR/runner" service uninstall --name "$SVC_A" 2>/dev/null || true
+          sudo "$BIN_DIR/runner" service uninstall --name "$SVC_B" 2>/dev/null || true
 
           # 1. Install runner A
           echo "--- Installing runner A ---"
-          "$BIN_DIR/runner" service install --name "$SVC_A" \
+          sudo "$BIN_DIR/runner" service install --name "$SVC_A" \
             --config "$RUNNER_DIR_A/runner.yaml" --local --env USE_MOCK_CLAUDE=true
 
           # 2. Submit job 1 (background, long-running) → only A running
           echo "--- Submit job 1 (only A, long-running) ---"
-          "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'sleep 12 && echo job1' &
+          sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'sleep 12 && echo job1' &
           SUBMIT1_PID=$!
 
           # 3. Install runner B while job 1 still in-flight on A
           echo "--- Installing runner B ---"
-          "$BIN_DIR/runner" service install --name "$SVC_B" \
+          sudo "$BIN_DIR/runner" service install --name "$SVC_B" \
             --config "$RUNNER_DIR_B/runner.yaml" --local --env USE_MOCK_CLAUDE=true
 
           # 4. Submit job 2 (background, long-running) → A and B compete
           echo "--- Submit job 2 (A and B compete, long-running) ---"
-          "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'sleep 12 && echo job2' &
+          sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'sleep 12 && echo job2' &
           SUBMIT2_PID=$!
 
           # 5. Drain A while jobs may be in-flight
           echo "--- Draining runner A ---"
-          "$BIN_DIR/runner" service drain --name "$SVC_A"
+          sudo "$BIN_DIR/runner" service drain --name "$SVC_A"
 
           # 6. Verify both jobs complete despite drain
           echo "--- Waiting for job 1 ---"
@@ -1006,17 +1007,17 @@ jobs:
 
           # 7. Uninstall A (systemctl stop blocks until drain finishes)
           echo "--- Uninstalling runner A ---"
-          "$BIN_DIR/runner" service uninstall --name "$SVC_A"
+          sudo "$BIN_DIR/runner" service uninstall --name "$SVC_A"
 
           # 8. Submit job 3 → only B is left
           echo "--- Submit job 3 (only B) ---"
-          "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'echo job3' || fail "Job 3 failed"
+          sudo "$BIN_DIR/runner" local submit --group "$GROUP" --prompt 'echo job3' || fail "Job 3 failed"
 
           # 9. Drain and uninstall B
           echo "--- Draining runner B ---"
-          "$BIN_DIR/runner" service drain --name "$SVC_B"
+          sudo "$BIN_DIR/runner" service drain --name "$SVC_B"
           echo "--- Uninstalling runner B ---"
-          "$BIN_DIR/runner" service uninstall --name "$SVC_B"
+          sudo "$BIN_DIR/runner" service uninstall --name "$SVC_B"
           trap - EXIT
 
           echo "=== Upgrade test passed ==="

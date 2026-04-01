@@ -213,8 +213,13 @@ describe("POST /api/zero/integrations/slack/message", () => {
       blocks: Array<{ type: string; elements?: Array<{ text: string }> }>;
     };
 
-    // Last two blocks should be divider + context with "Sent via My Assistant"
+    // Text-only message should be wrapped in a section block + footer
     const blocks = call.blocks;
+    expect(blocks).toHaveLength(3);
+    expect(blocks[0]!.type).toBe("section");
+    expect((blocks[0] as unknown as { text: { text: string } }).text.text).toBe(
+      "Hello",
+    );
     expect(blocks[blocks.length - 2]!.type).toBe("divider");
     const footerCtx = blocks[blocks.length - 1]!;
     expect(footerCtx.type).toBe("context");

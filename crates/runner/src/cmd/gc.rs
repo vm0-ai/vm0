@@ -474,7 +474,7 @@ async fn gc_versions(home: &HomePaths, dry_run: bool) -> RunnerResult<Vec<String
 ///
 /// Two passes:
 /// 1. Remove orphaned `cow-*` dm-snapshot targets (`dmsetup remove`).
-/// 2. Detach orphaned loop devices backing files under `~/.vm0-runner/`.
+/// 2. Detach orphaned loop devices backing files under `/var/lib/vm0-runner/`.
 ///    After pass 1 frees dm-snapshot references, previously-busy COW
 ///    loop devices become detachable.  Since Linux v3.7, `losetup -d`
 ///    sets AUTOCLEAR instead of returning EBUSY, but the device stays
@@ -503,7 +503,7 @@ fn gc_block_cow(dry_run: bool) -> RunnerResult<u32> {
     // Pass 2: detach orphaned loop devices.
     //
     // Try to detach ALL loop devices whose backing files are under
-    // `~/.vm0-runner/`.  Since Linux v3.7, `losetup -d` on a busy
+    // `/var/lib/vm0-runner/`.  Since Linux v3.7, `losetup -d` on a busy
     // device sets LO_FLAGS_AUTOCLEAR and returns success instead of
     // EBUSY, so the call may "succeed" for active devices too.
     // This is harmless — the device stays alive as long as any
@@ -523,7 +523,18 @@ fn gc_block_cow(dry_run: bool) -> RunnerResult<u32> {
         Ok(paths) => format!("{}/", paths.root().display()),
         Err(_) => return Ok(removed),
     };
-    for (loop_dev, backing) in parse_losetup(&losetup_list(), &runner_root) {
+    let losetup_output = losetup_list();
+    // Also clean up loop devices from the legacy data directory
+    // ($HOME/.vm0-runner/) left behind by older runner versions.
+    let legacy_root = format!(
+        "{}/.vm0-runner/",
+        std::env::var("HOME").unwrap_or_else(|_| "/root".to_owned())
+    );
+    let mut loops = parse_losetup(&losetup_output, &runner_root);
+    if legacy_root != runner_root {
+        loops.extend(parse_losetup(&losetup_output, &legacy_root));
+    }
+    for (loop_dev, backing) in loops {
         if dry_run {
             info!(loop_dev, backing, "would detach orphaned loop device");
             removed += 1;
@@ -563,10 +574,10 @@ pub(crate) fn parse_dm_targets(output: &Option<String>, prefix: &str) -> Vec<Str
         .collect()
 }
 
-/// Run `sudo dmsetup ls --target <target_type>`, return stdout if successful.
+/// Run `dmsetup ls --target <target_type>`, return stdout if successful.
 fn dmsetup_ls(target_type: &str) -> Option<String> {
-    let output = match std::process::Command::new("sudo")
-        .args(["dmsetup", "ls", "--target", target_type])
+    let output = match std::process::Command::new("dmsetup")
+        .args(["ls", "--target", target_type])
         .output()
     {
         Ok(o) => o,
@@ -583,10 +594,10 @@ fn dmsetup_ls(target_type: &str) -> Option<String> {
     Some(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
-/// Run `sudo dmsetup remove <name>`, return true if successful.
+/// Run `dmsetup remove <name>`, return true if successful.
 fn dmsetup_remove(name: &str) -> bool {
-    match std::process::Command::new("sudo")
-        .args(["dmsetup", "remove", name])
+    match std::process::Command::new("dmsetup")
+        .args(["remove", name])
         .output()
     {
         Ok(o) if o.status.success() => true,
@@ -602,12 +613,9 @@ fn dmsetup_remove(name: &str) -> bool {
     }
 }
 
-/// Run `sudo losetup -a`, return stdout if successful.
+/// Run `losetup -a`, return stdout if successful.
 fn losetup_list() -> Option<String> {
-    let output = match std::process::Command::new("sudo")
-        .args(["losetup", "-a"])
-        .output()
-    {
+    let output = match std::process::Command::new("losetup").args(["-a"]).output() {
         Ok(o) => o,
         Err(e) => {
             warn!(error = %e, "losetup not available — skipping loop device GC");
@@ -634,7 +642,7 @@ pub(crate) fn parse_losetup<'a>(
     stdout
         .lines()
         .filter_map(|line| {
-            // Format: "/dev/loop5: [0048]:2345 (/home/ubuntu/.vm0-runner/...)"
+            // Format: "/dev/loop5: [0048]:2345 (/var/lib/vm0-runner/...)"
             let (dev, rest) = line.split_once(':')?;
             let start = rest.find('(')?;
             let end = rest.rfind(')')?;
@@ -653,10 +661,10 @@ pub(crate) fn parse_losetup<'a>(
         .collect()
 }
 
-/// Run `sudo losetup -d <device>`, return true if successful.
+/// Run `losetup -d <device>`, return true if successful.
 fn losetup_detach(device: &str) -> bool {
-    match std::process::Command::new("sudo")
-        .args(["losetup", "-d", device])
+    match std::process::Command::new("losetup")
+        .args(["-d", device])
         .output()
     {
         Ok(o) if o.status.success() => true,
@@ -1301,46 +1309,43 @@ mod tests {
     #[test]
     fn parse_losetup_filters_by_prefix() {
         let output = Some(
-            "/dev/loop1: [0048]:123 (/home/ubuntu/.vm0-runner/rootfs/abc/rootfs.ext4)\n\
-             /dev/loop5: [0048]:456 (/home/ubuntu/.vm0-runner/runners/pr-123/workspaces/xxx/cow.img)\n\
+            "/dev/loop1: [0048]:123 (/var/lib/vm0-runner/rootfs/abc/rootfs.ext4)\n\
+             /dev/loop5: [0048]:456 (/var/lib/vm0-runner/runners/pr-123/workspaces/xxx/cow.img)\n\
              /dev/loop0: [0048]:789 (/var/lib/snapd/snaps/amazon-ssm-agent_11798.snap)\n"
                 .to_string(),
         );
-        let pairs = parse_losetup(&output, "/home/ubuntu/.vm0-runner/");
+        let pairs = parse_losetup(&output, "/var/lib/vm0-runner/");
         assert_eq!(pairs.len(), 2);
         assert_eq!(pairs[0].0, "/dev/loop1");
-        assert_eq!(
-            pairs[0].1,
-            "/home/ubuntu/.vm0-runner/rootfs/abc/rootfs.ext4"
-        );
+        assert_eq!(pairs[0].1, "/var/lib/vm0-runner/rootfs/abc/rootfs.ext4");
         assert_eq!(pairs[1].0, "/dev/loop5");
     }
 
     #[test]
     fn parse_losetup_deleted_files() {
         let output = Some(
-            "/dev/loop347: [0048]:123 (/home/ubuntu/.vm0-runner/runners/pr-6521/workspaces/xxx/cow.img (deleted))\n"
+            "/dev/loop347: [0048]:123 (/var/lib/vm0-runner/runners/pr-6521/workspaces/xxx/cow.img (deleted))\n"
                 .to_string(),
         );
-        let pairs = parse_losetup(&output, "/home/ubuntu/.vm0-runner/");
+        let pairs = parse_losetup(&output, "/var/lib/vm0-runner/");
         assert_eq!(pairs.len(), 1);
         assert_eq!(pairs[0].0, "/dev/loop347");
         assert_eq!(
             pairs[0].1,
-            "/home/ubuntu/.vm0-runner/runners/pr-6521/workspaces/xxx/cow.img (deleted)"
+            "/var/lib/vm0-runner/runners/pr-6521/workspaces/xxx/cow.img (deleted)"
         );
     }
 
     #[test]
     fn parse_losetup_none() {
-        let pairs = parse_losetup(&None, "/home/ubuntu/.vm0-runner/");
+        let pairs = parse_losetup(&None, "/var/lib/vm0-runner/");
         assert!(pairs.is_empty());
     }
 
     #[test]
     fn parse_losetup_empty() {
         let output = Some(String::new());
-        let pairs = parse_losetup(&output, "/home/ubuntu/.vm0-runner/");
+        let pairs = parse_losetup(&output, "/var/lib/vm0-runner/");
         assert!(pairs.is_empty());
     }
 }

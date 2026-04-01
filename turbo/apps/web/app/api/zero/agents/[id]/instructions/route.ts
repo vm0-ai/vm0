@@ -223,12 +223,14 @@ const router = tsr.router(zeroAgentInstructionsContract, {
         id: agentComposes.id,
         name: agentComposes.name,
         content: agentComposeVersions.content,
+        customSkills: zeroAgents.customSkills,
       })
       .from(agentComposes)
       .leftJoin(
         agentComposeVersions,
         eq(agentComposes.headVersionId, agentComposeVersions.id),
       )
+      .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
       .where(
         and(
           eq(agentComposes.orgId, org.orgId),
@@ -259,7 +261,12 @@ const router = tsr.router(zeroAgentInstructionsContract, {
 
     // Rebuild compose from scratch so environment templates stay current,
     // then overlay new instructions.
-    const content = buildComposeContent(compose.name);
+    const content = buildComposeContent(
+      compose.name,
+      (compose.customSkills ?? []).map((name) => {
+        return { name };
+      }),
+    );
 
     const result = await serverSideCompose({
       userId,

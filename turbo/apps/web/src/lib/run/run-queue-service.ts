@@ -71,7 +71,6 @@ export async function enqueueRun(
         secretNames: params.secrets ? Object.keys(params.secrets) : null,
         resumedFromCheckpointId: params.resumedFromCheckpointId ?? null,
         continuedFromSessionId: params.sessionId ?? null,
-        modelProvider: params.modelProvider ?? null,
         lastHeartbeatAt: new Date(),
       })
       .returning();
@@ -211,15 +210,16 @@ async function dequeueNextAtomic(
       // Fetch all queue entries for this org (ordered FIFO).
       // Typically 0-2 entries; iterating in-transaction to skip
       // already-processed runs without releasing the advisory lock.
-      // JOIN agentRuns to read modelProvider for credit check.
+      // LEFT JOIN zeroRuns to read modelProvider for credit check.
       const rows = await tx.execute<{
         run_id: string;
         encrypted_params: string | null;
         model_provider: string | null;
       }>(
-        sql`SELECT q.run_id, q.encrypted_params, r.model_provider
+        sql`SELECT q.run_id, q.encrypted_params, zr.model_provider
          FROM agent_run_queue q
          JOIN agent_runs r ON r.id = q.run_id
+         LEFT JOIN zero_runs zr ON zr.id = r.id
          WHERE q.org_id = ${orgId}
          ORDER BY q.created_at ASC`,
       );

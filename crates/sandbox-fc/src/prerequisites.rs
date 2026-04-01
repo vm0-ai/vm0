@@ -3,7 +3,6 @@ use std::path::Path;
 
 use sandbox::SandboxError;
 
-use crate::command::{Privilege, exec};
 use crate::config::SnapshotConfig;
 use crate::paths::RUNTIME_DIR;
 
@@ -20,7 +19,7 @@ pub(crate) struct PrerequisiteConfig<'a> {
 
 /// Verify that all required system prerequisites are present.
 ///
-/// Checks firecracker binary, kernel, rootfs, `/dev/kvm`, network commands, and sudo access.
+/// Checks firecracker binary, kernel, rootfs, `/dev/kvm`, and network commands.
 /// Collects all failures and returns them in a single `BackendNotAvailable` error.
 pub(crate) async fn check_prerequisites(
     config: &PrerequisiteConfig<'_>,
@@ -38,8 +37,7 @@ pub(crate) async fn check_prerequisites(
     }
     check_kvm(&mut errors);
     check_required_commands(config, &mut errors);
-    check_sudo(&mut errors).await;
-    ensure_runtime_dir(&mut errors).await;
+    ensure_runtime_dir(&mut errors);
 
     if errors.is_empty() {
         Ok(())
@@ -90,34 +88,15 @@ fn check_required_commands(_config: &PrerequisiteConfig<'_>, errors: &mut Vec<St
     }
 }
 
-async fn check_sudo(errors: &mut Vec<String>) {
-    if exec("sudo", &["-n", "true"], Privilege::User)
-        .await
-        .is_err()
-    {
-        errors.push(
-            "root/sudo access required for network configuration; \
-             please run with sudo or configure sudoers"
-                .to_string(),
-        );
-    }
-}
-
 /// Create `/run/vm0` with mode 1777 (world-writable + sticky bit) if needed.
 ///
-/// `/run` is a tmpfs owned by root, so we need sudo. The operation is idempotent.
-async fn ensure_runtime_dir(errors: &mut Vec<String>) {
-    if exec("mkdir", &["-p", RUNTIME_DIR], Privilege::Sudo)
-        .await
-        .is_err()
-    {
-        errors.push(format!("failed to create {RUNTIME_DIR}"));
+/// Running as root, we can create and chmod directly without sudo.
+fn ensure_runtime_dir(errors: &mut Vec<String>) {
+    if let Err(e) = std::fs::create_dir_all(RUNTIME_DIR) {
+        errors.push(format!("failed to create {RUNTIME_DIR}: {e}"));
         return;
     }
-    if exec("chmod", &["1777", RUNTIME_DIR], Privilege::Sudo)
-        .await
-        .is_err()
-    {
-        errors.push(format!("failed to chmod {RUNTIME_DIR}"));
+    if let Err(e) = std::fs::set_permissions(RUNTIME_DIR, std::fs::Permissions::from_mode(0o1777)) {
+        errors.push(format!("failed to chmod {RUNTIME_DIR}: {e}"));
     }
 }

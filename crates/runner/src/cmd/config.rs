@@ -30,7 +30,7 @@ pub struct ConfigArgs {
     /// Runner group in vm0/<name> format (e.g. "vm0/production")
     #[arg(long)]
     group: String,
-    /// Runner directory name (under ~/.vm0-runner/runners/)
+    /// Runner directory name (under /var/lib/vm0-runner/runners/)
     #[arg(long)]
     runner_dirname: String,
 

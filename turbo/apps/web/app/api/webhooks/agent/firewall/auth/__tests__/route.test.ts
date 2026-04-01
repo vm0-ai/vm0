@@ -302,6 +302,204 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     });
   });
 
+  describe("Basic auth resolution", () => {
+    it("should resolve basic(secrets.USER, secrets.PASS) to Basic base64", async () => {
+      const encrypted = encryptTestSecrets({
+        USER: "admin",
+        PASS: "secret123",
+      });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: "${{ basic(secrets.USER, secrets.PASS) }}",
+            },
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      const expected = `Basic ${Buffer.from("admin:secret123").toString("base64")}`;
+      expect(data.headers.Authorization).toBe(expected);
+      expect(data.resolvedSecrets).toEqual(["PASS", "USER"]);
+    });
+
+    it("should resolve basic with empty password", async () => {
+      const encrypted = encryptTestSecrets({
+        STREAK_TOKEN: "my-api-key",
+      });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: "${{ basic(secrets.STREAK_TOKEN, ) }}",
+            },
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      const expected = `Basic ${Buffer.from("my-api-key:").toString("base64")}`;
+      expect(data.headers.Authorization).toBe(expected);
+      expect(data.resolvedSecrets).toEqual(["STREAK_TOKEN"]);
+    });
+
+    it("should resolve basic with empty username", async () => {
+      const encrypted = encryptTestSecrets({
+        TOKEN: "pass123",
+      });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: "${{ basic(, secrets.TOKEN) }}",
+            },
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      const expected = `Basic ${Buffer.from(":pass123").toString("base64")}`;
+      expect(data.headers.Authorization).toBe(expected);
+      expect(data.resolvedSecrets).toEqual(["TOKEN"]);
+    });
+
+    it("should resolve basic with mixed vars and secrets", async () => {
+      const encrypted = encryptTestSecrets({
+        API_TOKEN: "jira-token",
+      });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: "${{ basic(vars.EMAIL, secrets.API_TOKEN) }}",
+            },
+            vars: { EMAIL: "user@example.com" },
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      const expected = `Basic ${Buffer.from("user@example.com:jira-token").toString("base64")}`;
+      expect(data.headers.Authorization).toBe(expected);
+      // Only secrets appear in resolvedSecrets, not vars
+      expect(data.resolvedSecrets).toEqual(["API_TOKEN"]);
+    });
+
+    it("should resolve basic alongside regular templates", async () => {
+      const encrypted = encryptTestSecrets({
+        TOKEN: "streak-key",
+        OTHER: "other-val",
+      });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: "${{ basic(secrets.TOKEN, ) }}",
+              "X-Other": "${{ secrets.OTHER }}",
+            },
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      const expected = `Basic ${Buffer.from("streak-key:").toString("base64")}`;
+      expect(data.headers.Authorization).toBe(expected);
+      expect(data.headers["X-Other"]).toBe("other-val");
+      expect(data.resolvedSecrets).toEqual(["OTHER", "TOKEN"]);
+    });
+
+    it("should handle missing secret in basic() gracefully", async () => {
+      const encrypted = encryptTestSecrets({
+        USER: "admin",
+      });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: "${{ basic(secrets.USER, secrets.MISSING) }}",
+            },
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      // Missing secret resolves to empty string
+      const expected = `Basic ${Buffer.from("admin:").toString("base64")}`;
+      expect(data.headers.Authorization).toBe(expected);
+      expect(data.resolvedSecrets).toEqual(["MISSING", "USER"]);
+    });
+
+    it("should resolve basic with both args empty", async () => {
+      const encrypted = encryptTestSecrets({ KEY: "unused" });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: "${{ basic(, ) }}",
+            },
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      const expected = `Basic ${Buffer.from(":").toString("base64")}`;
+      expect(data.headers.Authorization).toBe(expected);
+      expect(data.resolvedSecrets).toEqual([]);
+    });
+
+    it("should resolve basic with both args as vars", async () => {
+      const encrypted = encryptTestSecrets({ KEY: "unused" });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: "${{ basic(vars.USER, vars.PASS) }}",
+            },
+            vars: { USER: "admin", PASS: "pw123" },
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      const expected = `Basic ${Buffer.from("admin:pw123").toString("base64")}`;
+      expect(data.headers.Authorization).toBe(expected);
+      expect(data.resolvedSecrets).toEqual([]);
+    });
+  });
+
   describe("Token refresh with secretConnectorMap", () => {
     const NOTION_TOKEN_URL = "https://api.notion.com/v1/oauth/token";
 

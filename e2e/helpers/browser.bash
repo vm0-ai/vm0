@@ -52,6 +52,8 @@ browser_setup() {
     E2E_ACCOUNT="$(generate_test_email)"
     export E2E_ACCOUNT
   fi
+
+  agent-browser set viewport 1920 1080
 }
 
 # ---------------------------------------------------------------------------
@@ -75,7 +77,11 @@ step_screenshot() {
   local filename
   filename=$(printf "%02d-%s" "$STEP_NUM" "$label")
   echo "# [$filename] Taking screenshot..." >&3 2>/dev/null || true
-  agent-browser screenshot "$SCREENSHOT_DIR/${filename}.png" 2>/dev/null || true
+  agent-browser set media light 2>/dev/null || true
+  agent-browser screenshot "$SCREENSHOT_DIR/${filename}-light.png" 2>/dev/null || true
+  agent-browser set media dark 2>/dev/null || true
+  agent-browser screenshot "$SCREENSHOT_DIR/${filename}-dark.png" 2>/dev/null || true
+  agent-browser set media light 2>/dev/null || true
   agent-browser snapshot > "$SCREENSHOT_DIR/${filename}.txt" 2>/dev/null || true
 }
 

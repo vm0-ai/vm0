@@ -309,7 +309,7 @@ describe("createZeroRun()", () => {
       expect(permNames).not.toContain("chat:write");
     });
 
-    it("should not add firewall entry when all permissions are denied", async () => {
+    it("should keep firewall entry with empty permissions when all are denied", async () => {
       const agentName = uniqueId("fw-allden");
       await createTestCompose(agentName);
       await createTestConnector({ type: "slack" });
@@ -326,13 +326,16 @@ describe("createZeroRun()", () => {
 
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
-      // All denied → no firewall entry
+      // All denied → entry preserved with empty permissions for token injection
       const slackFw = job!.executionContext.experimentalFirewalls?.find(
         (fw) => {
           return fw.ref === "slack";
         },
       );
-      expect(slackFw).toBeUndefined();
+      expect(slackFw).toBeDefined();
+      for (const api of slackFw!.apis) {
+        expect(api.permissions).toEqual([]);
+      }
     });
 
     it("should add multiple firewall entries for multi-ref connector", async () => {

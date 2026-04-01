@@ -15,7 +15,6 @@ use crate::factory::{InvariantConfig, config_hash};
 use crate::network::{NetnsPool, NetnsPoolConfig};
 use crate::paths::{RuntimePaths, SandboxPaths, SnapshotOutputPaths, SockPaths};
 use crate::prerequisites;
-use crate::process;
 use crate::process::kill_process_group;
 
 /// Timeout for waiting for the Firecracker API socket after process spawn.
@@ -83,10 +82,10 @@ pub async fn create_snapshot(
         .cow_device_bind()
         .display()
         .to_string();
-    command::exec_ignore_errors("umount", &[stale_bind.as_str()], command::Privilege::Sudo).await;
+    command::exec_ignore_errors("umount", &[stale_bind.as_str()]).await;
 
     let output_str = config.output_dir.display().to_string();
-    command::exec_ignore_errors("rm", &["-rf", &output_str], command::Privilege::Sudo).await;
+    command::exec_ignore_errors("rm", &["-rf", &output_str]).await;
     tokio::fs::create_dir_all(&work).await?;
 
     // Socket directory under /run, keyed by config id so concurrent builds don't collide.
@@ -196,28 +195,19 @@ async fn run_snapshot_workflow(
         .await
         .map_err(|e| SnapshotError::Setup(format!("mkdir sock dir: {e}")))?;
     let api_sock = sock_paths.api_sock();
-    let username = process::current_username().map_err(|e| SnapshotError::Setup(e.to_string()))?;
-
     info!(
         netns = %network.name,
         binary = %config.binary_path.display(),
         api_sock = %api_sock.display(),
-        user = %username,
         "spawning firecracker"
     );
 
-    // Use `exec` to replace the bash process with firecracker, keeping all
-    // descendants in the same process group so `kill_process_group` can
-    // reach them.  Without `exec`, `sudo` creates a new process group for
-    // the inner `sudo -u` child, which escapes `killpg` and becomes orphan.
-    let inner_cmd = r#"exec ip netns exec "$1" sudo -u "$2" "$3" --api-sock "$4""#;
-
-    let mut child = tokio::process::Command::new("sudo")
-        .args(["bash", "-c", inner_cmd, "_"])
-        .arg(&network.name) // $1
-        .arg(&username) // $2
-        .arg(&config.binary_path) // $3
-        .arg(&api_sock) // $4
+    let mut child = tokio::process::Command::new("ip")
+        .args(["netns", "exec"])
+        .arg(&network.name)
+        .arg(&config.binary_path)
+        .args(["--api-sock"])
+        .arg(&api_sock)
         .current_dir(paths.workspace())
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
@@ -276,12 +266,7 @@ async fn run_snapshot_workflow(
         let mut last_err = None;
         for attempt in 0..DESTROY_RETRIES {
             // Umount the bind mount first (may fail if FC still holds a ref).
-            command::exec_ignore_errors(
-                "umount",
-                &[drive_bind_str.as_str()],
-                command::Privilege::Sudo,
-            )
-            .await;
+            command::exec_ignore_errors("umount", &[drive_bind_str.as_str()]).await;
 
             match cow_device.destroy_keep_cow() {
                 Ok(()) => {
@@ -313,12 +298,7 @@ async fn run_snapshot_workflow(
         tokio::fs::rename(&cow_file, &output.cow()).await?;
     } else {
         // Error path: best-effort umount before Drop cleans up the device.
-        command::exec_ignore_errors(
-            "umount",
-            &[drive_bind_str.as_str()],
-            command::Privilege::Sudo,
-        )
-        .await;
+        command::exec_ignore_errors("umount", &[drive_bind_str.as_str()]).await;
     }
     // On error, cow_device is dropped → Drop calls destroy() (best-effort).
 
@@ -347,13 +327,9 @@ async fn run_with_firecracker(
     tokio::fs::write(&drive_bind, b"").await?;
     let cow_device_str = cow_device.device_path().display().to_string();
     let drive_bind_str = drive_bind.display().to_string();
-    command::exec(
-        "mount",
-        &["--bind", &cow_device_str, &drive_bind_str],
-        command::Privilege::Sudo,
-    )
-    .await
-    .map_err(|e| SnapshotError::Setup(format!("bind mount COW device: {e}")))?;
+    command::exec("mount", &["--bind", &cow_device_str, &drive_bind_str])
+        .await
+        .map_err(|e| SnapshotError::Setup(format!("bind mount COW device: {e}")))?;
 
     // 6. Configure VM via API (6 parallel PUT calls).
     let inv = InvariantConfig::new();

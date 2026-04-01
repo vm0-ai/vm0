@@ -78,10 +78,7 @@ export function activePriceId(tier: "pro" | "team"): string | undefined {
  * Get or create a Stripe customer for an org.
  * Returns the Stripe customer ID.
  */
-async function getOrCreateStripeCustomer(
-  orgId: string,
-  orgSlug: string,
-): Promise<string> {
+async function getOrCreateStripeCustomer(orgId: string): Promise<string> {
   const db = globalThis.services.db;
   const [row] = await db
     .select({ stripeCustomerId: orgMetadata.stripeCustomerId })
@@ -95,7 +92,7 @@ async function getOrCreateStripeCustomer(
 
   const stripe = getStripe();
   const customer = await stripe.customers.create({
-    metadata: { orgId, orgSlug },
+    metadata: { orgId },
   });
 
   await db
@@ -115,12 +112,11 @@ async function getOrCreateStripeCustomer(
  */
 export async function createCheckoutSession(
   orgId: string,
-  orgSlug: string,
   priceId: string,
   successUrl: string,
   cancelUrl: string,
 ): Promise<string> {
-  const customerId = await getOrCreateStripeCustomer(orgId, orgSlug);
+  const customerId = await getOrCreateStripeCustomer(orgId);
   const stripe = getStripe();
 
   const session = await stripe.checkout.sessions.create({
