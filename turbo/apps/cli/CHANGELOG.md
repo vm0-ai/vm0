@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.94.1](https://github.com/vm0-ai/vm0/compare/cli-v9.94.0...cli-v9.94.1) (2026-04-01)
+
+
+### Refactoring
+
+* remove remaining org_slug references from dev-auth script and cli tests ([#7584](https://github.com/vm0-ai/vm0/issues/7584)) ([54cdf74](https://github.com/vm0-ai/vm0/commit/54cdf747ddb3979bb5d586db8b944bf1ad522919)), closes [#7582](https://github.com/vm0-ai/vm0/issues/7582)
+
 ## [9.94.0](https://github.com/vm0-ai/vm0/compare/cli-v9.93.0...cli-v9.94.0) (2026-04-01)
 
 
