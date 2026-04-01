@@ -72,7 +72,6 @@ describe("zero org leave command", () => {
           access_token: newJwt,
           token_type: "Bearer",
           expires_in: 7776000,
-          org_slug: "other-org",
         });
       }),
     );
@@ -169,7 +168,6 @@ describe("zero org leave command", () => {
           access_token: newJwt,
           token_type: "Bearer",
           expires_in: 7776000,
-          org_slug: "next-org",
         });
       }),
     );

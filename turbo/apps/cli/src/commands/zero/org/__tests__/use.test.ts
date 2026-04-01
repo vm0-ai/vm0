@@ -67,7 +67,6 @@ describe("zero org use command", () => {
           access_token: newJwt,
           token_type: "Bearer",
           expires_in: 7776000,
-          org_slug: "org-b",
         });
       }),
     );
@@ -139,7 +138,6 @@ describe("zero org use command", () => {
           access_token: newJwt,
           token_type: "Bearer",
           expires_in: 7776000,
-          org_slug: "org-b",
         });
       }),
     );
