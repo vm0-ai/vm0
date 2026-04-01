@@ -13,6 +13,7 @@ import {
   getConnectorAccessToken,
   getConnectorRefreshToken,
 } from "../../../../../../src/lib/connector/connector-service";
+import { BASIC_AUTH_TEMPLATE_RE } from "@vm0/core";
 
 const bodySchema = z.object({
   encryptedSecrets: z.string().min(1),
@@ -25,14 +26,6 @@ const log = logger("webhook:firewall-auth");
 
 /** Matches ${{ secrets.X }} or ${{ vars.X }} template placeholders. */
 const TEMPLATE_RE = /\$\{\{\s*(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
-
-/**
- * Matches ${{ basic(username, password) }} where each side is secrets.X, vars.X, or empty.
- * Comma is always required to distinguish empty username from empty password.
- * Groups: (1) ns1, (2) key1, (3) ns2, (4) key2 — all optional.
- */
-const BASIC_AUTH_RE =
-  /\$\{\{\s*basic\(\s*(?:(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*))?\s*,\s*(?:(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*))?\s*\)\s*\}\}/g;
 
 /**
  * Load refresh tokens from DB into the secrets map.
@@ -246,7 +239,7 @@ function collectReferencedSecrets(
     for (const match of template.matchAll(TEMPLATE_RE)) {
       if (match[1] === "secrets" && match[2]) keys.add(match[2]);
     }
-    for (const match of template.matchAll(BASIC_AUTH_RE)) {
+    for (const match of template.matchAll(BASIC_AUTH_TEMPLATE_RE)) {
       if (match[1] === "secrets" && match[2]) keys.add(match[2]);
       if (match[3] === "secrets" && match[4]) keys.add(match[4]);
     }
@@ -257,6 +250,8 @@ function collectReferencedSecrets(
 /**
  * Resolve a single secrets.X or vars.X reference inside a basic() call.
  * Returns the resolved value, or empty string if the slot is omitted/missing.
+ * Missing values produce a warning log but don't fail the request — consistent
+ * with simple ${{ secrets.X }} resolution behavior.
  */
 function resolveBasicArg(
   namespace: string | undefined,
@@ -318,7 +313,7 @@ function resolveTemplates(
     );
     // Pass 2: resolve ${{ basic(username, password) }} templates
     resolved = resolved.replace(
-      BASIC_AUTH_RE,
+      BASIC_AUTH_TEMPLATE_RE,
       (_match, ns1?: string, key1?: string, ns2?: string, key2?: string) => {
         const user = resolveBasicArg(
           ns1,

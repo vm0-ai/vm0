@@ -92,12 +92,14 @@ const AUTH_SECRET_PATTERN =
   /\$\{\{\s*secrets\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 
 /**
- * Regex matching secrets inside `${{ basic(username, password) }}` templates.
- * Groups: (1) username secret name (optional), (2) password secret name (optional).
- * Only captures secrets.X references — vars don't need placeholders.
+ * Matches `${{ basic(username, password) }}` where each side is secrets.X, vars.X, or empty.
+ * Comma is always required to distinguish empty username from empty password.
+ * Groups: (1) ns1, (2) key1, (3) ns2, (4) key2 — all optional.
+ *
+ * Shared between build-time secret extraction and runtime template resolution.
  */
-const BASIC_AUTH_SECRET_PATTERN =
-  /\$\{\{\s*basic\(\s*(?:secrets\.([a-zA-Z_][a-zA-Z0-9_]*))?\s*,\s*(?:secrets\.([a-zA-Z_][a-zA-Z0-9_]*))?\s*\)\s*\}\}/g;
+export const BASIC_AUTH_TEMPLATE_RE =
+  /\$\{\{\s*basic\(\s*(?:(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*))?\s*,\s*(?:(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*))?\s*\)\s*\}\}/g;
 
 /**
  * Extract all secret names referenced in firewall rule auth header templates.
@@ -113,9 +115,11 @@ export function extractSecretNamesFromApis(
       for (const match of value.matchAll(AUTH_SECRET_PATTERN)) {
         names.add(match[1]!);
       }
-      for (const match of value.matchAll(BASIC_AUTH_SECRET_PATTERN)) {
-        if (match[1]) names.add(match[1]);
-        if (match[2]) names.add(match[2]);
+      // basic() args may reference secrets or vars; only collect secrets here
+      // (vars don't need placeholders).
+      for (const match of value.matchAll(BASIC_AUTH_TEMPLATE_RE)) {
+        if (match[1] === "secrets" && match[2]) names.add(match[2]);
+        if (match[3] === "secrets" && match[4]) names.add(match[4]);
       }
     }
   }
