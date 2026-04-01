@@ -430,6 +430,7 @@ def _fetch_firewall_headers_sync(
     auth_headers: dict,
     sandbox_token: str,
     secret_connector_map: dict | None = None,
+    vars_map: dict | None = None,
 ) -> dict:
     """Synchronous helper — runs in a thread to avoid blocking the event loop."""
     api_url = get_api_url()
@@ -437,6 +438,8 @@ def _fetch_firewall_headers_sync(
     body: dict = {"encryptedSecrets": encrypted_secrets, "authHeaders": auth_headers}
     if secret_connector_map:
         body["secretConnectorMap"] = secret_connector_map
+    if vars_map:
+        body["vars"] = vars_map
     data = json.dumps(body).encode()
     req = urllib.request.Request(
         url,
@@ -458,6 +461,7 @@ async def fetch_firewall_headers(
     auth_headers: dict,
     sandbox_token: str,
     secret_connector_map: dict | None = None,
+    vars_map: dict | None = None,
 ) -> dict:
     """Resolve auth headers via server-side decryption.
 
@@ -472,6 +476,7 @@ async def fetch_firewall_headers(
         auth_headers,
         sandbox_token,
         secret_connector_map,
+        vars_map,
     )
 
 
@@ -496,6 +501,7 @@ async def get_firewall_headers(
     auth_headers: dict,
     sandbox_token: str,
     secret_connector_map: dict | None = None,
+    vars_map: dict | None = None,
 ) -> dict:
     """Get firewall auth headers with TTL-based caching.
 
@@ -527,7 +533,7 @@ async def get_firewall_headers(
                 return hit
 
         result = await fetch_firewall_headers(
-            encrypted_secrets, auth_headers, sandbox_token, secret_connector_map
+            encrypted_secrets, auth_headers, sandbox_token, secret_connector_map, vars_map
         )
         headers = result["headers"]
         resolved_secrets = result.get("resolvedSecrets", [])
@@ -556,6 +562,7 @@ async def handle_firewall_request(
     encrypted_secrets = vm_info.get("encryptedSecrets")
     auth_headers = api_entry.get("auth", {}).get("headers", {})
     secret_connector_map = vm_info.get("secretConnectorMap")
+    vars_map = vm_info.get("vars")
 
     # Store metadata upfront — shared across ALLOW/ERROR paths
     flow.metadata["firewall_base"] = firewall_base
@@ -586,7 +593,13 @@ async def handle_firewall_request(
 
     try:
         token_meta = await get_firewall_headers(
-            run_id, api_id, encrypted_secrets, auth_headers, sandbox_token, secret_connector_map
+            run_id,
+            api_id,
+            encrypted_secrets,
+            auth_headers,
+            sandbox_token,
+            secret_connector_map,
+            vars_map,
         )
     except Exception as e:
         ctx.log.error(f"[{run_id}] Firewall header fetch failed: {e}")
