@@ -1,5 +1,27 @@
 # Changelog
 
+## [9.94.0](https://github.com/vm0-ai/vm0/compare/cli-v9.93.0...cli-v9.94.0) (2026-04-01)
+
+
+### Features
+
+* **cli:** add firewall-permissions-change doctor command ([#7542](https://github.com/vm0-ai/vm0/issues/7542)) ([9712218](https://github.com/vm0-ai/vm0/commit/97122188c435bbe3dbdbbe2cd92f8a7b252f7309))
+* **org:** add role selection to member invite flow ([#7555](https://github.com/vm0-ai/vm0/issues/7555)) ([891fc35](https://github.com/vm0-ai/vm0/commit/891fc35eaeba4c73c741accc5bc810df46d17962))
+* support full directory upload for custom skills ([#7550](https://github.com/vm0-ai/vm0/issues/7550)) ([044ee9e](https://github.com/vm0-ai/vm0/commit/044ee9e928c9921f7f618d74a20a5453e37e4e3a))
+
+
+### Refactoring
+
+* remove --model-provider and --check-env from vm0 run commands ([#7543](https://github.com/vm0-ai/vm0/issues/7543)) ([34c7233](https://github.com/vm0-ai/vm0/commit/34c7233e3ce75252f73ac8972b5a1bf130ccab5b))
+* replace org_slug with org_id in device codes and auth responses ([#7475](https://github.com/vm0-ai/vm0/issues/7475)) ([#7559](https://github.com/vm0-ai/vm0/issues/7559)) ([03719b9](https://github.com/vm0-ai/vm0/commit/03719b93a72b6c3f71fec18e2bd9e6af6a3068cf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.137.0
+
 ## [9.93.0](https://github.com/vm0-ai/vm0/compare/cli-v9.92.1...cli-v9.93.0) (2026-04-01)
 
 

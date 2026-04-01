@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.31.0](https://github.com/vm0-ai/vm0/compare/docs-v2.30.1...docs-v2.31.0) (2026-04-01)
+
+
+### Features
+
+* **docs:** remove stale --check-env and --model-provider from cli docs ([#7578](https://github.com/vm0-ai/vm0/issues/7578)) ([22189ae](https://github.com/vm0-ai/vm0/commit/22189ae7a44dded541dc9fa0da19375ba71d8935)), closes [#7576](https://github.com/vm0-ai/vm0/issues/7576)
+
 ## [2.30.1](https://github.com/vm0-ai/vm0/compare/docs-v2.30.0...docs-v2.30.1) (2026-03-31)
 
 

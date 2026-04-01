@@ -1,5 +1,23 @@
 # Changelog
 
+## [8.137.0](https://github.com/vm0-ai/vm0/compare/core-v8.136.0...core-v8.137.0) (2026-04-01)
+
+
+### Features
+
+* **firewalls:** add descriptions to slack firewall permission scopes ([#7552](https://github.com/vm0-ai/vm0/issues/7552)) ([78f802f](https://github.com/vm0-ai/vm0/commit/78f802f5094080ec79d73ab2cb0471c1e46d744e))
+* **firewalls:** add fine-grained axiom firewall permissions ([#7540](https://github.com/vm0-ai/vm0/issues/7540)) ([49b83ad](https://github.com/vm0-ai/vm0/commit/49b83adf8e5dcc5eb1607b45c753de9545a01109))
+* **firewalls:** add fine-grained deel firewall permissions ([#7556](https://github.com/vm0-ai/vm0/issues/7556)) ([1fdaf32](https://github.com/vm0-ai/vm0/commit/1fdaf325fdfdcf8a1c8b0066b961bedf3ad724d0))
+* **org:** add role selection to member invite flow ([#7555](https://github.com/vm0-ai/vm0/issues/7555)) ([891fc35](https://github.com/vm0-ai/vm0/commit/891fc35eaeba4c73c741accc5bc810df46d17962))
+* support full directory upload for custom skills ([#7550](https://github.com/vm0-ai/vm0/issues/7550)) ([044ee9e](https://github.com/vm0-ai/vm0/commit/044ee9e928c9921f7f618d74a20a5453e37e4e3a))
+
+
+### Refactoring
+
+* remove --model-provider and --check-env from vm0 run commands ([#7543](https://github.com/vm0-ai/vm0/issues/7543)) ([34c7233](https://github.com/vm0-ai/vm0/commit/34c7233e3ce75252f73ac8972b5a1bf130ccab5b))
+* rename experimental firewalls to firewalls ([#7553](https://github.com/vm0-ai/vm0/issues/7553)) ([e3c35a9](https://github.com/vm0-ai/vm0/commit/e3c35a95bd0dbfd1d68aef910db6089e38d6a0bb))
+* replace org_slug with org_id in device codes and auth responses ([#7475](https://github.com/vm0-ai/vm0/issues/7475)) ([#7559](https://github.com/vm0-ai/vm0/issues/7559)) ([03719b9](https://github.com/vm0-ai/vm0/commit/03719b93a72b6c3f71fec18e2bd9e6af6a3068cf))
+
 ## [8.136.0](https://github.com/vm0-ai/vm0/compare/core-v8.135.0...core-v8.136.0) (2026-04-01)
 
 
