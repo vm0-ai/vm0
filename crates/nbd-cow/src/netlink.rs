@@ -407,33 +407,37 @@ fn recv_nl(sock: &GenlSocket, buf: &mut [u8]) -> Result<usize> {
     }
 }
 
-fn recv_genl_ack(sock: &GenlSocket) -> Result<()> {
-    let mut buf = vec![0u8; 4096];
-    let n = recv_nl(sock, &mut buf)?;
+/// Result of parsing a single netlink message.
+enum NlMsg {
+    /// NLMSG_ERROR with error=0 (ACK).
+    Ack,
+    /// Non-error message (genetlink reply or broadcast).
+    Reply,
+}
 
+/// Parse a single netlink message from the buffer. Returns `NlMsg` on
+/// success, or an error for NLMSG_ERROR with non-zero errno.
+fn parse_nl_msg(buf: &[u8], n: usize) -> Result<NlMsg> {
     if n < 16 {
-        return Err(NbdCowError::Netlink("ack response too short".into()));
+        return Err(NbdCowError::Netlink("message too short".into()));
     }
 
-    let type_bytes: [u8; 2] = buf
-        .get(4..6)
-        .ok_or_else(|| NbdCowError::Netlink("ack too short for msg_type".into()))?
-        .try_into()
-        .map_err(|_| NbdCowError::Netlink("msg_type conversion".into()))?;
-    let msg_type = u16::from_ne_bytes(type_bytes);
-    if msg_type == NLMSG_ERROR {
-        // Error message: nlmsghdr (16) + error code (4 bytes as i32)
-        if n < 20 {
-            return Err(NbdCowError::Netlink("error response too short".into()));
-        }
-        let err_bytes: [u8; 4] = buf
-            .get(16..20)
-            .ok_or_else(|| NbdCowError::Netlink("error response truncated".into()))?
+    let msg_type = u16::from_ne_bytes(
+        buf.get(4..6)
+            .ok_or_else(|| NbdCowError::Netlink("msg_type slice".into()))?
             .try_into()
-            .map_err(|_| NbdCowError::Netlink("error code conversion".into()))?;
-        let error = i32::from_ne_bytes(err_bytes);
+            .map_err(|_| NbdCowError::Netlink("msg_type conversion".into()))?,
+    );
+
+    if msg_type == NLMSG_ERROR {
+        let error = i32::from_ne_bytes(
+            buf.get(16..20)
+                .ok_or_else(|| NbdCowError::Netlink("error response too short".into()))?
+                .try_into()
+                .map_err(|_| NbdCowError::Netlink("error code conversion".into()))?,
+        );
         if error == 0 {
-            return Ok(()); // ACK (error=0 means success)
+            return Ok(NlMsg::Ack);
         }
         let errno = -error;
         return Err(NbdCowError::NetlinkErrno {
@@ -442,8 +446,19 @@ fn recv_genl_ack(sock: &GenlSocket) -> Result<()> {
         });
     }
 
-    tracing::debug!(msg_type, "recv_genl_ack: ignoring non-error message type");
-    Ok(())
+    Ok(NlMsg::Reply)
+}
+
+fn recv_genl_ack(sock: &GenlSocket) -> Result<()> {
+    let mut buf = vec![0u8; 4096];
+    let n = recv_nl(sock, &mut buf)?;
+    match parse_nl_msg(&buf, n)? {
+        NlMsg::Ack => Ok(()),
+        NlMsg::Reply => {
+            // Non-error, non-ACK message — ignore (e.g., unsolicited broadcast).
+            Ok(())
+        }
+    }
 }
 
 /// Build the nested NBD_ATTR_SOCKETS NLA from a list of client fds.
@@ -500,4 +515,23 @@ fn build_nested_nla(nla_type: u16, payload: &[u8]) -> Vec<u8> {
         dest.copy_from_slice(payload);
     }
     buf
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn random_offset_zero_max() {
+        assert_eq!(random_offset(0), 0);
+    }
+
+    #[test]
+    fn random_offset_within_range() {
+        for max in [1, 2, 16, 256, 4096] {
+            for _ in 0..100 {
+                assert!(random_offset(max) < max, "offset >= max for max={max}");
+            }
+        }
+    }
 }

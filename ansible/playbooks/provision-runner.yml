@@ -84,7 +84,7 @@
           if ! grep -q '^[0-9]' /sys/block/nbd*/pid 2>/dev/null; then
             modprobe -r nbd && modprobe nbd nbds_max=$WANT
           else
-            echo "nbd module has wrong nbds_max but devices are in use, skipping reload"
+            echo "WARNING: nbd module has wrong nbds_max but devices are in use, skipping reload"
           fi
         fi
       become: true
