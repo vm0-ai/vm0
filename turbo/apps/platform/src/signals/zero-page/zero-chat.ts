@@ -373,7 +373,7 @@ export const deleteChatThread$ = command(
 interface ChatThread {
   id: string;
   agentId?: string;
-  title: string;
+  title: string | null;
   chatMessages: {
     role: "user" | "assistant";
     content: string;
@@ -540,7 +540,7 @@ export const currentChatThread$ = computed(
       const body = threadResult.body;
       return {
         id: threadId,
-        title: body.title ?? "",
+        title: body.title ?? null,
         agentId: body.agentId,
         chatMessages: body.chatMessages ?? [],
         latestSessionId: body.latestSessionId ?? null,
@@ -560,7 +560,7 @@ export const currentChatThread$ = computed(
     const body = sessionResult.body;
     return {
       id: threadId,
-      title: "",
+      title: null,
       agentId: body.agentId,
       chatMessages: body.chatMessages ?? [],
       latestSessionId: threadId,

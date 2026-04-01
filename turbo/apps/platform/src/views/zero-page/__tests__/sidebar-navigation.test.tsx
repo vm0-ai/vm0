@@ -264,8 +264,10 @@ describe("sidebar new chat navigation", () => {
       expect(pathname()).toBe("/chat/new-thread-id");
     });
 
-    // 2. Verify sidebar shows "New chat" entry
-    expect(screen.getByText("New chat")).toBeInTheDocument();
+    // 2. Verify sidebar shows "New chat" entry (thread has title: null)
+    await waitFor(() => {
+      expect(screen.getByText("New chat")).toBeInTheDocument();
+    });
 
     // 3. Verify textarea has focus (autoFocus triggers because chatMessages is empty)
     await waitFor(() => {
