@@ -412,8 +412,8 @@ async function resolveModelProviderSecrets(
  * Result of connector secret resolution
  */
 interface OauthConnectorSecretResult {
-  /** Environment variables mapped from OAuth connectors via environmentMapping */
-  injectedEnvVars: Record<string, string> | undefined;
+  /** OAuth connector secrets resolved from environmentMapping (e.g. { GITHUB_TOKEN: "ghp_..." }) */
+  resolvedSecrets: Record<string, string> | undefined;
   /** Maps secret names to connector types for refresh-capable OAuth connectors */
   secretConnectorMap: Record<string, string> | undefined;
   /** Validated OAuth connector types from DB */
@@ -439,7 +439,7 @@ async function resolveOauthConnectorSecrets(
 
   if (userConnectors.length === 0) {
     return {
-      injectedEnvVars: undefined,
+      resolvedSecrets: undefined,
       secretConnectorMap: undefined,
       connectorTypes: [],
     };
@@ -448,7 +448,7 @@ async function resolveOauthConnectorSecrets(
   const connectorSecrets = await getSecretValues(orgId, userId, "connector");
   if (Object.keys(connectorSecrets).length === 0) {
     return {
-      injectedEnvVars: undefined,
+      resolvedSecrets: undefined,
       secretConnectorMap: undefined,
       connectorTypes: [],
     };
@@ -540,7 +540,7 @@ async function resolveOauthConnectorSecrets(
   }
 
   return {
-    injectedEnvVars: allInjectedEnvVars,
+    resolvedSecrets: allInjectedEnvVars,
     secretConnectorMap:
       Object.keys(secretConnectorMap).length > 0
         ? secretConnectorMap
@@ -784,13 +784,13 @@ async function resolveSecretsAndEnvironment(
   // Only mapped env vars from connectors are included — raw connector secrets
   // (including refresh tokens) are kept server-side and never sent to the runner.
   const hasSecrets =
-    oauthResult.injectedEnvVars ||
+    oauthResult.resolvedSecrets ||
     modelProviderResult.secrets ||
     dbSecrets ||
     cliSecrets;
   const secrets: Record<string, string> | undefined = hasSecrets
     ? {
-        ...oauthResult.injectedEnvVars, // connector env mappings (e.g. GITHUB_TOKEN)
+        ...oauthResult.resolvedSecrets, // connector env mappings (e.g. GITHUB_TOKEN)
         ...modelProviderResult.secrets, // model provider
         ...dbSecrets, // DB user secrets
         ...cliSecrets, // highest: CLI --secrets
