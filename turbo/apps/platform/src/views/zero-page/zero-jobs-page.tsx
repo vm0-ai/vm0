@@ -108,8 +108,8 @@ export function ZeroJobsPage() {
           {/* Zero — full width */}
           {rawAgentName ? (
             <Link
-              pathname="/team/:agentId"
-              options={{ pathParams: { agentId: rawAgentName } }}
+              pathname="/agents/:id"
+              options={{ pathParams: { id: rawAgentName } }}
               className="block no-underline text-inherit"
             >
               <Card className="zero-card cursor-pointer hover:bg-muted/30 transition-colors">
@@ -241,8 +241,8 @@ export function ZeroJobsPage() {
                 return (
                   <Link
                     key={agent.id}
-                    pathname="/team/:agentId"
-                    options={{ pathParams: { agentId: agent.id } }}
+                    pathname="/agents/:id"
+                    options={{ pathParams: { id: agent.id } }}
                     className="block no-underline text-inherit"
                   >
                     <AgentCard agent={agent} />

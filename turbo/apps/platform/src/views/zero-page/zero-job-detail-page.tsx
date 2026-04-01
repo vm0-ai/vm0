@@ -119,7 +119,7 @@ function Breadcrumb({
       className={`hidden md:flex shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground${className ? ` ${className}` : ""}`}
     >
       <Link
-        pathname="/team"
+        pathname="/agents"
         className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors no-underline text-inherit"
       >
         <IconUsers size={14} stroke={1.5} className="shrink-0" />
@@ -172,8 +172,7 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
               </p>
             </div>
             <Link
-              pathname="/:tab"
-              options={{ pathParams: { tab: "team" } }}
+              pathname="/agents"
               className="zero-btn-morandi inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-accent"
             >
               Back to team
@@ -193,8 +192,8 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
             <CardContent className="px-6 py-6 text-center space-y-3">
               <p className="text-sm text-destructive">{error}</p>
               <Link
-                pathname="/team/:agentId"
-                options={{ pathParams: { agentId: agentId } }}
+                pathname="/agents/:id"
+                options={{ pathParams: { id: agentId } }}
                 className="zero-btn-morandi inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-accent"
               >
                 Retry
@@ -641,7 +640,7 @@ function JobScheduleTab({ displayName }: { displayName: string }) {
   };
 
   const handleOpenDetails = (entry: ScheduleEntry) => {
-    nav("/schedule/:scheduleId", { pathParams: { scheduleId: entry.id } });
+    nav("/schedules/:id", { pathParams: { id: entry.id } });
   };
 
   return (
@@ -755,7 +754,7 @@ export function ZeroJobDetailPage({ agentId }: ZeroJobDetailPageProps) {
 
   const handleDelete = async () => {
     await deleteAgent(pageSignal);
-    nav("/team");
+    nav("/agents");
   };
 
   const rawTab = useGet(zeroJobActiveTab$);
@@ -813,7 +812,7 @@ export function ZeroJobDetailPage({ agentId }: ZeroJobDetailPageProps) {
               size="sm"
               className="shrink-0 zero-btn-morandi gap-1.5"
               onClick={() => {
-                nav("/talk/:agentId", { pathParams: { agentId } });
+                nav("/agents/:id/chat", { pathParams: { id: agentId } });
               }}
               aria-label={`Chat with ${displayName}`}
             >

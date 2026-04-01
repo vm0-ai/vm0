@@ -197,7 +197,7 @@ describe("onboarding continue in web → chat page", () => {
     await user.click(screen.getByRole("button", { name: /Continue in web/ }));
 
     await waitFor(() => {
-      expect(pathname()).toBe(`/chat/${MOCK_THREAD_ID}`);
+      expect(pathname()).toBe(`/chats/${MOCK_THREAD_ID}`);
     });
 
     mock.ctrl.completeRun("I am Zero, your AI teammate.");
@@ -221,7 +221,7 @@ describe("onboarding continue in web → chat page", () => {
     await user.click(screen.getByRole("button", { name: /Continue in web/ }));
 
     await waitFor(() => {
-      expect(pathname()).toBe(`/chat/${MOCK_THREAD_ID}`);
+      expect(pathname()).toBe(`/chats/${MOCK_THREAD_ID}`);
     });
 
     mock.ctrl.completeRun("I am Zero, your AI teammate.");

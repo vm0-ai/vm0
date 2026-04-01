@@ -49,7 +49,7 @@ describe("cancelled message ordering after page refresh", () => {
       }),
     );
 
-    await setupPage({ context, path: "/chat/thread-ordering" });
+    await setupPage({ context, path: "/chats/thread-ordering" });
 
     await waitFor(() => {
       expect(screen.getByText("First message (cancelled)")).toBeInTheDocument();

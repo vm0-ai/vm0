@@ -9,7 +9,7 @@ const context = testContext();
 
 describe("schedule page", () => {
   it("should render the schedule page with empty schedules", async () => {
-    await setupPage({ context, path: "/schedule" });
+    await setupPage({ context, path: "/schedules" });
 
     await waitFor(() => {
       expect(screen.getByText("Scheduled tasks")).toBeInTheDocument();
@@ -56,7 +56,7 @@ describe("schedule page", () => {
       }),
     );
 
-    await setupPage({ context, path: "/schedule" });
+    await setupPage({ context, path: "/schedules" });
 
     await waitFor(() => {
       expect(screen.getByText("Scheduled tasks")).toBeInTheDocument();
@@ -70,7 +70,7 @@ describe("schedule page", () => {
   });
 
   it("should show Add schedule button", async () => {
-    await setupPage({ context, path: "/schedule" });
+    await setupPage({ context, path: "/schedules" });
 
     await waitFor(() => {
       expect(screen.getByText("Scheduled tasks")).toBeInTheDocument();

@@ -66,7 +66,7 @@ describe("chat to queue navigation", () => {
     mockChatThread();
     mockQueueAPIs();
 
-    await setupPage({ context, path: "/chat/thread-1" });
+    await setupPage({ context, path: "/chats/thread-1" });
 
     // Wait for chat to render
     await waitFor(() => {
@@ -75,7 +75,7 @@ describe("chat to queue navigation", () => {
 
     // Navigate to /queue using navigateTo$ (same as Link component)
     act(() => {
-      context.store.set(detachedNavigateTo$, "/queue");
+      context.store.set(detachedNavigateTo$, "/queues");
     });
 
     // The queue page should fully initialize and show queue data

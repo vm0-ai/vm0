@@ -114,7 +114,7 @@ describe("activity page routing", () => {
 
     await setupPage({
       context,
-      path: "/activity",
+      path: "/activities",
     });
 
     // Wait for the list to render with the activity row
@@ -144,7 +144,7 @@ describe("activity page routing", () => {
 
     await setupPage({
       context,
-      path: "/activity",
+      path: "/activities",
       featureSwitches: { [FeatureSwitchKey.ActivityLogList]: true },
     });
 
@@ -222,7 +222,7 @@ describe("activity page routing", () => {
 
     await setupPage({
       context,
-      path: "/activity",
+      path: "/activities",
     });
 
     // The source column should show "Agent (Parent Bot)" for the delegated run

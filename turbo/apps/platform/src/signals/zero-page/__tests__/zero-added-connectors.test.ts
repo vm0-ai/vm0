@@ -101,7 +101,7 @@ describe("zeroAddedConnectors$", () => {
 
     await setupPage({
       context,
-      path: "/talk/sub-agent-compose-id",
+      path: "/agents/sub-agent-compose-id/chat",
       withoutRender: true,
     });
 

@@ -54,7 +54,7 @@ describe("zero doctor firewall-deny command", () => {
       );
       expect(logCalls).toContain('covered by the "');
       expect(logCalls).toMatch(
-        /\[Allow GitHub access\]\(https:\/\/app\.vm0\.ai\/firewall-allow\/agent-abc-123\?/,
+        /\[Allow GitHub access\]\(https:\/\/app\.vm0\.ai\/agents\/agent-abc-123\/permissions\?/,
       );
       expect(logCalls).toContain("ref=github");
       expect(logCalls).toContain("permission=");
@@ -190,7 +190,9 @@ describe("zero doctor firewall-deny command", () => {
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("https://app.vm0.ai/firewall-allow/agent-1?");
+      expect(logCalls).toContain(
+        "https://app.vm0.ai/agents/agent-1/permissions?",
+      );
     });
 
     it("should transform tunnel -www suffix to -app", async () => {
@@ -209,7 +211,7 @@ describe("zero doctor firewall-deny command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain(
-        "https://tunnel-yuma-vm0-app.vm7.ai/firewall-allow/agent-1?",
+        "https://tunnel-yuma-vm0-app.vm7.ai/agents/agent-1/permissions?",
       );
     });
   });
@@ -298,7 +300,7 @@ describe("zero doctor firewall-deny command", () => {
   });
 
   describe("ZERO_AGENT_ID presence/absence", () => {
-    it("should use /firewall-allow/:agentId when ZERO_AGENT_ID is set", async () => {
+    it("should use /agents/:id/permissions when ZERO_AGENT_ID is set", async () => {
       vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
       vi.stubEnv("ZERO_AGENT_ID", "my-agent-id");
 
@@ -313,10 +315,10 @@ describe("zero doctor firewall-deny command", () => {
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("/firewall-allow/my-agent-id?");
+      expect(logCalls).toContain("/agents/my-agent-id/permissions?");
     });
 
-    it("should use /firewall-allow when ZERO_AGENT_ID is not set", async () => {
+    it("should use /agents/permissions when ZERO_AGENT_ID is not set", async () => {
       vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
       vi.stubEnv("ZERO_AGENT_ID", "");
 
@@ -331,8 +333,8 @@ describe("zero doctor firewall-deny command", () => {
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("/firewall-allow?");
-      expect(logCalls).not.toContain("/firewall-allow/");
+      expect(logCalls).toContain("/agents/permissions?");
+      expect(logCalls).not.toContain("/agents/permissions/");
     });
   });
 });

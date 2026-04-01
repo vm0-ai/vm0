@@ -83,8 +83,8 @@ Notes:
         });
 
         const pagePath = agentId
-          ? `/firewall-allow/${agentId}`
-          : "/firewall-allow";
+          ? `/agents/${agentId}/permissions`
+          : "/agents/permissions";
         const url = `${platformOrigin}${pagePath}?${urlParams.toString()}`;
 
         const role = agentId ? await resolveRole() : "unknown";

@@ -152,8 +152,8 @@ function ChatThreadHeader() {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Link
-                    pathname="/team/:agentId"
-                    options={{ pathParams: { agentId: resolvedAgentId } }}
+                    pathname="/agents/:id"
+                    options={{ pathParams: { id: resolvedAgentId } }}
                     className="h-8 w-8 shrink-0 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                     aria-label="View agent profile"
                   >
@@ -205,7 +205,7 @@ function ChatThreadHeader() {
           <Tooltip>
             <TooltipTrigger asChild>
               <Link
-                pathname="/team"
+                pathname="/agents"
                 className="inline-flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent"
                 aria-label="Sub-agents"
               >
@@ -226,8 +226,8 @@ function ChatThreadHeader() {
                 className="h-8 w-8 text-muted-foreground hover:text-foreground"
                 onClick={() => {
                   if (resolvedAgentId) {
-                    navigateTo("/team/:agentId", {
-                      pathParams: { agentId: resolvedAgentId },
+                    navigateTo("/agents/:id", {
+                      pathParams: { id: resolvedAgentId },
                       searchParams: new URLSearchParams({ tab: "schedule" }),
                     });
                   }
@@ -566,7 +566,7 @@ function RunActivityLineView({
         <p className="text-muted-foreground text-xs truncate">
           {queueLabel(queuePosition)}{" "}
           <Link
-            pathname="/queue"
+            pathname="/queues"
             className="underline hover:text-foreground transition-colors"
           >
             View queue
@@ -814,8 +814,8 @@ function StaticAssistantMessage({
           <Tooltip>
             <TooltipTrigger asChild>
               <Link
-                pathname="/activity/:runId"
-                options={{ pathParams: { runId: message.legacyRunId } }}
+                pathname="/activities/:id"
+                options={{ pathParams: { id: message.legacyRunId } }}
                 className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
                 aria-label="View run logs"
               >
@@ -911,8 +911,7 @@ function StaticAssistantMessage({
                   This session was started with a different model provider and
                   can&apos;t be continued with the current one.{" "}
                   <Link
-                    pathname="/:tab"
-                    options={{ pathParams: { tab: "chat" } }}
+                    pathname="/"
                     className="inline-flex items-center gap-1 text-amber-500 underline underline-offset-2 hover:text-amber-400"
                   >
                     Start a new session

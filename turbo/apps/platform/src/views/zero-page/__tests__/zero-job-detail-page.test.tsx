@@ -62,7 +62,7 @@ function mockAPIs() {
 describe("zero job detail page", () => {
   it("should render agent detail with header and tabs", async () => {
     mockAPIs();
-    await setupPage({ context, path: "/team/my-agent" });
+    await setupPage({ context, path: "/agents/my-agent" });
 
     await waitFor(() => {
       expect(
@@ -85,7 +85,7 @@ describe("zero job detail page", () => {
   it("should switch to profile tab and show settings form", async () => {
     const user = userEvent.setup();
     mockAPIs();
-    await setupPage({ context, path: "/team/my-agent" });
+    await setupPage({ context, path: "/agents/my-agent" });
 
     await waitFor(() => {
       expect(
@@ -129,7 +129,7 @@ describe("zero job detail page", () => {
       }),
     );
 
-    await setupPage({ context, path: "/team/nonexistent" });
+    await setupPage({ context, path: "/agents/nonexistent" });
 
     await waitFor(() => {
       expect(screen.getByText("Agent not found")).toBeInTheDocument();
@@ -138,7 +138,7 @@ describe("zero job detail page", () => {
 
   it("should initialize tab from URL query parameter", async () => {
     mockAPIs();
-    await setupPage({ context, path: "/team/my-agent?tab=profile" });
+    await setupPage({ context, path: "/agents/my-agent?tab=profile" });
 
     await waitFor(() => {
       expect(
@@ -253,7 +253,7 @@ describe("zero job detail page - schedule card delete confirmation", () => {
   it("should show confirmation dialog when delete button is clicked in card view", async () => {
     const user = userEvent.setup();
     mockAPIsWithSchedules();
-    await setupPage({ context, path: "/team/my-agent?tab=schedule" });
+    await setupPage({ context, path: "/agents/my-agent?tab=schedule" });
 
     await waitFor(() => {
       expect(
@@ -283,7 +283,7 @@ describe("zero job detail page - schedule card delete confirmation", () => {
       }),
     );
 
-    await setupPage({ context, path: "/team/my-agent?tab=schedule" });
+    await setupPage({ context, path: "/agents/my-agent?tab=schedule" });
 
     await waitFor(() => {
       expect(
@@ -317,7 +317,7 @@ describe("zero job detail page - schedule card delete confirmation", () => {
       }),
     );
 
-    await setupPage({ context, path: "/team/my-agent?tab=schedule" });
+    await setupPage({ context, path: "/agents/my-agent?tab=schedule" });
 
     await waitFor(() => {
       expect(

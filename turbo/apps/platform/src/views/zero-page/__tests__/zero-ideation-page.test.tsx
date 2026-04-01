@@ -11,7 +11,7 @@ import { pathname } from "../../../signals/location.ts";
 const context = testContext();
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
-const IDEAS_PATH = `/talk/${AGENT_ID}/ideas`;
+const IDEAS_PATH = `/agents/${AGENT_ID}/ideas`;
 
 function mockChatAPI() {
   server.use(
@@ -238,7 +238,7 @@ describe("ideation page - navigation", () => {
     await user.click(screen.getByText("Daily standup report"));
 
     await waitFor(() => {
-      expect(pathname()).toBe(`/talk/${AGENT_ID}`);
+      expect(pathname()).toBe(`/agents/${AGENT_ID}/chat`);
     });
   });
 
@@ -253,7 +253,7 @@ describe("ideation page - navigation", () => {
     await user.click(chatBreadcrumb!);
 
     await waitFor(() => {
-      expect(pathname()).toBe(`/talk/${AGENT_ID}`);
+      expect(pathname()).toBe(`/agents/${AGENT_ID}/chat`);
     });
   });
 
@@ -290,7 +290,7 @@ describe("ideation page - navigation", () => {
         ]);
       }),
     );
-    await setupPage({ context, path: `/talk/${customAgentId}/ideas` });
+    await setupPage({ context, path: `/agents/${customAgentId}/ideas` });
 
     await waitFor(() => {
       expect(
@@ -304,7 +304,7 @@ describe("ideation page - navigation", () => {
     await user.click(chatBreadcrumb);
 
     await waitFor(() => {
-      expect(pathname()).toBe(`/talk/${customAgentId}`);
+      expect(pathname()).toBe(`/agents/${customAgentId}/chat`);
     });
   });
 });

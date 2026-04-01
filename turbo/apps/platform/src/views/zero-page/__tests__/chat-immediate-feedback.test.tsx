@@ -45,7 +45,7 @@ describe("chat immediate feedback after sending", () => {
 
     await setupPage({
       context,
-      path: "/chat/thread-test-1",
+      path: "/chats/thread-test-1",
     });
 
     // Send message — prepareUserMessage$ runs before the POST, so the user
@@ -105,7 +105,7 @@ describe("chat immediate feedback after sending", () => {
 
     await setupPage({
       context,
-      path: "/talk/c0000000-0000-4000-a000-000000000001",
+      path: "/agents/c0000000-0000-4000-a000-000000000001/chat",
     });
 
     const textarea = await waitFor(() => {

@@ -22,7 +22,7 @@ describe("chat queue state", () => {
 
     await setupPage({
       context,
-      path: "/talk/c0000000-0000-4000-a000-000000000001",
+      path: "/agents/c0000000-0000-4000-a000-000000000001/chat",
     });
 
     const textarea = await waitFor(() => {
@@ -50,7 +50,7 @@ describe("chat queue state", () => {
 
     await setupPage({
       context,
-      path: "/talk/c0000000-0000-4000-a000-000000000001",
+      path: "/agents/c0000000-0000-4000-a000-000000000001/chat",
     });
 
     const textarea = await waitFor(() => {

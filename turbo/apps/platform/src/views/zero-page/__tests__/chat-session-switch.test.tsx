@@ -100,7 +100,7 @@ describe("chat session switch", () => {
     );
 
     // Start on a completed thread (no active polling)
-    await setupPage({ context, path: "/chat/thread-completed" });
+    await setupPage({ context, path: "/chats/thread-completed" });
 
     await waitFor(() => {
       expect(screen.getByText("All done!")).toBeInTheDocument();
@@ -110,8 +110,8 @@ describe("chat session switch", () => {
     expect(screen.queryByLabelText("Stop")).toBeNull();
 
     // Navigate to the running thread
-    context.store.set(detachedNavigateTo$, "/chat/:chatThreadId", {
-      pathParams: { chatThreadId: "thread-running" },
+    context.store.set(detachedNavigateTo$, "/chats/:id", {
+      pathParams: { id: "thread-running" },
     });
 
     // The running thread should show the thinking/shimmer state
@@ -155,15 +155,15 @@ describe("chat session switch", () => {
       }),
     );
 
-    await setupPage({ context, path: "/chat/session-alpha" });
+    await setupPage({ context, path: "/chats/session-alpha" });
 
     await waitFor(() => {
       expect(screen.getByText("Answer for session-alpha")).toBeInTheDocument();
     });
 
     // Switch to session-beta
-    context.store.set(detachedNavigateTo$, "/chat/:chatThreadId", {
-      pathParams: { chatThreadId: "session-beta" },
+    context.store.set(detachedNavigateTo$, "/chats/:id", {
+      pathParams: { id: "session-beta" },
     });
 
     await waitFor(() => {
@@ -174,8 +174,8 @@ describe("chat session switch", () => {
     expect(screen.queryByText("Answer for session-alpha")).toBeNull();
 
     // Switch to session-gamma
-    context.store.set(detachedNavigateTo$, "/chat/:chatThreadId", {
-      pathParams: { chatThreadId: "session-gamma" },
+    context.store.set(detachedNavigateTo$, "/chats/:id", {
+      pathParams: { id: "session-gamma" },
     });
 
     await waitFor(() => {

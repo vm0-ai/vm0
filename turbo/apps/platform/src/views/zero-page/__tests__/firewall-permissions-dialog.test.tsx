@@ -127,7 +127,7 @@ async function openPermissionsDrawer() {
 describe("firewall permissions dialog - grouped connector (GitHub)", () => {
   it("should show category groups collapsed by default with no global select-all", async () => {
     mockAPIs();
-    await setupPage({ context, path: "/team/my-agent" });
+    await setupPage({ context, path: "/agents/my-agent" });
     await openPermissionsDrawer();
 
     // Category groups should be visible
@@ -151,7 +151,7 @@ describe("firewall permissions dialog - grouped connector (GitHub)", () => {
 
   it("should expand a group when its header is clicked and collapse when clicked again", async () => {
     mockAPIs();
-    await setupPage({ context, path: "/team/my-agent" });
+    await setupPage({ context, path: "/agents/my-agent" });
     const user = await openPermissionsDrawer();
 
     const readButton = screen.getByRole("button", { name: /Read \(\d+\)/i });
@@ -182,7 +182,7 @@ describe("firewall permissions dialog - grouped connector (GitHub)", () => {
         },
       },
     });
-    await setupPage({ context, path: "/team/my-agent" });
+    await setupPage({ context, path: "/agents/my-agent" });
     await openPermissionsDrawer();
 
     // Find the Read group row — it contains the group button and a PolicyPill
@@ -213,7 +213,7 @@ describe("firewall permissions dialog - grouped connector (GitHub)", () => {
   it("should highlight Allow at group level when all permissions in group are allow", async () => {
     // Default policies are all "allow" when not specified
     mockAPIs();
-    await setupPage({ context, path: "/team/my-agent" });
+    await setupPage({ context, path: "/agents/my-agent" });
     await openPermissionsDrawer();
 
     const readButton = screen.getByRole("button", { name: /Read \(\d+\)/i });
@@ -232,7 +232,7 @@ describe("firewall permissions dialog - grouped connector (GitHub)", () => {
 
   it("should set all permissions in a group when group-level Allow/Deny is clicked", async () => {
     mockAPIs();
-    await setupPage({ context, path: "/team/my-agent" });
+    await setupPage({ context, path: "/agents/my-agent" });
     const user = await openPermissionsDrawer();
 
     // Click Deny on the Read group

@@ -89,7 +89,7 @@ describe("activity detail polling with initially empty events", () => {
     // Navigate directly to a fresh run's detail page
     await setupPage({
       context,
-      path: "/activity/a0000000-0000-4000-a000-000000000099",
+      path: "/activities/a0000000-0000-4000-a000-000000000099",
     });
 
     // Wait for the detail heading to appear

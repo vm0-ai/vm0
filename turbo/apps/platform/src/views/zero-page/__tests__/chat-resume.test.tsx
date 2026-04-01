@@ -33,7 +33,7 @@ describe("chat resume", () => {
       ],
     });
 
-    await setupPage({ context, path: "/chat/thread-resume" });
+    await setupPage({ context, path: "/chats/thread-resume" });
 
     // History messages should be visible
     await waitFor(() => {
@@ -77,7 +77,7 @@ describe("chat resume", () => {
       ],
     });
 
-    await setupPage({ context, path: "/chat/thread-resume-2" });
+    await setupPage({ context, path: "/chats/thread-resume-2" });
 
     // Wait for the page to load with history
     await waitFor(() => {
@@ -111,7 +111,7 @@ describe("chat resume", () => {
       ],
     });
 
-    await setupPage({ context, path: "/chat/thread-resume-3" });
+    await setupPage({ context, path: "/chats/thread-resume-3" });
 
     // Wait for sending state
     await waitFor(() => {

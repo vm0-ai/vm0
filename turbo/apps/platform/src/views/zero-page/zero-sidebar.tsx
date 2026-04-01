@@ -56,7 +56,7 @@ import slackIcon from "./components/settings/icons/slack.svg";
 import { clerk$, user$ } from "../../signals/auth.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
-  zeroActiveId$,
+  activeRoute$,
   chatThreadId$,
   zeroSidebarCollapsed$,
   setZeroSidebarCollapsed$,
@@ -64,7 +64,11 @@ import {
   handleZeroAccountAction$,
   navigateToChat$,
   sidebarChatAgentId$,
+  isChatRoute,
+  type SidebarNavId,
+  type ZeroAccountAction,
 } from "../../signals/zero-page/zero-nav.ts";
+import type { RouteKey } from "../../signals/route-paths.ts";
 import {
   agentDisplayName$,
   defaultAgentId$,
@@ -119,52 +123,88 @@ import {
 // Re-export shared types/components for backward compatibility
 export { useAgentAvatar } from "./zero-sidebar-shared.tsx";
 
-export type ZeroNavId =
-  | "chat"
-  | "schedule"
-  | "team"
-  | "activity"
-  | "works"
-  | "usage"
-  | "preferences"
-  | "queue"
-  | "connectors"
-  | "not-found";
-
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
+
+interface ManageNavItem {
+  readonly id: SidebarNavId;
+  readonly activeKeys: readonly RouteKey[];
+  readonly pathname: string;
+  readonly label: string;
+  readonly icon: NavIcon;
+}
+
 const MANAGE_NAV = [
-  { id: "team", label: "Agents", icon: IconUsers as NavIcon },
-  { id: "connectors", label: "Connectors", icon: IconPlug as NavIcon },
-  { id: "schedule", label: "Scheduled", icon: IconCalendar as NavIcon },
-  { id: "activity", label: "Activity logs", icon: IconChartLine as NavIcon },
-] as const;
+  {
+    id: "agents",
+    activeKeys: [
+      "agents",
+      "agentDetail",
+      "agentChat",
+      "agentIdeas",
+      "agentPermissions",
+    ],
+    pathname: "/agents",
+    label: "Agents",
+    icon: IconUsers as NavIcon,
+  },
+  {
+    id: "connectors",
+    activeKeys: ["connectors"],
+    pathname: "/connectors",
+    label: "Connectors",
+    icon: IconPlug as NavIcon,
+  },
+  {
+    id: "schedules",
+    activeKeys: ["schedules", "scheduleDetail"],
+    pathname: "/schedules",
+    label: "Scheduled",
+    icon: IconCalendar as NavIcon,
+  },
+  {
+    id: "activities",
+    activeKeys: [
+      "activities",
+      "activityDetail",
+      "activityContext",
+      "activityNetwork",
+    ],
+    pathname: "/activities",
+    label: "Activity logs",
+    icon: IconChartLine as NavIcon,
+  },
+] as const satisfies readonly ManageNavItem[];
 
 interface FooterNavItem {
-  id: ZeroNavId;
-  label: string;
-  icon: NavIcon;
-  iconImg: string | undefined;
-  featureGate: FeatureSwitchKey | undefined;
+  readonly id: SidebarNavId;
+  readonly activeKeys: readonly RouteKey[];
+  readonly pathname: string;
+  readonly label: string;
+  readonly icon: NavIcon;
+  readonly iconImg: string | undefined;
+  readonly featureGate: FeatureSwitchKey | undefined;
 }
 
 const FOOTER_NAV = [
   {
     id: "works",
+    activeKeys: ["works"],
+    pathname: "/works",
     label: "Where Zero works",
     icon: IconLayoutGrid as NavIcon,
     iconImg: slackIcon,
     featureGate: undefined,
   },
   {
-    id: "usage",
+    id: "settingsUsage",
+    activeKeys: ["settingsUsage"],
+    pathname: "/settings/usage",
     label: "Usage",
     icon: IconChartBar as NavIcon,
     iconImg: undefined,
     featureGate: FeatureSwitchKey.Usage,
   },
 ] as const satisfies readonly FooterNavItem[];
-
-export type ZeroAccountAction = "preferences" | "manage" | "signout";
 
 interface SessionAccount {
   sessionId: string;
@@ -499,8 +539,8 @@ function ChatThreadItem({
     <>
       <div className="group relative">
         <Link
-          pathname="/chat/:chatThreadId"
-          options={{ pathParams: { chatThreadId: session.id } }}
+          pathname="/chats/:id"
+          options={{ pathParams: { id: session.id } }}
           onClick={(e) => {
             if (e.metaKey || e.ctrlKey || e.shiftKey) {
               return;
@@ -805,7 +845,7 @@ function TalkToSection({
   onPinnedIdsChange,
   onNewChat,
 }: {
-  activeId: ZeroNavId | "chat";
+  activeId: RouteKey | null;
   currentChatAgentId: string | null;
   selectedRecentId: string | null;
   selectedAgentIdFromChat: string | null | undefined;
@@ -867,7 +907,7 @@ function TalkToSection({
           {/* Lead agent */}
           {(() => {
             const isPrimarySelected =
-              activeId === "chat" &&
+              isChatRoute(activeId) &&
               !selectedRecentId &&
               currentChatAgentId === null;
             const isFromChat =
@@ -875,10 +915,10 @@ function TalkToSection({
               selectedAgentIdFromChat === null;
             return (
               <Link
-                pathname={defaultAgentRawName ? "/talk/:agentId" : "/"}
+                pathname={defaultAgentRawName ? "/agents/:id/chat" : "/"}
                 options={
                   defaultAgentRawName
-                    ? { pathParams: { agentId: defaultAgentRawName } }
+                    ? { pathParams: { id: defaultAgentRawName } }
                     : undefined
                 }
                 className={`flex w-full h-8 shrink-0 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
@@ -908,15 +948,15 @@ function TalkToSection({
           {/* Pinned agents */}
           {pinnedAgents.map((agent) => {
             const isPrimarySelected =
-              activeId === "chat" &&
+              isChatRoute(activeId) &&
               !selectedRecentId &&
               currentChatAgentId === agent.id;
             const isFromChat = selectedAgentIdFromChat === agent.id;
             return (
               <div key={agent.id} className="group relative">
                 <Link
-                  pathname="/talk/:agentId"
-                  options={{ pathParams: { agentId: agent.id } }}
+                  pathname="/agents/:id/chat"
+                  options={{ pathParams: { id: agent.id } }}
                   className={`flex w-full h-8 shrink-0 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
                     isPrimarySelected
                       ? "bg-gray-200 text-gray-900 font-medium"
@@ -1119,7 +1159,7 @@ export function ZeroSidebar() {
   const [isScrolled, setIsScrolled] = useState(false);
 
   // Read all data from signals directly
-  const activeId = useGet(zeroActiveId$);
+  const activeId = useGet(activeRoute$);
   const displayNameLoadable = useLastLoadable(agentDisplayName$);
   const displayNameRaw =
     displayNameLoadable.state === "hasData" ? displayNameLoadable.data : null;
@@ -1217,7 +1257,7 @@ export function ZeroSidebar() {
 
   const manageNav = MANAGE_NAV.filter((item) => {
     return (
-      item.id !== "activity" || features?.[FeatureSwitchKey.ActivityLogList]
+      item.id !== "activities" || features?.[FeatureSwitchKey.ActivityLogList]
     );
   }).map((item) => {
     return {
@@ -1235,10 +1275,18 @@ export function ZeroSidebar() {
   });
 
   const allNavItems = [
-    ...manageNav,
-    { id: "chat" as const, label: "New chat", icon: IconEdit as NavIcon },
-    ...footerNav.map(({ id, label, icon }) => {
-      return { id, label, icon };
+    ...manageNav.map(({ id, activeKeys, pathname: p, label, icon }) => {
+      return { id, activeKeys, pathname: p, label, icon };
+    }),
+    {
+      id: "chat" as const,
+      activeKeys: ["home", "agentChat", "agentIdeas", "chat"] as RouteKey[],
+      pathname: "/",
+      label: "New chat",
+      icon: IconEdit as NavIcon,
+    },
+    ...footerNav.map(({ id, activeKeys, pathname: p, label, icon }) => {
+      return { id, activeKeys, pathname: p, label, icon };
     }),
   ];
 
@@ -1273,61 +1321,56 @@ export function ZeroSidebar() {
           {/* Icon-only nav: one centered column; inline-flex links never stretch */}
           <nav className="flex min-h-0 w-full min-w-0 flex-1 flex-col items-center gap-1 pb-2 pt-0">
             <TooltipProvider delayDuration={100}>
-              {allNavItems.map(({ id, label, icon: Icon }) => {
-                return (
-                  <div key={id} className="flex w-full shrink-0 justify-center">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Link
-                          pathname={
-                            id === "chat"
-                              ? "/"
-                              : id === "team"
-                                ? "/team"
-                                : id === "connectors"
-                                  ? "/connectors"
-                                  : "/:tab"
-                          }
-                          options={
-                            id === "chat" ||
-                            id === "team" ||
-                            id === "connectors"
-                              ? undefined
-                              : { pathParams: { tab: id } }
-                          }
-                          onClick={(e) => {
-                            if (e.metaKey || e.ctrlKey || e.shiftKey) {
-                              return;
+              {allNavItems.map(
+                ({ id, activeKeys, pathname: navPath, label, icon: Icon }) => {
+                  const isActive =
+                    activeId !== null &&
+                    (activeKeys as readonly RouteKey[]).includes(activeId);
+                  return (
+                    <div
+                      key={id}
+                      className="flex w-full shrink-0 justify-center"
+                    >
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Link
+                            pathname={
+                              navPath as Parameters<typeof Link>[0]["pathname"]
                             }
-                            e.preventDefault();
-                            if (id === "chat") {
-                              onSelect("chat");
-                              onNewChat?.(null);
-                            } else {
-                              onSelect(id);
-                            }
-                          }}
-                          className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
-                            activeId === id
-                              ? "bg-gray-200 text-gray-900"
-                              : "text-sidebar-foreground hover:bg-sidebar-accent"
-                          }`}
-                        >
-                          <span className="relative inline-flex">
-                            <Icon size={16} className="shrink-0" />
-                            {id === "works" && slackScopeMismatch && (
-                              <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500" />
-                            )}
-                          </span>
-                        </Link>
-                      </TooltipTrigger>
-                      <TooltipContent side="right">
-                        <p className="text-xs">{label}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
-                );
-              })}
+                            onClick={(e) => {
+                              if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                                return;
+                              }
+                              e.preventDefault();
+                              if (id === "chat") {
+                                onSelect("chat");
+                                onNewChat?.(null);
+                              } else {
+                                onSelect(id);
+                              }
+                            }}
+                            className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
+                              isActive
+                                ? "bg-gray-200 text-gray-900"
+                                : "text-sidebar-foreground hover:bg-sidebar-accent"
+                            }`}
+                          >
+                            <span className="relative inline-flex">
+                              <Icon size={16} className="shrink-0" />
+                              {id === "works" && slackScopeMismatch && (
+                                <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500" />
+                              )}
+                            </span>
+                          </Link>
+                        </TooltipTrigger>
+                        <TooltipContent side="right">
+                          <p className="text-xs">{label}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                  );
+                },
+              )}
             </TooltipProvider>
           </nav>
 
@@ -1377,40 +1420,36 @@ export function ZeroSidebar() {
               </span>
             </div>
             <div className="flex flex-col gap-1">
-              {manageNav.map(({ id, label, icon: Icon }) => {
-                return (
-                  <Link
-                    key={id}
-                    pathname={
-                      id === "team"
-                        ? "/team"
-                        : id === "connectors"
-                          ? "/connectors"
-                          : "/:tab"
-                    }
-                    options={
-                      id === "team" || id === "connectors"
-                        ? undefined
-                        : { pathParams: { tab: id } }
-                    }
-                    onClick={(e) => {
-                      if (e.metaKey || e.ctrlKey || e.shiftKey) {
-                        return;
+              {manageNav.map(
+                ({ id, activeKeys, pathname: navPath, label, icon: Icon }) => {
+                  const isActive =
+                    activeId !== null &&
+                    (activeKeys as readonly RouteKey[]).includes(activeId);
+                  return (
+                    <Link
+                      key={id}
+                      pathname={
+                        navPath as Parameters<typeof Link>[0]["pathname"]
                       }
-                      e.preventDefault();
-                      onSelect(id);
-                    }}
-                    className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
-                      activeId === id
-                        ? "bg-gray-200 text-gray-900 font-medium"
-                        : "text-sidebar-foreground hover:bg-sidebar-accent"
-                    }`}
-                  >
-                    <Icon size={16} className="shrink-0" />
-                    <span className="truncate">{label}</span>
-                  </Link>
-                );
-              })}
+                      onClick={(e) => {
+                        if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                          return;
+                        }
+                        e.preventDefault();
+                        onSelect(id);
+                      }}
+                      className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
+                        isActive
+                          ? "bg-gray-200 text-gray-900 font-medium"
+                          : "text-sidebar-foreground hover:bg-sidebar-accent"
+                      }`}
+                    >
+                      <Icon size={16} className="shrink-0" />
+                      <span className="truncate">{label}</span>
+                    </Link>
+                  );
+                },
+              )}
             </div>
           </div>
 
@@ -1466,43 +1505,54 @@ export function ZeroSidebar() {
         {/* Footer nav */}
         <div className="p-2">
           <div className="flex flex-col gap-1">
-            {footerNav.map(({ id, label, icon: Icon, iconImg }) => {
-              return (
-                <Link
-                  key={id}
-                  pathname="/:tab"
-                  options={{ pathParams: { tab: id } }}
-                  onClick={(e) => {
-                    if (e.metaKey || e.ctrlKey || e.shiftKey) {
-                      return;
-                    }
-                    e.preventDefault();
-                    onSelect(id);
-                  }}
-                  className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
-                    activeId === id
-                      ? "bg-gray-200 text-gray-900 font-medium"
-                      : "text-sidebar-foreground hover:bg-sidebar-accent"
-                  }`}
-                >
-                  {iconImg ? (
-                    <img
-                      src={iconImg}
-                      alt=""
-                      className="h-3.5 w-3.5 shrink-0"
-                      width={14}
-                      height={14}
-                    />
-                  ) : (
-                    <Icon size={16} className="shrink-0" />
-                  )}
-                  <span className="truncate flex-1">{label}</span>
-                  {id === "works" && slackScopeMismatch && (
-                    <span className="h-2 w-2 shrink-0 rounded-full bg-red-500" />
-                  )}
-                </Link>
-              );
-            })}
+            {footerNav.map(
+              ({
+                id,
+                activeKeys,
+                pathname: navPath,
+                label,
+                icon: Icon,
+                iconImg,
+              }) => {
+                const isActive =
+                  activeId !== null &&
+                  (activeKeys as readonly RouteKey[]).includes(activeId);
+                return (
+                  <Link
+                    key={id}
+                    pathname={navPath as Parameters<typeof Link>[0]["pathname"]}
+                    onClick={(e) => {
+                      if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                        return;
+                      }
+                      e.preventDefault();
+                      onSelect(id);
+                    }}
+                    className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
+                      isActive
+                        ? "bg-gray-200 text-gray-900 font-medium"
+                        : "text-sidebar-foreground hover:bg-sidebar-accent"
+                    }`}
+                  >
+                    {iconImg ? (
+                      <img
+                        src={iconImg}
+                        alt=""
+                        className="h-3.5 w-3.5 shrink-0"
+                        width={14}
+                        height={14}
+                      />
+                    ) : (
+                      <Icon size={16} className="shrink-0" />
+                    )}
+                    <span className="truncate flex-1">{label}</span>
+                    {id === "works" && slackScopeMismatch && (
+                      <span className="h-2 w-2 shrink-0 rounded-full bg-red-500" />
+                    )}
+                  </Link>
+                );
+              },
+            )}
             <div className="h-px bg-border/30 mx-1 my-1" />
             {/* Account dropdown */}
             <AccountDropdown onAccountAction={onAccountAction} />

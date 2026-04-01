@@ -45,15 +45,15 @@ describe("chat skeleton on switch", () => {
     );
 
     // Start on thread-A — messages load immediately
-    await setupPage({ context, path: "/chat/thread-a" });
+    await setupPage({ context, path: "/chats/thread-a" });
 
     await waitFor(() => {
       expect(screen.getByText("Answer for thread-a")).toBeInTheDocument();
     });
 
     // Switch to thread-B — API is delayed, skeleton should appear
-    context.store.set(detachedNavigateTo$, "/chat/:chatThreadId", {
-      pathParams: { chatThreadId: "thread-b" },
+    context.store.set(detachedNavigateTo$, "/chats/:id", {
+      pathParams: { id: "thread-b" },
     });
 
     // Skeleton should be visible while thread-B loads

@@ -41,7 +41,7 @@ describe("chat title refresh", () => {
 
     await setupPage({
       context,
-      path: "/chat/thread-test-1",
+      path: "/chats/thread-test-1",
     });
 
     const textarea = await waitFor(() => {
@@ -102,7 +102,7 @@ describe("chat title refresh", () => {
 
     await setupPage({
       context,
-      path: "/chat/thread-test-1",
+      path: "/chats/thread-test-1",
     });
 
     const textarea = await waitFor(() => {

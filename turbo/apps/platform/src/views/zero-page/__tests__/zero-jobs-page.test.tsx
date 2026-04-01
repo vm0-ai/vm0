@@ -80,7 +80,7 @@ function mockTeamAPIError() {
 }
 
 async function renderTeamPage() {
-  await setupPage({ context, path: "/team" });
+  await setupPage({ context, path: "/agents" });
 }
 
 describe("zero jobs page - team list", () => {
@@ -292,7 +292,7 @@ function mockScheduleAPI(schedules = createMockSchedulesFromAPI()) {
 }
 
 async function renderSchedulePage() {
-  await setupPage({ context, path: "/schedule" });
+  await setupPage({ context, path: "/schedules" });
 }
 
 describe("zero jobs page - schedule list", () => {

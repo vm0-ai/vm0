@@ -4,7 +4,6 @@ import { mockLocation } from "../../location.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { createPushStateMock } from "../../../__tests__/page-helper.ts";
 import {
-  zeroActiveId$,
   chatThreadId$,
   zeroShowAboutPage$,
   setZeroShowAboutPage$,
@@ -14,89 +13,72 @@ import {
   handleZeroNavSelect$,
   handleZeroAccountAction$,
 } from "../zero-nav.ts";
+import { activeRoute$ } from "../../active-route.ts";
 import { setRootSignal$ } from "../../root-signal.ts";
 import { initRoutes$ } from "../../route.ts";
 
 const context = testContext();
 
 describe("zero-nav", () => {
-  describe("zeroActiveId$", () => {
-    it("should default to 'chat' for /", () => {
+  describe("activeRoute$", () => {
+    it("should resolve / to 'home'", () => {
       mockLocation({ pathname: "/", search: "" }, context.signal);
-      expect(context.store.get(zeroActiveId$)).toBe("chat");
+      expect(context.store.get(activeRoute$)).toBe("home");
     });
 
-    it("should resolve /chat to 'chat'", () => {
-      mockLocation({ pathname: "/chat", search: "" }, context.signal);
-      expect(context.store.get(zeroActiveId$)).toBe("chat");
-    });
-
-    it("should resolve unknown tab /meet to 'not-found'", () => {
+    it("should resolve unknown path to null", () => {
       mockLocation({ pathname: "/meet", search: "" }, context.signal);
-      expect(context.store.get(zeroActiveId$)).toBe("not-found");
+      expect(context.store.get(activeRoute$)).toBeNull();
     });
 
-    it("should resolve /schedule to 'schedule'", () => {
-      mockLocation({ pathname: "/schedule", search: "" }, context.signal);
-      expect(context.store.get(zeroActiveId$)).toBe("schedule");
+    it("should resolve /schedules to 'schedules'", () => {
+      mockLocation({ pathname: "/schedules", search: "" }, context.signal);
+      expect(context.store.get(activeRoute$)).toBe("schedules");
     });
 
-    it("should resolve /schedule/:id to 'schedule'", () => {
-      mockLocation(
-        {
-          pathname: "/schedule/2f3cad0c-cf1a-4b82-a104-529c9c70a360",
-          search: "",
-        },
-        context.signal,
-      );
-      expect(context.store.get(zeroActiveId$)).toBe("schedule");
+    it("should resolve /agents to 'agents'", () => {
+      mockLocation({ pathname: "/agents", search: "" }, context.signal);
+      expect(context.store.get(activeRoute$)).toBe("agents");
     });
 
-    it("should resolve /team to 'team'", () => {
-      mockLocation({ pathname: "/team", search: "" }, context.signal);
-      expect(context.store.get(zeroActiveId$)).toBe("team");
-    });
-
-    it("should resolve /activity to 'activity'", () => {
-      mockLocation({ pathname: "/activity", search: "" }, context.signal);
-      expect(context.store.get(zeroActiveId$)).toBe("activity");
+    it("should resolve /activities to 'activities'", () => {
+      mockLocation({ pathname: "/activities", search: "" }, context.signal);
+      expect(context.store.get(activeRoute$)).toBe("activities");
     });
 
     it("should resolve /works to 'works'", () => {
       mockLocation({ pathname: "/works", search: "" }, context.signal);
-      expect(context.store.get(zeroActiveId$)).toBe("works");
+      expect(context.store.get(activeRoute$)).toBe("works");
     });
 
-    it("should resolve /preferences to 'preferences'", () => {
-      mockLocation({ pathname: "/preferences", search: "" }, context.signal);
-      expect(context.store.get(zeroActiveId$)).toBe("preferences");
+    it("should resolve /settings to 'settings'", () => {
+      mockLocation({ pathname: "/settings", search: "" }, context.signal);
+      expect(context.store.get(activeRoute$)).toBe("settings");
     });
 
-    it("should resolve unknown path to 'not-found'", () => {
+    it("should resolve unknown path /invalid to null", () => {
       mockLocation({ pathname: "/invalid", search: "" }, context.signal);
-      expect(context.store.get(zeroActiveId$)).toBe("not-found");
+      expect(context.store.get(activeRoute$)).toBeNull();
     });
 
-    it("should not resolve unknown path /scheduled to chat (bug #5869)", () => {
+    it("should not resolve unknown path /scheduled", () => {
       mockLocation({ pathname: "/scheduled", search: "" }, context.signal);
-      expect(context.store.get(zeroActiveId$)).not.toBe("chat");
-      expect(context.store.get(zeroActiveId$)).toBe("not-found");
+      expect(context.store.get(activeRoute$)).toBeNull();
     });
 
-    it("should not resolve unknown path /foo to chat (bug #5869)", () => {
+    it("should not resolve unknown path /foo", () => {
       mockLocation({ pathname: "/foo", search: "" }, context.signal);
-      expect(context.store.get(zeroActiveId$)).not.toBe("chat");
-      expect(context.store.get(zeroActiveId$)).toBe("not-found");
+      expect(context.store.get(activeRoute$)).toBeNull();
     });
   });
 
-  describe("zeroActiveId$ with /talk/:name", () => {
-    it("should resolve /talk/agent-name to 'chat'", () => {
+  describe("activeRoute$ with /agents/:id/chat", () => {
+    it("should resolve /agents/agent-name/chat to 'agentChat'", () => {
       mockLocation(
-        { pathname: "/talk/agent-name", search: "" },
+        { pathname: "/agents/agent-name/chat", search: "" },
         context.signal,
       );
-      expect(context.store.get(zeroActiveId$)).toBe("chat");
+      expect(context.store.get(activeRoute$)).toBe("agentChat");
     });
   });
 
@@ -112,8 +94,8 @@ describe("zero-nav", () => {
         initRoutes$,
         [
           { path: "/", setup: noop$ },
-          { path: "/talk/:agentId", setup: noop$ },
-          { path: "/chat/:chatThreadId", setup: noop$ },
+          { path: "/agents/:id/chat", setup: noop$ },
+          { path: "/chats/:id", setup: noop$ },
           { path: "{/*path}", setup: noop$ },
         ],
         context.signal,
@@ -125,13 +107,13 @@ describe("zero-nav", () => {
       expect(context.store.get(chatThreadId$)).toBeNull();
     });
 
-    it("should return null for /talk/:agentId", async () => {
-      await setupRoutes("/talk/my-agent");
+    it("should return null for /agents/:id/chat", async () => {
+      await setupRoutes("/agents/my-agent/chat");
       expect(context.store.get(chatThreadId$)).toBeNull();
     });
 
-    it("should extract thread ID from /chat/:chatThreadId", async () => {
-      await setupRoutes("/chat/thread-abc-123");
+    it("should extract thread ID from /chats/:id", async () => {
+      await setupRoutes("/chats/thread-abc-123");
       expect(context.store.get(chatThreadId$)).toBe("thread-abc-123");
     });
   });
@@ -190,10 +172,10 @@ describe("zero-nav", () => {
       const pushStateMock = await setupNav();
 
       context.store.set(setZeroShowAboutPage$, true);
-      context.store.set(handleZeroNavSelect$, "schedule");
+      context.store.set(handleZeroNavSelect$, "schedules");
 
-      expect(pushStateMock).toHaveBeenCalledWith({}, "", "/schedule");
-      expect(context.store.get(zeroActiveId$)).toBe("schedule");
+      expect(pushStateMock).toHaveBeenCalledWith({}, "", "/schedules");
+      expect(context.store.get(activeRoute$)).toBe("schedules");
       expect(context.store.get(zeroShowAboutPage$)).toBeFalsy();
     });
 
@@ -208,7 +190,7 @@ describe("zero-nav", () => {
         initRoutes$,
         [
           { path: "/", setup: noop$ },
-          { path: "/schedule", setup: noop$ },
+          { path: "/schedules", setup: noop$ },
           { path: "{/*path}", setup: noop$ },
         ],
         context.signal,
@@ -218,7 +200,7 @@ describe("zero-nav", () => {
   });
 
   describe("handleZeroAccountAction$", () => {
-    it("should navigate to preferences for 'preferences' action", async () => {
+    it("should navigate to settings for 'preferences' action", async () => {
       context.store.set(setRootSignal$, context.signal);
       createPushStateMock(context.signal);
       mockLocation({ pathname: "/", search: "" }, context.signal);
@@ -229,7 +211,7 @@ describe("zero-nav", () => {
         initRoutes$,
         [
           { path: "/", setup: noop$ },
-          { path: "/preferences", setup: noop$ },
+          { path: "/settings", setup: noop$ },
           { path: "{/*path}", setup: noop$ },
         ],
         context.signal,
@@ -237,23 +219,23 @@ describe("zero-nav", () => {
 
       context.store.set(handleZeroAccountAction$, "preferences");
 
-      expect(context.store.get(zeroActiveId$)).toBe("preferences");
+      expect(context.store.get(activeRoute$)).toBe("settings");
     });
 
     it("should do nothing for 'signout' action", () => {
-      mockLocation({ pathname: "/schedule", search: "" }, context.signal);
+      mockLocation({ pathname: "/schedules", search: "" }, context.signal);
 
       context.store.set(handleZeroAccountAction$, "signout");
 
-      expect(context.store.get(zeroActiveId$)).toBe("schedule");
+      expect(context.store.get(activeRoute$)).toBe("schedules");
     });
 
     it("should do nothing for 'manage' action", () => {
-      mockLocation({ pathname: "/schedule", search: "" }, context.signal);
+      mockLocation({ pathname: "/schedules", search: "" }, context.signal);
 
       context.store.set(handleZeroAccountAction$, "manage");
 
-      expect(context.store.get(zeroActiveId$)).toBe("schedule");
+      expect(context.store.get(activeRoute$)).toBe("schedules");
     });
   });
 });

@@ -118,7 +118,7 @@ describe("chat to activity navigation", () => {
 
     await setupPage({
       context,
-      path: "/chat/thread-with-activity",
+      path: "/chats/thread-with-activity",
     });
 
     // Wait for chat messages to render

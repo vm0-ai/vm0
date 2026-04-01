@@ -41,7 +41,7 @@ describe("queue page", () => {
       }),
     );
 
-    await setupPage({ context, path: "/queue" });
+    await setupPage({ context, path: "/queues" });
 
     await waitFor(() => {
       expect(screen.getByText("My Agent")).toBeInTheDocument();
@@ -72,7 +72,7 @@ describe("queue page", () => {
       }),
     );
 
-    await setupPage({ context, path: "/queue" });
+    await setupPage({ context, path: "/queues" });
 
     await waitFor(() => {
       expect(screen.getByText("Other Agent")).toBeInTheDocument();
@@ -106,7 +106,7 @@ describe("queue page", () => {
       }),
     );
 
-    await setupPage({ context, path: "/queue" });
+    await setupPage({ context, path: "/queues" });
 
     await waitFor(() => {
       expect(screen.getByText("Queued Agent")).toBeInTheDocument();
@@ -136,7 +136,7 @@ describe("queue page", () => {
       }),
     );
 
-    await setupPage({ context, path: "/queue" });
+    await setupPage({ context, path: "/queues" });
 
     await waitFor(() => {
       expect(screen.getByText("Starting Agent")).toBeInTheDocument();
@@ -176,7 +176,7 @@ describe("queue page", () => {
       }),
     );
 
-    await setupPage({ context, path: "/queue" });
+    await setupPage({ context, path: "/queues" });
 
     await waitFor(() => {
       expect(screen.getByText("Cancel Test Agent")).toBeInTheDocument();

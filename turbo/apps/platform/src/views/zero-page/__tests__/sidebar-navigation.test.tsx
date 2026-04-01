@@ -108,7 +108,7 @@ describe("sidebar new chat navigation", () => {
     mockSubagentAPIs();
 
     // Start on /team so the "new chat" button navigates away
-    await setupPage({ context, path: "/team" });
+    await setupPage({ context, path: "/agents" });
 
     // Wait for the sidebar to render with the new chat button
     const newChatButton = await waitFor(() => {
@@ -119,7 +119,7 @@ describe("sidebar new chat navigation", () => {
 
     // Verify navigation to /chat/:threadId
     await waitFor(() => {
-      expect(pathname()).toBe("/chat/new-thread-id");
+      expect(pathname()).toBe("/chats/new-thread-id");
     });
   });
 
@@ -127,7 +127,7 @@ describe("sidebar new chat navigation", () => {
     const user = userEvent.setup();
     mockSubagentAPIs();
 
-    await setupPage({ context, path: "/talk/subagent-compose-id" });
+    await setupPage({ context, path: "/agents/subagent-compose-id/chat" });
 
     // Wait for the subagent chat to load — find the new chat button for the subagent
     const newChatButton = await waitFor(() => {
@@ -138,7 +138,7 @@ describe("sidebar new chat navigation", () => {
 
     // Verify navigation to /chat/:threadId
     await waitFor(() => {
-      expect(pathname()).toBe("/chat/new-thread-id");
+      expect(pathname()).toBe("/chats/new-thread-id");
     });
   });
 
@@ -160,7 +160,7 @@ describe("sidebar new chat navigation", () => {
       }),
     );
 
-    await setupPage({ context, path: "/team" });
+    await setupPage({ context, path: "/agents" });
 
     const newChatButton = await waitFor(() => {
       return screen.getByLabelText("New chat with Zero");
@@ -175,7 +175,7 @@ describe("sidebar new chat navigation", () => {
 
     // After creation completes, button should be re-enabled
     await waitFor(() => {
-      expect(pathname()).toBe("/chat/delayed-thread-id");
+      expect(pathname()).toBe("/chats/delayed-thread-id");
     });
   });
 
@@ -214,7 +214,7 @@ describe("sidebar new chat navigation", () => {
       }),
     );
 
-    await setupPage({ context, path: "/team" });
+    await setupPage({ context, path: "/agents" });
 
     const newChatButton = await waitFor(() => {
       return screen.getByLabelText("New chat with Zero");
@@ -224,7 +224,7 @@ describe("sidebar new chat navigation", () => {
 
     // 1. Verify navigation (URL-based selection confirmation)
     await waitFor(() => {
-      expect(pathname()).toBe("/chat/new-thread-id");
+      expect(pathname()).toBe("/chats/new-thread-id");
     });
 
     // 2. Verify sidebar shows "New chat" entry (thread has title: null)

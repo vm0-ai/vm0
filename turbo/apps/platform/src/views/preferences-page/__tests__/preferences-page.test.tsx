@@ -29,7 +29,7 @@ function mockPreferencesAPI(prefs = createMockPreferences()) {
 }
 
 async function renderPreferencesPage() {
-  await setupPage({ context, path: "/preferences" });
+  await setupPage({ context, path: "/settings" });
 }
 
 describe("zero preferences page - tab navigation", () => {

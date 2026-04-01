@@ -15,14 +15,14 @@ export const setupHomePage$ = command(
 
     await set(checkSettingsParam$, signal);
 
-    // Redirect bare / to /talk/:defaultAgent, forwarding ?prompt= if present
+    // Redirect bare / to /agents/:id/chat, forwarding ?prompt= if present
     const defaultAgentId = await get(defaultAgentId$);
     signal.throwIfAborted();
     if (defaultAgentId) {
       const params = get(searchParams$);
       const prompt = params.get("prompt");
-      set(detachedNavigateTo$, "/talk/:agentId", {
-        pathParams: { agentId: defaultAgentId },
+      set(detachedNavigateTo$, "/agents/:id/chat", {
+        pathParams: { id: defaultAgentId },
         searchParams: prompt ? new URLSearchParams({ prompt }) : undefined,
         replace: true,
       });

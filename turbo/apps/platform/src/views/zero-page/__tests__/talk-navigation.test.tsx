@@ -87,7 +87,7 @@ describe("talk navigation", () => {
 
     await setupPage({
       context,
-      path: "/talk/c0000000-0000-4000-a000-000000000001",
+      path: "/agents/c0000000-0000-4000-a000-000000000001/chat",
     });
 
     // Wait for the chat input to be ready
@@ -104,7 +104,7 @@ describe("talk navigation", () => {
 
     // The URL should navigate to /chat/new-thread-id-123
     await waitFor(() => {
-      expect(pathname()).toBe("/chat/new-thread-id-123");
+      expect(pathname()).toBe("/chats/new-thread-id-123");
     });
   });
 
@@ -257,7 +257,7 @@ describe("talk navigation", () => {
     // The final URL should be /chat/new-thread-id-123 after the auto-intro
     // message creates a thread and navigates
     await waitFor(() => {
-      expect(pathname()).toBe("/chat/new-thread-id-123");
+      expect(pathname()).toBe("/chats/new-thread-id-123");
     });
   });
 });

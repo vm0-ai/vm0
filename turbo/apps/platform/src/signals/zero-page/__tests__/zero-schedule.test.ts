@@ -151,7 +151,7 @@ function createMockSchedules() {
 async function setup() {
   await setupPage({
     context,
-    path: "/schedule",
+    path: "/schedules",
     withoutRender: true,
   });
 }
@@ -905,7 +905,7 @@ describe("org schedule signals", () => {
   async function setup() {
     await setupPage({
       context,
-      path: "/schedule",
+      path: "/schedules",
       withoutRender: true,
     });
   }

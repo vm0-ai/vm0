@@ -114,7 +114,7 @@ function isVisibleMessage(
 function ActivityBreadcrumbLink() {
   return (
     <Link
-      pathname="/activity"
+      pathname="/activities"
       className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors no-underline text-inherit"
     >
       <IconChartLine size={14} stroke={1.5} className="shrink-0" />
@@ -146,7 +146,7 @@ function ActivityNotFound() {
           it in the current workspace.
         </p>
         <Link
-          pathname="/activity"
+          pathname="/activities"
           className="zero-btn-morandi mt-2 inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-accent"
         >
           Back to activity
@@ -197,8 +197,8 @@ function ActivityHeaderCard({
           </h2>
           {showContextLink && (
             <Link
-              pathname="/activity/:runId/context"
-              options={{ pathParams: { runId: detail.id } }}
+              pathname="/activities/:id/context"
+              options={{ pathParams: { id: detail.id } }}
               className="inline-flex items-center h-8 shrink-0 gap-1 rounded-lg px-3 text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors no-underline"
             >
               <IconFileAnalytics size={14} stroke={1.5} />
@@ -207,8 +207,8 @@ function ActivityHeaderCard({
           )}
           {showNetworkLink && (
             <Link
-              pathname="/activity/:runId/network"
-              options={{ pathParams: { runId: detail.id } }}
+              pathname="/activities/:id/network"
+              options={{ pathParams: { id: detail.id } }}
               className="inline-flex items-center h-8 shrink-0 gap-1 rounded-lg px-3 text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors no-underline"
             >
               <IconWorldWww size={14} stroke={1.5} />
@@ -231,9 +231,9 @@ function ActivityHeaderCard({
                 <span className="text-muted-foreground shrink-0">Source</span>
                 {triggerSource === "schedule" && detail.scheduleId ? (
                   <Link
-                    pathname="/schedule/:scheduleId"
+                    pathname="/schedules/:id"
                     options={{
-                      pathParams: { scheduleId: detail.scheduleId },
+                      pathParams: { id: detail.scheduleId },
                     }}
                     className="text-foreground whitespace-nowrap underline decoration-foreground/40 hover:decoration-foreground transition-colors"
                   >

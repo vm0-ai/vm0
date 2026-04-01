@@ -5,7 +5,7 @@ import { currentChatThread$ } from "./zero-chat.ts";
 
 /**
  * Agent ID of the current chat thread.
- * Returns null when not on a /chat/:chatThreadId route or thread has no agent.
+ * Returns null when not on a /chats/:id route or thread has no agent.
  */
 const chatThreadAgentId$ = computed(async (get) => {
   const thread = await get(currentChatThread$);
@@ -16,8 +16,8 @@ const chatThreadAgentId$ = computed(async (get) => {
  * The currently active chat agent ID, derived from URL and thread data.
  * Returns null when chatting with the default agent (null = default semantic).
  *
- * - On /talk/:agentId → from pathParams.agentId, normalized (default → null)
- * - On /chat/:chatThreadId → from currentChatThread$.agentId, normalized
+ * - On /agents/:id/chat → from pathParams.id, normalized (default → null)
+ * - On /chats/:id → from currentChatThread$.agentId, normalized
  * - Otherwise → null
  */
 export const zeroChatAgentId$ = computed(async (get) => {

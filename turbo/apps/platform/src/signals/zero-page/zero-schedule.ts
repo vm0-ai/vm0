@@ -554,8 +554,8 @@ export const runScheduleNow$ = command(
         createElement(
           Link,
           {
-            pathname: "/activity/:runId" as const,
-            options: { pathParams: { runId: data.runId } },
+            pathname: "/activities/:id" as const,
+            options: { pathParams: { id: data.runId } },
             className: "underline",
           },
           "View activity",

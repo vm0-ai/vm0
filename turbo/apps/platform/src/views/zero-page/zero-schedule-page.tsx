@@ -465,8 +465,8 @@ export function ZeroSchedulePage() {
   ] as const;
 
   const openScheduleDetail = (entry: CombinedEntry) => {
-    navigate("/schedule/:scheduleId", {
-      pathParams: { scheduleId: entry.id },
+    navigate("/schedules/:id", {
+      pathParams: { id: entry.id },
     });
   };
 
@@ -496,8 +496,8 @@ export function ZeroSchedulePage() {
       )
         .then((scheduleId) => {
           setCreateOpen(false);
-          navigate("/schedule/:scheduleId", {
-            pathParams: { scheduleId },
+          navigate("/schedules/:id", {
+            pathParams: { id: scheduleId },
           });
         })
         .catch((error: unknown) => {

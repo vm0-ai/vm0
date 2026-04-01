@@ -39,7 +39,7 @@ function mockTeamWithSubagent() {
 }
 
 async function openCreateDialog(user: ReturnType<typeof userEvent.setup>) {
-  await setupPage({ context, path: "/team" });
+  await setupPage({ context, path: "/agents" });
 
   await waitFor(() => {
     expect(screen.getByText("Research Agent")).toBeInTheDocument();

@@ -52,14 +52,14 @@ function mockTwoAgents() {
 }
 
 describe("talk to activity agent retention", () => {
-  it("should retain non-default agent in sidebar after navigating from /talk/:agentId to /activity", async () => {
+  it("should retain non-default agent in sidebar after navigating from /agents/:id/chat to /activity", async () => {
     const user = userEvent.setup();
     mockTwoAgents();
 
     // Navigate to non-default agent (bar)
     await setupPage({
       context,
-      path: "/talk/agent-bar-id",
+      path: "/agents/agent-bar-id/chat",
       featureSwitches: { [FeatureSwitchKey.ActivityLogList]: true },
     });
 
@@ -76,7 +76,7 @@ describe("talk to activity agent retention", () => {
 
     // Wait for navigation to /activity to complete
     await waitFor(() => {
-      expect(pathname()).toBe("/activity");
+      expect(pathname()).toBe("/activities");
     });
 
     // After navigating to /activity, the sidebar should still show "chat with bar"

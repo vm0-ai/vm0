@@ -58,7 +58,7 @@ describe("zero doctor firewall-permissions-change command", () => {
         'You can enable the "contents:read" permission directly',
       );
       expect(logCalls).toContain("[Manage GitHub firewall]");
-      expect(logCalls).toContain("/firewall-allow/agent-abc-123?");
+      expect(logCalls).toContain("/agents/agent-abc-123/permissions?");
       expect(logCalls).toContain("ref=github");
       expect(logCalls).toContain("permission=contents%3Aread");
     });
@@ -158,8 +158,8 @@ describe("zero doctor firewall-permissions-change command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain('To enable the "contents:read" permission');
       expect(logCalls).toContain("[Manage GitHub firewall]");
-      expect(logCalls).toContain("/firewall-allow?");
-      expect(logCalls).not.toContain("/firewall-allow/");
+      expect(logCalls).toContain("/agents/permissions?");
+      expect(logCalls).not.toContain("/agents/permissions/");
     });
   });
 
@@ -263,7 +263,9 @@ describe("zero doctor firewall-permissions-change command", () => {
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("https://app.vm0.ai/firewall-allow/agent-1?");
+      expect(logCalls).toContain(
+        "https://app.vm0.ai/agents/agent-1/permissions?",
+      );
     });
   });
 });

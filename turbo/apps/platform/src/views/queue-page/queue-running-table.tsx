@@ -88,8 +88,8 @@ export function QueueRunningTable({ tasks }: QueueRunningTableProps) {
                 <div>
                   {runId ? (
                     <Link
-                      pathname="/activity/:runId"
-                      options={{ pathParams: { runId: runId } }}
+                      pathname="/activities/:id"
+                      options={{ pathParams: { id: runId } }}
                       className="text-sm text-primary hover:underline"
                     >
                       View logs

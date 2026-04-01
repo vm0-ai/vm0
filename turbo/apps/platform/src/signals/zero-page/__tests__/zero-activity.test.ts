@@ -90,7 +90,7 @@ function createMockLogDetail() {
 async function setup() {
   await setupPage({
     context,
-    path: "/activity",
+    path: "/activities",
     withoutRender: true,
   });
 }
@@ -233,7 +233,7 @@ describe("zero-activity signals", () => {
 
       await setupPage({
         context,
-        path: "/activity/a0000000-0000-4000-a000-000000000001",
+        path: "/activities/a0000000-0000-4000-a000-000000000001",
         withoutRender: true,
       });
       await context.store.set(setupActivityLogLoop$, context.signal);

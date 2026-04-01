@@ -255,7 +255,7 @@ function Breadcrumb({ runId }: { runId: string | null }) {
       {features?.[FeatureSwitchKey.ActivityLogList] && (
         <>
           <Link
-            pathname="/activity"
+            pathname="/activities"
             className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors no-underline text-inherit"
           >
             <IconChartLine size={14} stroke={1.5} className="shrink-0" />
@@ -267,8 +267,8 @@ function Breadcrumb({ runId }: { runId: string | null }) {
       {runId && (
         <>
           <Link
-            pathname="/activity/:runId"
-            options={{ pathParams: { runId } }}
+            pathname="/activities/:id"
+            options={{ pathParams: { id: runId } }}
             className="rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors no-underline text-inherit"
           >
             Run
@@ -297,8 +297,8 @@ function ContextNotAvailable({ runId }: { runId: string | null }) {
         </p>
         {runId && (
           <Link
-            pathname="/activity/:runId"
-            options={{ pathParams: { runId } }}
+            pathname="/activities/:id"
+            options={{ pathParams: { id: runId } }}
             className="zero-btn-morandi mt-2 inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-accent"
           >
             Back to run

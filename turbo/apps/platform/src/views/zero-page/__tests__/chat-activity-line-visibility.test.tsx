@@ -28,7 +28,7 @@ describe("activity line visibility while run is still running", () => {
       ],
     });
 
-    await setupPage({ context, path: "/chat/thread-activity-vis" });
+    await setupPage({ context, path: "/chats/thread-activity-vis" });
 
     // Wait for the active run to appear with thinking state
     await waitFor(() => {
@@ -83,7 +83,7 @@ describe("activity line visibility while run is still running", () => {
       ],
     });
 
-    await setupPage({ context, path: "/chat/thread-activity-terminal" });
+    await setupPage({ context, path: "/chats/thread-activity-terminal" });
 
     // Thinking state initially
     await waitFor(() => {

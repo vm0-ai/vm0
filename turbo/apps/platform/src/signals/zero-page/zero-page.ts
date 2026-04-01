@@ -58,8 +58,8 @@ export const resolveAgentById$ = command(
     if (!agent) {
       // Unknown agent → redirect to default
       if (rawDefaultName) {
-        set(detachedNavigateTo$, "/talk/:agentId", {
-          pathParams: { agentId: rawDefaultName },
+        set(detachedNavigateTo$, "/agents/:id/chat", {
+          pathParams: { id: rawDefaultName },
           replace: true,
         });
       }

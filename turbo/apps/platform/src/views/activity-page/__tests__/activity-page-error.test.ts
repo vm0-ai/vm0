@@ -24,7 +24,7 @@ describe("activity page error", () => {
       }),
     );
 
-    await setupPage({ context, path: "/activity" });
+    await setupPage({ context, path: "/activities" });
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toBeInTheDocument();

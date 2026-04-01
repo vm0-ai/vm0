@@ -39,7 +39,7 @@ describe("chat draft persistence across thread navigation", () => {
   it("should preserve input text when switching between threads", async () => {
     const user = userEvent.setup();
     mockThreads();
-    await setupPage({ context, path: "/chat/thread-1" });
+    await setupPage({ context, path: "/chats/thread-1" });
 
     await waitFor(() => {
       expect(getTextarea()).toBeInTheDocument();
@@ -51,8 +51,8 @@ describe("chat draft persistence across thread navigation", () => {
     expect(getTextarea().value).toBe("draft for thread 1");
 
     // Navigate to thread-2
-    context.store.set(detachedNavigateTo$, "/chat/:chatThreadId", {
-      pathParams: { chatThreadId: "thread-2" },
+    context.store.set(detachedNavigateTo$, "/chats/:id", {
+      pathParams: { id: "thread-2" },
     });
 
     // thread-2 textarea should be empty
@@ -65,8 +65,8 @@ describe("chat draft persistence across thread navigation", () => {
     await user.type(getTextarea(), "draft for thread 2");
 
     // Navigate back to thread-1 — draft restored
-    context.store.set(detachedNavigateTo$, "/chat/:chatThreadId", {
-      pathParams: { chatThreadId: "thread-1" },
+    context.store.set(detachedNavigateTo$, "/chats/:id", {
+      pathParams: { id: "thread-1" },
     });
 
     await waitFor(() => {
@@ -74,8 +74,8 @@ describe("chat draft persistence across thread navigation", () => {
     });
 
     // Navigate back to thread-2 — draft restored
-    context.store.set(detachedNavigateTo$, "/chat/:chatThreadId", {
-      pathParams: { chatThreadId: "thread-2" },
+    context.store.set(detachedNavigateTo$, "/chats/:id", {
+      pathParams: { id: "thread-2" },
     });
 
     await waitFor(() => {
@@ -86,7 +86,7 @@ describe("chat draft persistence across thread navigation", () => {
   it("should not leak thread draft into a different thread", async () => {
     const user = userEvent.setup();
     mockThreads();
-    await setupPage({ context, path: "/chat/thread-a" });
+    await setupPage({ context, path: "/chats/thread-a" });
 
     await waitFor(() => {
       expect(getTextarea()).toBeInTheDocument();
@@ -95,8 +95,8 @@ describe("chat draft persistence across thread navigation", () => {
     await user.clear(getTextarea());
     await user.type(getTextarea(), "only for thread-a");
 
-    context.store.set(detachedNavigateTo$, "/chat/:chatThreadId", {
-      pathParams: { chatThreadId: "thread-b" },
+    context.store.set(detachedNavigateTo$, "/chats/:id", {
+      pathParams: { id: "thread-b" },
     });
 
     await waitFor(() => {
@@ -144,7 +144,7 @@ describe("chat draft persistence across thread navigation", () => {
       }),
     );
 
-    await setupPage({ context, path: "/chat/thread-1" });
+    await setupPage({ context, path: "/chats/thread-1" });
 
     await waitFor(() => {
       expect(getTextarea()).toBeInTheDocument();
@@ -168,8 +168,8 @@ describe("chat draft persistence across thread navigation", () => {
     });
 
     // Navigate to thread-2 while upload is in-flight
-    context.store.set(detachedNavigateTo$, "/chat/:chatThreadId", {
-      pathParams: { chatThreadId: "thread-2" },
+    context.store.set(detachedNavigateTo$, "/chats/:id", {
+      pathParams: { id: "thread-2" },
     });
 
     // thread-2 should have no attachment chips
@@ -189,8 +189,8 @@ describe("chat draft persistence across thread navigation", () => {
     );
 
     // Navigate back to thread-1
-    context.store.set(detachedNavigateTo$, "/chat/:chatThreadId", {
-      pathParams: { chatThreadId: "thread-1" },
+    context.store.set(detachedNavigateTo$, "/chats/:id", {
+      pathParams: { id: "thread-1" },
     });
 
     // The upload should now be complete — "Remove" instead of "Cancel upload"

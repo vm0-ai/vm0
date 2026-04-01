@@ -110,14 +110,14 @@ describe("sidebar duplicate new chat (#7368)", () => {
     const user = userEvent.setup();
     const { getCreateCount, getThreads } = mockAPIs();
 
-    await setupPage({ context, path: "/team" });
+    await setupPage({ context, path: "/agents" });
 
     // --- First: click "Open a conversation" and select Zero ---
     await openConversationAndSelectZero(user);
 
     // Wait for thread creation and navigation
     await waitFor(() => {
-      expect(pathname()).toBe("/chat/new-thread-1");
+      expect(pathname()).toBe("/chats/new-thread-1");
     });
     expect(getCreateCount()).toBe(1);
 
@@ -126,7 +126,7 @@ describe("sidebar duplicate new chat (#7368)", () => {
 
     // Should reuse the existing empty thread instead of creating a new one
     await waitFor(() => {
-      expect(pathname()).toBe("/chat/new-thread-1");
+      expect(pathname()).toBe("/chats/new-thread-1");
     });
     expect(getCreateCount()).toBe(1);
     expect(getThreads()).toHaveLength(1);

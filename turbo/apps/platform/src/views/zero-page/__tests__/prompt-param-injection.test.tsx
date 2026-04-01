@@ -35,7 +35,7 @@ describe("prompt query parameter injection", () => {
     mockChatAPI();
     await setupPage({
       context,
-      path: "/talk/c0000000-0000-4000-a000-000000000001?prompt=Set%20up%20a%20daily%20report",
+      path: "/agents/c0000000-0000-4000-a000-000000000001/chat?prompt=Set%20up%20a%20daily%20report",
     });
 
     const textarea = await waitFor(() => {
@@ -49,7 +49,7 @@ describe("prompt query parameter injection", () => {
     mockChatAPI();
     await setupPage({
       context,
-      path: "/talk/c0000000-0000-4000-a000-000000000001?prompt=test",
+      path: "/agents/c0000000-0000-4000-a000-000000000001/chat?prompt=test",
     });
 
     await waitFor(() => {
@@ -64,7 +64,7 @@ describe("prompt query parameter injection", () => {
     mockChatAPI();
     await setupPage({
       context,
-      path: "/talk/c0000000-0000-4000-a000-000000000001",
+      path: "/agents/c0000000-0000-4000-a000-000000000001/chat",
     });
 
     const textarea = await waitFor(() => {
@@ -79,7 +79,7 @@ describe("prompt query parameter injection", () => {
     await setupPage({ context, path: "/?prompt=hello" });
 
     await waitFor(() => {
-      expect(pathname()).toMatch(/^\/talk\//);
+      expect(pathname()).toMatch(/^\/agents\//);
     });
   });
 });

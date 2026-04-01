@@ -1,7 +1,9 @@
 import { computed } from "ccstate";
 import type { RoutePath } from "../../types/route.ts";
+import { ROUTES } from "../route-paths.ts";
 import { pathParams$ } from "../route.ts";
-import { zeroActiveId$, chatThreadId$ } from "./zero-nav.ts";
+import { activeRoute$ } from "../active-route.ts";
+import { chatThreadId$ } from "./zero-nav.ts";
 import { agents$ } from "./agents-list.ts";
 import { agentDisplayName$, defaultAgentId$ } from "./zero-agent-name.ts";
 import { zeroChatAgentId$ } from "./zero-active-agent.ts";
@@ -74,7 +76,7 @@ function scheduleEntryLabel(entry: {
 const teamDetailBreadcrumb$ = computed(
   async (get): Promise<MobileBreadcrumb> => {
     const params = get(pathParams$) as Params;
-    const agentId = getStringParam(params, "agentId");
+    const agentId = getStringParam(params, "id");
     if (agentId) {
       const agentsList = await get(agents$);
       const agent = agentsList.find((a) => {
@@ -83,12 +85,12 @@ const teamDetailBreadcrumb$ = computed(
       if (agent) {
         return {
           section: "Agents",
-          sectionPath: "/team" as RoutePath,
+          sectionPath: ROUTES.agents,
           name: agent.displayName ?? undefined,
         };
       }
     }
-    return { section: "Agents", sectionPath: "/team" as RoutePath };
+    return { section: "Agents", sectionPath: ROUTES.agents };
   },
 );
 
@@ -99,20 +101,68 @@ const activityDetailBreadcrumb$ = computed(
       return null;
     }
     const params = get(pathParams$) as Params;
-    const runId = getStringParam(params, "runId");
+    const runId = getStringParam(params, "id");
     if (runId) {
       const detail = await get(zeroActivityDetail$);
       if (detail && detail.id === runId) {
         return {
           section: "Activity logs",
-          sectionPath: "/activity" as RoutePath,
+          sectionPath: ROUTES.activities,
           name: detail.displayName ?? undefined,
         };
       }
     }
-    return { section: "Activity logs", sectionPath: "/activity" as RoutePath };
+    return { section: "Activity logs", sectionPath: ROUTES.activities };
   },
 );
+
+const scheduleBreadcrumb$ = computed((get): MobileBreadcrumb => {
+  const params = get(pathParams$) as Params;
+  const scheduleId = getStringParam(params, "id");
+  if (scheduleId) {
+    const entries = get(allOrgScheduleEntries$);
+    const entry = entries.find((e) => {
+      return e.id === scheduleId;
+    });
+    if (entry) {
+      return {
+        section: "Scheduled",
+        sectionPath: ROUTES.schedules,
+        name: scheduleEntryLabel(entry),
+      };
+    }
+  }
+  return { section: "Scheduled", sectionPath: ROUTES.schedules };
+});
+
+const chatBreadcrumb$ = computed(async (get): Promise<MobileBreadcrumb> => {
+  const params = get(pathParams$) as Params;
+  const displayName = await get(agentDisplayName$);
+  const defaultId = await get(defaultAgentId$);
+  const threadId = get(chatThreadId$);
+  const urlAgentId = getStringParam(params, "id");
+
+  if (threadId !== null || urlAgentId !== null) {
+    const subagentId = await get(zeroChatAgentId$);
+    if (subagentId) {
+      const agentsList = await get(agents$);
+      const subagent = agentsList.find((a) => {
+        return a.id === subagentId;
+      });
+      return {
+        section: subagent?.displayName ?? displayName,
+        sectionPath: CHAT_PATH,
+        avatarAgentId: subagentId,
+      };
+    }
+  }
+
+  return {
+    section: displayName,
+    sectionPath: CHAT_PATH,
+    avatarAgentId: defaultId ?? undefined,
+  };
+});
 
 /**
  * Provides breadcrumb data for the MobileTopBar.
@@ -123,32 +173,26 @@ const activityDetailBreadcrumb$ = computed(
  */
 export const mobileBreadcrumb$ = computed(
   async (get): Promise<MobileBreadcrumb | null> => {
-    const activeId = get(zeroActiveId$);
-    const params = get(pathParams$) as Params;
+    const route = get(activeRoute$);
 
-    if (activeId === "schedule") {
-      const scheduleId = getStringParam(params, "scheduleId");
-      if (scheduleId) {
-        const entries = get(allOrgScheduleEntries$);
-        const entry = entries.find((e) => {
-          return e.id === scheduleId;
-        });
-        if (entry) {
-          return {
-            section: "Scheduled",
-            sectionPath: "/schedule" as RoutePath,
-            name: scheduleEntryLabel(entry),
-          };
-        }
-      }
-      return { section: "Scheduled", sectionPath: "/schedule" as RoutePath };
+    if (route === "schedules" || route === "scheduleDetail") {
+      return await get(scheduleBreadcrumb$);
     }
 
-    if (activeId === "team") {
+    if (
+      route === "agents" ||
+      route === "agentDetail" ||
+      route === "agentPermissions"
+    ) {
       return await get(teamDetailBreadcrumb$);
     }
 
-    if (activeId === "activity") {
+    if (
+      route === "activities" ||
+      route === "activityDetail" ||
+      route === "activityContext" ||
+      route === "activityNetwork"
+    ) {
       return await get(activityDetailBreadcrumb$);
     }
 
@@ -156,49 +200,32 @@ export const mobileBreadcrumb$ = computed(
     const nonChatSections: Partial<
       Record<string, { label: string; path: RoutePath }>
     > = {
-      works: { label: "Works", path: "/works" as RoutePath },
-      usage: { label: "Usage", path: "/usage" as RoutePath },
-      preferences: { label: "Preferences", path: "/preferences" as RoutePath },
-      queue: { label: "Queue", path: "/queue" as RoutePath },
-      connectors: { label: "Connectors", path: "/connectors" as RoutePath },
+      works: { label: "Works", path: ROUTES.works },
+      settingsUsage: { label: "Usage", path: ROUTES.settingsUsage },
+      settings: { label: "Settings", path: ROUTES.settings },
+      queues: { label: "Queue", path: ROUTES.queues },
+      connectors: { label: "Connectors", path: ROUTES.connectors },
     };
-    const nonChatSection = nonChatSections[activeId];
-    if (nonChatSection) {
-      return {
-        section: nonChatSection.label,
-        sectionPath: nonChatSection.path,
-      };
-    }
-
-    if (activeId !== "chat") {
-      return null;
-    }
-
-    const displayName = await get(agentDisplayName$);
-    const defaultId = await get(defaultAgentId$);
-    const chatThreadId = get(chatThreadId$);
-    const urlAgentId = getStringParam(params, "agentId");
-
-    if (chatThreadId !== null || urlAgentId !== null) {
-      const subagentId = await get(zeroChatAgentId$);
-      if (subagentId) {
-        const agentsList = await get(agents$);
-        const subagent = agentsList.find((a) => {
-          return a.id === subagentId;
-        });
+    if (route) {
+      const nonChatSection = nonChatSections[route];
+      if (nonChatSection) {
         return {
-          section: subagent?.displayName ?? displayName,
-          sectionPath: CHAT_PATH,
-          avatarAgentId: subagentId,
+          section: nonChatSection.label,
+          sectionPath: nonChatSection.path,
         };
       }
     }
 
-    // Landing page or session without sub-agent — show default agent
-    return {
-      section: displayName,
-      sectionPath: CHAT_PATH,
-      avatarAgentId: defaultId ?? undefined,
-    };
+    // Chat-related routes
+    if (
+      route !== "home" &&
+      route !== "agentChat" &&
+      route !== "agentIdeas" &&
+      route !== "chat"
+    ) {
+      return null;
+    }
+
+    return await get(chatBreadcrumb$);
   },
 );
