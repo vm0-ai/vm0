@@ -290,20 +290,18 @@ function PricingPage({
         </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <div className="grid grid-cols-3 gap-4 min-w-[480px]">
-          {PLANS.map((plan) => {
-            return (
-              <PlanCard
-                key={plan.tier}
-                plan={plan}
-                currentTier={currentTier}
-                loading={loading}
-                onAction={handlePlanAction}
-              />
-            );
-          })}
-        </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {PLANS.map((plan) => {
+          return (
+            <PlanCard
+              key={plan.tier}
+              plan={plan}
+              currentTier={currentTier}
+              loading={loading}
+              onAction={handlePlanAction}
+            />
+          );
+        })}
       </div>
     </div>
   );
