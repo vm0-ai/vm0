@@ -3,12 +3,19 @@
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
+ * - Mock (external): Web API via MSW (org endpoint for role detection)
  * - Real (internal): All CLI code, firewall configs from @vm0/core
- * - No external API calls — this command only reads local firewall config
  */
 
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../../mocks/server";
 import { firewallDenyCommand } from "../firewall-deny";
+
+/** Minimal org response for MSW handlers */
+function orgResponse(role: "admin" | "member") {
+  return { id: "org-1", slug: "test-org", name: "Test Org", role };
+}
 
 describe("zero doctor firewall-deny command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -203,6 +210,89 @@ describe("zero doctor firewall-deny command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain(
         "https://tunnel-yuma-vm0-app.vm7.ai/firewall-allow/agent-1?",
+      );
+    });
+  });
+
+  describe("role-aware messaging", () => {
+    it("should output direct allow message for admin", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/org", () => {
+          return HttpResponse.json(orgResponse("admin"));
+        }),
+      );
+
+      await firewallDenyCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--method",
+        "GET",
+        "--path",
+        "/repos/owner/repo/pulls",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(
+        "You can allow this permission directly: [Manage GitHub firewall]",
+      );
+    });
+
+    it("should output request access message for member", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/org", () => {
+          return HttpResponse.json(orgResponse("member"));
+        }),
+      );
+
+      await firewallDenyCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--method",
+        "GET",
+        "--path",
+        "/repos/owner/repo/pulls",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(
+        "This change requires admin approval. Request access at: [Request GitHub access]",
+      );
+    });
+
+    it("should output fallback message when org API fails", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/org", () => {
+          return HttpResponse.json(
+            { error: { message: "Internal error", code: "INTERNAL" } },
+            { status: 500 },
+          );
+        }),
+      );
+
+      await firewallDenyCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--method",
+        "GET",
+        "--path",
+        "/repos/owner/repo/pulls",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(
+        "Ask the user to allow it at: [Allow GitHub access]",
       );
     });
   });
