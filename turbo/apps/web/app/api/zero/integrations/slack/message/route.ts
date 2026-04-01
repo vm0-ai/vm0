@@ -126,7 +126,18 @@ const router = tsr.router(integrationsSlackMessageContract, {
     let finalBlocks = body.blocks as (Block | KnownBlock)[] | undefined;
     if (agentLabel) {
       const footerBlocks = buildFooterBlocks(`Sent via ${agentLabel}`);
-      finalBlocks = [...(finalBlocks ?? []), ...footerBlocks];
+      if (finalBlocks && finalBlocks.length > 0) {
+        finalBlocks = [...finalBlocks, ...footerBlocks];
+      } else if (body.text) {
+        // Text-only message — wrap text in a section block so Slack renders it
+        // (when blocks are present, Slack ignores the text field for display)
+        finalBlocks = [
+          { type: "section", text: { type: "mrkdwn", text: body.text } },
+          ...footerBlocks,
+        ];
+      } else {
+        finalBlocks = footerBlocks;
+      }
     }
 
     try {
