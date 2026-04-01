@@ -35,7 +35,10 @@ import {
 import { extractFileFromTar } from "../../../../../../src/lib/tar";
 import { env } from "../../../../../../src/env";
 import { buildComposeContent } from "../../../../../../src/lib/zero/build-compose-content";
-import { requireAgentPermission } from "../../../../../../src/lib/zero/require-agent-permission";
+import {
+  requireAgentPermission,
+  requireAdminPermission,
+} from "../../../../../../src/lib/zero/require-agent-permission";
 import { logger } from "../../../../../../src/lib/logger";
 
 const log = logger("api:zero-agents:instructions");
@@ -284,15 +287,16 @@ const router = tsr.router(zeroAgentInstructionsContract, {
       };
     }
 
-    // Only agent owner or org admin can update instructions
-    if (compose.owner) {
-      const forbidden = requireAgentPermission(
-        compose.owner,
-        member,
-        "update agent instructions",
-      );
-      if (forbidden) return forbidden;
-    }
+    // Only agent owner or org admin can update instructions.
+    // When no zeroAgents row exists (owner is null), fall back to admin-only.
+    const forbidden = compose.owner
+      ? requireAgentPermission(
+          compose.owner,
+          member,
+          "update agent instructions",
+        )
+      : requireAdminPermission(member, "update agent instructions");
+    if (forbidden) return forbidden;
 
     return updateInstructions(compose, body.content, userId, org.orgId);
   },

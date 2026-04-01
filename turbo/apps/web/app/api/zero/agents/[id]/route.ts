@@ -15,7 +15,10 @@ import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
 import { agentComposes } from "../../../../../src/db/schema/agent-compose";
 import { eq, and } from "drizzle-orm";
 import { buildComposeContent } from "../../../../../src/lib/zero/build-compose-content";
-import { requireAgentPermission } from "../../../../../src/lib/zero/require-agent-permission";
+import {
+  requireAgentPermission,
+  requireAdminPermission,
+} from "../../../../../src/lib/zero/require-agent-permission";
 import { deleteComposeById } from "../../../../../src/lib/agent-compose/compose-service";
 import { isConflict } from "../../../../../src/lib/errors";
 import { logger } from "../../../../../src/lib/logger";
@@ -123,14 +126,15 @@ const router = tsr.router(zeroAgentsByIdContract, {
       };
     }
 
-    // Only agent owner or org admin can update
+    // Only agent owner or org admin can update.
+    // When no zeroAgents row exists (owner is null), fall back to admin-only.
     const forbidden = existing.owner
       ? requireAgentPermission(
           existing.owner,
           member,
           "update agent configuration",
         )
-      : null;
+      : requireAdminPermission(member, "update agent configuration");
     if (forbidden) return forbidden;
 
     // Use provided customSkills if present, otherwise keep existing
