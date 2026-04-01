@@ -245,6 +245,7 @@ export async function updateComposeMetadata(
     .values({
       id: compose.id,
       orgId: compose.orgId,
+      owner: compose.userId,
       name: compose.name,
       displayName: body.displayName ?? null,
       description: body.description ?? null,

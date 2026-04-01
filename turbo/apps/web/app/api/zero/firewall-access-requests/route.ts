@@ -245,10 +245,14 @@ const resolveRouter = tsr.router(firewallAccessRequestsResolveContract, {
     const orgSlug = new URL(request.url).searchParams.get("org");
     const { org, member } = await resolveOrg(authCtx, orgSlug);
 
-    // Find the request
-    const [existing] = await globalThis.services.db
-      .select()
+    // Find the request and agent owner in a single query
+    const [row] = await globalThis.services.db
+      .select({
+        request: firewallAccessRequests,
+        agentOwner: zeroAgents.owner,
+      })
       .from(firewallAccessRequests)
+      .innerJoin(zeroAgents, eq(firewallAccessRequests.agentId, zeroAgents.id))
       .where(
         and(
           eq(firewallAccessRequests.id, body.requestId),
@@ -257,7 +261,7 @@ const resolveRouter = tsr.router(firewallAccessRequestsResolveContract, {
       )
       .limit(1);
 
-    if (!existing) {
+    if (!row) {
       return {
         status: 404 as const,
         body: {
@@ -269,14 +273,10 @@ const resolveRouter = tsr.router(firewallAccessRequestsResolveContract, {
       };
     }
 
-    // Only agent owner can resolve requests
-    const [resolveAgent] = await globalThis.services.db
-      .select({ owner: zeroAgents.owner })
-      .from(zeroAgents)
-      .where(eq(zeroAgents.id, existing.agentId))
-      .limit(1);
+    const existing = row.request;
 
-    if (resolveAgent?.owner !== member.userId) {
+    // Only agent owner can resolve requests
+    if (row.agentOwner !== member.userId) {
       return {
         status: 403 as const,
         body: {

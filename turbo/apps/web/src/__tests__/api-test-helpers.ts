@@ -414,14 +414,19 @@ export async function createTestCompose(
   // Ensure a matching zero_agents row exists (id = composeId after PK refactor)
   initServices();
   const [compose] = await globalThis.services.db
-    .select({ orgId: agentComposes.orgId })
+    .select({ orgId: agentComposes.orgId, userId: agentComposes.userId })
     .from(agentComposes)
     .where(eq(agentComposes.id, result.composeId))
     .limit(1);
   if (compose) {
     await globalThis.services.db
       .insert(zeroAgents)
-      .values({ id: result.composeId, orgId: compose.orgId, name: result.name })
+      .values({
+        id: result.composeId,
+        orgId: compose.orgId,
+        owner: compose.userId,
+        name: result.name,
+      })
       .onConflictDoNothing();
   }
 
@@ -450,9 +455,9 @@ export async function createTestZeroAgent(
 ): Promise<void> {
   initServices();
 
-  // Resolve composeId from compose table (zero_agents.id = composeId)
+  // Resolve composeId and userId from compose table (zero_agents.id = composeId)
   const [compose] = await globalThis.services.db
-    .select({ id: agentComposes.id })
+    .select({ id: agentComposes.id, userId: agentComposes.userId })
     .from(agentComposes)
     .where(and(eq(agentComposes.orgId, orgId), eq(agentComposes.name, name)))
     .limit(1);
@@ -466,6 +471,7 @@ export async function createTestZeroAgent(
     .values({
       id: compose.id,
       orgId,
+      owner: compose.userId,
       name,
       displayName: metadata.displayName ?? null,
       description: metadata.description ?? null,
@@ -4110,7 +4116,12 @@ export async function seedTestCompose(opts: {
   // Ensure a matching zero_agents row exists (id = composeId after PK refactor)
   await globalThis.services.db
     .insert(zeroAgents)
-    .values({ id: row.id, orgId: opts.orgId, name: opts.name })
+    .values({
+      id: row.id,
+      orgId: opts.orgId,
+      owner: opts.userId,
+      name: opts.name,
+    })
     .onConflictDoNothing();
 
   return { composeId: row.id, agentId: row.id };

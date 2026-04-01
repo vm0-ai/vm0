@@ -825,11 +825,11 @@ export function ZeroJobDetailPage({ agentId }: ZeroJobDetailPageProps) {
       </header>
 
       <main className="shrink-0 px-4 sm:px-6 pt-4 sm:pt-6 pb-16">
-        {activeTab === "authorization" && (
+        {activeTab === "authorization" && detail && (
           <JobPermissionsTab
             agentId={agentId}
             displayName={displayName}
-            ownerId={detail?.ownerId ?? ""}
+            ownerId={detail.ownerId}
           />
         )}
 

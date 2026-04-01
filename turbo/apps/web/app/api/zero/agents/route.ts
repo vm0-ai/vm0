@@ -124,7 +124,6 @@ const router = tsr.router(zeroAgentsMainContract, {
       .select({
         agentId: zeroAgents.id,
         owner: zeroAgents.owner,
-        composeUserId: agentComposes.userId,
         displayName: zeroAgents.displayName,
         description: zeroAgents.description,
         sound: zeroAgents.sound,
@@ -142,7 +141,7 @@ const router = tsr.router(zeroAgentsMainContract, {
       body: rows.map((row) => {
         return {
           agentId: row.agentId,
-          ownerId: row.owner ?? row.composeUserId,
+          ownerId: row.owner,
           displayName: row.displayName ?? null,
           description: row.description ?? null,
           sound: row.sound ?? null,
