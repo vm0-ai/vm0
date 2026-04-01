@@ -122,15 +122,15 @@ async function devSeed() {
 
     // --- skills (seed skills + common connectors, batch insert) ---
     console.log("Seeding skills...");
-    const gaConnectorTypes = Object.entries(CONNECTOR_TYPES)
+    const eligibleConnectorTypes = Object.entries(CONNECTOR_TYPES)
       .filter(([, config]) => {
-        return !config.featureFlag;
+        return !config.featureFlag || "api-token" in config.authMethods;
       })
       .map(([type]) => {
         return type;
       });
     const skillValues = buildSeedSkillValues([
-      ...new Set([...SEED_SKILLS, ...gaConnectorTypes]),
+      ...new Set([...SEED_SKILLS, ...eligibleConnectorTypes]),
     ]);
     const inserted = await db
       .insert(skills)
