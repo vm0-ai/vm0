@@ -107,11 +107,11 @@ const router = tsr.router(zeroSkillsCollectionContract, {
       createdBy: userId,
     });
 
-    // Upload skill content to S3
+    // Upload skill files to S3
     await uploadSkillServerSide({
       orgId: org.orgId,
       skillName: body.name,
-      content: body.content,
+      files: body.files,
     });
 
     log.info(`Created custom skill "${body.name}" in org ${org.orgId}`);

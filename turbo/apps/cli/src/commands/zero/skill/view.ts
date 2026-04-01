@@ -24,6 +24,14 @@ Examples:
       if (skill.displayName) console.log(`Display Name: ${skill.displayName}`);
       if (skill.description) console.log(`Description:  ${skill.description}`);
 
+      if (skill.files && skill.files.length > 0) {
+        console.log();
+        console.log(chalk.dim("── Files ──"));
+        for (const f of skill.files) {
+          console.log(`  ${f.path} (${f.size} bytes)`);
+        }
+      }
+
       console.log();
       if (skill.content) {
         console.log(chalk.dim("── SKILL.md ──"));

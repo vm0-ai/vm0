@@ -45,7 +45,7 @@ describe("zero skill edit command", () => {
   });
 
   describe("successful edit", () => {
-    it("should update skill content from directory", async () => {
+    it("should send all files from directory", async () => {
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
         http.put(
@@ -57,6 +57,7 @@ describe("zero skill edit command", () => {
               displayName: "My Skill",
               description: null,
               content: "# Updated Skill\nNew content.",
+              files: [{ path: "SKILL.md", size: 28 }],
             });
           },
         ),
@@ -70,10 +71,17 @@ describe("zero skill edit command", () => {
         skillDir,
       ]);
 
-      expect(capturedBody?.content).toBe("# Updated Skill\nNew content.");
+      const files = capturedBody?.files as
+        | Array<{ path: string; content: string }>
+        | undefined;
+      expect(files).toBeDefined();
+      expect(files).toHaveLength(1);
+      expect(files?.[0]?.path).toBe("SKILL.md");
+      expect(files?.[0]?.content).toBe("# Updated Skill\nNew content.");
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("my-skill");
       expect(logCalls).toContain("updated");
+      expect(logCalls).toContain("1 file(s)");
     });
   });
 

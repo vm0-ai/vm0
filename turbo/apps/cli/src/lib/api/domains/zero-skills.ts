@@ -4,6 +4,7 @@ import {
   zeroSkillsDetailContract,
   type ZeroAgentCustomSkill,
   type ZeroAgentSkillContentResponse,
+  type SkillFileEntry,
 } from "@vm0/core";
 import { getClientConfig, handleError } from "../core/client-factory";
 
@@ -17,7 +18,7 @@ export async function listSkills(): Promise<ZeroAgentCustomSkill[]> {
 
 export async function createSkill(body: {
   name: string;
-  content: string;
+  files: SkillFileEntry[];
   displayName?: string;
   description?: string;
 }): Promise<ZeroAgentCustomSkill> {
@@ -40,7 +41,7 @@ export async function getSkill(
 
 export async function updateSkill(
   name: string,
-  body: { content: string },
+  body: { files: SkillFileEntry[] },
 ): Promise<ZeroAgentSkillContentResponse> {
   const config = await getClientConfig();
   const client = initClient(zeroSkillsDetailContract, config);

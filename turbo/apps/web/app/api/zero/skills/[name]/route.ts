@@ -96,6 +96,7 @@ const router = tsr.router(zeroSkillsDetailContract, {
           displayName: skill.displayName ?? null,
           description: skill.description ?? null,
           content: null,
+          files: null,
         },
       };
     }
@@ -115,19 +116,27 @@ const router = tsr.router(zeroSkillsDetailContract, {
           displayName: skill.displayName ?? null,
           description: skill.description ?? null,
           content: null,
+          files: null,
         },
       };
     }
 
     const bucket = env().R2_USER_STORAGES_BUCKET_NAME;
 
-    // Download manifest to find SKILL.md
+    // Download manifest to get file listing and find SKILL.md
     const manifest = await downloadManifest(bucket, version.s3Key);
     const normalize = (p: string) => {
       return p.startsWith("./") ? p.slice(2) : p;
     };
     const skillFile = manifest.files.find((f) => {
       return normalize(f.path) === SKILL_FILENAME;
+    });
+
+    const filesList = manifest.files.map((f) => {
+      return {
+        path: normalize(f.path),
+        size: f.size,
+      };
     });
 
     if (!skillFile) {
@@ -138,11 +147,12 @@ const router = tsr.router(zeroSkillsDetailContract, {
           displayName: skill.displayName ?? null,
           description: skill.description ?? null,
           content: null,
+          files: filesList,
         },
       };
     }
 
-    // Download and extract from the archive
+    // Download and extract SKILL.md from the archive
     const archiveKey = `${version.s3Key}/archive.tar.gz`;
     const archiveBuffer = await downloadS3Buffer(bucket, archiveKey);
     const tarBuffer = gunzipSync(archiveBuffer);
@@ -155,6 +165,7 @@ const router = tsr.router(zeroSkillsDetailContract, {
         displayName: skill.displayName ?? null,
         description: skill.description ?? null,
         content: fileContent ? fileContent.toString("utf-8") : null,
+        files: filesList,
       },
     };
   },
@@ -190,11 +201,11 @@ const router = tsr.router(zeroSkillsDetailContract, {
       };
     }
 
-    // Upload new content (creates new version, no compose rebuild needed)
+    // Upload new files (creates new version, no compose rebuild needed)
     await uploadSkillServerSide({
       orgId: org.orgId,
       skillName: params.name,
-      content: body.content,
+      files: body.files,
     });
 
     // Update timestamp
@@ -205,13 +216,23 @@ const router = tsr.router(zeroSkillsDetailContract, {
 
     log.info(`Updated custom skill "${params.name}" content`);
 
+    const skillMd = body.files.find((f) => {
+      return f.path === "SKILL.md";
+    });
+
     return {
       status: 200 as const,
       body: {
         name: skill.name,
         displayName: skill.displayName ?? null,
         description: skill.description ?? null,
-        content: body.content,
+        content: skillMd?.content ?? null,
+        files: body.files.map((f) => {
+          return {
+            path: f.path,
+            size: new TextEncoder().encode(f.content).length,
+          };
+        }),
       },
     };
   },
