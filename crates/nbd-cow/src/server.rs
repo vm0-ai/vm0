@@ -647,4 +647,105 @@ mod tests {
             );
         }
     }
+
+    #[tokio::test]
+    async fn dispatch_out_of_bounds_read_returns_error() {
+        let base_data = vec![0xAA; 8192];
+        let (_base, _cow_file, cow) = create_test_cow(&base_data);
+        let cow = Arc::new(RwLock::new(cow));
+
+        let (mut reader, mut writer, task, _shutdown) = setup_dispatch(cow).await;
+
+        // Send a read request beyond the device size (8192 bytes)
+        let oob_read = NbdRequest {
+            flags: 0,
+            command: Command::Read,
+            handle: 1,
+            offset: 8192, // at EOF
+            length: 4096, // reading past end
+        };
+        let error = send_and_recv_reply(&mut reader, &mut writer, &oob_read).await;
+        assert_ne!(error, 0, "out-of-bounds read should return error");
+
+        // Connection should still be alive — a normal read should work
+        let normal_read = NbdRequest {
+            flags: 0,
+            command: Command::Read,
+            handle: 2,
+            offset: 0,
+            length: 4096,
+        };
+        let error = send_and_recv_reply(&mut reader, &mut writer, &normal_read).await;
+        assert_eq!(error, 0, "normal read after out-of-bounds should succeed");
+        let mut data = vec![0u8; 4096];
+        reader.read_exact(&mut data).await.unwrap();
+        assert!(data.iter().all(|&b| b == 0xAA));
+
+        // Disconnect
+        let disc = NbdRequest {
+            flags: 0,
+            command: Command::Disconnect,
+            handle: 3,
+            offset: 0,
+            length: 0,
+        };
+        writer.write_all(&serialize_request(&disc)).await.unwrap();
+        task.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn dispatch_out_of_bounds_write_returns_error() {
+        let base_data = vec![0xAA; 8192];
+        let (_base, _cow_file, cow) = create_test_cow(&base_data);
+        let cow = Arc::new(RwLock::new(cow));
+
+        let (mut reader, mut writer, task, _shutdown) = setup_dispatch(cow).await;
+
+        // Send a write request beyond the device size
+        let oob_write = NbdRequest {
+            flags: 0,
+            command: Command::Write,
+            handle: 1,
+            offset: 8192,
+            length: 4096,
+        };
+        writer
+            .write_all(&serialize_request(&oob_write))
+            .await
+            .unwrap();
+        writer.write_all(&vec![0xFF; 4096]).await.unwrap();
+
+        let mut reply_buf = [0u8; 16];
+        reader.read_exact(&mut reply_buf).await.unwrap();
+        let error = u32::from_be_bytes([reply_buf[4], reply_buf[5], reply_buf[6], reply_buf[7]]);
+        assert_ne!(error, 0, "out-of-bounds write should return error");
+
+        // Connection should still be alive — verify with a normal read
+        let normal_read = NbdRequest {
+            flags: 0,
+            command: Command::Read,
+            handle: 2,
+            offset: 0,
+            length: 4096,
+        };
+        let error = send_and_recv_reply(&mut reader, &mut writer, &normal_read).await;
+        assert_eq!(
+            error, 0,
+            "normal read after out-of-bounds write should succeed"
+        );
+        let mut data = vec![0u8; 4096];
+        reader.read_exact(&mut data).await.unwrap();
+        assert!(data.iter().all(|&b| b == 0xAA));
+
+        // Disconnect
+        let disc = NbdRequest {
+            flags: 0,
+            command: Command::Disconnect,
+            handle: 3,
+            offset: 0,
+            length: 0,
+        };
+        writer.write_all(&serialize_request(&disc)).await.unwrap();
+        task.await.unwrap().unwrap();
+    }
 }

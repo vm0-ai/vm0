@@ -71,6 +71,8 @@ enum Warning {
     OrphanNamespace { ns_name: String, pool_idx: u32 },
     /// An NBD device whose owning process has exited without disconnecting.
     OrphanNbdDevice { device_index: u32, pid: u32 },
+    /// The NBD orphan scan task panicked (bug in find_nbd_orphans).
+    NbdScanFailed,
 }
 
 impl fmt::Display for Warning {
@@ -114,6 +116,9 @@ impl fmt::Display for Warning {
                     f,
                     "orphan NBD device /dev/nbd{device_index} (owner PID {pid} no longer exists)"
                 )
+            }
+            Self::NbdScanFailed => {
+                write!(f, "NBD orphan scan failed (task panicked)")
             }
         }
     }
@@ -206,6 +211,12 @@ impl Warning {
                 })
                 .await
                 .unwrap_or(false)
+            }
+            Self::NbdScanFailed => {
+                // Retry the scan — persists if it panics again.
+                tokio::task::spawn_blocking(super::nbd::find_nbd_orphans)
+                    .await
+                    .is_err()
             }
         }
     }
@@ -815,7 +826,7 @@ async fn detect_nbd_orphans() -> Vec<Warning> {
         Ok(result) => result,
         Err(e) => {
             tracing::warn!("NBD orphan scan task failed: {e}");
-            return Vec::new();
+            return vec![Warning::NbdScanFailed];
         }
     };
 
@@ -1243,6 +1254,9 @@ mod tests {
             w.to_string(),
             "orphan NBD device /dev/nbd3 (owner PID 12345 no longer exists)"
         );
+
+        let w = Warning::NbdScanFailed;
+        assert_eq!(w.to_string(), "NBD orphan scan failed (task panicked)");
     }
 
     #[test]
