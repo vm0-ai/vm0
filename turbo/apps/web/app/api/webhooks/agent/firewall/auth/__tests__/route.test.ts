@@ -475,6 +475,29 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       expect(data.headers.Authorization).toBe(expected);
       expect(data.resolvedSecrets).toEqual([]);
     });
+
+    it("should resolve basic with both args as vars", async () => {
+      const encrypted = encryptTestSecrets({ KEY: "unused" });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: "${{ basic(vars.USER, vars.PASS) }}",
+            },
+            vars: { USER: "admin", PASS: "pw123" },
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      const expected = `Basic ${Buffer.from("admin:pw123").toString("base64")}`;
+      expect(data.headers.Authorization).toBe(expected);
+      expect(data.resolvedSecrets).toEqual([]);
+    });
   });
 
   describe("Token refresh with secretConnectorMap", () => {
