@@ -132,7 +132,7 @@ source "$PROJECT_ROOT/scripts/.env.local"
 
 RUNNER_GROUP="${RUNNER_DEFAULT_GROUP:?}"
 RUNNER_NAME="${RUNNER_GROUP##*/}"
-RUNNER_BIN="~/.vm0-runner/bin/${RUNNER_NAME}/runner"
+RUNNER_BIN="sudo /var/lib/vm0-runner/bin/${RUNNER_NAME}/runner"
 
 "$PROJECT_ROOT/scripts/cf-ssh.sh" "$RUNNER_LOCAL_HOST" \
   -l "${RUNNER_LOCAL_USER:-ubuntu}" \

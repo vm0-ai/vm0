@@ -1511,7 +1511,7 @@ mod tests {
 
         let w = Warning::OrphanLoopDevice {
             device: "/dev/loop5".into(),
-            backing: "/home/ubuntu/.vm0-runner/workspaces/x/cow.img".into(),
+            backing: "/var/lib/vm0-runner/workspaces/x/cow.img".into(),
             runner_name: Some("pr-100-1".into()),
         };
         assert!(w.to_string().contains("/dev/loop5"));
@@ -1680,9 +1680,7 @@ Major, minor:      253, 0";
     #[test]
     fn extract_sandbox_id_from_cow_path() {
         assert_eq!(
-            extract_sandbox_id(
-                "/home/ubuntu/.vm0-runner/runners/pr-123/workspaces/abc-def/cow.img"
-            ),
+            extract_sandbox_id("/var/lib/vm0-runner/runners/pr-123/workspaces/abc-def/cow.img"),
             Some("abc-def")
         );
     }
@@ -1691,7 +1689,7 @@ Major, minor:      253, 0";
     fn extract_sandbox_id_from_deleted_cow_path() {
         assert_eq!(
             extract_sandbox_id(
-                "/home/ubuntu/.vm0-runner/runners/pr-123/workspaces/abc-def/cow.img (deleted)"
+                "/var/lib/vm0-runner/runners/pr-123/workspaces/abc-def/cow.img (deleted)"
             ),
             Some("abc-def")
         );
@@ -1700,7 +1698,7 @@ Major, minor:      253, 0";
     #[test]
     fn extract_sandbox_id_returns_none_for_rootfs() {
         assert_eq!(
-            extract_sandbox_id("/home/ubuntu/.vm0-runner/rootfs/560c452/rootfs.ext4"),
+            extract_sandbox_id("/var/lib/vm0-runner/rootfs/560c452/rootfs.ext4"),
             None
         );
     }

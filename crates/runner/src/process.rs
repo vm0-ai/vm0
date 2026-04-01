@@ -317,8 +317,7 @@ mod tests {
 
     #[test]
     fn parse_runner_start_cmdline() {
-        let cmdline =
-            "/home/ubuntu/.vm0-runner/bin/runner start --config /data/runner-01/config.yaml";
+        let cmdline = "/var/lib/vm0-runner/bin/runner start --config /data/runner-01/config.yaml";
         let (config, subcmd) = parse_runner_cmdline(cmdline).unwrap();
         assert_eq!(config, Path::new("/data/runner-01/config.yaml"));
         assert_eq!(subcmd, "start");
@@ -367,7 +366,7 @@ mod tests {
     #[test]
     fn is_firecracker_full_path() {
         assert!(is_firecracker_cmdline(
-            "/home/ubuntu/.vm0-runner/firecracker/v1.10.1/firecracker --no-api"
+            "/var/lib/vm0-runner/firecracker/v1.10.1/firecracker --no-api"
         ));
     }
 

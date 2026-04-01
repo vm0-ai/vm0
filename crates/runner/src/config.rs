@@ -237,7 +237,7 @@ mod tests {
         dir: &std::path::Path,
         profiles: &[(&str, Option<&str>)], // (rootfs_hash, snapshot_hash)
     ) -> HomePaths {
-        let home = HomePaths::with_root(dir.join(".vm0-runner"));
+        let home = HomePaths::with_root(dir.join("vm0-runner"));
         for &(rootfs_hash, snapshot_hash) in profiles {
             let rootfs = RootfsPaths::new(&home, rootfs_hash).rootfs();
             tokio::fs::create_dir_all(rootfs.parent().unwrap())
