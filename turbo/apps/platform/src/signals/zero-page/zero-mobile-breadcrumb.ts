@@ -7,6 +7,8 @@ import { agentDisplayName$, defaultAgentId$ } from "./zero-agent-name.ts";
 import { zeroChatAgentId$ } from "./zero-active-agent.ts";
 import { allOrgScheduleEntries$ } from "./zero-schedule.ts";
 import { zeroActivityDetail$ } from "../../signals/activity-page/activity-signals.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
+import { FeatureSwitchKey } from "@vm0/core";
 
 interface MobileBreadcrumb {
   section: string;
@@ -91,7 +93,11 @@ const teamDetailBreadcrumb$ = computed(
 );
 
 const activityDetailBreadcrumb$ = computed(
-  async (get): Promise<MobileBreadcrumb> => {
+  async (get): Promise<MobileBreadcrumb | null> => {
+    const features = await get(featureSwitch$);
+    if (!features?.[FeatureSwitchKey.ActivityLogList]) {
+      return null;
+    }
     const params = get(pathParams$) as Params;
     const runId = getStringParam(params, "runId");
     if (runId) {
