@@ -636,13 +636,24 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         noEnvironmentBlock: true,
       });
 
-      // Zero-layer context building validates model providers —
-      // run fails because there's no way to authenticate to the LLM.
-      const data = await createTestRun(
-        composeId,
-        "Test without model provider",
+      // Resolution validates model providers before run creation —
+      // error returned because there's no way to authenticate to the LLM.
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: composeId,
+            prompt: "Test without model provider",
+          }),
+        },
       );
-      expect(data.status).toBe("failed");
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(422);
+      expect(data.error.code).toBe("NO_MODEL_PROVIDER");
     });
 
     it("should skip injection when compose has explicit ANTHROPIC_API_KEY", async () => {
@@ -692,17 +703,25 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         skipDefaultApiKey: true,
       });
 
-      // Zero-layer context building validates model providers —
-      // run fails because the specified provider doesn't exist.
-      const data = await createTestRun(
-        composeId,
-        "Test with invalid provider",
+      // Resolution validates model providers before run creation —
+      // error returned because the specified provider doesn't exist.
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
         {
-          modelProvider: "non-existent-provider",
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: composeId,
+            prompt: "Test with invalid provider",
+            modelProvider: "non-existent-provider",
+          }),
         },
       );
+      const response = await POST(request);
+      const data = await response.json();
 
-      expect(data.status).toBe("failed");
+      expect(response.status).toBe(400);
+      expect(data.error.code).toBe("BAD_REQUEST");
     });
 
     it("should auto-inject model provider when no environment block exists", async () => {

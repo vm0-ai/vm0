@@ -19,6 +19,7 @@ import {
 import { logger } from "../../../../src/lib/logger";
 import { isApiError } from "../../../../src/lib/errors";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
+import { resolveCliRunContext } from "../../../../src/lib/zero/build-zero-context";
 
 const log = logger("api:runs");
 
@@ -211,8 +212,27 @@ const router = tsr.router(runsMainContract, {
       `Creating run - mode: ${body.checkpointId ? "checkpoint" : body.sessionId ? "session" : "new"}`,
     );
 
-    // Delegate all resolution, validation, and dispatch to startRun()
+    // Resolve zero-layer data (vars, secrets, connectors, firewalls, timezone)
+    // before calling startRun(), which uses pure infra buildInfraExecutionContext.
     try {
+      const resolved = await resolveCliRunContext({
+        orgId: org.orgId,
+        userId,
+        sessionId: body.sessionId,
+        checkpointId: body.checkpointId,
+        conversationId: body.conversationId,
+        composeId: body.agentComposeId,
+        agentComposeVersionId: body.agentComposeVersionId,
+        vars: body.vars,
+        secrets: body.secrets,
+        modelProvider: body.modelProvider,
+        firewallPolicies: body.firewallPolicies,
+        artifactName: body.artifactName,
+        artifactVersion: body.artifactVersion,
+        memoryName: body.memoryName,
+        volumeVersions: body.volumeVersions,
+      });
+
       const result = await startRun({
         userId,
         prompt: body.prompt,
@@ -221,21 +241,29 @@ const router = tsr.router(runsMainContract, {
         tools: body.tools,
         settings: body.settings,
         composeId: body.agentComposeId,
-        agentComposeVersionId: body.agentComposeVersionId,
+        agentComposeVersionId:
+          resolved.agentComposeVersionId ?? body.agentComposeVersionId,
         checkpointId: body.checkpointId,
         sessionId: body.sessionId,
         conversationId: body.conversationId,
-        vars: body.vars,
-        secrets: body.secrets,
-        artifactName: body.artifactName,
-        artifactVersion: body.artifactVersion,
-        memoryName: body.memoryName,
-        volumeVersions: body.volumeVersions,
+        vars: resolved.vars ?? body.vars,
+        secrets: resolved.secrets ?? body.secrets,
+        environment: resolved.environment,
+        secretConnectorMap: resolved.secretConnectorMap,
+        firewalls: resolved.firewalls,
+        userTimezone: resolved.userTimezone,
+        artifactName: resolved.artifactName ?? body.artifactName,
+        artifactVersion: resolved.artifactVersion ?? body.artifactVersion,
+        memoryName: resolved.memoryName ?? body.memoryName,
+        volumeVersions: resolved.volumeVersions ?? body.volumeVersions,
+        resumeSession: resolved.resumeSession,
+        resumeArtifact: resolved.resumeArtifact,
         debugNoMockClaude: body.debugNoMockClaude,
         modelProvider: body.modelProvider,
         firewallPolicies: body.firewallPolicies,
         callerOrgId: org.orgId,
-        useZeroContext: true,
+        resolveSourceDuration: resolved.timings.resolveSource,
+        resolveSecretsDuration: resolved.timings.resolveSecrets,
       });
 
       log.debug(
