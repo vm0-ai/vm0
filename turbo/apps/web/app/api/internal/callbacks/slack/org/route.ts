@@ -178,13 +178,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const allOutputs = await extractAllRunOutputs(runId, error);
 
-  // Resolve agent name for "Sent via" footer
-  const [agentInfo] = await globalThis.services.db
-    .select({ displayName: zeroAgents.displayName, name: zeroAgents.name })
-    .from(zeroAgents)
-    .where(eq(zeroAgents.id, payload.agentId))
-    .limit(1);
-  const agentLabel = agentInfo?.displayName ?? agentInfo?.name;
+  // Resolve agent name for "Sent via" footer (best-effort — failure should not block message delivery)
+  let agentLabel: string | undefined;
+  try {
+    const [agentInfo] = await globalThis.services.db
+      .select({ displayName: zeroAgents.displayName, name: zeroAgents.name })
+      .from(zeroAgents)
+      .where(eq(zeroAgents.id, payload.agentId))
+      .limit(1);
+    agentLabel = agentInfo?.displayName ?? agentInfo?.name;
+  } catch (err) {
+    log.debug("Failed to resolve agent label for footer", {
+      agentId: payload.agentId,
+      error: err,
+    });
+  }
 
   // Resolve session
   await saveOrgThreadSession(payload, runId, status);
