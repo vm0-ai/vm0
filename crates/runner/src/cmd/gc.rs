@@ -523,7 +523,18 @@ fn gc_block_cow(dry_run: bool) -> RunnerResult<u32> {
         Ok(paths) => format!("{}/", paths.root().display()),
         Err(_) => return Ok(removed),
     };
-    for (loop_dev, backing) in parse_losetup(&losetup_list(), &runner_root) {
+    let losetup_output = losetup_list();
+    // Also clean up loop devices from the legacy data directory
+    // ($HOME/.vm0-runner/) left behind by older runner versions.
+    let legacy_root = format!(
+        "{}/.vm0-runner/",
+        std::env::var("HOME").unwrap_or_else(|_| "/root".to_owned())
+    );
+    let mut loops = parse_losetup(&losetup_output, &runner_root);
+    if legacy_root != runner_root {
+        loops.extend(parse_losetup(&losetup_output, &legacy_root));
+    }
+    for (loop_dev, backing) in loops {
         if dry_run {
             info!(loop_dev, backing, "would detach orphaned loop device");
             removed += 1;
@@ -631,7 +642,7 @@ pub(crate) fn parse_losetup<'a>(
     stdout
         .lines()
         .filter_map(|line| {
-            // Format: "/dev/loop5: [0048]:2345 (/home/ubuntu/.vm0-runner/...)"
+            // Format: "/dev/loop5: [0048]:2345 (/var/lib/vm0-runner/...)"
             let (dev, rest) = line.split_once(':')?;
             let start = rest.find('(')?;
             let end = rest.rfind(')')?;
@@ -1298,46 +1309,43 @@ mod tests {
     #[test]
     fn parse_losetup_filters_by_prefix() {
         let output = Some(
-            "/dev/loop1: [0048]:123 (/home/ubuntu/.vm0-runner/rootfs/abc/rootfs.ext4)\n\
-             /dev/loop5: [0048]:456 (/home/ubuntu/.vm0-runner/runners/pr-123/workspaces/xxx/cow.img)\n\
+            "/dev/loop1: [0048]:123 (/var/lib/vm0-runner/rootfs/abc/rootfs.ext4)\n\
+             /dev/loop5: [0048]:456 (/var/lib/vm0-runner/runners/pr-123/workspaces/xxx/cow.img)\n\
              /dev/loop0: [0048]:789 (/var/lib/snapd/snaps/amazon-ssm-agent_11798.snap)\n"
                 .to_string(),
         );
-        let pairs = parse_losetup(&output, "/home/ubuntu/.vm0-runner/");
+        let pairs = parse_losetup(&output, "/var/lib/vm0-runner/");
         assert_eq!(pairs.len(), 2);
         assert_eq!(pairs[0].0, "/dev/loop1");
-        assert_eq!(
-            pairs[0].1,
-            "/home/ubuntu/.vm0-runner/rootfs/abc/rootfs.ext4"
-        );
+        assert_eq!(pairs[0].1, "/var/lib/vm0-runner/rootfs/abc/rootfs.ext4");
         assert_eq!(pairs[1].0, "/dev/loop5");
     }
 
     #[test]
     fn parse_losetup_deleted_files() {
         let output = Some(
-            "/dev/loop347: [0048]:123 (/home/ubuntu/.vm0-runner/runners/pr-6521/workspaces/xxx/cow.img (deleted))\n"
+            "/dev/loop347: [0048]:123 (/var/lib/vm0-runner/runners/pr-6521/workspaces/xxx/cow.img (deleted))\n"
                 .to_string(),
         );
-        let pairs = parse_losetup(&output, "/home/ubuntu/.vm0-runner/");
+        let pairs = parse_losetup(&output, "/var/lib/vm0-runner/");
         assert_eq!(pairs.len(), 1);
         assert_eq!(pairs[0].0, "/dev/loop347");
         assert_eq!(
             pairs[0].1,
-            "/home/ubuntu/.vm0-runner/runners/pr-6521/workspaces/xxx/cow.img (deleted)"
+            "/var/lib/vm0-runner/runners/pr-6521/workspaces/xxx/cow.img (deleted)"
         );
     }
 
     #[test]
     fn parse_losetup_none() {
-        let pairs = parse_losetup(&None, "/home/ubuntu/.vm0-runner/");
+        let pairs = parse_losetup(&None, "/var/lib/vm0-runner/");
         assert!(pairs.is_empty());
     }
 
     #[test]
     fn parse_losetup_empty() {
         let output = Some(String::new());
-        let pairs = parse_losetup(&output, "/home/ubuntu/.vm0-runner/");
+        let pairs = parse_losetup(&output, "/var/lib/vm0-runner/");
         assert!(pairs.is_empty());
     }
 }
