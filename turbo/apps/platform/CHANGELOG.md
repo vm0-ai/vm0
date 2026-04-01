@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.175.1](https://github.com/vm0-ai/vm0/compare/app-v0.175.0...app-v0.175.1) (2026-04-01)
+
+
+### Bug Fixes
+
+* **platform:** hide empty fields in network log detail view ([#7529](https://github.com/vm0-ai/vm0/issues/7529)) ([1cc1505](https://github.com/vm0-ai/vm0/commit/1cc15054c23e1aa8990985e43435d1c3f1461995))
+
+
+### Refactoring
+
+* remove schedule notification system ([#7509](https://github.com/vm0-ai/vm0/issues/7509)) ([85ece06](https://github.com/vm0-ai/vm0/commit/85ece067e994b4d48dab3d3b2e47b8fc19951455))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.136.0
+
 ## [0.175.0](https://github.com/vm0-ai/vm0/compare/app-v0.174.1...app-v0.175.0) (2026-04-01)
 
 

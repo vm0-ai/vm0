@@ -1,5 +1,24 @@
 # Changelog
 
+## [8.136.0](https://github.com/vm0-ai/vm0/compare/core-v8.135.0...core-v8.136.0) (2026-04-01)
+
+
+### Features
+
+* **cli:** add slack upload-file command ([#7504](https://github.com/vm0-ai/vm0/issues/7504)) ([abc90d8](https://github.com/vm0-ai/vm0/commit/abc90d82a61c399acb2ba4bc7ca59dcca0de6ebc))
+* **firewalls:** add fine-grained dropbox firewall permissions ([#7519](https://github.com/vm0-ai/vm0/issues/7519)) ([ad9f201](https://github.com/vm0-ai/vm0/commit/ad9f201198b0268488b74ce72cac042bd9f02fa3))
+
+
+### Bug Fixes
+
+* remove append-system-prompt option from zero run commands ([#7532](https://github.com/vm0-ai/vm0/issues/7532)) ([907d6d6](https://github.com/vm0-ai/vm0/commit/907d6d6d1175988f90e3be96fad5431426592e1e)), closes [#7530](https://github.com/vm0-ai/vm0/issues/7530)
+
+
+### Refactoring
+
+* **core:** remove unused help text from connector secret config ([#7545](https://github.com/vm0-ai/vm0/issues/7545)) ([043b6d9](https://github.com/vm0-ai/vm0/commit/043b6d9d53da32e74dc2233d9fab5c3b50609249)), closes [#7533](https://github.com/vm0-ai/vm0/issues/7533)
+* remove schedule notification system ([#7509](https://github.com/vm0-ai/vm0/issues/7509)) ([85ece06](https://github.com/vm0-ai/vm0/commit/85ece067e994b4d48dab3d3b2e47b8fc19951455))
+
 ## [8.135.0](https://github.com/vm0-ai/vm0/compare/core-v8.134.0...core-v8.135.0) (2026-04-01)
 
 

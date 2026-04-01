@@ -1,5 +1,31 @@
 # Changelog
 
+## [12.182.0](https://github.com/vm0-ai/vm0/compare/web-v12.181.0...web-v12.182.0) (2026-04-01)
+
+
+### Features
+
+* **cli:** add slack upload-file command ([#7504](https://github.com/vm0-ai/vm0/issues/7504)) ([abc90d8](https://github.com/vm0-ai/vm0/commit/abc90d82a61c399acb2ba4bc7ca59dcca0de6ebc))
+* **web:** improve landing page dark mode and mobile layout ([#7515](https://github.com/vm0-ai/vm0/issues/7515)) ([9cccece](https://github.com/vm0-ai/vm0/commit/9cccece970e7a03cdc1bdc94e7a501f5489cb0da))
+
+
+### Bug Fixes
+
+* remove append-system-prompt option from zero run commands ([#7532](https://github.com/vm0-ai/vm0/issues/7532)) ([907d6d6](https://github.com/vm0-ai/vm0/commit/907d6d6d1175988f90e3be96fad5431426592e1e)), closes [#7530](https://github.com/vm0-ai/vm0/issues/7530)
+* **slack:** append schedule context to cli message footer ([#7526](https://github.com/vm0-ai/vm0/issues/7526)) ([cfab440](https://github.com/vm0-ai/vm0/commit/cfab440591627dd2ad124668d3cc6ee1c7c6e9fe)), closes [#7513](https://github.com/vm0-ai/vm0/issues/7513)
+
+
+### Refactoring
+
+* remove schedule notification system ([#7509](https://github.com/vm0-ai/vm0/issues/7509)) ([85ece06](https://github.com/vm0-ai/vm0/commit/85ece067e994b4d48dab3d3b2e47b8fc19951455))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.136.0
+
 ## [12.181.0](https://github.com/vm0-ai/vm0/compare/web-v12.180.0...web-v12.181.0) (2026-04-01)
 
 
