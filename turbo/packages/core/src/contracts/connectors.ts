@@ -8,7 +8,6 @@ export interface ConnectorSecretConfig {
   label: string;
   required: boolean;
   placeholder?: string;
-  helpText?: string;
   /** Storage type: "secret" (default, encrypted) or "variable" (plain text). */
   type?: "secret" | "variable";
 }
@@ -973,8 +972,6 @@ const CONNECTOR_TYPES_DEF = {
             label: "Base URL",
             required: true,
             placeholder: "https://mycompany.metabaseapp.com",
-            helpText:
-              "Your Metabase instance URL (e.g. 'https://mycompany.metabaseapp.com' for cloud or your self-hosted URL)",
             type: "variable",
           },
         },
@@ -1373,8 +1370,6 @@ const CONNECTOR_TYPES_DEF = {
             label: "Instance",
             required: true,
             placeholder: "mycompany",
-            helpText:
-              "Your Salesforce instance name (e.g. 'mycompany' from mycompany.my.salesforce.com)",
             type: "variable",
           },
         },
@@ -2237,16 +2232,12 @@ const CONNECTOR_TYPES_DEF = {
             label: "Email",
             required: true,
             placeholder: "you@example.com",
-            helpText:
-              "The email address associated with your Atlassian account",
             type: "variable",
           },
           ATLASSIAN_DOMAIN: {
             label: "Domain",
             required: true,
             placeholder: "mycompany",
-            helpText:
-              "Your Atlassian domain (e.g. 'mycompany' from mycompany.atlassian.net)",
             type: "variable",
           },
         },
@@ -2930,8 +2921,6 @@ const CONNECTOR_TYPES_DEF = {
             label: "Cluster URL",
             required: true,
             placeholder: "https://your-cluster.region.cloud.qdrant.io:6333",
-            helpText:
-              "Your Qdrant cluster URL (e.g. 'https://abc123.us-east4-0.gcp.cloud.qdrant.io:6333')",
             type: "variable",
           },
         },
@@ -3217,15 +3206,12 @@ const CONNECTOR_TYPES_DEF = {
             label: "Email",
             required: true,
             placeholder: "your-email@company.com",
-            helpText: "The email address associated with your Zendesk account",
             type: "variable",
           },
           ZENDESK_SUBDOMAIN: {
             label: "Subdomain",
             required: true,
             placeholder: "yourcompany",
-            helpText:
-              "Your Zendesk subdomain (e.g. 'yourcompany' from yourcompany.zendesk.com)",
             type: "variable",
           },
         },
