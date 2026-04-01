@@ -90,9 +90,7 @@ export async function dispatchQueuedZeroRun(
     await buildAndDispatchRun({
       runId,
       createdAt,
-      params: { ...updatedParams, callbacks: undefined },
       context: contextResult.context,
-      runtimeOrg: contextResult.runtimeOrg,
       resolvedModelProvider: contextResult.resolvedModelProvider,
       selectedModel: contextResult.selectedModel,
       buildContextTimings: contextResult.timings,

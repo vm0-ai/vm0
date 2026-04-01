@@ -384,9 +384,7 @@ export async function createZeroRun(
     const result = await buildAndDispatchRun({
       runId: record.run.id,
       createdAt: record.run.createdAt,
-      params: { ...paramsWithToken, callbacks: undefined },
       context: contextResult.context,
-      runtimeOrg: contextResult.runtimeOrg,
       resolvedModelProvider: contextResult.resolvedModelProvider,
       selectedModel: contextResult.selectedModel,
       buildContextTimings: contextResult.timings,

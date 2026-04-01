@@ -105,14 +105,3 @@ export interface ExecutionContext {
   // API start time for E2E timing metrics
   apiStartTime?: number;
 }
-
-/**
- * Runtime Org — the org of the user who triggers an agent run.
- * Combined with userId, determines artifacts, memories, secrets, variables,
- * connectors, and model providers. See docs/resource-model.md.
- *
- * Resolved once in buildExecutionContext to avoid redundant DB lookups.
- */
-export interface RuntimeOrg {
-  orgId: string;
-}
