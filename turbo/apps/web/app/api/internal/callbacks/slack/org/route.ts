@@ -5,7 +5,6 @@ import { verifyCallback } from "../../../../../../src/lib/callback";
 import { decryptSecretValue } from "../../../../../../src/lib/crypto/secrets-encryption";
 import { slackOrgInstallations } from "../../../../../../src/db/schema/slack-org-installation";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
-import { zeroAgents } from "../../../../../../src/db/schema/zero-agent";
 import { findNewSessionId } from "../../../../../../src/lib/session/find-new-session";
 import {
   createSlackClient,
@@ -178,22 +177,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const allOutputs = await extractAllRunOutputs(runId, error);
 
-  // Resolve agent name for "Sent via" footer (best-effort — failure should not block message delivery)
-  let agentLabel: string | undefined;
-  try {
-    const [agentInfo] = await globalThis.services.db
-      .select({ displayName: zeroAgents.displayName, name: zeroAgents.name })
-      .from(zeroAgents)
-      .where(eq(zeroAgents.id, payload.agentId))
-      .limit(1);
-    agentLabel = agentInfo?.displayName ?? agentInfo?.name;
-  } catch (err) {
-    log.debug("Failed to resolve agent label for footer", {
-      agentId: payload.agentId,
-      error: err,
-    });
-  }
-
   // Resolve session
   await saveOrgThreadSession(payload, runId, status);
 
@@ -205,11 +188,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const isLast = i === allOutputs.length - 1;
     const logsUrl = isLast ? buildLogsUrl(runId) : undefined;
-    const sentVia = isLast && agentLabel ? `Sent via ${agentLabel}` : undefined;
 
     await postMessage(client, payload.channelId, responseText, {
       threadTs: payload.threadTs,
-      blocks: buildAgentResponseMessage(responseText, logsUrl, sentVia),
+      blocks: buildAgentResponseMessage(responseText, logsUrl),
     });
   }
 

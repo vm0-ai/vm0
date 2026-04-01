@@ -9,7 +9,6 @@ import {
   createTestCompose,
   createTestRun,
   createTestCallback,
-  createTestZeroAgent,
   createTestSlackOrgInstallation,
   createTestRequest,
   seedTestSlackOrgConnection,
@@ -356,55 +355,5 @@ describe("POST /api/internal/callbacks/slack/org", () => {
       setStatusMock.mock.calls.length - 1
     ]![0] as { status: string };
     expect(lastCall.status).toBe("");
-  });
-
-  it("includes 'Sent via' footer in completion message", async () => {
-    const { workspaceId, connectionId } = await setupOrgSlack();
-    const agentName = uniqueId("agent");
-    const { composeId } = await createTestCompose(agentName);
-    await createTestZeroAgent(user.orgId, agentName, {
-      displayName: "My Bot",
-    });
-    const { runId } = await createTestRun(composeId, "Test prompt");
-    await completeTestRun(user.userId, runId);
-
-    const channelId = uniqueId("C-ch");
-    const threadTs = uniqueId("ts");
-    const payload: OrgCallbackPayload = {
-      workspaceId,
-      channelId,
-      threadTs,
-      messageTs: threadTs,
-      connectionId,
-      agentId: composeId,
-    };
-
-    const { secret } = await createTestCallback({
-      runId,
-      url: "http://localhost/api/internal/callbacks/slack/org",
-      payload: { ...payload },
-    });
-
-    const request = createCallbackRequest(
-      { runId, status: "completed", payload },
-      secret,
-    );
-    const response = await POST(request);
-    expect(response.status).toBe(200);
-
-    const { WebClient } = await import("@slack/web-api");
-    const mockClient = new WebClient();
-    const call = (
-      mockClient.chat.postMessage as ReturnType<typeof import("vitest").vi.fn>
-    ).mock.calls[0]![0] as {
-      blocks: Array<{ type: string; elements?: Array<{ text: string }> }>;
-    };
-
-    // Last two blocks should be divider + context with "Sent via My Bot"
-    const blocks = call.blocks;
-    expect(blocks[blocks.length - 2]!.type).toBe("divider");
-    const footerCtx = blocks[blocks.length - 1]!;
-    expect(footerCtx.type).toBe("context");
-    expect(footerCtx.elements![0]!.text).toBe("Sent via My Bot");
   });
 });
