@@ -1,5 +1,23 @@
 # Changelog
 
+## [12.178.0](https://github.com/vm0-ai/vm0/compare/web-v12.177.5...web-v12.178.0) (2026-04-01)
+
+
+### Features
+
+* add sent-via footer to slack messages from cli and agent runs ([#7442](https://github.com/vm0-ai/vm0/issues/7442)) ([c07e658](https://github.com/vm0-ai/vm0/commit/c07e6583fcca08ad7d4d78fb34ae884348a1f27d))
+* **firewalls:** support vars templates in firewall auth headers ([#7445](https://github.com/vm0-ai/vm0/issues/7445)) ([c06b9a0](https://github.com/vm0-ai/vm0/commit/c06b9a027bf1ae757b2f09393fee658d891bcf5f))
+
+
+### Documentation
+
+* add skill references to cli help text and agent tools prompt ([#7448](https://github.com/vm0-ai/vm0/issues/7448)) ([1e54353](https://github.com/vm0-ai/vm0/commit/1e54353ed6ffc6bdfed00057f6a6570e687f5709))
+
+
+### Refactoring
+
+* remove dead params and runtime org from dispatch pipeline ([#7434](https://github.com/vm0-ai/vm0/issues/7434)) ([0443526](https://github.com/vm0-ai/vm0/commit/044352642dc33e3b280af5398ce5f837abef57e7)), closes [#7427](https://github.com/vm0-ai/vm0/issues/7427)
+
 ## [12.177.5](https://github.com/vm0-ai/vm0/compare/web-v12.177.4...web-v12.177.5) (2026-04-01)
 
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## [9.91.0](https://github.com/vm0-ai/vm0/compare/cli-v9.90.6...cli-v9.91.0) (2026-04-01)
+
+
+### Features
+
+* **firewalls:** add custom guidance for slack chat:write firewall deny ([#7459](https://github.com/vm0-ai/vm0/issues/7459)) ([e3b1431](https://github.com/vm0-ai/vm0/commit/e3b143137560e61f96e441b4ceedbf83703590f5)), closes [#7458](https://github.com/vm0-ai/vm0/issues/7458)
+
+
+### Documentation
+
+* add skill references to cli help text and agent tools prompt ([#7448](https://github.com/vm0-ai/vm0/issues/7448)) ([1e54353](https://github.com/vm0-ai/vm0/commit/1e54353ed6ffc6bdfed00057f6a6570e687f5709))
+
 ## [9.90.6](https://github.com/vm0-ai/vm0/compare/cli-v9.90.5...cli-v9.90.6) (2026-04-01)
 
 

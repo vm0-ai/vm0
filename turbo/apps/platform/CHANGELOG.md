@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.173.0](https://github.com/vm0-ai/vm0/compare/app-v0.172.1...app-v0.173.0) (2026-04-01)
+
+
+### Features
+
+* improve connector draft scoping and add connectors dialog ([#7364](https://github.com/vm0-ai/vm0/issues/7364)) ([a0b81a3](https://github.com/vm0-ai/vm0/commit/a0b81a391ced6d6540a519ab8ff09bfccc61d869))
+
+
+### Bug Fixes
+
+* **platform:** clear building state before content update in instructions editor ([#7455](https://github.com/vm0-ai/vm0/issues/7455)) ([a2565ff](https://github.com/vm0-ai/vm0/commit/a2565ffd628644a88e772fc349be21bc6a7b867c))
+* **platform:** improve mobile responsive layout for onboarding and dialogs ([#7393](https://github.com/vm0-ai/vm0/issues/7393)) ([1e4c7fd](https://github.com/vm0-ai/vm0/commit/1e4c7fdce4f87d471b968eaa7f33f59bb982a38c))
+
+
+### Refactoring
+
+* ban test timeout parameters via eslint no-restricted-syntax ([#7449](https://github.com/vm0-ai/vm0/issues/7449)) ([d30f85b](https://github.com/vm0-ai/vm0/commit/d30f85bf9495e1ce92a9a8dd9fbfd1ce48935b5e)), closes [#7444](https://github.com/vm0-ai/vm0/issues/7444)
+* **platform:** remove defensive try-catch patterns from zero-chat signals ([#7440](https://github.com/vm0-ai/vm0/issues/7440)) ([8a3075a](https://github.com/vm0-ai/vm0/commit/8a3075a85db69d7f12d8db918d33210c0479dc96))
+* **platform:** simplify zero-chat send command interfaces ([#7452](https://github.com/vm0-ai/vm0/issues/7452)) ([814e57f](https://github.com/vm0-ai/vm0/commit/814e57fdac48da3c13479d257afac3dc6a176399))
+
 ## [0.172.1](https://github.com/vm0-ai/vm0/compare/app-v0.172.0...app-v0.172.1) (2026-04-01)
 
 

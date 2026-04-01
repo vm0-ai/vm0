@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.54.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.53.0...runner-rs-v0.54.0) (2026-04-01)
+
+
+### Features
+
+* **firewalls:** support vars templates in firewall auth headers ([#7445](https://github.com/vm0-ai/vm0/issues/7445)) ([c06b9a0](https://github.com/vm0-ai/vm0/commit/c06b9a027bf1ae757b2f09393fee658d891bcf5f))
+
 ## [0.53.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.52.2...runner-rs-v0.53.0) (2026-03-31)
 
 
