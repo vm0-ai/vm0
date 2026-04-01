@@ -38,7 +38,9 @@ describe("applyConnectorPolicies", () => {
     const result = applyConnectorPolicies([fw], undefined);
 
     expect(result).toHaveLength(1);
-    expect(result[0].apis[0].permissions).toEqual([UNRESTRICTED_PERMISSION]);
+    const entry = result[0];
+    expect(entry).toBeDefined();
+    expect(entry?.apis[0]?.permissions).toEqual([UNRESTRICTED_PERMISSION]);
   });
 
   it("filters permissions by policy when permissions are defined", () => {
@@ -68,7 +70,7 @@ describe("applyConnectorPolicies", () => {
       },
     });
 
-    expect(result[0].apis[0].permissions).toEqual([
+    expect(result[0]?.apis[0]?.permissions).toEqual([
       { name: "repo-read", rules: ["GET /repos/{owner}/{repo}"] },
       { name: "issues-read", rules: ["GET /repos/{owner}/{repo}/issues"] },
     ]);
@@ -94,8 +96,8 @@ describe("applyConnectorPolicies", () => {
     });
 
     expect(result).toHaveLength(1);
-    expect(result[0].apis[0].permissions).toEqual([UNRESTRICTED_PERMISSION]);
-    expect(result[0].apis[1].permissions).toEqual([UNRESTRICTED_PERMISSION]);
+    expect(result[0]?.apis[0]?.permissions).toEqual([UNRESTRICTED_PERMISSION]);
+    expect(result[0]?.apis[1]?.permissions).toEqual([UNRESTRICTED_PERMISSION]);
   });
 
   it("returns unrestricted when all api permissions are empty arrays", () => {
@@ -114,6 +116,6 @@ describe("applyConnectorPolicies", () => {
       "custom-api": { x: "allow" },
     });
 
-    expect(result[0].apis[0].permissions).toEqual([UNRESTRICTED_PERMISSION]);
+    expect(result[0]?.apis[0]?.permissions).toEqual([UNRESTRICTED_PERMISSION]);
   });
 });
