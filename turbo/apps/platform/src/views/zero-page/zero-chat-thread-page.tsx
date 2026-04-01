@@ -139,7 +139,7 @@ export function ZeroChatThreadPage({
   // Auto-scroll when messages change — ref callback runs at commit time
   const scrollAnchorRef = (el: HTMLDivElement | null) => {
     if (el && messages.length > 0) {
-      el.scrollIntoView({ behavior: "smooth" });
+      el.scrollIntoView({ behavior: "instant" });
     }
   };
 
