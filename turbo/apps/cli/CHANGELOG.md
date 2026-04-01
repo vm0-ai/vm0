@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.90.6](https://github.com/vm0-ai/vm0/compare/cli-v9.90.5...cli-v9.90.6) (2026-04-01)
+
+
+### Refactoring
+
+* remove --connectors flag from zero agent create ([#7386](https://github.com/vm0-ai/vm0/issues/7386)) ([9c1fce6](https://github.com/vm0-ai/vm0/commit/9c1fce6195ba5a452154874cb94531b56262759b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.132.1
+
 ## [9.90.5](https://github.com/vm0-ai/vm0/compare/cli-v9.90.4...cli-v9.90.5) (2026-03-31)
 
 

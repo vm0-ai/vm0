@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.177.5](https://github.com/vm0-ai/vm0/compare/web-v12.177.4...web-v12.177.5) (2026-04-01)
+
+
+### Refactoring
+
+* **web:** rename oauth connector result field for clarity ([#7431](https://github.com/vm0-ai/vm0/issues/7431)) ([ce34cec](https://github.com/vm0-ai/vm0/commit/ce34ceca9ae481fb9e1adfaf9c8fa739ad6e69ce))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.132.1
+
 ## [12.177.4](https://github.com/vm0-ai/vm0/compare/web-v12.177.3...web-v12.177.4) (2026-03-31)
 
 

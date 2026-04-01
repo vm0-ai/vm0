@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.172.1](https://github.com/vm0-ai/vm0/compare/app-v0.172.0...app-v0.172.1) (2026-04-01)
+
+
+### Refactoring
+
+* **platform:** clean up zero-chat signal naming and remove defensive patterns ([#7405](https://github.com/vm0-ai/vm0/issues/7405)) ([bb01422](https://github.com/vm0-ai/vm0/commit/bb0142215b1aa73b2341669b066c3f45a553bcea))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.132.1
+
 ## [0.172.0](https://github.com/vm0-ai/vm0/compare/app-v0.171.2...app-v0.172.0) (2026-03-31)
 
 

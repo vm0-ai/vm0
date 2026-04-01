@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.132.1](https://github.com/vm0-ai/vm0/compare/core-v8.132.0...core-v8.132.1) (2026-04-01)
+
+
+### Bug Fixes
+
+* **firewalls:** add login.mailchimp.com to mailchimp firewall config ([#7433](https://github.com/vm0-ai/vm0/issues/7433)) ([2b625bc](https://github.com/vm0-ai/vm0/commit/2b625bcf738a068f0926cdfc1a16cdcd9e39d827)), closes [#7426](https://github.com/vm0-ai/vm0/issues/7426)
+
 ## [8.132.0](https://github.com/vm0-ai/vm0/compare/core-v8.131.2...core-v8.132.0) (2026-03-31)
 
 
