@@ -59,7 +59,7 @@ pub enum SnapshotError {
 pub async fn create_snapshot(
     config: SnapshotCreateConfig,
 ) -> Result<SnapshotConfig, SnapshotError> {
-    // Check prerequisites (binary, kernel, rootfs, kvm, sudo, runtime dir, etc.).
+    // Check prerequisites (binary, kernel, rootfs, kvm, runtime dir, etc.).
     prerequisites::check_prerequisites(&prerequisites::PrerequisiteConfig {
         binary_path: &config.binary_path,
         kernel_path: &config.kernel_path,
@@ -234,8 +234,8 @@ async fn run_snapshot_workflow(
     // Tear down: umount bind mount, then destroy NBD COW device.
     //
     // Both steps may fail transiently because kill_process_group + child.wait()
-    // only waits for the outer sudo — the inner Firecracker (inside netns via
-    // sudo -u) may still be exiting, holding the NBD device fd and bind mount
+    // only waits for the top-level unshare — the inner Firecracker (inside
+    // netns) may still be exiting, holding the NBD device fd and bind mount
     // reference open. Retry both in a loop until Firecracker fully terminates.
     let drive_bind_str = paths.cow_device_bind().display().to_string();
 

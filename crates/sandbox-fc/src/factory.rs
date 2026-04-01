@@ -8,8 +8,8 @@ use nbd_cow::NbdCowDevice;
 use crate::config::FirecrackerConfig;
 
 /// Maximum attempts to destroy a COW device after killing Firecracker.
-/// The inner process (inside netns via `sudo -u`) may still be releasing
-/// file descriptors after the outer `sudo` exits.
+/// The inner process (inside netns) may still be releasing file descriptors
+/// after the top-level `unshare` exits.
 pub(crate) const DESTROY_RETRIES: u32 = 5;
 
 /// Delay between COW device destroy retries.
@@ -380,8 +380,8 @@ impl SandboxFactory for FirecrackerFactory {
 
         // Destroy the NBD COW device (flushes data, disconnects, removes COW file).
         //
-        // The inner Firecracker process (inside netns via sudo -u) may still
-        // be exiting after kill_process_group + child.wait() — the outer sudo
+        // The inner Firecracker process (inside netns) may still be exiting
+        // after kill_process_group + child.wait() — the top-level unshare
         // exits first while the inner process releases file descriptors.
         // Retry a few times to let it finish.
         let mut cow_destroyed = false;

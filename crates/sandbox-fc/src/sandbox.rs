@@ -364,7 +364,7 @@ impl FirecrackerSandbox {
 
     /// Kill the process tree.
     ///
-    /// The process chain is `sudo -> ip netns exec -> sudo -> firecracker`.
+    /// The process chain is `unshare -> bash -> ip netns exec -> firecracker`.
     /// We must kill the entire tree to avoid orphan processes.
     async fn kill_process(&mut self) {
         let Some(ref mut child) = self.process else {
@@ -389,7 +389,7 @@ impl Drop for FirecrackerSandbox {
         }
         // If the process is still alive (e.g. owning task panicked before
         // explicit cleanup), kill the entire process group synchronously.
-        // `kill_on_drop(true)` only sends SIGKILL to the direct child (`sudo`);
+        // `kill_on_drop(true)` only sends SIGKILL to the direct child (`unshare`);
         // `killpg` ensures the entire tree (including firecracker) is cleaned up.
         if let Some(ref child) = self.process {
             kill_process_group(child);
