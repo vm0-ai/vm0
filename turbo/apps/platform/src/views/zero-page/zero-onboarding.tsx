@@ -1,7 +1,6 @@
 import { useState } from "react";
 import {
   useGet,
-  useLoadable,
   useSet,
   useLastLoadable,
   useLastResolved,
@@ -15,25 +14,20 @@ import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   zeroOnboardingStep$,
-  zeroAgentName$,
   zeroWorkspaceName$,
-  zeroSaving$,
   setZeroStep$,
   setZeroWorkspaceName$,
-  completeZeroOnboarding$,
-  dismissZeroOnboarding$,
   zeroSelectedConnectors$,
   toggleZeroConnector$,
-  zeroOnboardingError$,
-  clearZeroOnboardingError$,
-  completeMemberOnboarding$,
   zeroOnboardingStatus$,
 } from "../../signals/zero-page/zero-onboarding.ts";
 import {
-  sendNewThreadMessage$,
-  startNewZeroSession$,
-} from "../../signals/zero-page/zero-chat.ts";
-import { detachedNavigateTo$ } from "../../signals/route.ts";
+  onboardingDisplayName$,
+  onboardingSaving$,
+  onboardingError$,
+  onboardingAddToSlack$,
+  onboardingContinueWeb$,
+} from "../../signals/zero-page/zero-onboarding-actions.ts";
 import {
   allConnectorTypes$,
   connectConnector$,
@@ -43,8 +37,6 @@ import {
 } from "../../signals/zero-page/settings/connectors.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { slackOrgData$ } from "../../signals/zero-page/zero-slack.ts";
-import { reloadBillingStatus$ } from "../../signals/zero-page/billing.ts";
 import {
   IconCircleCheck,
   IconCircleCheckFilled,
@@ -326,21 +318,13 @@ function ConnectStepContent({
 // Where to work step content
 // ---------------------------------------------------------------------------
 
-function WhereToWorkContent({
-  name,
-  zeroAvatarSrc,
-  onAddToSlack,
-  onContinueWeb,
-  saving,
-  error,
-}: {
-  name: string;
-  zeroAvatarSrc: string | null;
-  onAddToSlack: () => void;
-  onContinueWeb: () => void;
-  saving: boolean;
-  error: string | null;
-}) {
+function WhereToWorkContent() {
+  const name = useLastResolved(onboardingDisplayName$) ?? "Zero";
+  const saving = useGet(onboardingSaving$);
+  const error = useLastResolved(onboardingError$) ?? null;
+  const addToSlack = useSet(onboardingAddToSlack$);
+  const continueWeb = useSet(onboardingContinueWeb$);
+
   return (
     <>
       <h2 className="text-2xl font-semibold tracking-tight">
@@ -359,7 +343,12 @@ function WhereToWorkContent({
       <div className="flex flex-col gap-5 w-full">
         <button
           type="button"
-          onClick={onAddToSlack}
+          onClick={() => {
+            return detach(
+              addToSlack(new AbortController().signal),
+              Reason.DomCallback,
+            );
+          }}
           disabled={saving}
           className="flex items-center gap-4 rounded-xl bg-card px-6 py-6 text-left transition-colors hover:bg-muted/30 disabled:opacity-50 zero-border"
         >
@@ -378,21 +367,22 @@ function WhereToWorkContent({
         </button>
         <button
           type="button"
-          onClick={onContinueWeb}
+          onClick={() => {
+            return detach(
+              continueWeb(new AbortController().signal),
+              Reason.DomCallback,
+            );
+          }}
           disabled={saving}
           className="flex items-center gap-4 rounded-xl bg-card px-6 py-6 text-left transition-colors hover:bg-muted/30 disabled:opacity-50 zero-border"
         >
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg overflow-hidden">
-            {zeroAvatarSrc ? (
-              <img
-                src={zeroAvatarSrc}
-                alt=""
-                role="presentation"
-                className="h-10 w-10 rounded-lg object-cover object-top"
-              />
-            ) : (
-              <div className="h-10 w-10 rounded-lg bg-muted" aria-hidden />
-            )}
+            <img
+              src={zeroAvatarImg}
+              alt=""
+              role="presentation"
+              className="h-10 w-10 rounded-lg object-cover object-top"
+            />
           </span>
           <div className="min-w-0 flex-1">
             <span className="block text-sm font-semibold text-foreground">
@@ -912,133 +902,19 @@ function resolveVisibleSteps(
   return hasMemberConnectors ? ["3", "4"] : ["4"];
 }
 
-// ---------------------------------------------------------------------------
-// Onboarding completion handlers (hook)
-// ---------------------------------------------------------------------------
-
-function useOnboardingHandlers(isAdmin: boolean) {
-  const completeOnboarding = useSet(completeZeroOnboarding$);
-  const completeMember = useSet(completeMemberOnboarding$);
-  const dismissOnboarding = useSet(dismissZeroOnboarding$);
-  const sendNewThread = useSet(sendNewThreadMessage$);
-  const startNewSession = useSet(startNewZeroSession$);
-  const navigate = useSet(detachedNavigateTo$);
-  const clearOnboardingError = useSet(clearZeroOnboardingError$);
-  const reloadBilling = useSet(reloadBillingStatus$);
-  const slackDataLoadable = useLoadable(slackOrgData$);
-  const slackData =
-    slackDataLoadable.state === "hasData" ? slackDataLoadable.data : null;
-
-  const handleAddToSlack = () => {
-    clearOnboardingError();
-    if (isAdmin) {
-      const controller = new AbortController();
-      detach(
-        (async () => {
-          const result = await completeOnboarding(controller.signal);
-          if (!result) {
-            return;
-          }
-          reloadBilling();
-          dismissOnboarding();
-          if (slackData?.isAdmin && slackData.installUrl) {
-            const url = new URL(slackData.installUrl, window.location.origin);
-            url.searchParams.set("_t", String(Date.now()));
-            window.open(url.toString(), "_blank");
-          }
-          navigate("/works");
-        })(),
-        Reason.DomCallback,
-      );
-    } else {
-      const controller = new AbortController();
-      detach(
-        (async () => {
-          await completeMember(controller.signal);
-          navigate("/works");
-        })(),
-        Reason.DomCallback,
-      );
-    }
-  };
-
-  const handleContinueWithWeb = () => {
-    clearOnboardingError();
-    const controller = new AbortController();
-    if (isAdmin) {
-      detach(
-        (async () => {
-          const agentId = await completeOnboarding(controller.signal);
-          if (!agentId) {
-            return;
-          }
-          reloadBilling();
-          navigate("/");
-          startNewSession();
-          // Use controller.signal instead of pageSignal: navigate("/") aborts
-          // the onboarding page signal via resetRouteSignal$, so pageSignal is
-          // already dead by the time sendNewThread runs.
-          detach(
-            sendNewThread(
-              agentId,
-              "Who are you and what can you do?",
-              undefined,
-              controller.signal,
-            ),
-            Reason.DomCallback,
-          );
-          dismissOnboarding();
-        })(),
-        Reason.DomCallback,
-      );
-    } else {
-      detach(
-        (async () => {
-          const agentId = await completeMember(controller.signal);
-          if (!agentId) {
-            return;
-          }
-          navigate("/");
-          startNewSession();
-          detach(
-            sendNewThread(
-              agentId,
-              "Who are you and what can you do?",
-              undefined,
-              controller.signal,
-            ),
-            Reason.DomCallback,
-          );
-        })(),
-        Reason.DomCallback,
-      );
-    }
-  };
-
-  return { handleAddToSlack, handleContinueWithWeb };
-}
-
 /** Zero onboarding — used for both admin and member flows. */
 export function ZeroOnboarding({
   zeroAvatarSrc = zeroAvatarImg,
   isAdmin,
-  displayName = "Zero",
 }: {
   zeroAvatarSrc?: string | null;
   isAdmin: boolean;
-  displayName?: string;
 }) {
   const step = useLastResolved(zeroOnboardingStep$);
   const setStep = useSet(setZeroStep$);
-  const agentName = useGet(zeroAgentName$);
-  const saving = useGet(zeroSaving$);
   const adminSelectedConnectors = useGet(zeroSelectedConnectors$);
-  const onboardingError = useGet(zeroOnboardingError$);
   const selectedConnectorType = useGet(selectedConnectorType$);
   const setSelected = useSet(setSelectedConnectorType$);
-
-  const { handleAddToSlack, handleContinueWithWeb } =
-    useOnboardingHandlers(isAdmin);
 
   // Member: resolve org's configured connectors from default agent skills
   const onboardingStatus = useLastResolved(zeroOnboardingStatus$);
@@ -1081,9 +957,6 @@ export function ZeroOnboarding({
   const effectiveConnectors = isAdmin
     ? adminSelectedConnectors
     : memberConnectorTypes;
-
-  // Display name for WhereToWorkContent
-  const name = isAdmin ? agentName : displayName;
 
   return (
     <>
@@ -1169,14 +1042,7 @@ export function ZeroOnboarding({
             return setStep("3");
           }}
         >
-          <WhereToWorkContent
-            name={name}
-            zeroAvatarSrc={zeroAvatarSrc}
-            onAddToSlack={handleAddToSlack}
-            onContinueWeb={handleContinueWithWeb}
-            saving={saving}
-            error={isAdmin ? onboardingError : null}
-          />
+          <WhereToWorkContent />
         </OnboardingPage>
       )}
     </>

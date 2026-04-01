@@ -5,7 +5,6 @@ import {
   zeroNeedsOnboarding$,
   zeroNeedsMemberOnboarding$,
 } from "../../signals/zero-page/zero-onboarding.ts";
-import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 
 export function OnboardingPage() {
   const userLoadable = useLoadable(user$);
@@ -20,19 +19,11 @@ export function OnboardingPage() {
   const isMember =
     memberOnboarding.state === "hasData" && memberOnboarding.data === true;
 
-  const agentDisplayNameLoadable = useLastLoadable(agentDisplayName$);
-  const agentDisplayName =
-    agentDisplayNameLoadable.state === "hasData"
-      ? agentDisplayNameLoadable.data
-      : "Zero";
-
   const showOnboarding = isLoggedIn && (isAdmin || isMember);
 
   return (
     <div className="h-dvh w-full">
-      {showOnboarding && (
-        <ZeroOnboarding isAdmin={isAdmin} displayName={agentDisplayName} />
-      )}
+      {showOnboarding && <ZeroOnboarding isAdmin={isAdmin} />}
     </div>
   );
 }
