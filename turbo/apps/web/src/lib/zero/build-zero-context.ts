@@ -959,7 +959,7 @@ function mergeFirewalls(
 }
 
 /** Unrestricted permission — allows all endpoints through the proxy. */
-const UNRESTRICTED_PERMISSION = {
+export const UNRESTRICTED_PERMISSION = {
   name: "unrestricted",
   description: "Allow all endpoints",
   rules: ["ANY /{path*}"],
@@ -974,7 +974,7 @@ const UNRESTRICTED_PERMISSION = {
  *   permission is added to allow all endpoints through the proxy.
  * - If all permissions are denied, the entry is excluded entirely.
  */
-function applyConnectorPolicies(
+export function applyConnectorPolicies(
   connectorFirewalls: ExpandedFirewallConfig[],
   policies?: FirewallPolicies,
 ): ExperimentalFirewalls {
@@ -983,9 +983,14 @@ function applyConnectorPolicies(
   for (const fw of connectorFirewalls) {
     const refPolicies = policies?.[fw.ref];
 
+    // If no policies or the firewall defines no permissions on any api,
+    // treat all apis as unrestricted (no granular permission control).
+    const hasPermissions = fw.apis.some((api) => {
+      return api.permissions && api.permissions.length > 0;
+    });
+
     const apis = fw.apis.map((api) => {
-      if (!refPolicies) {
-        // No policies configured → unrestricted access
+      if (!refPolicies || !hasPermissions) {
         return {
           base: api.base,
           auth: api.auth,
