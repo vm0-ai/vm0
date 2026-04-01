@@ -236,13 +236,21 @@ impl NbdCowDevice {
         // disconnect(device_index) would tear down the new owner's device.
         if !self.disconnected {
             self.disconnected = true;
-            if self.device_owned_by_us() {
-                netlink::disconnect(self.device_index)?;
-            } else {
-                tracing::warn!(
-                    device_index = self.device_index,
-                    "skipping disconnect: device recycled by another process"
-                );
+            match self.device_owned_by_us() {
+                Ok(true) => netlink::disconnect(self.device_index)?,
+                Ok(false) => {
+                    tracing::warn!(
+                        device_index = self.device_index,
+                        foreign_pid = self.device_foreign_pid(),
+                        "skipping disconnect: device recycled by another process"
+                    );
+                }
+                Err(()) => {
+                    tracing::warn!(
+                        device_index = self.device_index,
+                        "skipping disconnect: cannot read device pid"
+                    );
+                }
             }
         }
 
@@ -269,15 +277,25 @@ impl NbdCowDevice {
     /// The kernel records the connecting process's PID in `/sys/block/nbdN/pid`.
     /// If another process recycled the device index, the PID will differ and
     /// we must skip disconnect to avoid tearing down the other process's device.
-    fn device_owned_by_us(&self) -> bool {
+    /// Returns `Ok(true)` if we own the device, `Ok(false)` if not (with the
+    /// foreign PID), or `Err` if the pid file is unreadable.
+    fn device_owned_by_us(&self) -> std::result::Result<bool, ()> {
         let pid_path = format!("/sys/block/nbd{}/pid", self.device_index);
         match std::fs::read_to_string(&pid_path) {
             Ok(contents) => {
                 let pid: u32 = contents.trim().parse().unwrap_or(0);
-                pid == std::process::id()
+                Ok(pid == std::process::id())
             }
-            Err(_) => false,
+            Err(_) => Err(()),
         }
+    }
+
+    /// Read the foreign PID from sysfs for logging purposes.
+    fn device_foreign_pid(&self) -> Option<u32> {
+        let pid_path = format!("/sys/block/nbd{}/pid", self.device_index);
+        std::fs::read_to_string(&pid_path)
+            .ok()
+            .and_then(|s| s.trim().parse().ok())
     }
 
     fn bitmap_path(&self) -> PathBuf {
@@ -305,7 +323,7 @@ impl Drop for NbdCowDevice {
         // still own the device. Another runner's cleanup may have already
         // disconnected our index and a third runner may have recycled it.
         if !self.disconnected
-            && self.device_owned_by_us()
+            && self.device_owned_by_us() == Ok(true)
             && let Err(e) = netlink::disconnect(self.device_index)
         {
             tracing::warn!(
