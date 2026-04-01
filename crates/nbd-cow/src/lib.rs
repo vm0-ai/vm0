@@ -277,8 +277,14 @@ impl Drop for NbdCowDevice {
         }
         // Only disconnect if shutdown_inner hasn't already done it,
         // to avoid disconnecting a device that was recycled by another runner.
-        if !self.disconnected {
-            let _ = netlink::disconnect(self.device_index);
+        if !self.disconnected
+            && let Err(e) = netlink::disconnect(self.device_index)
+        {
+            tracing::warn!(
+                device_index = self.device_index,
+                error = %e,
+                "NBD disconnect failed during drop"
+            );
         }
     }
 }

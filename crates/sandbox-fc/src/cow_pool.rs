@@ -125,9 +125,20 @@ impl CowPool {
         while let Some(result) = set.join_next().await {
             match result {
                 Ok(Ok(slot)) => self.queue.push_back(slot),
-                Ok(Err(e)) => error!(error = %e, "pre-warm slot creation failed"),
-                Err(e) => error!(error = %e, "pre-warm task panicked"),
+                Ok(Err(e)) => {
+                    self.next_slot_idx = self.next_slot_idx.saturating_sub(1);
+                    error!(error = %e, "pre-warm slot creation failed");
+                }
+                Err(e) => {
+                    self.next_slot_idx = self.next_slot_idx.saturating_sub(1);
+                    error!(error = %e, "pre-warm task panicked");
+                }
             }
+        }
+        if self.queue.is_empty() {
+            warn!(
+                "COW pool warmup produced no ready slots — all acquire calls will use on-demand creation"
+            );
         }
         info!(
             ready = self.queue.len(),
@@ -163,8 +174,14 @@ impl CowPool {
                     self.maybe_replenish();
                     return Ok(slot);
                 }
-                Ok(Err(e)) => error!(error = %e, "pending slot creation failed"),
-                Err(e) => error!(error = %e, "pending slot task panicked"),
+                Ok(Err(e)) => {
+                    self.next_slot_idx = self.next_slot_idx.saturating_sub(1);
+                    error!(error = %e, "pending slot creation failed");
+                }
+                Err(e) => {
+                    self.next_slot_idx = self.next_slot_idx.saturating_sub(1);
+                    error!(error = %e, "pending slot task panicked");
+                }
             }
         }
 
@@ -175,11 +192,20 @@ impl CowPool {
         }
         self.next_slot_idx += 1;
         let config = self.config.clone();
-        let slot = tokio::task::spawn_blocking(move || create_slot(&config))
-            .await
-            .map_err(|e| CowPoolError::CowFileCreation(format!("join: {e}")))??;
-        self.maybe_replenish();
-        Ok(slot)
+        match tokio::task::spawn_blocking(move || create_slot(&config)).await {
+            Ok(Ok(slot)) => {
+                self.maybe_replenish();
+                Ok(slot)
+            }
+            Ok(Err(e)) => {
+                self.next_slot_idx = self.next_slot_idx.saturating_sub(1);
+                Err(e)
+            }
+            Err(e) => {
+                self.next_slot_idx = self.next_slot_idx.saturating_sub(1);
+                Err(CowPoolError::CowFileCreation(format!("join: {e}")))
+            }
+        }
     }
 
     /// Shut down the pool: wait for pending tasks, destroy all queued slots.
@@ -196,8 +222,14 @@ impl CowPool {
         while let Some(result) = self.pending.join_next().await {
             match result {
                 Ok(Ok(slot)) => self.queue.push_back(slot),
-                Ok(Err(e)) => error!(error = %e, "pending slot creation failed during cleanup"),
-                Err(e) => error!(error = %e, "pending task panicked during cleanup"),
+                Ok(Err(e)) => {
+                    self.next_slot_idx = self.next_slot_idx.saturating_sub(1);
+                    error!(error = %e, "pending slot creation failed during cleanup");
+                }
+                Err(e) => {
+                    self.next_slot_idx = self.next_slot_idx.saturating_sub(1);
+                    error!(error = %e, "pending task panicked during cleanup");
+                }
             }
         }
 
@@ -219,8 +251,14 @@ impl CowPool {
         while let Some(result) = self.pending.try_join_next() {
             match result {
                 Ok(Ok(slot)) => self.queue.push_back(slot),
-                Ok(Err(e)) => error!(error = %e, "background slot creation failed"),
-                Err(e) => error!(error = %e, "background slot creation panicked"),
+                Ok(Err(e)) => {
+                    self.next_slot_idx = self.next_slot_idx.saturating_sub(1);
+                    error!(error = %e, "background slot creation failed");
+                }
+                Err(e) => {
+                    self.next_slot_idx = self.next_slot_idx.saturating_sub(1);
+                    error!(error = %e, "background slot creation panicked");
+                }
             }
         }
     }
@@ -365,8 +403,8 @@ mod tests {
         pool.warmup().await;
         // Queue should be empty (all tasks failed).
         assert_eq!(pool.queue.len(), 0);
-        // next_slot_idx should have advanced despite failures.
-        assert_eq!(pool.next_slot_idx, BUFFER_SIZE as u32);
+        // next_slot_idx should be reclaimed after failures.
+        assert_eq!(pool.next_slot_idx, 0);
     }
 
     #[tokio::test]
