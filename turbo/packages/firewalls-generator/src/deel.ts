@@ -1,20 +1,169 @@
-import { writeOutput } from "./codegen";
+/**
+ * Generate Deel firewall config from official OpenAPI spec.
+ *
+ * Data source: https://developer.deel.com/openapi.json
+ *
+ * Deel publishes OpenAPI specs for their REST API v2. Scopes are embedded
+ * in endpoint description text as: **Token scopes**: `scope:action`
+ * (not in the OpenAPI security field). We extract them via regex.
+ *
+ * Endpoints without scopes are tracked in SCOPELESS_ENDPOINTS — unknown
+ * scopeless endpoints cause a build error.
+ */
 
-const DOCS_URL = "https://developer.deel.com/api/authentication";
+import {
+  ALL_METHODS,
+  fetchSpec,
+  logStats,
+  renderPermissions,
+  sortRules,
+  writeOutput,
+} from "./codegen";
+import type { PermissionGroup } from "./codegen";
+
+// Full combined spec (380 endpoints across all Deel products)
+const SPEC_URL =
+  "https://developer.deel.com/openapi.json?api=66939654-3b1e-4888-b446-870c83a593bb";
+
 const PLACEHOLDER_VALUE =
   "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafe";
 
-function generateTypeScript(): string {
+// ── OpenAPI types ────────────────────────────────────────────────────────
+
+interface DeelSpec {
+  paths?: Record<string, Record<string, DeelOperation>>;
+}
+
+interface DeelOperation {
+  description?: string;
+}
+
+// ── Scope extraction ─────────────────────────────────────────────────────
+
+// Matches: **Token scopes**: `scope:action`
+// Also handles multiple scopes: `scope1:read`, `scope2:write`
+const SCOPE_REGEX = /`([a-z][a-z0-9-]*:[a-z]+)`/g;
+const HAS_TOKEN_SCOPES = /\*\*Token scopes?\*\*/i;
+
+function extractScopes(description: string): string[] {
+  if (!HAS_TOKEN_SCOPES.test(description)) return [];
+  const scopes: string[] = [];
+  for (const match of description.matchAll(SCOPE_REGEX)) {
+    const scope = match[1];
+    if (scope) scopes.push(scope);
+  }
+  return scopes;
+}
+
+// ── Scope overrides ──────────────────────────────────────────────────────
+// Endpoints without documented scopes that should still be accessible.
+// We assign reasonable scope names based on their function.
+
+const SCOPE_OVERRIDES: Record<string, string> = {
+  // Lookups — read-only reference data
+  "GET /rest/v2/lookups/countries": "lookups:read",
+  "GET /rest/v2/lookups/currencies": "lookups:read",
+  "GET /rest/v2/lookups/job-titles": "lookups:read",
+  "GET /rest/v2/lookups/seniorities": "lookups:read",
+  "GET /rest/v2/lookups/time-off-types": "lookups:read",
+  // Webhooks management
+  "GET /rest/v2/webhooks": "webhooks:read",
+  "GET /rest/v2/webhooks/{id}": "webhooks:read",
+  "GET /rest/v2/webhooks/events/types": "webhooks:read",
+  "POST /rest/v2/webhooks": "webhooks:write",
+  "PATCH /rest/v2/webhooks/{id}": "webhooks:write",
+  "DELETE /rest/v2/webhooks/{id}": "webhooks:write",
+};
+
+// ── Scopeless endpoints ──────────────────────────────────────────────────
+// Endpoints that are intentionally denied (different auth or sensitive).
+// Unknown scopeless endpoints cause a build error.
+
+const SCOPELESS_ENDPOINTS = new Set([
+  // SCIM user provisioning (uses SCIM token, not API token scopes)
+  "GET /rest/v2/Users",
+  "GET /rest/v2/Users/{hrisProfileOid}",
+  "GET /rest/v2/Users/{hris_profile_id}",
+  "POST /rest/v2/Users",
+  "POST /rest/v2/Users/.search",
+  "PUT /rest/v2/Users/{hrisProfileOid}",
+  "PATCH /rest/v2/Users/{hrisProfileOid}",
+  "DELETE /rest/v2/Users/{hrisProfileOid}",
+  "GET /rest/v2/ServiceProviderConfig",
+  // Consent / auth (sensitive)
+  "GET /rest/v2/integrations/consent",
+  "POST /rest/v2/consent_token",
+  // Misc (sensitive operations without documented scopes)
+  "POST /rest/v2/eor/employment_cost",
+  "POST /rest/v2/worker",
+]);
+
+// ── Grouping ─────────────────────────────────────────────────────────────
+
+function buildGroups(spec: DeelSpec): {
+  permissions: PermissionGroup[];
+  scopeless: string[];
+} {
+  const groups = new Map<string, Set<string>>();
+  const unknownScopeless: string[] = [];
+
+  for (const [path, methods] of Object.entries(spec.paths ?? {})) {
+    for (const [method, op] of Object.entries(methods)) {
+      if (!ALL_METHODS.has(method)) continue;
+
+      const httpMethod = method.toUpperCase();
+      const rule = `${httpMethod} /rest/v2${path}`;
+      const description = op.description ?? "";
+      const scopes = extractScopes(description);
+
+      // Apply manual overrides for endpoints missing scopes in spec
+      const override = SCOPE_OVERRIDES[rule];
+      if (override) {
+        scopes.push(override);
+      }
+
+      if (scopes.length === 0) {
+        if (!SCOPELESS_ENDPOINTS.has(rule)) {
+          unknownScopeless.push(rule);
+        }
+        continue;
+      }
+
+      for (const scope of scopes) {
+        let ruleSet = groups.get(scope);
+        if (!ruleSet) {
+          ruleSet = new Set();
+          groups.set(scope, ruleSet);
+        }
+        ruleSet.add(rule);
+      }
+    }
+  }
+
+  const permissions = [...groups.entries()]
+    .filter(([, ruleSet]) => ruleSet.size > 0)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, ruleSet]) => ({
+      name,
+      rules: sortRules([...ruleSet]),
+    }));
+
+  return { permissions, scopeless: unknownScopeless };
+}
+
+// ── TypeScript generation ────────────────────────────────────────────────
+
+function generateTypeScript(permissions: PermissionGroup[]): string {
   const lines: string[] = [
-    "// Auto-generated from Deel API docs.",
-    `// Source: ${DOCS_URL}`,
+    "// Auto-generated from Deel's official OpenAPI spec.",
+    `// Source: ${SPEC_URL}`,
     "// Regenerate: cd turbo && pnpm -F @vm0/firewalls-generator generate:deel",
     "//",
     "// DO NOT EDIT THIS FILE MANUALLY.",
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const deelFirewall: FirewallConfig = {",
+    "export const deelFirewall = {",
     '  name: "deel",',
     '  description: "Deel API",',
     "  placeholders: {",
@@ -28,17 +177,51 @@ function generateTypeScript(): string {
     '          Authorization: "Bearer ${{ secrets.DEEL_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [],",
-    "    },",
-    "  ],",
-    "};",
-    "",
+    "      permissions: [",
   ];
+
+  lines.push(...renderPermissions(permissions));
+
+  lines.push("      ],");
+  lines.push("    },");
+  lines.push("  ],");
+  lines.push("} as const satisfies FirewallConfig;");
+  lines.push("");
+
   return lines.join("\n");
 }
 
+// ── Main ─────────────────────────────────────────────────────────────────
+
 export async function generate(): Promise<void> {
-  console.error("Generating Deel firewall config...");
-  const ts = generateTypeScript();
+  const res = await fetchSpec(SPEC_URL, "Deel OpenAPI spec");
+  const json: unknown = await res.json();
+  if (typeof json !== "object" || json === null || !("paths" in json)) {
+    throw new Error("Invalid OpenAPI spec: missing paths");
+  }
+  const spec = json as DeelSpec;
+
+  const pathCount = Object.keys(spec.paths ?? {}).length;
+  console.error(`  ${pathCount} endpoints`);
+
+  const { permissions, scopeless } = buildGroups(spec);
+
+  if (scopeless.length > 0) {
+    // First run: print scopeless endpoints so they can be added to the set
+    console.error(
+      `\n  ${scopeless.length} endpoints without scopes (add to SCOPELESS_ENDPOINTS):`,
+    );
+    for (const ep of scopeless.sort()) {
+      console.error(`    "${ep}",`);
+    }
+    throw new Error(
+      `${scopeless.length} unknown scopeless endpoints found.\n` +
+        "Add them to SCOPELESS_ENDPOINTS in deel.ts to fix this error.",
+    );
+  }
+
+  const ts = generateTypeScript(permissions);
+
+  logStats(permissions);
   writeOutput("deel", ts, import.meta.dirname);
 }
