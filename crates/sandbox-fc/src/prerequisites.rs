@@ -87,8 +87,6 @@ fn check_required_commands(_config: &PrerequisiteConfig<'_>, errors: &mut Vec<St
 }
 
 /// Create `/run/vm0` with mode 1777 (world-writable + sticky bit) if needed.
-///
-/// Running as root, we can create and chmod directly without sudo.
 fn ensure_runtime_dir(errors: &mut Vec<String>) {
     if let Err(e) = std::fs::create_dir_all(RUNTIME_DIR) {
         errors.push(format!("failed to create {RUNTIME_DIR}: {e}"));
