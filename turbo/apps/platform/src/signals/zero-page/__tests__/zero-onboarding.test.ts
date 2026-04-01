@@ -6,6 +6,7 @@ import { setupPage } from "../../../__tests__/page-helper.ts";
 import {
   completeZeroOnboarding$,
   setZeroAgentName$,
+  setZeroWorkspaceName$,
   setZeroStep$,
   toggleZeroConnector$,
   zeroOnboardingStep$,
@@ -649,5 +650,190 @@ describe("completeZeroOnboarding$ auto-init model provider", () => {
     expect(capturedProviderBody).not.toBeNull();
     expect(capturedProviderBody!.type).toBe("vm0");
     expect(capturedProviderBody!.selectedModel).toBe("claude-sonnet-4.6");
+  });
+});
+
+/**
+ * Shared handlers for agent creation, instructions, default-agent, and
+ * onboarding-complete — everything after the org-update step.
+ */
+function agentCreationHandlers() {
+  return [
+    http.post("*/api/zero/model-providers", () => {
+      return HttpResponse.json(
+        {
+          provider: {
+            id: "a0000000-0000-4000-a000-000000000099",
+            type: "vm0",
+            framework: "claude-code",
+            secretName: null,
+            authMethod: null,
+            secretNames: null,
+            isDefault: true,
+            selectedModel: null,
+            createdAt: "2026-03-01T00:00:00Z",
+            updatedAt: "2026-03-01T00:00:00Z",
+          },
+          created: true,
+        },
+        { status: 201 },
+      );
+    }),
+    http.post("*/api/zero/agents", () => {
+      return HttpResponse.json(
+        {
+          name: "test-agent-uuid",
+          agentId: "d0000000-0000-4000-a000-000000000001",
+          ownerId: "test-owner-id",
+          description: null,
+          displayName: null,
+          sound: null,
+          avatarUrl: null,
+          firewallPolicies: null,
+        },
+        { status: 201 },
+      );
+    }),
+    http.put(
+      "*/api/zero/agents/d0000000-0000-4000-a000-000000000001/instructions",
+      () => {
+        return HttpResponse.json({
+          name: "test-agent-uuid",
+          agentId: "d0000000-0000-4000-a000-000000000001",
+          ownerId: "test-owner-id",
+          description: null,
+          displayName: null,
+          sound: null,
+          avatarUrl: null,
+          firewallPolicies: null,
+        });
+      },
+    ),
+    http.put("*/api/zero/default-agent", () => {
+      return HttpResponse.json({
+        agentId: "d0000000-0000-4000-a000-000000000001",
+      });
+    }),
+    http.post("*/api/zero/onboarding/complete", () => {
+      return HttpResponse.json({ ok: true });
+    }),
+  ];
+}
+
+function orgUpdateSuccess() {
+  return HttpResponse.json({
+    id: "org_1",
+    slug: "my-workspace",
+    name: "My Workspace",
+    role: "admin",
+  });
+}
+
+describe("completeZeroOnboarding$ slug update", () => {
+  it("should update org name and slug together", async () => {
+    const capturedOrgUpdates: Record<string, unknown>[] = [];
+
+    server.use(
+      http.put("*/api/zero/org", async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        capturedOrgUpdates.push(body);
+        return orgUpdateSuccess();
+      }),
+      ...agentCreationHandlers(),
+    );
+
+    await setupPage({ context, path: "/", withoutRender: true });
+    context.store.set(setZeroWorkspaceName$, "My Workspace");
+
+    await context.store.set(completeZeroOnboarding$, context.signal);
+
+    expect(capturedOrgUpdates).toHaveLength(1);
+    expect(capturedOrgUpdates[0]).toMatchObject({
+      name: "My Workspace",
+      slug: "my-workspace",
+      force: true,
+    });
+  });
+
+  it("should retry with random suffix on 409 conflict", async () => {
+    const capturedOrgUpdates: Record<string, unknown>[] = [];
+
+    server.use(
+      http.put("*/api/zero/org", async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        capturedOrgUpdates.push(body);
+        // First request with slug → 409 conflict; subsequent requests → 200
+        if (capturedOrgUpdates.length === 1) {
+          return HttpResponse.json(
+            { error: { message: "Conflict", code: "CONFLICT" } },
+            { status: 409 },
+          );
+        }
+        return orgUpdateSuccess();
+      }),
+      ...agentCreationHandlers(),
+    );
+
+    await setupPage({ context, path: "/", withoutRender: true });
+    context.store.set(setZeroWorkspaceName$, "My Workspace");
+
+    await context.store.set(completeZeroOnboarding$, context.signal);
+
+    expect(capturedOrgUpdates).toHaveLength(2);
+    // First attempt: exact slug
+    expect(capturedOrgUpdates[0]!.slug).toBe("my-workspace");
+    // Second attempt: slug with random suffix
+    expect(capturedOrgUpdates[1]!.slug).toMatch(/^my-workspace-[a-z0-9]+$/);
+    expect(capturedOrgUpdates[1]!.force).toBeTruthy();
+  });
+
+  it("should fall back to name-only update when both slug attempts get 409", async () => {
+    const capturedOrgUpdates: Record<string, unknown>[] = [];
+
+    server.use(
+      http.put("*/api/zero/org", async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        capturedOrgUpdates.push(body);
+        // All slug attempts → 409; name-only → 200
+        if (body.slug) {
+          return HttpResponse.json(
+            { error: { message: "Conflict", code: "CONFLICT" } },
+            { status: 409 },
+          );
+        }
+        return orgUpdateSuccess();
+      }),
+      ...agentCreationHandlers(),
+    );
+
+    await setupPage({ context, path: "/", withoutRender: true });
+    context.store.set(setZeroWorkspaceName$, "My Workspace");
+
+    await context.store.set(completeZeroOnboarding$, context.signal);
+
+    // 2 slug attempts + 1 name-only fallback
+    expect(capturedOrgUpdates).toHaveLength(3);
+    expect(capturedOrgUpdates[2]).toStrictEqual({ name: "My Workspace" });
+  });
+
+  it("should throw on non-409 error during slug update", async () => {
+    server.use(
+      http.put("*/api/zero/org", () => {
+        return HttpResponse.json(
+          { error: { message: "Forbidden", code: "FORBIDDEN" } },
+          { status: 403 },
+        );
+      }),
+      ...agentCreationHandlers(),
+    );
+
+    await setupPage({ context, path: "/", withoutRender: true });
+    context.store.set(setZeroWorkspaceName$, "My Workspace");
+
+    await context.store.set(completeZeroOnboarding$, context.signal);
+
+    expect(context.store.get(zeroOnboardingError$)).toBe(
+      "Failed to update workspace name: 403",
+    );
   });
 });

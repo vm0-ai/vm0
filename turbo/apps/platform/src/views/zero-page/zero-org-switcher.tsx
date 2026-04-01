@@ -17,15 +17,28 @@ const orgSwitcherRef$ = onRef(watchOrgSwitch$);
 
 function OrgAvatar({
   name,
+  imageUrl,
   size = "sm",
 }: {
   name: string;
+  imageUrl?: string | null;
   size?: "sm" | "lg";
 }) {
   const dim = size === "lg" ? "h-10 w-10" : "h-6 w-6";
   const radius = size === "lg" ? "rounded-xl" : "rounded-md";
   const textSize = size === "lg" ? "text-base" : "text-[11px]";
   const initial = name.charAt(0).toUpperCase();
+
+  if (imageUrl) {
+    return (
+      <img
+        src={imageUrl}
+        alt={name}
+        className={`${dim} ${radius} object-cover shrink-0`}
+      />
+    );
+  }
+
   return (
     <div
       className={`${dim} ${radius} bg-[hsl(var(--gray-200))] text-[hsl(var(--primary-700))] flex items-center justify-center ${textSize} font-bold shrink-0`}
@@ -62,7 +75,16 @@ export function ZeroOrgSwitcher() {
   };
 
   const handleCreateOrg = () => {
-    detach(clerk?.openCreateOrganization(), Reason.DomCallback);
+    if (!clerk) {
+      return;
+    }
+    const slug = `workspace-${crypto.randomUUID().slice(0, 8)}`;
+    detach(
+      clerk.createOrganization({ name: slug, slug }).then((org) => {
+        return clerk.setActive({ organization: org.id });
+      }),
+      Reason.DomCallback,
+    );
   };
 
   return (
@@ -73,7 +95,7 @@ export function ZeroOrgSwitcher() {
             type="button"
             className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-sidebar-accent/50 text-sidebar-foreground transition-colors"
           >
-            <OrgAvatar name={orgName} />
+            <OrgAvatar name={orgName} imageUrl={currentOrg?.imageUrl} />
             <span className="min-w-0 flex-1 text-left text-sm font-semibold leading-tight truncate">
               {orgName}
             </span>
@@ -86,7 +108,11 @@ export function ZeroOrgSwitcher() {
         <DropdownMenuContent align="start" className="w-72">
           {/* Header: current org info + manage button */}
           <div className="flex items-center gap-3 px-2 py-1.5">
-            <OrgAvatar name={orgName} size="lg" />
+            <OrgAvatar
+              name={orgName}
+              imageUrl={currentOrg?.imageUrl}
+              size="lg"
+            />
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold leading-tight truncate text-foreground">
                 {orgName}
@@ -120,7 +146,10 @@ export function ZeroOrgSwitcher() {
                     }}
                     className="gap-3 px-3 py-2.5 rounded-lg"
                   >
-                    <OrgAvatar name={membership.organization.name} />
+                    <OrgAvatar
+                      name={membership.organization.name}
+                      imageUrl={membership.organization.imageUrl}
+                    />
                     <span className="truncate flex-1">
                       {membership.organization.name}
                     </span>
