@@ -23,6 +23,7 @@ import {
   getConnectorFirewall,
   isFirewallConnectorType,
   resolveFirewallBaseUrlVars,
+  getConnectorProvidedSecretNames,
 } from "@vm0/core";
 import { agentComposeVersions } from "../../db/schema/agent-compose";
 import {
@@ -587,6 +588,47 @@ async function fetchReferencedSecrets(
 }
 
 /**
+ * Filter dbSecrets to remove env vars that belong to connectors not in allowedConnectorTypes.
+ * Custom user secrets (not owned by any connector) pass through unfiltered.
+ * When allowedConnectorTypes is undefined (e.g. CLI runs), no filtering is applied.
+ */
+function filterDbSecretsByConnectorPermissions(
+  dbSecrets: Record<string, string> | undefined,
+  allApiTokenTypes: ConnectorType[],
+  allowedConnectorTypes: ConnectorType[] | undefined,
+): Record<string, string> | undefined {
+  if (!dbSecrets || !allowedConnectorTypes) {
+    return dbSecrets;
+  }
+
+  // Compute the set of env var names belonging to ALL api-token connectors the user has.
+  const allConnectorEnvVars = getConnectorProvidedSecretNames(allApiTokenTypes);
+  // Compute the set of env var names belonging to ALLOWED connectors only.
+  const allowedApiTokenTypes = allApiTokenTypes.filter((t) => {
+    return allowedConnectorTypes.includes(t);
+  });
+  const allowedEnvVars = getConnectorProvidedSecretNames(allowedApiTokenTypes);
+  // Disallowed = belongs to a connector but not an allowed one.
+  const disallowed = new Set(
+    [...allConnectorEnvVars].filter((name) => {
+      return !allowedEnvVars.has(name);
+    }),
+  );
+
+  if (disallowed.size === 0) {
+    return dbSecrets;
+  }
+
+  const filtered: Record<string, string> = {};
+  for (const [key, value] of Object.entries(dbSecrets)) {
+    if (!disallowed.has(key)) {
+      filtered[key] = value;
+    }
+  }
+  return Object.keys(filtered).length > 0 ? filtered : undefined;
+}
+
+/**
  * Fetch server-stored variables and merge with CLI-provided vars
  * Priority: CLI vars > server-stored vars
  *
@@ -777,19 +819,29 @@ async function resolveSecretsAndEnvironment(
     ...new Set([...oauthResult.connectorTypes, ...rawApiTokenTypes]),
   ];
 
+  // Filter dbSecrets: strip env vars that belong to disallowed connectors.
+  // Without this, api-token connector secrets (e.g. AXIOM_TOKEN) would leak
+  // into the run context even when the agent doesn't have that connector enabled.
+  // Custom user secrets (not owned by any connector) are never filtered.
+  const filteredDbSecrets = filterDbSecretsByConnectorPermissions(
+    dbSecrets,
+    apiTokenTypes,
+    allowedConnectorTypes,
+  );
+
   // Single secrets map with explicit priority (later overrides earlier).
   // Only mapped env vars from connectors are included — raw connector secrets
   // (including refresh tokens) are kept server-side and never sent to the runner.
   const hasSecrets =
     oauthResult.resolvedSecrets ||
     modelProviderResult.secrets ||
-    dbSecrets ||
+    filteredDbSecrets ||
     cliSecrets;
   const secrets: Record<string, string> | undefined = hasSecrets
     ? {
         ...oauthResult.resolvedSecrets, // connector env mappings (e.g. GITHUB_TOKEN)
         ...modelProviderResult.secrets, // model provider
-        ...dbSecrets, // DB user secrets
+        ...filteredDbSecrets, // DB user secrets (connector secrets filtered)
         ...cliSecrets, // highest: CLI --secrets
       }
     : undefined;

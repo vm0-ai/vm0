@@ -8,6 +8,7 @@ import {
   createTestCompose,
   createTestSecret,
   createTestVariable,
+  createTestUserConnector,
   getTestZeroAgentId,
   findTestRunnerJobEntry,
 } from "../../../__tests__/api-test-helpers";
@@ -243,6 +244,89 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
       // createZeroRun doesn't accept CLI vars directly, so user value wins
       expect(job!.executionContext.environment).toMatchObject({
         MY_VAR: "user-value",
+      });
+    });
+  });
+
+  describe("Connector Secret Filtering", () => {
+    it("should not inject api-token connector secret when connector is not in allowedConnectorTypes", async () => {
+      const agentName = uniqueId("conn-agent");
+      await createTestCompose(agentName, {
+        overrides: {
+          environment: {
+            ANTHROPIC_API_KEY: "test-api-key",
+            AXIOM_TOKEN: "${{ secrets.AXIOM_TOKEN }}",
+          },
+        },
+      });
+      const connAgentId = await getTestZeroAgentId(user.orgId, agentName);
+
+      // User has the AXIOM_TOKEN secret stored, but no user_connector permission for axiom
+      await createTestSecret("AXIOM_TOKEN", "my-axiom-token");
+
+      const result = await createZeroRun(baseParams({ agentId: connAgentId }));
+
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job).toBeDefined();
+      // Real secret value must not leak — the template stays unresolved
+      expect(job!.executionContext.environment?.["AXIOM_TOKEN"]).not.toBe(
+        "my-axiom-token",
+      );
+    });
+
+    it("should inject api-token connector secret when connector is in allowedConnectorTypes", async () => {
+      const agentName = uniqueId("conn-agent");
+      await createTestCompose(agentName, {
+        overrides: {
+          environment: {
+            ANTHROPIC_API_KEY: "test-api-key",
+            AXIOM_TOKEN: "${{ secrets.AXIOM_TOKEN }}",
+          },
+        },
+      });
+      const connAgentId = await getTestZeroAgentId(user.orgId, agentName);
+
+      // User has the secret AND the connector permission for this agent
+      await createTestSecret("AXIOM_TOKEN", "my-axiom-token");
+      await createTestUserConnector(
+        user.orgId,
+        user.userId,
+        connAgentId,
+        "axiom",
+      );
+
+      const result = await createZeroRun(baseParams({ agentId: connAgentId }));
+
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job).toBeDefined();
+      // AXIOM_TOKEN should be resolved (firewall gateway replaces with placeholder)
+      expect(job!.executionContext.environment?.["AXIOM_TOKEN"]).not.toBe(
+        "${{ secrets.AXIOM_TOKEN }}",
+      );
+    });
+
+    it("should not filter custom user secrets that do not belong to any connector", async () => {
+      const agentName = uniqueId("conn-agent");
+      await createTestCompose(agentName, {
+        overrides: {
+          environment: {
+            ANTHROPIC_API_KEY: "test-api-key",
+            MY_CUSTOM_SECRET: "${{ secrets.MY_CUSTOM_SECRET }}",
+          },
+        },
+      });
+      const connAgentId = await getTestZeroAgentId(user.orgId, agentName);
+
+      // Custom secret that doesn't belong to any connector type
+      await createTestSecret("MY_CUSTOM_SECRET", "custom-value");
+
+      const result = await createZeroRun(baseParams({ agentId: connAgentId }));
+
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job).toBeDefined();
+      // Custom secrets should always pass through regardless of connector permissions
+      expect(job!.executionContext.environment).toMatchObject({
+        MY_CUSTOM_SECRET: "custom-value",
       });
     });
   });
