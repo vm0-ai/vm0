@@ -202,17 +202,6 @@ function ActivityHeaderCard({
               Context
             </Link>
           )}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:text-foreground p-0"
-            aria-label="Download CSV"
-            onClick={() => {
-              return downloadCsv(events, detail.id);
-            }}
-          >
-            <IconDownload size={14} stroke={1.5} />
-          </Button>
         </div>
         <div className="flex flex-wrap items-center gap-y-1 text-sm -mx-3">
           <div className="flex items-center gap-1.5 px-3">
@@ -301,6 +290,25 @@ function ActivityHeaderCard({
             <span className="text-muted-foreground shrink-0">Time</span>
             <span className="text-foreground whitespace-nowrap">{time}</span>
           </div>
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 ml-auto shrink-0 rounded-lg text-muted-foreground hover:text-foreground p-0"
+                  onClick={() => {
+                    return downloadCsv(events, detail.id);
+                  }}
+                >
+                  <IconDownload size={14} stroke={1.5} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left">
+                <p className="text-xs">Download raw data</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
       </div>
       {detail.error && status === "failed" && (
