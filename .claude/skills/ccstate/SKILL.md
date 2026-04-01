@@ -909,3 +909,116 @@ onRemove={(id) => {
 - Async state (url) exposed as `Computed<Promise<T>>` — consumers use `useLoadable`
 - No manual `loading`/`uploading` boolean — derived from loadable state
 - Factory doesn't manage the collection — only the per-instance lifecycle
+
+## Components Should Read Signals Directly, Not Via Props
+
+When a React component's data is available from signals, the component should use ccstate hooks (`useGet`, `useSet`, `useLastResolved`, etc.) to read/write signals directly — **not** receive them as props from a parent.
+
+### Anti-pattern: Props as signal pass-through
+
+```typescript
+// ❌ Parent reads signals and threads values down as props
+function Parent() {
+  const name = useGet(agentName$);
+  const saving = useGet(saving$);
+  const error = useGet(error$);
+  const doAction = useSet(someAction$);
+
+  return (
+    <Child
+      name={name}
+      saving={saving}
+      error={error}
+      onAction={doAction}
+    />
+  );
+}
+
+function Child({ name, saving, error, onAction }: {
+  name: string;
+  saving: boolean;
+  error: string | null;
+  onAction: () => void;
+}) {
+  return <button onClick={onAction} disabled={saving}>{name}</button>;
+}
+```
+
+### Preferred: Component reads signals directly
+
+```typescript
+// ✅ Component owns its own data access — no props needed
+function Parent() {
+  return <Child />;
+}
+
+function Child() {
+  const name = useGet(agentName$);
+  const saving = useGet(saving$);
+  const error = useGet(error$);
+  const doAction = useSet(someAction$);
+
+  return <button onClick={() => doAction()} disabled={saving}>{name}</button>;
+}
+```
+
+### Why
+
+1. **Eliminates prop drilling** — intermediate components don't need to know about data they don't use
+2. **Colocation** — the component that renders the data also owns the subscription, making it self-contained
+3. **Granular re-renders** — only the component that reads a signal re-renders when it changes, not the entire parent tree
+4. **Easier refactoring** — adding/removing data needs doesn't require changing parent signatures
+
+### When props ARE appropriate
+
+- **Pure presentational components** shared across different contexts (e.g., `<Button>`, `<ProgressBar>`) that have no domain knowledge
+- **List item components** where the item data comes from an array in the parent (e.g., `items.map(item => <Card data={item} />)`)
+- **Components that need the same signal but with different parameters** — the parent selects which signal instance to pass
+
+### Handling callbacks: use command signals
+
+When the prop is a callback (`onClick`, `onSubmit`), the logic often belongs in a signal command rather than a parent-defined handler:
+
+```typescript
+// ❌ Parent creates handler that orchestrates signals, passes as prop
+function Parent() {
+  const complete = useSet(completeFlow$);
+  const navigate = useSet(navigateTo$);
+  const reload = useSet(reloadData$);
+
+  const handleDone = () => {
+    detach((async () => {
+      await complete(signal);
+      reload();
+      navigate("/home");
+    })(), Reason.DomCallback);
+  };
+
+  return <Child onDone={handleDone} />;
+}
+
+// ✅ Extract orchestration into a command signal
+// In signals file:
+export const completeAndNavigate$ = command(async ({ set }, signal: AbortSignal) => {
+  await set(completeFlow$, signal);
+  set(reloadData$);
+  set(navigateTo$, "/home");
+});
+
+// In component:
+function Child() {
+  const completeAndNavigate = useSet(completeAndNavigate$);
+
+  return (
+    <button onClick={() => {
+      detach(completeAndNavigate(new AbortController().signal), Reason.DomCallback);
+    }}>
+      Done
+    </button>
+  );
+}
+```
+
+### Circular dependency caveat
+
+When extracting handler logic into a new command signal, watch for circular imports. If `moduleA.ts` and `moduleB.ts` already import from each other, adding a command that imports both will create a cycle. In that case, place the command in a separate file (e.g., `moduleA-actions.ts`) that imports from both without being imported by either.

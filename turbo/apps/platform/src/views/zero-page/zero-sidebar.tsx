@@ -231,7 +231,7 @@ function useAccountSessions() {
   return { user, clerk, accounts };
 }
 
-function AccountDropdown({
+export function AccountDropdown({
   onAccountAction,
   collapsed = false,
 }: {

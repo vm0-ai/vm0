@@ -13,13 +13,10 @@ import { Button, Input } from "@vm0/ui";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
-  zeroOnboardingStep$,
   zeroWorkspaceName$,
-  setZeroStep$,
   setZeroWorkspaceName$,
   zeroSelectedConnectors$,
   toggleZeroConnector$,
-  zeroOnboardingStatus$,
 } from "../../signals/zero-page/zero-onboarding.ts";
 import {
   onboardingDisplayName$,
@@ -27,6 +24,17 @@ import {
   onboardingError$,
   onboardingAddToSlack$,
   onboardingContinueWeb$,
+  onboardingEffectiveStep$,
+  onboardingEffectiveConnectors$,
+  onboardingVisibleSteps$,
+  onboardingCurrentStepIndex$,
+  onboardingStepKey$,
+  onboardingShowBack$,
+  onboardingShowNext$,
+  onboardingNextDisabled$,
+  onboardingStepBack$,
+  onboardingStepNext$,
+  onboardingIsAdmin$,
 } from "../../signals/zero-page/zero-onboarding-actions.ts";
 import {
   allConnectorTypes$,
@@ -44,6 +52,9 @@ import {
   IconSearch,
 } from "@tabler/icons-react";
 import { detach, Reason } from "../../signals/utils.ts";
+import { AccountDropdown } from "./zero-sidebar.tsx";
+import { VM0ClerkProvider } from "../clerk/clerk-provider.tsx";
+import { handleZeroAccountAction$ } from "../../signals/zero-page/zero-nav.ts";
 
 // ---------------------------------------------------------------------------
 // Progress bar
@@ -121,11 +132,8 @@ function OnboardingConnectorCard({
 // ---------------------------------------------------------------------------
 
 /** Step 2: Pure selection — just toggle connectors, no OAuth. */
-function SelectConnectorsContent({
-  selectedConnectors,
-}: {
-  selectedConnectors: string[];
-}) {
+function SelectConnectorsContent() {
+  const selectedConnectors = useGet(zeroSelectedConnectors$);
   const toggleConnector = useSet(toggleZeroConnector$);
   const [search, setSearch] = useState("");
 
@@ -193,11 +201,9 @@ function SelectConnectorsContent({
 }
 
 /** Step 3: Connect selected connectors (placeholder UI). */
-function ConnectStepContent({
-  selectedConnectors,
-}: {
-  selectedConnectors: string[];
-}) {
+function ConnectStepContent() {
+  const effectiveConnectors =
+    useLastResolved(onboardingEffectiveConnectors$) ?? [];
   const connectorTypesLoadable = useLastLoadable(allConnectorTypes$);
   const pollingType = useGet(pollingConnectorType$);
   const connect = useSet(connectConnector$);
@@ -229,7 +235,7 @@ function ConnectStepContent({
       (typeof CONNECTOR_TYPES)[ConnectorType],
     ][]
   ).filter(([type]) => {
-    return selectedConnectors.includes(type);
+    return effectiveConnectors.includes(type);
   });
 
   const handleConnect = (type: ConnectorType) => {
@@ -400,10 +406,6 @@ function WhereToWorkContent() {
 }
 
 // ---------------------------------------------------------------------------
-// Full-page layout wrapper
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
 // Chat preview for workspace step
 // ---------------------------------------------------------------------------
 
@@ -513,11 +515,10 @@ function getStepIllustration(stepKey: string): StepIllustration {
 // Orbit illustration — selected connectors orbit around Zero
 // ---------------------------------------------------------------------------
 
-function OrbitIllustration({
-  selectedConnectors,
-}: {
-  selectedConnectors: string[];
-}) {
+function OrbitIllustration() {
+  const selectedConnectors =
+    useLastResolved(onboardingEffectiveConnectors$) ?? [];
+
   const entries = (
     Object.entries(CONNECTOR_TYPES) as [
       ConnectorType,
@@ -628,36 +629,24 @@ function OrbitIllustration({
 }
 
 // ---------------------------------------------------------------------------
-// Full-page layout wrapper
+// Full-page layout wrapper — reads step/navigation state from signals
 // ---------------------------------------------------------------------------
 
-function OnboardingPage({
-  currentStep,
-  totalSteps,
-  stepKey,
-  onBack,
-  onNext,
-  showBack,
-  showNext,
-  nextDisabled,
-  zeroAvatarSrc: _,
-  selectedConnectors,
-  children,
-}: {
-  currentStep: number;
-  totalSteps: number;
-  stepKey: string;
-  onBack?: () => void;
-  onNext?: () => void;
-  showBack: boolean;
-  showNext: boolean;
-  nextDisabled?: boolean;
-  zeroAvatarSrc?: string | null;
-  selectedConnectors?: string[];
-  children: React.ReactNode;
-}) {
+function OnboardingPageLayout({ children }: { children: React.ReactNode }) {
+  const onAccountAction = useSet(handleZeroAccountAction$);
+  const stepKey = useLastResolved(onboardingStepKey$) ?? "workspace";
+  const currentStep = useLastResolved(onboardingCurrentStepIndex$) ?? 0;
+  const visibleSteps = useLastResolved(onboardingVisibleSteps$) ?? [];
+  const showBack = useLastResolved(onboardingShowBack$) ?? false;
+  const showNext = useLastResolved(onboardingShowNext$) ?? false;
+  const nextDisabled = useLastResolved(onboardingNextDisabled$) ?? false;
+  const stepBack = useSet(onboardingStepBack$);
+  const stepNext = useSet(onboardingStepNext$);
+  const effectiveConnectors =
+    useLastResolved(onboardingEffectiveConnectors$) ?? [];
+
   const illustration = getStepIllustration(stepKey);
-  const showOrbit = stepKey === "connectors" && selectedConnectors;
+  const showOrbit = stepKey === "connectors";
   const showChat = stepKey === "workspace";
 
   return (
@@ -723,13 +712,13 @@ function OnboardingPage({
         <div className="relative z-10 flex flex-col items-center">
           {showChat ? (
             <ChatPreview />
-          ) : showOrbit && selectedConnectors ? (
+          ) : showOrbit ? (
             <>
-              <OrbitIllustration selectedConnectors={selectedConnectors} />
+              <OrbitIllustration />
               <p className="text-sm text-muted-foreground text-center leading-relaxed mt-6 max-w-[300px]">
-                {selectedConnectors.length === 0
+                {effectiveConnectors.length === 0
                   ? "Pick your tools and Zero will handle the rest, securely."
-                  : `${selectedConnectors.length} app${selectedConnectors.length === 1 ? "" : "s"} selected. Zero will securely manage ${selectedConnectors.length === 1 ? "it" : "them"} for you so you don\u2019t have to.`}
+                  : `${effectiveConnectors.length} app${effectiveConnectors.length === 1 ? "" : "s"} selected. Zero will securely manage ${effectiveConnectors.length === 1 ? "it" : "them"} for you so you don\u2019t have to.`}
               </p>
               <p className="text-[11px] text-muted-foreground/50 text-center mt-4">
                 Sandboxed VMs&ensp;|&ensp;No credential
@@ -764,6 +753,13 @@ function OnboardingPage({
             </>
           )}
         </div>
+
+        {/* Account dropdown — bottom-left of left panel */}
+        <div className="absolute bottom-6 left-4 z-20">
+          <VM0ClerkProvider>
+            <AccountDropdown onAccountAction={onAccountAction} />
+          </VM0ClerkProvider>
+        </div>
       </div>
 
       {/* Right panel — form */}
@@ -771,7 +767,10 @@ function OnboardingPage({
         <div className="flex flex-col w-full max-w-[750px] flex-1 min-h-0">
           {/* Progress bar */}
           <div className="shrink-0 px-5 sm:px-10 pt-8 pb-4">
-            <ProgressBar totalSteps={totalSteps} currentStep={currentStep} />
+            <ProgressBar
+              totalSteps={visibleSteps.length}
+              currentStep={currentStep}
+            />
           </div>
 
           {/* Content */}
@@ -782,20 +781,24 @@ function OnboardingPage({
           {/* Footer */}
           <div className="shrink-0 border-t border-border/40 flex items-center justify-between px-5 sm:px-10 py-5">
             <div>
-              {showBack && onBack && (
+              {showBack && (
                 <Button
                   variant="ghost"
                   className="rounded-lg text-muted-foreground"
-                  onClick={onBack}
+                  onClick={() => {
+                    return stepBack();
+                  }}
                 >
                   Back
                 </Button>
               )}
             </div>
             <div>
-              {showNext && onNext && (
+              {showNext && (
                 <Button
-                  onClick={onNext}
+                  onClick={() => {
+                    return stepNext();
+                  }}
                   className="rounded-lg min-w-[100px]"
                   disabled={nextDisabled}
                 >
@@ -811,32 +814,16 @@ function OnboardingPage({
 }
 
 // ---------------------------------------------------------------------------
-// Zero onboarding (admin flow) — full page
+// Workspace step content (step 1)
 // ---------------------------------------------------------------------------
 
-const ADMIN_STEPS = ["1", "2", "3", "4"] as const;
-
-function WorkspaceStep({
-  zeroAvatarSrc,
-  onNext,
-}: {
-  zeroAvatarSrc: string | null;
-  onNext: () => void;
-}) {
+function WorkspaceStepContent() {
   const workspaceName = useGet(zeroWorkspaceName$);
   const setWorkspaceName = useSet(setZeroWorkspaceName$);
+  const stepNext = useSet(onboardingStepNext$);
 
   return (
-    <OnboardingPage
-      currentStep={0}
-      totalSteps={ADMIN_STEPS.length}
-      stepKey="workspace"
-      zeroAvatarSrc={zeroAvatarSrc}
-      showBack={false}
-      showNext
-      onNext={onNext}
-      nextDisabled={!workspaceName.trim()}
-    >
+    <>
       <h2 className="text-2xl font-semibold tracking-tight">
         Name your workspace
       </h2>
@@ -860,163 +847,63 @@ function WorkspaceStep({
           }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && workspaceName.trim()) {
-              onNext();
+              stepNext();
             }
           }}
           className="h-10 rounded-lg"
           autoFocus
         />
       </div>
-    </OnboardingPage>
+    </>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Onboarding step resolution helpers
+// Step content router
 // ---------------------------------------------------------------------------
 
-function resolveEffectiveStep(
-  isAdmin: boolean,
-  step: string | undefined,
-  hasMemberConnectors: boolean,
-): string | undefined {
-  if (!step || step === "done") {
-    return undefined;
+function OnboardingStepContent() {
+  const effectiveStep = useLastResolved(onboardingEffectiveStep$);
+  const isAdmin = useLastResolved(onboardingIsAdmin$) ?? false;
+
+  switch (effectiveStep) {
+    case "1": {
+      return isAdmin ? <WorkspaceStepContent /> : null;
+    }
+    case "2": {
+      return isAdmin ? <SelectConnectorsContent /> : null;
+    }
+    case "3": {
+      return <ConnectStepContent />;
+    }
+    case "4": {
+      return <WhereToWorkContent />;
+    }
+    default: {
+      return null;
+    }
   }
-  if (isAdmin) {
-    return step;
-  }
-  if (step === "1" || step === "2" || (step === "3" && !hasMemberConnectors)) {
-    return hasMemberConnectors ? "3" : "4";
-  }
-  return step;
 }
 
-function resolveVisibleSteps(
-  isAdmin: boolean,
-  hasMemberConnectors: boolean,
-): readonly string[] {
-  if (isAdmin) {
-    return ADMIN_STEPS;
-  }
-  return hasMemberConnectors ? ["3", "4"] : ["4"];
-}
+// ---------------------------------------------------------------------------
+// Zero onboarding — main export
+// ---------------------------------------------------------------------------
 
 /** Zero onboarding — used for both admin and member flows. */
-export function ZeroOnboarding({
-  zeroAvatarSrc = zeroAvatarImg,
-  isAdmin,
-}: {
-  zeroAvatarSrc?: string | null;
-  isAdmin: boolean;
-}) {
-  const step = useLastResolved(zeroOnboardingStep$);
-  const setStep = useSet(setZeroStep$);
-  const adminSelectedConnectors = useGet(zeroSelectedConnectors$);
+export function ZeroOnboarding() {
+  const effectiveStep = useLastResolved(onboardingEffectiveStep$);
   const selectedConnectorType = useGet(selectedConnectorType$);
   const setSelected = useSet(setSelectedConnectorType$);
-
-  // Member: resolve org's configured connectors from default agent skills
-  const onboardingStatus = useLastResolved(zeroOnboardingStatus$);
-  const defaultAgentSkillUrls = onboardingStatus?.defaultAgentSkills ?? [];
-  const connectorTypesLoadable = useLastLoadable(allConnectorTypes$);
-  const allConnectorsList =
-    connectorTypesLoadable.state === "hasData"
-      ? connectorTypesLoadable.data
-      : [];
-  const connectorTypeSet = new Set(
-    allConnectorsList.map((c) => {
-      return c.type;
-    }),
-  );
-
-  const memberConnectorTypes = isAdmin
-    ? []
-    : (Object.keys(CONNECTOR_TYPES) as ConnectorType[]).filter((type) => {
-        const isInAgent = defaultAgentSkillUrls.some((url) => {
-          return url.endsWith(`/${type}`);
-        });
-        return isInAgent && connectorTypeSet.has(type);
-      });
-  const hasMemberConnectors = memberConnectorTypes.length > 0;
-
-  const effectiveStep = resolveEffectiveStep(
-    isAdmin,
-    step,
-    hasMemberConnectors,
-  );
 
   if (!effectiveStep) {
     return null;
   }
 
-  const visibleSteps = resolveVisibleSteps(isAdmin, hasMemberConnectors);
-  const currentStepIndex = visibleSteps.indexOf(effectiveStep);
-
-  // Connectors shown in step 3 depend on role
-  const effectiveConnectors = isAdmin
-    ? adminSelectedConnectors
-    : memberConnectorTypes;
-
   return (
     <>
-      {/* Step 1: Workspace name (admin only) */}
-      {isAdmin && effectiveStep === "1" && (
-        <WorkspaceStep
-          zeroAvatarSrc={zeroAvatarSrc}
-          onNext={() => {
-            return setStep("2");
-          }}
-        />
-      )}
-
-      {/* Step 2: Select connectors (admin only) */}
-      {isAdmin && effectiveStep === "2" && (
-        <OnboardingPage
-          currentStep={1}
-          totalSteps={visibleSteps.length}
-          stepKey="connectors"
-          zeroAvatarSrc={zeroAvatarSrc}
-          selectedConnectors={adminSelectedConnectors}
-          showBack
-          showNext
-          onBack={() => {
-            return setStep("1");
-          }}
-          onNext={() => {
-            return setStep("3");
-          }}
-        >
-          <SelectConnectorsContent
-            selectedConnectors={adminSelectedConnectors}
-          />
-        </OnboardingPage>
-      )}
-
-      {/* Step 3: Connect apps */}
-      {effectiveStep === "3" && (
-        <OnboardingPage
-          currentStep={currentStepIndex}
-          totalSteps={visibleSteps.length}
-          stepKey="connectors"
-          zeroAvatarSrc={zeroAvatarSrc}
-          selectedConnectors={effectiveConnectors}
-          showBack={isAdmin}
-          showNext
-          onBack={
-            isAdmin
-              ? () => {
-                  return setStep("2");
-                }
-              : undefined
-          }
-          onNext={() => {
-            return setStep("4");
-          }}
-        >
-          <ConnectStepContent selectedConnectors={effectiveConnectors} />
-        </OnboardingPage>
-      )}
+      <OnboardingPageLayout>
+        <OnboardingStepContent />
+      </OnboardingPageLayout>
 
       {selectedConnectorType && (
         <ConnectModal
@@ -1027,23 +914,6 @@ export function ZeroOnboarding({
             /* connector list refreshes automatically */
           }}
         />
-      )}
-
-      {/* Step 4: Where to work */}
-      {effectiveStep === "4" && (
-        <OnboardingPage
-          currentStep={currentStepIndex}
-          totalSteps={visibleSteps.length}
-          stepKey="where"
-          zeroAvatarSrc={zeroAvatarSrc}
-          showBack={isAdmin || hasMemberConnectors}
-          showNext={false}
-          onBack={() => {
-            return setStep("3");
-          }}
-        >
-          <WhereToWorkContent />
-        </OnboardingPage>
       )}
     </>
   );
