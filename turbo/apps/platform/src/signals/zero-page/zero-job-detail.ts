@@ -262,7 +262,13 @@ export const buildZeroJobInstructions$ = command(
         throw new Error(`Build failed: ${errorDetail}`);
       }
 
-      // Optimistically update instructions state
+      // Clear building state before content updates so the editor remounts
+      // with editable=true. Setting jobBuilding$, instructionsState$, and
+      // editedContent$ in the same synchronous block batches them into a
+      // single render — the editor key changes and the new editor starts
+      // editable immediately.
+      set(jobBuilding$, false);
+
       const current = get(instructionsState$).instructions;
       set(instructionsState$, {
         instructions: { content: edited, filename: current?.filename ?? null },
