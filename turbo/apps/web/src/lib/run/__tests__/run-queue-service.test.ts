@@ -15,7 +15,7 @@ import {
 } from "../../../__tests__/api-test-helpers";
 import { reloadEnv } from "../../../env";
 import {
-  createRun,
+  startRun,
   dispatchQueuedRun,
   type CreateRunParams,
 } from "../run-service";
@@ -87,25 +87,6 @@ describe("run-queue-service", () => {
     });
   });
 
-  describe("createRun with queue", () => {
-    it("should enqueue second run when concurrency limit hit", async () => {
-      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
-      reloadEnv();
-
-      // First run succeeds normally
-      const run1 = await createRun(baseParams({ prompt: "Run 1" }));
-      expect(run1.status).toBe("pending");
-
-      // Second run gets queued
-      const run2 = await createRun(baseParams({ prompt: "Run 2" }));
-      expect(run2.status).toBe("queued");
-
-      // Third run also gets queued
-      const run3 = await createRun(baseParams({ prompt: "Run 3" }));
-      expect(run3.status).toBe("queued");
-    });
-  });
-
   describe("drainOrgQueue", () => {
     it("should be a no-op when queue is empty", async () => {
       // Should not throw
@@ -117,8 +98,12 @@ describe("run-queue-service", () => {
       reloadEnv();
 
       // Create a running run and a queued run
-      await createRun(baseParams({ prompt: "Running" }));
-      const queued = await createRun(baseParams({ prompt: "Queued" }));
+      await startRun({
+        userId: user.userId,
+        agentComposeVersionId: versionId,
+        prompt: "Running",
+      });
+      const queued = await enqueueRun(baseParams({ prompt: "Queued" }));
       expect(queued.status).toBe("queued");
 
       // Simulate completion: mark running runs as completed
@@ -141,7 +126,11 @@ describe("run-queue-service", () => {
       reloadEnv();
 
       // Alice creates a run → pending
-      await createRun(baseParams({ prompt: "Alice run", orgId: user.orgId }));
+      await startRun({
+        userId: user.userId,
+        agentComposeVersionId: versionId,
+        prompt: "Alice run",
+      });
 
       // Bob is a different user in the same org
       const bob = await context.setupUser({ prefix: "test-bob" });
@@ -181,8 +170,12 @@ describe("run-queue-service", () => {
       reloadEnv();
 
       // Create a running run and a queued run
-      await createRun(baseParams({ prompt: "Running" }));
-      const queued = await createRun(baseParams({ prompt: "Queued" }));
+      await startRun({
+        userId: user.userId,
+        agentComposeVersionId: versionId,
+        prompt: "Running",
+      });
+      const queued = await enqueueRun(baseParams({ prompt: "Queued" }));
       expect(queued.status).toBe("queued");
 
       // Drain without completing the running run — concurrency limit blocks dequeue
@@ -256,7 +249,11 @@ describe("run-queue-service", () => {
       await updateOrgTier(user.orgId, "pro");
 
       // Create 1 running run — fills free limit but not pro limit
-      await createRun(baseParams({ prompt: "Running" }));
+      await startRun({
+        userId: user.userId,
+        agentComposeVersionId: versionId,
+        prompt: "Running",
+      });
       const queued = await enqueueRun(baseParams({ prompt: "Queued" }));
 
       // With pro tier (limit=2), drain should succeed despite 1 active run
@@ -340,9 +337,11 @@ describe("run-queue-service", () => {
       reloadEnv();
 
       // user1 creates a run first (before changing Clerk mock)
-      const run1 = await createRun(
-        baseParams({ prompt: "User1 running", orgId: user.orgId }),
-      );
+      const run1 = await startRun({
+        userId: user.userId,
+        agentComposeVersionId: versionId,
+        prompt: "User1 running",
+      });
       expect(run1.status).toBe("pending");
 
       // Create second user sharing user1's org
@@ -375,9 +374,11 @@ describe("run-queue-service", () => {
       reloadEnv();
 
       // user1 creates a run first (before changing Clerk mock)
-      await createRun(
-        baseParams({ prompt: "User1 running", orgId: user.orgId }),
-      );
+      await startRun({
+        userId: user.userId,
+        agentComposeVersionId: versionId,
+        prompt: "User1 running",
+      });
 
       // Create second user sharing user1's org
       const user2 = await context.setupUser({ prefix: "test-user-2" });

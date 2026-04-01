@@ -14,9 +14,8 @@ import {
   badRequest,
   forbidden,
   concurrentRunLimit,
-  isConcurrentRunLimit,
 } from "../errors";
-import { enqueueRun, drainOrgQueue } from "./run-queue-service";
+import { drainOrgQueue } from "./run-queue-service";
 import { logger } from "../logger";
 import type { Database } from "../../types/global";
 import type { AgentComposeSnapshot } from "../checkpoint/types";
@@ -29,6 +28,7 @@ import { generateSandboxToken } from "../auth/sandbox-token";
 import type { ExecutionContext, DispatchTimings } from "./types";
 import { buildZeroExecutionContext } from "../zero/build-zero-context";
 import { zeroRuns } from "../../db/schema/zero-run";
+import { buildInfraExecutionContext } from "./context/build-context";
 import { recordSandboxOperation } from "../metrics";
 import { canAccessCompose } from "../agent/compose-access";
 
@@ -340,7 +340,7 @@ export interface CreateRunParams {
  * - checkpointId: resume from checkpoint (resolves version from checkpoint)
  * - sessionId: continue session (resolves version from session's compose)
  */
-interface StartRunParams {
+export interface StartRunParams {
   userId: string;
   prompt: string;
 
@@ -597,15 +597,23 @@ export async function buildAndDispatchRun(opts: {
       { op: "api_step_build_context", ms: buildContextTime - timings.token },
       { op: "api_step_prepare", ms: prepareTime - buildContextTime },
       { op: "api_step_dispatch", ms: dispatchTime - prepareTime },
-      // Sub-step timings within buildExecutionContext
-      {
-        op: "api_build_resolve_source_and_org",
-        ms: timings.resolveSourceDuration,
-      },
-      {
-        op: "api_build_resolve_secrets",
-        ms: timings.resolveSecretsDuration,
-      },
+      // Sub-step timings within buildExecutionContext (optional — only present for zero path)
+      ...(timings.resolveSourceDuration !== undefined
+        ? [
+            {
+              op: "api_build_resolve_source_and_org",
+              ms: timings.resolveSourceDuration,
+            },
+          ]
+        : []),
+      ...(timings.resolveSecretsDuration !== undefined
+        ? [
+            {
+              op: "api_build_resolve_secrets",
+              ms: timings.resolveSecretsDuration,
+            },
+          ]
+        : []),
       // Sub-step timings within prepareForExecution
       {
         op: "api_prepare_resolve_orgs",
@@ -772,11 +780,12 @@ export async function resolveStartRunCompose(
 }
 
 /**
- * High-level run entry point — the single public API for all run creation.
+ * High-level run entry point — the single public API for CLI run creation.
  *
- * Resolves compose version + org context internally, then delegates to
- * createRun(). Callers only need a compose identifier (composeId, versionId,
- * checkpointId, or sessionId) — no manual DB queries or org resolution.
+ * Resolves compose version + org context, creates a run record, builds an
+ * infra execution context, and dispatches. Uses infra primitives directly
+ * (no zero layer dependency). Callers only need a compose identifier
+ * (composeId, versionId, checkpointId, or sessionId).
  *
  * @throws NotFoundError - compose/version/checkpoint/session not found
  * @throws BadRequestError - compose has no versions, or missing identifier
@@ -801,8 +810,8 @@ export async function startRun(
   const orgData = await getOrgData(authOrgId);
   const orgTier = orgTierSchema.parse(orgData.tier);
 
-  // 4. Delegate to createRun with fully resolved params
-  return createRun({
+  // 4. Create run record — ConcurrentRunLimitError propagates to API route (returns 429)
+  const record = await createRunRecord({
     userId: params.userId,
     agentComposeVersionId: resolved.agentComposeVersionId,
     prompt: params.prompt,
@@ -830,6 +839,66 @@ export async function startRun(
     orgId: authOrgId,
     orgTier,
   });
+
+  // 5. Generate sandbox token
+  const sandboxToken = await generateSandboxToken(params.userId, record.run.id);
+  const tokenTime = Date.now();
+
+  try {
+    // 6. Register callbacks early so they persist even if context building fails
+    if (params.callbacks && params.callbacks.length > 0) {
+      await registerCallbacks(record.run.id, params.callbacks);
+    }
+
+    // 7. Build infra execution context (no zero dependency)
+    const { context } = buildInfraExecutionContext({
+      runId: record.run.id,
+      userId: params.userId,
+      orgId: authOrgId,
+      agentComposeVersionId: resolved.agentComposeVersionId,
+      agentCompose: record.composeContent,
+      prompt: params.prompt,
+      sandboxToken,
+      appendSystemPrompt: params.appendSystemPrompt,
+      vars: params.vars,
+      secrets: params.secrets,
+      artifactName: params.artifactName,
+      artifactVersion: params.artifactVersion,
+      memoryName: params.memoryName,
+      volumeVersions: params.volumeVersions,
+      disallowedTools: params.disallowedTools,
+      tools: params.tools,
+      settings: params.settings,
+      agentName: resolved.agentName,
+      debugNoMockClaude: params.debugNoMockClaude,
+      continuedFromSessionId: params.sessionId,
+    });
+
+    // 8. Dispatch
+    const result = await buildAndDispatchRun({
+      runId: record.run.id,
+      context,
+      timings: {
+        apiStart: record.apiStartTime,
+        authorize: record.authorizeTime,
+        transaction: record.transactionTime,
+        token: tokenTime,
+      },
+    });
+
+    return {
+      runId: record.run.id,
+      status: result.status,
+      sandboxId: result.sandboxId,
+      createdAt: record.run.createdAt,
+    };
+  } catch (error) {
+    // Mark run as failed when context building or dispatch fails.
+    // buildAndDispatchRun may have already called markRunFailed — the
+    // second call is a safe no-op (transitionRunStatus guards on status).
+    await markRunFailed(record.run.id, error);
+    throw error;
+  }
 }
 
 /**
@@ -939,91 +1008,6 @@ export async function createRunRecord(
     authorizeTime,
     transactionTime,
   };
-}
-
-/**
- * Low-level run creation pipeline (requires pre-resolved version + org).
- *
- * Composes createRunRecord() + buildAndDispatchRun() into a single call.
- * Handles the enqueueRun() fallback when the org hits the concurrent run limit.
- * Prefer startRun() unless you need checkpoint/session resume or custom params.
- *
- * @throws ForbiddenError - user cannot access compose
- * @throws BadRequestError - validation failure (missing vars, mutual exclusivity)
- * @throws NotFoundError - compose version not found
- * @throws Error - dispatch failure (run already marked as "failed")
- */
-export async function createRun(
-  params: CreateRunParams,
-): Promise<CreateRunResult> {
-  let record: CreateRunRecordResult;
-  try {
-    record = await createRunRecord(params);
-  } catch (error) {
-    if (isConcurrentRunLimit(error)) {
-      return enqueueRun(params);
-    }
-    throw error;
-  }
-
-  const sandboxToken = await generateSandboxToken(params.userId, record.run.id);
-  const tokenTime = Date.now();
-
-  try {
-    // Register callbacks early so they persist even if context building fails
-    if (params.callbacks && params.callbacks.length > 0) {
-      await registerCallbacks(record.run.id, params.callbacks);
-    }
-
-    const contextResult = await buildZeroExecutionContext({
-      ...params,
-      sandboxToken,
-      runId: record.run.id,
-      agentCompose: record.composeContent,
-      continuedFromSessionId: params.sessionId,
-    });
-
-    // Persist zero-layer model fields before dispatch so metadata is recorded
-    // even if dispatch succeeds but a later step fails (reverse dependency — cleanup in later issue)
-    await globalThis.services.db
-      .insert(zeroRuns)
-      .values({
-        id: record.run.id,
-        triggerSource: "api",
-        modelProvider: contextResult.resolvedModelProvider ?? null,
-        selectedModel: contextResult.selectedModel ?? null,
-      })
-      .onConflictDoNothing();
-
-    const result = await buildAndDispatchRun({
-      runId: record.run.id,
-      context: contextResult.context,
-      timings: {
-        apiStart: record.apiStartTime,
-        authorize: record.authorizeTime,
-        transaction: record.transactionTime,
-        token: tokenTime,
-        resolveSourceDuration: contextResult.timings.resolveSourceAndOrg,
-        resolveSecretsDuration: contextResult.timings.resolveSecrets,
-      },
-    });
-
-    return {
-      runId: record.run.id,
-      status: result.status,
-      sandboxId: result.sandboxId,
-      createdAt: record.run.createdAt,
-    };
-  } catch (error) {
-    // Mark run as failed when context building or dispatch fails.
-    // buildAndDispatchRun may have already called markRunFailed — the
-    // second call is a safe no-op (transitionRunStatus guards on status).
-    await markRunFailed(record.run.id, error);
-    await drainOrgQueue(record.orgId, dispatchQueuedRun).catch((drainErr) => {
-      log.error("Failed to drain org queue after run failure", { drainErr });
-    });
-    throw error;
-  }
 }
 
 /**

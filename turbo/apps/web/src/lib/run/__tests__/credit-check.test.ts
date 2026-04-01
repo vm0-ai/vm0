@@ -14,7 +14,7 @@ import {
 } from "../../../__tests__/api-test-helpers";
 import { reloadEnv } from "../../../env";
 import {
-  createRun,
+  startRun,
   dispatchQueuedRun,
   type CreateRunParams,
 } from "../run-service";
@@ -53,7 +53,11 @@ describe("credit check (infra queue path)", () => {
       reloadEnv();
 
       // Create a running run + a queued VM0 run
-      await createRun(baseParams({ prompt: "Running" }));
+      await startRun({
+        userId: user.userId,
+        agentComposeVersionId: versionId,
+        prompt: "Running",
+      });
       const queued = await enqueueRun(
         baseParams({ prompt: "Queued VM0", modelProvider: "vm0" }),
       );
@@ -83,7 +87,11 @@ describe("credit check (infra queue path)", () => {
       reloadEnv();
 
       // Create a running run + a queued non-VM0 run
-      await createRun(baseParams({ prompt: "Running" }));
+      await startRun({
+        userId: user.userId,
+        agentComposeVersionId: versionId,
+        prompt: "Running",
+      });
       const queued = await enqueueRun(
         baseParams({ prompt: "Queued Anthropic", modelProvider: "anthropic" }),
       );
@@ -108,7 +116,11 @@ describe("credit check (infra queue path)", () => {
       reloadEnv();
 
       // Create a running run
-      await createRun(baseParams({ prompt: "Running" }));
+      await startRun({
+        userId: user.userId,
+        agentComposeVersionId: versionId,
+        prompt: "Running",
+      });
 
       // Enqueue two runs: first VM0, then non-VM0
       const vm0Run = await enqueueRun(

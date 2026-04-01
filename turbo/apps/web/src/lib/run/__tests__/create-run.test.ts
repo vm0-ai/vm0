@@ -16,23 +16,24 @@ import {
   findTestRunCallbacks,
   findTestStorage,
   findTestRunnerJobEntry,
+  updateOrgTier,
 } from "../../../__tests__/api-test-helpers";
 import { POST as checkpointWebhook } from "../../../../app/api/webhooks/agent/checkpoints/route";
 import type { AgentComposeYaml } from "../../../types/agent-compose";
 import { reloadEnv } from "../../../env";
 import {
-  createRun,
-  type CreateRunParams,
+  startRun,
+  type StartRunParams,
   type CreateRunResult,
 } from "../run-service";
-import { isForbidden, isBadRequest } from "../../errors";
+import { isForbidden, isBadRequest, isConcurrentRunLimit } from "../../errors";
 import { POST as createComposeRoute } from "../../../../app/api/agent/composes/route";
 import { POST as pollRoute } from "../../../../app/api/runners/poll/route";
 import { mockClerk } from "../../../__tests__/clerk-mock";
 
 const context = testContext();
 
-describe("createRun()", () => {
+describe("startRun()", () => {
   let user: UserContext;
   let composeId: string;
   let versionId: string;
@@ -45,19 +46,18 @@ describe("createRun()", () => {
     versionId = compose.versionId;
   });
 
-  function baseParams(overrides?: Partial<CreateRunParams>): CreateRunParams {
+  function baseParams(overrides?: Partial<StartRunParams>): StartRunParams {
     return {
       userId: user.userId,
       agentComposeVersionId: versionId,
       prompt: "Hello, world!",
-      orgId: user.orgId,
       ...overrides,
     };
   }
 
   describe("Happy Path", () => {
     it("should create and dispatch a run successfully", async () => {
-      const result: CreateRunResult = await createRun(baseParams());
+      const result: CreateRunResult = await startRun(baseParams());
 
       expect(result.runId).toBeDefined();
       expect(result.status).toBe("pending");
@@ -74,7 +74,7 @@ describe("createRun()", () => {
     });
 
     it("should store appendSystemPrompt when provided", async () => {
-      const result = await createRun(
+      const result = await startRun(
         baseParams({ appendSystemPrompt: "Your name is Aria." }),
       );
 
@@ -84,7 +84,7 @@ describe("createRun()", () => {
     });
 
     it("should default appendSystemPrompt to null when not provided", async () => {
-      const result = await createRun(baseParams());
+      const result = await startRun(baseParams());
 
       const run = await findTestRunRecord(result.runId);
 
@@ -95,7 +95,7 @@ describe("createRun()", () => {
       vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
       reloadEnv();
 
-      const result = await createRun(
+      const result = await startRun(
         baseParams({ appendSystemPrompt: "Your name is Aria." }),
       );
 
@@ -107,7 +107,7 @@ describe("createRun()", () => {
     });
 
     it("should always set lastHeartbeatAt", async () => {
-      const result = await createRun(baseParams());
+      const result = await startRun(baseParams());
 
       const run = await findTestRunRecord(result.runId);
 
@@ -115,7 +115,7 @@ describe("createRun()", () => {
     });
 
     it("should refresh lastHeartbeatAt during pipeline", async () => {
-      const result = await createRun(baseParams());
+      const result = await startRun(baseParams());
 
       const run = await findTestRunRecord(result.runId);
 
@@ -129,7 +129,7 @@ describe("createRun()", () => {
 
     it("should store vars when provided", async () => {
       const vars = { MY_VAR: "value1", OTHER_VAR: "value2" };
-      const result = await createRun(baseParams({ vars }));
+      const result = await startRun(baseParams({ vars }));
 
       const run = await findTestRunRecord(result.runId);
 
@@ -138,7 +138,7 @@ describe("createRun()", () => {
 
     it("should store secretNames when secrets provided", async () => {
       const secrets = { API_KEY: "sk-123", DB_PASS: "pw" };
-      const result = await createRun(baseParams({ secrets }));
+      const result = await startRun(baseParams({ secrets }));
 
       const run = await findTestRunRecord(result.runId);
 
@@ -147,56 +147,44 @@ describe("createRun()", () => {
   });
 
   describe("Concurrent Run Limit", () => {
-    it("should enqueue run when free tier limit reached", async () => {
+    it("should reject when free tier limit reached", async () => {
       // Free tier (default) allows only 1 concurrent run
-      await createRun(baseParams({ prompt: "First run" }));
+      await startRun(baseParams({ prompt: "First run" }));
 
-      // Second run should be queued (not rejected)
-      const result = await createRun(baseParams({ prompt: "Second run" }));
-
-      expect(result.status).toBe("queued");
-      expect(result.runId).toBeDefined();
-
-      // Verify queued run record in DB
-      const run = await findTestRunRecord(result.runId);
-      expect(run).toBeDefined();
-      expect(run!.status).toBe("queued");
-      expect(run!.prompt).toBe("Second run");
+      // Second run should be rejected with concurrent run limit error
+      await expect(
+        startRun(baseParams({ prompt: "Second run" })),
+      ).rejects.toSatisfy(isConcurrentRunLimit);
     });
 
     it("should allow 2 concurrent runs for pro tier", async () => {
-      const run1 = await createRun(
-        baseParams({ prompt: "Pro run 1", orgTier: "pro" }),
-      );
-      const run2 = await createRun(
-        baseParams({ prompt: "Pro run 2", orgTier: "pro" }),
-      );
+      await updateOrgTier(user.orgId, "pro");
+
+      const run1 = await startRun(baseParams({ prompt: "Pro run 1" }));
+      const run2 = await startRun(baseParams({ prompt: "Pro run 2" }));
 
       expect(run1.status).toBe("pending");
       expect(run2.status).toBe("pending");
     });
 
-    it("should queue 3rd concurrent run for pro tier", async () => {
-      await createRun(baseParams({ prompt: "Pro run 1", orgTier: "pro" }));
-      await createRun(baseParams({ prompt: "Pro run 2", orgTier: "pro" }));
+    it("should reject 3rd concurrent run for pro tier", async () => {
+      await updateOrgTier(user.orgId, "pro");
 
-      const run3 = await createRun(
-        baseParams({ prompt: "Pro run 3", orgTier: "pro" }),
-      );
-      expect(run3.status).toBe("queued");
+      await startRun(baseParams({ prompt: "Pro run 1" }));
+      await startRun(baseParams({ prompt: "Pro run 2" }));
+
+      await expect(
+        startRun(baseParams({ prompt: "Pro run 3" })),
+      ).rejects.toSatisfy(isConcurrentRunLimit);
     });
 
     it("should allow multiple concurrent runs for team tier", async () => {
+      await updateOrgTier(user.orgId, "team");
+
       // Create 3 concurrent runs to verify team tier allows more than pro tier (which allows 2)
-      const run1 = await createRun(
-        baseParams({ prompt: "Team run 1", orgTier: "team" }),
-      );
-      const run2 = await createRun(
-        baseParams({ prompt: "Team run 2", orgTier: "team" }),
-      );
-      const run3 = await createRun(
-        baseParams({ prompt: "Team run 3", orgTier: "team" }),
-      );
+      const run1 = await startRun(baseParams({ prompt: "Team run 1" }));
+      const run2 = await startRun(baseParams({ prompt: "Team run 2" }));
+      const run3 = await startRun(baseParams({ prompt: "Team run 3" }));
 
       expect(run1.status).toBe("pending");
       expect(run2.status).toBe("pending");
@@ -207,8 +195,8 @@ describe("createRun()", () => {
       vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "0");
       reloadEnv();
 
-      const run1 = await createRun(baseParams({ prompt: "Run 1" }));
-      const run2 = await createRun(baseParams({ prompt: "Run 2" }));
+      const run1 = await startRun(baseParams({ prompt: "Run 1" }));
+      const run2 = await startRun(baseParams({ prompt: "Run 2" }));
 
       expect(run1.status).toBe("pending");
       expect(run2.status).toBe("pending");
@@ -218,43 +206,41 @@ describe("createRun()", () => {
       // Free tier limit is 1; stale pending run should not count
       await insertStalePendingRun(user.userId, versionId);
 
-      const result = await createRun(baseParams());
+      const result = await startRun(baseParams());
       expect(result.status).toBe("pending");
     });
 
-    it("should enqueue second run when concurrency limit reached", async () => {
+    it("should reject second run when concurrency limit reached", async () => {
       // Free tier limit is 1 — advisory lock should serialize them
       const results = await Promise.allSettled([
-        createRun(baseParams({ prompt: "Concurrent A" })),
-        createRun(baseParams({ prompt: "Concurrent B" })),
+        startRun(baseParams({ prompt: "Concurrent A" })),
+        startRun(baseParams({ prompt: "Concurrent B" })),
       ]);
 
-      // Both should succeed: one runs, one gets queued
+      // One should succeed, one should be rejected
       const fulfilled = results.filter((r) => {
         return r.status === "fulfilled";
       });
-      expect(fulfilled).toHaveLength(2);
-
-      const statuses = fulfilled.map((r) => {
-        return r.status === "fulfilled" && r.value.status;
+      const rejected = results.filter((r) => {
+        return r.status === "rejected";
       });
-      expect(statuses).toContain("queued");
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
     });
 
     it("should enforce limit per-org, not per-user", async () => {
       // Create a run in the default org (fills its free-tier slot)
-      await createRun(baseParams({ prompt: "Org 1 run" }));
+      await startRun(baseParams({ prompt: "Org 1 run" }));
 
       // Create a second user with a different org
       const otherUser = await context.setupUser({ prefix: "org-user" });
       const otherCompose = await createTestCompose(uniqueId("other-agent"));
 
       // Run in the other org should succeed (separate org, separate limit)
-      const result = await createRun({
+      const result = await startRun({
         userId: otherUser.userId,
         agentComposeVersionId: otherCompose.versionId,
         prompt: "Org 2 run",
-        orgId: otherUser.orgId,
       });
       expect(result.status).toBe("pending");
     });
@@ -263,7 +249,7 @@ describe("createRun()", () => {
   describe("Validation", () => {
     it("should reject mutually exclusive checkpointId and sessionId", async () => {
       await expect(
-        createRun(
+        startRun(
           baseParams({
             checkpointId: "some-checkpoint",
             sessionId: "some-session",
@@ -283,7 +269,7 @@ describe("createRun()", () => {
         },
       ];
 
-      const result = await createRun(baseParams({ callbacks }));
+      const result = await startRun(baseParams({ callbacks }));
 
       // Verify callback record in DB
       const callbackRecords = await findTestRunCallbacks(result.runId);
@@ -301,7 +287,7 @@ describe("createRun()", () => {
   describe("Memory", () => {
     it("should auto-create memory storage on first run", async () => {
       const memoryName = uniqueId("new-mem");
-      const result = await createRun(baseParams({ memoryName }));
+      const result = await startRun(baseParams({ memoryName }));
 
       expect(result.runId).toBeDefined();
       expect(result.status).toBe("pending");
@@ -314,10 +300,10 @@ describe("createRun()", () => {
 
       const memoryName = uniqueId("existing-mem");
       // First run creates the memory
-      await createRun(baseParams({ memoryName }));
+      await startRun(baseParams({ memoryName }));
 
       // Second run should also succeed (idempotent)
-      const result = await createRun(
+      const result = await startRun(
         baseParams({ memoryName, prompt: "second run" }),
       );
       expect(result.runId).toBeDefined();
@@ -325,7 +311,7 @@ describe("createRun()", () => {
     });
 
     it("should accept memoryName and dispatch successfully", async () => {
-      const result = await createRun(baseParams({ memoryName: "my-memory" }));
+      const result = await startRun(baseParams({ memoryName: "my-memory" }));
 
       expect(result.runId).toBeDefined();
       expect(result.status).toBe("pending");
@@ -368,7 +354,7 @@ describe("createRun()", () => {
       };
 
       // Step 2: Continue from session WITHOUT specifying memoryName
-      const continueResult = await createRun(
+      const continueResult = await startRun(
         baseParams({
           sessionId: agentSessionId,
           prompt: "Continue prompt",
@@ -383,7 +369,7 @@ describe("createRun()", () => {
   describe("Auto-Create Artifact", () => {
     it("should succeed when artifact does not exist (auto-create)", async () => {
       const artifactName = uniqueId("new-art");
-      const result = await createRun(baseParams({ artifactName }));
+      const result = await startRun(baseParams({ artifactName }));
 
       expect(result.runId).toBeDefined();
       expect(result.status).toBe("pending");
@@ -393,7 +379,7 @@ describe("createRun()", () => {
       const artifactName = uniqueId("existing-art");
       await createTestArtifact(artifactName);
 
-      const result = await createRun(baseParams({ artifactName }));
+      const result = await startRun(baseParams({ artifactName }));
 
       expect(result.runId).toBeDefined();
       expect(result.status).toBe("pending");
@@ -460,7 +446,7 @@ describe("createRun()", () => {
         ["mydata:/data"],
       );
 
-      const result = await createRun(
+      const result = await startRun(
         baseParams({ agentComposeVersionId: compose.versionId }),
       );
 
@@ -482,7 +468,7 @@ describe("createRun()", () => {
       );
 
       // Should succeed - optional volume is silently skipped
-      const result = await createRun(
+      const result = await startRun(
         baseParams({ agentComposeVersionId: compose.versionId }),
       );
 
@@ -505,7 +491,7 @@ describe("createRun()", () => {
 
       // Should fail - required volume doesn't exist
       await expect(
-        createRun(baseParams({ agentComposeVersionId: compose.versionId })),
+        startRun(baseParams({ agentComposeVersionId: compose.versionId })),
       ).rejects.toThrow(/not found/);
     });
 
@@ -528,7 +514,7 @@ describe("createRun()", () => {
       // Simulate checkpoint resume scenario:
       // volumeVersions is provided but does NOT include the optional volume
       // (meaning it was skipped at checkpoint time)
-      const result = await createRun(
+      const result = await startRun(
         baseParams({
           agentComposeVersionId: compose.versionId,
           // Empty volumeVersions means no volumes were mounted at checkpoint
@@ -561,7 +547,7 @@ describe("createRun()", () => {
 
       // Session/Continue scenario: volumeVersions is NOT provided (undefined)
       // This means we should use current config and mount if volume exists
-      const result = await createRun(
+      const result = await startRun(
         baseParams({
           agentComposeVersionId: compose.versionId,
           // No volumeVersions - use latest state
@@ -595,7 +581,7 @@ describe("createRun()", () => {
       );
 
       // Should succeed - required volume exists, optional is skipped
-      const result = await createRun(
+      const result = await startRun(
         baseParams({ agentComposeVersionId: compose.versionId }),
       );
 
@@ -610,7 +596,7 @@ describe("createRun()", () => {
 
       mockClerk({ userId: user.userId, email: "user@example.com" });
 
-      const result = await createRun(baseParams());
+      const result = await startRun(baseParams());
 
       expect(result.status).toBe("pending");
     });
@@ -619,7 +605,7 @@ describe("createRun()", () => {
       // RUNNER_DEFAULT_GROUP is not set by default in test env
       mockClerk({ userId: user.userId, email: "team@vm0.ai" });
 
-      const result = await createRun(baseParams());
+      const result = await startRun(baseParams());
 
       expect(result.status).toBe("pending");
     });
@@ -632,7 +618,7 @@ describe("createRun()", () => {
 
       let caughtError: unknown;
       try {
-        await createRun(baseParams());
+        await startRun(baseParams());
       } catch (error: unknown) {
         caughtError = error;
       }
@@ -661,7 +647,7 @@ describe("createRun()", () => {
         overrides: { experimental_profile: "vm0/default" },
       });
 
-      const result = await createRun(
+      const result = await startRun(
         baseParams({ agentComposeVersionId: compose.versionId }),
       );
 
@@ -675,7 +661,7 @@ describe("createRun()", () => {
       vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
       reloadEnv();
 
-      const result = await createRun(baseParams());
+      const result = await startRun(baseParams());
 
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
@@ -685,6 +671,7 @@ describe("createRun()", () => {
 
     it("should filter jobs by profiles array in poll endpoint", async () => {
       vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
+      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "0");
       reloadEnv();
 
       // Create two runs — one with default profile, one with explicit profile
@@ -692,8 +679,8 @@ describe("createRun()", () => {
         uniqueId("browser-agent"),
         { overrides: { experimental_profile: "vm0/default" } },
       );
-      await createRun(baseParams({ prompt: "default job" }));
-      await createRun(
+      await startRun(baseParams({ prompt: "default job" }));
+      await startRun(
         baseParams({
           prompt: "browser job",
           agentComposeVersionId: browserCompose.versionId,
@@ -743,25 +730,17 @@ describe("createRun()", () => {
       });
 
       await expect(
-        createRun(baseParams({ agentComposeVersionId: compose.versionId })),
+        startRun(baseParams({ agentComposeVersionId: compose.versionId })),
       ).rejects.toSatisfy(isBadRequest);
     });
   });
 
   describe("Org Resolution for Storage", () => {
-    it("should use runtime orgId for artifact/memory storage when orgId is provided", async () => {
-      // Create a second org and make the user a member
-      const orgCompose = await context.createAgentCompose(user.userId, {
-        name: uniqueId("org-agent"),
-      });
-      const orgClerkOrgId = orgCompose.orgId;
-
-      // Use the default compose but pass org for storage resolution
-      const result = await createRun(
+    it("should use compose org for artifact/memory storage", async () => {
+      const result = await startRun(
         baseParams({
           artifactName: "artifact",
           memoryName: "memory",
-          orgId: orgClerkOrgId,
         }),
       );
 
@@ -771,35 +750,7 @@ describe("createRun()", () => {
       const run = await findTestRunRecord(result.runId);
       expect(run).toBeDefined();
 
-      // Verify artifact storage was created in the specified org (not user's default org)
-      const artifact = await findTestStorage(
-        orgClerkOrgId,
-        "artifact",
-        "artifact",
-      );
-      expect(artifact).toBeDefined();
-      expect(artifact!.userId).toBe(user.userId);
-
-      // Verify memory storage was created in the specified org
-      const memory = await findTestStorage(orgClerkOrgId, "memory", "memory");
-      expect(memory).toBeDefined();
-      expect(memory!.userId).toBe(user.userId);
-    });
-
-    it("should use default org for storage when orgId is not provided", async () => {
-      const compose = await createTestCompose(uniqueId("agent"));
-
-      const result = await createRun(
-        baseParams({
-          agentComposeVersionId: compose.versionId,
-          artifactName: "artifact",
-          memoryName: "memory",
-        }),
-      );
-
-      expect(result.status).toBe("pending");
-
-      // Verify artifact storage was created in user's default org
+      // Verify artifact storage was created in the compose's org (user's default org)
       const artifact = await findTestStorage(
         user.orgId,
         "artifact",
@@ -808,7 +759,7 @@ describe("createRun()", () => {
       expect(artifact).toBeDefined();
       expect(artifact!.userId).toBe(user.userId);
 
-      // Verify memory storage was created in user's default org
+      // Verify memory storage was created in the compose's org
       const memory = await findTestStorage(user.orgId, "memory", "memory");
       expect(memory).toBeDefined();
       expect(memory!.userId).toBe(user.userId);

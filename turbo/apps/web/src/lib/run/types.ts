@@ -117,6 +117,6 @@ export interface DispatchTimings {
   authorize: number;
   transaction: number;
   token: number;
-  resolveSourceDuration: number;
-  resolveSecretsDuration: number;
+  resolveSourceDuration?: number;
+  resolveSecretsDuration?: number;
 }
