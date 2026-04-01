@@ -81,6 +81,7 @@ import { instagramFirewall } from "./instagram.generated";
 import { instantlyFirewall } from "./instantly.generated";
 import { intercomFirewall } from "./intercom.generated";
 import { intervalsIcuFirewall } from "./intervals-icu.generated";
+import { jiraFirewall } from "./jira.generated";
 import { jotformFirewall } from "./jotform.generated";
 import { kommoFirewall } from "./kommo.generated";
 import { larkFirewall } from "./lark.generated";
@@ -202,6 +203,7 @@ const CONNECTOR_FIREWALLS = {
   instantly: instantlyFirewall,
   intercom: intercomFirewall,
   "intervals-icu": intervalsIcuFirewall,
+  jira: jiraFirewall,
   jotform: jotformFirewall,
   kommo: kommoFirewall,
   lark: larkFirewall,
@@ -347,8 +349,6 @@ export type PermissionNamesOf<T extends FirewallConfig> =
  * that already has a firewall config.
  */
 export type NonFirewallConnectorType =
-  // Basic Auth — proxy cannot do base64 encoding at runtime (#7137)
-  | "jira" // Basic Auth (email:api_token)
   // Signature-based auth — requires computing signatures, not simple header injection
   | "cloudinary" // SHA signature in form body + api_key param
   | "minio" // AWS Signature V4

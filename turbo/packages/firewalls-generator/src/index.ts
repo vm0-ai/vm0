@@ -55,6 +55,7 @@ import { generate as generateInstagram } from "./instagram";
 import { generate as generateInstantly } from "./instantly";
 import { generate as generateIntercom } from "./intercom";
 import { generate as generateIntervalsIcu } from "./intervals-icu";
+import { generate as generateJira } from "./jira";
 import { generate as generateJotform } from "./jotform";
 import { generate as generateKommo } from "./kommo";
 import { generate as generateLark } from "./lark";
@@ -172,6 +173,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   instantly: generateInstantly,
   intercom: generateIntercom,
   "intervals-icu": generateIntervalsIcu,
+  jira: generateJira,
   jotform: generateJotform,
   kommo: generateKommo,
   lark: generateLark,
