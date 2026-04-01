@@ -19,7 +19,7 @@ import {
 } from "@vm0/core";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import type { PermissionPolicy } from "../../../../signals/zero-page/settings/firewalls.ts";
-import { IconCheck, IconBan } from "@tabler/icons-react";
+import { IconCheck, IconBan, IconChevronRight } from "@tabler/icons-react";
 import { detach, Reason } from "../../../../signals/utils.ts";
 
 interface FirewallPermission {
@@ -88,11 +88,27 @@ const POLICY_OPTIONS = [
   { value: "deny" as const, label: "Deny" },
 ] as const;
 
+function getGroupPolicy(
+  perms: FirewallPermission[],
+  policies: Record<string, PermissionPolicy>,
+): PermissionPolicy | "mixed" {
+  if (perms.length === 0) {
+    return "allow";
+  }
+  const first = policies[perms[0].name] ?? "allow";
+  for (let i = 1; i < perms.length; i++) {
+    if ((policies[perms[i].name] ?? "allow") !== first) {
+      return "mixed";
+    }
+  }
+  return first;
+}
+
 function PolicyPill({
   policy,
   onChange,
 }: {
-  policy: PermissionPolicy;
+  policy: PermissionPolicy | "mixed";
   onChange: (p: PermissionPolicy) => void;
 }) {
   return (
@@ -162,6 +178,7 @@ export function FirewallPermissionsDrawer({
 
   const [scrolled, setScrolled] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const permissions = config ? sortPermissions(extractPermissions(config)) : [];
   const policies = allPolicies[ref] ?? {};
   const groups = config
@@ -174,6 +191,18 @@ export function FirewallPermissionsDrawer({
         },
       ) ?? null)
     : null;
+
+  const toggleGroup = (category: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(category)) {
+        next.delete(category);
+      } else {
+        next.add(category);
+      }
+      return next;
+    });
+  };
 
   const handlePolicyChange = (name: string, policy: PermissionPolicy) => {
     setAllPolicies({
@@ -245,43 +274,22 @@ export function FirewallPermissionsDrawer({
           </div>
         ) : (
           <div className="flex flex-1 flex-col min-h-0">
-            <div
-              className={`flex items-center justify-between pb-3 -mx-6 px-6 pr-9 transition-shadow ${scrolled ? "shadow-[0_4px_8px_-4px_rgba(0,0,0,0.08)]" : ""}`}
-            >
-              <span className="text-xs font-medium text-foreground">
-                Select all ({permissions.length})
-              </span>
-              <span className="inline-flex shrink-0 rounded-md overflow-hidden text-xs font-medium zero-border">
-                {POLICY_OPTIONS.map((opt, idx) => {
-                  return (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      style={
-                        idx > 0
-                          ? { borderLeft: "0.7px solid hsl(var(--gray-400))" }
-                          : undefined
-                      }
-                      onClick={() => {
-                        return handleSetAll(opt.value);
-                      }}
-                      className="flex items-center gap-1 px-2.5 py-1.5 transition-colors text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                    >
-                      {opt.value === "allow" && (
-                        <IconCheck size={12} stroke={2.5} />
-                      )}
-                      {opt.value === "deny" && (
-                        <IconBan size={12} stroke={2.5} />
-                      )}
-                      {opt.label}
-                    </button>
-                  );
-                })}
-              </span>
-            </div>
+            {!groups && (
+              <div
+                className={`flex items-center justify-between pb-3 -mx-6 px-6 pr-9 transition-shadow ${scrolled ? "shadow-[0_4px_8px_-4px_rgba(0,0,0,0.08)]" : ""}`}
+              >
+                <span className="text-xs font-medium text-foreground">
+                  Select all ({permissions.length})
+                </span>
+                <PolicyPill
+                  policy={getGroupPolicy(permissions, policies)}
+                  onChange={handleSetAll}
+                />
+              </div>
+            )}
 
             <div
-              className="flex-1 overflow-y-auto -mx-6 px-3"
+              className={`flex-1 overflow-y-auto -mx-6 px-3 ${groups ? "pt-1" : ""}`}
               onScroll={(e) => {
                 const target = e.currentTarget;
                 setScrolled(target.scrollTop > 0);
@@ -289,77 +297,67 @@ export function FirewallPermissionsDrawer({
             >
               {groups
                 ? groups.map((group, groupIdx) => {
+                    const expanded = expandedGroups.has(group.category);
+                    const groupPolicy = getGroupPolicy(
+                      group.permissions,
+                      policies,
+                    );
                     return (
                       <div key={group.category}>
                         {groupIdx > 0 && (
                           <div className="mx-3 border-t border-border/40 my-1" />
                         )}
                         <div className="flex items-center justify-between px-3 py-2">
-                          <span className="text-xs font-medium text-foreground">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              return toggleGroup(group.category);
+                            }}
+                            className="flex items-center gap-1.5 text-xs font-medium text-foreground hover:text-foreground/80 transition-colors"
+                          >
+                            <IconChevronRight
+                              size={14}
+                              stroke={2}
+                              className={`transition-transform ${expanded ? "rotate-90" : ""}`}
+                            />
                             {group.category} ({group.permissions.length})
-                          </span>
-                          <span className="inline-flex shrink-0 rounded-md overflow-hidden text-xs font-medium zero-border">
-                            {POLICY_OPTIONS.map((opt, idx) => {
-                              return (
-                                <button
-                                  key={opt.value}
-                                  type="button"
-                                  style={
-                                    idx > 0
-                                      ? {
-                                          borderLeft:
-                                            "0.7px solid hsl(var(--gray-400))",
-                                        }
-                                      : undefined
-                                  }
-                                  onClick={() => {
-                                    return handleSetGroupAll(
-                                      group.permissions,
-                                      opt.value,
-                                    );
-                                  }}
-                                  className="flex items-center gap-1 px-2.5 py-1.5 transition-colors text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                                >
-                                  {opt.value === "allow" && (
-                                    <IconCheck size={12} stroke={2.5} />
-                                  )}
-                                  {opt.value === "deny" && (
-                                    <IconBan size={12} stroke={2.5} />
-                                  )}
-                                  {opt.label}
-                                </button>
-                              );
-                            })}
-                          </span>
+                          </button>
+                          <PolicyPill
+                            policy={groupPolicy}
+                            onChange={(p) => {
+                              return handleSetGroupAll(group.permissions, p);
+                            }}
+                          />
                         </div>
-                        {group.permissions.map((perm, idx) => {
-                          const pol = policies[perm.name] ?? "allow";
-                          return (
-                            <div key={perm.name}>
-                              {idx > 0 && (
-                                <div className="mx-3 border-t border-border/40" />
-                              )}
-                              <div className="flex items-center gap-2.5 px-3 py-2.5 pl-6 rounded-md hover:bg-muted/50 transition-colors">
-                                <div className="min-w-0 flex-1">
-                                  <code className="text-xs font-medium text-foreground truncate block">
-                                    {perm.name}
-                                  </code>
-                                  {perm.description && (
-                                    <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
-                                      {perm.description}
-                                    </p>
-                                  )}
+                        {expanded &&
+                          group.permissions.map((perm, idx) => {
+                            const pol = policies[perm.name] ?? "allow";
+                            return (
+                              <div key={perm.name}>
+                                {idx > 0 && (
+                                  <div className="mx-3 border-t border-border/40" />
+                                )}
+                                <div className="flex items-center gap-2.5 px-3 py-2.5 pl-8 rounded-md hover:bg-muted/50 transition-colors">
+                                  <div className="min-w-0 flex-1">
+                                    <code className="text-xs font-medium text-foreground truncate block">
+                                      {perm.name}
+                                    </code>
+                                    {perm.description && (
+                                      <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
+                                        {perm.description}
+                                      </p>
+                                    )}
+                                  </div>
+                                  <PolicyPill
+                                    policy={pol}
+                                    onChange={(p) => {
+                                      return handlePolicyChange(perm.name, p);
+                                    }}
+                                  />
                                 </div>
-                                <PolicyPill
-                                  policy={pol}
-                                  onChange={(p) => {
-                                    return handlePolicyChange(perm.name, p);
-                                  }}
-                                />
                               </div>
-                            </div>
-                          );
-                        })}
+                            );
+                          })}
                       </div>
                     );
                   })
