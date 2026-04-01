@@ -114,9 +114,8 @@ call_test_token_endpoint() {
 # Call endpoint with retry
 BODY=$(call_test_token_endpoint) || exit 1
 
-# Extract token and org_slug from response
+# Extract token from response
 TOKEN=$(echo "$BODY" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
-ORG_SLUG=$(echo "$BODY" | grep -o '"org_slug":"[^"]*"' | cut -d'"' -f4)
 
 if [[ -z "$TOKEN" ]]; then
   echo "Error: Failed to extract token from response"
@@ -127,31 +126,20 @@ fi
 # Mask token in logs (show first 10 and last 4 chars)
 MASKED_TOKEN="${TOKEN:0:10}...${TOKEN: -4}"
 echo "Got token: $MASKED_TOKEN"
-echo "Org slug: ${ORG_SLUG:-<none>}"
 
 # Create config directory and file
+# Note: activeOrg is derived from the JWT token at runtime, not from config
 CONFIG_DIR="$HOME/.vm0"
 CONFIG_FILE="$CONFIG_DIR/config.json"
 
 mkdir -p "$CONFIG_DIR"
 
-# Write config file (include activeOrg if returned by server)
-if [[ -n "$ORG_SLUG" ]]; then
-  cat > "$CONFIG_FILE" << EOF
-{
-  "token": "$TOKEN",
-  "apiUrl": "$VM0_API_URL",
-  "activeOrg": "$ORG_SLUG"
-}
-EOF
-else
-  cat > "$CONFIG_FILE" << EOF
+cat > "$CONFIG_FILE" << EOF
 {
   "token": "$TOKEN",
   "apiUrl": "$VM0_API_URL"
 }
 EOF
-fi
 
 echo ""
 echo "=== Token generated successfully ==="
