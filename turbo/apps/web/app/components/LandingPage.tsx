@@ -77,7 +77,7 @@ export default function LandingPage() {
   const { lineIndex, charIndex, done } = useTypewriterLines(lines);
   const { isSignedIn } = useUser();
 
-  const ctaText = isSignedIn ? "Open app" : "Join the beta";
+  const ctaText = isSignedIn ? "Open app" : "Get started";
   const ctaHref = isSignedIn ? getAppUrl() : "/sign-up";
 
   return (
