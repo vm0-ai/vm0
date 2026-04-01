@@ -240,6 +240,9 @@ create_ext4() {
   EXT4_MOUNT_DIR=$(mktemp -d)
   sudo mount -o loop "$TMP_ROOTFS_PATH" "$EXT4_MOUNT_DIR"
   sudo cp -a "$EXTRACT_DIR"/. "$EXT4_MOUNT_DIR"/
+  # mktemp -d creates 0700 directories; cp -a preserves that on the ext4
+  # root inode, locking out non-root users. Restore standard 0755.
+  sudo chmod 755 "$EXT4_MOUNT_DIR"
   sudo umount "$EXT4_MOUNT_DIR"
   rmdir "$EXT4_MOUNT_DIR"
   EXT4_MOUNT_DIR=""
