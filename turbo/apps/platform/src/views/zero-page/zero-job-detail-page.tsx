@@ -50,6 +50,7 @@ import {
   zeroJobInstructionsLoading$,
   zeroJobInstructionsError$,
   zeroJobScheduleEntries$,
+  zeroJobScheduleLoading$,
   zeroJobScheduleError$,
   saveZeroJobSchedule$,
   deleteZeroJobSchedule$,
@@ -624,7 +625,8 @@ function JobPermissionsTab({
 }
 
 function JobScheduleTab({ displayName }: { displayName: string }) {
-  const entriesLoadable = useLoadable(zeroJobScheduleEntries$);
+  const entries = useGet(zeroJobScheduleEntries$);
+  const loading = useGet(zeroJobScheduleLoading$);
   const scheduleError = useGet(zeroJobScheduleError$);
   const saveSchedule = useSet(saveZeroJobSchedule$);
   const deleteSchedule = useSet(deleteZeroJobSchedule$);
@@ -632,10 +634,6 @@ function JobScheduleTab({ displayName }: { displayName: string }) {
   const runScheduleNow = useSet(runScheduleNow$);
   const nav = useSet(detachedNavigateTo$);
   const pageSignal = useGet(pageSignal$);
-
-  const loading = entriesLoadable.state === "loading";
-  const entries: ScheduleEntry[] =
-    entriesLoadable.state === "hasData" ? entriesLoadable.data : [];
 
   const handleRunNow = async (entry: ScheduleEntry) => {
     await runScheduleNow(entry.id, pageSignal);
