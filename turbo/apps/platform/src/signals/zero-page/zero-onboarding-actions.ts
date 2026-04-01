@@ -37,7 +37,7 @@ export const onboardingIsAdmin$ = zeroNeedsOnboarding$;
 const ADMIN_STEPS = ["1", "2", "3", "4"] as const;
 
 /** Connector types the member should see, derived from default agent skills. */
-export const onboardingMemberConnectors$ = computed(async (get) => {
+const onboardingMemberConnectors$ = computed(async (get) => {
   const isAdmin = await get(zeroNeedsOnboarding$);
   if (isAdmin) {
     return [] as ConnectorType[];
@@ -170,41 +170,45 @@ export const onboardingNextDisabled$ = computed(async (get) => {
   return false;
 });
 
-export const onboardingStepBack$ = command(async ({ get, set }) => {
-  const step = await get(onboardingEffectiveStep$);
-  switch (step) {
-    case "2": {
-      set(setZeroStep$, "1");
-      break;
+export const onboardingStepBack$ = command(
+  async ({ get, set }, _signal: AbortSignal) => {
+    const step = await get(onboardingEffectiveStep$);
+    switch (step) {
+      case "2": {
+        set(setZeroStep$, "1");
+        break;
+      }
+      case "3": {
+        set(setZeroStep$, "2");
+        break;
+      }
+      case "4": {
+        set(setZeroStep$, "3");
+        break;
+      }
     }
-    case "3": {
-      set(setZeroStep$, "2");
-      break;
-    }
-    case "4": {
-      set(setZeroStep$, "3");
-      break;
-    }
-  }
-});
+  },
+);
 
-export const onboardingStepNext$ = command(async ({ get, set }) => {
-  const step = await get(onboardingEffectiveStep$);
-  switch (step) {
-    case "1": {
-      set(setZeroStep$, "2");
-      break;
+export const onboardingStepNext$ = command(
+  async ({ get, set }, _signal: AbortSignal) => {
+    const step = await get(onboardingEffectiveStep$);
+    switch (step) {
+      case "1": {
+        set(setZeroStep$, "2");
+        break;
+      }
+      case "2": {
+        set(setZeroStep$, "3");
+        break;
+      }
+      case "3": {
+        set(setZeroStep$, "4");
+        break;
+      }
     }
-    case "2": {
-      set(setZeroStep$, "3");
-      break;
-    }
-    case "3": {
-      set(setZeroStep$, "4");
-      break;
-    }
-  }
-});
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Whether onboarding should show at all

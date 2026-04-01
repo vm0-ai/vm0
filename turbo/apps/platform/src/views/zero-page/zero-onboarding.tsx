@@ -786,7 +786,10 @@ function OnboardingPageLayout({ children }: { children: React.ReactNode }) {
                   variant="ghost"
                   className="rounded-lg text-muted-foreground"
                   onClick={() => {
-                    return stepBack();
+                    detach(
+                      stepBack(new AbortController().signal),
+                      Reason.DomCallback,
+                    );
                   }}
                 >
                   Back
@@ -797,7 +800,10 @@ function OnboardingPageLayout({ children }: { children: React.ReactNode }) {
               {showNext && (
                 <Button
                   onClick={() => {
-                    return stepNext();
+                    detach(
+                      stepNext(new AbortController().signal),
+                      Reason.DomCallback,
+                    );
                   }}
                   className="rounded-lg min-w-[100px]"
                   disabled={nextDisabled}
@@ -847,7 +853,10 @@ function WorkspaceStepContent() {
           }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && workspaceName.trim()) {
-              stepNext();
+              detach(
+                stepNext(new AbortController().signal),
+                Reason.DomCallback,
+              );
             }
           }}
           className="h-10 rounded-lg"
