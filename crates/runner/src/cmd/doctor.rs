@@ -865,8 +865,8 @@ async fn detect_block_cow_orphans(
     let mut warnings = Vec::new();
 
     // 1. List dm-snapshot targets
-    let dm_output = match tokio::process::Command::new("sudo")
-        .args(["dmsetup", "ls", "--target", "snapshot"])
+    let dm_output = match tokio::process::Command::new("dmsetup")
+        .args(["ls", "--target", "snapshot"])
         .output()
         .await
     {
@@ -932,8 +932,8 @@ async fn detect_block_cow_orphans(
         }
     };
 
-    let loop_output = match tokio::process::Command::new("sudo")
-        .args(["losetup", "-a"])
+    let loop_output = match tokio::process::Command::new("losetup")
+        .args(["-a"])
         .output()
         .await
     {
@@ -1020,8 +1020,8 @@ fn find_runner_for_dm_target(
 
 /// Check if a dm target has no openers (`Open count: 0` in `dmsetup info`).
 async fn dm_target_has_no_openers(name: &str) -> bool {
-    let output = match tokio::process::Command::new("sudo")
-        .args(["dmsetup", "info", name])
+    let output = match tokio::process::Command::new("dmsetup")
+        .args(["info", name])
         .output()
         .await
     {
@@ -1093,8 +1093,8 @@ fn runner_is_alive(runner_name: &Option<String>, reports: &[RunnerReport]) -> bo
 
 /// Check if a loop device still exists.
 async fn loop_device_exists(device: &str) -> bool {
-    match tokio::process::Command::new("sudo")
-        .args(["losetup", device])
+    match tokio::process::Command::new("losetup")
+        .args([device])
         .output()
         .await
     {

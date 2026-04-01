@@ -186,8 +186,8 @@ async fn main() -> ExitCode {
         .add_integration(sentry::integrations::panic::PanicIntegration::default()),
     ));
 
-    if nix::unistd::getuid().is_root() {
-        eprintln!("error: runner must not be run as root (it calls sudo internally as needed)");
+    if !nix::unistd::getuid().is_root() {
+        eprintln!("error: runner must be run as root");
         return ExitCode::FAILURE;
     }
 

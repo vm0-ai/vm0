@@ -25,7 +25,6 @@ pub async fn run_setup() -> RunnerResult<()> {
     download_mitmdump(&paths, arch).await?;
     check_system_ca_bundle()?;
     check_kvm();
-    check_disk_group();
 
     if !missing_required.is_empty() {
         return Err(RunnerError::Config(format!(
@@ -463,25 +462,6 @@ fn check_system_ca_bundle() -> RunnerResult<()> {
             "system CA bundle not found at {SYSTEM_CA_BUNDLE} — \
              install ca-certificates: sudo apt install ca-certificates"
         )))
-    }
-}
-
-/// Check that the current user is in the `disk` group, required to open
-/// loop devices and dm devices (`root:disk 0660`) without sudo.
-fn check_disk_group() {
-    let output = std::process::Command::new("id").arg("-Gn").output();
-    match output {
-        Ok(o) if o.status.success() => {
-            let groups = String::from_utf8_lossy(&o.stdout);
-            if groups.split_whitespace().any(|g| g == "disk") {
-                tracing::info!("[OK] user is in disk group");
-            } else {
-                tracing::warn!("user is not in disk group — run: sudo usermod -aG disk $USER");
-            }
-        }
-        _ => {
-            tracing::warn!("could not check group membership");
-        }
     }
 }
 

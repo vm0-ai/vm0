@@ -7,7 +7,7 @@ const CA_CERT: &str = "mitmproxy-ca-cert.pem";
 const CA_KEY: &str = "mitmproxy-ca-key.pem";
 const CA_COMBINED: &str = "mitmproxy-ca.pem";
 
-/// Ensure CA certificates exist at `~/.vm0-runner/ca/`.
+/// Ensure CA certificates exist at `/var/lib/vm0-runner/ca/`.
 ///
 /// Generates a self-signed RSA 4096 CA via openssl if the files don't
 /// already exist. Idempotent — safe to call on every build.

@@ -21,7 +21,7 @@ const CANCEL_GRACE: Duration = Duration::from_secs(10);
 
 #[derive(Args)]
 pub struct SubmitArgs {
-    /// Runner group name (writes job to ~/.vm0-runner/groups/{group}/)
+    /// Runner group name (writes job to /var/lib/vm0-runner/groups/{group}/)
     #[arg(long)]
     group: String,
     /// Job prompt

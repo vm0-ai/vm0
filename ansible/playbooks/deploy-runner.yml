@@ -19,13 +19,14 @@
 - name: Deploy VM0 Runner
   hosts: all
   serial: 1
+  become: true
 
   vars:
     runner_name: "v{{ runner_version }}"
     runner_group: vm0/production
-    home_dir: "{{ ansible_facts['env']['HOME'] }}"
-    bin_dir: "{{ home_dir }}/.vm0-runner/bin/{{ runner_name }}"
-    runner_dir: "{{ home_dir }}/.vm0-runner/runners/{{ runner_name }}"
+    data_dir: /var/lib/vm0-runner
+    bin_dir: "{{ data_dir }}/bin/{{ runner_name }}"
+    runner_dir: "{{ data_dir }}/runners/{{ runner_name }}"
 
   tasks:
     # ========================================

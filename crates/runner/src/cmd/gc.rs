@@ -474,7 +474,7 @@ async fn gc_versions(home: &HomePaths, dry_run: bool) -> RunnerResult<Vec<String
 ///
 /// Two passes:
 /// 1. Remove orphaned `cow-*` dm-snapshot targets (`dmsetup remove`).
-/// 2. Detach orphaned loop devices backing files under `~/.vm0-runner/`.
+/// 2. Detach orphaned loop devices backing files under `/var/lib/vm0-runner/`.
 ///    After pass 1 frees dm-snapshot references, previously-busy COW
 ///    loop devices become detachable.  Since Linux v3.7, `losetup -d`
 ///    sets AUTOCLEAR instead of returning EBUSY, but the device stays
@@ -503,7 +503,7 @@ fn gc_block_cow(dry_run: bool) -> RunnerResult<u32> {
     // Pass 2: detach orphaned loop devices.
     //
     // Try to detach ALL loop devices whose backing files are under
-    // `~/.vm0-runner/`.  Since Linux v3.7, `losetup -d` on a busy
+    // `/var/lib/vm0-runner/`.  Since Linux v3.7, `losetup -d` on a busy
     // device sets LO_FLAGS_AUTOCLEAR and returns success instead of
     // EBUSY, so the call may "succeed" for active devices too.
     // This is harmless — the device stays alive as long as any
@@ -563,10 +563,10 @@ pub(crate) fn parse_dm_targets(output: &Option<String>, prefix: &str) -> Vec<Str
         .collect()
 }
 
-/// Run `sudo dmsetup ls --target <target_type>`, return stdout if successful.
+/// Run `dmsetup ls --target <target_type>`, return stdout if successful.
 fn dmsetup_ls(target_type: &str) -> Option<String> {
-    let output = match std::process::Command::new("sudo")
-        .args(["dmsetup", "ls", "--target", target_type])
+    let output = match std::process::Command::new("dmsetup")
+        .args(["ls", "--target", target_type])
         .output()
     {
         Ok(o) => o,
@@ -583,10 +583,10 @@ fn dmsetup_ls(target_type: &str) -> Option<String> {
     Some(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
-/// Run `sudo dmsetup remove <name>`, return true if successful.
+/// Run `dmsetup remove <name>`, return true if successful.
 fn dmsetup_remove(name: &str) -> bool {
-    match std::process::Command::new("sudo")
-        .args(["dmsetup", "remove", name])
+    match std::process::Command::new("dmsetup")
+        .args(["remove", name])
         .output()
     {
         Ok(o) if o.status.success() => true,
@@ -602,12 +602,9 @@ fn dmsetup_remove(name: &str) -> bool {
     }
 }
 
-/// Run `sudo losetup -a`, return stdout if successful.
+/// Run `losetup -a`, return stdout if successful.
 fn losetup_list() -> Option<String> {
-    let output = match std::process::Command::new("sudo")
-        .args(["losetup", "-a"])
-        .output()
-    {
+    let output = match std::process::Command::new("losetup").args(["-a"]).output() {
         Ok(o) => o,
         Err(e) => {
             warn!(error = %e, "losetup not available — skipping loop device GC");
@@ -653,10 +650,10 @@ pub(crate) fn parse_losetup<'a>(
         .collect()
 }
 
-/// Run `sudo losetup -d <device>`, return true if successful.
+/// Run `losetup -d <device>`, return true if successful.
 fn losetup_detach(device: &str) -> bool {
-    match std::process::Command::new("sudo")
-        .args(["losetup", "-d", device])
+    match std::process::Command::new("losetup")
+        .args(["-d", device])
         .output()
     {
         Ok(o) if o.status.success() => true,

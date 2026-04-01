@@ -13,9 +13,10 @@
 
 - name: Cleanup Turbo Runner
   hosts: all
+  become: true
 
   vars:
-    base_dir: "{{ ansible_facts['env']['HOME'] }}/.vm0-runner"
+    base_dir: /var/lib/vm0-runner
     bin_dir: "{{ base_dir }}/bin/{{ job_ref }}"
     runner_dir: "{{ base_dir }}/runners/{{ job_ref }}"
 
@@ -36,7 +37,6 @@
       command: systemctl stop {{ item }}
       loop: "{{ running_services.stdout_lines | default([]) }}"
       ignore_errors: true
-      become: true
 
     - name: Remove binary directory
       file:

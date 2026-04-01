@@ -164,7 +164,7 @@ sandbox:
 
 **Shared Read-Only Base**:
 - ext4 rootfs (~500MB-1GB)
-- Content-addressed: `~/.vm0-runner/rootfs/{hash}/rootfs.ext4`
+- Content-addressed: `/var/lib/vm0-runner/rootfs/{hash}/rootfs.ext4`
 - Shared across all VMs via dm-snapshot
 - Built from Dockerfile via `build-rootfs.sh`
 

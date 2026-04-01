@@ -2,7 +2,7 @@
 //! and write matching entries to per-run network JSONL files.
 //!
 //! The iptables rule added by `sandbox-fc` logs non-TCP packets with prefix
-//! `VM0:<peer_ip>:`. This module tails `sudo dmesg -w`, parses those entries,
+//! `VM0:<peer_ip>:`. This module tails `dmesg -w`, parses those entries,
 //! looks up the network log path via an in-memory IP map, and appends a
 //! JSON line matching the format used by the mitmproxy addon.
 
@@ -45,7 +45,7 @@ impl KmsgHandle {
     }
 }
 
-/// Spawn a background async task that tails `sudo dmesg -w` and writes
+/// Spawn a background async task that tails `dmesg -w` and writes
 /// network log entries. Returns a handle; call [`KmsgHandle::stop`] during
 /// shutdown so the tokio runtime can exit cleanly.
 pub fn spawn(ip_log_map: IpLogMap) -> KmsgHandle {
@@ -59,20 +59,17 @@ pub fn spawn(ip_log_map: IpLogMap) -> KmsgHandle {
     KmsgHandle { cancel, task }
 }
 
-/// Async loop that reads kernel log messages via `sudo dmesg -w`.
+/// Async loop that reads kernel log messages via `dmesg -w`.
 ///
-/// Reading `/dev/kmsg` directly requires `CAP_SYSLOG` when
-/// `dmesg_restrict=1` (the default on hardened systems). Using `sudo dmesg -w`
-/// avoids this while following new messages in real-time. The runner already
-/// uses sudo for iptables and other privileged operations.
+/// The runner runs as root, so `dmesg -w` works directly without sudo.
 ///
 /// `dmesg -w` outputs lines like:
 /// ```text
 /// [12345.678901] VM0:10.200.0.2:IN=vm0-ve-00-00 OUT=ens5 SRC=10.200.0.2 DST=8.8.8.8 LEN=64 ...
 /// ```
 async fn run_async(ip_log_map: &IpLogMap, cancel: CancellationToken) -> std::io::Result<()> {
-    let mut child = tokio::process::Command::new("sudo")
-        .args(["dmesg", "-w"])
+    let mut child = tokio::process::Command::new("dmesg")
+        .args(["-w"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()?;
@@ -82,7 +79,7 @@ async fn run_async(ip_log_map: &IpLogMap, cancel: CancellationToken) -> std::io:
         .take()
         .ok_or_else(|| std::io::Error::other("failed to capture dmesg stdout"))?;
 
-    // Log stderr in a background task so sudo errors are visible.
+    // Log stderr in a background task so dmesg errors are visible.
     // Shares the cancel token so the task exits promptly on shutdown,
     // dropping the pipe and allowing the orphaned dmesg to receive SIGPIPE.
     if let Some(stderr) = child.stderr.take() {

@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 
-use crate::error::{RunnerError, RunnerResult};
+use crate::error::RunnerResult;
 
 /// Update a directory's mtime to now, so `runner gc` treats it as recently used.
 pub fn touch_mtime(dir: &Path) {
@@ -51,17 +51,15 @@ impl RunnerPaths {
     }
 }
 
-/// Paths rooted at ~/.vm0-runner/.
+/// Paths rooted at /var/lib/vm0-runner/.
 pub struct HomePaths {
     root: PathBuf,
 }
 
 impl HomePaths {
     pub fn new() -> RunnerResult<Self> {
-        let home = std::env::var("HOME")
-            .map_err(|_| RunnerError::Config("HOME environment variable not set".into()))?;
         Ok(Self {
-            root: PathBuf::from(home).join(".vm0-runner"),
+            root: PathBuf::from("/var/lib/vm0-runner"),
         })
     }
 

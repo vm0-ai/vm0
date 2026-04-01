@@ -88,7 +88,7 @@ pub fn attach(file_path: &Path, read_only: bool) -> Result<LoopDevice> {
     }
     args.push(&file_str);
 
-    let stdout = command::sudo("losetup", &args)?;
+    let stdout = command::run("losetup", &args)?;
     let path = PathBuf::from(&stdout);
 
     // Open immediately so the loop's kernel open count is > 0 before
@@ -112,7 +112,7 @@ pub fn attach(file_path: &Path, read_only: bool) -> Result<LoopDevice> {
 /// Detach a loop device by path (low-level helper).
 fn detach_by_path(loop_device: &Path) -> Result<()> {
     let dev_str = loop_device.to_string_lossy();
-    command::sudo("losetup", &["--detach", &dev_str])?;
+    command::run("losetup", &["--detach", &dev_str])?;
     Ok(())
 }
 

@@ -189,22 +189,16 @@ impl FirecrackerSandbox {
             .await
             .map_err(|e| SandboxError::StartFailed(format!("write config: {e}")))?;
 
-        let username = current_username()?;
         let api_sock = self.sock_paths.api_sock();
 
-        // Use `exec` to replace the bash process with firecracker, keeping all
-        // descendants in the same process group so `kill_process_group` can
-        // reach them (same pattern as start_from_snapshot and snapshot.rs).
-        let inner_cmd =
-            r#"exec ip netns exec "$1" sudo -u "$2" "$3" --config-file "$4" --api-sock "$5""#;
-
-        let mut child = tokio::process::Command::new("sudo")
-            .args(["bash", "-c", inner_cmd, "_"])
-            .arg(&self.network.name) // $1
-            .arg(&username) // $2
-            .arg(&self.factory_config.binary_path) // $3
-            .arg(self.sandbox_paths.config()) // $4
-            .arg(&api_sock) // $5
+        let mut child = tokio::process::Command::new("ip")
+            .args(["netns", "exec"])
+            .arg(&self.network.name)
+            .arg(&self.factory_config.binary_path)
+            .args(["--config-file"])
+            .arg(self.sandbox_paths.config())
+            .args(["--api-sock"])
+            .arg(&api_sock)
             .current_dir(self.sandbox_paths.workspace())
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
@@ -253,8 +247,6 @@ impl FirecrackerSandbox {
             .snapshot
             .as_ref()
             .ok_or_else(|| SandboxError::StartFailed("missing snapshot config".into()))?;
-
-        let username = current_username()?;
 
         // Ensure bind mount target directories exist.
         tokio::fs::create_dir_all(&snapshot.vsock_bind_dir)
@@ -306,18 +298,17 @@ impl FirecrackerSandbox {
         // namespace (e.g. from a crashed snapshot creation).
         // `test -e || touch` creates the file only if missing (first use
         // or after manual cleanup), never deleting an existing one.
-        let inner_cmd = r#"umount "$4" 2>/dev/null; test -e "$4" || touch "$4"; mount --bind "$1" "$2" && mount --bind "$3" "$4" && exec ip netns exec "$5" sudo -u "$6" "$7" --api-sock "$8""#;
+        let inner_cmd = r#"umount "$4" 2>/dev/null; test -e "$4" || touch "$4"; mount --bind "$1" "$2" && mount --bind "$3" "$4" && exec ip netns exec "$5" "$6" --api-sock "$7""#;
 
-        let mut child = tokio::process::Command::new("sudo")
-            .args(["unshare", "--mount", "bash", "-c", inner_cmd, "_"])
+        let mut child = tokio::process::Command::new("unshare")
+            .args(["--mount", "bash", "-c", inner_cmd, "_"])
             .arg(self.sock_paths.vsock_dir()) // $1
             .arg(&snapshot.vsock_bind_dir) // $2
             .arg(cow_device_path) // $3
             .arg(&snapshot.drive_bind_path) // $4
             .arg(&self.network.name) // $5
-            .arg(&username) // $6
-            .arg(&self.factory_config.binary_path) // $7
-            .arg(&api_sock) // $8
+            .arg(&self.factory_config.binary_path) // $6
+            .arg(&api_sock) // $7
             .current_dir(self.sandbox_paths.workspace())
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
@@ -455,11 +446,6 @@ fn monitor_process(
             }
         });
     }
-}
-
-/// Get the current username via `getuid()`.
-fn current_username() -> sandbox::Result<String> {
-    crate::process::current_username().map_err(|e| SandboxError::StartFailed(e.to_string()))
 }
 
 #[async_trait]
