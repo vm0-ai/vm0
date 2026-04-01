@@ -92,17 +92,13 @@ const AUTH_SECRET_PATTERN =
   /\$\{\{\s*secrets\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 
 /**
- * Matches `${{ basic(username, password) }}` where each side is secrets.X, vars.X, or empty.
- * Comma is always required to distinguish empty username from empty password.
+ * Create a fresh RegExp matching `${{ basic(username, password) }}` templates.
+ * Each side is secrets.X, vars.X, or empty; comma is always required.
+ * Returns a new instance each time to avoid `.lastIndex` state leaking
+ * between callers when the `/g` flag is used.
  * Groups: (1) ns1, (2) key1, (3) ns2, (4) key2 — all optional.
  *
  * Shared between build-time secret extraction and runtime template resolution.
- */
-/**
- * Create a fresh RegExp matching `${{ basic(username, password) }}` templates.
- * Returns a new instance each time to avoid `.lastIndex` state leaking between
- * callers when the `/g` flag is used.
- * Groups: (1) ns1, (2) key1, (3) ns2, (4) key2 — all optional.
  */
 export function basicAuthTemplateRe(): RegExp {
   return /\$\{\{\s*basic\(\s*(?:(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*))?\s*,\s*(?:(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*))?\s*\)\s*\}\}/g;
