@@ -286,7 +286,8 @@ export function FirewallPermissionsDrawer({
                 className={`flex items-center justify-between pb-3 -mx-6 px-6 pr-9 transition-shadow ${scrolled ? "shadow-[0_4px_8px_-4px_rgba(0,0,0,0.08)]" : ""}`}
               >
                 <span className="text-xs font-medium text-foreground">
-                  {readOnly ? "Permissions" : "Select all"} ({permissions.length})
+                  {readOnly ? "Permissions" : "Select all"} (
+                  {permissions.length})
                 </span>
                 {!readOnly && (
                   <PolicyPill
