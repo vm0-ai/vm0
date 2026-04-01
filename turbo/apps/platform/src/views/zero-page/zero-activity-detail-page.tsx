@@ -203,8 +203,8 @@ function ActivityHeaderCard({
             </Link>
           )}
         </div>
-        <div className="flex flex-wrap items-center gap-y-1 text-sm -mx-3">
-          <div className="flex items-center gap-1.5 px-3">
+        <div className="flex flex-wrap items-center gap-y-1 text-sm">
+          <div className="flex items-center gap-1.5 pr-3">
             <span className="text-muted-foreground shrink-0">Status</span>
             <StatusBadge status={status} zeroStyle />
           </div>
