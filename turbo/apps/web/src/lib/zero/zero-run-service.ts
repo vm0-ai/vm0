@@ -389,12 +389,15 @@ export async function createZeroRun(
       runtimeOrg: contextResult.runtimeOrg,
       resolvedModelProvider: contextResult.resolvedModelProvider,
       selectedModel: contextResult.selectedModel,
-      buildContextTimings: contextResult.timings,
+      timings: {
+        apiStart: record.apiStartTime,
+        authorize: record.authorizeTime,
+        transaction: record.transactionTime,
+        token: tokenTime,
+        resolveSourceDuration: contextResult.timings.resolveSourceAndOrg,
+        resolveSecretsDuration: contextResult.timings.resolveSecrets,
+      },
       orgId: record.orgId,
-      apiStartTime: record.apiStartTime,
-      authorizeTime: record.authorizeTime,
-      transactionTime: record.transactionTime,
-      tokenTime,
       queueDispatcher: dispatchQueuedZeroRun,
     });
 

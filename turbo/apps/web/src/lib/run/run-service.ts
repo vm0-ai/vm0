@@ -27,7 +27,7 @@ import { prepareForExecution } from "./context/execution-preparer";
 import { executeRunnerJob } from "./executors/runner-executor";
 import type { ExecutorResult, PreparedContext } from "./executors/types";
 import { generateSandboxToken } from "../auth/sandbox-token";
-import type { ExecutionContext, RuntimeOrg } from "./types";
+import type { ExecutionContext, RuntimeOrg, DispatchTimings } from "./types";
 import { buildZeroExecutionContext } from "../zero/build-zero-context";
 import { recordSandboxOperation } from "../metrics";
 import { extractTemplateVars } from "../config-validator";
@@ -593,13 +593,8 @@ export async function buildAndDispatchRun(opts: {
   runtimeOrg: RuntimeOrg;
   resolvedModelProvider?: string;
   selectedModel?: string;
-  buildContextTimings: { resolveSourceAndOrg: number; resolveSecrets: number };
-  // Timing anchors
-  apiStartTime: number;
+  timings: DispatchTimings;
   orgId: string;
-  authorizeTime: number;
-  transactionTime: number;
-  tokenTime: number;
   queueDispatcher?: (
     runId: string,
     createdAt: Date,
@@ -614,12 +609,8 @@ export async function buildAndDispatchRun(opts: {
     runtimeOrg,
     resolvedModelProvider,
     selectedModel,
-    buildContextTimings,
-    apiStartTime,
+    timings,
     orgId,
-    authorizeTime,
-    transactionTime,
-    tokenTime,
   } = opts;
 
   try {
@@ -661,23 +652,26 @@ export async function buildAndDispatchRun(opts: {
 
     // Record per-step timing metrics for latency diagnosis
     const steps = [
-      { op: "api_step_authorize", ms: authorizeTime - apiStartTime },
+      { op: "api_step_authorize", ms: timings.authorize - timings.apiStart },
       {
         op: "api_step_validate_and_insert",
-        ms: transactionTime - authorizeTime,
+        ms: timings.transaction - timings.authorize,
       },
-      { op: "api_step_callbacks_and_token", ms: tokenTime - transactionTime },
-      { op: "api_step_build_context", ms: buildContextTime - tokenTime },
+      {
+        op: "api_step_callbacks_and_token",
+        ms: timings.token - timings.transaction,
+      },
+      { op: "api_step_build_context", ms: buildContextTime - timings.token },
       { op: "api_step_prepare", ms: prepareTime - buildContextTime },
       { op: "api_step_dispatch", ms: dispatchTime - prepareTime },
       // Sub-step timings within buildExecutionContext
       {
         op: "api_build_resolve_source_and_org",
-        ms: buildContextTimings.resolveSourceAndOrg,
+        ms: timings.resolveSourceDuration,
       },
       {
         op: "api_build_resolve_secrets",
-        ms: buildContextTimings.resolveSecrets,
+        ms: timings.resolveSecretsDuration,
       },
       // Sub-step timings within prepareForExecution
       {
@@ -1082,12 +1076,15 @@ export async function createRun(
       runtimeOrg: contextResult.runtimeOrg,
       resolvedModelProvider: contextResult.resolvedModelProvider,
       selectedModel: contextResult.selectedModel,
-      buildContextTimings: contextResult.timings,
-      apiStartTime: record.apiStartTime,
+      timings: {
+        apiStart: record.apiStartTime,
+        authorize: record.authorizeTime,
+        transaction: record.transactionTime,
+        token: tokenTime,
+        resolveSourceDuration: contextResult.timings.resolveSourceAndOrg,
+        resolveSecretsDuration: contextResult.timings.resolveSecrets,
+      },
       orgId: record.orgId,
-      authorizeTime: record.authorizeTime,
-      transactionTime: record.transactionTime,
-      tokenTime,
     });
 
     return {
@@ -1177,12 +1174,15 @@ export async function dispatchQueuedRun(
       runtimeOrg: contextResult.runtimeOrg,
       resolvedModelProvider: contextResult.resolvedModelProvider,
       selectedModel: contextResult.selectedModel,
-      buildContextTimings: contextResult.timings,
-      apiStartTime,
+      timings: {
+        apiStart: apiStartTime,
+        authorize: authorizeTime,
+        transaction: transactionTime,
+        token: tokenTime,
+        resolveSourceDuration: contextResult.timings.resolveSourceAndOrg,
+        resolveSecretsDuration: contextResult.timings.resolveSecrets,
+      },
       orgId: params.orgId,
-      authorizeTime,
-      transactionTime,
-      tokenTime,
       queueDispatcher,
     });
   } catch (error) {
