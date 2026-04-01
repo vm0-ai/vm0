@@ -8,6 +8,7 @@ import {
   createTestZeroAgent,
   createTestSlackOrgInstallation,
   insertOrgMembersCacheEntry,
+  createTestSchedule,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -224,5 +225,59 @@ describe("POST /api/zero/integrations/slack/message", () => {
     const footerCtx = blocks[blocks.length - 1]!;
     expect(footerCtx.type).toBe("context");
     expect(footerCtx.elements![0]!.text).toBe("Sent via My Assistant");
+  });
+
+  it("appends schedule context in footer when run is triggered by a schedule", async () => {
+    const agentName = uniqueId("agent");
+    const { composeId } = await createTestCompose(agentName);
+    await createTestZeroAgent(user.orgId, agentName, {
+      displayName: "My Assistant",
+    });
+
+    // Create a schedule with a description
+    const schedule = await createTestSchedule(composeId, "daily-standup", {
+      description: "Daily standup summary",
+    });
+
+    // Create run linked to the schedule
+    const { runId } = await createTestRunInDb(user.userId, composeId, {
+      scheduleId: schedule.id,
+      triggerSource: "schedule",
+    });
+
+    mockClerk({ userId: null });
+    await insertOrgMembersCacheEntry({
+      orgId: user.orgId,
+      userId: user.userId,
+      role: "admin",
+    });
+    const token = await generateZeroToken(user.userId, runId, user.orgId);
+    await createTestSlackOrgInstallation({ orgId: user.orgId });
+
+    const request = createTestRequest(URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ channel: "C123456", text: "Standup results" }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+
+    const mockClient = vi.mocked(new WebClient(""));
+    const call = vi.mocked(mockClient.chat.postMessage).mock.calls[0]![0] as {
+      blocks: Array<{ type: string; elements?: Array<{ text: string }> }>;
+    };
+
+    const blocks = call.blocks;
+    expect(blocks).toHaveLength(3); // section + divider + context
+
+    const footerCtx = blocks[blocks.length - 1]!;
+    expect(footerCtx.type).toBe("context");
+    expect(footerCtx.elements![0]!.text).toBe(
+      'Sent via My Assistant · Triggered by schedule "Daily standup summary"',
+    );
   });
 });

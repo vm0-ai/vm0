@@ -4,6 +4,8 @@ import { initServices } from "../../../../../../src/lib/init-services";
 import { agentComposeVersions } from "../../../../../../src/db/schema/agent-compose";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { zeroAgents } from "../../../../../../src/db/schema/zero-agent";
+import { zeroRuns } from "../../../../../../src/db/schema/zero-run";
+import { zeroAgentSchedules } from "../../../../../../src/db/schema/zero-agent-schedule";
 import {
   isSlackPlatformError,
   postMessage,
@@ -34,6 +36,22 @@ async function resolveAgentLabel(runId: string): Promise<string | undefined> {
   return row?.displayName ?? row?.name;
 }
 
+/** Best-effort schedule description resolution from a run ID. */
+async function resolveScheduleLabel(
+  runId: string,
+): Promise<string | undefined> {
+  const [row] = await globalThis.services.db
+    .select({ description: zeroAgentSchedules.description })
+    .from(zeroRuns)
+    .innerJoin(
+      zeroAgentSchedules,
+      eq(zeroRuns.scheduleId, zeroAgentSchedules.id),
+    )
+    .where(eq(zeroRuns.id, runId))
+    .limit(1);
+  return row?.description ?? undefined;
+}
+
 const router = tsr.router(integrationsSlackMessageContract, {
   sendMessage: async ({ body, headers }) => {
     initServices();
@@ -44,17 +62,27 @@ const router = tsr.router(integrationsSlackMessageContract, {
     );
     if (isSlackClientError(slackCtx)) return slackCtx;
 
-    // Resolve agent name for "Sent via" footer (best-effort)
+    // Resolve agent name and schedule context for footer (best-effort)
     const agentLabel = slackCtx.authRunId
       ? await resolveAgentLabel(slackCtx.authRunId).catch(() => {
           return undefined;
         })
       : undefined;
+    const scheduleLabel = slackCtx.authRunId
+      ? await resolveScheduleLabel(slackCtx.authRunId).catch(() => {
+          return undefined;
+        })
+      : undefined;
 
-    // Append "Sent via <agent>" footer blocks when agent is known
+    // Build combined footer text from available context
+    const footerParts: string[] = [];
+    if (agentLabel) footerParts.push(`Sent via ${agentLabel}`);
+    if (scheduleLabel)
+      footerParts.push(`Triggered by schedule "${scheduleLabel}"`);
+
     let finalBlocks = body.blocks as (Block | KnownBlock)[] | undefined;
-    if (agentLabel) {
-      const footerBlocks = buildFooterBlocks(`Sent via ${agentLabel}`);
+    if (footerParts.length > 0) {
+      const footerBlocks = buildFooterBlocks(footerParts.join(" · "));
       if (finalBlocks && finalBlocks.length > 0) {
         finalBlocks = [...finalBlocks, ...footerBlocks];
       } else if (body.text) {
