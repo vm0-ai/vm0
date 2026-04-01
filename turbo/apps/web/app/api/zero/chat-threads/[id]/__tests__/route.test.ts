@@ -250,6 +250,48 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
     expect(listData.threads).toHaveLength(1);
     expect(listData.threads[0].title).toBe("After AI update");
   });
+
+  it("should return createdAt on unsaved (cancelled) runs", async () => {
+    // Create a thread
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: testComposeId,
+          title: "Cancelled run thread",
+        }),
+      }),
+    );
+    const { id: threadId } = await createRes.json();
+
+    // Create a cancelled run (no agentSessionId in result)
+    const { runId } = await createTestRunInDb(testUserId, testComposeId, {
+      status: "cancelled",
+      prompt: "This was cancelled",
+    });
+
+    // Link run to thread
+    await addRunToThread(threadId, runId, testUserId);
+
+    // GET thread detail
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}`,
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.unsavedRuns).toHaveLength(1);
+    expect(data.unsavedRuns[0].runId).toBe(runId);
+    expect(data.unsavedRuns[0].status).toBe("cancelled");
+    expect(data.unsavedRuns[0].createdAt).toBeDefined();
+    // Verify it's a valid ISO 8601 date string
+    expect(new Date(data.unsavedRuns[0].createdAt).toISOString()).toBe(
+      data.unsavedRuns[0].createdAt,
+    );
+  });
 });
 
 describe("DELETE /api/zero/chat-threads/:id - Delete Thread", () => {

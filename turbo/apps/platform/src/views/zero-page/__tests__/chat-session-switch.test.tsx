@@ -55,6 +55,7 @@ describe("chat session switch", () => {
               status: "running",
               prompt: "Active task prompt",
               error: null,
+              createdAt: "2026-03-10T00:00:01Z",
             },
           ],
           createdAt: "2026-03-10T00:00:00Z",

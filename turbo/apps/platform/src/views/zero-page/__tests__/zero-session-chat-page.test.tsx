@@ -103,6 +103,7 @@ describe("provider incompatibility error", () => {
               prompt: "hello",
               error:
                 "Cannot continue session: this session was created with Moonshot (Kimi) and cannot be continued with Anthropic API Key.",
+              createdAt: "2026-03-10T00:00:00Z",
             },
           ],
           createdAt: "2026-03-10T00:00:00Z",
@@ -137,6 +138,7 @@ describe("provider incompatibility error", () => {
               status: "failed",
               prompt: "hello",
               error: "Invalid signature in thinking block",
+              createdAt: "2026-03-10T00:00:00Z",
             },
           ],
           createdAt: "2026-03-10T00:00:00Z",
@@ -199,6 +201,7 @@ describe("chat message activity line", () => {
           status: "running",
           prompt: "Do something",
           error: null,
+          createdAt: "2026-03-10T00:00:00Z",
         },
       ],
     });
@@ -238,6 +241,7 @@ describe("chat message activity line", () => {
           status: "running",
           prompt: "Do something else",
           error: null,
+          createdAt: "2026-03-10T00:00:00Z",
         },
       ],
     });

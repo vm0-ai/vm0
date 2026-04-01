@@ -76,6 +76,7 @@ export interface UserChatMessage {
   role: "user";
   content: string;
   attachments?: ZeroChatMessageAttachment[];
+  createdAt?: string;
 }
 
 export interface AssistantChatMessage {
@@ -90,6 +91,7 @@ export interface AssistantChatMessage {
   runLoop?: ReturnType<typeof createRunLoop>;
   summaries$?: Computed<Promise<string[]>>;
   beginLoop$?: ReturnType<typeof createRunLoop>["beginLoop$"];
+  createdAt?: string;
 }
 
 export type ZeroChatMessage = UserChatMessage | AssistantChatMessage;
@@ -388,6 +390,7 @@ interface ChatThread {
     status: string;
     prompt: string;
     error: string | null;
+    createdAt: string;
   }[];
   isLegacySession: boolean;
 }
@@ -486,6 +489,7 @@ function unsavedRunsToMessages(unsavedRuns: ChatThread["unsavedRuns"]): {
         id: crypto.randomUUID(),
         role: "user",
         content: run.prompt,
+        createdAt: run.createdAt,
       });
       messages.push({
         id: crypto.randomUUID(),
@@ -499,6 +503,7 @@ function unsavedRunsToMessages(unsavedRuns: ChatThread["unsavedRuns"]): {
           ? "Run cancelled."
           : (run.error ??
             "Something went wrong. Check the activity logs for details."),
+        createdAt: run.createdAt,
       });
     } else {
       const { userMessage, assistantMessage } = createActiveRunMessage(
@@ -598,6 +603,7 @@ const currentChatMessages$ = computed(
           ...base,
           role: "user" as const,
           content: m.content,
+          createdAt: m.createdAt,
         };
       }
 
@@ -609,6 +615,7 @@ const currentChatMessages$ = computed(
         }),
         legacyRunId: m.runId,
         ...(m.error ? { status: "failed" as const, error: m.error } : {}),
+        createdAt: m.createdAt,
       };
     });
   },
@@ -627,8 +634,15 @@ const chatSessionSnapshot$ = computed(
       lastActiveRunId: legacyLastActiveRunId,
     } = unsavedRunsToMessages(thread.unsavedRuns);
 
+    const allMessages = [...(await get(currentChatMessages$)), ...runMessages];
+    allMessages.sort((a, b) => {
+      const aTime = a.createdAt ?? "";
+      const bTime = b.createdAt ?? "";
+      return aTime.localeCompare(bTime);
+    });
+
     return {
-      messages: [...(await get(currentChatMessages$)), ...runMessages],
+      messages: allMessages,
       activeRunMessages,
       agentId: thread.agentId,
       lastActiveRunId: legacyLastActiveRunId,

@@ -64,6 +64,7 @@ export function mockChatLifecycle(options?: {
     status: string;
     prompt: string;
     error: string | null;
+    createdAt: string;
   }[];
   threadTitle?: string | null;
   onRunCreate?: () => void;
@@ -95,6 +96,7 @@ export function mockChatLifecycle(options?: {
                 status: runStatus,
                 prompt: runPrompt ?? "Hello",
                 error: runError,
+                createdAt: "2026-03-10T00:00:00Z",
               },
             ]
           : []);

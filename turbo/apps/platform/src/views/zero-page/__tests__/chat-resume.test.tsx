@@ -28,6 +28,7 @@ describe("chat resume", () => {
           status: "running",
           prompt: "Follow up question",
           error: null,
+          createdAt: "2026-03-10T00:00:02Z",
         },
       ],
     });
@@ -71,6 +72,7 @@ describe("chat resume", () => {
           status: "running",
           prompt: "Active task",
           error: null,
+          createdAt: "2026-03-10T00:00:01Z",
         },
       ],
     });
@@ -104,6 +106,7 @@ describe("chat resume", () => {
           status: "running",
           prompt: "Active task",
           error: null,
+          createdAt: "2026-03-10T00:00:01Z",
         },
       ],
     });

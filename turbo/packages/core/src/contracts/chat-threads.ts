@@ -44,6 +44,7 @@ const unsavedRunSchema = z.object({
   status: z.string(),
   prompt: z.string(),
   error: z.string().nullable(),
+  createdAt: z.string(),
 });
 
 const chatThreadDetailSchema = z.object({
