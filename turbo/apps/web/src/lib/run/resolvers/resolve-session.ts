@@ -4,7 +4,6 @@ import {
   agentComposeVersions,
 } from "../../../db/schema/agent-compose";
 import { agentRuns } from "../../../db/schema/agent-run";
-import { zeroRuns } from "../../../db/schema/zero-run";
 import { notFound, unauthorized, badRequest } from "../../errors";
 import { logger } from "../../logger";
 import { getAgentSessionWithConversation } from "../../agent-session";
@@ -107,14 +106,12 @@ export async function resolveSession(
       conversation.cliAgentSessionHistoryHash,
       conversation.cliAgentSessionHistory,
     ),
-    // Last run vars and model provider as fallback for continue operations
+    // Last run vars as fallback for continue operations
     globalThis.services.db
       .select({
         vars: agentRuns.vars,
-        modelProvider: zeroRuns.modelProvider,
       })
       .from(agentRuns)
-      .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
       .where(eq(agentRuns.id, conversation.runId))
       .limit(1),
   ]);
@@ -139,6 +136,6 @@ export async function resolveSession(
     vars: lastRunVars,
     volumeVersions: undefined,
     buildResumeArtifact: !!session.artifactName,
-    originalModelProvider: lastRun?.modelProvider ?? undefined,
+    previousRunId: conversation.runId,
   };
 }

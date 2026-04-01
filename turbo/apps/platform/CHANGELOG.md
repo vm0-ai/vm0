@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.177.0](https://github.com/vm0-ai/vm0/compare/app-v0.176.0...app-v0.177.0) (2026-04-01)
+
+
+### Features
+
+* **platform:** replace clerk org switcher with zero-native component ([#7561](https://github.com/vm0-ai/vm0/issues/7561)) ([f799b19](https://github.com/vm0-ai/vm0/commit/f799b1973332c14aae140097c2770ab68ea5c7f5))
+
 ## [0.176.0](https://github.com/vm0-ai/vm0/compare/app-v0.175.1...app-v0.176.0) (2026-04-01)
 
 

@@ -19,6 +19,6 @@ export interface ConversationResolution {
   vars?: Record<string, string>;
   volumeVersions?: Record<string, string>;
   buildResumeArtifact: boolean;
-  /** Model provider from the previous run (null for runs before provider tracking) */
-  originalModelProvider?: string;
+  /** Run ID from the previous conversation (used by zero layer for provider compatibility) */
+  previousRunId?: string;
 }

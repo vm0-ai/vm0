@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.2.1...nbd-cow-v0.2.2) (2026-04-01)
+
+
+### Bug Fixes
+
+* **nbd-cow:** guard disconnect against device index recycling by other runners ([#7581](https://github.com/vm0-ai/vm0/issues/7581)) ([ed9e572](https://github.com/vm0-ai/vm0/commit/ed9e572a80514236aada53eb68b2e9ad069ec7d2))
+
 ## [0.2.1](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.2.0...nbd-cow-v0.2.1) (2026-04-01)
 
 

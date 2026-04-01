@@ -4,10 +4,15 @@
 //! kernel's NBD generic netlink interface. This is the modern approach (vs ioctl)
 //! and supports multi-connection.
 //!
-//! A `NBD_ATTR_DEAD_CONN_TIMEOUT` of 30 seconds is set on every connect so
-//! I/O on dead devices fails after 30s instead of hanging forever. Note: this
-//! does NOT auto-disconnect the device — explicit `disconnect()` is still
-//! required (handled by `Drop` normally, or by `runner gc` after SIGKILL).
+//! Timeouts set on every connect:
+//! - `NBD_ATTR_TIMEOUT = 30s`: per-request timeout. On expiry the kernel
+//!   retries on another connection (multi-conn). Enables the dead-connection
+//!   auto-disconnect path in the kernel's `nbd_xmit_timeout`.
+//! - `NBD_ATTR_DEAD_CONN_TIMEOUT = 30s`: after all connections are dead for
+//!   this long, the kernel auto-disconnects the device. Combined with the
+//!   per-request timeout, orphaned devices (SIGKILL, no Drop) are reclaimed
+//!   by the kernel within ~60s if there is pending I/O. Idle orphans still
+//!   require `runner gc`.
 
 use std::os::unix::io::{FromRawFd, OwnedFd};
 use std::path::Path;
@@ -24,6 +29,7 @@ const NBD_ATTR_SIZE_BYTES: u16 = 2;
 const NBD_ATTR_BLOCK_SIZE_BYTES: u16 = 3;
 const NBD_ATTR_SERVER_FLAGS: u16 = 5;
 const NBD_ATTR_SOCKETS: u16 = 7;
+const NBD_ATTR_TIMEOUT: u16 = 4;
 const NBD_ATTR_DEAD_CONN_TIMEOUT: u16 = 8;
 
 // NBD socket item attribute types (nested inside NBD_ATTR_SOCKETS)
@@ -70,7 +76,7 @@ pub fn create_socketpair() -> Result<(OwnedFd, OwnedFd)> {
 ///
 /// Falls back to 256 when the sysfs parameter is unreadable (module not loaded).
 /// The actual limit is set by ansible (`modprobe nbd nbds_max=4096`).
-fn nbds_max() -> u32 {
+pub fn nbds_max() -> u32 {
     std::fs::read_to_string("/sys/module/nbd/parameters/nbds_max")
         .ok()
         .and_then(|s| s.trim().parse().ok())
@@ -128,8 +134,13 @@ pub fn find_and_connect(client_fds: &[OwnedFd], size: u64, block_size: u64) -> R
             &block_size.to_ne_bytes(),
         ));
         attrs.extend_from_slice(&build_nla(NBD_ATTR_SERVER_FLAGS, &flags.to_ne_bytes()));
-        // Fail I/O after 30s on dead sockets (SIGKILL where Drop can't run).
-        // Does NOT auto-disconnect — `runner gc` handles orphan cleanup.
+        // Per-request timeout: on expiry, kernel retries via another connection.
+        // Also arms the blk-mq timer that drives dead-connection detection.
+        let request_timeout: u64 = 30;
+        attrs.extend_from_slice(&build_nla(NBD_ATTR_TIMEOUT, &request_timeout.to_ne_bytes()));
+        // Dead-connection timeout: if ALL connections are dead for this long
+        // AND a request times out, the kernel auto-disconnects the device.
+        // Handles orphan cleanup after SIGKILL (where Drop can't run).
         let dead_conn_timeout: u64 = 30;
         attrs.extend_from_slice(&build_nla(
             NBD_ATTR_DEAD_CONN_TIMEOUT,

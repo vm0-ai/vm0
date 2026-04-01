@@ -91,7 +91,7 @@ import {
   setManagePinnedDialogOpen$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { VM0ClerkProvider } from "../clerk/clerk-provider.tsx";
-import { ClerkOrgSwitcher } from "./clerk-org-switcher.tsx";
+import { ZeroOrgSwitcher } from "./zero-org-switcher.tsx";
 import {
   AgentAvatarImg,
   useAgentAvatar,
@@ -1346,7 +1346,7 @@ export function ZeroSidebar() {
         <div className="shrink-0 px-2 pt-1.5 pb-0">
           <div className="flex items-center justify-between gap-2 rounded-lg py-0.5">
             <div className="min-w-0 flex-1">
-              <ClerkOrgSwitcher />
+              <ZeroOrgSwitcher />
             </div>
             <TooltipProvider delayDuration={200}>
               <Tooltip>

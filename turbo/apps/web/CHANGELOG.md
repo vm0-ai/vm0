@@ -1,5 +1,13 @@
 # Changelog
 
+## [12.183.1](https://github.com/vm0-ai/vm0/compare/web-v12.183.0...web-v12.183.1) (2026-04-01)
+
+
+### Refactoring
+
+* move model provider resolution from infra to zero layer ([#7594](https://github.com/vm0-ai/vm0/issues/7594)) ([c0137b8](https://github.com/vm0-ai/vm0/commit/c0137b80238161c7504199aac4e5c400b390175b)), closes [#7591](https://github.com/vm0-ai/vm0/issues/7591)
+* remove redundant ?org= query param from firewall-access-requests and skills routes ([#7587](https://github.com/vm0-ai/vm0/issues/7587)) ([d2a61d2](https://github.com/vm0-ai/vm0/commit/d2a61d220db70779941fede8e1258dbc5e083405)), closes [#7585](https://github.com/vm0-ai/vm0/issues/7585)
+
 ## [12.183.0](https://github.com/vm0-ai/vm0/compare/web-v12.182.0...web-v12.183.0) (2026-04-01)
 
 
