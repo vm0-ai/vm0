@@ -69,10 +69,49 @@ function scheduleEntryLabel(entry: {
   return "Schedule";
 }
 
+const teamDetailBreadcrumb$ = computed(
+  async (get): Promise<MobileBreadcrumb> => {
+    const params = get(pathParams$) as Params;
+    const agentId = getStringParam(params, "agentId");
+    if (agentId) {
+      const agentsList = await get(agents$);
+      const agent = agentsList.find((a) => {
+        return a.id === agentId;
+      });
+      if (agent) {
+        return {
+          section: "Agents",
+          sectionPath: "/team" as RoutePath,
+          name: agent.displayName ?? undefined,
+        };
+      }
+    }
+    return { section: "Agents", sectionPath: "/team" as RoutePath };
+  },
+);
+
+const activityDetailBreadcrumb$ = computed(
+  async (get): Promise<MobileBreadcrumb> => {
+    const params = get(pathParams$) as Params;
+    const runId = getStringParam(params, "runId");
+    if (runId) {
+      const detail = await get(zeroActivityDetail$);
+      if (detail && detail.id === runId) {
+        return {
+          section: "Activity logs",
+          sectionPath: "/activity" as RoutePath,
+          name: detail.displayName ?? undefined,
+        };
+      }
+    }
+    return { section: "Activity logs", sectionPath: "/activity" as RoutePath };
+  },
+);
+
 /**
  * Provides breadcrumb data for the MobileTopBar.
  * For chat: resolves the active agent name and avatar.
- * For schedule/activity detail pages: derives a sub-page name from signals.
+ * For schedule/activity/team detail pages: derives a sub-page name from signals.
  * For other sections: returns a static label so the top bar has context on mobile
  * (page-level breadcrumbs use `hidden md:flex` and are invisible on mobile).
  */
@@ -99,29 +138,18 @@ export const mobileBreadcrumb$ = computed(
       return { section: "Scheduled", sectionPath: "/schedule" as RoutePath };
     }
 
+    if (activeId === "team") {
+      return await get(teamDetailBreadcrumb$);
+    }
+
     if (activeId === "activity") {
-      const runId = getStringParam(params, "runId");
-      if (runId) {
-        const detail = await get(zeroActivityDetail$);
-        if (detail && detail.id === runId) {
-          return {
-            section: "Activity logs",
-            sectionPath: "/activity" as RoutePath,
-            name: detail.displayName ?? undefined,
-          };
-        }
-      }
-      return {
-        section: "Activity logs",
-        sectionPath: "/activity" as RoutePath,
-      };
+      return await get(activityDetailBreadcrumb$);
     }
 
     // Static labels for other non-chat sections
     const nonChatSections: Partial<
       Record<string, { label: string; path: RoutePath }>
     > = {
-      team: { label: "Agents", path: "/team" as RoutePath },
       works: { label: "Works", path: "/works" as RoutePath },
       usage: { label: "Usage", path: "/usage" as RoutePath },
       preferences: { label: "Preferences", path: "/preferences" as RoutePath },
