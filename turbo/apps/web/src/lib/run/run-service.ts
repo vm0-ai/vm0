@@ -598,13 +598,7 @@ export async function buildAndDispatchRun(opts: {
     params: CreateRunParams,
   ) => Promise<void>;
 }): Promise<{ status: RunStatus; sandboxId?: string }> {
-  const {
-    runId,
-    createdAt,
-    context,
-    timings,
-    orgId,
-  } = opts;
+  const { runId, createdAt, context, timings, orgId } = opts;
 
   try {
     const buildContextTime = Date.now();
