@@ -84,11 +84,17 @@
           if ! grep -q '^[0-9]' /sys/block/nbd*/pid 2>/dev/null; then
             modprobe -r nbd && modprobe nbd nbds_max=$WANT
           else
-            echo "WARNING: nbd module has wrong nbds_max but devices are in use, skipping reload" >&2
+            echo "nbd module has wrong nbds_max but devices are in use, skipping reload"
           fi
         fi
       become: true
       changed_when: false
+      register: nbd_load
+
+    - name: Warn if nbd module reload was skipped
+      debug:
+        msg: "{{ nbd_load.stdout }}"
+      when: nbd_load.stdout | default('') | length > 0
 
     # When groups change, the current SSH session still has the old group list.
     # Reset the connection so subsequent playbooks (deploy-runner) pick up the

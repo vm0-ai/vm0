@@ -52,6 +52,9 @@ const CTRL_ATTR_FAMILY_ID: u16 = 1;
 const NLM_F_REQUEST: u16 = 1;
 const NLM_F_ACK: u16 = 4;
 
+/// Timeout (seconds) used for both `NBD_ATTR_TIMEOUT` and `NBD_ATTR_DEAD_CONN_TIMEOUT`.
+const TIMEOUT_SECS: u64 = 30;
+
 const NLMSG_ERROR: u16 = 2;
 
 /// Create a Unix socketpair for NBD communication.
@@ -136,15 +139,13 @@ pub fn find_and_connect(client_fds: &[OwnedFd], size: u64, block_size: u64) -> R
         attrs.extend_from_slice(&build_nla(NBD_ATTR_SERVER_FLAGS, &flags.to_ne_bytes()));
         // Per-request timeout: on expiry, kernel retries via another connection.
         // Also arms the blk-mq timer that drives dead-connection detection.
-        let request_timeout: u64 = 30;
-        attrs.extend_from_slice(&build_nla(NBD_ATTR_TIMEOUT, &request_timeout.to_ne_bytes()));
+        attrs.extend_from_slice(&build_nla(NBD_ATTR_TIMEOUT, &TIMEOUT_SECS.to_ne_bytes()));
         // Dead-connection timeout: if ALL connections are dead for this long
         // AND a request times out, the kernel auto-disconnects the device.
         // Handles orphan cleanup after SIGKILL (where Drop can't run).
-        let dead_conn_timeout: u64 = 30;
         attrs.extend_from_slice(&build_nla(
             NBD_ATTR_DEAD_CONN_TIMEOUT,
-            &dead_conn_timeout.to_ne_bytes(),
+            &TIMEOUT_SECS.to_ne_bytes(),
         ));
         attrs.extend_from_slice(&sockets_nla);
 
