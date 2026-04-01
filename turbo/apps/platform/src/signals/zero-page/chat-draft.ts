@@ -133,18 +133,7 @@ function createDraftSignals(): DraftSignals {
         return [...prev, attachment];
       });
 
-      try {
-        await set(attachment.upload$, signal);
-      } catch (error) {
-        throwIfAbort(error);
-        L.error("Upload failed:", error);
-        set(attachment.cancel$);
-        set(internalAttachments$, (prev) => {
-          return prev.filter((a) => {
-            return a !== attachment;
-          });
-        });
-      }
+      await set(attachment.upload$, signal);
     },
   );
 

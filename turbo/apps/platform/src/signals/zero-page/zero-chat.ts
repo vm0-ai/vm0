@@ -693,14 +693,7 @@ const internalCreateNewChatSession$ = command(
     }
 
     const createClient = get(zeroClient$);
-    let thread;
-    try {
-      thread = await createChatThread(createClient, resolvedComposeId);
-    } catch (error) {
-      throwIfAbort(error);
-      toast.error("Failed to create new chat session");
-      return;
-    }
+    const thread = await createChatThread(createClient, resolvedComposeId);
 
     set(reloadChatThreads$);
     set(navigateToChat$, thread.id);
@@ -817,40 +810,30 @@ export const sendNewThreadMessage$ = command(
     const { fullPrompt } = await set(prepareUserMessage$, prompt, signal);
     signal.throwIfAborted();
 
-    try {
-      const modelProvider = resolveModelProvider(options?.modelProvider);
-      const client = get(zeroClient$)(chatMessagesContract);
-      const result = await client.send({
-        body: {
-          agentId,
-          prompt: fullPrompt,
-          ...(modelProvider && { modelProvider }),
-        },
-      });
-      signal.throwIfAborted();
+    const modelProvider = resolveModelProvider(options?.modelProvider);
+    const client = get(zeroClient$)(chatMessagesContract);
+    const result = await client.send({
+      body: {
+        agentId,
+        prompt: fullPrompt,
+        ...(modelProvider && { modelProvider }),
+      },
+    });
+    signal.throwIfAborted();
 
-      if (result.status !== 201) {
-        if (
-          result.status === 400 ||
-          result.status === 403 ||
-          result.status === 404
-        ) {
-          handleSendError(result);
-        }
-        throw new Error(`Failed to send message (${result.status})`);
+    if (result.status !== 201) {
+      if (
+        result.status === 400 ||
+        result.status === 403 ||
+        result.status === 404
+      ) {
+        handleSendError(result);
       }
-      set(reloadChatThreads$);
-
-      set(navigateToChat$, result.body.threadId);
-    } catch (error) {
-      throwIfAbort(error);
-      // Clear optimistic messages so stale user input does not persist in the UI
-      set(internalLocalMessages$, []);
-      toast.error(
-        error instanceof Error ? error.message : "Failed to send message",
-      );
-      throw error;
+      throw new Error(`Failed to send message (${result.status})`);
     }
+    set(reloadChatThreads$);
+
+    set(navigateToChat$, result.body.threadId);
   },
 );
 
@@ -873,65 +856,55 @@ export const sendExistingThreadMessage$ = command(
     const { fullPrompt } = await set(prepareUserMessage$, prompt, signal);
     signal.throwIfAborted();
 
-    try {
-      const modelProvider = resolveModelProvider(options?.modelProvider);
-      const client = get(zeroClient$)(chatMessagesContract);
-      const result = await client.send({
-        body: {
-          agentId,
-          prompt: fullPrompt,
-          threadId,
-          ...(modelProvider && { modelProvider }),
-        },
-      });
-      signal.throwIfAborted();
+    const modelProvider = resolveModelProvider(options?.modelProvider);
+    const client = get(zeroClient$)(chatMessagesContract);
+    const result = await client.send({
+      body: {
+        agentId,
+        prompt: fullPrompt,
+        threadId,
+        ...(modelProvider && { modelProvider }),
+      },
+    });
+    signal.throwIfAborted();
 
-      if (result.status !== 201) {
-        if (
-          result.status === 400 ||
-          result.status === 403 ||
-          result.status === 404
-        ) {
-          handleSendError(result);
-        }
-        throw new Error(`Failed to send message (${result.status})`);
+    if (result.status !== 201) {
+      if (
+        result.status === 400 ||
+        result.status === 403 ||
+        result.status === 404
+      ) {
+        handleSendError(result);
       }
-
-      const { runId } = result.body;
-
-      set(internalReloadChatThreads$, (n) => {
-        return n + 1;
-      });
-      set(reloadCurrentThread$, (n) => {
-        return n + 1;
-      });
-
-      const { assistantMessage } = createActiveRunMessage(runId, prompt);
-      set(internalLocalMessages$, (prev) => {
-        return [...prev, assistantMessage];
-      });
-
-      const runLoop = assistantMessage.runLoop;
-      if (!runLoop) {
-        return;
-      }
-
-      await set(runLoop.beginLoop$, signal);
-      set(internalReloadChatThreads$, (n) => {
-        return n + 1;
-      });
-      set(reloadCurrentThread$, (n) => {
-        return n + 1;
-      });
-    } catch (error) {
-      throwIfAbort(error);
-      // Clear optimistic messages so stale user input does not persist in the UI
-      set(internalLocalMessages$, []);
-      toast.error(
-        error instanceof Error ? error.message : "Failed to send message",
-      );
-      throw error;
+      throw new Error(`Failed to send message (${result.status})`);
     }
+
+    const { runId } = result.body;
+
+    set(internalReloadChatThreads$, (n) => {
+      return n + 1;
+    });
+    set(reloadCurrentThread$, (n) => {
+      return n + 1;
+    });
+
+    const { assistantMessage } = createActiveRunMessage(runId, prompt);
+    set(internalLocalMessages$, (prev) => {
+      return [...prev, assistantMessage];
+    });
+
+    const runLoop = assistantMessage.runLoop;
+    if (!runLoop) {
+      return;
+    }
+
+    await set(runLoop.beginLoop$, signal);
+    set(internalReloadChatThreads$, (n) => {
+      return n + 1;
+    });
+    set(reloadCurrentThread$, (n) => {
+      return n + 1;
+    });
   },
 );
 
