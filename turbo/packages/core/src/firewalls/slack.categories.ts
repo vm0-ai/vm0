@@ -81,7 +81,7 @@ const slackCategories: Record<
   "channels:write.topic": "Write",
   "datastore:write": "Write",
   "dnd:write": "Write",
-  "files:write": "Write",
+  "files:write": "Send",
   "groups:write": "Write",
   "groups:write.invites": "Write",
   "groups:write.topic": "Write",
