@@ -94,7 +94,7 @@ import { POST as storageCommitRoute } from "../../app/api/storages/commit/route"
 import { POST as setSecretRoute } from "../../app/api/zero/secrets/route";
 import { POST as setVariableRoute } from "../../app/api/zero/variables/route";
 
-import { GET as connectorCallbackRoute } from "../../app/api/connectors/[type]/callback/route";
+import { GET as connectorCallbackRoute } from "../../app/api/zero/connectors/[type]/callback/route";
 import { composeJobs } from "../db/schema/compose-job";
 import { connectors } from "../db/schema/connector";
 import { connectorSessions } from "../db/schema/connector-session";
@@ -1623,7 +1623,7 @@ export async function insertStalePendingRun(
  * Create a test connector via API routes.
  *
  * - api-token: calls POST /api/connectors/:type/token
- * - oauth: calls GET /api/connectors/:type/callback with MSW mocks
+ * - oauth: calls GET /api/zero/connectors/:type/callback with MSW mocks
  *
  * @param options - Connector configuration
  */
@@ -1815,7 +1815,7 @@ const OAUTH_PROVIDER_MOCKS: Record<
 };
 
 /**
- * Create an OAuth connector via GET /api/connectors/:type/callback with MSW mocks.
+ * Create an OAuth connector via GET /api/zero/connectors/:type/callback with MSW mocks.
  */
 async function createTestOAuthConnector(options?: {
   type?: ConnectorType;
@@ -1854,7 +1854,9 @@ async function createTestOAuthConnector(options?: {
 
   // Create callback request with proper cookies
   const state = "test-oauth-state";
-  const url = new URL(`http://localhost:3000/api/connectors/${type}/callback`);
+  const url = new URL(
+    `http://localhost:3000/api/zero/connectors/${type}/callback`,
+  );
   url.searchParams.set("code", "test-code");
   url.searchParams.set("state", state);
 

@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET } from "../route";
-import { createTestRequest } from "../../../../../../src/__tests__/api-test-helpers";
-import { testContext } from "../../../../../../src/__tests__/test-helpers";
-import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
-import { reloadEnv } from "../../../../../../src/env";
+import { createTestRequest } from "../../../../../../../src/__tests__/api-test-helpers";
+import { testContext } from "../../../../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
+import { reloadEnv } from "../../../../../../../src/env";
 
 const context = testContext();
 
-describe("GET /api/connectors/:type/authorize - OAuth Authorize", () => {
+describe("GET /api/zero/connectors/:type/authorize - OAuth Authorize", () => {
   beforeEach(() => {
     context.setupMocks();
     // Set required OAuth environment variables
@@ -32,7 +32,7 @@ describe("GET /api/connectors/:type/authorize - OAuth Authorize", () => {
     await context.setupUser();
 
     const request = createTestRequest(
-      "http://localhost:3000/api/connectors/invalid/authorize",
+      "http://localhost:3000/api/zero/connectors/invalid/authorize",
     );
     const response = await GET(request, {
       params: Promise.resolve({ type: "invalid" }),
@@ -47,7 +47,7 @@ describe("GET /api/connectors/:type/authorize - OAuth Authorize", () => {
     mockClerk({ userId: null });
 
     const request = createTestRequest(
-      "http://localhost:3000/api/connectors/github/authorize",
+      "http://localhost:3000/api/zero/connectors/github/authorize",
     );
     const response = await GET(request, {
       params: Promise.resolve({ type: "github" }),
@@ -63,7 +63,7 @@ describe("GET /api/connectors/:type/authorize - OAuth Authorize", () => {
     await context.setupUser();
 
     const request = createTestRequest(
-      "http://localhost:3000/api/connectors/github/authorize",
+      "http://localhost:3000/api/zero/connectors/github/authorize",
     );
     const response = await GET(request, {
       params: Promise.resolve({ type: "github" }),
@@ -82,7 +82,7 @@ describe("GET /api/connectors/:type/authorize - OAuth Authorize", () => {
     await context.setupUser();
 
     const request = createTestRequest(
-      "http://localhost:3000/api/connectors/github/authorize",
+      "http://localhost:3000/api/zero/connectors/github/authorize",
     );
     const response = await GET(request, {
       params: Promise.resolve({ type: "github" }),
@@ -101,7 +101,7 @@ describe("GET /api/connectors/:type/authorize - OAuth Authorize", () => {
     await context.setupUser();
 
     const request = createTestRequest(
-      "http://localhost:3000/api/connectors/github/authorize?session=test-session-id",
+      "http://localhost:3000/api/zero/connectors/github/authorize?session=test-session-id",
     );
     const response = await GET(request, {
       params: Promise.resolve({ type: "github" }),
@@ -119,7 +119,7 @@ describe("GET /api/connectors/:type/authorize - OAuth Authorize", () => {
     await context.setupUser();
 
     const request = createTestRequest(
-      "http://localhost:3000/api/connectors/github/authorize",
+      "http://localhost:3000/api/zero/connectors/github/authorize",
     );
     const response = await GET(request, {
       params: Promise.resolve({ type: "github" }),
@@ -137,7 +137,7 @@ describe("GET /api/connectors/:type/authorize - OAuth Authorize", () => {
       await context.setupUser();
 
       const request = createTestRequest(
-        "http://localhost:3000/api/connectors/slack/authorize",
+        "http://localhost:3000/api/zero/connectors/slack/authorize",
       );
       const response = await GET(request, {
         params: Promise.resolve({ type: "slack" }),
@@ -157,7 +157,7 @@ describe("GET /api/connectors/:type/authorize - OAuth Authorize", () => {
       await context.setupUser();
 
       const request = createTestRequest(
-        "http://localhost:3000/api/connectors/slack/authorize",
+        "http://localhost:3000/api/zero/connectors/slack/authorize",
       );
       const response = await GET(request, {
         params: Promise.resolve({ type: "slack" }),
@@ -175,7 +175,7 @@ describe("GET /api/connectors/:type/authorize - OAuth Authorize", () => {
       await context.setupUser();
 
       const request = createTestRequest(
-        "http://localhost:3000/api/connectors/docusign/authorize",
+        "http://localhost:3000/api/zero/connectors/docusign/authorize",
       );
       const response = await GET(request, {
         params: Promise.resolve({ type: "docusign" }),
@@ -197,7 +197,7 @@ describe("GET /api/connectors/:type/authorize - OAuth Authorize", () => {
       await context.setupUser();
 
       const request = createTestRequest(
-        "http://localhost:3000/api/connectors/mercury/authorize",
+        "http://localhost:3000/api/zero/connectors/mercury/authorize",
       );
       const response = await GET(request, {
         params: Promise.resolve({ type: "mercury" }),
@@ -219,7 +219,7 @@ describe("GET /api/connectors/:type/authorize - OAuth Authorize", () => {
       await context.setupUser();
 
       const request = createTestRequest(
-        "http://localhost:3000/api/connectors/notion/authorize",
+        "http://localhost:3000/api/zero/connectors/notion/authorize",
       );
       const response = await GET(request, {
         params: Promise.resolve({ type: "notion" }),
@@ -239,7 +239,7 @@ describe("GET /api/connectors/:type/authorize - OAuth Authorize", () => {
       await context.setupUser();
 
       const request = createTestRequest(
-        "http://localhost:3000/api/connectors/notion/authorize",
+        "http://localhost:3000/api/zero/connectors/notion/authorize",
       );
       const response = await GET(request, {
         params: Promise.resolve({ type: "notion" }),
@@ -260,7 +260,7 @@ describe("GET /api/connectors/:type/authorize - OAuth Authorize", () => {
       await context.setupUser();
 
       const request = createTestRequest(
-        "http://localhost:3000/api/connectors/reddit/authorize",
+        "http://localhost:3000/api/zero/connectors/reddit/authorize",
       );
       const response = await GET(request, {
         params: Promise.resolve({ type: "reddit" }),
@@ -283,7 +283,7 @@ describe("GET /api/connectors/:type/authorize - OAuth Authorize", () => {
       await context.setupUser();
 
       const request = createTestRequest(
-        "http://localhost:3000/api/connectors/x/authorize",
+        "http://localhost:3000/api/zero/connectors/x/authorize",
       );
       const response = await GET(request, {
         params: Promise.resolve({ type: "x" }),
