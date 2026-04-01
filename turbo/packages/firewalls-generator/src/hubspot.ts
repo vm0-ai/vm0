@@ -86,11 +86,11 @@ function isStableVersion(version: string): boolean {
  */
 function pickLatestSpecs(
   paths: string[],
-): Array<{ path: string; category: string; feature: string }> {
+): Array<{ path: string; feature: string }> {
   // Group: "Category/Feature" -> best spec path
   const best = new Map<
     string,
-    { path: string; rolloutId: number; category: string; feature: string }
+    { path: string; rolloutId: number; feature: string }
   >();
 
   for (const p of paths) {
@@ -108,7 +108,6 @@ function pickLatestSpecs(
       best.set(key, {
         path: p,
         rolloutId: parsed.rolloutId,
-        category: parsed.category,
         feature: parsed.feature,
       });
     } else {
@@ -125,16 +124,14 @@ function pickLatestSpecs(
         best.set(key, {
           path: p,
           rolloutId: parsed.rolloutId,
-          category: parsed.category,
           feature: parsed.feature,
         });
       }
     }
   }
 
-  return [...best.values()].map(({ path, category, feature }) => ({
+  return [...best.values()].map(({ path, feature }) => ({
     path,
-    category,
     feature,
   }));
 }
@@ -320,7 +317,12 @@ export async function generate(): Promise<void> {
     throw new Error(`Failed to fetch repo tree: ${treeRes.status}`);
   }
   const tree: unknown = await treeRes.json();
-  if (typeof tree !== "object" || tree === null || !("tree" in tree)) {
+  if (
+    typeof tree !== "object" ||
+    tree === null ||
+    !("tree" in tree) ||
+    !Array.isArray((tree as GitHubTree).tree)
+  ) {
     throw new Error("Invalid GitHub tree response");
   }
   const { tree: entries } = tree as GitHubTree;
@@ -344,7 +346,12 @@ export async function generate(): Promise<void> {
       const url = `${RAW_BASE}/${path}`;
       const res = await fetchSpec(url, feature);
       const json: unknown = await res.json();
-      if (typeof json !== "object" || json === null || !("paths" in json)) {
+      if (
+        typeof json !== "object" ||
+        json === null ||
+        !("paths" in json) ||
+        typeof (json as HubSpotSpec).paths !== "object"
+      ) {
         console.error(`  Skipping ${feature}: no paths`);
         return null;
       }
