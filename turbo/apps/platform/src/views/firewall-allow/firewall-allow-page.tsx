@@ -13,7 +13,7 @@ import {
   isFirewallConnectorType,
   CONNECTOR_TYPES,
   getDefaultFirewallPolicies,
-  getPermissionCategories,
+  groupPermissionsByCategory,
   type FirewallPolicies,
   type FirewallPolicyValue,
 } from "@vm0/core";
@@ -86,48 +86,6 @@ function PolicyPill({
       })}
     </span>
   );
-}
-
-// ---------------------------------------------------------------------------
-// Permission grouping by category
-// ---------------------------------------------------------------------------
-
-interface PermissionGroup {
-  category: string;
-  permissions: { name: string; description?: string }[];
-}
-
-function groupPermissionsByCategory(
-  permissions: { name: string; description?: string }[],
-  connectorType: string,
-): PermissionGroup[] | null {
-  const categoryData = getPermissionCategories(connectorType);
-  if (!categoryData) {
-    return null;
-  }
-
-  const grouped = new Map<string, { name: string; description?: string }[]>();
-  for (const category of categoryData.displayOrder) {
-    grouped.set(category, []);
-  }
-
-  for (const perm of permissions) {
-    const category = categoryData.categories[perm.name];
-    if (category) {
-      const list = grouped.get(category);
-      if (list) {
-        list.push(perm);
-      }
-    }
-  }
-
-  return [...grouped.entries()]
-    .filter(([, perms]) => {
-      return perms.length > 0;
-    })
-    .map(([category, perms]) => {
-      return { category, permissions: perms };
-    });
 }
 
 // ---------------------------------------------------------------------------

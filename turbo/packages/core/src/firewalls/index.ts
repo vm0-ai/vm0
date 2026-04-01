@@ -22,7 +22,9 @@ import "./vercel.categories";
 
 export {
   getPermissionCategories,
+  groupPermissionsByCategory,
   type ConnectorCategories,
+  type PermissionGroup,
 } from "./categories";
 import { getConnectorEnvironmentMapping } from "../contracts/connectors";
 import { agentmailFirewall } from "./agentmail.generated";

@@ -10,7 +10,7 @@ import {
 import {
   getConnectorFirewall,
   getDefaultFirewallPolicies,
-  getPermissionCategories,
+  groupPermissionsByCategory,
   isFirewallConnectorType,
   CONNECTOR_TYPES,
   type ConnectorType,
@@ -81,47 +81,6 @@ function splitPermName(name: string): [string, string] {
     return [name.slice(0, underIdx), name.slice(underIdx + 1)];
   }
   return [name, ""];
-}
-
-interface PermissionGroup {
-  category: string;
-  permissions: FirewallPermission[];
-}
-
-function groupPermissionsByCategory(
-  permissions: FirewallPermission[],
-  connectorType: string,
-): PermissionGroup[] | null {
-  const categoryData = getPermissionCategories(connectorType);
-  if (!categoryData) {
-    return null;
-  }
-
-  const grouped = new Map<string, FirewallPermission[]>();
-  for (const category of categoryData.displayOrder) {
-    grouped.set(category, []);
-  }
-
-  for (const perm of permissions) {
-    const category = categoryData.categories[perm.name];
-    if (category) {
-      const list = grouped.get(category);
-      if (list) {
-        list.push(perm);
-      }
-    }
-  }
-
-  return [...grouped.entries()]
-    .filter(([, perms]) => {
-      return perms.length > 0;
-    })
-    .map(([category, perms]) => {
-      return {
-        category,
-        permissions: sortPermissions(perms),
-      };
-    });
 }
 
 const POLICY_OPTIONS = [
@@ -206,7 +165,14 @@ export function FirewallPermissionsDrawer({
   const permissions = config ? sortPermissions(extractPermissions(config)) : [];
   const policies = allPolicies[ref] ?? {};
   const groups = config
-    ? groupPermissionsByCategory(extractPermissions(config), ref)
+    ? (groupPermissionsByCategory(extractPermissions(config), ref)?.map(
+        (group) => {
+          return {
+            ...group,
+            permissions: sortPermissions(group.permissions),
+          };
+        },
+      ) ?? null)
     : null;
 
   const handlePolicyChange = (name: string, policy: PermissionPolicy) => {
