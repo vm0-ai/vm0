@@ -92,7 +92,16 @@ const AUTH_SECRET_PATTERN =
   /\$\{\{\s*secrets\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 
 /**
+ * Regex matching secrets inside `${{ basic(username, password) }}` templates.
+ * Groups: (1) username secret name (optional), (2) password secret name (optional).
+ * Only captures secrets.X references — vars don't need placeholders.
+ */
+const BASIC_AUTH_SECRET_PATTERN =
+  /\$\{\{\s*basic\(\s*(?:secrets\.([a-zA-Z_][a-zA-Z0-9_]*))?\s*,\s*(?:secrets\.([a-zA-Z_][a-zA-Z0-9_]*))?\s*\)\s*\}\}/g;
+
+/**
  * Extract all secret names referenced in firewall rule auth header templates.
+ * Handles both simple `${{ secrets.X }}` and `${{ basic(...) }}` templates.
  * E.g., `Bearer ${{ secrets.GITHUB_TOKEN }}` → `["GITHUB_TOKEN"]`
  */
 export function extractSecretNamesFromApis(
@@ -103,6 +112,10 @@ export function extractSecretNamesFromApis(
     for (const value of Object.values(entry.auth.headers)) {
       for (const match of value.matchAll(AUTH_SECRET_PATTERN)) {
         names.add(match[1]!);
+      }
+      for (const match of value.matchAll(BASIC_AUTH_SECRET_PATTERN)) {
+        if (match[1]) names.add(match[1]);
+        if (match[2]) names.add(match[2]);
       }
     }
   }

@@ -27,6 +27,14 @@ const log = logger("webhook:firewall-auth");
 const TEMPLATE_RE = /\$\{\{\s*(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 
 /**
+ * Matches ${{ basic(username, password) }} where each side is secrets.X, vars.X, or empty.
+ * Comma is always required to distinguish empty username from empty password.
+ * Groups: (1) ns1, (2) key1, (3) ns2, (4) key2 — all optional.
+ */
+const BASIC_AUTH_RE =
+  /\$\{\{\s*basic\(\s*(?:(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*))?\s*,\s*(?:(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*))?\s*\)\s*\}\}/g;
+
+/**
  * Load refresh tokens from DB into the secrets map.
  * The encrypted secrets snapshot only contains mapped env vars (access tokens);
  * refresh tokens are kept server-side and must be fetched from DB (#7365).
@@ -229,8 +237,55 @@ async function refreshExpiredTokens(
   };
 }
 
+/** Collect all secret keys referenced in auth header templates (simple + basic). */
+function collectReferencedSecrets(
+  authHeaders: Record<string, string>,
+): Set<string> {
+  const keys = new Set<string>();
+  for (const template of Object.values(authHeaders)) {
+    for (const match of template.matchAll(TEMPLATE_RE)) {
+      if (match[1] === "secrets" && match[2]) keys.add(match[2]);
+    }
+    for (const match of template.matchAll(BASIC_AUTH_RE)) {
+      if (match[1] === "secrets" && match[2]) keys.add(match[2]);
+      if (match[3] === "secrets" && match[4]) keys.add(match[4]);
+    }
+  }
+  return keys;
+}
+
 /**
- * Resolve ${{ secrets.XXX }} and ${{ vars.XXX }} templates in auth header values.
+ * Resolve a single secrets.X or vars.X reference inside a basic() call.
+ * Returns the resolved value, or empty string if the slot is omitted/missing.
+ */
+function resolveBasicArg(
+  namespace: string | undefined,
+  key: string | undefined,
+  secrets: Record<string, string>,
+  vars: Record<string, string>,
+  resolvedKeys: Set<string>,
+  runId: string,
+): string {
+  if (!namespace || !key) return "";
+  if (namespace === "secrets") {
+    resolvedKeys.add(key);
+    if (!(key in secrets)) {
+      log.warn(`[${runId}] No secret value for "${key}" in basic()`);
+      return "";
+    }
+    return secrets[key] ?? "";
+  }
+  // namespace === "vars"
+  if (!(key in vars)) {
+    log.warn(`[${runId}] No var value for "${key}" in basic()`);
+    return "";
+  }
+  return vars[key] ?? "";
+}
+
+/**
+ * Resolve ${{ secrets.XXX }}, ${{ vars.XXX }}, and ${{ basic(...) }} templates
+ * in auth header values.
  */
 function resolveTemplates(
   authHeaders: Record<string, string>,
@@ -241,7 +296,8 @@ function resolveTemplates(
   const resolvedKeys = new Set<string>();
   const headers: Record<string, string> = {};
   for (const [name, template] of Object.entries(authHeaders)) {
-    headers[name] = template.replace(
+    // Pass 1: resolve simple ${{ secrets.X }} and ${{ vars.X }} templates
+    let resolved = template.replace(
       TEMPLATE_RE,
       (_match, namespace: string, key: string) => {
         if (namespace === "secrets") {
@@ -260,6 +316,30 @@ function resolveTemplates(
         return vars[key] ?? "";
       },
     );
+    // Pass 2: resolve ${{ basic(username, password) }} templates
+    resolved = resolved.replace(
+      BASIC_AUTH_RE,
+      (_match, ns1?: string, key1?: string, ns2?: string, key2?: string) => {
+        const user = resolveBasicArg(
+          ns1,
+          key1,
+          secrets,
+          vars,
+          resolvedKeys,
+          runId,
+        );
+        const pass = resolveBasicArg(
+          ns2,
+          key2,
+          secrets,
+          vars,
+          resolvedKeys,
+          runId,
+        );
+        return `Basic ${Buffer.from(`${user}:${pass}`).toString("base64")}`;
+      },
+    );
+    headers[name] = resolved;
   }
   return { headers, resolvedSecrets: [...resolvedKeys].sort() };
 }
@@ -341,12 +421,7 @@ export async function POST(request: Request) {
   }
 
   // Collect which secret keys are referenced in auth templates
-  const referencedKeys = new Set<string>();
-  for (const template of Object.values(authHeaders)) {
-    for (const match of template.matchAll(TEMPLATE_RE)) {
-      if (match[1] === "secrets" && match[2]) referencedKeys.add(match[2]);
-    }
-  }
+  const referencedKeys = collectReferencedSecrets(authHeaders);
 
   // Refresh expired OAuth tokens (mutates secrets map with fresh values)
   let expiresAt: number | null = null;

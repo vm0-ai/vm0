@@ -99,6 +99,7 @@ import { generate as generateSimilarweb } from "./similarweb";
 import { generate as generateSlack } from "./slack";
 import { generate as generateSpotify } from "./spotify";
 import { generate as generateStrava } from "./strava";
+import { generate as generateStreak } from "./streak";
 import { generate as generateStripe } from "./stripe";
 import { generate as generateSupabase } from "./supabase";
 import { generate as generateSupadata } from "./supadata";
@@ -214,6 +215,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   slack: generateSlack,
   spotify: generateSpotify,
   strava: generateStrava,
+  streak: generateStreak,
   stripe: generateStripe,
   supabase: generateSupabase,
   supadata: generateSupadata,

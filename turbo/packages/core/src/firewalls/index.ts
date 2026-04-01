@@ -112,6 +112,7 @@ import { similarwebFirewall } from "./similarweb.generated";
 import { slackFirewall } from "./slack.generated";
 import { spotifyFirewall } from "./spotify.generated";
 import { stravaFirewall } from "./strava.generated";
+import { streakFirewall } from "./streak.generated";
 import { stripeFirewall } from "./stripe.generated";
 import { supabaseFirewall } from "./supabase.generated";
 import { supadataFirewall } from "./supadata.generated";
@@ -231,6 +232,7 @@ const CONNECTOR_FIREWALLS = {
   slack: slackFirewall,
   spotify: spotifyFirewall,
   strava: stravaFirewall,
+  streak: streakFirewall,
   stripe: stripeFirewall,
   supabase: supabaseFirewall,
   supadata: supadataFirewall,
@@ -333,7 +335,6 @@ export type NonFirewallConnectorType =
   // Basic Auth — proxy cannot do base64 encoding at runtime (#7137)
   | "htmlcsstoimage" // Basic Auth (user_id:api_key)
   | "jira" // Basic Auth (email:api_token)
-  | "streak" // Basic Auth (api_key as username, empty password)
   // Signature-based auth — requires computing signatures, not simple header injection
   | "cloudinary" // SHA signature in form body + api_key param
   | "minio" // AWS Signature V4
