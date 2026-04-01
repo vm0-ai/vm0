@@ -78,7 +78,8 @@ Notes:
   - At least one option is required
   - Unspecified fields are preserved (not cleared)
   - --skills replaces the entire skill list; --add-skill/--remove-skill modify incrementally
-  - --skills cannot be combined with --add-skill or --remove-skill`,
+  - --skills cannot be combined with --add-skill or --remove-skill
+  - To create or edit skill content, use: zero skill --help`,
   )
   .action(
     withErrorHandler(
