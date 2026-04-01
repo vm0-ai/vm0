@@ -4,6 +4,7 @@ export type RoutePath =
   | "/:tab"
   | "/activity"
   | "/activity/:runId/context"
+  | "/activity/:runId/network"
   | "/activity/:runId"
   | "/chat/:chatThreadId"
   | "/team"

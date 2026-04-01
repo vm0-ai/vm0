@@ -14,6 +14,7 @@ import { setupQueuePage$ } from "./queue-page/queue-page-setup.ts";
 import { setupActivityPage$ } from "./activity-page/activity-page-setup.ts";
 import { setupActivityDetailPage$ } from "./activity-page/activity-detail-page-setup.ts";
 import { setupActivityContextPage$ } from "./activity-page/activity-context-page-setup.ts";
+import { setupActivityNetworkPage$ } from "./activity-page/activity-network-page-setup.ts";
 import { setupTeamPage$ } from "./team-page/team-page-setup.ts";
 import { setupTeamDetailPage$ } from "./team-page/team-detail-page-setup.ts";
 import { setupWorksPage$ } from "./works-page/works-page-setup.ts";
@@ -81,6 +82,10 @@ const ROUTE_CONFIG = [
   {
     path: "/queue",
     setup: setupAuthPageWrapper(setupQueuePage$),
+  },
+  {
+    path: "/activity/:runId/network",
+    setup: setupAuthPageWrapper(setupActivityNetworkPage$),
   },
   {
     path: "/activity/:runId/context",

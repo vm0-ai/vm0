@@ -10,6 +10,7 @@ import {
   IconDownload,
   IconChartLine,
   IconFileAnalytics,
+  IconWorldWww,
 } from "@tabler/icons-react";
 import {
   Button,
@@ -165,6 +166,7 @@ function ActivityHeaderCard({
   time,
   events,
   showContextLink,
+  showNetworkLink,
   showModelDetail,
 }: {
   displayName: string;
@@ -183,6 +185,7 @@ function ActivityHeaderCard({
   time: string;
   events: AgentEvent[];
   showContextLink?: boolean;
+  showNetworkLink?: boolean;
   showModelDetail: boolean;
 }) {
   return (
@@ -200,6 +203,16 @@ function ActivityHeaderCard({
             >
               <IconFileAnalytics size={14} stroke={1.5} />
               Context
+            </Link>
+          )}
+          {showNetworkLink && (
+            <Link
+              pathname="/activity/:runId/network"
+              options={{ pathParams: { runId: detail.id } }}
+              className="inline-flex items-center h-8 shrink-0 gap-1 rounded-lg px-3 text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors no-underline"
+            >
+              <IconWorldWww size={14} stroke={1.5} />
+              Network
             </Link>
           )}
         </div>
@@ -424,6 +437,7 @@ export function ZeroActivityDetailPage() {
             time={time}
             events={events}
             showContextLink={features?.[FeatureSwitchKey.RunContext]}
+            showNetworkLink={features?.[FeatureSwitchKey.RunNetwork]}
             showModelDetail={showModelDetail}
           />
 

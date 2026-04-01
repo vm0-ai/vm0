@@ -8,6 +8,7 @@ import {
   agentEventsResponseSchema,
   queueResponseSchema,
   unifiedRunRequestSchema,
+  networkLogsResponseSchema,
 } from "./runs";
 
 /**
@@ -217,6 +218,33 @@ export const zeroRunContextContract = c.router({
   },
 });
 
+/**
+ * Zero run network logs contract (GET /api/zero/runs/:id/network)
+ * Returns mitmproxy network logs for a run
+ */
+export const zeroRunNetworkLogsContract = c.router({
+  getNetworkLogs: {
+    method: "GET",
+    path: "/api/zero/runs/:id/network",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      id: z.string().min(1, "Run ID is required"),
+    }),
+    query: z.object({
+      since: z.coerce.number().optional(),
+      limit: z.coerce.number().min(1).max(500).default(500),
+      order: z.enum(["asc", "desc"]).default("asc"),
+    }),
+    responses: {
+      200: networkLogsResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get network logs for a run",
+  },
+});
+
 // Inferred types from Zod schemas
 export type RunContextResponse = z.infer<typeof runContextResponseSchema>;
 
@@ -227,3 +255,4 @@ export type ZeroRunsCancelContract = typeof zeroRunsCancelContract;
 export type ZeroRunsQueueContract = typeof zeroRunsQueueContract;
 export type ZeroRunAgentEventsContract = typeof zeroRunAgentEventsContract;
 export type ZeroRunContextContract = typeof zeroRunContextContract;
+export type ZeroRunNetworkLogsContract = typeof zeroRunNetworkLogsContract;

@@ -588,12 +588,14 @@ export {
   zeroRunsQueueContract,
   zeroRunAgentEventsContract,
   zeroRunContextContract,
+  zeroRunNetworkLogsContract,
   type ZeroRunsMainContract,
   type ZeroRunsByIdContract,
   type ZeroRunsCancelContract,
   type ZeroRunsQueueContract,
   type ZeroRunAgentEventsContract,
   type ZeroRunContextContract,
+  type ZeroRunNetworkLogsContract,
   type RunContextResponse,
 } from "./zero-runs";
 export {
