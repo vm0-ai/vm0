@@ -682,8 +682,6 @@ export const creatingNewSession$ = computed(async (get) => {
 
 const internalCreateNewChatSession$ = command(
   async ({ get, set }, agentComposeId: string | null, _signal: AbortSignal) => {
-    set(startNewZeroSession$);
-
     const resolvedComposeId =
       agentComposeId ?? (await get(zeroOnboardingStatus$)).defaultAgentId;
 
@@ -691,6 +689,32 @@ const internalCreateNewChatSession$ = command(
       toast.error("No agent available for new chat session");
       return;
     }
+
+    // A1: If currently viewing an empty thread for this agent, reuse it
+    const currentThread = await get(currentChatThread$);
+    if (
+      currentThread &&
+      currentThread.agentId === resolvedComposeId &&
+      currentThread.chatMessages.length === 0 &&
+      currentThread.unsavedRuns.length === 0
+    ) {
+      set(startNewZeroSession$);
+      return;
+    }
+
+    // A2: If an empty thread already exists in the list, navigate to it
+    const threads = await get(chatThreads$);
+    const emptyThread = threads.find((t) => {
+      return t.title === null && t.agentId === resolvedComposeId;
+    });
+    if (emptyThread) {
+      set(startNewZeroSession$);
+      set(navigateToChat$, emptyThread.id);
+      return;
+    }
+
+    // Fallback: create a new thread
+    set(startNewZeroSession$);
 
     const createClient = get(zeroClient$);
     const thread = await createChatThread(createClient, resolvedComposeId);
