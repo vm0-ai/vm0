@@ -486,17 +486,18 @@ async fn gc_nbd_orphans(dry_run: bool) -> RunnerResult<u32> {
     .await
     .map_err(|e| RunnerError::Internal(format!("nbd orphan scan task failed: {e}")))?;
 
-    let count = orphans.len() as u32;
     if orphans.is_empty() {
         tracing::debug!("nbd: scanned {max_devs} devices, no orphans");
         return Ok(0);
     }
 
+    let mut count: u32 = 0;
     for (device_index, pid) in orphans {
         if dry_run {
             info!(
                 "[dry-run] would disconnect orphan NBD device /dev/nbd{device_index} (owner PID {pid} dead)"
             );
+            count += 1;
         } else {
             // Re-check before disconnect: between the scan and now, the device
             // could have been freed and re-acquired by another runner. Only
@@ -507,13 +508,13 @@ async fn gc_nbd_orphans(dry_run: bool) -> RunnerResult<u32> {
                         Some(current_pid) if current_pid == pid
                             && !Path::new(&format!("/proc/{pid}")).exists() =>
                         {
-                            nbd_cow::netlink::disconnect(device_index)
+                            Some(nbd_cow::netlink::disconnect(device_index))
                         }
                         _ => {
                             tracing::debug!(
                                 "nbd{device_index}: skipping disconnect, device state changed since scan"
                             );
-                            Ok(())
+                            None
                         }
                     }
                 })
@@ -523,14 +524,16 @@ async fn gc_nbd_orphans(dry_run: bool) -> RunnerResult<u32> {
                     })?;
 
             match result {
-                Ok(()) => {
+                Some(Ok(())) => {
                     info!(
                         "disconnected orphan NBD device /dev/nbd{device_index} (owner PID {pid} dead)"
                     );
+                    count += 1;
                 }
-                Err(e) => {
+                Some(Err(e)) => {
                     info!("failed to disconnect orphan NBD device /dev/nbd{device_index}: {e}");
                 }
+                None => {} // skipped — already logged at debug level
             }
         }
     }
