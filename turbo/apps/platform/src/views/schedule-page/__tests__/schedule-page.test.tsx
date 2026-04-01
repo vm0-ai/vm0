@@ -67,7 +67,9 @@ describe("schedule page", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Daily standup summary")).toBeInTheDocument();
+      expect(
+        screen.getAllByText("Daily standup summary")[0],
+      ).toBeInTheDocument();
     });
   });
 

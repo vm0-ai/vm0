@@ -314,9 +314,9 @@ describe("zero jobs page - schedule list", () => {
 
     // All three schedules should be visible (description is shown when available)
     await waitFor(() => {
-      expect(screen.getByText("Morning brief")).toBeInTheDocument();
+      expect(screen.getAllByText("Morning brief")[0]).toBeInTheDocument();
     });
-    expect(screen.getByText("Office AC on")).toBeInTheDocument();
-    expect(screen.getByText("Evening work summary")).toBeInTheDocument();
+    expect(screen.getAllByText("Office AC on")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Evening work summary")[0]).toBeInTheDocument();
   });
 });

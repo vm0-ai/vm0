@@ -179,16 +179,20 @@ function SelectConnectorsContent({
         />
       </div>
       <div className="w-full grid grid-cols-2 sm:grid-cols-3 gap-3">
-        {filtered.map(([type, config]) => (
-          <OnboardingConnectorCard
-            key={type}
-            type={type}
-            label={config.label}
-            isSelected={selectedSet.has(type)}
-            isPolling={false}
-            onClick={() => toggleConnector(type)}
-          />
-        ))}
+        {filtered.map(([type, config]) => {
+          return (
+            <OnboardingConnectorCard
+              key={type}
+              type={type}
+              label={config.label}
+              isSelected={selectedSet.has(type)}
+              isPolling={false}
+              onClick={() => {
+                return toggleConnector(type);
+              }}
+            />
+          );
+        })}
         {filtered.length === 0 && (
           <p className="col-span-2 sm:col-span-3 text-sm text-muted-foreground py-4">
             No connectors match your search.

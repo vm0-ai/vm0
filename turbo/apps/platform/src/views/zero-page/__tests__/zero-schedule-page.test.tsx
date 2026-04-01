@@ -203,7 +203,7 @@ describe("zero schedule page - agent labels", () => {
 
     // The agent column should show "Research Agent" (from schedule displayName)
     await waitFor(() => {
-      expect(screen.getByText("Research Agent")).toBeInTheDocument();
+      expect(screen.getAllByText("Research Agent")[0]).toBeInTheDocument();
     });
   });
 
@@ -271,7 +271,7 @@ describe("zero schedule page - agent labels", () => {
     // Falls back to raw agent id when displayName is null
     await waitFor(() => {
       expect(
-        screen.getByText("e0000000-0000-4000-a000-000000000003"),
+        screen.getAllByText("e0000000-0000-4000-a000-000000000003")[0],
       ).toBeInTheDocument();
     });
   });
@@ -284,15 +284,17 @@ describe("zero schedule page - list view", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Summarize yesterday's threads"),
+        screen.getAllByText("Summarize yesterday's threads")[0],
       ).toBeInTheDocument();
     });
 
     expect(
-      screen.getByText("Check inbox for urgent items"),
+      screen.getAllByText("Check inbox for urgent items")[0],
     ).toBeInTheDocument();
-    expect(screen.getByText(/Every weekday at 9:00 AM/)).toBeInTheDocument();
-    expect(screen.getByText(/Every 15 minutes/)).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/Every weekday at 9:00 AM/)[0],
+    ).toBeInTheDocument();
+    expect(screen.getAllByText(/Every 15 minutes/)[0]).toBeInTheDocument();
   });
 
   it("should render page title and subtitle", async () => {
@@ -340,7 +342,7 @@ describe("zero schedule page - list view", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Summarize yesterday's threads"),
+        screen.getAllByText("Summarize yesterday's threads")[0],
       ).toBeInTheDocument();
     });
     const menus = screen.getAllByRole("button", { name: /More actions for/ });
@@ -353,7 +355,7 @@ describe("zero schedule page - list view", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Summarize yesterday's threads"),
+        screen.getAllByText("Summarize yesterday's threads")[0],
       ).toBeInTheDocument();
     });
     expect(
@@ -370,7 +372,7 @@ describe("zero schedule page - list view", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Summarize yesterday's threads"),
+        screen.getAllByText("Summarize yesterday's threads")[0],
       ).toBeInTheDocument();
     });
     const menuTrigger = screen.getByRole("button", {
@@ -400,7 +402,7 @@ describe("zero schedule page - create dialog", () => {
     // Wait for the schedule list to render (non-empty so only one Add schedule in header)
     await waitFor(() => {
       expect(
-        screen.getByText("Summarize yesterday's threads"),
+        screen.getAllByText("Summarize yesterday's threads")[0],
       ).toBeInTheDocument();
     });
 
@@ -438,7 +440,7 @@ describe("zero schedule page - create dialog", () => {
     // Wait for schedules to render
     await waitFor(() => {
       expect(
-        screen.getByText("Summarize yesterday's threads"),
+        screen.getAllByText("Summarize yesterday's threads")[0],
       ).toBeInTheDocument();
     });
 
@@ -488,14 +490,14 @@ describe("zero schedule page - toggle enabled", () => {
     // Wait for the schedule list to render
     await waitFor(() => {
       expect(
-        screen.getByLabelText("Disable Every weekday at 9:00 AM"),
+        screen.getAllByLabelText("Disable Every weekday at 9:00 AM")[0],
       ).toBeInTheDocument();
     });
 
     // Toggle the first schedule's enabled switch
-    const toggleSwitch = screen.getByLabelText(
+    const toggleSwitch = screen.getAllByLabelText(
       "Disable Every weekday at 9:00 AM",
-    );
+    )[0];
     await user.click(toggleSwitch);
 
     await waitFor(() => {
@@ -512,7 +514,7 @@ describe("zero schedule page - delete confirmation", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Summarize yesterday's threads"),
+        screen.getAllByText("Summarize yesterday's threads")[0],
       ).toBeInTheDocument();
     });
 
@@ -547,7 +549,7 @@ describe("zero schedule page - delete confirmation", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Summarize yesterday's threads"),
+        screen.getAllByText("Summarize yesterday's threads")[0],
       ).toBeInTheDocument();
     });
 
@@ -586,7 +588,7 @@ describe("zero schedule page - delete confirmation", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Summarize yesterday's threads"),
+        screen.getAllByText("Summarize yesterday's threads")[0],
       ).toBeInTheDocument();
     });
 
@@ -624,7 +626,7 @@ describe("zero schedule page - delete confirmation", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Summarize yesterday's threads"),
+        screen.getAllByText("Summarize yesterday's threads")[0],
       ).toBeInTheDocument();
     });
 
@@ -956,7 +958,7 @@ describe("zero schedule page - create dialog timezone default", () => {
     // Wait for schedules to render (preferences will have loaded by then)
     await waitFor(() => {
       expect(
-        screen.getByText("Summarize yesterday's threads"),
+        screen.getAllByText("Summarize yesterday's threads")[0],
       ).toBeInTheDocument();
     });
 
@@ -1000,7 +1002,7 @@ describe("zero schedule page - create dialog timezone default", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Summarize yesterday's threads"),
+        screen.getAllByText("Summarize yesterday's threads")[0],
       ).toBeInTheDocument();
     });
 

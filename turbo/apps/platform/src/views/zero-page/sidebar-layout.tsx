@@ -23,6 +23,7 @@ import {
 } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 
 function SidebarLayoutSkeleton() {
   const userLoadable = useLoadable(user$);
@@ -72,7 +73,9 @@ function MobileTopBar() {
     <div className="md:hidden shrink-0 flex items-center h-12 px-3 gap-2 bg-background border-b border-border/50 z-10">
       <button
         type="button"
-        onClick={() => setSidebarCollapsed(false)}
+        onClick={() => {
+          return setSidebarCollapsed(false);
+        }}
         className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
         aria-label="Open menu"
       >
@@ -91,18 +94,7 @@ function MobileTopBar() {
               >
                 {breadcrumb.section}
               </Link>
-              {breadcrumb.name && (
-                <>
-                  <span className="text-foreground/30 select-none">/</span>
-                  <span>{breadcrumb.name}</span>
-                </>
-              )}
             </div>
-            {!breadcrumb.name && breadcrumb.description && (
-              <span className="text-xs text-muted-foreground truncate">
-                {breadcrumb.description}
-              </span>
-            )}
           </div>
         </div>
       )}
@@ -113,7 +105,7 @@ function MobileTopBar() {
           onClick={() => {
             setTab("members");
             setSubPage(false);
-            void openManage(true, pageSignal);
+            detach(openManage(true, pageSignal), Reason.DomCallback);
           }}
           className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors shrink-0"
         >

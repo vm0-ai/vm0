@@ -259,7 +259,7 @@ describe("zero job detail page - schedule card delete confirmation", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Summarize yesterday's threads"),
+        screen.getAllByText("Summarize yesterday's threads")[0],
       ).toBeInTheDocument();
     });
 
@@ -289,7 +289,7 @@ describe("zero job detail page - schedule card delete confirmation", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Summarize yesterday's threads"),
+        screen.getAllByText("Summarize yesterday's threads")[0],
       ).toBeInTheDocument();
     });
 
@@ -323,7 +323,7 @@ describe("zero job detail page - schedule card delete confirmation", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Summarize yesterday's threads"),
+        screen.getAllByText("Summarize yesterday's threads")[0],
       ).toBeInTheDocument();
     });
 

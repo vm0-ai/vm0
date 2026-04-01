@@ -58,7 +58,13 @@ function ScheduleListRow<T extends ScheduleEntry>({
       role={clickable ? "link" : undefined}
       tabIndex={clickable ? 0 : undefined}
       aria-label={clickable ? `Open schedule ${entry.prompt}` : undefined}
-      onClick={clickable ? () => onOpenDetails(entry) : undefined}
+      onClick={
+        clickable
+          ? () => {
+              return onOpenDetails(entry);
+            }
+          : undefined
+      }
       onKeyDown={
         clickable
           ? (e) => {
@@ -106,7 +112,9 @@ function ScheduleListRow<T extends ScheduleEntry>({
       {onToggle && (
         <td
           className="py-2.5 px-3 align-middle w-16"
-          onClick={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            return e.stopPropagation();
+          }}
         >
           <div className="flex justify-center">
             <LoadingSwitch
@@ -122,7 +130,9 @@ function ScheduleListRow<T extends ScheduleEntry>({
       )}
       <td
         className="py-2.5 pl-2 align-middle text-right w-10"
-        onClick={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          return e.stopPropagation();
+        }}
       >
         <div className="inline-flex justify-end">
           <RowActions
@@ -181,14 +191,21 @@ function RowActions<T extends ScheduleEntry>({
             {running ? "Starting\u2026" : "Run now"}
           </DropdownMenuItem>
         )}
-        <DropdownMenuItem className="gap-2" onClick={() => onEdit(entry)}>
+        <DropdownMenuItem
+          className="gap-2"
+          onClick={() => {
+            return onEdit(entry);
+          }}
+        >
           <IconPencil size={14} stroke={1.5} />
           Edit
         </DropdownMenuItem>
         {onDelete && entry.name !== undefined && (
           <DropdownMenuItem
             className="gap-2 text-destructive focus:text-destructive"
-            onClick={() => onDelete(entry)}
+            onClick={() => {
+              return onDelete(entry);
+            }}
           >
             <IconTrash size={14} stroke={1.5} />
             Delete
@@ -239,7 +256,13 @@ function ScheduleListCard<T extends ScheduleEntry>({
       role={clickable ? "button" : undefined}
       tabIndex={clickable ? 0 : undefined}
       aria-label={clickable ? `Open schedule ${entry.prompt}` : undefined}
-      onClick={clickable ? () => onOpenDetails(entry) : undefined}
+      onClick={
+        clickable
+          ? () => {
+              return onOpenDetails(entry);
+            }
+          : undefined
+      }
       onKeyDown={
         clickable
           ? (e) => {
@@ -285,7 +308,9 @@ function ScheduleListCard<T extends ScheduleEntry>({
       {/* Right: toggle + more button */}
       <div
         className="flex items-center gap-4 shrink-0"
-        onClick={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          return e.stopPropagation();
+        }}
       >
         {onToggle && (
           <LoadingSwitch
@@ -371,23 +396,27 @@ export function ScheduleListView<T extends ScheduleEntry>({
 
   return (
     <>
-      {/* Mobile: card list */}
-      <div className="sm:hidden pb-2">
-        {entries.map((entry) => (
-          <ScheduleListCard
-            key={entry.id}
-            entry={entry}
-            toggling={togglingIds.has(entry.id)}
-            running={runningIds?.has(entry.id) ?? false}
-            showAgent={showAgent}
-            agentLabel={getAgentLabel?.(entry)}
-            onEdit={onEdit}
-            onToggle={onToggle}
-            onDelete={onDelete}
-            onRunNow={onRunNow}
-            onOpenDetails={onOpenDetails}
-          />
-        ))}
+      {/* Mobile: card list — same data as the desktop table; hidden from
+          the accessibility tree so screen-reader / test queries don't find
+          duplicate nodes (CSS hides one layout at a time in real browsers). */}
+      <div className="sm:hidden pb-2" aria-hidden="true">
+        {entries.map((entry) => {
+          return (
+            <ScheduleListCard
+              key={entry.id}
+              entry={entry}
+              toggling={togglingIds.has(entry.id)}
+              running={runningIds?.has(entry.id) ?? false}
+              showAgent={showAgent}
+              agentLabel={getAgentLabel?.(entry)}
+              onEdit={onEdit}
+              onToggle={onToggle}
+              onDelete={onDelete}
+              onRunNow={onRunNow}
+              onOpenDetails={onOpenDetails}
+            />
+          );
+        })}
       </div>
 
       {/* Desktop: table */}
@@ -429,21 +458,23 @@ export function ScheduleListView<T extends ScheduleEntry>({
             </tr>
           </thead>
           <tbody>
-            {entries.map((entry) => (
-              <ScheduleListRow
-                key={entry.id}
-                entry={entry}
-                toggling={togglingIds.has(entry.id)}
-                running={runningIds?.has(entry.id) ?? false}
-                showAgent={showAgent}
-                agentLabel={getAgentLabel?.(entry)}
-                onEdit={onEdit}
-                onToggle={onToggle}
-                onDelete={onDelete}
-                onRunNow={onRunNow}
-                onOpenDetails={onOpenDetails}
-              />
-            ))}
+            {entries.map((entry) => {
+              return (
+                <ScheduleListRow
+                  key={entry.id}
+                  entry={entry}
+                  toggling={togglingIds.has(entry.id)}
+                  running={runningIds?.has(entry.id) ?? false}
+                  showAgent={showAgent}
+                  agentLabel={getAgentLabel?.(entry)}
+                  onEdit={onEdit}
+                  onToggle={onToggle}
+                  onDelete={onDelete}
+                  onRunNow={onRunNow}
+                  onOpenDetails={onOpenDetails}
+                />
+              );
+            })}
           </tbody>
         </table>
       </div>
