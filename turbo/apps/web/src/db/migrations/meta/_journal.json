@@ -1541,6 +1541,13 @@
       "when": 1775200000000,
       "tag": "0219_add_zero_agents_owner",
       "breakpoints": true
+    },
+    {
+      "idx": 220,
+      "version": "7",
+      "when": 1775200000001,
+      "tag": "0220_device_codes_replace_org_slug_with_org_id",
+      "breakpoints": true
     }
   ]
 }

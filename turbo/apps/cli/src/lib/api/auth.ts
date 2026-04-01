@@ -62,7 +62,6 @@ async function exchangeToken(
   refresh_token?: string;
   token_type?: string;
   expires_in?: number;
-  org_slug?: string;
   error?: string;
   error_description?: string;
 }> {
@@ -77,7 +76,6 @@ async function exchangeToken(
     refresh_token?: string;
     token_type?: string;
     expires_in?: number;
-    org_slug?: string;
     error?: string;
     error_description?: string;
   }>;

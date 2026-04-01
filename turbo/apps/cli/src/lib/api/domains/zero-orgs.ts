@@ -188,7 +188,7 @@ export async function deleteZeroOrg(slug: string): Promise<void> {
  */
 export async function switchZeroOrg(
   slug: string,
-): Promise<{ access_token: string; org_slug: string }> {
+): Promise<{ access_token: string }> {
   const config = await getUserTokenClientConfig();
   const client = initClient(cliAuthOrgContract, config);
 

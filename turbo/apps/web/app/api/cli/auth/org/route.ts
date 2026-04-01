@@ -86,7 +86,6 @@ const router = tsr.router(cliAuthOrgContract, {
         access_token: cliToken,
         token_type: "Bearer" as const,
         expires_in: 90 * 24 * 60 * 60,
-        org_slug: orgData.slug,
       },
     };
   },
