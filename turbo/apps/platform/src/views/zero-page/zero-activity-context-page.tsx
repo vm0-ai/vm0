@@ -86,7 +86,7 @@ function StorageTable({
     return <p className="text-sm text-muted-foreground">None</p>;
   }
   return (
-    <Table>
+    <Table className="table-fixed">
       <TableHeader>
         <TableRow>
           {columns.map((col) => {
@@ -101,13 +101,13 @@ function StorageTable({
               {item.name !== undefined && (
                 <TableCell className="font-mono text-xs">{item.name}</TableCell>
               )}
-              <TableCell className="font-mono text-xs">
+              <TableCell className="font-mono text-xs break-all">
                 {item.mountPath}
               </TableCell>
-              <TableCell className="font-mono text-xs">
+              <TableCell className="font-mono text-xs break-all">
                 {item.vasStorageName}
               </TableCell>
-              <TableCell className="font-mono text-xs truncate max-w-[200px]">
+              <TableCell className="font-mono text-xs break-all">
                 {item.vasVersionId}
               </TableCell>
             </TableRow>
