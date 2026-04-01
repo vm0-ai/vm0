@@ -1135,34 +1135,6 @@ jobs:
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           E2E_ACCOUNT: ${{ needs.prepare.outputs.job-ref }}+clerk_test+browser@vm0-e2e.ai
-      - name: Cleanup test accounts
-        if: always()
-        env:
-          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
-        run: |
-          echo "Cleaning up Clerk test accounts..."
-          # List users whose email contains the JOB_REF prefix
-          users=$(curl -sS -X GET \
-            "https://api.clerk.com/v1/users?query=${JOB_REF}%2Bclerk_test&limit=100" \
-            -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
-            -H "Content-Type: application/json")
-
-          # Delete all matching users (no exclusions — all accounts are ephemeral)
-          ids=$(echo "$users" | jq -r '.[].id' 2>/dev/null || true)
-
-          if [ -z "$ids" ]; then
-            echo "No test accounts to clean up"
-          else
-            for uid in $ids; do
-              echo "Deleting user $uid..."
-              curl -sS -X DELETE \
-                "https://api.clerk.com/v1/users/${uid}" \
-                -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
-                -H "Content-Type: application/json" > /dev/null
-            done
-            echo "Cleanup complete"
-          fi
       - name: Upload auth screenshots
         if: always()
         uses: actions/upload-artifact@v7
