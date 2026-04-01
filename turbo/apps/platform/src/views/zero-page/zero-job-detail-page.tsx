@@ -796,7 +796,7 @@ export function ZeroJobDetailPage({ agentId }: ZeroJobDetailPageProps) {
             </div>
           </div>
 
-          <div className="mt-4 sm:mt-6">
+          <div className="mt-4 sm:mt-6 flex items-center gap-2">
             <AgentTabNav
               activeTab={activeTab}
               onTabChange={setActiveTab}
@@ -805,7 +805,7 @@ export function ZeroJobDetailPage({ agentId }: ZeroJobDetailPageProps) {
             <Button
               variant="outline"
               size="sm"
-              className="ml-auto zero-btn-morandi gap-1.5"
+              className="shrink-0 zero-btn-morandi gap-1.5"
               onClick={() => {
                 nav("/talk/:agentId", { pathParams: { agentId } });
               }}
