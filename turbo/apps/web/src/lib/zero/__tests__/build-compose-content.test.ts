@@ -1,20 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildComposeContent } from "../build-compose-content";
 import { SEED_SKILLS } from "../seed-skills";
-import {
-  CONNECTOR_TYPES,
-  resolveSkillRef,
-  getInstructionsFilename,
-} from "@vm0/core";
-
-/** GA connector types (no feature flag). */
-const gaConnectorTypes = Object.entries(CONNECTOR_TYPES)
-  .filter(([, config]) => {
-    return !config.featureFlag;
-  })
-  .map(([type]) => {
-    return type;
-  });
+import { resolveSkillRef, getInstructionsFilename } from "@vm0/core";
 
 describe("buildComposeContent", () => {
   it("should return valid compose structure", () => {
@@ -54,10 +41,9 @@ describe("buildComposeContent", () => {
     ]!;
     const skills = agent.skills as string[];
 
-    for (const connectorType of gaConnectorTypes) {
-      const url = resolveSkillRef(connectorType);
-      expect(skills).toContain(url);
-    }
+    // github and jira are GA connectors (no feature flag)
+    expect(skills).toContain(resolveSkillRef("github"));
+    expect(skills).toContain(resolveSkillRef("jira"));
   });
 
   it("should include feature-flagged connectors that have api-token", () => {

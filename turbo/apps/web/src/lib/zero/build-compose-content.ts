@@ -2,8 +2,8 @@ import {
   resolveSkillRef,
   getInstructionsFilename,
   getConnectorEnvironmentMapping,
+  getEligibleConnectorTypes,
   connectorTypeSchema,
-  CONNECTOR_TYPES,
   getCustomSkillStorageName,
 } from "@vm0/core";
 import { SEED_SKILLS } from "./seed-skills";
@@ -31,14 +31,7 @@ export function buildComposeContent(
     }
   }
 
-  const eligibleConnectorTypes = Object.entries(CONNECTOR_TYPES)
-    .filter(([, config]) => {
-      // Feature flag only gates OAuth; api-token is always available
-      return !config.featureFlag || "api-token" in config.authMethods;
-    })
-    .map(([type]) => {
-      return type;
-    });
+  const eligibleConnectorTypes = getEligibleConnectorTypes();
 
   const allSkillNames = [
     ...new Set([...SEED_SKILLS, ...eligibleConnectorTypes]),

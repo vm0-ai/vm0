@@ -67,6 +67,7 @@ import { encryptSecretsMap } from "../lib/crypto/secrets-encryption";
 import {
   VOLUME_ORG_USER_ID,
   SYSTEM_ORG_ID,
+  getEligibleConnectorTypes,
   type StoredExecutionContext,
   type FirewallPolicies,
 } from "@vm0/core";
@@ -3562,16 +3563,10 @@ export async function seedTestSkill(
 export async function seedSeedSkills(): Promise<void> {
   const { SEED_SKILLS, buildSeedSkillValues } =
     await import("../lib/zero/seed-skills");
-  const { CONNECTOR_TYPES } = await import("@vm0/core");
   initServices();
-  const eligibleConnectorTypes = Object.entries(CONNECTOR_TYPES)
-    .filter(([, config]) => {
-      return !config.featureFlag || "api-token" in config.authMethods;
-    })
-    .map(([type]) => {
-      return type;
-    });
-  const allNames = [...new Set([...SEED_SKILLS, ...eligibleConnectorTypes])];
+  const allNames = [
+    ...new Set([...SEED_SKILLS, ...getEligibleConnectorTypes()]),
+  ];
   const values = buildSeedSkillValues(allNames);
   await globalThis.services.db
     .insert(skills)
@@ -3589,15 +3584,9 @@ export async function seedSeedSkills(): Promise<void> {
  */
 export async function seedSeedSkillStorages(): Promise<void> {
   const { SEED_SKILLS } = await import("../lib/zero/seed-skills");
-  const { CONNECTOR_TYPES } = await import("@vm0/core");
-  const eligibleConnectorTypes = Object.entries(CONNECTOR_TYPES)
-    .filter(([, config]) => {
-      return !config.featureFlag || "api-token" in config.authMethods;
-    })
-    .map(([type]) => {
-      return type;
-    });
-  const allNames = [...new Set([...SEED_SKILLS, ...eligibleConnectorTypes])];
+  const allNames = [
+    ...new Set([...SEED_SKILLS, ...getEligibleConnectorTypes()]),
+  ];
 
   initServices();
 

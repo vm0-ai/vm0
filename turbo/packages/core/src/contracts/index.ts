@@ -359,6 +359,7 @@ export {
   getConnectorSecretsForAuthMethod,
   getConnectorSecretNames,
   getConnectorEnvironmentMapping,
+  getEligibleConnectorTypes,
   getConnectorDerivedNames,
   getConnectorProvidedSecretNames,
   getConnectorManagedSecretNames,

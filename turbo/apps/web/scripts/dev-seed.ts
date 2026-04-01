@@ -3,7 +3,7 @@
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { eq, sql } from "drizzle-orm";
-import { VM0_MODEL_TO_PROVIDER, CONNECTOR_TYPES } from "@vm0/core";
+import { VM0_MODEL_TO_PROVIDER, getEligibleConnectorTypes } from "@vm0/core";
 import { schema } from "../src/db/db";
 import { creditPricing } from "../src/db/schema/credit-pricing";
 import { vm0ApiKeys } from "../src/db/schema/vm0-api-key";
@@ -122,13 +122,7 @@ async function devSeed() {
 
     // --- skills (seed skills + common connectors, batch insert) ---
     console.log("Seeding skills...");
-    const eligibleConnectorTypes = Object.entries(CONNECTOR_TYPES)
-      .filter(([, config]) => {
-        return !config.featureFlag || "api-token" in config.authMethods;
-      })
-      .map(([type]) => {
-        return type;
-      });
+    const eligibleConnectorTypes = getEligibleConnectorTypes();
     const skillValues = buildSeedSkillValues([
       ...new Set([...SEED_SKILLS, ...eligibleConnectorTypes]),
     ]);
