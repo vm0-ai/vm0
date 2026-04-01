@@ -175,7 +175,7 @@ export async function dispatchQueuedZeroRun(
  *
  * Called from drainOrgQueue() after the atomic dequeue + status update.
  */
-export async function dispatchQueuedRun(
+async function dispatchQueuedRun(
   runId: string,
   params: CreateRunParams,
   queueDispatcher?: (runId: string, params: CreateRunParams) => Promise<void>,
