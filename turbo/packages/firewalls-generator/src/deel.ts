@@ -46,9 +46,14 @@ const SCOPE_REGEX = /`([a-z][a-z0-9-]*:[a-z]+)`/g;
 const HAS_TOKEN_SCOPES = /\*\*Token scopes?\*\*/i;
 
 function extractScopes(description: string): string[] {
-  if (!HAS_TOKEN_SCOPES.test(description)) return [];
+  const markerMatch = HAS_TOKEN_SCOPES.exec(description);
+  if (!markerMatch) return [];
+  // Only scan text after the "Token scopes" marker
+  const afterMarker = description.slice(
+    markerMatch.index + markerMatch[0].length,
+  );
   const scopes: string[] = [];
-  for (const match of description.matchAll(SCOPE_REGEX)) {
+  for (const match of afterMarker.matchAll(SCOPE_REGEX)) {
     const scope = match[1];
     if (scope) scopes.push(scope);
   }
