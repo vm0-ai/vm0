@@ -103,6 +103,7 @@ Examples:
   Send a Slack message?  zero slack message send --help
   Set up a schedule?     zero schedule setup --help
   Update yourself?       zero agent --help
+  Manage custom skills?  zero skill --help
   Check your identity?   zero whoami`,
   );
 

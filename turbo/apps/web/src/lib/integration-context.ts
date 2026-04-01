@@ -62,5 +62,6 @@ export function buildAgentToolsPrompt(): string {
     "- When you encounter a missing token or environment variable error, run `zero doctor missing-token <TOKEN_NAME>` to diagnose the issue and get remediation steps for the user.",
     '- When you encounter a 403 error with "firewall_permission_denied", run `zero doctor firewall-deny <FIREWALL_REF> --method <METHOD> --path <PATH>` using the "firewall", "method", and "path" fields from the JSON error response to get remediation steps for the user.',
     "- When you need to update your own configuration (description, tone, or instructions), use `zero agent edit --help`. Use `zero agent view $ZERO_AGENT_ID --instructions` to review your current settings first.",
+    "- When you need to manage custom skills, use `zero skill --help`.",
   ].join("\n");
 }

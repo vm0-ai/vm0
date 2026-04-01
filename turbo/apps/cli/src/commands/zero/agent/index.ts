@@ -20,5 +20,11 @@ Examples:
   View your config:      zero agent view $ZERO_AGENT_ID --instructions
   Update description:    zero agent edit $ZERO_AGENT_ID --description "new role"
   Update tone:           zero agent edit $ZERO_AGENT_ID --sound friendly
-  Update instructions:   zero agent edit $ZERO_AGENT_ID --instructions-file <path>`,
+  Update instructions:   zero agent edit $ZERO_AGENT_ID --instructions-file <path>
+  Add a custom skill:    zero agent edit $ZERO_AGENT_ID --add-skill my-skill
+  Remove a skill:        zero agent edit $ZERO_AGENT_ID --remove-skill my-skill
+
+Skills:
+  Custom skills are org-level resources managed with 'zero skill' commands.
+  Use --add-skill/--remove-skill to bind or unbind skills from an agent.`,
   );
