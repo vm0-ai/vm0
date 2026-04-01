@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.133.0](https://github.com/vm0-ai/vm0/compare/core-v8.132.1...core-v8.133.0) (2026-04-01)
+
+
+### Features
+
+* group connector permissions by category (admin/read/write) ([#7476](https://github.com/vm0-ai/vm0/issues/7476)) ([9ffa468](https://github.com/vm0-ai/vm0/commit/9ffa468cd4029c0ec62e54347d086b3a4335cb77))
+* **platform:** add network logs page to activity detail ([#7461](https://github.com/vm0-ai/vm0/issues/7461)) ([c321d03](https://github.com/vm0-ai/vm0/commit/c321d038744fd4034a63f77d8f0c0631a06361aa))
+
+
+### Refactoring
+
+* remove org slug from logs api response and related types ([#7457](https://github.com/vm0-ai/vm0/issues/7457)) ([79f4591](https://github.com/vm0-ai/vm0/commit/79f45915dca93e17eb345ee41d309dde2fb5872b))
+* remove org slug from schedule response and contract ([#7436](https://github.com/vm0-ai/vm0/issues/7436)) ([#7456](https://github.com/vm0-ai/vm0/issues/7456)) ([7001594](https://github.com/vm0-ai/vm0/commit/7001594afafabf8e715aa57edc53094a854e03c1))
+
 ## [8.132.1](https://github.com/vm0-ai/vm0/compare/core-v8.132.0...core-v8.132.1) (2026-04-01)
 
 

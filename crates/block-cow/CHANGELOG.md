@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/vm0-ai/vm0/compare/block-cow-v0.4.1...block-cow-v0.5.0) (2026-04-01)
+
+
+### Features
+
+* **runner:** run runner as root, remove all sudo wrappers ([#7443](https://github.com/vm0-ai/vm0/issues/7443)) ([66e9af9](https://github.com/vm0-ai/vm0/commit/66e9af9846cfdc044ec4203b04e784bbc5ea305d))
+
 ## [0.4.1](https://github.com/vm0-ai/vm0/compare/block-cow-v0.4.0...block-cow-v0.4.1) (2026-03-30)
 
 

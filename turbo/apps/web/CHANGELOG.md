@@ -1,5 +1,34 @@
 # Changelog
 
+## [12.179.0](https://github.com/vm0-ai/vm0/compare/web-v12.178.0...web-v12.179.0) (2026-04-01)
+
+
+### Features
+
+* **platform:** add network logs page to activity detail ([#7461](https://github.com/vm0-ai/vm0/issues/7461)) ([c321d03](https://github.com/vm0-ai/vm0/commit/c321d038744fd4034a63f77d8f0c0631a06361aa))
+
+
+### Bug Fixes
+
+* preserve custom skill volumes in instructions update ([#7471](https://github.com/vm0-ai/vm0/issues/7471)) ([2516fba](https://github.com/vm0-ai/vm0/commit/2516fbae39c1618d99da6472981d88ffe063af21)), closes [#7467](https://github.com/vm0-ai/vm0/issues/7467)
+* **web:** keep connector firewall entry when all permissions are denied ([#7465](https://github.com/vm0-ai/vm0/issues/7465)) ([e21bb41](https://github.com/vm0-ai/vm0/commit/e21bb417c8050705a418b44ff90df9c3d79c8b79))
+
+
+### Refactoring
+
+* consolidate timing parameters in build-and-dispatch-run ([#7447](https://github.com/vm0-ai/vm0/issues/7447)) ([b1b3465](https://github.com/vm0-ai/vm0/commit/b1b34654dc706d1e6856f5d17a1e6fe03c6b5caf))
+* migrate model_provider and selected_model from agent_runs to zero_runs ([#7450](https://github.com/vm0-ai/vm0/issues/7450)) ([391a281](https://github.com/vm0-ai/vm0/commit/391a2813f974dba3e11917c78fea31258bf68357))
+* remove org slug from billing service stripe metadata ([#7482](https://github.com/vm0-ai/vm0/issues/7482)) ([b289a5b](https://github.com/vm0-ai/vm0/commit/b289a5b439c86ad5c312699e11c6043095986491)), closes [#7477](https://github.com/vm0-ai/vm0/issues/7477)
+* remove org slug from logs api response and related types ([#7457](https://github.com/vm0-ai/vm0/issues/7457)) ([79f4591](https://github.com/vm0-ai/vm0/commit/79f45915dca93e17eb345ee41d309dde2fb5872b))
+* remove org slug from schedule response and contract ([#7436](https://github.com/vm0-ai/vm0/issues/7436)) ([#7456](https://github.com/vm0-ai/vm0/issues/7456)) ([7001594](https://github.com/vm0-ai/vm0/commit/7001594afafabf8e715aa57edc53094a854e03c1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.133.0
+
 ## [12.178.0](https://github.com/vm0-ai/vm0/compare/web-v12.177.5...web-v12.178.0) (2026-04-01)
 
 
