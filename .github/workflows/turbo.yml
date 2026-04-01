@@ -1502,6 +1502,7 @@ jobs:
             # Clean previous run artifacts and upload runner (guests are embedded)
             # shellcheck disable=SC2029
             ssh "$REMOTE" "sudo rm -rf ${BIN_DIR} ${RUNNER_DIR} && sudo mkdir -p ${BIN_DIR}"
+            # shellcheck disable=SC2029
             < "${TARGET_DIR}/runner" ssh "$REMOTE" "sudo install -m 755 /dev/stdin ${BIN_DIR}/runner"
 
             # Clean up old rootfs/snapshots, keep the 6 most recent (3 deploys × 2 profiles)

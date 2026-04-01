@@ -436,6 +436,7 @@ jobs:
           echo "=== Deploying runner to ${HOST}:${BIN_DIR} ==="
           # shellcheck disable=SC2029
           ssh "$REMOTE" "sudo rm -rf ${BIN_DIR} /var/lib/vm0-runner/runners/${JOB_REF}-bench /var/lib/vm0-runner/runners/${JOB_REF}-local && sudo mkdir -p ${BIN_DIR}"
+          # shellcheck disable=SC2029
           < "${TARGET_DIR}/runner" ssh "$REMOTE" "sudo install -m 755 /dev/stdin ${BIN_DIR}/runner"
 
           # Clean up old rootfs/snapshots, keep the 3 most recent deploys
