@@ -67,13 +67,30 @@ Notes:
         console.log(
           `The ${label} connector is not connected. Ask the user to connect it at: [Connect ${label}](${url})`,
         );
-      } else if (!hasPermission) {
-        // Connected but not authorized for this agent — direct to authorization tab
+        return;
+      }
+
+      const issues: string[] = [];
+
+      if (connector.needsReconnect) {
+        const url = `${platformUrl.origin}/connectors`;
+        issues.push(
+          `The ${label} connector has expired and needs to be reconnected. Ask the user to reconnect it at: [Reconnect ${label}](${url})`,
+        );
+      }
+
+      if (!hasPermission) {
         const path = agentId ? `/team/${agentId}` : "/team";
         const url = `${platformUrl.origin}${path}?tab=authorization`;
-        console.log(
-          `The ${label} connector is connected but not authorized for this agent. Ask the user to enable it at: [Authorize ${label}](${url})`,
+        issues.push(
+          `The ${label} connector is not authorized for this agent. Ask the user to enable it at: [Authorize ${label}](${url})`,
         );
+      }
+
+      if (issues.length > 0) {
+        for (const issue of issues) {
+          console.log(issue);
+        }
       } else {
         // Both connected and authorized — something else is wrong
         const url = `${platformUrl.origin}/connectors`;

@@ -109,6 +109,73 @@ describe("zero doctor missing-token command", () => {
     });
   });
 
+  describe("connector connected but expired", () => {
+    it("should direct to connectors page to reconnect when needsReconnect is true", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
+          return HttpResponse.json({
+            ...connectedResponse,
+            needsReconnect: true,
+          });
+        }),
+        http.get(
+          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["github"] });
+          },
+        ),
+      );
+
+      await missingTokenCommand.parseAsync(["node", "cli", "GH_TOKEN"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(
+        "GH_TOKEN is provided by the GitHub connector",
+      );
+      expect(logCalls).toContain("expired");
+      expect(logCalls).toContain("needs to be reconnected");
+      expect(logCalls).toContain(
+        "[Reconnect GitHub](https://app.vm0.ai/connectors)",
+      );
+      expect(logCalls).not.toContain("not authorized");
+    });
+
+    it("should show both expired and not authorized when both issues exist", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
+          return HttpResponse.json({
+            ...connectedResponse,
+            needsReconnect: true,
+          });
+        }),
+        http.get(
+          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["slack"] });
+          },
+        ),
+      );
+
+      await missingTokenCommand.parseAsync(["node", "cli", "GH_TOKEN"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("expired");
+      expect(logCalls).toContain(
+        "[Reconnect GitHub](https://app.vm0.ai/connectors)",
+      );
+      expect(logCalls).toContain("not authorized");
+      expect(logCalls).toContain(
+        "[Authorize GitHub](https://app.vm0.ai/team/agent-abc-123?tab=authorization)",
+      );
+    });
+  });
+
   describe("connector connected and authorized", () => {
     it("should report unexpected state when both are fine", async () => {
       vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
