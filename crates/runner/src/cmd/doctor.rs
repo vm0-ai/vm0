@@ -319,10 +319,9 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
         detect_global_orphans(&reports, &discovered.firecrackers, &discovered.mitmdumps).await
     } else {
         // Scoped detection: orphan firecracker for the named runner.
-        // Orphan mitmproxy and namespace cannot be scoped (no runner-identifying
-        // info on orphaned processes / no persistent runner→pool_idx mapping).
-        // NBD orphan detection always runs because devices lack per-runner
-        // attribution and the check is fast (<100ms).
+        // Orphan mitmproxy, namespace, and NBD devices are skipped because
+        // they lack per-runner attribution — report them only in global mode
+        // (no --name) so they don't cause unrelated runners to fail.
         let mut warnings = Vec::new();
 
         // Orphan firecracker: scope by base_dir match.
@@ -337,9 +336,6 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
                     .await,
             );
         }
-
-        // NBD orphan detection (host-wide, cannot scope to a single runner).
-        warnings.extend(detect_nbd_orphans().await);
 
         warnings
     };
