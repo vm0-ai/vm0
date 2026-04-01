@@ -153,38 +153,125 @@ function formatParams(params: Record<string, string> | undefined): string {
   return JSON.stringify(filtered);
 }
 
+function hasValue(value: unknown): boolean {
+  if (value === null || value === undefined) {
+    return false;
+  }
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+  if (typeof value === "object") {
+    return Object.keys(value).length > 0;
+  }
+  return true;
+}
+
+function addField(
+  out: [string, string][],
+  label: string,
+  raw: unknown,
+  formatted: string,
+): void {
+  if (hasValue(raw)) {
+    out.push([label, formatted]);
+  }
+}
+
 function collectDetails(entry: NetworkLogEntry): [string, string][] {
-  return [
-    ["Timestamp", entry.timestamp],
-    ["Type", formatValue(entry.type)],
-    ["Action", formatValue(entry.action)],
-    ["Method", formatValue(entry.method)],
-    ["URL", formatValue(entry.url)],
-    ["Host", formatValue(entry.host)],
-    ["Port", formatValue(entry.port)],
-    ["Status", formatValue(entry.status)],
-    ["Latency", formatLatency(entry.latency_ms)],
-    ["Request Size", formatSize(entry.request_size)],
-    ["Response Size", formatSize(entry.response_size)],
-    ["Firewall", formatValue(entry.firewall_name)],
-    ["Firewall Ref", formatValue(entry.firewall_ref)],
-    ["Firewall Permission", formatValue(entry.firewall_permission)],
-    ["Firewall Rule Match", formatValue(entry.firewall_rule_match)],
-    ["Firewall Base URL", formatValue(entry.firewall_base)],
-    ["Firewall Params", formatParams(entry.firewall_params)],
-    ["Firewall Error", formatValue(entry.firewall_error)],
-    ["Resolved Secrets", formatValue(entry.token_resolved_secrets)],
-    ["Refreshed Connectors", formatValue(entry.token_refreshed_connectors)],
-    ["Refreshed Secrets", formatValue(entry.token_refreshed_secrets)],
-    ["Cache Hit", formatValue(entry.token_cache_hit)],
-    ["Error", formatValue(entry.error)],
-  ];
+  const out: [string, string][] = [];
+  addField(out, "Timestamp", entry.timestamp, entry.timestamp);
+  addField(out, "Type", entry.type, formatValue(entry.type));
+  addField(out, "Action", entry.action, formatValue(entry.action));
+  addField(out, "Method", entry.method, formatValue(entry.method));
+  addField(out, "URL", entry.url, formatValue(entry.url));
+  addField(out, "Host", entry.host, formatValue(entry.host));
+  addField(out, "Port", entry.port, formatValue(entry.port));
+  addField(out, "Status", entry.status, formatValue(entry.status));
+  addField(out, "Latency", entry.latency_ms, formatLatency(entry.latency_ms));
+  addField(
+    out,
+    "Request Size",
+    entry.request_size,
+    formatSize(entry.request_size),
+  );
+  addField(
+    out,
+    "Response Size",
+    entry.response_size,
+    formatSize(entry.response_size),
+  );
+  addField(
+    out,
+    "Firewall",
+    entry.firewall_name,
+    formatValue(entry.firewall_name),
+  );
+  addField(
+    out,
+    "Firewall Ref",
+    entry.firewall_ref,
+    formatValue(entry.firewall_ref),
+  );
+  addField(
+    out,
+    "Firewall Permission",
+    entry.firewall_permission,
+    formatValue(entry.firewall_permission),
+  );
+  addField(
+    out,
+    "Firewall Rule Match",
+    entry.firewall_rule_match,
+    formatValue(entry.firewall_rule_match),
+  );
+  addField(
+    out,
+    "Firewall Base URL",
+    entry.firewall_base,
+    formatValue(entry.firewall_base),
+  );
+  addField(
+    out,
+    "Firewall Params",
+    entry.firewall_params,
+    formatParams(entry.firewall_params),
+  );
+  addField(
+    out,
+    "Firewall Error",
+    entry.firewall_error,
+    formatValue(entry.firewall_error),
+  );
+  addField(
+    out,
+    "Resolved Secrets",
+    entry.token_resolved_secrets,
+    formatValue(entry.token_resolved_secrets),
+  );
+  addField(
+    out,
+    "Refreshed Connectors",
+    entry.token_refreshed_connectors,
+    formatValue(entry.token_refreshed_connectors),
+  );
+  addField(
+    out,
+    "Refreshed Secrets",
+    entry.token_refreshed_secrets,
+    formatValue(entry.token_refreshed_secrets),
+  );
+  addField(
+    out,
+    "Cache Hit",
+    entry.token_cache_hit,
+    formatValue(entry.token_cache_hit),
+  );
+  addField(out, "Error", entry.error, formatValue(entry.error));
+  return out;
 }
 
 function NetworkLogRowDetail({ entry }: { entry: NetworkLogEntry }) {
-  const details = collectDetails(entry).filter(([, value]) => {
-    return value !== "—";
-  });
+  const details = collectDetails(entry);
 
   if (details.length === 0) {
     return null;
