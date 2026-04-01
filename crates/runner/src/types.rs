@@ -37,9 +37,7 @@ pub struct ExecutionContext {
     // Deserialized for forward compatibility but not consumed by runner.
     #[serde(default, rename = "agentComposeVersionId")]
     pub _agent_compose_version_id: Option<String>,
-    // Vars are expanded into environment at compose time via ${{ vars.XXX }} templates.
-    // Not read by runner — tested via environment field instead.
-    #[allow(dead_code)]
+    // Vars are passed to the proxy registry for auth header template resolution.
     #[serde(default)]
     pub vars: Option<HashMap<String, String>>,
     // Checkpoint resume not yet implemented

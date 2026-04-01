@@ -177,44 +177,7 @@ describe("sidebar new chat navigation", () => {
     await waitFor(() => {
       expect(pathname()).toBe("/chat/delayed-thread-id");
     });
-  }, 15_000);
-
-  it("should handle API failure gracefully", async () => {
-    const user = userEvent.setup();
-    mockSubagentAPIs();
-    // Override POST to return error
-    server.use(
-      http.post("*/api/zero/chat-threads", () => {
-        return HttpResponse.json(
-          {
-            error: {
-              message: "Internal server error",
-              code: "INTERNAL_SERVER_ERROR",
-            },
-          },
-          { status: 500 },
-        );
-      }),
-    );
-
-    await setupPage({ context, path: "/team" });
-
-    const initialPath = pathname();
-
-    const newChatButton = await waitFor(() => {
-      return screen.getByLabelText("New chat with Zero");
-    });
-
-    await user.click(newChatButton);
-
-    // Wait for the request to complete (button should become enabled again)
-    await waitFor(() => {
-      expect(newChatButton).not.toBeDisabled();
-    });
-
-    // Should not have navigated
-    expect(pathname()).toBe(initialPath);
-  }, 15_000);
+  });
 
   it("should show new chat entry in sidebar and focus textarea after creating new chat", async () => {
     const user = userEvent.setup();

@@ -197,6 +197,7 @@ async fn run_sandbox(
         firewalls: None,
         encrypted_secrets: None,
         secret_connector_map: None,
+        vars: None,
     };
     if let Err(e) = mitm.register_vm(&source_ip, &registration).await {
         warn!(error = %e, "failed to register VM in proxy");

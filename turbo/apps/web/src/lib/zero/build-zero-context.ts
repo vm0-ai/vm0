@@ -32,7 +32,7 @@ import {
   providerIncompatible,
 } from "../errors";
 import { logger } from "../logger";
-import type { ExecutionContext, ResumeSession, RuntimeOrg } from "../run/types";
+import type { ExecutionContext, ResumeSession } from "../run/types";
 import type { ArtifactSnapshot } from "../checkpoint/types";
 import {
   resolveCheckpoint,
@@ -906,7 +906,6 @@ interface BuildZeroContextTimings {
 
 interface BuildZeroContextResult {
   context: ExecutionContext;
-  runtimeOrg: RuntimeOrg;
   timings: BuildZeroContextTimings;
   /** The resolved model provider type, if provider resolution ran during context build. */
   resolvedModelProvider: ModelProviderType | undefined;
@@ -1163,7 +1162,6 @@ export async function buildZeroExecutionContext(
 
   // Build final execution context
   return {
-    runtimeOrg: { orgId: params.orgId },
     context: {
       runId: params.runId,
       userId: params.userId,

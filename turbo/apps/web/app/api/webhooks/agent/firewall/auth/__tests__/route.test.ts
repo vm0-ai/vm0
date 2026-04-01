@@ -211,6 +211,97 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     });
   });
 
+  describe("Vars resolution", () => {
+    it("should resolve ${{ vars.X }} templates", async () => {
+      const encrypted = encryptTestSecrets({ TOKEN: "secret-value" });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              "X-User-Email": "${{ vars.USER_EMAIL }}",
+            },
+            vars: { USER_EMAIL: "user@example.com" },
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.headers["X-User-Email"]).toBe("user@example.com");
+      // Vars should NOT appear in resolvedSecrets
+      expect(data.resolvedSecrets).toEqual([]);
+    });
+
+    it("should resolve mixed secrets and vars in the same header", async () => {
+      const encrypted = encryptTestSecrets({ API_TOKEN: "my-token" });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization:
+                "Basic ${{ vars.USERNAME }}:${{ secrets.API_TOKEN }}",
+            },
+            vars: { USERNAME: "admin" },
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.headers.Authorization).toBe("Basic admin:my-token");
+      expect(data.resolvedSecrets).toEqual(["API_TOKEN"]);
+    });
+
+    it("should resolve missing var to empty string", async () => {
+      const encrypted = encryptTestSecrets({ TOKEN: "value" });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              "X-Missing": "${{ vars.NONEXISTENT }}",
+            },
+            vars: {},
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.headers["X-Missing"]).toBe("");
+    });
+
+    it("should work without vars field (backward compatible)", async () => {
+      const encrypted = encryptTestSecrets({
+        GITHUB_TOKEN: "ghp_test_token_123",
+      });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: "Bearer ${{ secrets.GITHUB_TOKEN }}",
+            },
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.headers.Authorization).toBe("Bearer ghp_test_token_123");
+    });
+  });
+
   describe("Token refresh with secretConnectorMap", () => {
     const NOTION_TOKEN_URL = "https://api.notion.com/v1/oauth/token";
 

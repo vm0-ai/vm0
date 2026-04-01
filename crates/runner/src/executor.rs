@@ -127,6 +127,7 @@ async fn execute_inner(
         firewalls: context.experimental_firewalls.as_deref(),
         encrypted_secrets: context.encrypted_secrets.as_deref(),
         secret_connector_map: context.secret_connector_map.as_ref(),
+        vars: context.vars.as_ref(),
     };
     if let Err(e) = config.registry.register_vm(&source_ip, &registration).await {
         warn!(run_id = %context.run_id, error = %e, "failed to register VM in proxy");

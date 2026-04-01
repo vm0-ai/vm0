@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import type { AgentComposeYaml } from "../../../types/agent-compose";
-import type { ExecutionContext, RuntimeOrg } from "../types";
+import type { ExecutionContext } from "../types";
 import type { PreparedContext } from "../executors/types";
 import {
   prepareStorageManifest,
@@ -76,7 +76,7 @@ interface PrepareResult {
 
 export async function prepareForExecution(
   context: ExecutionContext,
-  runtimeOrg: RuntimeOrg,
+  orgId: string,
 ): Promise<PrepareResult> {
   log.debug(`Preparing execution context for run ${context.runId}...`);
 
@@ -118,20 +118,10 @@ export async function prepareForExecution(
   const ensureStart = Date.now();
   await Promise.all([
     context.artifactName
-      ? ensureStorageExists(
-          runtimeOrg.orgId,
-          userId,
-          context.artifactName,
-          "artifact",
-        )
+      ? ensureStorageExists(orgId, userId, context.artifactName, "artifact")
       : null,
     context.memoryName
-      ? ensureStorageExists(
-          runtimeOrg.orgId,
-          userId,
-          context.memoryName,
-          "memory",
-        )
+      ? ensureStorageExists(orgId, userId, context.memoryName, "memory")
       : null,
   ]);
   const ensureEnd = Date.now();
@@ -144,7 +134,7 @@ export async function prepareForExecution(
     context.agentCompose as AgentComposeYaml,
     context.vars || {},
     agentOrgId,
-    runtimeOrg.orgId,
+    orgId,
     userId,
     context.artifactName,
     context.artifactVersion,
@@ -156,7 +146,7 @@ export async function prepareForExecution(
   const storageEnd = Date.now();
 
   log.debug(
-    `Storage manifest prepared with dual orgs: agentClerkOrgId=${agentOrgId}, runtimeClerkOrgId=${runtimeOrg.orgId}, ${storageManifest.storages.length} storages, ${storageManifest.artifact ? "1 artifact" : "no artifact"}`,
+    `Storage manifest prepared with dual orgs: agentClerkOrgId=${agentOrgId}, runtimeClerkOrgId=${orgId}, ${storageManifest.storages.length} storages, ${storageManifest.artifact ? "1 artifact" : "no artifact"}`,
   );
 
   // Build PreparedContext
