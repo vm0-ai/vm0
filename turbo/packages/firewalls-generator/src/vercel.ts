@@ -102,7 +102,7 @@ function generateTypeScript(permissions: PermissionGroup[]): string {
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const vercelFirewall: FirewallConfig = {",
+    "export const vercelFirewall = {",
     '  name: "vercel",',
     '  description: "Vercel API",',
     "  placeholders: {",
@@ -124,7 +124,7 @@ function generateTypeScript(permissions: PermissionGroup[]): string {
   lines.push("      ],");
   lines.push("    },");
   lines.push("  ],");
-  lines.push("};");
+  lines.push("} as const satisfies FirewallConfig;");
   lines.push("");
 
   return lines.join("\n");

@@ -13,6 +13,17 @@ import type {
 } from "../contracts/firewalls";
 import type { ConnectorType } from "../contracts/connectors";
 import { slackDefaultAllowed } from "./slack.generated";
+
+// Category registrations (side-effect imports)
+import "./slack.categories";
+import "./github.categories";
+import "./gmail.categories";
+import "./vercel.categories";
+
+export {
+  getPermissionCategories,
+  type ConnectorCategories,
+} from "./categories";
 import { getConnectorEnvironmentMapping } from "../contracts/connectors";
 import { agentmailFirewall } from "./agentmail.generated";
 import { ahrefsFirewall } from "./ahrefs.generated";

@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const githubFirewall: FirewallConfig = {
+export const githubFirewall = {
   name: "github",
   description: "GitHub API",
   placeholders: {
@@ -1747,4 +1747,4 @@ export const githubFirewall: FirewallConfig = {
       ],
     },
   ],
-};
+} as const satisfies FirewallConfig;
