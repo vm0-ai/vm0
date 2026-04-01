@@ -10,10 +10,6 @@ export const continueCommand = new Command()
   .argument("<session-id>", "Session ID from a previous run")
   .argument("<prompt>", "Follow-up prompt for the agent")
   .option(
-    "--append-system-prompt <text>",
-    "Append text to the agent's system prompt",
-  )
-  .option(
     "--model-provider <type>",
     "Override model provider (e.g., anthropic-api-key)",
   )
@@ -35,7 +31,6 @@ Notes:
         sessionId: string,
         prompt: string,
         options: {
-          appendSystemPrompt?: string;
           modelProvider?: string;
           verbose?: boolean;
         },
@@ -51,7 +46,6 @@ Notes:
         const response = await createZeroRun({
           sessionId,
           prompt,
-          appendSystemPrompt: options.appendSystemPrompt,
           modelProvider: options.modelProvider,
         });
 

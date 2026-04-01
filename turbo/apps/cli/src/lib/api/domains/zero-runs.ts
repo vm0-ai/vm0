@@ -14,7 +14,6 @@ export async function createZeroRun(body: {
   sessionId?: string;
   checkpointId?: string;
   prompt: string;
-  appendSystemPrompt?: string;
   modelProvider?: string;
   tools?: string[];
   settings?: string;

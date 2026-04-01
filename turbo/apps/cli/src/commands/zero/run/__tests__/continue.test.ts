@@ -123,35 +123,6 @@ describe("zero run continue command", () => {
       expect(capturedBody).not.toHaveProperty("agentId");
     });
 
-    it("should pass append-system-prompt option to API", async () => {
-      let capturedBody: Record<string, unknown> | undefined;
-
-      server.use(
-        http.post(
-          "http://localhost:3000/api/zero/runs",
-          async ({ request }) => {
-            capturedBody = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json(defaultCreateRunResponse, { status: 201 });
-          },
-        ),
-      );
-
-      await continueCommand.parseAsync([
-        "node",
-        "cli",
-        testSessionId,
-        "test prompt",
-        "--append-system-prompt",
-        "Always respond in JSON",
-      ]);
-
-      expect(capturedBody).toEqual(
-        expect.objectContaining({
-          appendSystemPrompt: "Always respond in JSON",
-        }),
-      );
-    });
-
     it("should pass model-provider option to API", async () => {
       let capturedBody: Record<string, unknown> | undefined;
 

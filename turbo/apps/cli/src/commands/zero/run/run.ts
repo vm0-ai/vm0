@@ -10,10 +10,6 @@ export const mainRunCommand = new Command()
   .argument("<agent-id>", "Agent UUID (from `zero agent list`)")
   .argument("<prompt>", "Task prompt for the agent")
   .option(
-    "--append-system-prompt <text>",
-    "Append text to the agent's system prompt",
-  )
-  .option(
     "--model-provider <type>",
     "Override model provider (e.g., anthropic-api-key)",
   )
@@ -36,7 +32,6 @@ Notes:
         agentId: string,
         prompt: string,
         options: {
-          appendSystemPrompt?: string;
           modelProvider?: string;
           verbose?: boolean;
         },
@@ -54,7 +49,6 @@ Notes:
         const response = await createZeroRun({
           agentId,
           prompt,
-          appendSystemPrompt: options.appendSystemPrompt,
           modelProvider: options.modelProvider,
         });
 

@@ -111,7 +111,6 @@ const router = tsr.router(zeroRunsMainContract, {
         prompt: body.prompt,
         agentId: agent.id,
         sessionId: body.sessionId,
-        appendSystemPrompt: body.appendSystemPrompt,
         modelProvider: body.modelProvider,
         triggerSource: authCtx.runId ? "agent" : "web",
         triggerAgentId,
