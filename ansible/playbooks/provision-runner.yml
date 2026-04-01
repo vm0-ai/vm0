@@ -57,10 +57,14 @@
         mode: '0666'
       become: true
 
-    - name: Load nbd kernel module
-      shell: modprobe nbd nbds_max=4096
+    # Write options BEFORE enabling auto-load so that a reboot between
+    # these tasks never loads the module with the kernel default nbds_max.
+    - name: Persist nbd module options across reboots
+      copy:
+        dest: /etc/modprobe.d/nbd.conf
+        content: "options nbd nbds_max=4096\n"
+        mode: '0644'
       become: true
-      changed_when: false
 
     - name: Persist nbd module across reboots
       copy:
@@ -69,12 +73,22 @@
         mode: '0644'
       become: true
 
-    - name: Persist nbd module options across reboots
-      copy:
-        dest: /etc/modprobe.d/nbd.conf
-        content: "options nbd nbds_max=4096\n"
-        mode: '0644'
+    - name: Load nbd kernel module with correct nbds_max
+      shell: |
+        WANT=4096
+        if [ ! -d /sys/module/nbd ]; then
+          modprobe nbd nbds_max=$WANT
+        elif [ "$(cat /sys/module/nbd/parameters/nbds_max)" != "$WANT" ]; then
+          # Module loaded with wrong nbds_max (e.g., kernel default 16 after
+          # reboot before ansible ran). Reload only if no devices are in use.
+          if ! grep -q '^[0-9]' /sys/block/nbd*/pid 2>/dev/null; then
+            modprobe -r nbd && modprobe nbd nbds_max=$WANT
+          else
+            echo "WARNING: nbd module has wrong nbds_max but devices are in use, skipping reload" >&2
+          fi
+        fi
       become: true
+      changed_when: false
 
     # When groups change, the current SSH session still has the old group list.
     # Reset the connection so subsequent playbooks (deploy-runner) pick up the
