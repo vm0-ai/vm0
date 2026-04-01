@@ -11,8 +11,9 @@ import { SEED_SKILLS } from "./seed-skills";
 /**
  * Build compose content for a zero agent.
  *
- * Always includes all SEED_SKILLS plus connector type skill names that are
- * generally available (i.e. not gated behind a feature flag).
+ * Always includes all SEED_SKILLS plus eligible connector type skill names.
+ * Eligible = GA (no feature flag) or has api-token auth (feature flag only
+ * gates OAuth, not api-token).
  * Connector env var templates are baked into the compose so that
  * expandEnvironmentFromCompose can resolve firewall placeholders at runtime.
  */
@@ -30,15 +31,18 @@ export function buildComposeContent(
     }
   }
 
-  const gaConnectorTypes = Object.entries(CONNECTOR_TYPES)
+  const eligibleConnectorTypes = Object.entries(CONNECTOR_TYPES)
     .filter(([, config]) => {
-      return !config.featureFlag;
+      // Feature flag only gates OAuth; api-token is always available
+      return !config.featureFlag || "api-token" in config.authMethods;
     })
     .map(([type]) => {
       return type;
     });
 
-  const allSkillNames = [...new Set([...SEED_SKILLS, ...gaConnectorTypes])];
+  const allSkillNames = [
+    ...new Set([...SEED_SKILLS, ...eligibleConnectorTypes]),
+  ];
   const skills = allSkillNames.map((name) => {
     return resolveSkillRef(name);
   });
@@ -50,7 +54,7 @@ export function buildComposeContent(
 
   // Inject env var templates from connector environmentMappings so that
   // expandEnvironmentFromCompose can substitute firewall placeholders.
-  for (const connector of gaConnectorTypes) {
+  for (const connector of eligibleConnectorTypes) {
     const parsed = connectorTypeSchema.safeParse(connector);
     if (!parsed.success) continue;
     const mapping = getConnectorEnvironmentMapping(parsed.data);

@@ -7,19 +7,28 @@ import {
   getInstructionsFilename,
 } from "@vm0/core";
 
-/** Connector types that are NOT behind a feature flag (generally available). */
-const gaConnectorTypes = Object.entries(CONNECTOR_TYPES)
+/** Connector types eligible for compose: GA or feature-flagged with api-token. */
+const eligibleConnectorTypes = Object.entries(CONNECTOR_TYPES)
   .filter(([, config]) => {
-    return !config.featureFlag;
+    return !config.featureFlag || "api-token" in config.authMethods;
   })
   .map(([type]) => {
     return type;
   });
 
-/** Connector types that ARE behind a feature flag. */
-const flaggedConnectorTypes = Object.entries(CONNECTOR_TYPES)
+/** Feature-flagged connectors that have api-token (eligible despite flag). */
+const flaggedWithApiToken = Object.entries(CONNECTOR_TYPES)
   .filter(([, config]) => {
-    return !!config.featureFlag;
+    return !!config.featureFlag && "api-token" in config.authMethods;
+  })
+  .map(([type]) => {
+    return type;
+  });
+
+/** Feature-flagged connectors that are OAuth-only (excluded from compose). */
+const flaggedOauthOnly = Object.entries(CONNECTOR_TYPES)
+  .filter(([, config]) => {
+    return !!config.featureFlag && !("api-token" in config.authMethods);
   })
   .map(([type]) => {
     return type;
@@ -56,22 +65,21 @@ describe("buildComposeContent", () => {
     }
   });
 
-  it("should include GA connector types as skills", () => {
+  it("should include eligible connector types as skills", () => {
     const result = buildComposeContent("agent");
     const agent = (result.agents as Record<string, Record<string, unknown>>)[
       "agent"
     ]!;
     const skills = agent.skills as string[];
 
-    for (const connectorType of gaConnectorTypes) {
+    for (const connectorType of eligibleConnectorTypes) {
       const url = resolveSkillRef(connectorType);
       expect(skills).toContain(url);
     }
   });
 
-  it("should exclude feature-flagged connector types from skills", () => {
-    // Sanity: there are flagged connectors to exclude
-    expect(flaggedConnectorTypes.length).toBeGreaterThan(0);
+  it("should include feature-flagged connectors that have api-token", () => {
+    expect(flaggedWithApiToken.length).toBeGreaterThan(0);
 
     const result = buildComposeContent("agent");
     const agent = (result.agents as Record<string, Record<string, unknown>>)[
@@ -79,7 +87,22 @@ describe("buildComposeContent", () => {
     ]!;
     const skills = agent.skills as string[];
 
-    for (const connectorType of flaggedConnectorTypes) {
+    for (const connectorType of flaggedWithApiToken) {
+      const url = resolveSkillRef(connectorType);
+      expect(skills).toContain(url);
+    }
+  });
+
+  it("should exclude feature-flagged OAuth-only connectors from skills", () => {
+    expect(flaggedOauthOnly.length).toBeGreaterThan(0);
+
+    const result = buildComposeContent("agent");
+    const agent = (result.agents as Record<string, Record<string, unknown>>)[
+      "agent"
+    ]!;
+    const skills = agent.skills as string[];
+
+    for (const connectorType of flaggedOauthOnly) {
       const url = resolveSkillRef(connectorType);
       expect(skills).not.toContain(url);
     }
@@ -122,15 +145,26 @@ describe("buildComposeContent", () => {
     expect(environment.JIRA_API_TOKEN).toBe("${{ secrets.JIRA_API_TOKEN }}");
   });
 
-  it("should not inject env var templates for feature-flagged connectors", () => {
+  it("should inject env var templates for feature-flagged connectors with api-token", () => {
     const result = buildComposeContent("agent");
     const agent = (result.agents as Record<string, Record<string, unknown>>)[
       "agent"
     ]!;
     const environment = agent.environment as Record<string, string>;
 
-    // Ahrefs is feature-flagged — its env var should NOT be present
-    expect(environment.AHREFS_TOKEN).toBeUndefined();
+    // Mercury is feature-flagged but has api-token — its env var SHOULD be present
+    expect(environment.MERCURY_TOKEN).toBe("${{ secrets.MERCURY_TOKEN }}");
+  });
+
+  it("should not inject env var templates for feature-flagged OAuth-only connectors", () => {
+    const result = buildComposeContent("agent");
+    const agent = (result.agents as Record<string, Record<string, unknown>>)[
+      "agent"
+    ]!;
+    const environment = agent.environment as Record<string, string>;
+
+    // Reddit is feature-flagged and OAuth-only — its env var should NOT be present
+    expect(environment.REDDIT_TOKEN).toBeUndefined();
   });
 
   it("should always include ZERO_AGENT_ID and ZERO_TOKEN", () => {
