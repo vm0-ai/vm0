@@ -1,37 +1,51 @@
-/**
- * The platform (integration) an agent run originates from.
- * Used to inject context so the agent knows which channel it is operating in.
- */
-type IntegrationPlatform = "Email" | "GitHub" | "Slack" | "Telegram";
+interface AgentIdentity {
+  displayName: string | null;
+  description: string | null;
+  sound: string | null;
+}
+
+const TONE_INSTRUCTIONS: Readonly<Record<string, string>> = {
+  professional:
+    "Communicate in a clear, polished, and business-appropriate tone. Be thorough yet concise.",
+  friendly:
+    "Communicate in a warm, approachable, and conversational tone. Feel free to be casual while still being helpful.",
+  direct:
+    "Be brief and to the point. Skip pleasantries and filler — just deliver the information or action needed.",
+  supportive:
+    "Be encouraging and empathetic. Show that you're in the user's corner and proactively offer help.",
+};
 
 /**
- * Build the integration context header prepended to agent run prompts.
+ * Build the agent system prompt: identity + tools.
  */
-export function buildIntegrationContext(
-  platform: IntegrationPlatform,
-  options?: {
-    botUserId?: string;
-    channelId?: string;
-    channelType?: "channel" | "dm" | "group_dm";
-  },
-): string {
-  let context = `# Current Integration\nYou are currently running inside: ${platform}`;
-  if (options?.botUserId) {
-    context += `\nYour bot user ID: ${options.botUserId}`;
+export function buildAgentPrompt(identity: AgentIdentity): string {
+  const parts: string[] = [];
+  if (identity.displayName || identity.description || identity.sound) {
+    parts.push(buildAgentIdentityPrompt(identity));
   }
-  if (options?.channelId) {
-    context += `\nChannel ID: ${options.channelId}`;
+  parts.push(buildAgentToolsPrompt());
+  return parts.join("\n\n");
+}
+
+function buildAgentIdentityPrompt(identity: AgentIdentity): string {
+  const parts: string[] = [];
+
+  if (identity.displayName) {
+    parts.push(`Your name is ${identity.displayName}.`);
   }
-  if (options?.channelType) {
-    const typeLabel =
-      options.channelType === "dm"
-        ? "Direct message"
-        : options.channelType === "group_dm"
-          ? "Group direct message"
-          : "Channel";
-    context += `\nChannel type: ${typeLabel}`;
+
+  if (identity.description) {
+    parts.push(`Your role: ${identity.description}`);
   }
-  return context;
+
+  if (identity.sound) {
+    const instruction = TONE_INSTRUCTIONS[identity.sound];
+    if (instruction) {
+      parts.push(instruction);
+    }
+  }
+
+  return `# Agent Identity\n${parts.join("\n")}`;
 }
 
 /**
@@ -50,7 +64,7 @@ export const DISALLOWED_TOOLS = [
  * Build Agent Tools prompt so sandbox agents know how to use the Zero CLI.
  * Injected by createZeroRun() for all trigger paths.
  */
-export function buildAgentToolsPrompt(): string {
+function buildAgentToolsPrompt(): string {
   return [
     "# Agent Tools",
     "You have access to the Zero CLI. Run commands with: `npx -p @vm0/cli zero <command>`",

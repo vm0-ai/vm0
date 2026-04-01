@@ -10,7 +10,7 @@ import {
   type HandlerResult,
 } from "./shared";
 import { createZeroRun } from "../../zero/zero-run-service";
-import { buildIntegrationContext } from "../../integration-context";
+import { buildIntegrationContext } from "../../zero/integration-context";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
 import { getUserIdByEmail } from "../../auth/get-user-id-by-email";
 import { logger } from "../../logger";

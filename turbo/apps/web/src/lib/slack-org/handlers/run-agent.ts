@@ -1,6 +1,6 @@
 import { isRunDispatchError } from "../../run";
 import { createZeroRun } from "../../zero/zero-run-service";
-import { buildIntegrationContext } from "../../integration-context";
+import { buildIntegrationContext } from "../../zero/integration-context";
 import { isApiError } from "../../errors";
 import { RUN_ERROR_GUIDANCE } from "@vm0/core";
 import { generateCallbackSecret, getApiUrl } from "../../callback";

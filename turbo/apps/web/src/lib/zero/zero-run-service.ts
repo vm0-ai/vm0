@@ -34,11 +34,7 @@ import { orgMetadata } from "../../db/schema/org-metadata";
 import { orgMembersMetadata } from "../../db/schema/org-members-metadata";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import type { AgentComposeYaml } from "../../types/agent-compose";
-import {
-  DISALLOWED_TOOLS,
-  buildAgentToolsPrompt,
-} from "../integration-context";
-import { formatAgentIdentityPrompt } from "../agent-identity";
+import { DISALLOWED_TOOLS, buildAgentPrompt } from "./agent-prompt";
 import type { CallbackPayload } from "../callback/callback-payloads";
 import { zeroAgents } from "../../db/schema/zero-agent";
 import { zeroRuns } from "../../db/schema/zero-run";
@@ -268,14 +264,8 @@ export async function createZeroRun(
   }
 
   // Build agent system prompt: identity + tools first, then trigger context
-  const agentParts: string[] = [];
-  if (agent.displayName || agent.description || agent.sound) {
-    agentParts.push(formatAgentIdentityPrompt(agent));
-  }
-  agentParts.push(buildAgentToolsPrompt());
-
+  const agentPrompt = buildAgentPrompt(agent);
   let { appendSystemPrompt } = params;
-  const agentPrompt = agentParts.join("\n\n");
   appendSystemPrompt = appendSystemPrompt
     ? `${agentPrompt}\n\n${appendSystemPrompt}`
     : agentPrompt;

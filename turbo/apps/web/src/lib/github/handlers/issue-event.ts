@@ -7,7 +7,7 @@ import { agentComposes } from "../../../db/schema/agent-compose";
 import { zeroAgents } from "../../../db/schema/zero-agent";
 import { validateAgentSession } from "../../run";
 import { createZeroRun } from "../../zero/zero-run-service";
-import { buildIntegrationContext } from "../../integration-context";
+import { buildIntegrationContext } from "../../zero/integration-context";
 import { generateCallbackSecret, getApiUrl } from "../../callback";
 import type { GitHubIssuesCallbackPayload } from "../../callback/callback-payloads";
 import { getInstallationAccessToken } from "../github-app";
