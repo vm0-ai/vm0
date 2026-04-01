@@ -2265,6 +2265,28 @@ export async function findTestZeroRun(
 }
 
 /**
+ * Insert a zero_runs record for a run that already exists in agent_runs.
+ * Used in tests where the run is created via enqueueRun() (which does not
+ * create a zero_runs row) and the test needs to set model provider metadata
+ * for credit-check scenarios.
+ */
+export async function insertTestZeroRun(
+  runId: string,
+  options?: {
+    triggerSource?: string;
+    modelProvider?: string | null;
+    selectedModel?: string | null;
+  },
+): Promise<void> {
+  await globalThis.services.db.insert(zeroRuns).values({
+    id: runId,
+    triggerSource: options?.triggerSource ?? "cli",
+    modelProvider: options?.modelProvider ?? null,
+    selectedModel: options?.selectedModel ?? null,
+  });
+}
+
+/**
  * Look up agent run callback records by run ID for verification in tests.
  *
  * Direct DB read is required because no API endpoint exposes callback

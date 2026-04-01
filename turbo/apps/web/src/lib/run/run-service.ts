@@ -1049,6 +1049,18 @@ export async function createRun(
       continuedFromSessionId: params.sessionId,
     });
 
+    // Persist zero-layer model fields before dispatch so metadata is recorded
+    // even if dispatch succeeds but a later step fails (reverse dependency — cleanup in later issue)
+    await globalThis.services.db
+      .insert(zeroRuns)
+      .values({
+        id: record.run.id,
+        triggerSource: "api",
+        modelProvider: contextResult.resolvedModelProvider ?? null,
+        selectedModel: contextResult.selectedModel ?? null,
+      })
+      .onConflictDoNothing();
+
     const result = await buildAndDispatchRun({
       runId: record.run.id,
       createdAt: record.run.createdAt,
@@ -1063,17 +1075,6 @@ export async function createRun(
       },
       orgId: record.orgId,
     });
-
-    // Persist zero-layer model fields (reverse dependency — cleanup in later issue)
-    await globalThis.services.db
-      .insert(zeroRuns)
-      .values({
-        id: record.run.id,
-        triggerSource: "api",
-        modelProvider: contextResult.resolvedModelProvider ?? null,
-        selectedModel: contextResult.selectedModel ?? null,
-      })
-      .onConflictDoNothing();
 
     return {
       runId: record.run.id,
@@ -1154,6 +1155,27 @@ export async function dispatchQueuedRun(
       continuedFromSessionId: params.sessionId,
     });
 
+    // Upsert zero_runs with resolved model fields before dispatch so metadata
+    // is recorded even if dispatch succeeds but a later step fails.
+    // Uses UPSERT to handle both cases: row exists (zero queued path creates
+    // it at enqueue time) and row doesn't exist (non-zero queued path).
+    // (reverse dependency — cleanup in later issue)
+    await globalThis.services.db
+      .insert(zeroRuns)
+      .values({
+        id: runId,
+        triggerSource: "api",
+        modelProvider: contextResult.resolvedModelProvider ?? null,
+        selectedModel: contextResult.selectedModel ?? null,
+      })
+      .onConflictDoUpdate({
+        target: zeroRuns.id,
+        set: {
+          modelProvider: contextResult.resolvedModelProvider ?? null,
+          selectedModel: contextResult.selectedModel ?? null,
+        },
+      });
+
     await buildAndDispatchRun({
       runId,
       createdAt,
@@ -1169,15 +1191,6 @@ export async function dispatchQueuedRun(
       orgId: params.orgId,
       queueDispatcher,
     });
-
-    // Update zero_runs with resolved model fields (reverse dependency — cleanup in later issue)
-    await globalThis.services.db
-      .update(zeroRuns)
-      .set({
-        modelProvider: contextResult.resolvedModelProvider ?? null,
-        selectedModel: contextResult.selectedModel ?? null,
-      })
-      .where(eq(zeroRuns.id, runId));
   } catch (error) {
     const dispatcher = queueDispatcher ?? dispatchQueuedRun;
     await markRunFailed(runId, createdAt, error, () => {
