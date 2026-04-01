@@ -287,7 +287,7 @@ jobs:
           REMOTE_BIN="/tmp/nbd-cow-test-${JOB_REF}"
           scp "$TEST_BIN" "${REMOTE}:${REMOTE_BIN}"
           # shellcheck disable=SC2029
-          ssh "$REMOTE" "trap 'rm -f ${REMOTE_BIN}' EXIT && sudo modprobe nbd nbds_max=256 && sudo ${REMOTE_BIN} --ignored --test-threads=1"
+          ssh "$REMOTE" "trap 'rm -f ${REMOTE_BIN}' EXIT && sudo modprobe nbd nbds_max=4096 && sudo ${REMOTE_BIN} --ignored --test-threads=1"
 
   runner-build:
     runs-on: ubuntu-latest
