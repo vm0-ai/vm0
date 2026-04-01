@@ -79,7 +79,7 @@ cmd_deploy() {
   # Upload
   log "Deploying to $SSH_USER@$HOST..."
   ssh_cmd "sudo mkdir -p $REMOTE_BIN_DIR"
-  cat "$BINARY" | ssh_cmd "sudo tee $REMOTE_BIN_DIR/runner > /dev/null && sudo chmod 755 $REMOTE_BIN_DIR/runner"
+  cat "$BINARY" | ssh_cmd "sudo install -m 755 /dev/stdin $REMOTE_BIN_DIR/runner"
 
   # Setup (idempotent, downloads firecracker/kernel if missing)
   log "Running setup..."
