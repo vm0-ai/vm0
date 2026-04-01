@@ -14,17 +14,14 @@ import {
   updateOrgTier,
 } from "../../../__tests__/api-test-helpers";
 import { reloadEnv } from "../../../env";
-import {
-  startRun,
-  dispatchQueuedRun,
-  type CreateRunParams,
-} from "../run-service";
+import { startRun, type CreateRunParams } from "../run-service";
 import {
   enqueueRun,
   drainOrgQueue,
   drainStaleQueues,
   cleanupExpiredQueueEntries,
 } from "../run-queue-service";
+import { dispatchQueuedZeroRun } from "../../zero/zero-queue-service";
 
 const context = testContext();
 
@@ -90,7 +87,7 @@ describe("run-queue-service", () => {
   describe("drainOrgQueue", () => {
     it("should be a no-op when queue is empty", async () => {
       // Should not throw
-      await drainOrgQueue(user.orgId, dispatchQueuedRun);
+      await drainOrgQueue(user.orgId, dispatchQueuedZeroRun);
     });
 
     it("should dequeue and execute the oldest entry", async () => {
@@ -110,7 +107,7 @@ describe("run-queue-service", () => {
       await markRunningRunsAsCompleted(user.userId);
 
       // Drain queue by orgId
-      await drainOrgQueue(user.orgId, dispatchQueuedRun);
+      await drainOrgQueue(user.orgId, dispatchQueuedZeroRun);
 
       // Queued run should now be dispatched (pending)
       const run = await findTestRunRecord(queued.runId);
@@ -179,7 +176,7 @@ describe("run-queue-service", () => {
       expect(queued.status).toBe("queued");
 
       // Drain without completing the running run — concurrency limit blocks dequeue
-      await drainOrgQueue(user.orgId, dispatchQueuedRun);
+      await drainOrgQueue(user.orgId, dispatchQueuedZeroRun);
 
       // Queue entry should still exist (nothing was dequeued)
       const queueEntry = await findTestQueueEntry(queued.runId);
@@ -358,7 +355,7 @@ describe("run-queue-service", () => {
       expect(run2.status).toBe("queued");
 
       // drainStaleQueues should NOT drain user2's queue (org has an active run)
-      await drainStaleQueues(dispatchQueuedRun);
+      await drainStaleQueues(dispatchQueuedZeroRun);
 
       // Queue entry should still exist — org-level concurrency prevented drain
       const queueEntry = await findTestQueueEntry(run2.runId);
@@ -396,7 +393,7 @@ describe("run-queue-service", () => {
       await markRunningRunsAsCompleted(user.userId);
 
       // drainStaleQueues should drain user2's queue
-      const drained = await drainStaleQueues(dispatchQueuedRun);
+      const drained = await drainStaleQueues(dispatchQueuedZeroRun);
       expect(drained).toBeGreaterThanOrEqual(1);
 
       // Queue entry should be consumed

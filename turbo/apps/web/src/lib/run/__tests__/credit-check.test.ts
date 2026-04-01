@@ -13,12 +13,9 @@ import {
   insertTestZeroRun,
 } from "../../../__tests__/api-test-helpers";
 import { reloadEnv } from "../../../env";
-import {
-  startRun,
-  dispatchQueuedRun,
-  type CreateRunParams,
-} from "../run-service";
+import { startRun, type CreateRunParams } from "../run-service";
 import { drainOrgQueue, enqueueRun } from "../run-queue-service";
+import { dispatchQueuedZeroRun } from "../../zero/zero-queue-service";
 
 const context = testContext();
 
@@ -70,7 +67,7 @@ describe("credit check (infra queue path)", () => {
       await markRunningRunsAsCompleted(user.userId);
 
       // Drain queue
-      await drainOrgQueue(user.orgId, dispatchQueuedRun);
+      await drainOrgQueue(user.orgId, dispatchQueuedZeroRun);
 
       // Queued run should be marked as failed
       const run = await findTestRunRecord(queued.runId);
@@ -104,7 +101,7 @@ describe("credit check (infra queue path)", () => {
       await markRunningRunsAsCompleted(user.userId);
 
       // Drain queue
-      await drainOrgQueue(user.orgId, dispatchQueuedRun);
+      await drainOrgQueue(user.orgId, dispatchQueuedZeroRun);
 
       // Non-VM0 run should be dequeued normally
       const run = await findTestRunRecord(queued.runId);
@@ -139,7 +136,7 @@ describe("credit check (infra queue path)", () => {
       await markRunningRunsAsCompleted(user.userId);
 
       // Drain queue
-      await drainOrgQueue(user.orgId, dispatchQueuedRun);
+      await drainOrgQueue(user.orgId, dispatchQueuedZeroRun);
 
       // VM0 run should be failed
       const vm0 = await findTestRunRecord(vm0Run.runId);

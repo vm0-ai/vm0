@@ -27,7 +27,6 @@ import type { ExecutorResult, PreparedContext } from "./executors/types";
 import { generateSandboxToken } from "../auth/sandbox-token";
 import type { ExecutionContext, DispatchTimings } from "./types";
 import { buildZeroExecutionContext } from "../zero/build-zero-context";
-import { zeroRuns } from "../../db/schema/zero-run";
 import { buildInfraExecutionContext } from "./context/build-context";
 import { recordSandboxOperation } from "../metrics";
 import { canAccessCompose } from "../agent/compose-access";
@@ -555,7 +554,7 @@ export async function markRunFailed(
 
 /**
  * Shared dispatch pipeline for steps 6-10 of the run creation flow.
- * Used by both createRun (new runs) and dispatchQueuedRun (dequeued runs).
+ * Used by startRun (new runs) and dispatchQueuedZeroRun (dequeued runs).
  */
 export async function buildAndDispatchRun(opts: {
   runId: string;
@@ -1064,100 +1063,6 @@ export async function createRunRecord(
 }
 
 /**
- * Dispatch a previously queued run that has already been dequeued and
- * transitioned to "pending" by drainOrgQueue().
- *
- * Loads compose content, authorizes, and dispatches. Does NOT acquire
- * advisory lock or check concurrency — that is handled atomically in
- * the drain transaction.
- *
- * Called from drainOrgQueue() after the atomic dequeue + status update.
- */
-export async function dispatchQueuedRun(
-  runId: string,
-  params: CreateRunParams,
-  queueDispatcher?: (runId: string, params: CreateRunParams) => Promise<void>,
-): Promise<void> {
-  const apiStartTime = Date.now();
-  const { userId, agentComposeVersionId } = params;
-  const transactionTime = apiStartTime; // No separate transaction step
-
-  log.debug(`Dispatching queued run ${runId} for user ${userId}`);
-
-  // Load compose and authorize
-  const { composeContent, compose: queuedCompose } = await loadCompose(
-    agentComposeVersionId,
-    params.composeId,
-  );
-  authorizeCompose(userId, params.orgId, queuedCompose);
-  const authorizeTime = Date.now();
-
-  // Validate template vars and image access (for new runs only)
-  if (!params.checkpointId && !params.sessionId) {
-    await validateComposeRequirements(composeContent);
-  }
-
-  const sandboxToken = await generateSandboxToken(params.userId, runId);
-  const tokenTime = Date.now();
-
-  try {
-    // Register callbacks early so they persist even if context building fails
-    if (params.callbacks && params.callbacks.length > 0) {
-      await registerCallbacks(runId, params.callbacks);
-    }
-
-    const contextResult = await buildZeroExecutionContext({
-      ...params,
-      sandboxToken,
-      runId,
-      agentCompose: composeContent,
-      continuedFromSessionId: params.sessionId,
-    });
-
-    // Upsert zero_runs with resolved model fields before dispatch so metadata
-    // is recorded even if dispatch succeeds but a later step fails.
-    // Uses UPSERT to handle both cases: row exists (zero queued path creates
-    // it at enqueue time) and row doesn't exist (non-zero queued path).
-    // (reverse dependency — cleanup in later issue)
-    await globalThis.services.db
-      .insert(zeroRuns)
-      .values({
-        id: runId,
-        triggerSource: "api",
-        modelProvider: contextResult.resolvedModelProvider ?? null,
-        selectedModel: contextResult.selectedModel ?? null,
-      })
-      .onConflictDoUpdate({
-        target: zeroRuns.id,
-        set: {
-          modelProvider: contextResult.resolvedModelProvider ?? null,
-          selectedModel: contextResult.selectedModel ?? null,
-        },
-      });
-
-    await buildAndDispatchRun({
-      runId,
-      context: contextResult.context,
-      timings: {
-        apiStart: apiStartTime,
-        authorize: authorizeTime,
-        transaction: transactionTime,
-        token: tokenTime,
-        resolveSourceDuration: contextResult.timings.resolveSourceAndOrg,
-        resolveSecretsDuration: contextResult.timings.resolveSecrets,
-      },
-    });
-  } catch (error) {
-    const dispatcher = queueDispatcher ?? dispatchQueuedRun;
-    await markRunFailed(runId, error);
-    await drainOrgQueue(params.orgId, dispatcher).catch((drainErr) => {
-      log.error("Failed to drain org queue after run failure", { drainErr });
-    });
-    throw error;
-  }
-}
-
-/**
  * Get a run by ID, scoped to user and org for security.
  * Returns the run response object or null if not found.
  */
@@ -1273,10 +1178,7 @@ export async function cancelRun(
  */
 export async function dispatchCancelSideEffects(
   result: CancelRunResult,
-  queueDispatcher: (
-    runId: string,
-    params: CreateRunParams,
-  ) => Promise<void> = dispatchQueuedRun,
+  queueDispatcher: (runId: string, params: CreateRunParams) => Promise<void>,
 ): Promise<void> {
   const log = logger("service:run:cancel");
 

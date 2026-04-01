@@ -21,15 +21,19 @@ import { getCachedUser } from "../auth/user-cache-service";
 import {
   PENDING_RUN_TTL_MS,
   getEffectiveConcurrencyLimit,
-  dispatchQueuedRun,
   buildAndDispatchRun,
   loadCompose,
   authorizeCompose,
   validateComposeRequirements,
+  registerCallbacks,
+  markRunFailed,
 } from "../run/run-service";
 import type { CreateRunParams } from "../run/run-service";
+import { drainOrgQueue } from "../run/run-queue-service";
 import { generateZeroToken, generateSandboxToken } from "../auth/sandbox-token";
 import { buildZeroExecutionContext } from "./build-zero-context";
+import { buildInfraExecutionContext } from "../run/context/build-context";
+import { logger } from "../logger";
 import type { OrgTier, QueueResponse, TriggerSource } from "@vm0/core";
 
 /**
@@ -107,8 +111,56 @@ export async function dispatchQueuedZeroRun(
     return;
   }
 
-  // Non-zero path — delegate to infra dispatcher
-  return dispatchQueuedRun(runId, params, dispatchQueuedZeroRun);
+  // Non-zero path — build infra context and dispatch directly
+  const log = logger("zero:queue-service:non-zero");
+  const apiStartTime = Date.now();
+
+  const { composeContent, compose } = await loadCompose(
+    params.agentComposeVersionId,
+    params.composeId,
+  );
+  authorizeCompose(params.userId, params.orgId, compose);
+  const authorizeTime = Date.now();
+
+  if (!params.checkpointId && !params.sessionId) {
+    await validateComposeRequirements(composeContent);
+  }
+
+  const sandboxToken = await generateSandboxToken(params.userId, runId);
+  const tokenTime = Date.now();
+
+  try {
+    if (params.callbacks && params.callbacks.length > 0) {
+      await registerCallbacks(runId, params.callbacks);
+    }
+
+    const { context } = buildInfraExecutionContext({
+      ...params,
+      sandboxToken,
+      runId,
+      agentCompose: composeContent,
+      continuedFromSessionId: params.sessionId,
+    });
+
+    await buildAndDispatchRun({
+      runId,
+      context,
+      timings: {
+        apiStart: apiStartTime,
+        authorize: authorizeTime,
+        transaction: apiStartTime,
+        token: tokenTime,
+      },
+    });
+  } catch (error) {
+    await markRunFailed(runId, error);
+    await drainOrgQueue(params.orgId, dispatchQueuedZeroRun).catch(
+      (drainErr) => {
+        log.error("Failed to drain org queue after run failure", { drainErr });
+      },
+    );
+    throw error;
+  }
 }
 
 const RECENT_RUNS_FOR_ETA = 20;
