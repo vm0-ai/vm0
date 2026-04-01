@@ -6,7 +6,7 @@ import {
   uniqueId,
 } from "../../../../../../src/__tests__/test-helpers";
 import {
-  createTestRun,
+  createTestRunInDb,
   createTestCallback,
   createTestAgentSession,
   createTestRequest,
@@ -126,8 +126,10 @@ async function setupTelegramCallback() {
   const { installationId, userLinkId } =
     await createTelegramCallbackInstallation(composeId, userId, TEST_BOT_TOKEN);
 
-  // Create run and callback
-  const { runId } = await createTestRun(composeId, "Test prompt");
+  // Create run and callback (direct DB insert — avoids full API resolution)
+  const { runId } = await createTestRunInDb(userId, composeId, {
+    prompt: "Test prompt",
+  });
   const chatId = `chat-${Date.now()}`;
   const messageId = "42";
 

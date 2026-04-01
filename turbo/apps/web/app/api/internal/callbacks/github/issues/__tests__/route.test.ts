@@ -10,7 +10,7 @@ import {
   createTestRequest,
   createTestOrg,
   createTestCompose,
-  createTestRun,
+  createTestRunInDb,
   createTestCallback,
   createTestAgentSession,
   insertTestGitHubInstallation,
@@ -119,7 +119,9 @@ async function givenGitHubCallbackSetup(overrides?: {
   await createTestOrg(uniqueId("gh-cb-org"));
   const { composeId } = await createTestCompose("gh-callback-agent");
 
-  const { runId } = await createTestRun(composeId, "Test GitHub prompt");
+  const { runId } = await createTestRunInDb(userId, composeId, {
+    prompt: "Test GitHub prompt",
+  });
   const installation = await insertTestGitHubInstallation(composeId);
 
   const { capturedComments } = setupGitHubApiMocks(
@@ -331,7 +333,9 @@ describe("POST /api/internal/callbacks/github/issues", () => {
       await createTestOrg(uniqueId("gh-missing-org"));
       const { composeId } = await createTestCompose("gh-missing-agent");
 
-      const { runId } = await createTestRun(composeId, "Test prompt");
+      const { runId } = await createTestRunInDb(userId, composeId, {
+        prompt: "Test prompt",
+      });
 
       const payload: CallbackPayload = {
         installationId: "00000000-0000-0000-0000-000000000099",

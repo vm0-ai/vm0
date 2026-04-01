@@ -7,7 +7,7 @@ import {
 } from "../../../../../../../src/__tests__/test-helpers";
 import {
   createTestCompose,
-  createTestRun,
+  createTestRunInDb,
   createTestCallback,
   createTestSlackOrgInstallation,
   createTestRequest,
@@ -80,7 +80,9 @@ describe("POST /api/internal/callbacks/slack/org", () => {
 
   it("rejects request with invalid payload (missing required fields)", async () => {
     const { composeId } = await createTestCompose(uniqueId("agent"));
-    const { runId } = await createTestRun(composeId, "Test prompt");
+    const { runId } = await createTestRunInDb(user.userId, composeId, {
+      prompt: "Test prompt",
+    });
 
     const { secret } = await createTestCallback({
       runId,
@@ -111,7 +113,9 @@ describe("POST /api/internal/callbacks/slack/org", () => {
 
   it("verifyCallback returns correct payload for valid request", async () => {
     const { composeId } = await createTestCompose(uniqueId("agent"));
-    const { runId } = await createTestRun(composeId, "Test prompt");
+    const { runId } = await createTestRunInDb(user.userId, composeId, {
+      prompt: "Test prompt",
+    });
 
     const payload: OrgCallbackPayload = {
       workspaceId: uniqueId("T-ws"),
@@ -153,7 +157,9 @@ describe("POST /api/internal/callbacks/slack/org", () => {
   it("handles progress status by setting thinking status", async () => {
     const { workspaceId, connectionId } = await setupOrgSlack();
     const { composeId } = await createTestCompose(uniqueId("agent"));
-    const { runId } = await createTestRun(composeId, "Test prompt");
+    const { runId } = await createTestRunInDb(user.userId, composeId, {
+      prompt: "Test prompt",
+    });
 
     const payload: OrgCallbackPayload = {
       workspaceId,
@@ -191,7 +197,9 @@ describe("POST /api/internal/callbacks/slack/org", () => {
   it("posts completion message to Slack thread", async () => {
     const { workspaceId, connectionId } = await setupOrgSlack();
     const { composeId } = await createTestCompose(uniqueId("agent"));
-    const { runId } = await createTestRun(composeId, "Test prompt");
+    const { runId } = await createTestRunInDb(user.userId, composeId, {
+      prompt: "Test prompt",
+    });
     await completeTestRun(user.userId, runId);
 
     const channelId = uniqueId("C-ch");
@@ -236,7 +244,9 @@ describe("POST /api/internal/callbacks/slack/org", () => {
   it("posts error message for failed status", async () => {
     const { workspaceId, connectionId } = await setupOrgSlack();
     const { composeId } = await createTestCompose(uniqueId("agent"));
-    const { runId } = await createTestRun(composeId, "Test prompt");
+    const { runId } = await createTestRunInDb(user.userId, composeId, {
+      prompt: "Test prompt",
+    });
 
     const channelId = uniqueId("C-ch");
     const payload: OrgCallbackPayload = {
@@ -278,7 +288,9 @@ describe("POST /api/internal/callbacks/slack/org", () => {
 
   it("returns 404 when installation is not found (non-progress)", async () => {
     const { composeId } = await createTestCompose(uniqueId("agent"));
-    const { runId } = await createTestRun(composeId, "Test prompt");
+    const { runId } = await createTestRunInDb(user.userId, composeId, {
+      prompt: "Test prompt",
+    });
 
     const payload: OrgCallbackPayload = {
       workspaceId: "T-nonexistent",
@@ -314,7 +326,9 @@ describe("POST /api/internal/callbacks/slack/org", () => {
   it("clears thread status after posting completion", async () => {
     const { workspaceId, connectionId } = await setupOrgSlack();
     const { composeId } = await createTestCompose(uniqueId("agent"));
-    const { runId } = await createTestRun(composeId, "Test prompt");
+    const { runId } = await createTestRunInDb(user.userId, composeId, {
+      prompt: "Test prompt",
+    });
     await completeTestRun(user.userId, runId);
 
     const threadTs = uniqueId("ts");

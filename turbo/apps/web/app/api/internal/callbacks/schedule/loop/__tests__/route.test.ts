@@ -7,7 +7,7 @@ import {
 } from "../../../../../../../src/__tests__/test-helpers";
 import {
   createTestCompose,
-  createTestRun,
+  createTestRunInDb,
   createTestCallback,
   createTestRequest,
   createTestSchedule,
@@ -61,10 +61,12 @@ function createCallbackRequest(
 
 describe("POST /api/internal/callbacks/schedule/loop", () => {
   let composeId: string;
+  let userId: string;
 
   beforeEach(async () => {
     context.setupMocks();
     const user = await context.setupUser();
+    userId = user.userId;
     const agentName = uniqueId("agent");
     composeId = (await createTestCompose(agentName)).composeId;
     await createTestZeroAgent(user.orgId, agentName, {});
@@ -75,7 +77,9 @@ describe("POST /api/internal/callbacks/schedule/loop", () => {
       intervalSeconds: 300,
     });
     await enableTestSchedule(composeId, schedule.name);
-    const { runId } = await createTestRun(composeId, "Loop task");
+    const { runId } = await createTestRunInDb(userId, composeId, {
+      prompt: "Loop task",
+    });
     const { callbackId, secret } = await createTestCallback({
       runId,
       url: "http://localhost/api/internal/callbacks/schedule/loop",
