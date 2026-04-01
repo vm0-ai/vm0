@@ -284,13 +284,9 @@ export function ZeroActivityNetworkPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.networkLogs.map((entry) => {
-                return (
-                  <NetworkLogRow
-                    key={`${entry.timestamp}-${entry.type}-${entry.method}-${entry.host}-${entry.port}-${entry.url}-${entry.status}`}
-                    entry={entry}
-                  />
-                );
+              {data.networkLogs.map((entry, idx) => {
+                const key = `${entry.timestamp}-${entry.type}-${entry.host}-${entry.port}-${entry.url}-${idx}`;
+                return <NetworkLogRow key={key} entry={entry} />;
               })}
             </TableBody>
           </Table>
