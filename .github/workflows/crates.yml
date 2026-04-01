@@ -1027,6 +1027,7 @@ jobs:
 
   runner-cleanup:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     needs: [runner-build, runner-benchmark, runner-exec, runner-cancel, runner-balloon, runner-upgrade-local]
     if: ${{ always() && needs.runner-build.result != 'skipped' }}
     steps:
