@@ -61,13 +61,14 @@ impl NbdCowDevice {
         )?;
         let cow_layer = Arc::new(RwLock::new(cow_layer));
 
-        // Retry loop: on reconnect (same device index after a recent disconnect),
-        // the kernel may still be tearing down the old connection. The netlink
-        // CONNECT succeeds but set_capacity may not take effect (device size = 0).
-        // When detected, disconnect, recreate socketpairs + tasks, and retry.
-        // Fresh sockets and tasks are needed each attempt because the kernel may
-        // have started the NBD protocol on the old sockets; after disconnect the
-        // dispatch tasks exit and drop their server-side fds, making reuse unsafe.
+        // Retry loop: if the kernel is still tearing down a previous connection
+        // on the chosen device, the netlink CONNECT succeeds but set_capacity
+        // may not take effect (device size = 0). When detected, disconnect,
+        // recreate socketpairs + tasks, and retry. Each attempt picks a new
+        // random start offset so it will likely land on a different device.
+        // Fresh sockets and tasks are needed because the kernel may have started
+        // the NBD protocol on the old sockets; after disconnect the dispatch
+        // tasks exit and drop their server-side fds, making reuse unsafe.
         const MAX_CONNECT_RETRIES: u32 = 5;
         let mut last_err_idx: u32 = 0;
 
@@ -277,8 +278,8 @@ impl NbdCowDevice {
     /// The kernel records the connecting process's PID in `/sys/block/nbdN/pid`.
     /// If another process recycled the device index, the PID will differ and
     /// we must skip disconnect to avoid tearing down the other process's device.
-    /// Returns `Ok(true)` if we own the device, `Ok(false)` if not (with the
-    /// foreign PID), or `Err` if the pid file is unreadable.
+    /// Returns `Ok(true)` if we own the device, `Ok(false)` if another process
+    /// owns it, or `Err` if the pid file is unreadable.
     fn device_owned_by_us(&self) -> std::result::Result<bool, ()> {
         let pid_path = format!("/sys/block/nbd{}/pid", self.device_index);
         match std::fs::read_to_string(&pid_path) {

@@ -86,6 +86,17 @@ pub fn nbds_max() -> u32 {
         .unwrap_or(256)
 }
 
+/// Generate a random offset in `0..max` for device scanning.
+///
+/// Uses `RandomState` (OS-seeded) to avoid pulling in an external RNG crate.
+fn random_offset(max: u32) -> u32 {
+    if max == 0 {
+        return 0;
+    }
+    use std::hash::{BuildHasher, Hasher, RandomState};
+    (RandomState::new().build_hasher().finish() % max as u64) as u32
+}
+
 /// Check if a device index appears free by inspecting its pid file.
 fn device_appears_free(index: u32) -> bool {
     let pid_path = format!("/sys/block/nbd{index}/pid");
@@ -107,7 +118,10 @@ fn device_appears_free(index: u32) -> bool {
 
 /// Atomically find a free NBD device and connect it.
 ///
-/// Iterates candidate devices, attempts `connect` on each one that appears free.
+/// Starts from a random offset and wraps around, so concurrent runners don't
+/// all compete for the same low-numbered devices. This also avoids reconnecting
+/// to a device that was just disconnected (kernel may still be tearing it down).
+///
 /// If the kernel returns EBUSY (another process grabbed it first), tries the next
 /// device. This eliminates the TOCTOU race between find and connect.
 ///
@@ -123,7 +137,11 @@ pub fn find_and_connect(client_fds: &[OwnedFd], size: u64, block_size: u64) -> R
     let flags =
         NBD_FLAG_HAS_FLAGS | NBD_FLAG_SEND_FLUSH | NBD_FLAG_SEND_TRIM | NBD_FLAG_CAN_MULTI_CONN;
 
-    for i in 0..max {
+    // Random start offset to distribute device usage and avoid retrying
+    // a device that was just disconnected (kernel may still be cleaning up).
+    let start = random_offset(max);
+    for n in 0..max {
+        let i = (start + n) % max;
         if !device_appears_free(i) {
             continue;
         }
