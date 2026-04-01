@@ -143,7 +143,6 @@ const SCOPE_DESCRIPTIONS: Record<string, string> = {
   "channels:write.topic": "Set the topic and purpose of public channels",
   "datastore:write": "Write data to Slack's hosted datastore",
   "dnd:write": "Edit a user's Do Not Disturb settings",
-  "files:write": "Upload, edit, and delete files as the app",
   "groups:write":
     "Manage private channels that the user is a member of and create new ones",
   "groups:write.invites": "Invite members to private channels",
@@ -162,6 +161,7 @@ const SCOPE_DESCRIPTIONS: Record<string, string> = {
   "users:write": "Set a user's presence status",
 
   // Send
+  "files:write": "Upload, edit, and delete files as the app",
   "assistant:write": "Act as an AI Assistant app",
   "chat:write": "Send messages as the app",
   "conversations.connect:write":
