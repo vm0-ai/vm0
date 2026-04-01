@@ -71,7 +71,7 @@ pub struct ExecutionContext {
     #[allow(dead_code)]
     #[serde(default)]
     pub memory_name: Option<String>,
-    #[serde(default, alias = "experimentalFirewalls")]
+    #[serde(default)]
     pub firewalls: Option<Vec<Firewall>>,
     #[serde(default)]
     pub disallowed_tools: Option<Vec<String>>,

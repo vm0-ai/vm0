@@ -1204,34 +1204,6 @@ mod tests {
     }
 
     #[test]
-    fn execution_context_deserializes_legacy_experimental_firewalls() {
-        // Verify backward compat: old payloads use "experimentalFirewalls" key
-        let json = serde_json::json!({
-            "runId": "00000000-0000-0000-0000-000000000001",
-            "prompt": "test",
-            "sandboxToken": "tok",
-            "workingDir": "/workspace",
-            "cliAgentType": "claude-code",
-            "experimentalFirewalls": [{
-                "name": "github",
-                "ref": "github",
-                "apis": [{
-                    "base": "https://api.github.com",
-                    "auth": {
-                        "headers": {
-                            "Authorization": "Bearer tok123"
-                        }
-                    }
-                }]
-            }]
-        });
-        let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
-        let svcs = ctx.firewalls.unwrap();
-        assert_eq!(svcs.len(), 1);
-        assert_eq!(svcs[0].name, "github");
-    }
-
-    #[test]
     fn dmesg_oom_positive() {
         assert!(dmesg_indicates_oom(
             "[  12.345] Out of memory: Killed process 1234 (claude)"
