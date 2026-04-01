@@ -24,7 +24,7 @@ Examples:
   Add a custom skill:    zero agent edit $ZERO_AGENT_ID --add-skill my-skill
   Remove a skill:        zero agent edit $ZERO_AGENT_ID --remove-skill my-skill
 
-Skills:
+Notes:
   Custom skills are org-level resources managed with 'zero skill' commands.
   Use --add-skill/--remove-skill to bind or unbind skills from an agent.`,
   );
