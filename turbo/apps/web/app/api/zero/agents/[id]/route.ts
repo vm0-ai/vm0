@@ -24,10 +24,11 @@ const log = logger("api:zero-agents:id");
 
 function agentResponseBody(
   agent: typeof zeroAgents.$inferSelect | undefined,
-  fallback: { id: string },
+  fallback: { id: string; ownerId: string },
 ) {
   return {
     agentId: fallback.id,
+    ownerId: agent?.owner ?? fallback.ownerId,
     description: agent?.description ?? null,
     displayName: agent?.displayName ?? null,
     sound: agent?.sound ?? null,
@@ -49,13 +50,17 @@ const router = tsr.router(zeroAgentsByIdContract, {
     const { org } = await resolveOrg(authCtx);
 
     // Look up agent directly — params.id is the composeId which is also the PK
-    const [agent] = await globalThis.services.db
-      .select()
+    const [row] = await globalThis.services.db
+      .select({
+        agent: zeroAgents,
+        composeUserId: agentComposes.userId,
+      })
       .from(zeroAgents)
+      .innerJoin(agentComposes, eq(zeroAgents.id, agentComposes.id))
       .where(and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.id, params.id)))
       .limit(1);
 
-    if (!agent) {
+    if (!row) {
       return {
         status: 404 as const,
         body: {
@@ -69,7 +74,10 @@ const router = tsr.router(zeroAgentsByIdContract, {
 
     return {
       status: 200 as const,
-      body: agentResponseBody(agent, { id: agent.id }),
+      body: agentResponseBody(row.agent, {
+        id: row.agent.id,
+        ownerId: row.composeUserId,
+      }),
     };
   },
 
@@ -162,6 +170,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
         id: result.composeId,
         orgId: org.orgId,
         name: result.composeName,
+        owner: userId,
         displayName: body.displayName ?? null,
         description: body.description ?? null,
         sound: body.sound ?? null,
@@ -199,7 +208,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
 
     return {
       status: 200 as const,
-      body: agentResponseBody(agent, { id: params.id }),
+      body: agentResponseBody(agent, { id: params.id, ownerId: userId }),
     };
   },
 
@@ -263,15 +272,22 @@ const router = tsr.router(zeroAgentsByIdContract, {
     log.info(`Updated zero agent metadata: ${existing.name}`);
 
     // Re-query to return actual persisted state
-    const [agent] = await globalThis.services.db
-      .select()
+    const [updatedAgent] = await globalThis.services.db
+      .select({
+        agent: zeroAgents,
+        composeUserId: agentComposes.userId,
+      })
       .from(zeroAgents)
+      .innerJoin(agentComposes, eq(zeroAgents.id, agentComposes.id))
       .where(eq(zeroAgents.id, params.id))
       .limit(1);
 
     return {
       status: 200 as const,
-      body: agentResponseBody(agent, { id: params.id }),
+      body: agentResponseBody(updatedAgent?.agent, {
+        id: params.id,
+        ownerId: updatedAgent?.composeUserId ?? authCtx.userId,
+      }),
     };
   },
 

@@ -17,7 +17,7 @@ import {
   type FirewallPolicies,
   type FirewallPolicyValue,
 } from "@vm0/core";
-import { isOrgAdmin$ } from "../../signals/org.ts";
+import { user$ } from "../../signals/auth.ts";
 import {
   firewallAllowAgentId$,
   firewallAllowRef$,
@@ -698,7 +698,7 @@ export function FirewallAllowPage() {
   const path = useGet(firewallAllowPath$);
 
   const agentLoadable = useLastLoadable(firewallAllowAgent$);
-  const isAdminLoadable = useLastLoadable(isOrgAdmin$);
+  const userLoadable = useLastLoadable(user$);
 
   if (!agentId || !ref) {
     return (
@@ -724,10 +724,7 @@ export function FirewallAllowPage() {
     );
   }
 
-  if (
-    agentLoadable.state === "loading" ||
-    isAdminLoadable.state === "loading"
-  ) {
+  if (agentLoadable.state === "loading" || userLoadable.state === "loading") {
     return (
       <div className="flex flex-1 items-center justify-center text-muted-foreground">
         <p className="text-sm">Loading...</p>
@@ -755,8 +752,9 @@ export function FirewallAllowPage() {
     );
   }
 
-  const isAdmin =
-    isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
+  const currentUser =
+    userLoadable.state === "hasData" ? userLoadable.data : undefined;
+  const isOwner = currentUser?.id === agent.ownerId;
   const connectorLabel = CONNECTOR_TYPES[ref]?.label ?? ref;
   const agentDisplayName = agent.displayName ?? agentId;
 
@@ -785,7 +783,7 @@ export function FirewallAllowPage() {
 
       <main className="flex-1 overflow-auto px-6 pb-6">
         {focusedPermission ? (
-          isAdmin ? (
+          isOwner ? (
             <AdminFocusedView
               agentId={agentId}
               ref={ref}
@@ -804,7 +802,7 @@ export function FirewallAllowPage() {
               agent={agent}
             />
           )
-        ) : isAdmin ? (
+        ) : isOwner ? (
           <AdminListView agentId={agentId} ref={ref} agent={agent} />
         ) : (
           <MemberListView ref={ref} agent={agent} />

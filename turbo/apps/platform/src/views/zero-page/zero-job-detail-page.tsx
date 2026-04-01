@@ -84,6 +84,7 @@ import { useAgentAvatar } from "./zero-sidebar.tsx";
 import { resolveAvatarUrl } from "./avatar-utils.ts";
 import { agents$ } from "../../signals/zero-page/agents-list.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
+import { user$ } from "../../signals/auth.ts";
 import { ZeroNoPermissionIllustration } from "./components/zero-no-permission-illustration.tsx";
 import type { ConnectorType } from "@vm0/core";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
@@ -406,9 +407,11 @@ function PermissionRow({
 function JobPermissionsTab({
   agentId,
   displayName,
+  ownerId,
 }: {
   agentId: string;
   displayName: string;
+  ownerId: string;
 }) {
   const addedConnectors = useGet(zeroJobAddedConnectors$);
   const addConnector = useSet(addZeroJobConnector$);
@@ -423,8 +426,10 @@ function JobPermissionsTab({
   const [searchActive, setSearchActive] = useState(false);
   const [savingType, setSavingType] = useState<string | null>(null);
 
-  const adminLoadable = useLoadable(isOrgAdmin$);
-  const isAdmin = adminLoadable.state === "hasData" && adminLoadable.data;
+  const userLoadable = useLoadable(user$);
+  const currentUserId =
+    userLoadable.state === "hasData" ? userLoadable.data?.id : undefined;
+  const isOwner = currentUserId === ownerId;
 
   const connectorsLoading = useGet(zeroJobConnectorsLoading$);
 
@@ -575,7 +580,7 @@ function JobPermissionsTab({
                       return handleToggle(c.type, checked);
                     }}
                     loading={savingType === c.type}
-                    showManage={isAdmin && hasFirewallPermissions(c.type)}
+                    showManage={hasFirewallPermissions(c.type)}
                     onManage={() => {
                       return setFirewallType(c.type);
                     }}
@@ -595,6 +600,7 @@ function JobPermissionsTab({
               connectorType={firewallType}
               displayName={displayName}
               initialPolicies={firewallPolicies ?? {}}
+              readOnly={!isOwner}
               onApply={async (policies) => {
                 const saved = await saveFirewallPol(
                   agentId,
@@ -820,7 +826,11 @@ export function ZeroJobDetailPage({ agentId }: ZeroJobDetailPageProps) {
 
       <main className="shrink-0 px-4 sm:px-6 pt-4 sm:pt-6 pb-16">
         {activeTab === "authorization" && (
-          <JobPermissionsTab agentId={agentId} displayName={displayName} />
+          <JobPermissionsTab
+            agentId={agentId}
+            displayName={displayName}
+            ownerId={detail?.ownerId ?? ""}
+          />
         )}
 
         {activeTab === "schedule" && (

@@ -28,6 +28,7 @@ export const zeroAgents = pgTable(
         { onDelete: "cascade" },
       ),
     orgId: text("org_id").notNull(),
+    owner: text("owner"),
     name: varchar("name", { length: 64 }).notNull(),
     displayName: varchar("display_name", { length: 256 }),
     description: text("description"),

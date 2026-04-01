@@ -130,33 +130,55 @@ describe("PUT /api/zero/firewall-policies", () => {
     expect(data.firewallPolicies).toStrictEqual(second);
   });
 
-  it("should return 403 for non-admin users", async () => {
+  it("should return 403 for non-owner (even if admin)", async () => {
     const created = await (await postAgent({}, testCliToken)).json();
 
-    // Create a non-admin user
-    const member = await context.setupUser({ prefix: "member-user" });
-    const memberToken = await createTestCliToken(
-      member.userId,
+    // Create another admin user who is NOT the agent owner
+    const otherAdmin = await context.setupUser({ prefix: "other-admin" });
+    const otherAdminToken = await createTestCliToken(
+      otherAdmin.userId,
       undefined,
       testOrgId,
     );
 
-    // Grant member role in the same org
     await insertOrgMembersCacheEntry({
       orgId: testOrgId,
-      userId: member.userId,
-      role: "member",
+      userId: otherAdmin.userId,
+      role: "admin",
     });
 
     const response = await putPolicies(
       created.agentId,
       { policies: { github: { "issues:read": "allow" } } },
-      memberToken,
+      otherAdminToken,
     );
 
     expect(response.status).toBe(403);
     const data = await response.json();
     expect(data.error.code).toBe("FORBIDDEN");
+  });
+
+  it("should allow agent owner with member role to update policies", async () => {
+    // The default test user is admin AND the agent owner
+    // Re-insert as member to prove ownership matters, not role
+    await insertOrgMembersCacheEntry({
+      orgId: testOrgId,
+      userId: testUserId,
+      role: "member",
+    });
+
+    const created = await (await postAgent({}, testCliToken)).json();
+
+    const policies = { github: { "issues:read": "allow" } };
+    const response = await putPolicies(
+      created.agentId,
+      { policies },
+      testCliToken,
+    );
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.firewallPolicies).toStrictEqual(policies);
   });
 
   it("should return 400 for unknown firewall ref", async () => {

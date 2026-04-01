@@ -31,6 +31,7 @@ interface FirewallPermissionsDrawerProps {
   connectorType: ConnectorType;
   displayName: string;
   initialPolicies: FirewallPolicies;
+  readOnly?: boolean;
   onApply: (policies: FirewallPolicies) => Promise<void>;
   onClose: () => void;
 }
@@ -107,9 +108,11 @@ function getGroupPolicy(
 function PolicyPill({
   policy,
   onChange,
+  disabled,
 }: {
   policy: PermissionPolicy | "mixed";
-  onChange: (p: PermissionPolicy) => void;
+  onChange?: (p: PermissionPolicy) => void;
+  disabled?: boolean;
 }) {
   return (
     <span className="inline-flex shrink-0 rounded-md overflow-hidden text-xs font-medium zero-border">
@@ -118,6 +121,7 @@ function PolicyPill({
           <button
             key={opt.value}
             type="button"
+            disabled={disabled}
             style={
               idx > 0
                 ? { borderLeft: "0.7px solid hsl(var(--gray-400))" }
@@ -126,13 +130,15 @@ function PolicyPill({
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              onChange(opt.value);
+              onChange?.(opt.value);
             }}
             className={`flex items-center gap-1 px-2.5 py-1.5 transition-colors ${
               policy === opt.value
                 ? "bg-muted text-foreground"
-                : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-            }`}
+                : disabled
+                  ? "text-muted-foreground/50"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+            } ${disabled ? "cursor-default" : "cursor-pointer"}`}
           >
             {opt.value === "allow" && <IconCheck size={12} stroke={2.5} />}
             {opt.value === "deny" && <IconBan size={12} stroke={2.5} />}
@@ -148,6 +154,7 @@ export function FirewallPermissionsDrawer({
   connectorType,
   displayName,
   initialPolicies,
+  readOnly,
   onApply,
   onClose,
 }: FirewallPermissionsDrawerProps) {
@@ -279,12 +286,14 @@ export function FirewallPermissionsDrawer({
                 className={`flex items-center justify-between pb-3 -mx-6 px-6 pr-9 transition-shadow ${scrolled ? "shadow-[0_4px_8px_-4px_rgba(0,0,0,0.08)]" : ""}`}
               >
                 <span className="text-xs font-medium text-foreground">
-                  Select all ({permissions.length})
+                  {readOnly ? "Permissions" : "Select all"} ({permissions.length})
                 </span>
-                <PolicyPill
-                  policy={getGroupPolicy(permissions, policies)}
-                  onChange={handleSetAll}
-                />
+                {!readOnly && (
+                  <PolicyPill
+                    policy={getGroupPolicy(permissions, policies)}
+                    onChange={handleSetAll}
+                  />
+                )}
               </div>
             )}
 
@@ -324,6 +333,7 @@ export function FirewallPermissionsDrawer({
                           </button>
                           <PolicyPill
                             policy={groupPolicy}
+                            disabled={readOnly}
                             onChange={(p) => {
                               return handleSetGroupAll(group.permissions, p);
                             }}
@@ -350,6 +360,7 @@ export function FirewallPermissionsDrawer({
                                   </div>
                                   <PolicyPill
                                     policy={pol}
+                                    disabled={readOnly}
                                     onChange={(p) => {
                                       return handlePolicyChange(perm.name, p);
                                     }}
@@ -381,6 +392,7 @@ export function FirewallPermissionsDrawer({
                           </div>
                           <PolicyPill
                             policy={pol}
+                            disabled={readOnly}
                             onChange={(p) => {
                               return handlePolicyChange(perm.name, p);
                             }}
@@ -395,11 +407,13 @@ export function FirewallPermissionsDrawer({
 
         <SheetFooter>
           <Button variant="outline" onClick={onClose}>
-            Cancel
+            {readOnly ? "Close" : "Cancel"}
           </Button>
-          <Button onClick={handleApply} disabled={!config || saving}>
-            {saving ? "Saving..." : "Apply"}
-          </Button>
+          {!readOnly && (
+            <Button onClick={handleApply} disabled={!config || saving}>
+              {saving ? "Saving..." : "Apply"}
+            </Button>
+          )}
         </SheetFooter>
       </SheetContent>
     </Sheet>

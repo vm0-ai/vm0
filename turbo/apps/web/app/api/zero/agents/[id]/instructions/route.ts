@@ -303,6 +303,7 @@ const router = tsr.router(zeroAgentInstructionsContract, {
       status: 200 as const,
       body: {
         agentId: result.composeId,
+        ownerId: agent?.owner ?? userId,
         description: agent?.description ?? null,
         displayName: agent?.displayName ?? null,
         sound: agent?.sound ?? null,

@@ -285,10 +285,10 @@ describe("GET /api/zero/firewall-access-requests", () => {
     expect(data.error.message).toContain("agentId");
   });
 
-  it("members should only see own requests", async () => {
+  it("non-owners should only see own requests, owner sees all", async () => {
     const agent = await (await createAgent(testCliToken)).json();
 
-    // Admin creates a request
+    // Owner creates a request
     await createAccessRequest(
       {
         agentId: agent.agentId,
@@ -298,7 +298,7 @@ describe("GET /api/zero/firewall-access-requests", () => {
       testCliToken,
     );
 
-    // Member creates a request
+    // Non-owner member creates a request
     const member = await context.setupUser({ prefix: "member" });
     const memberToken = await createTestCliToken(
       member.userId,
@@ -320,16 +320,16 @@ describe("GET /api/zero/firewall-access-requests", () => {
       memberToken,
     );
 
-    // Member should only see their own request
+    // Non-owner should only see their own request
     const memberList = await listAccessRequests(agent.agentId, memberToken);
     const memberData = await memberList.json();
     expect(memberData).toHaveLength(1);
     expect(memberData[0].firewallRef).toBe("slack");
 
-    // Admin should see all requests
-    const adminList = await listAccessRequests(agent.agentId, testCliToken);
-    const adminData = await adminList.json();
-    expect(adminData).toHaveLength(2);
+    // Agent owner should see all requests
+    const ownerList = await listAccessRequests(agent.agentId, testCliToken);
+    const ownerData = await ownerList.json();
+    expect(ownerData).toHaveLength(2);
   });
 
   it("should include requesterName from Clerk user data", async () => {
@@ -462,7 +462,7 @@ describe("PUT /api/zero/firewall-access-requests", () => {
     expect(agentData.firewallPolicies).toBeNull();
   });
 
-  it("should return 403 for non-admin users", async () => {
+  it("should return 403 for non-owner (even if admin)", async () => {
     const agent = await (await createAgent(testCliToken)).json();
 
     const created = await (
@@ -476,21 +476,22 @@ describe("PUT /api/zero/firewall-access-requests", () => {
       )
     ).json();
 
-    const member = await context.setupUser({ prefix: "member" });
-    const memberToken = await createTestCliToken(
-      member.userId,
+    // Create another admin who is NOT the agent owner
+    const otherAdmin = await context.setupUser({ prefix: "other-admin" });
+    const otherAdminToken = await createTestCliToken(
+      otherAdmin.userId,
       undefined,
       testOrgId,
     );
     await insertOrgMembersCacheEntry({
       orgId: testOrgId,
-      userId: member.userId,
-      role: "member",
+      userId: otherAdmin.userId,
+      role: "admin",
     });
 
     const response = await resolveAccessRequest(
       { requestId: created.id, action: "approve" },
-      memberToken,
+      otherAdminToken,
     );
 
     expect(response.status).toBe(403);

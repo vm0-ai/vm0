@@ -12,6 +12,7 @@ import {
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { serverSideCompose } from "../../../../src/lib/compose/server-side-compose";
 import { zeroAgents } from "../../../../src/db/schema/zero-agent";
+import { agentComposes } from "../../../../src/db/schema/agent-compose";
 import { eq, desc } from "drizzle-orm";
 import { buildComposeContent } from "../../../../src/lib/zero/build-compose-content";
 import { logger } from "../../../../src/lib/logger";
@@ -73,6 +74,7 @@ const router = tsr.router(zeroAgentsMainContract, {
         id: result.composeId,
         orgId: org.orgId,
         name: result.composeName,
+        owner: userId,
         displayName: body.displayName ?? null,
         description: body.description ?? null,
         sound: body.sound ?? null,
@@ -97,6 +99,7 @@ const router = tsr.router(zeroAgentsMainContract, {
       status: 201 as const,
       body: {
         agentId: result.composeId,
+        ownerId: userId,
         description: body.description ?? null,
         displayName: body.displayName ?? null,
         sound: body.sound ?? null,
@@ -120,6 +123,8 @@ const router = tsr.router(zeroAgentsMainContract, {
     const rows = await globalThis.services.db
       .select({
         agentId: zeroAgents.id,
+        owner: zeroAgents.owner,
+        composeUserId: agentComposes.userId,
         displayName: zeroAgents.displayName,
         description: zeroAgents.description,
         sound: zeroAgents.sound,
@@ -128,6 +133,7 @@ const router = tsr.router(zeroAgentsMainContract, {
         customSkills: zeroAgents.customSkills,
       })
       .from(zeroAgents)
+      .innerJoin(agentComposes, eq(zeroAgents.id, agentComposes.id))
       .where(eq(zeroAgents.orgId, org.orgId))
       .orderBy(desc(zeroAgents.updatedAt));
 
@@ -136,6 +142,7 @@ const router = tsr.router(zeroAgentsMainContract, {
       body: rows.map((row) => {
         return {
           agentId: row.agentId,
+          ownerId: row.owner ?? row.composeUserId,
           displayName: row.displayName ?? null,
           description: row.description ?? null,
           sound: row.sound ?? null,

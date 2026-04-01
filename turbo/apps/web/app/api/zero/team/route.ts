@@ -56,8 +56,10 @@ export async function GET() {
   const composes = await globalThis.services.db
     .select({
       id: agentComposes.id,
+      composeUserId: agentComposes.userId,
       headVersionId: agentComposes.headVersionId,
       updatedAt: agentComposes.updatedAt,
+      owner: zeroAgents.owner,
       displayName: zeroAgents.displayName,
       description: zeroAgents.description,
       sound: zeroAgents.sound,
@@ -72,6 +74,7 @@ export async function GET() {
     composes.map((c) => {
       return {
         id: c.id,
+        ownerId: c.owner ?? c.composeUserId,
         displayName: c.displayName ?? null,
         description: c.description ?? null,
         sound: c.sound ?? null,

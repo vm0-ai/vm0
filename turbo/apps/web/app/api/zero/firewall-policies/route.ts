@@ -57,18 +57,6 @@ const router = tsr.router(zeroAgentFirewallPoliciesContract, {
 
     const { org, member } = await resolveOrg(authCtx);
 
-    if (member.role !== "admin") {
-      return {
-        status: 403 as const,
-        body: {
-          error: {
-            message: "Only org admins can update firewall policies",
-            code: "FORBIDDEN",
-          },
-        },
-      };
-    }
-
     // Validate policies against builtin firewalls
     const validationError = validatePolicies(body.policies);
     if (validationError) {
@@ -85,7 +73,7 @@ const router = tsr.router(zeroAgentFirewallPoliciesContract, {
 
     // Verify agent exists — body.agentId is the composeId (= zeroAgents PK)
     const [existing] = await globalThis.services.db
-      .select({ id: zeroAgents.id })
+      .select({ id: zeroAgents.id, owner: zeroAgents.owner })
       .from(zeroAgents)
       .where(
         and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.id, body.agentId)),
@@ -99,6 +87,18 @@ const router = tsr.router(zeroAgentFirewallPoliciesContract, {
           error: {
             message: `Agent not found: ${body.agentId}`,
             code: "NOT_FOUND",
+          },
+        },
+      };
+    }
+
+    if (existing.owner !== member.userId) {
+      return {
+        status: 403 as const,
+        body: {
+          error: {
+            message: "Only the agent owner can update firewall policies",
+            code: "FORBIDDEN",
           },
         },
       };
@@ -127,6 +127,7 @@ const router = tsr.router(zeroAgentFirewallPoliciesContract, {
       status: 200 as const,
       body: {
         agentId: body.agentId,
+        ownerId: agent?.owner ?? member.userId,
         description: agent?.description ?? null,
         displayName: agent?.displayName ?? null,
         sound: agent?.sound ?? null,

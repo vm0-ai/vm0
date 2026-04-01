@@ -21,6 +21,7 @@ export const zeroAgentCustomSkillNameSchema = z
  */
 export const zeroAgentResponseSchema = z.object({
   agentId: z.string(),
+  ownerId: z.string(),
   description: z.string().nullable(),
   displayName: z.string().nullable(),
   sound: z.string().nullable(),
