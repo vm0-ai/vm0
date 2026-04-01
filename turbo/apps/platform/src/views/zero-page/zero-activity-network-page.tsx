@@ -138,6 +138,15 @@ function formatValue(value: unknown): string {
   return String(value);
 }
 
+function formatParams(params: Record<string, string> | undefined): string {
+  if (!params) return "—";
+  const filtered = Object.fromEntries(
+    Object.entries(params).filter(([, v]) => v != null),
+  );
+  if (Object.keys(filtered).length === 0) return "—";
+  return JSON.stringify(filtered);
+}
+
 function collectDetails(entry: NetworkLogEntry): [string, string][] {
   return [
     ["Timestamp", entry.timestamp],
@@ -156,7 +165,7 @@ function collectDetails(entry: NetworkLogEntry): [string, string][] {
     ["Firewall Permission", formatValue(entry.firewall_permission)],
     ["Firewall Rule Match", formatValue(entry.firewall_rule_match)],
     ["Firewall Base URL", formatValue(entry.firewall_base)],
-    ["Firewall Params", formatValue(entry.firewall_params)],
+    ["Firewall Params", formatParams(entry.firewall_params)],
     ["Firewall Error", formatValue(entry.firewall_error)],
     ["Resolved Secrets", formatValue(entry.token_resolved_secrets)],
     ["Refreshed Connectors", formatValue(entry.token_refreshed_connectors)],
