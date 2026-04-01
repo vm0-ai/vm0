@@ -158,8 +158,8 @@ describe("zero doctor firewall-permissions-change command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain('To enable the "contents:read" permission');
       expect(logCalls).toContain("[Manage GitHub firewall]");
-      expect(logCalls).toContain("/agents/permissions?");
-      expect(logCalls).not.toContain("/agents/permissions/");
+      expect(logCalls).toContain("/agents?");
+      expect(logCalls).not.toContain("/agents/permissions");
     });
   });
 
