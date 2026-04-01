@@ -8,6 +8,7 @@ import {
   setupAuthPageWrapper,
   pathParams$,
 } from "./route.ts";
+import type { ParamData } from "path-to-regexp";
 import { ROUTES } from "./route-paths.ts";
 import { detach, Reason } from "./utils.ts";
 import { setupGlobalMethod$ } from "./bootstrap/global-method.ts";
@@ -63,11 +64,9 @@ function redirectTo(target: string) {
  * Create a redirect setup command for parameterized routes.
  * Reads pathParams$ and constructs the target URL via a builder function.
  */
-function redirectWithParams(
-  buildTarget: (params: Record<string, unknown>) => string,
-) {
+function redirectWithParams(buildTarget: (params: ParamData) => string) {
   return command(({ get, set }) => {
-    const params = (get(pathParams$) as Record<string, unknown>) ?? {};
+    const params = get(pathParams$) ?? {};
     const target = buildTarget(params);
     const signal = get(rootSignal$).signal;
     detach(
